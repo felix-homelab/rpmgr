@@ -632,10 +632,13 @@ provider and never stored.
   without a proxy it connects only to a public unicast address: the address it actually dials is
   checked at the connect, so a name that resolves, or is rebound, to a loopback, private,
   link-local, shared (`100.64.0.0/10`), reserved, documentation, benchmarking or multicast address,
-  in IPv4-mapped, NAT64 or 6to4 form too, is refused (`internal/egress`). A claim therefore cannot
-  make the controller probe its own network. The claim's last error names only the kind of failure
-  (the name does not resolve, an address that is not public, refused, timed out, the HTTP status
-  code), never an address, a resolver or a server's own text, as every member of the org reads it.
+  in IPv4-mapped, IPv4-translated, NAT64 or 6to4 form too, is refused (`internal/egress`). A claim
+  therefore cannot make the controller probe its own network. A NAT64 prefix an operator chose
+  itself (RFC 6052) cannot be told from a public address and is not recognised. The claim's last
+  error names only the kind of failure (the name does not resolve, an address that is not public,
+  refused, timed out, the HTTP status code), never an address, a resolver or a server's own text,
+  as every member of the org reads it. [R] The kinds still tell a member whether a name resolves in
+  the controller's DNS ("does not resolve" against "not public"); that much is accepted.
   With a proxy (`HTTP_PROXY`, else `ALL_PROXY`, [10](10-operations.md#ports)) the proxy resolves
   the name and decides where it connects; the proxy's own rules are the boundary then. A domain
   that resolves only on the local network, as in a homelab, is proved with a TXT record or marked

@@ -41,6 +41,7 @@ var blocked = []struct {
 	{netip.MustParsePrefix("100.64.0.0/10"), "shared address space (100.64.0.0/10)"},
 	{netip.MustParsePrefix("192.0.0.0/24"), "reserved for protocol assignments (192.0.0.0/24)"},
 	{netip.MustParsePrefix("192.0.2.0/24"), "a documentation address"},
+	{netip.MustParsePrefix("192.88.99.0/24"), "a 6to4 relay anycast address (192.88.99.0/24)"},
 	{netip.MustParsePrefix("198.18.0.0/15"), "a benchmarking address (198.18.0.0/15)"},
 	{netip.MustParsePrefix("198.51.100.0/24"), "a documentation address"},
 	{netip.MustParsePrefix("203.0.113.0/24"), "a documentation address"},
@@ -49,19 +50,26 @@ var blocked = []struct {
 	{netip.MustParsePrefix("64:ff9b:1::/48"), "a local-use NAT64 address (64:ff9b:1::/48)"},
 	{netip.MustParsePrefix("100::/64"), "a discard address (100::/64)"},
 	{netip.MustParsePrefix("2001::/32"), "a Teredo address (2001::/32)"},
+	{netip.MustParsePrefix("2001:2::/48"), "a benchmarking address (2001:2::/48)"},
+	{netip.MustParsePrefix("2001:10::/28"), "an ORCHID address (2001:10::/28)"},
+	{netip.MustParsePrefix("2001:20::/28"), "an ORCHIDv2 address (2001:20::/28)"},
 	{netip.MustParsePrefix("2001:db8::/32"), "a documentation address"},
+	{netip.MustParsePrefix("3fff::/20"), "a documentation address"},
+	{netip.MustParsePrefix("5f00::/16"), "a segment-routing identifier (5f00::/16)"},
 	{netip.MustParsePrefix("fec0::/10"), "a site-local address (fec0::/10)"},
 }
 
-// The prefixes whose addresses embed an IPv4 address that is checked in turn.
+// The prefixes whose addresses embed an IPv4 address that is checked in turn. A NAT64 prefix an
+// operator chose itself (RFC 6052) cannot be told from a public address, and is not checked.
 var (
 	nat64  = netip.MustParsePrefix("64:ff9b::/96")
+	siit   = netip.MustParsePrefix("::ffff:0:0:0/96")
 	sixTo4 = netip.MustParsePrefix("2002::/16")
 )
 
 // Check reports nil for a public unicast address, else a *RefusedError. An IPv4-mapped address is
-// checked as its IPv4 address, and the IPv4 address that a NAT64 (64:ff9b::/96) or 6to4
-// (2002::/16) address embeds is checked as well.
+// checked as its IPv4 address, and the IPv4 address that a NAT64 (64:ff9b::/96), SIIT
+// (::ffff:0:0:0/96) or 6to4 (2002::/16) address embeds is checked as well.
 func Check(a netip.Addr) error {
 	a = a.Unmap().WithZone("")
 	refuse := func(reason string) error { return &RefusedError{Addr: a, Reason: reason} }
@@ -89,6 +97,10 @@ func Check(a netip.Addr) error {
 	case nat64.Contains(a):
 		if err := Check(netip.AddrFrom4([4]byte(b[12:16]))); err != nil {
 			return refuse("a NAT64 address of an address that is not public")
+		}
+	case siit.Contains(a):
+		if err := Check(netip.AddrFrom4([4]byte(b[12:16]))); err != nil {
+			return refuse("an IPv4-translated address of an address that is not public")
 		}
 	case sixTo4.Contains(a):
 		if err := Check(netip.AddrFrom4([4]byte(b[2:6]))); err != nil {

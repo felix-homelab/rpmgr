@@ -10,13 +10,18 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 
 	"github.com/felix-homelab/rpmgr/internal/domains"
+	"github.com/felix-homelab/rpmgr/internal/egress"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/proxyenv"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -131,9 +136,9 @@ func TestGatewayChallenges(t *testing.T) {
 	})
 }
 
-// fakeDNS answers every A query with the address of answers[name], NXDOMAIN for a name it does not
-// know, and nothing for AAAA; resolver is a Go resolver that asks it.
-func fakeDNS(t *testing.T, answers map[string]string) (*net.Resolver, string) {
+// fakeDNS answers A and AAAA queries with the IPv4 and IPv6 addresses of answers[name], and
+// NXDOMAIN for a name it does not know; resolver is a Go resolver that asks it.
+func fakeDNS(t *testing.T, answers map[string][]string) (*net.Resolver, string) {
 	t.Helper()
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
@@ -143,13 +148,19 @@ func fakeDNS(t *testing.T, answers map[string]string) (*net.Resolver, string) {
 		m := new(dns.Msg)
 		m.SetReply(q)
 		name := strings.TrimSuffix(q.Question[0].Name, ".")
-		ip, ok := answers[name]
-		switch {
-		case !ok:
+		ips, ok := answers[name]
+		if !ok {
 			m.Rcode = dns.RcodeNameError
-		case q.Question[0].Qtype == dns.TypeA:
-			m.Answer = append(m.Answer, &dns.A{Hdr: dns.RR_Header{Name: q.Question[0].Name, Rrtype: dns.TypeA,
-				Class: dns.ClassINET, Ttl: 60}, A: net.ParseIP(ip)})
+		}
+		for _, s := range ips {
+			ip := net.ParseIP(s)
+			hdr := dns.RR_Header{Name: q.Question[0].Name, Rrtype: q.Question[0].Qtype, Class: dns.ClassINET, Ttl: 60}
+			switch {
+			case q.Question[0].Qtype == dns.TypeA && ip.To4() != nil:
+				m.Answer = append(m.Answer, &dns.A{Hdr: hdr, A: ip})
+			case q.Question[0].Qtype == dns.TypeAAAA && ip.To4() == nil:
+				m.Answer = append(m.Answer, &dns.AAAA{Hdr: hdr, AAAA: ip})
+			}
 		}
 		_ = w.WriteMsg(m)
 	})}
@@ -168,17 +179,20 @@ func fakeDNS(t *testing.T, answers map[string]string) (*net.Resolver, string) {
 func TestDomainProof_EgressGuard(t *testing.T) {
 	ctx := context.Background()
 	noProxy := func(*http.Request) (*url.URL, error) { return nil, nil }
-	resolver, dnsAddr := fakeDNS(t, map[string]string{
-		"loop.example.com": "127.0.0.1", "lan.example.com": "192.168.1.10", "meta.example.com": "169.254.169.254",
-		"cgnat.example.com": "100.100.100.200", "zero.example.com": "0.0.0.0",
+	resolver, dnsAddr := fakeDNS(t, map[string][]string{
+		"loop.example.com": {"127.0.0.1"}, "lan.example.com": {"192.168.1.10"}, "meta.example.com": {"169.254.169.254"},
+		"cgnat.example.com": {"100.100.100.200"}, "zero.example.com": {"0.0.0.0"},
+		"v6.example.com":    {"::1", "fd00::10"},
+		"mixed.example.com": {"10.0.0.1", "127.0.0.1", "::1", "fe80::1", "64:ff9b::a00:1", "::ffff:0:a00:1"},
 	})
 	v := &domains.HTTPVerifier{Proxy: noProxy, Resolver: resolver}
-	for _, name := range []string{"loop.example.com", "lan.example.com", "meta.example.com", "cgnat.example.com", "zero.example.com"} {
+	for _, name := range []string{"loop.example.com", "lan.example.com", "meta.example.com", "cgnat.example.com", "zero.example.com",
+		"v6.example.com", "mixed.example.com"} {
 		err := v.Verify(ctx, domains.Challenge{ID: "dom_x", FQDN: name, Value: value})
 		if !errors.Is(err, domains.ErrHTTPUnreachable) || !strings.Contains(err.Error(), "not public") {
 			t.Errorf("%s: %v, want refused as not public", name, err)
 		}
-		for _, leak := range []string{"127.0.0.1", "192.168.", "169.254.", "100.100.", "0.0.0.0", dnsAddr} {
+		for _, leak := range []string{"127.0.0.1", "192.168.", "169.254.", "100.100.", "0.0.0.0", "10.0.0.1", "::1", "fd00", "fe80", dnsAddr} {
 			if err != nil && strings.Contains(err.Error(), leak) {
 				t.Errorf("%s: the error names %s: %v", name, leak, err)
 			}
@@ -192,6 +206,18 @@ func TestDomainProof_EgressGuard(t *testing.T) {
 	// The system resolver: localhost is loopback.
 	if err := (&domains.HTTPVerifier{Proxy: noProxy}).Verify(ctx, domains.Challenge{ID: "dom_x", FQDN: "localhost", Value: value}); !errors.Is(err, domains.ErrHTTPUnreachable) || !strings.Contains(err.Error(), "not public") {
 		t.Errorf("localhost: %v", err)
+	}
+
+	// A name that NO_PROXY exempts goes direct, and is guarded, also with a proxy set.
+	exempt, err := proxyenv.Requests(func(k string) string {
+		return map[string]string{"HTTP_PROXY": "http://127.0.0.1:9", "NO_PROXY": "loop.example.com"}[k]
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = (&domains.HTTPVerifier{Proxy: exempt, Resolver: resolver}).Verify(ctx, domains.Challenge{ID: "dom_x", FQDN: "loop.example.com", Value: value})
+	if !errors.Is(err, domains.ErrHTTPUnreachable) || !strings.Contains(err.Error(), "not public") {
+		t.Errorf("a name NO_PROXY exempts: %v, want refused as not public", err)
 	}
 
 	// Through a proxy, here on loopback, the request goes to the proxy unchanged.
@@ -236,5 +262,45 @@ func TestDomainProof_EgressGuard(t *testing.T) {
 	if !errors.Is(err, domains.ErrHTTPToken) || !strings.Contains(err.Error(), "HTTP 404") || strings.Contains(err.Error(), "db01") ||
 		strings.Contains(err.Error(), "10.9.8.7") {
 		t.Errorf("a reason phrase: %v", err)
+	}
+}
+
+// TestDomainProof_MixedRecordsEachChecked: a name with A and AAAA records, public and not, is
+// dialled address by address, and the guard sees each address tried: those that are not public
+// are refused before a connect. The test stops a public address instead of connecting it.
+func TestDomainProof_MixedRecordsEachChecked(t *testing.T) {
+	resolver, _ := fakeDNS(t, map[string][]string{
+		"mixed.example.com": {"10.0.0.1", "8.8.8.8", "127.0.0.1", "::1", "2606:4700:4700::1111", "fd00::1"},
+	})
+	stop := errors.New("stopped before the connect")
+	var mu sync.Mutex
+	verdict := map[string]error{}
+	d := &net.Dialer{Timeout: time.Second, Resolver: resolver, FallbackDelay: -1, Control: func(network, address string, c syscall.RawConn) error {
+		err := egress.Control(network, address, c)
+		mu.Lock()
+		verdict[address] = err
+		mu.Unlock()
+		if err != nil {
+			return err
+		}
+		return stop
+	}}
+	for _, network := range []string{"tcp4", "tcp6"} {
+		if _, err := d.DialContext(context.Background(), network, "mixed.example.com:80"); err == nil {
+			t.Fatalf("%s: a connection", network)
+		}
+	}
+	want := map[string]bool{"10.0.0.1:80": false, "8.8.8.8:80": true, "127.0.0.1:80": false, "[::1]:80": false,
+		"[2606:4700:4700::1111]:80": true, "[fd00::1]:80": false}
+	for addr, public := range want {
+		err, tried := verdict[addr]
+		switch {
+		case !tried:
+			t.Errorf("%s was never checked", addr)
+		case public && err != nil:
+			t.Errorf("%s: %v, want allowed", addr, err)
+		case !public && !errors.Is(err, egress.ErrRefused):
+			t.Errorf("%s: %v, want refused", addr, err)
+		}
 	}
 }
