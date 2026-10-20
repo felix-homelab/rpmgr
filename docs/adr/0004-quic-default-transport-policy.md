@@ -343,6 +343,7 @@ two sessions and 2 197 to 4 889 with four at 20 ms (690 to 702 and 1 355 to 1 38
 **No protocol change is needed:** the gateway accepts several sessions of a connector and spreads
 streams over them already, so a connector of a later release can open more sessions to a gateway
 of v0.1.0 within its cap of 16 per connector. The product owner decided on four QUIC sessions
-per gateway as a constant, and four h2 connections once the h2 window budget is fixed
-([D123](../14-open-decisions.md#engineering)). The target of 03 stays as D70 recorded it, for
+per gateway as a constant ([D123](../14-open-decisions.md#engineering)); h2 stays at two
+connections per gateway, so that a gateway's window budget admits the h2 sessions of about forty
+connectors ([D124](../14-open-decisions.md#engineering)). The target of 03 stays as D70 recorded it, for
 VB-20, which measures the build with four sessions.
