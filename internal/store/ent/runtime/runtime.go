@@ -42,9 +42,12 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/release"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rollout"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -2086,6 +2089,71 @@ func init() {
 			return nil
 		}
 	}()
+	releaseMixin := schema.Release{}.Mixin()
+	release.Policy = privacy.NewPolicies(releaseMixin[0], schema.Release{})
+	release.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := release.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	releaseMixinHooks0 := releaseMixin[0].Hooks()
+
+	release.Hooks[1] = releaseMixinHooks0[0]
+	releaseMixinInters0 := releaseMixin[0].Interceptors()
+	release.Interceptors[0] = releaseMixinInters0[0]
+	releaseFields := schema.Release{}.Fields()
+	_ = releaseFields
+	// releaseDescVersion is the schema descriptor for version field.
+	releaseDescVersion := releaseFields[1].Descriptor()
+	// release.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	release.VersionValidator = releaseDescVersion.Validators[0].(func(string) error)
+	// releaseDescManifestSeq is the schema descriptor for manifest_seq field.
+	releaseDescManifestSeq := releaseFields[3].Descriptor()
+	// release.ManifestSeqValidator is a validator for the "manifest_seq" field. It is called by the builders before save.
+	release.ManifestSeqValidator = releaseDescManifestSeq.Validators[0].(func(int64) error)
+	// releaseDescManifest is the schema descriptor for manifest field.
+	releaseDescManifest := releaseFields[4].Descriptor()
+	// release.ManifestValidator is a validator for the "manifest" field. It is called by the builders before save.
+	release.ManifestValidator = releaseDescManifest.Validators[0].(func([]byte) error)
+	// releaseDescSignature is the schema descriptor for signature field.
+	releaseDescSignature := releaseFields[5].Descriptor()
+	// release.SignatureValidator is a validator for the "signature" field. It is called by the builders before save.
+	release.SignatureValidator = releaseDescSignature.Validators[0].(func([]byte) error)
+	// releaseDescSigningKeyStatement is the schema descriptor for signing_key_statement field.
+	releaseDescSigningKeyStatement := releaseFields[6].Descriptor()
+	// release.SigningKeyStatementValidator is a validator for the "signing_key_statement" field. It is called by the builders before save.
+	release.SigningKeyStatementValidator = releaseDescSigningKeyStatement.Validators[0].(func([]byte) error)
+	// releaseDescStatementSignature is the schema descriptor for statement_signature field.
+	releaseDescStatementSignature := releaseFields[7].Descriptor()
+	// release.StatementSignatureValidator is a validator for the "statement_signature" field. It is called by the builders before save.
+	release.StatementSignatureValidator = releaseDescStatementSignature.Validators[0].(func([]byte) error)
+	// releaseDescCreatedAt is the schema descriptor for created_at field.
+	releaseDescCreatedAt := releaseFields[10].Descriptor()
+	// release.DefaultCreatedAt holds the default value on creation for the created_at field.
+	release.DefaultCreatedAt = releaseDescCreatedAt.Default.(func() time.Time)
+	// releaseDescID is the schema descriptor for id field.
+	releaseDescID := releaseFields[0].Descriptor()
+	// release.DefaultID holds the default value on creation for the id field.
+	release.DefaultID = releaseDescID.Default.(func() string)
+	// release.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	release.IDValidator = func() func(string) error {
+		validators := releaseDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	resourcestatusMixin := schema.ResourceStatus{}.Mixin()
 	resourcestatus.Policy = privacy.NewPolicies(resourcestatusMixin[0], schema.ResourceStatus{})
 	resourcestatus.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -2197,6 +2265,160 @@ func init() {
 	revokedserialDescID := revokedserialFields[0].Descriptor()
 	// revokedserial.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	revokedserial.IDValidator = revokedserialDescID.Validators[0].(func(string) error)
+	rolloutMixin := schema.Rollout{}.Mixin()
+	rollout.Policy = privacy.NewPolicies(rolloutMixin[0], schema.Rollout{})
+	rollout.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := rollout.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	rolloutMixinHooks0 := rolloutMixin[0].Hooks()
+	rolloutMixinHooks1 := rolloutMixin[1].Hooks()
+	rolloutHooks := schema.Rollout{}.Hooks()
+
+	rollout.Hooks[1] = rolloutMixinHooks0[0]
+
+	rollout.Hooks[2] = rolloutMixinHooks1[0]
+
+	rollout.Hooks[3] = rolloutHooks[0]
+	rolloutMixinInters0 := rolloutMixin[0].Interceptors()
+	rollout.Interceptors[0] = rolloutMixinInters0[0]
+	rolloutMixinFields1 := rolloutMixin[1].Fields()
+	_ = rolloutMixinFields1
+	rolloutFields := schema.Rollout{}.Fields()
+	_ = rolloutFields
+	// rolloutDescVersion is the schema descriptor for version field.
+	rolloutDescVersion := rolloutMixinFields1[0].Descriptor()
+	// rollout.DefaultVersion holds the default value on creation for the version field.
+	rollout.DefaultVersion = rolloutDescVersion.Default.(int64)
+	// rollout.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	rollout.VersionValidator = rolloutDescVersion.Validators[0].(func(int64) error)
+	// rolloutDescReleaseID is the schema descriptor for release_id field.
+	rolloutDescReleaseID := rolloutFields[1].Descriptor()
+	// rollout.ReleaseIDValidator is a validator for the "release_id" field. It is called by the builders before save.
+	rollout.ReleaseIDValidator = rolloutDescReleaseID.Validators[0].(func(string) error)
+	// rolloutDescPercentage is the schema descriptor for percentage field.
+	rolloutDescPercentage := rolloutFields[3].Descriptor()
+	// rollout.DefaultPercentage holds the default value on creation for the percentage field.
+	rollout.DefaultPercentage = rolloutDescPercentage.Default.(int)
+	// rollout.PercentageValidator is a validator for the "percentage" field. It is called by the builders before save.
+	rollout.PercentageValidator = rolloutDescPercentage.Validators[0].(func(int) error)
+	// rolloutDescActive is the schema descriptor for active field.
+	rolloutDescActive := rolloutFields[5].Descriptor()
+	// rollout.DefaultActive holds the default value on creation for the active field.
+	rollout.DefaultActive = rolloutDescActive.Default.(bool)
+	// rolloutDescPauseReason is the schema descriptor for pause_reason field.
+	rolloutDescPauseReason := rolloutFields[6].Descriptor()
+	// rollout.DefaultPauseReason holds the default value on creation for the pause_reason field.
+	rollout.DefaultPauseReason = rolloutDescPauseReason.Default.(string)
+	// rolloutDescCreatedBy is the schema descriptor for created_by field.
+	rolloutDescCreatedBy := rolloutFields[7].Descriptor()
+	// rollout.CreatedByValidator is a validator for the "created_by" field. It is called by the builders before save.
+	rollout.CreatedByValidator = rolloutDescCreatedBy.Validators[0].(func(string) error)
+	// rolloutDescCreatedAt is the schema descriptor for created_at field.
+	rolloutDescCreatedAt := rolloutFields[8].Descriptor()
+	// rollout.DefaultCreatedAt holds the default value on creation for the created_at field.
+	rollout.DefaultCreatedAt = rolloutDescCreatedAt.Default.(func() time.Time)
+	// rolloutDescUpdatedBy is the schema descriptor for updated_by field.
+	rolloutDescUpdatedBy := rolloutFields[9].Descriptor()
+	// rollout.DefaultUpdatedBy holds the default value on creation for the updated_by field.
+	rollout.DefaultUpdatedBy = rolloutDescUpdatedBy.Default.(string)
+	// rolloutDescUpdatedAt is the schema descriptor for updated_at field.
+	rolloutDescUpdatedAt := rolloutFields[10].Descriptor()
+	// rollout.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	rollout.DefaultUpdatedAt = rolloutDescUpdatedAt.Default.(func() time.Time)
+	// rollout.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	rollout.UpdateDefaultUpdatedAt = rolloutDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// rolloutDescID is the schema descriptor for id field.
+	rolloutDescID := rolloutFields[0].Descriptor()
+	// rollout.DefaultID holds the default value on creation for the id field.
+	rollout.DefaultID = rolloutDescID.Default.(func() string)
+	// rollout.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	rollout.IDValidator = func() func(string) error {
+		validators := rolloutDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	rollouttargetMixin := schema.RolloutTarget{}.Mixin()
+	rollouttarget.Policy = privacy.NewPolicies(rollouttargetMixin[0], schema.RolloutTarget{})
+	rollouttarget.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := rollouttarget.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	rollouttargetMixinHooks0 := rollouttargetMixin[0].Hooks()
+
+	rollouttarget.Hooks[1] = rollouttargetMixinHooks0[0]
+	rollouttargetMixinInters0 := rollouttargetMixin[0].Interceptors()
+	rollouttarget.Interceptors[0] = rollouttargetMixinInters0[0]
+	rollouttargetFields := schema.RolloutTarget{}.Fields()
+	_ = rollouttargetFields
+	// rollouttargetDescRolloutID is the schema descriptor for rollout_id field.
+	rollouttargetDescRolloutID := rollouttargetFields[1].Descriptor()
+	// rollouttarget.RolloutIDValidator is a validator for the "rollout_id" field. It is called by the builders before save.
+	rollouttarget.RolloutIDValidator = rollouttargetDescRolloutID.Validators[0].(func(string) error)
+	// rollouttargetDescAgentID is the schema descriptor for agent_id field.
+	rollouttargetDescAgentID := rollouttargetFields[2].Descriptor()
+	// rollouttarget.AgentIDValidator is a validator for the "agent_id" field. It is called by the builders before save.
+	rollouttarget.AgentIDValidator = rollouttargetDescAgentID.Validators[0].(func(string) error)
+	// rollouttargetDescCanary is the schema descriptor for canary field.
+	rollouttargetDescCanary := rollouttargetFields[4].Descriptor()
+	// rollouttarget.DefaultCanary holds the default value on creation for the canary field.
+	rollouttarget.DefaultCanary = rollouttargetDescCanary.Default.(bool)
+	// rollouttargetDescBucket is the schema descriptor for bucket field.
+	rollouttargetDescBucket := rollouttargetFields[5].Descriptor()
+	// rollouttarget.BucketValidator is a validator for the "bucket" field. It is called by the builders before save.
+	rollouttarget.BucketValidator = rollouttargetDescBucket.Validators[0].(func(int) error)
+	// rollouttargetDescReason is the schema descriptor for reason field.
+	rollouttargetDescReason := rollouttargetFields[7].Descriptor()
+	// rollouttarget.DefaultReason holds the default value on creation for the reason field.
+	rollouttarget.DefaultReason = rollouttargetDescReason.Default.(string)
+	// rollouttargetDescVersionBefore is the schema descriptor for version_before field.
+	rollouttargetDescVersionBefore := rollouttargetFields[8].Descriptor()
+	// rollouttarget.DefaultVersionBefore holds the default value on creation for the version_before field.
+	rollouttarget.DefaultVersionBefore = rollouttargetDescVersionBefore.Default.(string)
+	// rollouttargetDescUpdatedAt is the schema descriptor for updated_at field.
+	rollouttargetDescUpdatedAt := rollouttargetFields[9].Descriptor()
+	// rollouttarget.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	rollouttarget.DefaultUpdatedAt = rollouttargetDescUpdatedAt.Default.(func() time.Time)
+	// rollouttarget.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	rollouttarget.UpdateDefaultUpdatedAt = rollouttargetDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// rollouttargetDescID is the schema descriptor for id field.
+	rollouttargetDescID := rollouttargetFields[0].Descriptor()
+	// rollouttarget.DefaultID holds the default value on creation for the id field.
+	rollouttarget.DefaultID = rollouttargetDescID.Default.(func() string)
+	// rollouttarget.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	rollouttarget.IDValidator = func() func(string) error {
+		validators := rollouttargetDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	routeMixin := schema.Route{}.Mixin()
 	route.Policy = privacy.NewPolicies(routeMixin[0], schema.Route{})
 	route.Hooks[0] = func(next ent.Mutator) ent.Mutator {
