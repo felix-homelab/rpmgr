@@ -121,20 +121,22 @@ func TestRegressions(t *testing.T) {
 // TestOtherWorkloads: the workloads without a transport table each get a row.
 func TestOtherWorkloads(t *testing.T) {
 	recs := []Record{
-		{Testbed: "gh-amd64", System: "quic", Workload: "udp", Size: 1400, Rate: 2000, PPS: 1990, UDPLossPct: 0.5, OversizeShare: 1},
+		{Testbed: "gh-amd64", System: "quic", Workload: "udp", Size: 1400, Rate: 2000, PPS: 1990, UDPLossPct: 0.5, P50ms: 1.2, P99ms: 4.5, OversizeShare: 1},
 		{Testbed: "gh-amd64", System: "h2", Workload: "changes", Routes: 200, ApplyP50s: 0.3, ApplyP99s: 0.9, Conns: 8},
 		{Testbed: "gh-amd64", System: "quic", Workload: "kill-gateway", RecoveryS: 3.2, Lost: 8, Conns: 8},
 		{Testbed: "gh-amd64", System: "quic", Workload: "idle", Connectors: 20, DurationS: 30, MemoryMiB: map[string]float64{"gateway": 64, "gateway_without": 40},
 			CPUs: map[string]float64{"gateway": 0.3}},
 		{Testbed: "gh-amd64", System: "h2", Workload: "vb18", Share: map[string]float64{"before": 0.5, "blocked": 0.1}},
+		{Testbed: "gh-amd64", System: "quic", Workload: "fairness", Targets: 4, MinMbps: 10, MaxMbps: 100, Jain: 0.5, P99ms: 20},
 	}
 	out := summary(t, recs, nil)
 	for _, want := range []string{
-		"| UDP, 1400 B at 2000/s | quic | 1990 /s back, loss 0.50 %, 100 % on the oversize path |",
+		"| UDP, 1400 B at 2000/s | quic | 1990 /s back, loss 0.50 %, p50 1.20 ms, p99 4.50 ms, 100 % on the oversize path |",
 		"| 1 change/s, 200 routes | h2 | apply p50 0.30 s, p99 0.90 s; 0 of 8 held connections lost |",
 		"| SIGKILL gateway under load | quic | answers again after 3.2 s; 8 of 8 held connections lost |",
 		"| 20 idle connectors | quic | gateway 64 MiB (40 MiB without them), 0.010 CPU s/s |",
 		"| VB-18: new connections to a blocked connector | h2 | 50 % before, 10 % while its session is blocked |",
+		"| 4 routes, one saturated | quic | per-route 10–100 Mbit/s, Jain 0.50; setup p99 20.0 ms |",
 		"| Snapshot apply p99 (h2, 200 routes, not 1 000) | gh-amd64 RTT 0 ms | 0.90 s | yes |",
 		"| Resets on unchanged routes during changes (h2) | gh-amd64 RTT 0 ms | 0 | yes |",
 	} {

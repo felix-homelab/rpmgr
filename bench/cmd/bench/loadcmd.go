@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/bench/load"
@@ -46,6 +47,12 @@ type Record struct {
 	RecoveryS  float64 `json:"recovery_s,omitempty"` // kill: until the route answers again
 	Connectors int     `json:"connectors,omitempty"` // idle: idle connectors on the gateway
 
+	Targets  int                `json:"targets,omitempty"` // fairness: routes driven at once
+	PerRoute map[string]float64 `json:"per_route_mbps,omitempty"`
+	Jain     float64            `json:"jain,omitempty"`
+	MinMbps  float64            `json:"min_mbps,omitempty"`
+	MaxMbps  float64            `json:"max_mbps,omitempty"`
+
 	MemoryMiB map[string]float64 `json:"memory_mib,omitempty"`
 	Share     map[string]float64 `json:"share,omitempty"` // who, vb18: share of new connections per connector
 
@@ -58,7 +65,9 @@ type Record struct {
 // loadArgs are the parameters of one measurement.
 type loadArgs struct {
 	target, url, ca                     string
+	targets, setupTarget                string
 	streams, rate, size, workers, conns int
+	heavy, light                        int
 	dur, hold                           time.Duration
 }
 
@@ -76,6 +85,10 @@ func cmdLoad(ctx context.Context, args []string) error {
 	fs.StringVar(&a.ca, "ca", "", "PEM file of the CA the route's certificate chains to (http)")
 	fs.IntVar(&a.conns, "conns", 8, "connections to hold (hold)")
 	fs.DurationVar(&a.hold, "hold", 0, "how long each connection stays open after the answer (who)")
+	fs.StringVar(&a.targets, "targets", "", "comma-separated host:port targets (fairness)")
+	fs.StringVar(&a.setupTarget, "setup-target", "", "echo target for setup latency during fairness")
+	fs.IntVar(&a.heavy, "heavy-streams", 16, "streams to the first fairness target")
+	fs.IntVar(&a.light, "light-streams", 1, "streams to each other fairness target")
 	r := Record{}
 	fs.StringVar(&r.Testbed, "testbed", "local", "label: testbed")
 	fs.StringVar(&r.System, "system", "direct", "label: direct, quic or h2")
@@ -86,7 +99,11 @@ func cmdLoad(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if a.target == "" {
+	if *workload == "fairness" {
+		if a.targets == "" {
+			return fmt.Errorf("%w: fairness needs -targets", errUsage)
+		}
+	} else if a.target == "" {
 		return fmt.Errorf("%w: load needs -target", errUsage)
 	}
 	r.Workload, r.DurationS = *workload, a.dur.Seconds()
@@ -133,6 +150,7 @@ func measure(ctx context.Context, r *Record, a loadArgs) error {
 			return err
 		}
 		r.Size, r.Rate, r.Sent, r.PPS, r.UDPLossPct = a.size, a.rate, res.Sent, res.PPS(), res.Loss()
+		r.P50ms, r.P99ms = res.Percentile(50), res.Percentile(99)
 		r.Failures = res.Sent - res.Received
 	case "hold":
 		res, err := load.Hold(ctx, a.target, a.conns, a.dur)
@@ -148,6 +166,24 @@ func measure(ctx context.Context, r *Record, a loadArgs) error {
 		r.Rate, r.Failures, r.Share = a.rate, res.Failures, shares(res.By)
 		for _, n := range res.By {
 			r.Conns += n
+		}
+	case "fairness":
+		targets := strings.Split(a.targets, ",")
+		res, err := load.Fairness(ctx, targets, a.heavy, a.light, a.setupTarget, a.rate, a.dur)
+		if err != nil {
+			return err
+		}
+		r.Targets, r.PerRoute, r.Failures = len(targets), res.Mbps, res.Failures
+		r.P50ms, r.P99ms = res.Setup.Percentile(50), res.Setup.Percentile(99)
+		vals := make([]float64, 0, len(res.Mbps))
+		for _, v := range res.Mbps {
+			vals = append(vals, v)
+		}
+		r.Jain = load.Jain(vals)
+		r.MinMbps, r.MaxMbps = vals[0], vals[0]
+		for _, v := range vals[1:] {
+			r.MinMbps = min(r.MinMbps, v)
+			r.MaxMbps = max(r.MaxMbps, v)
 		}
 	default:
 		return fmt.Errorf("%w: unknown workload %q", errUsage, r.Workload)
