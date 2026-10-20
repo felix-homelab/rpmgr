@@ -626,7 +626,18 @@ provider and never stored.
   `pending_approval` and stays unusable until an Instance Admin approves it (Phase 2, with step-up).
   No hostname is ever handed out first-come-first-served.
 - **TXT proofs are read at the zone's authoritative nameservers**, never through the controller's
-  resolver, so split-horizon DNS and negative caching cannot fake or delay a result.
+  resolver, so split-horizon DNS and negative caching cannot fake or delay a result. The host's
+  own resolver, which finds the zone's nameservers and their addresses, is the operator's and is
+  trusted wherever it is. The nameservers themselves are named by the claimed zone, so the queries
+  to them, over UDP and TCP, connect only to public addresses, checked at the connect as for HTTP
+  proofs below (`internal/egress`): a zone whose NS records point at a loopback, private,
+  link-local or metadata address gets no query there. The claim's last error names only the kind
+  of failure (no zone, a nameserver's name that does not resolve, an address that is not public,
+  no answer in time, an answer without authority with its response code), never an address or a
+  nameserver's or resolver's name. [R] As for HTTP proofs, the kinds still tell the claimant
+  whether a nameserver's name resolves in the controller's DNS ("does not resolve" against "not
+  public"); that much is accepted. A zone whose nameservers are reachable only on the local
+  network is marked trusted by the Instance Admin (D13).
 - **HTTP proofs reach only public addresses.** The controller fetches
   `http://<domain>/.well-known/rpmgr-challenge/<claim ID>` without following redirects, and
   without a proxy it connects only to a public unicast address: the address it actually dials is

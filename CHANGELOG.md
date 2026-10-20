@@ -62,6 +62,11 @@ Changes to the design documents are not recorded here: see the git history and t
   an HTTP claim names only the kind of failure, no longer the addresses, the resolver or the
   server's own text. A domain that resolves only on the local network is proved with a TXT record
   or marked trusted by the Instance Admin. (#822)
+- Controller: a TXT domain proof asks the claimed zone's nameservers only at public addresses, so
+  a zone whose NS records point at a loopback, private, link-local or metadata address gets no
+  query there, and the claim's last error names only the kind of failure, no longer the addresses
+  of the nameservers, the resolver or the controller. A zone whose nameservers are reachable only
+  on the local network is marked trusted by the Instance Admin. Low severity; affects 0.1.0. (#823)
 
 ## [0.1.0] - 2026-10-19
 
