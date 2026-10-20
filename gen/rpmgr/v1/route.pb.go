@@ -767,9 +767,11 @@ type RouteNotServing struct {
 	// The target's or the gateway's ID.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// OFFLINE (no control session), DISABLED (the connector or gateway), NO_DATA_SESSION (with the
-	// connector of a ready target), or the agent's own reason, as in NotReadyResource.
+	// connector of a ready target), CAPABILITY_MISSING (its release lacks a capability the route
+	// needs, so its snapshot leaves the route out), or the agent's own reason, as in
+	// NotReadyResource.
 	Reason string `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
-	// The agent's details.
+	// The agent's details; with CAPABILITY_MISSING, the capabilities it lacks.
 	Detail        string `protobuf:"bytes,3,opt,name=detail,proto3" json:"detail,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

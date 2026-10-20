@@ -4,6 +4,7 @@ package apisvc_test
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"testing"
 
@@ -12,6 +13,8 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
+	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
@@ -199,5 +202,119 @@ func TestRouteStatus(t *testing.T) {
 	apisvc.SetStatusWindow(t, 1)
 	if st := status(pg); st.GetState() != pending {
 		t.Fatalf("behind more revisions than read: %v", st)
+	}
+}
+
+// TestRouteStatus_CapabilityMissing (D113): an online gateway or connector whose control session
+// lacks a capability the route needs is listed with CAPABILITY_MISSING and the capabilities, and
+// neither serves the route nor counts as a ready target; reconnecting with the capability, or a
+// route that uses no gated feature, clears it.
+func TestRouteStatus_CapabilityMissing(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	c := e.db.Client()
+	epoch := c.Instance.GetX(e.sys, 1).DbEpoch
+	if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org,
+		PortPool: &rpmgrv1.PortPool{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009}})); err != nil {
+		t.Fatal(err)
+	}
+	var gws []string
+	for _, name := range []string{"gw1", "gw2"} {
+		gw, err := createGateway(ada, org, group, name, name+".example.com:443")
+		if err != nil {
+			t.Fatal(err)
+		}
+		gws = append(gws, gw.GetId())
+	}
+	c1, c2 := e.addConnector(t, org, "c1", nil).ID, e.addConnector(t, org, "c2", nil).ID
+	var ids []string
+	for _, rt := range []struct {
+		name string
+		port uint32
+	}{{"gated", 20001}, {"plain", 20002}} {
+		r, err := createRoute(ada, org, tcpRoute(rt.name, group, rt.port), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, r.GetId())
+	}
+	gated, plain := ids[0], ids[1]
+	targets := map[string]string{} // connector → target of the gated route
+	for _, route := range ids {
+		for _, con := range []string{c1, c2} {
+			r, err := ada.rt.CreateRouteTarget(ctx, connect.NewRequest(&rpmgrv1.CreateRouteTargetRequest{RouteId: route,
+				Target: addressTarget(con, "10.0.0.5", 5432)}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if route == gated {
+				targets[con] = r.Msg.GetTarget().GetId()
+			}
+		}
+	}
+	for _, g := range []struct {
+		kind pki.Kind
+		cap  string
+	}{{pki.KindGateway, "test.gw"}, {pki.KindConnector, "test.conn"}} {
+		t.Cleanup(routes.Register(routes.Gate{Capability: g.cap, Kind: g.kind,
+			Uses: func(_ context.Context, _ *ent.Client, id string) (bool, error) { return id == gated, nil }}))
+	}
+
+	// Every agent applied the newest revision and reports no resource of the gated route as not
+	// ready: what an agent without the capability reports, as its snapshot of that revision holds
+	// neither the route nor a reference to it, so it applies without a rejection and knows of no
+	// route to report (internal/routes, TestCompile_GatedSnapshotsValidate).
+	applied := c.ConfigRevision.Query().Order(ent.Desc(configrevision.FieldID)).FirstX(e.sys).ID
+	caps := map[string][]string{gws[0]: {"tunnel.quic", "test.gw"}, gws[1]: {"tunnel.quic"}, c1: {"test.conn"}, c2: nil}
+	for _, id := range []string{gws[0], gws[1], c1, c2} {
+		c.AgentSession.Create().SetID(id).SetOrgID(org).SetSessionEpoch(1).SetControllerNode("ctn_1").SetConnectedAt(e.clock).
+			SetLastSeenAt(e.clock).SetCapabilities(caps[id]).ExecX(e.sys)
+		c.AgentState.Create().SetID(id).SetOrgID(org).SetAppliedDbEpoch(epoch).SetAppliedSeq(applied).SetAppliedHash([]byte("h")).
+			SetPushedDbEpoch(epoch).SetPushedSeq(applied).SetPushedHash([]byte("h")).SetPushedAt(e.clock).ExecX(e.sys)
+	}
+	for _, gw := range gws {
+		for _, con := range []string{c1, c2} {
+			c.DataSession.Create().SetOrgID(org).SetGatewayID(gw).SetConnectorID(con).SetTransport("quic").SetEstablishedAt(e.clock).
+				SetReportedAt(e.clock).ExecX(e.sys)
+		}
+	}
+	status := func(id string) *rpmgrv1.RouteStatus {
+		t.Helper()
+		r, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: id}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.Msg.GetRoute().GetStatus()
+	}
+	missing := func(st *rpmgrv1.RouteStatus) map[string]string {
+		out := map[string]string{}
+		for _, n := range st.GetNotServing() {
+			if n.GetReason() == routes.CapabilityMissing {
+				out[n.GetId()] = n.GetDetail()
+			}
+		}
+		return out
+	}
+
+	st := status(gated)
+	if want := map[string]string{gws[1]: "test.gw", targets[c2]: "test.conn"}; !maps.Equal(missing(st), want) {
+		t.Fatalf("missing capabilities: %v, want %v", st.GetNotServing(), want)
+	}
+	if st.GetState() != rpmgrv1.RouteState_ROUTE_STATE_DEGRADED || st.GetGatewaysServing() != 1 || st.GetTargetsReady() != 1 {
+		t.Fatalf("the gated route: %v", st)
+	}
+	if st := status(plain); st.GetState() != rpmgrv1.RouteState_ROUTE_STATE_READY || len(st.GetNotServing()) != 0 {
+		t.Fatalf("a route without a gated feature: %v", st)
+	}
+	// Offline comes first: an offline agent's capabilities are not known.
+	c.AgentSession.UpdateOneID(gws[1]).SetDisconnectedAt(e.clock).ExecX(e.sys)
+	if st := status(gated); missing(st)[gws[1]] != "" {
+		t.Fatalf("an offline gateway: %v", st.GetNotServing())
+	}
+	// Both reconnect with the capability.
+	c.AgentSession.UpdateOneID(gws[1]).ClearDisconnectedAt().SetSessionEpoch(2).SetCapabilities([]string{"tunnel.quic", "test.gw"}).ExecX(e.sys)
+	c.AgentSession.UpdateOneID(c2).SetSessionEpoch(2).SetCapabilities([]string{"test.conn"}).ExecX(e.sys)
+	if st := status(gated); st.GetState() != rpmgrv1.RouteState_ROUTE_STATE_READY || len(st.GetNotServing()) != 0 {
+		t.Fatalf("after reconnecting with the capabilities: %v", st)
 	}
 }

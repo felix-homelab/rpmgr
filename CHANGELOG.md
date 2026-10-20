@@ -20,12 +20,20 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Fixed
 
+- All-in-one: a built-in gateway or connector whose identity is revoked as a whole, as a restore
+  that applies a later revocation leaves it, no longer stops the start. The all-in-one replaces it
+  with a new built-in gateway or connector, which keeps the old one's name and, for a gateway, its
+  group and tunnel endpoints, for a connector, its route targets; the revocation stays, and the
+  audit log records the replacement. (#805)
 - All-in-one: the built-in connector follows the gateway group's public hostnames while it runs.
   It read them only at start, so after a hostname was added, its addresses were not refused as the
   host's own until the service restarted, and a removed one stayed refused. (#808)
 
 ### Security
 
+- Controller: a password reset or a password change now ends the user's other unused reset links,
+  so a link issued before the change can no longer set the password; a reset link of a disabled
+  user sets no password. Severity low to medium; affects 0.1.0. (#812)
 - Controller: a gateway's reports count only for what it serves: traffic counters of routes in its
   own gateway group, and data sessions of connectors with a target on such a route. A gateway
   could write traffic statistics for routes of other groups, and show data sessions for any

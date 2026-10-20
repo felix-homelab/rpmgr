@@ -103,9 +103,17 @@ superseded one, or one expired longer than the grace period
 ([D97](14-open-decisions.md#engineering)). Each keeps its ID and routes; the enrollment revokes
 the certificates the database records for the identity it replaces, and the audit log has each
 token with its reason. A certificate the database does not record stays valid until it expires.
-An identity whose agent is revoked as a whole stops the start, as does one that cannot be read,
-which is replaced by deleting `<state_dir>/gateway/identity` or `<state_dir>/connector/identity`
-and restarting the service. Without a database, `rpmgr all-in-one` refuses to start, as on a host
+An agent whose identity is revoked as a whole, as a restore that replays the revocation log can
+leave it, is replaced, since enrolling again under the same ID cannot lift a revocation: in one
+configuration change, audited, the old gateway or connector is decommissioned, its identity staying
+revoked, and a new built-in one takes its place, the gateway with the old one's group, name, tunnel
+endpoints and switch, the connector with its name, labels, transport, switch and route targets, so
+no route changes; then the new one is enrolled as above. Only the database's built-in agents are
+replaced, never another gateway or connector: on a database from before ADR-0019, which marks no
+gateway built in, the gateway's identity names the built-in gateway only if its certificate
+chains to the database's root and names its trust domain. An identity that cannot be read stops the start; it
+is replaced by deleting `<state_dir>/gateway/identity` or `<state_dir>/connector/identity` and
+restarting the service. Without a database, `rpmgr all-in-one` refuses to start, as on a host
 never initialised. A new systemd credential is encrypted with `systemd-creds encrypt` into
 `/etc/rpmgr/credstore/<name>`; an existing one is readable only where systemd loads it, so `init`
 then has to run under `systemd-run --pipe --wait --property=LoadCredentialEncrypted=…`.
@@ -456,6 +464,12 @@ affect agents take effect through reconciliation and show apply status like any 
   know refuses to start ([06](06-data-model.md#migrations)).
 - A protocol change that would break N−1 ships behind a capability flag first; the old behaviour is
   removed one minor release later.
+- **Gated route features** fail closed on older agents
+  ([03](03-connections.md#versioning-and-capabilities), [D113](14-open-decisions.md#engineering)):
+  a route that uses a feature an agent's release lacks, such as a require-header rule on a gateway
+  of the previous minor, is left out of that agent's snapshot, and the route status shows the agent
+  with `CAPABILITY_MISSING` until it is upgraded. With mixed gateways in a group, only the upgraded
+  ones serve such a route; upgrade the gateways before using a new route feature.
 - Before the first release, one change of meaning shipped without a capability: access policies'
   deny rules win ([D85](14-open-decisions.md#engineering)). A gateway of a release candidate
   (v0.1.0-rc.1 to rc.6) applies the first matching rule to the same snapshot, so a deny placed
