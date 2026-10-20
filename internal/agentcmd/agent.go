@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package agentcmd
 
 import (
 	"context"
@@ -48,8 +48,8 @@ func loadAgentBoots(flagPath string, getenv func(string) string) ([]agentBoot, e
 		path = getenv("RPMGR_CONFIG")
 	}
 	if path == "" {
-		if path = filepath.Join(bootDir, "all-in-one.yaml"); !fileExists(path) ||
-			fileExists(filepath.Join(bootDir, "connector.yaml")) || fileExists(filepath.Join(bootDir, "gateway.yaml")) {
+		if path = filepath.Join(BootDir, "all-in-one.yaml"); !fileExists(path) ||
+			fileExists(filepath.Join(BootDir, "connector.yaml")) || fileExists(filepath.Join(BootDir, "gateway.yaml")) {
 			path = ""
 		}
 	}
@@ -126,9 +126,9 @@ func agentCommand(name, summary, args string, flags func(fs *flag.FlagSet), run 
 	}
 }
 
-// statusCommand is `rpmgr status`: the agent of the host, or both built-in agents of an all-in-one,
+// Status is `rpmgr status`: the agent of the host, or both built-in agents of an all-in-one,
 // one after the other.
-func statusCommand() *cli.Command {
+func Status() *cli.Command {
 	return agentCommand("status", "show the state of the agents on this host", "", nil, func(ctx context.Context, env *cli.Env, bs []agentBoot, _ []string) error {
 		var errs []error
 		for i, b := range bs {
@@ -226,8 +226,8 @@ func serviceState(ctx context.Context, admin string) string {
 var errBuiltInLeave = errors.New("this host runs rpmgr all-in-one, whose gateway and connector are built in and cannot leave: " +
 	"switch one off on its page in the web UI, or stop and disable rpmgr-all-in-one.service")
 
-// leaveCommand is `rpmgr leave`.
-func leaveCommand() *cli.Command {
+// Leave is `rpmgr leave`.
+func Leave() *cli.Command {
 	return agentCommand("leave", "revoke this agent's identity and remove it from the host", "", nil, func(ctx context.Context, env *cli.Env, bs []agentBoot, _ []string) error {
 		b := bs[0]
 		if b.builtIn {
@@ -243,8 +243,8 @@ func leaveCommand() *cli.Command {
 	})
 }
 
-// diagCommand is `rpmgr diag …`.
-func diagCommand() *cli.Command {
+// Diag is `rpmgr diag …`.
+func Diag() *cli.Command {
 	var gateway string
 	return group("diag", "diagnose this host",
 		agentCommand("transport", "test the data-session transports to a gateway", "",
