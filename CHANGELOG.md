@@ -29,6 +29,12 @@ Changes to the design documents are not recorded here: see the git history and t
   It read them only at start, so after a hostname was added, its addresses were not refused as the
   host's own until the service restarted, and a removed one stayed refused. (#808)
 
+### Security
+
+- Controller: a password reset or a password change now ends the user's other unused reset links,
+  so a link issued before the change can no longer set the password; a reset link of a disabled
+  user sets no password. Severity low to medium; affects 0.1.0. (#812)
+
 ## [0.1.0] - 2026-10-19
 
 ### Added
