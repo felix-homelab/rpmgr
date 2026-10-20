@@ -1046,6 +1046,33 @@ var (
 			},
 		},
 	}
+	// ReleasesColumns holds the columns for the "releases" table.
+	ReleasesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeString},
+		{Name: "channel", Type: field.TypeEnum, Enums: []string{"stable", "prerelease"}},
+		{Name: "manifest_seq", Type: field.TypeInt64},
+		{Name: "manifest", Type: field.TypeBytes},
+		{Name: "signature", Type: field.TypeBytes},
+		{Name: "signing_key_statement", Type: field.TypeBytes},
+		{Name: "statement_signature", Type: field.TypeBytes},
+		{Name: "source", Type: field.TypeEnum, Enums: []string{"check", "upload", "import"}},
+		{Name: "mirrored_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ReleasesTable holds the schema information for the "releases" table.
+	ReleasesTable = &schema.Table{
+		Name:       "releases",
+		Columns:    ReleasesColumns,
+		PrimaryKey: []*schema.Column{ReleasesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "release_version",
+				Unique:  true,
+				Columns: []*schema.Column{ReleasesColumns[1]},
+			},
+		},
+	}
 	// ResourceStatusColumns holds the columns for the "resource_status" table.
 	ResourceStatusColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -1103,6 +1130,84 @@ var (
 		Name:       "revoked_serials",
 		Columns:    RevokedSerialsColumns,
 		PrimaryKey: []*schema.Column{RevokedSerialsColumns[0]},
+	}
+	// RolloutsColumns holds the columns for the "rollouts" table.
+	RolloutsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "stage", Type: field.TypeEnum, Enums: []string{"canary", "percentage", "all"}, Default: "canary"},
+		{Name: "percentage", Type: field.TypeInt, Default: 0},
+		{Name: "state", Type: field.TypeEnum, Enums: []string{"running", "paused", "completed", "cancelled"}, Default: "running"},
+		{Name: "active", Type: field.TypeBool, Default: true},
+		{Name: "pause_reason", Type: field.TypeString, Default: ""},
+		{Name: "created_by", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_by", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "release_id", Type: field.TypeString},
+	}
+	// RolloutsTable holds the schema information for the "rollouts" table.
+	RolloutsTable = &schema.Table{
+		Name:       "rollouts",
+		Columns:    RolloutsColumns,
+		PrimaryKey: []*schema.Column{RolloutsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "rollouts_releases_release",
+				Columns:    []*schema.Column{RolloutsColumns[11]},
+				RefColumns: []*schema.Column{ReleasesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "rollout_active",
+				Unique:  true,
+				Columns: []*schema.Column{RolloutsColumns[5]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "active",
+				},
+			},
+		},
+	}
+	// RolloutTargetsColumns holds the columns for the "rollout_targets" table.
+	RolloutTargetsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "agent_id", Type: field.TypeString},
+		{Name: "agent_kind", Type: field.TypeEnum, Enums: []string{"connector", "gateway"}},
+		{Name: "canary", Type: field.TypeBool, Default: false},
+		{Name: "bucket", Type: field.TypeInt},
+		{Name: "state", Type: field.TypeEnum, Enums: []string{"pending", "offered", "staged", "updated", "rolled_back", "refused", "skipped", "stalled"}, Default: "pending"},
+		{Name: "reason", Type: field.TypeString, Default: ""},
+		{Name: "version_before", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "rollout_id", Type: field.TypeString},
+	}
+	// RolloutTargetsTable holds the schema information for the "rollout_targets" table.
+	RolloutTargetsTable = &schema.Table{
+		Name:       "rollout_targets",
+		Columns:    RolloutTargetsColumns,
+		PrimaryKey: []*schema.Column{RolloutTargetsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "rollout_targets_rollouts_rollout",
+				Columns:    []*schema.Column{RolloutTargetsColumns[9]},
+				RefColumns: []*schema.Column{RolloutsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "rollouttarget_rollout_id_agent_id",
+				Unique:  true,
+				Columns: []*schema.Column{RolloutTargetsColumns[9], RolloutTargetsColumns[1]},
+			},
+			{
+				Name:    "rollouttarget_agent_id",
+				Unique:  false,
+				Columns: []*schema.Column{RolloutTargetsColumns[1]},
+			},
+		},
 	}
 	// RoutesColumns holds the columns for the "routes" table.
 	RoutesColumns = []*schema.Column{
@@ -1716,9 +1821,12 @@ var (
 		PortPoolsTable,
 		PortQuotasTable,
 		RecoveryCodesTable,
+		ReleasesTable,
 		ResourceStatusTable,
 		RevokedIdentitiesTable,
 		RevokedSerialsTable,
+		RolloutsTable,
+		RolloutTargetsTable,
 		RoutesTable,
 		RouteHTTPTable,
 		RouteHostnamesTable,
@@ -1824,6 +1932,9 @@ func init() {
 		Table: "port_quotas",
 	}
 	RecoveryCodesTable.ForeignKeys[0].RefTable = UsersTable
+	ReleasesTable.Annotation = &entsql.Annotation{
+		Table: "releases",
+	}
 	ResourceStatusTable.Annotation = &entsql.Annotation{
 		Table: "resource_status",
 	}
@@ -1832,6 +1943,14 @@ func init() {
 	}
 	RevokedSerialsTable.Annotation = &entsql.Annotation{
 		Table: "revoked_serials",
+	}
+	RolloutsTable.ForeignKeys[0].RefTable = ReleasesTable
+	RolloutsTable.Annotation = &entsql.Annotation{
+		Table: "rollouts",
+	}
+	RolloutTargetsTable.ForeignKeys[0].RefTable = RolloutsTable
+	RolloutTargetsTable.Annotation = &entsql.Annotation{
+		Table: "rollout_targets",
 	}
 	RoutesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	RoutesTable.Annotation = &entsql.Annotation{

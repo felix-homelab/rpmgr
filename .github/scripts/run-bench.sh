@@ -22,7 +22,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 root=$(repo_root)
 testbed=${1:?a testbed label is required, e.g. gh-amd64}
-out=$(realpath -m "${2:-bench-results}")
+out=${2:-bench-results}
 case ${PROFILE:-standard} in
 smoke) args=(-rtts 1 -losses 0 -reps 1 -duration 3s -setup-duration 2s -extra-duration 6s -rate 200 -routes 20 -idle 3) ;;
 standard) args=(-rtts "1,80" -losses "0,1" -reps 3 -duration 10s -setup-duration 5s -extra-duration 30s -routes 200 -idle 10) ;;
@@ -32,8 +32,10 @@ full) args=(-rtts "1,20,80,200" -losses "0,0.5,1,2" -reps 3 -duration 20s -setup
   finish
   ;;
 esac
+extra=()
 read -r -a extra <<<"${BENCH_ARGS-}"
 mkdir -p "$out"
+out=$(cd "$out" && pwd)
 if ! (cd "$root" && go run ./bench/cmd/bench run -testbed "$testbed" -out "$out/$testbed.jsonl" "${args[@]}" "${extra[@]}"); then
   fail "the benchmark run failed (see above)"
   finish
