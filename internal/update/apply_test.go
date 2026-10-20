@@ -7,6 +7,8 @@ package update_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -20,12 +22,13 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/update"
 )
 
-// services is a fake systemd: it records restarts, and each unit fails, restarts in a loop or runs.
+// services is a fake systemd: it records restarts; a unit is active unless it is listed as
+// failed or in another state, and a looping one gains a restart at each look.
 type services struct {
 	mu       sync.Mutex
 	restarts []string
-	failed   map[string]bool // units whose state is failed
-	looping  map[string]bool // units that systemd keeps restarting
+	active   map[string]string // a unit's ActiveState other than active
+	looping  map[string]bool   // units that systemd keeps restarting
 	counts   map[string]int
 }
 
@@ -36,7 +39,7 @@ func (s *services) Restart(_ context.Context, unit string) error {
 	return nil
 }
 
-func (s *services) State(_ context.Context, unit string) (bool, int, error) {
+func (s *services) State(_ context.Context, unit string) (update.Unit, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.counts == nil {
@@ -45,7 +48,11 @@ func (s *services) State(_ context.Context, unit string) (bool, int, error) {
 	if s.looping[unit] {
 		s.counts[unit]++
 	}
-	return s.failed[unit], s.counts[unit], nil
+	active := "active"
+	if a := s.active[unit]; a != "" {
+		active = a
+	}
+	return update.Unit{Active: active, Restarts: s.counts[unit]}, nil
 }
 
 func (s *services) restarted() []string {
@@ -66,8 +73,7 @@ type installed struct {
 // otherwise: ready is called with the binary's content at each poll.
 func newInstalled(t *testing.T, o hostOpts, running string, roles []string, ready func(bin []byte) error) *installed {
 	t.Helper()
-	binDir := t.TempDir()
-	bin := filepath.Join(binDir, "rpmgr")
+	bin := filepath.Join(t.TempDir(), "rpmgr")
 	mustWrite(t, bin, string(binary(running, "full")), 0o755)
 	if o.install == "" {
 		o.install = `{"method":"script","path":"` + bin + `","variant":"full","roles":["` + strings.Join(roles, `","`) + `"]}`
@@ -130,6 +136,23 @@ func (i *installed) state() update.State {
 	return st
 }
 
+// pendingLeft reports whether a pending install is recorded.
+func (i *installed) pendingLeft() bool {
+	_, err := os.Lstat(filepath.Join(i.u.State, "pending.json"))
+	return err == nil
+}
+
+// leftovers fails on files the updater must not leave beside the binary.
+func (i *installed) leftovers() {
+	i.t.Helper()
+	dir := filepath.Dir(i.bin)
+	for _, name := range []string{".rpmgr.new", "rpmgr.prev.tmp", ".rpmgr.rollback"} {
+		if _, err := os.Lstat(filepath.Join(dir, name)); err == nil {
+			i.t.Errorf("%s was left", name)
+		}
+	}
+}
+
 func TestApply_InstallsAndRaisesTheFloor(t *testing.T) {
 	i := newInstalled(t, hostOpts{}, "1.1.0", []string{"gateway", "connector"}, nil)
 	i.stage(rel{version: "1.2.0", floor: "1.1.0", seq: 6})
@@ -147,19 +170,26 @@ func TestApply_InstallsAndRaisesTheFloor(t *testing.T) {
 		t.Errorf("state %+v; want seq 6, floor 1.1.0 after success", st)
 	}
 	st := i.status(update.Updated)
-	if st.Version != "1.2.0" || st.Previous != "1.1.0" || !st.At.Equal(now) {
+	if st.Version != "1.2.0" || st.Previous != "1.1.0" || st.Reason != "" || !st.At.Equal(now) {
 		t.Errorf("status %+v", st)
 	}
-	if got := i.svc.restarted(); !slices.Equal(got, []string{"rpmgr-gateway.service", "rpmgr-connector.service"}) {
+	if got := i.svc.restarted(); !slices.Equal(got, []string{"rpmgr-connector.service", "rpmgr-gateway.service"}) {
 		t.Errorf("restarted %v; want each role of install.json", got)
 	}
-	for _, leftover := range []string{filepath.Join(filepath.Dir(i.bin), ".rpmgr.new"), i.bin + ".prev.tmp"} {
-		if _, err := os.Lstat(leftover); err == nil {
-			t.Errorf("%s was left", leftover)
-		}
+	i.leftovers()
+	if i.pendingLeft() {
+		t.Error("pending.json was left after a finished install")
 	}
 	if entries, _ := os.ReadDir(filepath.Join(i.u.State, "staging")); len(entries) > 0 {
 		t.Errorf("the verified copy was left in staging/: %d files", len(entries))
+	}
+	// Run again, as at the next boot: the staged release is the installed binary, so nothing is
+	// restarted and the status stays.
+	if err := i.a.Apply(context.Background()); err != nil {
+		t.Fatalf("Apply with the installed release staged: %v", err)
+	}
+	if got := i.svc.restarted(); len(got) != 2 {
+		t.Errorf("restarted %v; the installed release must not be installed again", got)
 	}
 }
 
@@ -215,10 +245,26 @@ func TestOTA_UpdaterHonoursPolicy(t *testing.T) {
 		if got := i.svc.restarted(); len(got) != 4 {
 			t.Errorf("restarted %v; want both roles twice", got)
 		}
+		i.leftovers()
+		if i.pendingLeft() {
+			t.Error("pending.json was left after a rollback")
+		}
+	})
+
+	t.Run("active but not ready, or ready but not active: rolled back", func(t *testing.T) {
+		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, nil)
+		i.svc.active = map[string]string{"rpmgr-connector.service": "activating"}
+		i.stage(rel{version: "1.2.0", seq: 6})
+		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRolledBack) {
+			t.Fatalf("Apply = %v; want rolled back: a unit that is still activating is not ready", err)
+		}
+		if st := i.status(update.RolledBack); !strings.Contains(st.Reason, "activating") {
+			t.Errorf("status %+v; want the unit's state as the reason", st)
+		}
 	})
 
 	for name, svc := range map[string]*services{
-		"failed unit":  {failed: map[string]bool{"rpmgr-connector.service": true}},
+		"failed unit":  {active: map[string]string{"rpmgr-connector.service": "failed"}},
 		"restart loop": {looping: map[string]bool{"rpmgr-connector.service": true}},
 	} {
 		t.Run(name+": rolled back before the window ends", func(t *testing.T) {
@@ -238,6 +284,21 @@ func TestOTA_UpdaterHonoursPolicy(t *testing.T) {
 		})
 	}
 
+	t.Run("a unit that restarts after it was ready: rolled back", func(t *testing.T) {
+		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, nil)
+		i.a.MaxRestarts = 1
+		var once sync.Once
+		ready := i.a.Ready
+		i.a.Ready = func(ctx context.Context, role string) error {
+			once.Do(func() { i.svc.looping = map[string]bool{"rpmgr-connector.service": true} })
+			return ready(ctx, role)
+		}
+		i.stage(rel{version: "1.2.0", seq: 6})
+		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRolledBack) {
+			t.Fatalf("Apply = %v; want rolled back: the final check sees the restart", err)
+		}
+	})
+
 	t.Run("a rolled-back version waits for a higher seq", func(t *testing.T) {
 		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, notReady("1.2.0"))
 		i.stage(rel{version: "1.2.0", seq: 6})
@@ -255,6 +316,7 @@ func TestOTA_UpdaterHonoursPolicy(t *testing.T) {
 			t.Fatalf("a newer manifest offering it again: %v", err)
 		}
 		i.runs("1.2.0")
+		i.leftovers() // .prev was the installed binary after the rollback: no .prev.tmp may stay
 	})
 }
 
@@ -323,22 +385,142 @@ func TestApply_FailureBeforeTheRenameKeepsTheBinary(t *testing.T) {
 	}
 	i.runs("1.1.0")
 	i.status(update.Refused)
-	if _, err := os.Lstat(filepath.Join(filepath.Dir(i.bin), ".rpmgr.new")); err == nil {
-		t.Error(".rpmgr.new was left")
-	}
+	i.leftovers()
 	if got := i.svc.restarted(); len(got) > 0 {
 		t.Errorf("restarted %v", got)
 	}
+	if i.pendingLeft() {
+		t.Error("pending.json was left by a refused install")
+	}
+}
+
+// TestApply_AfterTheRename: once the new binary is in place the install is finished, whatever
+// happens: a directory that cannot be synced is a warning, an interrupted run is finished by the
+// next one, and a rollback that cannot put the old binary back is reported as such.
+func TestApply_AfterTheRename(t *testing.T) {
+	t.Run("a sync error is a warning", func(t *testing.T) {
+		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, nil)
+		update.SyncDirFails(t, filepath.Dir(i.bin))
+		i.stage(rel{version: "1.2.0", seq: 6})
+		if err := i.a.Apply(context.Background()); err != nil {
+			t.Fatalf("Apply = %v; a sync error after the rename must not refuse", err)
+		}
+		i.runs("1.2.0")
+		if st := i.status(update.Updated); !strings.Contains(st.Reason, "could not be synced") {
+			t.Errorf("status %+v; want the warning", st)
+		}
+		if got := i.svc.restarted(); len(got) != 1 {
+			t.Errorf("restarted %v; the roles must restart and be checked", got)
+		}
+	})
+	for name, ready := range map[string]func([]byte) error{
+		"ready":     nil,
+		"not ready": notReady("1.2.0"),
+	} {
+		t.Run("interrupted, then resumed: "+name, func(t *testing.T) {
+			i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, ready)
+			i.stage(rel{version: "1.2.0", seq: 6})
+			update.AfterRename(t, func() bool { return false })
+			if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrInterrupted) {
+				t.Fatalf("Apply = %v; want interrupted", err)
+			}
+			if !i.pendingLeft() {
+				t.Fatal("no pending install recorded before the rename")
+			}
+			i.runs("1.2.0")
+			update.AfterRename(t, func() bool { return true })
+			err := i.a.Apply(context.Background())
+			if ready == nil {
+				if err != nil {
+					t.Fatalf("resumed Apply: %v", err)
+				}
+				i.runs("1.2.0")
+				if st := i.status(update.Updated); !strings.Contains(st.Reason, "resumed") {
+					t.Errorf("status %+v", st)
+				}
+				if st := i.state(); st.Seq != 6 {
+					t.Errorf("state %+v; the resumed install raises seq", st)
+				}
+			} else {
+				if !errors.Is(err, update.ErrRolledBack) {
+					t.Fatalf("resumed Apply = %v; want rolled back", err)
+				}
+				i.runs("1.1.0")
+				i.status(update.RolledBack)
+			}
+			if i.pendingLeft() {
+				t.Error("pending.json was left after the resumed run")
+			}
+		})
+	}
+	t.Run("a pending install whose binary was never replaced", func(t *testing.T) {
+		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, nil)
+		sum := sha256.Sum256(binary("1.2.0", "full"))
+		pending := `{"version":"1.2.0","seq":6,"sha256":"` + hex.EncodeToString(sum[:]) + `","path":"` + i.bin +
+			`","prev":"` + i.bin + `.prev","roles":["connector"],"next":{"seq":6,"floor":"1.0.0"}}`
+		mustWrite(t, filepath.Join(i.u.State, "pending.json"), pending, 0o600)
+		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRefused) {
+			t.Fatalf("Apply = %v; want refused: nothing changed", err)
+		}
+		i.runs("1.1.0")
+		if i.pendingLeft() || len(i.svc.restarted()) > 0 {
+			t.Error("a pending install that never replaced the binary restarted roles or stayed")
+		}
+	})
+	t.Run("a malformed pending install", func(t *testing.T) {
+		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, nil)
+		mustWrite(t, filepath.Join(i.u.State, "pending.json"), `{"version":"1.2.0","roles":["controller"]}`, 0o600)
+		i.stage(rel{version: "1.2.0", seq: 6})
+		if err := i.a.Apply(context.Background()); err == nil {
+			t.Fatal("Apply went on past a malformed pending.json")
+		}
+		i.runs("1.1.0")
+	})
+	t.Run("the rollback fails", func(t *testing.T) {
+		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, notReady("1.2.0"))
+		i.stage(rel{version: "1.2.0", seq: 6})
+		update.AfterRename(t, func() bool {
+			if err := os.Remove(i.bin + ".prev"); err != nil {
+				t.Error(err)
+			}
+			return true
+		})
+		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRollbackFailed) {
+			t.Fatalf("Apply = %v; want the rollback failed", err)
+		}
+		if st := i.status(update.RollbackFailed); st.Version != "1.2.0" {
+			t.Errorf("status %+v", st)
+		}
+		if st := i.state(); st.Failed == nil || st.Failed.Version != "1.2.0" {
+			t.Errorf("state %+v; the version is recorded as failed", st)
+		}
+	})
 }
 
 func TestApply_RefusedHosts(t *testing.T) {
-	t.Run("a controller host", func(t *testing.T) {
-		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"controller"}, nil)
+	for name, roles := range map[string][]string{
+		"a controller host":  {"controller"},
+		"an all-in-one host": {"all-in-one", "connector"},
+		"an unknown role":    {"connector", "importer"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			i := newInstalled(t, hostOpts{}, "1.1.0", roles, nil)
+			i.stage(rel{version: "1.2.0", seq: 6})
+			if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRefused) {
+				t.Fatalf("Apply = %v; want refused", err)
+			}
+			i.runs("1.1.0")
+		})
+	}
+	t.Run("a role listed twice restarts once", func(t *testing.T) {
+		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector", "connector"}, nil)
 		i.stage(rel{version: "1.2.0", seq: 6})
-		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRefused) {
-			t.Fatalf("Apply = %v; want refused", err)
+		if err := i.a.Apply(context.Background()); err != nil {
+			t.Fatal(err)
 		}
-		i.runs("1.1.0")
+		if got := i.svc.restarted(); len(got) != 1 {
+			t.Errorf("restarted %v", got)
+		}
 	})
 	t.Run("nothing staged", func(t *testing.T) {
 		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, nil)
@@ -355,25 +537,71 @@ func TestApply_RefusedHosts(t *testing.T) {
 			t.Fatalf("Apply = %v; want refused", err)
 		}
 	})
+	t.Run("a binary path that is a symbolic link", func(t *testing.T) {
+		real := filepath.Join(t.TempDir(), "rpmgr-real")
+		mustWrite(t, real, string(binary("1.1.0", "full")), 0o755)
+		link := filepath.Join(t.TempDir(), "rpmgr")
+		if err := os.Symlink(real, link); err != nil {
+			t.Fatal(err)
+		}
+		i := newInstalled(t, hostOpts{install: `{"method":"script","path":"` + link + `","variant":"full","roles":["connector"]}`},
+			"1.1.0", []string{"connector"}, nil)
+		i.stage(rel{version: "1.2.0", seq: 6})
+		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRefused) {
+			t.Fatalf("Apply = %v; want refused", err)
+		}
+		if b, _ := os.ReadFile(real); !bytes.Equal(b, binary("1.1.0", "full")) { //nolint:gosec // G304: under t.TempDir
+			t.Errorf("the link's target was changed: %q", b)
+		}
+	})
+}
+
+// TestApply_PlantedLinks: links where the updater writes, .rpmgr.new and .prev, are replaced, never
+// followed.
+func TestApply_PlantedLinks(t *testing.T) {
+	i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, nil)
+	victim := filepath.Join(t.TempDir(), "victim")
+	mustWrite(t, victim, "keep me", 0o644)
+	for _, name := range []string{filepath.Join(filepath.Dir(i.bin), ".rpmgr.new"), i.bin + ".prev", i.bin + ".prev.tmp"} {
+		if err := os.Symlink(victim, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	i.stage(rel{version: "1.2.0", seq: 6})
+	if err := i.a.Apply(context.Background()); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	i.runs("1.2.0")
+	if b, _ := os.ReadFile(victim); string(b) != "keep me" { //nolint:gosec // G304: under t.TempDir
+		t.Errorf("a planted link was followed: the victim holds %q", b)
+	}
+	if fi, err := os.Lstat(i.bin + ".prev"); err != nil || !fi.Mode().IsRegular() {
+		t.Errorf(".prev is %v, %v; want a regular file", fi.Mode(), err)
+	}
+	i.leftovers()
 }
 
 func TestSystemd_State(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "systemctl")
-	mustWrite(t, script, "#!/bin/sh\nif [ \"$1\" = show ]; then printf 'ActiveState=failed\\nNRestarts=4\\n'; fi\n", 0o755)
+	mustWrite(t, script, "#!/bin/sh\nif [ \"$1\" = show ]; then printf 'ActiveState=activating\\nNRestarts=4\\n'; fi\n", 0o755)
 	s := update.Systemd{Systemctl: script}
 	if err := s.Restart(context.Background(), "rpmgr-connector.service"); err != nil {
 		t.Fatal(err)
 	}
-	failed, n, err := s.State(context.Background(), "rpmgr-connector.service")
-	if err != nil || !failed || n != 4 {
-		t.Fatalf("State = %v, %d, %v", failed, n, err)
+	u, err := s.State(context.Background(), "rpmgr-connector.service")
+	if err != nil || u != (update.Unit{Active: "activating", Restarts: 4}) {
+		t.Fatalf("State = %+v, %v", u, err)
 	}
 	mustWrite(t, script, "#!/bin/sh\necho 'Job failed' >&2\nexit 1\n", 0o755)
 	if err := s.Restart(context.Background(), "rpmgr-connector.service"); err == nil || !strings.Contains(err.Error(), "Job failed") {
 		t.Errorf("Restart of a failing unit: %v", err)
 	}
-	if _, _, err := s.State(context.Background(), "rpmgr-connector.service"); err == nil {
+	if _, err := s.State(context.Background(), "rpmgr-connector.service"); err == nil {
 		t.Error("State succeeded although systemctl failed")
+	}
+	mustWrite(t, script, "#!/bin/sh\necho 'NRestarts=0'\n", 0o755)
+	if _, err := s.State(context.Background(), "rpmgr-connector.service"); err == nil {
+		t.Error("State succeeded without an ActiveState")
 	}
 }

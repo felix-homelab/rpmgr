@@ -17,9 +17,12 @@ WantedBy=multi-user.target
 # Written by `rpmgr systemd-unit update` (docs/10-operations.md, "Hardened systemd units"): the
 # root-owned updater copies, verifies and installs the staged release, restarts the roles and rolls
 # back when one is not ready (docs/04-security.md, "Over-the-air updates").
+# It also runs once at boot, after the roles, so that an install a crash or reboot interrupted is
+# finished: checked for readiness and rolled back if a role is not ready.
 [Unit]
 Description=rpmgr updater
 Documentation=https://github.com/felix-homelab/rpmgr
+After=network-online.target rpmgr-gateway.service rpmgr-connector.service
 
 [Service]
 Type=oneshot
@@ -34,3 +37,6 @@ ReadWritePaths={{.BinDir}} /var/lib/rpmgr-update
 NoNewPrivileges=yes
 ProtectHome=yes
 PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

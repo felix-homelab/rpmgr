@@ -157,8 +157,8 @@ func sink(dir string) units.Options {
 }
 
 // TestRenderUpdater: the updater pair names the binary install.json records in ExecStart, runs
-// as root (no User=), may write only the binary's directory and its own state, and keeps the
-// status file after the run.
+// as root (no User=), may write only the binary's directory and its own state, keeps the status
+// file after the run, and runs once at boot.
 func TestRenderUpdater(t *testing.T) {
 	b, err := units.RenderUpdater("/opt/rpmgr/bin/rpmgr")
 	if err != nil {
@@ -179,6 +179,8 @@ func TestRenderUpdater(t *testing.T) {
 		"ExecStart=/opt/rpmgr/bin/rpmgr updater apply --staged /var/lib/rpmgr/update --state /var/lib/rpmgr-update",
 		"RuntimeDirectory=rpmgr-update", "RuntimeDirectoryPreserve=yes", "ProtectSystem=strict",
 		"ReadWritePaths=/opt/rpmgr/bin /var/lib/rpmgr-update", "NoNewPrivileges=yes",
+		// Once at boot, after the roles, to finish an install that a crash or reboot interrupted.
+		"After=network-online.target rpmgr-gateway.service rpmgr-connector.service", "WantedBy=multi-user.target",
 	} {
 		if !strings.Contains(service, want+"\n") {
 			t.Errorf("rpmgr-update.service lacks %q", want)

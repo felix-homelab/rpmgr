@@ -137,8 +137,8 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 | `/var/lib/rpmgr/` | rpmgr, 0750 | Last-known-good snapshot (`snapshot.signed`, 0600) and **deny-list** (`denylist.signed`, 0600) (both signed; the deny-list is loaded before any session is accepted), stateless reset key (gateways: `quic-reset.key`, 0600, created at the first start), route certificates with their keys that the gateway fetched (gateways: `resources/`, 0700, one 0600 file per item, named by its SHA-256, removed when no route needs it), SQLite database and its lock file `controller.db.lock`, held by the running controller (controller) |
 | `/var/lib/rpmgr/update/` | rpmgr, 0750 | OTA download area: artifact and signed manifest written by the agent. **Untrusted input** to the updater, which never verifies or installs files in place here |
 | `/etc/sysctl.d/60-rpmgr.conf` | root, 0644 | Host tuning, written by `/install.sh` on every run: the UDP buffers, whatever the host has now, and BBR with `--tcp-bbr` or while the file sets it ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
-| `/var/lib/rpmgr-update/` | root, 0700 | Updater state, out of the service user's reach: version floor and highest manifest `seq` in `state.json` (`{"seq": 87, "floor": "1.4.2"}`, initialised at install time from the running version and its release `seq`), `install.json` (`{"method": "script", "path": "/usr/local/bin/rpmgr", "variant": "full", "roles": ["connector"]}`, written by `rpmgr setup` and both install scripts; the single `role` that v0.1.0 wrote is read as a list of one), and `staging/`, where the updater copies and verifies the files |
-| `/run/rpmgr-update/status.json` | root, 0644 | The updater's last outcome (`updated`, `rolled_back`, `refused`), which the agent reports ([04](04-security.md#over-the-air-updates)) |
+| `/var/lib/rpmgr-update/` | root, 0700 | Updater state, out of the service user's reach: version floor and highest manifest `seq` in `state.json` (`{"seq": 87, "floor": "1.4.2"}`, initialised at install time from the running version and its release `seq`), `install.json` (`{"method": "script", "path": "/usr/local/bin/rpmgr", "variant": "full", "roles": ["connector"]}`, written by `rpmgr setup` and both install scripts; the single `role` that v0.1.0 wrote is read as a list of one), `pending.json` while an install's outcome is not known yet, and `staging/`, where the updater copies and verifies the files |
+| `/run/rpmgr-update/status.json` | root, 0644 | The updater's last outcome (`updated`, `rolled_back`, `rollback_failed`, `refused`), which the agent reports ([04](04-security.md#over-the-air-updates)) |
 | `/var/lib/rpmgr/dl/<version>/` (controller) | rpmgr, 0750; files 0640 | The release mirror, served under `/dl/`: the controller's own version, the targets of its rollouts and its previous version, verified release files only ([04](04-security.md#over-the-air-updates)) |
 | `/var/lib/rpmgr/audit-checkpoints.log` (controller) | rpmgr, 0640 | Signed audit checkpoints, appended locally and included in every backup; the external sink (Phase 2) is what makes tampering evident ([04](04-security.md#audit-log)) |
 | `/var/lib/rpmgr/revocations.log` (controller) | rpmgr, 0640 | This replica's durable, fsync'd **revocation log**: every revocation and credential supersession is appended here first, then shipped asynchronously to the shared readable sink ([Backup and restore](#backup-and-restore)) |
@@ -229,24 +229,35 @@ RestartSec=2s
      cross-filesystem `rename`), fsyncs it, re-hashes it, and `rename`s it over the binary at the path
      recorded in `/var/lib/rpmgr-update/install.json` (`/usr/local/bin/rpmgr` for script installs),
      keeping the installed binary as `<path>.prev` (a hard link, put in place by a rename), then
-     restarts each role service that `install.json` lists. A failure before the rename leaves the
-     installed binary untouched;
-  6. polls each role's admin `/readyz`, at the address of the role's boot file (ready only with an
-     established control session and an applied snapshot, see [Health](#health)), within the
-     readiness window of [03](03-connections.md#timeouts-keepalive-and-backoff), and rolls back to
-     `.prev` when a role is not ready by then, or its service fails (`ActiveState=failed`) or
-     systemd restarts it too often (`NRestarts`) before; the rollback restarts the roles again
-     and records the version in `state.json` as failed, so that only a manifest with a higher
-     `seq` offers it again. The
+     restarts each role service that `install.json` lists, which may name only `gateway` and
+     `connector`. Just before the rename it writes `pending.json` to `/var/lib/rpmgr-update/`. A
+     failure before the rename leaves the installed binary untouched; after it the install goes on
+     to the readiness check, and a directory that cannot be synced is only a warning in the
+     status. A binary path that is a symbolic link is refused, and links planted at
+     `.rpmgr.new` or `.prev` are replaced, never followed;
+  6. polls each role's admin `/readyz`, at the address of the role's boot file and never through a
+     proxy (ready only with an established control session and an applied snapshot, see
+     [Health](#health)), within the readiness window of
+     [03](03-connections.md#timeouts-keepalive-and-backoff); a role counts as ready only while its
+     unit is `active`. It rolls back to `.prev` when a role is not ready by then, or its service
+     fails (`ActiveState=failed`) or systemd restarts it too often (`NRestarts`) before or right
+     after it was ready; the rollback restarts the roles again and records the version in
+     `state.json` as failed, so that only a manifest with a higher `seq` offers it again. The
      automatic rollback is exempt from the floor, because floor and `seq` are only raised after a
      successful health check. A connector's local policy is not rolled back with the binary: a
      `deny_targets` list, a target string, an entry without ports or a subnet with host bits set
      ([D84](14-open-decisions.md#engineering)), written while the new binary ran, makes a binary
      from before D84 read the file as invalid and dial nothing until the file is changed back or
      the binary updated again ([04](04-security.md#connector-local-policy));
-  7. writes the outcome to `/run/rpmgr-update/status.json` (root, 0644): `updated`, `rolled_back` or
-     `refused`, the version, the previous one and a reason, which the agent reports at its next
-     start.
+  7. writes the outcome to `/run/rpmgr-update/status.json` (root, 0644): `updated`, `rolled_back`,
+     `rollback_failed` or `refused`, the version, the previous one and a reason, which the agent
+     reports at its next start, and removes `pending.json`. `rollback_failed` means `.prev` could
+     not be put back: the host needs an operator, who installs a release with
+     `install.sh --upgrade`;
+  8. at every start, and once at boot after the roles, finishes an install that `pending.json`
+     records: if the new binary is in place, it restarts and checks the roles as in step 6 and
+     rolls back if one is not ready; if the run ended before the rename, nothing changed and the
+     record goes. A staged release that is the installed binary already is not installed again.
 
   The role service's `NoNewPrivileges=yes` and `ProtectSystem=strict` stay intact; the service user
   can never write the binary or the updater state.
@@ -267,10 +278,15 @@ RestartSec=2s
   RuntimeDirectoryPreserve=yes
   ProtectSystem=strict
   ReadWritePaths=/usr/local/bin /var/lib/rpmgr-update
+
+  [Install]
+  WantedBy=multi-user.target
   ```
 
   `RuntimeDirectoryPreserve=yes` keeps `/run/rpmgr-update/status.json` after the oneshot run
-  ends, so the agent reads it when its service starts again.
+  ends, so the agent reads it when its service starts again. The service is also enabled
+  (`WantedBy=multi-user.target`, after the role units), so that it runs once at boot and finishes
+  an install a crash or reboot interrupted (step 8).
 
 - **Who installs the updater** ([04](04-security.md#over-the-air-updates)): `rpmgr setup`, the
   controller-hosted `/install.sh` and the global install script write the updater units,
