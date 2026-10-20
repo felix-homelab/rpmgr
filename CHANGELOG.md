@@ -17,7 +17,7 @@ Changes to the design documents are not recorded here: see the git history and t
   arm64). It runs the connector role and the commands of a connector host, links nothing of the
   controller, the gateway or the importer, and is less than a third of the full build's size.
   Both install scripts take `--variant connector`; the controller's mirror serves it for Linux.
-  (#614)
+  (#837)
 
 - CLI: `rpmgr status`, `rpmgr diag transport` and `rpmgr diag clock` work on an all-in-one host.
   `status` reports its built-in gateway and connector, each marked built in, and the readiness of
