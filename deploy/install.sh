@@ -11,8 +11,8 @@
 # This copy installs the latest release unless --version names one.
 #
 #   curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh
-#   sudo sh install.sh [--version <version>] [--prerelease] [--no-setup] [--upgrade] [--restart]
-#     [--dir <directory>] [--verify-only]
+#   sudo sh install.sh [--version <version>] [--prerelease] [--variant full|connector] [--no-setup]
+#     [--upgrade] [--restart] [--dir <directory>] [--verify-only]
 set -eu
 
 PINNED=''
@@ -20,15 +20,18 @@ REPO=felix-homelab/rpmgr
 # Where releases come from; other values serve a mirror, or a test (https only).
 GITHUB=${RPMGR_INSTALL_GITHUB:-https://github.com}
 API=${RPMGR_INSTALL_API:-https://api.github.com}
-BIN=/usr/local/bin/rpmgr
+# RPMGR_INSTALL_BIN and RPMGR_INSTALL_STATE move the binary and the install record for the script's
+# tests only; an install leaves them unset.
+BIN=${RPMGR_INSTALL_BIN:-/usr/local/bin/rpmgr}
+STATE=${RPMGR_INSTALL_STATE:-/var/lib/rpmgr-update}
 
 die() { echo "rpmgr install: $*" >&2; exit 1; }
 say() { echo "rpmgr install: $*" >&2; }
 
 usage() {
   cat <<'EOF'
-Usage: sh install.sh [--version <version>] [--prerelease] [--no-setup] [--upgrade] [--restart]
-         [--dir <directory>] [--verify-only]
+Usage: sh install.sh [--version <version>] [--prerelease] [--variant full|connector] [--no-setup]
+         [--upgrade] [--restart] [--dir <directory>] [--verify-only]
 
 Installs rpmgr from its GitHub release, verified with the release root keys in this script, to
 /usr/local/bin/rpmgr, with the user rpmgr, /etc/rpmgr and /var/lib/rpmgr; then offers to run
@@ -36,6 +39,8 @@ Installs rpmgr from its GitHub release, verified with the release root keys in t
 
   --version <version>  install this version, e.g. 0.1.0 (default: this script's, else the latest)
   --prerelease         without --version, take the latest release including pre-releases
+  --variant <variant>  full (every role) or connector (the connector-only build); default: the
+                       build this host runs, else full; another build than it runs is refused
   --no-setup           do not offer to run "rpmgr setup"
   --upgrade            upgrade the rpmgr of this host, which must be installed: no setup, and after
                        the version only what is left to do
@@ -45,11 +50,12 @@ Installs rpmgr from its GitHub release, verified with the release root keys in t
 EOF
 }
 
-version=$PINNED prerelease=0 setup=1 upgrade=0 restart=0 dir='' verify_only=0
+version=$PINNED prerelease=0 setup=1 upgrade=0 restart=0 dir='' verify_only=0 variant=
 while [ $# -gt 0 ]; do
   case $1 in
     --version) [ $# -ge 2 ] || die "--version needs a version"; version=${2#v}; shift 2 ;;
     --prerelease) prerelease=1; shift ;;
+    --variant) [ $# -ge 2 ] || die "--variant needs full or connector"; variant=$2; shift 2 ;;
     --no-setup) setup=0; shift ;;
     --upgrade) upgrade=1 setup=0; shift ;;
     --restart) restart=1; shift ;;
@@ -66,10 +72,40 @@ case $version in *[!0-9A-Za-z.-]*) die "--version $version is not a release vers
 if [ "$upgrade" = 1 ] && [ "$verify_only" = 0 ] && [ ! -x "$BIN" ]; then
   die "nothing to upgrade: $BIN is not installed; install it without --upgrade"
 fi
+case $variant in '' | full | connector) ;; *) die "--variant must be full or connector" ;; esac
+
+# installed_variant prints the variant of the rpmgr this host runs (D119): the one its install
+# record names, else the one the installed binary reports, full for a binary from before the
+# variants (0.1.0 reports none); nothing when there is no binary or it does not run.
+installed_variant() {
+  if [ -r "$STATE/install.json" ]; then
+    grep -o '"variant":"[a-z]*"' "$STATE/install.json" | cut -d'"' -f4
+    return 0
+  fi
+  [ -x "$BIN" ] || return 0
+  out=$("$BIN" version --verbose 2>/dev/null) || return 0
+  v=$(printf '%s\n' "$out" | sed -n 's/^variant: //p')
+  echo "${v:-full}"
+}
+# A host keeps the build it runs: another --variant is refused, never switched silently. An
+# upgrade that cannot tell which build the host runs asks for --variant; a new host gets full.
+installed=$(installed_variant)
+case $installed in '' | full | connector) ;; *) die "the install record names an unknown variant $installed" ;; esac
+if [ -n "$installed" ] && [ -n "$variant" ] && [ "$variant" != "$installed" ]; then
+  die "this host runs the $installed build of rpmgr, not the $variant build; remove rpmgr first to change it"
+fi
+[ -n "$variant" ] || variant=$installed
+if [ -z "$variant" ]; then
+  if [ "${upgrade:-0}" = 1 ] && [ "$verify_only" = 0 ]; then
+    die "cannot tell which build of rpmgr $BIN is; name it with --variant full or --variant connector"
+  fi
+  variant=full
+fi
+
 
 case $(uname -s) in
   Linux) ;;
-  *) die "rpmgr installs on Linux only; this is $(uname -s) (Windows and macOS connectors come in Phase 2)" ;;
+  *) die "rpmgr installs on Linux only; this is $(uname -s); Windows and macOS connectors are installed by hand from the release download" ;;
 esac
 case $(uname -m) in
   x86_64 | amd64) arch=amd64 ;;
@@ -186,8 +222,8 @@ verify_release() {
   [ "$(field "$tmp/manifest.json" version)" = "$VERSION" ] || die "the manifest is not of version $VERSION"
   seq=$(grep -o '"seq":[0-9]*' "$tmp/manifest.json" | cut -d: -f2)
   [ -n "$seq" ] || die "the manifest has no seq"
-  entry=$(grep -o "{\"os\":\"linux\",\"arch\":\"$arch\",\"variant\":\"full\",\"sha256\":\"[0-9a-f]*\",\"size\":[0-9]*}" "$tmp/manifest.json") ||
-    die "the manifest lists no full build for linux/$arch"
+  entry=$(grep -o "{\"os\":\"linux\",\"arch\":\"$arch\",\"variant\":\"$variant\",\"sha256\":\"[0-9a-f]*\",\"size\":[0-9]*}" "$tmp/manifest.json") ||
+    die "the manifest lists no $variant build for linux/$arch"
   want_sum=$(echo "$entry" | sed 's/.*"sha256":"\([0-9a-f]*\)".*/\1/')
   want_size=$(echo "$entry" | sed 's/.*"size":\([0-9]*\)}/\1/')
 
@@ -197,8 +233,9 @@ verify_release() {
   say "verified rpmgr $VERSION (manifest $seq)"
 }
 
-say "downloading rpmgr $VERSION for linux/$arch from $GITHUB/$REPO"
+say "downloading rpmgr $VERSION ($variant) for linux/$arch from $GITHUB/$REPO"
 artifact="rpmgr-$VERSION-linux-$arch"
+[ "$variant" = full ] || artifact="$artifact-$variant"
 for f in signing-key.json signing-key.json.minisig manifest.json manifest.json.minisig "$artifact"; do
   get "$GITHUB/$REPO/releases/download/v$VERSION/$f" "$tmp/$f" || die "cannot download $f of rpmgr $VERSION"
 done
@@ -214,6 +251,12 @@ install -d -m 0750 -o rpmgr -g rpmgr /var/lib/rpmgr
 install -d -m 0755 "$(dirname "$BIN")"
 install -m 0755 "$tmp/$artifact" "$BIN.new"
 mv -f "$BIN.new" "$BIN"
+# The install record, out of the service user's reach (docs/10-operations.md, "Filesystem
+# layout"): how rpmgr was installed and which build, which later runs and the updater keep. A
+# record that exists already stays: its variant is this one, and it may name the host's role.
+install -d -m 0700 "$STATE"
+[ -e "$STATE/install.json" ] ||
+  printf '{"method":"script","path":"%s","variant":"%s"}\n' "$BIN" "$variant" >"$STATE/install.json"
 "$BIN" version --verbose || die "the installed $BIN does not run"
 [ "$upgrade" = 1 ] || say "installed rpmgr $VERSION to $BIN"
 

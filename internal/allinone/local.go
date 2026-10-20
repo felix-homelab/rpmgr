@@ -26,6 +26,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -185,10 +186,10 @@ func (a *builtIn) unusable(ctx context.Context, c *ent.Client, td string, want p
 	if id, err := pki.ParseSPIFFE(a.leaf.URIs[0], td); err != nil || id.Kind != want.Kind || id.Org != want.Org || id.ID != want.ID {
 		return "its identity names another agent", nil
 	}
-	switch err := pki.CheckRenewable(ctx, c, a.leaf); {
-	case errors.Is(err, pki.ErrNotIssued), errors.Is(err, pki.ErrCertRevoked), errors.Is(err, pki.ErrSuperseded):
+	switch err := castore.CheckRenewable(ctx, c, a.leaf); {
+	case errors.Is(err, pki.ErrNotIssued), errors.Is(err, castore.ErrCertRevoked), errors.Is(err, castore.ErrSuperseded):
 		return "its certificate cannot be renewed: " + err.Error(), nil
-	case errors.Is(err, pki.ErrIdentityRevoked):
+	case errors.Is(err, castore.ErrIdentityRevoked):
 		return "", fmt.Errorf("allinone: the %s's identity %s is revoked, and enrolling again as the same %s cannot lift that", a.role, want.ID, a.role)
 	case err != nil:
 		return "", err

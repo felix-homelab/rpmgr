@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package pki_test
+package castore_test
 
 import (
 	"crypto/x509"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -25,17 +26,17 @@ const day = 24 * time.Hour
 // the signing keys get a next key 90 days before they expire, which is delivered and then replaces
 // them 60 days before; a second replica's CA picks every change up with Reload.
 func TestRotate(t *testing.T) {
-	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *pki.CA) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
 		sys := storetest.SystemCtx(t)
 		org := storetest.Org(t, db, "org-a")
 		s := sealer(t, kek)
 		now := t0
 		clock := func() time.Time { return now }
-		ca, err := pki.LoadCA(sys, db, s, clock)
+		ca, err := castore.LoadCA(sys, db, s, clock)
 		if err != nil {
 			t.Fatal(err)
 		}
-		other, err := pki.LoadCA(sys, db, s, clock) // another replica
+		other, err := castore.LoadCA(sys, db, s, clock) // another replica
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -45,7 +46,7 @@ func TestRotate(t *testing.T) {
 			var done []string
 			if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
 				var err error
-				done, err = pki.Rotate(sys, tx, s, at)
+				done, err = castore.Rotate(sys, tx, s, at)
 				return err
 			}); err != nil {
 				t.Fatal(err)
@@ -105,10 +106,10 @@ func TestRotate(t *testing.T) {
 
 		signer := ca.ConfigSigner()
 		audit := ca.AuditSigner()
-		if done := rotate(signer.Cert.NotAfter.Add(-pki.SignerNextBefore - time.Hour)); len(done) != 0 {
+		if done := rotate(signer.Cert.NotAfter.Add(-castore.SignerNextBefore - time.Hour)); len(done) != 0 {
 			t.Fatalf("before the next-key time: %v", done)
 		}
-		done := rotate(signer.Cert.NotAfter.Add(-pki.SignerNextBefore))
+		done := rotate(signer.Cert.NotAfter.Add(-castore.SignerNextBefore))
 		slices.Sort(done)
 		if !slices.Equal(done, []string{"next audit_checkpoint key created", "next config_signing key created"}) {
 			t.Fatalf("at the next-key time: %v", done)
@@ -116,7 +117,7 @@ func TestRotate(t *testing.T) {
 		if !ca.ConfigSigner().Cert.Equal(signer.Cert) || len(ca.SigningChain()) != 2+2 {
 			t.Fatalf("the next key is used already, or not delivered: %d certificates", len(ca.SigningChain()))
 		}
-		if done := rotate(signer.Cert.NotAfter.Add(-pki.SignerPromoteBefore)); len(done) != 2 {
+		if done := rotate(signer.Cert.NotAfter.Add(-castore.SignerPromoteBefore)); len(done) != 2 {
 			t.Fatalf("at the promotion time: %v", done)
 		}
 		if ca.ConfigSigner().Cert.Equal(signer.Cert) || ca.AuditSigner().Cert.Equal(audit.Cert) {
@@ -145,14 +146,14 @@ func TestRotate(t *testing.T) {
 // old one is retired; a rotation that started from an intermediate another rotation has retired
 // meanwhile fails with ErrRotated and leaves one active intermediate.
 func TestRotateIntermediate(t *testing.T) {
-	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *pki.CA) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
 		sys := storetest.SystemCtx(t)
 		s := sealer(t, kek)
 		active := func() []*ent.CAKey {
 			return db.Client().CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusActive)).AllX(sys)
 		}
 		before := active()[0]
-		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return pki.RotateIntermediate(sys, tx, s, t0.Add(day)) }); err != nil {
+		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return castore.RotateIntermediate(sys, tx, s, t0.Add(day)) }); err != nil {
 			t.Fatal(err)
 		}
 		after := active()
@@ -162,10 +163,10 @@ func TestRotateIntermediate(t *testing.T) {
 		}
 		root := db.Client().CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot)).OnlyX(sys)
 		err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
-			_, err := pki.ReplaceIntermediate(sys, tx, s, root, before, t0.Add(2*day))
+			_, err := castore.ReplaceIntermediate(sys, tx, s, root, before, t0.Add(2*day))
 			return err
 		})
-		if !errors.Is(err, pki.ErrRotated) || len(active()) != 1 || active()[0].ID != after[0].ID {
+		if !errors.Is(err, castore.ErrRotated) || len(active()) != 1 || active()[0].ID != after[0].ID {
 			t.Fatalf("a rotation from a retired intermediate: %v, active %v", err, active())
 		}
 	})

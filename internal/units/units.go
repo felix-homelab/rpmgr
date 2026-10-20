@@ -8,6 +8,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"os/exec"
 	"path"
 	"regexp"
 	"strings"
@@ -125,4 +126,17 @@ func writable(p string) (string, error) {
 			"whitespace, control characters, %%, \\ or quotes", p)
 	}
 	return clean, nil
+}
+
+// SystemdVersion returns the version systemctl reports, or 0 without systemd.
+func SystemdVersion() int {
+	out, err := exec.Command("systemctl", "--version").Output()
+	if err != nil {
+		return 0
+	}
+	var v int
+	if _, err := fmt.Sscanf(string(out), "systemd %d", &v); err != nil {
+		return 0
+	}
+	return v
 }

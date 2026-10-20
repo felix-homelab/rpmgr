@@ -381,6 +381,30 @@ connections per gateway, so that a gateway's window budget admits the h2 session
 connectors ([D124](../14-open-decisions.md#engineering)). The target of 03 stays as D70 recorded it, for
 VB-20, which measures the build with four sessions.
 
+**With four sessions in the product** (#825, 2026-10-20): runner measurements (D49) of the build
+with four QUIC sessions per gateway and quic-go v0.64.1, run 39413023192 (the standard profile),
+against the same profile with one session, run 39388340724; medians of three, the lower of the two
+directions, GSO on, in Mbit/s:
+
+| Runner | Cell | QUIC, 1 session | QUIC, 4 sessions | TCP + h2 |
+|---|---|---|---|---|
+| gh-amd64 | 32 streams, 1 ms, 1 % | 416 | 1 147 | 890 |
+| gh-amd64 | 32 streams, 80 ms, 1 % | 3.9 | 14.0 | 4.2 |
+| gh-amd64 | 32 streams, 80 ms, 0 % | 508 | 1 260 | 684 |
+| gh-amd64 | 1 stream, 1 ms, 0 % | 1 626 | 1 660 | 1 015 |
+| gh-amd64 | 1 stream, 80 ms, 0 % | 509 | 337 | 324 |
+| gh-arm64 | 32 streams, 1 ms, 1 % | 358 | 1 340 | 997 |
+| gh-arm64 | 32 streams, 80 ms, 1 % | 4.0 | 14.8 | 4.5 |
+| gh-arm64 | 32 streams, 80 ms, 0 % | 701 | 1 497 | 695 |
+| gh-arm64 | 1 stream, 1 ms, 0 % | 1 771 | 1 927 | 1 508 |
+| gh-arm64 | 1 stream, 80 ms, 0 % | 679 | 437 | 325 |
+
+- 32 streams at 1 % loss carry three to four times as much as with one session, and 1.3 to 3.3
+  times TCP + h2: on the runners the target of 03 is met at 80 ms, not at 1 ms (1.26 to 1.34 ×).
+- A single stream at 80 ms carries about a third less than with one session, still above TCP +
+  h2. The study saw the same on x86-64; a likely cause, not verified, is that the cell's stream
+  lands on a session whose congestion window earlier cells never opened. VB-20 measures it again.
+
 ### Phase 2 study: HTTP, UDP and many-route performance (local, indicative)
 
 **Question:** the runner records cover TCP bulk, setup and aggregate loss; they do not answer what

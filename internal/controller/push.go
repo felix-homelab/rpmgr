@@ -15,6 +15,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/snapsig"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
@@ -121,7 +122,7 @@ func (p *pusher) run(ctx context.Context) {
 		case <-p.wake:
 		case <-t.C:
 			// A new revision or a new signing key: every agent gets a new snapshot.
-			key := snapshot.KeyID(p.s.ca.ConfigSigner().Cert)
+			key := snapsig.KeyID(p.s.ca.ConfigSigner().Cert)
 			if rev, err := currentRevision(p.s); err == nil && (rev != last || key != lastKey) {
 				last, lastKey = rev, key
 				p.mu.Lock()
@@ -171,8 +172,8 @@ func (p *pusher) push(id string) {
 	var signed *agentv1.Signed
 	if err == nil {
 		signer := p.s.ca.ConfigSigner()
-		snap.SigningKeyId = snapshot.KeyID(signer.Cert)
-		signed, err = snapshot.Sign(signer, snap)
+		snap.SigningKeyId = snapsig.KeyID(signer.Cert)
+		signed, err = snapsig.Sign(signer, snap)
 	}
 	p.mu.Lock()
 	st = p.agents[id]
@@ -194,7 +195,7 @@ func (p *pusher) push(id string) {
 		return
 	}
 	st.failing = false
-	hash := snapshot.Hash(signed)
+	hash := snapsig.Hash(signed)
 	rev := store.Revision{DBEpoch: snap.GetRevision().GetDbEpoch(), Seq: int64(snap.GetRevision().GetSeq())} //nolint:gosec // G115: compiled from an int64
 	inSync := bytes.Equal(hash, st.applied)
 	if inSync || bytes.Equal(hash, st.pending) {

@@ -36,6 +36,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/installsh"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/proxyenv"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
 	"github.com/felix-homelab/rpmgr/internal/release"
@@ -156,7 +157,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	} else if !ok {
 		return ErrNotInitialised
 	}
-	ca, err := pki.LoadCA(sys, db, sealer, o.Now)
+	ca, err := castore.LoadCA(sys, db, sealer, o.Now)
 	if err != nil {
 		return err
 	}
@@ -442,7 +443,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	bg.Go(func() { ReloadCA(jobs, caOpts) })
 	bg.Go(func() { shipper.Run(jobs) })
 	bg.Go(func() {
-		ReleaseCheck(jobs, ReleaseCheckOptions{DB: db, Mirror: mirror, Source: o.ReleaseSource, Proxy: proxy, Logger: o.Logger})
+		ReleaseCheck(jobs, ReleaseCheckOptions{DB: db, Mirror: mirror, Source: releaseSource(o.ReleaseSource), Lister: releaseLister(o.ReleaseSource), Proxy: proxy, Logger: o.Logger})
 	})
 	bg.Go(func() {
 		RenewNodeCertificate(jobs, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})

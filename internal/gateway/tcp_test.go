@@ -118,7 +118,7 @@ func planeWith(t *testing.T, target, proxy string, metrics *gateway.Metrics, rou
 	}
 	p.targets.Set(crs)
 	con.Set([]conn.Gateway{{ID: w.gw.ID, Endpoints: []string{pc.LocalAddr().String()}, Routes: gws}})
-	eventually(t, "no data session", func() bool { return p.sessions.Count()["quic"] == 1 })
+	eventually(t, "no data session", func() bool { return p.sessions.Count()["quic"] >= 1 })
 	return p
 }
 

@@ -21,7 +21,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
-	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/snapsig"
 )
 
 const epoch1, epoch2 = "0192f0aa-0000-7000-8000-000000000001", "0192f0aa-0000-7000-8000-000000000002"
@@ -85,7 +85,7 @@ func newRTEnv(t *testing.T) *rtEnv {
 func res(t *testing.T, id string, size uint64) *agentv1.Resource {
 	t.Helper()
 	r := &agentv1.Resource{Id: id, Kind: &agentv1.Resource_Reference{Reference: &agentv1.ResourceReference{Size: size}}}
-	h, err := snapshot.ResourceHash(r)
+	h, err := snapsig.ResourceHash(r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,8 +96,8 @@ func res(t *testing.T, id string, size uint64) *agentv1.Resource {
 // signed signs a snapshot for the env's agent with kp.
 func (e *rtEnv) signed(t *testing.T, kp pki.KeyPair, ep string, seq uint64, rs ...*agentv1.Resource) *agentv1.Signed {
 	t.Helper()
-	s, err := snapshot.Sign(kp, &agentv1.Snapshot{Revision: &agentv1.Revision{DbEpoch: ep, Seq: seq}, Agent: e.id.SPIFFE(),
-		ControllerEndpoints: []string{"https://ctl.example"}, Resources: rs, SigningKeyId: snapshot.KeyID(kp.Cert)})
+	s, err := snapsig.Sign(kp, &agentv1.Snapshot{Revision: &agentv1.Revision{DbEpoch: ep, Seq: seq}, Agent: e.id.SPIFFE(),
+		ControllerEndpoints: []string{"https://ctl.example"}, Resources: rs, SigningKeyId: snapsig.KeyID(kp.Cert)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestBadSnapshotKeepsLastKnownGood(t *testing.T) {
 	good := e.signed(t, e.config, epoch1, 1, res(t, "rt_1", 1))
 	offer(rt, good)
 	a := answer(t, out).GetApplied()
-	if a == nil || a.GetRevision().GetSeq() != 1 || !slices.Equal(a.GetHash(), snapshot.Hash(good)) || len(a.GetNotReady()) != 1 {
+	if a == nil || a.GetRevision().GetSeq() != 1 || !slices.Equal(a.GetHash(), snapsig.Hash(good)) || len(a.GetNotReady()) != 1 {
 		t.Fatalf("answer to a good snapshot: %v", a)
 	}
 	stored := lkg(t, e)
@@ -226,7 +226,7 @@ func TestBadSnapshotKeepsLastKnownGood(t *testing.T) {
 	} {
 		offer(rt, bad)
 		r := answer(t, out).GetRejected()
-		if r == nil || len(r.GetErrors()) == 0 || !slices.Equal(r.GetHash(), snapshot.Hash(bad)) {
+		if r == nil || len(r.GetErrors()) == 0 || !slices.Equal(r.GetHash(), snapsig.Hash(bad)) {
 			t.Fatalf("%s: answer %v, want Rejected", name, r)
 		}
 	}
@@ -238,7 +238,7 @@ func TestBadSnapshotKeepsLastKnownGood(t *testing.T) {
 	}
 	h := &agentv1.Hello{}
 	rt.Hello(h)
-	if h.GetLastApplied().GetSeq() != 1 || !slices.Equal(h.GetLastAppliedHash(), snapshot.Hash(good)) {
+	if h.GetLastApplied().GetSeq() != 1 || !slices.Equal(h.GetLastAppliedHash(), snapsig.Hash(good)) {
 		t.Fatalf("Hello after rejections: %v", h)
 	}
 
@@ -455,11 +455,11 @@ func TestRuntime_ResignedSameRevision(t *testing.T) {
 	quiet(t, out)
 	resigned := e.signed(t, e.nextConfig, epoch1, 7, res(t, "rt_1", 1))
 	offer(rt, resigned)
-	if a := answer(t, out).GetApplied(); a == nil || !slices.Equal(a.GetHash(), snapshot.Hash(resigned)) {
+	if a := answer(t, out).GetApplied(); a == nil || !slices.Equal(a.GetHash(), snapsig.Hash(resigned)) {
 		t.Fatalf("the re-signed snapshot: %v", a)
 	}
 	stored := &agentv1.Signed{}
-	if err := proto.Unmarshal(lkg(t, e), stored); err != nil || stored.GetKeyId() != snapshot.KeyID(e.nextConfig.Cert) {
+	if err := proto.Unmarshal(lkg(t, e), stored); err != nil || stored.GetKeyId() != snapsig.KeyID(e.nextConfig.Cert) {
 		t.Fatalf("the stored copy is signed by %q (%v)", stored.GetKeyId(), err)
 	}
 	f.mu.Lock()

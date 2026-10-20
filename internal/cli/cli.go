@@ -222,3 +222,17 @@ func upperFirst(s string) string {
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
 }
+
+// List is a flag that may be given more than once. An empty value adds nothing, so the flag given
+// once with an empty value sets an empty list (docs/16-cli.md).
+type List []string
+
+func (l *List) String() string { return strings.Join(*l, ",") }
+
+// Set adds v, unless it is empty.
+func (l *List) Set(v string) error {
+	if v != "" {
+		*l = append(*l, v)
+	}
+	return nil
+}

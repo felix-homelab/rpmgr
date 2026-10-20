@@ -18,7 +18,6 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agentcmd"
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
-	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/itest"
 	"github.com/felix-homelab/rpmgr/internal/release"
 )
@@ -160,7 +159,7 @@ func TestFlagsAfterArguments(t *testing.T) {
 // the systemd credential from the first systemd version with encrypted credentials, else a file.
 func TestInitHelp(t *testing.T) {
 	first := 0
-	for controller.KEKSourceFor(first) != config.KEKSystemdCredential {
+	for config.KEKSourceFor(first) != config.KEKSystemdCredential {
 		first++
 	}
 	want := fmt.Sprintf("(default systemd-credential from systemd %d, else file)", first)
@@ -497,14 +496,19 @@ func TestVersion(t *testing.T) {
 	}
 }
 
-// TestVersionVerbose: --verbose adds the release root keys, none in a release build until the
-// interim keys exist (D48), the two test roots in an rpmgrtest build (D60).
+// TestVersionVerbose: --verbose adds the build's variant, full, and the release root keys, none in
+// a release build until the interim keys exist (D48), the two test roots in an rpmgrtest build
+// (D60).
 func TestVersionVerbose(t *testing.T) {
 	code, stdout, stderr := runRpmgr("version", "--verbose")
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	if code != cli.ExitOK || stderr != "" || !strings.HasPrefix(lines[0], "rpmgr dev (commit ") {
 		t.Fatalf("rpmgr version --verbose: exit %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
+	if len(lines) < 2 || lines[1] != "variant: full" {
+		t.Fatalf("the full build's variant: %q", lines)
+	}
+	lines = append(lines[:1], lines[2:]...)
 	roots := release.Roots()
 	if !release.TestBuild {
 		if len(lines) != 4 || lines[1] != "release root keys:" ||

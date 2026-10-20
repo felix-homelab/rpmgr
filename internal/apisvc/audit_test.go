@@ -18,6 +18,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -197,11 +198,11 @@ func TestAuditService(t *testing.T) {
 	e, ada, org, _ := gatewayEnv(t)
 	ctx := context.Background()
 	if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
-		return pki.InitCA(e.sys, tx, e.sealer, "rpmgr-teststor", e.clock.Add(-time.Hour))
+		return castore.InitCA(e.sys, tx, e.sealer, "rpmgr-teststor", e.clock.Add(-time.Hour))
 	}); err != nil {
 		t.Fatal(err)
 	}
-	ca, err := pki.LoadCA(e.sys, e.db, e.sealer, func() time.Time { return e.clock })
+	ca, err := castore.LoadCA(e.sys, e.db, e.sealer, func() time.Time { return e.clock })
 	if err != nil {
 		t.Fatal(err)
 	}

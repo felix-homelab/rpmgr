@@ -627,7 +627,7 @@ rpmgr version [flags]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--verbose` |  | also print the release root keys compiled into this binary |
+| `--verbose` |  | also print the variant of this build and the release root keys compiled into it |
 
 ## rpmgr get
 

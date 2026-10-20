@@ -42,7 +42,7 @@ func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, r
 		panic(err)
 	}
 	values := map[string]*string{}
-	lists := map[string]*listFlag{}
+	lists := map[string]*cli.List{}
 	var force bool
 	var wait time.Duration
 	var output string
@@ -55,7 +55,7 @@ func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, r
 			fd := mt.Descriptor().Fields().ByName(protoreflect.Name(f.name))
 			switch {
 			case fd.IsList():
-				lists[f.flag] = &listFlag{}
+				lists[f.flag] = &cli.List{}
 				fs.Var(lists[f.flag], f.flag, f.usage+"; repeat for more")
 			case fd.Kind() == protoreflect.BoolKind:
 				values[f.flag] = new(string)

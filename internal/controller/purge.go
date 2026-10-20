@@ -11,6 +11,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -181,7 +182,7 @@ func purgeAgent(ctx context.Context, o PurgeOptions, a agentRow, now time.Time) 
 			return nil, err
 		}
 		id := pki.Identity{TrustDomain: inst.TrustDomain, Org: a.org, Kind: a.kind, ID: a.id}
-		row, changed, err := pki.RevokeIdentity(ctx, tx, id, "purged", now)
+		row, changed, err := castore.RevokeIdentity(ctx, tx, id, "purged", now)
 		if err != nil {
 			return nil, err
 		}

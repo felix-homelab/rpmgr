@@ -106,7 +106,11 @@ func TestTransport_PinnedRouteUsesPinnedSessions(t *testing.T) {
 	m.Set([]connector.Gateway{{ID: g.id.ID, Endpoints: []string{g.addr},
 		Routes: map[string]string{"rt_q": connector.TransportQUIC, "rt_h": connector.TransportH2, "rt_a": connector.TransportAuto}}})
 	// QUIC wins the race on loopback: the pinned and the auto link each hold a QUIC session.
-	eventually(t, "sessions missing", func() bool { return q.Count()["quic"] == 2 && h.Count()["h2"] == 2 })
+	eventually(t, "sessions missing", func() bool { return q.Count()["quic"] == 2*connector.QUICSessions && h.Count()["h2"] == 2 })
+	// Every link kind at once stays within what a gateway admits per connector.
+	if n := q.Count()["quic"] + h.Count()["h2"]; n > gateway.MaxConnectorSessions {
+		t.Fatalf("%d sessions, more than a gateway admits per connector", n)
+	}
 	for _, tc := range []struct {
 		route     string
 		on, notOn *gateway.Sessions
@@ -295,7 +299,7 @@ func TestTransport_ChangeKeepsOpenConnections(t *testing.T) {
 		t.Fatalf("a new connection on the unchanged route: %v", err)
 	}
 	unchanged.close(t)
-	if q.Count()["quic"] != 1 {
+	if q.Count()["quic"] != connector.QUICSessions {
 		t.Fatalf("the unchanged route's QUIC session: %v", q.Count())
 	}
 }
@@ -336,4 +340,107 @@ func (h held) close(t *testing.T) {
 	_ = h.st.CloseWrite()
 	_, _ = io.ReadAll(h.st)
 	_ = h.st.Close()
+}
+
+// works reports whether the held connection still echoes, within a few seconds.
+func (h held) works() bool {
+	done := make(chan bool, 1)
+	go func() {
+		if _, err := h.st.Write([]byte("ping")); err != nil {
+			done <- false
+			return
+		}
+		b := make([]byte, 4)
+		_, err := io.ReadFull(h.st, b)
+		done <- err == nil && string(b) == "ping"
+	}()
+	select {
+	case ok := <-done:
+		return ok
+	case <-time.After(5 * time.Second):
+		return false
+	}
+}
+
+// TestSessions_FourQUICSessions: a QUIC link keeps four sessions to a gateway (D123). A lost one is
+// redialled alone, and the connections held on the others survive it.
+func TestSessions_FourQUICSessions(t *testing.T) {
+	w := newWorld(t)
+	id := w.gatewayID()
+	g := startGateway(t, w, id, w.leaf(t, w.is, w.inter, id))
+	m := newConnector(t, w)
+	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_1": connector.TransportQUIC}}})
+	eventually(t, "not four QUIC sessions", func() bool {
+		return g.sessions.Load().Count()["quic"] == connector.QUICSessions && m.Count()[id.ID+"/quic"] == connector.QUICSessions
+	})
+	var hs []held
+	for range 8 {
+		hs = append(hs, openHeld(t, g.sessions.Load(), "rt_1"))
+	}
+	if err := g.lastQUIC.Load().Close(); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the lost session was not redialled", func() bool {
+		return g.sessions.Load().Count()["quic"] == connector.QUICSessions && g.quicConns.Load() == connector.QUICSessions+1
+	})
+	alive := 0
+	for _, h := range hs {
+		if h.works() {
+			alive++
+		}
+		_ = h.st.Close()
+	}
+	if alive == 0 {
+		t.Fatal("every held connection was on the lost session: the streams did not spread")
+	}
+	if n := g.quicConns.Load(); n != connector.QUICSessions+1 {
+		t.Fatalf("%d QUIC handshakes: the other sessions were redialled too", n)
+	}
+	if err := echo(t, g.sessions.Load(), "rt_1"); err != nil {
+		t.Fatalf("a new connection after the loss: %v", err)
+	}
+}
+
+// TestSessions_RefusedQUICSessionKeepsTheOthers: a gateway that refuses QUIC sessions beyond two,
+// as one at its cap does, leaves an auto link on QUIC with two sessions; the refused slots retry
+// with their backoff instead of starting a new race or switching to TCP.
+func TestSessions_RefusedQUICSessionKeepsTheOthers(t *testing.T) {
+	w := newWorld(t)
+	id := w.gatewayID()
+	g := startGateway(t, w, id, w.leaf(t, w.is, w.inter, id))
+	g.quicLimit.Store(2)
+	m := newConnector(t, w)
+	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_1": connector.TransportAuto}}})
+	eventually(t, "no two QUIC sessions", func() bool { return g.sessions.Load().Count()["quic"] == 2 })
+	time.Sleep(3 * time.Second)
+	if c := g.sessions.Load().Count(); c["quic"] != 2 || c["h2"] != 0 {
+		t.Fatalf("sessions %v: the refused slots tore the link down", c)
+	}
+	// Two refused slots, each with its own backoff of 0.5 s doubling: a handful of tries in 3 s.
+	if n := g.quicConns.Load(); n > 2+2*8 {
+		t.Fatalf("%d QUIC handshakes in 3 s: the refused slots did not back off", n)
+	}
+	if err := echo(t, g.sessions.Load(), "rt_1"); err != nil {
+		t.Fatalf("a connection on the two sessions: %v", err)
+	}
+}
+
+// TestSessions_FailedDialKeepsTheOthers: when one slot of an auto link on QUIC cannot complete its
+// handshake while the others hold sessions, it retries with its backoff; the link stays on QUIC
+// instead of forgetting the winner and racing again.
+func TestSessions_FailedDialKeepsTheOthers(t *testing.T) {
+	w := newWorld(t)
+	id := w.gatewayID()
+	g := startGateway(t, w, id, w.leaf(t, w.is, w.inter, id))
+	g.handshakeLimit.Store(2)
+	m := newConnector(t, w)
+	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_1": connector.TransportAuto}}})
+	eventually(t, "no two QUIC sessions", func() bool { return g.sessions.Load().Count()["quic"] == 2 })
+	time.Sleep(3 * time.Second)
+	if c := g.sessions.Load().Count(); c["quic"] != 2 || c["h2"] != 0 {
+		t.Fatalf("sessions %v: a failed dial of one slot ended the link's QUIC sessions", c)
+	}
 }
