@@ -277,6 +277,39 @@ connection's congestion window, not a stream.
 - Whether to report the two quic-go behaviours upstream, the application-limited mark on clumped
   ACKs and the missing reaction to spurious losses, is left to the maintainer.
 
+**With quic-go v0.64.1** (2026-10-20): v0.64.0 reacts to spurious losses. It stops declaring
+losses by the packet threshold after a spurious one, lengthens the time threshold, and restores
+the congestion window after a reduction caused only by spurious losses (quic-go#5905, #5923,
+#5925). The application-limited mark is unchanged and is reported as quic-go#5952. quic-go runs its
+Cubic sender in Reno mode [F quic-go v0.64.1 `internal/ackhandler/sent_packet_handler.go:160`],
+so an ACK marked application-limited does not count towards the window's growth
+[F quic-go v0.64.1 `internal/congestion/cubic_sender.go:307-310,323`]; that is the stalled growth
+described above. Runner measurements (D49) of the build with v0.64.1, runs 39388569993 (throughput
+at 20 and 80 ms, loss 0 and 1 %) and 39388340724 (the standard profile), medians of three, the
+lower of the two directions, in Mbit/s, against the v0.63.0 runs 39247303350 (0 % loss) and
+39247738394 (1 % loss):
+
+| Runner | Cell | QUIC v0.63.0 | QUIC v0.64.1 | TCP + h2 |
+|---|---|---|---|---|
+| gh-amd64 | 1 stream, 1 ms, 0 % | 856 | 1 626 | — |
+| gh-amd64 | 1 stream, 20 ms, 0 % | 290 | 766 | 973 |
+| gh-amd64 | 1 stream, 80 ms, 0 % | 224 | 509 to 679 | 312 |
+| gh-amd64 | 32 streams, 20 ms, 1 % | 16.8 | 16.5 | 16.6 |
+| gh-amd64 | 32 streams, 80 ms, 1 % | 4.0 | 4.0 | 4.2 |
+| gh-arm64 | 1 stream, 1 ms, 0 % | 1 057 | 1 771 | — |
+| gh-arm64 | 1 stream, 20 ms, 0 % | 297 | 1 006 | 1 167 |
+| gh-arm64 | 1 stream, 80 ms, 0 % | 157 | 679 to 684 | 330 |
+| gh-arm64 | 32 streams, 20 ms, 1 % | 17.6 | 17.0 | 16.9 |
+| gh-arm64 | 32 streams, 80 ms, 1 % | 4.0 | 4.0 | 4.3 |
+
+- Without loss, a single QUIC stream carries two to four times as much as with v0.63.0, and more
+  than TCP + h2 at 80 ms; the reordering of the runners no longer cuts the window.
+- With 1 % real loss nothing changes: every stream still shares one congestion-controlled
+  connection. Several sessions per gateway address that
+  ([D123](../14-open-decisions.md#engineering)).
+- The targets of 03 are still missed on the runners (single stream at 1 ms against direct; 32
+  streams at 1 % loss against h2), so the outcome above stands: VB-20 decides.
+
 ### Phase 2 study: several data sessions per gateway
 
 **Question** (#422, [D70](../14-open-decisions.md#engineering)): every stream to a gateway shares
@@ -343,6 +376,7 @@ two sessions and 2 197 to 4 889 with four at 20 ms (690 to 702 and 1 355 to 1 38
 **No protocol change is needed:** the gateway accepts several sessions of a connector and spreads
 streams over them already, so a connector of a later release can open more sessions to a gateway
 of v0.1.0 within its cap of 16 per connector. The product owner decided on four QUIC sessions
-per gateway as a constant, and four h2 connections once the h2 window budget is fixed
-([D123](../14-open-decisions.md#engineering)). The target of 03 stays as D70 recorded it, for
+per gateway as a constant ([D123](../14-open-decisions.md#engineering)); h2 stays at two
+connections per gateway, so that a gateway's window budget admits the h2 sessions of about forty
+connectors ([D124](../14-open-decisions.md#engineering)). The target of 03 stays as D70 recorded it, for
 VB-20, which measures the build with four sessions.

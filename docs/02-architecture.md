@@ -345,6 +345,7 @@ cmd/rpmgr/                 main and the command tree (16)
 cmd/rpmgr-connector/       the connector-only build (Phase 2, D119)
 internal/update/           the root-owned updater: staging, verification, swap, rollback (Phase 2)
 internal/cli/              command dispatcher on the standard flag package
+internal/agentcmd/         the commands of a connector or gateway host, shared by both builds (D119)
 internal/version/          version of the running build
 internal/controller/       api handlers, compiler, registry, jobs
 internal/gateway/          listeners, sni router, http engine, relay

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
+	"github.com/felix-homelab/rpmgr/internal/agentcmd"
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/setup"
 )
@@ -98,7 +99,7 @@ func setupCommand() *cli.Command {
 				}
 			}
 			if !v.Role.Initialises() && setup.CheckRole(string(v.Role)) == nil {
-				prompt := promptToken
+				prompt := agentcmd.PromptToken
 				if form != nil {
 					prompt = form.token
 				}
