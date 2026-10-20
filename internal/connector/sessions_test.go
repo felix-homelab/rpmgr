@@ -116,6 +116,13 @@ type testGateway struct {
 	quicConns    atomic.Int64
 	tcpEnded     atomic.Int64                       // TCP sessions the gateway served and removed
 	lastQUIC     atomic.Pointer[tunnel.QUICSession] // the last QUIC session accepted, for a gateway that misbehaves
+	// quicLimit, if set, refuses a QUIC session while quicLive sessions are served, as a gateway
+	// at its cap of sessions per connector does.
+	quicLimit atomic.Int64
+	quicLive  atomic.Int64
+	// handshakeLimit, if set, fails every QUIC handshake after that many, so that a dial fails.
+	handshakeLimit atomic.Int64
+	handshakes     atomic.Int64
 }
 
 // startGateway serves data sessions for the gateway id with the certificate cert, which a test
@@ -223,7 +230,15 @@ func (g *testGateway) track(c io.Closer) {
 func (g *testGateway) serveQUIC(t *testing.T, pc net.PacketConn) {
 	t.Helper()
 	tr := &quic.Transport{Conn: pc}
-	qln, err := tunnel.ListenQUIC(tr, gateway.QUICTLS(td, g.id.ID, g.server), tunnel.NewBudget(tunnel.DefaultWindowBudget))
+	cfg := gateway.QUICTLS(td, g.id.ID, g.server)
+	inner := cfg.GetConfigForClient
+	cfg.GetConfigForClient = func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+		if limit := g.handshakeLimit.Load(); limit > 0 && g.handshakes.Add(1) > limit {
+			return nil, errors.New("test gateway: handshake refused")
+		}
+		return inner(hello)
+	}
+	qln, err := tunnel.ListenQUIC(tr, cfg, tunnel.NewBudget(tunnel.DefaultWindowBudget))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,12 +251,20 @@ func (g *testGateway) serveQUIC(t *testing.T, pc net.PacketConn) {
 				return
 			}
 			g.quicConns.Add(1)
+			if limit := g.quicLimit.Load(); limit > 0 && g.quicLive.Load() >= limit {
+				_ = s.Close()
+				continue
+			}
 			g.lastQUIC.Store(s)
 			sessions := g.sessions.Load()
 			if q := g.quicSessions.Load(); q != nil {
 				sessions = q
 			}
-			go func() { _ = sessions.Serve(g.ctx, s, s.PeerCertificate()) }()
+			g.quicLive.Add(1)
+			go func() {
+				_ = sessions.Serve(g.ctx, s, s.PeerCertificate())
+				g.quicLive.Add(-1)
+			}()
 		}
 	}()
 }
@@ -337,7 +360,7 @@ func echo(t *testing.T, s *gateway.Sessions, route string) error {
 
 // TestGateway_PerGatewayTunnelEndpoints: the connector dials each gateway at that gateway's own
 // tunnel endpoint with ServerName <gateway-id>.gateway.<td> and holds a session to every gateway:
-// one QUIC session, or two TCP connections on h2.
+// four QUIC sessions, or two TCP connections on h2.
 func TestGateway_PerGatewayTunnelEndpoints(t *testing.T) {
 	w := newWorld(t)
 	id1, id2 := w.gatewayID(), w.gatewayID()
@@ -352,8 +375,8 @@ func TestGateway_PerGatewayTunnelEndpoints(t *testing.T) {
 	// The gateway counts a session before its SessionWelcome, the connector after it: wait for both.
 	eventually(t, "not every gateway has its sessions", func() bool {
 		got := m.Count()
-		return g1.sessions.Load().Count()["quic"] == 1 && g2.sessions.Load().Count()["h2"] == 2 &&
-			got[id1.ID+"/quic"] == 1 && got[id2.ID+"/h2"] == 2 && len(got) == 2
+		return g1.sessions.Load().Count()["quic"] == connector.QUICSessions && g2.sessions.Load().Count()["h2"] == 2 &&
+			got[id1.ID+"/quic"] == connector.QUICSessions && got[id2.ID+"/h2"] == 2 && len(got) == 2
 	})
 	for range 2 {
 		if sni := <-g2.serverName; sni != id2.DNSName() {
@@ -428,7 +451,7 @@ func TestSessions_RouteHealth(t *testing.T) {
 	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_other", Ready: true})
 	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr},
 		Routes: map[string]string{"rt_1": connector.TransportQUIC, "rt_2": connector.TransportQUIC}}})
-	eventually(t, "no session", func() bool { return g.sessions.Load().Count()["quic"] == 1 })
+	eventually(t, "no session", func() bool { return g.sessions.Load().Count()["quic"] == connector.QUICSessions })
 	gs := g.sessions.Load()
 	if err := echo(t, gs, "rt_1"); err != nil {
 		t.Fatalf("a route ready at the start: %v", err)
@@ -494,10 +517,10 @@ func TestSessions_Reconnect(t *testing.T) {
 	m := newConnector(t, w)
 	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
 	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_1": connector.TransportQUIC}}})
-	eventually(t, "no session", func() bool { return g.sessions.Load().Count()["quic"] == 1 })
+	eventually(t, "no session", func() bool { return g.sessions.Load().Count()["quic"] == connector.QUICSessions })
 	g.sessions.Load().Close()
 	eventually(t, "no session after the gateway closed it", func() bool {
-		return g.sessions.Load().Count()["quic"] == 1 && g.quicConns.Load() == 2
+		return g.sessions.Load().Count()["quic"] == connector.QUICSessions && g.quicConns.Load() == 2*connector.QUICSessions
 	})
 
 	// A planned restart: Drain, then a new process. A stream open on the draining session keeps
@@ -511,8 +534,8 @@ func TestSessions_Reconnect(t *testing.T) {
 	defer func() { _ = held.Close() }()
 	old.Drain(time.Now().Add(gateway.DrainPeriod))
 	g.sessions.Store(w.sessions(id))
-	eventually(t, "no session to the restarted gateway", func() bool { return g.sessions.Load().Count()["quic"] == 1 })
-	if old.Count()["quic"] != 1 {
+	eventually(t, "no session to the restarted gateway", func() bool { return g.sessions.Load().Count()["quic"] == connector.QUICSessions })
+	if old.Count()["quic"] < 1 {
 		t.Fatal("the draining session closed before its deadline with a stream open")
 	}
 	if _, err := old.Open(context.Background(), &tunnelv1.StreamOpen{RouteId: "rt_1"}); !errors.Is(err, gateway.ErrDraining) {
@@ -534,9 +557,9 @@ func TestSessions_Set(t *testing.T) {
 	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
 	entry := connector.Gateway{ID: id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_1": connector.TransportQUIC}}
 	m.Set([]connector.Gateway{entry})
-	eventually(t, "no session", func() bool { return g.sessions.Load().Count()["quic"] == 1 })
+	eventually(t, "no session", func() bool { return g.sessions.Load().Count()["quic"] == connector.QUICSessions })
 	m.Set([]connector.Gateway{entry}) // unchanged: untouched
-	if g.quicConns.Load() != 1 {
+	if g.quicConns.Load() != connector.QUICSessions {
 		t.Fatal("an unchanged entry was redialled")
 	}
 
@@ -546,7 +569,7 @@ func TestSessions_Set(t *testing.T) {
 	}
 	m.Set(nil)
 	time.Sleep(300 * time.Millisecond)
-	if g.sessions.Load().Count()["quic"] != 1 {
+	if g.sessions.Load().Count()["quic"] < 1 {
 		t.Fatal("a removed gateway's session closed with a stream still open")
 	}
 	if _, err := st.Write([]byte("late")); err != nil {
@@ -561,7 +584,7 @@ func TestSessions_Set(t *testing.T) {
 
 	entry.Endpoints = []string{moved.addr}
 	m.Set([]connector.Gateway{entry})
-	eventually(t, "no session at the new endpoint", func() bool { return moved.sessions.Load().Count()["quic"] == 1 })
+	eventually(t, "no session at the new endpoint", func() bool { return moved.sessions.Load().Count()["quic"] == connector.QUICSessions })
 	m.Close()
 	eventually(t, "Close left a session", func() bool { return len(moved.sessions.Load().Count()) == 0 })
 	if len(m.Count()) != 0 {
@@ -626,7 +649,7 @@ func TestSessions_StreamsOnlyForTheGatewaysRoutes(t *testing.T) {
 	entryB := connector.Gateway{ID: idB.ID, Endpoints: []string{b.addr}, Routes: map[string]string{"rt_b": quic, "rt_both": quic}}
 	m.Set([]connector.Gateway{entryA, entryB})
 	eventually(t, "no sessions", func() bool {
-		return a.sessions.Load().Count()["quic"] == 1 && b.sessions.Load().Count()["quic"] == 1
+		return a.sessions.Load().Count()["quic"] == connector.QUICSessions && b.sessions.Load().Count()["quic"] == connector.QUICSessions
 	})
 	sa, sb := a.lastQUIC.Load(), b.lastQUIC.Load()
 	for _, c := range []struct {

@@ -109,7 +109,7 @@ func newUDPEcho(t *testing.T, m *gateway.Sessions, w *world, route string) *udpE
 			}()
 		}
 	}()
-	eventually(t, "no data session", func() bool { return m.Count()["quic"] == 1 })
+	eventually(t, "no data session", func() bool { return m.Count()["quic"] >= 1 })
 	return e
 }
 

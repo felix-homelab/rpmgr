@@ -48,7 +48,7 @@ func TestInProcess_OneSessionForEveryRoute(t *testing.T) {
 	})
 	eventually(t, "no session to each gateway", func() bool {
 		got := m.Count()
-		return local.sessions.Load().Count()["h2"] == 1 && got[id.ID+"/h2"] == 1 && got[otherID.ID+"/quic"] == 1 && len(got) == 2
+		return local.sessions.Load().Count()["h2"] == 1 && got[id.ID+"/h2"] == 1 && got[otherID.ID+"/quic"] == connector.QUICSessions && len(got) == 2
 	})
 	for _, r := range []string{"rt_q", "rt_h", "rt_a"} {
 		if err := echo(t, local.sessions.Load(), r); err != nil {
