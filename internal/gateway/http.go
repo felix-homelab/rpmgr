@@ -1039,17 +1039,35 @@ func refuseUnclean(w http.ResponseWriter, r *http.Request) bool {
 }
 
 // cleanPath reports whether p, a request's decoded path, starts with "/" and has no empty, "." or
-// ".." segment; a trailing "/" is allowed.
+// ".." segment, also not with ";" parameters (".;x", "..;x", which some servers resolve as dot
+// segments), no "\\", which some servers read as "/", and no control character; a trailing "/" is
+// allowed.
 func cleanPath(p string) bool {
-	if !strings.HasPrefix(p, "/") || strings.Contains(p, "//") {
+	if !strings.HasPrefix(p, "/") || strings.Contains(p, "//") || strings.ContainsRune(p, '\\') {
+		return false
+	}
+	if strings.ContainsFunc(p, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
 		return false
 	}
 	for seg := range strings.SplitSeq(p[1:], "/") {
-		if seg == "." || seg == ".." {
+		if name, _, _ := strings.Cut(seg, ";"); name == "." || name == ".." {
 			return false
 		}
 	}
 	return true
+}
+
+// withoutParams returns p without the ";" parameters of its segments ("/admin;x/y" is "/admin/y"),
+// as servers that read path parameters see it.
+func withoutParams(p string) string {
+	if !strings.Contains(p, ";") {
+		return p
+	}
+	segs := strings.Split(p, "/")
+	for i, seg := range segs {
+		segs[i], _, _ = strings.Cut(seg, ";")
+	}
+	return strings.Join(segs, "/")
 }
 
 // proxy sends a request over the route, within its access rules and its WebSocket and body
@@ -1138,8 +1156,12 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 // routeFor returns the route for a request's host, with or without a port, and path, or nil.
 func (h *HTTPRoutes) routeFor(host, path string) *routeTransport {
 	entries, _ := h.table.Load().lookup(hostOnly(host))
+	// A path with ";" parameters goes to the longest prefix that either it or its form without them
+	// matches, so a backend that drops the parameters never gets a path that a narrower route
+	// serves through a broader one.
+	bare := withoutParams(path)
 	for _, e := range entries {
-		if matchPrefix(path, e.prefix) {
+		if matchPrefix(path, e.prefix) || matchPrefix(bare, e.prefix) {
 			return e.route
 		}
 	}
@@ -1161,7 +1183,7 @@ func (t *httpTable) lookup(host string) ([]httpEntry, bool) {
 }
 
 // matchPrefix reports whether a path falls under a prefix, at a segment boundary: "/docs"
-// matches "/docs" and "/docs/x", not "/docsx".
+// matches "/docs", "/docs/x" and "/docs;x", not "/docsx".
 func matchPrefix(path, prefix string) bool {
 	if prefix == "" || prefix == "/" {
 		return true
@@ -1169,7 +1191,7 @@ func matchPrefix(path, prefix string) bool {
 	if !strings.HasPrefix(path, prefix) {
 		return false
 	}
-	return len(path) == len(prefix) || strings.HasSuffix(prefix, "/") || path[len(prefix)] == '/'
+	return len(path) == len(prefix) || strings.HasSuffix(prefix, "/") || path[len(prefix)] == '/' || path[len(prefix)] == ';'
 }
 
 // Active returns the number of requests being served.

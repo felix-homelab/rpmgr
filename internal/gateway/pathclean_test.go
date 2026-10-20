@@ -19,7 +19,11 @@ import (
 // uncleanPaths are request paths with an empty, "." or ".." segment, written as a client sends
 // them; each would reach /admin/x at a backend that merges slashes or resolves dot segments.
 var uncleanPaths = []string{"//admin/x", "/./admin/x", "/x/../admin/x", "/%2e%2e/admin/x", "/%2E%2E/admin/x",
-	"/x/%2e%2e/admin/x", "/x%2f..%2fadmin/x", "/admin/x/.", "/admin/x/..", "/admin//x", "/admin/x//"}
+	"/x/%2e%2e/admin/x", "/x%2f..%2fadmin/x", "/admin/x/.", "/admin/x/..", "/admin//x", "/admin/x//",
+	// dot segments with ";" parameters, which some servers resolve as dot segments
+	"/..;/admin/x", "/x/..;/admin/x", "/.;/admin/x", "/x/..;jsessionid=1/admin/x",
+	// "\", which some servers read as "/", and control characters
+	"/x%5c..%5cadmin/x", "/admin%5cx", "/admin%00x", "/admin%0ax", "/admin%7fx", "/admin%09x"}
 
 // pathEnv is a host with an open route on / and a route on /admin that admits no client of the
 // tests, and an upstream that records the request targets it gets.
@@ -87,12 +91,16 @@ func TestGateway_UncleanPathRefused(t *testing.T) {
 	// rules deny the client; /adminx, /pub/ and / by the open route.
 	for p, want := range map[string]int{"/admin/x": http.StatusForbidden, "/admin%2fx": http.StatusForbidden,
 		"/%61dmin/x": http.StatusForbidden, "/admin": http.StatusForbidden, "/adminx": http.StatusOK, "/pub/": http.StatusOK,
-		"/": http.StatusOK, "/a.b/..c/...": http.StatusOK} {
+		"/": http.StatusOK, "/a.b/..c/...": http.StatusOK,
+		// ";" parameters: routed by the longest prefix their path, with or without them, matches
+		"/admin;/x": http.StatusForbidden, "/admin;jsessionid=1": http.StatusForbidden, "/admin;p/x": http.StatusForbidden,
+		"/adminx;p": http.StatusOK, "/x;y/..z": http.StatusOK} {
 		if r := get(t, e.client(false), "https://app.example.com"+p, nil); r.status != want {
 			t.Errorf("%s: %d, want %d", p, r.status, want)
 		}
 	}
-	if seen := e.upstreamSaw(); !slices.Equal(slices.Sorted(slices.Values(seen)), []string{"/", "/a.b/..c/...", "/adminx", "/pub/"}) {
+	if seen := e.upstreamSaw(); !slices.Equal(slices.Sorted(slices.Values(seen)),
+		[]string{"/", "/a.b/..c/...", "/adminx", "/adminx;p", "/pub/", "/x;y/..z"}) {
 		t.Errorf("the upstream saw %q", seen)
 	}
 }
@@ -128,7 +136,8 @@ func TestHTTPRoutes_UncleanPathBeforeEverything(t *testing.T) {
 }
 
 // TestHTTPRoutes_ConnectAndOptionsStar: CONNECT asks for a tunnel, not a path, and is refused with
-// 501 on 443 and port 80; OPTIONS * is answered by the gateway itself. Neither reaches a route.
+// 501 on 443 and port 80; OPTIONS * is answered by the gateway itself; absolute-form targets are
+// checked like others. None reaches a route.
 func TestHTTPRoutes_ConnectAndOptionsStar(t *testing.T) {
 	e, _, _ := newPathEnv(t, "serve")
 	addr80 := e.serve80(t)
@@ -171,6 +180,14 @@ func TestHTTPRoutes_ConnectAndOptionsStar(t *testing.T) {
 		}
 		if code := raw(c(), "OPTIONS * HTTP/1.1\r\nHost: app.example.com\r\n\r\n"); code != http.StatusOK {
 			t.Errorf("port %s, OPTIONS *: %d, want 200 from the gateway", name, code)
+		}
+		// Absolute-form request targets: an empty path and a dot segment are refused, and so is a
+		// literal "\" in the request line.
+		for _, line := range []string{"GET http://app.example.com HTTP/1.1", "GET http://app.example.com/../admin/x HTTP/1.1",
+			"GET https://app.example.com/x/../admin/x HTTP/1.1", "GET /x\\..\\admin/x HTTP/1.1"} {
+			if code := raw(c(), line+"\r\nHost: app.example.com\r\n\r\n"); code != http.StatusBadRequest {
+				t.Errorf("port %s, %q: %d, want 400", name, line, code)
+			}
 		}
 	}
 	if seen := e.upstreamSaw(); len(seen) != 0 {
