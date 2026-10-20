@@ -16,7 +16,7 @@ require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2
 	buf.build/go/protovalidate v1.4.0
 	charm.land/huh/v2 v2.0.3
-	connectrpc.com/connect v1.21.0
+	connectrpc.com/connect v1.21.1
 	entgo.io/ent v0.14.6
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/charmbracelet/x/ansi v0.11.9
