@@ -18,8 +18,18 @@ Changes to the design documents are not recorded here: see the git history and t
   with the reason, and the controller refuses a leave of the built-in agents in any case, as the
   API refuses to decommission them. (#810)
 
+### Changed
+
+- Tunnels: QUIC data sessions use quic-go v0.64.1, whose loss recovery no longer shrinks the
+  congestion window for packets that were only reordered. On the benchmark runners a single QUIC
+  stream without loss carried two to four times as much at 20 and 80 ms RTT as with v0.1.0. (#828)
+
 ### Fixed
 
+- Gateway: a gateway admits about eighty data sessions over TCP + HTTP/2 instead of nine. Each
+  session's flow-control window now takes at most a sixteenth of the free window budget, down to a
+  small floor, instead of half of it, so connectors beyond the fourth on TCP + h2 are no longer
+  refused; later sessions get smaller windows. (#819)
 - All-in-one: a built-in gateway or connector whose identity is revoked as a whole, as a restore
   that applies a later revocation leaves it, no longer stops the start. The all-in-one replaces it
   with a new built-in gateway or connector, which keeps the old one's name and, for a gateway, its
