@@ -137,7 +137,7 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 | `/var/lib/rpmgr/` | rpmgr, 0750 | Last-known-good snapshot (`snapshot.signed`, 0600) and **deny-list** (`denylist.signed`, 0600) (both signed; the deny-list is loaded before any session is accepted), stateless reset key (gateways: `quic-reset.key`, 0600, created at the first start), route certificates with their keys that the gateway fetched (gateways: `resources/`, 0700, one 0600 file per item, named by its SHA-256, removed when no route needs it), SQLite database and its lock file `controller.db.lock`, held by the running controller (controller) |
 | `/var/lib/rpmgr/update/` | rpmgr, 0750 | OTA download area: artifact and signed manifest written by the agent. **Untrusted input** to the updater, which never verifies or installs files in place here |
 | `/etc/sysctl.d/60-rpmgr.conf` | root, 0644 | Host tuning, written by `/install.sh` on every run: the UDP buffers, whatever the host has now, and BBR with `--tcp-bbr` or while the file sets it ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
-| `/var/lib/rpmgr-update/` | root, 0700 | Updater state, out of the service user's reach: version floor and highest manifest `seq` in `state.json` (`{"seq": 87, "floor": "1.4.2"}`, initialised at install time from the running version and its release `seq`), `install.json` (`{"method": "script", "path": "/usr/local/bin/rpmgr", "variant": "full", "roles": ["connector"]}`, written by `rpmgr setup` and both install scripts), and `staging/`, where the updater copies and verifies the files |
+| `/var/lib/rpmgr-update/` | root, 0700 | Updater state, out of the service user's reach: version floor and highest manifest `seq` in `state.json` (`{"seq": 87, "floor": "1.4.2"}`, initialised at install time from the running version and its release `seq`), `install.json` (`{"method": "script", "path": "/usr/local/bin/rpmgr", "variant": "full", "roles": ["connector"]}`, written by `rpmgr setup` and both install scripts; the single `role` that v0.1.0 wrote is read as a list of one), and `staging/`, where the updater copies and verifies the files |
 | `/run/rpmgr-update/status.json` | root, 0644 | The updater's last outcome (`updated`, `rolled_back`, `refused`), which the agent reports ([04](04-security.md#over-the-air-updates)) |
 | `/var/lib/rpmgr/dl/<version>/` (controller) | rpmgr, 0750; files 0640 | The release mirror, served under `/dl/`: the controller's own version, the targets of its rollouts and its previous version, verified release files only ([04](04-security.md#over-the-air-updates)) |
 | `/var/lib/rpmgr/audit-checkpoints.log` (controller) | rpmgr, 0640 | Signed audit checkpoints, appended locally and included in every backup; the external sink (Phase 2) is what makes tampering evident ([04](04-security.md#audit-log)) |
@@ -208,8 +208,10 @@ RestartSec=2s
   and oneshot `rpmgr-update.service` ([04](04-security.md#over-the-air-updates)). It:
   1. reads `auto_update` and `update_channel` from `/etc/rpmgr/policy.yaml` **itself** and stops
      if updates are not allowed (it does not trust the agent's decision); a file that does not
-     parse, or that its group or other users may write, counts as `off`
-     ([D120](14-open-decisions.md#security-defaults));
+     parse, that its group or other users may write, that root does not own, or that is a
+     symbolic link counts as `off` ([D120](14-open-decisions.md#security-defaults)), and
+     `install.json` and `state.json` must pass the same test. The connector itself still reads
+     the policy as [04](04-security.md#connector-local-policy) says;
   2. opens the staging directory through a directory fd with
      `openat2(RESOLVE_NO_SYMLINKS | RESOLVE_BENEATH)`, requires regular files (`fstat` → `S_ISREG`;
      no symlinked directory, FIFO or device), and checks that each file's size is ≤ the manifest's
