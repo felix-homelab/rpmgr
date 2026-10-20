@@ -277,3 +277,12 @@ func TestAllInOne(t *testing.T) {
 		}
 	}
 }
+
+// TestKEKSourceFor: a new boot file takes the systemd credential from systemd 250, else a file.
+func TestKEKSourceFor(t *testing.T) {
+	for v, want := range map[int]string{0: config.KEKFile, 249: config.KEKFile, 250: config.KEKSystemdCredential, 257: config.KEKSystemdCredential} {
+		if got := config.KEKSourceFor(v); got != want {
+			t.Errorf("systemd %d: %s, want %s", v, got, want)
+		}
+	}
+}

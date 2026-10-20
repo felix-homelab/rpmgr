@@ -17,6 +17,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/routes"
+	"github.com/felix-homelab/rpmgr/internal/setup/serversetup"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/units"
 	"github.com/felix-homelab/rpmgr/internal/version"
@@ -34,7 +35,7 @@ func commands() *cli.Command {
 			agentcmd.Role("gateway", "run a gateway: public listeners and data sessions from connectors", runGateway),
 			agentcmd.Connector(),
 			agentcmd.Role("all-in-one", "run a controller, a gateway and a connector in one process", runAllInOne, allInOneInit()),
-			setupCommand(),
+			agentcmd.Setup(serversetup.Server{}),
 			agentcmd.Enroll(),
 			loginCommand(promptAPIToken),
 			logoutCommand(),
@@ -114,7 +115,7 @@ func runAllInOne(ctx context.Context, env *cli.Env, path string) error {
 	return allinone.Run(ctx, allinone.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger})
 }
 
-// kekSourceHelp describes --kek-source of init; the default is controller.KEKSourceFor's.
+// kekSourceHelp describes --kek-source of init; the default is config.KEKSourceFor's.
 const kekSourceHelp = "KEK source of a new boot file: systemd-credential or file (default systemd-credential from systemd 250, else file)"
 
 // allInOneInit is `rpmgr all-in-one init`.
@@ -138,7 +139,7 @@ func allInOneInit() *cli.Command {
 			}
 			_, err = fmt.Fprintf(env.Stdout, "Initialised the all-in-one installation.\n  trust domain: %s\n  CA pin:       %s\n"+
 				"  gateway:      %s\n  connector:    %s\n  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n"+
-				"The connector allows no target until its local policy does: rpmgr policy allow-target <host:port>.\n"+firstUser,
+				"The connector allows no target until its local policy does: rpmgr policy allow-target <host:port>.\n"+agentcmd.FirstUserText,
 				r.TrustDomain, r.RootPin, r.GatewayID, r.ConnectorID, r.KEK, r.FirstUserLink)
 			return err
 		},
@@ -165,7 +166,7 @@ func controllerInit() *cli.Command {
 				return err
 			}
 			_, err = fmt.Fprintf(env.Stdout, "Initialised the controller.\n  trust domain: %s\n  CA pin:       %s\n"+
-				"  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n"+firstUser,
+				"  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n"+agentcmd.FirstUserText,
 				r.TrustDomain, r.RootPin, r.KEK, r.FirstUserLink)
 			return err
 		},
@@ -348,9 +349,6 @@ func releaseImport() *cli.Command {
 		},
 	}
 }
-
-// firstUser ends the output of init with the first-user link.
-const firstUser = "Create the first user, Instance Admin and Owner, with this one-time link (valid 7 days):\n  %s\n"
 
 // userResetPassword is `rpmgr user reset-password`: local administration on the controller host,
 // audited as local-cli (docs/04-security.md, "Roles").

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package pki
+package castore
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
@@ -54,7 +55,7 @@ func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([
 		return nil, err
 	}
 	old := active[cakey.KindIntermediate]
-	var inter KeyPair
+	var inter pki.KeyPair
 	if !now.Before(old.NotBefore.Add(old.NotAfter.Sub(old.NotBefore) / 2)) {
 		if inter, err = replaceIntermediate(ctx, tx, s, active[cakey.KindRoot], old, now); err != nil {
 			return nil, err
@@ -63,12 +64,12 @@ func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([
 	} else if inter, err = openKey(s, old); err != nil {
 		return nil, err
 	}
-	is, err := NewIssuer(root, inter, func() time.Time { return now })
+	is, err := pki.NewIssuer(root, inter, func() time.Time { return now })
 	if err != nil {
 		return nil, err
 	}
-	for kind, purpose := range map[cakey.Kind]Purpose{
-		cakey.KindConfigSigning: PurposeConfigSigning, cakey.KindAuditCheckpoint: PurposeAuditCheckpoint,
+	for kind, purpose := range map[cakey.Kind]pki.Purpose{
+		cakey.KindConfigSigning: pki.PurposeConfigSigning, cakey.KindAuditCheckpoint: pki.PurposeAuditCheckpoint,
 	} {
 		a, n := active[kind], next[kind]
 		if a == nil {
@@ -84,7 +85,7 @@ func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([
 			}
 			done = append(done, string(kind)+" key replaced by the next one")
 		case n == nil && !now.Before(a.NotAfter.Add(-SignerNextBefore)):
-			key, err := NewKey()
+			key, err := pki.NewKey()
 			if err != nil {
 				return nil, err
 			}
@@ -92,7 +93,7 @@ func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([
 			if err != nil {
 				return nil, err
 			}
-			if err := saveKey(ctx, tx, s, kind, KeyPair{Cert: cert, Key: key}, cakey.StatusNext); err != nil {
+			if err := saveKey(ctx, tx, s, kind, pki.KeyPair{Cert: cert, Key: key}, cakey.StatusNext); err != nil {
 				return nil, err
 			}
 			done = append(done, "next "+string(kind)+" key created")
@@ -124,21 +125,21 @@ func RotateIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now t
 // replaceIntermediate retires old and saves a new active intermediate signed by root. The old
 // one is retired only while it is still active, so of two rotations at once one fails with
 // ErrRotated instead of leaving two active intermediates.
-func replaceIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, root, old *ent.CAKey, now time.Time) (KeyPair, error) {
+func replaceIntermediate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, root, old *ent.CAKey, now time.Time) (pki.KeyPair, error) {
 	rootKP, err := openKey(s, root)
 	if err != nil {
-		return KeyPair{}, err
+		return pki.KeyPair{}, err
 	}
-	inter, err := NewIntermediate(rootKP, now)
+	inter, err := pki.NewIntermediate(rootKP, now)
 	if err != nil {
-		return KeyPair{}, err
+		return pki.KeyPair{}, err
 	}
 	n, err := tx.CAKey.Update().Where(cakey.ID(old.ID), cakey.StatusEQ(cakey.StatusActive)).SetStatus(cakey.StatusRetired).Save(ctx)
 	if err != nil {
-		return KeyPair{}, err
+		return pki.KeyPair{}, err
 	}
 	if n != 1 {
-		return KeyPair{}, ErrRotated
+		return pki.KeyPair{}, ErrRotated
 	}
 	return inter, saveKey(ctx, tx, s, cakey.KindIntermediate, inter, cakey.StatusActive)
 }

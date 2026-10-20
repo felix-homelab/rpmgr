@@ -22,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -31,7 +32,7 @@ import (
 // sessionEnv is a controller with the Control service on a TCP port.
 type sessionEnv struct {
 	db       *store.DB
-	ca       *pki.CA
+	ca       *castore.CA
 	sessions *controller.Sessions
 	addr     string
 	org      string
@@ -56,7 +57,7 @@ func startSessionsWith(t *testing.T, db *store.DB, opt func(*controller.Sessions
 	s, _ := secret.NewSealer(kek)
 	td := "rpmgr-teststor"
 	// The CA starts 60 days ago, so tests can issue certificates that have expired since.
-	if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return pki.InitCA(sys, tx, s, td, time.Now().Add(-60*24*time.Hour)) }); err != nil {
+	if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return castore.InitCA(sys, tx, s, td, time.Now().Add(-60*24*time.Hour)) }); err != nil {
 		t.Fatal(err)
 	}
 	e := &sessionEnv{db: db, org: storetest.Org(t, db, "org-a"), dbEpoch: rev.DBEpoch, sealer: s, sys: sys}
@@ -69,7 +70,7 @@ func startSessionsWith(t *testing.T, db *store.DB, opt func(*controller.Sessions
 func serveSessions(t *testing.T, e *sessionEnv, opt func(*controller.SessionsOptions)) {
 	t.Helper()
 	db, sys := e.db, e.sys
-	ca, err := pki.LoadCA(sys, db, e.sealer, time.Now)
+	ca, err := castore.LoadCA(sys, db, e.sealer, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}

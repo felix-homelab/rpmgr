@@ -26,6 +26,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/enroll"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -36,7 +37,7 @@ import (
 // installation is a database with an initialised CA and an org.
 type installation struct {
 	db  *store.DB
-	ca  *pki.CA
+	ca  *castore.CA
 	td  string
 	org string
 	sys context.Context
@@ -62,10 +63,10 @@ func newInstallationIn(t *testing.T, td string) *installation {
 	_, _ = rand.Read(raw)
 	kek, _ := secret.NewKEK(raw)
 	s, _ := secret.NewSealer(kek)
-	if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return pki.InitCA(sys, tx, s, td, time.Now()) }); err != nil {
+	if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return castore.InitCA(sys, tx, s, td, time.Now()) }); err != nil {
 		t.Fatal(err)
 	}
-	ca, err := pki.LoadCA(sys, db, s, time.Now)
+	ca, err := castore.LoadCA(sys, db, s, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}

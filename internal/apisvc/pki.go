@@ -16,6 +16,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -31,7 +32,7 @@ type Pki struct {
 	Sealer *secret.Sealer
 	// CA is reloaded after a rotation, so this replica issues from the new intermediate at once;
 	// the others reload within a minute.
-	CA  *pki.CA
+	CA  *castore.CA
 	Now func() time.Time
 }
 
@@ -88,14 +89,14 @@ func (p *Pki) RotateIntermediate(ctx context.Context, _ *connect.Request[rpmgrv1
 	sys := store.CarryTxHook(p.Sys, ctx)
 	var row *ent.CAKey
 	err := store.WriteTx(sys, p.DB, func(tx *ent.Tx) error {
-		if err := pki.RotateIntermediate(sys, tx, p.Sealer, p.now()); err != nil {
+		if err := castore.RotateIntermediate(sys, tx, p.Sealer, p.now()); err != nil {
 			return err
 		}
 		var err error
 		row, err = tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusActive)).Only(sys)
 		return err
 	})
-	if errors.Is(err, pki.ErrRotated) {
+	if errors.Is(err, castore.ErrRotated) {
 		return nil, connect.NewError(connect.CodeAborted, err)
 	}
 	if err != nil {
@@ -121,7 +122,7 @@ func (p *Pki) now() time.Time {
 }
 
 // caKeyOf is a key of the CA as the API shows it, with the time the schedule replaces it if it is
-// active (pki.Rotate).
+// active (castore.Rotate).
 func caKeyOf(r *ent.CAKey) (*rpmgrv1.CAKey, error) {
 	cert, err := x509.ParseCertificate(r.Certificate)
 	if err != nil {
@@ -134,7 +135,7 @@ func caKeyOf(r *ent.CAKey) (*rpmgrv1.CAKey, error) {
 		case cakey.KindIntermediate:
 			out.RotateTime = timestamppb.New(r.NotBefore.Add(r.NotAfter.Sub(r.NotBefore) / 2))
 		case cakey.KindConfigSigning, cakey.KindAuditCheckpoint:
-			out.RotateTime = timestamppb.New(r.NotAfter.Add(-pki.SignerPromoteBefore))
+			out.RotateTime = timestamppb.New(r.NotAfter.Add(-castore.SignerPromoteBefore))
 		}
 	}
 	return out, nil

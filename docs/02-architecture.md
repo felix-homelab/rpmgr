@@ -351,7 +351,12 @@ internal/controller/       api handlers, compiler, registry, jobs
 internal/gateway/          listeners, sni router, http engine, relay
 internal/connector/        session pool, dialer, health, visitors, p2p
 internal/tunnel/           Session/Stream abstraction; quic and h2 implementations; framing
-internal/pki/              CA, issuance, verification, enrollment
+internal/pki/              certificates, identities, verification, enrollment requests (agent side)
+internal/pki/castore/      the controller's CA in the database: issuance records, revocation, rotation
+internal/snapsig/          signing, hashing and verifying snapshots and deny-lists (agent side)
+internal/snapshot/         the snapshot compiler and apply status (controller side)
+internal/setup/            `rpmgr setup`; the controller's steps behind setup.Server
+internal/setup/serversetup/ setup.Server of the full build: controller and all-in-one init
 internal/policy/           connector-local policy parser and enforcement
 internal/routes/           routes and their ports: pools, quotas, allocation, snapshot compilers
 internal/authz/            roles, permission checks, interceptor

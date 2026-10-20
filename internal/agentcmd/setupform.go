@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package agentcmd
 
 import (
 	"bufio"
@@ -15,9 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/term"
 
-	"github.com/felix-homelab/rpmgr/internal/agentcmd"
 	"github.com/felix-homelab/rpmgr/internal/config"
-	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/setup"
 )
 
@@ -106,9 +104,9 @@ func (f *setupForm) controller(v *setup.Values) error {
 		Placeholder("https://rpmgr.example.com").Validate(keep(v.PublicURL, setup.CheckPublicURL)).Value(&v.PublicURL)); err != nil {
 		return err
 	}
-	host, public := setup.PublicHost(v.PublicURL)
+	host, public := setupHost.PublicHost(v.PublicURL)
 	if v.KEKSource == "" {
-		v.KEKSource = controller.KEKSourceFor(f.facts.Systemd)
+		v.KEKSource = config.KEKSourceFor(f.facts.Systemd)
 	}
 	if v.TLS == "" {
 		v.TLS = setup.TLSSelfSigned
@@ -229,7 +227,7 @@ func (f *setupForm) listeners(v *setup.Values) error {
 // token asks for the gateway or enrollment token without echo.
 func (f *setupForm) token() (string, error) {
 	if f.plain {
-		return agentcmd.PromptToken()
+		return PromptToken()
 	}
 	var tok string
 	err := f.ask(huh.NewInput().Title("Token: the gateway or enrollment token").EchoMode(huh.EchoModePassword).

@@ -16,6 +16,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -64,14 +65,14 @@ func ReauthChecks(db *store.DB, sys context.Context) pki.Reauth {
 			}
 			return inst.GetExpiredCertificateGrace().AsDuration()
 		},
-		Check: func(leaf *x509.Certificate) error { return pki.CheckRenewable(sys, db.Client(), leaf) },
+		Check: func(leaf *x509.Certificate) error { return castore.CheckRenewable(sys, db.Client(), leaf) },
 	}
 }
 
 // renew checks that the CSR is bound to the caller's connection and that the presented
 // certificate may be renewed, records that it was seen, and issues the new leaf, all in one
 // transaction.
-func renew(ctx context.Context, db *store.DB, ca *pki.CA, sys context.Context, now func() time.Time, der []byte,
+func renew(ctx context.Context, db *store.DB, ca *castore.CA, sys context.Context, now func() time.Time, der []byte,
 	superseded func([]*ent.IssuedCertificate, string)) ([][]byte, error) {
 	agent, ok := AgentFrom(ctx)
 	if !ok {
@@ -94,10 +95,10 @@ func renew(ctx context.Context, db *store.DB, ca *pki.CA, sys context.Context, n
 	}
 	var cert *x509.Certificate
 	err = store.WriteTx(sys, db, func(tx *ent.Tx) error {
-		if err := pki.CheckRenewable(sys, tx.Client(), agent.Certificate); err != nil {
+		if err := castore.CheckRenewable(sys, tx.Client(), agent.Certificate); err != nil {
 			return err
 		}
-		rows, err := pki.MarkSeen(sys, tx, agent.Certificate, now())
+		rows, err := castore.MarkSeen(sys, tx, agent.Certificate, now())
 		if err != nil {
 			return err
 		}
@@ -110,8 +111,8 @@ func renew(ctx context.Context, db *store.DB, ca *pki.CA, sys context.Context, n
 		return err
 	})
 	switch {
-	case errors.Is(err, pki.ErrNotIssued), errors.Is(err, pki.ErrCertRevoked), errors.Is(err, pki.ErrSuperseded),
-		errors.Is(err, pki.ErrIdentityRevoked):
+	case errors.Is(err, pki.ErrNotIssued), errors.Is(err, castore.ErrCertRevoked), errors.Is(err, castore.ErrSuperseded),
+		errors.Is(err, castore.ErrIdentityRevoked):
 		return nil, status.Error(codes.PermissionDenied, err.Error())
 	case errors.Is(err, pki.ErrSameKey), errors.Is(err, pki.ErrBadCSR):
 		return nil, status.Error(codes.InvalidArgument, err.Error())
