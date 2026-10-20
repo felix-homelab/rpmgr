@@ -51,7 +51,7 @@ func commands() *cli.Command {
 			group("release", "administer release artifacts on the controller host",
 				releaseImport()),
 			agentcmd.SystemdUnit(),
-			agentcmd.Version(),
+			agentcmd.Version("full"),
 		}, append(apiCommands(), testCommands...)...),
 	}
 }

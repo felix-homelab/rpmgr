@@ -531,6 +531,7 @@ import (
 func main() {
 	fmt.Println(version.Get())
 	if len(os.Args) > 2 && os.Args[2] == "--verbose" {
+		fmt.Println("variant: full")
 		fmt.Println(roots)
 	}
 }
@@ -540,7 +541,8 @@ EOF
   # The connector-only build, which has no controller: `controller` exits 2.
   mkdir -p "$r/cmd/rpmgr-connector"
   cp "$r/cmd/rpmgr"/*.go "$r/cmd/rpmgr-connector/"
-  sed -i 's|^func main() {$|func main() {\n\tif len(os.Args) > 1 \&\& os.Args[1] == "controller" {\n\t\tos.Exit(2)\n\t}|' "$r/cmd/rpmgr-connector/main.go"
+  sed -i 's|^func main() {$|func main() {\n\tif len(os.Args) > 1 \&\& os.Args[1] == "controller" {\n\t\tos.Exit(2)\n\t}|; s|"variant: full"|"variant: connector"|' \
+    "$r/cmd/rpmgr-connector/main.go"
   git -C "$r" add -A && git -C "$r" commit -q -s -m "feat: fixture"
   commit=$(git -C "$r" rev-parse HEAD)
   rb="$dir/build-release.sh" ra="$dir/check-release-artifacts.sh"

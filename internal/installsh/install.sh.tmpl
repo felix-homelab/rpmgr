@@ -19,12 +19,15 @@
 set -eu
 
 VERSION='{{.Version}}'
-BIN=/usr/local/bin/rpmgr
+# RPMGR_INSTALL_BIN and RPMGR_INSTALL_STATE move the binary and the install record for the script's
+# tests only; an install leaves them unset.
+BIN=${RPMGR_INSTALL_BIN:-/usr/local/bin/rpmgr}
+STATE=${RPMGR_INSTALL_STATE:-/var/lib/rpmgr-update}
 
 die() { echo "rpmgr install: $*" >&2; exit 1; }
 say() { echo "rpmgr install: $*" >&2; }
 
-controller='' pin='' role=connector variant=full token_file='' bbr=0 verify_only=0 targets='' denied=''
+controller='' pin='' role=connector variant='' token_file='' bbr=0 verify_only=0 targets='' denied=''
 nl='
 '
 while [ $# -gt 0 ]; do
@@ -52,7 +55,8 @@ controller=${controller%/}
 [ -n "$pin" ] || [ "$verify_only" = 1 ] || die "--ca-pin is required (the controller's UI shows the command)"
 case $role in gateway | connector) ;; *) die "--role must be gateway or connector" ;; esac
 # The connector-only build runs a connector and nothing else (D21, D119).
-case $variant in full | connector) ;; *) die "--variant must be full or connector" ;; esac
+case $variant in '' | full | connector) ;; *) die "--variant must be full or connector" ;; esac
+{{template "variant" .}}
 if [ "$variant" = connector ] && [ "$role" != connector ]; then die "the connector-only build runs no $role; use --variant full"; fi
 if [ "$role" = gateway ] && [ -n "$targets$denied" ]; then die "a gateway has no local policy for --allow-target or --deny-target"; fi
 if [ -n "$token_file" ] && [ ! -r "$token_file" ]; then die "cannot read --token-file $token_file"; fi
@@ -100,7 +104,7 @@ for tool in systemctl useradd install; do command -v "$tool" >/dev/null 2>&1 || 
 id rpmgr >/dev/null 2>&1 || useradd --system --user-group --home-dir /var/lib/rpmgr --shell /usr/sbin/nologin rpmgr
 install -d -m 0755 /etc/rpmgr
 install -d -m 0750 -o rpmgr -g rpmgr /var/lib/rpmgr
-install -d -m 0700 /var/lib/rpmgr-update
+install -d -m 0700 "$STATE"
 install -m 0755 "$tmp/$artifact" "$BIN.new"
 mv -f "$BIN.new" "$BIN"
 
@@ -150,8 +154,8 @@ fi
 
 # The updater's state, out of the service user's reach (docs/04-security.md, "Over-the-air
 # updates"): how rpmgr was installed, and the floor and seq of the release it came from.
-printf '{"method":"script","path":"%s","variant":"%s","role":"%s"}\n' "$BIN" "$variant" "$role" >/var/lib/rpmgr-update/install.json
-printf '{"seq":%s,"floor":"%s"}\n' "$seq" "$VERSION" >/var/lib/rpmgr-update/state.json
+printf '{"method":"script","path":"%s","variant":"%s","role":"%s"}\n' "$BIN" "$variant" "$role" >"$STATE/install.json"
+printf '{"seq":%s,"floor":"%s"}\n' "$seq" "$VERSION" >"$STATE/state.json"
 
 # Host tuning (docs/03-connections.md, "Host tuning applied by the installer"). The file always
 # holds the 7 MiB UDP buffers quic-go asks for, whatever the host has now, so that a re-run keeps

@@ -41,6 +41,9 @@ func TestRoleCommandsAbsent(t *testing.T) {
 	if code, _, errOut := run("setup", "--yes"); code != cli.ExitUsage || !strings.Contains(errOut, "--role: connector") {
 		t.Errorf("setup --yes without a role names the roles of this build: %d %q", code, errOut)
 	}
+	if code, out, _ := run("version", "--verbose"); code != 0 || !strings.Contains(out, "\nvariant: connector\n") {
+		t.Errorf("rpmgr version --verbose names the variant: %d %q", code, out)
+	}
 	if code, out, _ := run("systemd-unit", "connector"); code != 0 || !strings.Contains(out, "ExecStart=/usr/local/bin/rpmgr connector") {
 		t.Errorf("rpmgr systemd-unit connector: %d %q", code, out)
 	}

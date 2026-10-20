@@ -20,7 +20,10 @@ REPO=felix-homelab/rpmgr
 # Where releases come from; other values serve a mirror, or a test (https only).
 GITHUB=${RPMGR_INSTALL_GITHUB:-https://github.com}
 API=${RPMGR_INSTALL_API:-https://api.github.com}
-BIN=/usr/local/bin/rpmgr
+# RPMGR_INSTALL_BIN and RPMGR_INSTALL_STATE move the binary and the install record for the script's
+# tests only; an install leaves them unset.
+BIN=${RPMGR_INSTALL_BIN:-/usr/local/bin/rpmgr}
+STATE=${RPMGR_INSTALL_STATE:-/var/lib/rpmgr-update}
 
 die() { echo "rpmgr install: $*" >&2; exit 1; }
 say() { echo "rpmgr install: $*" >&2; }
@@ -37,7 +40,7 @@ Installs rpmgr from its GitHub release, verified with the release root keys in t
   --version <version>  install this version, e.g. 0.1.0 (default: this script's, else the latest)
   --prerelease         without --version, take the latest release including pre-releases
   --variant <variant>  full (every role) or connector (the connector-only build); default: the
-                       build this host runs, else full
+                       build this host runs, else full; another build than it runs is refused
   --no-setup           do not offer to run "rpmgr setup"
   --upgrade            upgrade the rpmgr of this host, which must be installed: no setup, and after
                        the version only what is left to do
@@ -69,16 +72,36 @@ case $version in *[!0-9A-Za-z.-]*) die "--version $version is not a release vers
 if [ "$upgrade" = 1 ] && [ "$verify_only" = 0 ] && [ ! -x "$BIN" ]; then
   die "nothing to upgrade: $BIN is not installed; install it without --upgrade"
 fi
-# The build this host runs, as its install record names it: an upgrade keeps it (D119).
-installed=''
-if [ -r /var/lib/rpmgr-update/install.json ]; then
-  installed=$(grep -o '"variant":"[a-z]*"' /var/lib/rpmgr-update/install.json | cut -d'"' -f4)
+case $variant in '' | full | connector) ;; *) die "--variant must be full or connector" ;; esac
+
+# installed_variant prints the variant of the rpmgr this host runs (D119): the one its install
+# record names, else the one the installed binary reports, full for a binary from before the
+# variants (0.1.0 reports none); nothing when there is no binary or it does not run.
+installed_variant() {
+  if [ -r "$STATE/install.json" ]; then
+    grep -o '"variant":"[a-z]*"' "$STATE/install.json" | cut -d'"' -f4
+    return 0
+  fi
+  [ -x "$BIN" ] || return 0
+  out=$("$BIN" version --verbose 2>/dev/null) || return 0
+  v=$(printf '%s\n' "$out" | sed -n 's/^variant: //p')
+  echo "${v:-full}"
+}
+# A host keeps the build it runs: another --variant is refused, never switched silently. An
+# upgrade that cannot tell which build the host runs asks for --variant; a new host gets full.
+installed=$(installed_variant)
+case $installed in '' | full | connector) ;; *) die "the install record names an unknown variant $installed" ;; esac
+if [ -n "$installed" ] && [ -n "$variant" ] && [ "$variant" != "$installed" ]; then
+  die "this host runs the $installed build of rpmgr, not the $variant build; remove rpmgr first to change it"
 fi
-[ -n "$variant" ] || variant=${installed:-full}
-case $variant in full | connector) ;; *) die "--variant must be full or connector" ;; esac
-if [ "$upgrade" = 1 ] && [ -n "$installed" ] && [ "$installed" != "$variant" ]; then
-  die "this host runs the $installed build of rpmgr; --upgrade keeps it (--variant $installed)"
+[ -n "$variant" ] || variant=$installed
+if [ -z "$variant" ]; then
+  if [ "${upgrade:-0}" = 1 ] && [ "$verify_only" = 0 ]; then
+    die "cannot tell which build of rpmgr $BIN is; name it with --variant full or --variant connector"
+  fi
+  variant=full
 fi
+
 
 case $(uname -s) in
   Linux) ;;
@@ -228,6 +251,12 @@ install -d -m 0750 -o rpmgr -g rpmgr /var/lib/rpmgr
 install -d -m 0755 "$(dirname "$BIN")"
 install -m 0755 "$tmp/$artifact" "$BIN.new"
 mv -f "$BIN.new" "$BIN"
+# The install record, out of the service user's reach (docs/10-operations.md, "Filesystem
+# layout"): how rpmgr was installed and which build, which later runs and the updater keep. A
+# record that exists already stays: its variant is this one, and it may name the host's role.
+install -d -m 0700 "$STATE"
+[ -e "$STATE/install.json" ] ||
+  printf '{"method":"script","path":"%s","variant":"%s"}\n' "$BIN" "$variant" >"$STATE/install.json"
 "$BIN" version --verbose || die "the installed $BIN does not run"
 [ "$upgrade" = 1 ] || say "installed rpmgr $VERSION to $BIN"
 

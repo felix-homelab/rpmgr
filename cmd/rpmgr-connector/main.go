@@ -47,7 +47,7 @@ func commands() *cli.Command {
 			agentcmd.Diag(),
 			agentcmd.Policy(),
 			agentcmd.SystemdUnit("connector"),
-			agentcmd.Version(),
+			agentcmd.Version("connector"),
 		},
 	}
 }

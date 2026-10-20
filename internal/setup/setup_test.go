@@ -593,6 +593,10 @@ func TestNew_ServerRolesNeedAServer(t *testing.T) {
 		if _, err := setup.New(v, h); !errors.Is(err, cli.ErrNotAvailable) {
 			t.Errorf("%s without a Server: %v, want not available", r, err)
 		}
+		// Refused before the values are checked: no list of what a controller would need.
+		if _, err := setup.New(setup.Values{Role: r}, h); !errors.Is(err, cli.ErrNotAvailable) || strings.Contains(err.Error(), "public URL") {
+			t.Errorf("%s without values and a Server: %v, want only not available", r, err)
+		}
 	}
 	gw := setup.Values{Role: setup.Gateway, ControllerURL: "https://panel.example.com", Pin: pin(t), Token: newToken(t)}
 	if _, err := setup.New(gw, h); err != nil {

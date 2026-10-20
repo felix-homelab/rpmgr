@@ -90,18 +90,22 @@ func runConnector(ctx context.Context, env *cli.Env, path string) error {
 		Now: Clock})
 }
 
-// Version is `rpmgr version`; with --verbose it also prints the release root keys compiled into
-// the binary, which the release job checks (D60).
-func Version() *cli.Command {
+// Version is `rpmgr version`; with --verbose it also prints the build's variant, full or
+// connector, which the install scripts read to keep it (D119), and the release root keys compiled
+// into the binary, which the release job checks (D60).
+func Version(variant string) *cli.Command {
 	var verbose bool
 	return &cli.Command{
 		Name:    "version",
 		Summary: "print the version of this binary",
 		Flags: func(fs *flag.FlagSet) {
-			fs.BoolVar(&verbose, "verbose", false, "also print the release root keys compiled into this binary")
+			fs.BoolVar(&verbose, "verbose", false, "also print the variant of this build and the release root keys compiled into it")
 		},
 		Run: func(_ context.Context, env *cli.Env, _ []string) error {
 			if _, err := fmt.Fprintln(env.Stdout, version.Get()); err != nil || !verbose {
+				return err
+			}
+			if _, err := fmt.Fprintf(env.Stdout, "variant: %s\n", variant); err != nil {
 				return err
 			}
 			roots := release.Roots()

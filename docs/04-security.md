@@ -1067,7 +1067,10 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
     API for the latest release, and with `--prerelease` for the latest including pre-releases.
   - **Options:** `[--version <version>] [--prerelease] [--variant full|connector] [--no-setup]
     [--upgrade] [--restart] [--dir <directory>] [--verify-only]`. `--upgrade` replaces the binary
-    of a host that has one and nothing else, and keeps the variant `install.json` records;
+    of a host that has one and nothing else, and keeps its variant: the one `install.json` records,
+    else the one the binary reports ([10](10-operations.md#filesystem-layout)); it refuses to guess
+    when it can tell neither, and both scripts refuse an explicit other `--variant`. The global
+    script writes `install.json` when the host has none;
     `--restart` restarts the rpmgr services that run
     ([10](10-operations.md#upgrades-and-version-skew)).
   - **What it installs,** only after the verification: the binary in `/usr/local/bin` (replaced in

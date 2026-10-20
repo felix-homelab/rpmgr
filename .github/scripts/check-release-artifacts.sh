@@ -70,11 +70,17 @@ if [[ $host != linux/* || ! -f $dir/rpmgr-$version-linux-${host#linux/} ]]; then
   echo "skipped: running the artifacts of $host (none)"
   exit 0
 fi
-for f in "$dir/rpmgr-$version-$(tr / - <<<"$host")" "$dir/rpmgr-$version-$(tr / - <<<"$host")-connector"; do
+for variant in full connector; do
+  f=$dir/rpmgr-$version-$(tr / - <<<"$host")
+  [[ $variant == full ]] || f+=-$variant
   out=$("$f" version --verbose)
   echo "$out"
   if [[ $(head -n 1 <<<"$out") != "rpmgr $version (commit $commit, $pinned, $host)" ]]; then
     fail "${f##*/} reports another version, commit or toolchain"
+  fi
+  # The install scripts read the variant to keep it (D119).
+  if [[ $(sed -n 2p <<<"$out") != "variant: $variant" ]]; then
+    fail "${f##*/} does not report its variant, $variant"
   fi
   if grep -q '^test release root keys' <<<"$out"; then
     fail "${f##*/} carries the test root keys of an rpmgrtest build (D60)"

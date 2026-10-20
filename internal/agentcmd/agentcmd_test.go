@@ -17,7 +17,7 @@ import (
 // runRpmgr runs a command tree of this package's commands, as cmd/rpmgr registers them.
 func runRpmgr(args ...string) (int, string, string) {
 	var out, errOut bytes.Buffer
-	tree := &cli.Command{Name: "rpmgr", Sub: []*cli.Command{Connector(), Enroll(), Leave(), Status(), Diag(), Policy(), Version()}}
+	tree := &cli.Command{Name: "rpmgr", Sub: []*cli.Command{Connector(), Enroll(), Leave(), Status(), Diag(), Policy(), Version("full")}}
 	code := cli.Main(context.Background(), tree, args, &cli.Env{
 		Stdout: &out, Stderr: &errOut, Getenv: func(string) string { return "" },
 	})

@@ -101,6 +101,51 @@ func newServer(t *testing.T) *server {
 // run runs the install script of 1.4.2 for root with args; extra PATH directories come first.
 func run(t *testing.T, s *server, path string, args ...string) (string, error) {
 	t.Helper()
+	return runOn(t, newHostDirs(t), s, path, args...)
+}
+
+// hostDirs are where a script under test finds the host's binary and install record
+// (RPMGR_INSTALL_BIN, RPMGR_INSTALL_STATE), so that no test reads the machine's own.
+type hostDirs struct{ bin, state string }
+
+// newHostDirs is a host without rpmgr.
+func newHostDirs(t *testing.T) hostDirs {
+	d := t.TempDir()
+	return hostDirs{bin: filepath.Join(d, "bin", "rpmgr"), state: filepath.Join(d, "rpmgr-update")}
+}
+
+// withRecord gives h an install record of variant.
+func (h hostDirs) withRecord(t *testing.T, variant string) hostDirs {
+	t.Helper()
+	if err := os.MkdirAll(h.state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rec := `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"` + variant + `","role":"connector"}` + "\n"
+	if err := os.WriteFile(filepath.Join(h.state, "install.json"), []byte(rec), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+// withBinary gives h an rpmgr that prints out as `rpmgr version --verbose`, or exits 1 for "".
+func (h hostDirs) withBinary(t *testing.T, out string) hostDirs {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(h.bin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "#!/bin/sh\nexit 1\n"
+	if out != "" {
+		body = "#!/bin/sh\ncat <<'EOF'\n" + out + "\nEOF\n"
+	}
+	if err := os.WriteFile(h.bin, []byte(body), 0o700); err != nil { //nolint:gosec // G306: a fake binary
+		t.Fatal(err)
+	}
+	return h
+}
+
+// runOn runs the controller's script on host h.
+func runOn(t *testing.T, h hostDirs, s *server, path string, args ...string) (string, error) {
+	t.Helper()
 	b, err := installsh.Render("1.4.2", []release.PublicKey{pubkey(t, root)})
 	if err != nil {
 		t.Fatal(err)
@@ -110,7 +155,8 @@ func run(t *testing.T, s *server, path string, args ...string) (string, error) {
 		t.Fatal(err)
 	}
 	cmd := exec.Command("sh", append([]string{script}, args...)...)
-	cmd.Env = []string{"PATH=" + path + os.Getenv("PATH"), "CURL_CA_BUNDLE=" + s.ca, "HOME=" + t.TempDir()}
+	cmd.Env = []string{"PATH=" + path + os.Getenv("PATH"), "CURL_CA_BUNDLE=" + s.ca, "HOME=" + t.TempDir(),
+		"RPMGR_INSTALL_BIN=" + h.bin, "RPMGR_INSTALL_STATE=" + h.state}
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

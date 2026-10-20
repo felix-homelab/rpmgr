@@ -2,8 +2,9 @@
 
 The release verification both install scripts share (docs/04-security.md, "Install scripts"):
 "roots" writes the root keys, "verify" defines verify_release. A script that includes them
-defines die, say, $tmp, $VERSION, $arch and $artifact first, and has downloaded the five files
-into $tmp. */}}
+defines die, say, $tmp, $VERSION, $arch, $variant and $artifact first, and has downloaded the five
+files into $tmp. "variant" chooses the build to install, from $variant, $upgrade, $verify_only,
+$BIN and $STATE. */}}
 {{- define "roots" -}}
 # The release root keys, by minisign key ID (bytes as in signatures).
 {{range .Roots}}
@@ -81,4 +82,34 @@ verify_release() {
   [ "$(openssl dgst -sha256 -r "$tmp/$artifact" | cut -d' ' -f1)" = "$want_sum" ] || die "the binary's SHA-256 does not match the manifest"
   say "verified rpmgr $VERSION (manifest $seq)"
 }
+{{end -}}
+
+{{- define "variant"}}
+# installed_variant prints the variant of the rpmgr this host runs (D119): the one its install
+# record names, else the one the installed binary reports, full for a binary from before the
+# variants (0.1.0 reports none); nothing when there is no binary or it does not run.
+installed_variant() {
+  if [ -r "$STATE/install.json" ]; then
+    grep -o '"variant":"[a-z]*"' "$STATE/install.json" | cut -d'"' -f4
+    return 0
+  fi
+  [ -x "$BIN" ] || return 0
+  out=$("$BIN" version --verbose 2>/dev/null) || return 0
+  v=$(printf '%s\n' "$out" | sed -n 's/^variant: //p')
+  echo "${v:-full}"
+}
+# A host keeps the build it runs: another --variant is refused, never switched silently. An
+# upgrade that cannot tell which build the host runs asks for --variant; a new host gets full.
+installed=$(installed_variant)
+case $installed in '' | full | connector) ;; *) die "the install record names an unknown variant $installed" ;; esac
+if [ -n "$installed" ] && [ -n "$variant" ] && [ "$variant" != "$installed" ]; then
+  die "this host runs the $installed build of rpmgr, not the $variant build; remove rpmgr first to change it"
+fi
+[ -n "$variant" ] || variant=$installed
+if [ -z "$variant" ]; then
+  if [ "${upgrade:-0}" = 1 ] && [ "$verify_only" = 0 ]; then
+    die "cannot tell which build of rpmgr $BIN is; name it with --variant full or --variant connector"
+  fi
+  variant=full
+fi
 {{end -}}

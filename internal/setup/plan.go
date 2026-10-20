@@ -85,11 +85,12 @@ func Preflight(h Host) (Facts, error) {
 // New checks the values against the host and returns the plan, or every problem it found.
 func New(v Values, h Host) (*Plan, error) {
 	h.defaults()
+	// A role this build does not set up is refused before its values are checked.
+	if CheckRole(string(v.Role)) == nil && !h.Offers(v.Role) {
+		return nil, fmt.Errorf("the role %s: %w", v.Role, cli.ErrNotAvailable)
+	}
 	if err := v.check(h); err != nil {
 		return nil, err
-	}
-	if !h.Offers(v.Role) {
-		return nil, fmt.Errorf("the role %s: %w", v.Role, cli.ErrNotAvailable)
 	}
 	if !h.IsRoot() {
 		return nil, errRoot
