@@ -45,8 +45,9 @@ gh workflow run bench.yml --ref main -f profile=standard
 |---|---|---|
 | `throughput` | Goodput of 1 and 32 streams up and down, for direct, QUIC and TLS + HTTP/2; gateway and connector CPU per Gbit/s from their `process_cpu_seconds_total` | — |
 | `setup` | Connection-setup latency p50 and p99 at a fixed rate, open loop | — |
-| `http` | HTTP/2 requests per second and latency through an http route, 32 workers | — |
-| `udp` | Datagrams per second and loss at 1 200 and 1 400 bytes, and the share on the oversize path from `rpmgr_udp_oversize_total`; 3 000 bytes show that counter works | — |
+| `http` | HTTP/2 requests per second and p50/p99 through an http route, with a direct HTTPS reference beside the connector, 32 workers, `-reps` repetitions | — |
+| `udp` | Datagrams per second, loss and echo RTT p50/p99 at 1 200 and 1 400 bytes, and the share on the oversize path from `rpmgr_udp_oversize_total`; 3 000 bytes show that counter works | — |
+| `fairness` | Four routes through one connector and gateway, 16 streams on the first and one on each other, with a setup echo in parallel: per-route goodput, per-stream Jain index and setup p99 | — |
 | `vb18` | VB-18: the share of new connections a connector gets on a route two connectors serve, before and while its session's writers are blocked by uploads through its link limited to 10 Mbit/s | — |
 | `changes` | One configuration change per second: apply time from the commit until the gateway's `rpmgr_agent_applied_revision` moves, and held connections lost on an unchanged route | `-routes`: 1 000 in the full profile, 200 in the standard one |
 | `kill` | SIGKILL of the gateway, then of the controller, while connections are held: recovery time and connections lost | — |
