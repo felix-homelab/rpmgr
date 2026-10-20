@@ -20,3 +20,11 @@ func AfterCopy(t testing.TB, f func()) {
 	afterCopy = f
 	t.Cleanup(func() { afterCopy = nil })
 }
+
+// BeforeSwap runs f after the new binary is written beside the installed one and before it is
+// synced and checked, until the test ends.
+func BeforeSwap(t testing.TB, f func(path string)) {
+	t.Helper()
+	beforeSwap = f
+	t.Cleanup(func() { beforeSwap = nil })
+}

@@ -21,6 +21,25 @@ var text string
 
 var unit = template.Must(template.New("unit").Parse(text))
 
+//go:embed rpmgr-update.tmpl
+var updaterText string
+
+var updater = template.Must(template.New("updater").Parse(updaterText))
+
+// RenderUpdater returns the root-owned updater's pair of units, rpmgr-update.path and
+// rpmgr-update.service, each after a comment line that names its file. bin is the installed
+// binary, the path install.json records.
+func RenderUpdater(bin string) ([]byte, error) {
+	if !binRe.MatchString(bin) || path.Clean(bin) != bin {
+		return nil, fmt.Errorf("units: the binary path %q must be absolute and clean, without spaces, %%, $ or \\", bin)
+	}
+	var b bytes.Buffer
+	if err := updater.Execute(&b, struct{ Bin, BinDir string }{bin, path.Dir(bin)}); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
 // Options vary a role's unit.
 type Options struct {
 	// Bin is the binary's absolute path: /usr/local/bin/rpmgr for script installs.
