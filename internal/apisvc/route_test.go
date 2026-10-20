@@ -864,3 +864,64 @@ func TestPreviewRoute(t *testing.T) {
 		t.Fatalf("a Viewer previews: %v", err)
 	}
 }
+
+// TestPreviewRoute_Capabilities (D113): a preview lists only the gateways and connectors whose
+// latest control session announced every capability the route needs; one that never connected is
+// judged as a gateway or connector of this release.
+func TestPreviewRoute_Capabilities(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	c := e.db.Client()
+	e.verified(t, org, "example.com", true)
+	var gws, cons []string
+	for _, name := range []string{"gw1", "gw2", "gw3"} {
+		gw, err := createGateway(ada, org, group, name, name+".example.com:443")
+		if err != nil {
+			t.Fatal(err)
+		}
+		gws = append(gws, gw.GetId())
+	}
+	web, err := createRoute(ada, org, httpRoute("web", group, "web.example.com"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"c1", "c2", "c3"} {
+		id := e.addConnector(t, org, name, nil).ID
+		cons = append(cons, id)
+		if _, err := ada.rt.CreateRouteTarget(ctx, connect.NewRequest(&rpmgrv1.CreateRouteTargetRequest{RouteId: web.GetId(),
+			Target: addressTarget(id, "10.0.0.5", 8080)})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// gw1 and c1 announced the capabilities, gw2 and c2 did not, gw3 and c3 never connected.
+	for id, caps := range map[string][]string{gws[0]: {"test.gw"}, gws[1]: {"tunnel.quic"}, cons[0]: {"test.conn"}, cons[1]: nil} {
+		c.AgentSession.Create().SetID(id).SetOrgID(org).SetSessionEpoch(1).SetControllerNode("ctn_1").SetConnectedAt(e.clock).
+			SetLastSeenAt(e.clock).SetCapabilities(caps).ExecX(e.sys)
+	}
+	change := httpRoute("", "", "web.example.com", "www.example.com")
+	change.Id = web.GetId()
+	preview := func() *rpmgrv1.PreviewRouteResponse {
+		t.Helper()
+		r, err := ada.rt.PreviewRoute(ctx, connect.NewRequest(&rpmgrv1.PreviewRouteRequest{OrgId: org, Route: change,
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"http.hostnames"}}}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.Msg
+	}
+	sorted := func(ids ...string) []string { return slices.Sorted(slices.Values(ids)) }
+	if p := preview(); !slices.Equal(p.GetGatewayIds(), sorted(gws...)) || !slices.Equal(p.GetConnectorIds(), sorted(cons...)) {
+		t.Fatalf("without a gate: %v %v", p.GetGatewayIds(), p.GetConnectorIds())
+	}
+	for _, g := range []struct {
+		kind pki.Kind
+		cap  string
+	}{{pki.KindGateway, "test.gw"}, {pki.KindConnector, "test.conn"}} {
+		t.Cleanup(routes.Register(routes.Gate{Capability: g.cap, Kind: g.kind,
+			Uses: func(_ context.Context, _ *ent.Client, id string) (bool, error) { return id == web.GetId(), nil }}))
+	}
+	// This release announces neither test capability, so gw3 and c3 are left out too.
+	if p := preview(); !slices.Equal(p.GetGatewayIds(), gws[:1]) || !slices.Equal(p.GetConnectorIds(), cons[:1]) {
+		t.Fatalf("with gates: gateways %v, connectors %v; want %v and %v", p.GetGatewayIds(), p.GetConnectorIds(), gws[:1], cons[:1])
+	}
+}

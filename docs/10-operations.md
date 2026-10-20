@@ -464,6 +464,12 @@ affect agents take effect through reconciliation and show apply status like any 
   know refuses to start ([06](06-data-model.md#migrations)).
 - A protocol change that would break N−1 ships behind a capability flag first; the old behaviour is
   removed one minor release later.
+- **Gated route features** fail closed on older agents
+  ([03](03-connections.md#versioning-and-capabilities), [D113](14-open-decisions.md#engineering)):
+  a route that uses a feature an agent's release lacks, such as a require-header rule on a gateway
+  of the previous minor, is left out of that agent's snapshot, and the route status shows the agent
+  with `CAPABILITY_MISSING` until it is upgraded. With mixed gateways in a group, only the upgraded
+  ones serve such a route; upgrade the gateways before using a new route feature.
 - Before the first release, one change of meaning shipped without a capability: access policies'
   deny rules win ([D85](14-open-decisions.md#engineering)). A gateway of a release candidate
   (v0.1.0-rc.1 to rc.6) applies the first matching rule to the same snapshot, so a deny placed
