@@ -24,6 +24,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
@@ -108,6 +109,15 @@ func TestPurge(t *testing.T) {
 			SetExpiresAt(long).SetCreatedBy("usr_x").ExecX(sys)
 		certificate("gateway", gw.ID, now.Add(-95*24*time.Hour), nil)
 
+		// A rollout names the purged ephemeral connector, the purged gateway and a live connector.
+		rel := c.Release.Create().SetVersion("0.2.0").SetChannel("stable").SetManifestSeq(2).SetManifest([]byte("{}")).
+			SetSignature([]byte("s")).SetSigningKeyStatement([]byte("{}")).SetStatementSignature([]byte("s")).SetSource("check").SaveX(sys)
+		ro := c.Rollout.Create().SetReleaseID(rel.ID).SetCreatedBy("usr_x").SaveX(sys)
+		for id, kind := range map[string]string{goneByEnd: "connector", gw.ID: "gateway", live: "connector"} {
+			c.RolloutTarget.Create().SetRolloutID(ro.ID).SetAgentID(id).SetAgentKind(rollouttarget.AgentKind(kind)).
+				SetBucket(store.RolloutBucket(id)).ExecX(sys)
+		}
+
 		logPath := filepath.Join(t.TempDir(), "revocations.log")
 		rl, err := revlog.Open(logPath, func() time.Time { return now })
 		if err != nil {
@@ -151,6 +161,9 @@ func TestPurge(t *testing.T) {
 			c.AgentSession.Query().CountX(sys) != 2 {
 			t.Fatalf("left behind: %d targets, %d statuses, %d data sessions, %d sessions", c.RouteTarget.Query().CountX(sys),
 				c.ResourceStatus.Query().CountX(sys), c.DataSession.Query().CountX(sys), c.AgentSession.Query().CountX(sys))
+		}
+		if left := c.RolloutTarget.Query().Select(rollouttarget.FieldAgentID).StringsX(sys); len(left) != 1 || left[0] != live {
+			t.Fatalf("rollout targets left: %v, want only the live connector's", left)
 		}
 		// The ephemeral connector's certificate stays, for the revocation; the tombstones' expired ones go.
 		if certs := c.IssuedCertificate.Query().CountX(sys); certs != 2 {

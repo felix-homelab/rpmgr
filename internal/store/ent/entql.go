@@ -40,9 +40,12 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/release"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rollout"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -66,7 +69,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 53)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 56)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   acmestorage.Table,
@@ -803,6 +806,29 @@ var schemaGraph = func() *sqlgraph.Schema {
 	}
 	graph.Nodes[36] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
+			Table:   release.Table,
+			Columns: release.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: release.FieldID,
+			},
+		},
+		Type: "Release",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			release.FieldVersion:             {Type: field.TypeString, Column: release.FieldVersion},
+			release.FieldChannel:             {Type: field.TypeEnum, Column: release.FieldChannel},
+			release.FieldManifestSeq:         {Type: field.TypeInt64, Column: release.FieldManifestSeq},
+			release.FieldManifest:            {Type: field.TypeBytes, Column: release.FieldManifest},
+			release.FieldSignature:           {Type: field.TypeBytes, Column: release.FieldSignature},
+			release.FieldSigningKeyStatement: {Type: field.TypeBytes, Column: release.FieldSigningKeyStatement},
+			release.FieldStatementSignature:  {Type: field.TypeBytes, Column: release.FieldStatementSignature},
+			release.FieldSource:              {Type: field.TypeEnum, Column: release.FieldSource},
+			release.FieldMirroredAt:          {Type: field.TypeTime, Column: release.FieldMirroredAt},
+			release.FieldCreatedAt:           {Type: field.TypeTime, Column: release.FieldCreatedAt},
+		},
+	}
+	graph.Nodes[37] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
 			Table:   resourcestatus.Table,
 			Columns: resourcestatus.Columns,
 			ID: &sqlgraph.FieldSpec{
@@ -820,7 +846,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			resourcestatus.FieldSince:      {Type: field.TypeTime, Column: resourcestatus.FieldSince},
 		},
 	}
-	graph.Nodes[37] = &sqlgraph.Node{
+	graph.Nodes[38] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   revokedidentity.Table,
 			Columns: revokedidentity.Columns,
@@ -839,7 +865,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			revokedidentity.FieldNotAfter:    {Type: field.TypeTime, Column: revokedidentity.FieldNotAfter},
 		},
 	}
-	graph.Nodes[38] = &sqlgraph.Node{
+	graph.Nodes[39] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   revokedserial.Table,
 			Columns: revokedserial.Columns,
@@ -856,7 +882,53 @@ var schemaGraph = func() *sqlgraph.Schema {
 			revokedserial.FieldNotAfter:  {Type: field.TypeTime, Column: revokedserial.FieldNotAfter},
 		},
 	}
-	graph.Nodes[39] = &sqlgraph.Node{
+	graph.Nodes[40] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   rollout.Table,
+			Columns: rollout.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: rollout.FieldID,
+			},
+		},
+		Type: "Rollout",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			rollout.FieldVersion:     {Type: field.TypeInt64, Column: rollout.FieldVersion},
+			rollout.FieldReleaseID:   {Type: field.TypeString, Column: rollout.FieldReleaseID},
+			rollout.FieldStage:       {Type: field.TypeEnum, Column: rollout.FieldStage},
+			rollout.FieldPercentage:  {Type: field.TypeInt, Column: rollout.FieldPercentage},
+			rollout.FieldState:       {Type: field.TypeEnum, Column: rollout.FieldState},
+			rollout.FieldActive:      {Type: field.TypeBool, Column: rollout.FieldActive},
+			rollout.FieldPauseReason: {Type: field.TypeString, Column: rollout.FieldPauseReason},
+			rollout.FieldCreatedBy:   {Type: field.TypeString, Column: rollout.FieldCreatedBy},
+			rollout.FieldCreatedAt:   {Type: field.TypeTime, Column: rollout.FieldCreatedAt},
+			rollout.FieldUpdatedBy:   {Type: field.TypeString, Column: rollout.FieldUpdatedBy},
+			rollout.FieldUpdatedAt:   {Type: field.TypeTime, Column: rollout.FieldUpdatedAt},
+		},
+	}
+	graph.Nodes[41] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   rollouttarget.Table,
+			Columns: rollouttarget.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: rollouttarget.FieldID,
+			},
+		},
+		Type: "RolloutTarget",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			rollouttarget.FieldRolloutID:     {Type: field.TypeString, Column: rollouttarget.FieldRolloutID},
+			rollouttarget.FieldAgentID:       {Type: field.TypeString, Column: rollouttarget.FieldAgentID},
+			rollouttarget.FieldAgentKind:     {Type: field.TypeEnum, Column: rollouttarget.FieldAgentKind},
+			rollouttarget.FieldCanary:        {Type: field.TypeBool, Column: rollouttarget.FieldCanary},
+			rollouttarget.FieldBucket:        {Type: field.TypeInt, Column: rollouttarget.FieldBucket},
+			rollouttarget.FieldState:         {Type: field.TypeEnum, Column: rollouttarget.FieldState},
+			rollouttarget.FieldReason:        {Type: field.TypeString, Column: rollouttarget.FieldReason},
+			rollouttarget.FieldVersionBefore: {Type: field.TypeString, Column: rollouttarget.FieldVersionBefore},
+			rollouttarget.FieldUpdatedAt:     {Type: field.TypeTime, Column: rollouttarget.FieldUpdatedAt},
+		},
+	}
+	graph.Nodes[42] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   route.Table,
 			Columns: route.Columns,
@@ -881,7 +953,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			route.FieldUpdatedBy:      {Type: field.TypeString, Column: route.FieldUpdatedBy},
 		},
 	}
-	graph.Nodes[40] = &sqlgraph.Node{
+	graph.Nodes[43] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routehttp.Table,
 			Columns: routehttp.Columns,
@@ -910,7 +982,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routehttp.FieldMaintenanceMessage: {Type: field.TypeString, Column: routehttp.FieldMaintenanceMessage},
 		},
 	}
-	graph.Nodes[41] = &sqlgraph.Node{
+	graph.Nodes[44] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routehostname.Table,
 			Columns: routehostname.Columns,
@@ -930,7 +1002,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routehostname.FieldDomainID:       {Type: field.TypeString, Column: routehostname.FieldDomainID},
 		},
 	}
-	graph.Nodes[42] = &sqlgraph.Node{
+	graph.Nodes[45] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routepolicy.Table,
 			Columns: routepolicy.Columns,
@@ -947,7 +1019,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routepolicy.FieldPosition: {Type: field.TypeInt, Column: routepolicy.FieldPosition},
 		},
 	}
-	graph.Nodes[43] = &sqlgraph.Node{
+	graph.Nodes[46] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routetcp.Table,
 			Columns: routetcp.Columns,
@@ -965,7 +1037,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routetcp.FieldIdleTimeoutSeconds: {Type: field.TypeInt, Column: routetcp.FieldIdleTimeoutSeconds},
 		},
 	}
-	graph.Nodes[44] = &sqlgraph.Node{
+	graph.Nodes[47] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routetarget.Table,
 			Columns: routetarget.Columns,
@@ -995,7 +1067,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routetarget.FieldEnabled:          {Type: field.TypeBool, Column: routetarget.FieldEnabled},
 		},
 	}
-	graph.Nodes[45] = &sqlgraph.Node{
+	graph.Nodes[48] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routetrafficdaily.Table,
 			Columns: routetrafficdaily.Columns,
@@ -1015,7 +1087,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routetrafficdaily.FieldErrors:      {Type: field.TypeInt64, Column: routetrafficdaily.FieldErrors},
 		},
 	}
-	graph.Nodes[46] = &sqlgraph.Node{
+	graph.Nodes[49] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routetraffichourly.Table,
 			Columns: routetraffichourly.Columns,
@@ -1035,7 +1107,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routetraffichourly.FieldErrors:      {Type: field.TypeInt64, Column: routetraffichourly.FieldErrors},
 		},
 	}
-	graph.Nodes[47] = &sqlgraph.Node{
+	graph.Nodes[50] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   routeudp.Table,
 			Columns: routeudp.Columns,
@@ -1052,7 +1124,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routeudp.FieldFlowIdleTimeoutSeconds: {Type: field.TypeInt, Column: routeudp.FieldFlowIdleTimeoutSeconds},
 		},
 	}
-	graph.Nodes[48] = &sqlgraph.Node{
+	graph.Nodes[51] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   secretmeta.Table,
 			Columns: secretmeta.Columns,
@@ -1070,7 +1142,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			secretmeta.FieldCreatedAt:  {Type: field.TypeTime, Column: secretmeta.FieldCreatedAt},
 		},
 	}
-	graph.Nodes[49] = &sqlgraph.Node{
+	graph.Nodes[52] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   session.Table,
 			Columns: session.Columns,
@@ -1094,7 +1166,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			session.FieldRevokedAt:         {Type: field.TypeTime, Column: session.FieldRevokedAt},
 		},
 	}
-	graph.Nodes[50] = &sqlgraph.Node{
+	graph.Nodes[53] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   totpcredential.Table,
 			Columns: totpcredential.Columns,
@@ -1112,7 +1184,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			totpcredential.FieldLastStep:    {Type: field.TypeInt64, Column: totpcredential.FieldLastStep},
 		},
 	}
-	graph.Nodes[51] = &sqlgraph.Node{
+	graph.Nodes[54] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   trafficbaseline.Table,
 			Columns: trafficbaseline.Columns,
@@ -1134,7 +1206,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			trafficbaseline.FieldReportedAt:  {Type: field.TypeTime, Column: trafficbaseline.FieldReportedAt},
 		},
 	}
-	graph.Nodes[52] = &sqlgraph.Node{
+	graph.Nodes[55] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   user.Table,
 			Columns: user.Columns,
@@ -1298,6 +1370,30 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		"RecoveryCode",
 		"User",
+	)
+	graph.MustAddE(
+		"release",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   rollout.ReleaseTable,
+			Columns: []string{rollout.ReleaseColumn},
+			Bidi:    false,
+		},
+		"Rollout",
+		"Release",
+	)
+	graph.MustAddE(
+		"rollout",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   rollouttarget.RolloutTable,
+			Columns: []string{rollouttarget.RolloutColumn},
+			Bidi:    false,
+		},
+		"RolloutTarget",
+		"Rollout",
 	)
 	graph.MustAddE(
 		"group",
@@ -4451,6 +4547,96 @@ func (f *RecoveryCodeFilter) WhereHasUserWith(preds ...predicate.User) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *ReleaseQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the ReleaseQuery builder.
+func (_q *ReleaseQuery) Filter() *ReleaseFilter {
+	return &ReleaseFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *ReleaseMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the ReleaseMutation builder.
+func (m *ReleaseMutation) Filter() *ReleaseFilter {
+	return &ReleaseFilter{config: m.config, predicateAdder: m}
+}
+
+// ReleaseFilter provides a generic filtering capability at runtime for ReleaseQuery.
+type ReleaseFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *ReleaseFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[36].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *ReleaseFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(release.FieldID))
+}
+
+// WhereVersion applies the entql string predicate on the version field.
+func (f *ReleaseFilter) WhereVersion(p entql.StringP) {
+	f.Where(p.Field(release.FieldVersion))
+}
+
+// WhereChannel applies the entql string predicate on the channel field.
+func (f *ReleaseFilter) WhereChannel(p entql.StringP) {
+	f.Where(p.Field(release.FieldChannel))
+}
+
+// WhereManifestSeq applies the entql int64 predicate on the manifest_seq field.
+func (f *ReleaseFilter) WhereManifestSeq(p entql.Int64P) {
+	f.Where(p.Field(release.FieldManifestSeq))
+}
+
+// WhereManifest applies the entql []byte predicate on the manifest field.
+func (f *ReleaseFilter) WhereManifest(p entql.BytesP) {
+	f.Where(p.Field(release.FieldManifest))
+}
+
+// WhereSignature applies the entql []byte predicate on the signature field.
+func (f *ReleaseFilter) WhereSignature(p entql.BytesP) {
+	f.Where(p.Field(release.FieldSignature))
+}
+
+// WhereSigningKeyStatement applies the entql []byte predicate on the signing_key_statement field.
+func (f *ReleaseFilter) WhereSigningKeyStatement(p entql.BytesP) {
+	f.Where(p.Field(release.FieldSigningKeyStatement))
+}
+
+// WhereStatementSignature applies the entql []byte predicate on the statement_signature field.
+func (f *ReleaseFilter) WhereStatementSignature(p entql.BytesP) {
+	f.Where(p.Field(release.FieldStatementSignature))
+}
+
+// WhereSource applies the entql string predicate on the source field.
+func (f *ReleaseFilter) WhereSource(p entql.StringP) {
+	f.Where(p.Field(release.FieldSource))
+}
+
+// WhereMirroredAt applies the entql time.Time predicate on the mirrored_at field.
+func (f *ReleaseFilter) WhereMirroredAt(p entql.TimeP) {
+	f.Where(p.Field(release.FieldMirroredAt))
+}
+
+// WhereCreatedAt applies the entql time.Time predicate on the created_at field.
+func (f *ReleaseFilter) WhereCreatedAt(p entql.TimeP) {
+	f.Where(p.Field(release.FieldCreatedAt))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *ResourceStatusQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -4479,7 +4665,7 @@ type ResourceStatusFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *ResourceStatusFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[36].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[37].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4549,7 +4735,7 @@ type RevokedIdentityFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RevokedIdentityFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[37].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[38].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4619,7 +4805,7 @@ type RevokedSerialFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RevokedSerialFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[38].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[39].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4651,6 +4837,214 @@ func (f *RevokedSerialFilter) WhereNotAfter(p entql.TimeP) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *RolloutQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the RolloutQuery builder.
+func (_q *RolloutQuery) Filter() *RolloutFilter {
+	return &RolloutFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *RolloutMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the RolloutMutation builder.
+func (m *RolloutMutation) Filter() *RolloutFilter {
+	return &RolloutFilter{config: m.config, predicateAdder: m}
+}
+
+// RolloutFilter provides a generic filtering capability at runtime for RolloutQuery.
+type RolloutFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *RolloutFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[40].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *RolloutFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(rollout.FieldID))
+}
+
+// WhereVersion applies the entql int64 predicate on the version field.
+func (f *RolloutFilter) WhereVersion(p entql.Int64P) {
+	f.Where(p.Field(rollout.FieldVersion))
+}
+
+// WhereReleaseID applies the entql string predicate on the release_id field.
+func (f *RolloutFilter) WhereReleaseID(p entql.StringP) {
+	f.Where(p.Field(rollout.FieldReleaseID))
+}
+
+// WhereStage applies the entql string predicate on the stage field.
+func (f *RolloutFilter) WhereStage(p entql.StringP) {
+	f.Where(p.Field(rollout.FieldStage))
+}
+
+// WherePercentage applies the entql int predicate on the percentage field.
+func (f *RolloutFilter) WherePercentage(p entql.IntP) {
+	f.Where(p.Field(rollout.FieldPercentage))
+}
+
+// WhereState applies the entql string predicate on the state field.
+func (f *RolloutFilter) WhereState(p entql.StringP) {
+	f.Where(p.Field(rollout.FieldState))
+}
+
+// WhereActive applies the entql bool predicate on the active field.
+func (f *RolloutFilter) WhereActive(p entql.BoolP) {
+	f.Where(p.Field(rollout.FieldActive))
+}
+
+// WherePauseReason applies the entql string predicate on the pause_reason field.
+func (f *RolloutFilter) WherePauseReason(p entql.StringP) {
+	f.Where(p.Field(rollout.FieldPauseReason))
+}
+
+// WhereCreatedBy applies the entql string predicate on the created_by field.
+func (f *RolloutFilter) WhereCreatedBy(p entql.StringP) {
+	f.Where(p.Field(rollout.FieldCreatedBy))
+}
+
+// WhereCreatedAt applies the entql time.Time predicate on the created_at field.
+func (f *RolloutFilter) WhereCreatedAt(p entql.TimeP) {
+	f.Where(p.Field(rollout.FieldCreatedAt))
+}
+
+// WhereUpdatedBy applies the entql string predicate on the updated_by field.
+func (f *RolloutFilter) WhereUpdatedBy(p entql.StringP) {
+	f.Where(p.Field(rollout.FieldUpdatedBy))
+}
+
+// WhereUpdatedAt applies the entql time.Time predicate on the updated_at field.
+func (f *RolloutFilter) WhereUpdatedAt(p entql.TimeP) {
+	f.Where(p.Field(rollout.FieldUpdatedAt))
+}
+
+// WhereHasRelease applies a predicate to check if query has an edge release.
+func (f *RolloutFilter) WhereHasRelease() {
+	f.Where(entql.HasEdge("release"))
+}
+
+// WhereHasReleaseWith applies a predicate to check if query has an edge release with a given conditions (other predicates).
+func (f *RolloutFilter) WhereHasReleaseWith(preds ...predicate.Release) {
+	f.Where(entql.HasEdgeWith("release", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *RolloutTargetQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the RolloutTargetQuery builder.
+func (_q *RolloutTargetQuery) Filter() *RolloutTargetFilter {
+	return &RolloutTargetFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *RolloutTargetMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the RolloutTargetMutation builder.
+func (m *RolloutTargetMutation) Filter() *RolloutTargetFilter {
+	return &RolloutTargetFilter{config: m.config, predicateAdder: m}
+}
+
+// RolloutTargetFilter provides a generic filtering capability at runtime for RolloutTargetQuery.
+type RolloutTargetFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *RolloutTargetFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[41].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *RolloutTargetFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(rollouttarget.FieldID))
+}
+
+// WhereRolloutID applies the entql string predicate on the rollout_id field.
+func (f *RolloutTargetFilter) WhereRolloutID(p entql.StringP) {
+	f.Where(p.Field(rollouttarget.FieldRolloutID))
+}
+
+// WhereAgentID applies the entql string predicate on the agent_id field.
+func (f *RolloutTargetFilter) WhereAgentID(p entql.StringP) {
+	f.Where(p.Field(rollouttarget.FieldAgentID))
+}
+
+// WhereAgentKind applies the entql string predicate on the agent_kind field.
+func (f *RolloutTargetFilter) WhereAgentKind(p entql.StringP) {
+	f.Where(p.Field(rollouttarget.FieldAgentKind))
+}
+
+// WhereCanary applies the entql bool predicate on the canary field.
+func (f *RolloutTargetFilter) WhereCanary(p entql.BoolP) {
+	f.Where(p.Field(rollouttarget.FieldCanary))
+}
+
+// WhereBucket applies the entql int predicate on the bucket field.
+func (f *RolloutTargetFilter) WhereBucket(p entql.IntP) {
+	f.Where(p.Field(rollouttarget.FieldBucket))
+}
+
+// WhereState applies the entql string predicate on the state field.
+func (f *RolloutTargetFilter) WhereState(p entql.StringP) {
+	f.Where(p.Field(rollouttarget.FieldState))
+}
+
+// WhereReason applies the entql string predicate on the reason field.
+func (f *RolloutTargetFilter) WhereReason(p entql.StringP) {
+	f.Where(p.Field(rollouttarget.FieldReason))
+}
+
+// WhereVersionBefore applies the entql string predicate on the version_before field.
+func (f *RolloutTargetFilter) WhereVersionBefore(p entql.StringP) {
+	f.Where(p.Field(rollouttarget.FieldVersionBefore))
+}
+
+// WhereUpdatedAt applies the entql time.Time predicate on the updated_at field.
+func (f *RolloutTargetFilter) WhereUpdatedAt(p entql.TimeP) {
+	f.Where(p.Field(rollouttarget.FieldUpdatedAt))
+}
+
+// WhereHasRollout applies a predicate to check if query has an edge rollout.
+func (f *RolloutTargetFilter) WhereHasRollout() {
+	f.Where(entql.HasEdge("rollout"))
+}
+
+// WhereHasRolloutWith applies a predicate to check if query has an edge rollout with a given conditions (other predicates).
+func (f *RolloutTargetFilter) WhereHasRolloutWith(preds ...predicate.Rollout) {
+	f.Where(entql.HasEdgeWith("rollout", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *RouteQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -4679,7 +5073,7 @@ type RouteFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[39].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[42].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4793,7 +5187,7 @@ type RouteHTTPFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteHTTPFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[40].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[43].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -4941,7 +5335,7 @@ type RouteHostnameFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteHostnameFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[41].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[44].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5044,7 +5438,7 @@ type RoutePolicyFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RoutePolicyFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[42].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[45].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5132,7 +5526,7 @@ type RouteTCPFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteTCPFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[43].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[46].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5225,7 +5619,7 @@ type RouteTargetFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteTargetFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[44].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[47].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5392,7 +5786,7 @@ type RouteTrafficDailyFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteTrafficDailyFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[45].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[48].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5467,7 +5861,7 @@ type RouteTrafficHourlyFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteTrafficHourlyFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[46].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[49].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5542,7 +5936,7 @@ type RouteUDPFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *RouteUDPFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[47].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[50].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5630,7 +6024,7 @@ type SecretMetaFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *SecretMetaFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[48].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[51].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5695,7 +6089,7 @@ type SessionFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *SessionFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[49].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[52].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5804,7 +6198,7 @@ type TOTPCredentialFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *TOTPCredentialFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[50].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[53].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5883,7 +6277,7 @@ type TrafficBaselineFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *TrafficBaselineFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[51].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[54].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -5968,7 +6362,7 @@ type UserFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *UserFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[52].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[55].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})

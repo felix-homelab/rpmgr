@@ -114,6 +114,9 @@ type PortQuota func(*sql.Selector)
 // RecoveryCode is the predicate function for recoverycode builders.
 type RecoveryCode func(*sql.Selector)
 
+// Release is the predicate function for release builders.
+type Release func(*sql.Selector)
+
 // ResourceStatus is the predicate function for resourcestatus builders.
 type ResourceStatus func(*sql.Selector)
 
@@ -122,6 +125,12 @@ type RevokedIdentity func(*sql.Selector)
 
 // RevokedSerial is the predicate function for revokedserial builders.
 type RevokedSerial func(*sql.Selector)
+
+// Rollout is the predicate function for rollout builders.
+type Rollout func(*sql.Selector)
+
+// RolloutTarget is the predicate function for rollouttarget builders.
+type RolloutTarget func(*sql.Selector)
 
 // Route is the predicate function for route builders.
 type Route func(*sql.Selector)

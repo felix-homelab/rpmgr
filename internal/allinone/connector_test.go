@@ -196,7 +196,8 @@ func TestAllInOne_StartsFromAnOlderSchema(t *testing.T) {
 	db, _, _ := h.db(t)
 	ctx := context.Background()
 	// The migration that added built_in, and every later one, are not applied yet; the later ones
-	// apply again over what they made, as SQLite migrations rebuild their tables.
+	// apply again over what they made, as SQLite migrations rebuild their tables, except the
+	// tables a later migration creates, which go first.
 	var builtIn string
 	if err := db.Writer.QueryRowContext(ctx, "SELECT version FROM "+store.RevisionTable+" WHERE description = 'agents_built_in'").Scan(&builtIn); err != nil {
 		t.Fatal(err)
@@ -211,7 +212,9 @@ func TestAllInOne_StartsFromAnOlderSchema(t *testing.T) {
 		"DELETE FROM issued_certificates WHERE enrollment_token_id IN (SELECT id FROM enrollment_tokens WHERE built_in)",
 		"DELETE FROM enrollment_tokens WHERE built_in", "DELETE FROM connectors",
 		"ALTER TABLE gateways DROP COLUMN built_in", "ALTER TABLE connectors DROP COLUMN built_in",
-		"ALTER TABLE enrollment_tokens DROP COLUMN built_in", "DELETE FROM " + store.RevisionTable + " WHERE version >= '" + builtIn + "'",
+		"ALTER TABLE enrollment_tokens DROP COLUMN built_in",
+		"DROP TABLE rollout_targets", "DROP TABLE rollouts", "DROP TABLE releases",
+		"DELETE FROM " + store.RevisionTable + " WHERE version >= '" + builtIn + "'",
 		"PRAGMA foreign_keys = ON",
 	} {
 		if _, err := conn.ExecContext(ctx, q); err != nil {

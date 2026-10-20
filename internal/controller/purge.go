@@ -24,6 +24,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 )
@@ -226,6 +227,10 @@ func deleteAgent(ctx context.Context, tx *ent.Tx, a agentRow) error {
 		},
 		func() error {
 			_, err := tx.CompiledSnapshot.Delete().Where(compiledsnapshot.AgentID(a.id)).Exec(ctx)
+			return err
+		},
+		func() error {
+			_, err := tx.RolloutTarget.Delete().Where(rollouttarget.AgentID(a.id)).Exec(ctx)
 			return err
 		},
 	}
