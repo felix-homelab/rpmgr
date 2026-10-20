@@ -41,10 +41,6 @@ func ArtifactName(version string, a Artifact) string {
 	return name
 }
 
-// mirrored reports whether the mirror keeps an artifact: Phase 1 mirrors the full Linux builds
-// (D59).
-func mirrored(a Artifact) bool { return a.OS == "linux" && a.Variant == "full" }
-
 // A Source gives the files of a release by name.
 type Source interface {
 	Open(ctx context.Context, name string) (io.ReadCloser, error)
@@ -77,27 +73,46 @@ func (g GitHub) Open(ctx context.Context, name string) (io.ReadCloser, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
+		if until, ok := rateLimited(resp, time.Now()); ok {
+			return nil, &RateLimitedError{Until: until}
+		}
 		return nil, fmt.Errorf("release: %s: %s", req.URL, resp.Status)
 	}
 	return resp.Body, nil
 }
 
-// Mirror keeps the verified release of one version in Dir/<version>/ and serves it under /dl/
-// (docs/04-security.md, "Over-the-air updates").
+// Mirror keeps verified releases in Dir/<version>/ and serves them under /dl/
+// (docs/04-security.md, "Over-the-air updates"): the controller's own version Version, the
+// target of each running or paused rollout, and the version the controller ran before (D119).
+// Each kept version has every artifact its manifest names, both variants for every OS and
+// architecture.
 type Mirror struct {
 	Dir     string
 	Version string
 	Roots   []PublicKey
 	Now     func() time.Time
+
+	// wrap, if set, wraps the writer of each file the mirror keeps; tests use it to fail a write
+	// as a full disk does.
+	wrap func(name string, w io.Writer) io.Writer
 }
 
-// Sync fetches the release of m.Version from src, verifies it and keeps it. Artifacts already
-// kept unchanged are not fetched again. A file is kept only once it verifies, the manifest last;
-// other versions' directories go once a version is complete.
-func (m *Mirror) Sync(ctx context.Context, src Source) (*Manifest, error) {
-	if !Releasable(m.Version) {
-		return nil, ErrDevelopment
-	}
+// Signed is a release's verified manifest with the signed files it was verified from.
+type Signed struct {
+	Manifest     *Manifest
+	Statement    []byte // signing-key.json
+	StatementSig []byte // signing-key.json.minisig
+	ManifestJSON []byte // manifest.json
+	ManifestSig  []byte // manifest.json.minisig
+}
+
+// meta are the signed files in the order of metaFiles.
+func (s *Signed) meta() [][]byte {
+	return [][]byte{s.Statement, s.StatementSig, s.ManifestSig, s.ManifestJSON}
+}
+
+// Fetch reads a release's signed files from src, without its artifacts, and verifies them.
+func (m *Mirror) Fetch(ctx context.Context, src Source) (*Signed, error) {
 	meta := make([][]byte, len(metaFiles))
 	for i, name := range metaFiles {
 		b, err := read(ctx, src, name, maxMeta)
@@ -110,32 +125,59 @@ func (m *Mirror) Sync(ctx context.Context, src Source) (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
-	if man.Version != m.Version {
-		return nil, fmt.Errorf("release: the source gave the manifest of %s, not of %s", man.Version, m.Version)
-	}
-	if err := os.MkdirAll(filepath.Join(m.Dir, m.Version), 0o750); err != nil {
+	return &Signed{Manifest: man, Statement: meta[0], StatementSig: meta[1], ManifestSig: meta[2], ManifestJSON: meta[3]}, nil
+}
+
+// Sync keeps the controller's own release, m.Version, from src (SyncVersion).
+func (m *Mirror) Sync(ctx context.Context, src Source) (*Manifest, error) {
+	s, err := m.SyncVersion(ctx, m.Version, src)
+	if err != nil {
 		return nil, err
 	}
-	root, err := os.OpenRoot(filepath.Join(m.Dir, m.Version))
+	return s.Manifest, nil
+}
+
+// SyncVersion fetches the release of version from src, verifies it and keeps it with every
+// artifact its manifest names. Artifacts already kept unchanged are not fetched again. A file is
+// kept only once it verifies, the manifest last, so a version with a manifest is complete; a
+// failure keeps what was there. Other versions stay until Prune.
+func (m *Mirror) SyncVersion(ctx context.Context, version string, src Source) (*Signed, error) {
+	if !Releasable(m.Version) {
+		return nil, ErrDevelopment
+	}
+	if !Releasable(version) {
+		return nil, fmt.Errorf("release: %q is no release version", version)
+	}
+	s, err := m.Fetch(ctx, src)
+	if err != nil {
+		return nil, err
+	}
+	if s.Manifest.Version != version {
+		return nil, fmt.Errorf("release: the source gave the manifest of %s, not of %s", s.Manifest.Version, version)
+	}
+	if err := os.MkdirAll(filepath.Join(m.Dir, version), 0o750); err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(filepath.Join(m.Dir, version))
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = root.Close() }()
-	for _, a := range man.Artifacts {
-		if name := ArtifactName(m.Version, a); mirrored(a) && !kept(root, name, a) {
-			if err := keep(root, name, a, func() (io.ReadCloser, error) { return src.Open(ctx, name) }); err != nil {
+	for _, a := range s.Manifest.Artifacts {
+		if name := ArtifactName(version, a); !kept(root, name, a) {
+			if err := m.keep(root, name, a, func() (io.ReadCloser, error) { return src.Open(ctx, name) }); err != nil {
 				return nil, err
 			}
 		}
 	}
-	for i, name := range metaFiles {
-		sum := sha256.Sum256(meta[i])
-		a := Artifact{Size: int64(len(meta[i])), SHA256: hex.EncodeToString(sum[:])}
-		if err := keep(root, name, a, func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(meta[i])), nil }); err != nil {
+	for i, b := range s.meta() {
+		sum := sha256.Sum256(b)
+		a := Artifact{Size: int64(len(b)), SHA256: hex.EncodeToString(sum[:])}
+		if err := m.keep(root, metaFiles[i], a, func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(b)), nil }); err != nil {
 			return nil, err
 		}
 	}
-	return man, m.prune()
+	return s, nil
 }
 
 func read(ctx context.Context, src Source, name string, limit int64) ([]byte, error) {
@@ -162,8 +204,8 @@ func kept(root *os.Root, name string, a Artifact) bool {
 }
 
 // keep writes a file that must be the artifact a to a temporary name, checks and syncs it, and
-// renames it into place.
-func keep(root *os.Root, name string, a Artifact, open func() (io.ReadCloser, error)) error {
+// renames it into place. A failure, a full disk included, removes the temporary file.
+func (m *Mirror) keep(root *os.Root, name string, a Artifact, open func() (io.ReadCloser, error)) error {
 	rc, err := open()
 	if err != nil {
 		return err
@@ -174,7 +216,11 @@ func keep(root *os.Root, name string, a Artifact, open func() (io.ReadCloser, er
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(f, io.LimitReader(rc, a.Size+1))
+	var w io.Writer = f
+	if m.wrap != nil {
+		w = m.wrap(name, f)
+	}
+	_, err = io.Copy(w, io.LimitReader(rc, a.Size+1))
 	if err == nil {
 		_, err = f.Seek(0, io.SeekStart)
 	}
@@ -194,26 +240,88 @@ func keep(root *os.Root, name string, a Artifact, open func() (io.ReadCloser, er
 	return root.Rename(tmp, name)
 }
 
-// prune removes the directories of other versions.
-func (m *Mirror) prune() error {
+// Prune removes the directories of the versions keep does not name, and returns those versions.
+// The controller's own version is always kept; directories that are no version stay.
+func (m *Mirror) Prune(keep ...string) ([]string, error) {
 	entries, err := os.ReadDir(m.Dir)
-	if err != nil {
-		return err
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
 	}
+	if err != nil {
+		return nil, err
+	}
+	kept := map[string]bool{m.Version: true}
+	for _, v := range keep {
+		kept[v] = true
+	}
+	var removed []string
 	for _, e := range entries {
-		if e.IsDir() && e.Name() != m.Version && Releasable(e.Name()) {
+		if e.IsDir() && !kept[e.Name()] && Releasable(e.Name()) {
 			if err := os.RemoveAll(filepath.Join(m.Dir, e.Name())); err != nil {
-				return err
+				return removed, err
 			}
+			removed = append(removed, e.Name())
 		}
 	}
-	return nil
+	return removed, nil
+}
+
+// Complete reports whether the mirror holds version complete: its manifest is written last.
+func (m *Mirror) Complete(version string) bool {
+	_, err := m.manifest(version)
+	return err == nil
+}
+
+// ownFile records the controller's own version and the version it ran before, in Dir.
+const ownFile = ".own.json"
+
+type own struct {
+	Version  string `json:"version"`
+	Previous string `json:"previous,omitempty"`
+}
+
+// RecordOwn records the controller's own version and returns the version it ran before its last
+// upgrade, "" if none is known: a new own version moves the recorded one to previous. A
+// development build records nothing.
+func (m *Mirror) RecordOwn() (string, error) {
+	if !Releasable(m.Version) {
+		return "", nil
+	}
+	path := filepath.Join(m.Dir, ownFile)
+	var o own
+	b, err := os.ReadFile(path) //nolint:gosec // G304: the mirror's own file
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+	case err != nil:
+		return "", err
+	case json.Unmarshal(b, &o) != nil || (o.Version != "" && !Releasable(o.Version)) || (o.Previous != "" && !Releasable(o.Previous)):
+		o = own{} // an unreadable record knows no previous version
+	}
+	if o.Version == m.Version {
+		return o.Previous, nil
+	}
+	if o.Version != "" {
+		o.Previous = o.Version
+	}
+	o.Version = m.Version
+	if err := os.MkdirAll(m.Dir, 0o750); err != nil {
+		return "", err
+	}
+	b, err = json.Marshal(o)
+	if err != nil {
+		return "", err
+	}
+	tmp := path + ".part"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return "", err
+	}
+	return o.Previous, os.Rename(tmp, path)
 }
 
 var fileRe = regexp.MustCompile(`^[0-9A-Za-z.+-]+$`)
 
-// Handler serves GET /dl/<version>/<file>: the files of the mirrored version, once it is
-// complete. Other paths, other versions and development builds get 404.
+// Handler serves GET /dl/<version>/<file>: the files of each complete mirrored version. Other
+// paths, versions the mirror does not hold complete, and development builds get 404.
 func (m *Mirror) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -226,11 +334,11 @@ func (m *Mirror) Handler() http.Handler {
 			http.Error(w, "this development build serves no downloads", http.StatusNotFound)
 			return
 		}
-		if version != m.Version || !fileRe.MatchString(name) || !m.serves(name) {
+		if !Releasable(version) || !fileRe.MatchString(name) || !m.serves(version, name) {
 			http.NotFound(w, r)
 			return
 		}
-		root, err := os.OpenRoot(filepath.Join(m.Dir, m.Version))
+		root, err := os.OpenRoot(filepath.Join(m.Dir, version))
 		if err != nil {
 			http.NotFound(w, r)
 			return
@@ -253,14 +361,27 @@ func (m *Mirror) Handler() http.Handler {
 	})
 }
 
-// serves reports whether name is a file of the complete mirrored version.
-func (m *Mirror) serves(name string) bool {
-	b, err := os.ReadFile(filepath.Join(m.Dir, m.Version, "manifest.json")) //nolint:gosec // G304: the mirror's own file
+// manifest reads the manifest of a mirrored version; there is one only once the version is
+// complete.
+func (m *Mirror) manifest(version string) (*Manifest, error) {
+	if !Releasable(version) {
+		return nil, fmt.Errorf("release: %q is no release version", version)
+	}
+	b, err := os.ReadFile(filepath.Join(m.Dir, version, "manifest.json")) //nolint:gosec // G304: the mirror's own file of a checked version
 	if err != nil {
-		return false
+		return nil, err
 	}
 	var man Manifest
-	if json.Unmarshal(b, &man) != nil {
+	if err := json.Unmarshal(b, &man); err != nil {
+		return nil, err
+	}
+	return &man, nil
+}
+
+// serves reports whether name is a file of a complete mirrored version.
+func (m *Mirror) serves(version, name string) bool {
+	man, err := m.manifest(version)
+	if err != nil {
 		return false
 	}
 	for _, f := range metaFiles {
@@ -269,7 +390,7 @@ func (m *Mirror) serves(name string) bool {
 		}
 	}
 	for _, a := range man.Artifacts {
-		if mirrored(a) && ArtifactName(m.Version, a) == name {
+		if ArtifactName(version, a) == name {
 			return true
 		}
 	}

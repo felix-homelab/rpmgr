@@ -29,6 +29,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/release/releasetest"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
+	entrelease "github.com/felix-homelab/rpmgr/internal/store/ent/release"
 	"github.com/felix-homelab/rpmgr/internal/store/migrations"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
@@ -76,6 +77,10 @@ func TestCheckRelease(t *testing.T) {
 		mu.Lock()
 		asked = append(asked, r.URL.String()) // a proxy gets the absolute URL
 		mu.Unlock()
+		if r.URL.Host == "releases.example" && r.URL.Path == "/api/releases" {
+			_, _ = w.Write([]byte(`[{"tag_name":"v1.4.2"}]`))
+			return
+		}
 		b, ok := files[strings.TrimPrefix(r.URL.Path, "/download/v1.4.2/")]
 		if r.URL.Host != "releases.example" || !ok {
 			http.NotFound(w, r)
@@ -85,13 +90,15 @@ func TestCheckRelease(t *testing.T) {
 	}))
 	defer proxy.Close()
 	purl, _ := url.Parse(proxy.URL)
-	o := controller.ReleaseCheckOptions{DB: db, Mirror: relMirror(t, "1.4.2"), Base: "http://releases.example/download", Proxy: http.ProxyURL(purl),
+	o := controller.ReleaseCheckOptions{DB: db, Mirror: relMirror(t, "1.4.2"), Base: "http://releases.example/download",
+		API: "http://releases.example/api/releases", Proxy: http.ProxyURL(purl),
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 
 	if err := controller.CheckRelease(sys, o); err != nil {
 		t.Fatal(err)
 	}
-	if len(asked) != 5 || asked[0] != "http://releases.example/download/v1.4.2/signing-key.json" {
+	if len(asked) != 6 || asked[0] != "http://releases.example/download/v1.4.2/signing-key.json" ||
+		asked[5] != "http://releases.example/api/releases?per_page=30" {
 		t.Errorf("asked %v", asked)
 	}
 	if b, err := os.ReadFile(filepath.Join(o.Mirror.Dir, "1.4.2", "rpmgr-1.4.2-linux-amd64")); err != nil || string(b) != "rpmgr 1.4.2 for linux/amd64" {
@@ -122,7 +129,8 @@ func TestReleaseCheckOff(t *testing.T) {
 	for _, m := range []*release.Mirror{relMirror(t, "dev"), {Dir: t.TempDir(), Version: "1.4.2"}} {
 		done := make(chan struct{})
 		go func() {
-			controller.ReleaseCheck(context.Background(), controller.ReleaseCheckOptions{Mirror: m, Source: release.Dir("/nonexistent"),
+			controller.ReleaseCheck(context.Background(), controller.ReleaseCheckOptions{Mirror: m,
+				Source: func(string) release.Source { return release.Dir("/nonexistent") },
 				Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 			close(done)
 		}()
@@ -174,6 +182,15 @@ func TestImportRelease(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(state, "dl", "1.4.2", "rpmgr-1.4.2-linux-amd64")); err != nil {
 		t.Errorf("the imported artifact: %v", err)
+	}
+	db, err = store.OpenSQLite(ctx, filepath.Join(state, "controller.db"), store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := db.Client().Release.Query().Only(storetest.SystemCtx(t))
+	_ = db.Close()
+	if err != nil || row.Version != "1.4.2" || row.Source != entrelease.SourceImport || row.MirroredAt == nil || row.ManifestSeq != 87 {
+		t.Errorf("the recorded release: %+v %v", row, err)
 	}
 	if _, err := controller.ImportRelease(ctx, boot, dir, "dev", roots, now); err == nil {
 		t.Error("a development build imported")

@@ -937,10 +937,12 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    [14](14-open-decisions.md) D4), or an Instance Admin uploads one on air-gapped installs. It
    verifies the signature and mirrors the artifacts under `/dl/`. Agents never contact the release
    source. **The mirror:**
-   - **What it lists:** the daily check verifies the manifest of every release of the instance's
-     channel newer than the oldest kept one, so that the Instance Admin sees which releases
-     exist; an instance on `stable` lists stable releases only, one on `prerelease` both. A listed
-     release is not downloaded until the mirror needs it.
+   - **What it lists:** the daily check asks GitHub's API for one page of the newest releases
+     and verifies the manifest of every one of the instance's channel that is newer than the
+     oldest kept version and not recorded yet, so that the Instance Admin sees which releases
+     exist; an instance on `stable` lists stable releases only, one on `prerelease` both, and a
+     manifest signed for `prerelease` counts as a pre-release whatever the listing says. A listed
+     release is recorded without its artifacts, which are downloaded once the mirror keeps it.
    - **What it keeps** ([D119](14-open-decisions.md#engineering)): the controller's own version,
      the target of every rollout that is running or paused, and the version the controller ran
      before its last upgrade, each with all its artifacts: both variants (`full` and `connector`)
@@ -950,12 +952,15 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
      `.minisig` files and the release's artifacts, and nothing else. A development build serves
      nothing.
    - **When it checks:** at start, then daily, while the release check is on, and when a rollout
-     needs a release it has not kept yet. Each controller keeps its own copy on its disk, so each
-     one checks.
+     needs a release it has not kept yet. A failed or rate-limited check is tried again sooner
+     ([03](03-connections.md#timeouts-keepalive-and-backoff)). Each controller keeps its own copy
+     on its disk, so each one checks; the release's "mirrored" mark tells the time the checking
+     controller last held it complete.
    - **How it keeps files:** a file is kept only after the whole chain verifies and the file matches
      its size and SHA-256. The manifest is written last, so a version with a manifest is complete,
      and a failed check keeps what was there. The directory of a version goes once nothing above
-     keeps it.
+     keeps it, also while the release check is off. The controller records its own version in the
+     mirror's directory, so that it knows the version it ran before after an upgrade.
    - **Upload and import:** `ReleaseService.UploadRelease` takes a release's signed manifest,
      signing-key statement and their signatures ([07](07-api.md#services)); the artifacts then
      come from the release source, or, on an air-gapped installation, from
