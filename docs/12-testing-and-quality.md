@@ -17,7 +17,7 @@ in the change description.
 |---|---|---|---|
 | **Unit** | Pure logic, no network | Snapshot compiler, local-policy evaluation, authorization rules, framing encode/decode, backoff schedule, revision ordering, ClientHello routing decisions | Every commit |
 | **Property** | Invariants over generated inputs | Compiler determinism (same database state, identity and capabilities → byte-identical snapshot and hash); unchanged resources keep equal hashes across unrelated edits; "latest wins" revision application never goes backwards without a new `db_epoch` ([03](03-connections.md#revisions-and-ordering)); DNS: the desired record set and plan hash are deterministic, applying a plan and planning again yields an empty plan, and no generated plan touches a foreign record ([15](15-dns.md)) | Every commit |
-| **Fuzz** (Go native fuzzing) | Parsers facing untrusted or semi-trusted input | Stream framing (`varint ‖ protobuf`, size limits), `StreamOpen`/`StreamResult` handling, TLS ClientHello parser on the 443 peek path, local-policy parser (parse error ⇒ deny-all), importer inputs ([11](11-migration.md)), enrollment token format/checksum | Short smoke run per PR; long runs nightly; crashers become regression tests |
+| **Fuzz** (Go native fuzzing) | Parsers facing untrusted or semi-trusted input | Stream framing (`varint ‖ protobuf`, size limits), `StreamOpen`/`StreamResult` handling, TLS ClientHello parser on the 443 peek path, local-policy parser (parse error ⇒ deny-all), importer inputs ([11](11-migration.md)), enrollment token format/checksum, boot files, release manifests with their signing-key statements, minisign signatures and keys, signed snapshots as agents verify them, the manifest YAML reader. Each parser added later brings its own target in the PR that adds it | Short smoke run per PR; long runs nightly; crashers become regression tests |
 | **Store** | Database behaviour on both dialects | Migrations, privacy rules, composite foreign keys, atomic token consumption ([04](04-security.md#tokens)) | Every PR |
 | **Integration** (in-process) | Controller + gateway + connector in one test binary, real sockets on loopback | Enrollment → session → route → traffic; reconciliation with `Rejected` (malformed snapshot) and last-known-good; local-policy blocks as resource-level `not_ready` with the snapshot `Applied`; policy reload; asynchronous drain after `Applied`; revocation via `DenyListUpdate`; DNS job against a **fake Cloudflare API** (an in-process HTTP server with pagination, 429 with `retry-after`, all-or-nothing batch failures, comment length limits, A/CNAME coexistence errors, pending and partial zones, injected latency and crashes between call and commit) | Every PR |
 | **End-to-end** | Real processes/containers, real network impairment | [End-to-end topology matrix](#end-to-end-topology-matrix) | Subset per PR, full nightly |
@@ -133,6 +133,12 @@ test, in the order of [10](10-operations.md#upgrades-and-version-skew), under li
   its configuration as the other cells do. They report versions of consecutive minors: the tag's
   version, or 0.1.0, and the next minor. `E2E_UPGRADE_FROM_VERSION` and `E2E_UPGRADE_TO_VERSION`
   override them.
+- **Across a major release:** with `E2E_UPGRADE_FROM_VERSION=0.7.0` and
+  `E2E_UPGRADE_TO_VERSION=1.0.0` the same test checks that a 1.0 controller serves the agents of
+  the last 0.y release until they are upgraded
+  ([10](10-operations.md#upgrades-and-version-skew)); the v1.0.0 release candidate runs it from
+  the last 0.y release. `TestControlSession_AgentsOfTheLastMinorAcrossTheMajor` checks the window
+  in process.
 - **Before the upgrade:** the earlier release runs:
   - tcp routes on each transport value, served by both connectors through both gateways;
   - a udp route;

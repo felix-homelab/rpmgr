@@ -440,8 +440,20 @@ affect agents take effect through reconciliation and show apply status like any 
 - **A controller at minor N supports agents at N and N−1** of the same major. Agents newer than the
   controller are not supported: they connect, the UI shows a warning, and features the controller
   does not know are not used.
+- **Across a major release** the window is the same: a controller at the first minor of a major
+  supports the agents of the last minor release of the major before. A 1.0 controller supports the
+  agents of the last 0.y release, v0.7.0 as planned
+  ([D100](14-open-decisions.md#project-and-process),
+  [D115](14-open-decisions.md#engineering)), so a fleet of 0.y agents keeps running while it is
+  upgraded in the order below. The binary records the last minor release of each earlier major,
+  and the release of a new major checks that record ([RELEASING](../RELEASING.md#release-process)).
+  v1.0.0 keeps the protocol major `rpmgr-tunnel/1`.
 - The controller refuses agents older than `min_agent_version` with `Goodbye{upgrade_required}`
   ([03](03-connections.md#versioning-and-capabilities)), so skew beyond N−1 is visible, not silent.
+- **Upgrades go from one minor release to the next.** Skipping a minor release, for example from
+  1.2 to 1.4, is unsupported: the agent window above and the database migrations assume that each
+  minor release ran. Patch releases may be skipped. A controller that finds a database it does not
+  know refuses to start ([06](06-data-model.md#migrations)).
 - A protocol change that would break N−1 ships behind a capability flag first; the old behaviour is
   removed one minor release later.
 - **Gated route features** fail closed on older agents
@@ -599,12 +611,35 @@ service that still runs the previous binary, with the command that restarts it.
 - **Any replica serves any request.** Revisions come from the database, compilation is
   deterministic, and each agent has one control session tracked by `session_epoch`
   ([03](03-connections.md#revisions-and-ordering)).
-- **Session registry.** A row per control session records which replica holds it. Pushes for an
-  agent are signalled to that replica via PostgreSQL `LISTEN/NOTIFY`; no replica polls.
-  `LISTEN/NOTIFY` carries only small signals (payload limit 8000 bytes), never operation data.
+- **Session registry.** A row per control session records which replica holds it. Registration
+  takes the agent's next `session_epoch` under the row's lock and, in the same transaction, signals
+  the replica that held the agent before, which ends that session; a replica that gets the signal
+  before it has added the session ends it as it adds it. Pushes for an agent are signalled to the
+  replica that holds it via PostgreSQL `LISTEN/NOTIFY`, a revision to every replica at once; a
+  signal for one agent reads its registry row `FOR SHARE`, so it reaches the replica that is
+  registering the agent at that moment. `LISTEN/NOTIFY` carries only small signals, never
+  operation data: a payload must be shorter than 8000 bytes
+  [F PostgreSQL 18.6 `src/backend/commands/async.c:163,619-622`]
+  ([S9](spikes/S9.md)).
+- **Lost notifications.** PostgreSQL delivers a notification only to sessions that were listening
+  when it committed [F PostgreSQL 18.6 `async.c:1066-1121`]. Each replica therefore listens on a
+  dedicated connection that never runs a transaction, and after every (re)connect it first
+  `LISTEN`s, then resyncs every session it holds: the revision, each agent's snapshot and the
+  registry's epochs. The revision check of 03 stays as the safety net
+  ([03](03-connections.md#timeouts-keepalive-and-backoff)); it also ends a session whose registry
+  epoch has moved on ([D112](14-open-decisions.md#project-and-process)).
+- **Notifying transactions commit one at a time** across the database: PostgreSQL holds a lock from
+  queueing the notifications to the end of the commit [F PostgreSQL 18.6 `async.c:907-922`]. A
+  transaction sends its signals as its last statements and stays short, and one configuration
+  change sends one revision signal, not one per agent.
+- **Connection poolers.** PgBouncer in transaction mode is unsupported: `LISTEN` never works
+  there [F PgBouncer 1.26 docs, features, retrieved 2026-10-19]. Session pooling or direct
+  connections work ([D112](14-open-decisions.md#project-and-process)).
 - **Imperative operations** (live logs, diagnostics, later the shell): the replica holding the
   agent's control session serves the operation; the replica serving the user's stream proxies to it
-  over an internal controller-to-controller mutual-TLS connection (controller SPIFFE IDs) [V S9].
+  over an internal controller-to-controller mutual-TLS connection: HTTP/2 over TLS 1.3, where each
+  side accepts only a controller SPIFFE ID, and the caller only the node the registry names. In S9
+  this added about 1.5 ms to a forwarded `ProbeTarget` at p99 ([S9](spikes/S9.md)).
   Controller node certificates therefore carry **clientAuth as well as serverAuth**, and a
   `controller_nodes` table records each replica's `node_id`, `internal_address` and `last_seen`
   ([04](04-security.md#leaf-certificates)).
@@ -612,7 +647,10 @@ service that still runs the previous binary, with the command that restarts it.
   it immediately, then ships it asynchronously to the shared sink, where sequence numbers are
   allocated by conditional create of the object `<seq>` (no gaps) and entries form a hash chain
   ([Backup and restore](#backup-and-restore)). With more than one replica the sink is required. A
-  sink outage never blocks a revocation; it raises an alert until the backlog is shipped.
+  sink outage never blocks a revocation; it raises an alert until the backlog is shipped. A
+  filesystem sink allocates a number by a hard link, which fails when the name exists; an
+  S3-compatible sink by a PUT with `If-None-Match: *`, which fails with 412. Both kept two racing
+  shippers free of gaps and duplicates in S9, the S3 sink on MinIO ([S9](spikes/S9.md)).
 - **Singleton jobs** (ACME orders, CA rotation, ephemeral purge, metric rollups, audit
   checkpoints, the DNS job) run under a database **lease with a fencing token**: a replica that lost
   its lease cannot commit work started under it. Each time a replica takes a job's lease it is

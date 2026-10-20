@@ -286,6 +286,10 @@ spec:
   policies: [office-ip-only]
 ```
 
+- Every manifest carries `apiVersion: rpmgr.v1`, the API package its schema comes from
+  ([D115](14-open-decisions.md#engineering)); a later package changes the value. `apply` refuses
+  an `apiVersion` it does not know and reads a file without one, as Phase 1 exports them, as
+  `rpmgr.v1`. The export writes it from Phase 2's manifest slices on.
 - [R] **Phase 1 writes manifests; it does not apply them** ([D58](14-open-decisions.md#project-and-process)).
   The kinds are `Route` (with its targets), `AccessPolicy`, `GatewayGroup`, `Gateway`,
   `PortPool`, `Domain`, `Connector` and `CABundle`.
@@ -358,6 +362,18 @@ Defined in [03-connections.md](03-connections.md); summarised here for reference
   UI. Removing `v1` is a MAJOR release, at least two minor releases after `v2` appeared
   ([RELEASING](../RELEASING.md#versioning)).
 - Clients must ignore unknown fields and treat unknown enum values as "unspecified".
+- **From v1.0.0 the same additive rule covers the names other programs read**
+  ([D115](14-open-decisions.md#engineering)): metric names and their labels
+  ([10](10-operations.md#metrics)), the keys of structured log records, audit actions and the
+  fields of audit entries and their export, and webhook event types and their fields. Within a
+  major release names are added, never renamed or removed, and readers ignore what they do not
+  know. Log messages and the web UI's texts are not covered.
+- **Outside the API**, for command-line commands and flags, boot-file keys, settings and the names
+  above, a deprecation is announced in the changelog and by a warning at least one minor release
+  before the item goes. It goes only in a major release, unless rpmgr migrates it automatically
+  ([RELEASING](../RELEASING.md#versioning)).
+- The command line's JSON and YAML output and its exit codes are stable within a major release;
+  its table output is for people and may change in any release ([16](16-cli.md#conventions)).
 - The agent protocol's compatibility rules (ALPN major version, capability strings,
   `min_agent_version`) are in [03](03-connections.md#versioning-and-capabilities) and
   [10](10-operations.md#upgrades-and-version-skew).

@@ -29,3 +29,6 @@ func SealedColumns() []string {
 	}
 	return out
 }
+
+// OlderThan reports whether agent version v is older than min, as Hello checks it.
+func OlderThan(v, min string) bool { return olderThan(v, min) }

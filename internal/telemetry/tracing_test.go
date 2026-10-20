@@ -4,6 +4,7 @@ package telemetry_test
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -109,11 +110,12 @@ func TestStartTracing(t *testing.T) {
 		t.Fatal("nothing reached the collector")
 	}
 
-	half, two := 0.5, 2.0
+	half, two, nan := 0.5, 2.0, math.NaN()
 	for name, cfg := range map[string]telemetry.TracingConfig{
-		"not a URL":  {OTLPEndpoint: "collector:4318"},
-		"no host":    {OTLPEndpoint: "https:///v1/traces"},
-		"a ratio >1": {OTLPEndpoint: collector.URL, SampleRatio: &two},
+		"not a URL":   {OTLPEndpoint: "collector:4318"},
+		"no host":     {OTLPEndpoint: "https:///v1/traces"},
+		"a ratio >1":  {OTLPEndpoint: collector.URL, SampleRatio: &two},
+		"a NaN ratio": {OTLPEndpoint: collector.URL, SampleRatio: &nan},
 	} {
 		if _, err := telemetry.StartTracing(ctx, cfg, "gateway", "0.1.0"); err == nil {
 			t.Errorf("%s: started", name)
