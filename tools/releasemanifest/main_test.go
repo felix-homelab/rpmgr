@@ -54,16 +54,20 @@ func writeFile(t *testing.T, b []byte) string {
 // TestDraft: the first release gets seq 1 and its own version as the floor; a later one the next
 // seq and the previous floor; the channel follows the version; only the artifacts are listed.
 func TestDraft(t *testing.T) {
-	dir := releaseDir(t, "0.1.0", "rpmgr-0.1.0-linux-amd64", "rpmgr-0.1.0-linux-arm", "rpmgr-0.1.0-linux-arm64-connector")
+	dir := releaseDir(t, "0.1.0", "rpmgr-0.1.0-linux-amd64", "rpmgr-0.1.0-linux-arm", "rpmgr-0.1.0-linux-arm64-connector",
+		"rpmgr-0.1.0-windows-amd64-connector.exe")
 	first, b, err := runDraft(t, "-version", "0.1.0", "-dir", dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Seq != 1 || first.Floor != "0.1.0" || first.Channel != release.Stable || !first.IssuedAt.Equal(at) || len(first.Artifacts) != 3 {
+	if first.Seq != 1 || first.Floor != "0.1.0" || first.Channel != release.Stable || !first.IssuedAt.Equal(at) || len(first.Artifacts) != 4 {
 		t.Fatalf("first manifest %+v", first)
 	}
 	if a := first.Artifacts[2]; a.OS != "linux" || a.Arch != "arm64" || a.Variant != "connector" || a.Size != 3 || len(a.SHA256) != 64 {
 		t.Errorf("artifact %+v", a)
+	}
+	if a := first.Artifacts[3]; a.OS != "windows" || a.Arch != "amd64" || a.Variant != "connector" {
+		t.Errorf("the windows artifact %+v", a)
 	}
 	if !bytes.HasPrefix(b, []byte(`{"seq":1,"version":"0.1.0","floor":"0.1.0","channel":"stable",`)) || bytes.HasSuffix(b, []byte("\n")) {
 		t.Errorf("not compact: %s", b)
@@ -106,6 +110,9 @@ func TestDraftRefusals(t *testing.T) {
 		"an argument":             {"-version", "1.0.0", "-dir", dir, "extra"},
 		"a bad issue time":        {"-version", "1.0.0", "-dir", dir, "-issued", "yesterday"},
 		"an explicit floor above": {"-version", "1.0.0", "-dir", dir, "-floor", "2.0.0"},
+		"a linux .exe":            {"-version", "1.0.0", "-dir", releaseDir(t, "1.0.0", "rpmgr-1.0.0-linux-amd64-connector.exe")},
+		"a windows build without .exe": {"-version", "1.0.0", "-dir",
+			releaseDir(t, "1.0.0", "rpmgr-1.0.0-windows-amd64-connector")},
 	} {
 		if _, _, err := runDraft(t, args...); err == nil {
 			t.Errorf("%s: drafted", name)

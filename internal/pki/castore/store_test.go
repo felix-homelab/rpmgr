@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package pki_test
+package castore_test
 
 import (
 	"bytes"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -49,16 +50,16 @@ func sealer(t *testing.T, current secret.KEK, previous ...secret.KEK) *secret.Se
 func clock() time.Time { return t0 }
 
 // initCA creates a CA in a fresh database of each dialect and loads it.
-func withCA(t *testing.T, f func(t *testing.T, db *store.DB, kek secret.KEK, ca *pki.CA)) {
+func withCA(t *testing.T, f func(t *testing.T, db *store.DB, kek secret.KEK, ca *castore.CA)) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		kek := newKEK(t)
 		sys := storetest.SystemCtx(t)
 		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
-			return pki.InitCA(sys, tx, sealer(t, kek), td, t0)
+			return castore.InitCA(sys, tx, sealer(t, kek), td, t0)
 		}); err != nil {
 			t.Fatal(err)
 		}
-		ca, err := pki.LoadCA(sys, db, sealer(t, kek), clock)
+		ca, err := castore.LoadCA(sys, db, sealer(t, kek), clock)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -67,7 +68,7 @@ func withCA(t *testing.T, f func(t *testing.T, db *store.DB, kek secret.KEK, ca 
 }
 
 func TestInitAndLoadCA(t *testing.T) {
-	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, ca *pki.CA) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, ca *castore.CA) {
 		sys := storetest.SystemCtx(t)
 		if ca.TrustDomain() != td || ca.Root().MaxPathLen != 1 || ca.Intermediate().CheckSignatureFrom(ca.Root()) != nil {
 			t.Fatal("the loaded CA is not the one created")
@@ -80,8 +81,8 @@ func TestInitAndLoadCA(t *testing.T) {
 			t.Error(err)
 		}
 		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
-			return pki.InitCA(sys, tx, sealer(t, kek), td, t0)
-		}); !errors.Is(err, pki.ErrCAExists) {
+			return castore.InitCA(sys, tx, sealer(t, kek), td, t0)
+		}); !errors.Is(err, castore.ErrCAExists) {
 			t.Errorf("a second InitCA: %v, want ErrCAExists", err)
 		}
 		metas := db.Client().SecretMeta.Query().Where(secretmeta.TableName("ca_keys")).AllX(sys)
@@ -111,19 +112,19 @@ func TestInitAndLoadCA(t *testing.T) {
 }
 
 func TestLoadCA_Refusals(t *testing.T) {
-	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *pki.CA) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
 		sys := storetest.SystemCtx(t)
-		if _, err := pki.LoadCA(sys, db, sealer(t, newKEK(t)), clock); err == nil {
+		if _, err := castore.LoadCA(sys, db, sealer(t, newKEK(t)), clock); err == nil {
 			t.Error("loaded with another KEK")
 		}
-		if _, err := pki.LoadCA(sys, db, sealer(t, newKEK(t), kek), clock); err != nil {
+		if _, err := castore.LoadCA(sys, db, sealer(t, newKEK(t), kek), clock); err != nil {
 			t.Errorf("loading with the old KEK as previous: %v", err)
 		}
 		org := storetest.Org(t, db, "org-a")
-		if _, err := pki.LoadCA(storetest.OrgCtx(t, org), db, sealer(t, kek), clock); err == nil {
+		if _, err := castore.LoadCA(storetest.OrgCtx(t, org), db, sealer(t, kek), clock); err == nil {
 			t.Error("loaded in an org scope")
 		}
-		if _, err := pki.LoadCA(context.Background(), db, sealer(t, kek), clock); err == nil {
+		if _, err := castore.LoadCA(context.Background(), db, sealer(t, kek), clock); err == nil {
 			t.Error("loaded without a scope")
 		}
 		if n, err := db.Client().CAKey.Query().Count(storetest.OrgCtx(t, org)); err == nil {
@@ -133,7 +134,7 @@ func TestLoadCA_Refusals(t *testing.T) {
 		dup := db.Client().CAKey.Create().SetKind(root.Kind).SetAlgorithm(root.Algorithm).SetPublicKey(root.PublicKey).
 			SetCertificate(root.Certificate).SetNotBefore(root.NotBefore).SetNotAfter(root.NotAfter).
 			SetStatus(cakey.StatusActive).SaveX(sys)
-		if _, err := pki.LoadCA(sys, db, sealer(t, kek), clock); err == nil {
+		if _, err := castore.LoadCA(sys, db, sealer(t, kek), clock); err == nil {
 			t.Error("loaded with two active roots")
 		}
 		db.Client().CAKey.DeleteOne(dup).ExecX(sys)
@@ -142,7 +143,7 @@ func TestLoadCA_Refusals(t *testing.T) {
 			"UPDATE ca_keys SET key_enc = (SELECT key_enc FROM ca_keys WHERE kind = 'config_signing') WHERE kind = 'audit_checkpoint'"); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pki.LoadCA(sys, db, sealer(t, kek), clock); err == nil {
+		if _, err := castore.LoadCA(sys, db, sealer(t, kek), clock); err == nil {
 			t.Error("loaded with a key copied between rows")
 		}
 	})
@@ -151,13 +152,13 @@ func TestLoadCA_Refusals(t *testing.T) {
 func TestCA_EmptyDatabaseAndOrgScope(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		sys := storetest.SystemCtx(t)
-		if _, err := pki.LoadCA(sys, db, sealer(t, newKEK(t)), clock); err == nil {
+		if _, err := castore.LoadCA(sys, db, sealer(t, newKEK(t)), clock); err == nil {
 			t.Error("loaded from an empty database")
 		}
 		org := storetest.Org(t, db, "org-a")
 		ctx := storetest.OrgCtx(t, org)
 		if err := store.WriteTx(ctx, db, func(tx *ent.Tx) error {
-			return pki.InitCA(ctx, tx, sealer(t, newKEK(t)), td, t0)
+			return castore.InitCA(ctx, tx, sealer(t, newKEK(t)), td, t0)
 		}); err == nil {
 			t.Error("InitCA in an org scope")
 		}
@@ -168,7 +169,7 @@ func TestCA_EmptyDatabaseAndOrgScope(t *testing.T) {
 // its org; an org scope neither sees nor creates another org's records, and a refused CSR records
 // nothing.
 func TestIssue_Records(t *testing.T) {
-	withCA(t, func(t *testing.T, db *store.DB, _ secret.KEK, ca *pki.CA) {
+	withCA(t, func(t *testing.T, db *store.DB, _ secret.KEK, ca *castore.CA) {
 		a, b := storetest.Org(t, db, "org-a"), storetest.Org(t, db, "org-b")
 		ctxA, ctxB, sys := storetest.OrgCtx(t, a), storetest.OrgCtx(t, b), storetest.SystemCtx(t)
 		id := connector(a, ids.New("con"))
@@ -278,11 +279,11 @@ func TestSeal_RecordsKEKVersion(t *testing.T) {
 // identity but not a newer one, records its first use once, and leaves other identities alone;
 // unknown, revoked and superseded certificates are not renewable.
 func TestMarkSeenAndCheckRenewable(t *testing.T) {
-	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *pki.CA) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
 		sys := storetest.SystemCtx(t)
 		org := storetest.Org(t, db, "org-a")
 		now := t0
-		ca, err := pki.LoadCA(sys, db, sealer(t, kek), func() time.Time { return now })
+		ca, err := castore.LoadCA(sys, db, sealer(t, kek), func() time.Time { return now })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -299,11 +300,11 @@ func TestMarkSeenAndCheckRenewable(t *testing.T) {
 			return cert
 		}
 		seen := func(cert *x509.Certificate, at time.Time) {
-			if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { _, err := pki.MarkSeen(sys, tx, cert, at); return err }); err != nil {
+			if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { _, err := castore.MarkSeen(sys, tx, cert, at); return err }); err != nil {
 				t.Fatal(err)
 			}
 		}
-		check := func(cert *x509.Certificate) error { return pki.CheckRenewable(sys, db.Client(), cert) }
+		check := func(cert *x509.Certificate) error { return castore.CheckRenewable(sys, db.Client(), cert) }
 		id, other := connector(org, ids.New("con")), connector(org, ids.New("con"))
 		a := issueAt(id, t0)
 		b := issueAt(id, t0.Add(time.Hour))
@@ -311,7 +312,7 @@ func TestMarkSeenAndCheckRenewable(t *testing.T) {
 		o := issueAt(other, t0)
 
 		seen(b, t0.Add(3*time.Hour))
-		if err := check(a); !errors.Is(err, pki.ErrSuperseded) {
+		if err := check(a); !errors.Is(err, castore.ErrSuperseded) {
 			t.Errorf("an older certificate: %v", err)
 		}
 		for name, cert := range map[string]*x509.Certificate{"the one used": b, "a newer one": c, "another identity": o} {
@@ -326,7 +327,7 @@ func TestMarkSeenAndCheckRenewable(t *testing.T) {
 		}
 
 		db.Client().IssuedCertificate.UpdateOneID(pki.SerialHex(c.SerialNumber)).SetRevokedAt(t0).ExecX(sys)
-		if err := check(c); !errors.Is(err, pki.ErrCertRevoked) {
+		if err := check(c); !errors.Is(err, castore.ErrCertRevoked) {
 			t.Errorf("a revoked certificate: %v", err)
 		}
 

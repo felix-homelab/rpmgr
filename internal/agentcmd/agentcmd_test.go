@@ -17,7 +17,7 @@ import (
 // runRpmgr runs a command tree of this package's commands, as cmd/rpmgr registers them.
 func runRpmgr(args ...string) (int, string, string) {
 	var out, errOut bytes.Buffer
-	tree := &cli.Command{Name: "rpmgr", Sub: []*cli.Command{Connector(), Enroll(), Leave(), Status(), Diag(), Policy(), Version()}}
+	tree := &cli.Command{Name: "rpmgr", Sub: []*cli.Command{Connector(), Enroll(), Leave(), Status(), Diag(), Policy(), Version("full")}}
 	code := cli.Main(context.Background(), tree, args, &cli.Env{
 		Stdout: &out, Stderr: &errOut, Getenv: func(string) string { return "" },
 	})
@@ -28,16 +28,13 @@ func runRpmgr(args ...string) (int, string, string) {
 // which the connector-only build must not link (docs/02-architecture.md, "Roles"; D119).
 var serverPackage = regexp.MustCompile(`^github\.com/felix-homelab/rpmgr/internal/(` +
 	`accounts|acme|allinone|api|apisvc|audit|authz|controller|domains|enroll|gateway|importer|itest|lease|mail|` +
-	`manifest|revlog|routes|settings|setup|store|testseed|websession|webui)(/|$)`)
+	`manifest|pki/castore|revlog|routes|settings|setup/serversetup|snapshot|store|testseed|websession|webui)(/|$)`)
 
 // linkedNow are the server packages this package still links, each with why; the slice that
 // removes the reason removes its entry. The test fails when an entry is no longer linked, so the
-// list only shrinks.
-var linkedNow = map[string]string{
-	"authz": "imported by internal/store",
-	"store": "internal/pki keeps the CA in the database and internal/snapshot the compiled snapshots; " +
-		"the connector-only build (slice 2.13) splits them from what agents use",
-}
+// list only shrinks. It is empty since the agent-side parts of internal/pki and of the snapshots
+// left the database (internal/pki/castore, internal/snapsig).
+var linkedNow = map[string]string{}
 
 // TestNoServerPackages: the commands of a connector or gateway host link nothing of the
 // controller, the gateway or the importer, so that the connector-only build can register them.
@@ -68,5 +65,27 @@ func TestNoServerPackages(t *testing.T) {
 	}
 	if !slices.Contains(strings.Fields(string(out)), "github.com/felix-homelab/rpmgr/internal/connector") {
 		t.Error("go list did not list the connector role: the test reads the wrong package")
+	}
+}
+
+// TestSystemdUnit_Roles: systemd-unit prints the unit of one of its roles and refuses another;
+// the connector-only build gives it the connector only.
+func TestSystemdUnit_Roles(t *testing.T) {
+	run := func(c *cli.Command, args ...string) (int, string) {
+		var out, errOut bytes.Buffer
+		tree := &cli.Command{Name: "rpmgr", Sub: []*cli.Command{c}}
+		code := cli.Main(context.Background(), tree, args, &cli.Env{Stdout: &out, Stderr: &errOut, Getenv: func(string) string { return "" }})
+		return code, out.String() + errOut.String()
+	}
+	if code, out := run(SystemdUnit("connector"), "systemd-unit", "connector"); code != 0 || !strings.Contains(out, "rpmgr connector") {
+		t.Errorf("the connector's unit: %d %q", code, out)
+	}
+	for _, role := range []string{"gateway", "controller", "all-in-one", "relay"} {
+		if code, out := run(SystemdUnit("connector"), "systemd-unit", role); code != cli.ExitUsage || !strings.Contains(out, "no role") {
+			t.Errorf("%s from a connector-only systemd-unit: %d %q", role, code, out)
+		}
+	}
+	if code, out := run(SystemdUnit(), "systemd-unit", "gateway"); code != 0 || !strings.Contains(out, "rpmgr gateway") {
+		t.Errorf("every role by default: %d %q", code, out)
 	}
 }

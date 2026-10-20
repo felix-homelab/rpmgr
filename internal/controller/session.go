@@ -27,6 +27,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
@@ -52,7 +53,7 @@ type Sessions struct {
 	agentv1.UnimplementedControlServer
 
 	db      *store.DB
-	ca      *pki.CA
+	ca      *castore.CA
 	node    string // this controller node's ID
 	version string // this controller's version
 	now     func() time.Time
@@ -79,7 +80,7 @@ type Sessions struct {
 // SessionsOptions are the inputs of NewSessions.
 type SessionsOptions struct {
 	DB        *store.DB
-	CA        *pki.CA
+	CA        *castore.CA
 	Node      string
 	Version   string
 	Sys       context.Context // a context with the system scope, granted and audited by the caller
@@ -331,7 +332,7 @@ func (s *Sessions) register(ctx context.Context, agent Agent, hello *agentv1.Hel
 			return err
 		}
 		dbEpoch = inst.DbEpoch
-		superseded, err := pki.MarkSeen(s.sys, tx, agent.Certificate, now)
+		superseded, err := castore.MarkSeen(s.sys, tx, agent.Certificate, now)
 		if err != nil {
 			return err
 		}

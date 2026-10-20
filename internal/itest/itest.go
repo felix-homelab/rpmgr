@@ -28,6 +28,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/enroll"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
@@ -57,7 +58,7 @@ const UIHostname = "panel.rpmgr.test"
 // Controller is a running test controller: its first replica, and those StartReplica adds.
 type Controller struct {
 	DB       *store.DB
-	CA       *pki.CA
+	CA       *castore.CA
 	Sessions *controller.Sessions // of the first replica
 	URL      string               // https://127.0.0.1:<port> of the first replica
 	RevLog   *revlog.Log          // the replicas' revocation log
@@ -109,11 +110,11 @@ func StartController(t testing.TB, o Options) *Controller {
 		o.CAAge = 60 * 24 * time.Hour
 	}
 	if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
-		return pki.InitCA(sys, tx, sealer, td, time.Now().Add(-o.CAAge))
+		return castore.InitCA(sys, tx, sealer, td, time.Now().Add(-o.CAAge))
 	}); err != nil {
 		t.Fatal(err)
 	}
-	ca, err := pki.LoadCA(sys, db, sealer, time.Now)
+	ca, err := castore.LoadCA(sys, db, sealer, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +258,7 @@ func (c *Controller) enroll(t testing.TB, dir string, set func(*ent.EnrollmentTo
 // the identity directory in place of the current one.
 func (c *Controller) IssueAt(t testing.TB, id agent.Loaded, at time.Time) *x509.Certificate {
 	t.Helper()
-	ca, err := pki.LoadCA(c.Sys, c.DB, c.sealer, func() time.Time { return at })
+	ca, err := castore.LoadCA(c.Sys, c.DB, c.sealer, func() time.Time { return at })
 	if err != nil {
 		t.Fatal(err)
 	}

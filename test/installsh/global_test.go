@@ -172,7 +172,8 @@ func TestGlobalInstall(t *testing.T) {
 				touch /tmp/has-setup
 				sh /t/install.sh; echo "exit with setup: $?"
 				echo "== user"; id rpmgr
-				echo "== owner"; stat -c '%n %U %a' /etc/rpmgr /var/lib/rpmgr /usr/local/bin/rpmgr
+				echo "== owner"; stat -c '%n %U %a' /etc/rpmgr /var/lib/rpmgr /usr/local/bin/rpmgr /var/lib/rpmgr-update /var/lib/rpmgr-update/install.json
+				echo "== record"; cat /var/lib/rpmgr-update/install.json
 				echo "== config"; cat /etc/rpmgr/all-in-one.yaml
 				echo "== calls"; cat /tmp/rpmgr-calls
 				echo "== binary"; sha256sum /usr/local/bin/rpmgr | cut -d' ' -f1`+upgrade).CombinedOutput()
@@ -187,11 +188,13 @@ func TestGlobalInstall(t *testing.T) {
 				t.Fatalf("docker: %v\n%s", err, text)
 			}
 			want := []string{
-				"downloading rpmgr 1.4.2 for linux/amd64", "verified rpmgr 1.4.2 (manifest 5)", "installed rpmgr 1.4.2 to /usr/local/bin/rpmgr",
+				"downloading rpmgr 1.4.2 (full) for linux/amd64", "verified rpmgr 1.4.2 (manifest 5)", "installed rpmgr 1.4.2 to /usr/local/bin/rpmgr",
 				"exit first: 0", "exit again: 0", "exit with setup: 0",
 				"next: set up this host's role with: sudo rpmgr setup",
 				"rpmgr 1.4.2 has no setup command",
 				"/etc/rpmgr root 755", "/var/lib/rpmgr rpmgr 750", "/usr/local/bin/rpmgr root 755",
+				"/var/lib/rpmgr-update root 700", "/var/lib/rpmgr-update/install.json root 600",
+				"== record\n" + `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full"}` + "\n",
 				"== config\nkeep: me\n", "argv: version --verbose", "argv: setup --help",
 				"== binary\n" + hex.EncodeToString(sum[:]),
 			}

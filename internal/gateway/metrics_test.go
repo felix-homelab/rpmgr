@@ -74,7 +74,8 @@ func TestMetrics(t *testing.T) {
 	}
 	port := freePort(t)
 	p.routes.Apply([]gateway.TCPRoute{{ID: "rt_1", Port: port}})
-	eventually(t, "no QUIC session", func() bool { return value("rpmgr_gateway_sessions", map[string]string{"transport": "quic"}) == 1 })
+	// The connector keeps four QUIC sessions per gateway (D123).
+	eventually(t, "no QUIC sessions", func() bool { return value("rpmgr_gateway_sessions", map[string]string{"transport": "quic"}) == 4 })
 	c := dialPort(t, port)
 	if err := ping(c, "hello"); err != nil {
 		t.Fatal(err)

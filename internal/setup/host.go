@@ -11,11 +11,12 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"slices"
 	"strconv"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
-	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/units"
 )
 
 // ServiceUser is the system user the roles run as (docs/10-operations.md, "Filesystem layout").
@@ -49,6 +50,12 @@ type Host struct {
 	SystemdVersion func() int
 	// Encrypt is `systemd-creds encrypt`, for a KEK in a systemd credential.
 	Encrypt func(ctx context.Context, name, path string, b []byte) error
+	// Server initialises a controller or an all-in-one; nil in the connector-only build, whose
+	// setup refuses those roles.
+	Server Server
+	// Roles are the roles this build sets up, all of them when nil; the connector-only build sets
+	// up a connector only.
+	Roles []Role
 	// Enroll enrolls a gateway or connector (agent.Enroll).
 	Enroll func(ctx context.Context, o agent.EnrollOptions) (agent.Identity, error)
 	// Ready waits until the admin listener at addr reports ready.
@@ -82,7 +89,7 @@ func (h *Host) defaults() {
 		h.IsRoot = func() bool { return os.Geteuid() == 0 }
 	}
 	if h.SystemdVersion == nil {
-		h.SystemdVersion = controller.SystemdVersion
+		h.SystemdVersion = units.SystemdVersion
 	}
 	if h.Enroll == nil {
 		h.Enroll = agent.Enroll
@@ -166,4 +173,12 @@ func ready(ctx context.Context, addr string) error {
 		case <-time.After(time.Second):
 		}
 	}
+}
+
+// Offers reports whether this build sets up role r: a controller or an all-in-one needs a Server.
+func (h Host) Offers(r Role) bool {
+	if r.Initialises() && h.Server == nil {
+		return false
+	}
+	return h.Roles == nil || slices.Contains(h.Roles, r)
 }

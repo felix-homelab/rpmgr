@@ -12,6 +12,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -19,7 +20,7 @@ import (
 )
 
 // withCA is setup with a CA, whose audit-checkpoint key signs, and the trust that verifies it.
-func withCA(t *testing.T, f func(t *testing.T, e env, ca *pki.CA, trust audit.Trust)) {
+func withCA(t *testing.T, f func(t *testing.T, e env, ca *castore.CA, trust audit.Trust)) {
 	setup(t, func(t *testing.T, e env) {
 		raw := make([]byte, 32)
 		_, _ = rand.Read(raw)
@@ -30,15 +31,15 @@ func withCA(t *testing.T, f func(t *testing.T, e env, ca *pki.CA, trust audit.Tr
 		s, _ := secret.NewSealer(kek)
 		ctx := sys(t)
 		if err := store.WriteTx(ctx, e.db, func(tx *ent.Tx) error {
-			return pki.InitCA(ctx, tx, s, "rpmgr-teststor", time.Now().Add(-time.Hour))
+			return castore.InitCA(ctx, tx, s, "rpmgr-teststor", time.Now().Add(-time.Hour))
 		}); err != nil {
 			t.Fatal(err)
 		}
-		ca, err := pki.LoadCA(ctx, e.db, s, time.Now)
+		ca, err := castore.LoadCA(ctx, e.db, s, time.Now)
 		if err != nil {
 			t.Fatal(err)
 		}
-		signers, inters, root, err := pki.SignerCertificates(ctx, e.db, pki.PurposeAuditCheckpoint)
+		signers, inters, root, err := castore.SignerCertificates(ctx, e.db, pki.PurposeAuditCheckpoint)
 		if err != nil || len(signers) != 1 {
 			t.Fatalf("signer certificates: %d %v", len(signers), err)
 		}
@@ -46,7 +47,7 @@ func withCA(t *testing.T, f func(t *testing.T, e env, ca *pki.CA, trust audit.Tr
 	})
 }
 
-func checkpoint(t *testing.T, e env, ca *pki.CA, now time.Time, due func(audit.Head, *audit.Checkpoint) bool) []audit.Checkpoint {
+func checkpoint(t *testing.T, e env, ca *castore.CA, now time.Time, due func(audit.Head, *audit.Checkpoint) bool) []audit.Checkpoint {
 	t.Helper()
 	var out []audit.Checkpoint
 	if err := store.WriteTx(sys(t), e.db, func(tx *ent.Tx) error {
@@ -98,7 +99,7 @@ func TestDue(t *testing.T) {
 // TestCheckpoints: due chains get a signed checkpoint of their head, which verifies with the CA's
 // certificates, once per hour or thousand entries.
 func TestCheckpoints(t *testing.T) {
-	withCA(t, func(t *testing.T, e env, ca *pki.CA, trust audit.Trust) {
+	withCA(t, func(t *testing.T, e env, ca *castore.CA, trust audit.Trust) {
 		for range 3 {
 			record(t, e.db, login(e.a, "usr_1"))
 		}
@@ -166,7 +167,7 @@ func TestVerifyChain_Checkpoints(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			withCA(t, func(t *testing.T, e env, ca *pki.CA, trust audit.Trust) {
+			withCA(t, func(t *testing.T, e env, ca *castore.CA, trust audit.Trust) {
 				now := time.Now()
 				for range 3 {
 					record(t, e.db, login(e.a, "usr_1"))
@@ -197,7 +198,7 @@ func TestVerifyChain_Checkpoints(t *testing.T) {
 // TestCheckpointLog: the local log keeps every checkpoint with its signer's certificate, so each
 // verifies with the root and the intermediates alone; an altered line does not.
 func TestCheckpointLog(t *testing.T) {
-	withCA(t, func(t *testing.T, e env, ca *pki.CA, trust audit.Trust) {
+	withCA(t, func(t *testing.T, e env, ca *castore.CA, trust audit.Trust) {
 		record(t, e.db, login(e.a, "usr_1"))
 		record(t, e.db, login(e.b, "usr_2"))
 		l := &audit.CheckpointLog{Path: filepath.Join(t.TempDir(), "audit-checkpoints.log")}
@@ -235,7 +236,7 @@ func TestCheckpointLog(t *testing.T) {
 // cutoff, with the checkpoints before it, and the chain still verifies from that checkpoint; a
 // cutoff before every checkpointed entry removes nothing; other chains are untouched.
 func TestPrune(t *testing.T) {
-	withCA(t, func(t *testing.T, e env, ca *pki.CA, trust audit.Trust) {
+	withCA(t, func(t *testing.T, e env, ca *castore.CA, trust audit.Trust) {
 		now := time.Now()
 		for range 3 {
 			record(t, e.db, login(e.a, "usr_1"))
@@ -287,7 +288,7 @@ func TestPrune(t *testing.T) {
 // TestUncovered: the oldest entry no checkpoint covers is found across chains, and none once
 // every chain is checkpointed.
 func TestUncovered(t *testing.T) {
-	withCA(t, func(t *testing.T, e env, ca *pki.CA, trust audit.Trust) {
+	withCA(t, func(t *testing.T, e env, ca *castore.CA, trust audit.Trust) {
 		if _, ok, err := audit.Uncovered(sys(t), e.db); err != nil || ok {
 			t.Fatalf("an empty log: %v %v", ok, err)
 		}

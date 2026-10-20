@@ -59,6 +59,12 @@ func newGitHub(t *testing.T) *github {
 // against g with args; extra PATH directories come first.
 func runGlobal(t *testing.T, g *github, version, path string, args ...string) (string, error) {
 	t.Helper()
+	return runGlobalOn(t, newHostDirs(t), g, version, path, args...)
+}
+
+// runGlobalOn runs the global script on host h: its binary and install record.
+func runGlobalOn(t *testing.T, h hostDirs, g *github, version, path string, args ...string) (string, error) {
+	t.Helper()
 	b, err := installsh.RenderGlobal(version, []release.PublicKey{pubkey(t, root)})
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +75,7 @@ func runGlobal(t *testing.T, g *github, version, path string, args ...string) (s
 	}
 	cmd := exec.Command("sh", append([]string{script}, args...)...)
 	cmd.Env = []string{"PATH=" + path + os.Getenv("PATH"), "CURL_CA_BUNDLE=" + g.ca, "HOME=" + t.TempDir(),
-		"RPMGR_INSTALL_GITHUB=" + g.URL, "RPMGR_INSTALL_API=" + g.URL}
+		"RPMGR_INSTALL_GITHUB=" + g.URL, "RPMGR_INSTALL_API=" + g.URL, "RPMGR_INSTALL_BIN=" + h.bin, "RPMGR_INSTALL_STATE=" + h.state}
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -95,9 +101,13 @@ func TestGlobal_Verify(t *testing.T) {
 	g.files = files(t, nil)
 	for name, tc := range map[string]struct{ version string }{"the latest": {""}, "a pinned version": {"1.4.2"}} {
 		out, err := runGlobal(t, g, tc.version, "", "--verify-only")
-		if err != nil || !strings.Contains(out, "downloading rpmgr 1.4.2 for linux/"+arch) || !strings.Contains(out, "verified rpmgr 1.4.2 (manifest 87)") {
+		if err != nil || !strings.Contains(out, "downloading rpmgr 1.4.2 (full) for linux/"+arch) || !strings.Contains(out, "verified rpmgr 1.4.2 (manifest 87)") {
 			t.Fatalf("%s: %v\n%s", name, err, out)
 		}
+	}
+	if out, err := runGlobal(t, g, "1.4.2", "", "--verify-only", "--variant", "connector"); err != nil ||
+		!strings.Contains(out, "downloading rpmgr 1.4.2 (connector) for linux/"+arch) || !strings.Contains(out, "verified rpmgr 1.4.2") {
+		t.Errorf("--variant connector: %v\n%s", err, out)
 	}
 	if out, err := runGlobal(t, g, "", "", "--verify-only", "--version", "v1.4.2"); err != nil || !strings.Contains(out, "verified rpmgr 1.4.2") {
 		t.Errorf("--version v1.4.2: %v\n%s", err, out)
@@ -158,6 +168,7 @@ func TestGlobal_Refusals(t *testing.T) {
 		"a bad version":          {args: []string{"--version", "latest"}, want: "is not a release version"},
 		"a version with a slash": {args: []string{"--version", "1.4.2/../x"}, want: "is not a release version"},
 		"an unknown argument":    {args: []string{"--yes"}, want: "unknown argument --yes"},
+		"an unknown variant":     {args: []string{"--variant", "lite"}, want: "--variant must be full or connector"},
 	} {
 		out, err := runGlobal(t, g, "", tc.path, append([]string{"--verify-only"}, tc.args...)...)
 		if err == nil || !strings.Contains(out, tc.want) {
@@ -241,4 +252,54 @@ func hexID(k release.PublicKey) string {
 		b = append(b, digits[c>>4], digits[c&15])
 	}
 	return string(b)
+}
+
+// TestVariant_KeptOnTheHost (D119): both scripts keep the build a host runs, from its install
+// record, else from what its binary reports, full for a binary from before the variants; another
+// --variant is refused, and an upgrade that cannot tell which build the host runs asks for one.
+func TestVariant_KeptOnTheHost(t *testing.T) {
+	needTools(t)
+	g := newGitHub(t)
+	g.files = files(t, nil)
+	s := newServer(t)
+	s.files = files(t, nil)
+	ctl := []string{"--controller", s.URL, "--verify-only"}
+	connBin := "rpmgr 1.4.1 (commit abc, go1.27.2, linux/amd64)\nvariant: connector"
+	oldBin := "rpmgr 0.1.0 (commit abc, go1.27.2, linux/amd64)\nrelease root keys:"
+	for name, tc := range map[string]struct {
+		host   func(hostDirs) hostDirs
+		global bool
+		args   []string
+		want   string // "(full)", "(connector)" or a refusal
+	}{
+		"controller script, record connector":            {host: func(h hostDirs) hostDirs { return h.withRecord(t, "connector") }, want: "(connector)"},
+		"controller script, record connector, --variant": {host: func(h hostDirs) hostDirs { return h.withRecord(t, "connector") }, args: []string{"--variant", "full"}, want: "runs the connector build"},
+		"controller script, binary reports connector":    {host: func(h hostDirs) hostDirs { return h.withBinary(t, connBin) }, want: "(connector)"},
+		"controller script, a 0.1.0 binary":              {host: func(h hostDirs) hostDirs { return h.withBinary(t, oldBin) }, want: "(full)"},
+		"controller script, a 0.1.0 binary, --variant":   {host: func(h hostDirs) hostDirs { return h.withBinary(t, oldBin) }, args: []string{"--variant", "connector"}, want: "runs the full build"},
+		"controller script, an unknown recorded variant": {host: func(h hostDirs) hostDirs { return h.withRecord(t, "lite") }, want: "unknown variant lite"},
+		"global upgrade, record connector":               {global: true, host: func(h hostDirs) hostDirs { return h.withBinary(t, "").withRecord(t, "connector") }, args: []string{"--upgrade", "--verify-only"}, want: "(connector)"},
+		"global upgrade, record connector, --variant":    {global: true, host: func(h hostDirs) hostDirs { return h.withBinary(t, "").withRecord(t, "connector") }, args: []string{"--upgrade", "--variant", "full"}, want: "runs the connector build"},
+		"global upgrade, binary reports connector":       {global: true, host: func(h hostDirs) hostDirs { return h.withBinary(t, connBin) }, args: []string{"--upgrade", "--verify-only"}, want: "(connector)"},
+		"global upgrade, binary that does not run":       {global: true, host: func(h hostDirs) hostDirs { return h.withBinary(t, "") }, args: []string{"--upgrade"}, want: "cannot tell which build"},
+		"global upgrade, no tell, --variant":             {global: true, host: func(h hostDirs) hostDirs { return h.withBinary(t, "") }, args: []string{"--upgrade", "--variant", "connector", "--verify-only"}, want: "(connector)"},
+		"global run again, binary reports connector":     {global: true, host: func(h hostDirs) hostDirs { return h.withBinary(t, connBin) }, args: []string{"--verify-only"}, want: "(connector)"},
+		"global new host":                                {global: true, host: func(h hostDirs) hostDirs { return h }, args: []string{"--verify-only"}, want: "(full)"},
+	} {
+		h := tc.host(newHostDirs(t))
+		var out string
+		var err error
+		if tc.global {
+			out, err = runGlobalOn(t, h, g, "1.4.2", "", tc.args...)
+		} else {
+			out, err = runOn(t, h, s, "", append(append([]string{}, ctl...), tc.args...)...)
+		}
+		if strings.HasPrefix(tc.want, "(") {
+			if err != nil || !strings.Contains(out, "downloading rpmgr 1.4.2 "+tc.want) {
+				t.Errorf("%s: %v\n%s", name, err, out)
+			}
+		} else if err == nil || !strings.Contains(out, tc.want) {
+			t.Errorf("%s: %v\n%s", name, err, out)
+		}
+	}
 }

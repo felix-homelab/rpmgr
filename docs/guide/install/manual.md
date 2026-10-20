@@ -17,7 +17,11 @@ sh install.sh --verify-only --dir rpmgr-release
 ```
 
 The script prints `verified rpmgr <version> (manifest …)` and leaves the binary of this host's
-architecture, `rpmgr-<version>-linux-<arch>`, in `rpmgr-release/`. To verify by hand instead, check
+architecture, `rpmgr-<version>-linux-<arch>`, in `rpmgr-release/`; with `--variant connector` the
+connector-only build, `rpmgr-<version>-linux-<arch>-connector`, which installs the same way as
+`rpmgr`. Windows and macOS have the connector-only build only, `rpmgr-<version>-windows-amd64-connector.exe`
+and `rpmgr-<version>-darwin-<arch>-connector`, downloaded from the release page and verified the
+same way. To verify by hand instead, check
 the same chain with `minisign` and the release root keys
 ([04](../../04-security.md#release-signing)), and the provenance attestation with the GitHub
 command line:

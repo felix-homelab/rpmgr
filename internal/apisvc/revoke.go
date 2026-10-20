@@ -9,6 +9,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
@@ -32,7 +33,7 @@ func (r *Revocations) agent(tx *ent.Tx, kind pki.Kind, org, id, reason, actor st
 		return false, err
 	}
 	ident := pki.Identity{TrustDomain: inst.TrustDomain, Org: org, Kind: kind, ID: id}
-	row, changed, err := pki.RevokeIdentity(r.Sys, tx, ident, reason, now)
+	row, changed, err := castore.RevokeIdentity(r.Sys, tx, ident, reason, now)
 	if err != nil || !changed {
 		return false, err
 	}

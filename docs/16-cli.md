@@ -55,6 +55,12 @@
 
 ## Commands
 
+The connector-only build (`cmd/rpmgr-connector`, [D119](14-open-decisions.md#engineering)) has
+the commands that run on a connector host: `connector`, `setup` and `systemd-unit` for the
+connector role only, `enroll`, `leave`, `status`, `diag`, `policy` and `version`. Its
+`controller`, `gateway` and `all-in-one` print "not available in this build" with exit code 2;
+the other commands are not in its tree.
+
 A command marked *not yet* exists in the command tree and prints "not available in this build"
 with exit code 2 until its implementation lands; one marked *Phase 2* is designed and not in the
 command tree yet.
@@ -127,7 +133,7 @@ command tree yet.
 | `rpmgr updater apply [--staged <dir>] [--state <dir>] [--policy <file>] [--status <file>]` | The root-owned updater that `rpmgr-update.service` runs (named `updater`, so that it never reads as `rpmgr update <kind>`, [D51](14-open-decisions.md#engineering)): copy, verify and install a staged release, restart the roles `install.json` lists, ask each role's admin listener, at the address of its boot file, whether it is ready, roll back when one is not ready, and write `/run/rpmgr-update/status.json` ([04](04-security.md#over-the-air-updates)). Exit code 1 when it refused or rolled back. Until agents stage releases (P2-M02) it has nothing to install | Linux host, as root | available |
 | `rpmgr systemd-unit [--bin <path>] update` | Print the updater pair `rpmgr-update.path` and `rpmgr-update.service`, each after a comment line naming its file, with the binary path of `install.json` in `ExecStart`, or `--bin` ([10](10-operations.md#hardened-systemd-units)) | any Linux host; reading `install.json` as root | available |
 | `rpmgr setup --remove [--purge]` | On Windows and macOS: stop and remove the connector's service and the program's files; the identity and the policy file stay unless `--purge` ([10](10-operations.md#windows-and-macos-connectors-phase-2), [D122](14-open-decisions.md#project-and-process)) | Windows or macOS host, as administrator | Phase 2 |
-| `rpmgr version [--verbose]` | Print the version, commit, Go version and platform of this binary; with `--verbose` also the release root keys compiled into it, by minisign key ID and SHA-256 fingerprint, or that it has none ([04](04-security.md#release-signing)) | any | available |
+| `rpmgr version [--verbose]` | Print the version, commit, Go version and platform of this binary; with `--verbose` also its variant (`variant: full` or `variant: connector`, which the install scripts read, [D119](14-open-decisions.md#engineering)) and the release root keys compiled into it, by minisign key ID and SHA-256 fingerprint, or that it has none ([04](04-security.md#release-signing)) | any | available |
 
 The role commands read their boot file from `--config`, else from `$RPMGR_CONFIG`, else from
 `/etc/rpmgr/<role>.yaml` ([10](10-operations.md#boot-files)); the commands of an agent host read

@@ -21,6 +21,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/authz"
+	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
@@ -51,9 +52,8 @@ func InstanceDefaults() *rpmgrv1.InstanceSettings {
 	}
 }
 
-// LetsEncrypt is Let's Encrypt's production ACME directory, the default CA of route certificates
-// [F certmagic v0.25.6 acmeissuer.go:664].
-const LetsEncrypt = "https://acme-v02.api.letsencrypt.org/directory"
+// LetsEncrypt is Let's Encrypt's production ACME directory, the default CA of route certificates.
+const LetsEncrypt = config.LetsEncrypt
 
 // OrgDefaults returns the default settings of an org.
 func OrgDefaults() *rpmgrv1.OrgSettings {

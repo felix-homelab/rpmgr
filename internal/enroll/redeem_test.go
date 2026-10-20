@@ -16,6 +16,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/enroll"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -33,7 +34,7 @@ var t0 = time.Now().UTC().Truncate(time.Second)
 // env is an initialised database with a CA and an org.
 type env struct {
 	db    *store.DB
-	ca    *pki.CA
+	ca    *castore.CA
 	org   string
 	sys   context.Context
 	clock time.Time
@@ -50,11 +51,11 @@ func setup(t *testing.T, f func(t *testing.T, e *env)) {
 			t.Fatal(err)
 		}
 		s, _ := secret.NewSealer(kek)
-		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return pki.InitCA(sys, tx, s, td, t0) }); err != nil {
+		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error { return castore.InitCA(sys, tx, s, td, t0) }); err != nil {
 			t.Fatal(err)
 		}
 		e := &env{db: db, org: storetest.Org(t, db, "org-a"), sys: sys, clock: t0}
-		if e.ca, err = pki.LoadCA(sys, db, s, func() time.Time { return e.clock }); err != nil {
+		if e.ca, err = castore.LoadCA(sys, db, s, func() time.Time { return e.clock }); err != nil {
 			t.Fatal(err)
 		}
 		f(t, e)

@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -73,14 +72,5 @@ func TestSelfSignedPEM(t *testing.T) {
 	}
 	if b, _ := pem.Decode(key); b == nil || b.Type != "PRIVATE KEY" {
 		t.Errorf("key block %v", b)
-	}
-}
-
-// TestKEKSourceFor: a new boot file takes the systemd credential from systemd 250, else a file.
-func TestKEKSourceFor(t *testing.T) {
-	for v, want := range map[int]string{0: config.KEKFile, 249: config.KEKFile, 250: config.KEKSystemdCredential, 257: config.KEKSystemdCredential} {
-		if got := controller.KEKSourceFor(v); got != want {
-			t.Errorf("systemd %d: %s, want %s", v, got, want)
-		}
 	}
 }
