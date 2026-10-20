@@ -177,15 +177,20 @@ openssl s_client -connect 127.0.0.1:443 -servername vb19.test -showcerts </dev/n
 (($(grep -c 'BEGIN CERT' "$S/ca.pem") > 1)) || fail "the served chain has no issuing certificate"
 rpmgr list route >/dev/null || fail "the CLI does not trust the controller's new certificate"
 
-step "the domain, proved over HTTP"
+step "the domain, claimed for an HTTP proof and marked trusted"
+# /etc/hosts sends vb19.test to loopback, which an HTTP proof never connects to, as on the VM of
+# the run sheet (README, step 5): the proof is refused as such, and the claim is marked trusted.
 rpmgr create domain --fqdn vb19.test --wildcard --method http | tee "$S/domain.out"
 did=$(grep -o -m 1 'dom_[0-9A-Z]*' "$S/domain.out")
-verified() {
-  rpmgr verify domain "$did" >"$S/verify.out" 2>&1
-  grep -q 'is VERIFIED' "$S/verify.out"
+refused() {
+  rpmgr verify domain "$did" >"$S/verify.out" 2>&1 || true
+  grep -q 'not public' "$S/verify.out"
 }
-within 90 "the domain verified" verified
+within 90 "the HTTP proof refused for loopback" refused
 cat "$S/verify.out"
+api AuthService/StepUp "{\"password\":\"$pw\"}" >/dev/null
+api DomainService/MarkDomainTrusted "{\"domainId\":\"$did\"}" | jq -e '.domain.status == "DOMAIN_STATUS_VERIFIED"' >/dev/null ||
+  fail "the claim was not marked trusted"
 rpmgr get domain "$did"
 
 step "phase a: the route's certificate"

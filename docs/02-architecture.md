@@ -22,16 +22,21 @@ rpmgr connector    --config /etc/rpmgr/connector.yaml
 rpmgr all-in-one   --config /etc/rpmgr/all-in-one.yaml
 rpmgr enroll | leave | status | diag | policy          (on agent hosts)
 rpmgr apply | import | backup | restore | migrate | ca | kek   (administration)
-rpmgr update apply                                (root-owned updater, run by rpmgr-update.service)
+rpmgr updater apply                               (root-owned updater, run by rpmgr-update.service)
 rpmgr version
 ```
 
 Why one binary: one release artifact, one version number, one signature, no version skew between
 the parts of a single host, and the in-process `all-in-one` mode for the smallest deployments. The
-cost is binary size (all roles are linked in). A connector-only variant, built with a build tag,
-ships in Phase 2 ([13](13-roadmap.md#phase-2--production), D21): its artifact is named
-`rpmgr-connector_<version>_<os>_<arch>`, it is still installed as `rpmgr`, and the release manifest
-tells the variants apart by each artifact's `variant` field ([04](04-security.md#release-signing)).
+cost is binary size (all roles are linked in). A connector-only variant ships in Phase 2
+([13](13-roadmap.md#phase-2--production), D21): its own main, `cmd/rpmgr-connector`, links the
+connector role and the host commands a connector needs (`enroll`, `setup`, `policy`, `status`,
+`diag`, `leave`, `updater apply`, `version`) and nothing of the controller, the gateway or the
+importer. Its artifact is named `rpmgr-<version>-<os>-<arch>-connector` (`.exe` on Windows), it is
+still installed as `rpmgr`, and the release manifest tells the variants apart by each artifact's
+`variant` field ([04](04-security.md#release-signing),
+[D119](14-open-decisions.md#engineering)). Windows and macOS get the connector variant only
+([D122](14-open-decisions.md#project-and-process)).
 
 ## Planes
 
@@ -337,6 +342,8 @@ The full threat model is in [04-security.md](04-security.md#threat-model).
 
 ```
 cmd/rpmgr/                 main and the command tree (16)
+cmd/rpmgr-connector/       the connector-only build (Phase 2, D119)
+internal/update/           the root-owned updater: staging, verification, swap, rollback (Phase 2)
 internal/cli/              command dispatcher on the standard flag package
 internal/version/          version of the running build
 internal/controller/       api handlers, compiler, registry, jobs

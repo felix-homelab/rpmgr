@@ -26,6 +26,10 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Fixed
 
+- Gateway: a gateway admits about eighty data sessions over TCP + HTTP/2 instead of nine. Each
+  session's flow-control window now takes at most a sixteenth of the free window budget, down to a
+  small floor, instead of half of it, so connectors beyond the fourth on TCP + h2 are no longer
+  refused; later sessions get smaller windows. (#819)
 - All-in-one: a built-in gateway or connector whose identity is revoked as a whole, as a restore
   that applies a later revocation leaves it, no longer stops the start. The all-in-one replaces it
   with a new built-in gateway or connector, which keeps the old one's name and, for a gateway, its
@@ -52,6 +56,12 @@ Changes to the design documents are not recorded here: see the git history and t
   narrower route without that route's access policy. A path with `;` parameters, such as
   `/admin;jsessionid=1`, now belongs to the route its form without them matches. `CONNECT`
   requests are refused with 501. Medium severity; affects v0.1.0. (#813)
+- Controller: an HTTP domain proof connects only to public addresses, so an HTTP claim whose name
+  resolves to a loopback, private, link-local or other internal address fails with "the name
+  resolves to an address that is not public"; through a proxy nothing changes. The last error of
+  an HTTP claim names only the kind of failure, no longer the addresses, the resolver or the
+  server's own text. A domain that resolves only on the local network is proved with a TXT record
+  or marked trusted by the Instance Admin. (#822)
 
 ## [0.1.0] - 2026-10-19
 

@@ -4,10 +4,16 @@
 # route of every Phase 1 type with targets on both connectors: tcp and udp on the default group, http
 # with ACME on both groups, http with an uploaded certificate, and tls_passthrough.
 
-step "aio: the domain rw.test, proved over HTTP through the gateways"
+step "aio: the domain rw.test, claimed for an HTTP proof and marked trusted"
+# rw.test resolves to the gateways' addresses on the run's private network, which an HTTP proof
+# never connects to (docs/04-security.md, "Route and hostname ownership"): the proof is refused as
+# such, and the Instance Admin marks the claim trusted, as a LAN-only installation does.
 on aio 'rpmgr create domain --fqdn rw.test --wildcard --method http | tee /root/domain.out
 grep -o -m 1 "dom_[0-9A-Z]*" /root/domain.out >/root/domain'
-within 90 "the domain verified" aio 'rpmgr verify domain "$(cat /root/domain)" | grep -q "is VERIFIED"'
+within 90 "the HTTP proof refused for a private address" \
+  aio 'rpmgr verify domain "$(cat /root/domain)" 2>&1 | grep -q "not public"'
+stepup
+on aio 'rpmgr trust domain "$(cat /root/domain)" | grep -q "is VERIFIED"'
 
 step "aio: a certificate to upload for cert.rw.test, from a private CA"
 on aio 'cd /root && openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 30 -subj /CN=rw-private-ca \

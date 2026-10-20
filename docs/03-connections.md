@@ -1018,9 +1018,9 @@ window defaults to 4 MiB per stream and 1 GiB per connection
 | Side | Parameter (`http.HTTP2Config`) | rpmgr value |
 |---|---|---|
 | Connector (HTTP/2 server) | `MaxConcurrentStreams` | 10 000 |
-| Both | `MaxReceiveBufferPerStream` / `MaxReceiveBufferPerConnection` | 16 MiB / 256 MiB |
+| Both | `MaxReceiveBufferPerStream` / `MaxReceiveBufferPerConnection` | At most 4 MiB / 64 MiB, as the memory bound below admits them (asked for: 16 MiB / 256 MiB) |
 | Both | `MaxReadFrameSize` (advertised as `SETTINGS_MAX_FRAME_SIZE`) | 16 KiB |
-| Both | Memory bound | net/http's HTTP/2 has no window-budget hook like quic-go's, so h2 sessions are **admitted** against the same process-wide budget (the sum of their maximum connection windows): a new session gets at most half the free budget, so when it is tight new sessions get smaller windows (the stream window at most a sixteenth of the connection window), and a session that would get less than 4 MiB is refused. With the default budget, three sessions get 256 MiB, the next ones 128, 64 … 4 MiB |
+| Both | Memory bound | net/http's HTTP/2 has no window-budget hook like quic-go's, so h2 sessions are **admitted** against the same process-wide budget (the sum of their maximum connection windows): a new session's connection window is at most **64 MiB**, and a sixteenth of the free budget once that is less, but never less than **1 MiB**; a session for which not even 1 MiB is free is refused. The stream window is at most a sixteenth of the connection window. With the default budget the first session gets 64 MiB (a 4 MiB stream window, enough for the single-stream rates measured on h2 at 20 and 80 ms, [ADR-0004](adr/0004-quic-default-transport-policy.md#phase-1-measurements)), the tenth still more than 32 MiB, and about **80** sessions fit, the last ones with 1 MiB. Halving the free budget instead, as Phase 1 did, admitted only nine, four connectors on h2 ([D124](14-open-decisions.md#engineering)). Later sessions get smaller windows, so their streams carry less on long paths; none is refused while 1 MiB is free |
 | Gateway | At the stream limit | Reserves a slot with the non-blocking `ClientConn.Reserve` **before** opening (`RoundTrip` alone would wait [F Go 1.27.1 `net/http/clientconn.go:254,301`]); uses another session, or answers 503 (HTTP) / resets (TCP). Never blocks waiting for a slot |
 | Gateway | Reset of a stream | Also closes the response body: only that returns the stream's unread bytes to the connection window [F Go 1.27.1 `net/http/internal/http2/transport.go:2402-2421`] |
 
@@ -1222,6 +1222,9 @@ sequenceDiagram
 | ACME challenge push | `OpResult` from every gateway of the name within 10 s | [R] A gateway that cannot answer fails the order before the CA validates, instead of a failed validation counted against the account |
 | Imperative operation | `Open` → `Attach` within 10 s; ticket single-use, valid 30 s; shell idle 30 min | No unbounded waits |
 | P2P | punch window 5 s; retry backoff 30 s → 15 min; also on network change | Don't hammer NATs |
+| OTA download (Phase 2) | an artifact of at most 256 MiB, downloaded only with its size plus 64 MiB free on the staging filesystem; the whole download 10 min, a read that stalls 60 s; a failed download is retried after 1 min, doubling up to 1 h | [R] A slow mirror or a full disk never leaves a half-written staging area, whose manifest is written last ([04](04-security.md#over-the-air-updates)) |
+| OTA updater (Phase 2) | a staged file of at most the manifest's size and 256 MiB, checked before and while copying; each role's `/readyz` polled every 2 s for up to 5 min after the restart; a role service that fails, or restarts 3 times, within that window rolls back at once | A compromised agent cannot fill the disk or hang the updater; a broken release is undone within minutes ([04](04-security.md#over-the-air-updates)) |
+| Rollout (Phase 2) | checked every 30 s (singleton job); an agent offered the target that reports neither the new version nor a failure within 30 min counts as stalled and pauses the rollout; a gateway is offered its update only after its drain ends | [R] A stage moves on as soon as its agents report; a silent agent stops the rollout instead of hiding ([04](04-security.md#over-the-air-updates)) |
 | Webhook delivery (Phase 2) | 5 s timeout per attempt; retries with backoff | A slow receiver must not hold controller resources ([07](07-api.md#webhooks-phase-2)) |
 | `request_id` deduplication of `Create` calls | 24 h; IDs past it are deleted every hour | Retries of a lost response stay idempotent ([07](07-api.md#resource-design)) |
 | Public API request | at most 4 MiB per message, also once decompressed; a larger one is refused with `resource_exhausted` before it is handled | [R] No request holds more of the controller's memory than the largest legitimate one, an uploaded certificate bundle, needs |
@@ -1287,7 +1290,7 @@ used, not by the route compiler:
 | `pages.custom` | Gateway | Custom error pages of a gateway group |
 | `tunnel.wss` | Gateway, connector | Data sessions over WSS |
 | `logs.stream` | Gateway, connector | Live logs (`Open` and `Attach`) |
-| `ota` | Gateway, connector | Over-the-air updates offered in the snapshot |
+| `ota` | Gateway, connector | Over-the-air updates: the agent takes a release offer in its snapshot, stages it for the root updater and reports the update state and the updater's outcome in `Status`; an agent without it is never offered a release ([04](04-security.md#over-the-air-updates)) |
 | `relay.v1` | Gateway, connector | Relayed private services |
 
 - Protobuf rules: fields are only added; unknown fields are ignored; an unknown `StreamOpen.kind`

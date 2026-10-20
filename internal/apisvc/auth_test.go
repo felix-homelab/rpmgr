@@ -19,6 +19,7 @@ import (
 
 	"connectrpc.com/connect"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
@@ -28,6 +29,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 	"github.com/felix-homelab/rpmgr/internal/telemetry/telemetrytest"
@@ -70,6 +72,13 @@ func newEnv(t *testing.T) *env {
 	db := storetest.Migrated(t, store.SQLite)
 	storetest.Init(t, db)
 	sys := storetest.SystemCtx(t)
+	// The low-memory hash profile, as the accounts tests use: the default one's 64 MiB per hash
+	// exhausted the address space of the 32-bit test run.
+	low := rpmgrv1.PasswordHashProfile_PASSWORD_HASH_PROFILE_LOW_MEMORY
+	if _, err := settings.UpdateInstance(sys, db, &rpmgrv1.InstanceSettings{PasswordHashProfile: &low},
+		&fieldmaskpb.FieldMask{Paths: []string{"password_hash_profile"}}, 0); err != nil {
+		t.Fatal(err)
+	}
 	e := &env{db: db, sys: sys, clock: time.Now(), logs: logs}
 	now := func() time.Time { return e.clock }
 	e.log = filepath.Join(t.TempDir(), "revocations.log")

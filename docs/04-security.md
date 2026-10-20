@@ -627,6 +627,22 @@ provider and never stored.
   No hostname is ever handed out first-come-first-served.
 - **TXT proofs are read at the zone's authoritative nameservers**, never through the controller's
   resolver, so split-horizon DNS and negative caching cannot fake or delay a result.
+- **HTTP proofs reach only public addresses.** The controller fetches
+  `http://<domain>/.well-known/rpmgr-challenge/<claim ID>` without following redirects, and
+  without a proxy it connects only to a public unicast address: the address it actually dials is
+  checked at the connect, so a name that resolves, or is rebound, to a loopback, private,
+  link-local, shared (`100.64.0.0/10`), reserved, documentation, benchmarking or multicast address,
+  in IPv4-mapped, IPv4-translated, NAT64 or 6to4 form too, is refused (`internal/egress`). A claim
+  therefore cannot make the controller probe its own network. A NAT64 prefix an operator chose
+  itself (RFC 6052) cannot be told from a public address and is not recognised. The claim's last
+  error names only the kind of failure (the name does not resolve, an address that is not public,
+  refused, timed out, the HTTP status code), never an address, a resolver or a server's own text,
+  as every member of the org reads it. [R] The kinds still tell a member whether a name resolves in
+  the controller's DNS ("does not resolve" against "not public"); that much is accepted.
+  With a proxy (`HTTP_PROXY`, else `ALL_PROXY`, [10](10-operations.md#ports)) the proxy resolves
+  the name and decides where it connects; the proxy's own rules are the boundary then. A domain
+  that resolves only on the local network, as in a homelab, is proved with a TXT record or marked
+  trusted by the Instance Admin (D13).
 - **DNS automation (Phase 2) publishes only within the same org.** A managed zone receives records
   only for its own org's sources, and challenge TXTs only for its own org's pending claims;
   otherwise any org could make rpmgr write a proof into another org's zone with that org's token.
@@ -853,7 +869,9 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
     expires; a renewed statement for the same key keeps that key's earlier manifests verifiable.
   - **Each release** carries `signing-key.json`, `manifest.json` and their `.minisig` files. Its
     artifacts are named `rpmgr-<version>-<os>-<arch>`, followed by `-<variant>` for variants other
-    than `full`; OS, architecture and variant are lower-case letters and digits.
+    than `full`, and by `.exe` on Windows; OS, architecture and variant are lower-case letters and
+    digits: `rpmgr-1.4.2-linux-arm64`, `rpmgr-1.4.2-linux-arm64-connector`,
+    `rpmgr-1.4.2-windows-amd64-connector.exe` ([D119](14-open-decisions.md#engineering)).
   - **A manifest** must also be well-formed:
     - `seq` at least 1, and an issue time;
     - `version` and `floor` as full SemVer without `v` or build metadata, with `floor` ≤ `version`;
@@ -874,8 +892,10 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
   matches the host's `update_channel` in the local policy: a host on `stable` takes stable releases
   only, and a host on `prerelease` takes both. A prerelease therefore never reaches a stable host,
   even through a compromised controller. `variant` is `full` or `connector` (the optional
-  connector-only build, Phase 2); the updater installs only the variant recorded in `install.json`.
-  Both builds install as the binary `rpmgr`.
+  connector-only build of `cmd/rpmgr-connector`, Phase 2, [02](02-architecture.md#roles)); the
+  updater installs only the variant recorded in `install.json`. Both builds install as the binary
+  `rpmgr` (`rpmgr.exe` on Windows). Windows and macOS releases have the connector variant only
+  ([D122](14-open-decisions.md#project-and-process)).
 - `seq` is a **monotonic manifest number**. Agents persist the highest `seq` they have accepted and
   their version floor, and accept a manifest only if its `seq` is at least that high. `floor` raises
   the persisted version floor; it can be **lowered** only by a manifest with a higher `seq` than any
@@ -894,59 +914,104 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
 
 ### Over-the-air updates
 
-OTA covers script installs and standalone binaries on **Linux with systemd**. Windows and macOS
-connectors (Phase 2) are updated by hand; OTA for them is a Phase 3 item
-([13](13-roadmap.md#phase-3--advanced)).
+OTA covers script installs and standalone binaries on **Linux with systemd**, and replaces
+**connectors and gateways** only ([D102](14-open-decisions.md#engineering)): controllers and
+all-in-ones are upgraded by hand, after a backup, before their agents
+([10](10-operations.md#upgrades-and-version-skew)). Windows and macOS connectors (Phase 2) are
+updated by hand; OTA for them is a Phase 3 item ([13](13-roadmap.md#phase-3--advanced)). The
+timeouts and size limits named below are in [03](03-connections.md#timeouts-keepalive-and-backoff).
 
-1. The controller fetches the release manifest from the **release source**, the GitHub Releases of
+1. The controller fetches release manifests from the **release source**, the GitHub Releases of
    `felix-homelab/rpmgr` (the release check is on by default and can be disabled,
-   [14](14-open-decisions.md) D4), or an admin uploads it on air-gapped installs. It verifies the
-   signature and mirrors the artifacts under `/dl/`. Agents never contact the release source.
-   Phase 1, which has no rollouts, mirrors only the controller's own version, which `/install.sh`
-   installs; air-gapped installations import it with `rpmgr release import <dir>` on the
-   controller host ([D59](14-open-decisions.md#security-defaults)). **The Phase 1 mirror:**
+   [14](14-open-decisions.md) D4), or an Instance Admin uploads one on air-gapped installs. It
+   verifies the signature and mirrors the artifacts under `/dl/`. Agents never contact the release
+   source. **The mirror:**
+   - **What it lists:** the daily check verifies the manifest of every release of the instance's
+     channel newer than the oldest kept one, so that the Instance Admin sees which releases
+     exist; an instance on `stable` lists stable releases only, one on `prerelease` both. A listed
+     release is not downloaded until the mirror needs it.
+   - **What it keeps** ([D119](14-open-decisions.md#engineering)): the controller's own version,
+     the target of every rollout that is running or paused, and the version the controller ran
+     before its last upgrade, each with all its artifacts: both variants (`full` and `connector`)
+     for every OS and architecture the manifest names. Phase 1 kept only the controller's own
+     version ([D59](14-open-decisions.md#security-defaults)).
    - **What it serves:** `/dl/<version>/` serves `signing-key.json`, `manifest.json`, their
-     `.minisig` files and the full Linux artifacts, and nothing else. A development build serves
+     `.minisig` files and the release's artifacts, and nothing else. A development build serves
      nothing.
-   - **When it checks:** at start, then daily, while the release check is on. Each controller keeps
-     its own copy on its disk, so each one checks.
+   - **When it checks:** at start, then daily, while the release check is on, and when a rollout
+     needs a release it has not kept yet. Each controller keeps its own copy on its disk, so each
+     one checks.
    - **How it keeps files:** a file is kept only after the whole chain verifies and the file matches
      its size and SHA-256. The manifest is written last, so a version with a manifest is complete,
-     and a failed check keeps what was there. The directories of other versions go once a new one
-     is complete.
-   - **Import:** run as root, it gives the files to the state directory's owner.
-2. An admin approves a **staged rollout** (canary agents, then a percentage, then all). The target
-   version becomes desired state.
-3. The agent (running as the unprivileged service user) downloads the artifact and manifest from
-   the controller's mirror and **stages** them in `/var/lib/rpmgr/update/`. The URL is not trusted;
+     and a failed check keeps what was there. The directory of a version goes once nothing above
+     keeps it.
+   - **Upload and import:** `ReleaseService.UploadRelease` takes a release's signed manifest,
+     signing-key statement and their signatures ([07](07-api.md#services)); the artifacts then
+     come from the release source, or, on an air-gapped installation, from
+     `rpmgr release import <dir>` on the controller host. Import, run as root, gives the files to
+     the state directory's owner.
+2. An Instance Admin creates a **staged rollout** of one release to the connectors and gateways
+   ([D121](14-open-decisions.md#engineering)):
+   - **Target:** the controller's own version, or an older release the Instance Admin uploaded on
+     purpose (a signed downgrade). A target newer than the controller is refused, so no agent runs
+     ahead of its controller.
+   - **Stages:** the canary agents chosen when the rollout is created, then percentages the Instance
+     Admin approves one at a time, then all. An agent's place in the percentages is a stable hash of
+     its ID, so a later stage includes every agent of an earlier one.
+   - **Gateways** are updated one at a time per gateway group, each after a drain that moves its
+     connectors to the group's other gateways ([03](03-connections.md#multiple-gateways)); a group
+     with one gateway has no other to move to, which the rollout shows before the stage starts.
+   - **A rollback pauses the rollout:** an agent whose updater rolled back stops the stage, and the
+     rollout waits until the Instance Admin resumes or cancels it. Agents that are offline, or whose
+     local policy says `notify` or `off`, are listed and skipped; they never block a stage.
+   - Only one rollout runs or is paused at a time. Creating, advancing, resuming and cancelling one
+     takes Instance Admin and a step-up, and is audited.
+3. The controller **offers** the target to each agent of the current stage in its snapshot, but
+   only to an agent that announced the capability `ota`
+   ([03](03-connections.md#versioning-and-capabilities)). The agent, running as the unprivileged
+   service user, reads its own local policy: with `auto_update: off` it ignores the offer, with
+   `notify` it reports the update as available, and with a channel that does not take the release
+   it reports that. Otherwise it downloads the artifact of its OS, architecture and variant and the
+   signed files from the controller's mirror, with a size cap and a free-space check, and
+   **stages** them in `/var/lib/rpmgr/update/`, writing the manifest last. The URL is not trusted;
    the signature is. The service user can never write the installed binary — otherwise a
    compromised process could persist a build that ignores the local policy.
 4. A **root-owned updater** (`rpmgr-update.path` triggering the oneshot `rpmgr-update.service`)
    reads `auto_update` and `update_channel` from the local policy **itself** (it does not trust the
-   agent's decision), opens the staging directory through a directory file descriptor with
+   agent's decision); a policy file that does not parse, or that its group or other users may
+   write, counts as `auto_update: off` ([D120](14-open-decisions.md#security-defaults)). It opens
+   the staging directory through a directory file descriptor with
    `openat2(RESOLVE_NO_SYMLINKS | RESOLVE_BENEATH)`, accepts only regular files (`fstat` →
-   `S_ISREG`) no larger than the manifest's size and a hard cap of 256 MiB (checked before and while
-   copying), **copies** them into the root-only `/var/lib/rpmgr-update/staging/`, and verifies
-   **the copy**: manifest signature, `seq`, version floor, `channel` (against the policy's
+   `S_ISREG`) no larger than the manifest's size and the updater's hard cap (checked before and
+   while copying), **copies** them into the root-only `/var/lib/rpmgr-update/staging/`, and
+   verifies **the copy**: manifest signature, `seq`, version floor, `channel` (against the policy's
    `update_channel`), OS/arch, `variant` (against `install.json`), size and SHA-256. Verifying a
    copy the service user cannot touch removes the time-of-check/time-of-use gap; refusing symlinks,
    FIFOs and oversized files keeps a compromised agent from hanging the updater or filling the
-   disk.
+   disk. A version that was rolled back on this host is refused until a manifest with a higher
+   `seq` offers it again (D120), and a host whose `install.json` lists a controller or all-in-one
+   role refuses every release, because its roles share the binary.
 5. It copies the verified file into the target directory as `.rpmgr.new` (same filesystem, so no
    cross-filesystem rename), fsyncs and re-hashes it, keeps the previous binary as `.prev`, renames
    `.rpmgr.new` over the binary at the path recorded in `/var/lib/rpmgr-update/install.json`
-   (`/usr/local/bin/rpmgr` for script installs), and restarts the role service.
-6. The updater polls the agent's admin `/readyz`, which reports ready only when the control session
-   is established and a snapshot is applied. If it is not ready within 5 minutes, the updater
-   **rolls back** to `.prev` and the agent reports the failure.
-7. The agent reports the new version; the persisted floor and `seq` are raised only after success.
-   They are stored by the updater in `/var/lib/rpmgr-update/`, owned by root and not writable by the
-   service user, so a compromised agent process cannot lower them ([10](10-operations.md#install)).
-   They are **initialised at install time** from the binary's embedded release metadata (its version
-   and the `seq` of its own release manifest), so a freshly installed host is protected against
-   replayed old manifests from day one. Afterwards the running version plays no role: a manifest
-   with a higher `seq` may lower the floor, which makes **signed downgrades** possible. The automatic
-   rollback to `.prev` is exempt, because floor and `seq` are only raised after success.
+   (`/usr/local/bin/rpmgr` for script installs), and restarts each role service `install.json`
+   lists.
+6. The updater polls each role's admin `/readyz`, which reports ready only when the control session
+   is established and a snapshot is applied. If a role is not ready within the readiness window,
+   or its service fails or restarts in a loop before then, the updater **rolls back** to `.prev`,
+   restarts the roles again, and records the version as failed.
+7. The updater writes the outcome to `/run/rpmgr-update/status.json` (root-owned, readable by the
+   service user): `updated`, `rolled_back` or `refused`, with the version, the previous one and a
+   reason. The agent reads it at start and reports it, and the rollout records it. The persisted
+   floor and `seq` are raised only after success. They are stored by the updater in
+   `/var/lib/rpmgr-update/state.json`, owned by root and not writable by the service user, so a
+   compromised agent process cannot lower them ([10](10-operations.md#install)). They are
+   **initialised at install time** from the binary's embedded release metadata (its version and the
+   `seq` of its own release manifest), so a freshly installed host is protected against replayed old
+   manifests from day one; an installer run on a host that has them raises them and never lowers
+   them. Afterwards the running version plays no role: a manifest with a higher `seq` may lower the
+   floor, which makes **signed downgrades** possible. The automatic rollback to `.prev` is exempt,
+   because floor and `seq` are only raised after success.
 
 ### Install scripts
 

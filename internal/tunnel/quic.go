@@ -80,16 +80,23 @@ func (b *Budget) release(conn *quic.Conn) {
 	delete(b.conns, conn)
 }
 
-// h2MinConnWindow is the smallest connection window an HTTP/2 session is admitted with.
-const h2MinConnWindow = 4 << 20
+// The connection windows of reverse-HTTP/2 sessions (03, "Memory bound"; D124): at most
+// h2MaxConnWindow each, a sixteenth of the free budget once that is less, and never less than
+// h2MinConnWindow; a session that would get less is refused.
+const (
+	h2MaxConnWindow = 64 << 20
+	h2MinConnWindow = 1 << 20
+	h2BudgetShare   = 16
+)
 
 // ErrBudget is returned when the window budget has no room for another session.
 var ErrBudget = errors.New("tunnel: the window budget is exhausted")
 
 // AdmitH2 reserves the connection window of a new reverse-HTTP/2 session, which has no hook like
-// quic-go's: the full windows while half the free budget holds them, smaller ones when it is tight
-// (at most half the free budget, and a stream window of at most a sixteenth of the connection
-// window), and ErrBudget when not even 4 MiB fit. release returns the reservation; call it when the session ends.
+// quic-go's and advertises its whole window at once: at most 64 MiB, a sixteenth of the free
+// budget once that is less, so that many sessions fit with shrinking windows rather than the first
+// few taking all of it, and at least 1 MiB, or ErrBudget. The stream window is at most a sixteenth
+// of the connection window. release returns the reservation; call it when the session ends.
 func (b *Budget) AdmitH2(want H2Windows) (H2Windows, func(), error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -97,12 +104,10 @@ func (b *Budget) AdmitH2(want H2Windows) (H2Windows, func(), error) {
 	if b.limit > b.used {
 		free = b.limit - b.used
 	}
-	// At most half of what is free: many sessions fit with shrinking windows, rather than the
-	// first few taking all of it.
-	conn := min(uint64(want.Conn), free/2) //nolint:gosec // G115: a window is positive
-	if conn < h2MinConnWindow {
+	if free < h2MinConnWindow {
 		return H2Windows{}, nil, ErrBudget
 	}
+	conn := min(uint64(want.Conn), h2MaxConnWindow, max(h2MinConnWindow, free/h2BudgetShare)) //nolint:gosec // G115: a window is positive
 	got := want
 	got.Conn = int(conn) //nolint:gosec // G115: conn <= want.Conn
 	got.Stream = min(want.Stream, got.Conn/16)

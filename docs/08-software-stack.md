@@ -122,7 +122,7 @@ flowchart TB
 | Area | Choice |
 |---|---|
 | Build | `go build` with `-trimpath`, pinned toolchain, reproducibility check; `buf generate` with `protoc-gen-go`, `protoc-gen-go-grpc` and `protoc-gen-connect-go` pinned as tool dependencies in `go.mod` (so their versions match the runtime libraries) and buf at a pinned version run through the go command; Vite build embedded |
-| Artifacts | Phase 1: `rpmgr` for linux/{amd64,arm64,armv7,riscv64}. Phase 2: connector builds for windows/amd64 and darwin/{amd64,arm64} (built in CI from Phase 1 on, not released), and the connector-only variant, released as `rpmgr-connector_<version>_<os>_<arch>` and installed as `rpmgr` |
+| Artifacts | Phase 1: `rpmgr` for linux/{amd64,arm64,armv7,riscv64}. Phase 2: the connector-only variant from `cmd/rpmgr-connector`, released as `rpmgr-<version>-<os>-<arch>-connector` for the Linux architectures and for windows/amd64 (with `.exe`) and darwin/{amd64,arm64}, which get no other variant; it is installed as `rpmgr` ([D119](14-open-decisions.md#engineering), [D122](14-open-decisions.md#project-and-process)) |
 | Containers | Distroless, non-root OCI images `ghcr.io/felix-homelab/rpmgr` (multi-arch), signed |
 | Packages | None for now: no Linux distribution packages, no Homebrew tap and no winget or MSI ([D99](14-open-decisions.md#project-and-process)); a Helm chart is Phase 3 ([10](10-operations.md#install)) |
 | Services | Hardened systemd units; Windows service and macOS launchd daemon for connectors in Phase 2 ([10](10-operations.md#install)) |

@@ -117,7 +117,8 @@ connectors, as the run takes them; input for a global install script and an inte
 12. Per connector: an enrollment token (with a step-up; one per connector unless ephemeral), the
     install command with the targets the connector may reach, run on the host with the token in a
     file.
-13. The domain claim and its proof, then the routes and their targets.
+13. The domain claim, whose HTTP proof is refused for the run's private addresses, marked trusted;
+    then the routes and their targets.
 14. Backups: `rpmgr backup --out <file>` on a schedule, and the KEK kept apart from them.
 
 ## Results

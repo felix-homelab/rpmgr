@@ -95,7 +95,7 @@ names.
 | `MetricsService` | `GetRouteTraffic` (a route's hourly or daily buckets, at most 31 days of hours or 400 days of days), `GetOverview` (an org's last 24 hours per hour, and its 10 busiest routes); from the rollups, buckets without traffic left out | 1 |
 | `AuditService` | `ListAuditEntries`, `VerifyAuditChain` (an org's chain, `audit.read`), `ListInstanceAuditEntries`, `VerifyInstanceAuditChain` (the instance chain, Instance Admin), `ExportAudit` | 1 (export: 2) |
 | `SettingsService` | `GetInstanceSettings`, `UpdateInstanceSettings` (including `default_transport`), `SetSmtpPassword` (write-only; a read says only whether it is set), all for the Instance Admin; `GetOrgSettings` (members), `UpdateOrgSettings` (Owners; a change of the MFA requirement needs a step-up, and a default gateway group must be one of the org's). Updates name their fields in a mask; a named field the request does not set returns to its default | 1 |
-| `ReleaseService` | `ListReleases`, `UploadRelease` (air-gapped installs), `CreateRollout`, `GetRollout`, `PauseRollout`; the release check and update channel are instance settings (`SettingsService`) | 2 |
+| `ReleaseService` | `ListReleases` (each listed release with its channel, source and whether the mirror holds it), `UploadRelease` (a release's signed manifest, signing-key statement and their signatures, verified like the release check; for air-gapped installs and signed downgrades; the artifacts come from the release source or `rpmgr release import`), `CreateRollout` (a release and its canary agents; refused when the release is newer than the controller, when it is not mirrored yet, or while another rollout runs or is paused), `GetRollout`, `ListRollouts`, `ListRolloutTargets` (each agent's state and reason), `AdvanceRollout` (the next stage, or a higher percentage, under the rollout's etag), `PauseRollout`, `ResumeRollout`, `CancelRollout`. All for the Instance Admin; uploading, creating, advancing, resuming and cancelling take a step-up, and each is audited ([04](04-security.md#over-the-air-updates), [D121](14-open-decisions.md#engineering)). The release check and the instance's update channel are instance settings (`SettingsService`). A connector and a gateway show their version, their update state, and whether they are below `min_agent_version` with the reason of their last `Goodbye` | 2 |
 | `ManifestService` | `ExportManifests` (an org's resources as YAML manifests: all, of the kinds named, or the resources named), `Plan`, `Apply` (declarative manifests) | 1 (`Plan`, `Apply`: 2) |
 | `WebhookService` | webhook endpoints and deliveries | 2 |
 | `VirtualNetworkService`, `FunctionService`, `ShellService` | — | 3 |
@@ -338,9 +338,9 @@ Defined in [03-connections.md](03-connections.md); summarised here for reference
 |---|---|---|---|
 | Enrollment | `Enroll` | agent → controller | Token + CSR → certificate, trust bundle |
 | Control `Session` | `Hello` / `Welcome` | both | Identity, last applied revision, capabilities, versions, clocks |
-| | `Snapshot` | controller → agent | Desired state at a revision, signed |
+| | `Snapshot` | controller → agent | Desired state at a revision, signed; with the capability `ota`, the release the agent is offered (version, `seq`, its files under `/dl/` with sizes and SHA-256), Phase 2 |
 | | `Applied` / `Rejected` | agent → controller | Result of applying a revision |
-| | `Status` | agent → controller | Health, route readiness, counters |
+| | `Status` | agent → controller | Health, route readiness, counters; with `ota`, the update state (available, downloading, staged, and the updater's outcome) |
 | | `Open` | controller → agent | Start an imperative operation (logs, diagnostics, shell) |
 | | `Drain` / `Goodbye` | controller → agent | Reconnect elsewhere / session ends (superseded, revoked, upgrade required) |
 | | `DenyListUpdate` | controller → agent | Revocations; applied unconditionally, independent of snapshots |
