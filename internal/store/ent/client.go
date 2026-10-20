@@ -51,9 +51,12 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/recoverycode"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/release"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedidentity"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/revokedserial"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rollout"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -149,12 +152,18 @@ type Client struct {
 	PortQuota *PortQuotaClient
 	// RecoveryCode is the client for interacting with the RecoveryCode builders.
 	RecoveryCode *RecoveryCodeClient
+	// Release is the client for interacting with the Release builders.
+	Release *ReleaseClient
 	// ResourceStatus is the client for interacting with the ResourceStatus builders.
 	ResourceStatus *ResourceStatusClient
 	// RevokedIdentity is the client for interacting with the RevokedIdentity builders.
 	RevokedIdentity *RevokedIdentityClient
 	// RevokedSerial is the client for interacting with the RevokedSerial builders.
 	RevokedSerial *RevokedSerialClient
+	// Rollout is the client for interacting with the Rollout builders.
+	Rollout *RolloutClient
+	// RolloutTarget is the client for interacting with the RolloutTarget builders.
+	RolloutTarget *RolloutTargetClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
 	// RouteHTTP is the client for interacting with the RouteHTTP builders.
@@ -230,9 +239,12 @@ func (c *Client) init() {
 	c.PortPool = NewPortPoolClient(c.config)
 	c.PortQuota = NewPortQuotaClient(c.config)
 	c.RecoveryCode = NewRecoveryCodeClient(c.config)
+	c.Release = NewReleaseClient(c.config)
 	c.ResourceStatus = NewResourceStatusClient(c.config)
 	c.RevokedIdentity = NewRevokedIdentityClient(c.config)
 	c.RevokedSerial = NewRevokedSerialClient(c.config)
+	c.Rollout = NewRolloutClient(c.config)
+	c.RolloutTarget = NewRolloutTargetClient(c.config)
 	c.Route = NewRouteClient(c.config)
 	c.RouteHTTP = NewRouteHTTPClient(c.config)
 	c.RouteHostname = NewRouteHostnameClient(c.config)
@@ -375,9 +387,12 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PortPool:           NewPortPoolClient(cfg),
 		PortQuota:          NewPortQuotaClient(cfg),
 		RecoveryCode:       NewRecoveryCodeClient(cfg),
+		Release:            NewReleaseClient(cfg),
 		ResourceStatus:     NewResourceStatusClient(cfg),
 		RevokedIdentity:    NewRevokedIdentityClient(cfg),
 		RevokedSerial:      NewRevokedSerialClient(cfg),
+		Rollout:            NewRolloutClient(cfg),
+		RolloutTarget:      NewRolloutTargetClient(cfg),
 		Route:              NewRouteClient(cfg),
 		RouteHTTP:          NewRouteHTTPClient(cfg),
 		RouteHostname:      NewRouteHostnameClient(cfg),
@@ -447,9 +462,12 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PortPool:           NewPortPoolClient(cfg),
 		PortQuota:          NewPortQuotaClient(cfg),
 		RecoveryCode:       NewRecoveryCodeClient(cfg),
+		Release:            NewReleaseClient(cfg),
 		ResourceStatus:     NewResourceStatusClient(cfg),
 		RevokedIdentity:    NewRevokedIdentityClient(cfg),
 		RevokedSerial:      NewRevokedSerialClient(cfg),
+		Rollout:            NewRolloutClient(cfg),
+		RolloutTarget:      NewRolloutTargetClient(cfg),
 		Route:              NewRouteClient(cfg),
 		RouteHTTP:          NewRouteHTTPClient(cfg),
 		RouteHostname:      NewRouteHostnameClient(cfg),
@@ -500,10 +518,11 @@ func (c *Client) Use(hooks ...Hook) {
 		c.GatewayGroup, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
 		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
-		c.RecoveryCode, c.ResourceStatus, c.RevokedIdentity, c.RevokedSerial, c.Route,
-		c.RouteHTTP, c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
-		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
-		c.TOTPCredential, c.TrafficBaseline, c.User,
+		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
+		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
+		c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
+		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential,
+		c.TrafficBaseline, c.User,
 	} {
 		n.Use(hooks...)
 	}
@@ -520,10 +539,11 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.GatewayGroup, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
 		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
-		c.RecoveryCode, c.ResourceStatus, c.RevokedIdentity, c.RevokedSerial, c.Route,
-		c.RouteHTTP, c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
-		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
-		c.TOTPCredential, c.TrafficBaseline, c.User,
+		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
+		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
+		c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
+		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential,
+		c.TrafficBaseline, c.User,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -604,12 +624,18 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PortQuota.mutate(ctx, m)
 	case *RecoveryCodeMutation:
 		return c.RecoveryCode.mutate(ctx, m)
+	case *ReleaseMutation:
+		return c.Release.mutate(ctx, m)
 	case *ResourceStatusMutation:
 		return c.ResourceStatus.mutate(ctx, m)
 	case *RevokedIdentityMutation:
 		return c.RevokedIdentity.mutate(ctx, m)
 	case *RevokedSerialMutation:
 		return c.RevokedSerial.mutate(ctx, m)
+	case *RolloutMutation:
+		return c.Rollout.mutate(ctx, m)
+	case *RolloutTargetMutation:
+		return c.RolloutTarget.mutate(ctx, m)
 	case *RouteMutation:
 		return c.Route.mutate(ctx, m)
 	case *RouteHTTPMutation:
@@ -5691,6 +5717,141 @@ func (c *RecoveryCodeClient) mutate(ctx context.Context, m *RecoveryCodeMutation
 	}
 }
 
+// ReleaseClient is a client for the Release schema.
+type ReleaseClient struct {
+	config
+}
+
+// NewReleaseClient returns a client for the Release from the given config.
+func NewReleaseClient(c config) *ReleaseClient {
+	return &ReleaseClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `release.Hooks(f(g(h())))`.
+func (c *ReleaseClient) Use(hooks ...Hook) {
+	c.hooks.Release = append(c.hooks.Release, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `release.Intercept(f(g(h())))`.
+func (c *ReleaseClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Release = append(c.inters.Release, interceptors...)
+}
+
+// Create returns a builder for creating a Release entity.
+func (c *ReleaseClient) Create() *ReleaseCreate {
+	mutation := newReleaseMutation(c.config, OpCreate)
+	return &ReleaseCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Release entities.
+func (c *ReleaseClient) CreateBulk(builders ...*ReleaseCreate) *ReleaseCreateBulk {
+	return &ReleaseCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ReleaseClient) MapCreateBulk(slice any, setFunc func(*ReleaseCreate, int)) *ReleaseCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ReleaseCreateBulk{err: fmt.Errorf("calling to ReleaseClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ReleaseCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ReleaseCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Release.
+func (c *ReleaseClient) Update() *ReleaseUpdate {
+	mutation := newReleaseMutation(c.config, OpUpdate)
+	return &ReleaseUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ReleaseClient) UpdateOne(_m *Release) *ReleaseUpdateOne {
+	mutation := newReleaseMutation(c.config, OpUpdateOne, withRelease(_m))
+	return &ReleaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ReleaseClient) UpdateOneID(id string) *ReleaseUpdateOne {
+	mutation := newReleaseMutation(c.config, OpUpdateOne, withReleaseID(id))
+	return &ReleaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Release.
+func (c *ReleaseClient) Delete() *ReleaseDelete {
+	mutation := newReleaseMutation(c.config, OpDelete)
+	return &ReleaseDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ReleaseClient) DeleteOne(_m *Release) *ReleaseDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ReleaseClient) DeleteOneID(id string) *ReleaseDeleteOne {
+	builder := c.Delete().Where(release.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ReleaseDeleteOne{builder}
+}
+
+// Query returns a query builder for Release.
+func (c *ReleaseClient) Query() *ReleaseQuery {
+	return &ReleaseQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRelease},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Release entity by its id.
+func (c *ReleaseClient) Get(ctx context.Context, id string) (*Release, error) {
+	return c.Query().Where(release.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ReleaseClient) GetX(ctx context.Context, id string) *Release {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ReleaseClient) Hooks() []Hook {
+	hooks := c.hooks.Release
+	return append(hooks[:len(hooks):len(hooks)], release.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *ReleaseClient) Interceptors() []Interceptor {
+	inters := c.inters.Release
+	return append(inters[:len(inters):len(inters)], release.Interceptors[:]...)
+}
+
+func (c *ReleaseClient) mutate(ctx context.Context, m *ReleaseMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ReleaseCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ReleaseUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ReleaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ReleaseDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Release mutation op: %q", m.Op())
+	}
+}
+
 // ResourceStatusClient is a client for the ResourceStatus schema.
 type ResourceStatusClient struct {
 	config
@@ -6093,6 +6254,308 @@ func (c *RevokedSerialClient) mutate(ctx context.Context, m *RevokedSerialMutati
 		return (&RevokedSerialDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown RevokedSerial mutation op: %q", m.Op())
+	}
+}
+
+// RolloutClient is a client for the Rollout schema.
+type RolloutClient struct {
+	config
+}
+
+// NewRolloutClient returns a client for the Rollout from the given config.
+func NewRolloutClient(c config) *RolloutClient {
+	return &RolloutClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `rollout.Hooks(f(g(h())))`.
+func (c *RolloutClient) Use(hooks ...Hook) {
+	c.hooks.Rollout = append(c.hooks.Rollout, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `rollout.Intercept(f(g(h())))`.
+func (c *RolloutClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Rollout = append(c.inters.Rollout, interceptors...)
+}
+
+// Create returns a builder for creating a Rollout entity.
+func (c *RolloutClient) Create() *RolloutCreate {
+	mutation := newRolloutMutation(c.config, OpCreate)
+	return &RolloutCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Rollout entities.
+func (c *RolloutClient) CreateBulk(builders ...*RolloutCreate) *RolloutCreateBulk {
+	return &RolloutCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RolloutClient) MapCreateBulk(slice any, setFunc func(*RolloutCreate, int)) *RolloutCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RolloutCreateBulk{err: fmt.Errorf("calling to RolloutClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RolloutCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RolloutCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Rollout.
+func (c *RolloutClient) Update() *RolloutUpdate {
+	mutation := newRolloutMutation(c.config, OpUpdate)
+	return &RolloutUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RolloutClient) UpdateOne(_m *Rollout) *RolloutUpdateOne {
+	mutation := newRolloutMutation(c.config, OpUpdateOne, withRollout(_m))
+	return &RolloutUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RolloutClient) UpdateOneID(id string) *RolloutUpdateOne {
+	mutation := newRolloutMutation(c.config, OpUpdateOne, withRolloutID(id))
+	return &RolloutUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Rollout.
+func (c *RolloutClient) Delete() *RolloutDelete {
+	mutation := newRolloutMutation(c.config, OpDelete)
+	return &RolloutDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RolloutClient) DeleteOne(_m *Rollout) *RolloutDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RolloutClient) DeleteOneID(id string) *RolloutDeleteOne {
+	builder := c.Delete().Where(rollout.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RolloutDeleteOne{builder}
+}
+
+// Query returns a query builder for Rollout.
+func (c *RolloutClient) Query() *RolloutQuery {
+	return &RolloutQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRollout},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Rollout entity by its id.
+func (c *RolloutClient) Get(ctx context.Context, id string) (*Rollout, error) {
+	return c.Query().Where(rollout.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RolloutClient) GetX(ctx context.Context, id string) *Rollout {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRelease queries the release edge of a Rollout.
+func (c *RolloutClient) QueryRelease(_m *Rollout) *ReleaseQuery {
+	query := (&ReleaseClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(rollout.Table, rollout.FieldID, id),
+			sqlgraph.To(release.Table, release.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, rollout.ReleaseTable, rollout.ReleaseColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RolloutClient) Hooks() []Hook {
+	hooks := c.hooks.Rollout
+	return append(hooks[:len(hooks):len(hooks)], rollout.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RolloutClient) Interceptors() []Interceptor {
+	inters := c.inters.Rollout
+	return append(inters[:len(inters):len(inters)], rollout.Interceptors[:]...)
+}
+
+func (c *RolloutClient) mutate(ctx context.Context, m *RolloutMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RolloutCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RolloutUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RolloutUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RolloutDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Rollout mutation op: %q", m.Op())
+	}
+}
+
+// RolloutTargetClient is a client for the RolloutTarget schema.
+type RolloutTargetClient struct {
+	config
+}
+
+// NewRolloutTargetClient returns a client for the RolloutTarget from the given config.
+func NewRolloutTargetClient(c config) *RolloutTargetClient {
+	return &RolloutTargetClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `rollouttarget.Hooks(f(g(h())))`.
+func (c *RolloutTargetClient) Use(hooks ...Hook) {
+	c.hooks.RolloutTarget = append(c.hooks.RolloutTarget, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `rollouttarget.Intercept(f(g(h())))`.
+func (c *RolloutTargetClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RolloutTarget = append(c.inters.RolloutTarget, interceptors...)
+}
+
+// Create returns a builder for creating a RolloutTarget entity.
+func (c *RolloutTargetClient) Create() *RolloutTargetCreate {
+	mutation := newRolloutTargetMutation(c.config, OpCreate)
+	return &RolloutTargetCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RolloutTarget entities.
+func (c *RolloutTargetClient) CreateBulk(builders ...*RolloutTargetCreate) *RolloutTargetCreateBulk {
+	return &RolloutTargetCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RolloutTargetClient) MapCreateBulk(slice any, setFunc func(*RolloutTargetCreate, int)) *RolloutTargetCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RolloutTargetCreateBulk{err: fmt.Errorf("calling to RolloutTargetClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RolloutTargetCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RolloutTargetCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RolloutTarget.
+func (c *RolloutTargetClient) Update() *RolloutTargetUpdate {
+	mutation := newRolloutTargetMutation(c.config, OpUpdate)
+	return &RolloutTargetUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RolloutTargetClient) UpdateOne(_m *RolloutTarget) *RolloutTargetUpdateOne {
+	mutation := newRolloutTargetMutation(c.config, OpUpdateOne, withRolloutTarget(_m))
+	return &RolloutTargetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RolloutTargetClient) UpdateOneID(id string) *RolloutTargetUpdateOne {
+	mutation := newRolloutTargetMutation(c.config, OpUpdateOne, withRolloutTargetID(id))
+	return &RolloutTargetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RolloutTarget.
+func (c *RolloutTargetClient) Delete() *RolloutTargetDelete {
+	mutation := newRolloutTargetMutation(c.config, OpDelete)
+	return &RolloutTargetDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RolloutTargetClient) DeleteOne(_m *RolloutTarget) *RolloutTargetDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RolloutTargetClient) DeleteOneID(id string) *RolloutTargetDeleteOne {
+	builder := c.Delete().Where(rollouttarget.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RolloutTargetDeleteOne{builder}
+}
+
+// Query returns a query builder for RolloutTarget.
+func (c *RolloutTargetClient) Query() *RolloutTargetQuery {
+	return &RolloutTargetQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRolloutTarget},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RolloutTarget entity by its id.
+func (c *RolloutTargetClient) Get(ctx context.Context, id string) (*RolloutTarget, error) {
+	return c.Query().Where(rollouttarget.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RolloutTargetClient) GetX(ctx context.Context, id string) *RolloutTarget {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRollout queries the rollout edge of a RolloutTarget.
+func (c *RolloutTargetClient) QueryRollout(_m *RolloutTarget) *RolloutQuery {
+	query := (&RolloutClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(rollouttarget.Table, rollouttarget.FieldID, id),
+			sqlgraph.To(rollout.Table, rollout.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, rollouttarget.RolloutTable, rollouttarget.RolloutColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RolloutTargetClient) Hooks() []Hook {
+	hooks := c.hooks.RolloutTarget
+	return append(hooks[:len(hooks):len(hooks)], rollouttarget.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RolloutTargetClient) Interceptors() []Interceptor {
+	inters := c.inters.RolloutTarget
+	return append(inters[:len(inters):len(inters)], rollouttarget.Interceptors[:]...)
+}
+
+func (c *RolloutTargetClient) mutate(ctx context.Context, m *RolloutTargetMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RolloutTargetCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RolloutTargetUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RolloutTargetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RolloutTargetDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RolloutTarget mutation op: %q", m.Op())
 	}
 }
 
@@ -8266,10 +8729,10 @@ type (
 		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSecret,
 		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
 		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
-		RecoveryCode, ResourceStatus, RevokedIdentity, RevokedSerial, Route, RouteHTTP,
-		RouteHostname, RoutePolicy, RouteTCP, RouteTarget, RouteTrafficDaily,
-		RouteTrafficHourly, RouteUDP, SecretMeta, Session, TOTPCredential,
-		TrafficBaseline, User []ent.Hook
+		RecoveryCode, Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,
+		RolloutTarget, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,
+		RouteTarget, RouteTrafficDaily, RouteTrafficHourly, RouteUDP, SecretMeta,
+		Session, TOTPCredential, TrafficBaseline, User []ent.Hook
 	}
 	inters struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
@@ -8278,10 +8741,10 @@ type (
 		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSecret,
 		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
 		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
-		RecoveryCode, ResourceStatus, RevokedIdentity, RevokedSerial, Route, RouteHTTP,
-		RouteHostname, RoutePolicy, RouteTCP, RouteTarget, RouteTrafficDaily,
-		RouteTrafficHourly, RouteUDP, SecretMeta, Session, TOTPCredential,
-		TrafficBaseline, User []ent.Interceptor
+		RecoveryCode, Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,
+		RolloutTarget, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,
+		RouteTarget, RouteTrafficDaily, RouteTrafficHourly, RouteUDP, SecretMeta,
+		Session, TOTPCredential, TrafficBaseline, User []ent.Interceptor
 	}
 )
 

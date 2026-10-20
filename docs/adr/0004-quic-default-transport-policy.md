@@ -404,3 +404,87 @@ directions, GSO on, in Mbit/s:
 - A single stream at 80 ms carries about a third less than with one session, still above TCP +
   h2. The study saw the same on x86-64; a likely cause, not verified, is that the cell's stream
   lands on a session whose congestion window earlier cells never opened. VB-20 measures it again.
+
+### Phase 2 study: HTTP, UDP and many-route performance (local, indicative)
+
+**Question:** the runner records cover TCP bulk, setup and aggregate loss; they do not answer what
+the tunnel adds to an HTTP request, what a UDP route's latency is, or whether routes sharing one
+tunnel starve each other.
+
+**Method** (2026-10-20): the bench suite on one macOS arm64 host with Docker Desktop, 10 CPUs,
+4 MiB UDP buffers, and `tc netem` on the gateway↔connector link. The harness gained a direct
+HTTPS/HTTP-2 reference beside the connector, a send-time sample in each UDP echo, and a fairness
+workload: four routes through one connector and gateway, 16 streams on the first and one on each of
+the other three, with a setup echo at 200 connections/s in parallel. HTTP: 32 workers, 5 s, three
+repetitions. UDP: 2 000 datagrams/s for 5 s, one repetition. Fairness: 5 s, one repetition. The
+direct HTTP cell runs from the gateway host, which also runs the gateway process, so it is
+conservative on CPU. This is a local run, not the reference testbed (VB-20); its numbers are
+indicative and decide no target ([D49](../14-open-decisions.md#project-and-process)).
+
+**HTTP/2 through a route, direct vs tunnel** (requests/s and p99; direct is the same handler over
+TLS beside the connector):
+
+| RTT / loss | Direct | QUIC | TCP + h2 |
+|---|---|---|---|
+| 1 ms / 0 % | 26 691 rps, 1.69 ms | 15 840, 4.95 ms | 17 368, 3.52 ms |
+| 1 ms / 1 % | 10 005, 8.82 ms | 15 656, 4.02 ms | 11 596, 6.10 ms |
+| 20 ms / 0 % | 1 311, 31.7 ms | 1 357, 33.6 ms | 1 349, 34.1 ms |
+| 20 ms / 1 % | 673, 93.5 ms | 1 079, 67.6 ms | 728, 91.1 ms |
+| 80 ms / 0 % | 347, 345.7 ms | 361, 104.6 ms | 364, 96.3 ms |
+| 80 ms / 1 % | 211, 347.6 ms | 250, 257.9 ms | 177, 348.6 ms |
+
+- The tunnel adds 2–5 ms to HTTP p99 at 1 ms RTT; RPS falls to 59–65 % of direct.
+- At 1 % loss QUIC is the best HTTP transport: 1.56× direct at 1 ms, 1.60× at 20 ms, 1.18× at 80 ms.
+- Without loss at 20 and 80 ms the path RTT dominates; all three are equal within noise. The direct
+  p99 at 80 ms without loss (345.7 ms) is one long tail, not a tunnel advantage.
+
+**UDP echo latency** (2 000 datagrams/s, 10 000 sent; p50/p99 and datagrams that missed a 1 s
+receive window):
+
+| RTT / loss | QUIC | TCP + h2 |
+|---|---|---|
+| 1 ms / 0 % | 1.3 / 1.7–2.2 ms, 0 | 1.3 / 1.5–1.6 ms, 0 |
+| 20 ms / 0 % | 20.4 / 21.1 ms, 0 | 20.4 / 32–58 ms, 0–1 |
+| 80 ms / 0 % | 80.4 / 81–188 ms, 0 | 80.4 / 296–403 ms, 513–717 |
+| 20 ms / 1 % | 200–586 / 320–812 ms, 4 947–7 831 | 346–1 836 / 832–3 717 ms, 6 400–8 254 |
+| 80 ms / 1 % | 706–2 374 / 1 479–3 057 ms, 8 495–9 366 | 1 116–2 610 / 1 760–4 409 ms, 8 931–9 362 |
+
+- At 0 % loss a QUIC datagram is one-way delay plus a fraction of a millisecond, at every RTT.
+- h2 has no datagrams; at 80 ms its reliable framing gives p99 296–403 ms and misses 5–7 % even
+  without loss. This is why 03 now prefers QUIC for UDP routes on high-RTT paths.
+- At 1 % loss and 20/80 ms the 2 000/s flow collapses on both transports; the 1 s window turns
+  queueing into what the record calls loss.
+- The 3 000-byte oversize path is visible at 1 ms: QUIC's framed payload loses nothing, while its
+  datagrams lose their 1 %.
+
+**Many routes on one tunnel** (four routes, 16 + 1 + 1 + 1 streams, one connector and gateway;
+setup echo runs concurrently):
+
+| RTT / loss | Transport | Heavy Mbit/s | Per stream | Lights Mbit/s | Stream Jain | Setup p99 |
+|---|---|---|---|---|---|---|
+| 1 ms / 0 % | QUIC | 1 072 | 67.0 | 67.2 ×3 | 1.000 | 6.6 ms |
+| 1 ms / 0 % | h2 | 9 571 | 598.2 | 536–634 | 0.996 | 9.7 ms |
+| 20 ms / 0 % | QUIC | 209 | 13.1 | 13.1 ×3 | 1.000 | 52.6 ms |
+| 20 ms / 0 % | h2 | 2 073 | 129.6 | 114–144 | 0.993 | 614.0 ms |
+| 20 ms / 1 % | QUIC | 16.4 | 1.0 | 1.0–1.1 | 1.000 | 97.2 ms |
+| 20 ms / 1 % | h2 | 15.1 | 0.9 | 0.8–1.1 | 0.988 | 9 988.2 ms |
+
+- Per-stream fairness is already good on both transports (Jain 0.955–1.000); one saturating route
+  does not starve the others.
+- The aggregate difference is the one-session QUIC ceiling against two h2 connections (9.57 against
+  1.07 Gbit/s at 1 ms), the subject of D70 and D123, not a per-route scheduler failure.
+- Setup is where isolation fails on h2: its setup stream shares the two TCP connections with the
+  bulk uploads, so p99 reaches 614 ms and then the 10 s open timeout; QUIC stays at 6.6–97.2 ms.
+- The record's route-level Jain (~0.34) is arithmetic from 16 against 1 stream; use per-stream
+  goodput for isolation.
+
+**Outcome:**
+
+- No decision and no target change. [R] Prefer QUIC for UDP routes on high-RTT paths; h2's reliable
+  framing is the wrong path for datagrams there ([03](../03-connections.md#known-limitations)).
+- The harness changes are in `bench/` (direct HTTP, UDP RTT, fairness) and
+  [12](../12-testing-and-quality.md#benchmarks) lists them.
+- [V] Confirm on GitHub-hosted runners and VB-20; move the direct HTTP client onto the shaped link
+  before using it for a target; add Go allocation microbenchmarks for the per-message paths.
+- The local numbers are not committed as baselines; `bench/baselines/` stays empty until a runner
+  or reference-testbed run is recorded.

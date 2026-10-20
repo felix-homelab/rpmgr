@@ -55,6 +55,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 | `pwr_` | password reset | `whk_` | webhook |
 | `rel_` | release | `rol_` | rollout |
 | `ost_` | org settings | `ctn_` | controller node |
+| `rlt_` | rollout target | | |
 
 ## Entities
 
@@ -167,8 +168,8 @@ erDiagram
 | `webhooks` | id, org_id, url, secret_enc, event_types, enabled, version | Org-level endpoints ([07](07-api.md#webhooks-phase-2)); the secret is write-only |
 | `webhook_deliveries` | webhook_id, org_id, event_id, attempt, status_code, error, sent_at | Delivery log shown in the UI; unique (webhook_id, event_id, attempt) |
 | `releases` | id, version, channel (`stable`, `prerelease`), manifest_seq, manifest, signature, signing_key_statement, statement_signature, source (`check`, `upload`, `import`), mirrored_at, created_at | Verified release manifests the release check listed or an Instance Admin uploaded; `mirrored_at` is set once the mirror holds every artifact under `/dl/` ([04](04-security.md#over-the-air-updates)). `version` is unique; a manifest of the same version with a higher `seq` replaces the row's manifest |
-| `rollouts` | id, release_id, stage (`canary`, `percentage`, `all`), percentage, state (`running`, `paused`, `completed`, `cancelled`), pause_reason, created_by, created_at, updated_by, updated_at, version | A staged rollout ([D121](14-open-decisions.md#engineering)). At most one rollout is `running` or `paused`, which a partial unique index enforces. The target is never newer than the controller's version, which the API checks at creation |
-| `rollout_targets` | rollout_id, agent_id, agent_kind (`connector`, `gateway`), canary, bucket (0–99), state (`pending`, `offered`, `staged`, `updated`, `rolled_back`, `refused`, `skipped`, `stalled`), reason, version_before, updated_at | Per-agent progress, one row per agent when the rollout is created, the canary agents marked. `bucket` is the first two bytes of SHA-256 of the agent ID, modulo 100, so a stage of p % takes every agent with a bucket below p. `skipped` covers agents that are offline, decommissioned, on `auto_update: notify` or `off`, or on a channel that refuses the release; a deleted agent's row goes with it |
+| `rollouts` | id, release_id, stage (`canary`, `percentage`, `all`), percentage, state (`running`, `paused`, `completed`, `cancelled`), active, pause_reason, created_by, created_at, updated_by, updated_at, version | A staged rollout ([D121](14-open-decisions.md#engineering)). At most one rollout is `running` or `paused`: `active` is true exactly then, kept in step with `state` by a hook and never set by hand, and a partial unique index allows one row where it is true. The target is never newer than the controller's version, which the API checks at creation |
+| `rollout_targets` | id, rollout_id, agent_id, agent_kind (`connector`, `gateway`), canary, bucket (0–99), state (`pending`, `offered`, `staged`, `updated`, `rolled_back`, `refused`, `skipped`, `stalled`), reason, version_before, updated_at | Per-agent progress, one row per agent when the rollout is created, the canary agents marked. `bucket` is the first two bytes of SHA-256 of the agent ID, modulo 100, so a stage of p % takes every agent with a bucket below p. `skipped` covers agents that are offline, decommissioned, on `auto_update: notify` or `off`, or on a channel that refuses the release; the purge that deletes an agent's row deletes its targets in the same transaction |
 
 ### Phase 3 entities
 

@@ -58,6 +58,9 @@ var metrics = []metric{
 	{"HTTP/2 request latency p99 (ms)", false,
 		func(r Record) bool { return r.Workload == "http" },
 		func(r Record) float64 { return r.P99ms }},
+	{"UDP echo latency p99 (ms)", false,
+		func(r Record) bool { return r.Workload == "udp" },
+		func(r Record) float64 { return r.P99ms }},
 }
 
 func isTput(r Record) bool { return r.Workload == "up" || r.Workload == "down" }
@@ -215,7 +218,8 @@ func others(w io.Writer, recs []Record) {
 		switch r.Workload {
 		case "udp":
 			what = fmt.Sprintf("UDP, %d B at %d/s", r.Size, r.Rate)
-			result = fmt.Sprintf("%.0f /s back, loss %.2f %%, %.0f %% on the oversize path", r.PPS, r.UDPLossPct, r.OversizeShare*100)
+			result = fmt.Sprintf("%.0f /s back, loss %.2f %%, p50 %.2f ms, p99 %.2f ms, %.0f %% on the oversize path",
+				r.PPS, r.UDPLossPct, r.P50ms, r.P99ms, r.OversizeShare*100)
 		case "changes":
 			what = fmt.Sprintf("1 change/s, %d routes", r.Routes)
 			result = fmt.Sprintf("apply p50 %.2f s, p99 %.2f s; %d of %d held connections lost", r.ApplyP50s, r.ApplyP99s, r.Lost, r.Conns)
@@ -229,6 +233,9 @@ func others(w io.Writer, recs []Record) {
 		case "vb18":
 			what = "VB-18: new connections to a blocked connector"
 			result = fmt.Sprintf("%.0f %% before, %.0f %% while its session is blocked", r.Share["before"]*100, r.Share["blocked"]*100)
+		case "fairness":
+			what = fmt.Sprintf("%d routes, one saturated", r.Targets)
+			result = fmt.Sprintf("per-route %.0f–%.0f Mbit/s, Jain %.2f; setup p99 %.1f ms", r.MinMbps, r.MaxMbps, r.Jain, r.P99ms)
 		default:
 			continue
 		}

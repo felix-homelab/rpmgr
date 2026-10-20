@@ -1338,7 +1338,7 @@ used, not by the route compiler:
 | New public TCP connection, warm session | Open a stream locally, with no handshake; the client's bytes follow the `StreamResult`: **1 RTT** to the connector plus its dial, no pool to exhaust |
 | Agent session setup | QUIC: 1 RTT handshake, `SessionHello` pipelined. TCP fallback: TCP + TLS 1.3 = 2 RTT, plus ½–1 RTT for the gateway-opened session control stream |
 | UDP packet | QUIC datagram (no retransmission, no head-of-line blocking) |
-| Copy path | Pooled 32 KiB buffers; ≤ 2 user-space copies per hop; no per-packet allocations in steady state (verified with pprof in benchmarks) |
+| Copy path | Pooled 32 KiB buffers; ≤ 2 user-space copies per hop. The TCP relay reuses its buffer, but the UDP datagram, h2 chunk and message paths allocate per message, so “no per-packet allocations” holds for the relay only (ADR-0004 Phase 2 study) |
 | Config change | Unchanged routes untouched |
 
 ### What QUIC does and does not buy
@@ -1410,6 +1410,10 @@ benchmark result and the decision taken are recorded in the relevant ADR.
 - **QUIC through HTTP proxies**: not supported; the TCP transport is used.
 - **Large UDP payloads**: above ~1240–1412 bytes, UDP routes fall back to reliable framing (see
   [UDP routes](#udp-routes)).
+- **UDP routes over TCP + h2 on high-RTT paths**: h2 has no datagrams, so every payload is framed
+  on a reliable stream; a local run at 80 ms RTT and 2 000 datagrams/s missed 5–7 % of echoes within
+  a 1 s window at p99 296–403 ms, against none on QUIC. [R] Prefer QUIC for UDP routes on such paths
+  ([ADR-0004](adr/0004-quic-default-transport-policy.md#phase-2-study-http-udp-and-many-route-performance-local-indicative)).
 - **Per-session CPU**: one QUIC session is driven by roughly one core; a connector's four sessions
   per gateway spread its streams over up to four cores, while one stream stays on one.
 - **Symmetric NAT on both sides**: P2P fails; private services stay on the relay.

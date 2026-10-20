@@ -32,10 +32,19 @@ func ServeUDPEcho(pc net.PacketConn) error {
 
 // ServeHTTP is the HTTP upstream: every request gets 200 and a 1 KiB body.
 func ServeHTTP(ln net.Listener) error {
+	return httpServer().Serve(ln)
+}
+
+// ServeHTTPS is the direct HTTP reference: the same handler as ServeHTTP, over TLS with HTTP/2,
+// so that the direct cell has the same URL shape as the gateway's terminated route.
+func ServeHTTPS(ln net.Listener, certFile, keyFile string) error {
+	return httpServer().ServeTLS(ln, certFile, keyFile)
+}
+
+func httpServer() *http.Server {
 	body := block[:1024]
-	srv := &http.Server{ReadHeaderTimeout: 10 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	return &http.Server{ReadHeaderTimeout: 10 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		_, _ = w.Write(body)
 	})}
-	return srv.Serve(ln)
 }

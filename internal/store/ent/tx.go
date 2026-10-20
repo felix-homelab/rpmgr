@@ -86,12 +86,18 @@ type Tx struct {
 	PortQuota *PortQuotaClient
 	// RecoveryCode is the client for interacting with the RecoveryCode builders.
 	RecoveryCode *RecoveryCodeClient
+	// Release is the client for interacting with the Release builders.
+	Release *ReleaseClient
 	// ResourceStatus is the client for interacting with the ResourceStatus builders.
 	ResourceStatus *ResourceStatusClient
 	// RevokedIdentity is the client for interacting with the RevokedIdentity builders.
 	RevokedIdentity *RevokedIdentityClient
 	// RevokedSerial is the client for interacting with the RevokedSerial builders.
 	RevokedSerial *RevokedSerialClient
+	// Rollout is the client for interacting with the Rollout builders.
+	Rollout *RolloutClient
+	// RolloutTarget is the client for interacting with the RolloutTarget builders.
+	RolloutTarget *RolloutTargetClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
 	// RouteHTTP is the client for interacting with the RouteHTTP builders.
@@ -287,9 +293,12 @@ func (tx *Tx) init() {
 	tx.PortPool = NewPortPoolClient(tx.config)
 	tx.PortQuota = NewPortQuotaClient(tx.config)
 	tx.RecoveryCode = NewRecoveryCodeClient(tx.config)
+	tx.Release = NewReleaseClient(tx.config)
 	tx.ResourceStatus = NewResourceStatusClient(tx.config)
 	tx.RevokedIdentity = NewRevokedIdentityClient(tx.config)
 	tx.RevokedSerial = NewRevokedSerialClient(tx.config)
+	tx.Rollout = NewRolloutClient(tx.config)
+	tx.RolloutTarget = NewRolloutTargetClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
 	tx.RouteHTTP = NewRouteHTTPClient(tx.config)
 	tx.RouteHostname = NewRouteHostnameClient(tx.config)
