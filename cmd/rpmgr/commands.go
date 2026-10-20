@@ -19,6 +19,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/units"
+	"github.com/felix-homelab/rpmgr/internal/update"
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
 
@@ -42,6 +43,7 @@ func commands() *cli.Command {
 			agentcmd.Status(),
 			agentcmd.Diag(),
 			agentcmd.Policy(),
+			agentcmd.Updater(),
 			backupCommand(),
 			restoreCommand(),
 			migrateCommand(),
@@ -179,9 +181,9 @@ func systemdUnit() *cli.Command {
 	return &cli.Command{
 		Name:    "systemd-unit",
 		Summary: "print the hardened systemd unit of a role",
-		Args:    "controller | gateway | connector | all-in-one",
+		Args:    "controller | gateway | connector | all-in-one | update",
 		Flags: func(fs *flag.FlagSet) {
-			fs.StringVar(&bin, "bin", "/usr/local/bin/rpmgr", "the installed binary")
+			fs.StringVar(&bin, "bin", "", "the installed binary (default /usr/local/bin/rpmgr; for update, the path install.json records)")
 			fs.StringVar(&configPath, "config", "", "the controller's or all-in-one's boot file, for its KEK credential and revocation-log sink (default $RPMGR_CONFIG, else /etc/rpmgr/<role>.yaml)")
 		},
 		Run: func(_ context.Context, env *cli.Env, args []string) error {
@@ -206,8 +208,25 @@ func systemdUnit() *cli.Command {
 				}
 				o = units.ForController(c) // the KEK credential and the revocation-log sink
 			case "gateway", "connector":
+			case "update":
+				if bin == "" {
+					in, err := update.ReadInstall(update.StateDir)
+					if err != nil {
+						return fmt.Errorf("%w; name the binary with --bin", err)
+					}
+					bin = in.Path
+				}
+				b, err := units.RenderUpdater(bin)
+				if err != nil {
+					return err
+				}
+				_, err = env.Stdout.Write(b)
+				return err
 			default:
-				return cli.Usagef("no role %q: controller, gateway, connector or all-in-one", role)
+				return cli.Usagef("no role %q: controller, gateway, connector, all-in-one or update", role)
+			}
+			if bin == "" {
+				bin = "/usr/local/bin/rpmgr"
 			}
 			o.Bin = bin
 			b, err := units.Render(args[0], o)

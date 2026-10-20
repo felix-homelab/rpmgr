@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package agentcmd holds the commands of a connector or gateway host (docs/16-cli.md): the
-// connector role, enroll, leave, status, diag, policy and version, and the helpers the role
-// commands share. It is registered by cmd/rpmgr and links nothing of the controller, the gateway
-// or the importer, so that the connector-only build can register it too (docs/02-architecture.md,
-// "Roles"; D119).
+// connector role, enroll, leave, status, diag, policy, updater and version, and the helpers the
+// role commands share. It is registered by cmd/rpmgr and links nothing of the controller, the
+// gateway or the importer, so that the connector-only build can register it too
+// (docs/02-architecture.md, "Roles"; D119).
 package agentcmd
 
 import (

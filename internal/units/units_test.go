@@ -155,3 +155,41 @@ func TestRenderRefuses(t *testing.T) {
 func sink(dir string) units.Options {
 	return units.Options{Bin: "/usr/bin/rpmgr", Writable: []string{dir}}
 }
+
+// TestRenderUpdater: the updater pair names the binary install.json records in ExecStart, runs
+// as root (no User=), may write only the binary's directory and its own state, and keeps the
+// status file after the run.
+func TestRenderUpdater(t *testing.T) {
+	b, err := units.RenderUpdater("/opt/rpmgr/bin/rpmgr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(b)
+	path, service, ok := strings.Cut(out, "# /etc/systemd/system/rpmgr-update.service\n")
+	if !ok || !strings.HasPrefix(path, "# /etc/systemd/system/rpmgr-update.path\n") {
+		t.Fatalf("the pair is not two units, each after its file name:\n%s", out)
+	}
+	for _, want := range []string{"PathChanged=/var/lib/rpmgr/update/manifest.json", "Unit=rpmgr-update.service"} {
+		if !strings.Contains(path, want+"\n") {
+			t.Errorf("rpmgr-update.path lacks %q", want)
+		}
+	}
+	for _, want := range []string{
+		"Type=oneshot",
+		"ExecStart=/opt/rpmgr/bin/rpmgr updater apply --staged /var/lib/rpmgr/update --state /var/lib/rpmgr-update",
+		"RuntimeDirectory=rpmgr-update", "RuntimeDirectoryPreserve=yes", "ProtectSystem=strict",
+		"ReadWritePaths=/opt/rpmgr/bin /var/lib/rpmgr-update", "NoNewPrivileges=yes",
+	} {
+		if !strings.Contains(service, want+"\n") {
+			t.Errorf("rpmgr-update.service lacks %q", want)
+		}
+	}
+	if strings.Contains(service, "User=") {
+		t.Error("the updater must run as root")
+	}
+	for _, bin := range []string{"", "rpmgr", "/usr/local/bin/rp mgr", "/usr/local/bin/%n", "/usr/local//bin/rpmgr", "/usr/local/bin/../rpmgr"} {
+		if _, err := units.RenderUpdater(bin); err == nil {
+			t.Errorf("RenderUpdater(%q) succeeded", bin)
+		}
+	}
+}

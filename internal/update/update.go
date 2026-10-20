@@ -229,16 +229,30 @@ func (u *Updater) verify(meta map[string][]byte, in Install, channel string, st 
 	return m, nil
 }
 
-// install reads the installation record. A host whose roles include a controller or an
-// all-in-one is upgraded by hand (D102): its roles share the binary.
-func (u *Updater) install() (Install, error) {
-	b, err := readOwn(filepath.Join(u.State, installFile))
+// StateDir is the updater's own directory: install.json, state.json and staging/
+// (docs/10-operations.md, "Filesystem layout").
+const StateDir = "/var/lib/rpmgr-update"
+
+// ReadInstall reads the installation record of the updater's directory as the updater trusts it:
+// a regular file that only the updater's user owns and writes.
+func ReadInstall(dir string) (Install, error) {
+	b, err := readOwn(filepath.Join(dir, installFile))
 	if err != nil {
 		return Install{}, err
 	}
 	var in Install
 	if err := strictJSON(b, &in); err != nil {
 		return Install{}, fmt.Errorf("update: %s: %w", installFile, err)
+	}
+	return in, nil
+}
+
+// install reads the installation record. A host whose roles include a controller or an
+// all-in-one is upgraded by hand (D102): its roles share the binary.
+func (u *Updater) install() (Install, error) {
+	in, err := ReadInstall(u.State)
+	if err != nil {
+		return Install{}, err
 	}
 	roles := in.roles()
 	switch {
