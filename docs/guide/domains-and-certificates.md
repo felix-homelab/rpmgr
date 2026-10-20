@@ -44,7 +44,12 @@ cannot claim it ([04](../04-security.md#route-and-hostname-ownership)).
   `http://<domain>/.well-known/rpmgr-challenge/<claim ID>` on port 80 with the value. The
   controller fetches that URL; pointing the name at your gateways is the proof. Port 80 of the
   gateways must be reachable from the controller, directly or through the proxy that `HTTP_PROXY`,
-  else `ALL_PROXY`, names ([Environment variables](reference/environment.md)).
+  else `ALL_PROXY`, names ([Environment variables](reference/environment.md)). Without a proxy, the
+  controller connects only to public addresses: a name that resolves to a loopback, private or
+  other internal address fails with "the name resolves to an address that is not public"
+  ([04](../04-security.md#route-and-hostname-ownership)). For a domain that resolves only on your
+  own network, as in a homelab, use a TXT record, or have the Instance Admin mark the claim trusted
+  (`rpmgr trust domain <claim ID>`).
 
 The controller checks pending claims on its own, often at first and then less often, and marks a
 claim **failed** that it could not prove for a while ([15](../15-dns.md#timers-and-limits)).

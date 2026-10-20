@@ -46,6 +46,12 @@ Changes to the design documents are not recorded here: see the git history and t
   narrower route without that route's access policy. A path with `;` parameters, such as
   `/admin;jsessionid=1`, now belongs to the route its form without them matches. `CONNECT`
   requests are refused with 501. Medium severity; affects v0.1.0. (#813)
+- Controller: an HTTP domain proof connects only to public addresses, so an HTTP claim whose name
+  resolves to a loopback, private, link-local or other internal address fails with "the name
+  resolves to an address that is not public"; through a proxy nothing changes. The last error of
+  an HTTP claim names only the kind of failure, no longer the addresses, the resolver or the
+  server's own text. A domain that resolves only on the local network is proved with a TXT record
+  or marked trusted by the Instance Admin. (#822)
 
 ## [0.1.0] - 2026-10-19
 

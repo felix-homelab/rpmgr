@@ -527,9 +527,34 @@ flowchart LR
   have one, "Remove second factor…"; every row grants or revokes the Instance Admin role after a
   confirmation. All take a step-up; the last active Instance Admin keeps the role, and the page
   says so ([04](04-security.md#account-recovery)).
-- **`/settings/updates`** holds the release check and the update channel. Uploading a manifest for
-  an air-gapped installation is Phase 2; until then `rpmgr release import` does it on the controller
-  host ([D59](14-open-decisions.md#security-defaults)).
+- **`/settings/updates`** holds the release check and the update channel. In Phase 2 it also runs
+  rollouts ([04](04-security.md#over-the-air-updates),
+  [D121](14-open-decisions.md#engineering)):
+  - **Releases:** each listed release with its channel, where it came from and whether the mirror
+    holds it; "Upload release…" takes the signed manifest, the signing-key statement and their
+    signatures, after a step-up.
+  - **Rollout:** "Roll out…" on a release no newer than the controller asks for the canary agents
+    and a step-up. The running or paused rollout shows its stage, how many agents are updated,
+    pending, skipped, rolled back or stalled, and the agents by state with their reasons. "Next
+    stage…" asks for the percentage or "all"; "Pause", "Resume" and "Cancel" are next to it, each
+    after a step-up but "Pause". A rollback or a stalled agent pauses the rollout, and the page says
+    which agent and why.
+  - Others never see the page; connectors and gateways show their own update state on their pages.
+
+  ```
+  ┌ Updates ────────────────────────────────────────────────────────────────┐
+  │ Release check  [on]   Channel  (stable ▾)                               │
+  │ Releases                                                 [Upload…]      │
+  │  1.5.0  stable  release check  mirrored     [Roll out…]                 │
+  │  1.4.2  stable  release check  mirrored     (controller's previous)     │
+  │ Rollout of 1.5.0 — paused: con-nas rolled back (not ready)              │
+  │  stage 25 %   updated 31 · pending 4 · skipped 6 · rolled back 1        │
+  │  [Resume]  [Next stage…]  [Cancel]                                      │
+  └─────────────────────────────────────────────────────────────────────────┘
+  ```
+- **Connector and gateway lists** show each agent's version, and from Phase 2 its update state
+  (offered, staged, updated, rolled back, skipped and why), and a warning when it is below
+  `min_agent_version`, with the reason of its last `Goodbye`.
 - **Saving** sends the settings as read with the page's fields changed, the mask of those fields and
   the etag (U1); a page never saves another page's fields. If the settings changed since they were
   read, the page says so and shows them as they are now.
