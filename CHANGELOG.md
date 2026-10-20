@@ -30,6 +30,9 @@ Changes to the design documents are not recorded here: see the git history and t
 - Tunnels: QUIC data sessions use quic-go v0.64.1, whose loss recovery no longer shrinks the
   congestion window for packets that were only reordered. On the benchmark runners a single QUIC
   stream without loss carried two to four times as much at 20 and 80 ms RTT as with v0.1.0. (#828)
+- Connectors keep four QUIC data sessions to each gateway instead of one, each with its own
+  congestion window, so that a loss slows a quarter of the streams; TCP + h2 stays at two
+  connections. A gateway of v0.1.0 accepts them. A single connection is carried as before. (#825)
 
 ### Fixed
 
