@@ -55,6 +55,12 @@
 
 ## Commands
 
+The connector-only build (`cmd/rpmgr-connector`, [D119](14-open-decisions.md#engineering)) has
+the commands that run on a connector host: `connector`, `setup` and `systemd-unit` for the
+connector role only, `enroll`, `leave`, `status`, `diag`, `policy` and `version`. Its
+`controller`, `gateway` and `all-in-one` print "not available in this build" with exit code 2;
+the other commands are not in its tree.
+
 A command marked *not yet* exists in the command tree and prints "not available in this build"
 with exit code 2 until its implementation lands; one marked *Phase 2* is designed and not in the
 command tree yet.

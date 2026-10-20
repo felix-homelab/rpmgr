@@ -537,6 +537,10 @@ func main() {
 EOF
   printf '//go:build !rpmgrtest\n\npackage main\n\nconst roots = "release root keys: none; this build verifies no release"\n' >"$r/cmd/rpmgr/roots.go"
   printf '//go:build rpmgrtest\n\npackage main\n\nconst roots = "test release root keys (rpmgrtest build):"\n' >"$r/cmd/rpmgr/roots_rpmgrtest.go"
+  # The connector-only build, which has no controller: `controller` exits 2.
+  mkdir -p "$r/cmd/rpmgr-connector"
+  cp "$r/cmd/rpmgr"/*.go "$r/cmd/rpmgr-connector/"
+  sed -i 's|^func main() {$|func main() {\n\tif len(os.Args) > 1 \&\& os.Args[1] == "controller" {\n\t\tos.Exit(2)\n\t}|' "$r/cmd/rpmgr-connector/main.go"
   git -C "$r" add -A && git -C "$r" commit -q -s -m "feat: fixture"
   commit=$(git -C "$r" rev-parse HEAD)
   rb="$dir/build-release.sh" ra="$dir/check-release-artifacts.sh"
@@ -584,6 +588,21 @@ EOF
   cp "$r/a"/rpmgr-1.2.3-linux-amd64 "$r/a"/rpmgr-1.2.3-linux-arm64 "$r/a"/rpmgr-1.2.3-linux-arm "$t/"
   (cd "$t" && sha256sum -- rpmgr-* >SHA256SUMS)
   expect fail "an architecture missing" "$ra" "$t" 1.2.3 "$commit" "$r"
+  t=$(mktemp -d "$tmproot/release.XXXXXX")
+  cp "$r/a"/* "$t/"
+  rm "$t/rpmgr-1.2.3-windows-amd64-connector.exe"
+  (cd "$t" && sha256sum -- rpmgr-* >SHA256SUMS)
+  expect fail "a connector-only build missing" "$ra" "$t" 1.2.3 "$commit" "$r"
+  t=$(mktemp -d "$tmproot/release.XXXXXX")
+  cp "$r/a"/* "$t/"
+  cp "$r/a/rpmgr-1.2.3-linux-amd64" "$t/rpmgr-1.2.3-linux-amd64-connector"
+  (cd "$t" && sha256sum -- rpmgr-* >SHA256SUMS)
+  expect fail "the full build as the connector-only build" "$ra" "$t" 1.2.3 "$commit" "$r"
+  t=$(mktemp -d "$tmproot/release.XXXXXX")
+  cp "$r/a"/* "$t/"
+  cp "$r/a/rpmgr-1.2.3-darwin-arm64-connector" "$t/rpmgr-1.2.3-darwin-amd64-connector"
+  (cd "$t" && sha256sum -- rpmgr-* >SHA256SUMS)
+  expect fail "a connector-only build of another platform" "$ra" "$t" 1.2.3 "$commit" "$r"
 fi
 
 # --- Docker-based checks -------------------------------------------------------------------

@@ -65,11 +65,14 @@ func (f *setupForm) ask(fields ...huh.Field) error {
 // values asks for the role and everything it needs.
 func (f *setupForm) values(v *setup.Values) error {
 	role := string(v.Role)
-	if role == "" {
-		role = string(setup.AllInOne)
-	}
 	roles := make([]huh.Option[string], 0, len(setup.Roles))
 	for _, r := range setup.Roles {
+		if !setupHost.Offers(r.Role) {
+			continue
+		}
+		if role == "" {
+			role = string(r.Role) // the first role this build sets up: all-in-one in the full build
+		}
 		roles = append(roles, huh.NewOption(string(r.Role)+": "+r.About, string(r.Role)))
 	}
 	if err := f.ask(huh.NewNote().Title("rpmgr setup").Description("Sets this host up for one role. Nothing changes before you confirm the plan."),

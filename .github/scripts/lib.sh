@@ -33,3 +33,17 @@ export PLAYWRIGHT_VERSION=1.63.0
 # The Linux architectures rpmgr is released for, as GOARCH names them and as the release artifacts
 # are named; arm is armv7 (GOARM=7).
 RELEASE_ARCHES=(amd64 arm64 arm riscv64)
+
+# The platforms that get the connector-only build only (D119, D122), as <GOOS>/<GOARCH>; every
+# Linux architecture above gets it too.
+CONNECTOR_ONLY_PLATFORMS=(windows/amd64 darwin/amd64 darwin/arm64)
+
+# connector_artifacts prints the names of the connector-only build's artifacts of a version, one
+# per line: rpmgr-<version>-<os>-<arch>-connector, with .exe on Windows (docs/04-security.md,
+# "Release signing").
+connector_artifacts() {
+  local p
+  for p in "${RELEASE_ARCHES[@]/#/linux/}" "${CONNECTOR_ONLY_PLATFORMS[@]}"; do
+    printf 'rpmgr-%s-%s-%s-connector%s\n' "$1" "${p%/*}" "${p#*/}" "$([[ ${p%/*} == windows ]] && echo .exe)"
+  done
+}

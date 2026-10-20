@@ -95,9 +95,13 @@ func TestGlobal_Verify(t *testing.T) {
 	g.files = files(t, nil)
 	for name, tc := range map[string]struct{ version string }{"the latest": {""}, "a pinned version": {"1.4.2"}} {
 		out, err := runGlobal(t, g, tc.version, "", "--verify-only")
-		if err != nil || !strings.Contains(out, "downloading rpmgr 1.4.2 for linux/"+arch) || !strings.Contains(out, "verified rpmgr 1.4.2 (manifest 87)") {
+		if err != nil || !strings.Contains(out, "downloading rpmgr 1.4.2 (full) for linux/"+arch) || !strings.Contains(out, "verified rpmgr 1.4.2 (manifest 87)") {
 			t.Fatalf("%s: %v\n%s", name, err, out)
 		}
+	}
+	if out, err := runGlobal(t, g, "1.4.2", "", "--verify-only", "--variant", "connector"); err != nil ||
+		!strings.Contains(out, "downloading rpmgr 1.4.2 (connector) for linux/"+arch) || !strings.Contains(out, "verified rpmgr 1.4.2") {
+		t.Errorf("--variant connector: %v\n%s", err, out)
 	}
 	if out, err := runGlobal(t, g, "", "", "--verify-only", "--version", "v1.4.2"); err != nil || !strings.Contains(out, "verified rpmgr 1.4.2") {
 		t.Errorf("--version v1.4.2: %v\n%s", err, out)
@@ -158,6 +162,7 @@ func TestGlobal_Refusals(t *testing.T) {
 		"a bad version":          {args: []string{"--version", "latest"}, want: "is not a release version"},
 		"a version with a slash": {args: []string{"--version", "1.4.2/../x"}, want: "is not a release version"},
 		"an unknown argument":    {args: []string{"--yes"}, want: "unknown argument --yes"},
+		"an unknown variant":     {args: []string{"--variant", "lite"}, want: "--variant must be full or connector"},
 	} {
 		out, err := runGlobal(t, g, "", tc.path, append([]string{"--verify-only"}, tc.args...)...)
 		if err == nil || !strings.Contains(out, tc.want) {

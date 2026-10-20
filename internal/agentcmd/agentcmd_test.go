@@ -67,3 +67,25 @@ func TestNoServerPackages(t *testing.T) {
 		t.Error("go list did not list the connector role: the test reads the wrong package")
 	}
 }
+
+// TestSystemdUnit_Roles: systemd-unit prints the unit of one of its roles and refuses another;
+// the connector-only build gives it the connector only.
+func TestSystemdUnit_Roles(t *testing.T) {
+	run := func(c *cli.Command, args ...string) (int, string) {
+		var out, errOut bytes.Buffer
+		tree := &cli.Command{Name: "rpmgr", Sub: []*cli.Command{c}}
+		code := cli.Main(context.Background(), tree, args, &cli.Env{Stdout: &out, Stderr: &errOut, Getenv: func(string) string { return "" }})
+		return code, out.String() + errOut.String()
+	}
+	if code, out := run(SystemdUnit("connector"), "systemd-unit", "connector"); code != 0 || !strings.Contains(out, "rpmgr connector") {
+		t.Errorf("the connector's unit: %d %q", code, out)
+	}
+	for _, role := range []string{"gateway", "controller", "all-in-one", "relay"} {
+		if code, out := run(SystemdUnit("connector"), "systemd-unit", role); code != cli.ExitUsage || !strings.Contains(out, "no role") {
+			t.Errorf("%s from a connector-only systemd-unit: %d %q", role, code, out)
+		}
+	}
+	if code, out := run(SystemdUnit(), "systemd-unit", "gateway"); code != 0 || !strings.Contains(out, "rpmgr gateway") {
+		t.Errorf("every role by default: %d %q", code, out)
+	}
+}

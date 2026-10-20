@@ -57,15 +57,18 @@ func files(t *testing.T, edit func(st map[string]any, m *release.Manifest)) map[
 		"not_before": now.Add(-24 * time.Hour).Format(time.RFC3339), "not_after": now.Add(300 * 24 * time.Hour).Format(time.RFC3339)}
 	body := []byte("#!/bin/sh\necho rpmgr test binary\n")
 	sum := sha256.Sum256(body)
+	conn := []byte("#!/bin/sh\necho rpmgr connector-only test binary\n")
+	connSum := sha256.Sum256(conn)
 	m := release.Manifest{Seq: 87, Version: "1.4.2", Floor: "1.4.0", Channel: release.Stable, IssuedAt: now,
-		Artifacts: []release.Artifact{{OS: "linux", Arch: arch, Variant: "full", SHA256: hex.EncodeToString(sum[:]), Size: int64(len(body))}}}
+		Artifacts: []release.Artifact{{OS: "linux", Arch: arch, Variant: "full", SHA256: hex.EncodeToString(sum[:]), Size: int64(len(body))},
+			{OS: "linux", Arch: arch, Variant: "connector", SHA256: hex.EncodeToString(connSum[:]), Size: int64(len(conn))}}}
 	if edit != nil {
 		edit(st, &m)
 	}
 	stb, _ := json.Marshal(st)
 	mb, _ := json.Marshal(m)
 	return map[string][]byte{"signing-key.json": stb, "signing-key.json.minisig": root.Sign(stb), "manifest.json": mb,
-		"manifest.json.minisig": signing.Sign(mb), "rpmgr-1.4.2-linux-" + arch: body}
+		"manifest.json.minisig": signing.Sign(mb), "rpmgr-1.4.2-linux-" + arch: body, "rpmgr-1.4.2-linux-" + arch + "-connector": conn}
 }
 
 type server struct {
@@ -134,8 +137,31 @@ func TestVerify(t *testing.T) {
 	s := newServer(t)
 	ctl := []string{"--controller", s.URL, "--verify-only"}
 	s.files = files(t, nil)
-	if out, err := run(t, s, "", ctl...); err != nil || !strings.Contains(out, "verified rpmgr 1.4.2 (manifest 87)") {
+	if out, err := run(t, s, "", ctl...); err != nil || !strings.Contains(out, "verified rpmgr 1.4.2 (manifest 87)") ||
+		!strings.Contains(out, "downloading rpmgr 1.4.2 (full) for linux/"+arch) {
 		t.Fatalf("a good release: %v\n%s", err, out)
+	}
+	// The connector-only build (D119) is its own artifact, verified against its own manifest entry.
+	if out, err := run(t, s, "", append(ctl, "--variant", "connector")...); err != nil || !strings.Contains(out, "verified rpmgr 1.4.2 (manifest 87)") ||
+		!strings.Contains(out, "downloading rpmgr 1.4.2 (connector) for linux/"+arch) {
+		t.Fatalf("the connector-only build: %v\n%s", err, out)
+	}
+	swapped := files(t, nil)
+	full, conn := "rpmgr-1.4.2-linux-"+arch, "rpmgr-1.4.2-linux-"+arch+"-connector"
+	swapped[full], swapped[conn] = swapped[conn], swapped[full]
+	s.mu.Lock()
+	s.files = swapped
+	s.mu.Unlock()
+	for _, variant := range []string{"full", "connector"} {
+		if out, err := run(t, s, "", append(ctl, "--variant", variant)...); err == nil || !strings.Contains(out, "does not match") {
+			t.Errorf("the %s build served as the other: %v\n%s", variant, err, out)
+		}
+	}
+	s.mu.Lock()
+	s.files = files(t, func(_ map[string]any, m *release.Manifest) { m.Artifacts = m.Artifacts[:1] })
+	s.mu.Unlock()
+	if out, err := run(t, s, "", append(ctl, "--variant", "connector")...); err == nil || !strings.Contains(out, "no connector build for linux/") {
+		t.Errorf("a release without the connector-only build: %v\n%s", err, out)
 	}
 	other := releasetest.Key("another root")
 	flip := func(b []byte, old, new string) []byte {
@@ -215,6 +241,8 @@ func TestRefusals(t *testing.T) {
 		"a denial with a newline":  {"", []string{"--controller", s.URL, "--deny-target", "10.0.0.5\nx"}, "with a newline"},
 		"a denial without target":  {"", []string{"--controller", s.URL, "--deny-target"}, "--deny-target needs a target"},
 		"an unreadable token file": {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--token-file", "/nonexistent/token"}, "cannot read --token-file"},
+		"an unknown variant":       {"", []string{"--controller", s.URL, "--verify-only", "--variant", "lite"}, "--variant must be full or connector"},
+		"a connector-only gateway": {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "gateway", "--variant", "connector"}, "runs no gateway"},
 		"OpenSSL 1.1":              {old + ":", []string{"--controller", s.URL, "--verify-only"}, "OpenSSL 3.0 or later is needed"},
 		"OpenSSL that fails":       {broken + ":", []string{"--controller", s.URL, "--verify-only"}, "openssl does not run"},
 	} {

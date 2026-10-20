@@ -88,7 +88,7 @@ func New(v Values, h Host) (*Plan, error) {
 	if err := v.check(h); err != nil {
 		return nil, err
 	}
-	if v.Role.Initialises() && h.Server == nil {
+	if !h.Offers(v.Role) {
 		return nil, fmt.Errorf("the role %s: %w", v.Role, cli.ErrNotAvailable)
 	}
 	if !h.IsRoot() {

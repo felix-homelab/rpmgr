@@ -15,8 +15,8 @@
 {{- end}}
 #
 #   curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh
-#   sudo sh install.sh [--version <version>] [--prerelease] [--no-setup] [--upgrade] [--restart]
-#     [--dir <directory>] [--verify-only]
+#   sudo sh install.sh [--version <version>] [--prerelease] [--variant full|connector] [--no-setup]
+#     [--upgrade] [--restart] [--dir <directory>] [--verify-only]
 set -eu
 
 PINNED='{{.Version}}'
@@ -31,8 +31,8 @@ say() { echo "rpmgr install: $*" >&2; }
 
 usage() {
   cat <<'EOF'
-Usage: sh install.sh [--version <version>] [--prerelease] [--no-setup] [--upgrade] [--restart]
-         [--dir <directory>] [--verify-only]
+Usage: sh install.sh [--version <version>] [--prerelease] [--variant full|connector] [--no-setup]
+         [--upgrade] [--restart] [--dir <directory>] [--verify-only]
 
 Installs rpmgr from its GitHub release, verified with the release root keys in this script, to
 /usr/local/bin/rpmgr, with the user rpmgr, /etc/rpmgr and /var/lib/rpmgr; then offers to run
@@ -40,6 +40,8 @@ Installs rpmgr from its GitHub release, verified with the release root keys in t
 
   --version <version>  install this version, e.g. 0.1.0 (default: this script's, else the latest)
   --prerelease         without --version, take the latest release including pre-releases
+  --variant <variant>  full (every role) or connector (the connector-only build); default: the
+                       build this host runs, else full
   --no-setup           do not offer to run "rpmgr setup"
   --upgrade            upgrade the rpmgr of this host, which must be installed: no setup, and after
                        the version only what is left to do
@@ -49,11 +51,12 @@ Installs rpmgr from its GitHub release, verified with the release root keys in t
 EOF
 }
 
-version=$PINNED prerelease=0 setup=1 upgrade=0 restart=0 dir='' verify_only=0
+version=$PINNED prerelease=0 setup=1 upgrade=0 restart=0 dir='' verify_only=0 variant=
 while [ $# -gt 0 ]; do
   case $1 in
     --version) [ $# -ge 2 ] || die "--version needs a version"; version=${2#v}; shift 2 ;;
     --prerelease) prerelease=1; shift ;;
+    --variant) [ $# -ge 2 ] || die "--variant needs full or connector"; variant=$2; shift 2 ;;
     --no-setup) setup=0; shift ;;
     --upgrade) upgrade=1 setup=0; shift ;;
     --restart) restart=1; shift ;;
@@ -70,10 +73,20 @@ case $version in *[!0-9A-Za-z.-]*) die "--version $version is not a release vers
 if [ "$upgrade" = 1 ] && [ "$verify_only" = 0 ] && [ ! -x "$BIN" ]; then
   die "nothing to upgrade: $BIN is not installed; install it without --upgrade"
 fi
+# The build this host runs, as its install record names it: an upgrade keeps it (D119).
+installed=''
+if [ -r /var/lib/rpmgr-update/install.json ]; then
+  installed=$(grep -o '"variant":"[a-z]*"' /var/lib/rpmgr-update/install.json | cut -d'"' -f4)
+fi
+[ -n "$variant" ] || variant=${installed:-full}
+case $variant in full | connector) ;; *) die "--variant must be full or connector" ;; esac
+if [ "$upgrade" = 1 ] && [ -n "$installed" ] && [ "$installed" != "$variant" ]; then
+  die "this host runs the $installed build of rpmgr; --upgrade keeps it (--variant $installed)"
+fi
 
 case $(uname -s) in
   Linux) ;;
-  *) die "rpmgr installs on Linux only; this is $(uname -s) (Windows and macOS connectors come in Phase 2)" ;;
+  *) die "rpmgr installs on Linux only; this is $(uname -s); Windows and macOS connectors are installed by hand from the release download" ;;
 esac
 case $(uname -m) in
   x86_64 | amd64) arch=amd64 ;;
@@ -121,8 +134,9 @@ VERSION=$version
 
 {{template "roots" .}}
 {{template "verify" .}}
-say "downloading rpmgr $VERSION for linux/$arch from $GITHUB/$REPO"
+say "downloading rpmgr $VERSION ($variant) for linux/$arch from $GITHUB/$REPO"
 artifact="rpmgr-$VERSION-linux-$arch"
+[ "$variant" = full ] || artifact="$artifact-$variant"
 for f in signing-key.json signing-key.json.minisig manifest.json manifest.json.minisig "$artifact"; do
   get "$GITHUB/$REPO/releases/download/v$VERSION/$f" "$tmp/$f" || die "cannot download $f of rpmgr $VERSION"
 done

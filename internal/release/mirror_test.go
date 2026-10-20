@@ -44,8 +44,8 @@ func (f *fakeRelease) Open(_ context.Context, name string) (io.ReadCloser, error
 
 var testRoot = releasetest.Key("mirror root")
 
-// newRelease signs a release of version with artifacts for linux amd64 and arm64, darwin arm64
-// and a linux connector variant, each holding its own name.
+// newRelease signs a release of version with artifacts for linux amd64 and arm64, darwin arm64,
+// a linux connector variant and a windows connector, each holding its own name.
 func newRelease(t *testing.T, version string, seq uint64) *fakeRelease {
 	t.Helper()
 	signing := releasetest.Key("mirror signing")
@@ -53,7 +53,8 @@ func newRelease(t *testing.T, version string, seq uint64) *fakeRelease {
 	f := &fakeRelease{files: map[string][]byte{}, opened: map[string]int{}}
 	m := release.Manifest{Seq: seq, Version: version, Floor: "1.0.0", Channel: release.Stable, IssuedAt: during}
 	for _, a := range []release.Artifact{{OS: "linux", Arch: "amd64", Variant: "full"}, {OS: "linux", Arch: "arm64", Variant: "full"},
-		{OS: "darwin", Arch: "arm64", Variant: "full"}, {OS: "linux", Arch: "amd64", Variant: "connector"}} {
+		{OS: "darwin", Arch: "arm64", Variant: "full"}, {OS: "linux", Arch: "amd64", Variant: "connector"},
+		{OS: "windows", Arch: "amd64", Variant: "connector"}} {
 		body := []byte("binary " + release.ArtifactName(version, a))
 		sum := sha256.Sum256(body)
 		a.Size, a.SHA256 = int64(len(body)), hex.EncodeToString(sum[:])
@@ -91,8 +92,8 @@ func TestMirrorSync(t *testing.T) {
 		t.Fatalf("sync: %v %v", man, err)
 	}
 	h := m.Handler()
-	for _, name := range []string{"rpmgr-1.4.2-linux-amd64", "rpmgr-1.4.2-linux-arm64", "manifest.json", "manifest.json.minisig",
-		"signing-key.json", "signing-key.json.minisig"} {
+	for _, name := range []string{"rpmgr-1.4.2-linux-amd64", "rpmgr-1.4.2-linux-arm64", "rpmgr-1.4.2-linux-amd64-connector",
+		"manifest.json", "manifest.json.minisig", "signing-key.json", "signing-key.json.minisig"} {
 		w := get(t, h, http.MethodGet, "/dl/1.4.2/"+name)
 		if w.Code != http.StatusOK || !bytes.Equal(w.Body.Bytes(), src.files[name]) {
 			t.Errorf("GET %s: %d %q", name, w.Code, w.Body.String())
@@ -101,7 +102,7 @@ func TestMirrorSync(t *testing.T) {
 			t.Errorf("%s: Cache-Control %q", name, w.Header().Get("Cache-Control"))
 		}
 	}
-	for _, path := range []string{"/dl/1.4.2/rpmgr-1.4.2-darwin-arm64", "/dl/1.4.2/rpmgr-1.4.2-linux-amd64-connector",
+	for _, path := range []string{"/dl/1.4.2/rpmgr-1.4.2-darwin-arm64", "/dl/1.4.2/rpmgr-1.4.2-windows-amd64-connector.exe",
 		"/dl/1.4.1/manifest.json", "/dl/1.4.2/.manifest.json.part", "/dl/1.4.2/../dl/1.4.2/manifest.json", "/dl/1.4.2/", "/dl/"} {
 		if w := get(t, h, http.MethodGet, path); w.Code != http.StatusNotFound {
 			t.Errorf("GET %s: %d", path, w.Code)
@@ -116,7 +117,8 @@ func TestMirrorSync(t *testing.T) {
 	if _, err := m.Sync(context.Background(), src); err != nil {
 		t.Fatal(err)
 	}
-	if src.opened["rpmgr-1.4.2-linux-amd64"] != 1 || src.opened["rpmgr-1.4.2-darwin-arm64"] != 0 {
+	if src.opened["rpmgr-1.4.2-linux-amd64"] != 1 || src.opened["rpmgr-1.4.2-linux-amd64-connector"] != 1 ||
+		src.opened["rpmgr-1.4.2-darwin-arm64"] != 0 || src.opened["rpmgr-1.4.2-windows-amd64-connector.exe"] != 0 {
 		t.Errorf("fetched %v", src.opened)
 	}
 }
@@ -225,5 +227,23 @@ func TestGitHub(t *testing.T) {
 	}
 	if _, err := g.Open(context.Background(), "signing-key.json"); err == nil || !strings.Contains(err.Error(), "404") {
 		t.Errorf("a missing file: %v", err)
+	}
+}
+
+// TestArtifactName: names as 04 has them, -<variant> for variants other than full and .exe on
+// Windows.
+func TestArtifactName(t *testing.T) {
+	for _, c := range []struct {
+		a    release.Artifact
+		want string
+	}{
+		{release.Artifact{OS: "linux", Arch: "arm64", Variant: "full"}, "rpmgr-1.4.2-linux-arm64"},
+		{release.Artifact{OS: "linux", Arch: "arm64", Variant: "connector"}, "rpmgr-1.4.2-linux-arm64-connector"},
+		{release.Artifact{OS: "windows", Arch: "amd64", Variant: "connector"}, "rpmgr-1.4.2-windows-amd64-connector.exe"},
+		{release.Artifact{OS: "darwin", Arch: "arm64", Variant: "connector"}, "rpmgr-1.4.2-darwin-arm64-connector"},
+	} {
+		if got := release.ArtifactName("1.4.2", c.a); got != c.want {
+			t.Errorf("%+v: %s, want %s", c.a, got, c.want)
+		}
 	}
 }

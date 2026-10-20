@@ -6,8 +6,10 @@
 # CGO_ENABLED=0, -trimpath, no build tags, no VCS stamp and the Go toolchain that go.mod pins, so
 # two builds of the same commit are equal byte for byte. The environment cannot add build tags:
 # GOFLAGS and the go env file are ignored, so no rpmgrtest build can become a release (D60).
-# Writes rpmgr-<version>-linux-<arch> and SHA256SUMS into the output directory, which must not
-# exist, and checks them with check-release-artifacts.sh. Needs Go, and for the web UI the Node
+# Writes rpmgr-<version>-linux-<arch>, the connector-only build rpmgr-<version>-<os>-<arch>-connector
+# (.exe on Windows) for every Linux architecture, Windows and macOS (D119, D122), and SHA256SUMS
+# into the output directory, which must not exist, and checks them with
+# check-release-artifacts.sh. Needs Go, and for the web UI the Node
 # version of web/.nvmrc with npm and network access for npm.
 #
 # Usage: build-release.sh <version> <commit> <output directory> [<repository root>]
@@ -48,14 +50,22 @@ fi
 mkdir -p "$out"
 ldflags="-s -w -buildid= -X github.com/felix-homelab/rpmgr/internal/version.Version=$version"
 ldflags+=" -X github.com/felix-homelab/rpmgr/internal/version.Commit=$commit"
+# build <name> <GOOS> <GOARCH> <package>: one artifact. The micro-architecture levels are the Go
+# defaults, set so the environment cannot change them.
+build() {
+  echo "== $1"
+  env CGO_ENABLED=0 GOOS="$2" GOARCH="$3" GOAMD64=v1 GOARM64=v8.0 GOARM=7 GORISCV64=rva20u64 \
+    go -C "$root" build -trimpath -buildvcs=false -ldflags "$ldflags" -o "$(realpath "$out")/$1" "$4" ||
+    fail "the build of $1 failed"
+}
 for arch in "${RELEASE_ARCHES[@]}"; do
-  name=rpmgr-$version-linux-$arch
-  echo "== $name"
-  # The micro-architecture levels are the Go defaults, set so the environment cannot change them.
-  env CGO_ENABLED=0 GOOS=linux GOARCH="$arch" GOAMD64=v1 GOARM64=v8.0 GOARM=7 GORISCV64=rva20u64 \
-    go -C "$root" build -trimpath -buildvcs=false -ldflags "$ldflags" -o "$(realpath "$out")/$name" ./cmd/rpmgr ||
-    fail "the build of $name failed"
+  build "rpmgr-$version-linux-$arch" linux "$arch" ./cmd/rpmgr
 done
+while read -r name; do
+  platform=${name#rpmgr-"$version"-}
+  platform=${platform%-connector*}
+  build "$name" "${platform%-*}" "${platform##*-}" ./cmd/rpmgr-connector
+done < <(connector_artifacts "$version")
 finish
 (cd "$out" && sha256sum -- rpmgr-* >SHA256SUMS)
 cat "$out/SHA256SUMS"

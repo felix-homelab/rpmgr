@@ -599,3 +599,30 @@ func TestNew_ServerRolesNeedAServer(t *testing.T) {
 		t.Errorf("a gateway without a Server: %v", err)
 	}
 }
+
+// TestHost_Offers: a build's roles limit what setup sets up; without a Server no controller or
+// all-in-one, whatever the roles say.
+func TestHost_Offers(t *testing.T) {
+	full := setup.Host{Server: serversetup.Server{}}
+	conn := setup.Host{Roles: []setup.Role{setup.Connector}}
+	odd := setup.Host{Roles: []setup.Role{setup.Controller, setup.Gateway}}
+	for _, c := range []struct {
+		h    setup.Host
+		r    setup.Role
+		want bool
+	}{
+		{full, setup.AllInOne, true}, {full, setup.Controller, true}, {full, setup.Gateway, true}, {full, setup.Connector, true},
+		{conn, setup.Connector, true}, {conn, setup.Gateway, false}, {conn, setup.Controller, false}, {conn, setup.AllInOne, false},
+		{odd, setup.Controller, false}, {odd, setup.Gateway, true}, {odd, setup.Connector, false},
+	} {
+		if got := c.h.Offers(c.r); got != c.want {
+			t.Errorf("roles %v, server %v: offers %s %v, want %v", c.h.Roles, c.h.Server != nil, c.r, got, c.want)
+		}
+	}
+	h := newHost(t, &fakeHost{})
+	h.Server, h.Roles = nil, []setup.Role{setup.Connector}
+	gw := setup.Values{Role: setup.Gateway, ControllerURL: "https://panel.example.com", Pin: pin(t), Token: newToken(t)}
+	if _, err := setup.New(gw, h); !errors.Is(err, cli.ErrNotAvailable) {
+		t.Errorf("a gateway on a connector-only host: %v, want not available", err)
+	}
+}

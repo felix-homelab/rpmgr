@@ -71,8 +71,8 @@ verify_release() {
   [ "$(field "$tmp/manifest.json" version)" = "$VERSION" ] || die "the manifest is not of version $VERSION"
   seq=$(grep -o '"seq":[0-9]*' "$tmp/manifest.json" | cut -d: -f2)
   [ -n "$seq" ] || die "the manifest has no seq"
-  entry=$(grep -o "{\"os\":\"linux\",\"arch\":\"$arch\",\"variant\":\"full\",\"sha256\":\"[0-9a-f]*\",\"size\":[0-9]*}" "$tmp/manifest.json") ||
-    die "the manifest lists no full build for linux/$arch"
+  entry=$(grep -o "{\"os\":\"linux\",\"arch\":\"$arch\",\"variant\":\"$variant\",\"sha256\":\"[0-9a-f]*\",\"size\":[0-9]*}" "$tmp/manifest.json") ||
+    die "the manifest lists no $variant build for linux/$arch"
   want_sum=$(echo "$entry" | sed 's/.*"sha256":"\([0-9a-f]*\)".*/\1/')
   want_size=$(echo "$entry" | sed 's/.*"size":\([0-9]*\)}/\1/')
 

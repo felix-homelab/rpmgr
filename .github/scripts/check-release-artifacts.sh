@@ -2,13 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Checks the release artifacts of one version in a directory (RELEASING.md, "Release process"):
-# one rpmgr-<version>-linux-<arch> per released architecture and a SHA256SUMS that lists exactly
-# them, and nothing else; each a build of ./cmd/rpmgr for its platform, with the Go toolchain that
-# go.mod pins, CGO_ENABLED=0, -trimpath and no build tags, stamped with the version and commit. A
-# build with the rpmgrtest tag is refused (D60). The artifact of this host's architecture is also
-# run: `rpmgr version --verbose` must name the version and commit and no test root keys; with
-# REQUIRE_ROOTS=1, as on release tags, it must name release root keys, which it prints for the
-# signer to compare with the record of the key ceremony (D48). Needs Go.
+# one rpmgr-<version>-linux-<arch> per released architecture, one connector-only build
+# rpmgr-<version>-<os>-<arch>-connector per Linux architecture, Windows (.exe) and macOS platform
+# (D119, D122), and a SHA256SUMS that lists exactly them, and nothing else; each a build of
+# ./cmd/rpmgr, or ./cmd/rpmgr-connector for the connector-only build, for its platform, with the Go
+# toolchain that go.mod pins, CGO_ENABLED=0, -trimpath and no build tags, stamped with the version
+# and commit. A build with the rpmgrtest tag is refused (D60). The artifacts of this host's
+# architecture are also run: `rpmgr version --verbose` must name the version and commit and no
+# test root keys; with REQUIRE_ROOTS=1, as on release tags, it must name release root keys, which
+# it prints for the signer to compare with the record of the key ceremony (D48). Needs Go.
 #
 # Usage: check-release-artifacts.sh <directory> <version> <commit> [<repository root>]
 set -euo pipefail
@@ -22,6 +24,8 @@ want=(SHA256SUMS)
 for arch in "${RELEASE_ARCHES[@]}"; do
   want+=("rpmgr-$version-linux-$arch")
 done
+mapfile -t connectors < <(connector_artifacts "$version")
+want+=("${connectors[@]}")
 have=$(find "$dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)
 if [[ $have != "$(printf '%s\n' "${want[@]}" | sort)" ]]; then
   fail "$dir holds $(echo "$have" | paste -sd ' '), want $(printf '%s\n' "${want[@]}" | sort | paste -sd ' ')"
@@ -35,14 +39,20 @@ if ! (cd "$dir" && sha256sum --quiet --strict -c SHA256SUMS); then
 fi
 
 has() { grep -qxF -- "$2" <<<"$1"; }
-for arch in "${RELEASE_ARCHES[@]}"; do
-  f=$dir/rpmgr-$version-linux-$arch
+for name in "${want[@]:1}"; do
+  f=$dir/$name
+  platform=${name#rpmgr-"$version"-}
+  pkg=github.com/felix-homelab/rpmgr/cmd/rpmgr
+  if [[ $platform == *-connector* ]]; then
+    platform=${platform%-connector*}
+    pkg+=-connector
+  fi
   if ! info=$(go version -m "$f" 2>&1); then
     fail "$f is not a Go binary: $info"
     continue
   fi
-  for line in "$f: $pinned" $'\tpath\tgithub.com/felix-homelab/rpmgr/cmd/rpmgr' $'\tbuild\tCGO_ENABLED=0' \
-    $'\tbuild\t-trimpath=true' $'\tbuild\tGOOS=linux' $'\tbuild\tGOARCH='"$arch"; do
+  for line in "$f: $pinned" $'\tpath\t'"$pkg" $'\tbuild\tCGO_ENABLED=0' \
+    $'\tbuild\t-trimpath=true' $'\tbuild\tGOOS='"${platform%-*}" $'\tbuild\tGOARCH='"${platform##*-}"; do
     has "$info" "$line" || fail "$f: no '${line//$'\t'/ }' in its build information"
   done
   if grep -q $'^\tbuild\t-tags=' <<<"$info"; then
@@ -57,18 +67,24 @@ finish
 
 host=$(GOENV=off go env GOOS)/$(GOENV=off go env GOARCH)
 if [[ $host != linux/* || ! -f $dir/rpmgr-$version-linux-${host#linux/} ]]; then
-  echo "skipped: running the artifact of $host (none)"
+  echo "skipped: running the artifacts of $host (none)"
   exit 0
 fi
-out=$("$dir/rpmgr-$version-$(tr / - <<<"$host")" version --verbose)
-echo "$out"
-if [[ $(head -n 1 <<<"$out") != "rpmgr $version (commit $commit, $pinned, $host)" ]]; then
-  fail "the $host artifact reports another version, commit or toolchain"
-fi
-if grep -q '^test release root keys' <<<"$out"; then
-  fail "the $host artifact carries the test root keys of an rpmgrtest build (D60)"
-fi
-if [[ ${REQUIRE_ROOTS-} == 1 ]] && grep -q '^release root keys: none' <<<"$out"; then
-  fail "the $host artifact carries no release root keys; add the interim keys first (D48, RELEASING.md)"
+for f in "$dir/rpmgr-$version-$(tr / - <<<"$host")" "$dir/rpmgr-$version-$(tr / - <<<"$host")-connector"; do
+  out=$("$f" version --verbose)
+  echo "$out"
+  if [[ $(head -n 1 <<<"$out") != "rpmgr $version (commit $commit, $pinned, $host)" ]]; then
+    fail "${f##*/} reports another version, commit or toolchain"
+  fi
+  if grep -q '^test release root keys' <<<"$out"; then
+    fail "${f##*/} carries the test root keys of an rpmgrtest build (D60)"
+  fi
+  if [[ ${REQUIRE_ROOTS-} == 1 ]] && grep -q '^release root keys: none' <<<"$out"; then
+    fail "${f##*/} carries no release root keys; add the interim keys first (D48, RELEASING.md)"
+  fi
+done
+# The connector-only build has no controller: a role of the full build is not available there.
+if "$dir/rpmgr-$version-$(tr / - <<<"$host")-connector" controller >/dev/null 2>&1; [[ $? != 2 ]]; then
+  fail "the connector-only build of $host runs a controller"
 fi
 finish

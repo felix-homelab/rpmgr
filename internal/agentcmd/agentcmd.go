@@ -12,6 +12,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/cli"
@@ -19,6 +21,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
+	"github.com/felix-homelab/rpmgr/internal/units"
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
 
@@ -130,4 +133,56 @@ func group(name, summary string, sub ...*cli.Command) *cli.Command {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// SystemdUnit is `rpmgr systemd-unit`: the hardened unit of one of roles, all four when none are
+// given, for a script or manual install (docs/10-operations.md, "Hardened systemd units"). The
+// connector-only build prints the connector's only.
+func SystemdUnit(roles ...string) *cli.Command {
+	if len(roles) == 0 {
+		roles = []string{"controller", "gateway", "connector", "all-in-one"}
+	}
+	var configPath, bin string
+	return &cli.Command{
+		Name:    "systemd-unit",
+		Summary: "print the hardened systemd unit of a role",
+		Args:    strings.Join(roles, " | "),
+		Flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&bin, "bin", "/usr/local/bin/rpmgr", "the installed binary")
+			fs.StringVar(&configPath, "config", "", "the controller's or all-in-one's boot file, for its KEK credential and revocation-log sink (default $RPMGR_CONFIG, else /etc/rpmgr/<role>.yaml)")
+		},
+		Run: func(_ context.Context, env *cli.Env, args []string) error {
+			if len(args) != 1 {
+				return cli.Usagef("systemd-unit needs a role")
+			}
+			var o units.Options
+			if !slices.Contains(roles, args[0]) {
+				return cli.Usagef("no role %q: %s", args[0], strings.Join(roles, ", "))
+			}
+			switch role := args[0]; role {
+			case "controller", "all-in-one":
+				var c config.Controller
+				path := config.Path(configPath, role, env.Getenv)
+				if role == "controller" {
+					if err := config.Load(path, &c); err != nil {
+						return fmt.Errorf("%w; run `rpmgr %s init` first", err, role)
+					}
+				} else {
+					var a config.AllInOne
+					if err := config.Load(path, &a); err != nil {
+						return fmt.Errorf("%w; run `rpmgr %s init` first", err, role)
+					}
+					c = a.Controller()
+				}
+				o = units.ForController(c) // the KEK credential and the revocation-log sink
+			}
+			o.Bin = bin
+			b, err := units.Render(args[0], o)
+			if err != nil {
+				return err
+			}
+			_, err = env.Stdout.Write(b)
+			return err
+		},
+	}
 }

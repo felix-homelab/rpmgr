@@ -8,7 +8,8 @@
 # rpmgr enroll reads it from --token-file, from RPMGR_ENROLL_TOKEN, or from the terminal.
 #
 #   curl -fsSLO <controller>/install.sh && sudo sh install.sh --controller <url> --ca-pin <pin> \
-#     [--role gateway|connector] [--allow-target <target>]... [--deny-target <target>]...
+#     [--role gateway|connector] [--variant full|connector]
+#     [--allow-target <target>]... [--deny-target <target>]...
 #     [--token-file <file>] [--tcp-bbr]
 #     [--verify-only]
 #
@@ -23,7 +24,7 @@ BIN=/usr/local/bin/rpmgr
 die() { echo "rpmgr install: $*" >&2; exit 1; }
 say() { echo "rpmgr install: $*" >&2; }
 
-controller='' pin='' role=connector token_file='' bbr=0 verify_only=0 targets='' denied=''
+controller='' pin='' role=connector variant=full token_file='' bbr=0 verify_only=0 targets='' denied=''
 nl='
 '
 while [ $# -gt 0 ]; do
@@ -31,6 +32,7 @@ while [ $# -gt 0 ]; do
     --controller) [ $# -ge 2 ] || die "--controller needs a URL"; controller=$2; shift 2 ;;
     --ca-pin) [ $# -ge 2 ] || die "--ca-pin needs a pin"; pin=$2; shift 2 ;;
     --role) [ $# -ge 2 ] || die "--role needs gateway or connector"; role=$2; shift 2 ;;
+    --variant) [ $# -ge 2 ] || die "--variant needs full or connector"; variant=$2; shift 2 ;;
     --allow-target) [ $# -ge 2 ] || die "--allow-target needs a target"
       case $2 in *"$nl"*) die "--allow-target with a newline" ;; esac
       targets="$targets$2
@@ -49,6 +51,9 @@ case $controller in https://*) ;; *) die "--controller must be an https:// URL" 
 controller=${controller%/}
 [ -n "$pin" ] || [ "$verify_only" = 1 ] || die "--ca-pin is required (the controller's UI shows the command)"
 case $role in gateway | connector) ;; *) die "--role must be gateway or connector" ;; esac
+# The connector-only build runs a connector and nothing else (D21, D119).
+case $variant in full | connector) ;; *) die "--variant must be full or connector" ;; esac
+if [ "$variant" = connector ] && [ "$role" != connector ]; then die "the connector-only build runs no $role; use --variant full"; fi
 if [ "$role" = gateway ] && [ -n "$targets$denied" ]; then die "a gateway has no local policy for --allow-target or --deny-target"; fi
 if [ -n "$token_file" ] && [ ! -r "$token_file" ]; then die "cannot read --token-file $token_file"; fi
 
@@ -81,8 +86,9 @@ fetch() {
     die "cannot download $1 from $controller/dl/$VERSION/"
 }
 
-say "downloading rpmgr $VERSION for linux/$arch from $controller"
+say "downloading rpmgr $VERSION ($variant) for linux/$arch from $controller"
 artifact="rpmgr-$VERSION-linux-$arch"
+[ "$variant" = full ] || artifact="$artifact-$variant"
 for f in signing-key.json signing-key.json.minisig manifest.json manifest.json.minisig "$artifact"; do fetch "$f"; done
 
 verify_release
@@ -144,7 +150,7 @@ fi
 
 # The updater's state, out of the service user's reach (docs/04-security.md, "Over-the-air
 # updates"): how rpmgr was installed, and the floor and seq of the release it came from.
-printf '{"method":"script","path":"%s","variant":"full","role":"%s"}\n' "$BIN" "$role" >/var/lib/rpmgr-update/install.json
+printf '{"method":"script","path":"%s","variant":"%s","role":"%s"}\n' "$BIN" "$variant" "$role" >/var/lib/rpmgr-update/install.json
 printf '{"seq":%s,"floor":"%s"}\n' "$seq" "$VERSION" >/var/lib/rpmgr-update/state.json
 
 # Host tuning (docs/03-connections.md, "Host tuning applied by the installer"). The file always
