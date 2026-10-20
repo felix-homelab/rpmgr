@@ -11,6 +11,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	connectorpkg "github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
@@ -67,8 +68,18 @@ func (r *Routes) PreviewRoute(ctx context.Context, req *connect.Request[rpmgrv1.
 		if err != nil {
 			return nil, err
 		}
+		reqs, err := routes.Required(ctx, tx.Client(), row.ID)
+		if err != nil {
+			return nil, err
+		}
 		for _, t := range targets {
-			out.ConnectorIds = append(out.ConnectorIds, t.ConnectorID)
+			caps, err := announced(ctx, tx, t.ConnectorID, connectorpkg.Capabilities)
+			if err != nil {
+				return nil, err
+			}
+			if len(routes.Missing(reqs, pki.KindConnector, func(c string) bool { return slices.Contains(caps, c) })) == 0 {
+				out.ConnectorIds = append(out.ConnectorIds, t.ConnectorID)
+			}
 		}
 		slices.Sort(out.ConnectorIds)
 		out.ConnectorIds = slices.Compact(out.ConnectorIds)
@@ -80,9 +91,22 @@ func (r *Routes) PreviewRoute(ctx context.Context, req *connect.Request[rpmgrv1.
 	return connect.NewResponse(out), nil
 }
 
-// previewGateways compiles the snapshot of each serving gateway of a route's group and validates
-// it as the gateway would; it returns the gateways whose snapshot holds the route and what they
-// would refuse about it.
+// announced returns the capabilities agent id announced in its latest control session, or those of
+// this release, current, for an agent that never had one: it will run this release or a newer one.
+func announced(ctx context.Context, tx *ent.Tx, id string, current []string) ([]string, error) {
+	s, err := tx.AgentSession.Get(ctx, id)
+	if ent.IsNotFound(err) {
+		return current, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.Capabilities, nil
+}
+
+// previewGateways compiles the snapshot of each serving gateway of a route's group, with the
+// capabilities its release announced, and validates it as a gateway of this release would; it
+// returns the gateways whose snapshot holds the route and what they would refuse about it.
 func previewGateways(ctx context.Context, tx *ent.Tx, row *ent.Route) ([]string, []*rpmgrv1.ApplyError, error) {
 	gws, err := tx.Gateway.Query().Where(entgateway.GatewayGroupID(row.GatewayGroupID), entgateway.Enabled(true),
 		entgateway.DecommissionedAtIsNil()).Order(ent.Asc(entgateway.FieldID)).All(ctx)
@@ -96,7 +120,11 @@ func previewGateways(ctx context.Context, tx *ent.Tx, row *ent.Route) ([]string,
 	)
 	for _, gw := range gws {
 		snap := &agentv1.Snapshot{}
-		a := snapshot.Agent{Identity: pki.Identity{Org: gw.OrgID, Kind: pki.KindGateway, ID: gw.ID}}
+		caps, err := announced(ctx, tx, gw.ID, gateway.Capabilities)
+		if err != nil {
+			return nil, nil, err
+		}
+		a := snapshot.Agent{Identity: pki.Identity{Org: gw.OrgID, Kind: pki.KindGateway, ID: gw.ID}, Capabilities: caps}
 		for _, src := range routes.PreviewSources(row.ID) {
 			rs, err := src(ctx, tx, a)
 			if err != nil {

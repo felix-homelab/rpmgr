@@ -335,6 +335,7 @@ Regression tests for design-review findings:
 | `TestSPIFFE_TrustDomainExact` | A certificate whose URI SAN host is a sub-domain of the trust domain, which the name constraint admits, is refused by `VerifyConnection`; a URI or DNS name outside the trust domain is refused by the name constraints ([S7](spikes/S7.md)) |
 | `TestReauth_NoSessionTickets` | The `reauth.controller.<td>` configuration issues no session ticket and resumes none, not even a ticket from `controller.<td>` ([S7](spikes/S7.md)) |
 | `TestCSR_BoundToConnection` | `Enroll`, `Renew` and `Reauth` refuse a CSR without the connection's `tls-exporter` value, with an altered value, or captured on another connection ([S7](spikes/S7.md)) |
+| `TestCompile_GatedRouteNeverReachesOldGateway` | A route that uses a gated feature never reaches a gateway whose `Hello` lacks the feature's capability, in any snapshot it compiles, while a gateway that announces it gets the route; the route status names the old gateway with `CAPABILITY_MISSING`, and after it reconnects with the capability it gets the route ([03](03-connections.md#versioning-and-capabilities), [D113](14-open-decisions.md#engineering)) |
 
 ## Continuous integration
 
