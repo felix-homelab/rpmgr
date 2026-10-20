@@ -1039,9 +1039,9 @@ func refuseUnclean(w http.ResponseWriter, r *http.Request) bool {
 }
 
 // cleanPath reports whether p, a request's decoded path, starts with "/" and has no empty, "." or
-// ".." segment, also not with ";" parameters (".;x", "..;x", which some servers resolve as dot
-// segments), no "\\", which some servers read as "/", and no control character; a trailing "/" is
-// allowed.
+// ".." segment, also not once ";" parameters are dropped (".;x" and "..;x", which some servers
+// resolve as dot segments, or ";x" alone), no "\\", which some servers read as "/", and no control
+// character; a trailing "/" is allowed.
 func cleanPath(p string) bool {
 	if !strings.HasPrefix(p, "/") || strings.Contains(p, "//") || strings.ContainsRune(p, '\\') {
 		return false
@@ -1053,6 +1053,12 @@ func cleanPath(p string) bool {
 		if name, _, _ := strings.Cut(seg, ";"); name == "." || name == ".." {
 			return false
 		}
+	}
+	// A server that drops ";" parameters must read a clean path too: "/;/admin" is "//admin" there,
+	// and "/;x/admin" too. A last segment of parameters alone ("/admin/;x") is "/admin/", which a
+	// trailing "/" allows.
+	if bare := withoutParams(p); bare != p {
+		return cleanPath(bare)
 	}
 	return true
 }

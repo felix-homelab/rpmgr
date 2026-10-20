@@ -753,13 +753,17 @@ sequenceDiagram
     (`GET http://host HTTP/1.1`);
   - has an empty, `.` or `..` segment, such as `//admin`, `/./admin`, `/x/../admin` or
     `/%2e%2e/admin` (a trailing `/` is allowed);
-  - has a `.` or `..` segment with `;` parameters, such as `/..;/admin`;
+  - has a `.` or `..` segment with `;` parameters, such as `/..;/admin`, or an empty one once
+    `;` parameters are dropped, such as `/;/admin` or `/x/;/admin` (a last segment of parameters
+    alone, `/admin/;x`, reads as a trailing `/`);
   - contains `\`, which some backends treat as a separator, or a control character, `%00`
     included.
 
   Encoded letters and slashes are routed by their decoded form (`/%61dmin` and `/admin%2fx` are
   `/admin…`). A path with `;` parameters goes to the longest prefix that it, or its form without
   the parameters, matches: `/admin;jsessionid=1` and `/admin;x/y` belong to an `/admin` route.
+  With a restricted `/admin` and an open `/admin/public`, `/admin/public;x` goes to the open route,
+  which a backend reading `;` parameters sees as `/admin/public`, that route's own path.
   `CONNECT` is **501**, as a route serves paths, not tunnels; `OPTIONS *` is answered by the
   gateway itself. Not covered: a backend that compares paths without regard to case, drops
   trailing dots from segments, or decodes a path twice (`%252e`) can still read two routes' paths

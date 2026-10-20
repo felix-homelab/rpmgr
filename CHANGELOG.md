@@ -19,13 +19,13 @@ Changes to the design documents are not recorded here: see the git history and t
 ### Security
 
 - Gateway: a request path with an empty, `.` or `..` segment, such as `//admin` or
-  `/%2e%2e/admin`, also with `;` parameters (`/..;/admin`), or with a `\` or a control character,
-  is refused with 400 before a route is chosen, also on port 80; so is an absolute-form request
-  with an empty path (`GET http://host HTTP/1.1`). Before, such a path was routed by a broader route
-  of the host, and a backend that resolves it served the path of a narrower route without that
-  route's access policy. A path with `;` parameters, such as `/admin;jsessionid=1`, now belongs to
-  the route its form without them matches. `CONNECT` requests are refused with 501. Medium
-  severity; affects v0.1.0. (#813)
+  `/%2e%2e/admin`, also with `;` parameters (`/..;/admin`, `/;/admin`), or with a `\` or a
+  control character, is refused with 400 before a route is chosen, also on port 80; so is an
+  absolute-form request with an empty path (`GET http://host HTTP/1.1`). Before, such a path was
+  routed by a broader route of the host, and a backend that resolves it served the path of a
+  narrower route without that route's access policy. A path with `;` parameters, such as
+  `/admin;jsessionid=1`, now belongs to the route its form without them matches. `CONNECT`
+  requests are refused with 501. Medium severity; affects v0.1.0. (#813)
 
 ## [0.1.0] - 2026-10-19
 

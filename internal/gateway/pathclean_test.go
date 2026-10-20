@@ -22,6 +22,8 @@ var uncleanPaths = []string{"//admin/x", "/./admin/x", "/x/../admin/x", "/%2e%2e
 	"/x/%2e%2e/admin/x", "/x%2f..%2fadmin/x", "/admin/x/.", "/admin/x/..", "/admin//x", "/admin/x//",
 	// dot segments with ";" parameters, which some servers resolve as dot segments
 	"/..;/admin/x", "/x/..;/admin/x", "/.;/admin/x", "/x/..;jsessionid=1/admin/x",
+	// segments that are empty once their ";" parameters are dropped
+	"/;/admin/x", "/x/;/admin", "/;x/admin", "/x/;y;z/admin",
 	// "\", which some servers read as "/", and control characters
 	"/x%5c..%5cadmin/x", "/admin%5cx", "/admin%00x", "/admin%0ax", "/admin%7fx", "/admin%09x"}
 
@@ -94,13 +96,15 @@ func TestGateway_UncleanPathRefused(t *testing.T) {
 		"/": http.StatusOK, "/a.b/..c/...": http.StatusOK,
 		// ";" parameters: routed by the longest prefix their path, with or without them, matches
 		"/admin;/x": http.StatusForbidden, "/admin;jsessionid=1": http.StatusForbidden, "/admin;p/x": http.StatusForbidden,
-		"/adminx;p": http.StatusOK, "/x;y/..z": http.StatusOK} {
+		"/adminx;p": http.StatusOK, "/x;y/..z": http.StatusOK,
+		// a last segment of parameters alone reads as a trailing "/"
+		"/admin/;x": http.StatusForbidden, "/pub/;x": http.StatusOK, "/;x": http.StatusOK} {
 		if r := get(t, e.client(false), "https://app.example.com"+p, nil); r.status != want {
 			t.Errorf("%s: %d, want %d", p, r.status, want)
 		}
 	}
 	if seen := e.upstreamSaw(); !slices.Equal(slices.Sorted(slices.Values(seen)),
-		[]string{"/", "/a.b/..c/...", "/adminx", "/adminx;p", "/pub/", "/x;y/..z"}) {
+		[]string{"/", "/;x", "/a.b/..c/...", "/adminx", "/adminx;p", "/pub/", "/pub/;x", "/x;y/..z"}) {
 		t.Errorf("the upstream saw %q", seen)
 	}
 }

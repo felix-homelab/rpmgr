@@ -158,10 +158,11 @@ The transport decides how the route's streams travel between gateways and connec
 - A path that a backend might read differently from the gateway is refused with 400 before a
   route is chosen, so it cannot reach a path that a narrower route protects through a broader one:
   an empty, `.` or `..` segment (`//admin`, `/x/../admin`), also with `;` parameters
-  (`/..;/admin`), a `\`, or a control character ([03](../../03-connections.md#http-routes)).
-  `/admin;jsessionid=1` belongs to an `/admin` route. A backend that ignores the case of paths,
-  drops trailing dots or decodes a path twice can still read two routes' paths as one: protect it
-  with one route for the whole hostname, or at the backend, rather than with path prefixes.
+  (`/..;/admin`, `/;/admin`), a `\`, or a control character
+  ([03](../../03-connections.md#http-routes)). `/admin;jsessionid=1` belongs to an `/admin` route.
+  A backend that ignores the case of paths, drops trailing dots or decodes a path twice can still
+  read two routes' paths as one: protect it with one route for the whole hostname, or at the
+  backend, rather than with path prefixes.
 - A hostname that a [TLS passthrough](tls-passthrough.md) route of the group uses cannot be an
   HTTP route's, and the reverse; the refusal names the other route. A hostname with a prefix that
   another HTTP route of the group holds already is refused as taken.
