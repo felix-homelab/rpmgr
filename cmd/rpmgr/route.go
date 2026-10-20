@@ -22,18 +22,6 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/cli"
 )
 
-// listFlag is a flag that may be given more than once. An empty value adds nothing, so the flag
-// given once with an empty value sets an empty list (docs/16-cli.md).
-type listFlag []string
-
-func (l *listFlag) String() string { return strings.Join(*l, ",") }
-func (l *listFlag) Set(v string) error {
-	if v != "" {
-		*l = append(*l, v)
-	}
-	return nil
-}
-
 // mapFlag is a key=value flag that may be given more than once. An empty value adds nothing, so
 // the flag given once with an empty value sets an empty map.
 type mapFlag map[string]string
@@ -56,7 +44,7 @@ func (m mapFlag) Set(v string) error {
 type routeFlags struct {
 	name, group, description, transport            string
 	http, tcp, udp, tcpUDP, passthrough, disabled  bool
-	hostnames, policies                            listFlag
+	hostnames, policies                            cli.List
 	labels, requestHeaders, responseHeaders        mapFlag
 	pathPrefix, tlsMode, certificate, port80, host string
 	hsts                                           time.Duration

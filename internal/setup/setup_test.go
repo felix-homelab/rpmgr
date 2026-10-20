@@ -13,10 +13,12 @@ import (
 	"testing"
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
+	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/setup"
+	"github.com/felix-homelab/rpmgr/internal/setup/serversetup"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 	"github.com/felix-homelab/rpmgr/internal/token"
@@ -41,7 +43,8 @@ func newHost(t *testing.T, f *fakeHost) setup.Host {
 		t.Fatal(err)
 	}
 	return setup.Host{
-		Paths: setup.Paths{Etc: filepath.Join(d, "etc"), Lib: filepath.Join(d, "lib"), Units: filepath.Join(d, "units"), Bin: bin},
+		Paths:  setup.Paths{Etc: filepath.Join(d, "etc"), Lib: filepath.Join(d, "lib"), Units: filepath.Join(d, "units"), Bin: bin},
+		Server: serversetup.Server{},
 		Run: func(_ context.Context, name string, args ...string) error {
 			f.mu.Lock()
 			defer f.mu.Unlock()
@@ -144,8 +147,16 @@ func TestChecks(t *testing.T) {
 	if _, err := setup.Directory("http://acme.example.com/dir"); err == nil {
 		t.Error("an http directory accepted")
 	}
-	if host, public := setup.PublicHost("https://rpmgr.internal:8443"); host != "rpmgr.internal" || public {
+	full := setup.Host{Server: serversetup.Server{}}
+	if host, public := full.PublicHost("https://rpmgr.internal:8443"); host != "rpmgr.internal" || public {
 		t.Errorf("rpmgr.internal: %q %v", host, public)
+	}
+	if host, public := full.PublicHost("https://rpmgr.example.com"); host != "rpmgr.example.com" || !public {
+		t.Errorf("rpmgr.example.com: %q %v", host, public)
+	}
+	// Without a Server, as in the connector-only build, no public CA certifies a host.
+	if _, public := (setup.Host{}).PublicHost("https://rpmgr.example.com"); public {
+		t.Error("a host without a Server found a public CA")
 	}
 }
 
@@ -569,5 +580,53 @@ func TestPlan_DenyFirst(t *testing.T) {
 		if !slices.Equal(calls, want) || (err != nil) != failDeny {
 			t.Errorf("failing deny %v: calls %q, %v", failDeny, calls, err)
 		}
+	}
+}
+
+// TestNew_ServerRolesNeedAServer: without a Server, as in the connector-only build, setup refuses
+// a controller and an all-in-one as not available in this build, and still sets up a gateway.
+func TestNew_ServerRolesNeedAServer(t *testing.T) {
+	h := newHost(t, &fakeHost{})
+	h.Server = nil
+	for _, r := range []setup.Role{setup.Controller, setup.AllInOne} {
+		v := setup.Values{Role: r, PublicURL: "https://panel.example.com", TLS: setup.TLSSelfSigned}
+		if _, err := setup.New(v, h); !errors.Is(err, cli.ErrNotAvailable) {
+			t.Errorf("%s without a Server: %v, want not available", r, err)
+		}
+		// Refused before the values are checked: no list of what a controller would need.
+		if _, err := setup.New(setup.Values{Role: r}, h); !errors.Is(err, cli.ErrNotAvailable) || strings.Contains(err.Error(), "public URL") {
+			t.Errorf("%s without values and a Server: %v, want only not available", r, err)
+		}
+	}
+	gw := setup.Values{Role: setup.Gateway, ControllerURL: "https://panel.example.com", Pin: pin(t), Token: newToken(t)}
+	if _, err := setup.New(gw, h); err != nil {
+		t.Errorf("a gateway without a Server: %v", err)
+	}
+}
+
+// TestHost_Offers: a build's roles limit what setup sets up; without a Server no controller or
+// all-in-one, whatever the roles say.
+func TestHost_Offers(t *testing.T) {
+	full := setup.Host{Server: serversetup.Server{}}
+	conn := setup.Host{Roles: []setup.Role{setup.Connector}}
+	odd := setup.Host{Roles: []setup.Role{setup.Controller, setup.Gateway}}
+	for _, c := range []struct {
+		h    setup.Host
+		r    setup.Role
+		want bool
+	}{
+		{full, setup.AllInOne, true}, {full, setup.Controller, true}, {full, setup.Gateway, true}, {full, setup.Connector, true},
+		{conn, setup.Connector, true}, {conn, setup.Gateway, false}, {conn, setup.Controller, false}, {conn, setup.AllInOne, false},
+		{odd, setup.Controller, false}, {odd, setup.Gateway, true}, {odd, setup.Connector, false},
+	} {
+		if got := c.h.Offers(c.r); got != c.want {
+			t.Errorf("roles %v, server %v: offers %s %v, want %v", c.h.Roles, c.h.Server != nil, c.r, got, c.want)
+		}
+	}
+	h := newHost(t, &fakeHost{})
+	h.Server, h.Roles = nil, []setup.Role{setup.Connector}
+	gw := setup.Values{Role: setup.Gateway, ControllerURL: "https://panel.example.com", Pin: pin(t), Token: newToken(t)}
+	if _, err := setup.New(gw, h); !errors.Is(err, cli.ErrNotAvailable) {
+		t.Errorf("a gateway on a connector-only host: %v, want not available", err)
 	}
 }

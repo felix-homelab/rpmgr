@@ -39,7 +39,7 @@ type Grant struct {
 }
 
 // Issue assigns the identity of a grant and issues and records its certificate with
-// pki.CA.IssueEnrolled, in tx, the transaction that consumed the token.
+// castore.CA.IssueEnrolled, in tx, the transaction that consumed the token.
 type Issue func(ctx context.Context, tx *ent.Tx, g Grant) (*x509.Certificate, error)
 
 // Redeem redeems an enrollment token for csr in one transaction that needs the system scope:

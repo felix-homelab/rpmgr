@@ -32,11 +32,15 @@ var ErrDevelopment = errors.New("release: a development build mirrors no release
 func Releasable(version string) bool { return valid(version) }
 
 // ArtifactName is an artifact's file name: rpmgr-<version>-<os>-<arch>, followed by -<variant>
-// for variants other than full.
+// for variants other than full, and by .exe on Windows (docs/04-security.md, "Release signing";
+// D119).
 func ArtifactName(version string, a Artifact) string {
 	name := "rpmgr-" + version + "-" + a.OS + "-" + a.Arch
 	if a.Variant != "full" {
 		name += "-" + a.Variant
+	}
+	if a.OS == "windows" {
+		name += ".exe"
 	}
 	return name
 }

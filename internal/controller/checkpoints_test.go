@@ -14,6 +14,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
@@ -62,7 +63,7 @@ func TestCheckpointJob(t *testing.T) {
 	if err != nil || len(all) != len(first)+1 {
 		t.Fatalf("after shutdown: %d checkpoints, %v", len(all), err)
 	}
-	signers, inters, root, err := pki.SignerCertificates(e.sys, db, pki.PurposeAuditCheckpoint)
+	signers, inters, root, err := castore.SignerCertificates(e.sys, db, pki.PurposeAuditCheckpoint)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +98,7 @@ func TestRetentionJob(t *testing.T) {
 	if err := controller.FinalCheckpoints(e.sys, o); err != nil {
 		t.Fatal(err)
 	}
-	signers, inters, root, err := pki.SignerCertificates(e.sys, db, pki.PurposeAuditCheckpoint)
+	signers, inters, root, err := castore.SignerCertificates(e.sys, db, pki.PurposeAuditCheckpoint)
 	if err != nil {
 		t.Fatal(err)
 	}

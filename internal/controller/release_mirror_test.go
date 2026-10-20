@@ -187,7 +187,7 @@ func TestCheckRelease_KeepsWhatRolloutsNeed(t *testing.T) {
 		t.Errorf("kept %s", got)
 	}
 	for _, v := range []string{"1.3.0", "1.4.2", "1.5.0"} {
-		for _, name := range []string{"rpmgr-" + v + "-linux-amd64", "rpmgr-" + v + "-linux-amd64-connector", "rpmgr-" + v + "-windows-amd64-connector"} {
+		for _, name := range []string{"rpmgr-" + v + "-linux-amd64", "rpmgr-" + v + "-linux-amd64-connector", "rpmgr-" + v + "-windows-amd64-connector.exe"} {
 			if _, err := os.Stat(filepath.Join(e.o.Mirror.Dir, v, name)); err != nil {
 				t.Errorf("%s: %v", name, err)
 			}

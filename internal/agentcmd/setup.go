@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package main
+package agentcmd
 
 import (
 	"context"
@@ -10,13 +10,32 @@ import (
 	"strings"
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
-	"github.com/felix-homelab/rpmgr/internal/agentcmd"
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/setup"
 )
 
-// setupHost is the host `rpmgr setup` changes; tests replace it.
+// setupHost is the host `rpmgr setup` changes; tests replace it. Setup gives it its Server.
 var setupHost = setup.Host{}
+
+// Setup is `rpmgr setup`, with server the steps of a controller and an all-in-one, the full
+// build's (package serversetup), and roles the roles the build sets up, all of them when none are
+// given. The connector-only build passes no server and the connector role
+// (docs/02-architecture.md, "Roles").
+func Setup(server setup.Server, roles ...setup.Role) *cli.Command {
+	setupHost.Server, setupHost.Roles = server, roles
+	return setupCommand()
+}
+
+// offeredRoles names the roles setupHost sets up, for messages.
+func offeredRoles() string {
+	var names []string
+	for _, r := range setup.Roles {
+		if setupHost.Offers(r.Role) {
+			names = append(names, string(r.Role))
+		}
+	}
+	return strings.Join(names, ", ")
+}
 
 // setupCommand is `rpmgr setup` (docs/16-cli.md): it asks for the values in forms pre-filled with
 // its flags, shows the plan, and on confirmation runs it; with --yes it asks nothing and takes every
@@ -26,7 +45,7 @@ var setupHost = setup.Host{}
 func setupCommand() *cli.Command {
 	var v setup.Values
 	var role, tokenFile, proxyFile string
-	var targets, denied listFlag
+	var targets, denied cli.List
 	var yes bool
 	return &cli.Command{
 		Name:    "setup",
@@ -63,9 +82,12 @@ func setupCommand() *cli.Command {
 				return cli.Usagef("unexpected argument %q", args[0])
 			}
 			if role == "" && yes {
-				return cli.Usagef("setup --yes needs --role: all-in-one, controller, gateway or connector")
+				return cli.Usagef("setup --yes needs --role: %s", offeredRoles())
 			}
 			v.Role, v.AllowTargets, v.DenyTargets = setup.Role(role), targets, denied
+			if role != "" && setup.CheckRole(role) == nil && !setupHost.Offers(v.Role) {
+				return fmt.Errorf("the role %s: %w; this build sets up: %s", role, cli.ErrNotAvailable, offeredRoles())
+			}
 			switch {
 			case proxyFile != "" && v.Proxy != "":
 				return cli.Usagef("--proxy and --proxy-file exclude each other")
@@ -94,12 +116,12 @@ func setupCommand() *cli.Command {
 			}
 			if v.Role.Initialises() && v.TLS == "" {
 				v.TLS = setup.TLSSelfSigned
-				if _, public := setup.PublicHost(v.PublicURL); public {
+				if _, public := setupHost.PublicHost(v.PublicURL); public {
 					v.TLS = setup.TLSACME
 				}
 			}
 			if !v.Role.Initialises() && setup.CheckRole(string(v.Role)) == nil {
-				prompt := agentcmd.PromptToken
+				prompt := PromptToken
 				if form != nil {
 					prompt = form.token
 				}
@@ -147,7 +169,7 @@ func printSetup(w io.Writer, v setup.Values, r setup.Result) error {
 		if r.ConnectorID != "" {
 			fmt.Fprintf(&b, "  connector:    %s\n", r.ConnectorID)
 		}
-		fmt.Fprintf(&b, "  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n\n"+firstUser, r.KEK, r.FirstUserLink)
+		fmt.Fprintf(&b, "  KEK:          %s\nBack up the KEK separately: without it the database cannot be read.\n\n"+FirstUserText, r.KEK, r.FirstUserLink)
 		agents, role := "gateway and connector with its token", "<gateway|connector>"
 		if v.Role == setup.AllInOne {
 			agents, role = "connector on another network with its enrollment token", "connector"
@@ -167,3 +189,6 @@ func printSetup(w io.Writer, v setup.Values, r setup.Result) error {
 	_, err := io.WriteString(w, b.String())
 	return err
 }
+
+// FirstUserText ends the output of init, and of setup's init, with the first-user link.
+const FirstUserText = "Create the first user, Instance Admin and Owner, with this one-time link (valid 7 days):\n  %s\n"

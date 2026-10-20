@@ -12,6 +12,13 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Releases: a connector-only build of rpmgr, `rpmgr-<version>-<os>-<arch>-connector`, for every
+  Linux architecture and, as the only build there, for Windows (amd64, `.exe`) and macOS (amd64,
+  arm64). It runs the connector role and the commands of a connector host, links nothing of the
+  controller, the gateway or the importer, and is less than a third of the full build's size.
+  Both install scripts take `--variant connector`; the controller's mirror serves it for Linux.
+  (#837)
+
 - CLI: `rpmgr status`, `rpmgr diag transport` and `rpmgr diag clock` work on an all-in-one host.
   `status` reports its built-in gateway and connector, each marked built in, and the readiness of
   `rpmgr-all-in-one.service`; `diag` runs as the built-in connector. `rpmgr leave` is refused there
@@ -23,6 +30,9 @@ Changes to the design documents are not recorded here: see the git history and t
 - Tunnels: QUIC data sessions use quic-go v0.64.1, whose loss recovery no longer shrinks the
   congestion window for packets that were only reordered. On the benchmark runners a single QUIC
   stream without loss carried two to four times as much at 20 and 80 ms RTT as with v0.1.0. (#828)
+- Connectors keep four QUIC data sessions to each gateway instead of one, each with its own
+  congestion window, so that a loss slows a quarter of the streams; TCP + h2 stays at two
+  connections. A gateway of v0.1.0 accepts them. A single connection is carried as before. (#825)
 
 ### Fixed
 

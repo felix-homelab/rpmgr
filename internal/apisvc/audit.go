@@ -16,6 +16,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -125,7 +126,7 @@ func (a *Audit) VerifyInstanceAuditChain(context.Context, *connect.Request[rpmgr
 // verify verifies the chain of orgID with every certificate the CA has had for audit checkpoints;
 // a broken chain is an answer, not an error.
 func (a *Audit) verify(ctx context.Context, orgID string) (*rpmgrv1.AuditVerification, error) {
-	signers, inters, root, err := pki.SignerCertificates(a.Sys, a.DB, pki.PurposeAuditCheckpoint)
+	signers, inters, root, err := castore.SignerCertificates(a.Sys, a.DB, pki.PurposeAuditCheckpoint)
 	if err != nil {
 		return nil, err
 	}

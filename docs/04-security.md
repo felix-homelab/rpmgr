@@ -1049,9 +1049,12 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
     order of the example above (`os`, `arch`, `variant`, `sha256`, `size`), as `json.Marshal`
     writes `release.Manifest`. Anything else it refuses.
   - **Options:** `--controller <url> --ca-pin <pin> [--role gateway|connector]
-    [--allow-target <target>]... [--deny-target <target>]... [--token-file <file>] [--tcp-bbr]
-    [--verify-only]`.
-    `--verify-only` stops after the verification, and needs neither root nor a pin.
+    [--variant full|connector] [--allow-target <target>]... [--deny-target <target>]...
+    [--token-file <file>] [--tcp-bbr] [--verify-only]`.
+    `--verify-only` stops after the verification, and needs neither root nor a pin. `--variant
+    connector` installs the connector-only build from the manifest's `connector` entry, for the
+    connector role only, and records the variant in `install.json`
+    ([D119](14-open-decisions.md#engineering)).
   - **What it installs:** the binary in `/usr/local/bin`, the boot file, the policy file, the
     updater's state and the host tuning ([10](10-operations.md#filesystem-layout)). It then enrolls
     with `rpmgr enroll`, which reads the token itself, so the token never passes through the
@@ -1071,9 +1074,13 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
     only, over HTTPS with curl or wget.
   - **Which release:** the pinned version, or `--version`; the repository's copy asks the GitHub
     API for the latest release, and with `--prerelease` for the latest including pre-releases.
-  - **Options:** `[--version <version>] [--prerelease] [--no-setup] [--upgrade] [--restart]
-    [--dir <directory>] [--verify-only]`. `--upgrade` replaces the binary of a host that has one
-    and nothing else; `--restart` restarts the rpmgr services that run
+  - **Options:** `[--version <version>] [--prerelease] [--variant full|connector] [--no-setup]
+    [--upgrade] [--restart] [--dir <directory>] [--verify-only]`. `--upgrade` replaces the binary
+    of a host that has one and nothing else, and keeps its variant: the one `install.json` records,
+    else the one the binary reports ([10](10-operations.md#filesystem-layout)); it refuses to guess
+    when it can tell neither, and both scripts refuse an explicit other `--variant`. The global
+    script writes `install.json` when the host has none;
+    `--restart` restarts the rpmgr services that run
     ([10](10-operations.md#upgrades-and-version-skew)).
   - **What it installs,** only after the verification: the binary in `/usr/local/bin` (replaced in
     one rename), the system user `rpmgr`, `/etc/rpmgr` and `/var/lib/rpmgr`. It writes no

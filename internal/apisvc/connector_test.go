@@ -15,6 +15,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -331,7 +332,7 @@ func TestConnectors_DecommissionDeletesRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := pki.RevokeIdentity(e.sys, tx, pki.Identity{TrustDomain: "rpmgr-teststor", Org: org, Kind: pki.KindConnector, ID: restored.ID},
+	if _, _, err := castore.RevokeIdentity(e.sys, tx, pki.Identity{TrustDomain: "rpmgr-teststor", Org: org, Kind: pki.KindConnector, ID: restored.ID},
 		"restored", time.Now()); err != nil {
 		_ = tx.Rollback()
 		t.Fatal(err)

@@ -18,7 +18,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/controller"
-	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
@@ -242,7 +242,7 @@ func TestKEK_StatusAndRotate(t *testing.T) {
 	}
 	for name, k := range map[string]secret.KEK{"the new KEK": k2, "the old KEK": k1} {
 		s, _ := secret.NewSealer(k)
-		_, err := pki.LoadCA(storetest.SystemCtx(t), db, s, time.Now)
+		_, err := castore.LoadCA(storetest.SystemCtx(t), db, s, time.Now)
 		if (err == nil) != (k.Version() == k2.Version()) {
 			t.Errorf("the CA with %s: %v", name, err)
 		}

@@ -4,14 +4,12 @@ package setup
 
 import (
 	"path/filepath"
-
-	"github.com/felix-homelab/rpmgr/internal/controller"
 )
 
 // selfSigned writes a self-signed certificate for host and its key, which only the service user
 // reads.
 func selfSigned(host, certFile, keyFile string, h Host) error {
-	cert, key, err := controller.SelfSignedPEM(host)
+	cert, key, err := h.Server.SelfSignedPEM(host)
 	if err != nil {
 		return err
 	}

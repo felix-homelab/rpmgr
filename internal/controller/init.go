@@ -23,11 +23,13 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/migrations"
+	"github.com/felix-homelab/rpmgr/internal/units"
 )
 
 // InitOptions are the inputs of `rpmgr controller init` (docs/16-cli.md).
@@ -138,7 +140,7 @@ func Init(ctx context.Context, o InitOptions) (res InitResult, err error) {
 		if _, err := store.InitInstanceTx(ctx, tx, td); err != nil {
 			return err
 		}
-		if err := pki.InitCA(ctx, tx, sealer, td, o.Now()); err != nil {
+		if err := castore.InitCA(ctx, tx, sealer, td, o.Now()); err != nil {
 			return err
 		}
 		if mem, ok := o.Memory(); ok && mem < lowMemory {
@@ -155,7 +157,7 @@ func Init(ctx context.Context, o InitOptions) (res InitResult, err error) {
 	if err != nil {
 		return InitResult{}, err
 	}
-	ca, err := pki.LoadCA(ctx, db, sealer, o.Now)
+	ca, err := castore.LoadCA(ctx, db, sealer, o.Now)
 	if err != nil {
 		return InitResult{}, err
 	}
@@ -184,38 +186,11 @@ func (o *InitOptions) setDefaults() {
 		o.Memory = hostMemory
 	}
 	if o.SystemdVersion == nil {
-		o.SystemdVersion = SystemdVersion
+		o.SystemdVersion = units.SystemdVersion
 	}
 	if o.ServiceUser == "" {
 		o.ServiceUser = "rpmgr"
 	}
-}
-
-// credentialSystemd is the first systemd version with encrypted credentials
-// (LoadCredentialEncrypted=); below it, init writes the KEK to a file (docs/10-operations.md,
-// "Supported platforms").
-const credentialSystemd = 250
-
-// KEKSourceFor is the KEK source a new boot file takes on a host with that systemd version: the
-// systemd credential where systemd has encrypted credentials, else a file.
-func KEKSourceFor(systemd int) string {
-	if systemd < credentialSystemd {
-		return config.KEKFile
-	}
-	return config.KEKSystemdCredential
-}
-
-// SystemdVersion returns the version systemctl reports, or 0 without systemd.
-func SystemdVersion() int {
-	out, err := exec.Command("systemctl", "--version").Output()
-	if err != nil {
-		return 0
-	}
-	var v int
-	if _, err := fmt.Sscanf(string(out), "systemd %d", &v); err != nil {
-		return 0
-	}
-	return v
 }
 
 // bootFile reads the boot file, or writes it from the options if it does not exist.
@@ -245,7 +220,7 @@ func bootFile(o InitOptions, cfg *config.Controller) error {
 	}
 	doc := map[string]any{"version": config.Version, "public_url": o.PublicURL}
 	if o.KEKSource == "" {
-		o.KEKSource = KEKSourceFor(o.SystemdVersion())
+		o.KEKSource = config.KEKSourceFor(o.SystemdVersion())
 	}
 	switch o.KEKSource {
 	case "", config.KEKSystemdCredential:

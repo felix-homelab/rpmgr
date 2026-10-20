@@ -31,8 +31,9 @@ the parts of a single host, and the in-process `all-in-one` mode for the smalles
 cost is binary size (all roles are linked in). A connector-only variant ships in Phase 2
 ([13](13-roadmap.md#phase-2--production), D21): its own main, `cmd/rpmgr-connector`, links the
 connector role and the host commands a connector needs (`enroll`, `setup`, `policy`, `status`,
-`diag`, `leave`, `updater apply`, `version`) and nothing of the controller, the gateway or the
-importer. Its artifact is named `rpmgr-<version>-<os>-<arch>-connector` (`.exe` on Windows), it is
+`diag`, `leave`, `systemd-unit`, `updater apply`, `version`) and nothing of the controller, the
+gateway or the importer; `rpmgr controller`, `gateway` and `all-in-one` report "not available in
+this build", and its `setup` and `systemd-unit` offer the connector only. Its artifact is named `rpmgr-<version>-<os>-<arch>-connector` (`.exe` on Windows), it is
 still installed as `rpmgr`, and the release manifest tells the variants apart by each artifact's
 `variant` field ([04](04-security.md#release-signing),
 [D119](14-open-decisions.md#engineering)). Windows and macOS get the connector variant only
@@ -351,7 +352,12 @@ internal/controller/       api handlers, compiler, registry, jobs
 internal/gateway/          listeners, sni router, http engine, relay
 internal/connector/        session pool, dialer, health, visitors, p2p
 internal/tunnel/           Session/Stream abstraction; quic and h2 implementations; framing
-internal/pki/              CA, issuance, verification, enrollment
+internal/pki/              certificates, identities, verification, enrollment requests (agent side)
+internal/pki/castore/      the controller's CA in the database: issuance records, revocation, rotation
+internal/snapsig/          signing, hashing and verifying snapshots and deny-lists (agent side)
+internal/snapshot/         the snapshot compiler and apply status (controller side)
+internal/setup/            `rpmgr setup`; the controller's steps behind setup.Server
+internal/setup/serversetup/ setup.Server of the full build: controller and all-in-one init
 internal/policy/           connector-local policy parser and enforcement
 internal/routes/           routes and their ports: pools, quotas, allocation, snapshot compilers
 internal/authz/            roles, permission checks, interceptor

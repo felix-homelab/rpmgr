@@ -520,10 +520,13 @@ sequenceDiagram
   sessions, and they close after their last stream has ended, at the latest after the route drain
   period: its routes were removed, not revoked.
 - A gateway admits at most **16 data sessions per connector identity**; it refuses one more before
-  its handshake, and the connector retries with backoff. [R] A connector needs at most six: an
-  `auto` link on TCP (two connections) re-probing QUIC (one), a `quic` link (one) and an `h2` link
-  (two). The rest leaves room for sessions a transport switch retired, which close after their
-  last stream. A connector cannot exhaust a gateway by opening sessions without end.
+  its handshake, and the connector retries with backoff. [R] A connector needs at most ten at a
+  time: an `auto` link on QUIC (four sessions, or on TCP two connections re-probing QUIC with one),
+  a `quic` link (four) and an `h2` link (two) ([D123](14-open-decisions.md#engineering),
+  [D124](14-open-decisions.md#engineering)). The rest leaves room for sessions a transport switch
+  retired, which close after their last stream: an `auto` link that moves from TCP to QUIC holds
+  its two old connections next to its four new sessions for a while. A connector cannot exhaust a
+  gateway by opening sessions without end.
 
 ### One stream per user connection
 
@@ -934,7 +937,8 @@ first session to complete its handshake wins, and the other attempt is cancelled
 cached for 24 h per **(gateway, local source address)**, where the local source address is the one
 the kernel picks to reach that gateway; when it changes (a new network), the next connection starts
 a new race. While TCP is in use, QUIC is re-probed every 10 min, except while it is demoted after a
-blackhole; a successful probe moves the routes to QUIC.
+blackhole; a successful probe moves the routes to QUIC. On QUIC the winning session, or the probe's,
+is the first of the link's four, and the connector dials the other three at once.
 
 #### Transport selection
 
@@ -952,8 +956,8 @@ Which transport a connector uses is a setting
   `transport`. The most specific level that is set applies: route, then connector, then instance.
 - **Sessions follow the need.** A connector's snapshot carries its own effective transport and the
   effective transport of every route it serves. Per gateway it keeps the sessions these need: a
-  connector on `auto` that also serves a route pinned to `h2` keeps its QUIC session and the two
-  TCP connections of the h2 transport.
+  connector on `auto` that also serves a route pinned to `h2` keeps its four QUIC sessions and the
+  two TCP connections of the h2 transport.
 - **Streams follow the route.** The gateway opens a route's streams only on sessions of the
   route's effective transport; for `auto`, on the transport the race chose. The connector achieves
   this by reporting a route ready (`SessionHello`, `RouteHealth`) only on those sessions, so the
@@ -1048,7 +1052,17 @@ net/http, and loopback addresses are always dialled directly. The proxy resolves
 name.
 
 [R] Over TCP, a connector keeps **2** connections per gateway and spreads streams across them, which
-limits head-of-line blocking from packet loss to half the streams.
+limits head-of-line blocking from packet loss to half the streams
+([D124](14-open-decisions.md#engineering)).
+
+Over QUIC, a connector keeps **4** sessions per gateway
+([D123](14-open-decisions.md#engineering)). Each has a congestion window of its own, so a loss
+slows a quarter of the streams, and the gateway spreads new streams over them by power of two
+choices ([Multiple gateways](#multiple-gateways)). Each session sits in a slot of its own that
+redials it with the data-session backoff of the timeout table when it ends; a slot whose dial fails
+while another slot of the link holds a session retries with its backoff, and a session the gateway
+refuses at its cap is retried the same way, so the others stay in service. One stream still uses
+one session, so a single connection gains nothing from the four (ADR-0004).
 
 ### QUIC parameters
 
@@ -1353,7 +1367,8 @@ them by default**, and rpmgr does not assume it:
 | Congestion window cap | 10 000 × 1452 B / 0.1 s | ≈ 1.16 Gbit/s |
 
 So at 100 ms RTT a single QUIC session tops out around 1.16 Gbit/s regardless of window tuning;
-higher-BDP paths need several sessions or the TCP transport. This is why TCP is a **first-class**
+a connector's four sessions per gateway raise what all its streams carry together, not what one
+stream carries; a single stream on a higher-BDP path needs the TCP transport. This is why TCP is a **first-class**
 transport, selectable as the instance default, per connector and per route, not just an emergency
 fallback ([Transport selection](#transport-selection)).
 
@@ -1400,7 +1415,7 @@ benchmark result and the decision taken are recorded in the relevant ADR.
   on a reliable stream; a local run at 80 ms RTT and 2 000 datagrams/s missed 5–7 % of echoes within
   a 1 s window at p99 296–403 ms, against none on QUIC. [R] Prefer QUIC for UDP routes on such paths
   ([ADR-0004](adr/0004-quic-default-transport-policy.md#phase-2-study-http-udp-and-many-route-performance-local-indicative)).
-- **Per-session CPU**: one QUIC session is driven by roughly one core; high-throughput connectors
-  should use several sessions or the TCP transport.
+- **Per-session CPU**: one QUIC session is driven by roughly one core; a connector's four sessions
+  per gateway spread its streams over up to four cores, while one stream stays on one.
 - **Symmetric NAT on both sides**: P2P fails; private services stay on the relay.
 - **No gateway-to-gateway forwarding** in v1 (see [Multiple gateways](#multiple-gateways)).

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/store"
 )
 
@@ -20,7 +21,7 @@ const (
 
 // NodeCertOptions are the inputs of RenewNodeCertificate.
 type NodeCertOptions struct {
-	CA     *pki.CA
+	CA     *castore.CA
 	DB     *store.DB
 	Sys    context.Context // the system scope that records the certificates
 	NodeID string

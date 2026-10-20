@@ -9,7 +9,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/lease"
-	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -24,7 +24,7 @@ const (
 // CAOptions are the inputs of CARotation and ReloadCA.
 type CAOptions struct {
 	DB     *store.DB
-	CA     *pki.CA
+	CA     *castore.CA
 	Sealer *secret.Sealer
 	Leases *lease.Leases
 	Now    func() time.Time
@@ -40,7 +40,7 @@ func (o *CAOptions) defaults() {
 	}
 }
 
-// CARotation is the singleton job that keeps the CA's keys on schedule (pki.Rotate): it commits a
+// CARotation is the singleton job that keeps the CA's keys on schedule (castore.Rotate): it commits a
 // rotation with an audit record in a transaction fenced by its lease, and then reloads the CA.
 func CARotation(o CAOptions) lease.Job {
 	o.defaults()
@@ -52,7 +52,7 @@ func CARotation(o CAOptions) lease.Job {
 					return err
 				}
 				var err error
-				if done, err = pki.Rotate(ctx, tx, o.Sealer, o.Now()); err != nil {
+				if done, err = castore.Rotate(ctx, tx, o.Sealer, o.Now()); err != nil {
 					return err
 				}
 				for _, d := range done {

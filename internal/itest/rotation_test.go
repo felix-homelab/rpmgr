@@ -14,8 +14,9 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/itest"
-	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/snapsig"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 )
@@ -45,7 +46,7 @@ func TestRotation_NextSigningKey(t *testing.T) {
 	rotate := func() {
 		t.Helper()
 		if err := store.WriteTx(c.Sys, c.DB, func(tx *ent.Tx) error {
-			_, err := pki.Rotate(c.Sys, tx, c.Sealer(), time.Now())
+			_, err := castore.Rotate(c.Sys, tx, c.Sealer(), time.Now())
 			return err
 		}); err != nil {
 			t.Fatal(err)
@@ -84,8 +85,8 @@ func TestRotation_NextSigningKey(t *testing.T) {
 
 	// The next key replaces the old one: the agent gets and keeps a copy signed by it.
 	rotate()
-	next := snapshot.KeyID(c.CA.ConfigSigner().Cert)
-	if next == snapshot.KeyID(old) {
+	next := snapsig.KeyID(c.CA.ConfigSigner().Cert)
+	if next == snapsig.KeyID(old) {
 		t.Fatal("the key did not change")
 	}
 	waitFor(t, "a copy signed by the new key", func() bool { return storedKey() == next })
