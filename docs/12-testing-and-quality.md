@@ -224,8 +224,13 @@ testbed: its numbers are indications, recorded with the place and time they were
 | iperf3, 1 stream | Single-stream throughput | ≥ 80 % of a direct TCP connection at 0 % loss, for each transport |
 | iperf3, 32 streams | Aggregate goodput under loss | QUIC ≥ 1.5 × the TCP + h2 transport at 1 % loss |
 | Connect + echo at 1 000 connections/s | Connection-setup latency p50/p99 | p99 ≤ 1 × RTT + 2 ms |
-| h2load against an HTTP route | Requests/s, latency, errors | — (baseline) |
-| UDP at 1 200- and 1 400-byte payloads | Packets/s, loss, share sent on the oversize path | — (baseline) |
+| HTTP/2 through a route, with a direct HTTPS reference | Requests/s and p50/p99 against the direct service | — (baseline) |
+| UDP at 1 200-, 1 400- and 3 000-byte payloads | Packets/s, loss, echo RTT p50/p99, share sent on the oversize path | — (baseline) |
+| 4 routes, one saturating | Per-route goodput, per-stream Jain index, setup p99 under load | — (baseline) |
+
+The direct HTTP reference, the UDP echo RTT and the four-route fairness workload come from the
+Phase 2 local study ([ADR-0004](adr/0004-quic-default-transport-policy.md#phase-2-study-http-udp-and-many-route-performance-local-indicative));
+a local run is indicative, as [bench/README.md](../bench/README.md) says.
 | 10 000 idle connectors on one gateway | Memory and CPU at idle | — (baseline) |
 | 1 configuration change/s under load | Snapshot apply time, resets on unchanged routes | apply p99 ≤ 2 s for 1 000 routes; 0 resets |
 | `SIGKILL` gateway, then controller, under load | Recovery time, lost connections | — (bounded by 03 failure modes) |
