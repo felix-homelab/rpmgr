@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -132,37 +133,121 @@ func TestStalls_OldestFirst(t *testing.T) {
 	}
 }
 
-// TestH2_AdmissionUnderBudget: h2 sessions are admitted against the window budget, each with at
-// most half of what is free: the first ones get full windows, later ones smaller ones (the stream
-// window a sixteenth of the connection window), and a session that would get less than 4 MiB is
-// refused; released reservations are free again. Two links of two sessions each to four gateways
-// fit in the default budget.
+// TestH2_AdmissionUnderBudget: h2 sessions are admitted against the window budget (03, "Memory
+// bound"; D124): at most 64 MiB each, a sixteenth of the free budget once that is less, never
+// less than 1 MiB, so about eighty fit in the default budget; the stream window is a sixteenth of
+// the connection window; the reservations never exceed the budget; released ones are free again.
 func TestH2_AdmissionUnderBudget(t *testing.T) {
+	const mib = 1 << 20
 	b := tunnel.NewBudget(tunnel.DefaultWindowBudget)
 	full := tunnel.DefaultH2Windows()
 	var releases []func()
-	for i, want := range []int{256, 256, 256, 128, 64, 32, 16, 8, 4} {
+	var windows []int
+	for {
 		w, release, err := b.AdmitH2(full)
-		if err != nil || w.Conn != want<<20 || w.Stream != min(full.Stream, (want<<20)/16) {
-			t.Fatalf("session %d: %+v %v, want a %d MiB window", i+1, w, err, want)
+		if errors.Is(err, tunnel.ErrBudget) {
+			break
 		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if w.Stream != w.Conn/16 || w.Conn < mib || w.Conn > 64*mib {
+			t.Fatalf("session %d: %+v", len(windows)+1, w)
+		}
+		if n := len(windows); n > 0 && w.Conn > windows[n-1] {
+			t.Fatalf("session %d got %d, more than the one before (%d)", n+1, w.Conn, windows[n-1])
+		}
+		if b.Used() > tunnel.DefaultWindowBudget {
+			t.Fatalf("the reservations exceed the budget: %d", b.Used())
+		}
+		windows = append(windows, w.Conn)
 		releases = append(releases, release)
+		if len(windows) > 1000 {
+			t.Fatal("no end to admission")
+		}
 	}
-	if _, _, err := b.AdmitH2(full); !errors.Is(err, tunnel.ErrBudget) {
-		t.Fatalf("a tenth session with less than 4 MiB free: %v", err)
+	// The first session gets the cap, 64 MiB with a 4 MiB stream window; the second a sixteenth
+	// of the 960 MiB left; the tenth still more than 32 MiB (a stream window above 2 MiB).
+	if windows[0] != 64*mib || windows[1] != 60*mib || windows[9] < 32*mib {
+		t.Fatalf("first windows %v", windows[:10])
 	}
-	if b.Used() != 1020<<20 {
-		t.Fatalf("used %d", b.Used())
+	if n := len(windows); n < 75 || n > 85 {
+		t.Fatalf("%d sessions admitted under the default budget, want about 80", n)
+	}
+	if last := windows[len(windows)-1]; last != mib {
+		t.Fatalf("the last session got %d, want the 1 MiB floor", last)
+	}
+	if free := tunnel.DefaultWindowBudget - b.Used(); free >= mib {
+		t.Fatalf("refused with %d bytes free", free)
 	}
 	releases[0]()
 	releases[0]() // twice is harmless
-	for _, release := range releases[1:4] {
+	again, releaseAgain, err := b.AdmitH2(full)
+	if err != nil || again.Conn < 4*mib || again.Conn >= 5*mib {
+		t.Fatalf("after one release: %+v %v, want a sixteenth of the 64 MiB freed and the rest", again, err)
+	}
+	for _, release := range releases[1:] {
 		release()
 	}
-	if b.Used() != (1020-3*256-128)<<20 {
-		t.Fatalf("after four releases: used %d", b.Used())
+	if b.Used() != uint64(again.Conn) { //nolint:gosec // G115: a window is positive
+		t.Fatalf("after every other release: used %d", b.Used())
 	}
-	if w, _, err := b.AdmitH2(full); err != nil || w != full {
-		t.Fatalf("after the releases: %+v %v", w, err)
+	releaseAgain()
+	if w, _, err := b.AdmitH2(full); err != nil || w != (tunnel.H2Windows{Stream: 4 * mib, Conn: 64 * mib}) {
+		t.Fatalf("in an empty budget again: %+v %v", w, err)
+	}
+}
+
+// TestH2_AdmissionSmallWants: a session that asks for less than the cap or the floor gets what it
+// asks for; a budget below the floor admits nothing, and one of exactly the floor one session.
+func TestH2_AdmissionSmallWants(t *testing.T) {
+	const mib = 1 << 20
+	small := tunnel.H2Windows{Stream: 32 << 10, Conn: 512 << 10}
+	if w, _, err := tunnel.NewBudget(tunnel.DefaultWindowBudget).AdmitH2(small); err != nil || w != small {
+		t.Fatalf("a small want: %+v %v", w, err)
+	}
+	if _, _, err := tunnel.NewBudget(mib - 1).AdmitH2(tunnel.DefaultH2Windows()); !errors.Is(err, tunnel.ErrBudget) {
+		t.Fatalf("below the floor: %v", err)
+	}
+	b := tunnel.NewBudget(mib)
+	if w, _, err := b.AdmitH2(tunnel.DefaultH2Windows()); err != nil || w.Conn != mib || w.Stream != mib/16 {
+		t.Fatalf("a budget of exactly the floor: %+v %v", w, err)
+	}
+	if _, _, err := b.AdmitH2(tunnel.DefaultH2Windows()); !errors.Is(err, tunnel.ErrBudget) {
+		t.Fatalf("a second session in a full budget: %v", err)
+	}
+}
+
+// TestH2_StalledStreamsHoldAtMostTheAdmittedWindow: the memory a session can hold is its admitted
+// connection window: streams whose reader stops take no more than that, however much the peer
+// writes, so the budget bounds memory under stalled streams.
+func TestH2_StalledStreamsHoldAtMostTheAdmittedWindow(t *testing.T) {
+	b := tunnel.NewBudget(40 << 20)
+	w, release, err := b.AdmitH2(tunnel.DefaultH2Windows())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if w.Conn != 2<<20+512<<10 { // a sixteenth of 40 MiB
+		t.Fatalf("admitted %+v", w)
+	}
+	gw, con, _, _ := h2Session(t, w)
+	var sent atomic.Int64
+	for range 4 {
+		_, c := h2Open(t, gw, con) // the gateway never reads these streams
+		go func() {
+			buf := make([]byte, 64<<10)
+			for {
+				n, err := c.Write(buf)
+				sent.Add(int64(n))
+				if err != nil {
+					return
+				}
+			}
+		}()
+	}
+	time.Sleep(time.Second)
+	if got := sent.Load(); got > int64(w.Conn)+int64(4*w.Stream) {
+		t.Fatalf("the peer wrote %d bytes into stalled streams, more than the %d MiB window allows", got, w.Conn>>20)
 	}
 }

@@ -20,6 +20,10 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Fixed
 
+- Gateway: a gateway admits about eighty data sessions over TCP + HTTP/2 instead of nine. Each
+  session's flow-control window now takes at most a sixteenth of the free window budget, down to a
+  small floor, instead of half of it, so connectors beyond the fourth on TCP + h2 are no longer
+  refused; later sessions get smaller windows. (#819)
 - All-in-one: a built-in gateway or connector whose identity is revoked as a whole, as a restore
   that applies a later revocation leaves it, no longer stops the start. The all-in-one replaces it
   with a new built-in gateway or connector, which keeps the old one's name and, for a gateway, its
