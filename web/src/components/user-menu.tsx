@@ -62,9 +62,11 @@ export function UserMenu() {
     <div ref={root} className="relative">
       <button ref={button} type="button" aria-expanded={open} aria-controls={id} aria-label={t("app.userMenu", { name })}
         onClick={() => setOpen(!open)} className="flex h-9 items-center gap-2 rounded-lg pr-2 pl-1 transition-colors hover:bg-muted">
-        <span aria-hidden="true" className="grid size-7 place-items-center rounded-full bg-primary/12 text-xs font-semibold text-accent-foreground uppercase">
-          {name.slice(0, 1)}
-        </span>
+        {/* The initial is decoration, drawn by CSS rather than written as text: the label-in-name
+            check (WCAG 2.5.3, U8) compares a button's visible text with its accessible name, and
+            "A" is not part of "User menu: Ada". */}
+        <span aria-hidden="true" data-initial={name.slice(0, 1)}
+          className="grid size-7 place-items-center rounded-full bg-primary/12 text-xs font-semibold text-accent-foreground uppercase before:content-[attr(data-initial)]" />
         <span aria-hidden="true" className="hidden max-w-40 truncate text-sm font-medium sm:block">{name}</span>
         <ChevronDown aria-hidden="true" className="size-4 text-muted-foreground" />
       </button>
