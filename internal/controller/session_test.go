@@ -26,6 +26,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -256,6 +257,41 @@ func TestSession_Refusals(t *testing.T) {
 	if _, err := ok.Recv(); status.Code(err) != codes.InvalidArgument {
 		t.Errorf("a second Hello: %v", err)
 	}
+}
+
+// TestSession_RefusalRecorded (docs/09-web-ui.md, "Connector and gateway lists"): an agent refused
+// with Goodbye{upgrade_required} has the version it came with and the reason recorded, which a
+// later accepted session clears; an agent that never had a session gets no row.
+func TestSession_RefusalRecorded(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := startSessions(t, db, "0.3.1", 0)
+		sys := storetest.SystemCtx(t)
+		cert, id := e.agentCert(t)
+		ctx, cancel := context.WithCancel(testCtx(t))
+		if recv(t, e.open(t, ctx, cert, hello("0.3.0"))).GetWelcome() == nil {
+			t.Fatal("no Welcome")
+		}
+		cancel()
+		if g := recv(t, e.open(t, testCtx(t), cert, hello("0.1.9"))).GetGoodbye(); g.GetReason() != agentv1.GoodbyeReason_GOODBYE_REASON_UPGRADE_REQUIRED {
+			t.Fatalf("an old agent: %v", g)
+		}
+		if row := e.db.Client().AgentSession.GetX(sys, id.ID); row.AgentVersion != "0.1.9" || row.LastGoodbye != "upgrade_required" {
+			t.Errorf("after the refusal: %+v", row)
+		}
+		if recv(t, e.open(t, testCtx(t), cert, hello("0.3.0"))).GetWelcome() == nil {
+			t.Fatal("no Welcome after the upgrade")
+		}
+		if row := e.db.Client().AgentSession.GetX(sys, id.ID); row.AgentVersion != "0.3.0" || row.LastGoodbye != "" {
+			t.Errorf("after the upgrade: %+v", row)
+		}
+		newCert, newID := e.agentCert(t)
+		if g := recv(t, e.open(t, testCtx(t), newCert, hello("0.1.0"))).GetGoodbye(); g == nil {
+			t.Fatal("a new old agent was not refused")
+		}
+		if n := e.db.Client().AgentSession.Query().Where(agentsession.ID(newID.ID)).CountX(sys); n != 0 {
+			t.Errorf("an agent without a session got %d rows", n)
+		}
+	})
 }
 
 // TestSession_AdmissionStorm: beyond the admission rate, agents get Goodbye{overloaded} with a

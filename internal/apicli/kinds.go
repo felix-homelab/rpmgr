@@ -30,6 +30,9 @@ type Kind struct {
 	Columns  []string // the fields a table shows after its ID and name, as JSON names
 	Delete   bool     // whether Delete<Resource> exists
 	NoGet    bool     // whether Get<Resource> is missing: the kind is only listed
+	// Parent is the List request's field that names what the resources belong to, e.g.
+	// "rollout_id"; list takes it as its second argument. Empty for the org's resources.
+	Parent string
 }
 
 // Kinds are the kinds of the public API's resources, by name.
@@ -63,6 +66,12 @@ var Kinds = []Kind{
 		Columns: []string{"email", "role", "createTime"}, NoGet: true},
 	{Name: "token", Prefix: "atk_", Service: "rpmgr.v1.TokenService", Resource: "APIToken", Plural: "APITokens", IDField: "token_id",
 		Columns: []string{"prefix", "scopes", "expireTime", "lastUseTime"}, NoGet: true},
+	{Name: "release", Prefix: "rel_", Service: "rpmgr.v1.ReleaseService", Resource: "Release", Plural: "Releases",
+		Columns: []string{"channel", "source", "mirrored", "controllerVersion", "newerThanController"}, NoGet: true},
+	{Name: "rollout", Prefix: "rol_", Service: "rpmgr.v1.ReleaseService", Resource: "Rollout", Plural: "Rollouts", IDField: "rollout_id",
+		Columns: []string{"stage", "percentage", "state", "counts.updated", "counts.pending", "pauseReason"}},
+	{Name: "rollout-target", Prefix: "rlt_", Service: "rpmgr.v1.ReleaseService", Resource: "RolloutTarget", Plural: "RolloutTargets",
+		Parent: "rollout_id", Columns: []string{"agentKind", "canary", "bucket", "state", "reason", "versionBefore"}, NoGet: true},
 }
 
 // KindOf returns the kind with name.
@@ -168,7 +177,11 @@ func (k Kind) Resolve(ctx context.Context, hc *http.Client, base, org, ref strin
 		return "", err
 	}
 	for page := ""; ; {
-		resp, err := Call(ctx, hc, base, md, map[string]any{"org_id": org, "page_size": int32(500), "page_token": page}, nil)
+		fields := map[string]any{"page_size": int32(500), "page_token": page}
+		if md.Input().Fields().ByName("org_id") != nil {
+			fields["org_id"] = org
+		}
+		resp, err := Call(ctx, hc, base, md, fields, nil)
 		if err != nil {
 			return "", err
 		}

@@ -120,6 +120,14 @@ func AuditReason(ctx context.Context, reason string) {
 	}
 }
 
+// AuditDiff replaces the diff in the audit entry of the request in ctx, for a request too large to
+// record whole, such as an uploaded release.
+func AuditDiff(ctx context.Context, diff string) {
+	if r, _ := ctx.Value(recordKey{}).(*record); r != nil {
+		r.req.Entry.Diff = diff
+	}
+}
+
 // hook returns ctx whose write transactions append the entry, as a success, before they commit,
 // unless a service recorded the change in the transaction itself (audit.Append); handlers reach
 // the entry through it (SignedIn, AuditReason).

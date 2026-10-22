@@ -114,6 +114,20 @@ func (_c *AgentSessionCreate) SetNillableDisconnectedAt(v *time.Time) *AgentSess
 	return _c
 }
 
+// SetLastGoodbye sets the "last_goodbye" field.
+func (_c *AgentSessionCreate) SetLastGoodbye(v string) *AgentSessionCreate {
+	_c.mutation.SetLastGoodbye(v)
+	return _c
+}
+
+// SetNillableLastGoodbye sets the "last_goodbye" field if the given value is not nil.
+func (_c *AgentSessionCreate) SetNillableLastGoodbye(v *string) *AgentSessionCreate {
+	if v != nil {
+		_c.SetLastGoodbye(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *AgentSessionCreate) SetID(v string) *AgentSessionCreate {
 	_c.mutation.SetID(v)
@@ -179,6 +193,10 @@ func (_c *AgentSessionCreate) defaults() error {
 		v := agentsession.DefaultLastSeenAt()
 		_c.mutation.SetLastSeenAt(v)
 	}
+	if _, ok := _c.mutation.LastGoodbye(); !ok {
+		v := agentsession.DefaultLastGoodbye
+		_c.mutation.SetLastGoodbye(v)
+	}
 	return nil
 }
 
@@ -219,6 +237,9 @@ func (_c *AgentSessionCreate) check() error {
 	}
 	if _, ok := _c.mutation.LastSeenAt(); !ok {
 		return &ValidationError{Name: "last_seen_at", err: errors.New(`ent: missing required field "AgentSession.last_seen_at"`)}
+	}
+	if _, ok := _c.mutation.LastGoodbye(); !ok {
+		return &ValidationError{Name: "last_goodbye", err: errors.New(`ent: missing required field "AgentSession.last_goodbye"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := agentsession.IDValidator(v); err != nil {
@@ -295,6 +316,10 @@ func (_c *AgentSessionCreate) createSpec() (*AgentSession, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.DisconnectedAt(); ok {
 		_spec.SetField(agentsession.FieldDisconnectedAt, field.TypeTime, value)
 		_node.DisconnectedAt = &value
+	}
+	if value, ok := _c.mutation.LastGoodbye(); ok {
+		_spec.SetField(agentsession.FieldLastGoodbye, field.TypeString, value)
+		_node.LastGoodbye = value
 	}
 	return _node, _spec
 }

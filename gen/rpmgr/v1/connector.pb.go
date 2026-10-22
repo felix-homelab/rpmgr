@@ -232,9 +232,15 @@ type AgentSession struct {
 	// When it was last heard from.
 	LastSeenTime *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=last_seen_time,json=lastSeenTime,proto3" json:"last_seen_time,omitempty"`
 	// The address its control session comes from.
-	RemoteAddr    string `protobuf:"bytes,4,opt,name=remote_addr,json=remoteAddr,proto3" json:"remote_addr,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RemoteAddr string `protobuf:"bytes,4,opt,name=remote_addr,json=remoteAddr,proto3" json:"remote_addr,omitempty"`
+	// Whether the controller refused it a session because its version is below min_agent_version;
+	// version is then the one it came with.
+	BelowMinAgentVersion bool `protobuf:"varint,5,opt,name=below_min_agent_version,json=belowMinAgentVersion,proto3" json:"below_min_agent_version,omitempty"`
+	// The reason of the last Goodbye that refused it a session, e.g. "upgrade_required"; empty once
+	// a session is accepted.
+	LastGoodbyeReason string `protobuf:"bytes,6,opt,name=last_goodbye_reason,json=lastGoodbyeReason,proto3" json:"last_goodbye_reason,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *AgentSession) Reset() {
@@ -291,6 +297,20 @@ func (x *AgentSession) GetLastSeenTime() *timestamppb.Timestamp {
 func (x *AgentSession) GetRemoteAddr() string {
 	if x != nil {
 		return x.RemoteAddr
+	}
+	return ""
+}
+
+func (x *AgentSession) GetBelowMinAgentVersion() bool {
+	if x != nil {
+		return x.BelowMinAgentVersion
+	}
+	return false
+}
+
+func (x *AgentSession) GetLastGoodbyeReason() string {
+	if x != nil {
+		return x.LastGoodbyeReason
 	}
 	return ""
 }
@@ -1161,13 +1181,15 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\bbuilt_in\x18\v \x01(\bR\abuiltIn\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa9\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x90\x02\n" +
 	"\fAgentSession\x12\x1c\n" +
 	"\tconnected\x18\x01 \x01(\bR\tconnected\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12@\n" +
 	"\x0elast_seen_time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\flastSeenTime\x12\x1f\n" +
 	"\vremote_addr\x18\x04 \x01(\tR\n" +
-	"remoteAddr\"\xc1\x01\n" +
+	"remoteAddr\x125\n" +
+	"\x17below_min_agent_version\x18\x05 \x01(\bR\x14belowMinAgentVersion\x12.\n" +
+	"\x13last_goodbye_reason\x18\x06 \x01(\tR\x11lastGoodbyeReason\"\xc1\x01\n" +
 	"\x0fConnectorStatus\x120\n" +
 	"\asession\x18\x01 \x01(\v2\x16.rpmgr.v1.AgentSessionR\asession\x12C\n" +
 	"\rdata_sessions\x18\x02 \x03(\v2\x1e.rpmgr.v1.ConnectorDataSessionR\fdataSessions\x127\n" +

@@ -384,6 +384,7 @@ func (g *Gateways) gatewayOf(ctx context.Context, r *ent.Gateway) *rpmgrv1.Gatew
 	if s, err := g.DB.ReadClient().AgentSession.Query().Where(agentsession.ID(r.ID)).Only(ctx); err == nil {
 		out.Status.Connected = schema.AgentSessionLive(s.DisconnectedAt, s.LastSeenAt, g.now())
 		out.Status.Version, out.Status.RemoteAddr, out.Status.LastSeenTime = s.AgentVersion, s.RemoteAddr, timestamppb.New(s.LastSeenAt)
+		out.Status.LastGoodbyeReason, out.Status.BelowMinAgentVersion = s.LastGoodbye, s.LastGoodbye == upgradeRequired
 	}
 	return out
 }

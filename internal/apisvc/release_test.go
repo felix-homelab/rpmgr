@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/release/releasetest"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
@@ -80,6 +82,11 @@ func TestReleases(t *testing.T) {
 	if _, err := upload(ada, forged); code(err) != connect.CodeInvalidArgument || reason(err) != apisvc.ReasonReleaseDoesNotVerify {
 		t.Errorf("a manifest signed by another key: %v", err)
 	}
+	notRoot := signedRelease(t, e.clock, "1.4.2", 10, release.Stable)
+	notRoot.StatementSignature = relSigning.Sign(notRoot.GetSigningKeyStatement()) // the signing key vouching for itself
+	if _, err := upload(ada, notRoot); reason(err) != apisvc.ReasonReleaseDoesNotVerify {
+		t.Errorf("a statement signed by a key that is no root: %v", err)
+	}
 	expired := signedRelease(t, e.clock.Add(-400*24*time.Hour), "1.4.2", 10, release.Stable)
 	if _, err := upload(ada, expired); reason(err) != apisvc.ReasonReleaseDoesNotVerify {
 		t.Errorf("an expired signing-key statement: %v", err)
@@ -96,6 +103,19 @@ func TestReleases(t *testing.T) {
 	if again, err := upload(ada, signedRelease(t, e.clock, "1.4.2", 9, release.Stable)); err != nil || again.GetManifestSeq() != 10 ||
 		again.GetId() != old.GetId() {
 		t.Errorf("an older manifest of the same version replaced the newer: %v %v", again, err)
+	}
+	newer := signedRelease(t, e.clock, "1.4.2", 11, release.Stable)
+	if got, err := upload(ada, newer); err != nil || got.GetManifestSeq() != 11 || got.GetId() != old.GetId() {
+		t.Errorf("a newer manifest of the same version: %v %v", got, err)
+	}
+	if row := c.Release.GetX(e.sys, old.GetId()); string(row.Manifest) != string(newer.GetManifest()) {
+		t.Error("the newer manifest was not recorded")
+	}
+	sum := sha256.Sum256(newer.GetManifest())
+	entries := c.AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.ReleaseService.UploadRelease")).Order(ent.Desc(auditentry.FieldID)).AllX(e.sys)
+	if d := entries[0].Diff; !strings.Contains(d, `"version":"1.4.2"`) || !strings.Contains(d, `"seq":11`) ||
+		!strings.Contains(d, hex.EncodeToString(sum[:])) || len(d) > 400 {
+		t.Errorf("the audit entry of an upload: %s", d)
 	}
 	for _, v := range []string{"1.6.0", "1.5.0", "1.10.0-rc.1"} {
 		ch := release.Stable
@@ -134,8 +154,8 @@ func TestReleases(t *testing.T) {
 		t.Errorf("an altered page token: %v", err)
 	}
 	if n := c.AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.ReleaseService.UploadRelease"), auditentry.ResultEQ(auditentry.ResultSuccess)).
-		CountX(e.sys); n != 5 {
-		t.Errorf("%d audit entries of a successful upload, want 5", n)
+		CountX(e.sys); n != 6 {
+		t.Errorf("%d audit entries of a successful upload, want 6", n)
 	}
 
 	orgB := storetest.Org(t, e.db, "org-b")

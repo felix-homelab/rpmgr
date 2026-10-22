@@ -158,6 +158,20 @@ func (_u *AgentSessionUpdate) ClearDisconnectedAt() *AgentSessionUpdate {
 	return _u
 }
 
+// SetLastGoodbye sets the "last_goodbye" field.
+func (_u *AgentSessionUpdate) SetLastGoodbye(v string) *AgentSessionUpdate {
+	_u.mutation.SetLastGoodbye(v)
+	return _u
+}
+
+// SetNillableLastGoodbye sets the "last_goodbye" field if the given value is not nil.
+func (_u *AgentSessionUpdate) SetNillableLastGoodbye(v *string) *AgentSessionUpdate {
+	if v != nil {
+		_u.SetLastGoodbye(*v)
+	}
+	return _u
+}
+
 // Mutation returns the AgentSessionMutation object of the builder.
 func (_u *AgentSessionUpdate) Mutation() *AgentSessionMutation {
 	return _u.mutation
@@ -254,6 +268,9 @@ func (_u *AgentSessionUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if _u.mutation.DisconnectedAtCleared() {
 		_spec.ClearField(agentsession.FieldDisconnectedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LastGoodbye(); ok {
+		_spec.SetField(agentsession.FieldLastGoodbye, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -404,6 +421,20 @@ func (_u *AgentSessionUpdateOne) ClearDisconnectedAt() *AgentSessionUpdateOne {
 	return _u
 }
 
+// SetLastGoodbye sets the "last_goodbye" field.
+func (_u *AgentSessionUpdateOne) SetLastGoodbye(v string) *AgentSessionUpdateOne {
+	_u.mutation.SetLastGoodbye(v)
+	return _u
+}
+
+// SetNillableLastGoodbye sets the "last_goodbye" field if the given value is not nil.
+func (_u *AgentSessionUpdateOne) SetNillableLastGoodbye(v *string) *AgentSessionUpdateOne {
+	if v != nil {
+		_u.SetLastGoodbye(*v)
+	}
+	return _u
+}
+
 // Mutation returns the AgentSessionMutation object of the builder.
 func (_u *AgentSessionUpdateOne) Mutation() *AgentSessionMutation {
 	return _u.mutation
@@ -530,6 +561,9 @@ func (_u *AgentSessionUpdateOne) sqlSave(ctx context.Context) (_node *AgentSessi
 	}
 	if _u.mutation.DisconnectedAtCleared() {
 		_spec.ClearField(agentsession.FieldDisconnectedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LastGoodbye(); ok {
+		_spec.SetField(agentsession.FieldLastGoodbye, field.TypeString, value)
 	}
 	_node = &AgentSession{config: _u.config}
 	_spec.Assign = _node.assignValues

@@ -204,6 +204,12 @@ message GatewayStatus {
   google.protobuf.Timestamp last_seen_time = 4;
   // The address its control session comes from.
   string remote_addr = 5;
+  // Whether the controller refused it a session because its version is below min_agent_version;
+  // version is then the one it came with.
+  bool below_min_agent_version = 6;
+  // The reason of the last Goodbye that refused it a session, e.g. "upgrade_required"; empty once
+  // a session is accepted.
+  string last_goodbye_reason = 7;
 }
 
 // CreateGatewayRequest is a new gateway.

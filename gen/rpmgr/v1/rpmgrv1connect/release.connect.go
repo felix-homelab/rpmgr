@@ -53,6 +53,18 @@ const (
 	// ReleaseServiceListRolloutTargetsProcedure is the fully-qualified name of the ReleaseService's
 	// ListRolloutTargets RPC.
 	ReleaseServiceListRolloutTargetsProcedure = "/rpmgr.v1.ReleaseService/ListRolloutTargets"
+	// ReleaseServiceAdvanceRolloutProcedure is the fully-qualified name of the ReleaseService's
+	// AdvanceRollout RPC.
+	ReleaseServiceAdvanceRolloutProcedure = "/rpmgr.v1.ReleaseService/AdvanceRollout"
+	// ReleaseServicePauseRolloutProcedure is the fully-qualified name of the ReleaseService's
+	// PauseRollout RPC.
+	ReleaseServicePauseRolloutProcedure = "/rpmgr.v1.ReleaseService/PauseRollout"
+	// ReleaseServiceResumeRolloutProcedure is the fully-qualified name of the ReleaseService's
+	// ResumeRollout RPC.
+	ReleaseServiceResumeRolloutProcedure = "/rpmgr.v1.ReleaseService/ResumeRollout"
+	// ReleaseServiceCancelRolloutProcedure is the fully-qualified name of the ReleaseService's
+	// CancelRollout RPC.
+	ReleaseServiceCancelRolloutProcedure = "/rpmgr.v1.ReleaseService/CancelRollout"
 )
 
 // ReleaseServiceClient is a client for the rpmgr.v1.ReleaseService service.
@@ -73,6 +85,16 @@ type ReleaseServiceClient interface {
 	ListRollouts(context.Context, *connect.Request[v1.ListRolloutsRequest]) (*connect.Response[v1.ListRolloutsResponse], error)
 	// ListRolloutTargets pages through a rollout's agents, each with its state and reason.
 	ListRolloutTargets(context.Context, *connect.Request[v1.ListRolloutTargetsRequest]) (*connect.Response[v1.ListRolloutTargetsResponse], error)
+	// AdvanceRollout moves a running rollout to a higher percentage or to all agents.
+	AdvanceRollout(context.Context, *connect.Request[v1.AdvanceRolloutRequest]) (*connect.Response[v1.AdvanceRolloutResponse], error)
+	// PauseRollout pauses a running rollout: agents offered the release keep it, no further agent
+	// is offered it.
+	PauseRollout(context.Context, *connect.Request[v1.PauseRolloutRequest]) (*connect.Response[v1.PauseRolloutResponse], error)
+	// ResumeRollout lets a paused rollout run again.
+	ResumeRollout(context.Context, *connect.Request[v1.ResumeRolloutRequest]) (*connect.Response[v1.ResumeRolloutResponse], error)
+	// CancelRollout ends a running or paused rollout for good; agents that updated keep the
+	// release.
+	CancelRollout(context.Context, *connect.Request[v1.CancelRolloutRequest]) (*connect.Response[v1.CancelRolloutResponse], error)
 }
 
 // NewReleaseServiceClient constructs a client for the rpmgr.v1.ReleaseService service. By default,
@@ -126,6 +148,30 @@ func NewReleaseServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		advanceRollout: connect.NewClient[v1.AdvanceRolloutRequest, v1.AdvanceRolloutResponse](
+			httpClient,
+			baseURL+ReleaseServiceAdvanceRolloutProcedure,
+			connect.WithSchema(releaseServiceMethods.ByName("AdvanceRollout")),
+			connect.WithClientOptions(opts...),
+		),
+		pauseRollout: connect.NewClient[v1.PauseRolloutRequest, v1.PauseRolloutResponse](
+			httpClient,
+			baseURL+ReleaseServicePauseRolloutProcedure,
+			connect.WithSchema(releaseServiceMethods.ByName("PauseRollout")),
+			connect.WithClientOptions(opts...),
+		),
+		resumeRollout: connect.NewClient[v1.ResumeRolloutRequest, v1.ResumeRolloutResponse](
+			httpClient,
+			baseURL+ReleaseServiceResumeRolloutProcedure,
+			connect.WithSchema(releaseServiceMethods.ByName("ResumeRollout")),
+			connect.WithClientOptions(opts...),
+		),
+		cancelRollout: connect.NewClient[v1.CancelRolloutRequest, v1.CancelRolloutResponse](
+			httpClient,
+			baseURL+ReleaseServiceCancelRolloutProcedure,
+			connect.WithSchema(releaseServiceMethods.ByName("CancelRollout")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -137,6 +183,10 @@ type releaseServiceClient struct {
 	getRollout         *connect.Client[v1.GetRolloutRequest, v1.GetRolloutResponse]
 	listRollouts       *connect.Client[v1.ListRolloutsRequest, v1.ListRolloutsResponse]
 	listRolloutTargets *connect.Client[v1.ListRolloutTargetsRequest, v1.ListRolloutTargetsResponse]
+	advanceRollout     *connect.Client[v1.AdvanceRolloutRequest, v1.AdvanceRolloutResponse]
+	pauseRollout       *connect.Client[v1.PauseRolloutRequest, v1.PauseRolloutResponse]
+	resumeRollout      *connect.Client[v1.ResumeRolloutRequest, v1.ResumeRolloutResponse]
+	cancelRollout      *connect.Client[v1.CancelRolloutRequest, v1.CancelRolloutResponse]
 }
 
 // ListReleases calls rpmgr.v1.ReleaseService.ListReleases.
@@ -169,6 +219,26 @@ func (c *releaseServiceClient) ListRolloutTargets(ctx context.Context, req *conn
 	return c.listRolloutTargets.CallUnary(ctx, req)
 }
 
+// AdvanceRollout calls rpmgr.v1.ReleaseService.AdvanceRollout.
+func (c *releaseServiceClient) AdvanceRollout(ctx context.Context, req *connect.Request[v1.AdvanceRolloutRequest]) (*connect.Response[v1.AdvanceRolloutResponse], error) {
+	return c.advanceRollout.CallUnary(ctx, req)
+}
+
+// PauseRollout calls rpmgr.v1.ReleaseService.PauseRollout.
+func (c *releaseServiceClient) PauseRollout(ctx context.Context, req *connect.Request[v1.PauseRolloutRequest]) (*connect.Response[v1.PauseRolloutResponse], error) {
+	return c.pauseRollout.CallUnary(ctx, req)
+}
+
+// ResumeRollout calls rpmgr.v1.ReleaseService.ResumeRollout.
+func (c *releaseServiceClient) ResumeRollout(ctx context.Context, req *connect.Request[v1.ResumeRolloutRequest]) (*connect.Response[v1.ResumeRolloutResponse], error) {
+	return c.resumeRollout.CallUnary(ctx, req)
+}
+
+// CancelRollout calls rpmgr.v1.ReleaseService.CancelRollout.
+func (c *releaseServiceClient) CancelRollout(ctx context.Context, req *connect.Request[v1.CancelRolloutRequest]) (*connect.Response[v1.CancelRolloutResponse], error) {
+	return c.cancelRollout.CallUnary(ctx, req)
+}
+
 // ReleaseServiceHandler is an implementation of the rpmgr.v1.ReleaseService service.
 type ReleaseServiceHandler interface {
 	// ListReleases pages through the releases, the newest version first.
@@ -187,6 +257,16 @@ type ReleaseServiceHandler interface {
 	ListRollouts(context.Context, *connect.Request[v1.ListRolloutsRequest]) (*connect.Response[v1.ListRolloutsResponse], error)
 	// ListRolloutTargets pages through a rollout's agents, each with its state and reason.
 	ListRolloutTargets(context.Context, *connect.Request[v1.ListRolloutTargetsRequest]) (*connect.Response[v1.ListRolloutTargetsResponse], error)
+	// AdvanceRollout moves a running rollout to a higher percentage or to all agents.
+	AdvanceRollout(context.Context, *connect.Request[v1.AdvanceRolloutRequest]) (*connect.Response[v1.AdvanceRolloutResponse], error)
+	// PauseRollout pauses a running rollout: agents offered the release keep it, no further agent
+	// is offered it.
+	PauseRollout(context.Context, *connect.Request[v1.PauseRolloutRequest]) (*connect.Response[v1.PauseRolloutResponse], error)
+	// ResumeRollout lets a paused rollout run again.
+	ResumeRollout(context.Context, *connect.Request[v1.ResumeRolloutRequest]) (*connect.Response[v1.ResumeRolloutResponse], error)
+	// CancelRollout ends a running or paused rollout for good; agents that updated keep the
+	// release.
+	CancelRollout(context.Context, *connect.Request[v1.CancelRolloutRequest]) (*connect.Response[v1.CancelRolloutResponse], error)
 }
 
 // NewReleaseServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -236,6 +316,30 @@ func NewReleaseServiceHandler(svc ReleaseServiceHandler, opts ...connect.Handler
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	releaseServiceAdvanceRolloutHandler := connect.NewUnaryHandler(
+		ReleaseServiceAdvanceRolloutProcedure,
+		svc.AdvanceRollout,
+		connect.WithSchema(releaseServiceMethods.ByName("AdvanceRollout")),
+		connect.WithHandlerOptions(opts...),
+	)
+	releaseServicePauseRolloutHandler := connect.NewUnaryHandler(
+		ReleaseServicePauseRolloutProcedure,
+		svc.PauseRollout,
+		connect.WithSchema(releaseServiceMethods.ByName("PauseRollout")),
+		connect.WithHandlerOptions(opts...),
+	)
+	releaseServiceResumeRolloutHandler := connect.NewUnaryHandler(
+		ReleaseServiceResumeRolloutProcedure,
+		svc.ResumeRollout,
+		connect.WithSchema(releaseServiceMethods.ByName("ResumeRollout")),
+		connect.WithHandlerOptions(opts...),
+	)
+	releaseServiceCancelRolloutHandler := connect.NewUnaryHandler(
+		ReleaseServiceCancelRolloutProcedure,
+		svc.CancelRollout,
+		connect.WithSchema(releaseServiceMethods.ByName("CancelRollout")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.ReleaseService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ReleaseServiceListReleasesProcedure:
@@ -250,6 +354,14 @@ func NewReleaseServiceHandler(svc ReleaseServiceHandler, opts ...connect.Handler
 			releaseServiceListRolloutsHandler.ServeHTTP(w, r)
 		case ReleaseServiceListRolloutTargetsProcedure:
 			releaseServiceListRolloutTargetsHandler.ServeHTTP(w, r)
+		case ReleaseServiceAdvanceRolloutProcedure:
+			releaseServiceAdvanceRolloutHandler.ServeHTTP(w, r)
+		case ReleaseServicePauseRolloutProcedure:
+			releaseServicePauseRolloutHandler.ServeHTTP(w, r)
+		case ReleaseServiceResumeRolloutProcedure:
+			releaseServiceResumeRolloutHandler.ServeHTTP(w, r)
+		case ReleaseServiceCancelRolloutProcedure:
+			releaseServiceCancelRolloutHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -281,4 +393,20 @@ func (UnimplementedReleaseServiceHandler) ListRollouts(context.Context, *connect
 
 func (UnimplementedReleaseServiceHandler) ListRolloutTargets(context.Context, *connect.Request[v1.ListRolloutTargetsRequest]) (*connect.Response[v1.ListRolloutTargetsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.ListRolloutTargets is not implemented"))
+}
+
+func (UnimplementedReleaseServiceHandler) AdvanceRollout(context.Context, *connect.Request[v1.AdvanceRolloutRequest]) (*connect.Response[v1.AdvanceRolloutResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.AdvanceRollout is not implemented"))
+}
+
+func (UnimplementedReleaseServiceHandler) PauseRollout(context.Context, *connect.Request[v1.PauseRolloutRequest]) (*connect.Response[v1.PauseRolloutResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.PauseRollout is not implemented"))
+}
+
+func (UnimplementedReleaseServiceHandler) ResumeRollout(context.Context, *connect.Request[v1.ResumeRolloutRequest]) (*connect.Response[v1.ResumeRolloutResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.ResumeRollout is not implemented"))
+}
+
+func (UnimplementedReleaseServiceHandler) CancelRollout(context.Context, *connect.Request[v1.CancelRolloutRequest]) (*connect.Response[v1.CancelRolloutResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.CancelRollout is not implemented"))
 }

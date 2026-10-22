@@ -53,6 +53,7 @@ func apiCommands() []*cli.Command {
 	add(memberCommands())
 	add(recoveryCommands())
 	add(settingsCommands())
+	add(rolloutCommands())
 	out := []*cli.Command{getCommand(), listCommand(), deleteCommand()}
 	for _, v := range []struct{ verb, summary string }{
 		{"create", "create a resource of the public API"}, {"update", "change a resource of the public API"},
@@ -61,6 +62,8 @@ func apiCommands() []*cli.Command {
 		{"revoke", "revoke a credential"}, {"set", "set an org's limit"}, {"preview", "show what a change would do, saving nothing"},
 		{"verify", "check a proof now"}, {"trust", "trust something without a proof"}, {"upload", "upload a file to the controller"},
 		{"renew", "renew a certificate now"}, {"remove", "remove a member from the org, or a user's second factor"},
+		{"advance", "move a rollout to its next stage"}, {"pause", "pause a rollout"}, {"resume", "let a paused rollout run again"},
+		{"cancel", "end a rollout for good"},
 	} {
 		out = append(out, group(v.verb, v.summary, verbs[v.verb]...))
 	}
@@ -194,13 +197,20 @@ func listCommand() *cli.Command {
 	var output string
 	var all bool
 	return &cli.Command{
-		Name: "list", Summary: "list the resources of a kind in the org", Args: "<" + kindsHelp(func(k apicli.Kind) bool { return k.Plural != "" }) + ">",
+		Name: "list", Summary: "list the resources of a kind in the org, or of the instance",
+		Args: "<" + kindsHelp(func(k apicli.Kind) bool { return k.Plural != "" }) + "> [<what they belong to>]",
 		Flags: func(fs *flag.FlagSet) {
 			outputFlag(fs, &output)
 			fs.BoolVar(&all, "all", false, "also the decommissioned agents, and the used-up, expired and revoked enrollment tokens")
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
-			k, err := kindArgs(args, 1)
+			n := 1
+			if len(args) > 0 {
+				if k, err := apicli.KindOf(args[0]); err == nil && k.Parent != "" {
+					n = 2
+				}
+			}
+			k, err := kindArgs(args, n)
 			if err != nil {
 				return err
 			}
@@ -220,7 +230,13 @@ func listCommand() *cli.Command {
 			// Members and tokens come in one answer, without pages.
 			paged := md.Input().Fields().ByName("page_token") != nil
 			for page := ""; ; {
-				fields := map[string]any{"org_id": s.creds.Org}
+				fields := map[string]any{}
+				if md.Input().Fields().ByName("org_id") != nil {
+					fields["org_id"] = s.creds.Org
+				}
+				if k.Parent != "" {
+					fields[k.Parent] = args[1]
+				}
 				if paged {
 					fields["page_size"], fields["page_token"] = int32(500), page
 				}
@@ -443,7 +459,7 @@ func writeTable(w io.Writer, k apicli.Kind, res []protoreflect.Message) error {
 		if id == "-" {
 			id = cell(v, "userId")
 		}
-		for _, alt := range []string{"fqdn", "displayName"} {
+		for _, alt := range []string{"fqdn", "displayName", "version", "agentName"} {
 			if name == "-" {
 				name = cell(v, alt)
 			}

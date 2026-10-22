@@ -384,6 +384,10 @@ func init() {
 	agentsessionDescLastSeenAt := agentsessionFields[7].Descriptor()
 	// agentsession.DefaultLastSeenAt holds the default value on creation for the last_seen_at field.
 	agentsession.DefaultLastSeenAt = agentsessionDescLastSeenAt.Default.(func() time.Time)
+	// agentsessionDescLastGoodbye is the schema descriptor for last_goodbye field.
+	agentsessionDescLastGoodbye := agentsessionFields[9].Descriptor()
+	// agentsession.DefaultLastGoodbye holds the default value on creation for the last_goodbye field.
+	agentsession.DefaultLastGoodbye = agentsessionDescLastGoodbye.Default.(string)
 	// agentsessionDescID is the schema descriptor for id field.
 	agentsessionDescID := agentsessionFields[0].Descriptor()
 	// agentsession.IDValidator is a validator for the "id" field. It is called by the builders before save.
