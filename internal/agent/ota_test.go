@@ -102,7 +102,6 @@ type otaEnv struct {
 	mu       sync.Mutex
 	releases map[string]*otaRelease
 	requests []string
-	base     string
 	serve    func(w http.ResponseWriter, r *http.Request, name string, body []byte) bool // true: handled
 	pol      *policy.Policy
 	free     uint64
