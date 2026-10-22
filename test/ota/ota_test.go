@@ -142,10 +142,10 @@ mkdir -p /etc/rpmgr /var/lib/rpmgr/update /var/lib/rpmgr-update /usr/local/bin
 install -m 0755 /b/rpmgr-` + oldVer + ` /usr/local/bin/rpmgr
 install -m 0755 /b/role-ready /usr/local/bin/role-ready
 chown -R rpmgr:rpmgr /var/lib/rpmgr
-printf 'version: 1\nlisten:\n  admin: "127.0.0.1:7384"\n' > /etc/rpmgr/connector.yaml
+printf 'version: 1\ncontroller:\n  endpoints: ["https://127.0.0.1:443"]\nlisten:\n  admin: "127.0.0.1:7384"\n' > /etc/rpmgr/connector.yaml
 # The updater asks systemd for a unit's state, which needs the system bus; this container has none
 # for that query, so answer it for the role while every other systemctl call is the real one.
-printf '%s\n' '#!/bin/sh' 'case " $* " in' '  *" show "*) echo "ActiveState=active"; echo "NRestarts=0"; exit 0 ;;' 'esac' 'exec /usr/bin/systemctl "$@"' > /usr/local/bin/systemctl
+printf '%s\n' '#!/bin/sh' 'case " $* " in' '  *" show "*) echo "ActiveState=active"; echo "NRestarts=0"; exit 0 ;;' '  *" restart "*) exit 0 ;;' 'esac' 'exec /usr/bin/systemctl "$@"' > /usr/local/bin/systemctl
 chmod 0755 /usr/local/bin/systemctl
 /usr/local/bin/rpmgr updater install --state /var/lib/rpmgr-update --path /usr/local/bin/rpmgr --role connector --seq 1 --floor ` + oldVer + ` --units /etc/systemd/system
 printf '%s\n' '[Unit]' 'Description=rpmgr connector (test)' 'After=network.target' '[Service]' 'ExecStart=/usr/local/bin/role-ready -addr 127.0.0.1:7384' 'Restart=always' 'RestartSec=1' '[Install]' 'WantedBy=multi-user.target' > /etc/systemd/system/rpmgr-connector.service
