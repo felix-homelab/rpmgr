@@ -56,7 +56,7 @@ func testInstall(t *testing.T) {
 		"version: rpmgr " + newVer,
 		"var: tmpfs",
 		"binary dir: not tmpfs",
-		`"result":"updated"`,
+		`"state":"updated"`,
 		"binary: protected",
 		"state: protected",
 		"status: protected",
@@ -74,7 +74,7 @@ func testReplay(t *testing.T) {
 		t.Fatalf("the new release did not install:\n%s", out)
 	}
 	out := h.apply(oldVer)
-	for _, want := range []string{"apply: 1", `"result":"refused"`, "version: rpmgr " + newVer} {
+	for _, want := range []string{"apply: 1", `"state":"refused"`, "version: rpmgr " + newVer} {
 		if !strings.Contains(out, want) {
 			t.Errorf("no %q in:\n%s", want, out)
 		}
