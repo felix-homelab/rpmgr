@@ -1037,8 +1037,10 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
 7. The updater writes the outcome to `/run/rpmgr-update/status.json` (root-owned, readable by the
    service user): `updated`, `rolled_back`, `rollback_failed` (the previous binary could not be put
    back, which needs an operator) or `refused`, with the version, the previous one and a
-   reason. The agent reads it at start and reports it, and the rollout records it. The persisted
-   floor and `seq` are raised only after success. They are stored by the updater in
+   reason. The agent reads it at start and reports it, and again while a release is staged, at the
+   policy recheck interval of [03](03-connections.md#timeouts-keepalive-and-backoff), so that an
+   outcome that restarts nothing, such as `refused`, is reported too; the rollout records it. The
+   persisted floor and `seq` are raised only after success. They are stored by the updater in
    `/var/lib/rpmgr-update/state.json`, owned by root and not writable by the service user, so a
    compromised agent process cannot lower them ([10](10-operations.md#install)). They are
    **initialised at install time** from the binary's embedded release metadata (its version and the
