@@ -60,8 +60,8 @@ type Result struct {
 	AgentID, AgentKind string
 	Unit               string // the unit setup installed and started; empty without one
 	Admin              string // the admin listener
-	// NoUpdaterState: the updater is installed, but no install script recorded a release's seq,
-	// so it refuses every release until one does (install.sh --upgrade).
+	// NoUpdaterState: the updater is installed, but it has no state, because this development
+	// build has no release version; it refuses every release.
 	NoUpdaterState bool
 	// Written are the files and directories setup created, for cleaning up after a failure.
 	Written []string
@@ -512,7 +512,8 @@ func (p *Plan) policySteps() {
 
 // updaterSteps record the installation for the root updater, which every Linux host gets whatever
 // its role (docs/10-operations.md, "Who installs the updater"), and install its units. Setup knows
-// no release seq: the state stays as an install script wrote it.
+// no release seq: a state an install script wrote stays; a missing one starts at the binary's
+// version with seq 0.
 func (p *Plan) updaterSteps() {
 	h, v := p.h, p.v
 	if h.Paths.UpdateState == "" {
@@ -528,11 +529,12 @@ func (p *Plan) updaterSteps() {
 			in.Method = old.Method // an install script's record stays its
 		}
 		r.created(h.Paths.UpdateState)
+		in.Floor = version.Version
 		_, st, err := update.Record(h.Paths.UpdateState, in)
 		if err != nil {
 			return err
 		}
-		r.NoUpdaterState = st.Seq == 0
+		r.NoUpdaterState = st.Floor == ""
 		if v.NoUnit {
 			return nil
 		}

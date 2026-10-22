@@ -24,6 +24,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 	"github.com/felix-homelab/rpmgr/internal/token"
 	"github.com/felix-homelab/rpmgr/internal/update"
+	"github.com/felix-homelab/rpmgr/internal/version"
 )
 
 // fakeHost is a host in a temporary directory: it records the commands setup runs and enrolls
@@ -478,8 +479,9 @@ func TestPlan_Connector(t *testing.T) {
 // TestPlan_Updater (docs/10-operations.md, "Who installs the updater"): setup records the role for
 // the root updater, with the build's variant, and installs and enables its units. Setup knows no
 // release seq: on a host where an install script ran, the record keeps the script's method and its
-// state stays; without such a state the result says that the updater refuses every release. A
-// record of another variant stops setup.
+// state stays; without one a release build starts the state at its version with seq 0, while a
+// development build writes none and the result says the updater refuses every release. A record
+// of another variant stops setup.
 func TestPlan_Updater(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the root updater runs on Linux only")
@@ -495,7 +497,7 @@ func TestPlan_Updater(t *testing.T) {
 		}
 		return p.Run(context.Background(), nil)
 	}
-	t.Run("binary installed by hand", func(t *testing.T) {
+	t.Run("development build installed by hand", func(t *testing.T) {
 		h := newHost(t, &fakeHost{})
 		h.Variant = "connector" // as the connector-only build's setup; it sets up connectors only, which the record does not check
 		r, err := gateway(t, h)
@@ -515,6 +517,19 @@ func TestPlan_Updater(t *testing.T) {
 		}
 		if !slices.Contains(r.Written, h.Paths.UpdateState) || !slices.Contains(r.Written, filepath.Join(h.Paths.Units, "rpmgr-update.path")) {
 			t.Errorf("written %q", r.Written)
+		}
+	})
+	t.Run("release build installed by hand", func(t *testing.T) {
+		old := version.Version
+		t.Cleanup(func() { version.Version = old })
+		version.Version = "1.4.2"
+		h := newHost(t, &fakeHost{})
+		r, err := gateway(t, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st, err := update.ReadState(h.Paths.UpdateState); err != nil || st != (update.State{Floor: "1.4.2"}) || r.NoUpdaterState {
+			t.Errorf("state %+v, %v, no state %v; want floor 1.4.2 and seq 0", st, err, r.NoUpdaterState)
 		}
 	})
 	t.Run("after an install script", func(t *testing.T) {

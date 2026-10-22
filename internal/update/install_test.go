@@ -147,6 +147,33 @@ func TestRecord_RaisesNeverLowers(t *testing.T) {
 	}
 }
 
+// TestRecord_WithoutSeq: an installer that knows no manifest, as `rpmgr setup`, starts a missing
+// state at the binary's version with seq 0, leaves an existing state as it is, and writes none for
+// a version that is no release (a development build).
+func TestRecord_WithoutSeq(t *testing.T) {
+	dir := t.TempDir()
+	if _, st, err := update.Record(dir, connector(0, "1.4.2")); err != nil || st != (update.State{Floor: "1.4.2"}) {
+		t.Fatalf("Record = %+v, %v", st, err)
+	}
+	if got, err := update.ReadState(dir); err != nil || got != (update.State{Floor: "1.4.2"}) {
+		t.Errorf("state.json %+v, %v", got, err)
+	}
+	if _, st, err := update.Record(dir, connector(0, "1.6.0")); err != nil || st != (update.State{Floor: "1.4.2"}) {
+		t.Errorf("an existing state: %+v, %v; want it unchanged", st, err)
+	}
+	// The install scripts then raise it with the release's seq.
+	if _, st, err := update.Record(dir, connector(87, "1.4.2")); err != nil || st != (update.State{Seq: 87, Floor: "1.4.2"}) {
+		t.Errorf("raised by a script: %+v, %v", st, err)
+	}
+	dev := t.TempDir()
+	if _, st, err := update.Record(dev, connector(0, "dev")); err != nil || st != (update.State{}) {
+		t.Errorf("development build: %+v, %v", st, err)
+	}
+	if _, err := os.Stat(filepath.Join(dev, "state.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a development build wrote a state: %v", err)
+	}
+}
+
 // TestRecord_Refusals: what an installer refuses, leaving the files as they were: a path, variant,
 // role or floor it cannot use, a record or state it cannot read (which may hide a higher seq), and
 // a directory that is a symbolic link. A directory with a wider mode is narrowed to 0700.
@@ -225,16 +252,19 @@ func TestRecord_Refusals(t *testing.T) {
 
 // TestOTA_FreshHostReplayRejected (docs/12): on a host freshly installed with release 1.4.2 of
 // manifest 87, which never updated, an old, genuinely signed manifest is refused: one with a lower
-// seq whatever its version, and one below the floor with the same seq, because the installer
-// initialised the floor and seq from the release. A newer manifest is taken.
+// seq whatever its version, and one below the floor with the same seq, because the install script
+// initialised the floor and seq from the release. A newer manifest is taken. On a host that
+// `rpmgr setup` set up without a script, which knows no seq, the floor alone refuses every older
+// version, whatever the seq of its manifest; a manifest at or above the floor can only move the
+// host to a validly signed release that is not older.
 func TestOTA_FreshHostReplayRejected(t *testing.T) {
-	fresh := func(t *testing.T) *host {
+	freshWith := func(t *testing.T, seq uint64) *host {
 		t.Helper()
 		base := t.TempDir()
 		staged := filepath.Join(base, "update")
 		mustMkdir(t, staged, 0o750)
 		state := filepath.Join(base, "rpmgr-update") // the installer creates it
-		if _, _, err := update.Record(state, connector(87, "1.4.2")); err != nil {
+		if _, _, err := update.Record(state, connector(seq, "1.4.2")); err != nil {
 			t.Fatal(err)
 		}
 		root, err := release.ParsePublicKey(testRoot.Public())
@@ -244,6 +274,7 @@ func TestOTA_FreshHostReplayRejected(t *testing.T) {
 		return &host{t: t, u: &update.Updater{Staged: staged, State: state, Policy: filepath.Join(base, "policy.yaml"),
 			Roots: []release.PublicKey{root}, Now: func() time.Time { return now }, OS: "linux", Arch: "amd64"}}
 	}
+	fresh := func(t *testing.T) *host { t.Helper(); return freshWith(t, 87) }
 	t.Run("lower seq", func(t *testing.T) {
 		h := fresh(t)
 		h.stage(rel{version: "1.4.5", floor: "1.0.0", seq: 80})
@@ -259,6 +290,20 @@ func TestOTA_FreshHostReplayRejected(t *testing.T) {
 		h.stage(rel{version: "1.4.3", floor: "1.4.0", seq: 88})
 		if s := h.staged(); s.Next != (update.State{Seq: 88, Floor: "1.4.0"}) {
 			t.Errorf("next state %+v", s.Next)
+		}
+	})
+	t.Run("set up without a script: older version, any seq", func(t *testing.T) {
+		for _, seq := range []uint64{1, 87, 500} {
+			h := freshWith(t, 0)
+			h.stage(rel{version: "1.4.1", floor: "1.0.0", seq: seq})
+			h.refused(update.ErrRefused)
+		}
+	})
+	t.Run("set up without a script: at the floor", func(t *testing.T) {
+		h := freshWith(t, 0)
+		h.stage(rel{version: "1.4.2", floor: "1.3.0", seq: 3})
+		if s := h.staged(); s.Next != (update.State{Seq: 3, Floor: "1.3.0"}) {
+			t.Errorf("next state %+v; the update records the seq", s.Next)
 		}
 	})
 }

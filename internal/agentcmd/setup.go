@@ -186,7 +186,7 @@ func printSetup(w io.Writer, v setup.Values, r setup.Result) error {
 		}
 		b.WriteString(".\n")
 		if r.NoUpdaterState {
-			b.WriteString("Over-the-air updates stay off until an install script records a release: run its install.sh --upgrade.\n")
+			b.WriteString("Over-the-air updates stay off: this development build has no release version.\n")
 		}
 	}
 	_, err := io.WriteString(w, b.String())

@@ -28,7 +28,10 @@ type Installed struct {
 	// adds to those recorded.
 	Install
 	// Seq and Floor are the seq of the release's verified manifest and the release's version, which
-	// initialise or raise the state; Seq 0 leaves the state as it is.
+	// initialise or raise the state. With Seq 0, as for `rpmgr setup`, which knows no manifest,
+	// Floor is the binary's own version: it initialises a missing state with seq 0, which takes no
+	// manifest below the floor (release.State.Accept), and leaves an existing one as it is; a
+	// version that is no release (a development build) leaves the state missing.
 	Seq   uint64
 	Floor string
 }
@@ -106,7 +109,10 @@ func raise(dir string, seq uint64, floor string) (State, bool, error) {
 		return State{}, false, fmt.Errorf("%w; remove it to initialise the state from this release", err)
 	}
 	if seq == 0 {
-		return old, false, nil
+		if exists || !full(floor) {
+			return old, false, nil
+		}
+		return State{Floor: floor}, true, nil
 	}
 	if !full(floor) {
 		return State{}, false, fmt.Errorf("update: the floor %q is no full semantic version", floor)

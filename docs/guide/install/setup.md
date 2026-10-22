@@ -201,11 +201,10 @@ The plan's steps, in order; setup leaves out those it does not need:
 7. **Installs the updater:** records the role for the updater in `/var/lib/rpmgr-update/`, beside
    the roles recorded already, and, unless `--no-unit`, writes and enables its units
    `rpmgr-update.path` and `rpmgr-update.service`
-   ([10](../../10-operations.md#hardened-systemd-units)). Setup does not know which release the
-   binary came from: the updater's floor and release number stay as an install script wrote them.
-   On a host whose binary no install script installed, setup says that automatic updates stay off
-   until you run the global install script with `--upgrade`. A controller or all-in-one is always
-   upgraded by hand ([Upgrades](upgrades.md)).
+   ([10](../../10-operations.md#hardened-systemd-units)). The updater's floor and release number
+   stay as an install script wrote them; on a host without them, setup starts them at the
+   binary's own version, so that no older release is ever installed. A controller or all-in-one
+   is always upgraded by hand ([Upgrades](upgrades.md)).
 8. **Installs the unit** `/etc/systemd/system/rpmgr-<role>.service` and runs
    `systemctl daemon-reload` and `systemctl enable --now rpmgr-<role>`; on a second run with
    `--force` also `systemctl restart`, so the role reads its new boot file.

@@ -222,7 +222,9 @@ RestartSec=2s
      and refuses a version rolled back on this host until a manifest with a higher `seq` offers it.
      The service user can no longer swap a file or plant a symlink between check and install;
   4. refuses anything below the persisted floor. Floor and `seq` are initialised at install time
-     from the running version and its release `seq`; after that the running version plays no role.
+     from the running version and its release `seq` (by `rpmgr setup`, which knows no manifest,
+     with `seq` 0: then no manifest below the floor is taken, whatever its `seq`, until an update
+     records one); after that the running version plays no role.
      A manifest with a higher `seq` may lower the floor, which makes **signed downgrades** possible,
      while replaying an old manifest (lower `seq`) is refused — also on a fresh host;
   5. copies the verified file into the target directory as `.rpmgr.new` (same filesystem, so no
@@ -313,9 +315,12 @@ RestartSec=2s
     the global script installing a release from before the updater writes only a missing
     `install.json`, without roles.
   - **What setup does:** `rpmgr setup` adds its role to `install.json` and installs and enables
-    the units, unless `--no-unit`. The binary does not carry its own `seq`, so setup leaves
-    `state.json` as a script wrote it; on a host without one it says that the updater refuses
-    every release until `install.sh --upgrade` records one.
+    the units, unless `--no-unit`. It knows no manifest, so it leaves a `state.json` a script
+    wrote, and starts a missing one at the binary's own version with `seq` 0 (as does
+    `rpmgr updater install` without `--seq`). With `seq` 0 the updater takes no manifest below
+    the floor, whatever its `seq`; the first update records the `seq`. A development build has no
+    release version and gets no `state.json`, so the updater refuses every release, which setup
+    says.
 - No secret appears in `ExecStart` or `Environment=` ([04](04-security.md#secrets-at-rest-and-in-logs)).
 - The installer applies the host tuning from [03](03-connections.md#host-tuning-applied-by-the-installer).
 

@@ -440,7 +440,7 @@ rpmgr updater install [flags]
 | `--no-units` |  | write no units, as on a host without systemd |
 | `--path string` | `/usr/local/bin/rpmgr` | the installed binary |
 | `--role value` |  | a role of this host, besides those recorded and those with a boot file; repeat for more |
-| `--seq uint` |  | the seq of the installed release's verified manifest (0: leave the state as it is) |
+| `--seq uint` |  | the seq of the installed release's verified manifest (default: none; a missing state starts at this binary's version) |
 | `--state string` | `/var/lib/rpmgr-update` | the updater's own directory: install.json, state.json |
 | `--units string` | `/etc/systemd/system` | where the units rpmgr-update.path and rpmgr-update.service go |
 

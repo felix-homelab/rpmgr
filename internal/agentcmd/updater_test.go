@@ -17,6 +17,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/update"
+	"github.com/felix-homelab/rpmgr/internal/version"
 )
 
 // TestUpdaterReady: the updater asks each role's admin listener, at the address its boot file
@@ -77,8 +78,9 @@ func runUpdater(t *testing.T, variant string, root bool, args ...string) (int, s
 // TestUpdaterInstall: the install scripts' `rpmgr updater install` records the build's variant,
 // the given roles and those with a boot file, raises the state to the release's, and writes the
 // units; on a host that v0.1.0 installed it turns the single role into a list and raises the
-// state, and it never lowers it. It refuses to run as another user than root, whose files the
-// updater would not trust, and a seq without a floor.
+// state, and it never lowers it. Without a seq, a missing state starts at the binary's version
+// with seq 0, except on a development build. It refuses to run as another user than root, whose
+// files the updater would not trust, and a seq without a floor or the other way round.
 func TestUpdaterInstall(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the root updater runs on Linux only")
@@ -135,10 +137,33 @@ func TestUpdaterInstall(t *testing.T) {
 			t.Errorf("%d %q %q: record %+v, %v; state %+v, %v", code, out, errOut, in, err, st, serr)
 		}
 	})
-	t.Run("no state yet", func(t *testing.T) {
-		code, out, _ := runUpdater(t, "connector", true, "--state", filepath.Join(t.TempDir(), "s"), "--etc", t.TempDir(), "--no-units")
-		if code != 0 || !strings.Contains(out, "roles: none yet") || !strings.Contains(out, "refuses every release until an install script records") {
+	t.Run("development build without a seq", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "s")
+		code, out, _ := runUpdater(t, "connector", true, "--state", dir, "--etc", t.TempDir(), "--no-units")
+		if code != 0 || !strings.Contains(out, "roles: none yet") || !strings.Contains(out, "this development build has no release version") {
 			t.Errorf("%d %q", code, out)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "state.json")); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("a development build wrote a state: %v", err)
+		}
+	})
+	t.Run("release build without a seq", func(t *testing.T) {
+		old := version.Version
+		t.Cleanup(func() { version.Version = old })
+		version.Version = "1.4.2"
+		dir := filepath.Join(t.TempDir(), "s")
+		code, out, _ := runUpdater(t, "full", true, "--state", dir, "--etc", t.TempDir(), "--no-units")
+		if st, err := update.ReadState(dir); code != 0 || err != nil || st != (update.State{Floor: "1.4.2"}) ||
+			!strings.Contains(out, "version floor 1.4.2; the first update records the manifest seq") {
+			t.Errorf("%d %q: state %+v, %v", code, out, st, err)
+		}
+		// An existing state stays as it is.
+		version.Version = "1.5.0"
+		if code, out, _ := runUpdater(t, "full", true, "--state", dir, "--etc", t.TempDir(), "--no-units"); code != 0 {
+			t.Fatalf("%d %q", code, out)
+		}
+		if st, err := update.ReadState(dir); err != nil || st != (update.State{Floor: "1.4.2"}) {
+			t.Errorf("state %+v, %v; want it unchanged", st, err)
 		}
 	})
 	t.Run("refusals", func(t *testing.T) {
@@ -148,6 +173,9 @@ func TestUpdaterInstall(t *testing.T) {
 		}
 		if code, _, errOut := runUpdater(t, "full", true, "--state", dir, "--no-units", "--seq", "5"); code != cli.ExitUsage {
 			t.Errorf("--seq without --floor: %d %q", code, errOut)
+		}
+		if code, _, errOut := runUpdater(t, "full", true, "--state", dir, "--no-units", "--floor", "1.4.2"); code != cli.ExitUsage {
+			t.Errorf("--floor without --seq: %d %q", code, errOut)
 		}
 		if code, _, errOut := runUpdater(t, "full", true, "--state", dir, "--no-units", "extra"); code != cli.ExitUsage {
 			t.Errorf("an argument: %d %q", code, errOut)

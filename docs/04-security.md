@@ -910,7 +910,9 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
 - `seq` is a **monotonic manifest number**. Agents persist the highest `seq` they have accepted and
   their version floor, and accept a manifest only if its `seq` is at least that high. `floor` raises
   the persisted version floor; it can be **lowered** only by a manifest with a higher `seq` than any
-  seen. Replaying an older, genuinely signed manifest therefore cannot roll an agent back.
+  seen. A host that has seen none (`seq` 0, set up by `rpmgr setup` without an install script)
+  takes no manifest below its floor at all. Replaying an older, genuinely signed manifest therefore
+  cannot roll an agent back.
 
 - This works fully offline (air-gapped installations), the verifier is small, and signing keys can
   rotate without a new binary.
@@ -1035,9 +1037,12 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    **initialised at install time** by the install scripts from the release they verified (its
    version and the `seq` of its manifest), so a freshly installed host is protected against
    replayed old manifests from day one; an installer run on a host that has them raises them and
-   never lowers them. The binary does not carry its own `seq`, so `rpmgr setup` leaves the state as
-   a script wrote it: a host whose binary no script installed has no state, and the updater refuses
-   every release until `install.sh --upgrade` records one
+   never lowers them. `rpmgr setup` knows no manifest: it leaves a state a script wrote, and starts
+   a missing one at the binary's own version with `seq` 0. Such a state takes no manifest below its
+   floor, whatever that manifest's `seq`, so a replayed manifest of an older version is refused;
+   one at or above the floor can only move the host to a validly signed release that is not
+   older, and the first update records its `seq`. A development build has no release version and
+   gets no state, so the updater refuses every release
    ([10](10-operations.md#hardened-systemd-units)). Afterwards the running version plays no role: a manifest with a higher `seq` may lower the
    floor, which makes **signed downgrades** possible. The automatic rollback to `.prev` is exempt,
    because floor and `seq` are only raised after success.

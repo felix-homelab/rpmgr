@@ -49,7 +49,7 @@ func updaterInstall(variant string) *cli.Command {
 			fs.StringVar(&in.Path, "path", "/usr/local/bin/rpmgr", "the installed binary")
 			fs.Var(&roles, "role", "a role of this host, besides those recorded and those with a boot file; repeat for more")
 			fs.StringVar(&etc, "etc", BootDir, "the boot files, whose roles are recorded")
-			fs.Uint64Var(&in.Seq, "seq", 0, "the seq of the installed release's verified manifest (0: leave the state as it is)")
+			fs.Uint64Var(&in.Seq, "seq", 0, "the seq of the installed release's verified manifest (default: none; a missing state starts at this binary's version)")
 			fs.StringVar(&in.Floor, "floor", "", "the installed release's version, the floor, with --seq")
 			fs.StringVar(&unitDir, "units", "/etc/systemd/system", "where the units rpmgr-update.path and rpmgr-update.service go")
 			fs.BoolVar(&noUnits, "no-units", false, "write no units, as on a host without systemd")
@@ -58,8 +58,11 @@ func updaterInstall(variant string) *cli.Command {
 			if len(args) != 0 {
 				return cli.Usagef("updater install takes no arguments")
 			}
-			if in.Seq != 0 && in.Floor == "" {
-				return cli.Usagef("--seq needs --floor")
+			if (in.Seq != 0) != (in.Floor != "") {
+				return cli.Usagef("--seq and --floor go together")
+			}
+			if in.Seq == 0 {
+				in.Floor = version.Get().Version // a development build's is no release, which leaves the state missing
 			}
 			if !isRoot() {
 				return errors.New("run it as root: the updater trusts only files root owns")
@@ -75,9 +78,12 @@ func updaterInstall(variant string) *cli.Command {
 				recorded = strings.Join(rec.Roles, ", ")
 			}
 			p("Recorded in %s: the %s build at %s, roles: %s.", filepath.Join(state, "install.json"), rec.Variant, rec.Path, recorded)
-			if st.Seq == 0 {
-				p("No updater state yet: the updater refuses every release until an install script records the seq of a release.")
-			} else {
+			switch {
+			case st.Floor == "":
+				p("No updater state: this development build has no release version, so the updater refuses every release.")
+			case st.Seq == 0:
+				p("Updater state: version floor %s; the first update records the manifest seq.", st.Floor)
+			default:
 				p("Updater state: manifest seq %d, version floor %s.", st.Seq, st.Floor)
 			}
 			if noUnits {
