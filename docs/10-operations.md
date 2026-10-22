@@ -132,7 +132,7 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 | `/etc/rpmgr/` | root, 0755 | Boot files and the connector-local policy; the service user reads them |
 | `/etc/rpmgr/<role>.yaml` | root, 0644 | Boot configuration ([Configuration](#configuration)) |
 | `/etc/rpmgr/tls/` | root, 0755 | The certificate `rpmgr setup --tls self-signed` makes for the UI: `<host>.crt` (root, 0644) and `<host>.key` (rpmgr, 0600) |
-| `/etc/rpmgr/policy.yaml` | root, 0644 | Connector-local policy, read-only for the service user; the root updater, and a gateway's agent when it is offered a release, also read `auto_update` and `update_channel` from it ([04](04-security.md#connector-local-policy)) |
+| `/etc/rpmgr/policy.yaml` | root, 0644 | Connector-local policy, read-only for the service user; the root updater also reads `auto_update` from it ([04](04-security.md#connector-local-policy)) |
 | `/var/lib/rpmgr/identity/` | rpmgr, 0700 | Agent identity, written by `rpmgr enroll`: `key.pem` (private key, 0600) and `chain.pem` (certificate and intermediates), both replaced at every renewal (`*.new` files are a renewal in progress, finished at the next start), `roots.pem` (the pinned root and roots it cross-signed), `signing.pem` (the config-signing certificates, replaced by those of every `Welcome`), `agent.json` (agent ID, trust domain, the controller endpoints of the enrollment; those of the stored snapshot take their place, [03](03-connections.md#transport)). Enrollment refuses a directory open to the group or other users, and an existing identity without `--replace` |
 | `/var/lib/rpmgr/` | rpmgr, 0750 | Last-known-good snapshot (`snapshot.signed`, 0600) and **deny-list** (`denylist.signed`, 0600) (both signed; the deny-list is loaded before any session is accepted), stateless reset key (gateways: `quic-reset.key`, 0600, created at the first start), route certificates with their keys that the gateway fetched (gateways: `resources/`, 0700, one 0600 file per item, named by its SHA-256, removed when no route needs it), SQLite database and its lock file `controller.db.lock`, held by the running controller (controller) |
 | `/var/lib/rpmgr/update/` | rpmgr, 0750 | OTA download area: artifact and signed manifest written by the agent. **Untrusted input** to the updater, which never verifies or installs files in place here |
@@ -741,7 +741,7 @@ service that still runs the previous binary, with the command that restarts it.
   S3-compatible sink by a PUT with `If-None-Match: *`, which fails with 412. Both kept two racing
   shippers free of gaps and duplicates in S9, the S3 sink on MinIO ([S9](spikes/S9.md)).
 - **Singleton jobs** (ACME orders, CA rotation, ephemeral purge, metric rollups, audit
-  checkpoints, the DNS job, rollouts) run under a database **lease with a fencing token**: a replica that lost
+  checkpoints, the DNS job) run under a database **lease with a fencing token**: a replica that lost
   its lease cannot commit work started under it. Each time a replica takes a job's lease it is
   granted the job's system scope, which the audit log records; lease timing is in
   [03](03-connections.md#timeouts-keepalive-and-backoff).

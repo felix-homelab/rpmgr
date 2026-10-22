@@ -34,8 +34,6 @@ type RolloutTarget struct {
 	Reason string `json:"reason,omitempty"`
 	// VersionBefore holds the value of the "version_before" field.
 	VersionBefore string `json:"version_before,omitempty"`
-	// DrainStartedAt holds the value of the "drain_started_at" field.
-	DrainStartedAt *time.Time `json:"drain_started_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -75,7 +73,7 @@ func (*RolloutTarget) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case rollouttarget.FieldID, rollouttarget.FieldRolloutID, rollouttarget.FieldAgentID, rollouttarget.FieldAgentKind, rollouttarget.FieldState, rollouttarget.FieldReason, rollouttarget.FieldVersionBefore:
 			values[i] = new(sql.NullString)
-		case rollouttarget.FieldDrainStartedAt, rollouttarget.FieldUpdatedAt:
+		case rollouttarget.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -145,13 +143,6 @@ func (_m *RolloutTarget) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field version_before", values[i])
 			} else if value.Valid {
 				_m.VersionBefore = value.String
-			}
-		case rollouttarget.FieldDrainStartedAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field drain_started_at", values[i])
-			} else if value.Valid {
-				_m.DrainStartedAt = new(time.Time)
-				*_m.DrainStartedAt = value.Time
 			}
 		case rollouttarget.FieldUpdatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -223,11 +214,6 @@ func (_m *RolloutTarget) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("version_before=")
 	builder.WriteString(_m.VersionBefore)
-	builder.WriteString(", ")
-	if v := _m.DrainStartedAt; v != nil {
-		builder.WriteString("drain_started_at=")
-		builder.WriteString(v.Format(time.ANSIC))
-	}
 	builder.WriteString(", ")
 	builder.WriteString("updated_at=")
 	builder.WriteString(_m.UpdatedAt.Format(time.ANSIC))

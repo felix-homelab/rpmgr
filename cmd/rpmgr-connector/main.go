@@ -15,10 +15,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agentcmd"
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/setup"
-	"github.com/felix-homelab/rpmgr/internal/version"
 )
-
-func init() { version.Variant = "connector" }
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

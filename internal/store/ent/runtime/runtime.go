@@ -2398,7 +2398,7 @@ func init() {
 	// rollouttarget.DefaultVersionBefore holds the default value on creation for the version_before field.
 	rollouttarget.DefaultVersionBefore = rollouttargetDescVersionBefore.Default.(string)
 	// rollouttargetDescUpdatedAt is the schema descriptor for updated_at field.
-	rollouttargetDescUpdatedAt := rollouttargetFields[10].Descriptor()
+	rollouttargetDescUpdatedAt := rollouttargetFields[9].Descriptor()
 	// rollouttarget.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	rollouttarget.DefaultUpdatedAt = rollouttargetDescUpdatedAt.Default.(func() time.Time)
 	// rollouttarget.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

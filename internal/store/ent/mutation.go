@@ -31387,25 +31387,24 @@ func (m *RolloutMutation) ResetEdge(name string) error {
 // RolloutTargetMutation represents an operation that mutates the RolloutTarget nodes in the graph.
 type RolloutTargetMutation struct {
 	config
-	op               Op
-	typ              string
-	id               *string
-	agent_id         *string
-	agent_kind       *rollouttarget.AgentKind
-	canary           *bool
-	bucket           *int
-	addbucket        *int
-	state            *rollouttarget.State
-	reason           *string
-	version_before   *string
-	drain_started_at *time.Time
-	updated_at       *time.Time
-	clearedFields    map[string]struct{}
-	rollout          *string
-	clearedrollout   bool
-	done             bool
-	oldValue         func(context.Context) (*RolloutTarget, error)
-	predicates       []predicate.RolloutTarget
+	op             Op
+	typ            string
+	id             *string
+	agent_id       *string
+	agent_kind     *rollouttarget.AgentKind
+	canary         *bool
+	bucket         *int
+	addbucket      *int
+	state          *rollouttarget.State
+	reason         *string
+	version_before *string
+	updated_at     *time.Time
+	clearedFields  map[string]struct{}
+	rollout        *string
+	clearedrollout bool
+	done           bool
+	oldValue       func(context.Context) (*RolloutTarget, error)
+	predicates     []predicate.RolloutTarget
 }
 
 var _ ent.Mutation = (*RolloutTargetMutation)(nil)
@@ -31820,55 +31819,6 @@ func (m *RolloutTargetMutation) ResetVersionBefore() {
 	m.version_before = nil
 }
 
-// SetDrainStartedAt sets the "drain_started_at" field.
-func (m *RolloutTargetMutation) SetDrainStartedAt(t time.Time) {
-	m.drain_started_at = &t
-}
-
-// DrainStartedAt returns the value of the "drain_started_at" field in the mutation.
-func (m *RolloutTargetMutation) DrainStartedAt() (r time.Time, exists bool) {
-	v := m.drain_started_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldDrainStartedAt returns the old "drain_started_at" field's value of the RolloutTarget entity.
-// If the RolloutTarget object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *RolloutTargetMutation) OldDrainStartedAt(ctx context.Context) (v *time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldDrainStartedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldDrainStartedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldDrainStartedAt: %w", err)
-	}
-	return oldValue.DrainStartedAt, nil
-}
-
-// ClearDrainStartedAt clears the value of the "drain_started_at" field.
-func (m *RolloutTargetMutation) ClearDrainStartedAt() {
-	m.drain_started_at = nil
-	m.clearedFields[rollouttarget.FieldDrainStartedAt] = struct{}{}
-}
-
-// DrainStartedAtCleared returns if the "drain_started_at" field was cleared in this mutation.
-func (m *RolloutTargetMutation) DrainStartedAtCleared() bool {
-	_, ok := m.clearedFields[rollouttarget.FieldDrainStartedAt]
-	return ok
-}
-
-// ResetDrainStartedAt resets all changes to the "drain_started_at" field.
-func (m *RolloutTargetMutation) ResetDrainStartedAt() {
-	m.drain_started_at = nil
-	delete(m.clearedFields, rollouttarget.FieldDrainStartedAt)
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (m *RolloutTargetMutation) SetUpdatedAt(t time.Time) {
 	m.updated_at = &t
@@ -31966,7 +31916,7 @@ func (m *RolloutTargetMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RolloutTargetMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 9)
 	if m.rollout != nil {
 		fields = append(fields, rollouttarget.FieldRolloutID)
 	}
@@ -31990,9 +31940,6 @@ func (m *RolloutTargetMutation) Fields() []string {
 	}
 	if m.version_before != nil {
 		fields = append(fields, rollouttarget.FieldVersionBefore)
-	}
-	if m.drain_started_at != nil {
-		fields = append(fields, rollouttarget.FieldDrainStartedAt)
 	}
 	if m.updated_at != nil {
 		fields = append(fields, rollouttarget.FieldUpdatedAt)
@@ -32021,8 +31968,6 @@ func (m *RolloutTargetMutation) Field(name string) (ent.Value, bool) {
 		return m.Reason()
 	case rollouttarget.FieldVersionBefore:
 		return m.VersionBefore()
-	case rollouttarget.FieldDrainStartedAt:
-		return m.DrainStartedAt()
 	case rollouttarget.FieldUpdatedAt:
 		return m.UpdatedAt()
 	}
@@ -32050,8 +31995,6 @@ func (m *RolloutTargetMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldReason(ctx)
 	case rollouttarget.FieldVersionBefore:
 		return m.OldVersionBefore(ctx)
-	case rollouttarget.FieldDrainStartedAt:
-		return m.OldDrainStartedAt(ctx)
 	case rollouttarget.FieldUpdatedAt:
 		return m.OldUpdatedAt(ctx)
 	}
@@ -32119,13 +32062,6 @@ func (m *RolloutTargetMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetVersionBefore(v)
 		return nil
-	case rollouttarget.FieldDrainStartedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetDrainStartedAt(v)
-		return nil
 	case rollouttarget.FieldUpdatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -32177,11 +32113,7 @@ func (m *RolloutTargetMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *RolloutTargetMutation) ClearedFields() []string {
-	var fields []string
-	if m.FieldCleared(rollouttarget.FieldDrainStartedAt) {
-		fields = append(fields, rollouttarget.FieldDrainStartedAt)
-	}
-	return fields
+	return nil
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -32194,11 +32126,6 @@ func (m *RolloutTargetMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *RolloutTargetMutation) ClearField(name string) error {
-	switch name {
-	case rollouttarget.FieldDrainStartedAt:
-		m.ClearDrainStartedAt()
-		return nil
-	}
 	return fmt.Errorf("unknown RolloutTarget nullable field %s", name)
 }
 
@@ -32229,9 +32156,6 @@ func (m *RolloutTargetMutation) ResetField(name string) error {
 		return nil
 	case rollouttarget.FieldVersionBefore:
 		m.ResetVersionBefore()
-		return nil
-	case rollouttarget.FieldDrainStartedAt:
-		m.ResetDrainStartedAt()
 		return nil
 	case rollouttarget.FieldUpdatedAt:
 		m.ResetUpdatedAt()

@@ -101,20 +101,6 @@ func (_c *RolloutTargetCreate) SetNillableVersionBefore(v *string) *RolloutTarge
 	return _c
 }
 
-// SetDrainStartedAt sets the "drain_started_at" field.
-func (_c *RolloutTargetCreate) SetDrainStartedAt(v time.Time) *RolloutTargetCreate {
-	_c.mutation.SetDrainStartedAt(v)
-	return _c
-}
-
-// SetNillableDrainStartedAt sets the "drain_started_at" field if the given value is not nil.
-func (_c *RolloutTargetCreate) SetNillableDrainStartedAt(v *time.Time) *RolloutTargetCreate {
-	if v != nil {
-		_c.SetDrainStartedAt(*v)
-	}
-	return _c
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (_c *RolloutTargetCreate) SetUpdatedAt(v time.Time) *RolloutTargetCreate {
 	_c.mutation.SetUpdatedAt(v)
@@ -342,10 +328,6 @@ func (_c *RolloutTargetCreate) createSpec() (*RolloutTarget, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.VersionBefore(); ok {
 		_spec.SetField(rollouttarget.FieldVersionBefore, field.TypeString, value)
 		_node.VersionBefore = value
-	}
-	if value, ok := _c.mutation.DrainStartedAt(); ok {
-		_spec.SetField(rollouttarget.FieldDrainStartedAt, field.TypeTime, value)
-		_node.DrainStartedAt = &value
 	}
 	if value, ok := _c.mutation.UpdatedAt(); ok {
 		_spec.SetField(rollouttarget.FieldUpdatedAt, field.TypeTime, value)

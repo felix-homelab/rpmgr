@@ -338,6 +338,7 @@ areas "go=true web=true checks=true ops=false md=false" .github/scripts/check-go
 areas "go=true web=true checks=true ops=false md=true" go.mod docs/x.md
 areas "go=true web=true checks=false ops=true md=false" internal/units/units.go
 areas "go=true web=true checks=false ops=true md=false" test/installsh/installsh_test.go
+areas "go=true web=true checks=false ops=true md=false" test/ota/ota_test.go
 areas "go=true web=true checks=true ops=true md=false" .github/scripts/check-install.sh
 expect pass "every stage" "$dir/changed-areas.sh" --all
 expect fail "one commit only" "$dir/changed-areas.sh" HEAD

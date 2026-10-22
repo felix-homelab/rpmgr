@@ -13,10 +13,6 @@ import (
 // Version is the release version without a leading "v"; "dev" for development builds.
 var Version = "dev"
 
-// Variant is the build's variant (D119): "full", or "connector" for the connector-only build,
-// whose main sets it. The agent stages the artifact of its variant for the root updater.
-var Variant = "full"
-
 // Commit is the source revision; when it is not set, the VCS revision recorded by the Go
 // toolchain is used, if any.
 var Commit = ""

@@ -918,16 +918,15 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		Type: "RolloutTarget",
 		Fields: map[string]*sqlgraph.FieldSpec{
-			rollouttarget.FieldRolloutID:      {Type: field.TypeString, Column: rollouttarget.FieldRolloutID},
-			rollouttarget.FieldAgentID:        {Type: field.TypeString, Column: rollouttarget.FieldAgentID},
-			rollouttarget.FieldAgentKind:      {Type: field.TypeEnum, Column: rollouttarget.FieldAgentKind},
-			rollouttarget.FieldCanary:         {Type: field.TypeBool, Column: rollouttarget.FieldCanary},
-			rollouttarget.FieldBucket:         {Type: field.TypeInt, Column: rollouttarget.FieldBucket},
-			rollouttarget.FieldState:          {Type: field.TypeEnum, Column: rollouttarget.FieldState},
-			rollouttarget.FieldReason:         {Type: field.TypeString, Column: rollouttarget.FieldReason},
-			rollouttarget.FieldVersionBefore:  {Type: field.TypeString, Column: rollouttarget.FieldVersionBefore},
-			rollouttarget.FieldDrainStartedAt: {Type: field.TypeTime, Column: rollouttarget.FieldDrainStartedAt},
-			rollouttarget.FieldUpdatedAt:      {Type: field.TypeTime, Column: rollouttarget.FieldUpdatedAt},
+			rollouttarget.FieldRolloutID:     {Type: field.TypeString, Column: rollouttarget.FieldRolloutID},
+			rollouttarget.FieldAgentID:       {Type: field.TypeString, Column: rollouttarget.FieldAgentID},
+			rollouttarget.FieldAgentKind:     {Type: field.TypeEnum, Column: rollouttarget.FieldAgentKind},
+			rollouttarget.FieldCanary:        {Type: field.TypeBool, Column: rollouttarget.FieldCanary},
+			rollouttarget.FieldBucket:        {Type: field.TypeInt, Column: rollouttarget.FieldBucket},
+			rollouttarget.FieldState:         {Type: field.TypeEnum, Column: rollouttarget.FieldState},
+			rollouttarget.FieldReason:        {Type: field.TypeString, Column: rollouttarget.FieldReason},
+			rollouttarget.FieldVersionBefore: {Type: field.TypeString, Column: rollouttarget.FieldVersionBefore},
+			rollouttarget.FieldUpdatedAt:     {Type: field.TypeTime, Column: rollouttarget.FieldUpdatedAt},
 		},
 	}
 	graph.Nodes[42] = &sqlgraph.Node{
@@ -5030,11 +5029,6 @@ func (f *RolloutTargetFilter) WhereReason(p entql.StringP) {
 // WhereVersionBefore applies the entql string predicate on the version_before field.
 func (f *RolloutTargetFilter) WhereVersionBefore(p entql.StringP) {
 	f.Where(p.Field(rollouttarget.FieldVersionBefore))
-}
-
-// WhereDrainStartedAt applies the entql time.Time predicate on the drain_started_at field.
-func (f *RolloutTargetFilter) WhereDrainStartedAt(p entql.TimeP) {
-	f.Where(p.Field(rollouttarget.FieldDrainStartedAt))
 }
 
 // WhereUpdatedAt applies the entql time.Time predicate on the updated_at field.

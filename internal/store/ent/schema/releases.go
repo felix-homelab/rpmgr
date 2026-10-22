@@ -119,9 +119,6 @@ func (RolloutTarget) Fields() []ent.Field {
 			Default("pending"),
 		field.String("reason").Default(""),
 		field.String("version_before").Default(""),
-		// When the rollout disabled the gateway to drain it before offering it the release; nil
-		// when it did not, so a gateway an operator disabled stays disabled.
-		field.Time("drain_started_at").Optional().Nillable(),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}
 }

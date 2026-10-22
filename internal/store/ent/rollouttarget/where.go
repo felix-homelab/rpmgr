@@ -95,11 +95,6 @@ func VersionBefore(v string) predicate.RolloutTarget {
 	return predicate.RolloutTarget(sql.FieldEQ(FieldVersionBefore, v))
 }
 
-// DrainStartedAt applies equality check predicate on the "drain_started_at" field. It's identical to DrainStartedAtEQ.
-func DrainStartedAt(v time.Time) predicate.RolloutTarget {
-	return predicate.RolloutTarget(sql.FieldEQ(FieldDrainStartedAt, v))
-}
-
 // UpdatedAt applies equality check predicate on the "updated_at" field. It's identical to UpdatedAtEQ.
 func UpdatedAt(v time.Time) predicate.RolloutTarget {
 	return predicate.RolloutTarget(sql.FieldEQ(FieldUpdatedAt, v))
@@ -453,56 +448,6 @@ func VersionBeforeEqualFold(v string) predicate.RolloutTarget {
 // VersionBeforeContainsFold applies the ContainsFold predicate on the "version_before" field.
 func VersionBeforeContainsFold(v string) predicate.RolloutTarget {
 	return predicate.RolloutTarget(sql.FieldContainsFold(FieldVersionBefore, v))
-}
-
-// DrainStartedAtEQ applies the EQ predicate on the "drain_started_at" field.
-func DrainStartedAtEQ(v time.Time) predicate.RolloutTarget {
-	return predicate.RolloutTarget(sql.FieldEQ(FieldDrainStartedAt, v))
-}
-
-// DrainStartedAtNEQ applies the NEQ predicate on the "drain_started_at" field.
-func DrainStartedAtNEQ(v time.Time) predicate.RolloutTarget {
-	return predicate.RolloutTarget(sql.FieldNEQ(FieldDrainStartedAt, v))
-}
-
-// DrainStartedAtIn applies the In predicate on the "drain_started_at" field.
-func DrainStartedAtIn(vs ...time.Time) predicate.RolloutTarget {
-	return predicate.RolloutTarget(sql.FieldIn(FieldDrainStartedAt, vs...))
-}
-
-// DrainStartedAtNotIn applies the NotIn predicate on the "drain_started_at" field.
-func DrainStartedAtNotIn(vs ...time.Time) predicate.RolloutTarget {
-	return predicate.RolloutTarget(sql.FieldNotIn(FieldDrainStartedAt, vs...))
-}
-
-// DrainStartedAtGT applies the GT predicate on the "drain_started_at" field.
-func DrainStartedAtGT(v time.Time) predicate.RolloutTarget {
-	return predicate.RolloutTarget(sql.FieldGT(FieldDrainStartedAt, v))
-}
-
-// DrainStartedAtGTE applies the GTE predicate on the "drain_started_at" field.
-func DrainStartedAtGTE(v time.Time) predicate.RolloutTarget {
-	return predicate.RolloutTarget(sql.FieldGTE(FieldDrainStartedAt, v))
-}
-
-// DrainStartedAtLT applies the LT predicate on the "drain_started_at" field.
-func DrainStartedAtLT(v time.Time) predicate.RolloutTarget {
-	return predicate.RolloutTarget(sql.FieldLT(FieldDrainStartedAt, v))
-}
-
-// DrainStartedAtLTE applies the LTE predicate on the "drain_started_at" field.
-func DrainStartedAtLTE(v time.Time) predicate.RolloutTarget {
-	return predicate.RolloutTarget(sql.FieldLTE(FieldDrainStartedAt, v))
-}
-
-// DrainStartedAtIsNil applies the IsNil predicate on the "drain_started_at" field.
-func DrainStartedAtIsNil() predicate.RolloutTarget {
-	return predicate.RolloutTarget(sql.FieldIsNull(FieldDrainStartedAt))
-}
-
-// DrainStartedAtNotNil applies the NotNil predicate on the "drain_started_at" field.
-func DrainStartedAtNotNil() predicate.RolloutTarget {
-	return predicate.RolloutTarget(sql.FieldNotNull(FieldDrainStartedAt))
 }
 
 // UpdatedAtEQ applies the EQ predicate on the "updated_at" field.
