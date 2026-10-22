@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -356,9 +357,10 @@ func TestStager_BadDownloads(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			rel := newOTARelease(t, "0.2.0", 7, release.Stable, "full")
 			e := newOTAEnv(t, rel)
-			bad := true
+			var bad atomic.Bool
+			bad.Store(true)
 			e.serve = func(w http.ResponseWriter, _ *http.Request, n string, body []byte) bool {
-				if n != rel.artifact("full") || !bad {
+				if n != rel.artifact("full") || !bad.Load() {
 					return false
 				}
 				serve(w, body)
@@ -372,7 +374,7 @@ func TestStager_BadDownloads(t *testing.T) {
 					t.Errorf("a failed download left %s", n)
 				}
 			}
-			e.set(func(*otaEnv) { bad = false })
+			bad.Store(false)
 			e.until(agentv1.UpdatePhase_UPDATE_PHASE_STAGED)
 		})
 	}
@@ -572,5 +574,122 @@ func TestStager_UpdaterOutcome(t *testing.T) {
 	}
 	if st := s.State(); st != nil {
 		t.Errorf("a corrupt status file: %v", st)
+	}
+}
+
+// resign changes a release's manifest and signs it again.
+func (r *otaRelease) resign(t *testing.T, edit func(m *release.Manifest)) {
+	t.Helper()
+	var m release.Manifest
+	if err := json.Unmarshal(r.files[release.ManifestFile], &m); err != nil {
+		t.Fatal(err)
+	}
+	edit(&m)
+	man, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.files[release.ManifestFile] = man
+	r.files[release.ManifestSigFile] = otaSigning.Sign(man)
+}
+
+// TestStager_ReplacesStagedRelease: staging release B over a staged release A removes A's manifest
+// before anything of B is written, so the updater never finds A's manifest next to B's files, and
+// leaves only B's files.
+func TestStager_ReplacesStagedRelease(t *testing.T) {
+	a, b := newOTARelease(t, "0.2.0", 7, release.Stable, "full"), newOTARelease(t, "0.3.0", 8, release.Stable, "full")
+	e := newOTAEnv(t, a, b)
+	s := e.stager(run(t), "full")
+	s.Offer(a.offer())
+	e.until(agentv1.UpdatePhase_UPDATE_PHASE_STAGED)
+	var mu sync.Mutex
+	var during []string
+	var downloaded bool
+	e.set(func(e *otaEnv) {
+		e.serve = func(_ http.ResponseWriter, _ *http.Request, name string, _ []byte) bool {
+			if name == b.artifact("full") {
+				mu.Lock()
+				during, downloaded = e.staged(), true
+				mu.Unlock()
+			}
+			return false
+		}
+	})
+	s.Offer(b.offer())
+	e.until(agentv1.UpdatePhase_UPDATE_PHASE_STAGED)
+	mu.Lock()
+	defer mu.Unlock()
+	if !downloaded {
+		t.Fatal("B's artifact was not downloaded")
+	}
+	for _, n := range during {
+		if n == release.ManifestFile || n == release.ManifestSigFile || n == release.StatementFile || n == release.StatementSigFile {
+			t.Errorf("A's %s was still staged while B downloaded (%v)", n, during)
+		}
+	}
+	want := []string{release.ManifestFile, release.ManifestSigFile, b.artifact("full"), release.StatementFile, release.StatementSigFile}
+	slices.Sort(want)
+	if got := e.staged(); !slices.Equal(got, want) {
+		t.Fatalf("staged %v, want %v", got, want)
+	}
+	if got, _ := os.ReadFile(filepath.Join(e.dir, release.ManifestFile)); string(got) != string(b.files[release.ManifestFile]) {
+		t.Error("the staged manifest is not B's")
+	}
+}
+
+// TestStager_ReportsLaterOutcome: while a release is staged, the updater's status file is read
+// again, and an outcome written after staging, such as refused, which restarts nothing, is
+// reported; an unchanged one is not reported again.
+func TestStager_ReportsLaterOutcome(t *testing.T) {
+	rel := newOTARelease(t, "0.2.0", 7, release.Stable, "full")
+	e := newOTAEnv(t, rel)
+	old, _ := json.Marshal(map[string]any{"state": "updated", "version": "0.1.0", "at": otaNow.Add(-time.Hour)})
+	if err := os.WriteFile(e.status, old, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := e.stager(run(t), "full")
+	s.Offer(rel.offer())
+	e.until(agentv1.UpdatePhase_UPDATE_PHASE_STAGED)
+	e.quiet() // the outcome from before staging is not news
+	b, _ := json.Marshal(map[string]any{"state": "refused", "version": "0.2.0", "reason": "below the floor", "at": otaNow})
+	if err := os.WriteFile(e.status, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st := e.next()
+	if st.GetPhase() != agentv1.UpdatePhase_UPDATE_PHASE_STAGED || st.GetUpdater().GetResult() != agentv1.UpdaterResult_UPDATER_RESULT_REFUSED ||
+		st.GetUpdater().GetReason() != "below the floor" {
+		t.Fatalf("a later outcome: %v", st)
+	}
+	e.quiet()
+}
+
+// TestStager_ArtifactAboveCapAndOfferMismatch: a signed manifest whose artifact is larger than the
+// updater's cap is declined without downloading it, and an offer whose entry for the artifact
+// differs from the signed manifest fails.
+func TestStager_ArtifactAboveCapAndOfferMismatch(t *testing.T) {
+	big := newOTARelease(t, "0.2.0", 7, release.Stable, "full")
+	big.resign(t, func(m *release.Manifest) { m.Artifacts[0].Size = 256<<20 + 1 })
+	e := newOTAEnv(t, big)
+	e.stager(run(t), "full").Offer(big.offer())
+	if st := e.until(agentv1.UpdatePhase_UPDATE_PHASE_DECLINED); !strings.Contains(st.GetDetail(), "above the cap") {
+		t.Fatalf("an artifact above the cap: %v", st)
+	}
+	for _, p := range e.requested() {
+		if strings.HasSuffix(p, big.artifact("full")) {
+			t.Fatal("an artifact above the cap was downloaded")
+		}
+	}
+
+	rel := newOTARelease(t, "0.2.0", 7, release.Stable, "full")
+	e2 := newOTAEnv(t, rel)
+	o := rel.offer()
+	for _, f := range o.GetFiles() {
+		if f.GetName() == rel.artifact("full") {
+			f.Size++
+		}
+	}
+	e2.stager(run(t), "full").Offer(o)
+	if st := e2.until(agentv1.UpdatePhase_UPDATE_PHASE_FAILED); !strings.Contains(st.GetDetail(), "differs from the signed manifest") {
+		t.Fatalf("an offer that differs: %v", st)
 	}
 }

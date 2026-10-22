@@ -5,6 +5,7 @@ package agent
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -15,7 +16,6 @@ import (
 	"net/url"
 	"os"
 	"runtime"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -91,11 +91,12 @@ type Stager struct {
 	logger  *slog.Logger
 
 	mu      sync.Mutex
-	offer   *agentv1.ReleaseOffer // the offer of the last applied snapshot
-	state   *agentv1.UpdateState  // the last state about the offer
-	handled string                // the offer whose outcome needs no further attempt
-	byPol   string                // the policy (policyKey) that declined or announced it
-	cancel  context.CancelFunc    // ends the attempt that runs
+	offer   *agentv1.ReleaseOffer   // the offer of the last applied snapshot
+	state   *agentv1.UpdateState    // the last state about the offer
+	lastOut *agentv1.UpdaterOutcome // the updater's outcome last reported
+	handled string                  // the offer whose outcome needs no further attempt
+	byPol   string                  // the policy (policyKey) that declined or announced it
+	cancel  context.CancelFunc      // ends the attempt that runs
 	wake    chan struct{}
 }
 
@@ -112,7 +113,8 @@ func newStager(o UpdateOptions, version string, base func() (string, error), sen
 		o.Policy = policy.Defaults
 	}
 	if o.Client == nil {
-		o.Client = &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment}}
+		o.Client = &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment,
+			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13}}}
 	}
 	client := *o.Client
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
@@ -169,10 +171,11 @@ func (s *Stager) Offer(o *agentv1.ReleaseOffer) {
 // offer, with the root updater's last outcome from its status file. It is nil when there is
 // neither.
 func (s *Stager) State() *agentv1.UpdateState {
+	out := s.outcome()
 	s.mu.Lock()
 	st := proto.CloneOf(s.state)
+	s.lastOut = out
 	s.mu.Unlock()
-	out := s.outcome()
 	if out == nil {
 		return st
 	}
@@ -211,16 +214,23 @@ func (s *Stager) outcome() *agentv1.UpdaterOutcome {
 }
 
 // Run stages the offers until ctx ends. A failed attempt is tried again after the retry wait; an
-// offer the policy declined or only announced is checked again every minute.
+// offer the policy declined or only announced is checked again at the recheck interval, at which a
+// staged release also has the updater's status file read again, so that an outcome without a
+// restart, such as refused, is reported when it changes.
 func (s *Stager) Run(ctx context.Context) {
 	failures := 0
 	timer := time.NewTimer(time.Hour)
 	timer.Stop()
 	defer timer.Stop()
+	poll := time.NewTicker(s.o.Recheck)
+	defer poll.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-poll.C:
+			s.pollOutcome()
+			continue
 		case <-s.wake:
 			failures = 0
 		case <-timer.C:
@@ -262,6 +272,31 @@ func (s *Stager) Run(ctx context.Context) {
 			timer.Reset(s.o.Retry(failures))
 		}
 	}
+}
+
+// pollOutcome reports the updater's outcome with the state while a release is staged, if it
+// changed since it was last reported.
+func (s *Stager) pollOutcome() {
+	s.mu.Lock()
+	st, last := s.state, s.lastOut
+	s.mu.Unlock()
+	if st.GetPhase() != agentv1.UpdatePhase_UPDATE_PHASE_STAGED {
+		return
+	}
+	out := s.outcome()
+	if out == nil || proto.Equal(out, last) {
+		return
+	}
+	s.mu.Lock()
+	if s.state != st { // replaced meanwhile
+		s.mu.Unlock()
+		return
+	}
+	s.lastOut = out
+	s.mu.Unlock()
+	u := proto.CloneOf(st)
+	u.Updater = out
+	s.send(u)
 }
 
 // offerKey identifies an offer by its version and manifest seq.
@@ -373,9 +408,13 @@ func (s *Stager) attempt(ctx context.Context, offer *agentv1.ReleaseOffer) error
 	if err := offered(offer, name, a); err != nil {
 		return fail(err)
 	}
+	before := s.outcome()
 	if err := s.write(ctx, src, signed, name, a); err != nil {
 		return fail(err)
 	}
+	s.mu.Lock()
+	s.lastOut = before
+	s.mu.Unlock()
 	s.report(offer, state(agentv1.UpdatePhase_UPDATE_PHASE_STAGED, ""), true, "")
 	s.logger.Info("staged the offered release for the updater", "version", v, "seq", m.Seq, "dir", s.o.Dir)
 	return nil
@@ -406,6 +445,11 @@ func (s *Stager) write(ctx context.Context, src *dlSource, signed *release.Signe
 	if b, err := readRegular(root, release.ManifestFile); err == nil && string(b) == string(signed.ManifestJSON) && kept(root, name, a) {
 		return nil
 	}
+	// An earlier release's manifest goes first, so that the updater never finds it next to this
+	// release's files.
+	if err := root.Remove(release.ManifestFile); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
 	if err := clean(root, name); err != nil {
 		return err
 	}
@@ -433,8 +477,9 @@ func (s *Stager) write(ctx context.Context, src *dlSource, signed *release.Signe
 	return syncRoot(root)
 }
 
-// clean removes the files of the staging directory that are not the release's: earlier artifacts
-// and interrupted downloads. Directories and other entries stay; the updater refuses them anyway.
+// clean removes the files of the staging directory but the release's artifact: earlier artifacts,
+// earlier signed files and interrupted downloads. Directories stay; the updater refuses them
+// anyway.
 func clean(root *os.Root, artifact string) error {
 	d, err := root.Open(".")
 	if err != nil {
@@ -446,7 +491,7 @@ func clean(root *os.Root, artifact string) error {
 		return err
 	}
 	for _, e := range entries {
-		if e.IsDir() || e.Name() == artifact || slices.Contains(release.MetaFiles, e.Name()) {
+		if e.IsDir() || e.Name() == artifact {
 			continue
 		}
 		if err := root.Remove(e.Name()); err != nil && !errors.Is(err, fs.ErrNotExist) {
