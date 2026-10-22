@@ -29,7 +29,11 @@ const (
 	ReasonRolloutActive      = "ROLLOUT_ACTIVE"
 	ReasonReleaseNewer       = "RELEASE_NEWER_THAN_CONTROLLER"
 	ReasonReleaseNotMirrored = "RELEASE_NOT_MIRRORED"
+	ReasonRolloutState       = "ROLLOUT_STATE"
 )
+
+// pausedByHand is the pause reason of a rollout an Instance Admin paused.
+const pausedByHand = "paused by an Instance Admin"
 
 var (
 	rolloutStages = map[rollout.Stage]rpmgrv1.RolloutStage{rollout.StageCanary: rpmgrv1.RolloutStage_ROLLOUT_STAGE_CANARY,
@@ -224,9 +228,113 @@ func (r *Releases) ListRolloutTargets(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(out), nil
 }
 
+// AdvanceRollout implements ReleaseService: a running rollout moves to a higher percentage or to
+// all agents; a paused one is resumed first.
+func (r *Releases) AdvanceRollout(ctx context.Context, req *connect.Request[rpmgrv1.AdvanceRolloutRequest]) (
+	*connect.Response[rpmgrv1.AdvanceRolloutResponse], error) {
+	m := req.Msg
+	out, err := r.change(ctx, m.GetRolloutId(), m.GetEtag(), []rollout.State{rollout.StateRunning}, func(cur *ent.Rollout, u *ent.RolloutUpdateOne) error {
+		switch {
+		case cur.Stage == rollout.StageAll:
+			return stateError("the rollout reaches every agent already")
+		case m.GetAll():
+			u.SetStage(rollout.StageAll).SetPercentage(100)
+		case int(m.GetPercentage()) <= cur.Percentage:
+			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: the rollout is at %d %%; the next stage must be higher", cur.Percentage))
+		default:
+			u.SetStage(rollout.StagePercentage).SetPercentage(int(m.GetPercentage()))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&rpmgrv1.AdvanceRolloutResponse{Rollout: out}), nil
+}
+
+// PauseRollout implements ReleaseService.
+func (r *Releases) PauseRollout(ctx context.Context, req *connect.Request[rpmgrv1.PauseRolloutRequest]) (
+	*connect.Response[rpmgrv1.PauseRolloutResponse], error) {
+	out, err := r.change(ctx, req.Msg.GetRolloutId(), req.Msg.GetEtag(), []rollout.State{rollout.StateRunning},
+		func(_ *ent.Rollout, u *ent.RolloutUpdateOne) error {
+			u.SetState(rollout.StatePaused).SetPauseReason(pausedByHand)
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&rpmgrv1.PauseRolloutResponse{Rollout: out}), nil
+}
+
+// ResumeRollout implements ReleaseService.
+func (r *Releases) ResumeRollout(ctx context.Context, req *connect.Request[rpmgrv1.ResumeRolloutRequest]) (
+	*connect.Response[rpmgrv1.ResumeRolloutResponse], error) {
+	out, err := r.change(ctx, req.Msg.GetRolloutId(), req.Msg.GetEtag(), []rollout.State{rollout.StatePaused},
+		func(_ *ent.Rollout, u *ent.RolloutUpdateOne) error {
+			u.SetState(rollout.StateRunning).SetPauseReason("")
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&rpmgrv1.ResumeRolloutResponse{Rollout: out}), nil
+}
+
+// CancelRollout implements ReleaseService.
+func (r *Releases) CancelRollout(ctx context.Context, req *connect.Request[rpmgrv1.CancelRolloutRequest]) (
+	*connect.Response[rpmgrv1.CancelRolloutResponse], error) {
+	out, err := r.change(ctx, req.Msg.GetRolloutId(), req.Msg.GetEtag(), []rollout.State{rollout.StateRunning, rollout.StatePaused},
+		func(_ *ent.Rollout, u *ent.RolloutUpdateOne) error {
+			u.SetState(rollout.StateCancelled)
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&rpmgrv1.CancelRolloutResponse{Rollout: out}), nil
+}
+
+// change applies set to a rollout in one of the states from, under its etag, and records the
+// caller as the one who changed it.
+func (r *Releases) change(ctx context.Context, id, etag string, from []rollout.State, set func(*ent.Rollout, *ent.RolloutUpdateOne) error) (
+	*rpmgrv1.Rollout, error) {
+	sys := store.CarryTxHook(r.Sys, ctx)
+	var row *ent.Rollout
+	err := store.WriteTx(sys, r.DB, func(tx *ent.Tx) error {
+		cur, err := tx.Rollout.Get(sys, id)
+		if err != nil {
+			return err
+		}
+		if etag != "" && etag != etagOf(cur.Version) {
+			now, err := r.rolloutOf(sys, cur)
+			if err != nil {
+				return err
+			}
+			return api.CheckEtag(etag, cur.Version, now)
+		}
+		if !slices.Contains(from, cur.State) {
+			return stateError(fmt.Sprintf("the rollout is %s", cur.State))
+		}
+		u := cur.Update().SetUpdatedBy(api.CallerFrom(ctx).UserID)
+		if err := set(cur, u); err != nil {
+			return err
+		}
+		row, err = u.Save(sys)
+		return err
+	})
+	if err != nil {
+		return nil, storeError(err)
+	}
+	return r.rolloutOf(sys, row)
+}
+
 func rolloutActive() error {
 	return withReason(connect.NewError(connect.CodeFailedPrecondition,
 		errors.New("apisvc: another rollout runs or is paused; cancel it or let it complete first")), ReasonRolloutActive)
+}
+
+func stateError(what string) error {
+	return withReason(connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: "+what)), ReasonRolloutState)
 }
 
 // rolloutAgent is an agent a rollout updates.

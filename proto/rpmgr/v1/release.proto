@@ -54,6 +54,33 @@ service ReleaseService {
     option idempotency_level = NO_SIDE_EFFECTS;
     option (rpmgr.v1.authz) = {permission: "instance.admin"};
   }
+  // AdvanceRollout moves a running rollout to a higher percentage or to all agents.
+  rpc AdvanceRollout(AdvanceRolloutRequest) returns (AdvanceRolloutResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+  // PauseRollout pauses a running rollout: agents offered the release keep it, no further agent
+  // is offered it.
+  rpc PauseRollout(PauseRolloutRequest) returns (PauseRolloutResponse) {
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // ResumeRollout lets a paused rollout run again.
+  rpc ResumeRollout(ResumeRolloutRequest) returns (ResumeRolloutResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+  // CancelRollout ends a running or paused rollout for good; agents that updated keep the
+  // release.
+  rpc CancelRollout(CancelRolloutRequest) returns (CancelRolloutResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
 }
 
 // ReleaseSource is where the controller got a release's manifest.
@@ -358,4 +385,71 @@ message ListRolloutTargetsResponse {
   repeated RolloutTarget rollout_targets = 1;
   // The token of the next page; empty after the last.
   string next_page_token = 2;
+}
+
+// AdvanceRolloutRequest names a running rollout and its next stage.
+message AdvanceRolloutRequest {
+  // The rollout's ID.
+  string rollout_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The next stage: a percentage above the current one, or all agents.
+  oneof next {
+    option (buf.validate.oneof).required = true;
+    // The share of agents, 1 to 99.
+    int32 percentage = 2 [(buf.validate.field).int32 = {
+      gte: 1
+      lte: 99
+    }];
+    // Every agent; must be true.
+    bool all = 3 [(buf.validate.field).bool.const = true];
+  }
+  // The etag the caller read; empty skips the check.
+  string etag = 4;
+}
+
+// AdvanceRolloutResponse is the advanced rollout.
+message AdvanceRolloutResponse {
+  // The rollout.
+  Rollout rollout = 1;
+}
+
+// PauseRolloutRequest names a running rollout.
+message PauseRolloutRequest {
+  // The rollout's ID.
+  string rollout_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// PauseRolloutResponse is the paused rollout.
+message PauseRolloutResponse {
+  // The rollout.
+  Rollout rollout = 1;
+}
+
+// ResumeRolloutRequest names a paused rollout.
+message ResumeRolloutRequest {
+  // The rollout's ID.
+  string rollout_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// ResumeRolloutResponse is the running rollout.
+message ResumeRolloutResponse {
+  // The rollout.
+  Rollout rollout = 1;
+}
+
+// CancelRolloutRequest names a running or paused rollout.
+message CancelRolloutRequest {
+  // The rollout's ID.
+  string rollout_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// CancelRolloutResponse is the cancelled rollout.
+message CancelRolloutResponse {
+  // The rollout.
+  Rollout rollout = 1;
 }

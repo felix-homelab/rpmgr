@@ -5,10 +5,12 @@ package apisvc_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -21,8 +23,9 @@ import (
 // TestRollouts (docs/04-security.md, "Over-the-air updates"; D121): a rollout is refused for a
 // release the mirror does not hold or one newer than the controller, and for canary agents it
 // cannot update; it targets every connector and enrolled gateway that is neither decommissioned
-// nor built in, with the version each ran; one rollout runs at a time, and one that ended makes
-// room for the next; each is audited; an org Owner sees and starts nothing.
+// nor built in, with the version each ran; one rollout runs at a time; it advances only upwards
+// and only while running, under its etag; a pause needs no step-up, resuming does; a cancelled
+// rollout makes room for the next; each change is audited; an org Owner sees and does nothing.
 func TestRollouts(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
@@ -119,11 +122,73 @@ func TestRollouts(t *testing.T) {
 		t.Errorf("the targets of an unknown rollout: %v", err)
 	}
 
+	advance := func(etag string, pct int32, all bool) (*rpmgrv1.Rollout, error) {
+		req := &rpmgrv1.AdvanceRolloutRequest{RolloutId: ro.GetId(), Etag: etag}
+		if all {
+			req.Next = &rpmgrv1.AdvanceRolloutRequest_All{All: true}
+		} else {
+			req.Next = &rpmgrv1.AdvanceRolloutRequest_Percentage{Percentage: pct}
+		}
+		resp, err := ada.rel.AdvanceRollout(ctx, connect.NewRequest(req))
+		if err != nil {
+			return nil, err
+		}
+		return resp.Msg.GetRollout(), nil
+	}
+	if _, err := advance("99", 25, false); reason(err) != api.ReasonEtagMismatch {
+		t.Errorf("a stale etag: %v", err)
+	}
+	if _, err := advance(ro.GetEtag(), 100, false); code(err) != connect.CodeInvalidArgument {
+		t.Errorf("100 %% as a percentage: %v", err)
+	}
+	ro, err = advance(ro.GetEtag(), 25, false)
+	if err != nil || ro.GetStage() != rpmgrv1.RolloutStage_ROLLOUT_STAGE_PERCENTAGE || ro.GetPercentage() != 25 || ro.GetUpdateUserId() != e.ada {
+		t.Fatalf("to 25 %%: %v %v", ro, err)
+	}
+	if _, err := advance("", 10, false); code(err) != connect.CodeInvalidArgument {
+		t.Errorf("down to 10 %%: %v", err)
+	}
+
+	// A pause needs no step-up; everything else does.
+	e.clock = e.clock.Add(api.StepUpWindow + time.Minute)
+	paused, err := ada.rel.PauseRollout(ctx, connect.NewRequest(&rpmgrv1.PauseRolloutRequest{RolloutId: ro.GetId()}))
+	if err != nil || paused.Msg.GetRollout().GetState() != rpmgrv1.RolloutState_ROLLOUT_STATE_PAUSED || paused.Msg.GetRollout().GetPauseReason() == "" {
+		t.Fatalf("a pause: %v %v", paused, err)
+	}
+	if _, err := ada.rel.ResumeRollout(ctx, connect.NewRequest(&rpmgrv1.ResumeRolloutRequest{RolloutId: ro.GetId()})); reason(err) != api.ReasonStepUpRequired {
+		t.Errorf("a resume without a step-up: %v", err)
+	}
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := advance("", 50, false); reason(err) != apisvc.ReasonRolloutState {
+		t.Errorf("a paused rollout advanced: %v", err)
+	}
+	if _, err := ada.rel.PauseRollout(ctx, connect.NewRequest(&rpmgrv1.PauseRolloutRequest{RolloutId: ro.GetId()})); reason(err) != apisvc.ReasonRolloutState {
+		t.Errorf("a paused rollout paused: %v", err)
+	}
+	resumed, err := ada.rel.ResumeRollout(ctx, connect.NewRequest(&rpmgrv1.ResumeRolloutRequest{RolloutId: ro.GetId()}))
+	if err != nil || resumed.Msg.GetRollout().GetState() != rpmgrv1.RolloutState_ROLLOUT_STATE_RUNNING || resumed.Msg.GetRollout().GetPauseReason() != "" {
+		t.Fatalf("a resume: %v %v", resumed, err)
+	}
+	ro, err = advance("", 0, true)
+	if err != nil || ro.GetStage() != rpmgrv1.RolloutStage_ROLLOUT_STAGE_ALL || ro.GetPercentage() != 100 {
+		t.Fatalf("to all: %v %v", ro, err)
+	}
+	if _, err := advance("", 0, true); reason(err) != apisvc.ReasonRolloutState {
+		t.Errorf("beyond all: %v", err)
+	}
 	if got, err := ada.rel.ListRollouts(ctx, connect.NewRequest(&rpmgrv1.ListRolloutsRequest{ActiveOnly: true})); err != nil ||
 		len(got.Msg.GetRollouts()) != 1 || got.Msg.GetRollouts()[0].GetId() != ro.GetId() {
 		t.Errorf("the active rollouts: %v %v", got, err)
 	}
-	c.Rollout.UpdateOneID(ro.GetId()).SetState(rollout.StateCancelled).ExecX(sys) // as CancelRollout does
+	cancelled, err := ada.rel.CancelRollout(ctx, connect.NewRequest(&rpmgrv1.CancelRolloutRequest{RolloutId: ro.GetId(), Etag: ro.GetEtag()}))
+	if err != nil || cancelled.Msg.GetRollout().GetState() != rpmgrv1.RolloutState_ROLLOUT_STATE_CANCELLED {
+		t.Fatalf("a cancel: %v %v", cancelled, err)
+	}
+	if _, err := ada.rel.CancelRollout(ctx, connect.NewRequest(&rpmgrv1.CancelRolloutRequest{RolloutId: ro.GetId()})); reason(err) != apisvc.ReasonRolloutState {
+		t.Errorf("a cancelled rollout cancelled: %v", err)
+	}
 	if got, err := ada.rel.ListRollouts(ctx, connect.NewRequest(&rpmgrv1.ListRolloutsRequest{ActiveOnly: true})); err != nil || len(got.Msg.GetRollouts()) != 0 {
 		t.Errorf("the active rollouts after the cancel: %v %v", got, err)
 	}
@@ -145,7 +210,7 @@ func TestRollouts(t *testing.T) {
 	if n := c.Rollout.Query().Where(rollout.Active(true)).CountX(sys); n != 1 {
 		t.Errorf("%d active rollouts", n)
 	}
-	for action, want := range map[string]int{"CreateRollout": 2} {
+	for action, want := range map[string]int{"CreateRollout": 2, "AdvanceRollout": 2, "PauseRollout": 1, "ResumeRollout": 1, "CancelRollout": 1} {
 		if n := c.AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.ReleaseService."+action), auditentry.ResultEQ(auditentry.ResultSuccess)).
 			CountX(sys); n != want {
 			t.Errorf("%d audit entries of a successful %s, want %d", n, action, want)
@@ -163,6 +228,9 @@ func TestRollouts(t *testing.T) {
 	}
 	if _, err := bob.rel.GetRollout(ctx, connect.NewRequest(&rpmgrv1.GetRolloutRequest{RolloutId: next.GetId()})); code(err) != connect.CodePermissionDenied {
 		t.Errorf("an Owner reads a rollout: %v", err)
+	}
+	if _, err := bob.rel.PauseRollout(ctx, connect.NewRequest(&rpmgrv1.PauseRolloutRequest{RolloutId: next.GetId()})); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an Owner pauses: %v", err)
 	}
 }
 
