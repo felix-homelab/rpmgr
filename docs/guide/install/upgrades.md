@@ -1,10 +1,10 @@
 # Upgrades
 
-rpmgr does not update itself yet: you upgrade each host by hand, with the new release's install
-script. This page gives the order of the hosts, the steps for each, what the install script's
-`--upgrade` and `--restart` do, which versions work together, and how to go back. Read it before
-every upgrade. Signed automatic updates of the agents are planned for Phase 2
-([13](../../13-roadmap.md#phase-2--production)).
+rpmgr updates **connectors and gateways** itself, in a staged rollout you approve
+([Updates](../operations/updates.md)); **controllers and all-in-ones** are upgraded by hand, with
+the new release's install script. This page gives the order of the hosts, the steps for each, what
+the install script's `--upgrade` and `--restart` do, which versions work together, and how to go
+back. Read it before every upgrade.
 
 ## Before you start
 
@@ -75,6 +75,10 @@ upgrade, so that new agents install the new version ([Air-gapped installations](
 
 ### 2. The gateways
 
+From Phase 2, a rollout drains each gateway, updates it and enables it again, one gateway at a
+time per group ([Updates](../operations/updates.md)). A host whose policy says `auto_update: off`
+or `notify`, or that has no root updater, is listed as skipped and is upgraded by hand.
+
 Upgrade the gateways one at a time. With several gateways in a group, drain each first, so that
 its visitors move to the others:
 
@@ -89,6 +93,11 @@ A gateway alone in its group drains by itself when it stops, but its routes cann
 until it is back.
 
 ### 3. The connectors
+
+Through the rollout: offer the release to the canaries, then to a percentage, then to all, and
+approve each stage ([Updates](../operations/updates.md)). A connector whose updater rolls back
+pauses the rollout, and the page says which one and why. A connector on `auto_update: off` or
+`notify` is skipped and is upgraded by hand:
 
 Run the install script with `--upgrade --restart` on each connector's host, and check it with
 `sudo rpmgr status`. A route whose targets are on several connectors keeps serving through the
