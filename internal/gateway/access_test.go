@@ -267,11 +267,14 @@ func TestHTTPRoutes_AccessDuringAdmission(t *testing.T) {
 	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}},
 		Access: access(t, allow("127.0.0.0/8")), BasicAuth: []gateway.BasicAuthRule{slow}}
 	e := newHTTPEnv(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "served") }), route)
+	// The check takes more than the client's usual 10 s on the riscv64 runner.
+	c := e.client(false)
+	c.Timeout = 2 * time.Minute
 	done := make(chan reply, 1)
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, "https://app.example.com/", nil)
 		req.SetBasicAuth("ada", "pw")
-		res, err := e.client(false).Do(req)
+		res, err := c.Do(req)
 		if err != nil {
 			done <- reply{body: err.Error()}
 			return
@@ -292,7 +295,7 @@ func TestHTTPRoutes_AccessDuringAdmission(t *testing.T) {
 		if r.status != http.StatusForbidden {
 			t.Fatalf("a request the tightened rules deny: %d %q", r.status, r.body)
 		}
-	case <-time.After(30 * time.Second):
+	case <-time.After(2 * time.Minute):
 		t.Fatal("no answer")
 	}
 }
