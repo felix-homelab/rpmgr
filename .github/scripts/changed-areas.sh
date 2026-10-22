@@ -37,8 +37,8 @@ while IFS= read -r f; do
     *) checks=true ;;
   esac
   case $f in
-    internal/units/* | internal/installsh/* | internal/release/* | test/installsh/* | cmd/rpmgr/* | \
-      .github/scripts/check-units.sh | .github/scripts/check-install.sh) ops=true ;;
+    internal/units/* | internal/installsh/* | internal/release/* | test/installsh/* | test/ota/* | cmd/rpmgr/* | \
+      .github/scripts/check-units.sh | .github/scripts/check-install.sh | .github/scripts/check-ota.sh) ops=true ;;
   esac
 done <<<"$files"
 emit "$go" "$web" "$checks" "$ops" "$md"

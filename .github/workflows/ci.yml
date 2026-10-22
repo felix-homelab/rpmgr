@@ -287,6 +287,9 @@ jobs:
       - name: The install script on every supported distribution
         if: ${{ !cancelled() }}
         run: .github/scripts/check-install.sh
+      - name: The root updater on a real systemd host, with /var on a tmpfs
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-ota.sh
 
   web:
     needs: changes

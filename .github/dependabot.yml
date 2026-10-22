@@ -68,7 +68,7 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: docker
-    directories: ["/", "/test/e2e", "/test/vb19"]
+    directories: ["/", "/test/e2e", "/test/ota", "/test/vb19"]
     schedule:
       interval: weekly
     commit-message:
