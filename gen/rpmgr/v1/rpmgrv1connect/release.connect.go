@@ -41,6 +41,18 @@ const (
 	// ReleaseServiceUploadReleaseProcedure is the fully-qualified name of the ReleaseService's
 	// UploadRelease RPC.
 	ReleaseServiceUploadReleaseProcedure = "/rpmgr.v1.ReleaseService/UploadRelease"
+	// ReleaseServiceCreateRolloutProcedure is the fully-qualified name of the ReleaseService's
+	// CreateRollout RPC.
+	ReleaseServiceCreateRolloutProcedure = "/rpmgr.v1.ReleaseService/CreateRollout"
+	// ReleaseServiceGetRolloutProcedure is the fully-qualified name of the ReleaseService's GetRollout
+	// RPC.
+	ReleaseServiceGetRolloutProcedure = "/rpmgr.v1.ReleaseService/GetRollout"
+	// ReleaseServiceListRolloutsProcedure is the fully-qualified name of the ReleaseService's
+	// ListRollouts RPC.
+	ReleaseServiceListRolloutsProcedure = "/rpmgr.v1.ReleaseService/ListRollouts"
+	// ReleaseServiceListRolloutTargetsProcedure is the fully-qualified name of the ReleaseService's
+	// ListRolloutTargets RPC.
+	ReleaseServiceListRolloutTargetsProcedure = "/rpmgr.v1.ReleaseService/ListRolloutTargets"
 )
 
 // ReleaseServiceClient is a client for the rpmgr.v1.ReleaseService service.
@@ -51,6 +63,16 @@ type ReleaseServiceClient interface {
 	// signatures, verified like the release check, for air-gapped installations and signed
 	// downgrades. Its artifacts come from the release source or `rpmgr release import`.
 	UploadRelease(context.Context, *connect.Request[v1.UploadReleaseRequest]) (*connect.Response[v1.UploadReleaseResponse], error)
+	// CreateRollout starts a rollout of a release with its canary agents. It is refused for a
+	// release newer than the controller, one the mirror does not hold yet, and while another
+	// rollout runs or is paused.
+	CreateRollout(context.Context, *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error)
+	// GetRollout returns a rollout with how many of its agents are in each state.
+	GetRollout(context.Context, *connect.Request[v1.GetRolloutRequest]) (*connect.Response[v1.GetRolloutResponse], error)
+	// ListRollouts pages through the rollouts, the newest first.
+	ListRollouts(context.Context, *connect.Request[v1.ListRolloutsRequest]) (*connect.Response[v1.ListRolloutsResponse], error)
+	// ListRolloutTargets pages through a rollout's agents, each with its state and reason.
+	ListRolloutTargets(context.Context, *connect.Request[v1.ListRolloutTargetsRequest]) (*connect.Response[v1.ListRolloutTargetsResponse], error)
 }
 
 // NewReleaseServiceClient constructs a client for the rpmgr.v1.ReleaseService service. By default,
@@ -77,13 +99,44 @@ func NewReleaseServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(releaseServiceMethods.ByName("UploadRelease")),
 			connect.WithClientOptions(opts...),
 		),
+		createRollout: connect.NewClient[v1.CreateRolloutRequest, v1.CreateRolloutResponse](
+			httpClient,
+			baseURL+ReleaseServiceCreateRolloutProcedure,
+			connect.WithSchema(releaseServiceMethods.ByName("CreateRollout")),
+			connect.WithClientOptions(opts...),
+		),
+		getRollout: connect.NewClient[v1.GetRolloutRequest, v1.GetRolloutResponse](
+			httpClient,
+			baseURL+ReleaseServiceGetRolloutProcedure,
+			connect.WithSchema(releaseServiceMethods.ByName("GetRollout")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		listRollouts: connect.NewClient[v1.ListRolloutsRequest, v1.ListRolloutsResponse](
+			httpClient,
+			baseURL+ReleaseServiceListRolloutsProcedure,
+			connect.WithSchema(releaseServiceMethods.ByName("ListRollouts")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		listRolloutTargets: connect.NewClient[v1.ListRolloutTargetsRequest, v1.ListRolloutTargetsResponse](
+			httpClient,
+			baseURL+ReleaseServiceListRolloutTargetsProcedure,
+			connect.WithSchema(releaseServiceMethods.ByName("ListRolloutTargets")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // releaseServiceClient implements ReleaseServiceClient.
 type releaseServiceClient struct {
-	listReleases  *connect.Client[v1.ListReleasesRequest, v1.ListReleasesResponse]
-	uploadRelease *connect.Client[v1.UploadReleaseRequest, v1.UploadReleaseResponse]
+	listReleases       *connect.Client[v1.ListReleasesRequest, v1.ListReleasesResponse]
+	uploadRelease      *connect.Client[v1.UploadReleaseRequest, v1.UploadReleaseResponse]
+	createRollout      *connect.Client[v1.CreateRolloutRequest, v1.CreateRolloutResponse]
+	getRollout         *connect.Client[v1.GetRolloutRequest, v1.GetRolloutResponse]
+	listRollouts       *connect.Client[v1.ListRolloutsRequest, v1.ListRolloutsResponse]
+	listRolloutTargets *connect.Client[v1.ListRolloutTargetsRequest, v1.ListRolloutTargetsResponse]
 }
 
 // ListReleases calls rpmgr.v1.ReleaseService.ListReleases.
@@ -96,6 +149,26 @@ func (c *releaseServiceClient) UploadRelease(ctx context.Context, req *connect.R
 	return c.uploadRelease.CallUnary(ctx, req)
 }
 
+// CreateRollout calls rpmgr.v1.ReleaseService.CreateRollout.
+func (c *releaseServiceClient) CreateRollout(ctx context.Context, req *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error) {
+	return c.createRollout.CallUnary(ctx, req)
+}
+
+// GetRollout calls rpmgr.v1.ReleaseService.GetRollout.
+func (c *releaseServiceClient) GetRollout(ctx context.Context, req *connect.Request[v1.GetRolloutRequest]) (*connect.Response[v1.GetRolloutResponse], error) {
+	return c.getRollout.CallUnary(ctx, req)
+}
+
+// ListRollouts calls rpmgr.v1.ReleaseService.ListRollouts.
+func (c *releaseServiceClient) ListRollouts(ctx context.Context, req *connect.Request[v1.ListRolloutsRequest]) (*connect.Response[v1.ListRolloutsResponse], error) {
+	return c.listRollouts.CallUnary(ctx, req)
+}
+
+// ListRolloutTargets calls rpmgr.v1.ReleaseService.ListRolloutTargets.
+func (c *releaseServiceClient) ListRolloutTargets(ctx context.Context, req *connect.Request[v1.ListRolloutTargetsRequest]) (*connect.Response[v1.ListRolloutTargetsResponse], error) {
+	return c.listRolloutTargets.CallUnary(ctx, req)
+}
+
 // ReleaseServiceHandler is an implementation of the rpmgr.v1.ReleaseService service.
 type ReleaseServiceHandler interface {
 	// ListReleases pages through the releases, the newest version first.
@@ -104,6 +177,16 @@ type ReleaseServiceHandler interface {
 	// signatures, verified like the release check, for air-gapped installations and signed
 	// downgrades. Its artifacts come from the release source or `rpmgr release import`.
 	UploadRelease(context.Context, *connect.Request[v1.UploadReleaseRequest]) (*connect.Response[v1.UploadReleaseResponse], error)
+	// CreateRollout starts a rollout of a release with its canary agents. It is refused for a
+	// release newer than the controller, one the mirror does not hold yet, and while another
+	// rollout runs or is paused.
+	CreateRollout(context.Context, *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error)
+	// GetRollout returns a rollout with how many of its agents are in each state.
+	GetRollout(context.Context, *connect.Request[v1.GetRolloutRequest]) (*connect.Response[v1.GetRolloutResponse], error)
+	// ListRollouts pages through the rollouts, the newest first.
+	ListRollouts(context.Context, *connect.Request[v1.ListRolloutsRequest]) (*connect.Response[v1.ListRolloutsResponse], error)
+	// ListRolloutTargets pages through a rollout's agents, each with its state and reason.
+	ListRolloutTargets(context.Context, *connect.Request[v1.ListRolloutTargetsRequest]) (*connect.Response[v1.ListRolloutTargetsResponse], error)
 }
 
 // NewReleaseServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -126,12 +209,47 @@ func NewReleaseServiceHandler(svc ReleaseServiceHandler, opts ...connect.Handler
 		connect.WithSchema(releaseServiceMethods.ByName("UploadRelease")),
 		connect.WithHandlerOptions(opts...),
 	)
+	releaseServiceCreateRolloutHandler := connect.NewUnaryHandler(
+		ReleaseServiceCreateRolloutProcedure,
+		svc.CreateRollout,
+		connect.WithSchema(releaseServiceMethods.ByName("CreateRollout")),
+		connect.WithHandlerOptions(opts...),
+	)
+	releaseServiceGetRolloutHandler := connect.NewUnaryHandler(
+		ReleaseServiceGetRolloutProcedure,
+		svc.GetRollout,
+		connect.WithSchema(releaseServiceMethods.ByName("GetRollout")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	releaseServiceListRolloutsHandler := connect.NewUnaryHandler(
+		ReleaseServiceListRolloutsProcedure,
+		svc.ListRollouts,
+		connect.WithSchema(releaseServiceMethods.ByName("ListRollouts")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	releaseServiceListRolloutTargetsHandler := connect.NewUnaryHandler(
+		ReleaseServiceListRolloutTargetsProcedure,
+		svc.ListRolloutTargets,
+		connect.WithSchema(releaseServiceMethods.ByName("ListRolloutTargets")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.ReleaseService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ReleaseServiceListReleasesProcedure:
 			releaseServiceListReleasesHandler.ServeHTTP(w, r)
 		case ReleaseServiceUploadReleaseProcedure:
 			releaseServiceUploadReleaseHandler.ServeHTTP(w, r)
+		case ReleaseServiceCreateRolloutProcedure:
+			releaseServiceCreateRolloutHandler.ServeHTTP(w, r)
+		case ReleaseServiceGetRolloutProcedure:
+			releaseServiceGetRolloutHandler.ServeHTTP(w, r)
+		case ReleaseServiceListRolloutsProcedure:
+			releaseServiceListRolloutsHandler.ServeHTTP(w, r)
+		case ReleaseServiceListRolloutTargetsProcedure:
+			releaseServiceListRolloutTargetsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -147,4 +265,20 @@ func (UnimplementedReleaseServiceHandler) ListReleases(context.Context, *connect
 
 func (UnimplementedReleaseServiceHandler) UploadRelease(context.Context, *connect.Request[v1.UploadReleaseRequest]) (*connect.Response[v1.UploadReleaseResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.UploadRelease is not implemented"))
+}
+
+func (UnimplementedReleaseServiceHandler) CreateRollout(context.Context, *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.CreateRollout is not implemented"))
+}
+
+func (UnimplementedReleaseServiceHandler) GetRollout(context.Context, *connect.Request[v1.GetRolloutRequest]) (*connect.Response[v1.GetRolloutResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.GetRollout is not implemented"))
+}
+
+func (UnimplementedReleaseServiceHandler) ListRollouts(context.Context, *connect.Request[v1.ListRolloutsRequest]) (*connect.Response[v1.ListRolloutsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.ListRollouts is not implemented"))
+}
+
+func (UnimplementedReleaseServiceHandler) ListRolloutTargets(context.Context, *connect.Request[v1.ListRolloutTargetsRequest]) (*connect.Response[v1.ListRolloutTargetsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.ListRolloutTargets is not implemented"))
 }
