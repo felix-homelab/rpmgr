@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -79,6 +80,9 @@ func runUpdater(t *testing.T, variant string, root bool, args ...string) (int, s
 // state, and it never lowers it. It refuses to run as another user than root, whose files the
 // updater would not trust, and a seq without a floor.
 func TestUpdaterInstall(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the root updater runs on Linux only")
+	}
 	base := t.TempDir()
 	state, etc, unitDir := filepath.Join(base, "rpmgr-update"), filepath.Join(base, "etc"), filepath.Join(base, "units")
 	if err := os.MkdirAll(etc, 0o755); err != nil {
