@@ -136,14 +136,18 @@ type State struct {
 
 // Accept returns the state after installing m on a host of the given channel, or ErrRefused. A
 // lower seq is a replay; with the same seq the floor only rises, and only a higher seq may lower
-// it, which makes signed downgrades possible. A stable host takes stable releases only; a
-// prerelease host takes both.
+// it, which makes signed downgrades possible. A state with a floor but seq 0, as `rpmgr setup`
+// initialises it from the binary's own version, knows no manifest yet: it takes none below the
+// floor, whatever its seq, until an update records one. A stable host takes stable releases only;
+// a prerelease host takes both.
 func (s State) Accept(m *Manifest, channel string) (State, error) {
 	switch {
 	case m.Channel == Prerelease && channel != Prerelease:
 		return s, fmt.Errorf("%w: %s is a pre-release, and this host takes stable releases only", ErrRefused, m.Version)
 	case m.Seq < s.Seq:
 		return s, fmt.Errorf("%w: manifest %d is older than manifest %d, the newest accepted", ErrRefused, m.Seq, s.Seq)
+	case s.Seq == 0 && s.Floor != "" && semver.Compare("v"+m.Version, "v"+s.Floor) < 0:
+		return s, fmt.Errorf("%w: %s is below the version floor %s, and no manifest accepted here may lower it yet", ErrRefused, m.Version, s.Floor)
 	case m.Seq > s.Seq:
 		return State{Seq: m.Seq, Floor: m.Floor}, nil
 	case s.Floor != "" && semver.Compare("v"+m.Version, "v"+s.Floor) < 0:

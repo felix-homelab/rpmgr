@@ -1,0 +1,361 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+import "rpmgr/v1/settings.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// ReleaseService is the releases the controller knows and the staged rollouts of one of them to
+// the connectors and gateways (docs/07-api.md, "Services"; docs/04-security.md, "Over-the-air
+// updates"; D121), all for the Instance Admin. A rollout only records what the Instance Admin
+// decides; the controller's rollout job offers the release and follows the agents.
+service ReleaseService {
+  // ListReleases pages through the releases, the newest version first.
+  rpc ListReleases(ListReleasesRequest) returns (ListReleasesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // UploadRelease records a release from its signed manifest, signing-key statement and their
+  // signatures, verified like the release check, for air-gapped installations and signed
+  // downgrades. Its artifacts come from the release source or `rpmgr release import`.
+  rpc UploadRelease(UploadReleaseRequest) returns (UploadReleaseResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+  // CreateRollout starts a rollout of a release with its canary agents. It is refused for a
+  // release newer than the controller, one the mirror does not hold yet, and while another
+  // rollout runs or is paused.
+  rpc CreateRollout(CreateRolloutRequest) returns (CreateRolloutResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+  // GetRollout returns a rollout with how many of its agents are in each state.
+  rpc GetRollout(GetRolloutRequest) returns (GetRolloutResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // ListRollouts pages through the rollouts, the newest first.
+  rpc ListRollouts(ListRolloutsRequest) returns (ListRolloutsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // ListRolloutTargets pages through a rollout's agents, each with its state and reason.
+  rpc ListRolloutTargets(ListRolloutTargetsRequest) returns (ListRolloutTargetsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+}
+
+// ReleaseSource is where the controller got a release's manifest.
+enum ReleaseSource {
+  // Not set.
+  RELEASE_SOURCE_UNSPECIFIED = 0;
+  // The daily release check.
+  RELEASE_SOURCE_CHECK = 1;
+  // An Instance Admin's upload.
+  RELEASE_SOURCE_UPLOAD = 2;
+  // `rpmgr release import` on the controller host.
+  RELEASE_SOURCE_IMPORT = 3;
+}
+
+// Release is a release whose signed manifest the controller verified; output only.
+message Release {
+  // The release's ID.
+  string id = 1;
+  // Its version, e.g. "1.5.0".
+  string version = 2;
+  // The channel its manifest is signed for.
+  UpdateChannel channel = 3;
+  // Its manifest's sequence number.
+  int64 manifest_seq = 4;
+  // Where the controller got it.
+  ReleaseSource source = 5;
+  // Whether the mirror holds all its artifacts under /dl/.
+  bool mirrored = 6;
+  // When the mirror last held it complete; not set while it does not.
+  google.protobuf.Timestamp mirror_time = 7;
+  // When the controller recorded it.
+  google.protobuf.Timestamp create_time = 8;
+  // Whether it is the version the controller runs.
+  bool controller_version = 9;
+  // Whether it is newer than the controller, so that no rollout may install it.
+  bool newer_than_controller = 10;
+}
+
+// RolloutStage is how far a rollout reaches.
+enum RolloutStage {
+  // Not set.
+  ROLLOUT_STAGE_UNSPECIFIED = 0;
+  // The canary agents chosen at its creation.
+  ROLLOUT_STAGE_CANARY = 1;
+  // The agents whose bucket is below the rollout's percentage, and the canary agents.
+  ROLLOUT_STAGE_PERCENTAGE = 2;
+  // Every agent.
+  ROLLOUT_STAGE_ALL = 3;
+}
+
+// RolloutState is where a rollout stands.
+enum RolloutState {
+  // Not set.
+  ROLLOUT_STATE_UNSPECIFIED = 0;
+  // The controller offers the release to the agents of the current stage.
+  ROLLOUT_STATE_RUNNING = 1;
+  // Waiting for the Instance Admin, after a rollback, a stalled agent or a pause.
+  ROLLOUT_STATE_PAUSED = 2;
+  // Every agent of the stage "all" updated or was skipped.
+  ROLLOUT_STATE_COMPLETED = 3;
+  // Ended by the Instance Admin.
+  ROLLOUT_STATE_CANCELLED = 4;
+}
+
+// RolloutTargetState is where one agent of a rollout stands.
+enum RolloutTargetState {
+  // Not set.
+  ROLLOUT_TARGET_STATE_UNSPECIFIED = 0;
+  // Not offered the release yet.
+  ROLLOUT_TARGET_STATE_PENDING = 1;
+  // Offered the release in its snapshot.
+  ROLLOUT_TARGET_STATE_OFFERED = 2;
+  // Staged the release for its updater.
+  ROLLOUT_TARGET_STATE_STAGED = 3;
+  // Runs the release.
+  ROLLOUT_TARGET_STATE_UPDATED = 4;
+  // Its updater rolled back.
+  ROLLOUT_TARGET_STATE_ROLLED_BACK = 5;
+  // Its updater refused the release.
+  ROLLOUT_TARGET_STATE_REFUSED = 6;
+  // Left out: offline, decommissioned, on auto_update notify or off, or on a channel that refuses
+  // the release.
+  ROLLOUT_TARGET_STATE_SKIPPED = 7;
+  // Reported neither the release nor a failure in time.
+  ROLLOUT_TARGET_STATE_STALLED = 8;
+}
+
+// AgentKind is the kind of an agent.
+enum AgentKind {
+  // Not set.
+  AGENT_KIND_UNSPECIFIED = 0;
+  // A connector.
+  AGENT_KIND_CONNECTOR = 1;
+  // A gateway.
+  AGENT_KIND_GATEWAY = 2;
+}
+
+// RolloutCounts are how many agents of a rollout are in each state.
+message RolloutCounts {
+  // Not offered the release yet.
+  int32 pending = 1;
+  // Offered it.
+  int32 offered = 2;
+  // Staged it.
+  int32 staged = 3;
+  // Run it.
+  int32 updated = 4;
+  // Rolled back.
+  int32 rolled_back = 5;
+  // Refused it.
+  int32 refused = 6;
+  // Skipped.
+  int32 skipped = 7;
+  // Stalled.
+  int32 stalled = 8;
+}
+
+// Rollout is a staged rollout of one release; output only.
+message Rollout {
+  // The rollout's ID.
+  string id = 1;
+  // The release it installs.
+  string release_id = 2;
+  // The release's version.
+  string version = 3;
+  // How far it reaches.
+  RolloutStage stage = 4;
+  // The share of agents the stage covers: 0 for the canary stage, 100 for all.
+  int32 percentage = 5;
+  // Where it stands.
+  RolloutState state = 6;
+  // Why it is paused: the agent and its reason, or that an Instance Admin paused it.
+  string pause_reason = 7;
+  // How many of its agents are in each state.
+  RolloutCounts counts = 8;
+  // The user who created it.
+  string create_user_id = 9;
+  // When it was created.
+  google.protobuf.Timestamp create_time = 10;
+  // The user who changed it last; empty when only the rollout job did.
+  string update_user_id = 11;
+  // When it changed last.
+  google.protobuf.Timestamp update_time = 12;
+  // The etag of the rollout's current state.
+  string etag = 13;
+}
+
+// RolloutTarget is one agent of a rollout; output only.
+message RolloutTarget {
+  // The target's ID.
+  string id = 1;
+  // The rollout.
+  string rollout_id = 2;
+  // The agent's ID: a connector's or a gateway's.
+  string agent_id = 3;
+  // The agent's kind.
+  AgentKind agent_kind = 4;
+  // The agent's name; empty once its row is gone.
+  string agent_name = 5;
+  // The agent's org.
+  string org_id = 6;
+  // Whether it is a canary agent.
+  bool canary = 7;
+  // Its place in the percentages, 0 to 99: a stage of p % takes the agents below p.
+  int32 bucket = 8;
+  // Where it stands.
+  RolloutTargetState state = 9;
+  // Why it is skipped, refused, rolled back or stalled.
+  string reason = 10;
+  // The version it ran when the rollout was created; empty if it never connected.
+  string version_before = 11;
+  // When its state changed last.
+  google.protobuf.Timestamp update_time = 12;
+}
+
+// ListReleasesRequest pages through the releases.
+message ListReleasesRequest {
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 1;
+  // The page after the one that returned it.
+  string page_token = 2;
+}
+
+// ListReleasesResponse is one page of releases.
+message ListReleasesResponse {
+  // The releases.
+  repeated Release releases = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+  // The version the controller runs.
+  string controller_version = 3;
+}
+
+// UploadReleaseRequest is a release's signed files, as a GitHub release has them.
+message UploadReleaseRequest {
+  // signing-key.json: a root key's statement for the signing key.
+  bytes signing_key_statement = 1 [(buf.validate.field).bytes = {
+    min_len: 1
+    max_len: 65536
+  }];
+  // signing-key.json.minisig.
+  bytes statement_signature = 2 [(buf.validate.field).bytes = {
+    min_len: 1
+    max_len: 4096
+  }];
+  // manifest.json.
+  bytes manifest = 3 [(buf.validate.field).bytes = {
+    min_len: 1
+    max_len: 1048576
+  }];
+  // manifest.json.minisig.
+  bytes manifest_signature = 4 [(buf.validate.field).bytes = {
+    min_len: 1
+    max_len: 4096
+  }];
+}
+
+// UploadReleaseResponse is the recorded release.
+message UploadReleaseResponse {
+  // The release: the uploaded manifest, or the recorded one if its seq is not lower.
+  Release release = 1;
+}
+
+// CreateRolloutRequest is a new rollout.
+message CreateRolloutRequest {
+  // The release to install.
+  string release_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The canary agents, connectors or gateways of any org, by ID.
+  repeated string canary_agent_ids = 2 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 50
+    unique: true
+    items: {
+      string: {
+        min_len: 1
+        max_len: 64
+      }
+    }
+  }];
+}
+
+// CreateRolloutResponse is the new rollout.
+message CreateRolloutResponse {
+  // The rollout, at its canary stage.
+  Rollout rollout = 1;
+}
+
+// GetRolloutRequest names a rollout.
+message GetRolloutRequest {
+  // The rollout's ID.
+  string rollout_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetRolloutResponse is a rollout.
+message GetRolloutResponse {
+  // The rollout.
+  Rollout rollout = 1;
+}
+
+// ListRolloutsRequest pages through the rollouts.
+message ListRolloutsRequest {
+  // Only the one that runs or is paused.
+  bool active_only = 1;
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 2;
+  // The page after the one that returned it.
+  string page_token = 3;
+}
+
+// ListRolloutsResponse is one page of rollouts.
+message ListRolloutsResponse {
+  // The rollouts.
+  repeated Rollout rollouts = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// ListRolloutTargetsRequest pages through a rollout's agents.
+message ListRolloutTargetsRequest {
+  // The rollout's ID.
+  string rollout_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Only agents in these states, if any are given.
+  repeated RolloutTargetState states = 2 [(buf.validate.field).repeated = {
+    max_items: 8
+    unique: true
+    items: {
+      enum: {
+        defined_only: true
+        not_in: [0]
+      }
+    }
+  }];
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 3;
+  // The page after the one that returned it.
+  string page_token = 4;
+}
+
+// ListRolloutTargetsResponse is one page of a rollout's agents.
+message ListRolloutTargetsResponse {
+  // The agents, in the order of their IDs.
+  repeated RolloutTarget rollout_targets = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}

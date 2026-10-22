@@ -96,7 +96,13 @@ type Applier struct {
 	MaxRestarts      int
 	// Clock is for the status file's time; nil means time.Now.
 	Clock func() time.Time
+
+	reported bool // the last Apply wrote the status file
 }
+
+// Reported reports whether the last Apply wrote an outcome to the status file. It did not when
+// nothing was staged, or when the staged release was installed already.
+func (a *Applier) Reported() bool { return a.reported }
 
 // pending is an install in progress (pendingFile).
 type pending struct {
@@ -124,18 +130,26 @@ var (
 var errInterrupted = errors.New("update: interrupted (test)")
 
 // Apply first finishes an install that an earlier run left unfinished. Otherwise it installs the
-// staged release and reports the outcome in the status file. It returns nil when the release is
-// installed and every role is ready, or when the staged release is the installed binary already;
+// staged release and reports the outcome in the status file. With nothing staged (no manifest, as
+// at the run at every boot, or while the agent is still staging) it does nothing and reports
+// nothing, so an earlier outcome stays. It returns nil when the release is installed and every
+// role is ready, when nothing is staged, or when the staged release is the installed binary already;
 // an error wrapping ErrRefused or ErrHostile when the release may not be installed (nothing
 // changed); one wrapping ErrRolledBack when a role did not become ready and the previous binary was
 // put back; and one wrapping ErrRollbackFailed when that failed too.
 func (a *Applier) Apply(ctx context.Context) error {
+	a.reported = false
 	p, err := a.readPending()
 	switch {
 	case err == nil:
 		return a.resume(ctx, p)
 	case !errors.Is(err, fs.ErrNotExist):
 		return a.report(Status{State: Refused, Previous: a.Previous, Reason: err.Error()}, err)
+	}
+	// The agent writes the manifest last. Without it nothing is staged; a manifest that is a link
+	// or no regular file is staged and refused below.
+	if _, err := os.Lstat(filepath.Join(a.Staged, manifestFile)); errors.Is(err, fs.ErrNotExist) {
+		return nil
 	}
 	s, in, err := a.stage()
 	if err != nil {
@@ -470,6 +484,7 @@ func (a *Applier) clearPending() error {
 // report writes the status file and returns err; a status file that cannot be written is added
 // to err.
 func (a *Applier) report(st Status, err error) error {
+	a.reported = true
 	now := time.Now
 	if a.Clock != nil {
 		now = a.Clock

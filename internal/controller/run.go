@@ -333,6 +333,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		}); err != nil {
 		return err
 	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_release_proto.Services().ByName("ReleaseService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewReleaseServiceHandler(&apisvc.Releases{DB: db, Sys: sys, API: apiServer, Version: o.Version, MinAgentVersion: MinAgentVersion(o.Version),
+				Roots: o.ReleaseRoots, Now: o.Now}, opts...)
+		}); err != nil {
+		return err
+	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_metrics_proto.Services().ByName("MetricsService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewMetricsServiceHandler(&apisvc.Metrics{DB: db, Now: o.Now}, opts...)

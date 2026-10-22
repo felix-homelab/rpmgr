@@ -22,7 +22,7 @@ rpmgr connector    --config /etc/rpmgr/connector.yaml
 rpmgr all-in-one   --config /etc/rpmgr/all-in-one.yaml
 rpmgr enroll | leave | status | diag | policy          (on agent hosts)
 rpmgr apply | import | backup | restore | migrate | ca | kek   (administration)
-rpmgr updater apply                               (root-owned updater, run by rpmgr-update.service)
+rpmgr updater apply | install                     (root-owned updater, run by rpmgr-update.service)
 rpmgr version
 ```
 
@@ -31,7 +31,7 @@ the parts of a single host, and the in-process `all-in-one` mode for the smalles
 cost is binary size (all roles are linked in). A connector-only variant ships in Phase 2
 ([13](13-roadmap.md#phase-2--production), D21): its own main, `cmd/rpmgr-connector`, links the
 connector role and the host commands a connector needs (`enroll`, `setup`, `policy`, `status`,
-`diag`, `leave`, `systemd-unit`, `updater apply`, `version`) and nothing of the controller, the
+`diag`, `leave`, `systemd-unit`, `updater`, `version`) and nothing of the controller, the
 gateway or the importer; `rpmgr controller`, `gateway` and `all-in-one` report "not available in
 this build", and its `setup` and `systemd-unit` offer the connector only. Its artifact is named `rpmgr-<version>-<os>-<arch>-connector` (`.exe` on Windows), it is
 still installed as `rpmgr`, and the release manifest tells the variants apart by each artifact's

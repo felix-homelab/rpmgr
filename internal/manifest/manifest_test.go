@@ -185,3 +185,29 @@ func TestEmpty(t *testing.T) {
 		t.Fatalf("read back: %v %v", docs, err)
 	}
 }
+
+// TestNegativeZero: a -0 anywhere in a spec reads as 0, so the manifest writes and reads back
+// unchanged; YAML would write the float -0 as "-0", which reads back as the integer 0.
+func TestNegativeZero(t *testing.T) {
+	in := "kind: Route\nmetadata: {name: a}\nspec: {a: -0.0, b: [-.0, {c: -0e1}], d: -0, e: -1.5}\n"
+	docs, err := manifest.Read(strings.NewReader(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := manifest.Write(&out, docs); err != nil {
+		t.Fatal(err)
+	}
+	want := "kind: Route\nmetadata:\n  name: a\nspec:\n  a: 0\n  b:\n    - 0\n    - c: 0\n  d: 0\n  e: -1.5\n"
+	if out.String() != want {
+		t.Fatalf("written:\n%s\nwant:\n%s", out.String(), want)
+	}
+	again, err := manifest.Read(strings.NewReader(out.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out2 strings.Builder
+	if err := manifest.Write(&out2, again); err != nil || out2.String() != want {
+		t.Fatalf("written again (%v):\n%s", err, out2.String())
+	}
+}

@@ -27,6 +27,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
+	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/settings"
@@ -59,6 +60,7 @@ type env struct {
 	probe    fakeProber   // what RouteService's probes find
 	sealer   *secret.Sealer
 	pki      *apisvc.Pki
+	rel      *apisvc.Releases
 	logs     *telemetrytest.Sink // where every service logs; a secret in a line fails the test
 	// revlogStatus, if set, is where SettingsService finds the revocation log's status.
 	revlogStatus func() revlog.Status
@@ -95,6 +97,7 @@ func newEnv(t *testing.T) *env {
 	sealer, _ := secret.NewSealer(kek)
 	e.sealer = sealer
 	e.pki = &apisvc.Pki{DB: db, Sys: sys, Sealer: sealer, Now: now}
+	e.rel = &apisvc.Releases{DB: db, Sys: sys, Version: "1.5.0", MinAgentVersion: "1.4.0", Roots: []release.PublicKey{testReleaseRoot()}, Now: now}
 	e.mfa = &accounts.MFA{Accounts: e.acc, Sealer: sealer, RevLog: rl, Logger: log}
 	e.tokens = &accounts.Tokens{Accounts: e.acc, RevLog: rl, Logger: log}
 	srv, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Now: now, Logger: log,
@@ -177,6 +180,13 @@ func newEnv(t *testing.T) *env {
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_pki_proto.Services().ByName("PkiService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewPkiServiceHandler(e.pki, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_release_proto.Services().ByName("ReleaseService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			e.rel.API = srv
+			return rpmgrv1connect.NewReleaseServiceHandler(e.rel, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -265,6 +275,7 @@ type browser struct {
 	met    rpmgrv1connect.MetricsServiceClient
 	pki    rpmgrv1connect.PkiServiceClient
 	man    rpmgrv1connect.ManifestServiceClient
+	rel    rpmgrv1connect.ReleaseServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -286,6 +297,7 @@ func (e *env) browser() *browser {
 	b.met = rpmgrv1connect.NewMetricsServiceClient(&http.Client{Transport: b}, e.url)
 	b.pki = rpmgrv1connect.NewPkiServiceClient(&http.Client{Transport: b}, e.url)
 	b.man = rpmgrv1connect.NewManifestServiceClient(&http.Client{Transport: b}, e.url)
+	b.rel = rpmgrv1connect.NewReleaseServiceClient(&http.Client{Transport: b}, e.url)
 	return b
 }
 
