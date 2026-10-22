@@ -4,6 +4,7 @@ package controller_test
 
 import (
 	"cmp"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"slices"
@@ -175,8 +176,12 @@ func TestDataSessions(t *testing.T) {
 		}
 		serving(web.ID, "con_a", "con_b", "con_c")
 		serving(elsewhere.ID, "con_other")
-		gst := e.open(t, testCtx(t), gwCert, hello("0.1.0"))
-		cst := e.open(t, testCtx(t), conCert, hello("0.1.0"))
+		// The sessions last the whole test, whose flood of 5000 connectors took more than testCtx's
+		// 20 s on the riscv64 runner; each wait below has its own deadline.
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		gst := e.open(t, ctx, gwCert, hello("0.1.0"))
+		cst := e.open(t, ctx, conCert, hello("0.1.0"))
 		for _, st := range []controlStream{gst, cst} {
 			if recv(t, st).GetWelcome() == nil {
 				t.Fatal("no Welcome")

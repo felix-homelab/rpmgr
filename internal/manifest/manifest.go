@@ -216,8 +216,34 @@ func Read(r io.Reader) ([]*Doc, error) {
 		if err != nil {
 			return nil, fmt.Errorf("manifest: %w", err)
 		}
+		positiveZero(d.Spec)
 		out = append(out, d)
 	}
+}
+
+// positiveZero returns v with every -0 in it turned into 0. YAML writes the float -0 as "-0",
+// which reads back as the integer 0, so a manifest holding it would change when written and read
+// again.
+func positiveZero(v any) any {
+	switch x := v.(type) {
+	case float64:
+		if x == 0 {
+			return 0.0
+		}
+	case map[string]any:
+		for k, item := range x {
+			x[k] = positiveZero(item)
+		}
+	case map[any]any:
+		for k, item := range x {
+			x[k] = positiveZero(item)
+		}
+	case []any:
+		for i, item := range x {
+			x[i] = positiveZero(item)
+		}
+	}
+	return v
 }
 
 // edit calls f for the field at path in v, through every item of a list at "*"; a path that is not

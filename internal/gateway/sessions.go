@@ -145,6 +145,7 @@ func (m *Sessions) metrics() *Metrics {
 // dataSession is one connector's session.
 type dataSession struct {
 	connector string
+	boot      string // the boot_id of the connector process, new at its every start; "" if unnamed
 	peer      *x509.Certificate
 	s         tunnel.Session
 	send      func(*tunnelv1.SessionMessage) error
@@ -247,7 +248,7 @@ func (m *Sessions) Serve(ctx context.Context, s tunnel.Session, peer *x509.Certi
 	if err != nil {
 		return err
 	}
-	d := &dataSession{connector: id.ID, peer: peer, s: s, send: send, now: m.o.Now, ready: map[string]bool{}}
+	d := &dataSession{connector: id.ID, boot: hello.GetBootId(), peer: peer, s: s, send: send, now: m.o.Now, ready: map[string]bool{}}
 	for _, r := range hello.GetReadyRoutes() {
 		d.ready[r] = true
 	}
@@ -404,18 +405,37 @@ func (m *Sessions) admitsLocked(id string) error {
 }
 
 // add registers d unless the gateway started draining or the connector reached the cap
-// meanwhile.
+// meanwhile. A session of a new start of the connector process, which names another boot_id,
+// closes the sessions of its earlier start at once: that process is gone, and its sessions would
+// take streams and slots of the cap until their transport noticed (docs/03-connections.md,
+// "Failure modes").
 func (m *Sessions) add(d *dataSession) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if err := m.admitsLocked(d.connector); err != nil {
-		return err
+	var earlier []*dataSession
+	if d.boot != "" {
+		m.byConnector[d.connector] = slices.DeleteFunc(m.byConnector[d.connector], func(x *dataSession) bool {
+			if x.boot != "" && x.boot != d.boot {
+				earlier = append(earlier, x)
+				return true
+			}
+			return false
+		})
 	}
-	m.byConnector[d.connector] = append(m.byConnector[d.connector], d)
-	if m.o.OnChange != nil {
-		defer m.o.OnChange()
+	err := m.admitsLocked(d.connector)
+	if err == nil {
+		m.byConnector[d.connector] = append(m.byConnector[d.connector], d)
 	}
-	return nil
+	m.mu.Unlock()
+	if len(earlier) > 0 {
+		m.o.Logger.Info("closing the data sessions of the connector's earlier start", "connector", d.connector, "sessions", len(earlier))
+		for _, x := range earlier {
+			_ = x.s.Close()
+		}
+	}
+	if (err == nil || len(earlier) > 0) && m.o.OnChange != nil {
+		m.o.OnChange()
+	}
+	return err
 }
 
 // Recheck applies a new deny-list or snapshot to the live sessions; the gateway calls it after
