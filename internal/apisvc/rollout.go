@@ -66,7 +66,7 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 	sys := store.CarryTxHook(r.Sys, ctx)
 	m := req.Msg
 	var row *ent.Rollout
-	err := store.WriteTx(sys, r.DB, func(tx *ent.Tx) error {
+	create := func(tx *ent.Tx) error {
 		rel, err := tx.Release.Get(sys, m.GetReleaseId())
 		if err != nil {
 			return err
@@ -109,7 +109,7 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 					"apisvc: canary agent %s is not a connector or enrolled gateway that a rollout updates", id))
 			}
 		}
-		row, err = tx.Rollout.Create().SetReleaseID(rel.ID).SetCreatedBy(api.CallerFrom(ctx).UserID).Save(sys)
+		row, err = tx.Rollout.Create().SetReleaseID(rel.ID).SetCreatedBy(callerID(ctx)).Save(sys)
 		if err != nil {
 			return err
 		}
@@ -131,6 +131,14 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 			}
 		}
 		return nil
+	}
+	// A configuration transaction: the new revision makes every agent's snapshot compile again, so
+	// that the rollout job's offers reach the agents.
+	_, err := store.ConfigTx(sys, r.DB, func(tx *ent.Tx) ([]string, error) {
+		if err := create(tx); err != nil {
+			return nil, err
+		}
+		return []string{row.ID}, nil
 	})
 	if store.IsUniqueViolation(err) {
 		err = rolloutActive() // another rollout was created at the same time
@@ -247,7 +255,7 @@ func (r *Releases) ListRolloutTargets(ctx context.Context, req *connect.Request[
 }
 
 // AdvanceRollout implements ReleaseService: a running rollout moves to a higher percentage or to
-// all agents; a paused one is resumed first.
+// all agents; a paused one must be resumed first.
 func (r *Releases) AdvanceRollout(ctx context.Context, req *connect.Request[rpmgrv1.AdvanceRolloutRequest]) (
 	*connect.Response[rpmgrv1.AdvanceRolloutResponse], error) {
 	m := req.Msg
@@ -258,7 +266,7 @@ func (r *Releases) AdvanceRollout(ctx context.Context, req *connect.Request[rpmg
 		case m.GetAll():
 			u.SetStage(rollout.StageAll).SetPercentage(100)
 		case int(m.GetPercentage()) <= cur.Percentage:
-			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: the rollout is at %d %%; the next stage must be higher", cur.Percentage))
+			return stateError(fmt.Sprintf("the rollout is at %d %%; the next stage must be higher", cur.Percentage))
 		default:
 			u.SetStage(rollout.StagePercentage).SetPercentage(int(m.GetPercentage()))
 		}
@@ -313,37 +321,60 @@ func (r *Releases) CancelRollout(ctx context.Context, req *connect.Request[rpmgr
 }
 
 // change applies set to a rollout in one of the states from, under its etag, and records the
-// caller as the one who changed it.
+// caller as the one who changed it. It is a configuration transaction, which takes the config_seq
+// row lock first, so changes of a rollout from the API happen one after the other, and its revision
+// makes the snapshots compile again; the update names the version it read, so a change the
+// rollout job made meanwhile makes it read the rollout again, at most three times.
 func (r *Releases) change(ctx context.Context, id, etag string, from []rollout.State, set func(*ent.Rollout, *ent.RolloutUpdateOne) error) (
 	*rpmgrv1.Rollout, error) {
 	sys := store.CarryTxHook(r.Sys, ctx)
 	var row *ent.Rollout
-	err := store.WriteTx(sys, r.DB, func(tx *ent.Tx) error {
-		cur, err := tx.Rollout.Get(sys, id)
-		if err != nil {
-			return err
-		}
-		if etag != "" && etag != etagOf(cur.Version) {
-			now, err := r.rolloutOf(sys, cur)
+	for attempt := 1; ; attempt++ {
+		_, err := store.ConfigTx(sys, r.DB, func(tx *ent.Tx) ([]string, error) {
+			cur, err := tx.Rollout.Get(sys, id)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			return api.CheckEtag(etag, cur.Version, now)
+			if etag != "" && etag != etagOf(cur.Version) {
+				now, err := r.rolloutOf(sys, cur)
+				if err != nil {
+					return nil, err
+				}
+				return nil, api.CheckEtag(etag, cur.Version, now)
+			}
+			if !slices.Contains(from, cur.State) {
+				return nil, stateError(fmt.Sprintf("the rollout is %s", cur.State))
+			}
+			u := cur.Update().Where(rollout.Version(cur.Version)).SetUpdatedBy(callerID(ctx))
+			if err := set(cur, u); err != nil {
+				return nil, err
+			}
+			if row, err = u.Save(sys); ent.IsNotFound(err) {
+				return nil, errRolloutChanged
+			}
+			return []string{id}, err
+		})
+		switch {
+		case errors.Is(err, errRolloutChanged) && attempt < 3:
+			continue
+		case errors.Is(err, errRolloutChanged):
+			return nil, connect.NewError(connect.CodeAborted, err)
+		case err != nil:
+			return nil, storeError(err)
 		}
-		if !slices.Contains(from, cur.State) {
-			return stateError(fmt.Sprintf("the rollout is %s", cur.State))
-		}
-		u := cur.Update().SetUpdatedBy(api.CallerFrom(ctx).UserID)
-		if err := set(cur, u); err != nil {
-			return err
-		}
-		row, err = u.Save(sys)
-		return err
-	})
-	if err != nil {
-		return nil, storeError(err)
+		return r.rolloutOf(sys, row)
 	}
-	return r.rolloutOf(sys, row)
+}
+
+// errRolloutChanged means a rollout changed between reading and updating it.
+var errRolloutChanged = errors.New("apisvc: the rollout changed meanwhile; try again")
+
+// callerID is the user who calls, "" for none.
+func callerID(ctx context.Context) string {
+	if c := api.CallerFrom(ctx); c != nil {
+		return c.UserID
+	}
+	return ""
 }
 
 func rolloutActive() error {

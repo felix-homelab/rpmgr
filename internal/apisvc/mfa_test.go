@@ -292,7 +292,8 @@ func TestStepUpActions(t *testing.T) {
 		"rpmgr.v1.UserService.RegenerateRecoveryCodes", "rpmgr.v1.TokenService.CreateAPIToken",
 		"rpmgr.v1.EnrollmentService.CreateEnrollmentToken", "rpmgr.v1.EnrollmentService.CreateGatewayEnrollmentToken",
 		"rpmgr.v1.PkiService.RotateIntermediate", "rpmgr.v1.UserService.CreatePasswordResetLink", "rpmgr.v1.UserService.RemoveUserTOTP",
-		"rpmgr.v1.UserService.SetInstanceAdmin",
+		"rpmgr.v1.UserService.SetInstanceAdmin", "rpmgr.v1.ReleaseService.UploadRelease", "rpmgr.v1.ReleaseService.CreateRollout",
+		"rpmgr.v1.ReleaseService.AdvanceRollout", "rpmgr.v1.ReleaseService.ResumeRollout", "rpmgr.v1.ReleaseService.CancelRollout",
 	} {
 		d, err := protoregistry.GlobalFiles.FindDescriptorByName(protoreflect.FullName(name))
 		if err != nil {

@@ -13,6 +13,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
+	"github.com/felix-homelab/rpmgr/internal/password"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -147,8 +148,10 @@ func TestRollouts(t *testing.T) {
 	if err != nil || ro.GetStage() != rpmgrv1.RolloutStage_ROLLOUT_STAGE_PERCENTAGE || ro.GetPercentage() != 25 || ro.GetUpdateUserId() != e.ada {
 		t.Fatalf("to 25 %%: %v %v", ro, err)
 	}
-	if _, err := advance("", 10, false); code(err) != connect.CodeInvalidArgument {
-		t.Errorf("down to 10 %%: %v", err)
+	for _, pct := range []int32{10, 25} {
+		if _, err := advance("", pct, false); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonRolloutState {
+			t.Errorf("from 25 %% to %d %%: %v", pct, err)
+		}
 	}
 
 	// A pause needs no step-up; everything else does.
@@ -217,6 +220,30 @@ func TestRollouts(t *testing.T) {
 			CountX(sys); n != want {
 			t.Errorf("%d audit entries of a successful %s, want %d", n, action, want)
 		}
+	}
+
+	// An Admin of the Instance Admin's own org, stepped up, is no Instance Admin.
+	h, err := password.Hash(ctx, pw, password.LowMemory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	carol := c.User.Create().SetEmail("carol@example.com").SetDisplayName("Carol").SetPasswordHash(h).SaveX(sys)
+	c.Membership.Create().SetOrgID(org).SetUserID(carol.ID).SetRole("admin").SetCreatedBy("test").ExecX(sys)
+	admin := e.browser()
+	if err := admin.login("carol@example.com", pw); err != nil {
+		t.Fatal(err)
+	}
+	if err := admin.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.rel.ListRollouts(ctx, connect.NewRequest(&rpmgrv1.ListRolloutsRequest{})); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an org Admin lists rollouts: %v", err)
+	}
+	if _, err := admin.rel.CancelRollout(ctx, connect.NewRequest(&rpmgrv1.CancelRolloutRequest{RolloutId: next.GetId()})); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an org Admin cancels: %v", err)
+	}
+	if _, err := admin.rel.UploadRelease(ctx, connect.NewRequest(signedRelease(t, e.clock, "1.3.0", 1, release.Stable))); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an org Admin uploads: %v", err)
 	}
 
 	orgB := storetest.Org(t, e.db, "org-b")
