@@ -184,7 +184,8 @@ message AgentMessage {
                               // deny-list digest
     Applied applied = 2;      // revision applied, resources not ready
     Rejected rejected = 3;    // revision rejected, structured errors; LKG kept
-    Status status = 4;        // readiness changes, route counters, data sessions (gateways)
+    Status status = 4;        // readiness changes, route counters, data sessions (gateways),
+                              // update state (ota)
     OpResult op_result = 5;   // result of an operation that needs no stream
   }
 }
@@ -194,7 +195,8 @@ message ControllerMessage {
   oneof msg {
     Welcome welcome = 1;            // session_epoch, db_epoch, server_time, min_agent_version,
                                     // config-signing certificates
-    Signed snapshot = 2;            // a Snapshot: revision, agent, controller endpoints, resources
+    Signed snapshot = 2;            // a Snapshot: revision, agent, controller endpoints, resources,
+                                    // release offer (ota)
     Drain drain = 4;                // reconnect elsewhere before the deadline
     Goodbye goodbye = 5;            // superseded, revoked, upgrade_required, shutdown, overloaded
     Signed deny_list = 6;           // a DenyList; applied unconditionally, never shrinks early
@@ -394,6 +396,10 @@ Rules:
     and data sessions of connectors with a target on such a route. A report of a gateway that is
     not an active gateway of its org counts for nothing, and whatever else a report names is
     skipped, so a gateway cannot write another group's or another org's traffic or sessions.
+    An agent with the capability `ota` adds its update state to the `Status` at the start of each
+    session and sends it alone whenever it changes; a `Status` with only the update state leaves
+    a gateway's data sessions and counters as they are
+    ([04](04-security.md#over-the-air-updates)).
 
 ### Revisions and ordering
 
@@ -1322,7 +1328,7 @@ used, not by the route compiler:
 | **Database down** | Controller serves reads from memory where possible, rejects writes, keeps sessions. New control sessions are refused as unavailable, because each needs a session epoch from the database; agents retry with backoff. |
 | **Gateway crashes** | New user connections for its routes go to the other gateways in the group. Public connections in flight on the crashed gateway are lost. With a persisted `StatelessResetKey` and padded session pings, connectors notice the restart within one ping interval (15 s) instead of after the idle timeout. |
 | **Gateway planned restart** | `Drain`, connectors re-home, in-flight connections get the gateway drain period. |
-| **Connector restarts** | Its sessions close; routes with no other ready connector return 503 (HTTP) or refuse (TCP). It restarts from the persisted last-known-good snapshot, reconnects, and reports a new `boot_id`. |
+| **Connector restarts** | Its sessions close; routes with no other ready connector return 503 (HTTP) or refuse (TCP). It restarts from the persisted last-known-good snapshot, reconnects, and reports a new `boot_id`. A killed process closes no session: a gateway closes the sessions of the earlier `boot_id` when the first session with the new one arrives, so that they neither take streams nor fill the connector's session cap. |
 | **Bad configuration** | Rejected at compile time by the controller, or `Rejected` by the agent; last-known-good keeps running; the UI shows the reasons. No outage. |
 | **Certificate expiring** | Renewed at 50 % of lifetime over the control session. If the agent was offline past expiry, it re-authenticates within the grace period using the same key, otherwise it must re-enroll ([04](04-security.md#enrollment)). |
 | **Clock skew** | Certificates are backdated 5 min; `Welcome` carries the controller's time; the agent warns above 30 s skew and reports TLS time errors as "clock skew". No protocol message depends on timestamps. |

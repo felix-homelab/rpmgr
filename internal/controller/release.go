@@ -5,9 +5,7 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
-	"math"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -256,35 +254,10 @@ func oldestVersion(versions []string) string {
 	return oldest
 }
 
-// recordRelease records a verified release in the releases table: a new version, or a manifest
-// with a higher seq than the recorded one, which replaces it. mirrored, if set, is when the mirror
-// came to hold every artifact.
+// recordRelease records a verified release in the releases table (store.RecordRelease).
 func recordRelease(ctx context.Context, db *store.DB, s *release.Signed, source entrelease.Source, mirrored *time.Time) error {
-	m := s.Manifest
-	if m.Seq > math.MaxInt64 {
-		return fmt.Errorf("release: the manifest of %s has seq %d, beyond what the database holds", m.Version, m.Seq)
-	}
-	seq := int64(m.Seq) //nolint:gosec // G115: checked above
-	return store.WriteTx(ctx, db, func(tx *ent.Tx) error {
-		row, err := tx.Release.Query().Where(entrelease.Version(m.Version)).Only(ctx)
-		switch {
-		case ent.IsNotFound(err):
-			return tx.Release.Create().SetVersion(m.Version).SetChannel(entrelease.Channel(m.Channel)).SetManifestSeq(seq).
-				SetManifest(s.ManifestJSON).SetSignature(s.ManifestSig).SetSigningKeyStatement(s.Statement).
-				SetStatementSignature(s.StatementSig).SetSource(source).SetNillableMirroredAt(mirrored).Exec(ctx)
-		case err != nil:
-			return err
-		}
-		u := row.Update()
-		if seq > row.ManifestSeq {
-			u.SetChannel(entrelease.Channel(m.Channel)).SetManifestSeq(seq).SetManifest(s.ManifestJSON).
-				SetSignature(s.ManifestSig).SetSigningKeyStatement(s.Statement).SetStatementSignature(s.StatementSig).SetSource(source)
-		}
-		if mirrored != nil {
-			u.SetMirroredAt(*mirrored)
-		}
-		return u.Exec(ctx)
-	})
+	_, err := store.RecordRelease(ctx, db, s, source, mirrored)
+	return err
 }
 
 // ImportRelease is `rpmgr release import`: it verifies the release of version in dir, as the

@@ -180,7 +180,7 @@ func Run(ctx context.Context, o RunOptions) error {
 
 	sessions := NewSessions(SessionsOptions{DB: db, CA: ca, Node: nodeID, Version: o.Version, Sys: sys, Now: o.Now, RevLog: rl, Sealer: sealer,
 		Logger:   o.Logger,
-		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: AgentEndpoints(cfg.PublicURL)}})
+		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: AgentEndpoints(cfg.PublicURL), Offer: snapshot.ReleaseOffer}})
 	reg := o.Registry
 	if reg == nil {
 		reg = telemetry.NewRegistry()
@@ -330,6 +330,13 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_pki_proto.Services().ByName("PkiService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewPkiServiceHandler(&apisvc.Pki{DB: db, Sys: sys, Sealer: sealer, CA: ca, Now: o.Now}, opts...)
+		}); err != nil {
+		return err
+	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_release_proto.Services().ByName("ReleaseService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewReleaseServiceHandler(&apisvc.Releases{DB: db, Sys: sys, API: apiServer, Version: o.Version,
+				Roots: o.ReleaseRoots, Now: o.Now}, opts...)
 		}); err != nil {
 		return err
 	}

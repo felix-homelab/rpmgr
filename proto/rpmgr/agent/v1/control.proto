@@ -171,6 +171,68 @@ message Status {
   // Whether readiness names every resource that is not ready, as the first Status of a session
   // does; the controller then forgets every other.
   bool readiness_complete = 4;
+  // Agents with the capability "ota": the update state, in the first Status of a session and
+  // whenever it changes; unset otherwise (docs/04-security.md, "Over-the-air updates"). A Status
+  // that carries only the update state leaves a gateway's data sessions and counters as they are.
+  UpdateState update = 5;
+}
+
+// UpdateState is where an agent stands with the release it was offered, and the root updater's
+// last outcome.
+message UpdateState {
+  // The offered version the phase is about; empty without an offer.
+  string version = 1;
+  // What the agent did with the offer.
+  UpdatePhase phase = 2;
+  // For the operator: why the agent declined the offer or failed to stage it.
+  string detail = 3;
+  // The root updater's last outcome, from its status file; unset when there is none.
+  UpdaterOutcome updater = 4;
+}
+
+// UpdatePhase is what an agent did with an offered release.
+enum UpdatePhase {
+  // No offer, or the agent runs the offered version.
+  UPDATE_PHASE_UNSPECIFIED = 0;
+  // The local policy says auto_update: notify: the release is available and not staged.
+  UPDATE_PHASE_AVAILABLE = 1;
+  // The agent does not take the release: auto_update is off, the local policy does not load,
+  // the host's channel refuses it, or the release has no artifact for the host.
+  UPDATE_PHASE_DECLINED = 2;
+  // The agent downloads the release.
+  UPDATE_PHASE_DOWNLOADING = 3;
+  // The release is staged for the root updater.
+  UPDATE_PHASE_STAGED = 4;
+  // Downloading or verifying failed; the agent tries again later.
+  UPDATE_PHASE_FAILED = 5;
+}
+
+// UpdaterOutcome is the root updater's last outcome (/run/rpmgr-update/status.json).
+message UpdaterOutcome {
+  // What happened.
+  UpdaterResult result = 1;
+  // The version it installed, or tried to.
+  string version = 2;
+  // The version installed before.
+  string previous = 3;
+  // Why, for the operator.
+  string reason = 4;
+  // When.
+  google.protobuf.Timestamp at = 5;
+}
+
+// UpdaterResult is the root updater's outcome.
+enum UpdaterResult {
+  // Not known.
+  UPDATER_RESULT_UNSPECIFIED = 0;
+  // The release is installed and every role became ready.
+  UPDATER_RESULT_UPDATED = 1;
+  // A role did not become ready, and the previous binary is back.
+  UPDATER_RESULT_ROLLED_BACK = 2;
+  // The previous binary could not be put back; the host needs an operator.
+  UPDATER_RESULT_ROLLBACK_FAILED = 3;
+  // The updater refused the staged release.
+  UPDATER_RESULT_REFUSED = 4;
 }
 
 // RouteCounters are cumulative counters of one route on one agent.

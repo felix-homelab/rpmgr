@@ -4,6 +4,7 @@ package controller_test
 
 import (
 	"cmp"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"slices"
@@ -175,8 +176,12 @@ func TestDataSessions(t *testing.T) {
 		}
 		serving(web.ID, "con_a", "con_b", "con_c")
 		serving(elsewhere.ID, "con_other")
-		gst := e.open(t, testCtx(t), gwCert, hello("0.1.0"))
-		cst := e.open(t, testCtx(t), conCert, hello("0.1.0"))
+		// The sessions last the whole test, whose flood of 5000 connectors took more than testCtx's
+		// 20 s on the riscv64 runner; each wait below has its own deadline.
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		gst := e.open(t, ctx, gwCert, hello("0.1.0"))
+		cst := e.open(t, ctx, conCert, hello("0.1.0"))
 		for _, st := range []controlStream{gst, cst} {
 			if recv(t, st).GetWelcome() == nil {
 				t.Fatal("no Welcome")
@@ -240,6 +245,17 @@ func TestDataSessions(t *testing.T) {
 			if strings.Contains(k, "con_x") || strings.Contains(k, "con_b") {
 				t.Fatalf("%s is kept", k)
 			}
+		}
+		// A Status with only the update state lists no data sessions and removes none: the next
+		// report finds the sessions as they were.
+		send(t, gst, &agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{
+			Update: &agentv1.UpdateState{Version: "0.2.0", Phase: agentv1.UpdatePhase_UPDATE_PHASE_STAGED}}}})
+		report(gst, ds("con_a", quic, 31*time.Millisecond), ds("con_a", h2, 0))
+		got = waitFor("the report after an update state", func(m map[string]*ent.DataSession) bool {
+			return len(m) == 2 && m[gw.ID+"/con_a/quic"] != nil && m[gw.ID+"/con_a/quic"].RttMs == 31
+		})
+		if a := got[gw.ID+"/con_a/quic"]; !a.EstablishedAt.Equal(first.EstablishedAt) {
+			t.Fatalf("the update state ended the data sessions: %+v, first %+v", a, first)
 		}
 
 		var names []string

@@ -176,9 +176,19 @@ func TestWriteApplyStatus(t *testing.T) {
 		took < 300*time.Millisecond {
 		t.Fatalf("a wait that ends pending: %v after %v (%v)", r, took, err)
 	}
-	if r, took, err := update("gw-c", "bogus"); err != nil || took > 250*time.Millisecond || r.Msg.GetApplyStatus() == nil {
-		t.Fatalf("a malformed wait: %v after %v (%v)", r, took, err)
+	// The gateway applies everything 2 s after the malformed wait starts: an answer that waited for
+	// it would be applied. No bound on the time itself: a write took 266 ms on the riscv64 runner.
+	applyLater := make(chan struct{})
+	go func() {
+		defer close(applyLater)
+		time.Sleep(2 * time.Second)
+		e.db.Client().AgentState.UpdateOneID(id).SetAppliedSeq(1 << 40).ExecX(e.sys)
+	}()
+	if r, _, err := update("gw-c", "bogus"); err != nil || r.Msg.GetApplyStatus().GetState() != rpmgrv1.ApplyState_APPLY_STATE_PENDING {
+		t.Fatalf("a malformed wait: %v (%v)", r, err)
 	}
+	<-applyLater
+	e.db.Client().AgentState.UpdateOneID(id).SetAppliedSeq(1).ExecX(e.sys)
 	go func() {
 		time.Sleep(400 * time.Millisecond)
 		e.db.Client().AgentState.UpdateOneID(id).SetAppliedSeq(1 << 40).ExecX(e.sys)
