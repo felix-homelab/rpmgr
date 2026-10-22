@@ -89,7 +89,7 @@ func testHostile(t *testing.T) {
 	// could; the updater refuses the staging rather than reading through it.
 	h.exec("su rpmgr -s /bin/sh -c 'rm /var/lib/rpmgr/update/rpmgr-" + newVer + "-linux-amd64 && ln -s /etc/passwd /var/lib/rpmgr/update/rpmgr-" + newVer + "-linux-amd64'")
 	out := h.apply("")
-	for _, want := range []string{"apply: 1", `"result":"refused"`, "version: rpmgr " + oldVer} {
+	for _, want := range []string{"apply: 1", "unsafe staging", "version: rpmgr " + oldVer} {
 		if !strings.Contains(out, want) {
 			t.Errorf("no %q in:\n%s", want, out)
 		}
@@ -142,9 +142,9 @@ mkdir -p /etc/rpmgr /var/lib/rpmgr/update /var/lib/rpmgr-update /usr/local/bin
 install -m 0755 /b/rpmgr-` + oldVer + ` /usr/local/bin/rpmgr
 install -m 0755 /b/role-ready /usr/local/bin/role-ready
 chown -R rpmgr:rpmgr /var/lib/rpmgr
-printf 'listen:\n  admin: "127.0.0.1:7384"\n' > /etc/rpmgr/connector.yaml
+printf 'version: 1\nlisten:\n  admin: "127.0.0.1:7384"\n' > /etc/rpmgr/connector.yaml
 /usr/local/bin/rpmgr updater install --state /var/lib/rpmgr-update --path /usr/local/bin/rpmgr --role connector --seq 1 --floor ` + oldVer + ` --units /etc/systemd/system
-printf '%s\n' '[Unit]' 'Description=rpmgr connector (test)' 'After=network.target' '[Service]' 'ExecStart=/usr/local/bin/role-ready -addr 127.0.0.1:7384' 'Restart=always' '[Install]' 'WantedBy=multi-user.target' > /etc/systemd/system/rpmgr-connector.service
+printf '%s\n' '[Unit]' 'Description=rpmgr connector (test)' 'After=network.target' '[Service]' 'ExecStart=/usr/local/bin/role-ready -addr 127.0.0.1:7384' 'Restart=always' 'RestartSec=1' '[Install]' 'WantedBy=multi-user.target' > /etc/systemd/system/rpmgr-connector.service
 systemctl daemon-reload
 systemctl enable --now rpmgr-connector.service
 for i in $(seq 1 50); do curl -fsS http://127.0.0.1:7384/readyz >/dev/null 2>&1 && break; sleep 0.1; done
