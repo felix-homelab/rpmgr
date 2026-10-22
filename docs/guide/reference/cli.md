@@ -407,6 +407,7 @@ rpmgr updater <command>
 | Command | What it does |
 |---|---|
 | [`rpmgr updater apply`](#rpmgr-updater-apply) | Install the release the agent staged, as root, and roll back if a role is not ready |
+| [`rpmgr updater install`](#rpmgr-updater-install) | Record this installation for the updater, raise its floor and seq, and write its units, as root |
 
 ## rpmgr updater apply
 
@@ -422,6 +423,26 @@ rpmgr updater apply [flags]
 | `--staged string` | `/var/lib/rpmgr/update` | the directory the agent stages a release in |
 | `--state string` | `/var/lib/rpmgr-update` | the updater's own directory: install.json, state.json, staging/ |
 | `--status string` | `/run/rpmgr-update/status.json` | where the outcome is written for the agent |
+
+## rpmgr updater install
+
+Record this installation for the updater, raise its floor and seq, and write its units, as root.
+
+```text
+rpmgr updater install [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--etc string` | `/etc/rpmgr` | the boot files, whose roles are recorded |
+| `--floor string` |  | the installed release's version, the floor, with --seq |
+| `--method string` | `script` | how rpmgr was installed |
+| `--no-units` |  | write no units, as on a host without systemd |
+| `--path string` | `/usr/local/bin/rpmgr` | the installed binary |
+| `--role value` |  | a role of this host, besides those recorded and those with a boot file; repeat for more |
+| `--seq uint` |  | the seq of the installed release's verified manifest (default: none; a missing state starts at this binary's version) |
+| `--state string` | `/var/lib/rpmgr-update` | the updater's own directory: install.json, state.json |
+| `--units string` | `/etc/systemd/system` | where the units rpmgr-update.path and rpmgr-update.service go |
 
 ## rpmgr backup
 

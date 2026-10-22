@@ -147,13 +147,27 @@ install -d -m 0750 -o rpmgr -g rpmgr /var/lib/rpmgr
 install -d -m 0755 "$(dirname "$BIN")"
 install -m 0755 "$tmp/$artifact" "$BIN.new"
 mv -f "$BIN.new" "$BIN"
-# The install record, out of the service user's reach (docs/10-operations.md, "Filesystem
-# layout"): how rpmgr was installed and which build, which later runs and the updater keep. A
-# record that exists already stays: its variant is this one, and it may name the host's role.
-install -d -m 0700 "$STATE"
-[ -e "$STATE/install.json" ] ||
-  printf '{"method":"script","path":"%s","variant":"%s"}\n' "$BIN" "$variant" >"$STATE/install.json"
 "$BIN" version --verbose || die "the installed $BIN does not run"
+# The root updater (docs/10-operations.md, "Who installs the updater"), out of the service user's
+# reach: the binary records how it was installed and which build, keeping the roles recorded and
+# adding those with a boot file; it raises the floor and seq to this release's, never lowering
+# them, and writes the updater's units. A release from before the updater (0.1) gets the record
+# only, when there is none.
+install -d -m 0700 "$STATE"
+if "$BIN" updater install --help >/dev/null 2>&1; then
+  units=--no-units
+  command -v systemctl >/dev/null 2>&1 && units=
+  # shellcheck disable=SC2086 # $units is one flag or none
+  "$BIN" updater install --state "$STATE" --path "$BIN" --seq "$seq" --floor "$VERSION" $units >/dev/null ||
+    die "cannot install the updater's state and units"
+  if [ -z "$units" ] && ! { systemctl daemon-reload && systemctl enable rpmgr-update.service &&
+    systemctl enable --now rpmgr-update.path; } >/dev/null 2>&1; then
+    say "could not enable the updater; once systemd runs: systemctl enable rpmgr-update.service && systemctl enable --now rpmgr-update.path"
+  fi
+else
+  [ -e "$STATE/install.json" ] ||
+    printf '{"method":"script","path":"%s","variant":"%s"}\n' "$BIN" "$variant" >"$STATE/install.json"
+fi
 [ "$upgrade" = 1 ] || say "installed rpmgr $VERSION to $BIN"
 
 # The services that run the previous binary, in the upgrade order of docs/10-operations.md.
