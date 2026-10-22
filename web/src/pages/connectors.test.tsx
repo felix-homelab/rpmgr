@@ -72,7 +72,7 @@ describe("Connectors", () => {
     await waitFor(() => expect(within(table).getAllByRole("row")).toHaveLength(3));
     expect(within(table).getAllByRole("row").slice(1).map((r) => r.textContent)).toEqual([
       expect.stringMatching(/^db-host-1connected0\.1\.0.*site=office$/), // the badges' icons are drawings, hidden from screen readers
-      "labephemeraldisabledsite=home",
+      "labephemeraldisabled—site=home",
     ]);
     fireEvent.change(screen.getByLabelText("Search"), { target: { value: "site=home" } });
     await waitFor(() => expect(within(table).getAllByRole("row")).toHaveLength(2));

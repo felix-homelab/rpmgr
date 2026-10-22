@@ -20,9 +20,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
+import { UpdateState } from "@/components/update-state";
 import { GatewayGroupSchema, GatewayService, type Gateway, type GatewayGroup } from "@/gen/rpmgr/v1/gateway_pb";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
+import { useRolloutTargets } from "@/lib/updates";
 import { GatewayActions, GatewayForm, type Written } from "@/pages/gateway-actions";
 import { PortPools } from "@/pages/port-pools";
 import { useAgentNames, useGateways, useGroups } from "@/routes-data";
@@ -146,6 +148,7 @@ export function GatewayGroupPage() {
   const org = useOrg();
   const groups = useGroups(org?.orgId);
   const gateways = useGateways(org?.orgId);
+  const updates = useRolloutTargets();
   const group = groups.data?.find((g) => g.id === groupId);
   const names = useAgentNames(org?.orgId);
   const queryClient = useQueryClient();
@@ -175,7 +178,7 @@ export function GatewayGroupPage() {
         {members.length === 0 ? <p className="text-sm text-muted-foreground">{t("gateways.noGateways")}</p> : (
           <Table framed={false}>
             <THead>
-              <tr>{["name", "slot", "endpoints", "state", "version", "lastSeen", "actions"].map((c) => <TH key={c}>{t(`gateways.gw.${c}`)}</TH>)}</tr>
+              <tr>{["name", "slot", "endpoints", "state", "version", "update", "lastSeen", "actions"].map((c) => <TH key={c}>{t(`gateways.gw.${c}`)}</TH>)}</tr>
             </THead>
             <tbody>
               {members.map((g) => (
@@ -185,6 +188,7 @@ export function GatewayGroupPage() {
                   <TD className="font-mono text-xs">{g.tunnelEndpoints.join(", ")}</TD>
                   <TD><GatewayChip gateway={g} /></TD>
                   <TD>{g.status?.version}</TD>
+                  <TD><UpdateState target={updates.get(g.id)} belowMinimum={g.status?.belowMinAgentVersion} goodbyeReason={g.status?.lastGoodbyeReason} /></TD>
                   <TD>{when(g.status?.lastSeenTime)}</TD>
                   <TD><GatewayActions orgId={org.orgId} gateway={g} onEdit={() => setEditing(g.id)} onDone={(w) => void done(w)} /></TD>
                 </TR>

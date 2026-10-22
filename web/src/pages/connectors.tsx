@@ -7,12 +7,14 @@ import { EmptyState } from "@/components/empty-state";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
 import { Status } from "@/components/status";
+import { UpdateState } from "@/components/update-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import type { Connector } from "@/gen/rpmgr/v1/connector_pb";
 import { when } from "@/lib/format";
+import { useRolloutTargets } from "@/lib/updates";
 import { EnrollDialog } from "@/pages/enroll";
 import { EnrollmentTokens } from "@/pages/enrollment-tokens";
 import { useConnectors } from "@/routes-data";
@@ -63,6 +65,7 @@ export function Connectors() {
   const navigate = useNavigate({ from: "/connectors" });
   const org = useOrg();
   const list = useConnectors(org?.orgId);
+  const updates = useRolloutTargets();
   const set = (patch: Partial<ConnectorsSearch>) => void navigate({ search: (s: ConnectorsSearch) => ({ ...s, ...patch }), replace: true });
   const q = search.q?.toLowerCase() ?? "";
   const rows = (list.data ?? [])
@@ -105,7 +108,7 @@ export function Connectors() {
       ) : (
         <Table>
           <THead>
-            <tr>{["name", "session", "version", "lastSeen", "labels"].map((c) => <TH key={c}>{t(`connectors.columns.${c}`)}</TH>)}</tr>
+            <tr>{["name", "session", "version", "update", "lastSeen", "labels"].map((c) => <TH key={c}>{t(`connectors.columns.${c}`)}</TH>)}</tr>
           </THead>
           <tbody>
             {rows.map((c) => (
@@ -119,6 +122,7 @@ export function Connectors() {
                 </TD>
                 <TD><SessionChip connector={c} /></TD>
                 <TD>{c.session?.version}</TD>
+                <TD><UpdateState target={updates.get(c.id)} belowMinimum={c.session?.belowMinAgentVersion} goodbyeReason={c.session?.lastGoodbyeReason} /></TD>
                 <TD>{when(c.session?.lastSeenTime)}</TD>
                 <TD className="text-muted-foreground">{Object.entries(c.labels).map(([k, v]) => `${k}=${v}`).join(", ")}</TD>
               </TR>
