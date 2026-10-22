@@ -43,7 +43,8 @@ type RolloutOptions struct {
 // RolloutJob offers a running rollout's release to its current stage and follows each agent
 // (docs/04-security.md, "Over-the-air updates"; D121): the canaries, then the agents of the
 // percentage, then all. A gateway drains before it is offered the release, one at a time per
-// gateway group. A rollback or an agent that stops reporting pauses the rollout until an Instance
+// gateway group. A release the mirror does not hold yet is offered to no one until it does (D125).
+// A rollback or an agent that stops reporting pauses the rollout until an Instance
 // Admin resumes or cancels it; the end of the last stage completes it.
 func RolloutJob(o RolloutOptions) lease.Job {
 	if o.Now == nil {
@@ -89,7 +90,8 @@ func runRollout(ctx context.Context, o RolloutOptions) error {
 	if err != nil {
 		return err
 	}
-	plan := &rolloutPlan{now: now, version: ro.Edges.Release.Version, busyGroups: map[string]string{}}
+	plan := &rolloutPlan{now: now, version: ro.Edges.Release.Version, mirrored: ro.Edges.Release.MirroredAt != nil,
+		busyGroups: map[string]string{}}
 	if ro.State == rollout.StateRunning {
 		for _, t := range targets {
 			if t.AgentKind == rollouttarget.AgentKindGateway && (inFlight(t.State) || t.DrainStartedAt != nil) {
@@ -200,6 +202,7 @@ func readRolloutFacts(ctx context.Context, c *ent.Client, now time.Time, targets
 type rolloutPlan struct {
 	now        time.Time
 	version    string
+	mirrored   bool // whether the mirror holds the release, which is offered only then (D125)
 	updates    []rolloutTargetUpdate
 	enable     []string // gateways the job drained, whose target is now at rest
 	disable    []string // gateways to drain before they are offered the release
@@ -244,6 +247,8 @@ func (p *rolloutPlan) consider(ro *ent.Rollout, t *ent.RolloutTarget, f rolloutF
 			p.set(t, rollouttarget.StateSkipped, "the agent is offline")
 		case f.version == p.version:
 			p.set(t, rollouttarget.StateUpdated, "")
+		case !p.mirrored:
+			// The agent waits, and a gateway does not drain, until the mirror holds the release (D125).
 		case t.AgentKind == rollouttarget.AgentKindGateway:
 			p.drain(t, f)
 		default:

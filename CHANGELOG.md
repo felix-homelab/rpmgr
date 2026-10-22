@@ -23,7 +23,9 @@ Changes to the design documents are not recorded here: see the git history and t
 - Controller: the release mirror keeps the controller's own version, the version it ran before and
   the target of each running or paused rollout, with both variants; `ReleaseService.UploadRelease`
   and `rpmgr upload release` record a release for air-gapped installations or a signed downgrade,
-  and `rpmgr release import` still fills the mirror from a directory. (#839, #854)
+  and `rpmgr release import` still fills the mirror from a directory. A rollout may target a
+  recorded release the mirror does not hold yet: the mirror fetches it at once, also while the
+  release check is off, and agents are offered it once the mirror holds it. (#839, #854, #610)
 
 - CLI: `rpmgr list release`, `rpmgr upload release <dir>`, and the `rollout` commands (`create`,
   `get`, `list`, `list rollout-target`, `advance`, `pause`, `resume`, `cancel`) run a staged

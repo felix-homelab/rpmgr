@@ -18,7 +18,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
-// rolloutJobEnv is a fleet, a release and one rollout for the job's tests.
+// rolloutJobEnv is a fleet, a release the mirror holds and one rollout for the job's tests.
 type rolloutJobEnv struct {
 	t     *testing.T
 	db    *store.DB
@@ -39,7 +39,7 @@ func newRolloutJobEnv(t *testing.T) *rolloutJobEnv {
 	e.group = c.GatewayGroup.Create().SetOrgID(e.org).SetName("eu").SaveX(sys).ID
 	e.rel = c.Release.Create().SetVersion("0.2.0").SetChannel("stable").SetManifestSeq(1).
 		SetManifest([]byte(`{"seq":1,"version":"0.2.0"}`)).SetSignature([]byte("sig")).
-		SetSigningKeyStatement([]byte("statement")).SetStatementSignature([]byte("sig")).SetSource("upload").SaveX(sys)
+		SetSigningKeyStatement([]byte("statement")).SetStatementSignature([]byte("sig")).SetSource("upload").SetMirroredAt(e.now).SaveX(sys)
 	return e
 }
 
@@ -167,6 +167,46 @@ func TestRolloutJob_Stages(t *testing.T) {
 	got := e.db.Client().Rollout.GetX(e.sys, ro.ID)
 	if got.State != rollout.StateCompleted || got.Active {
 		t.Errorf("the rollout is %s active=%v, want completed and inactive", got.State, got.Active)
+	}
+}
+
+// TestRolloutJob_WaitsForMirror (D125): while the mirror does not hold the release, the job offers
+// it to no one and drains no gateway, but still records an agent that runs it and skips one that
+// is offline; once the mirror holds it, the job offers it.
+func TestRolloutJob_WaitsForMirror(t *testing.T) {
+	e := newRolloutJobEnv(t)
+	e.db.Client().Release.UpdateOne(e.rel).ClearMirroredAt().ExecX(e.sys)
+	con := e.connector("con", "0.1.0", true)
+	done := e.connector("done", "0.2.0", true)
+	offline := e.connector("offline", "0.1.0", false)
+	gw := e.gateway("", "gw1", 1, true, true, "0.1.0")
+	e.rollout(rollout.StageAll, 100, nil, map[string]rollouttarget.AgentKind{con: rollouttarget.AgentKindConnector,
+		done: rollouttarget.AgentKindConnector, offline: rollouttarget.AgentKindConnector, gw: rollouttarget.AgentKindGateway})
+
+	e.run()
+	if s := e.target(con).State; s != rollouttarget.StatePending {
+		t.Errorf("before the mirror holds the release, a connector is %s, want pending", s)
+	}
+	if tg := e.target(gw); tg.State != rollouttarget.StatePending || tg.DrainStartedAt != nil {
+		t.Errorf("before the mirror holds the release, a gateway is %s, drain %v; want pending, no drain", tg.State, tg.DrainStartedAt)
+	}
+	if !e.db.Client().Gateway.GetX(e.sys, gw).Enabled {
+		t.Error("the job drained a gateway before the mirror holds the release")
+	}
+	if s := e.target(done).State; s != rollouttarget.StateUpdated {
+		t.Errorf("an agent already on the release is %s, want updated", s)
+	}
+	if s := e.target(offline).State; s != rollouttarget.StateSkipped {
+		t.Errorf("an offline agent is %s, want skipped", s)
+	}
+
+	e.db.Client().Release.UpdateOne(e.rel).SetMirroredAt(e.now).ExecX(e.sys)
+	e.run()
+	if s := e.target(con).State; s != rollouttarget.StateOffered {
+		t.Errorf("once the mirror holds the release, a connector is %s, want offered", s)
+	}
+	if tg := e.target(gw); tg.DrainStartedAt == nil {
+		t.Errorf("once the mirror holds the release, the gateway does not drain: %s", tg.State)
 	}
 }
 

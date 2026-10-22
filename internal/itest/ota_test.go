@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
@@ -53,7 +54,7 @@ func TestOTA_OfferOnlyWithCapability(t *testing.T) {
 		rel, err := tx.Release.Create().SetVersion("0.2.0").SetChannel("stable").SetManifestSeq(7).
 			SetManifest([]byte(`{"seq":7,"version":"0.2.0","floor":"0.1.0","channel":"stable","issued_at":"2026-10-20T00:00:00Z","artifacts":[]}`)).
 			SetSignature([]byte("sig")).SetSigningKeyStatement([]byte(`{"statement":1}`)).SetStatementSignature([]byte("sig")).
-			SetSource("upload").Save(c.Sys)
+			SetSource("upload").SetMirroredAt(time.Now()).Save(c.Sys)
 		if err != nil {
 			return nil, err
 		}

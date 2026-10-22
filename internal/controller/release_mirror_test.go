@@ -15,9 +15,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
@@ -316,4 +318,98 @@ func TestNextReleaseCheck(t *testing.T) {
 	if wait, _ := controller.NextReleaseCheck(&release.RateLimitedError{Until: now.Add(72 * time.Hour)}, 0, now); wait != 24*time.Hour {
 		t.Errorf("rate-limited for days: %v", wait)
 	}
+}
+
+// TestCheckRelease_RolloutBeforeMirror (D125): a running rollout's target the mirror does not hold,
+// a signed downgrade below the version the controller ran before, re-signed with a higher seq than
+// the release source's and uploaded, is mirrored with the uploaded signed files and the source's
+// artifacts, also with the release check off, and marked mirrored; later checks keep it while the
+// rollout runs, and remove it and its mark once the rollout ended.
+func TestCheckRelease_RolloutBeforeMirror(t *testing.T) {
+	e := newMirrorEnv(t, "1.4.2")
+	e.releases["1.4.2"] = signedRelease(t, "1.4.2", 87, release.Stable)
+	if err := controller.CheckRelease(e.sys, e.o); err != nil {
+		t.Fatal(err)
+	}
+	e.o.Mirror.Version = "1.5.0" // upgraded from 1.4.2
+	if _, err := settings.UpdateInstance(e.sys, e.db, &rpmgrv1.InstanceSettings{ReleaseCheck: proto.Bool(false)},
+		&fieldmaskpb.FieldMask{Paths: []string{"release_check"}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	e.releases["1.3.0"] = signedRelease(t, "1.3.0", 80, release.Stable)
+	up := signedRelease(t, "1.3.0", 120, release.Stable).files
+	rel, err := e.db.Client().Release.Create().SetVersion("1.3.0").SetChannel(entrelease.ChannelStable).SetManifestSeq(120).
+		SetManifest(up["manifest.json"]).SetSignature(up["manifest.json.minisig"]).SetSigningKeyStatement(up["signing-key.json"]).
+		SetStatementSignature(up["signing-key.json.minisig"]).SetSource(entrelease.SourceUpload).Save(e.sys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ro := e.db.Client().Rollout.Create().SetReleaseID(rel.ID).SetCreatedBy("usr_admin").SaveX(e.sys)
+
+	for range 2 {
+		if err := controller.CheckRelease(e.sys, e.o); err != nil {
+			t.Fatal(err)
+		}
+		if got := e.dirs(t); got != "1.3.0 1.4.2" {
+			t.Fatalf("kept %s", got)
+		}
+		man, err := os.ReadFile(filepath.Join(e.o.Mirror.Dir, "1.3.0", "manifest.json"))
+		if err != nil || !bytes.Equal(man, up["manifest.json"]) {
+			t.Fatalf("the mirror serves the manifest %s, %v, not the uploaded one", man, err)
+		}
+		if b, err := os.ReadFile(filepath.Join(e.o.Mirror.Dir, "1.3.0", "rpmgr-1.3.0-linux-amd64")); err != nil ||
+			!bytes.Equal(b, e.releases["1.3.0"].files["rpmgr-1.3.0-linux-amd64"]) {
+			t.Fatalf("the artifact: %q %v", b, err)
+		}
+		if r := e.rows(t)["1.3.0"]; r.MirroredAt == nil || r.ManifestSeq != 120 || r.Source != entrelease.SourceUpload {
+			t.Fatalf("the release row: %+v", r)
+		}
+	}
+	if e.releases["1.3.0"].opened["manifest.json"] == 0 {
+		t.Error("the source's manifest was never compared")
+	}
+
+	e.db.Client().Rollout.UpdateOneID(ro.ID).SetState(rollout.StateCancelled).ExecX(e.sys)
+	if err := controller.CheckRelease(e.sys, e.o); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.dirs(t); got != "1.4.2" {
+		t.Errorf("kept %s after the rollout ended", got)
+	}
+	if r := e.rows(t)["1.3.0"]; r.MirroredAt != nil {
+		t.Errorf("still marked mirrored: %+v", r)
+	}
+}
+
+// countingLister lists nothing and counts, safely across goroutines, how often it was asked.
+type countingLister struct{ asked atomic.Int32 }
+
+func (c *countingLister) List(context.Context) ([]release.Listed, error) {
+	c.asked.Add(1)
+	return nil, nil
+}
+
+// TestReleaseCheck_Wake (D125): a wake-up starts a check at once instead of a day later.
+func TestReleaseCheck_Wake(t *testing.T) {
+	e := newMirrorEnv(t, "1.4.2")
+	e.releases["1.4.2"] = signedRelease(t, "1.4.2", 87, release.Stable)
+	lister := &countingLister{}
+	wake := make(chan struct{}, 1)
+	e.o.Lister, e.o.Wake = lister, wake
+	ctx, cancel := context.WithCancel(e.sys)
+	done := make(chan struct{})
+	go func() { controller.ReleaseCheck(ctx, e.o); close(done) }()
+	defer func() { cancel(); <-done }()
+	wait := func(n int32) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+			if lister.asked.Load() >= n {
+				return
+			}
+		}
+		t.Fatalf("%d checks, want %d", lister.asked.Load(), n)
+	}
+	wait(1)
+	wake <- struct{}{}
+	wait(2)
 }

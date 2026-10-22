@@ -31,8 +31,8 @@ service ReleaseService {
     };
   }
   // CreateRollout starts a rollout of a release with its canary agents. It is refused for a
-  // release newer than the controller, one the mirror does not hold yet, and while another
-  // rollout runs or is paused.
+  // release newer than the controller and while another rollout runs or is paused. A release the
+  // mirror does not hold yet is mirrored now, and offered once the mirror holds it (D125).
   rpc CreateRollout(CreateRolloutRequest) returns (CreateRolloutResponse) {
     option (rpmgr.v1.authz) = {
       permission: "instance.admin"
