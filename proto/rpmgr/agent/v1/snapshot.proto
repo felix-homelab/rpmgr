@@ -46,6 +46,33 @@ message Snapshot {
   // The key_id of the key that signs it: a new signing key changes the snapshot's hash, so every
   // agent receives and keeps a copy signed by the new key.
   string signing_key_id = 5;
+  // The release the agent is offered, only to an agent with the capability "ota"
+  // (docs/04-security.md, "Over-the-air updates"); unset when there is none.
+  ReleaseOffer release_offer = 6;
+}
+
+// ReleaseOffer is a release the controller offers an agent in a staged rollout. The agent stages
+// it for the root updater from the controller's /dl/<version>/ and trusts the release's own
+// signatures, not the offer: the offer only says what to fetch.
+message ReleaseOffer {
+  // The release's version, such as 1.5.0.
+  string version = 1;
+  // The seq of its signed manifest.
+  uint64 seq = 2;
+  // Its files under /dl/<version>/: the signing-key statement, the manifest, their signatures
+  // and every artifact the manifest names.
+  repeated ReleaseFile files = 3;
+}
+
+// ReleaseFile is one file of an offered release.
+message ReleaseFile {
+  // The file's name in /dl/<version>/, such as manifest.json or rpmgr-1.5.0-linux-amd64; never a
+  // path.
+  string name = 1;
+  // Its size in bytes.
+  uint64 size = 2;
+  // Its SHA-256.
+  bytes sha256 = 3;
 }
 
 // Resource is one item of a snapshot. The kinds are added by the slices that implement them.

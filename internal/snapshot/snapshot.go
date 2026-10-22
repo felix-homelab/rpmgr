@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/snapsig"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -40,6 +41,9 @@ type Compiler struct {
 	// agents try them. Like a Source it reads only through tx, so that every replica compiles the
 	// same snapshot.
 	Endpoints func(ctx context.Context, tx *ent.Tx) ([]string, error)
+	// Offer, if set, returns the release the agent is offered, or nil (ReleaseOffer). It is asked
+	// only for agents with the capability "ota" and, like a Source, reads only through tx.
+	Offer func(ctx context.Context, tx *ent.Tx, a Agent) (*agentv1.ReleaseOffer, error)
 }
 
 // Compile reads one consistent snapshot of the database and returns the agent's snapshot at its
@@ -65,6 +69,13 @@ func (c *Compiler) compile(ctx context.Context, tx *ent.Tx, rev store.Revision, 
 			return nil, err
 		}
 		snap.ControllerEndpoints = slices.Clone(eps)
+	}
+	if c.Offer != nil && a.Has(agentproto.CapOTA) {
+		offer, err := c.Offer(ctx, tx, a)
+		if err != nil {
+			return nil, err
+		}
+		snap.ReleaseOffer = offer
 	}
 	for _, src := range c.Sources {
 		rs, err := src(ctx, tx, a)

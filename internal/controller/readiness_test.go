@@ -246,6 +246,17 @@ func TestDataSessions(t *testing.T) {
 				t.Fatalf("%s is kept", k)
 			}
 		}
+		// A Status with only the update state lists no data sessions and removes none: the next
+		// report finds the sessions as they were.
+		send(t, gst, &agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{
+			Update: &agentv1.UpdateState{Version: "0.2.0", Phase: agentv1.UpdatePhase_UPDATE_PHASE_STAGED}}}})
+		report(gst, ds("con_a", quic, 31*time.Millisecond), ds("con_a", h2, 0))
+		got = waitFor("the report after an update state", func(m map[string]*ent.DataSession) bool {
+			return len(m) == 2 && m[gw.ID+"/con_a/quic"] != nil && m[gw.ID+"/con_a/quic"].RttMs == 31
+		})
+		if a := got[gw.ID+"/con_a/quic"]; !a.EstablishedAt.Equal(first.EstablishedAt) {
+			t.Fatalf("the update state ended the data sessions: %+v, first %+v", a, first)
+		}
 
 		var names []string
 		for i := range 5000 {
