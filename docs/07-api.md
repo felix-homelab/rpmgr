@@ -341,7 +341,7 @@ Defined in [03-connections.md](03-connections.md); summarised here for reference
 | Control `Session` | `Hello` / `Welcome` | both | Identity, last applied revision, capabilities, versions, clocks |
 | | `Snapshot` | controller → agent | Desired state at a revision, signed; with the capability `ota`, the release the agent is offered (version, `seq`, its files under `/dl/` with sizes and SHA-256), Phase 2 |
 | | `Applied` / `Rejected` | agent → controller | Result of applying a revision |
-| | `Status` | agent → controller | Health, route readiness, counters; with `ota`, the update state (available, downloading, staged, and the updater's outcome) |
+| | `Status` | agent → controller | Health, route readiness, counters; with `ota`, the update state (available, declined, downloading, staged or failed, and the updater's outcome) |
 | | `Open` | controller → agent | Start an imperative operation (logs, diagnostics, shell) |
 | | `Drain` / `Goodbye` | controller → agent | Reconnect elsewhere / session ends (superseded, revoked, upgrade required) |
 | | `DenyListUpdate` | controller → agent | Revocations; applied unconditionally, independent of snapshots |

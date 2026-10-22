@@ -28,6 +28,14 @@ const (
 	CapProbeTarget        = "probe.target"        // reads the certificate a target presents (ProbeTarget)
 )
 
+// The capability strings of Phase 2 that are not route features, each checked where its feature
+// is used (docs/03-connections.md, "Versioning and capabilities").
+const (
+	// CapOTA: the agent stages the release its snapshot offers for the root updater and reports
+	// the update state in Status; an agent without it is never offered a release.
+	CapOTA = "ota"
+)
+
 // Phase1 lists every capability of Phase 1 agents.
 var Phase1 = []string{CapTunnelQUIC, CapTunnelH2, CapUDPDatagram, CapUDPOversizeStream,
 	CapProxyProtoV1, CapProxyProtoV2, CapControlPassthrough, CapProbeTarget}
