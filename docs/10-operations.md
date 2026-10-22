@@ -258,6 +258,9 @@ RestartSec=2s
      records: if the new binary is in place, it restarts and checks the roles as in step 6 and
      rolls back if one is not ready; if the run ended before the rename, nothing changed and the
      record goes. A staged release that is the installed binary already is not installed again.
+     Without a staged `manifest.json`, which the agent writes last, nothing is staged: the run
+     ends there and writes no status, so it neither reports `refused` at every boot nor replaces
+     an earlier outcome; a staged set that does not verify is still `refused`.
 
   The role service's `NoNewPrivileges=yes` and `ProtectSystem=strict` stay intact; the service user
   can never write the binary or the updater state.

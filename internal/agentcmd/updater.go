@@ -121,6 +121,10 @@ func updaterApply() *cli.Command {
 			if err := a.Apply(ctx); err != nil {
 				return err
 			}
+			if !a.Reported() {
+				_, err := fmt.Fprintln(env.Stdout, "Nothing to install: no release is staged, or the staged one is installed already.")
+				return err
+			}
 			st, err := update.ReadStatus(a.Status)
 			if err != nil {
 				return err

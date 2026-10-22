@@ -522,13 +522,6 @@ func TestApply_RefusedHosts(t *testing.T) {
 			t.Errorf("restarted %v", got)
 		}
 	})
-	t.Run("nothing staged", func(t *testing.T) {
-		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, nil)
-		if err := i.a.Apply(context.Background()); err == nil {
-			t.Fatal("Apply succeeded with nothing staged")
-		}
-		i.status(update.Refused)
-	})
 	t.Run("a relative binary path", func(t *testing.T) {
 		i := newInstalled(t, hostOpts{install: `{"method":"script","path":"rpmgr","variant":"full","roles":["connector"]}`},
 			"1.1.0", []string{"connector"}, nil)
@@ -604,4 +597,67 @@ func TestSystemd_State(t *testing.T) {
 	if _, err := s.State(context.Background(), "rpmgr-connector.service"); err == nil {
 		t.Error("State succeeded without an ActiveState")
 	}
+}
+
+// TestApply_NothingStaged: the run at every boot, and a start of the path unit while the agent is
+// still staging, find no manifest: the updater does nothing and reports nothing, so the outcome of
+// an earlier run stays for the agent, also on a host that the updater refuses. A staged set that
+// does not verify is still refused and reported.
+func TestApply_NothingStaged(t *testing.T) {
+	earlier := `{"state":"updated","version":"1.1.0","previous":"1.0.0","at":"2026-10-19T08:00:00Z"}`
+	for _, tc := range []struct {
+		name    string
+		install string
+		prepare func(i *installed)
+	}{
+		{name: "empty staging directory", prepare: func(*installed) {}},
+		{name: "no staging directory", prepare: func(i *installed) {
+			if err := os.Remove(i.u.Staged); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "manifest not written yet", prepare: func(i *installed) {
+			i.stage(rel{version: "1.2.0", seq: 6})
+			if err := os.Remove(filepath.Join(i.u.Staged, "manifest.json")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "controller host", install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","roles":["controller"]}`,
+			prepare: func(*installed) {}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			i := newInstalled(t, hostOpts{install: tc.install}, "1.1.0", []string{"connector"}, nil)
+			tc.prepare(i)
+			mustMkdir(t, filepath.Dir(i.a.Status), 0o755)
+			mustWrite(t, i.a.Status, earlier, 0o644)
+			if err := i.a.Apply(context.Background()); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			if i.a.Reported() {
+				t.Error("Reported with nothing staged")
+			}
+			if got, err := os.ReadFile(i.a.Status); err != nil || string(got) != earlier {
+				t.Errorf("the status file became %q, %v; the earlier outcome must stay", got, err)
+			}
+			if r := i.svc.restarted(); len(r) > 0 {
+				t.Errorf("restarted %q", r)
+			}
+			if tc.install == "" {
+				i.runs("1.1.0")
+			}
+		})
+	}
+	t.Run("staged but invalid", func(t *testing.T) {
+		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, nil)
+		i.stage(rel{version: "1.2.0", seq: 6})
+		mustWrite(t, filepath.Join(i.u.Staged, "manifest.json"), `{"seq":6}`, 0o640)
+		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRefused) {
+			t.Fatalf("Apply = %v; want a refusal", err)
+		}
+		if !i.a.Reported() {
+			t.Error("a refusal was not reported")
+		}
+		i.status(update.Refused)
+		i.runs("1.1.0")
+	})
 }

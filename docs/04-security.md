@@ -1023,6 +1023,8 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    the version as failed. Before the rename it records the install as pending in its own
    directory, so that a run that a crash or a reboot interrupts is finished by the next one: the
    updater also runs once at boot, checks the roles and rolls back if one is not ready.
+   A run that finds no staged manifest (the agent writes it last), as at boot or while the agent
+   is still staging, does nothing else and reports nothing.
 7. The updater writes the outcome to `/run/rpmgr-update/status.json` (root-owned, readable by the
    service user): `updated`, `rolled_back`, `rollback_failed` (the previous binary could not be put
    back, which needs an operator) or `refused`, with the version, the previous one and a
