@@ -17,12 +17,12 @@ import (
 // setupHost is the host `rpmgr setup` changes; tests replace it. Setup gives it its Server.
 var setupHost = setup.Host{}
 
-// Setup is `rpmgr setup`, with server the steps of a controller and an all-in-one, the full
-// build's (package serversetup), and roles the roles the build sets up, all of them when none are
-// given. The connector-only build passes no server and the connector role
-// (docs/02-architecture.md, "Roles").
-func Setup(server setup.Server, roles ...setup.Role) *cli.Command {
-	setupHost.Server, setupHost.Roles = server, roles
+// Setup is `rpmgr setup`, with variant the build's, full or connector, server the steps of a
+// controller and an all-in-one, the full build's (package serversetup), and roles the roles the
+// build sets up, all of them when none are given. The connector-only build passes no server and
+// the connector role (docs/02-architecture.md, "Roles").
+func Setup(variant string, server setup.Server, roles ...setup.Role) *cli.Command {
+	setupHost.Variant, setupHost.Server, setupHost.Roles = variant, server, roles
 	return setupCommand()
 }
 
@@ -185,6 +185,9 @@ func printSetup(w io.Writer, v setup.Values, r setup.Result) error {
 			b.WriteString("; allow more targets with rpmgr policy allow-target <target>")
 		}
 		b.WriteString(".\n")
+		if r.NoUpdaterState {
+			b.WriteString("Over-the-air updates stay off until an install script records a release: run its install.sh --upgrade.\n")
+		}
 	}
 	_, err := io.WriteString(w, b.String())
 	return err

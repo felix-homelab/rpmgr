@@ -22,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 	"github.com/felix-homelab/rpmgr/internal/token"
+	"github.com/felix-homelab/rpmgr/internal/update"
 )
 
 // fakeHost is a host in a temporary directory: it records the commands setup runs and enrolls
@@ -43,7 +44,8 @@ func newHost(t *testing.T, f *fakeHost) setup.Host {
 		t.Fatal(err)
 	}
 	return setup.Host{
-		Paths:  setup.Paths{Etc: filepath.Join(d, "etc"), Lib: filepath.Join(d, "lib"), Units: filepath.Join(d, "units"), Bin: bin},
+		Paths: setup.Paths{Etc: filepath.Join(d, "etc"), Lib: filepath.Join(d, "lib"), Units: filepath.Join(d, "units"), Bin: bin,
+			UpdateState: filepath.Join(d, "rpmgr-update")},
 		Server: serversetup.Server{},
 		Run: func(_ context.Context, name string, args ...string) error {
 			f.mu.Lock()
@@ -285,7 +287,8 @@ func TestPlan_AllInOne(t *testing.T) {
 	if err != nil || !strings.Contains(string(unit), "ExecStart="+h.Paths.Bin+" all-in-one") || strings.Contains(string(unit), "LoadCredentialEncrypted") {
 		t.Errorf("unit %q %v", unit, err)
 	}
-	if !slices.EqualFunc(f.commands, [][]string{{"systemctl", "daemon-reload"}, {"systemctl", "enable", "--now", "rpmgr-all-in-one"}}, slices.Equal) ||
+	if !slices.EqualFunc(f.commands, [][]string{{"systemctl", "daemon-reload"}, {"systemctl", "enable", "rpmgr-update.service"}, {"systemctl", "enable", "--now", "rpmgr-update.path"}, {"systemctl", "daemon-reload"},
+		{"systemctl", "enable", "--now", "rpmgr-all-in-one"}}, slices.Equal) ||
 		!slices.Equal(f.ready, []string{"127.0.0.1:17381"}) {
 		t.Errorf("commands %q, ready %q", f.commands, f.ready)
 	}
@@ -319,6 +322,13 @@ func TestPlan_ControllerACME(t *testing.T) {
 	}
 	if len(f.commands) != 0 || len(f.ready) != 0 {
 		t.Errorf("without a unit: commands %q, ready %q", f.commands, f.ready)
+	}
+	// The updater's record names the controller, whose releases it refuses; no unit without --no-unit.
+	if in, err := update.ReadInstall(h.Paths.UpdateState); err != nil || strings.Join(in.Roles, ",") != "controller" || in.Method != "setup" {
+		t.Errorf("updater record %+v, %v", in, err)
+	}
+	if _, err := os.Stat(filepath.Join(h.Paths.Units, "rpmgr-update.path")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("--no-unit installed the updater's units: %v", err)
 	}
 }
 
@@ -439,10 +449,89 @@ func TestPlan_Connector(t *testing.T) {
 	if err != nil || !strings.Contains(string(unit), "ExecStart="+h.Paths.Bin+" connector") {
 		t.Errorf("unit %q %v", unit, err)
 	}
-	if !slices.EqualFunc(f.commands, [][]string{{"systemctl", "daemon-reload"}, {"systemctl", "enable", "--now", "rpmgr-connector"}}, slices.Equal) ||
+	if !slices.EqualFunc(f.commands, [][]string{{"systemctl", "daemon-reload"}, {"systemctl", "enable", "rpmgr-update.service"}, {"systemctl", "enable", "--now", "rpmgr-update.path"}, {"systemctl", "daemon-reload"},
+		{"systemctl", "enable", "--now", "rpmgr-connector"}}, slices.Equal) ||
 		!slices.Equal(f.ready, []string{"127.0.0.1:7383"}) || r.Unit != "rpmgr-connector" {
 		t.Errorf("commands %q, ready %q, unit %q", f.commands, f.ready, r.Unit)
 	}
+}
+
+// TestPlan_Updater (docs/10-operations.md, "Who installs the updater"): setup records the role for
+// the root updater, with the build's variant, and installs and enables its units. Setup knows no
+// release seq: on a host where an install script ran, the record keeps the script's method and its
+// state stays; without such a state the result says that the updater refuses every release. A
+// record of another variant stops setup.
+func TestPlan_Updater(t *testing.T) {
+	gateway := func(t *testing.T, h setup.Host) (setup.Result, error) {
+		t.Helper()
+		p, err := setup.New(setup.Values{Role: setup.Gateway, ControllerURL: "https://panel.example.com", Pin: pin(t), Token: newToken(t)}, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if steps := strings.Join(p.Steps(), "\n"); !strings.Contains(steps, "record the gateway role for the updater in "+h.Paths.UpdateState) {
+			t.Errorf("steps:\n%s", steps)
+		}
+		return p.Run(context.Background(), nil)
+	}
+	t.Run("binary installed by hand", func(t *testing.T) {
+		h := newHost(t, &fakeHost{})
+		h.Variant = "connector" // as the connector-only build's setup; it sets up connectors only, which the record does not check
+		r, err := gateway(t, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := update.ReadInstall(h.Paths.UpdateState)
+		if err != nil || in.Method != "setup" || in.Path != h.Paths.Bin || in.Variant != "connector" || strings.Join(in.Roles, ",") != "gateway" {
+			t.Errorf("record %+v, %v", in, err)
+		}
+		if !r.NoUpdaterState {
+			t.Error("the result does not say that the updater has no state")
+		}
+		svc, err := os.ReadFile(filepath.Join(h.Paths.Units, "rpmgr-update.service"))
+		if err != nil || !strings.Contains(string(svc), "ExecStart="+h.Paths.Bin+" updater apply") {
+			t.Errorf("updater unit %q, %v", svc, err)
+		}
+		if !slices.Contains(r.Written, h.Paths.UpdateState) || !slices.Contains(r.Written, filepath.Join(h.Paths.Units, "rpmgr-update.path")) {
+			t.Errorf("written %q", r.Written)
+		}
+	})
+	t.Run("after an install script", func(t *testing.T) {
+		h := newHost(t, &fakeHost{})
+		if err := os.Mkdir(h.Paths.UpdateState, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		write(t, filepath.Join(h.Paths.UpdateState, "install.json"), `{"method":"script","path":"`+h.Paths.Bin+`","variant":"full"}`)
+		write(t, filepath.Join(h.Paths.UpdateState, "state.json"), `{"seq":87,"floor":"1.4.2"}`)
+		for _, f := range []string{"install.json", "state.json"} {
+			if err := os.Chmod(filepath.Join(h.Paths.UpdateState, f), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		r, err := gateway(t, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := update.ReadInstall(h.Paths.UpdateState)
+		if err != nil || in.Method != "script" || strings.Join(in.Roles, ",") != "gateway" {
+			t.Errorf("record %+v, %v", in, err)
+		}
+		if st, err := update.ReadState(h.Paths.UpdateState); err != nil || st.Seq != 87 || st.Floor != "1.4.2" || r.NoUpdaterState {
+			t.Errorf("state %+v, %v, no state %v", st, err, r.NoUpdaterState)
+		}
+	})
+	t.Run("another variant", func(t *testing.T) {
+		h := newHost(t, &fakeHost{})
+		if err := os.Mkdir(h.Paths.UpdateState, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		write(t, filepath.Join(h.Paths.UpdateState, "install.json"), `{"method":"script","path":"`+h.Paths.Bin+`","variant":"connector"}`)
+		if err := os.Chmod(filepath.Join(h.Paths.UpdateState, "install.json"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := gateway(t, h); err == nil || !strings.Contains(err.Error(), "records the connector build") {
+			t.Errorf("run: %v", err)
+		}
+	})
 }
 
 // TestPlan_Again: run again with --force, setup keeps the old boot file beside the new one,

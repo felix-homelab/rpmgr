@@ -23,7 +23,7 @@ func run(args ...string) (int, string, string) {
 
 // TestRoleCommandsAbsent: the controller, the gateway and the all-in-one are not in the
 // connector-only build; calling one says so and exits 2, as 16 has it for a command of another
-// build. Setup and the systemd unit offer the connector only.
+// build. Setup and the systemd unit offer the connector only, besides the updater's units.
 func TestRoleCommandsAbsent(t *testing.T) {
 	for _, role := range []string{"controller", "gateway", "all-in-one"} {
 		code, _, errOut := run(role)
@@ -46,6 +46,16 @@ func TestRoleCommandsAbsent(t *testing.T) {
 	}
 	if code, out, _ := run("systemd-unit", "connector"); code != 0 || !strings.Contains(out, "ExecStart=/usr/local/bin/rpmgr connector") {
 		t.Errorf("rpmgr systemd-unit connector: %d %q", code, out)
+	}
+	// The root updater replaces this build too (docs/02-architecture.md, "Roles").
+	if code, out, _ := run("systemd-unit", "--bin", "/usr/local/bin/rpmgr", "update"); code != 0 ||
+		!strings.Contains(out, "ExecStart=/usr/local/bin/rpmgr updater apply") {
+		t.Errorf("rpmgr systemd-unit update: %d %q", code, out)
+	}
+	for _, c := range []string{"apply", "install"} {
+		if code, _, errOut := run("updater", c, "--help"); code != 0 {
+			t.Errorf("rpmgr updater %s --help: %d %q", c, code, errOut)
+		}
 	}
 	// The resource commands of the public API, the controller's administration and the importer
 	// are not in the tree at all.

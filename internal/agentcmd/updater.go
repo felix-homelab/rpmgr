@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -21,9 +22,86 @@ import (
 
 // Updater is `rpmgr updater`: the root-owned updater that rpmgr-update.service runs
 // (docs/04-security.md, "Over-the-air updates"). It is named updater, so that it never reads as
-// `rpmgr update <kind>` (D51).
-func Updater() *cli.Command {
-	return &cli.Command{Name: "updater", Summary: "the root-owned updater of a Linux host", Sub: []*cli.Command{updaterApply()}}
+// `rpmgr update <kind>` (D51). variant is the build's, full or connector, which install records.
+func Updater(variant string) *cli.Command {
+	return &cli.Command{Name: "updater", Summary: "the root-owned updater of a Linux host",
+		Sub: []*cli.Command{updaterApply(), updaterInstall(variant)}}
+}
+
+// isRoot reports whether the command runs as root; tests replace it.
+var isRoot = func() bool { return os.Geteuid() == 0 }
+
+// updaterInstall is `rpmgr updater install`, which the install scripts run with the binary they
+// installed (docs/10-operations.md, "Who installs the updater"): it records the installation with
+// this build's variant, initialises or raises the state from the release's verified manifest, and
+// writes the updater's units. The scripts enable them.
+func updaterInstall(variant string) *cli.Command {
+	in := update.Installed{Install: update.Install{Variant: variant}}
+	var state, etc, unitDir string
+	var roles cli.List
+	var noUnits bool
+	return &cli.Command{
+		Name:    "install",
+		Summary: "record this installation for the updater, raise its floor and seq, and write its units, as root",
+		Flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&state, "state", update.StateDir, "the updater's own directory: install.json, state.json")
+			fs.StringVar(&in.Method, "method", "script", "how rpmgr was installed")
+			fs.StringVar(&in.Path, "path", "/usr/local/bin/rpmgr", "the installed binary")
+			fs.Var(&roles, "role", "a role of this host, besides those recorded and those with a boot file; repeat for more")
+			fs.StringVar(&etc, "etc", BootDir, "the boot files, whose roles are recorded")
+			fs.Uint64Var(&in.Seq, "seq", 0, "the seq of the installed release's verified manifest (0: leave the state as it is)")
+			fs.StringVar(&in.Floor, "floor", "", "the installed release's version, the floor, with --seq")
+			fs.StringVar(&unitDir, "units", "/etc/systemd/system", "where the units rpmgr-update.path and rpmgr-update.service go")
+			fs.BoolVar(&noUnits, "no-units", false, "write no units, as on a host without systemd")
+		},
+		Run: func(_ context.Context, env *cli.Env, args []string) error {
+			if len(args) != 0 {
+				return cli.Usagef("updater install takes no arguments")
+			}
+			if in.Seq != 0 && in.Floor == "" {
+				return cli.Usagef("--seq needs --floor")
+			}
+			if !isRoot() {
+				return errors.New("run it as root: the updater trusts only files root owns")
+			}
+			in.Roles = append(bootRoles(etc), roles...)
+			rec, st, err := update.Record(state, in)
+			if err != nil {
+				return err
+			}
+			p := func(format string, a ...any) { _, _ = fmt.Fprintf(env.Stdout, format+"\n", a...) }
+			recorded := "none yet"
+			if len(rec.Roles) > 0 {
+				recorded = strings.Join(rec.Roles, ", ")
+			}
+			p("Recorded in %s: the %s build at %s, roles: %s.", filepath.Join(state, "install.json"), rec.Variant, rec.Path, recorded)
+			if st.Seq == 0 {
+				p("No updater state yet: the updater refuses every release until an install script records the seq of a release.")
+			} else {
+				p("Updater state: manifest seq %d, version floor %s.", st.Seq, st.Floor)
+			}
+			if noUnits {
+				return nil
+			}
+			written, err := update.WriteUnits(unitDir, rec.Path)
+			if err != nil {
+				return err
+			}
+			p("Wrote %s.", strings.Join(written, " and "))
+			return nil
+		},
+	}
+}
+
+// bootRoles are the roles whose boot file is in dir.
+func bootRoles(dir string) []string {
+	var roles []string
+	for _, r := range update.Roles {
+		if fileExists(filepath.Join(dir, r+".yaml")) {
+			roles = append(roles, r)
+		}
+	}
+	return roles
 }
 
 func updaterApply() *cli.Command {

@@ -198,10 +198,18 @@ The plan's steps, in order; setup leaves out those it does not need:
    names it.
 6. **Sets the instance's ACME directory and e-mail address,** if you gave either, before the first
    start, so that the first certificate comes from that CA.
-7. **Installs the unit** `/etc/systemd/system/rpmgr-<role>.service` and runs
+7. **Installs the updater:** records the role for the updater in `/var/lib/rpmgr-update/`, beside
+   the roles recorded already, and, unless `--no-unit`, writes and enables its units
+   `rpmgr-update.path` and `rpmgr-update.service`
+   ([10](../../10-operations.md#hardened-systemd-units)). Setup does not know which release the
+   binary came from: the updater's floor and release number stay as an install script wrote them.
+   On a host whose binary no install script installed, setup says that automatic updates stay off
+   until you run the global install script with `--upgrade`. A controller or all-in-one is always
+   upgraded by hand ([Upgrades](upgrades.md)).
+8. **Installs the unit** `/etc/systemd/system/rpmgr-<role>.service` and runs
    `systemctl daemon-reload` and `systemctl enable --now rpmgr-<role>`; on a second run with
    `--force` also `systemctl restart`, so the role reads its new boot file.
-8. **Waits until** the admin listener's `/readyz` reports ready. If it does not, setup names
+9. **Waits until** the admin listener's `/readyz` reports ready. If it does not, setup names
    `journalctl -u rpmgr-<role>`, which says why.
 
 ## What setup prints
