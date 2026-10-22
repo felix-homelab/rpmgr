@@ -741,7 +741,7 @@ service that still runs the previous binary, with the command that restarts it.
   S3-compatible sink by a PUT with `If-None-Match: *`, which fails with 412. Both kept two racing
   shippers free of gaps and duplicates in S9, the S3 sink on MinIO ([S9](spikes/S9.md)).
 - **Singleton jobs** (ACME orders, CA rotation, ephemeral purge, metric rollups, audit
-  checkpoints, the DNS job) run under a database **lease with a fencing token**: a replica that lost
+  checkpoints, the DNS job, rollouts) run under a database **lease with a fencing token**: a replica that lost
   its lease cannot commit work started under it. Each time a replica takes a job's lease it is
   granted the job's system scope, which the audit log records; lease timing is in
   [03](03-connections.md#timeouts-keepalive-and-backoff).

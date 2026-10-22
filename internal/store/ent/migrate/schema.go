@@ -1181,6 +1181,7 @@ var (
 		{Name: "state", Type: field.TypeEnum, Enums: []string{"pending", "offered", "staged", "updated", "rolled_back", "refused", "skipped", "stalled"}, Default: "pending"},
 		{Name: "reason", Type: field.TypeString, Default: ""},
 		{Name: "version_before", Type: field.TypeString, Default: ""},
+		{Name: "drain_started_at", Type: field.TypeTime, Nullable: true},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "rollout_id", Type: field.TypeString},
 	}
@@ -1192,7 +1193,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "rollout_targets_rollouts_rollout",
-				Columns:    []*schema.Column{RolloutTargetsColumns[9]},
+				Columns:    []*schema.Column{RolloutTargetsColumns[10]},
 				RefColumns: []*schema.Column{RolloutsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -1201,7 +1202,7 @@ var (
 			{
 				Name:    "rollouttarget_rollout_id_agent_id",
 				Unique:  true,
-				Columns: []*schema.Column{RolloutTargetsColumns[9], RolloutTargetsColumns[1]},
+				Columns: []*schema.Column{RolloutTargetsColumns[10], RolloutTargetsColumns[1]},
 			},
 			{
 				Name:    "rollouttarget_agent_id",

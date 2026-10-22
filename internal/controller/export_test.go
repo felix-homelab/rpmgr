@@ -3,8 +3,15 @@
 package controller
 
 import (
+	"context"
+	"log/slog"
 	"testing"
 	"time"
+
+	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
 )
 
 // SetRunTimers shortens the drain wait and the certificate reload interval of Run for one test,
@@ -35,3 +42,22 @@ func OlderThan(v, min string) bool { return olderThan(v, min) }
 
 // NextReleaseCheck is nextReleaseCheck.
 var NextReleaseCheck = nextReleaseCheck
+
+// RunRollout runs one step of the rollout job.
+func RunRollout(ctx context.Context, o RolloutOptions) error { return runRollout(ctx, o) }
+
+// RolloutDrainPeriod is how long a gateway drains before the job offers it the release.
+const RolloutDrainPeriod = rolloutDrainPeriod
+
+// NewUpdateRecorder is a Sessions value that records agent update states, without a session.
+func NewUpdateRecorder(db *store.DB, sys context.Context) *Sessions {
+	return &Sessions{db: db, sys: sys, log: slog.New(slog.DiscardHandler)}
+}
+
+// RecordUpdate records one agent's update state, as the Status handler does.
+func (s *Sessions) RecordUpdate(id pki.Identity, u *agentv1.UpdateState) { s.recordUpdate(id, u) }
+
+// RolloutUpdateState is rolloutUpdateState.
+func RolloutUpdateState(cur rollouttarget.State, u *agentv1.UpdateState, version string) (rollouttarget.State, string, bool) {
+	return rolloutUpdateState(cur, u, version)
+}

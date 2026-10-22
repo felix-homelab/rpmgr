@@ -980,10 +980,13 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
      Admin approves one at a time, then all. An agent's place in the percentages is a stable hash of
      its ID, so a later stage includes every agent of an earlier one.
    - **Gateways** are updated one at a time per gateway group, each after a drain that moves its
-     connectors to the group's other gateways ([03](03-connections.md#multiple-gateways)); a group
-     with one gateway has no other to move to, which the rollout shows before the stage starts.
+     connectors to the group's other gateways ([03](03-connections.md#multiple-gateways)); the
+     rollout disables the gateway to drain it and enables it again once its target is done. A
+     gateway an operator disabled stays disabled and is skipped, as a group with one gateway has no
+     other to move to, which the rollout shows before the stage starts.
    - **A rollback pauses the rollout:** an agent whose updater rolled back stops the stage, and the
-     rollout waits until the Instance Admin resumes or cancels it. Agents that are offline, or whose
+     rollout waits until the Instance Admin resumes or cancels it. A target whose agent reports
+     nothing for 30 minutes counts as stalled and pauses it too. Agents that are offline, or whose
      local policy says `notify` or `off`, are listed and skipped; they never block a stage.
    - Only one rollout runs or is paused at a time. Creating, advancing, resuming and cancelling one
      takes Instance Admin and a step-up, and is audited.
