@@ -12,11 +12,30 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Install: both install scripts and `rpmgr setup` install the root updater and its state on every
+  Linux host: `/var/lib/rpmgr-update/install.json` with the binary's path, variant and roles,
+  `state.json` with the version floor and the highest manifest `seq`, and the
+  `rpmgr-update.path`/`rpmgr-update.service` units, which they enable. The updater installs a
+  staged release after verifying it, restarts the roles, and rolls back when one does not become
+  ready. A host installed before the updater gets them from `install.sh --upgrade`; `rpmgr setup
+  --no-unit` leaves the units out. Both scripts also keep the variant a host runs. (#850)
+
+- Controller: the release mirror keeps the controller's own version, the version it ran before and
+  the target of each running or paused rollout, with both variants; `ReleaseService.UploadRelease`
+  and `rpmgr upload release` record a release for air-gapped installations or a signed downgrade,
+  and `rpmgr release import` still fills the mirror from a directory. (#839, #854)
+
+- CLI: `rpmgr list release`, `rpmgr upload release <dir>`, and the `rollout` commands (`create`,
+  `get`, `list`, `list rollout-target`, `advance`, `pause`, `resume`, `cancel`) run a staged
+  rollout from the command line, each change but a pause after a step-up. (#610)
+
 - Updates: the Instance Admin runs a staged rollout from **Settings → Updates**: the releases the
   controller verified, an upload of a release's signed files for air-gapped installations, and the
   canary, percentage and all stages with each agent's state and reason; a rollback or a stalled
-  agent pauses the rollout. Connector and gateway lists show each agent's update state and warn
-  when it is below the oldest version the controller accepts. (#611)
+  agent pauses the rollout. Agents download and stage the release for their root updater,
+  honouring `auto_update: off` or `notify` in their local policy; connector and gateway lists show
+  each agent's update state and warn when it is below the oldest version the controller accepts.
+  (#611)
 
 - Releases: a connector-only build of rpmgr, `rpmgr-<version>-<os>-<arch>-connector`, for every
   Linux architecture and, as the only build there, for Windows (amd64, `.exe`) and macOS (amd64,

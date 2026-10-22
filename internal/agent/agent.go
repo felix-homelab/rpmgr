@@ -89,7 +89,7 @@ func NewControl(o ControlOptions) (*Control, error) {
 		if now == nil {
 			now = time.Now
 		}
-		c.stager = newStager(*o.Update, o.Version, c.controllerURL, func(st *agentv1.UpdateState) {
+		c.stager = newStager(*o.Update, o.Version, func(st *agentv1.UpdateState) {
 			c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{Update: st}}})
 		}, now, o.Logger)
 		caps = append(slices.Clone(caps), agentproto.CapOTA)
@@ -248,17 +248,6 @@ func (c *Control) ControllerAddr() (string, error) {
 		ep = eps[0]
 	}
 	return dialAddr(ep)
-}
-
-// controllerURL returns the endpoint of the current or last control session, or the first
-// endpoint before any session, as https://host:port: where the agent downloads offered releases
-// from the controller's /dl/.
-func (c *Control) controllerURL() (string, error) {
-	addr, err := c.ControllerAddr()
-	if err != nil {
-		return "", err
-	}
-	return "https://" + addr, nil
 }
 
 // DenyList returns the agent's deny-list, for the role's TLS peers.

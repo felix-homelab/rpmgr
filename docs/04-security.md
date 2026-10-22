@@ -996,8 +996,10 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    run on their own on a host with the root updater installed (its directory
    `/var/lib/rpmgr-update/` exists), never all-in-one's, whose roles share the controller's
    binary, nor one in the container image, which has no updater. The offer
-   names the version, its manifest's `seq` and its files under `/dl/` with sizes and SHA-256; the
-   controller offers a release only while its rollout runs and the agent's target is `offered`.
+   names the version, the controller's public URL (the `public_url` of [10](10-operations.md),
+   which `/install.sh` and enrollment use), its manifest's `seq` and its files under `/dl/` with
+   sizes and SHA-256; the controller offers a release only while its rollout runs and the agent's
+   target is `offered`.
    The agent, running as the unprivileged service user, reads the local policy (a gateway the
    host's `/etc/rpmgr/policy.yaml`, for `auto_update` and `update_channel` only): with
    `auto_update: off`, or a policy file that does not load, it declines the offer, and with
@@ -1009,12 +1011,16 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    size cap and a free-space check. It **stages** the files in `/var/lib/rpmgr/update/`, removing
    what earlier releases left and writing the manifest last, and reports each step: declined,
    available, downloading, staged, or failed, which it tries again later. The URL is not trusted;
-   the signature is: the agent fetches only from `/dl/<version>/` at the endpoint of its control
-   session, over HTTPS with TLS 1.3 and the system's certificate roots, like `/install.sh`, with
-   file names it makes itself, and follows no redirect. Integrity comes from the release's
-   signatures and the offer's `seq`, which must be the manifest's, not from the connection. The service user can never
-   write the installed binary — otherwise a compromised process could persist a build that
-   ignores the local policy.
+   the signature is: the agent fetches only from `/dl/<version>/` at the controller's public URL,
+   over HTTPS with TLS 1.3 and the system's certificate roots, like `/install.sh`, with file names
+   it makes itself, and follows no redirect. Integrity comes from the release's
+   signatures and the offer's `seq`, which must be the manifest's, not from the connection. The
+   public URL, not the endpoint of the control session, is where the agent downloads from: a
+   private controller behind a gateway's `controller.passthrough`, and the control-passthrough
+   fallback, reach the controller at a name or address its web certificate does not serve. An
+   offer whose URL is not `https` with a host is declined. The service user can never write the
+   installed binary — otherwise a compromised process could persist a build that ignores the local
+   policy.
 4. A **root-owned updater** (`rpmgr-update.path` triggering the oneshot `rpmgr-update.service`)
    reads `auto_update` and `update_channel` from the local policy **itself** (it does not trust the
    agent's decision); a policy file that does not parse, that its group or other users may write,
