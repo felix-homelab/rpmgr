@@ -98,6 +98,11 @@ func TestOTA_OfferOnlyWithCapability(t *testing.T) {
 		o, _ := ota.last()
 		return o.GetVersion() == "0.2.0" && o.GetSeq() == 7 && len(o.GetFiles()) == 4
 	})
+	// The offer names the controller's public URL, not the agent's control endpoint: every agent
+	// fetches from the same /dl/ (slice 2.7's follow-up, #857).
+	if o, _ := ota.last(); o.GetBaseUrl() != c.URL {
+		t.Errorf("offer base URL %q, want the controller's public URL %q", o.GetBaseUrl(), c.URL)
+	}
 	waitFor(t, "the plain connector's snapshot", func() bool { _, seen := plain.last(); return seen })
 	if o, _ := plain.last(); o != nil {
 		t.Fatalf("a connector without ota was offered %v", o)

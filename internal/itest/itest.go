@@ -150,7 +150,7 @@ func (c *Controller) StartReplica(t testing.TB) (string, *controller.Sessions) {
 		Sys: c.Sys, Now: c.opts.Now, Admission: c.opts.Admission, RevisionCheck: 50 * time.Millisecond, RevLog: c.RevLog, Sealer: c.sealer,
 		Logger: c.Logs.Logger()}
 	if len(c.opts.Sources) > 0 {
-		so.Compiler = &snapshot.Compiler{Sources: c.opts.Sources, Endpoints: controller.AgentEndpoints(url), Offer: snapshot.ReleaseOffer}
+		so.Compiler = &snapshot.Compiler{Sources: c.opts.Sources, Endpoints: controller.AgentEndpoints(url), Offer: snapshot.ReleaseOfferAt(url)}
 	}
 	sessions := controller.NewSessions(so)
 	cfg := pki.AgentEndpointConfig(pki.NewHolder(node), roots, pki.Expect{TrustDomain: td, Kinds: []pki.Kind{pki.KindConnector, pki.KindGateway},

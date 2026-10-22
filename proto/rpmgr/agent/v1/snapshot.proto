@@ -57,6 +57,11 @@ message Snapshot {
 message ReleaseOffer {
   // The release's version, such as 1.5.0.
   string version = 1;
+  // The controller's public URL, such as https://controller.example.com:443, whose /dl/<version>/
+  // the agent downloads from; it is the same on every replica and is not the control session's
+  // endpoint, which a private controller may reach through a gateway (docs/04-security.md,
+  // "Over-the-air updates").
+  string base_url = 4;
   // The seq of its signed manifest.
   uint64 seq = 2;
   // Its files under /dl/<version>/: the signing-key statement, the manifest, their signatures

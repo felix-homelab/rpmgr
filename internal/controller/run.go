@@ -180,7 +180,7 @@ func Run(ctx context.Context, o RunOptions) error {
 
 	sessions := NewSessions(SessionsOptions{DB: db, CA: ca, Node: nodeID, Version: o.Version, Sys: sys, Now: o.Now, RevLog: rl, Sealer: sealer,
 		Logger:   o.Logger,
-		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: AgentEndpoints(cfg.PublicURL), Offer: snapshot.ReleaseOffer}})
+		Compiler: &snapshot.Compiler{Sources: o.Sources, Endpoints: AgentEndpoints(cfg.PublicURL), Offer: snapshot.ReleaseOfferAt(cfg.PublicURL)}})
 	reg := o.Registry
 	if reg == nil {
 		reg = telemetry.NewRegistry()

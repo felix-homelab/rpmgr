@@ -16,28 +16,37 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
 )
 
-// ReleaseOffer is the controller's Compiler.Offer (docs/04-security.md, "Over-the-air updates",
-// step 3): the target release of the running rollout, for an agent whose rollout target is
-// offered. Other agents, and every agent while the rollout is paused, get none.
+// ReleaseOffer is the controller's Compiler.Offer for a controller without a public URL: it is
+// ReleaseOfferAt(""), which agents decline because they cannot fetch without one.
 func ReleaseOffer(ctx context.Context, tx *ent.Tx, a Agent) (*agentv1.ReleaseOffer, error) {
-	t, err := tx.RolloutTarget.Query().
-		Where(rollouttarget.AgentID(a.Identity.ID), rollouttarget.StateEQ(rollouttarget.StateOffered),
-			rollouttarget.HasRolloutWith(rollout.StateEQ(rollout.StateRunning))).
-		WithRollout(func(q *ent.RolloutQuery) { q.WithRelease() }).
-		Only(ctx)
-	if ent.IsNotFound(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return Offer(t.Edges.Rollout.Edges.Release)
+	return ReleaseOfferAt("")(ctx, tx, a)
 }
 
-// Offer describes a recorded release as an offer: its version, its manifest's seq, and each of
-// its files under /dl/<version>/ with size and SHA-256, the signed files from their recorded
-// bytes and the artifacts from the manifest.
-func Offer(rel *ent.Release) (*agentv1.ReleaseOffer, error) {
+// ReleaseOfferAt is the controller's Compiler.Offer (docs/04-security.md, "Over-the-air updates",
+// step 3): the target release of the running rollout, for an agent whose rollout target is
+// offered, with base as the controller's public URL whose /dl/<version>/ the agent downloads from.
+// Other agents, and every agent while the rollout is paused, get none.
+func ReleaseOfferAt(base string) func(ctx context.Context, tx *ent.Tx, a Agent) (*agentv1.ReleaseOffer, error) {
+	return func(ctx context.Context, tx *ent.Tx, a Agent) (*agentv1.ReleaseOffer, error) {
+		t, err := tx.RolloutTarget.Query().
+			Where(rollouttarget.AgentID(a.Identity.ID), rollouttarget.StateEQ(rollouttarget.StateOffered),
+				rollouttarget.HasRolloutWith(rollout.StateEQ(rollout.StateRunning))).
+			WithRollout(func(q *ent.RolloutQuery) { q.WithRelease() }).
+			Only(ctx)
+		if ent.IsNotFound(err) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		return Offer(t.Edges.Rollout.Edges.Release, base)
+	}
+}
+
+// Offer describes a recorded release as an offer: its version, the public URL whose /dl/ the agent
+// downloads from, its manifest's seq, and each of its files under /dl/<version>/ with size and
+// SHA-256, the signed files from their recorded bytes and the artifacts from the manifest.
+func Offer(rel *ent.Release, base string) (*agentv1.ReleaseOffer, error) {
 	var m release.Manifest
 	if err := json.Unmarshal(rel.Manifest, &m); err != nil {
 		return nil, fmt.Errorf("snapshot: the recorded manifest of %s: %w", rel.Version, err)
@@ -45,7 +54,7 @@ func Offer(rel *ent.Release) (*agentv1.ReleaseOffer, error) {
 	if m.Version != rel.Version {
 		return nil, fmt.Errorf("snapshot: release %s records the manifest of %s", rel.Version, m.Version)
 	}
-	o := &agentv1.ReleaseOffer{Version: m.Version, Seq: m.Seq}
+	o := &agentv1.ReleaseOffer{Version: m.Version, BaseUrl: base, Seq: m.Seq}
 	signed := map[string][]byte{release.StatementFile: rel.SigningKeyStatement, release.StatementSigFile: rel.StatementSignature,
 		release.ManifestFile: rel.Manifest, release.ManifestSigFile: rel.Signature}
 	for _, name := range release.MetaFiles {

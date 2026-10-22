@@ -85,7 +85,6 @@ var errDeclined = errors.New("declined")
 type Stager struct {
 	o       UpdateOptions
 	version string                     // the running version
-	base    func() (string, error)     // the controller's https://host:port
 	send    func(*agentv1.UpdateState) // reports a state on the control session
 	now     func() time.Time           // for signing-key statements
 	logger  *slog.Logger
@@ -101,7 +100,7 @@ type Stager struct {
 }
 
 // newStager returns a stager; Control wires it.
-func newStager(o UpdateOptions, version string, base func() (string, error), send func(*agentv1.UpdateState),
+func newStager(o UpdateOptions, version string, send func(*agentv1.UpdateState),
 	now func() time.Time, logger *slog.Logger) *Stager {
 	if o.StatusFile == "" {
 		o.StatusFile = update.StatusFile
@@ -143,7 +142,7 @@ func newStager(o UpdateOptions, version string, base func() (string, error), sen
 	if o.Retry == nil {
 		o.Retry = func(n int) time.Duration { return min(otaRetryFirst<<min(n-1, 6), otaRetryMax) }
 	}
-	return &Stager{o: o, version: version, base: base, send: send, now: now, logger: logger, wake: make(chan struct{}, 1)}
+	return &Stager{o: o, version: version, send: send, now: now, logger: logger, wake: make(chan struct{}, 1)}
 }
 
 // Offer takes the offer of an applied snapshot, nil for none. A new offer ends an attempt for an
@@ -379,9 +378,10 @@ func (s *Stager) attempt(ctx context.Context, offer *agentv1.ReleaseOffer) error
 		return nil
 	}
 	s.report(offer, state(agentv1.UpdatePhase_UPDATE_PHASE_DOWNLOADING, ""), false, "")
-	base, err := s.base()
-	if err != nil {
-		return fail(err)
+	base := offer.GetBaseUrl()
+	if u, err := url.Parse(base); err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil ||
+		(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		return decline("", "the offer's controller URL %q is not an https origin", base)
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.o.Timeout)
 	defer cancel()
@@ -578,7 +578,7 @@ func syncRoot(root *os.Root) error {
 // or made from the verified manifest, never taken from the offer.
 type dlSource struct {
 	client  *http.Client
-	base    string // https://host:port
+	base    string // https://host[:port]
 	version string
 	stall   time.Duration
 }
