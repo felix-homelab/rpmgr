@@ -32,6 +32,8 @@ const (
 	FieldReason = "reason"
 	// FieldVersionBefore holds the string denoting the version_before field in the database.
 	FieldVersionBefore = "version_before"
+	// FieldDrainStartedAt holds the string denoting the drain_started_at field in the database.
+	FieldDrainStartedAt = "drain_started_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
 	FieldUpdatedAt = "updated_at"
 	// EdgeRollout holds the string denoting the rollout edge name in mutations.
@@ -58,6 +60,7 @@ var Columns = []string{
 	FieldState,
 	FieldReason,
 	FieldVersionBefore,
+	FieldDrainStartedAt,
 	FieldUpdatedAt,
 }
 
@@ -203,6 +206,11 @@ func ByReason(opts ...sql.OrderTermOption) OrderOption {
 // ByVersionBefore orders the results by the version_before field.
 func ByVersionBefore(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldVersionBefore, opts...).ToFunc()
+}
+
+// ByDrainStartedAt orders the results by the drain_started_at field.
+func ByDrainStartedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDrainStartedAt, opts...).ToFunc()
 }
 
 // ByUpdatedAt orders the results by the updated_at field.

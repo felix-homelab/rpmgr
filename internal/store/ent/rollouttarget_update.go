@@ -70,6 +70,26 @@ func (_u *RolloutTargetUpdate) SetNillableVersionBefore(v *string) *RolloutTarge
 	return _u
 }
 
+// SetDrainStartedAt sets the "drain_started_at" field.
+func (_u *RolloutTargetUpdate) SetDrainStartedAt(v time.Time) *RolloutTargetUpdate {
+	_u.mutation.SetDrainStartedAt(v)
+	return _u
+}
+
+// SetNillableDrainStartedAt sets the "drain_started_at" field if the given value is not nil.
+func (_u *RolloutTargetUpdate) SetNillableDrainStartedAt(v *time.Time) *RolloutTargetUpdate {
+	if v != nil {
+		_u.SetDrainStartedAt(*v)
+	}
+	return _u
+}
+
+// ClearDrainStartedAt clears the value of the "drain_started_at" field.
+func (_u *RolloutTargetUpdate) ClearDrainStartedAt() *RolloutTargetUpdate {
+	_u.mutation.ClearDrainStartedAt()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *RolloutTargetUpdate) SetUpdatedAt(v time.Time) *RolloutTargetUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -157,6 +177,12 @@ func (_u *RolloutTargetUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	if value, ok := _u.mutation.VersionBefore(); ok {
 		_spec.SetField(rollouttarget.FieldVersionBefore, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.DrainStartedAt(); ok {
+		_spec.SetField(rollouttarget.FieldDrainStartedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DrainStartedAtCleared() {
+		_spec.ClearField(rollouttarget.FieldDrainStartedAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(rollouttarget.FieldUpdatedAt, field.TypeTime, value)
 	}
@@ -219,6 +245,26 @@ func (_u *RolloutTargetUpdateOne) SetNillableVersionBefore(v *string) *RolloutTa
 	if v != nil {
 		_u.SetVersionBefore(*v)
 	}
+	return _u
+}
+
+// SetDrainStartedAt sets the "drain_started_at" field.
+func (_u *RolloutTargetUpdateOne) SetDrainStartedAt(v time.Time) *RolloutTargetUpdateOne {
+	_u.mutation.SetDrainStartedAt(v)
+	return _u
+}
+
+// SetNillableDrainStartedAt sets the "drain_started_at" field if the given value is not nil.
+func (_u *RolloutTargetUpdateOne) SetNillableDrainStartedAt(v *time.Time) *RolloutTargetUpdateOne {
+	if v != nil {
+		_u.SetDrainStartedAt(*v)
+	}
+	return _u
+}
+
+// ClearDrainStartedAt clears the value of the "drain_started_at" field.
+func (_u *RolloutTargetUpdateOne) ClearDrainStartedAt() *RolloutTargetUpdateOne {
+	_u.mutation.ClearDrainStartedAt()
 	return _u
 }
 
@@ -338,6 +384,12 @@ func (_u *RolloutTargetUpdateOne) sqlSave(ctx context.Context) (_node *RolloutTa
 	}
 	if value, ok := _u.mutation.VersionBefore(); ok {
 		_spec.SetField(rollouttarget.FieldVersionBefore, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DrainStartedAt(); ok {
+		_spec.SetField(rollouttarget.FieldDrainStartedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DrainStartedAtCleared() {
+		_spec.ClearField(rollouttarget.FieldDrainStartedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(rollouttarget.FieldUpdatedAt, field.TypeTime, value)
