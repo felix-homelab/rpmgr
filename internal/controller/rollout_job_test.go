@@ -118,11 +118,6 @@ func (e *rolloutJobEnv) target(agent string) *ent.RolloutTarget {
 	return e.db.Client().RolloutTarget.Query().Where(rollouttarget.AgentID(agent)).OnlyX(e.sys)
 }
 
-func (e *rolloutJobEnv) activeRollout() *ent.Rollout {
-	e.t.Helper()
-	return e.db.Client().Rollout.Query().Where(rollout.Active(true)).OnlyX(e.sys)
-}
-
 // TestRolloutJob_Stages (docs/04-security.md, "Over-the-air updates"; D121): the job offers the
 // release to the canary agents only, skips an agent that is offline, waits for the agent to
 // report the new version, offers the rest when the rollout reaches all, and completes when every
