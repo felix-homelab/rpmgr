@@ -24,6 +24,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/units"
+	"github.com/felix-homelab/rpmgr/internal/update"
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
 
@@ -59,6 +60,9 @@ type Result struct {
 	AgentID, AgentKind string
 	Unit               string // the unit setup installed and started; empty without one
 	Admin              string // the admin listener
+	// NoUpdaterState: the updater is installed, but it has no state, because this development
+	// build has no release version; it refuses every release.
+	NoUpdaterState bool
 	// Written are the files and directories setup created, for cleaning up after a failure.
 	Written []string
 }
@@ -109,6 +113,7 @@ func New(v Values, h Host) (*Plan, error) {
 	} else {
 		p.agentSteps()
 	}
+	p.updaterSteps()
 	if !v.NoUnit {
 		p.unitSteps()
 	}
@@ -503,6 +508,50 @@ func (p *Plan) policySteps() {
 			return nil
 		})
 	}
+}
+
+// updaterSteps record the installation for the root updater, which every Linux host gets whatever
+// its role (docs/10-operations.md, "Who installs the updater"), and install its units. Setup knows
+// no release seq: a state an install script wrote stays; a missing one starts at the binary's
+// version with seq 0.
+func (p *Plan) updaterSteps() {
+	h, v := p.h, p.v
+	if h.Paths.UpdateState == "" {
+		return
+	}
+	in := update.Installed{Install: update.Install{Method: "setup", Path: h.Paths.Bin, Variant: h.Variant, Roles: []string{string(v.Role)}}}
+	title := "record the " + string(v.Role) + " role for the updater in " + h.Paths.UpdateState
+	if !v.NoUnit {
+		title += ", install its units rpmgr-update.path and rpmgr-update.service: systemctl enable rpmgr-update.service, enable --now rpmgr-update.path"
+	}
+	p.add(title, func(ctx context.Context, r *Result) error {
+		if old, err := update.ReadInstall(h.Paths.UpdateState); err == nil {
+			in.Method = old.Method // an install script's record stays its
+		}
+		r.created(h.Paths.UpdateState)
+		in.Floor = version.Version
+		_, st, err := update.Record(h.Paths.UpdateState, in)
+		if err != nil {
+			return err
+		}
+		r.NoUpdaterState = st.Floor == ""
+		if v.NoUnit {
+			return nil
+		}
+		for _, u := range []string{"rpmgr-update.path", "rpmgr-update.service"} {
+			r.created(filepath.Join(h.Paths.Units, u))
+		}
+		if _, err := update.WriteUnits(h.Paths.Units, h.Paths.Bin); err != nil {
+			return err
+		}
+		if err := h.Run(ctx, "systemctl", "daemon-reload"); err != nil {
+			return err
+		}
+		if err := h.Run(ctx, "systemctl", "enable", "rpmgr-update.service"); err != nil { // its run at boot
+			return err
+		}
+		return h.Run(ctx, "systemctl", "enable", "--now", "rpmgr-update.path")
+	})
 }
 
 // unitSteps install the role's unit, start it and wait until it is ready.

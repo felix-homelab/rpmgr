@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 )
@@ -167,4 +168,10 @@ func readOwn(path string) ([]byte, error) {
 		return nil, fmt.Errorf("update: %s grew past %d bytes", path, maxMeta)
 	}
 	return b, nil
+}
+
+// ownedByMe reports whether the updater's user, root, owns a file.
+func ownedByMe(fi fs.FileInfo) bool {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	return ok && int(st.Uid) == os.Geteuid()
 }

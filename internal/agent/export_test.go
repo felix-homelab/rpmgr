@@ -4,3 +4,6 @@ package agent
 
 // AcceptRoots is exported for the test of the response's roots.
 var AcceptRoots = acceptRoots
+
+// NewStager is exported for the tests of OTA staging.
+var NewStager = newStager

@@ -27,11 +27,14 @@ import (
 
 // globalStub is the "binary" of the global script's test release: it records its arguments, prints
 // a version, and has a setup command only once /tmp/has-setup exists, as a release with it would.
+// Once /tmp/has-updater exists, `rpmgr updater` goes to a real rpmgr at /r/rpmgr (realBinary);
+// before, it has none, as release 0.1.
 const globalStub = `#!/bin/sh
 echo "argv: $*" >>/tmp/rpmgr-calls
 case "$1 ${2-}" in
   "version --verbose") echo "rpmgr 1.4.2 (stub)"; echo "release root keys:" ;;
   "setup --help") [ -f /tmp/has-setup ] && exit 0; echo "rpmgr: unknown command setup" >&2; exit 2 ;;
+  "updater "*) [ -f /tmp/has-updater ] && exec /r/rpmgr "$@"; echo "rpmgr: unknown command updater" >&2; exit 2 ;;
 esac
 `
 
@@ -118,6 +121,7 @@ func TestGlobalInstall(t *testing.T) {
 	write("s390x/uname", "#!/bin/sh\n[ \"$1\" = -s ] && echo Linux || echo s390x\n", 0o755)
 	write("systemd/systemctl", globalSystemctl, 0o755)
 	sum := sha256.Sum256([]byte(globalStub))
+	real := realBinary(t)
 
 	// The test CA joins the system's trust store, which curl and wget both read.
 	const trustDebian = "cp /t/ca.pem /usr/local/share/ca-certificates/rpmgr-test.crt && update-ca-certificates >/dev/null 2>&1"
@@ -162,18 +166,22 @@ func TestGlobalInstall(t *testing.T) {
 				PATH=/t/systemd:$PATH sh /t/install.sh --upgrade --restart; echo "exit restart: $?"
 				touch /tmp/crashloop
 				PATH=/t/systemd:$PATH sh /t/install.sh --upgrade --restart; echo "exit crashloop: $?"
-				echo "== systemctl"; cat /tmp/systemctl-calls`
+				echo "== systemctl"; cat /tmp/systemctl-calls
+				echo "== units"; ls /etc/systemd/system/`
 			}
-			out, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "-v", dir+":/t:ro", d.image, "sh", "-c",
+			out, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "-v", dir+":/t:ro", "-v", real+":/r:ro", d.image, "sh", "-c",
 				d.prepare+" && "+env+refusals+`
 				sh /t/install.sh --no-setup; echo "exit first: $?"
 				echo "keep: me" >/etc/rpmgr/all-in-one.yaml
 				sh /t/install.sh; echo "exit again: $?"
+				echo "== record of 0.1"; cat /var/lib/rpmgr-update/install.json; ls /var/lib/rpmgr-update; echo "== end"
+				touch /tmp/has-updater
 				touch /tmp/has-setup
 				sh /t/install.sh; echo "exit with setup: $?"
 				echo "== user"; id rpmgr
-				echo "== owner"; stat -c '%n %U %a' /etc/rpmgr /var/lib/rpmgr /usr/local/bin/rpmgr /var/lib/rpmgr-update /var/lib/rpmgr-update/install.json
-				echo "== record"; cat /var/lib/rpmgr-update/install.json
+				echo "== owner"; stat -c '%n %U %a' /etc/rpmgr /var/lib/rpmgr /usr/local/bin/rpmgr /var/lib/rpmgr-update /var/lib/rpmgr-update/install.json \
+				  /var/lib/rpmgr-update/state.json
+				echo "== record"; cat /var/lib/rpmgr-update/install.json /var/lib/rpmgr-update/state.json
 				echo "== config"; cat /etc/rpmgr/all-in-one.yaml
 				echo "== calls"; cat /tmp/rpmgr-calls
 				echo "== binary"; sha256sum /usr/local/bin/rpmgr | cut -d' ' -f1`+upgrade).CombinedOutput()
@@ -193,8 +201,13 @@ func TestGlobalInstall(t *testing.T) {
 				"next: set up this host's role with: sudo rpmgr setup",
 				"rpmgr 1.4.2 has no setup command",
 				"/etc/rpmgr root 755", "/var/lib/rpmgr rpmgr 750", "/usr/local/bin/rpmgr root 755",
-				"/var/lib/rpmgr-update root 700", "/var/lib/rpmgr-update/install.json root 600",
-				"== record\n" + `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full"}` + "\n",
+				"/var/lib/rpmgr-update root 700", "/var/lib/rpmgr-update/install.json root 600", "/var/lib/rpmgr-update/state.json root 600",
+				// Release 0.1 has no updater: a record without roles, and no state.
+				"== record of 0.1\n" + `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full"}` + "\ninstall.json\n== end\n",
+				// With it, the role of the boot file joins the record, and the release's seq and version the state.
+				"== record\n" + `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","roles":["all-in-one"]}` + "\n" +
+					`{"seq":5,"floor":"1.4.2"}` + "\n",
+				"argv: updater install --state /var/lib/rpmgr-update --path /usr/local/bin/rpmgr --seq 5 --floor 1.4.2 --no-units",
 				"== config\nkeep: me\n", "argv: version --verbose", "argv: setup --help",
 				"== binary\n" + hex.EncodeToString(sum[:]),
 			}
@@ -206,7 +219,10 @@ func TestGlobalInstall(t *testing.T) {
 					"== after the keys\nrpmgr install: rpmgr-all-in-one runs the previous binary until you restart it: "+
 						"sudo systemctl restart rpmgr-all-in-one\n== end\n",
 					"restarted rpmgr-all-in-one with rpmgr 1.4.2", "exit restart: 0", "systemctl restart rpmgr-all-in-one",
-					"rpmgr-all-in-one does not stay up with rpmgr 1.4.2; see: journalctl -u rpmgr-all-in-one -n 50", "exit crashloop: 1")
+					"rpmgr-all-in-one does not stay up with rpmgr 1.4.2; see: journalctl -u rpmgr-all-in-one -n 50", "exit crashloop: 1",
+					// With systemd, the updater's units are written and enabled.
+					"systemctl enable rpmgr-update.service", "systemctl enable --now rpmgr-update.path",
+					"\nrpmgr-update.path\nrpmgr-update.service\n")
 			}
 			for _, w := range want {
 				if !strings.Contains(text, w) {

@@ -152,10 +152,12 @@ EOF
   done
 fi
 
-# The updater's state, out of the service user's reach (docs/04-security.md, "Over-the-air
-# updates"): how rpmgr was installed, and the floor and seq of the release it came from.
-printf '{"method":"script","path":"%s","variant":"%s","role":"%s"}\n' "$BIN" "$variant" "$role" >"$STATE/install.json"
-printf '{"seq":%s,"floor":"%s"}\n' "$seq" "$VERSION" >"$STATE/state.json"
+# The root updater (docs/10-operations.md, "Who installs the updater"): the binary records how it
+# was installed, its variant and this role, beside the roles recorded, out of the service user's
+# reach; it raises the floor and seq to this release's, never lowering them, and writes the
+# updater's units, which are enabled with the role's below.
+"$BIN" updater install --state "$STATE" --path "$BIN" --role "$role" --seq "$seq" --floor "$VERSION" >/dev/null ||
+  die "cannot install the updater's state and units"
 
 # Host tuning (docs/03-connections.md, "Host tuning applied by the installer"). The file always
 # holds the 7 MiB UDP buffers quic-go asks for, whatever the host has now, so that a re-run keeps
@@ -203,4 +205,6 @@ install -d -m 0755 /etc/systemd/system
 "$BIN" systemd-unit --bin "$BIN" "$role" >"/etc/systemd/system/rpmgr-$role.service"
 systemctl daemon-reload
 systemctl enable --now "rpmgr-$role"
+systemctl enable rpmgr-update.service # its run at boot finishes an update a reboot interrupted
+systemctl enable --now rpmgr-update.path
 say "rpmgr $VERSION runs as rpmgr-$role; admin listener 127.0.0.1:$port"
