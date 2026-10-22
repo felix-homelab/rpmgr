@@ -38,6 +38,9 @@ func (AgentSession) Fields() []ent.Field {
 		field.Time("connected_at").Default(time.Now),
 		field.Time("last_seen_at").Default(time.Now),
 		field.Time("disconnected_at").Optional().Nillable(),
+		// The reason of the last Goodbye that refused the agent a session, such as
+		// "upgrade_required" for an agent below min_agent_version; empty once a session is accepted.
+		field.String("last_goodbye").Default(""),
 	}
 }
 

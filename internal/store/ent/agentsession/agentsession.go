@@ -32,6 +32,8 @@ const (
 	FieldLastSeenAt = "last_seen_at"
 	// FieldDisconnectedAt holds the string denoting the disconnected_at field in the database.
 	FieldDisconnectedAt = "disconnected_at"
+	// FieldLastGoodbye holds the string denoting the last_goodbye field in the database.
+	FieldLastGoodbye = "last_goodbye"
 	// Table holds the table name of the agentsession in the database.
 	Table = "agent_sessions"
 )
@@ -48,6 +50,7 @@ var Columns = []string{
 	FieldConnectedAt,
 	FieldLastSeenAt,
 	FieldDisconnectedAt,
+	FieldLastGoodbye,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -83,6 +86,8 @@ var (
 	DefaultConnectedAt func() time.Time
 	// DefaultLastSeenAt holds the default value on creation for the "last_seen_at" field.
 	DefaultLastSeenAt func() time.Time
+	// DefaultLastGoodbye holds the default value on creation for the "last_goodbye" field.
+	DefaultLastGoodbye string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -133,4 +138,9 @@ func ByLastSeenAt(opts ...sql.OrderTermOption) OrderOption {
 // ByDisconnectedAt orders the results by the disconnected_at field.
 func ByDisconnectedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDisconnectedAt, opts...).ToFunc()
+}
+
+// ByLastGoodbye orders the results by the last_goodbye field.
+func ByLastGoodbye(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastGoodbye, opts...).ToFunc()
 }

@@ -104,6 +104,11 @@ func DisconnectedAt(v time.Time) predicate.AgentSession {
 	return predicate.AgentSession(sql.FieldEQ(FieldDisconnectedAt, v))
 }
 
+// LastGoodbye applies equality check predicate on the "last_goodbye" field. It's identical to LastGoodbyeEQ.
+func LastGoodbye(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEQ(FieldLastGoodbye, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.AgentSession {
 	return predicate.AgentSession(sql.FieldEQ(FieldOrgID, v))
@@ -542,6 +547,71 @@ func DisconnectedAtIsNil() predicate.AgentSession {
 // DisconnectedAtNotNil applies the NotNil predicate on the "disconnected_at" field.
 func DisconnectedAtNotNil() predicate.AgentSession {
 	return predicate.AgentSession(sql.FieldNotNull(FieldDisconnectedAt))
+}
+
+// LastGoodbyeEQ applies the EQ predicate on the "last_goodbye" field.
+func LastGoodbyeEQ(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEQ(FieldLastGoodbye, v))
+}
+
+// LastGoodbyeNEQ applies the NEQ predicate on the "last_goodbye" field.
+func LastGoodbyeNEQ(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldNEQ(FieldLastGoodbye, v))
+}
+
+// LastGoodbyeIn applies the In predicate on the "last_goodbye" field.
+func LastGoodbyeIn(vs ...string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldIn(FieldLastGoodbye, vs...))
+}
+
+// LastGoodbyeNotIn applies the NotIn predicate on the "last_goodbye" field.
+func LastGoodbyeNotIn(vs ...string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldNotIn(FieldLastGoodbye, vs...))
+}
+
+// LastGoodbyeGT applies the GT predicate on the "last_goodbye" field.
+func LastGoodbyeGT(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldGT(FieldLastGoodbye, v))
+}
+
+// LastGoodbyeGTE applies the GTE predicate on the "last_goodbye" field.
+func LastGoodbyeGTE(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldGTE(FieldLastGoodbye, v))
+}
+
+// LastGoodbyeLT applies the LT predicate on the "last_goodbye" field.
+func LastGoodbyeLT(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldLT(FieldLastGoodbye, v))
+}
+
+// LastGoodbyeLTE applies the LTE predicate on the "last_goodbye" field.
+func LastGoodbyeLTE(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldLTE(FieldLastGoodbye, v))
+}
+
+// LastGoodbyeContains applies the Contains predicate on the "last_goodbye" field.
+func LastGoodbyeContains(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldContains(FieldLastGoodbye, v))
+}
+
+// LastGoodbyeHasPrefix applies the HasPrefix predicate on the "last_goodbye" field.
+func LastGoodbyeHasPrefix(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldHasPrefix(FieldLastGoodbye, v))
+}
+
+// LastGoodbyeHasSuffix applies the HasSuffix predicate on the "last_goodbye" field.
+func LastGoodbyeHasSuffix(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldHasSuffix(FieldLastGoodbye, v))
+}
+
+// LastGoodbyeEqualFold applies the EqualFold predicate on the "last_goodbye" field.
+func LastGoodbyeEqualFold(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEqualFold(FieldLastGoodbye, v))
+}
+
+// LastGoodbyeContainsFold applies the ContainsFold predicate on the "last_goodbye" field.
+func LastGoodbyeContainsFold(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldContainsFold(FieldLastGoodbye, v))
 }
 
 // And groups predicates with the AND operator between them.

@@ -74,7 +74,7 @@ rpmgr <command>
 | [`rpmgr systemd-unit`](#rpmgr-systemd-unit) | Print the hardened systemd unit of a role |
 | [`rpmgr version`](#rpmgr-version) | Print the version of this binary |
 | [`rpmgr get`](#rpmgr-get) | Show a resource of the public API, the settings, or the install command of an agent |
-| [`rpmgr list`](#rpmgr-list) | List the resources of a kind in the org |
+| [`rpmgr list`](#rpmgr-list) | List the resources of a kind in the org, or of the instance |
 | [`rpmgr delete`](#rpmgr-delete) | Delete a resource of the public API |
 | [`rpmgr create`](#rpmgr-create) | Create a resource of the public API |
 | [`rpmgr update`](#rpmgr-update) | Change a resource of the public API |
@@ -90,6 +90,10 @@ rpmgr <command>
 | [`rpmgr upload`](#rpmgr-upload) | Upload a file to the controller |
 | [`rpmgr renew`](#rpmgr-renew) | Renew a certificate now |
 | [`rpmgr remove`](#rpmgr-remove) | Remove a member from the org, or a user's second factor |
+| [`rpmgr advance`](#rpmgr-advance) | Move a rollout to its next stage |
+| [`rpmgr pause`](#rpmgr-pause) | Pause a rollout |
+| [`rpmgr resume`](#rpmgr-resume) | Let a paused rollout run again |
+| [`rpmgr cancel`](#rpmgr-cancel) | End a rollout for good |
 
 ## rpmgr controller
 
@@ -655,7 +659,7 @@ rpmgr version [flags]
 Show a resource of the public API, the settings, or the install command of an agent.
 
 ```text
-rpmgr get [flags] install-command | settings | <route|connector|gateway|gateway-group|port-pool|domain|certificate|ca-bundle|route-target|access-policy> <id or name>
+rpmgr get [flags] install-command | settings | <route|connector|gateway|gateway-group|port-pool|domain|certificate|ca-bundle|route-target|access-policy|rollout> <id or name>
 ```
 
 | Flag | Default | Description |
@@ -668,10 +672,10 @@ rpmgr get [flags] install-command | settings | <route|connector|gateway|gateway-
 
 ## rpmgr list
 
-List the resources of a kind in the org.
+List the resources of a kind in the org, or of the instance.
 
 ```text
-rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|enrollment-token|access-policy|member|token>
+rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|enrollment-token|access-policy|member|token|release|rollout|rollout-target> [<what they belong to>]
 ```
 
 | Flag | Default | Description |
@@ -715,6 +719,7 @@ rpmgr create <command>
 | [`rpmgr create invitation`](#rpmgr-create-invitation) | Invite someone to the org and print the one-time link; as Admin or Owner it takes a step-up |
 | [`rpmgr create token`](#rpmgr-create-token) | Personal API tokens are made in the web UI |
 | [`rpmgr create reset-link`](#rpmgr-create-reset-link) | Print a one-time link that sets a member's password, for one who forgot it; takes a step-up |
+| [`rpmgr create rollout`](#rpmgr-create-rollout) | Roll a release out to the connectors and gateways, its canary agents first |
 
 ## rpmgr create route
 
@@ -939,6 +944,20 @@ Print a one-time link that sets a member's password, for one who forgot it; take
 ```text
 rpmgr create reset-link <user ID or e-mail address>
 ```
+
+## rpmgr create rollout
+
+Roll a release out to the connectors and gateways, its canary agents first.
+
+```text
+rpmgr create rollout [flags] --release <version> --canary <agent>…
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--canary value` |  | a canary agent: a connector or gateway of the org by name, or of any org by ID; repeat for more |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+| `--release string` |  | the release, by version or ID; no newer than the controller |
 
 ## rpmgr update
 
@@ -1467,6 +1486,7 @@ rpmgr upload <command>
 | Command | What it does |
 |---|---|
 | [`rpmgr upload certificate`](#rpmgr-upload-certificate) | Upload a certificate chain and its key for http routes |
+| [`rpmgr upload release`](#rpmgr-upload-release) | Upload a release's signed manifest and signing-key statement (Instance Admin) |
 
 ## rpmgr upload certificate
 
@@ -1480,6 +1500,18 @@ rpmgr upload certificate [flags]
 |---|---|---|
 | `--chain string` |  | the PEM chain, leaf first |
 | `--key string` |  | the leaf's PEM private key |
+
+## rpmgr upload release
+
+Upload a release's signed manifest and signing-key statement (Instance Admin).
+
+```text
+rpmgr upload release [flags] <dir>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 
 ## rpmgr renew
 
@@ -1529,3 +1561,105 @@ Remove a user's authenticator and recovery codes, for one who lost both, and end
 ```text
 rpmgr remove second-factor <user ID or e-mail address>
 ```
+
+## rpmgr advance
+
+Move a rollout to its next stage.
+
+```text
+rpmgr advance <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr advance rollout`](#rpmgr-advance-rollout) | Move a running rollout to a higher percentage of the agents, or to all |
+
+## rpmgr advance rollout
+
+Move a running rollout to a higher percentage of the agents, or to all.
+
+```text
+rpmgr advance rollout [flags] (--percent <n> | --all) <rollout>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--all` |  | every agent |
+| `--force` |  | advance without checking that the rollout is unchanged since this command read it |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+| `--percent int` |  | the share of agents, 1 to 99, above the current one |
+
+## rpmgr pause
+
+Pause a rollout.
+
+```text
+rpmgr pause <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr pause rollout`](#rpmgr-pause-rollout) | Pause a running rollout; agents offered the release keep it |
+
+## rpmgr pause rollout
+
+Pause a running rollout; agents offered the release keep it.
+
+```text
+rpmgr pause rollout [flags] <rollout>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--force` |  | pause without checking that the rollout is unchanged since this command read it |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+
+## rpmgr resume
+
+Let a paused rollout run again.
+
+```text
+rpmgr resume <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr resume rollout`](#rpmgr-resume-rollout) | Let a paused rollout run again |
+
+## rpmgr resume rollout
+
+Let a paused rollout run again.
+
+```text
+rpmgr resume rollout [flags] <rollout>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--force` |  | resume without checking that the rollout is unchanged since this command read it |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+
+## rpmgr cancel
+
+End a rollout for good.
+
+```text
+rpmgr cancel <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr cancel rollout`](#rpmgr-cancel-rollout) | End a running or paused rollout for good |
+
+## rpmgr cancel rollout
+
+End a running or paused rollout for good.
+
+```text
+rpmgr cancel rollout [flags] <rollout>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--force` |  | cancel without checking that the rollout is unchanged since this command read it |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |

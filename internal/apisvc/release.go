@@ -4,6 +4,9 @@ package apisvc
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
@@ -91,6 +94,15 @@ func (r *Releases) ListReleases(ctx context.Context, req *connect.Request[rpmgrv
 func (r *Releases) UploadRelease(ctx context.Context, req *connect.Request[rpmgrv1.UploadReleaseRequest]) (
 	*connect.Response[rpmgrv1.UploadReleaseResponse], error) {
 	m := req.Msg
+	// The audit entry records what identifies the upload, not its up to 1.1 MiB of files.
+	sum := func(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
+	diff := map[string]any{"manifest_sha256": sum(m.GetManifest()), "signing_key_statement_sha256": sum(m.GetSigningKeyStatement())}
+	audited := func() {
+		if b, err := json.Marshal(diff); err == nil {
+			api.AuditDiff(ctx, string(b))
+		}
+	}
+	audited()
 	roots := r.Roots
 	if roots == nil {
 		roots = release.Roots()
@@ -102,6 +114,8 @@ func (r *Releases) UploadRelease(ctx context.Context, req *connect.Request[rpmgr
 	if err != nil {
 		return nil, withReason(connect.NewError(connect.CodeInvalidArgument, err), ReasonReleaseDoesNotVerify)
 	}
+	diff["version"], diff["seq"], diff["channel"] = man.Version, man.Seq, man.Channel
+	audited()
 	row, err := store.RecordRelease(store.CarryTxHook(r.Sys, ctx), r.DB, &release.Signed{Manifest: man, Statement: m.GetSigningKeyStatement(),
 		StatementSig: m.GetStatementSignature(), ManifestJSON: m.GetManifest(), ManifestSig: m.GetManifestSignature()}, entrelease.SourceUpload, nil)
 	if err != nil {
