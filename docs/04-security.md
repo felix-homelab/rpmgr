@@ -985,7 +985,9 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
 3. The controller **offers** the target to each agent of the current stage in its snapshot, but
    only to an agent that announced the capability `ota`
    ([03](03-connections.md#versioning-and-capabilities)): gateways and connectors on Linux that
-   run on their own, never all-in-one's, whose roles share the controller's binary. The offer
+   run on their own on a host with the root updater installed (its directory
+   `/var/lib/rpmgr-update/` exists), never all-in-one's, whose roles share the controller's
+   binary, nor one in the container image, which has no updater. The offer
    names the version, its manifest's `seq` and its files under `/dl/` with sizes and SHA-256; the
    controller offers a release only while its rollout runs and the agent's target is `offered`.
    The agent, running as the unprivileged service user, reads the local policy (a gateway the
@@ -1000,7 +1002,9 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    what earlier releases left and writing the manifest last, and reports each step: declined,
    available, downloading, staged, or failed, which it tries again later. The URL is not trusted;
    the signature is: the agent fetches only from `/dl/<version>/` at the endpoint of its control
-   session, with file names it makes itself, and follows no redirect. The service user can never
+   session, over HTTPS with TLS 1.3 and the system's certificate roots, like `/install.sh`, with
+   file names it makes itself, and follows no redirect. Integrity comes from the release's
+   signatures and the offer's `seq`, which must be the manifest's, not from the connection. The service user can never
    write the installed binary — otherwise a compromised process could persist a build that
    ignores the local policy.
 4. A **root-owned updater** (`rpmgr-update.path` triggering the oneshot `rpmgr-update.service`)

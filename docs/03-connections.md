@@ -1311,7 +1311,7 @@ used, not by the route compiler:
 | `pages.custom` | Gateway | Custom error pages of a gateway group |
 | `tunnel.wss` | Gateway, connector | Data sessions over WSS |
 | `logs.stream` | Gateway, connector | Live logs (`Open` and `Attach`) |
-| `ota` | Gateway, connector | Over-the-air updates: the agent takes a release offer in its snapshot, stages it for the root updater and reports the update state and the updater's outcome in `Status`; an agent without it is never offered a release ([04](04-security.md#over-the-air-updates)) |
+| `ota` | Gateway, connector | Over-the-air updates: the agent takes a release offer in its snapshot, stages it for the root updater and reports the update state and the updater's outcome in `Status`; an agent without it is never offered a release. Announced only on a Linux host with the root updater installed ([04](04-security.md#over-the-air-updates)) |
 | `relay.v1` | Gateway, connector | Relayed private services |
 
 - Protobuf rules: fields are only added; unknown fields are ignored; an unknown `StreamOpen.kind`
