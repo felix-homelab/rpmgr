@@ -233,12 +233,12 @@ func (u *Updater) verify(meta map[string][]byte, in Install, channel string, st 
 // (docs/10-operations.md, "Filesystem layout").
 const StateDir = "/var/lib/rpmgr-update"
 
-// Installed reports whether the root updater is installed on this host: a Linux host with the
+// UpdaterInstalled reports whether the root updater is installed on this host: a Linux host with the
 // updater's directory, which rpmgr setup and the install scripts create. An agent elsewhere, such
 // as in the container image, stages nothing and announces no capability ota, so that a rollout
 // skips it instead of waiting for an updater that never runs. The service user cannot read the
 // directory, but it can tell that it is there.
-func Installed() bool { return runtime.GOOS == "linux" && installedAt(StateDir) }
+func UpdaterInstalled() bool { return runtime.GOOS == "linux" && installedAt(StateDir) }
 
 // installedAt reports whether dir is a directory.
 func installedAt(dir string) bool {
