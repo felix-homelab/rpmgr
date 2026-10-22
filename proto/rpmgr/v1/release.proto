@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+import "rpmgr/v1/settings.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// ReleaseService is the releases the controller knows and the staged rollouts of one of them to
+// the connectors and gateways (docs/07-api.md, "Services"; docs/04-security.md, "Over-the-air
+// updates"; D121), all for the Instance Admin. A rollout only records what the Instance Admin
+// decides; the controller's rollout job offers the release and follows the agents.
+service ReleaseService {
+  // ListReleases pages through the releases, the newest version first.
+  rpc ListReleases(ListReleasesRequest) returns (ListReleasesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // UploadRelease records a release from its signed manifest, signing-key statement and their
+  // signatures, verified like the release check, for air-gapped installations and signed
+  // downgrades. Its artifacts come from the release source or `rpmgr release import`.
+  rpc UploadRelease(UploadReleaseRequest) returns (UploadReleaseResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+}
+
+// ReleaseSource is where the controller got a release's manifest.
+enum ReleaseSource {
+  // Not set.
+  RELEASE_SOURCE_UNSPECIFIED = 0;
+  // The daily release check.
+  RELEASE_SOURCE_CHECK = 1;
+  // An Instance Admin's upload.
+  RELEASE_SOURCE_UPLOAD = 2;
+  // `rpmgr release import` on the controller host.
+  RELEASE_SOURCE_IMPORT = 3;
+}
+
+// Release is a release whose signed manifest the controller verified; output only.
+message Release {
+  // The release's ID.
+  string id = 1;
+  // Its version, e.g. "1.5.0".
+  string version = 2;
+  // The channel its manifest is signed for.
+  UpdateChannel channel = 3;
+  // Its manifest's sequence number.
+  int64 manifest_seq = 4;
+  // Where the controller got it.
+  ReleaseSource source = 5;
+  // Whether the mirror holds all its artifacts under /dl/.
+  bool mirrored = 6;
+  // When the mirror last held it complete; not set while it does not.
+  google.protobuf.Timestamp mirror_time = 7;
+  // When the controller recorded it.
+  google.protobuf.Timestamp create_time = 8;
+  // Whether it is the version the controller runs.
+  bool controller_version = 9;
+  // Whether it is newer than the controller, so that no rollout may install it.
+  bool newer_than_controller = 10;
+}
+
+// ListReleasesRequest pages through the releases.
+message ListReleasesRequest {
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 1;
+  // The page after the one that returned it.
+  string page_token = 2;
+}
+
+// ListReleasesResponse is one page of releases.
+message ListReleasesResponse {
+  // The releases.
+  repeated Release releases = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+  // The version the controller runs.
+  string controller_version = 3;
+}
+
+// UploadReleaseRequest is a release's signed files, as a GitHub release has them.
+message UploadReleaseRequest {
+  // signing-key.json: a root key's statement for the signing key.
+  bytes signing_key_statement = 1 [(buf.validate.field).bytes = {
+    min_len: 1
+    max_len: 65536
+  }];
+  // signing-key.json.minisig.
+  bytes statement_signature = 2 [(buf.validate.field).bytes = {
+    min_len: 1
+    max_len: 4096
+  }];
+  // manifest.json.
+  bytes manifest = 3 [(buf.validate.field).bytes = {
+    min_len: 1
+    max_len: 1048576
+  }];
+  // manifest.json.minisig.
+  bytes manifest_signature = 4 [(buf.validate.field).bytes = {
+    min_len: 1
+    max_len: 4096
+  }];
+}
+
+// UploadReleaseResponse is the recorded release.
+message UploadReleaseResponse {
+  // The release: the uploaded manifest, or the recorded one if its seq is not lower.
+  Release release = 1;
+}
