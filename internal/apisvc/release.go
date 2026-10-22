@@ -35,6 +35,10 @@ type Releases struct {
 	API *api.Server
 	// Version is the controller's own version: no rollout installs a newer one.
 	Version string
+	// MinAgentVersion is the oldest agent version the controller accepts (controller.MinAgentVersion
+	// of Version): no rollout installs an older one, whose agents it would refuse. Empty accepts
+	// every version.
+	MinAgentVersion string
 	// Roots verify uploaded releases; nil is the roots compiled into the binary.
 	Roots []release.PublicKey
 	Now   func() time.Time

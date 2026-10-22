@@ -9,11 +9,13 @@ import (
 	"slices"
 
 	"connectrpc.com/connect"
+	"golang.org/x/mod/semver"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/release"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
@@ -29,6 +31,8 @@ const (
 	ReasonRolloutActive      = "ROLLOUT_ACTIVE"
 	ReasonReleaseNewer       = "RELEASE_NEWER_THAN_CONTROLLER"
 	ReasonReleaseNotMirrored = "RELEASE_NOT_MIRRORED"
+	ReasonReleaseBelowMin    = "RELEASE_BELOW_MIN_AGENT_VERSION"
+	ReasonReleaseChannel     = "RELEASE_NOT_ON_CHANNEL"
 )
 
 var (
@@ -70,9 +74,23 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 		case compareVersions(rel.Version, r.Version) > 0:
 			return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
 				"apisvc: release %s is newer than the controller's %s; upgrade the controller first", rel.Version, r.Version)), ReasonReleaseNewer)
+		case r.MinAgentVersion != "" && compareVersions(rel.Version, r.MinAgentVersion) < 0:
+			return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+				"apisvc: release %s is below %s, the oldest agent version the controller accepts; its agents could not connect",
+				rel.Version, r.MinAgentVersion)), ReasonReleaseBelowMin)
 		case rel.MirroredAt == nil:
 			return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
 				"apisvc: the mirror does not hold release %s yet", rel.Version)), ReasonReleaseNotMirrored)
+		}
+		set, _, err := settings.Instance(sys, tx.Client())
+		if err != nil {
+			return err
+		}
+		if pre := rel.Channel == entrelease.ChannelPrerelease || semver.Prerelease("v"+rel.Version) != ""; pre &&
+			set.GetUpdateChannel() != rpmgrv1.UpdateChannel_UPDATE_CHANNEL_PRERELEASE {
+			return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+				"apisvc: release %s is a pre-release and the instance's update channel is stable; every host on it would refuse it",
+				rel.Version)), ReasonReleaseChannel)
 		}
 		if n, err := tx.Rollout.Query().Where(rollout.Active(true)).Count(sys); err != nil || n > 0 {
 			return errors.Join(err, errIf(n > 0, rolloutActive()))

@@ -97,7 +97,7 @@ func newEnv(t *testing.T) *env {
 	sealer, _ := secret.NewSealer(kek)
 	e.sealer = sealer
 	e.pki = &apisvc.Pki{DB: db, Sys: sys, Sealer: sealer, Now: now}
-	e.rel = &apisvc.Releases{DB: db, Sys: sys, Version: "1.5.0", Roots: []release.PublicKey{testReleaseRoot()}, Now: now}
+	e.rel = &apisvc.Releases{DB: db, Sys: sys, Version: "1.5.0", MinAgentVersion: "1.4.0", Roots: []release.PublicKey{testReleaseRoot()}, Now: now}
 	e.mfa = &accounts.MFA{Accounts: e.acc, Sealer: sealer, RevLog: rl, Logger: log}
 	e.tokens = &accounts.Tokens{Accounts: e.acc, RevLog: rl, Logger: log}
 	srv, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Now: now, Logger: log,

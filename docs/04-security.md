@@ -970,7 +970,10 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    ([D121](14-open-decisions.md#engineering)):
    - **Target:** the controller's own version, or an older release the Instance Admin uploaded on
      purpose (a signed downgrade). A target newer than the controller is refused, so no agent runs
-     ahead of its controller.
+     ahead of its controller, and so is one below the controller's `min_agent_version`
+     ([03](03-connections.md#versioning-and-capabilities)), whose agents it would refuse. A
+     pre-release is a target only while the instance's update channel is `prerelease`, since every
+     host on `stable` would refuse it.
    - **Stages:** the canary agents chosen when the rollout is created, then percentages the Instance
      Admin approves one at a time, then all. An agent's place in the percentages is a stable hash of
      its ID, so a later stage includes every agent of an earlier one.
