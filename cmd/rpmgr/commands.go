@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -75,7 +76,8 @@ func runGateway(ctx context.Context, env *cli.Env, path string) error {
 		return err
 	}
 	defer stop()
-	return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: version.Get().Version, Logger: logger, Now: agentcmd.Clock})
+	return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: version.Get().Version, Logger: logger, Now: agentcmd.Clock,
+		Update: runtime.GOOS == "linux"})
 }
 
 // runController is `rpmgr controller`: it runs until SIGINT or SIGTERM, then drains.

@@ -984,14 +984,25 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
      takes Instance Admin and a step-up, and is audited.
 3. The controller **offers** the target to each agent of the current stage in its snapshot, but
    only to an agent that announced the capability `ota`
-   ([03](03-connections.md#versioning-and-capabilities)). The agent, running as the unprivileged
-   service user, reads its own local policy: with `auto_update: off` it ignores the offer, with
-   `notify` it reports the update as available, and with a channel that does not take the release
-   it reports that. Otherwise it downloads the artifact of its OS, architecture and variant and the
-   signed files from the controller's mirror, with a size cap and a free-space check, and
-   **stages** them in `/var/lib/rpmgr/update/`, writing the manifest last. The URL is not trusted;
-   the signature is. The service user can never write the installed binary — otherwise a
-   compromised process could persist a build that ignores the local policy.
+   ([03](03-connections.md#versioning-and-capabilities)): gateways and connectors on Linux that
+   run on their own, never all-in-one's, whose roles share the controller's binary. The offer
+   names the version, its manifest's `seq` and its files under `/dl/` with sizes and SHA-256; the
+   controller offers a release only while its rollout runs and the agent's target is `offered`.
+   The agent, running as the unprivileged service user, reads the local policy (a gateway the
+   host's `/etc/rpmgr/policy.yaml`, for `auto_update` and `update_channel` only): with
+   `auto_update: off`, or a policy file that does not load, it declines the offer, and with
+   `notify` it reports the update as available; it reads the policy again at the interval of
+   [03](03-connections.md#timeouts-keepalive-and-backoff), so that a changed policy takes the
+   offer. Otherwise it downloads the signed files from the controller's
+   mirror, verifies them as the updater does, declines a release its channel does not take or
+   that has no artifact for its OS, architecture and variant, and downloads that artifact with a
+   size cap and a free-space check. It **stages** the files in `/var/lib/rpmgr/update/`, removing
+   what earlier releases left and writing the manifest last, and reports each step: declined,
+   available, downloading, staged, or failed, which it tries again later. The URL is not trusted;
+   the signature is: the agent fetches only from `/dl/<version>/` at the endpoint of its control
+   session, with file names it makes itself, and follows no redirect. The service user can never
+   write the installed binary — otherwise a compromised process could persist a build that
+   ignores the local policy.
 4. A **root-owned updater** (`rpmgr-update.path` triggering the oneshot `rpmgr-update.service`)
    reads `auto_update` and `update_channel` from the local policy **itself** (it does not trust the
    agent's decision); a policy file that does not parse, that its group or other users may write,

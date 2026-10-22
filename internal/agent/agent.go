@@ -12,11 +12,14 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 )
 
 // ControlOptions configure an agent's control plane.
@@ -48,6 +51,10 @@ type ControlOptions struct {
 	// that what changed while there was none is not lost: a connector's complete readiness, a
 	// gateway's data sessions.
 	SessionStatus func() *agentv1.Status
+	// Update, if set, stages the releases the controller offers for the root updater and
+	// announces the capability ota (docs/04-security.md, "Over-the-air updates"): gateways and
+	// connectors on Linux that run on their own, never all-in-one's.
+	Update *UpdateOptions
 }
 
 // Control is an agent's control plane: its identity, the control session with certificate
@@ -58,6 +65,7 @@ type Control struct {
 	client *Client
 	rt     *Runtime
 	deny   *DenyList
+	stager *Stager // nil without ControlOptions.Update
 }
 
 // NewControl loads the identity and wires the control plane; Run starts it.
@@ -74,12 +82,25 @@ func NewControl(o ControlOptions) (*Control, error) {
 		return nil, err
 	}
 	c := &Control{o: o, id: id}
+	caps := o.Capabilities
+	var onOffer func(*agentv1.ReleaseOffer)
+	if o.Update != nil {
+		now := o.Now
+		if now == nil {
+			now = time.Now
+		}
+		c.stager = newStager(*o.Update, o.Version, c.controllerURL, func(st *agentv1.UpdateState) {
+			c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{Update: st}}})
+		}, now, o.Logger)
+		caps = append(slices.Clone(caps), agentproto.CapOTA)
+		onOffer = c.stager.Offer
+	}
 	c.deny = NewDenyList(DenyListOptions{StateDir: o.StateDir, Root: id.Root, Now: o.Now,
 		Signers: func() []*x509.Certificate { return c.rt.Signers() }})
 	c.rt = NewRuntime(RuntimeOptions{Identity: id, StateDir: o.StateDir, Applier: o.Applier, Now: o.Now, Logger: o.Logger,
 		Send:        func(m *agentv1.AgentMessage) bool { return c.client.Send(m) },
-		OnEndpoints: func(eps []string) { c.client.SetEndpoints(eps) }})
-	c.client = NewClient(ClientOptions{Identity: id, Endpoints: id.Endpoints, Version: o.Version, Capabilities: o.Capabilities,
+		OnEndpoints: func(eps []string) { c.client.SetEndpoints(eps) }, OnOffer: onOffer})
+	c.client = NewClient(ClientOptions{Identity: id, Endpoints: id.Endpoints, Version: o.Version, Capabilities: caps,
 		BootID: hex.EncodeToString(boot), Now: o.Now, Logger: o.Logger, Backoff: o.Backoff, Dial: o.Dial, Fallback: o.Fallback,
 		Hello: func(h *agentv1.Hello) {
 			c.rt.Hello(h)
@@ -87,8 +108,20 @@ func NewControl(o ControlOptions) (*Control, error) {
 		},
 		OnWelcome: func(w *agentv1.Welcome) {
 			c.rt.Welcome(w)
+			var st *agentv1.Status
 			if o.SessionStatus != nil {
-				c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: o.SessionStatus()}})
+				st = o.SessionStatus()
+			}
+			if c.stager != nil {
+				if u := c.stager.State(); u != nil {
+					if st == nil {
+						st = &agentv1.Status{}
+					}
+					st.Update = u
+				}
+			}
+			if st != nil {
+				c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: st}})
 			}
 		},
 		OnMessage: func(m *agentv1.ControllerMessage) {
@@ -163,9 +196,12 @@ func (c *Control) Run(ctx context.Context) error {
 		return err
 	}
 	rctx, cancel := context.WithCancel(ctx)
-	done := make(chan struct{})
-	go func() { c.rt.Run(rctx); close(done) }()
-	defer func() { cancel(); <-done }()
+	var wg sync.WaitGroup
+	wg.Go(func() { c.rt.Run(rctx) })
+	if c.stager != nil {
+		wg.Go(func() { c.stager.Run(rctx) })
+	}
+	defer func() { cancel(); wg.Wait() }()
 	return c.client.Run(ctx)
 }
 
@@ -212,6 +248,17 @@ func (c *Control) ControllerAddr() (string, error) {
 		ep = eps[0]
 	}
 	return dialAddr(ep)
+}
+
+// controllerURL returns the endpoint of the current or last control session, or the first
+// endpoint before any session, as https://host:port: where the agent downloads offered releases
+// from the controller's /dl/.
+func (c *Control) controllerURL() (string, error) {
+	addr, err := c.ControllerAddr()
+	if err != nil {
+		return "", err
+	}
+	return "https://" + addr, nil
 }
 
 // DenyList returns the agent's deny-list, for the role's TLS peers.

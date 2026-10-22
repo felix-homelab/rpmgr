@@ -56,6 +56,8 @@ type RuntimeOptions struct {
 	OnEndpoints func([]string)
 	Now         func() time.Time
 	Logger      *slog.Logger
+	// OnOffer gets the release offer of every applied snapshot, nil for none; may be nil.
+	OnOffer func(*agentv1.ReleaseOffer)
 }
 
 // Runtime applies the agent's snapshots: it verifies each, ignores one that is not newer, lets the
@@ -333,6 +335,9 @@ func (r *Runtime) apply(ctx context.Context, signed *agentv1.Signed, snap *agent
 	r.mu.Unlock()
 	if r.o.OnEndpoints != nil && len(snap.GetControllerEndpoints()) > 0 {
 		r.o.OnEndpoints(snap.GetControllerEndpoints())
+	}
+	if r.o.OnOffer != nil {
+		r.o.OnOffer(snap.GetReleaseOffer())
 	}
 	return notReady
 }
