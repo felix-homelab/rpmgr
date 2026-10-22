@@ -8,11 +8,13 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/release"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	entrelease "github.com/felix-homelab/rpmgr/internal/store/ent/release"
@@ -251,5 +253,48 @@ func TestRollouts_DevelopmentController(t *testing.T) {
 	if _, err := ada.rel.CreateRollout(ctx, connect.NewRequest(&rpmgrv1.CreateRolloutRequest{ReleaseId: resp.Msg.GetRelease().GetId(),
 		CanaryAgentIds: []string{con.ID}})); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonReleaseNewer {
 		t.Errorf("a rollout from a development build: %v", err)
+	}
+}
+
+// TestRollouts_VersionAndChannel (D121; docs/04-security.md, "Release signing"): no rollout installs
+// a release below min_agent_version, whose agents the controller would refuse; a pre-release is
+// rolled out only on an instance on the pre-release channel, and there only if it is no newer than
+// the controller by semantic versioning.
+func TestRollouts_VersionAndChannel(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	ctx := context.Background()
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]string{}
+	for v, ch := range map[string]string{"1.3.9": release.Stable, "1.5.0-rc.1": release.Prerelease, "1.6.0-rc.1": release.Prerelease} {
+		resp, err := ada.rel.UploadRelease(ctx, connect.NewRequest(signedRelease(t, e.clock, v, 10, ch)))
+		if err != nil {
+			t.Fatal(v, err)
+		}
+		ids[v] = resp.Msg.GetRelease().GetId()
+	}
+	e.db.Client().Release.Update().SetMirroredAt(e.clock).ExecX(e.sys)
+	con := e.db.Client().Connector.Create().SetOrgID(org).SetName("nas").SetSpiffeID("spiffe://t/con1").SetPubkeySha256("a").SaveX(e.sys)
+	create := func(v string) error {
+		_, err := ada.rel.CreateRollout(ctx, connect.NewRequest(&rpmgrv1.CreateRolloutRequest{ReleaseId: ids[v], CanaryAgentIds: []string{con.ID}}))
+		return err
+	}
+	if err := create("1.3.9"); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonReleaseBelowMin {
+		t.Errorf("a release below min_agent_version: %v", err)
+	}
+	if err := create("1.5.0-rc.1"); reason(err) != apisvc.ReasonReleaseChannel {
+		t.Errorf("a pre-release on the stable channel: %v", err)
+	}
+	pre := rpmgrv1.UpdateChannel_UPDATE_CHANNEL_PRERELEASE
+	if _, err := settings.UpdateInstance(e.sys, e.db, &rpmgrv1.InstanceSettings{UpdateChannel: &pre},
+		&fieldmaskpb.FieldMask{Paths: []string{"update_channel"}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := create("1.6.0-rc.1"); reason(err) != apisvc.ReasonReleaseNewer {
+		t.Errorf("a pre-release of a newer version: %v", err)
+	}
+	if err := create("1.5.0-rc.1"); err != nil {
+		t.Errorf("a pre-release of the controller's version on the pre-release channel: %v", err)
 	}
 }
