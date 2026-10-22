@@ -137,7 +137,7 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 | `/var/lib/rpmgr/` | rpmgr, 0750 | Last-known-good snapshot (`snapshot.signed`, 0600) and **deny-list** (`denylist.signed`, 0600) (both signed; the deny-list is loaded before any session is accepted), stateless reset key (gateways: `quic-reset.key`, 0600, created at the first start), route certificates with their keys that the gateway fetched (gateways: `resources/`, 0700, one 0600 file per item, named by its SHA-256, removed when no route needs it), SQLite database and its lock file `controller.db.lock`, held by the running controller (controller) |
 | `/var/lib/rpmgr/update/` | rpmgr, 0750 | OTA download area: artifact and signed manifest written by the agent. **Untrusted input** to the updater, which never verifies or installs files in place here |
 | `/etc/sysctl.d/60-rpmgr.conf` | root, 0644 | Host tuning, written by `/install.sh` on every run: the UDP buffers, whatever the host has now, and BBR with `--tcp-bbr` or while the file sets it ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
-| `/var/lib/rpmgr-update/` | root, 0700 | Updater state, out of the service user's reach: version floor and highest manifest `seq` in `state.json` (`{"seq": 87, "floor": "1.4.2"}`, initialised at install time from the running version and its release `seq`), `install.json` (`{"method": "script", "path": "/usr/local/bin/rpmgr", "variant": "full", "roles": ["connector"]}`, written by `rpmgr setup` and both install scripts; the single `role` that v0.1.0 wrote is read as a list of one; the global script writes the method, the path and the variant when no record exists), `pending.json` while an install's outcome is not known yet, and `staging/`, where the updater copies and verifies the files. **A host keeps its variant** ([D119](14-open-decisions.md#engineering)): both install scripts take the one `install.json` records, else the one the installed binary reports with `rpmgr version --verbose`, `full` for a binary that reports none (0.1.0); an explicit other `--variant` is refused, and the global script's `--upgrade` refuses to guess when it cannot tell. `RPMGR_INSTALL_BIN` and `RPMGR_INSTALL_STATE` move the binary and this directory for the scripts' tests only |
+| `/var/lib/rpmgr-update/` | root, 0700 | Updater state, out of the service user's reach: version floor and highest manifest `seq` in `state.json` (`{"seq": 87, "floor": "1.4.2"}`, initialised at install time from the running version and its release `seq`), `install.json` (`{"method": "script", "path": "/usr/local/bin/rpmgr", "variant": "full", "roles": ["connector"]}`, written by `rpmgr setup` and both install scripts through `rpmgr updater install`, [Hardened systemd units](#hardened-systemd-units); the single `role` that v0.1.0 wrote is read as a list of one), `pending.json` while an install's outcome is not known yet, and `staging/`, where the updater copies and verifies the files. **A host keeps its variant** ([D119](14-open-decisions.md#engineering)): both install scripts take the one `install.json` records, else the one the installed binary reports with `rpmgr version --verbose`, `full` for a binary that reports none (0.1.0); an explicit other `--variant` is refused, and the global script's `--upgrade` refuses to guess when it cannot tell. `RPMGR_INSTALL_BIN` and `RPMGR_INSTALL_STATE` move the binary and this directory for the scripts' tests only |
 | `/run/rpmgr-update/status.json` | root, 0644 | The updater's last outcome (`updated`, `rolled_back`, `rollback_failed`, `refused`), which the agent reports ([04](04-security.md#over-the-air-updates)) |
 | `/var/lib/rpmgr/dl/<version>/` (controller) | rpmgr, 0750; files 0640 | The release mirror, served under `/dl/`: the controller's own version, the targets of its rollouts and its previous version, verified release files only; `dl/.own.json` records the own and the previous version ([04](04-security.md#over-the-air-updates)) |
 | `/var/lib/rpmgr/audit-checkpoints.log` (controller) | rpmgr, 0640 | Signed audit checkpoints, appended locally and included in every backup; the external sink (Phase 2) is what makes tampering evident ([04](04-security.md#audit-log)) |
@@ -222,7 +222,9 @@ RestartSec=2s
      and refuses a version rolled back on this host until a manifest with a higher `seq` offers it.
      The service user can no longer swap a file or plant a symlink between check and install;
   4. refuses anything below the persisted floor. Floor and `seq` are initialised at install time
-     from the running version and its release `seq`; after that the running version plays no role.
+     from the running version and its release `seq` (by `rpmgr setup`, which knows no manifest,
+     with `seq` 0: then no manifest below the floor is taken, whatever its `seq`, until an update
+     records one); after that the running version plays no role.
      A manifest with a higher `seq` may lower the floor, which makes **signed downgrades** possible,
      while replaying an old manifest (lower `seq`) is refused — also on a fresh host;
   5. copies the verified file into the target directory as `.rpmgr.new` (same filesystem, so no
@@ -258,6 +260,9 @@ RestartSec=2s
      records: if the new binary is in place, it restarts and checks the roles as in step 6 and
      rolls back if one is not ready; if the run ended before the rename, nothing changed and the
      record goes. A staged release that is the installed binary already is not installed again.
+     Without a staged `manifest.json`, which the agent writes last, nothing is staged: the run
+     ends there and writes no status, so it neither reports `refused` at every boot nor replaces
+     an earlier outcome; a staged set that does not verify is still `refused`.
 
   The role service's `NoNewPrivileges=yes` and `ProtectSystem=strict` stay intact; the service user
   can never write the binary or the updater state.
@@ -294,11 +299,28 @@ RestartSec=2s
   whose roles include a controller or an all-in-one the updater refuses every release, because the
   roles share one binary and such hosts are upgraded by hand
   ([D102](14-open-decisions.md#engineering)).
-  `install.json` records the method, the binary's path, the variant and a `roles` list, so that a
-  host with a gateway and a connector restarts both; `rpmgr systemd-unit update` prints the units
-  with that path in `ExecStart`. `install.sh --upgrade` adds the units and files when they are
-  missing, as on a host installed with v0.1.0, and raises the floor and `seq` in `state.json` to
-  those of the binary it installs, never lowering them.
+  - **What is recorded:** `install.json` records the method (`script`, or `setup` for a binary
+    that no script installed), the binary's path, the variant and a `roles` list, so that a host
+    with a gateway and a connector restarts both; `rpmgr systemd-unit update` prints the units
+    with that path in `ExecStart`.
+  - **How the scripts do it:** both run `rpmgr updater install` with the binary they installed and
+    the `seq` and version of the release they verified ([16](16-cli.md)). It records the binary's
+    own variant, refusing another than recorded; it keeps the roles recorded, the single `role` of
+    v0.1.0 included, and adds the script's role and those whose boot file `/etc/rpmgr/<role>.yaml`
+    exists; it initialises the floor and `seq` in `state.json`, or raises them, never lowering
+    either; and it writes the units, which the script enables (`systemctl enable
+    rpmgr-update.service`, `systemctl enable --now rpmgr-update.path`). A refusal writes nothing,
+    and a record or state it cannot read, which may hide a higher `seq`, is never replaced.
+    `install.sh --upgrade` runs it too, so a host installed with v0.1.0 gets the units and files;
+    the global script installing a release from before the updater writes only a missing
+    `install.json`, without roles.
+  - **What setup does:** `rpmgr setup` adds its role to `install.json` and installs and enables
+    the units, unless `--no-unit`. It knows no manifest, so it leaves a `state.json` a script
+    wrote, and starts a missing one at the binary's own version with `seq` 0 (as does
+    `rpmgr updater install` without `--seq`). With `seq` 0 the updater takes no manifest below
+    the floor, whatever its `seq`; the first update records the `seq`. A development build has no
+    release version and gets no `state.json`, so the updater refuses every release, which setup
+    says.
 - No secret appears in `ExecStart` or `Environment=` ([04](04-security.md#secrets-at-rest-and-in-logs)).
 - The installer applies the host tuning from [03](03-connections.md#host-tuning-applied-by-the-installer).
 

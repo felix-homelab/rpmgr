@@ -103,10 +103,18 @@ The install script of v0.1.0-rc.7 and earlier has neither `--upgrade` nor `--res
    `/var/lib/rpmgr` (`rpmgr`, 0750), and the binary at `/usr/local/bin/rpmgr`, which replaces an
    existing one in one rename. Then it runs `rpmgr version --verbose`, which prints the version and
    the release root keys compiled into the binary.
-6. **Services:** with `--restart`, it restarts each rpmgr service that runs and checks that it
+6. **Installs the updater,** for the automatic updates that come later: the binary records in
+   `/var/lib/rpmgr-update/` (root, 0700) how it was installed, which build, and the roles whose
+   boot file the host has; it raises the floor and the release number the updater keeps to those of
+   this release, never lowering them; and on a host with systemd it writes and enables the units
+   `rpmgr-update.path` and `rpmgr-update.service`
+   ([10](../../10-operations.md#hardened-systemd-units)). This is also how a host installed with
+   v0.1.0 gets the updater: run the script with `--upgrade`. A release from before the updater gets
+   only the record of how it was installed.
+7. **Services:** with `--restart`, it restarts each rpmgr service that runs and checks that it
    stays active for 5 s without systemd restarting it. Without, it names each service that still
    runs the previous binary and the command that restarts it.
-7. **Setup:** unless `--no-setup` or `--upgrade` is given, it asks on the terminal whether to run
+8. **Setup:** unless `--no-setup` or `--upgrade` is given, it asks on the terminal whether to run
    `rpmgr setup`. Without a terminal it asks nothing and prints the next step.
 
 The script writes no configuration. Run again, it replaces the binary and leaves the user, the
@@ -200,8 +208,11 @@ the global script needs, and `systemctl`, `useradd` and `install`.
 6. **A connector's local policy:** writes `/etc/rpmgr/policy.yaml` if it does not exist, allowing
    nothing, then adds the denied targets and after them the allowed ones, so that an allowed target
    never stands without the denials that narrow it.
-7. **Records** how rpmgr was installed and the release it came from in `/var/lib/rpmgr-update/`,
-   for the automatic updates that come later.
+7. **Installs the updater,** for the automatic updates that come later: the binary records how it
+   was installed, its build and the role in `/var/lib/rpmgr-update/`, beside the roles recorded
+   already, raises the floor and the release number the updater keeps to those of this release,
+   never lowering them, and writes the units `rpmgr-update.path` and `rpmgr-update.service`
+   ([10](../../10-operations.md#hardened-systemd-units)).
 8. **Host tuning:** writes `/etc/sysctl.d/60-rpmgr.conf` with the UDP buffers QUIC needs, and with
    `--tcp-bbr` BBR. It applies them at once, raising a buffer only where it is lower, or says that
    the file applies at the next boot. To keep larger buffers after a boot, set them in a file that
@@ -211,7 +222,9 @@ the global script needs, and `systemctl`, `useradd` and `install`.
    `this host is enrolled already; to enroll it again, run rpmgr enroll --replace`.
 10. **Starts the service:** writes the unit `rpmgr systemd-unit` prints to
     `/etc/systemd/system/rpmgr-<role>.service`, then `systemctl daemon-reload` and
-    `systemctl enable --now rpmgr-<role>`.
+    `systemctl enable --now rpmgr-<role>`, and enables the updater: `systemctl enable
+    rpmgr-update.service`, which runs once at every boot, and `systemctl enable --now
+    rpmgr-update.path`, which starts it when the agent has downloaded a release.
 
 It ends with a line such as:
 

@@ -910,7 +910,9 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
 - `seq` is a **monotonic manifest number**. Agents persist the highest `seq` they have accepted and
   their version floor, and accept a manifest only if its `seq` is at least that high. `floor` raises
   the persisted version floor; it can be **lowered** only by a manifest with a higher `seq` than any
-  seen. Replaying an older, genuinely signed manifest therefore cannot roll an agent back.
+  seen. A host that has seen none (`seq` 0, set up by `rpmgr setup` without an install script)
+  takes no manifest below its floor at all. Replaying an older, genuinely signed manifest therefore
+  cannot roll an agent back.
 
 - This works fully offline (air-gapped installations), the verifier is small, and signing keys can
   rotate without a new binary.
@@ -1023,6 +1025,8 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    the version as failed. Before the rename it records the install as pending in its own
    directory, so that a run that a crash or a reboot interrupts is finished by the next one: the
    updater also runs once at boot, checks the roles and rolls back if one is not ready.
+   A run that finds no staged manifest (the agent writes it last), as at boot or while the agent
+   is still staging, does nothing else and reports nothing.
 7. The updater writes the outcome to `/run/rpmgr-update/status.json` (root-owned, readable by the
    service user): `updated`, `rolled_back`, `rollback_failed` (the previous binary could not be put
    back, which needs an operator) or `refused`, with the version, the previous one and a
@@ -1030,10 +1034,16 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    floor and `seq` are raised only after success. They are stored by the updater in
    `/var/lib/rpmgr-update/state.json`, owned by root and not writable by the service user, so a
    compromised agent process cannot lower them ([10](10-operations.md#install)). They are
-   **initialised at install time** from the binary's embedded release metadata (its version and the
-   `seq` of its own release manifest), so a freshly installed host is protected against replayed old
-   manifests from day one; an installer run on a host that has them raises them and never lowers
-   them. Afterwards the running version plays no role: a manifest with a higher `seq` may lower the
+   **initialised at install time** by the install scripts from the release they verified (its
+   version and the `seq` of its manifest), so a freshly installed host is protected against
+   replayed old manifests from day one; an installer run on a host that has them raises them and
+   never lowers them. `rpmgr setup` knows no manifest: it leaves a state a script wrote, and starts
+   a missing one at the binary's own version with `seq` 0. Such a state takes no manifest below its
+   floor, whatever that manifest's `seq`, so a replayed manifest of an older version is refused;
+   one at or above the floor can only move the host to a validly signed release that is not
+   older, and the first update records its `seq`. A development build has no release version and
+   gets no state, so the updater refuses every release
+   ([10](10-operations.md#hardened-systemd-units)). Afterwards the running version plays no role: a manifest with a higher `seq` may lower the
    floor, which makes **signed downgrades** possible. The automatic rollback to `.prev` is exempt,
    because floor and `seq` are only raised after success.
 
@@ -1060,7 +1070,8 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
     connector role only, and records the variant in `install.json`
     ([D119](14-open-decisions.md#engineering)).
   - **What it installs:** the binary in `/usr/local/bin`, the boot file, the policy file, the
-    updater's state and the host tuning ([10](10-operations.md#filesystem-layout)). It then enrolls
+    updater's record, state and units (`rpmgr updater install`) and the host tuning
+    ([10](10-operations.md#filesystem-layout)). It then enrolls
     with `rpmgr enroll`, which reads the token itself, so the token never passes through the
     script. Last come the unit of `rpmgr systemd-unit`, enabled and started.
   - **A controller that cannot serve installs** (a development build, or no root keys) serves a
@@ -1080,14 +1091,18 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
     API for the latest release, and with `--prerelease` for the latest including pre-releases.
   - **Options:** `[--version <version>] [--prerelease] [--variant full|connector] [--no-setup]
     [--upgrade] [--restart] [--dir <directory>] [--verify-only]`. `--upgrade` replaces the binary
-    of a host that has one and nothing else, and keeps its variant: the one `install.json` records,
+    of a host that has one, installs the updater as below and does nothing else, and keeps the
+    host's variant: the one `install.json` records,
     else the one the binary reports ([10](10-operations.md#filesystem-layout)); it refuses to guess
     when it can tell neither, and both scripts refuse an explicit other `--variant`. The global
-    script writes `install.json` when the host has none;
+    script installs the updater's record, state and units with `rpmgr updater install`, also with
+    `--upgrade`, which is how a host installed with v0.1.0 gets them; a release from before the
+    updater gets only `install.json`, when the host has none;
     `--restart` restarts the rpmgr services that run
     ([10](10-operations.md#upgrades-and-version-skew)).
   - **What it installs,** only after the verification: the binary in `/usr/local/bin` (replaced in
-    one rename), the system user `rpmgr`, `/etc/rpmgr` and `/var/lib/rpmgr`. It writes no
+    one rename), the system user `rpmgr`, `/etc/rpmgr`, `/var/lib/rpmgr` and the updater's
+    record, state and units (enabled on a host with systemd). It writes no
     configuration, and running it again leaves the user, the directories and the configuration as
     they are. It then offers `rpmgr setup` on the terminal
     ([D75](14-open-decisions.md#project-and-process)).
