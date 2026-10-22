@@ -84,6 +84,7 @@ func testReplay(t *testing.T) {
 func testHostile(t *testing.T) {
 	h := newHost(t)
 	h.setup()
+	h.stage(newVer)
 	// The service user replaces the staged artifact with a symbolic link, as a compromised agent
 	// could; the updater refuses the staging rather than reading through it.
 	h.exec("su rpmgr -s /bin/sh -c 'rm /var/lib/rpmgr/update/rpmgr-" + newVer + "-linux-amd64 && ln -s /etc/passwd /var/lib/rpmgr/update/rpmgr-" + newVer + "-linux-amd64'")
@@ -156,7 +157,7 @@ echo setup: done
 func (h *host) apply(version string) string {
 	h.t.Helper()
 	if version != "" {
-		h.exec("su rpmgr -s /bin/sh -c 'cp /t/" + version + "/* /var/lib/rpmgr/update/'")
+		h.stage(version)
 	}
 	return h.exec(`
 set +e
@@ -170,6 +171,12 @@ su rpmgr -s /bin/sh -c 'echo x >>/usr/local/bin/rpmgr' 2>/dev/null && echo "bina
 su rpmgr -s /bin/sh -c 'echo x >>/var/lib/rpmgr-update/state.json' 2>/dev/null && echo "state: writable" || echo "state: protected"
 su rpmgr -s /bin/sh -c 'echo x >>/run/rpmgr-update/status.json' 2>/dev/null && echo "status: writable" || echo "status: protected"
 `)
+}
+
+// stage copies a release's files into the agent's staging directory as the service user.
+func (h *host) stage(version string) {
+	h.t.Helper()
+	h.exec("su rpmgr -s /bin/sh -c 'cp /t/" + version + "/* /var/lib/rpmgr/update/'")
 }
 
 func (h *host) waitSystemd() {

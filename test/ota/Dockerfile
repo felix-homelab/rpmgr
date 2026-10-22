@@ -8,7 +8,7 @@ FROM mirror.gcr.io/library/debian@sha256:913f6706df59a68922d1dd08f78c2476560a8d3
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        ca-certificates curl passwd systemd systemd-sysv util-linux \
+        ca-certificates curl dbus passwd systemd systemd-sysv util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 STOPSIGNAL SIGRTMIN+3
