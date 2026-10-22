@@ -122,6 +122,12 @@ message AgentSession {
   google.protobuf.Timestamp last_seen_time = 3;
   // The address its control session comes from.
   string remote_addr = 4;
+  // Whether the controller refused it a session because its version is below min_agent_version;
+  // version is then the one it came with.
+  bool below_min_agent_version = 5;
+  // The reason of the last Goodbye that refused it a session, e.g. "upgrade_required"; empty once
+  // a session is accepted.
+  string last_goodbye_reason = 6;
 }
 
 // ConnectorStatus is a connector's state as the controller last heard of it.

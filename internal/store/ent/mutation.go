@@ -2986,6 +2986,7 @@ type AgentSessionMutation struct {
 	connected_at       *time.Time
 	last_seen_at       *time.Time
 	disconnected_at    *time.Time
+	last_goodbye       *string
 	clearedFields      map[string]struct{}
 	done               bool
 	oldValue           func(context.Context) (*AgentSession, error)
@@ -3482,6 +3483,42 @@ func (m *AgentSessionMutation) ResetDisconnectedAt() {
 	delete(m.clearedFields, agentsession.FieldDisconnectedAt)
 }
 
+// SetLastGoodbye sets the "last_goodbye" field.
+func (m *AgentSessionMutation) SetLastGoodbye(s string) {
+	m.last_goodbye = &s
+}
+
+// LastGoodbye returns the value of the "last_goodbye" field in the mutation.
+func (m *AgentSessionMutation) LastGoodbye() (r string, exists bool) {
+	v := m.last_goodbye
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastGoodbye returns the old "last_goodbye" field's value of the AgentSession entity.
+// If the AgentSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentSessionMutation) OldLastGoodbye(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastGoodbye is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastGoodbye requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastGoodbye: %w", err)
+	}
+	return oldValue.LastGoodbye, nil
+}
+
+// ResetLastGoodbye resets all changes to the "last_goodbye" field.
+func (m *AgentSessionMutation) ResetLastGoodbye() {
+	m.last_goodbye = nil
+}
+
 // Where appends a list predicates to the AgentSessionMutation builder.
 func (m *AgentSessionMutation) Where(ps ...predicate.AgentSession) {
 	m.predicates = append(m.predicates, ps...)
@@ -3516,7 +3553,7 @@ func (m *AgentSessionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentSessionMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 10)
 	if m.org_id != nil {
 		fields = append(fields, agentsession.FieldOrgID)
 	}
@@ -3544,6 +3581,9 @@ func (m *AgentSessionMutation) Fields() []string {
 	if m.disconnected_at != nil {
 		fields = append(fields, agentsession.FieldDisconnectedAt)
 	}
+	if m.last_goodbye != nil {
+		fields = append(fields, agentsession.FieldLastGoodbye)
+	}
 	return fields
 }
 
@@ -3570,6 +3610,8 @@ func (m *AgentSessionMutation) Field(name string) (ent.Value, bool) {
 		return m.LastSeenAt()
 	case agentsession.FieldDisconnectedAt:
 		return m.DisconnectedAt()
+	case agentsession.FieldLastGoodbye:
+		return m.LastGoodbye()
 	}
 	return nil, false
 }
@@ -3597,6 +3639,8 @@ func (m *AgentSessionMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldLastSeenAt(ctx)
 	case agentsession.FieldDisconnectedAt:
 		return m.OldDisconnectedAt(ctx)
+	case agentsession.FieldLastGoodbye:
+		return m.OldLastGoodbye(ctx)
 	}
 	return nil, fmt.Errorf("unknown AgentSession field %s", name)
 }
@@ -3668,6 +3712,13 @@ func (m *AgentSessionMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDisconnectedAt(v)
+		return nil
+	case agentsession.FieldLastGoodbye:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastGoodbye(v)
 		return nil
 	}
 	return fmt.Errorf("unknown AgentSession field %s", name)
@@ -3774,6 +3825,9 @@ func (m *AgentSessionMutation) ResetField(name string) error {
 		return nil
 	case agentsession.FieldDisconnectedAt:
 		m.ResetDisconnectedAt()
+		return nil
+	case agentsession.FieldLastGoodbye:
+		m.ResetLastGoodbye()
 		return nil
 	}
 	return fmt.Errorf("unknown AgentSession field %s", name)

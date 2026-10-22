@@ -173,6 +173,7 @@ func (s *Sessions) Session(st grpc.BidiStreamingServer[agentv1.AgentMessage, age
 		return err
 	}
 	if min := MinAgentVersion(s.version); min != "" && olderThan(hello.GetVersion(), min) {
+		s.refused(agent, hello.GetVersion(), "upgrade_required")
 		return st.Send(goodbye(agentv1.GoodbyeReason_GOODBYE_REASON_UPGRADE_REQUIRED, 0))
 	}
 	epoch, dbEpoch, err := s.register(st.Context(), agent, hello)
@@ -311,7 +312,8 @@ func (s *Sessions) register(ctx context.Context, agent Agent, hello *agentv1.Hel
 			ON CONFLICT (agent_id) DO UPDATE SET session_epoch = agent_sessions.session_epoch + 1,
 			controller_node = excluded.controller_node, remote_addr = excluded.remote_addr,
 			agent_version = excluded.agent_version, capabilities = excluded.capabilities,
-			connected_at = excluded.connected_at, last_seen_at = excluded.last_seen_at, disconnected_at = NULL
+			connected_at = excluded.connected_at, last_seen_at = excluded.last_seen_at, disconnected_at = NULL,
+			last_goodbye = ''
 			RETURNING session_epoch`,
 			agent.Identity.ID, agent.Identity.Org, s.node, addr, hello.GetVersion(), string(caps), now)
 		if err != nil {
@@ -346,6 +348,20 @@ func (s *Sessions) register(ctx context.Context, agent Agent, hello *agentv1.Hel
 		})
 	})
 	return epoch, dbEpoch, err
+}
+
+// refused records that the agent, at version, was refused a session with a Goodbye of reason, so
+// that the API shows why it is not connected (docs/09-web-ui.md, "Connector and gateway lists").
+// An agent that never had a session has no row to record it in; a failure is only logged.
+func (s *Sessions) refused(agent Agent, version, reason string) {
+	err := store.WriteTx(s.sys, s.db, func(tx *ent.Tx) error {
+		_, err := tx.ExecContext(s.sys, `UPDATE agent_sessions SET agent_version = $1, last_goodbye = $2
+			WHERE agent_id = $3 AND (agent_version <> $1 OR last_goodbye <> $2)`, clip(version), reason, agent.Identity.ID)
+		return err
+	})
+	if err != nil {
+		s.log.Warn("cannot record a refused session", "agent", agent.Identity.String(), "reason", reason, "error", err)
+	}
 }
 
 // add makes sess the agent's session and supersedes an older one.

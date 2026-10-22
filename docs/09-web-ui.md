@@ -212,9 +212,11 @@ flowchart LR
   - domains not verified, with their status;
   - the user's own API tokens that expire within 21 days or have expired.
 - [R] Agents below `min_agent_version` are not listed apart in Phase 1, although
-  [03](03-connections.md#versioning-and-capabilities) says the refusal is shown. The API reports
-  neither the minimum nor the reason of the last `Goodbye`. Such an agent shows as without a
-  control session.
+  [03](03-connections.md#versioning-and-capabilities) says the refusal is shown. Such an agent
+  shows as without a control session. From Phase 2 the API reports, for each connector and gateway
+  the controller refused, that it is below the minimum, the version it came with and the reason of
+  that `Goodbye` ([07](07-api.md#services)); the lists show it with the rollouts of
+  `/settings/updates`.
 - DNS conflicts, held DNS zones and DNS-provider tokens join the list with managed DNS (Phase 2).
 - **Traffic, last 24 hours:** the org's bytes in and out, connections and errors as figures, the
   bytes in and out per hour as a chart, and its busiest routes, each linked to its detail.

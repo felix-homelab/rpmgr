@@ -228,9 +228,15 @@ type GatewayStatus struct {
 	// When it was last heard from.
 	LastSeenTime *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=last_seen_time,json=lastSeenTime,proto3" json:"last_seen_time,omitempty"`
 	// The address its control session comes from.
-	RemoteAddr    string `protobuf:"bytes,5,opt,name=remote_addr,json=remoteAddr,proto3" json:"remote_addr,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RemoteAddr string `protobuf:"bytes,5,opt,name=remote_addr,json=remoteAddr,proto3" json:"remote_addr,omitempty"`
+	// Whether the controller refused it a session because its version is below min_agent_version;
+	// version is then the one it came with.
+	BelowMinAgentVersion bool `protobuf:"varint,6,opt,name=below_min_agent_version,json=belowMinAgentVersion,proto3" json:"below_min_agent_version,omitempty"`
+	// The reason of the last Goodbye that refused it a session, e.g. "upgrade_required"; empty once
+	// a session is accepted.
+	LastGoodbyeReason string `protobuf:"bytes,7,opt,name=last_goodbye_reason,json=lastGoodbyeReason,proto3" json:"last_goodbye_reason,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GatewayStatus) Reset() {
@@ -294,6 +300,20 @@ func (x *GatewayStatus) GetLastSeenTime() *timestamppb.Timestamp {
 func (x *GatewayStatus) GetRemoteAddr() string {
 	if x != nil {
 		return x.RemoteAddr
+	}
+	return ""
+}
+
+func (x *GatewayStatus) GetBelowMinAgentVersion() bool {
+	if x != nil {
+		return x.BelowMinAgentVersion
+	}
+	return false
+}
+
+func (x *GatewayStatus) GetLastGoodbyeReason() string {
+	if x != nil {
+		return x.LastGoodbyeReason
 	}
 	return ""
 }
@@ -2734,14 +2754,16 @@ const file_rpmgr_v1_gateway_proto_rawDesc = "" +
 	"createTime\x12\x12\n" +
 	"\x04etag\x18\n" +
 	" \x01(\tR\x04etag\x12\x19\n" +
-	"\bbuilt_in\x18\v \x01(\bR\abuiltIn\"\xc6\x01\n" +
+	"\bbuilt_in\x18\v \x01(\bR\abuiltIn\"\xad\x02\n" +
 	"\rGatewayStatus\x12\x1a\n" +
 	"\benrolled\x18\x01 \x01(\bR\benrolled\x12\x1c\n" +
 	"\tconnected\x18\x02 \x01(\bR\tconnected\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x12@\n" +
 	"\x0elast_seen_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\flastSeenTime\x12\x1f\n" +
 	"\vremote_addr\x18\x05 \x01(\tR\n" +
-	"remoteAddr\"\x94\x01\n" +
+	"remoteAddr\x125\n" +
+	"\x17below_min_agent_version\x18\x06 \x01(\bR\x14belowMinAgentVersion\x12.\n" +
+	"\x13last_goodbye_reason\x18\a \x01(\tR\x11lastGoodbyeReason\"\x94\x01\n" +
 	"\x14CreateGatewayRequest\x12\x1e\n" +
 	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x123\n" +
 	"\agateway\x18\x02 \x01(\v2\x11.rpmgr.v1.GatewayB\x06\xbaH\x03\xc8\x01\x01R\agateway\x12'\n" +

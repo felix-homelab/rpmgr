@@ -278,8 +278,13 @@ func agentSessionOf(s *ent.AgentSession, now time.Time) *rpmgrv1.AgentSession {
 		return &rpmgrv1.AgentSession{}
 	}
 	return &rpmgrv1.AgentSession{Connected: schema.AgentSessionLive(s.DisconnectedAt, s.LastSeenAt, now), Version: s.AgentVersion,
-		LastSeenTime: timestamppb.New(s.LastSeenAt), RemoteAddr: s.RemoteAddr}
+		LastSeenTime: timestamppb.New(s.LastSeenAt), RemoteAddr: s.RemoteAddr, LastGoodbyeReason: s.LastGoodbye,
+		BelowMinAgentVersion: s.LastGoodbye == upgradeRequired}
 }
+
+// upgradeRequired is the reason of the Goodbye that refuses an agent below min_agent_version
+// (docs/03-connections.md, "Versioning and capabilities").
+const upgradeRequired = "upgrade_required"
 
 func connectorOf(r *ent.Connector, s *ent.AgentSession, now time.Time) *rpmgrv1.Connector {
 	out := &rpmgrv1.Connector{Id: r.ID, Name: r.Name, Labels: r.Labels, Ephemeral: r.Ephemeral, Enabled: r.Enabled,

@@ -36,7 +36,9 @@ type AgentSession struct {
 	LastSeenAt time.Time `json:"last_seen_at,omitempty"`
 	// DisconnectedAt holds the value of the "disconnected_at" field.
 	DisconnectedAt *time.Time `json:"disconnected_at,omitempty"`
-	selectValues   sql.SelectValues
+	// LastGoodbye holds the value of the "last_goodbye" field.
+	LastGoodbye  string `json:"last_goodbye,omitempty"`
+	selectValues sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -48,7 +50,7 @@ func (*AgentSession) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case agentsession.FieldSessionEpoch:
 			values[i] = new(sql.NullInt64)
-		case agentsession.FieldID, agentsession.FieldOrgID, agentsession.FieldControllerNode, agentsession.FieldRemoteAddr, agentsession.FieldAgentVersion:
+		case agentsession.FieldID, agentsession.FieldOrgID, agentsession.FieldControllerNode, agentsession.FieldRemoteAddr, agentsession.FieldAgentVersion, agentsession.FieldLastGoodbye:
 			values[i] = new(sql.NullString)
 		case agentsession.FieldConnectedAt, agentsession.FieldLastSeenAt, agentsession.FieldDisconnectedAt:
 			values[i] = new(sql.NullTime)
@@ -130,6 +132,12 @@ func (_m *AgentSession) assignValues(columns []string, values []any) error {
 				_m.DisconnectedAt = new(time.Time)
 				*_m.DisconnectedAt = value.Time
 			}
+		case agentsession.FieldLastGoodbye:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field last_goodbye", values[i])
+			} else if value.Valid {
+				_m.LastGoodbye = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -194,6 +202,9 @@ func (_m *AgentSession) String() string {
 		builder.WriteString("disconnected_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("last_goodbye=")
+	builder.WriteString(_m.LastGoodbye)
 	builder.WriteByte(')')
 	return builder.String()
 }
