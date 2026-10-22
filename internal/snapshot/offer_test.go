@@ -40,7 +40,7 @@ func TestReleaseOffer(t *testing.T) {
 			SetState(rollouttarget.StateOffered).SaveX(sys)
 		c.RolloutTarget.Create().SetRolloutID(ro.ID).SetAgentID("con_2").SetAgentKind("connector").SetBucket(4).ExecX(sys)
 
-		cmp := &snapshot.Compiler{Offer: snapshot.ReleaseOffer}
+		cmp := &snapshot.Compiler{Offer: snapshot.ReleaseOfferAt("https://controller.example")}
 		ota := testAgent
 		ota.Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapOTA}
 		snap, err := cmp.Compile(sys, db, ota)
@@ -48,8 +48,8 @@ func TestReleaseOffer(t *testing.T) {
 			t.Fatal(err)
 		}
 		o := snap.GetReleaseOffer()
-		if o.GetVersion() != "0.2.0" || o.GetSeq() != 7 {
-			t.Fatalf("offer %v, want 0.2.0 with seq 7", o)
+		if o.GetVersion() != "0.2.0" || o.GetSeq() != 7 || o.GetBaseUrl() != "https://controller.example" {
+			t.Fatalf("offer %v, want 0.2.0, seq 7 and the controller's public URL", o)
 		}
 		var names []string
 		for _, f := range o.GetFiles() {
@@ -100,11 +100,11 @@ func TestOffer_Malformed(t *testing.T) {
 		"negative size": `{"seq":7,"version":"0.2.0","artifacts":[{"os":"linux","arch":"amd64","variant":"full","sha256":"` +
 			"0101010101010101010101010101010101010101010101010101010101010101" + `","size":-1}]}`,
 	} {
-		if o, err := snapshot.Offer(&ent.Release{Version: "0.2.0", Manifest: []byte(m)}); err == nil {
+		if o, err := snapshot.Offer(&ent.Release{Version: "0.2.0", Manifest: []byte(m)}, "https://controller.example"); err == nil {
 			t.Errorf("%s: offer %v, want an error", name, o)
 		}
 	}
-	o, err := snapshot.Offer(&ent.Release{Version: "0.2.0", Manifest: []byte(offerManifest)})
+	o, err := snapshot.Offer(&ent.Release{Version: "0.2.0", Manifest: []byte(offerManifest)}, "https://controller.example")
 	if err != nil || len(o.GetFiles()) != 6 {
 		t.Fatalf("a valid manifest: %v, %v", o, err)
 	}

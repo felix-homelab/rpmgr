@@ -364,6 +364,11 @@ type ReleaseOffer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The release's version, such as 1.5.0.
 	Version string `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	// The controller's public URL, such as https://controller.example.com:443, whose /dl/<version>/
+	// the agent downloads from; it is the same on every replica and is not the control session's
+	// endpoint, which a private controller may reach through a gateway (docs/04-security.md,
+	// "Over-the-air updates").
+	BaseUrl string `protobuf:"bytes,4,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
 	// The seq of its signed manifest.
 	Seq uint64 `protobuf:"varint,2,opt,name=seq,proto3" json:"seq,omitempty"`
 	// Its files under /dl/<version>/: the signing-key statement, the manifest, their signatures
@@ -406,6 +411,13 @@ func (*ReleaseOffer) Descriptor() ([]byte, []int) {
 func (x *ReleaseOffer) GetVersion() string {
 	if x != nil {
 		return x.Version
+	}
+	return ""
+}
+
+func (x *ReleaseOffer) GetBaseUrl() string {
+	if x != nil {
+		return x.BaseUrl
 	}
 	return ""
 }
@@ -2394,9 +2406,10 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\x14controller_endpoints\x18\x03 \x03(\tR\x13controllerEndpoints\x126\n" +
 	"\tresources\x18\x04 \x03(\v2\x18.rpmgr.agent.v1.ResourceR\tresources\x12$\n" +
 	"\x0esigning_key_id\x18\x05 \x01(\tR\fsigningKeyId\x12A\n" +
-	"\rrelease_offer\x18\x06 \x01(\v2\x1c.rpmgr.agent.v1.ReleaseOfferR\freleaseOffer\"m\n" +
+	"\rrelease_offer\x18\x06 \x01(\v2\x1c.rpmgr.agent.v1.ReleaseOfferR\freleaseOffer\"\x88\x01\n" +
 	"\fReleaseOffer\x12\x18\n" +
-	"\aversion\x18\x01 \x01(\tR\aversion\x12\x10\n" +
+	"\aversion\x18\x01 \x01(\tR\aversion\x12\x19\n" +
+	"\bbase_url\x18\x04 \x01(\tR\abaseUrl\x12\x10\n" +
 	"\x03seq\x18\x02 \x01(\x04R\x03seq\x121\n" +
 	"\x05files\x18\x03 \x03(\v2\x1b.rpmgr.agent.v1.ReleaseFileR\x05files\"M\n" +
 	"\vReleaseFile\x12\x12\n" +

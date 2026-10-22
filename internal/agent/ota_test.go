@@ -39,6 +39,7 @@ type otaRelease struct {
 	version string
 	seq     uint64
 	files   map[string][]byte
+	base    string // the controller's public URL, whose /dl/ serves it
 }
 
 // newOTARelease signs a release of version with the given channel and variants.
@@ -67,7 +68,7 @@ func newOTARelease(t *testing.T, version string, seq uint64, channel string, var
 
 // offer is the offer of the release, with every file and its size and SHA-256.
 func (r *otaRelease) offer() *agentv1.ReleaseOffer {
-	o := &agentv1.ReleaseOffer{Version: r.version, Seq: r.seq}
+	o := &agentv1.ReleaseOffer{Version: r.version, BaseUrl: r.base, Seq: r.seq}
 	for _, name := range slices.Sorted(func(yield func(string) bool) {
 		for n := range r.files {
 			if !yield(n) {
@@ -130,6 +131,9 @@ func newOTAEnv(t *testing.T, rels ...*otaRelease) *otaEnv {
 		_, _ = w.Write(rel.files[name])
 	}))
 	t.Cleanup(e.srv.Close)
+	for _, r := range e.releases {
+		r.base = e.srv.URL
+	}
 	return e
 }
 
@@ -146,8 +150,7 @@ func (e *otaEnv) stager(ctx context.Context, variant string) *agent.Stager {
 		FreeSpace: func(string) (uint64, error) { e.mu.Lock(); defer e.mu.Unlock(); return e.free, nil },
 		Timeout:   5 * time.Second, Stall: 300 * time.Millisecond, Recheck: 20 * time.Millisecond,
 		Retry: func(int) time.Duration { return 20 * time.Millisecond }},
-		"0.1.0", func() (string, error) { return e.srv.URL, nil },
-		func(st *agentv1.UpdateState) { e.states <- st }, func() time.Time { return otaNow }, nil)
+		"0.1.0", func(st *agentv1.UpdateState) { e.states <- st }, func() time.Time { return otaNow }, nil)
 	go s.Run(ctx)
 	return s
 }
@@ -194,6 +197,11 @@ func (e *otaEnv) set(f func(e *otaEnv)) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	f(e)
+	for _, r := range e.releases {
+		if r.base == "" {
+			r.base = e.srv.URL
+		}
+	}
 }
 
 // staged returns the names in the staging directory.
@@ -691,5 +699,32 @@ func TestStager_ArtifactAboveCapAndOfferMismatch(t *testing.T) {
 	e2.stager(run(t), "full").Offer(o)
 	if st := e2.until(agentv1.UpdatePhase_UPDATE_PHASE_FAILED); !strings.Contains(st.GetDetail(), "differs from the signed manifest") {
 		t.Fatalf("an offer that differs: %v", st)
+	}
+}
+
+// TestStager_OfferBaseURL (docs/04-security.md, "Over-the-air updates", step 3): the offer names
+// the controller's public URL whose /dl/ the agent downloads from; a missing or non-https one is
+// declined without a request, because a private controller may not be reachable at the control
+// session's endpoint.
+func TestStager_OfferBaseURL(t *testing.T) {
+	for _, base := range []string{"", "http://controller.example", "controller.example", "https://",
+		"https://user:pw@controller.example", "https://controller.example/dl", "https://controller.example?x=1"} {
+		t.Run(base, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			rel := newOTARelease(t, "0.2.0", 7, release.Stable, "full")
+			e := newOTAEnv(t, rel)
+			s := e.stager(ctx, "full")
+			o := rel.offer()
+			o.BaseUrl = base
+			s.Offer(o)
+			st := e.until(agentv1.UpdatePhase_UPDATE_PHASE_DECLINED)
+			if !strings.Contains(st.GetDetail(), "controller URL") {
+				t.Errorf("declined %q, want the controller URL named", st.GetDetail())
+			}
+			if reqs := e.requested(); len(reqs) != 0 {
+				t.Errorf("requests %v, want none", reqs)
+			}
+		})
 	}
 }
