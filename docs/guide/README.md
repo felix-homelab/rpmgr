@@ -67,6 +67,7 @@ New to rpmgr? Read [Concepts](concepts.md), then follow the [Quick start](quick-
 | [Audit log](operations/audit-log.md) | Read and verify who changed what |
 | [PKI](operations/pki.md) | Understand rpmgr's certificate authority, its pin and its rotation |
 | [Settings](operations/settings.md) | Configure the instance and your organisation |
+| [Updates](operations/updates.md) | Update connectors and gateways in a staged rollout you approve |
 | [Troubleshooting](operations/troubleshooting.md) | Find the cause of what you see, and fix it |
 
 ## Reference

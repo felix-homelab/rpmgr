@@ -1,0 +1,78 @@
+# Updates
+
+rpmgr updates **connectors and gateways** itself, in a staged rollout you approve. Controllers and
+all-in-ones are upgraded by hand ([Upgrades](../install/upgrades.md)). This page shows how to run a
+rollout and what it tells you. The rules behind it are in
+[04](../../04-security.md#over-the-air-updates),
+[10](../../10-operations.md#upgrades-and-version-skew) and
+[D121](../../14-open-decisions.md#engineering).
+
+## What a rollout does
+
+- **The target is the controller's version**, or an older release you uploaded on purpose. No agent
+  runs ahead of its controller.
+- **Three stages:** the canary agents you choose, then a percentage, then all agents. You approve
+  every stage. An agent's place in the percentages is fixed by its ID, so a later stage includes
+  every agent of an earlier one.
+- **Gateways go one at a time per group.** Each drains first, so that its connectors move to the
+  other gateways, and is enabled again after the update.
+- **A rollback or a silent agent pauses the rollout.** You then resume it, or cancel it. Agents
+  that are offline, or whose policy says `auto_update: notify` or `off`, are listed and skipped;
+  they never block a stage.
+- Only one rollout runs or is paused at a time.
+
+Hosts need the root updater and a policy that allows updates
+([Install](../install/install-script.md)). A host in the container image, or on Windows or macOS,
+is not updated over the air.
+
+## Run a rollout
+
+1. Open **Settings → Updates**. **Releases** lists what the controller verified, with its channel,
+   where it came from and whether the mirror holds it. Only a mirrored release that is no newer
+   than the controller has a **Roll out…** button.
+2. Choose **Roll out…**, tick the canary agents and confirm your identity.
+3. Watch the rollout: its stage, how many agents are updated, pending, skipped, rolled back or
+   stalled, and each agent's state with its reason.
+4. Choose **Next stage** for a higher percentage or **All agents**, and confirm. The stage moves on
+   as its agents report.
+5. At the end the rollout is **completed**. A rollback or a stalled agent shows **paused** with the
+   agent and its reason; fix it, then **Resume**, or **Cancel** to end the rollout for good.
+
+**Pause** needs no confirmation; **Resume**, **Next stage** and **Cancel** ask for a step-up
+([The step-up dialog](../web-ui/README.md#the-step-up-dialog)).
+
+## Upload a release
+
+On an air-gapped installation, or to offer a signed downgrade, choose **Upload release…** and give
+the four signed files of a GitHub release: `signing-key.json`, `manifest.json` and their
+`.minisig` files. The controller verifies them as the release check does. The artifacts then come
+from the release source, or from `rpmgr release import <dir>` on the controller host.
+
+## From the command line
+
+```
+rpmgr list release
+rpmgr create rollout --release 1.5.0 --canary db-host-1
+rpmgr get rollout rol_…
+rpmgr list rollout-target rol_…
+rpmgr advance rollout --percent 25 rol_…
+rpmgr advance rollout --all rol_…
+rpmgr pause rollout rol_…
+rpmgr resume rollout rol_…
+rpmgr cancel rollout rol_…
+```
+
+Each change but a pause is audited and asks for the step-up
+([04](../../04-security.md#over-the-air-updates)).
+
+## When something goes wrong
+
+- **A connector or gateway is skipped.** Its policy says `auto_update: off` or `notify`, it is
+  offline, or its channel does not take the release. Update it by hand, or change its policy
+  ([Local policy file](../reference/policy-file.md)).
+- **An agent rolled back.** Its updater installed the release, the role did not become ready, and
+  the previous binary is back. The rollout is paused; read the agent's log, then resume or cancel.
+- **An agent is stalled.** It reported nothing for long enough that the rollout stopped waiting.
+  Check that it is connected and that its updater runs, then resume.
+- **The mirror does not hold the release.** Wait for the release check, or import the release on
+  the controller host.

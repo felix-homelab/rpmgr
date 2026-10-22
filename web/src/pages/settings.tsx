@@ -95,18 +95,6 @@ function RevocationLogNotice() {
   return null;
 }
 
-// Updates shows the release check and the update channel to the Instance Admin; uploading a
-// manifest for an air-gapped install comes with Phase 2 (docs/04-security.md, "Over-the-air
-// updates").
-export function Updates() {
-  const { t } = useTranslation();
-  return (
-    <InstanceAdminPage title={t("settings.updates")}>
-      <InstanceSettingsSection title={t("settings.updates")} sections={["updates"]} />
-    </InstanceAdminPage>
-  );
-}
-
 // InstanceAdminPage shows its children only to the Instance Admin.
 export function InstanceAdminPage({ title, children }: { title: string; children: ReactNode }) {
   const { t } = useTranslation();

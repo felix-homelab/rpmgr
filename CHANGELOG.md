@@ -12,6 +12,12 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Updates: the Instance Admin runs a staged rollout from **Settings → Updates**: the releases the
+  controller verified, an upload of a release's signed files for air-gapped installations, and the
+  canary, percentage and all stages with each agent's state and reason; a rollback or a stalled
+  agent pauses the rollout. Connector and gateway lists show each agent's update state and warn
+  when it is below the oldest version the controller accepts. (#611)
+
 - Releases: a connector-only build of rpmgr, `rpmgr-<version>-<os>-<arch>-connector`, for every
   Linux architecture and, as the only build there, for Windows (amd64, `.exe`) and macOS (amd64,
   arm64). It runs the connector role and the commands of a connector host, links nothing of the

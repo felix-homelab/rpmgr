@@ -200,7 +200,7 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await page.getByRole("link", { name: "Updates" }).click();
   await expect(page.getByRole("heading", { name: "Updates", level: 1 })).toBeVisible();
   await page.waitForTimeout(800);
-  await shot(page, "settings-updates");
+  await shot(page, "settings-updates", true);
   await page.getByRole("link", { name: "Users" }).click();
   await expect(page.getByRole("heading", { name: "Users", level: 1 })).toBeVisible();
   await page.waitForTimeout(800);
