@@ -88,9 +88,17 @@ GiB)**). Their ranges and defaults are in the design documents
 - **Check for releases once a day**: the controller fetches its own release, verified, into its
   mirror for agents ([Upgrades](../install/upgrades.md)).
 - **Release channel**: **Stable**, or **Pre-releases too**.
+- **Releases**: every release the controller verified, with its **Version**, **Channel**,
+  **Source** (**release check**, **upload** or **import**), whether it is **Mirrored**, and whether
+  it is **this controller**. **Upload release…** takes the four signed files of a release for an
+  air-gapped installation, after a step-up. **Roll out…** starts a staged rollout of a mirrored
+  release that is no newer than the controller.
+- **Rollout**: the running or paused rollout with its stage, how many agents are updated, pending,
+  skipped, rolled back or stalled, and each agent's state and reason. **Next stage** offers a
+  higher percentage or all agents; **Pause**, **Resume** and **Cancel** end or continue it. A
+  rollback or a stalled agent pauses the rollout and the page says which agent and why.
 
-Uploading a release for an air-gapped installation is not on this page yet; `rpmgr release import`
-does it on the controller host ([Air-gapped installations](../install/air-gapped.md)).
+[Updates](../operations/updates.md) shows how to run a rollout.
 
 ## Users
 
