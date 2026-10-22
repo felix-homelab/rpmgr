@@ -714,6 +714,63 @@ func TestSessions_ConnectorCap(t *testing.T) {
 	}
 }
 
+// TestSessions_ConnectorRestart: a session of a new start of the connector, with another boot_id,
+// closes the sessions of the earlier start at once, so that they neither take streams nor fill the
+// cap; sessions of the same start, of another connector, or without a boot_id stay.
+func TestSessions_ConnectorRestart(t *testing.T) {
+	a := &assignment{known: map[string]bool{cid("con_r"): true, cid("con_o"): true},
+		routes: map[string][]string{"r1": {cid("con_r")}}}
+	m := newSessions(a, nil)
+	booted := func(boot string) *tunnelv1.SessionMessage {
+		h := hello("r1")
+		h.GetHello().BootId = boot
+		return h
+	}
+	id := connectorID("con_r")
+	var first []*connector
+	for range gateway.MaxConnectorSessions - 2 {
+		first = append(first, start(t, m, id, booted("boot-1")))
+	}
+	unnamed := start(t, m, id, hello("r1")) // an agent that names no boot_id
+	other := start(t, m, connectorID("con_o"), booted("boot-1"))
+	if got := m.Count()["h2"]; got != gateway.MaxConnectorSessions {
+		t.Fatalf("%d sessions before the restart, want %d", got, gateway.MaxConnectorSessions)
+	}
+
+	// The restarted connector gets its session although the earlier start held all but one slot.
+	again := start(t, m, id, booted("boot-2"))
+	for _, c := range first {
+		_ = c.serveErr(t) // closed: its error says only how the close reached the read
+	}
+	eventually(t, "the earlier start's sessions still count", func() bool { return m.Count()["h2"] == 3 })
+	for range 3 {
+		st, code, err := m.OpenStream(context.Background(), &tunnelv1.StreamOpen{RouteId: "r1"})
+		if err != nil || code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+			t.Fatalf("a stream after the restart: %s %v", code, err)
+		}
+		_ = st.Close()
+		select {
+		case <-again.opens:
+		case <-unnamed.opens:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the stream reached no live session")
+		}
+	}
+	more := start(t, m, id, booted("boot-2"))
+	select {
+	case err := <-again.served:
+		t.Fatalf("a session of the same start ended: %v", err)
+	case err := <-unnamed.served:
+		t.Fatalf("a session without a boot_id ended: %v", err)
+	case err := <-other.served:
+		t.Fatalf("another connector's session ended: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if more.welcome == nil || m.Count()["h2"] != 4 {
+		t.Fatalf("a second session of the new start: %v, %d sessions", more.welcome, m.Count()["h2"])
+	}
+}
+
 // TestSessions_Ranks: streams go to the connectors of the lowest priority with a ready session, in
 // the share of their weights, 0 counting as 1; a lower priority takes them only when no connector
 // of a better one is ready (D90).
