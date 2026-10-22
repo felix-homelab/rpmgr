@@ -256,6 +256,9 @@ func (s *Sessions) receive(ctx context.Context, st grpc.BidiStreamingServer[agen
 			if st.GetReadinessComplete() || len(st.GetReadiness()) > 0 {
 				s.readiness(id, st.GetReadiness(), st.GetReadinessComplete())
 			}
+			if st.GetUpdate() != nil {
+				s.recordUpdate(id, st.GetUpdate())
+			}
 			// A Status with only the update state (OTA) leaves a gateway's data sessions and
 			// counters as they are: it lists none of them.
 			if id.Kind == pki.KindGateway && !updateOnly(st) {
