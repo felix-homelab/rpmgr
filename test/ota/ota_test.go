@@ -108,6 +108,7 @@ func newHost(t *testing.T) *host {
 	mustBuildImage(t)
 	bins := t.TempDir()
 	build(t, filepath.Join(bins, "rpmgr-"+oldVer), "./cmd/rpmgr", oldVer)
+	build(t, filepath.Join(bins, "rpmgr-"+newVer), "./cmd/rpmgr", newVer)
 	build(t, filepath.Join(bins, "role-ready"), "./test/ota/ready", "")
 	assets := t.TempDir()
 	writeAssets(t, filepath.Join(assets, oldVer), oldVer, 1, filepath.Join(bins, "rpmgr-"+oldVer))
