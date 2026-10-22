@@ -11,12 +11,14 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"runtime"
 	"slices"
 	"strconv"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/units"
+	"github.com/felix-homelab/rpmgr/internal/update"
 )
 
 // ServiceUser is the system user the roles run as (docs/10-operations.md, "Filesystem layout").
@@ -28,11 +30,18 @@ type Paths struct {
 	Lib   string // the state: /var/lib/rpmgr
 	Units string // the systemd units: /etc/systemd/system
 	Bin   string // the installed binary: /usr/local/bin/rpmgr
+	// UpdateState is the root updater's directory: /var/lib/rpmgr-update. Empty, as in tests that
+	// do not set it, setup leaves the updater out.
+	UpdateState string
 }
 
-// DefaultPaths are the paths of docs/10-operations.md.
+// DefaultPaths are the paths of docs/10-operations.md. Only Linux has the root updater (D102).
 func DefaultPaths() Paths {
-	return Paths{Etc: "/etc/rpmgr", Lib: "/var/lib/rpmgr", Units: "/etc/systemd/system", Bin: "/usr/local/bin/rpmgr"}
+	p := Paths{Etc: "/etc/rpmgr", Lib: "/var/lib/rpmgr", Units: "/etc/systemd/system", Bin: "/usr/local/bin/rpmgr"}
+	if runtime.GOOS == "linux" {
+		p.UpdateState = update.StateDir
+	}
+	return p
 }
 
 // Host is what setup does to the host; tests replace any of it. Zero fields are the real ones.
@@ -56,6 +65,9 @@ type Host struct {
 	// Roles are the roles this build sets up, all of them when nil; the connector-only build sets
 	// up a connector only.
 	Roles []Role
+	// Variant is this build's, full or connector, which the updater's installation record keeps;
+	// empty means full.
+	Variant string
 	// Enroll enrolls a gateway or connector (agent.Enroll).
 	Enroll func(ctx context.Context, o agent.EnrollOptions) (agent.Identity, error)
 	// Ready waits until the admin listener at addr reports ready.
@@ -106,6 +118,9 @@ func (h *Host) defaults() {
 			_ = ln.Close()
 			return true
 		}
+	}
+	if h.Variant == "" {
+		h.Variant = "full"
 	}
 	if h.Getenv == nil {
 		h.Getenv = os.Getenv

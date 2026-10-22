@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +22,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,10 +34,13 @@ import (
 // stub is the "binary" of the test release: it records its arguments and whether the token is in
 // its environment, and plays the parts of rpmgr the script uses. Without --token-file, enroll asks
 // for the token on the terminal with echo off, as rpmgr enroll does, and records its length.
+// `rpmgr updater` goes to a real rpmgr at /r/rpmgr (realBinary), so that the updater's files are
+// the real ones.
 const stub = `#!/bin/sh
 echo "argv: $*" >>/tmp/rpmgr-calls
 env | grep -q not-a-real-token && echo "token in env" >>/tmp/rpmgr-calls
 case $1 in
+  updater) exec /r/rpmgr "$@" ;;
   enroll)
     case " $* " in
       *" --token-file "*) ;;
@@ -51,6 +56,40 @@ esac
 const systemctl = `#!/bin/sh
 echo "systemctl $*" >>/tmp/systemctl-calls
 `
+
+// realBinary builds rpmgr once for the containers, static, and returns its directory, which they
+// mount at /r: the stubs hand `rpmgr updater` to it.
+func realBinary(t *testing.T) string {
+	t.Helper()
+	realOnce.Do(func() {
+		if realDir, realErr = os.MkdirTemp("", "rpmgr-installsh-"); realErr != nil {
+			return
+		}
+		cmd := exec.Command("go", "build", "-o", filepath.Join(realDir, "rpmgr"), "../../cmd/rpmgr")
+		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			realErr = fmt.Errorf("building rpmgr: %w\n%s", err, out)
+		}
+	})
+	if realErr != nil {
+		t.Fatal(realErr)
+	}
+	return realDir
+}
+
+var (
+	realOnce sync.Once
+	realDir  string
+	realErr  error
+)
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if realDir != "" {
+		_ = os.RemoveAll(realDir)
+	}
+	os.Exit(code)
+}
 
 // Distributions with their package commands; Ubuntu 20.04 has OpenSSL 1.1, which the script must
 // refuse.
@@ -88,6 +127,7 @@ func TestInstall(t *testing.T) {
 		t.Fatal("docker is needed")
 	}
 	srv, dir, sum := testRelease(t)
+	real := realBinary(t)
 
 	// The connector's admin port is taken, as by another program; the script must pick the next.
 	busy, err := net.Listen("tcp", "127.0.0.1:7383")
@@ -101,7 +141,7 @@ func TestInstall(t *testing.T) {
 			t.Parallel()
 			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 			defer cancel()
-			out, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "-v", dir+":/t:ro",
+			out, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "-v", dir+":/t:ro", "-v", real+":/r:ro",
 				"-e", "CURL_CA_BUNDLE=/t/ca.pem", d.image, "sh", "-c", d.prepare+` &&
 				echo "== openssl: $(openssl version)" &&
 				cp /t/systemctl /usr/local/sbin/systemctl && cp /t/token /root/token && chmod 0600 /root/token &&
@@ -109,9 +149,11 @@ func TestInstall(t *testing.T) {
 				  --token-file /root/token; echo "exit: $?"
 				for f in /etc/rpmgr/connector.yaml /etc/rpmgr/policy.yaml /var/lib/rpmgr-update/install.json \
 				  /var/lib/rpmgr-update/state.json /etc/sysctl.d/60-rpmgr.conf /etc/systemd/system/rpmgr-connector.service \
+				  /etc/systemd/system/rpmgr-update.path /etc/systemd/system/rpmgr-update.service \
 				  /tmp/rpmgr-calls /tmp/rpmgr-policy /tmp/systemctl-calls; do echo "== $f"; cat "$f" 2>&1; done
 				echo "== owner"; stat -c '%U %a' /var/lib/rpmgr/identity /var/lib/rpmgr /var/lib/rpmgr-update /usr/local/bin/rpmgr \
-				  /etc/sysctl.d/60-rpmgr.conf /etc/rpmgr/connector.yaml /etc/rpmgr/policy.yaml
+				  /etc/sysctl.d/60-rpmgr.conf /etc/rpmgr/connector.yaml /etc/rpmgr/policy.yaml \
+				  /var/lib/rpmgr-update/install.json /var/lib/rpmgr-update/state.json /etc/systemd/system/rpmgr-update.service
 				echo "== binary"; openssl dgst -sha256 -r /usr/local/bin/rpmgr | cut -d' ' -f1`).CombinedOutput()
 			text := string(out)
 			if i := strings.Index(text, "== openssl: "); i >= 0 {
@@ -131,13 +173,16 @@ func TestInstall(t *testing.T) {
 				"== /etc/sysctl.d/60-rpmgr.conf\n# rpmgr: ", "\nnet.core.rmem_max = 7340032\nnet.core.wmem_max = 7340032\n== ", // whatever the host has
 				"endpoints: ['" + srv.URL + "']", "admin: '127.0.0.1:7384'", // the next free port
 				"auto_update: auto", "update_channel: stable", // the update keys, always explicit
-				`{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","role":"connector"}`,
-				`{"seq":87,"floor":"1.4.2"}`,
+				"== /var/lib/rpmgr-update/install.json\n" + `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","roles":["connector"]}`,
+				"== /var/lib/rpmgr-update/state.json\n" + `{"seq":87,"floor":"1.4.2"}`,
+				"PathChanged=/var/lib/rpmgr/update/manifest.json", "ExecStart=/usr/local/bin/rpmgr updater apply --staged /var/lib/rpmgr/update",
+				"argv: updater install --state /var/lib/rpmgr-update --path /usr/local/bin/rpmgr --role connector --seq 87 --floor 1.4.2",
+				"systemctl enable rpmgr-update.service", "systemctl enable --now rpmgr-update.path",
 				"argv: policy allow-target --no-reload -- 10.0.0.5:5432", "argv: policy allow-target --no-reload -- /run/app.sock",
 				"argv: enroll --controller " + srv.URL + " --ca-pin sha256:pin --token-file /root/token",
 				"argv: systemd-unit --bin /usr/local/bin/rpmgr connector",
 				"systemctl daemon-reload", "systemctl enable --now rpmgr-connector",
-				"== owner\nrpmgr ", "\nrpmgr 750\nroot 700\nroot 755\nroot 644\nroot 644\nroot 644\n", "== binary\n" + hex.EncodeToString(sum[:]),
+				"== owner\nrpmgr ", "\nrpmgr 750\nroot 700\nroot 755\nroot 644\nroot 644\nroot 644\nroot 600\nroot 600\nroot 644\n", "== binary\n" + hex.EncodeToString(sum[:]),
 			} {
 				if !strings.Contains(text, want) {
 					t.Errorf("no %q in:\n%s", want, text)
@@ -179,7 +224,7 @@ func TestInstall_Again(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	conf := "/etc/sysctl.d/60-rpmgr.conf"
-	out, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "-v", dir+":/t:ro",
+	out, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "-v", dir+":/t:ro", "-v", realBinary(t)+":/r:ro",
 		"-e", "CURL_CA_BUNDLE=/t/ca.pem", image("debian-13"), "sh", "-c", apt+` &&
 		cp /t/systemctl /t/sysctl /usr/local/sbin/ && cp /t/token /root/token && chmod 0600 /root/token &&
 		step() {
@@ -239,6 +284,51 @@ func TestInstall_Again(t *testing.T) {
 	}
 }
 
+// TestInstall_UpdaterState (docs/10-operations.md, "Who installs the updater"): on a host that the
+// install script of v0.1.0 set up, with its record of a single role and an older state, the script
+// records the role as a list and raises the state to the release's; a state above the release's
+// stays as it is, never lowered; a second role on the host joins the first in the record.
+func TestInstall_UpdaterState(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Fatal("docker is needed")
+	}
+	srv, dir, _ := testRelease(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "-v", dir+":/t:ro", "-v", realBinary(t)+":/r:ro",
+		"-e", "CURL_CA_BUNDLE=/t/ca.pem", image("debian-13"), "sh", "-c", apt+` &&
+		cp /t/systemctl /usr/local/sbin/ && cp /t/token /root/token && chmod 0600 /root/token &&
+		s=/var/lib/rpmgr-update && umask 077 && mkdir -p $s &&
+		echo '{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","role":"connector"}' >$s/install.json &&
+		echo '{"seq":1,"floor":"0.1.0"}' >$s/state.json && umask 022 &&
+		step() {
+		  echo "== step $1"; shift
+		  sh /t/install.sh --controller `+srv.URL+` --ca-pin sha256:pin --token-file /root/token "$@" >/tmp/out 2>&1; echo "exit: $?"
+		  grep -v '^rpmgr install: ' /tmp/out; cat $s/install.json $s/state.json
+		}
+		step upgrade
+		echo '{"seq":90,"floor":"1.5.0"}' >$s/state.json
+		step newer-state
+		step gateway --role gateway`).CombinedOutput()
+	if err != nil {
+		t.Fatalf("docker: %v\n%s", err, out)
+	}
+	steps := map[string]string{}
+	for _, part := range strings.Split(string(out), "== step ")[1:] {
+		name, body, _ := strings.Cut(part, "\n")
+		steps[name] = body
+	}
+	for step, want := range map[string]string{
+		"upgrade":     `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","roles":["connector"]}` + "\n" + `{"seq":87,"floor":"1.4.2"}` + "\n",
+		"newer-state": `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","roles":["connector"]}` + "\n" + `{"seq":90,"floor":"1.5.0"}` + "\n",
+		"gateway":     `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","roles":["connector","gateway"]}` + "\n" + `{"seq":90,"floor":"1.5.0"}` + "\n",
+	} {
+		if body := steps[step]; !strings.HasPrefix(body, "exit: 0\n") || !strings.HasSuffix(body, want) {
+			t.Errorf("%s: want the files\n%s\nin:\n%s", step, want, body)
+		}
+	}
+}
+
 // typist runs a command in a pseudo-terminal as a person at a terminal would: it waits for the
 // token prompt, types a token and Enter, and waits up to 2 minutes for the command to end. It prints
 // what the terminal showed, and "ended: <status>" or "still running".
@@ -276,6 +366,7 @@ func TestInstall_TypedToken(t *testing.T) {
 		t.Fatal("docker is needed")
 	}
 	srv, dir, _ := testRelease(t)
+	real := realBinary(t)
 	command, err := installsh.Command(srv.URL, "sha256:pin", false, []string{"10.0.0.5:5432"}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +386,7 @@ func TestInstall_TypedToken(t *testing.T) {
 			t.Parallel()
 			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 			defer cancel()
-			out, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "-v", dir+":/t:ro", d.image, "sh", "-c",
+			out, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "-v", dir+":/t:ro", "-v", real+":/r:ro", d.image, "sh", "-c",
 				`apt-get update -qq >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
 				  curl openssl ca-certificates python3 `+d.pkg+` >/dev/null &&
 				cp /t/ca.pem /usr/local/share/ca-certificates/test.crt && update-ca-certificates >/dev/null 2>&1 &&

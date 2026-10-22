@@ -337,7 +337,7 @@ func TestLineReader(t *testing.T) {
 // env as the environment.
 func runWith(env map[string]string, _ string, args ...string) (int, string, string) {
 	var out, errOut bytes.Buffer
-	tree := &cli.Command{Name: "rpmgr", Sub: []*cli.Command{Setup(serversetup.Server{}), Enroll(), Policy()}}
+	tree := &cli.Command{Name: "rpmgr", Sub: []*cli.Command{Setup("full", serversetup.Server{}), Enroll(), Policy()}}
 	code := cli.Main(context.Background(), tree, args, &cli.Env{Stdout: &out, Stderr: &errOut, Getenv: func(k string) string { return env[k] }})
 	return code, out.String(), errOut.String()
 }
