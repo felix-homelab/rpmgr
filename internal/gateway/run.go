@@ -21,8 +21,10 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/tunnel"
+	"github.com/felix-homelab/rpmgr/internal/version"
 )
 
 // ResetKeyFile is the gateway's stateless reset key in its state directory, and ResourcesDir the
@@ -75,6 +77,10 @@ type RunOptions struct {
 	// RoutePorts, if set, gets a function that reports whether a tcp or udp route of the gateway
 	// listens on a port, so that all-in-one's connector never dials one (ADR-0019).
 	RoutePorts func(bound func(port uint16) bool)
+	// Update, if set, stages the releases the controller offers for the root updater, in update/
+	// of the state directory, as the host's local policy file allows (OTA): a gateway on Linux
+	// that runs on its own, never all-in-one's.
+	Update bool
 }
 
 // Run runs a gateway from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -101,8 +107,16 @@ func Run(ctx context.Context, o RunOptions) error {
 	applier, assign := NewApplier()
 	var sessions *Sessions
 	challenges, report := NewChallenges(), newReporter()
+	var update *agent.UpdateOptions
+	if o.Update {
+		// A gateway reads the host's policy file for auto_update and update_channel only, as the
+		// root updater does; a missing file is the defaults.
+		update = &agent.UpdateOptions{Dir: filepath.Join(cfg.StateDir, "update"), Variant: version.Variant,
+			Policy: func() *policy.Policy { p, _ := policy.Load(policy.DefaultPath); return p }}
+	}
 	ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
 		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, Dial: o.Dial, OnAcmeChallenge: challenges.Apply,
+		Update: update,
 		OnDenyList: func() {
 			if sessions != nil {
 				sessions.Recheck()

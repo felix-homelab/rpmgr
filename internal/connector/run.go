@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/tunnel"
+	"github.com/felix-homelab/rpmgr/internal/version"
 )
 
 // Capabilities are what this connector version implements (docs/03-connections.md, "Versioning
@@ -57,6 +59,10 @@ type RunOptions struct {
 	// Own, if set, reports the addresses and ports the connector never dials, whatever its local
 	// policy allows: all-in-one's own listeners (ADR-0019).
 	Own func(netip.AddrPort) bool
+	// Update, if set, stages the releases the controller offers for the root updater, in update/
+	// of the state directory, as its local policy allows (OTA): a connector on Linux that runs on
+	// its own, never all-in-one's.
+	Update bool
 }
 
 // Run runs a connector from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -138,8 +144,12 @@ func Run(ctx context.Context, o RunOptions) error {
 		TLS: func(gatewayID string) (*tls.Config, error) { return gatewayTLS(ctl, gatewayID, o.Now) }})
 	defer sessions.Close()
 	applier := NewApplier(targets, sessions)
+	var update *agent.UpdateOptions
+	if o.Update {
+		update = &agent.UpdateOptions{Dir: filepath.Join(cfg.StateDir, "update"), Policy: watcher.Current, Variant: version.Variant}
+	}
 	ctl, err = agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
-		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger,
+		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, Update: update,
 		Dial: o.ControlDial, Fallback: sessions.ControlConn, OnProbeTarget: targets.Probe,
 		SessionStatus: func() *agentv1.Status {
 			return &agentv1.Status{Readiness: applier.Readiness(), ReadinessComplete: true}

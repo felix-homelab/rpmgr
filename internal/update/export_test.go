@@ -54,3 +54,6 @@ func SyncDirFails(t testing.TB, dir string) {
 
 // ErrInterrupted is what Apply returns when AfterRename ends the run.
 var ErrInterrupted = errInterrupted
+
+// InstalledAt is exported for the test of Installed.
+var InstalledAt = installedAt

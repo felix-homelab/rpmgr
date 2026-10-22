@@ -88,7 +88,7 @@ func runConnector(ctx context.Context, env *cli.Env, path string) error {
 	}
 	defer stop()
 	return connector.Run(ctx, connector.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger,
-		Now: Clock})
+		Now: Clock, Update: update.UpdaterInstalled()})
 }
 
 // Version is `rpmgr version`; with --verbose it also prints the build's variant, full or
