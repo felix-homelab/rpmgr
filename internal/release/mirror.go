@@ -19,9 +19,17 @@ import (
 	"time"
 )
 
-// The files of a release besides its artifacts (docs/04-security.md, "Release signing"); the
-// manifest comes last, so a mirrored version with a manifest is complete.
-var metaFiles = []string{"signing-key.json", "signing-key.json.minisig", "manifest.json.minisig", "manifest.json"}
+// The files of a release besides its artifacts (docs/04-security.md, "Release signing").
+const (
+	StatementFile    = "signing-key.json"
+	StatementSigFile = "signing-key.json.minisig"
+	ManifestFile     = "manifest.json"
+	ManifestSigFile  = "manifest.json.minisig"
+)
+
+// MetaFiles are the files of a release besides its artifacts, in the order they are written: the
+// manifest comes last, so a version with a manifest is complete.
+var MetaFiles = []string{StatementFile, StatementSigFile, ManifestSigFile, ManifestFile}
 
 const maxMeta = 1 << 20
 
@@ -110,15 +118,15 @@ type Signed struct {
 	ManifestSig  []byte // manifest.json.minisig
 }
 
-// meta are the signed files in the order of metaFiles.
+// meta are the signed files in the order of MetaFiles.
 func (s *Signed) meta() [][]byte {
 	return [][]byte{s.Statement, s.StatementSig, s.ManifestSig, s.ManifestJSON}
 }
 
 // Fetch reads a release's signed files from src, without its artifacts, and verifies them.
 func (m *Mirror) Fetch(ctx context.Context, src Source) (*Signed, error) {
-	meta := make([][]byte, len(metaFiles))
-	for i, name := range metaFiles {
+	meta := make([][]byte, len(MetaFiles))
+	for i, name := range MetaFiles {
 		b, err := read(ctx, src, name, maxMeta)
 		if err != nil {
 			return nil, err
@@ -177,7 +185,7 @@ func (m *Mirror) SyncVersion(ctx context.Context, version string, src Source) (*
 	for i, b := range s.meta() {
 		sum := sha256.Sum256(b)
 		a := Artifact{Size: int64(len(b)), SHA256: hex.EncodeToString(sum[:])}
-		if err := m.keep(root, metaFiles[i], a, func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(b)), nil }); err != nil {
+		if err := m.keep(root, MetaFiles[i], a, func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(b)), nil }); err != nil {
 			return nil, err
 		}
 	}
@@ -388,7 +396,7 @@ func (m *Mirror) serves(version, name string) bool {
 	if err != nil {
 		return false
 	}
-	for _, f := range metaFiles {
+	for _, f := range MetaFiles {
 		if name == f {
 			return true
 		}

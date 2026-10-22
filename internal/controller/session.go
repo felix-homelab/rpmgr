@@ -255,12 +255,20 @@ func (s *Sessions) receive(ctx context.Context, st grpc.BidiStreamingServer[agen
 			if st.GetReadinessComplete() || len(st.GetReadiness()) > 0 {
 				s.readiness(id, st.GetReadiness(), st.GetReadinessComplete())
 			}
-			if id.Kind == pki.KindGateway {
+			// A Status with only the update state (OTA) leaves a gateway's data sessions and
+			// counters as they are: it lists none of them.
+			if id.Kind == pki.KindGateway && !updateOnly(st) {
 				s.dataSessions(id, st.GetDataSessions())
 				s.counters(id, st.GetCounters())
 			}
 		}
 	}
+}
+
+// updateOnly reports whether a Status carries the update state and nothing else.
+func updateOnly(st *agentv1.Status) bool {
+	return st.GetUpdate() != nil && !st.GetReadinessComplete() && len(st.GetReadiness()) == 0 &&
+		len(st.GetDataSessions()) == 0 && len(st.GetCounters()) == 0
 }
 
 // firstHello waits HelloTimeout for the session's first message, which must be Hello.
