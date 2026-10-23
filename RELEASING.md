@@ -18,7 +18,7 @@ The first release is v0.1.0.
 - [Security releases](#security-releases)
 - [Withdrawing a release](#withdrawing-a-release)
 - [Roles](#roles)
-- [Interim signing keys](#interim-signing-keys)
+- [Release signing keys](#release-signing-keys)
 
 ## Versioning
 
@@ -204,7 +204,7 @@ For a minor or major release. A patch release is the same, starting from the bra
      byte; the same two builds also run every night;
    - the artifacts must be release builds: no build tags, so never `rpmgrtest`, and the release
      root keys compiled in. The job prints the roots' key IDs and fingerprints, which the signer
-     compares with the record of the [key ceremony](#interim-signing-keys);
+     compares with the record of the [key ceremony](#release-signing-keys);
    - an SBOM, and SLSA provenance as GitHub artifact attestations of every artifact, the SBOM and
      `SHA256SUMS`: their keyless signatures with this workflow's identity. The release carries no
      separate signature files ([D72](docs/14-open-decisions.md#project-and-process));
@@ -227,9 +227,9 @@ For a minor or major release. A patch release is the same, starting from the bra
        -floor <version> ><files>/manifest.json
      ```
 
-   - sign it: in Phase 1 on the offline machine with the interim signing key
-     (`minisign -S -s signing.key -m manifest.json`), from the first release with OTA on its
-     hardware token;
+   - sign it on the offline live system of the [key ceremony](#release-signing-keys) with the
+     signing key: `minisign -S -s signing.key -m manifest.json`
+     ([D126](docs/14-open-decisions.md#security-defaults));
    - add `manifest.json.minisig`, `signing-key.json` and `signing-key.json.minisig` to the draft,
      and `manifest.json` when it was drafted again.
 8. **Publish.**
@@ -316,20 +316,24 @@ rpmgr has one maintainer ([D27](docs/14-open-decisions.md#project-and-process)),
 role:
 
 - **Release manager:** creates `v*` tags, runs the checklist and owns the release issue.
-- **Signer:** holds the two offline root keys on two hardware tokens (one kept off-site; either
-  root alone can sign a signing-key statement) and the current signing key on a third token.
-  Signing-key statements are valid for 12 months
-  ([D10](docs/14-open-decisions.md#security-defaults), [04](docs/04-security.md#release-signing)).
-  No key ever enters CI. The v0.x releases of Phase 1, which have no OTA, are signed with interim
-  keys kept as encrypted files on offline media; the hardware tokens take over with the first
-  release that has OTA ([D48](docs/14-open-decisions.md#security-defaults)).
+- **Signer:** holds the two root keys (one kept off-site; either root alone can sign a
+  signing-key statement) and the current signing key, as encrypted files on offline media that
+  only the offline live system reads ([Release signing keys](#release-signing-keys)). Signing-key
+  statements are valid for 12 months ([D10](docs/14-open-decisions.md#security-defaults),
+  [D126](docs/14-open-decisions.md#security-defaults), [04](docs/04-security.md#release-signing)).
+  No key ever enters CI.
 
-## Interim signing keys
+## Release signing keys
 
-The v0.x releases of Phase 1 are signed with interim keys kept as encrypted files on offline media
-([D48](docs/14-open-decisions.md#security-defaults)). The key ceremony makes them once, before
+Every release is signed with keys kept as encrypted files on offline media
+([D48](docs/14-open-decisions.md#security-defaults),
+[D126](docs/14-open-decisions.md#security-defaults),
+[ADR-0021](docs/adr/0021-offline-file-release-keys.md)). The key ceremony made them once, before
 v0.1.0; the formats and the validity of a statement are in
-[04](docs/04-security.md#release-signing).
+[04](docs/04-security.md#release-signing). A medium is only ever read by the offline live system
+of step 1, for a statement or a release manifest, never by a machine that has been or will be
+online: a key file can be copied without a trace. [R] Keep a second copy of each medium with the
+first.
 
 1. **Prepare the offline machine:** a live system booted from read-only media, with networking
    off, and minisign 0.12, whose release signature was checked on another machine.
