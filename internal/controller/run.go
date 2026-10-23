@@ -248,6 +248,14 @@ func Run(ctx context.Context, o RunOptions) error {
 	acc := accounts.New(db, sys, o.Now)
 	acc.ResetLog, acc.ResetLogger = rl, o.Logger
 	tokens := &accounts.Tokens{Accounts: acc, RevLog: rl, Logger: o.Logger}
+	// A new rollout or upload asks the release check to run at once (D125).
+	mirrorWake := make(chan struct{}, 1)
+	mirrorNow := func() {
+		select {
+		case mirrorWake <- struct{}{}:
+		default:
+		}
+	}
 	apiServer, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Resolver: api.StoreResolver(db, sys),
 		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys), PageKey: pageKey, Now: o.Now, Logger: o.Logger,
 		Authenticator: apisvc.Credentials{Sessions: webSessions, Tokens: tokens,
@@ -335,7 +343,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_release_proto.Services().ByName("ReleaseService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewReleaseServiceHandler(&apisvc.Releases{DB: db, Sys: sys, API: apiServer, Version: o.Version, MinAgentVersion: MinAgentVersion(o.Version),
+			return rpmgrv1connect.NewReleaseServiceHandler(&apisvc.Releases{DB: db, Sys: sys, API: apiServer, Version: o.Version, MinAgentVersion: MinAgentVersion(o.Version), MirrorNow: mirrorNow,
 				Roots: o.ReleaseRoots, Now: o.Now}, opts...)
 		}); err != nil {
 		return err
@@ -451,7 +459,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	bg.Go(func() { ReloadCA(jobs, caOpts) })
 	bg.Go(func() { shipper.Run(jobs) })
 	bg.Go(func() {
-		ReleaseCheck(jobs, ReleaseCheckOptions{DB: db, Mirror: mirror, Source: releaseSource(o.ReleaseSource), Lister: releaseLister(o.ReleaseSource), Proxy: proxy, Logger: o.Logger})
+		ReleaseCheck(jobs, ReleaseCheckOptions{DB: db, Mirror: mirror, Source: releaseSource(o.ReleaseSource), Lister: releaseLister(o.ReleaseSource), Proxy: proxy,
+			Wake: mirrorWake, Logger: o.Logger})
 	})
 	bg.Go(func() {
 		RenewNodeCertificate(jobs, NodeCertOptions{CA: ca, DB: db, Sys: sys, NodeID: nodeID, Holder: holder, Now: o.Now, Logger: o.Logger})

@@ -25,7 +25,8 @@ func ReleaseOffer(ctx context.Context, tx *ent.Tx, a Agent) (*agentv1.ReleaseOff
 // ReleaseOfferAt is the controller's Compiler.Offer (docs/04-security.md, "Over-the-air updates",
 // step 3): the target release of the running rollout, for an agent whose rollout target is
 // offered, with base as the controller's public URL whose /dl/<version>/ the agent downloads from.
-// Other agents, and every agent while the rollout is paused, get none.
+// Other agents, every agent while the rollout is paused, and every agent while the mirror does not
+// hold the release with its recorded manifest, get none (D125).
 func ReleaseOfferAt(base string) func(ctx context.Context, tx *ent.Tx, a Agent) (*agentv1.ReleaseOffer, error) {
 	return func(ctx context.Context, tx *ent.Tx, a Agent) (*agentv1.ReleaseOffer, error) {
 		t, err := tx.RolloutTarget.Query().
@@ -38,6 +39,9 @@ func ReleaseOfferAt(base string) func(ctx context.Context, tx *ent.Tx, a Agent) 
 		}
 		if err != nil {
 			return nil, err
+		}
+		if t.Edges.Rollout.Edges.Release.MirroredAt == nil {
+			return nil, nil
 		}
 		return Offer(t.Edges.Rollout.Edges.Release, base)
 	}

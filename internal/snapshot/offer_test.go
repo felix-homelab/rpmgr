@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
@@ -25,8 +26,8 @@ const offerManifest = `{"seq":7,"version":"0.2.0","floor":"0.1.0","channel":"sta
 
 // TestReleaseOffer (D121, docs/04-security.md, "Over-the-air updates", step 3): an agent with the
 // capability ota whose rollout target is offered gets the running rollout's release with every
-// file under /dl/; an agent without the capability, one whose target is not offered, and every
-// agent of a paused rollout get none.
+// file under /dl/; an agent without the capability, one whose target is not offered, every agent
+// of a paused rollout, and every agent while the mirror does not hold the release (D125) get none.
 func TestReleaseOffer(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		storetest.Init(t, db)
@@ -34,7 +35,7 @@ func TestReleaseOffer(t *testing.T) {
 		c := db.Client()
 		rel := c.Release.Create().SetVersion("0.2.0").SetChannel("stable").SetManifestSeq(7).SetManifest([]byte(offerManifest)).
 			SetSignature([]byte("manifest sig")).SetSigningKeyStatement([]byte(`{"statement":1}`)).
-			SetStatementSignature([]byte("statement sig")).SetSource("check").SaveX(sys)
+			SetStatementSignature([]byte("statement sig")).SetSource("check").SetMirroredAt(time.Now()).SaveX(sys)
 		ro := c.Rollout.Create().SetReleaseID(rel.ID).SetCreatedBy("usr_admin").SaveX(sys)
 		offered := c.RolloutTarget.Create().SetRolloutID(ro.ID).SetAgentID("con_1").SetAgentKind("connector").SetBucket(3).
 			SetState(rollouttarget.StateOffered).SaveX(sys)
@@ -83,6 +84,16 @@ func TestReleaseOffer(t *testing.T) {
 			t.Errorf("a paused rollout: offer %v, error %v", snap.GetReleaseOffer(), err)
 		}
 		c.Rollout.UpdateOne(ro).SetState(rollout.StateRunning).ExecX(sys)
+		// A release the mirror does not hold, such as after a newer manifest was uploaded, is
+		// offered again only once the mirror holds it (D125).
+		c.Release.UpdateOne(rel).ClearMirroredAt().ExecX(sys)
+		if snap, err := cmp.Compile(sys, db, ota); err != nil || snap.GetReleaseOffer() != nil {
+			t.Errorf("a release the mirror does not hold: offer %v, error %v", snap.GetReleaseOffer(), err)
+		}
+		c.Release.UpdateOne(rel).SetMirroredAt(time.Now()).ExecX(sys)
+		if snap, err := cmp.Compile(sys, db, ota); err != nil || snap.GetReleaseOffer().GetVersion() != "0.2.0" {
+			t.Errorf("once the mirror holds the release again: offer %v, error %v", snap.GetReleaseOffer(), err)
+		}
 		c.RolloutTarget.UpdateOne(offered).SetState(rollouttarget.StateStaged).ExecX(sys)
 		if snap, err := cmp.Compile(sys, db, ota); err != nil || snap.GetReleaseOffer() != nil {
 			t.Errorf("a staged target: offer %v, error %v", snap.GetReleaseOffer(), err)
