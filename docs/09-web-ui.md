@@ -535,12 +535,24 @@ flowchart LR
   - **Releases:** each listed release with its channel, where it came from and whether the mirror
     holds it; "Upload release…" takes the signed manifest, the signing-key statement and their
     signatures, after a step-up.
-  - **Rollout:** "Roll out…" on a release no newer than the controller asks for the canary agents
-    and a step-up. The running or paused rollout shows its stage, how many agents are updated,
-    pending, skipped, rolled back or stalled, and the agents by state with their reasons. "Next
-    stage…" asks for the percentage or "all"; "Pause", "Resume" and "Cancel" are next to it, each
-    after a step-up but "Pause". A rollback or a stalled agent pauses the rollout, and the page says
-    which agent and why.
+  - **Starting a rollout:** "Roll out…" on a release no newer than the controller opens two steps.
+    "Test agents" says that they update first and that all other agents wait until the Instance
+    Admin continues; it lists the org's connectors and gateways that a rollout updates, grouped by
+    kind with their version and whether they are online, with a search box, and ticks the first
+    online connector and gateway that do not run the release yet. Its footer counts the agents
+    that get the release, those that run it already and those left out (built in, decommissioned
+    or not enrolled). "Review" shows the plan, test agents → 25 % → all agents, and starts the
+    rollout after a step-up.
+  - **Following a rollout:** the running or paused rollout shows its stages, each done, current or
+    to come with its agents, and a bar of the agents updated, of those not skipped. One primary
+    button continues on the default path, "Continue to 25 % (k more agents)" and then "Continue to
+    all agents"; it is enabled once no agent of the current stage is still offered or staging, and
+    otherwise says how many still are. "Choose another stage" offers the other percentages above
+    the current one, any other from there to 99 and all agents. "Pause", "Resume" and "Cancel" are
+    next to it, each after a step-up but "Pause". The agents are grouped: those that need
+    attention (rolled back, refused or stalled, with the reason) first, then those updating in the
+    current stage, those waiting for a later stage, the updated and the skipped. A rollback or a
+    stalled agent pauses the rollout, and the page says which agent and why.
   - Others never see the page; connectors and gateways show their own update state on their pages.
 
   ```
@@ -549,9 +561,24 @@ flowchart LR
   │ Releases                                                 [Upload…]      │
   │  1.5.0  stable  release check  mirrored     [Roll out…]                 │
   │  1.4.2  stable  release check  mirrored     (controller's previous)     │
-  │ Rollout of 1.5.0 — paused: con-nas rolled back (not ready)              │
-  │  stage 25 %   updated 31 · pending 4 · skipped 6 · rolled back 1        │
-  │  [Resume]  [Next stage…]  [Cancel]                                      │
+  │ Rollout of 1.5.0                                              running   │
+  │  ✓ Test agents ──── ● 25 % ──────────── ○ All agents                    │
+  │    2 of 2 updated     1 of 3 updated      9 waiting                     │
+  │  ██████░░░░░░░░░░░░░░  3 of 12 agents updated · 1 skipped               │
+  │  [Continue to all agents (9 more agents)]  [Choose another stage ▾]     │
+  │  You can continue once this stage is done: 2 agents are still updating. │
+  │  [Pause]  [Cancel]                                                      │
+  │  ▾ Updating now (2)   ▸ Waiting for a later stage (9)   ▸ Updated (3)   │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+  ┌ Roll out 1.5.0 ─────────────────────────────────────────────────────────┐
+  │ Step 1 of 2: test agents                                                │
+  │ These agents update first. All other agents wait until you continue.    │
+  │ [ Search agents…                 ]                                      │
+  │ CONNECTORS   [x] db-host  1.4.2  online    [ ] nas  1.4.2  offline      │
+  │ GATEWAYS     [x] edge     1.4.2  online                                 │
+  │ 4 agents get the release · 1 already runs 1.5.0                         │
+  │                                                     [Cancel]  [Next]    │
   └─────────────────────────────────────────────────────────────────────────┘
   ```
 - **Connector and gateway lists** show each agent's version, and from Phase 2 its update state

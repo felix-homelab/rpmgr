@@ -11,9 +11,10 @@ rollout and what it tells you. The rules behind it are in
 
 - **The target is the controller's version**, or an older release you uploaded on purpose. No agent
   runs ahead of its controller.
-- **Three stages:** the canary agents you choose, then a percentage, then all agents. You approve
-  every stage. An agent's place in the percentages is fixed by its ID, so a later stage includes
-  every agent of an earlier one.
+- **Three stages:** the test agents you choose (the canary agents), then a percentage of the
+  others, 25 % unless you choose another, then all agents. You continue every stage yourself; the
+  other agents wait until you do. An agent's place in the percentages is fixed by its ID, so a
+  later stage includes every agent of an earlier one.
 - **Gateways go one at a time per group.** Each drains first, so that its connectors move to the
   other gateways, and is enabled again after the update.
 - **A rollback or a silent agent pauses the rollout.** You then resume it, or cancel it. Agents
@@ -31,15 +32,23 @@ is not updated over the air.
    where it came from and whether the mirror holds it. Every release that is no newer than the
    controller has a **Roll out…** button. A rollout of a release the mirror does not hold yet
    starts at once; the controller fetches the release and offers it once the mirror holds it.
-2. Choose **Roll out…**, tick the canary agents and confirm your identity.
-3. Watch the rollout: its stage, how many agents are updated, pending, skipped, rolled back or
-   stalled, and each agent's state with its reason.
-4. Choose **Next stage** for a higher percentage or **All agents**, and confirm. The stage moves on
-   as its agents report.
-5. At the end the rollout is **completed**. A rollback or a stalled agent shows **paused** with the
+2. Choose **Roll out…**. The first step asks for the **test agents**, which update first; the
+   connectors and gateways of your org are listed with their version and whether they are online,
+   and one online connector and one online gateway are already ticked. Change the choice if you
+   like, then choose **Next**. An offline test agent is skipped, so it tests nothing.
+3. The second step shows the plan: the test agents, then about a quarter of the other agents, then
+   the rest. Choose **Start the rollout** and confirm your identity.
+4. Watch the rollout. The stages show which are done, the current one and the ones to come, each
+   with its agents; a bar shows how many agents updated. The agents are grouped: **Need attention**
+   (rolled back, refused or stalled, with the reason), **Updating now**, **Waiting for a later
+   stage**, **Updated** and **Skipped**.
+5. Once the agents of the current stage are done, choose **Continue to 25 %**, and later
+   **Continue to all agents**, and confirm. The button says how many more agents the next stage
+   takes. **Choose another stage** offers other percentages, or all agents at once.
+6. At the end the rollout is **completed**. A rollback or a stalled agent shows **paused** with the
    agent and its reason; fix it, then **Resume**, or **Cancel** to end the rollout for good.
 
-**Pause** needs no confirmation; **Resume**, **Next stage** and **Cancel** ask for a step-up
+**Pause** needs no confirmation; **Resume**, **Continue** and **Cancel** ask for a step-up
 ([The step-up dialog](../web-ui/README.md#the-step-up-dialog)).
 
 ## Upload a release

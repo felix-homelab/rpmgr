@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ConnectorService } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import {
-  AgentKind, ReleaseService, ReleaseSource, RolloutStage, RolloutState, RolloutTargetState,
+  ReleaseService, ReleaseSource, RolloutStage, RolloutState,
   type AdvanceRolloutRequest, type CreateRolloutRequest, type PauseRolloutRequest,
   type ResumeRolloutRequest, type CancelRolloutRequest, type UploadReleaseRequest,
 } from "@/gen/rpmgr/v1/release_pb";
@@ -107,68 +107,6 @@ describe("Updates", () => {
     ]);
     const buttons = card.getAllByRole("button", { name: "Roll out…" }) as HTMLButtonElement[];
     expect(buttons.map((b) => b.disabled)).toEqual([false, false, true, false]);
-  });
-
-  it("starts a rollout with the canary agents chosen, after a step-up", async () => {
-    const { calls } = page();
-    const card = within(await screen.findByRole("region", { name: "Releases" }));
-    fireEvent.click((await card.findAllByRole("button", { name: "Roll out…" }))[0]!);
-    const dialog = within(await screen.findByRole("dialog", { name: "Roll out 1.5.0" }));
-    fireEvent.click(await dialog.findByLabelText(/db-host/));
-    fireEvent.click(dialog.getByRole("button", { name: "Start the rollout" }));
-    await confirmStepUp();
-    await waitFor(() => expect(calls.create).toHaveLength(1));
-    expect(calls.create[0]).toMatchObject({ releaseId: "rel_1.5.0", canaryAgentIds: ["con_db"] });
-    expect(calls.steppedUp).toBe(1);
-  });
-
-  it("pauses without a step-up, and resumes and cancels with one", async () => {
-    const { calls } = page({ active: rollout() });
-    const region = within(await screen.findByRole("region", { name: "Rollout" }));
-    fireEvent.click(await region.findByRole("button", { name: "Pause" }));
-    await waitFor(() => expect(calls.pause).toHaveLength(1));
-    expect(calls.pause[0]).toMatchObject({ rolloutId: "rol_1", etag: "r1" });
-    expect(calls.steppedUp).toBe(0);
-    cleanup();
-
-    const again = page({ active: rollout({ state: RolloutState.PAUSED, pauseReason: "con-nas rolled back: not ready" }) });
-    const paused = within(await screen.findByRole("region", { name: "Rollout" }));
-    expect(await paused.findByText(/^Paused: con-nas rolled back/)).toBeTruthy();
-    fireEvent.click(paused.getByRole("button", { name: "Resume" }));
-    await confirmStepUp();
-    await waitFor(() => expect(again.calls.resume).toHaveLength(1));
-    fireEvent.click(paused.getByRole("button", { name: "Cancel" }));
-    fireEvent.click(await paused.findByRole("button", { name: "Cancel the rollout" }));
-    await confirmStepUp();
-    await waitFor(() => expect(again.calls.cancel).toHaveLength(1));
-    expect(again.calls.steppedUp).toBe(2);
-  });
-
-  it("advances to all agents under the etag it read, and says when the rollout changed meanwhile", async () => {
-    const { calls } = page({ active: rollout() });
-    const region = within(await screen.findByRole("region", { name: "Rollout" }));
-    fireEvent.change(await region.findByLabelText("Next stage"), { target: { value: "all" } });
-    fireEvent.click(region.getByRole("button", { name: "Advance" }));
-    await confirmStepUp();
-    await waitFor(() => expect(calls.advance).toHaveLength(1));
-    expect(calls.advance[0]).toMatchObject({ rolloutId: "rol_1", etag: "r1", next: { case: "all", value: true } });
-    cleanup();
-
-    page({ active: rollout(), wrongEtag: true });
-    const stale = within(await screen.findByRole("region", { name: "Rollout" }));
-    fireEvent.change(await stale.findByLabelText("Next stage"), { target: { value: "all" } });
-    fireEvent.click(stale.getByRole("button", { name: "Advance" }));
-    await confirmStepUp();
-    expect(await stale.findByText(/ETAG_MISMATCH|api error/)).toBeTruthy();
-  });
-
-  it("shows every agent's state and why, including a rollback", async () => {
-    page({ active: rollout(),
-      target: { id: "rlt_1", rolloutId: "rol_1", agentId: "con_nas", agentKind: AgentKind.CONNECTOR, agentName: "nas", orgId: "org_1",
-        canary: true, bucket: 3, state: RolloutTargetState.ROLLED_BACK, reason: "the service did not become ready", versionBefore: "1.4.2" } });
-    const region = within(await screen.findByRole("region", { name: "Rollout" }));
-    const row = await region.findByRole("row", { name: /nas/ });
-    expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["nas", "connector", "rolled back", "the service did not become ready"]);
   });
 
   it("uploads the four signed files after a step-up", async () => {

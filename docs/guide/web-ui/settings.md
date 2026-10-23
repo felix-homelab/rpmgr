@@ -93,10 +93,18 @@ GiB)**). Their ranges and defaults are in the design documents
   it is **this controller**. **Upload release…** takes the four signed files of a release for an
   air-gapped installation, after a step-up. **Roll out…** starts a staged rollout of a mirrored
   release that is no newer than the controller.
-- **Rollout**: the running or paused rollout with its stage, how many agents are updated, pending,
-  skipped, rolled back or stalled, and each agent's state and reason. **Next stage** offers a
-  higher percentage or all agents; **Pause**, **Resume** and **Cancel** end or continue it. A
-  rollback or a stalled agent pauses the rollout and the page says which agent and why.
+- **Roll out…** opens two steps: **Test agents**, the agents that update first, grouped into
+  connectors and gateways with their version and whether they are online, with a search box and
+  one online connector and one online gateway ticked; then the plan, which **Start the rollout**
+  starts after a step-up.
+- **Rollout**: the running or paused rollout. Its **stages** show the test agents, the percentage
+  and all agents, each done, current or to come, with its agents; a bar shows how many agents
+  updated. **Continue to …** names the next stage and how many more agents it takes, once the
+  agents of the current stage are done; **Choose another stage** offers other percentages or all
+  agents. **Pause**, **Resume** and **Cancel** stop, continue or end it. The agents are grouped into
+  **Need attention**, **Updating now**, **Waiting for a later stage**, **Updated** and **Skipped**,
+  each with its state and reason. A rollback or a stalled agent pauses the rollout and the page
+  says which agent and why.
 
 [Updates](../operations/updates.md) shows how to run a rollout.
 
