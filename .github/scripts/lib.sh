@@ -47,3 +47,14 @@ connector_artifacts() {
     printf 'rpmgr-%s-%s-%s-connector%s\n' "$1" "${p%/*}" "${p#*/}" "$([[ ${p%/*} == windows ]] && echo .exe)"
   done
 }
+
+# release_artifacts prints the names of every artifact of a version, one per line: the full build
+# for every Linux architecture, then the connector-only build. SHA256SUMS lists exactly these; the
+# release check and the image workflow's download both take them from here.
+release_artifacts() {
+  local arch
+  for arch in "${RELEASE_ARCHES[@]}"; do
+    printf 'rpmgr-%s-linux-%s\n' "$1" "$arch"
+  done
+  connector_artifacts "$1"
+}

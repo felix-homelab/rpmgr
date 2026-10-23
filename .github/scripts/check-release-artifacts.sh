@@ -20,12 +20,8 @@ dir=${1:?directory required} version=${2:?version required} commit=${3:?commit r
 root=${4:-$(repo_root)}
 pinned=$(sed -n 's/^toolchain //p' "$root/go.mod")
 
-want=(SHA256SUMS)
-for arch in "${RELEASE_ARCHES[@]}"; do
-  want+=("rpmgr-$version-linux-$arch")
-done
-mapfile -t connectors < <(connector_artifacts "$version")
-want+=("${connectors[@]}")
+mapfile -t artifacts < <(release_artifacts "$version")
+want=(SHA256SUMS "${artifacts[@]}")
 have=$(find "$dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)
 if [[ $have != "$(printf '%s\n' "${want[@]}" | sort)" ]]; then
   fail "$dir holds $(echo "$have" | paste -sd ' '), want $(printf '%s\n' "${want[@]}" | sort | paste -sd ' ')"

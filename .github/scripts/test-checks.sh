@@ -550,6 +550,12 @@ EOF
   # GOFLAGS cannot add the rpmgrtest tag to a release build.
   expect pass "a release build" env GOFLAGS=-tags=rpmgrtest "$rb" 1.2.3 "$commit" "$r/a" "$r"
   expect pass "its artifacts" "$ra" "$r/a" 1.2.3 "$commit" "$r"
+  # release_artifacts, which the image workflow downloads, names exactly the build's artifacts.
+  names='source "$1/lib.sh"; diff <(release_artifacts "$3" | sort) <(ls "$2" | grep -vx SHA256SUMS | sort)'
+  expect pass "release_artifacts names the build's artifacts" bash -c "$names" _ "$dir" "$r/a" 1.2.3
+  expect fail "release_artifacts of another version" bash -c "$names" _ "$dir" "$r/a" 1.2.4
+  expect pass "the image workflow downloads release_artifacts" \
+    grep -qF 'done < <(release_artifacts "$version")' "$dir/../workflows/images.yml"
   expect fail "its artifacts, release root keys required" env REQUIRE_ROOTS=1 "$ra" "$r/a" 1.2.3 "$commit" "$r"
   expect fail "its artifacts, as another version" "$ra" "$r/a" 1.2.4 "$commit" "$r"
   expect fail "its artifacts, as another commit" "$ra" "$r/a" 1.2.3 "${commit//[0-9a-f]/0}" "$r"

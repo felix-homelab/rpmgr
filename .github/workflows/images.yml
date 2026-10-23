@@ -76,10 +76,11 @@ jobs:
           echo "version=$version" >>"$GITHUB_OUTPUT"
           # shellcheck source=/dev/null
           source .github/scripts/lib.sh
+          # Every artifact SHA256SUMS lists, connector-only builds included: the check wants them all.
           patterns=(--pattern SHA256SUMS)
-          for arch in "${RELEASE_ARCHES[@]}"; do
-            patterns+=(--pattern "rpmgr-$version-linux-$arch")
-          done
+          while read -r artifact; do
+            patterns+=(--pattern "$artifact")
+          done < <(release_artifacts "$version")
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist "${patterns[@]}"
           # Downloads carry no executable bit, and the check runs the host's artifact.
           chmod 0755 "dist/rpmgr-$version-linux-"*
