@@ -45,7 +45,7 @@ what each may do are in [Members and roles](../accounts/members-and-roles.md).
   log** and **Settings**. The page you are on is highlighted. The product's mark and name at the
   top lead to the overview.
 - **The version** of rpmgr that the controller runs stands at the foot of the sidebar, such as
-  `rpmgr 0.1.0`. Only signed-in users see it; the sign-in page shows no version
+  `rpmgr 0.2.0`. Only signed-in users see it; the sign-in page shows no version
   ([D80](../../14-open-decisions.md#engineering)).
 - **The top bar** holds **Go to…**, which opens the [command palette](#command-palette), the
   [theme switch](#themes) and the user menu. It stays at the top while the page scrolls.

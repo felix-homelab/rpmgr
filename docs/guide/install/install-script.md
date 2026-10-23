@@ -38,11 +38,6 @@ curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/inst
 sudo sh install.sh
 ```
 
-> [!IMPORTANT]
-> Until v0.1.0 is released, `releases/latest` finds no release. Take `install.sh` from the newest
-> pre-release on the [Releases page](https://github.com/felix-homelab/rpmgr/releases) instead:
-> `https://github.com/felix-homelab/rpmgr/releases/download/v<version>/install.sh`.
-
 The copy attached to a release is pinned to that release: it installs that version unless
 `--version` names another. The repository's copy, `deploy/install.sh`, is not pinned: it asks the
 GitHub API for the latest release, or with `--prerelease` for the latest one including
@@ -55,12 +50,12 @@ terminal would reach a later prompt ([04](../../04-security.md#join-command)).
 What you see on a first installation (abbreviated):
 
 ```text
-rpmgr install: downloading rpmgr 0.1.0 for linux/amd64 from https://github.com/felix-homelab/rpmgr
-rpmgr install: verified rpmgr 0.1.0 (manifest …)
-rpmgr 0.1.0 (commit …, go…, linux/amd64)
+rpmgr install: downloading rpmgr 0.2.0 for linux/amd64 from https://github.com/felix-homelab/rpmgr
+rpmgr install: verified rpmgr 0.2.0 (manifest …)
+rpmgr 0.2.0 (commit …, go…, linux/amd64)
 release root keys:
   …
-rpmgr install: installed rpmgr 0.1.0 to /usr/local/bin/rpmgr
+rpmgr install: installed rpmgr 0.2.0 to /usr/local/bin/rpmgr
 Run rpmgr setup now? [Y/n]
 ```
 
@@ -229,7 +224,7 @@ the global script needs, and `systemctl`, `useradd` and `install`.
 It ends with a line such as:
 
 ```text
-rpmgr install: rpmgr 0.1.0 runs as rpmgr-connector; admin listener 127.0.0.1:7383
+rpmgr install: rpmgr 0.2.0 runs as rpmgr-connector; admin listener 127.0.0.1:7383
 ```
 
 Check the agent with `sudo rpmgr status`. Its last line, `Service:`, says `running and ready` once

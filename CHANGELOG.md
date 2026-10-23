@@ -10,6 +10,8 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-24
+
 ### Added
 
 - Install: both install scripts and `rpmgr setup` install the root updater and its state on every
@@ -347,5 +349,6 @@ Changes to the design documents are not recorded here: see the git history and t
   command line (generated from the binary), the boot files, the local policy file, the environment
   and the API. (#565)
 
-[Unreleased]: https://github.com/felix-homelab/rpmgr/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/felix-homelab/rpmgr/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/felix-homelab/rpmgr/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/felix-homelab/rpmgr/releases/tag/v0.1.0

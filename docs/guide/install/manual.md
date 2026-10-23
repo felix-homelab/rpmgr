@@ -27,14 +27,14 @@ the same chain with `minisign` and the release root keys
 command line:
 
 ```sh
-gh attestation verify rpmgr-release/rpmgr-0.1.0-linux-amd64 --repo felix-homelab/rpmgr \
+gh attestation verify rpmgr-release/rpmgr-0.2.0-linux-amd64 --repo felix-homelab/rpmgr \
   --signer-workflow felix-homelab/rpmgr/.github/workflows/release.yml
 ```
 
 Then install the binary, the user and the directories as the script would:
 
 ```sh
-sudo install -m 0755 rpmgr-release/rpmgr-0.1.0-linux-amd64 /usr/local/bin/rpmgr
+sudo install -m 0755 rpmgr-release/rpmgr-0.2.0-linux-amd64 /usr/local/bin/rpmgr
 rpmgr version --verbose      # the version and the release root keys compiled into it
 sudo useradd --system --user-group --home-dir /var/lib/rpmgr --shell /usr/sbin/nologin rpmgr
 sudo install -d -m 0755 /etc/rpmgr
@@ -228,7 +228,7 @@ released Linux architecture ([10](../../10-operations.md#install-paths)):
 Check the signature before you run an image:
 
 ```sh
-cosign verify ghcr.io/felix-homelab/rpmgr:0.1.0 \
+cosign verify ghcr.io/felix-homelab/rpmgr:0.2.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/felix-homelab/rpmgr/'
 ```
@@ -250,11 +250,11 @@ kek:
 ```sh
 docker volume create rpmgr-state
 docker run --rm -v rpmgr-state:/var/lib/rpmgr -v /srv/rpmgr/etc:/etc/rpmgr:ro \
-  ghcr.io/felix-homelab/rpmgr:0.1.0 all-in-one init        # prints the CA pin and the first-user link
+  ghcr.io/felix-homelab/rpmgr:0.2.0 all-in-one init        # prints the CA pin and the first-user link
 docker run -d --name rpmgr --restart unless-stopped \
   -p 80:80/tcp -p 443:443/tcp -p 443:443/udp \
   -v rpmgr-state:/var/lib/rpmgr -v /srv/rpmgr/etc:/etc/rpmgr:ro \
-  ghcr.io/felix-homelab/rpmgr:0.1.0 all-in-one
+  ghcr.io/felix-homelab/rpmgr:0.2.0 all-in-one
 ```
 
 - **The KEK** lies in the same volume as the database, so a copy of the volume holds both. Copy the
@@ -273,11 +273,11 @@ Enroll once into the state volume, with a terminal for the token prompt, then ru
 
 ```sh
 docker volume create rpmgr-connector
-docker run --rm -it -v rpmgr-connector:/var/lib/rpmgr ghcr.io/felix-homelab/rpmgr:0.1.0 \
+docker run --rm -it -v rpmgr-connector:/var/lib/rpmgr ghcr.io/felix-homelab/rpmgr:0.2.0 \
   enroll --controller https://panel.example.com --ca-pin 'sha256:…'
 docker run -d --name rpmgr-connector --restart unless-stopped \
   -v rpmgr-connector:/var/lib/rpmgr -v /srv/rpmgr/etc:/etc/rpmgr:ro \
-  ghcr.io/felix-homelab/rpmgr:0.1.0 connector
+  ghcr.io/felix-homelab/rpmgr:0.2.0 connector
 ```
 
 `/srv/rpmgr/etc` holds `connector.yaml`, as in [the steps above](#a-gateway-or-connector-by-hand),

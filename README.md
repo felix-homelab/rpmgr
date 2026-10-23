@@ -8,9 +8,9 @@ you own, and that server passes the traffic through. You need no port forwarding
 public IP address at home and no inbound firewall rule.
 
 > [!NOTE]
-> v0.1.0 is rpmgr's first release ([Releases](https://github.com/felix-homelab/rpmgr/releases)),
-> the minimum viable product of its first phase. Try it out, expect rough edges, and
-> [report what you find](https://github.com/felix-homelab/rpmgr/issues).
+> v0.2.0 is rpmgr's second release ([Releases](https://github.com/felix-homelab/rpmgr/releases)):
+> the minimum viable product of its first phase, now with signed updates over the air. Try it out,
+> expect rough edges, and [report what you find](https://github.com/felix-homelab/rpmgr/issues).
 
 ## Why rpmgr
 
@@ -59,7 +59,7 @@ configuration ([02](docs/02-architecture.md)).
 
 ## Features
 
-What v0.1.0 brings; the full catalogue, with what comes later, is in [05](docs/05-features.md).
+What v0.2.0 brings; the full catalogue, with what comes later, is in [05](docs/05-features.md).
 
 **Publishing services**
 
@@ -115,6 +115,17 @@ What v0.1.0 brings; the full catalogue, with what comes later, is in [05](docs/0
 - Prometheus metrics, health endpoints and OpenTelemetry traces.
 - Online backups, restore, key rotation and a YAML export of every resource.
 
+**Updates**
+
+- Signed updates over the air for gateways and connectors: roll a release out from
+  **Settings → Updates** to a few test agents first, then to a share of the agents, then to all.
+  An agent whose update fails goes back to its previous version, and the rollout pauses.
+- The controller verifies every release against rpmgr's release keys and keeps it in its own
+  mirror, so agents download only from the controller. Without access to GitHub, upload a
+  release's signed files instead.
+- A connector-only build, less than a third of the full build's size, for every Linux architecture
+  and for Windows and macOS.
+
 ## Requirements
 
 - **A public server** for the gateway, or the all-in-one: Linux with a public IP address and the
@@ -130,7 +141,8 @@ What v0.1.0 brings; the full catalogue, with what comes later, is in [05](docs/0
 - **Architectures:** amd64 and arm64 for every role; armv7 and riscv64 for connectors, and best
   effort for the other roles ([05](docs/05-features.md#platform-support)).
 
-Windows and macOS connectors are planned ([13](docs/13-roadmap.md#phase-2--production)).
+The connector-only build also runs on Windows (amd64) and macOS (amd64, arm64), started by hand;
+installing it there as a service is planned ([13](docs/13-roadmap.md#phase-2--production)).
 
 ## Quick start
 
@@ -299,10 +311,12 @@ the controller runs. The key that encrypts the secrets in the database is not pa
 up separately and keep it apart. `rpmgr restore` brings a backup back
 ([10](docs/10-operations.md#backup-and-restore)).
 
-**Upgrades.** rpmgr does not update itself yet; signed automatic updates are planned. Back up
-first, then upgrade the controller, then the gateways, then the connectors: on each host, run the
-new release's `install.sh` with `--upgrade`, which replaces the binary and changes nothing else,
-and `--restart`, which restarts the rpmgr services that run and checks that they stay up:
+**Upgrades.** Back up first, then upgrade the controller, then the gateways, then the connectors.
+Gateways and connectors installed with the install scripts update over the air, in a rollout you
+start under **Settings → Updates**. Controllers and all-in-ones, and hosts installed before
+v0.2.0, are upgraded by hand: on each host, run the new release's `install.sh` with `--upgrade`,
+which replaces the binary and installs the updater, and `--restart`, which restarts the rpmgr
+services that run and checks that they stay up:
 
 ```sh
 curl -fsSLO https://github.com/felix-homelab/rpmgr/releases/latest/download/install.sh
@@ -317,11 +331,12 @@ A controller works with agents of its own minor version and of the one before
 
 ## Roadmap
 
-The first phase is complete with v0.1.0. The next one brings DNS records managed in Cloudflare,
-wildcard certificates through DNS-01, single sign-on and passkeys, private services between
-connectors, health checks and passive health for targets, rate and bandwidth limits, Windows and
-macOS connectors, signed automatic updates, and PostgreSQL with several controllers. Virtual
-networks, HTTP/3, a Helm chart and a Terraform provider follow after that
+The first phase is complete with v0.1.0, and v0.2.0 starts the second one with signed updates
+over the air. The rest of it brings DNS records managed in Cloudflare, wildcard certificates
+through DNS-01, single sign-on and passkeys, private services between connectors, health checks
+and passive health for targets, rate and bandwidth limits, restarts without interrupting
+visitors, Windows and macOS connectors installed as services, and PostgreSQL with several
+controllers. Virtual networks, HTTP/3, a Helm chart and a Terraform provider follow after that
 ([13](docs/13-roadmap.md)).
 
 ## Documentation
