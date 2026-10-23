@@ -76,8 +76,8 @@ type ReleaseServiceClient interface {
 	// downgrades. Its artifacts come from the release source or `rpmgr release import`.
 	UploadRelease(context.Context, *connect.Request[v1.UploadReleaseRequest]) (*connect.Response[v1.UploadReleaseResponse], error)
 	// CreateRollout starts a rollout of a release with its canary agents. It is refused for a
-	// release newer than the controller, one the mirror does not hold yet, and while another
-	// rollout runs or is paused.
+	// release newer than the controller and while another rollout runs or is paused. A release the
+	// mirror does not hold yet is mirrored now, and offered once the mirror holds it (D125).
 	CreateRollout(context.Context, *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error)
 	// GetRollout returns a rollout with how many of its agents are in each state.
 	GetRollout(context.Context, *connect.Request[v1.GetRolloutRequest]) (*connect.Response[v1.GetRolloutResponse], error)
@@ -248,8 +248,8 @@ type ReleaseServiceHandler interface {
 	// downgrades. Its artifacts come from the release source or `rpmgr release import`.
 	UploadRelease(context.Context, *connect.Request[v1.UploadReleaseRequest]) (*connect.Response[v1.UploadReleaseResponse], error)
 	// CreateRollout starts a rollout of a release with its canary agents. It is refused for a
-	// release newer than the controller, one the mirror does not hold yet, and while another
-	// rollout runs or is paused.
+	// release newer than the controller and while another rollout runs or is paused. A release the
+	// mirror does not hold yet is mirrored now, and offered once the mirror holds it (D125).
 	CreateRollout(context.Context, *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error)
 	// GetRollout returns a rollout with how many of its agents are in each state.
 	GetRollout(context.Context, *connect.Request[v1.GetRolloutRequest]) (*connect.Response[v1.GetRolloutResponse], error)

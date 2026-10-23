@@ -44,7 +44,10 @@ type Releases struct {
 	MinAgentVersion string
 	// Roots verify uploaded releases; nil is the roots compiled into the binary.
 	Roots []release.PublicKey
-	Now   func() time.Time
+	// MirrorNow, if set, asks the release mirror to check at once, without waiting for it: for a
+	// rollout's target or an uploaded manifest the mirror does not hold yet (D125).
+	MirrorNow func()
+	Now       func() time.Time
 }
 
 var (
@@ -121,6 +124,9 @@ func (r *Releases) UploadRelease(ctx context.Context, req *connect.Request[rpmgr
 	if err != nil {
 		return nil, storeError(err)
 	}
+	if row.MirroredAt == nil {
+		r.mirrorNow()
+	}
 	return connect.NewResponse(&rpmgrv1.UploadReleaseResponse{Release: r.releaseOf(row)}), nil
 }
 
@@ -137,6 +143,12 @@ func (r *Releases) releaseOf(x *ent.Release) *rpmgrv1.Release {
 
 // compareVersions compares two release versions by semantic versioning.
 func compareVersions(a, b string) int { return semver.Compare("v"+a, "v"+b) }
+
+func (r *Releases) mirrorNow() {
+	if r.MirrorNow != nil {
+		r.MirrorNow()
+	}
+}
 
 func (r *Releases) now() time.Time {
 	if r.Now != nil {

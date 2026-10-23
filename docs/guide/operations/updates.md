@@ -28,8 +28,9 @@ is not updated over the air.
 ## Run a rollout
 
 1. Open **Settings → Updates**. **Releases** lists what the controller verified, with its channel,
-   where it came from and whether the mirror holds it. Only a mirrored release that is no newer
-   than the controller has a **Roll out…** button.
+   where it came from and whether the mirror holds it. Every release that is no newer than the
+   controller has a **Roll out…** button. A rollout of a release the mirror does not hold yet
+   starts at once; the controller fetches the release and offers it once the mirror holds it.
 2. Choose **Roll out…**, tick the canary agents and confirm your identity.
 3. Watch the rollout: its stage, how many agents are updated, pending, skipped, rolled back or
    stalled, and each agent's state with its reason.
@@ -74,5 +75,6 @@ Each change but a pause is audited and asks for the step-up
   the previous binary is back. The rollout is paused; read the agent's log, then resume or cancel.
 - **An agent is stalled.** It reported nothing for long enough that the rollout stopped waiting.
   Check that it is connected and that its updater runs, then resume.
-- **The mirror does not hold the release.** Wait for the release check, or import the release on
-  the controller host.
+- **The rollout's agents stay pending.** The mirror does not hold the release yet: the controller
+  could not fetch it from the release source. Import the release on the controller host, or cancel
+  the rollout.

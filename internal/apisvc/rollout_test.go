@@ -24,8 +24,7 @@ import (
 )
 
 // TestRollouts (docs/04-security.md, "Over-the-air updates"; D121): a rollout is refused for a
-// release the mirror does not hold or one newer than the controller, and for canary agents it
-// cannot update; it targets every connector and enrolled gateway that is neither decommissioned
+// release newer than the controller, and for canary agents it cannot update; it targets every connector and enrolled gateway that is neither decommissioned
 // nor built in, with the version each ran; one rollout runs at a time; it advances only upwards
 // and only while running, under its etag; a pause needs no step-up, resuming does; a cancelled
 // rollout makes room for the next; each change is audited; an org Owner sees and does nothing.
@@ -66,9 +65,6 @@ func TestRollouts(t *testing.T) {
 			return nil, err
 		}
 		return resp.Msg.GetRollout(), nil
-	}
-	if _, err := create(ada, old.GetId(), con1.ID); reason(err) != apisvc.ReasonReleaseNotMirrored {
-		t.Errorf("a release the mirror does not hold: %v", err)
 	}
 	c.Release.Update().SetMirroredAt(e.clock).ExecX(sys)
 	newer := c.Release.Query().Where(entrelease.Version("1.6.0")).OnlyX(sys)
@@ -323,5 +319,46 @@ func TestRollouts_VersionAndChannel(t *testing.T) {
 	}
 	if err := create("1.5.0-rc.1"); err != nil {
 		t.Errorf("a pre-release of the controller's version on the pre-release channel: %v", err)
+	}
+}
+
+// TestRollouts_BeforeMirror (D125): a rollout of a recorded release the mirror does not hold yet
+// is created and asks the mirror to check at once; so does an upload the mirror does not hold,
+// and a newer manifest of a mirrored release, which is no longer marked mirrored; a rollout of a
+// mirrored release asks nothing.
+func TestRollouts_BeforeMirror(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	ctx := context.Background()
+	var asked int
+	e.rel.MirrorNow = func() { asked++ }
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	up, err := ada.rel.UploadRelease(ctx, connect.NewRequest(signedRelease(t, e.clock, "1.4.2", 10, release.Stable)))
+	if err != nil || asked != 1 {
+		t.Fatalf("an upload the mirror does not hold: %v, %d checks asked", err, asked)
+	}
+	con := e.db.Client().Connector.Create().SetOrgID(org).SetName("nas").SetSpiffeID("spiffe://t/con1").SetPubkeySha256("a").SaveX(e.sys)
+	ro, err := ada.rel.CreateRollout(ctx, connect.NewRequest(&rpmgrv1.CreateRolloutRequest{ReleaseId: up.Msg.GetRelease().GetId(),
+		CanaryAgentIds: []string{con.ID}}))
+	if err != nil || asked != 2 || ro.Msg.GetRollout().GetState() != rpmgrv1.RolloutState_ROLLOUT_STATE_RUNNING {
+		t.Fatalf("a rollout before the mirror holds its release: %v %v, %d checks asked", ro, err, asked)
+	}
+	e.db.Client().Release.Update().SetMirroredAt(e.clock).ExecX(e.sys)
+	if _, err := ada.rel.UploadRelease(ctx, connect.NewRequest(signedRelease(t, e.clock, "1.4.2", 9, release.Stable))); err != nil || asked != 2 {
+		t.Errorf("an older manifest of a mirrored release: %v, %d checks asked", err, asked)
+	}
+	again, err := ada.rel.UploadRelease(ctx, connect.NewRequest(signedRelease(t, e.clock, "1.4.2", 11, release.Stable)))
+	if err != nil || again.Msg.GetRelease().GetMirrored() || again.Msg.GetRelease().GetManifestSeq() != 11 || asked != 3 {
+		t.Errorf("a newer manifest of a mirrored release: %v %v, %d checks asked", again, err, asked)
+	}
+	_, err = ada.rel.CancelRollout(ctx, connect.NewRequest(&rpmgrv1.CancelRolloutRequest{RolloutId: ro.Msg.GetRollout().GetId()}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.db.Client().Release.Update().SetMirroredAt(e.clock).ExecX(e.sys)
+	if _, err := ada.rel.CreateRollout(ctx, connect.NewRequest(&rpmgrv1.CreateRolloutRequest{ReleaseId: up.Msg.GetRelease().GetId(),
+		CanaryAgentIds: []string{con.ID}})); err != nil || asked != 3 {
+		t.Errorf("a rollout of a mirrored release: %v, %d checks asked", err, asked)
 	}
 }

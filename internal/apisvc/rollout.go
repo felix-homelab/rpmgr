@@ -28,12 +28,11 @@ import (
 
 // The reasons of a rollout refused or changed out of turn (docs/07-api.md, "Errors").
 const (
-	ReasonRolloutActive      = "ROLLOUT_ACTIVE"
-	ReasonReleaseNewer       = "RELEASE_NEWER_THAN_CONTROLLER"
-	ReasonReleaseNotMirrored = "RELEASE_NOT_MIRRORED"
-	ReasonReleaseBelowMin    = "RELEASE_BELOW_MIN_AGENT_VERSION"
-	ReasonReleaseChannel     = "RELEASE_NOT_ON_CHANNEL"
-	ReasonRolloutState       = "ROLLOUT_STATE"
+	ReasonRolloutActive   = "ROLLOUT_ACTIVE"
+	ReasonReleaseNewer    = "RELEASE_NEWER_THAN_CONTROLLER"
+	ReasonReleaseBelowMin = "RELEASE_BELOW_MIN_AGENT_VERSION"
+	ReasonReleaseChannel  = "RELEASE_NOT_ON_CHANNEL"
+	ReasonRolloutState    = "ROLLOUT_STATE"
 )
 
 // pausedByHand is the pause reason of a rollout an Instance Admin paused.
@@ -66,6 +65,7 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 	sys := store.CarryTxHook(r.Sys, ctx)
 	m := req.Msg
 	var row *ent.Rollout
+	mirrored := false
 	create := func(tx *ent.Tx) error {
 		rel, err := tx.Release.Get(sys, m.GetReleaseId())
 		if err != nil {
@@ -82,10 +82,8 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 			return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
 				"apisvc: release %s is below %s, the oldest agent version the controller accepts; its agents could not connect",
 				rel.Version, r.MinAgentVersion)), ReasonReleaseBelowMin)
-		case rel.MirroredAt == nil:
-			return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
-				"apisvc: the mirror does not hold release %s yet", rel.Version)), ReasonReleaseNotMirrored)
 		}
+		mirrored = rel.MirroredAt != nil
 		set, _, err := settings.Instance(sys, tx.Client())
 		if err != nil {
 			return err
@@ -145,6 +143,9 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 	}
 	if err != nil {
 		return nil, storeError(err)
+	}
+	if !mirrored {
+		r.mirrorNow() // the mirror keeps the target from now on; the rollout job offers it once it holds it (D125)
 	}
 	out, err := r.rolloutOf(sys, row)
 	if err != nil {

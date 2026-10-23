@@ -86,7 +86,7 @@ for variant in full connector; do
     fail "${f##*/} carries the test root keys of an rpmgrtest build (D60)"
   fi
   if [[ ${REQUIRE_ROOTS-} == 1 ]] && grep -q '^release root keys: none' <<<"$out"; then
-    fail "${f##*/} carries no release root keys; add the interim keys first (D48, RELEASING.md)"
+    fail "${f##*/} carries no release root keys; add the release keys first (D48, RELEASING.md)"
   fi
 done
 # The connector-only build has no controller: a role of the full build is not available there.

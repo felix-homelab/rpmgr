@@ -844,22 +844,25 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
                    "size": 21876736 } ] }
 ```
 
-- **Key custody** (one maintainer, [14](14-open-decisions.md) D10):
-  - The two root keys live on **two hardware tokens** (e.g. YubiKey, Ed25519). **Either root
-    alone** can sign a signing-key statement (1-of-2), so losing one token is not fatal. One token
-    is kept at the maintainer's home, the other off-site.
-  - The routine **signing key** lives on a third token and never enters CI. A signing-key statement
-    is valid for **12 months**; a new signing key is introduced with a new statement before the old
-    one expires.
-  - Losing both root tokens means shipping a new binary through an out-of-band trust path.
-  - Producing minisign-format signatures with the chosen token is verified before the first
-    release with OTA [V VB-13]; if that is not possible, rpmgr uses its own documented raw Ed25519
-    signature format.
-  - **Phase 1 (v0.x, no OTA)** uses interim keys: two root keys and a signing key, generated on an
-    offline machine and kept as encrypted files on offline media, one root copy off-site. The first
-    release with OTA (Phase 2) carries the hardware-token roots; hosts installed in Phase 1 install
-    that binary by hand anyway, so nothing depends on the interim roots afterwards
-    ([D48](14-open-decisions.md#security-defaults)).
+- **Key custody** (one maintainer, [14](14-open-decisions.md) D10, D48, D126,
+  [ADR-0021](adr/0021-offline-file-release-keys.md)):
+  - Two Ed25519 **root keys** and the routine **signing key**, generated in the key ceremony before
+    v0.1.0 on a live system booted from read-only media with networking off
+    ([RELEASING](../RELEASING.md#release-signing-keys)). Each is a minisign key file, encrypted
+    with its own passphrase, on offline media: one medium at the maintainer's home with `root-1`
+    and the signing key, one off-site with `root-2`. The passphrases are kept apart from the media.
+  - A medium is only ever read by that offline live system; signing-key statements and release
+    manifests are signed there. No key ever enters CI. A key file can be copied without a trace,
+    so this rule is the keys' whole protection. [R] A second copy of each medium, kept with the
+    first, guards against a medium that fails.
+  - **Either root alone** can sign a signing-key statement (1-of-2), so losing one medium is not
+    fatal. A signing-key statement is valid for **12 months**; a new signing key, also one that
+    replaces a compromised key, is introduced with a new statement, and the old one expires.
+  - Losing both root keys, or their compromise, means shipping a new binary through an out-of-band
+    trust path.
+  - The same keys signed the v0.x releases of Phase 1, which have no OTA, and sign every release
+    with OTA from v0.2.0 on; no release changes the roots
+    ([D126](14-open-decisions.md#security-defaults)).
   - Only the real root keys are compiled into release builds. Tests use the build tag `rpmgrtest`,
     which swaps in generated test roots; release builds refuse that tag, and the release job checks
     the key fingerprints printed by `rpmgr version --verbose`
@@ -893,8 +896,8 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
     Keys a manifest has beyond these are ignored, so later formats can add fields.
   - An artifact is accepted only with the manifest's size and SHA-256; reading stops one byte past
     the size.
-- **Roots in the binary:** release builds carry the interim roots once the maintainer has made
-  them (D48); until then a release build verifies no release.
+- **Roots in the binary:** release builds carry the two roots of the key ceremony, since #429
+  (D48, D126); a release build without roots verifies no release.
   - `rpmgr version --verbose` prints the minisign key ID and SHA-256 fingerprint of each root
     ([16](16-cli.md)).
   - `rpmgrtest` builds carry two test roots instead. Their private keys are derived from fixed
@@ -954,7 +957,9 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
      `.minisig` files and the release's artifacts, and nothing else. A development build serves
      nothing.
    - **When it checks:** at start, then daily, while the release check is on, and when a rollout
-     needs a release it has not kept yet. A failed or rate-limited check is tried again sooner
+     needs a release it has not kept yet, also while the release check is off: creating such a
+     rollout, or uploading a manifest the mirror does not hold, starts a check at once
+     ([D125](14-open-decisions.md#engineering)). A failed or rate-limited check is tried again sooner
      ([03](03-connections.md#timeouts-keepalive-and-backoff)). Each controller keeps its own copy
      on its disk, so each one checks; the release's "mirrored" mark tells the time the checking
      controller last held it complete.
@@ -967,7 +972,10 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
      signing-key statement and their signatures ([07](07-api.md#services)); the artifacts then
      come from the release source, or, on an air-gapped installation, from
      `rpmgr release import <dir>` on the controller host. Import, run as root, gives the files to
-     the state directory's owner.
+     the state directory's owner. An uploaded manifest with a higher `seq` than the release
+     source's, such as a signed downgrade signed again so that hosts take it, is the one the mirror
+     verifies and serves, with the source's artifacts; recording it clears the release's
+     "mirrored" mark until the mirror holds it ([D125](14-open-decisions.md#engineering)).
 2. An Instance Admin creates a **staged rollout** of one release to the connectors and gateways
    ([D121](14-open-decisions.md#engineering)):
    - **Target:** the controller's own version, or an older release the Instance Admin uploaded on
@@ -998,8 +1006,13 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    binary, nor one in the container image, which has no updater. The offer
    names the version, the controller's public URL (the `public_url` of [10](10-operations.md),
    which `/install.sh` and enrollment use), its manifest's `seq` and its files under `/dl/` with
-   sizes and SHA-256; the controller offers a release only while its rollout runs and the agent's
-   target is `offered`.
+   sizes and SHA-256; the controller offers a release only while its rollout runs, the agent's
+   target is `offered` and the mirror holds the release with its recorded manifest. A rollout of a
+   release the mirror does not hold yet offers it to no agent and drains no gateway until it does,
+   and a change of the "mirrored" mark of a rollout's target is a configuration change, so the
+   snapshots offer the release, or stop offering it, at once. While the mirror does not hold it, no
+   agent the release was offered to counts as stalled, and its wait starts afresh when the mirror
+   holds the release again ([D125](14-open-decisions.md#engineering)).
    The agent, running as the unprivileged service user, reads the local policy (a gateway the
    host's `/etc/rpmgr/policy.yaml`, for `auto_update` and `update_channel` only): with
    `auto_update: off`, or a policy file that does not load, it declines the offer, and with

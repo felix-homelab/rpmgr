@@ -2,6 +2,7 @@
 
 Status: Accepted (decided by the product owner on 2026-10-06) · Date: 2026-10-06 · Package-install
 clause and Windows and macOS installers superseded by [ADR-0020](0020-no-packages-or-installers.md)
+· Key custody on hardware tokens superseded by [ADR-0021](0021-offline-file-release-keys.md)
 
 ## Context
 

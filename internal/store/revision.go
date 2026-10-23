@@ -79,12 +79,26 @@ func NewEpoch(ctx context.Context, db *DB) (string, error) {
 // changes and returns the IDs of the resources it changed; then the revision is recorded with the
 // scope's actor and org (see RevisionOrg). If fn fails, nothing of it, the revision included, is committed.
 func ConfigTx(ctx context.Context, db *DB, fn func(tx *ent.Tx) ([]string, error)) (Revision, error) {
+	return configTx(ctx, db, fn, false)
+}
+
+// configTxIfChanged is ConfigTx for a write that is a configuration change only depending on what
+// it reads: it records a revision only when fn returns changed resources, and otherwise commits
+// fn's writes without one, as WriteTx would. Its first statement takes config_seq's row lock all
+// the same, so fn sees every configuration transaction committed before it, and one that commits
+// after it sees its writes; commit order still equals revision order (D125).
+func configTxIfChanged(ctx context.Context, db *DB, fn func(tx *ent.Tx) ([]string, error)) error {
+	_, err := configTx(ctx, db, fn, true)
+	return err
+}
+
+func configTx(ctx context.Context, db *DB, fn func(tx *ent.Tx) ([]string, error), ifChanged bool) (Revision, error) {
 	s, ok := authz.FromContext(ctx)
 	if !ok {
 		return Revision{}, errors.New("store: a configuration transaction needs a scope")
 	}
 	var rev Revision
-	err := withTx(ctx, db.client, db.writeTxOptions(), func(tx *ent.Tx) error {
+	next := func(tx *ent.Tx) error {
 		rows, err := tx.QueryContext(ctx, "UPDATE config_seq SET seq = seq + 1 WHERE id = 1 RETURNING seq")
 		if err != nil {
 			return err
@@ -97,9 +111,27 @@ func ConfigTx(ctx context.Context, db *DB, fn func(tx *ent.Tx) ([]string, error)
 			return err
 		}
 		rev.DBEpoch = inst.DbEpoch
+		return nil
+	}
+	err := withTx(ctx, db.client, db.writeTxOptions(), func(tx *ent.Tx) error {
+		if ifChanged {
+			if _, err := tx.ExecContext(ctx, "UPDATE config_seq SET seq = seq WHERE id = 1"); err != nil {
+				return err
+			}
+		} else if err := next(tx); err != nil {
+			return err
+		}
 		changed, err := fn(tx)
 		if err != nil {
 			return err
+		}
+		if ifChanged {
+			if len(changed) == 0 {
+				return runTxHook(ctx, tx)
+			}
+			if err := next(tx); err != nil {
+				return err
+			}
 		}
 		c := tx.ConfigRevision.Create().SetID(rev.Seq).SetDbEpoch(rev.DBEpoch).SetActor(s.Actor()).SetChangedResources(changed)
 		if !s.System() {
