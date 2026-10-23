@@ -75,7 +75,7 @@ function page({ admin = true, active, target, wrongEtag = false } = {} as {
       listGateways: () => ({ gateways: [{ id: "gw_1", gatewayGroupId: "ggr_1", name: "edge", slot: 1, tunnelEndpoints: ["edge:443"], enabled: true }] }),
     });
     router.service(ReleaseService, {
-      listReleases: () => ({ releases: [release("1.5.0"), release("1.4.2", { controllerVersion: true }), release("1.6.0", { newerThanController: true, mirrored: false })], controllerVersion: "1.4.2" }),
+      listReleases: () => ({ releases: [release("1.5.0"), release("1.4.2", { controllerVersion: true }), release("1.6.0", { newerThanController: true, mirrored: false }), release("1.3.0", { mirrored: false })], controllerVersion: "1.4.2" }),
       listRollouts: () => ({ rollouts: current ? [current] : [] }),
       listRolloutTargets: () => ({ rolloutTargets: target ? [target] : [] }),
       createRollout: (req) => guarded(() => (calls.create.push(req), { rollout: current ?? rollout() })),
@@ -95,7 +95,7 @@ function page({ admin = true, active, target, wrongEtag = false } = {} as {
 }
 
 describe("Updates", () => {
-  it("lists the releases with their source, mirror and controller marks, and offers rollouts only for usable ones", async () => {
+  it("lists the releases with their source, mirror and controller marks, and offers rollouts of every release no newer than the controller, mirrored or not", async () => {
     page();
     const card = within(await screen.findByRole("region", { name: "Releases" }));
     const rows = (await card.findAllByRole("row")).slice(1).map((r) => within(r).getAllByRole("cell").map((c) => c.textContent));
@@ -103,9 +103,10 @@ describe("Updates", () => {
       ["1.5.0", "stable", "release check", "yes", "—"],
       ["1.4.2", "stable", "release check", "yes", "this controller"],
       ["1.6.0", "stable", "release check", "no", "newer than this controller"],
+      ["1.3.0", "stable", "release check", "no", "—"],
     ]);
     const buttons = card.getAllByRole("button", { name: "Roll out…" }) as HTMLButtonElement[];
-    expect(buttons.map((b) => b.disabled)).toEqual([false, false, true]);
+    expect(buttons.map((b) => b.disabled)).toEqual([false, false, true, false]);
   });
 
   it("starts a rollout with the canary agents chosen, after a step-up", async () => {

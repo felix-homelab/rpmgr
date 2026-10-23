@@ -97,7 +97,7 @@ function Releases() {
                   <TD>{r.mirrored ? t("updates.yes") : t("updates.no")}</TD>
                   <TD>{r.controllerVersion ? t("updates.thisController") : r.newerThanController ? t("updates.newer") : "—"}</TD>
                   <TD className="text-right">
-                    <Button size="sm" variant="outline" disabled={!r.mirrored || r.newerThanController || !!running}
+                    <Button size="sm" variant="outline" disabled={r.newerThanController || !!running}
                       onClick={() => setRolling(r)}>{t("updates.rollOut")}</Button>
                   </TD>
                 </TR>

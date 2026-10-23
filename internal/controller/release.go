@@ -53,7 +53,9 @@ type ReleaseCheckOptions struct {
 	API    string // "" is felix-homelab/rpmgr's release listing
 	// Proxy chooses the proxy of the requests to GitHub; nil is proxyenv.FromEnvironment
 	// (HTTPS_PROXY, else ALL_PROXY; NO_PROXY; R44, D93).
-	Proxy  func(*http.Request) (*url.URL, error)
+	Proxy func(*http.Request) (*url.URL, error)
+	// Wake, if set, starts a check at once, as a new rollout or upload asks for one (D125).
+	Wake   <-chan struct{}
 	Logger *slog.Logger
 }
 
@@ -104,6 +106,7 @@ func ReleaseCheck(ctx context.Context, o ReleaseCheckOptions) {
 		case <-ctx.Done():
 			return
 		case <-time.After(wait):
+		case <-o.Wake:
 		}
 	}
 }
@@ -125,11 +128,11 @@ func nextReleaseCheck(err error, retry time.Duration, now time.Time) (wait, next
 }
 
 // CheckRelease runs one release check and logs its outcome; a check that ctx ends is no failure.
-// With the release check on, it keeps the controller's own release and lists the releases of the
-// instance's channel newer than the oldest kept version, verifying their manifests without their
-// artifacts. Always, it keeps the target of each running or paused rollout and the version the
-// controller ran before, and removes the versions nothing keeps (docs/04-security.md,
-// "Over-the-air updates").
+// With the release check on, it keeps the controller's own release and the version it ran before,
+// and lists the releases of the instance's channel newer than the oldest kept version, verifying
+// their manifests without their artifacts. Always, it keeps the target of each running or paused
+// rollout, also one the mirror does not hold yet (D125), and removes the versions nothing keeps
+// (docs/04-security.md, "Over-the-air updates").
 func CheckRelease(ctx context.Context, o ReleaseCheckOptions) error {
 	set, _, err := settings.Instance(ctx, o.DB.ReadClient())
 	if err != nil {
@@ -142,7 +145,7 @@ func CheckRelease(ctx context.Context, o ReleaseCheckOptions) error {
 	if err != nil {
 		o.Logger.Warn("release check: the record of the controller's own version", "error", err)
 	}
-	keep, err := keptVersions(ctx, o.DB.ReadClient(), o.Mirror.Version, previous)
+	keep, targets, err := keptVersions(ctx, o.DB.ReadClient(), o.Mirror.Version, previous)
 	if err != nil {
 		if ctx.Err() == nil {
 			o.Logger.Warn("release check: the versions to keep", "error", err)
@@ -152,6 +155,8 @@ func CheckRelease(ctx context.Context, o ReleaseCheckOptions) error {
 	var errs []error
 	if set.GetReleaseCheck() {
 		errs = append(errs, o.check(ctx, set.GetUpdateChannel() == rpmgrv1.UpdateChannel_UPDATE_CHANNEL_PRERELEASE, keep))
+	} else {
+		errs = append(errs, o.sync(ctx, targets))
 	}
 	removed, err := o.Mirror.Prune(keep...)
 	errs = append(errs, err)
@@ -168,11 +173,12 @@ func CheckRelease(ctx context.Context, o ReleaseCheckOptions) error {
 	return err
 }
 
-// check keeps every version of keep from the release source and lists the newer releases.
-func (o *ReleaseCheckOptions) check(ctx context.Context, prerelease bool, keep []string) error {
+// sync keeps every version of versions from the release source, with the signed files the
+// controller recorded where their seq is higher than the source's (D125).
+func (o *ReleaseCheckOptions) sync(ctx context.Context, versions []string) error {
 	var errs []error
-	for _, v := range keep {
-		s, err := o.Mirror.SyncVersion(ctx, v, o.source(v))
+	for _, v := range versions {
+		s, err := o.Mirror.SyncVersion(ctx, v, o.syncSource(ctx, v))
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -181,6 +187,28 @@ func (o *ReleaseCheckOptions) check(ctx context.Context, prerelease bool, keep [
 		errs = append(errs, recordRelease(ctx, o.DB, s, entrelease.SourceCheck, &now))
 		o.Logger.Info("release mirrored under /dl/", "version", v, "seq", s.Manifest.Seq)
 	}
+	return errors.Join(errs...)
+}
+
+// syncSource is the source of a version to keep: the release source, with the signed files of an
+// uploaded or imported manifest instead whose seq is higher than the source's, or when the source
+// gives none, such as an uploaded signed downgrade re-signed with a higher seq (D125).
+func (o *ReleaseCheckOptions) syncSource(ctx context.Context, v string) release.Source {
+	src := o.source(v)
+	row, err := o.DB.ReadClient().Release.Query().Where(entrelease.Version(v)).Only(ctx)
+	if err != nil || row.Source == entrelease.SourceCheck {
+		return src
+	}
+	if up, err := o.Mirror.Fetch(ctx, src); err == nil && up.Manifest.Seq >= uint64(row.ManifestSeq) { //nolint:gosec // G115: seq is positive
+		return src
+	}
+	return release.WithSigned(src, &release.Signed{Statement: row.SigningKeyStatement, StatementSig: row.StatementSignature,
+		ManifestJSON: row.Manifest, ManifestSig: row.Signature})
+}
+
+// check keeps every version of keep and lists the newer releases.
+func (o *ReleaseCheckOptions) check(ctx context.Context, prerelease bool, keep []string) error {
+	errs := []error{o.sync(ctx, keep)}
 	listed, err := o.lister().List(ctx)
 	if err != nil {
 		return errors.Join(append(errs, err)...)
@@ -216,22 +244,26 @@ func (o *ReleaseCheckOptions) check(ctx context.Context, prerelease bool, keep [
 }
 
 // keptVersions are the versions the mirror keeps: the controller's own, the one it ran before,
-// and the target of each running or paused rollout (D119).
-func keptVersions(ctx context.Context, c *ent.Client, own, previous string) ([]string, error) {
-	keep := []string{own}
+// and the target of each running or paused rollout (D119), and of them the rollout targets.
+func keptVersions(ctx context.Context, c *ent.Client, own, previous string) (keep, targets []string, err error) {
+	keep = []string{own}
 	if release.Releasable(previous) && previous != own {
 		keep = append(keep, previous)
 	}
-	targets, err := c.Rollout.Query().Where(rollout.Active(true)).QueryRelease().Select(entrelease.FieldVersion).Strings(ctx)
+	active, err := c.Rollout.Query().Where(rollout.Active(true)).QueryRelease().Select(entrelease.FieldVersion).Strings(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	for _, v := range targets {
-		if release.Releasable(v) && !contains(keep, v) {
+	for _, v := range active {
+		if !release.Releasable(v) {
+			continue
+		}
+		targets = append(targets, v)
+		if !contains(keep, v) {
 			keep = append(keep, v)
 		}
 	}
-	return keep, nil
+	return keep, targets, nil
 }
 
 func contains(vs []string, v string) bool {

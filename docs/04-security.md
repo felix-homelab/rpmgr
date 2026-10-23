@@ -954,7 +954,9 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
      `.minisig` files and the release's artifacts, and nothing else. A development build serves
      nothing.
    - **When it checks:** at start, then daily, while the release check is on, and when a rollout
-     needs a release it has not kept yet. A failed or rate-limited check is tried again sooner
+     needs a release it has not kept yet, also while the release check is off: creating such a
+     rollout, or uploading a manifest the mirror does not hold, starts a check at once
+     ([D125](14-open-decisions.md#engineering)). A failed or rate-limited check is tried again sooner
      ([03](03-connections.md#timeouts-keepalive-and-backoff)). Each controller keeps its own copy
      on its disk, so each one checks; the release's "mirrored" mark tells the time the checking
      controller last held it complete.
@@ -967,7 +969,10 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
      signing-key statement and their signatures ([07](07-api.md#services)); the artifacts then
      come from the release source, or, on an air-gapped installation, from
      `rpmgr release import <dir>` on the controller host. Import, run as root, gives the files to
-     the state directory's owner.
+     the state directory's owner. An uploaded manifest with a higher `seq` than the release
+     source's, such as a signed downgrade signed again so that hosts take it, is the one the mirror
+     verifies and serves, with the source's artifacts; recording it clears the release's
+     "mirrored" mark until the mirror holds it ([D125](14-open-decisions.md#engineering)).
 2. An Instance Admin creates a **staged rollout** of one release to the connectors and gateways
    ([D121](14-open-decisions.md#engineering)):
    - **Target:** the controller's own version, or an older release the Instance Admin uploaded on
@@ -998,8 +1003,13 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    binary, nor one in the container image, which has no updater. The offer
    names the version, the controller's public URL (the `public_url` of [10](10-operations.md),
    which `/install.sh` and enrollment use), its manifest's `seq` and its files under `/dl/` with
-   sizes and SHA-256; the controller offers a release only while its rollout runs and the agent's
-   target is `offered`.
+   sizes and SHA-256; the controller offers a release only while its rollout runs, the agent's
+   target is `offered` and the mirror holds the release with its recorded manifest. A rollout of a
+   release the mirror does not hold yet offers it to no agent and drains no gateway until it does,
+   and a change of the "mirrored" mark of a rollout's target is a configuration change, so the
+   snapshots offer the release, or stop offering it, at once. While the mirror does not hold it, no
+   agent the release was offered to counts as stalled, and its wait starts afresh when the mirror
+   holds the release again ([D125](14-open-decisions.md#engineering)).
    The agent, running as the unprivileged service user, reads the local policy (a gateway the
    host's `/etc/rpmgr/policy.yaml`, for `auto_update` and `update_channel` only): with
    `auto_update: off`, or a policy file that does not load, it declines the offer, and with

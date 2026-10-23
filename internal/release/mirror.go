@@ -58,6 +58,26 @@ type Source interface {
 	Open(ctx context.Context, name string) (io.ReadCloser, error)
 }
 
+// WithSigned is src with the signed files of s, a release's verified manifest, signing-key
+// statement and their signatures, instead of src's own: the files of a manifest the controller
+// recorded with a higher seq than the release source has, such as an uploaded signed downgrade,
+// with the artifacts from src (D125). Fetch and SyncVersion verify them as any.
+func WithSigned(src Source, s *Signed) Source { return withSigned{src, s} }
+
+type withSigned struct {
+	Source
+	s *Signed
+}
+
+func (w withSigned) Open(ctx context.Context, name string) (io.ReadCloser, error) {
+	for i, n := range MetaFiles {
+		if n == name {
+			return io.NopCloser(bytes.NewReader(w.s.meta()[i])), nil
+		}
+	}
+	return w.Source.Open(ctx, name)
+}
+
 // Dir is a release in a local directory, as `rpmgr release import` reads it.
 type Dir string
 
