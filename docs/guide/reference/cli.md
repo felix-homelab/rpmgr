@@ -335,6 +335,8 @@ rpmgr policy <command>
 | [`rpmgr policy remove-target`](#rpmgr-policy-remove-target) | Stop allowing a target |
 | [`rpmgr policy deny-target`](#rpmgr-policy-deny-target) | Deny a target, whatever allows it |
 | [`rpmgr policy remove-deny-target`](#rpmgr-policy-remove-deny-target) | Stop denying a target |
+| [`rpmgr policy set-auto-update`](#rpmgr-policy-set-auto-update) | Set whether this host takes over-the-air updates: auto, notify (only report them) or off |
+| [`rpmgr policy set-update-channel`](#rpmgr-policy-set-update-channel) | Set which releases this host takes: stable, or prerelease for betas and release candidates too |
 
 ## rpmgr policy show
 
@@ -399,6 +401,30 @@ rpmgr policy remove-deny-target [flags] <ip or subnet>[:<port or range>] | [<ipv
 |---|---|---|
 | `--file string` | `/etc/rpmgr/policy.yaml` | the policy file |
 | `--no-reload` |  | do not ask the running connector to reload the policy |
+
+## rpmgr policy set-auto-update
+
+Set whether this host takes over-the-air updates: auto, notify (only report them) or off.
+
+```text
+rpmgr policy set-auto-update [flags] auto | notify | off
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--file string` | `/etc/rpmgr/policy.yaml` | the policy file |
+
+## rpmgr policy set-update-channel
+
+Set which releases this host takes: stable, or prerelease for betas and release candidates too.
+
+```text
+rpmgr policy set-update-channel [flags] stable | prerelease
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--file string` | `/etc/rpmgr/policy.yaml` | the policy file |
 
 ## rpmgr updater
 

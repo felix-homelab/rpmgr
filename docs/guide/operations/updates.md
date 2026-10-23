@@ -92,11 +92,40 @@ rpmgr cancel rollout rol_…
 Each change but a pause is audited and asks for the step-up
 ([04](../../04-security.md#over-the-air-updates)).
 
+## Choose what a host takes
+
+Each connector and gateway host decides for itself, in its local policy, whether it takes updates
+and which releases. Change it on the host, as root:
+
+```
+sudo rpmgr policy set-update-channel prerelease   # betas and release candidates too
+sudo rpmgr policy set-update-channel stable       # stable releases only, the default
+sudo rpmgr policy set-auto-update notify          # only report an update as available
+sudo rpmgr policy set-auto-update off             # never update this host over the air
+sudo rpmgr policy set-auto-update auto            # take updates again, the default
+```
+
+Each command prints both settings afterwards:
+
+```text
+/etc/rpmgr/policy.yaml: updated; running agents and the updater take it up without a restart
+auto_update: auto
+update_channel: prerelease
+```
+
+Nothing needs restarting: the agent checks its policy again by itself
+([03](../../03-connections.md#timeouts-keepalive-and-backoff)), and the updater reads it before
+every install. A host only gets a pre-release if the controller lists pre-releases too: set
+**Release channel** to **Pre-releases too** in **Settings → Updates**
+([Settings](settings.md)). The commands refuse a policy file the updater would not trust, such as
+one that other users may write; fix its owner or mode first
+([Local policy file](../reference/policy-file.md)).
+
 ## When something goes wrong
 
 - **A connector or gateway is skipped.** Its policy says `auto_update: off` or `notify`, it is
   offline, or its channel does not take the release. Update it by hand, or change its policy
-  ([Local policy file](../reference/policy-file.md)).
+  ([Choose what a host takes](#choose-what-a-host-takes)).
 - **An agent rolled back.** Its updater installed the release, the role did not become ready, and
   the previous binary is back. The rollout is paused; read the agent's log, then resume or cancel.
 - **An agent is stalled.** It reported nothing for long enough that the rollout stopped waiting.

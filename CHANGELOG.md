@@ -40,6 +40,11 @@ Changes to the design documents are not recorded here: see the git history and t
   in their local policy; connector and gateway lists show each agent's update state and warn when
   it is below the oldest version the controller accepts. (#611, #877)
 
+- CLI: `rpmgr policy set-auto-update auto|notify|off` and `rpmgr policy set-update-channel
+  stable|prerelease` set whether a connector or gateway host takes over-the-air updates and which
+  releases, `prerelease` taking betas and release candidates too, without a restart. They refuse a
+  policy file the root updater would not trust. (#897)
+
 - Releases: a connector-only build of rpmgr, `rpmgr-<version>-<os>-<arch>-connector`, for every
   Linux architecture and, as the only build there, for Windows (amd64, `.exe`) and macOS (amd64,
   arm64). It runs the connector role and the commands of a connector host, links nothing of the
