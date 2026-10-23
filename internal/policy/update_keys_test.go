@@ -47,7 +47,7 @@ func TestSetUpdateKeys(t *testing.T) {
 // does not have yet is added.
 func TestSetUpdateKeys_KeepsTheFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "policy.yaml")
-	in := "# the NAS only\nversion: 1\nallow_targets:\n  - 10.0.0.5:445 # smb\nauto_update: notify\n"
+	in := "# the NAS only\nversion: 1\nallow_targets:\n  - 10.0.0.5:445 # smb\nauto_update: notify # auto | notify | off\n"
 	if err := os.WriteFile(path, []byte(in), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestSetUpdateKeys_KeepsTheFile(t *testing.T) {
 	changed, err = policy.SetAutoUpdate(path, "auto")
 	mustChange(t, changed, err, true)
 	b, _ := os.ReadFile(path)
-	for _, want := range []string{"# the NAS only", "# smb", "auto_update: auto", "update_channel: prerelease"} {
+	for _, want := range []string{"# the NAS only", "# smb", "auto_update: auto # auto | notify | off", "update_channel: prerelease"} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("lost %q:\n%s", want, b)
 		}

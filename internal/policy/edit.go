@@ -223,7 +223,10 @@ func setKey(path, key, value string, allowed ...string) (bool, error) {
 		if v.Kind == yaml.ScalarNode && v.Value == value {
 			return false, nil
 		}
+		// The value's comments, such as "# auto | notify | off" after it, stay with the new value.
+		head, line, foot := v.HeadComment, v.LineComment, v.FootComment
 		*v = *str(value)
+		v.HeadComment, v.LineComment, v.FootComment = head, line, foot
 		return true, nil
 	})
 }
