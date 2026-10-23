@@ -169,6 +169,8 @@ Everything a team needs to run rpmgr in production.
 - Live logs; webhooks; audit export and external audit sinks.
 - Staged, signed over-the-air updates with rollback, for Linux script installs; update channels
   (`stable`, `prerelease`).
+- Socket hand-off: gateways and all-in-ones restart, for an upgrade too, without refusing a
+  visitor connection ([D127](14-open-decisions.md#project-and-process)).
 - Optional connector-only build (D21).
 - Windows service and macOS launchd connectors, installed from the release download; no OTA for
   them before Phase 3 (D29, D99).
@@ -181,8 +183,9 @@ Everything a team needs to run rpmgr in production.
   gateway groups and grants (D14); delegated base-domain labels and Instance-Admin approval of
   nested claims (D23).
 
-**How it is built.** Sixteen GitHub milestones, `P2-M01` … `P2-M16`, in the order of
-[D101](14-open-decisions.md#project-and-process):
+**How it is built.** Seventeen GitHub milestones, `P2-M01` … `P2-M17`, in the order of
+[D101](14-open-decisions.md#project-and-process); P2-M17, added later, is built with v0.3.0, after
+P2-M03 to P2-M05 ([D127](14-open-decisions.md#project-and-process)):
 
 1. start: the plan's decisions, the compatibility guarantees of v1.0.0, S9, the agent-version
    window, the capability gate ([D113](14-open-decisions.md#engineering)), the transport studies,
@@ -204,7 +207,8 @@ Everything a team needs to run rpmgr in production.
 13. declarative manifests, and editing and importing YAML;
 14. importers;
 15. Windows and macOS connectors;
-16. the exit criteria.
+16. the exit criteria;
+17. socket hand-off: gateways and all-in-ones restart without refusing a visitor connection.
 
 Each finished group of milestones is a minor release ([D100](14-open-decisions.md#project-and-process)),
 with a release milestone that holds its release issue:
@@ -212,12 +216,17 @@ with a release milestone that holds its release issue:
 | Release | Milestones | Note |
 |---|---|---|
 | v0.2.0 | P2-M01, P2-M02 | Installed by hand; its release candidate runs `TestUpgrade` from v0.1.0 |
-| v0.3.0 | P2-M03 to P2-M05 | The first release delivered over the air |
+| v0.3.0 | P2-M03 to P2-M05, P2-M17 | The first release delivered over the air; the first whose gateways and all-in-ones hand their sockets over on a restart ([D127](14-open-decisions.md#project-and-process)) |
 | v0.4.0 | P2-M06, P2-M07 | The first release with DNS-01; all of VB-19 runs before it ([D98](14-open-decisions.md#project-and-process)) |
 | v0.5.0 | P2-M08, P2-M09 | |
 | v0.6.0 | P2-M10, P2-M11 | |
 | v0.7.0 | P2-M12 to P2-M15 | The last 0.y release, whose agents a 1.0 controller accepts ([D115](14-open-decisions.md#engineering)) |
 | v1.0.0 | P2-M16 | After the self-review |
+
+Each finished milestone is a pre-release to test: `vX.Y.0-beta.N` while other milestones of its
+release are open, `rc.1` after the last, which starts the release's freeze
+([D128](14-open-decisions.md#project-and-process),
+[RELEASING](../RELEASING.md#milestone-pre-releases)).
 
 The rules of Phase 1 hold:
 
@@ -254,7 +263,7 @@ How each criterion is shown:
 
 | Criterion | Shown by | Milestones |
 |---|---|---|
-| Every P2 feature implemented and tested | Each P2 row of 05 is a set of slices; every `p2` test of `.github/scripts/security-tests.txt` is `done`, which CI checks; the full end-to-end matrix runs nightly | P2-M02 to P2-M16 |
+| Every P2 feature implemented and tested | Each P2 row of 05 is a set of slices; every `p2` test of `.github/scripts/security-tests.txt` is `done`, which CI checks; the full end-to-end matrix runs nightly | P2-M02 to P2-M17 |
 | Importers against real sources | Fixtures in CI; the maintainer's real configurations and databases, on SQLite, MySQL and PostgreSQL, run locally and the results recorded | P2-M14, P2-M16 |
 | HA failover drops no tunnelled connection | S9; a test in the nightly end-to-end run that kills a replica | P2-M01, P2-M09 |
 | Cross-tenant leak suite | Each new API service brings its fixtures; a sweep over every kind of principal before v1.0.0 | every milestone, P2-M16 |
@@ -283,7 +292,7 @@ a Phase 3 sketch is a plan, not an open question.
 | Egress proxy and static file targets | `allow_egress_proxy`, path allow-list | |
 | HTTP/3 ingress | S3 | Shares UDP/443 |
 | Terraform provider | Stable `rpmgr.v1` | |
-| Socket hand-off on gateway restart | — | [V VB-08] |
+| ~~Socket hand-off on gateway restart~~ | — | Moved to Phase 2, P2-M17 ([D127](14-open-decisions.md#project-and-process)) |
 | More DNS providers; per-gateway public addresses with health-aware DNS records; DNS for gateway tunnel and WSS hostnames; Authenticated Origin Pulls | DNS automation (P2) | [15](15-dns.md), D22, D25 |
 | Active connections view | — | |
 | OTA for Windows and macOS connectors | Windows and macOS connectors (P2) | Needs a root-equivalent updater per platform (D29) |
@@ -304,7 +313,7 @@ implemented, and the result recorded in the PR.
 | VB-05 | ~~Tooling for cosign signatures, SLSA provenance and SBOM generation in the release pipeline~~ **Partly resolved** (2026-10-09, workflow `release`): syft 1.54.1 writes the SPDX JSON SBOM from the source tree, with the Go modules of `go.mod` and the npm packages of the web UI's lockfile that are not development dependencies, checked locally; `actions/attest-build-provenance` 4.2.2 records SLSA provenance and cosign (`sigstore/cosign-installer` 4.1.2) signs keylessly with the workflow's identity. Both need GitHub's OIDC token and are checked on the first release tag | [04](04-security.md#release-signing), [ADR-0013](adr/0013-signed-ota.md) |
 | VB-06 | ~~connect-query maturity with TanStack Query; fallback: thin hand-written hooks over generated clients~~ **Resolved** (2026-10-09): connect-query 2.3.1 calls the method descriptors that protoc-gen-es 2.16 generates, through TanStack Query 5.104, with typed requests and responses; the UI skeleton's overview uses it and is tested with Connect's router transport. The fallback is not needed | [08](08-software-stack.md#frontend), [ADR-0014](adr/0014-vite-react-spa.md) |
 | VB-07 | ~~CodeMirror 6 under the strict CSP (style nonces)~~ **Resolved** (2026-10-09): CodeMirror 6 (`@codemirror/view` 6.43.14) writes its styles into style elements and gives them the nonce set with `EditorView.cspNonce`. The UI reads the page's nonce from its `csp-nonce` meta element. Under the controller's CSP in Chromium (Playwright 1.63), the YAML view's styles apply with no CSP violation; without the nonce, the same browser test fails because they are blocked | [09](09-web-ui.md), [ADR-0014](adr/0014-vite-react-spa.md) |
-| VB-08 | Listening-socket hand-off across gateway restarts (TCP straightforward; UDP/QUIC harder); Phase 3 | [05](05-features.md#operations) |
+| VB-08 | Listening-socket hand-off across restarts of a gateway and of an all-in-one, between two processes on Linux (TCP straightforward; UDP/QUIC harder); Phase 2, verified by P2-M17's study slice ([D127](14-open-decisions.md#project-and-process)) | [05](05-features.md#operations) |
 | VB-09 | Cloudflare rate-limit scope: whether account-owned tokens have their own budget, and how a 429 caused by rpmgr affects the same user's dashboard and other tokens | [15](15-dns.md#batches-failures-and-the-rate-budget) |
 | VB-10 | Cloudflare record comments and batches: the marker round-trips unchanged; a batch patch can change the comment alone; which operation a failed batch reports; listing by comment | [15](15-dns.md#ownership-ledger) |
 | VB-11 | Cloudflare proxy: a proxied CNAME to a name in another Cloudflare account (error 1014 or not); proxied wildcards on all plans; request-size and timeout limits that affect routes; whether ACME HTTP-01 reaches the origin through the proxy | [15](15-dns.md#proxied-http-routes) |

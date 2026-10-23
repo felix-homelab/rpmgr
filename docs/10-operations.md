@@ -562,7 +562,10 @@ affect agents take effect through reconciliation and show apply status like any 
 2. **Gateways.** One at a time per gateway group: the gateway drains, connectors re-home to the
    other gateways of the group, then it restarts ([03](03-connections.md#multiple-gateways)). From
    Phase 2 a rollout does this for gateways installed with the install scripts
-   ([D102](14-open-decisions.md#engineering)).
+   ([D102](14-open-decisions.md#engineering)). [T] From v0.3.0 a gateway, and an all-in-one's
+   built-in gateway, hand their listening sockets to the new process on a restart, so that a lone
+   gateway refuses no visitor connection either
+   ([D127](14-open-decisions.md#project-and-process)).
 3. **Connectors.** Through the staged OTA rollout: canary → percentage → all, with automatic
    rollback on failure, each stage approved by the Instance Admin; a rollback pauses the rollout
    ([04](04-security.md#over-the-air-updates)). A rollout's target is the controller's own

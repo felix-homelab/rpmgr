@@ -12,6 +12,7 @@ Process: `RELEASING.md`, section "Release process".
 - [ ] Benchmark matrix run on the reference testbed; no regression > 10 % against the last release (v0.x before VB-20: GitHub-hosted runners, reported only, D49)
 - [ ] `Unreleased` complete and checked against `git log --oneline --no-merges vPREVIOUS..HEAD`
 - [ ] Upgrade notes for breaking changes and long migrations
+- [ ] Every milestone of the release had its pre-release, a beta or `rc.1`, tested (RELEASING, "Milestone pre-releases")
 - [ ] Release candidate tagged and tested: fresh install, upgrade from the previous minor with live traffic
 - [ ] Release PR `chore(release): vX.Y.Z` merged on green CI
 - [ ] Signed tag `vX.Y.Z` pushed; tag build reproducible, SBOM, provenance, signatures
