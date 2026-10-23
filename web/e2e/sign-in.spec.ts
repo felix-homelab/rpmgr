@@ -93,6 +93,15 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.getByRole("link", { name: "Updates" }).click();
   await expect(page.getByLabel("Check for releases once a day")).toBeVisible();
   await expectAccessible(page);
+  // The upload dialog shows a button to choose the signed files and says what Upload waits for.
+  await page.getByRole("button", { name: "Upload release…" }).click();
+  const upload = page.getByRole("dialog", { name: "Upload a release" });
+  await expect(upload.getByRole("button", { name: "Choose files…" })).toBeVisible();
+  await expect(upload.getByRole("button", { name: "Upload" })).toBeDisabled();
+  await expect(upload.getByText(/^Still missing: signing-key\.json/)).toBeVisible();
+  await expectAccessible(page);
+  await upload.getByRole("button", { name: "Cancel" }).click();
+  await expect(upload).toBeHidden();
   await page.getByRole("main").getByRole("link", { name: "Settings" }).click();
   await page.getByRole("link", { name: "PKI" }).click();
   await expect(page.getByRole("cell", { name: "Root", exact: true })).toBeVisible();
