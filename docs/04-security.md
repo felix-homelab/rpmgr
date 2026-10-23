@@ -1007,8 +1007,9 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    target is `offered` and the mirror holds the release with its recorded manifest. A rollout of a
    release the mirror does not hold yet offers it to no agent and drains no gateway until it does,
    and a change of the "mirrored" mark of a rollout's target is a configuration change, so the
-   snapshots offer the release, or stop offering it, at once
-   ([D125](14-open-decisions.md#engineering)).
+   snapshots offer the release, or stop offering it, at once. While the mirror does not hold it, no
+   agent the release was offered to counts as stalled, and its wait starts afresh when the mirror
+   holds the release again ([D125](14-open-decisions.md#engineering)).
    The agent, running as the unprivileged service user, reads the local policy (a gateway the
    host's `/etc/rpmgr/policy.yaml`, for `auto_update` and `update_channel` only): with
    `auto_update: off`, or a policy file that does not load, it declines the offer, and with

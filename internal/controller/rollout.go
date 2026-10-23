@@ -255,9 +255,11 @@ func (p *rolloutPlan) consider(ro *ent.Rollout, t *ent.RolloutTarget, f rolloutF
 			p.set(t, rollouttarget.StateOffered, "")
 		}
 	case rollouttarget.StateOffered, rollouttarget.StateStaged:
+		// While the mirror does not hold the release, the agent cannot fetch it and is not
+		// stalled; the store restarts the target's clock when the mark changes (D125).
 		if f.version == p.version {
 			p.set(t, rollouttarget.StateUpdated, "")
-		} else if p.now.Sub(t.UpdatedAt) >= RolloutStallAfter {
+		} else if p.mirrored && p.now.Sub(t.UpdatedAt) >= RolloutStallAfter {
 			p.set(t, rollouttarget.StateStalled, "the agent reported nothing for 30 minutes")
 			p.pause = p.pauseReasonOf(rollouttarget.StateStalled, t.AgentID)
 		}

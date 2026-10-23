@@ -11,6 +11,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollout"
@@ -207,6 +208,55 @@ func TestRolloutJob_WaitsForMirror(t *testing.T) {
 	}
 	if tg := e.target(gw); tg.DrainStartedAt == nil {
 		t.Errorf("once the mirror holds the release, the gateway does not drain: %s", tg.State)
+	}
+}
+
+// TestRolloutJob_NoStallWithoutMirror (D125): a newer manifest of the release clears the mirror's
+// mark while an agent is offered it; however long the mirror then takes, the agent does not
+// count as stalled, and once the mirror holds the release again its 30 minutes start afresh.
+func TestRolloutJob_NoStallWithoutMirror(t *testing.T) {
+	e := newRolloutJobEnv(t)
+	a := e.connector("a", "0.1.0", true)
+	ro := e.rollout(rollout.StageCanary, 0, []string{a}, map[string]rollouttarget.AgentKind{a: rollouttarget.AgentKindConnector})
+	e.run()
+	e.db.Client().RolloutTarget.UpdateOne(e.target(a)).SetUpdatedAt(e.now).ExecX(e.sys)
+	record := func(mirrored *time.Time) {
+		t.Helper()
+		s := &release.Signed{Manifest: &release.Manifest{Seq: 2, Version: "0.2.0", Channel: release.Stable},
+			ManifestJSON: []byte(`{"seq":2,"version":"0.2.0"}`), ManifestSig: []byte("sig"), Statement: []byte("statement"), StatementSig: []byte("sig")}
+		if _, err := store.RecordRelease(e.sys, e.db, s, "upload", mirrored); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record(nil)
+	// The clock as the clearing left it, two hours before the job runs again.
+	e.db.Client().RolloutTarget.UpdateOne(e.target(a)).SetUpdatedAt(e.now).ExecX(e.sys)
+	e.now = e.now.Add(2 * time.Hour)
+	e.run()
+	if s := e.target(a).State; s != rollouttarget.StateOffered {
+		t.Errorf("after two hours without the mirror, the agent is %s, want offered", s)
+	}
+	if got := e.db.Client().Rollout.GetX(e.sys, ro.ID); got.State != rollout.StateRunning {
+		t.Errorf("after two hours without the mirror, the rollout is %s (%s), want running", got.State, got.PauseReason)
+	}
+
+	mirrored := e.now
+	record(&mirrored)
+	if got := e.target(a).UpdatedAt; !got.Equal(mirrored) {
+		t.Errorf("the target's clock is %v, want restarted at %v", got, mirrored)
+	}
+	e.now = mirrored.Add(29 * time.Minute)
+	e.run()
+	if s := e.target(a).State; s != rollouttarget.StateOffered {
+		t.Errorf("29 minutes after the mirror holds the release, the agent is %s, want offered", s)
+	}
+	e.now = mirrored.Add(controller.RolloutStallAfter + time.Minute)
+	e.run()
+	if s := e.target(a).State; s != rollouttarget.StateStalled {
+		t.Errorf("31 minutes after the mirror holds the release, the agent is %s, want stalled", s)
+	}
+	if got := e.db.Client().Rollout.GetX(e.sys, ro.ID); got.State != rollout.StatePaused {
+		t.Errorf("the rollout is %s, want paused", got.State)
 	}
 }
 
