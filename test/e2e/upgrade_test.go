@@ -252,7 +252,10 @@ func agentsOn(t *testing.T, version string) {
 		db, sys := controllerDB(t)
 		defer func() { _ = db.Close() }()
 		c := db.Client()
-		live := c.AgentSession.Query().Where(agentsession.DisconnectedAtIsNil()).AllX(sys)
+		// Only the columns the earlier release's schema has too: before the controller's upgrade
+		// the database is still on it.
+		live := c.AgentSession.Query().Where(agentsession.DisconnectedAtIsNil()).
+			Select(agentsession.FieldID, agentsession.FieldAgentVersion).AllX(sys)
 		epoch := c.Instance.GetX(sys, 1).DbEpoch
 		var off []string
 		for _, s := range live {
