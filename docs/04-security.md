@@ -773,6 +773,13 @@ Rules:
   deny entry matches included. A target taken out is then not reachable through a connection opened
   before, such as an upstream's pooled HTTP/2 connection, nor one being set up: a connection is
   recorded before its stream is answered and checked against the policy in force then.
+- `rpmgr policy set-auto-update auto|notify|off` and `set-update-channel stable|prerelease` set the
+  update keys the same way. They refuse a file the root updater would count as `auto_update: off`
+  (a symbolic link, a file root does not own, or one its group or other users may write,
+  [D120](14-open-decisions.md#security-defaults)) instead of rewriting it, and trigger no reload:
+  the agents read the update keys again at the intervals of
+  [03](03-connections.md#timeouts-keepalive-and-backoff), and the updater reads them itself before
+  every install ([Over-the-air updates](#over-the-air-updates)).
 - The policy only protects if the binary enforcing it is genuine: OTA installs only signed binaries
   at or above a locally persisted version floor, and `auto_update` lets the host refuse automatic
   updates entirely ([Supply chain and updates](#supply-chain-and-updates)).

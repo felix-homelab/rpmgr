@@ -64,8 +64,8 @@ update_channel: stable
 | `version` | integer | required | The file's format; must be `1` |
 | `allow_targets` | list of entries | `[]` | The targets the connector may dial for routes |
 | `deny_targets` | list of entries | `[]` | Targets the connector never dials, whatever `allow_targets` allows |
-| `auto_update` | `auto`, `notify` or `off` | `auto` | Whether this host takes automatic updates; read and checked, but without effect until over-the-air updates come in Phase 2 |
-| `update_channel` | `stable` or `prerelease` | `stable` | The release channel for automatic updates; without effect until Phase 2 as well |
+| `auto_update` | `auto`, `notify` or `off` | `auto` | Whether this host takes over-the-air updates; `notify` only reports an update as available. Set it with `rpmgr policy set-auto-update` ([Updates](../operations/updates.md#choose-what-a-host-takes)) |
+| `update_channel` | `stable` or `prerelease` | `stable` | Which releases this host takes over the air; `prerelease` takes betas and release candidates too. Set it with `rpmgr policy set-update-channel` |
 | `allow_listen` | list of strings | `[]` | Where visitor listeners of private services may bind; private services come in Phase 2 |
 | `allow_remote_shell` | boolean | `false` | A remote shell on this host; Phase 3 |
 | `allow_functions` | boolean | `false` | Functions on this host; Phase 3 |
@@ -75,7 +75,9 @@ update_channel: stable
 
 The keys of later phases are accepted so that a file stays valid across upgrades; they change
 nothing yet ([13](../../13-roadmap.md)). The install script and `rpmgr policy` write
-`auto_update` and `update_channel` explicitly when they create the file.
+`auto_update` and `update_channel` explicitly when they create the file. The root updater trusts
+the file only if root owns it and no one else may write it, and it is no symbolic link; otherwise
+it counts as `auto_update: off` ([04](../../04-security.md#over-the-air-updates)).
 
 ## Entries of `allow_targets` and `deny_targets`
 
