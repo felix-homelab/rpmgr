@@ -173,6 +173,8 @@ export function RolloutDialog({ release, onClose }: { release: Release; onClose:
           {loaded && agents.length > 0 && !agents.some((a) => a.online) && <p className="text-sm text-warn">{t("updates.noOnline")}</p>}
           {tests.some((a) => !a.online) && <p className="text-sm text-warn">{t("updates.offlineChosen")}</p>}
           {listError && <Alert>{ConnectError.from(listError).rawMessage}</Alert>}
+          {/* The choice in words, since the list may scroll a ticked agent out of view. */}
+          {tests.length > 0 && <p className="text-sm">{t("updates.chosen", { count: tests.length, names: tests.map((a) => a.name).join(", ") })}</p>}
           {loaded && (
             <p className="text-sm text-muted-foreground">
               {[t("updates.inRollout", { count: agents.length }),
@@ -314,12 +316,13 @@ function Stages({ rollout, targets }: { rollout: Rollout; targets: RolloutTarget
     ? { key: "all", label: t("updates.allAgents"), state: "current", note: t("updates.stageUpdated", { updated: updated(current), total: current.length }) }
     : { key: "all", label: t("updates.allAgents"), state: "next", note: t("updates.stageWaiting", { count: more(targets, rollout, "all") }) });
   return (
-    <ol className="flex flex-wrap items-start gap-x-2 gap-y-3" aria-label={t("updates.stages")}>
+    // A row on wider screens; on a phone a column, without the lines between the stages.
+    <ol className="grid gap-2 sm:flex sm:flex-wrap sm:items-start sm:gap-x-2 sm:gap-y-3" aria-label={t("updates.stages")}>
       {stages.map((s, i) => {
         const Icon = s.state === "done" ? CircleCheck : s.state === "current" ? CircleDot : Circle;
         return (
           <li key={s.key} aria-current={s.state === "current" ? "step" : undefined} className="flex items-start gap-2">
-            {i > 0 && <span aria-hidden="true" className="mt-2.5 h-px w-6 bg-border sm:w-10" />}
+            {i > 0 && <span aria-hidden="true" className="mt-2.5 hidden h-px w-10 bg-border sm:block" />}
             <Icon aria-hidden="true" className={s.state === "done" ? "mt-0.5 size-4 text-ok" : s.state === "current" ? "mt-0.5 size-4 text-primary" : "mt-0.5 size-4 text-muted-foreground"} />
             <span className="grid">
               <span className={s.state === "next" ? "text-sm text-muted-foreground" : "text-sm font-medium"}>
@@ -474,10 +477,11 @@ function TargetGroups({ groups }: { groups: ReturnType<typeof groupTargets> }) {
   const { t } = useTranslation();
   const order = ["problems", "updating", "waiting", "done", "skipped"] as const;
   return (
-    <div className="grid gap-2">
+    // Each group reaches the card's edges, as its table does (Table, framed={false}).
+    <div className="grid min-w-0">
       {order.map((key) => groups[key].length > 0 && (
-        <details key={key} open={key === "problems" || key === "updating"} className="group rounded-lg border border-border">
-          <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
+        <details key={key} open={key === "problems" || key === "updating"} className="-mx-5 min-w-0 border-t border-border px-5">
+          <summary className="cursor-pointer py-2.5 text-sm font-medium">
             {t(`updates.targetGroups.${key}`)} <span className="text-muted-foreground">({groups[key].length})</span>
           </summary>
           <Table framed={false}>
@@ -499,10 +503,10 @@ function TargetRow({ target, waiting }: { target: RolloutTarget; waiting: boolea
   const [state, look] = looks[target.state];
   return (
     <TR>
-      <TD className="font-medium">{target.agentName || target.agentId}</TD>
-      <TD>{target.agentKind === AgentKind.GATEWAY ? t("updates.kinds.gateway") : t("updates.kinds.connector")}</TD>
-      <TD>{waiting ? <Status look="unknown">{t("updates.waits")}</Status> : <Status look={look}>{t(`updates.targetStates.${state}`)}</Status>}</TD>
-      <TD className="text-muted-foreground">{target.reason || "—"}</TD>
+      <TD className="font-medium whitespace-nowrap">{target.agentName || target.agentId}</TD>
+      <TD className="whitespace-nowrap">{target.agentKind === AgentKind.GATEWAY ? t("updates.kinds.gateway") : t("updates.kinds.connector")}</TD>
+      <TD className="whitespace-nowrap">{waiting ? <Status look="unknown">{t("updates.waits")}</Status> : <Status look={look}>{t(`updates.targetStates.${state}`)}</Status>}</TD>
+      <TD className="min-w-48 text-muted-foreground">{target.reason || "—"}</TD>
     </TR>
   );
 }

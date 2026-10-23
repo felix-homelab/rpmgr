@@ -1124,6 +1124,8 @@
     "noMatch": "No agent matches the search.",
     "noOnline": "No agent is online, so none is suggested. An offline agent is skipped and tests nothing.",
     "offlineChosen": "A test agent is offline: it is skipped and tests nothing. Choose one that is online.",
+    "chosen_one": "Test agent: {{names}}",
+    "chosen_other": "{{count}} test agents: {{names}}",
     "inRollout_one": "{{count}} agent gets the release",
     "inRollout_other": "{{count}} agents get the release",
     "alreadyCount_one": "{{count}} already runs {{version}}",

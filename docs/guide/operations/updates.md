@@ -36,17 +36,28 @@ is not updated over the air.
    connectors and gateways of your org are listed with their version and whether they are online,
    and one online connector and one online gateway are already ticked. Change the choice if you
    like, then choose **Next**. An offline test agent is skipped, so it tests nothing.
+
+   ![The first step: the test agents, one connector and one gateway ticked](../images/web/rollout-start.png)
+
 3. The second step shows the plan: the test agents, then about a quarter of the other agents, then
    the rest. Choose **Start the rollout** and confirm your identity.
+
+   ![The second step: the plan of the rollout](../images/web/rollout-plan.png)
+
 4. Watch the rollout. The stages show which are done, the current one and the ones to come, each
    with its agents; a bar shows how many agents updated. The agents are grouped: **Need attention**
    (rolled back, refused or stalled, with the reason), **Updating now**, **Waiting for a later
    stage**, **Updated** and **Skipped**.
+
+   ![A rollout at 25 %, two agents of the stage still updating](../images/web/rollout.png)
+
 5. Once the agents of the current stage are done, choose **Continue to 25 %**, and later
    **Continue to all agents**, and confirm. The button says how many more agents the next stage
    takes. **Choose another stage** offers other percentages, or all agents at once.
 6. At the end the rollout is **completed**. A rollback or a stalled agent shows **paused** with the
    agent and its reason; fix it, then **Resume**, or **Cancel** to end the rollout for good.
+
+   ![A rollout paused because an agent rolled back](../images/web/rollout-paused.png)
 
 **Pause** needs no confirmation; **Resume**, **Continue** and **Cancel** ask for a step-up
 ([The step-up dialog](../web-ui/README.md#the-step-up-dialog)).

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { fakeUpdates } from "../e2e/rollout-fakes";
 
 // The screenshots of the user guide, one PNG per page in SCREENS_OUT (docs/guide/images/web),
 // taken against the instance that test/webe2e's TestScreens seeded: the org "Example Lab" with its
@@ -238,3 +239,51 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await expect(page.getByRole("dialog", { name: "Menu" })).toBeVisible();
   await shot(page, "mobile-menu");
 });
+
+// The rollout pictures: the start dialog's two steps and a rollout in progress, running and paused.
+// The instance has no signed release to roll out, so fakeUpdates answers the release, rollout and
+// agent calls with a made-up fleet of Example Lab. The check- shots, in dark and at a phone's
+// width, are taken only when named, to look at the layout; the guide does not show them.
+test("screenshots of a rollout", async ({ page }) => {
+  let state: "none" | "running" | "paused" = "none";
+  await fakeUpdates(page, () => state);
+  await signIn(page, "ada@example.com");
+  await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
+  for (const [suffix, width, scheme] of [["", 1440, "light"], ["-dark", 1440, "dark"], ["-narrow", 400, "light"], ["-narrow-dark", 400, "dark"]] as const) {
+    const named = (name: string) => suffix ? `check-${name}${suffix}` : name;
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: scheme });
+    state = "none";
+    await page.goto("/settings/updates");
+    await page.getByRole("button", { name: "Roll out…" }).first().click();
+    const dialog = page.getByRole("dialog", { name: "Roll out 0.2.0" });
+    await expect(dialog.getByRole("checkbox", { name: /^gw-eu-1/ })).toBeChecked();
+    await part(page, dialog, named("rollout-start"), !!suffix);
+    await dialog.getByRole("button", { name: "Next" }).click();
+    await expect(dialog.getByText("Step 2 of 2: review the plan")).toBeVisible();
+    await part(page, dialog, named("rollout-plan"), !!suffix);
+    await page.keyboard.press("Escape");
+    for (const s of ["running", "paused"] as const) {
+      state = s;
+      await page.reload();
+      const card = page.getByRole("region", { name: "Rollout" });
+      await expect(card.getByRole("list", { name: "Stages" })).toBeVisible();
+      await part(page, card, named(s === "running" ? "rollout" : "rollout-paused"), !!suffix);
+    }
+  }
+});
+
+// part writes a screenshot of one part of the page, such as a dialog or a card; a check shot, only
+// when named, is of the whole page instead, to show what overflows it.
+async function part(page: Page, locator: ReturnType<Page["locator"]>, name: string, check: boolean) {
+  if (check ? !only.includes(name) : only.length > 0 && !only.includes(name)) {
+    return;
+  }
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(500);
+  if (check) {
+    await page.screenshot({ path: `${process.env.SCREENS_OUT}/${name}.png`, animations: "disabled", fullPage: true });
+    return;
+  }
+  await locator.screenshot({ path: `${process.env.SCREENS_OUT}/${name}.png`, animations: "disabled" });
+}

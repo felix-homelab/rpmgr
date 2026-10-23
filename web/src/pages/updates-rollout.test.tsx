@@ -138,6 +138,10 @@ describe("starting a rollout", () => {
     expect(within(dialog.getByRole("group", { name: "Gateways" })).getAllByRole("checkbox")).toHaveLength(1);
     expect(dialog.queryByRole("checkbox", { name: /built-in|old|fresh/ })).toBeNull();
     expect(dialog.getByText("4 agents get the release · 1 already runs 1.5.0 · 3 not included: built in, decommissioned or not enrolled")).toBeTruthy();
+    // The choice in words, which a scrolled list may hide.
+    expect(dialog.getByText("2 test agents: db-host, edge")).toBeTruthy();
+    fireEvent.click(box(dialog, "edge"));
+    expect(dialog.getByText("Test agent: db-host")).toBeTruthy();
   });
 
   it("reviews the plan and starts the rollout with the test agents, after a step-up", async () => {

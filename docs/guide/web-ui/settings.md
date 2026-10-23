@@ -91,8 +91,9 @@ GiB)**). Their ranges and defaults are in the design documents
 - **Releases**: every release the controller verified, with its **Version**, **Channel**,
   **Source** (**release check**, **upload** or **import**), whether it is **Mirrored**, and whether
   it is **this controller**. **Upload release…** takes the four signed files of a release for an
-  air-gapped installation, after a step-up. **Roll out…** starts a staged rollout of a mirrored
-  release that is no newer than the controller.
+  air-gapped installation, after a step-up. **Roll out…** starts a staged rollout of a release that
+  is no newer than the controller. The release need not be mirrored yet: the controller fetches it
+  and offers it to agents once the mirror holds it.
 - **Roll out…** opens two steps: **Test agents**, the agents that update first, grouped into
   connectors and gateways with their version and whether they are online, with a search box and
   one online connector and one online gateway ticked; then the plan, which **Start the rollout**
@@ -105,6 +106,10 @@ GiB)**). Their ranges and defaults are in the design documents
   **Need attention**, **Updating now**, **Waiting for a later stage**, **Updated** and **Skipped**,
   each with its state and reason. A rollback or a stalled agent pauses the rollout and the page
   says which agent and why.
+
+![The test agents of a new rollout](../images/web/rollout-start.png)
+
+![A rollout at 25 %](../images/web/rollout.png)
 
 [Updates](../operations/updates.md) shows how to run a rollout.
 
