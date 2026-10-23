@@ -1,6 +1,6 @@
 module github.com/felix-homelab/rpmgr
 
-go 1.26.4
+go 1.26.9
 
 toolchain go1.27.3
 
@@ -25,7 +25,7 @@ require (
 	github.com/letsencrypt/pebble/v2 v2.10.1
 	github.com/mholt/acmez/v3 v3.1.7
 	github.com/miekg/dns v1.1.73
-	github.com/pires/go-proxyproto v0.15.0
+	github.com/pires/go-proxyproto v0.16.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
 	github.com/quic-go/quic-go v0.64.1
