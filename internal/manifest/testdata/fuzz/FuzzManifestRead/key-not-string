@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("kind: \"\"\nmetadata: {name: \"\", labels: {0: \"\"}}\nspec: {\"00\": ~, \"000\": {0: ~}, \"01\": ~, \"02\": {0: ~, 0.0: ~}}\n")
