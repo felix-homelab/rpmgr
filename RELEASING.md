@@ -12,6 +12,7 @@ The first release is v0.1.0.
 - [Tags](#tags)
 - [Changelog](#changelog)
 - [Release process](#release-process)
+- [Milestone pre-releases](#milestone-pre-releases)
 - [Patch releases](#patch-releases)
 - [Maintenance branches](#maintenance-branches)
 - [Supported versions](#supported-versions)
@@ -39,7 +40,9 @@ images, the packages and the release manifest. It follows
   After `rc.1` only fixes are merged for that release. Pre-releases are published with
   `"channel": "prerelease"` in their signed manifest; hosts on the default
   `update_channel: stable` refuse them, whatever the controller offers
-  ([04](docs/04-security.md#release-signing)).
+  ([04](docs/04-security.md#release-signing)). Each finished milestone of a minor release gets a
+  `beta` pre-release, and the release's last milestone `rc.1`
+  ([Milestone pre-releases](#milestone-pre-releases)).
 - The **public API package** (`rpmgr.v1`) and the **protocol major** (`rpmgr-tunnel/1`) have their
   own version numbers. A new protocol major changes only with a MAJOR release. A new API package
   (`rpmgr.v2`) may be **added** in a MINOR release and served next to `rpmgr.v1`; **removing**
@@ -172,8 +175,10 @@ For a minor or major release. A patch release is the same, starting from the bra
    - For a major release `vX.0.0`: the binary records the last minor release of major X−1, whose
      agents it accepts ([10](docs/10-operations.md#upgrades-and-version-skew)); `TestUpgrade`
      runs from that release.
-3. **Pre-release (recommended for minor and major releases).** Tag `vX.Y.0-rc.1` on `main`,
-   publish it to the pre-release channel, and test:
+3. **Pre-release (recommended for minor and major releases).** Tag `vX.Y.0-rc.1` on `main` once
+   the release's last milestone is finished; its earlier milestones had `beta` pre-releases
+   ([Milestone pre-releases](#milestone-pre-releases)). Publish it to the pre-release channel, and
+   test:
    - a fresh install;
    - an upgrade from the latest release of the previous minor, with live traffic, in the upgrade
      order of [10](docs/10-operations.md#upgrades-and-version-skew): `TestUpgrade` with
@@ -256,6 +261,29 @@ For a minor or major release. A patch release is the same, starting from the bra
      canary → percentage → all ([04](docs/04-security.md#over-the-air-updates)).
    - Close the milestone and the release issue, and announce the release.
 
+## Milestone pre-releases
+
+A minor release carries a group of milestones
+([13](docs/13-roadmap.md#phase-2--production)). Each of them is tested as a pre-release as soon
+as it is finished, rather than all together at the release candidate
+([D128](docs/14-open-decisions.md#project-and-process)):
+
+1. **Report the milestone.** When the last issue of a milestone is closed, the report to the
+   release manager names the commit of `main`, the tag (`vX.Y.0-beta.N`, with N counting from 1
+   per release), the milestone's slices, and what to try by hand.
+2. **Tag and publish** the beta as steps 5 to 8 of the [Release process](#release-process) do for
+   a pre-release: a signed tag on that commit, the draft built from it with the `Unreleased`
+   section as its notes, the manifest signed on the offline live system, then published. It goes to
+   the pre-release channel, so OTA hosts take it only while their channel is `prerelease`
+   ([04](docs/04-security.md#over-the-air-updates)).
+3. **Test it:** `TestUpgrade` from the latest release, with live traffic
+   ([12](docs/12-testing-and-quality.md#upgrade-test)), and the checks by hand of the report.
+   Findings become issues in the release's milestone and are fixed on `main`.
+
+Work on the release's next milestones goes on meanwhile: a beta freezes nothing. When the release's
+last milestone is finished, its pre-release is `rc.1` of step 3 of the
+[Release process](#release-process), and from then on only fixes are merged for that release.
+
 ## Patch releases
 
 - If `main` contains only fixes since the last release, the patch is released from `main` exactly
@@ -315,7 +343,8 @@ When a release turns out to be broken:
 rpmgr has one maintainer ([D27](docs/14-open-decisions.md#project-and-process)), who holds every
 role:
 
-- **Release manager:** creates `v*` tags, runs the checklist and owns the release issue.
+- **Release manager:** creates and signs every `v*` tag, the pre-releases of each milestone too,
+  runs the checklist and owns the release issue.
 - **Signer:** holds the two root keys (one kept off-site; either root alone can sign a
   signing-key statement) and the current signing key, as encrypted files on offline media that
   only the offline live system reads ([Release signing keys](#release-signing-keys)). Signing-key

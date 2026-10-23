@@ -223,6 +223,11 @@ with a release milestone that holds its release issue:
 | v0.7.0 | P2-M12 to P2-M15 | The last 0.y release, whose agents a 1.0 controller accepts ([D115](14-open-decisions.md#engineering)) |
 | v1.0.0 | P2-M16 | After the self-review |
 
+Each finished milestone is a pre-release to test: `vX.Y.0-beta.N` while other milestones of its
+release are open, `rc.1` after the last, which starts the release's freeze
+([D128](14-open-decisions.md#project-and-process),
+[RELEASING](../RELEASING.md#milestone-pre-releases)).
+
 The rules of Phase 1 hold:
 
 - One issue per PR-sized slice, titled `<milestone>.<n> <PR title>`; a slice split into stacked
