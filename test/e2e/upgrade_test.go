@@ -282,8 +282,10 @@ func agentsOn(t *testing.T, version string) {
 // routes the whole time and none may fail; connections held through the gateway that is not being
 // upgraded must survive the controller and gateway upgrades, as a connection may break only when the
 // connector process it runs through restarts; no byte may come back changed. The controller's
-// database, with the routes, certificate and access rules the earlier release created, must migrate
-// and keep them, and every agent must apply the configuration under the new version.
+// database, with the routes, certificate and access rules the earlier release created and the fixture
+// data of upgrade_fixtures_test.go (users, an authenticator, an API token, an enrollment token, a
+// domain, a policy, settings, a revoked connector and the audit chains), must migrate and keep them,
+// and every agent must apply the configuration under the new version.
 func TestUpgrade(t *testing.T) {
 	if upgradeFrom == "" {
 		t.Skip("set E2E_UPGRADE_FROM to the earlier release, such as v0.1.0")
@@ -330,6 +332,7 @@ func TestUpgrade(t *testing.T) {
 	}
 	served("on " + fromVersion)
 	agentsOn(t, fromVersion)
+	fix := seedFixtures(t)
 	db, sys := controllerDB(t)
 	routes := db.Client().Route.Query().CountX(sys)
 	_ = db.Close()
@@ -427,4 +430,5 @@ func TestUpgrade(t *testing.T) {
 
 	agentsOn(t, toVersion)
 	served("on " + toVersion)
+	checkFixtures(t, fix)
 }

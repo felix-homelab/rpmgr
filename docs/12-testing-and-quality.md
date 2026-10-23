@@ -143,7 +143,11 @@ test, in the order of [10](10-operations.md#upgrades-and-version-skew), under li
   - tcp routes on each transport value, served by both connectors through both gateways;
   - a udp route;
   - an http route with an uploaded certificate;
-  - a route whose access rules deny the client.
+  - a route whose access rules deny the client;
+  - fixture data, created through the earlier release's API and `rpmgr user reset-password`: the
+    first user, an Operator with an authenticator, an API token, an ephemeral enrollment token, a
+    trusted domain, an access policy with basic auth, mail and ACME settings, and a connector that
+    ran and was then decommissioned. The test records both audit chains last.
 - **The upgrade:**
   1. The controller, after `rpmgr backup`, migrates its database at start.
   2. Each gateway is drained while the other serves; a test load balancer takes it out of
@@ -157,7 +161,12 @@ test, in the order of [10](10-operations.md#upgrades-and-version-skew), under li
 - **Afterwards:**
   - the database has no pending migration and keeps every route;
   - every agent runs the new version and has applied the configuration of the controller's epoch;
-  - every route, the certificate and the access rules work as before.
+  - every route, the certificate and the access rules work as before;
+  - through the new version's API: both users sign in, the Operator only with an authenticator
+    code, and keep their roles; the API token works within its scopes; both audit chains verify
+    and keep every earlier entry; the decommissioned connector stays revoked, and its identity
+    cannot connect; the enrollment token, domain, policy, certificates and settings read back
+    unchanged.
 - **A database the new version does not know:** for example, one made before the Phase 1 baseline
   of [06](06-data-model.md#migrations). The controller refuses to start, and the test fails at the
   controller step.
