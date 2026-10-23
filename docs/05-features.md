@@ -162,7 +162,7 @@
 | PostgreSQL and multiple controller replicas (HA) | P2 |
 | `rpmgr migrate-db` (SQLite → PostgreSQL) | P2 |
 | Helm chart | P3 |
-| Socket hand-off for zero-downtime gateway restarts | P3 [V VB-08] |
+| Socket hand-off: gateways and all-in-ones restart, for an upgrade too, without refusing a visitor connection ([D127](14-open-decisions.md#project-and-process)) | P2 [V VB-08] |
 
 ### Advanced (Phase 3)
 
