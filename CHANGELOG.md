@@ -32,12 +32,13 @@ Changes to the design documents are not recorded here: see the git history and t
   rollout from the command line, each change but a pause after a step-up. (#610)
 
 - Updates: the Instance Admin runs a staged rollout from **Settings → Updates**: the releases the
-  controller verified, an upload of a release's signed files for air-gapped installations, and the
-  canary, percentage and all stages with each agent's state and reason; a rollback or a stalled
-  agent pauses the rollout. Agents download and stage the release for their root updater,
-  honouring `auto_update: off` or `notify` in their local policy; connector and gateway lists show
-  each agent's update state and warn when it is below the oldest version the controller accepts.
-  (#611)
+  controller verified, an upload of a release's signed files for air-gapped installations, and a
+  rollout that starts with test agents the page suggests, then continues to 25 % and to all agents
+  with one button once a stage is done, showing the stages, the agents updated and the agents that
+  need attention, update now or wait; a rollback or a stalled agent pauses the rollout. Agents
+  download and stage the release for their root updater, honouring `auto_update: off` or `notify`
+  in their local policy; connector and gateway lists show each agent's update state and warn when
+  it is below the oldest version the controller accepts. (#611, #877)
 
 - Releases: a connector-only build of rpmgr, `rpmgr-<version>-<os>-<arch>-connector`, for every
   Linux architecture and, as the only build there, for Windows (amd64, `.exe`) and macOS (amd64,

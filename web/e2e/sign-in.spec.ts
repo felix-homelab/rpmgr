@@ -2,6 +2,7 @@
 
 import { expect, test } from "@playwright/test";
 import { email, expectAccessible, password, sideways, totp, unfilled, unmarked, watchCSP } from "./helpers";
+import { fakeUpdates } from "./rollout-fakes";
 
 // The flows of docs/09-web-ui.md, "Testing the UI": first-run setup, sign-in with and without a
 // second factor, the step-up prompt, token creation and revocation, the enroll dialog, the
@@ -102,6 +103,37 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expectAccessible(page);
   await upload.getByRole("button", { name: "Cancel" }).click();
   await expect(upload).toBeHidden();
+  // The rollout dialog's two steps and a running rollout, from made-up answers: the instance has no
+  // signed release. Neither scrolls sideways, in a desktop window or on a phone (#877).
+  let rollout: "none" | "running" = "none";
+  await fakeUpdates(page, () => rollout);
+  await page.reload();
+  await page.getByRole("button", { name: "Roll out…" }).first().click();
+  const start = page.getByRole("dialog", { name: "Roll out 0.2.0" });
+  await expect(start.getByRole("checkbox", { name: /^gw-eu-1/ })).toBeChecked();
+  await expectAccessible(page);
+  await start.getByRole("button", { name: "Next" }).click();
+  await expect(start.getByRole("list", { name: "The plan" })).toBeVisible();
+  await expectAccessible(page);
+  const desktopSize = page.viewportSize()!;
+  for (const width of [desktopSize.width, 390]) {
+    await page.setViewportSize({ width, height: desktopSize.height });
+    expect(await sideways(page), `${width} px wide`).toEqual([]);
+  }
+  await page.setViewportSize(desktopSize);
+  await page.keyboard.press("Escape");
+  rollout = "running";
+  await page.reload();
+  const card = page.getByRole("region", { name: "Rollout" });
+  await expect(card.getByRole("button", { name: "Continue to all agents (4 more agents)" })).toBeDisabled();
+  await card.getByRole("button", { name: "Choose another stage" }).click();
+  await expectAccessible(page);
+  for (const width of [desktopSize.width, 390]) {
+    await page.setViewportSize({ width, height: desktopSize.height });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${width} px wide`).toBe(0);
+  }
+  await page.setViewportSize(desktopSize);
+  await page.unrouteAll({ behavior: "wait" });
   await page.getByRole("main").getByRole("link", { name: "Settings" }).click();
   await page.getByRole("link", { name: "PKI" }).click();
   await expect(page.getByRole("cell", { name: "Root", exact: true })).toBeVisible();
