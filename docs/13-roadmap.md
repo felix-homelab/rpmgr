@@ -136,9 +136,9 @@ Each milestone holds one issue per PR-sized slice. A feature stays inert until i
 - An upgrade from one P1 release to the next tested with live traffic, as an automated end-to-end
   test ([D61](14-open-decisions.md#project-and-process)).
 
-**Status (2026-10-16):** the milestones `P1-M01` … `P1-M11` and the slices of `P1-M12` that need no
-release are merged, and so are the features and fixes decided since, D78 to D97. The exit criteria
-stand as follows:
+**Status (2026-10-23): Phase 1 is complete.** The milestones `P1-M01` … `P1-M12` are closed, and
+so are the features and fixes decided since, D78 to D97. v0.1.0, released on 2026-10-19, is its
+release. Every exit criterion is met:
 
 | Criterion | State |
 |---|---|
@@ -147,7 +147,7 @@ stand as follows:
 | Security regression tests | Every test of 12 in P1 scope is implemented and marked `done` in `.github/scripts/security-tests.txt`, which CI checks |
 | Lint bans | Active in CI: golangci's rules and `tools/bannedapi` |
 | Threat model reviewed | [P1-threat-model](reviews/P1-threat-model.md); its medium gaps G1 and G2 are fixed, G3 to G6 resolved by the product owner's decisions (D66 to D68) and a fix; G7, the review of the API's authenticator, done in #428 |
-| Upgrade with live traffic | `TestUpgrade` exists (12.7) and passed from `v0.1.0-rc.3` and from `v0.1.0-rc.6` to `main` (2026-10-12 and 14); the criterion's run needs two signed releases: v0.1.0, released on 2026-10-19, and v0.2.0, whose release candidate runs it ([D100](14-open-decisions.md#project-and-process)) |
+| Upgrade with live traffic | `TestUpgrade` (12.7) passed from the release v0.1.0 to the release candidate `v0.2.0-rc.1` on 2026-10-23 ([D100](14-open-decisions.md#project-and-process), #171): 471 new connections during the upgrade, none failed; fixture data of v0.1.0 (users, TOTP, tokens, policies, settings, a revoked connector, both audit chains) read back intact (#869) |
 
 Before v0.1.0 (#170, [RELEASING](../RELEASING.md#release-process)), the maintainer made the
 interim signing keys offline ([D48](14-open-decisions.md#security-defaults)), whose roots every
