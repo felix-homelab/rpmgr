@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"log/slog"
 	"net"
 	"strconv"
 	"strings"
@@ -116,11 +117,11 @@ func newUDPEcho(t *testing.T, m *gateway.Sessions, w *world, route string) *udpE
 // udpGateway serves route on a free port with metrics in reg.
 func udpGateway(t *testing.T, m *gateway.Sessions, route string, idle time.Duration) (*gateway.UDPRoutes, *net.UDPAddr, *prometheus.Registry) {
 	t.Helper()
-	return udpGatewayWith(t, m, route, idle, nil)
+	return udpGatewayWith(t, m, route, idle, func(*gateway.UDPOptions) {})
 }
 
-// udpGatewayWith is udpGateway whose routes tell onChange that one became ready.
-func udpGatewayWith(t *testing.T, m *gateway.Sessions, route string, idle time.Duration, onChange func()) (*gateway.UDPRoutes,
+// udpGatewayWith is udpGateway with options that opt adjusts.
+func udpGatewayWith(t *testing.T, m *gateway.Sessions, route string, idle time.Duration, opt func(*gateway.UDPOptions)) (*gateway.UDPRoutes,
 	*net.UDPAddr, *prometheus.Registry) {
 	t.Helper()
 	reg := prometheus.NewRegistry()
@@ -128,8 +129,10 @@ func udpGatewayWith(t *testing.T, m *gateway.Sessions, route string, idle time.D
 	if err != nil {
 		t.Fatal(err)
 	}
-	u := gateway.NewUDPRoutes(gateway.UDPOptions{Host: "127.0.0.1", Sessions: m, Metrics: metrics,
-		Revision: func() *agentv1.Revision { return &agentv1.Revision{Seq: 9} }, OnChange: onChange})
+	o := gateway.UDPOptions{Host: "127.0.0.1", Sessions: m, Metrics: metrics,
+		Revision: func() *agentv1.Revision { return &agentv1.Revision{Seq: 9} }}
+	opt(&o)
+	u := gateway.NewUDPRoutes(o)
 	t.Cleanup(u.Close)
 	port := freeUDPPort(t)
 	if st := u.Apply([]gateway.UDPRoute{{ID: route, Port: port, FlowIdle: idle}}); len(st) != 0 {
@@ -272,15 +275,25 @@ func TestUDPRoutes_Frames(t *testing.T) {
 }
 
 // TestUDPRoutes_Refused: a flow the connector refuses ends, and the client's next datagram opens a
-// new one; without a data session a flow ends at once.
+// new one; without a data session a flow ends at once. The test waits for the gateway's log of the
+// first flow: had it not read the first datagram yet, no flows would prove nothing, and that flow
+// could take the second datagram as it ended, which then opened no stream (#868).
 func TestUDPRoutes_Refused(t *testing.T) {
 	route := ids.New("rt")
 	m := newSessions(&assignment{known: map[string]bool{cid("udp-no"): true}, routes: map[string][]string{route: {cid("udp-no")}}}, nil)
 	t.Cleanup(m.Close)
-	u, addr, _ := udpGateway(t, m, route, time.Minute)
+	noStream := make(chan struct{}, 16)
+	u, addr, _ := udpGatewayWith(t, m, route, time.Minute, func(o *gateway.UDPOptions) {
+		o.Logger = slog.New(&signalHandler{msg: "no stream for a udp flow", c: noStream})
+	})
 	c := client(t)
 	if _, err := c.WriteToUDP([]byte("x"), addr); err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case <-noStream:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first datagram opened no flow")
 	}
 	eventually(t, "a flow without a session stays", func() bool { return u.Flows() == 0 })
 
@@ -289,7 +302,11 @@ func TestUDPRoutes_Refused(t *testing.T) {
 	if _, err := c.WriteToUDP([]byte("x"), addr); err != nil {
 		t.Fatal(err)
 	}
-	<-con.opens
+	select {
+	case <-con.opens:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a datagram with a data session opened no stream")
+	}
 	eventually(t, "a refused flow stays", func() bool { return u.Flows() == 0 })
 	con.answer.Store(int32(tunnelv1.ResultCode_RESULT_CODE_NO_ERROR))
 	exchange(t, c, addr, []byte("again"))
@@ -431,7 +448,7 @@ func TestUDPRoutes_PortInUse(t *testing.T) {
 	t.Cleanup(m.Close)
 	start(t, m, connectorID("udp-busy"), hello(route, busy))
 	var changes atomic.Int32
-	u, addr, _ := udpGatewayWith(t, m, route, time.Minute, func() { changes.Add(1) })
+	u, addr, _ := udpGatewayWith(t, m, route, time.Minute, func(o *gateway.UDPOptions) { o.OnChange = func() { changes.Add(1) } })
 	free := uint16(addr.Port) //nolint:gosec // G115: a port
 	taken, release := takeUDPPort(t)
 	st := u.Apply([]gateway.UDPRoute{{ID: route, Port: free, FlowIdle: time.Minute}, {ID: busy, Port: taken, FlowIdle: time.Minute}})
@@ -471,3 +488,24 @@ func TestUDPRoutes_PortInUse(t *testing.T) {
 	release()
 	stayFree(t, taken, "a port was bound after Close")
 }
+
+// signalHandler is a log handler that sends on c for every record whose message is msg.
+type signalHandler struct {
+	msg string
+	c   chan struct{}
+}
+
+func (h *signalHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *signalHandler) Handle(_ context.Context, r slog.Record) error {
+	if r.Message == h.msg {
+		select {
+		case h.c <- struct{}{}:
+		default:
+		}
+	}
+	return nil
+}
+
+func (h *signalHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *signalHandler) WithGroup(string) slog.Handler      { return h }

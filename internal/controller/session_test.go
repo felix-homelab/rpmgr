@@ -295,10 +295,14 @@ func TestSession_RefusalRecorded(t *testing.T) {
 }
 
 // TestSession_AdmissionStorm: beyond the admission rate, agents get Goodbye{overloaded} with a
-// retry_after of 1 to 10 s.
+// retry_after of 1 to 10 s. The clock stands still, so the bucket of 3 never refills however slowly
+// the sessions open, as on riscv64 under QEMU.
 func TestSession_AdmissionStorm(t *testing.T) {
 	db := storetest.Migrated(t, store.SQLite)
-	e := startSessions(t, db, "dev", 3)
+	now := time.Now()
+	e := startSessionsWith(t, db, func(o *controller.SessionsOptions) {
+		o.Version, o.Admission, o.Now = "dev", 3, func() time.Time { return now }
+	})
 	welcomed, turned := 0, 0
 	for i := 0; i < 8; i++ {
 		cert, _ := e.agentCert(t)
@@ -315,7 +319,7 @@ func TestSession_AdmissionStorm(t *testing.T) {
 			t.Fatalf("unexpected %v", m)
 		}
 	}
-	if welcomed < 3 || turned == 0 || welcomed+turned != 8 {
+	if welcomed != 3 || turned != 5 {
 		t.Fatalf("%d welcomed, %d turned away", welcomed, turned)
 	}
 }
