@@ -201,6 +201,14 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await expect(page.getByRole("heading", { name: "Updates", level: 1 })).toBeVisible();
   await page.waitForTimeout(800);
   await shot(page, "settings-updates", true);
+  // The upload dialog with three of the four signed files chosen, which is cancelled.
+  await page.getByRole("button", { name: "Upload release…" }).click();
+  const upload = page.getByRole("dialog", { name: "Upload a release" });
+  await upload.getByLabel("Choose files…").setInputFiles(["signing-key.json", "signing-key.json.minisig", "manifest.json"]
+    .map((name) => ({ name, mimeType: "application/octet-stream", buffer: Buffer.from(name) })));
+  await expect(upload.getByText("Still missing: manifest.json.minisig")).toBeVisible();
+  await shot(page, "release-upload");
+  await upload.getByRole("button", { name: "Cancel" }).click();
   await page.getByRole("link", { name: "Users" }).click();
   await expect(page.getByRole("heading", { name: "Users", level: 1 })).toBeVisible();
   await page.waitForTimeout(800);
