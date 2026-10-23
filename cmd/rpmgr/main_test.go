@@ -497,7 +497,7 @@ func TestVersion(t *testing.T) {
 }
 
 // TestVersionVerbose: --verbose adds the build's variant, full, and the release root keys, none in
-// a release build until the interim keys exist (D48), the two test roots in an rpmgrtest build
+// a release build until the release keys exist (D48), the two test roots in an rpmgrtest build
 // (D60).
 func TestVersionVerbose(t *testing.T) {
 	code, stdout, stderr := runRpmgr("version", "--verbose")

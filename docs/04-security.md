@@ -844,22 +844,25 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
                    "size": 21876736 } ] }
 ```
 
-- **Key custody** (one maintainer, [14](14-open-decisions.md) D10):
-  - The two root keys live on **two hardware tokens** (e.g. YubiKey, Ed25519). **Either root
-    alone** can sign a signing-key statement (1-of-2), so losing one token is not fatal. One token
-    is kept at the maintainer's home, the other off-site.
-  - The routine **signing key** lives on a third token and never enters CI. A signing-key statement
-    is valid for **12 months**; a new signing key is introduced with a new statement before the old
-    one expires.
-  - Losing both root tokens means shipping a new binary through an out-of-band trust path.
-  - Producing minisign-format signatures with the chosen token is verified before the first
-    release with OTA [V VB-13]; if that is not possible, rpmgr uses its own documented raw Ed25519
-    signature format.
-  - **Phase 1 (v0.x, no OTA)** uses interim keys: two root keys and a signing key, generated on an
-    offline machine and kept as encrypted files on offline media, one root copy off-site. The first
-    release with OTA (Phase 2) carries the hardware-token roots; hosts installed in Phase 1 install
-    that binary by hand anyway, so nothing depends on the interim roots afterwards
-    ([D48](14-open-decisions.md#security-defaults)).
+- **Key custody** (one maintainer, [14](14-open-decisions.md) D10, D48, D126,
+  [ADR-0021](adr/0021-offline-file-release-keys.md)):
+  - Two Ed25519 **root keys** and the routine **signing key**, generated in the key ceremony before
+    v0.1.0 on a live system booted from read-only media with networking off
+    ([RELEASING](../RELEASING.md#release-signing-keys)). Each is a minisign key file, encrypted
+    with its own passphrase, on offline media: one medium at the maintainer's home with `root-1`
+    and the signing key, one off-site with `root-2`. The passphrases are kept apart from the media.
+  - A medium is only ever read by that offline live system; signing-key statements and release
+    manifests are signed there. No key ever enters CI. A key file can be copied without a trace,
+    so this rule is the keys' whole protection. [R] A second copy of each medium, kept with the
+    first, guards against a medium that fails.
+  - **Either root alone** can sign a signing-key statement (1-of-2), so losing one medium is not
+    fatal. A signing-key statement is valid for **12 months**; a new signing key, also one that
+    replaces a compromised key, is introduced with a new statement, and the old one expires.
+  - Losing both root keys, or their compromise, means shipping a new binary through an out-of-band
+    trust path.
+  - The same keys signed the v0.x releases of Phase 1, which have no OTA, and sign every release
+    with OTA from v0.2.0 on; no release changes the roots
+    ([D126](14-open-decisions.md#security-defaults)).
   - Only the real root keys are compiled into release builds. Tests use the build tag `rpmgrtest`,
     which swaps in generated test roots; release builds refuse that tag, and the release job checks
     the key fingerprints printed by `rpmgr version --verbose`
@@ -893,8 +896,8 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
     Keys a manifest has beyond these are ignored, so later formats can add fields.
   - An artifact is accepted only with the manifest's size and SHA-256; reading stops one byte past
     the size.
-- **Roots in the binary:** release builds carry the interim roots once the maintainer has made
-  them (D48); until then a release build verifies no release.
+- **Roots in the binary:** release builds carry the two roots of the key ceremony, since #429
+  (D48, D126); a release build without roots verifies no release.
   - `rpmgr version --verbose` prints the minisign key ID and SHA-256 fingerprint of each root
     ([16](16-cli.md)).
   - `rpmgrtest` builds carry two test roots instead. Their private keys are derived from fixed

@@ -35,8 +35,8 @@ during this run.
   `you+vb19a@…`, `you+vb19b@…` and `you+vb19c@…`. An ACME account may reuse an authorisation it
   validated before, without a new validation. A new account per phase makes the CA validate
   again, through the one port left open.
-- **Keys:** the public keys of the two interim roots from the key ceremony
-  ([RELEASING](../../RELEASING.md#interim-signing-keys)), and the key IDs recorded on paper.
+- **Keys:** the public keys of the two roots from the key ceremony
+  ([RELEASING](../../RELEASING.md#release-signing-keys)), and the key IDs recorded on paper.
 - **Workstation:** a second machine for the checks "from the internet". With `gh`, it also
   verifies the release's provenance attestation, the keyless signature of each release file.
 

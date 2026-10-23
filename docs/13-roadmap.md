@@ -187,7 +187,8 @@ Everything a team needs to run rpmgr in production.
 1. start: the plan's decisions, the compatibility guarantees of v1.0.0, S9, the agent-version
    window, the capability gate ([D113](14-open-decisions.md#engineering)), the transport studies,
    fuzz targets and follow-ups of Phase 1;
-2. over-the-air updates, rollouts, the connector-only build and the hardware-token roots;
+2. over-the-air updates, rollouts and the connector-only build, signed with the release keys of
+   the key ceremony ([D126](14-open-decisions.md#security-defaults));
 3. route rules on the gateway: header matching, timeouts, require-header, limits, custom error
    pages;
 4. target health, CONNECT routes and the WSS transport;
@@ -260,12 +261,10 @@ How each criterion is shown:
 | DNS automation | The fake Cloudflare API in CI; the run sheets of [D110](14-open-decisions.md#project-and-process) for VB-09 to VB-12, and again on the 1.0 release candidate | P2-M06, P2-M07, P2-M16 |
 | Self-review | The threat model checked against the code; review records that together cover every security-sensitive package; the fuzzing campaign of [D117](14-open-decisions.md#project-and-process); an external review sought early ([D109](14-open-decisions.md#project-and-process)) | P2-M16 |
 
-Besides the criteria: VB-13, signing with the hardware tokens, before v0.2.0
-([D48](14-open-decisions.md#security-defaults)); VB-19 before v0.4.0
-([D98](14-open-decisions.md#project-and-process)); VB-20 before v1.0.0
-([D118](14-open-decisions.md#project-and-process)); and Phase 1's upgrade criterion with v0.2.0
-([D100](14-open-decisions.md#project-and-process)). Some of these need the maintainer's own
-resources: hardware tokens, a Cloudflare account and zone, a public host, real importer sources and
+Besides the criteria: VB-19 before v0.4.0 ([D98](14-open-decisions.md#project-and-process));
+VB-20 before v1.0.0 ([D118](14-open-decisions.md#project-and-process)); and Phase 1's upgrade
+criterion with v0.2.0 ([D100](14-open-decisions.md#project-and-process)). Some of these need the
+maintainer's own resources: a Cloudflare account and zone, a public host, real importer sources and
 the reference testbed.
 
 ## Phase 3 — advanced
@@ -310,7 +309,7 @@ implemented, and the result recorded in the PR.
 | VB-10 | Cloudflare record comments and batches: the marker round-trips unchanged; a batch patch can change the comment alone; which operation a failed batch reports; listing by comment | [15](15-dns.md#ownership-ledger) |
 | VB-11 | Cloudflare proxy: a proxied CNAME to a name in another Cloudflare account (error 1014 or not); proxied wildcards on all plans; request-size and timeout limits that affect routes; whether ACME HTTP-01 reaches the origin through the proxy | [15](15-dns.md#proxied-http-routes) |
 | VB-12 | Cloudflare zones and tokens: adding a zone needs no proof of ownership (assumed); partial, secondary and child-zone behaviour; `GET /zones` paging with more than 50 zones; `moved` zones; verifying account-owned tokens; whether a token can be scoped below a zone | [15](15-dns.md#connecting-importing-and-disconnecting) |
-| VB-13 | Produce minisign-format Ed25519 signatures with the chosen hardware token, for signing-key statements and release manifests; fallback: rpmgr's own documented raw Ed25519 signature format. Due before the first release with OTA; the v0.x releases of Phase 1 use interim file keys (D48). The format part is checked: minisign 0.12's signatures verify in `internal/release`, and the reverse ([04](04-security.md#release-signing)); the hardware token remains | [04](04-security.md#release-signing), [ADR-0013](adr/0013-signed-ota.md) |
+| VB-13 | ~~Produce minisign-format Ed25519 signatures with the chosen hardware token, for signing-key statements and release manifests; fallback: rpmgr's own documented raw Ed25519 signature format. Due before the first release with OTA; the v0.x releases of Phase 1 use interim file keys (D48). The format part is checked: minisign 0.12's signatures verify in `internal/release`, and the reverse ([04](04-security.md#release-signing)); the hardware token remains~~ **Not needed** (2026-10-23, D126): the release keys stay minisign key files on offline media, and no hardware token signs | [04](04-security.md#release-signing), [ADR-0013](adr/0013-signed-ota.md) |
 | VB-14 | ~~The package name `rpmgr` is free in Debian, Fedora, Homebrew, winget and GHCR~~ **Resolved** (2026-10-09, 2026-10-19): Homebrew has no formula and no cask `rpmgr` (formulae.brew.sh API, 404); winget-pkgs has no manifest that names `rpmgr` (GitHub code search); GHCR names are per owner, and the image is `ghcr.io/felix-homelab/rpmgr`. Debian and Fedora, whose package APIs were not reachable from the machine that checked, no longer matter: rpmgr ships no OS packages (D99) | [ADR-0001](adr/0001-name-rpmgr.md) |
 | VB-15 | ~~`/install.sh` verification chain (root key → signing-key statement → manifest → SHA-256) with OpenSSL ≥ 3.0 (Ed25519 `pkeyutl -rawin`, BLAKE2b-512 prehash) on the supported distributions~~ **Resolved** (2026-10-09, `test/installsh`, images pinned by digest): the script verifies and installs on Debian 12 (OpenSSL 3.0.22), Debian 13 (3.5.7), Ubuntu 22.04 (3.0.2), Ubuntu 24.04 (3.0.13) and Rocky Linux 9 (3.5.5), and refuses Ubuntu 20.04's OpenSSL 1.1.1f; `internal/installsh` tests refuse every broken link of the chain. Raspberry Pi OS is Debian 12 based and was not run itself; AlmaLinux and RHEL 9 were not run besides Rocky | [04](04-security.md#install-scripts) |
 | VB-16 | ~~protovalidate-es maturity as the react-hook-form resolver; fallback: hand-written zod schemas~~ **Resolved** (2026-10-09): protovalidate-es 1.3.0 validates the generated messages in the browser with the server's rules, CEL and RE2 patterns included, as react-hook-form 7.89's resolver. Its CEL and RE2 engines are interpreters in TypeScript, without `eval`, `new Function` or WebAssembly, so it runs under the strict CSP. The fallback is not needed | [09](09-web-ui.md), [08](08-software-stack.md#frontend) |
@@ -328,8 +327,8 @@ implemented, and the result recorded in the PR.
 | ConnectRPC unsuitable for the agent stream | Rework of the control session | **Happened** (S4): grpc-go carries the agent protocol with the same protobuf contract ([ADR-0016](adr/0016-connectrpc-public-api-grpc-go-agents.md)) |
 | Ent/Atlas complexity or limits | Slower data-layer work | S5; bun fallback; the schema is plain SQL underneath |
 | Scope: Phase 3 items (WireGuard mesh, `workerd`) are each large | Delays v1.0 | Phase 3 starts only after v1.0.0; each item is independent |
-| Release-signing key custody | Compromised or lost update keys | One maintainer holds two offline root keys on two hardware tokens, one of them off-site; either can sign alone; signing-key rotation without new binaries ([04](04-security.md#release-signing), D10). Phase 1 releases, which have no OTA, use interim file keys on offline media (D48) |
-| Single maintainer (bus factor 1) | Development and releases stop if the maintainer is unavailable | Design documents, ADRs and runbooks written down; two root tokens in two places; Apache-2.0, so others can fork and continue |
+| Release-signing key custody | Compromised or lost update keys | One maintainer holds two root keys and the signing key as encrypted files on offline media, one root off-site, read only by an offline live system; either root can sign alone; signing-key rotation without new binaries ([04](04-security.md#release-signing), D10, D126) |
+| Single maintainer (bus factor 1) | Development and releases stop if the maintainer is unavailable | Design documents, ADRs and runbooks written down; two root keys on media in two places; Apache-2.0, so others can fork and continue |
 | Users of other tunnel tools expect wire compatibility | Adoption friction | Importer and parallel-run cutover plan ([11](11-migration.md)) |
 | A DNS-job bug deletes or rewrites production DNS records | Outage of the published names, possibly of mail or other services | Owned records only; ledger plus marker; deletion guard and held zones; fail-static; property tests and the fake Cloudflare API in CI ([15](15-dns.md)) |
 | A DNS-provider token leaks | Takeover of every name in the token's zones | Write-only, KEK-encrypted storage; zone-scoped, IP-restricted, expiring tokens; managed zones separate from mail zones ([04](04-security.md#threat-model)) |

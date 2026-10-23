@@ -245,8 +245,9 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// TestRoots: release builds have the two interim root keys of Phase 1 (D48), by their key IDs and
-// fingerprints; rpmgrtest builds have the two test roots, with which a test chain verifies (D60).
+// TestRoots: release builds have the two root keys of the key ceremony (D48, D126), by their key
+// IDs and fingerprints; rpmgrtest builds have the two test roots, with which a test chain verifies
+// (D60).
 func TestRoots(t *testing.T) {
 	roots := release.Roots()
 	if !release.TestBuild {
