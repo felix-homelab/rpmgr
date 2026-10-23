@@ -55,8 +55,14 @@ is not updated over the air.
 
 On an air-gapped installation, or to offer a signed downgrade, choose **Upload release…** and give
 the four signed files of a GitHub release: `signing-key.json`, `manifest.json` and their
-`.minisig` files. The controller verifies them as the release check does. The artifacts then come
-from the release source, or from `rpmgr release import <dir>` on the controller host.
+`.minisig` files. **Choose files…**, or dropping them on the dialog, takes all four at once and
+sorts them by name; other files are left out. A file your browser saved under another name, such
+as `manifest (1).json`, goes in with the **Choose…** button of its row. **Upload** waits until all
+four are there and lists the ones still missing. The controller verifies them as the release check
+does. The artifacts then come from the release source, or from `rpmgr release import <dir>` on the
+controller host.
+
+![The upload dialog with three of the four files chosen](../images/web/release-upload.png)
 
 ## From the command line
 

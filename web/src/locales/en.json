@@ -1083,12 +1083,21 @@
     "upload": "Upload release…",
     "uploadTitle": "Upload a release",
     "uploadIt": "Upload",
-    "files": {
-      "signingKey": "signing-key.json",
-      "statementSignature": "signing-key.json.minisig",
-      "manifest": "manifest.json",
-      "manifestSignature": "manifest.json.minisig"
+    "uploading": "Uploading…",
+    "uploadHelp": "Give the four signed files of the release, as its GitHub release has them. The controller verifies them as the release check does; the artifacts come from the release source or from rpmgr release import on the controller host.",
+    "dropFiles": "Drop the four files here, or",
+    "chooseFiles": "Choose files…",
+    "choose": "Choose…",
+    "chooseOne": "Choose {{name}}",
+    "signedFiles": "Signed files",
+    "fileStates": {
+      "missing": "missing",
+      "empty": "the file is empty",
+      "chosen": "chosen",
+      "chosenAs": "chosen: {{name}}"
     },
+    "ignored": "Not one of the four signed files, left out: {{names}}",
+    "stillMissing": "Still missing: {{names}}",
     "channels": {"stable": "stable", "prerelease": "prerelease"},
     "sources": {"unspecified": "not set", "check": "release check", "upload": "upload", "import": "import"},
     "columns": {"version": "Version", "channel": "Channel", "source": "Source", "mirrored": "Mirrored", "controller": "Controller"},

@@ -317,11 +317,12 @@ A controller works with agents of its own minor version and of the one before
 
 ## Roadmap
 
-v0.1.0 completes the first phase. The next one brings DNS records managed in Cloudflare, wildcard
-certificates through DNS-01, single sign-on and passkeys, private services between connectors,
-health checks and passive health for targets, rate and bandwidth limits, Windows and macOS
-connectors, signed automatic updates, and PostgreSQL with several controllers. Virtual networks,
-HTTP/3, a Helm chart and a Terraform provider follow after that ([13](docs/13-roadmap.md)).
+The first phase is complete with v0.1.0. The next one brings DNS records managed in Cloudflare,
+wildcard certificates through DNS-01, single sign-on and passkeys, private services between
+connectors, health checks and passive health for targets, rate and bandwidth limits, Windows and
+macOS connectors, signed automatic updates, and PostgreSQL with several controllers. Virtual
+networks, HTTP/3, a Helm chart and a Terraform provider follow after that
+([13](docs/13-roadmap.md)).
 
 ## Documentation
 

@@ -534,7 +534,27 @@ flowchart LR
   [D121](14-open-decisions.md#engineering)):
   - **Releases:** each listed release with its channel, where it came from and whether the mirror
     holds it; "Upload release…" takes the signed manifest, the signing-key statement and their
-    signatures, after a step-up.
+    signatures, after a step-up. Its dialog has a "Choose files…" button and a drop zone that take
+    the four files at once and sort them by name, leaving others out with a note; each file also
+    has a row with its state (chosen, chosen under another name, empty, missing) and its own
+    "Choose…". "Upload" stays at the foot of the dialog, off until all four are there, and says
+    which are still missing; it reads "Uploading…" while the upload runs, and an error from the API
+    is shown in the dialog with the files kept (#874).
+
+    ```
+    ┌ Upload a release ────────────────────────────────────────────────┐
+    │ Give the four signed files of the release, …                     │
+    │ ┌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┐ │
+    │ ╎        Drop the four files here, or  [Choose files…]         ╎ │
+    │ └╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┘ │
+    │ ✓ signing-key.json          chosen                    [Choose…]  │
+    │ ✓ signing-key.json.minisig  chosen                    [Choose…]  │
+    │ ✓ manifest.json             chosen: manifest (1).json [Choose…]  │
+    │ ○ manifest.json.minisig     missing                   [Choose…]  │
+    ├──────────────────────────────────────────────────────────────────┤
+    │ Still missing: manifest.json.minisig        [Cancel]  [Upload]   │
+    └──────────────────────────────────────────────────────────────────┘
+    ```
   - **Starting a rollout:** "Roll out…" on a release no newer than the controller opens two steps.
     "Test agents" says that they update first and that all other agents wait until the Instance
     Admin continues; it lists the org's connectors and gateways that a rollout updates, grouped by
