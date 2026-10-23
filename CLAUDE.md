@@ -11,7 +11,7 @@ authority and win on any conflict. Personal settings belong in the ignored `CLAU
   managed from one control plane. One Go binary, `rpmgr`, runs every role: controller, gateway,
   connector, all-in-one ([02](docs/02-architecture.md)).
 - **Status:** **Phase 0** (spikes, [13](docs/13-roadmap.md#phase-0--spikes)) is complete;
-  **Phase 1** (MVP, [13](docs/13-roadmap.md#phase-1--mvp)) is released as v0.1.0. **Phase 2**
+  **Phase 1** (MVP, [13](docs/13-roadmap.md#phase-1--mvp)) is complete with v0.1.0. **Phase 2**
   (production, [13](docs/13-roadmap.md#phase-2--production)) is built along the GitHub milestones
   `P2-M01` … `P2-M16`, one issue per slice titled `<M>.<n> <PR title>`, released as v0.2.0 …
   v0.7.0 and v1.0.0 (D100). Each area milestone opens with a design slice. Decisions for it: D100
