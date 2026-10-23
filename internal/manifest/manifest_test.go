@@ -211,3 +211,32 @@ func TestNegativeZero(t *testing.T) {
 		t.Fatalf("written again (%v):\n%s", err, out2.String())
 	}
 }
+
+// TestKeyNotString: a mapping key in a spec that YAML reads as anything but a string is refused
+// when read, deep in lists too; a quoted key and a key at the top of the spec are strings.
+// Unquoted, 0 and 0.0 would both be written as 0, which reads back as a duplicate key.
+func TestKeyNotString(t *testing.T) {
+	for _, in := range []string{
+		"kind: Route\nmetadata: {name: a}\nspec: {a: {0: x, 0.0: y}}\n",
+		"kind: Route\nmetadata: {name: a}\nspec: {a: {0: x}}\n",
+		"kind: Route\nmetadata: {name: a}\nspec: {a: {b: x, true: y}}\n",
+		"kind: Route\nmetadata: {name: a}\nspec: {a: [{b: [{~: x}]}]}\n",
+		"kind: Route\nmetadata: {name: ok}\nspec: {}\n---\nkind: Route\nmetadata: {name: a}\nspec: {a: {1.5: x}}\n",
+	} {
+		if docs, err := manifest.Read(strings.NewReader(in)); err == nil || !strings.Contains(err.Error(), "is not a string") {
+			t.Errorf("%q: %v, %v", in, docs, err)
+		}
+	}
+	in := "kind: Route\nmetadata: {name: a}\nspec: {0: x, a: {\"0\": x, \"0.0\": y, b: [{\"1\": z}]}}\n"
+	docs, err := manifest.Read(strings.NewReader(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := manifest.Write(&out, docs); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manifest.Read(strings.NewReader(out.String())); err != nil {
+		t.Fatalf("read back: %v\n%s", err, out.String())
+	}
+}
