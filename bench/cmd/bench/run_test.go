@@ -57,6 +57,48 @@ func TestIdleNames(t *testing.T) {
 	}
 }
 
+// TestRoutePorts: no two routes the workloads seed on the one gateway share a port, which the
+// controller refuses ("the port is taken"): the fairness routes once took the idle routes' ports.
+// The changes workload's ports stay above every fixed one, for any -routes.
+func TestRoutePorts(t *testing.T) {
+	o, err := parseRunFlags(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := map[int]string{}
+	take := func(what string, port int) {
+		if port < 1 || port > 65535 {
+			t.Errorf("%s: port %d", what, port)
+		}
+		if other, ok := owner[port]; ok {
+			t.Errorf("%s and %s both take port %d", what, other, port)
+		}
+		owner[port] = what
+	}
+	fixed := 0
+	for tr, r := range routesOf {
+		for i, p := range []int{r.sink, r.source, r.echo, r.udp, r.who, r.blockedSink} {
+			take(fmt.Sprintf("%s route %d", tr, i), p)
+		}
+		for i, p := range fairPorts[tr] {
+			take(fmt.Sprintf("%s fairness route %d", tr, i), p)
+		}
+		take(tr+" idle route", idlePorts[tr])
+	}
+	for p := range owner {
+		fixed = max(fixed, p)
+	}
+	if len(idlePorts) != len(routesOf) || len(fairPorts) != len(routesOf) {
+		t.Errorf("a transport without its idle or fairness routes: %v, %v", idlePorts, fairPorts)
+	}
+	for i := 1; i <= o.routes; i++ {
+		take(fmt.Sprintf("change route %d", i), changePort(i))
+	}
+	if changePort(1) <= fixed {
+		t.Errorf("the changes workload starts at %d, below the fixed port %d", changePort(1), fixed)
+	}
+}
+
 // TestMetricsWait: -above waits for the metric to grow and reports when; it gives up after its
 // timeout, and a listener that does not answer 200 is an error.
 func TestMetricsWait(t *testing.T) {

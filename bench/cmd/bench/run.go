@@ -65,6 +65,12 @@ var fairPorts = map[string][]int{
 	"h2":   {9401, 9402, 9403, 9404},
 }
 
+// idlePorts are the routes of one transport that the idle connectors serve.
+var idlePorts = map[string]int{"quic": 9501, "h2": 9502}
+
+// changePort is the port of the i-th route the changes workload seeds, from 1 to -routes.
+func changePort(i int) int { return 10000 + i }
+
 // routesPerTransport is how many routes routes() seeds for each transport.
 const routesPerTransport = 7
 
@@ -911,7 +917,7 @@ func (b *bench) changes(ctx context.Context, t string) error {
 	if b.routeCount < b.o.routes {
 		b.log("seeding %d routes", b.o.routes)
 		for i := 1; i <= b.o.routes; i++ {
-			if err := b.seedRoute(ctx, "route", "--name", "chg-"+strconv.Itoa(i), "--port", strconv.Itoa(10000+i), "--target", "127.0.0.1:7003",
+			if err := b.seedRoute(ctx, "route", "--name", "chg-"+strconv.Itoa(i), "--port", strconv.Itoa(changePort(i)), "--target", "127.0.0.1:7003",
 				"--connector", "con1"); err != nil {
 				return err
 			}
@@ -1064,8 +1070,8 @@ func (b *bench) idleConnectors(ctx context.Context, t string) error {
 		}
 		names = append(names, idleName(i))
 	}
-	for tr, port := range map[string]string{"quic": "9301", "h2": "9302"} {
-		args := []string{"--name", "idle-" + tr, "--port", port, "--target", "127.0.0.1:7003", "--transport", tr}
+	for tr, port := range idlePorts {
+		args := []string{"--name", "idle-" + tr, "--port", strconv.Itoa(port), "--target", "127.0.0.1:7003", "--transport", tr}
 		for _, n := range names {
 			args = append(args, "--connector", n)
 		}
