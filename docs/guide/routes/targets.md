@@ -284,8 +284,10 @@ targets of the route, and new connections pass over a target that fails it
 
 - A **TCP** check passes when the target accepts the connection. An **HTTP** check sends a `GET`
   of a path and passes on the statuses you expect, any success or redirect unless you name a
-  range. It asks for the route's first hostname that is not a wildcard, and checks an HTTPS
-  target's certificate as traffic does ([HTTPS targets](#https-targets)).
+  range. It asks for the route's host header override, if it has one, else its first hostname
+  that is not a wildcard, and checks an HTTPS target's certificate as traffic does
+  ([HTTPS targets](#https-targets)). A TLS passthrough route, whose targets expect TLS, and a route
+  with an h2c target have TCP checks only.
 - The check uses each target's address and port, or another **port** on the same host, for a
   service that answers its health checks there. A UDP route has only a TCP check, of a port you
   name; a route with a Unix socket target has no check port.

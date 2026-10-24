@@ -25,6 +25,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
@@ -888,10 +889,11 @@ func TestCompile_TCPUDP(t *testing.T) {
 	})
 }
 
-// TestCompile_HealthCheck (D133): a connector route carries its route's health check, intervals in
-// milliseconds; an http check of an http route asks for the route's first hostname that is not a
-// wildcard, none if all are, and of an https route over TLS, with each target's own TLS settings;
-// a route without a check carries none.
+// TestCompile_HealthCheck (D133): a connector route carries its route's health check, with the
+// interval and timeout that take effect, in milliseconds; an http check of an http route asks for
+// the route's host header override, else its first hostname that is not a wildcard, none if all
+// are, and of an https route over TLS, with each target's own TLS settings; a route without a
+// check carries none.
 func TestCompile_HealthCheck(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)
@@ -912,7 +914,8 @@ func TestCompile_HealthCheck(t *testing.T) {
 		if !proto.Equal(got[f.r1].GetHealthCheck(), want) {
 			t.Errorf("tcp check %v, want %v", got[f.r1].GetHealthCheck(), want)
 		}
-		want = &agentv1.HealthCheck{Type: "http", Path: "/healthz", StatusMin: 200, StatusMax: 204, Host: "app.example.com", Https: true}
+		want = &agentv1.HealthCheck{Type: "http", Path: "/healthz", StatusMin: 200, StatusMax: 204, Host: "app.example.com", Https: true,
+			IntervalMs: 10000, TimeoutMs: 5000}
 		if !proto.Equal(got[web].GetHealthCheck(), want) {
 			t.Errorf("https check %v, want %v", got[web].GetHealthCheck(), want)
 		}
@@ -922,6 +925,18 @@ func TestCompile_HealthCheck(t *testing.T) {
 		if got[f.rOther].GetHealthCheck() != nil {
 			t.Errorf("a route without a check: %v", got[f.rOther].GetHealthCheck())
 		}
+
+		// The host header override, unless it is preserve; a short interval keeps the default timeout
+		// below it.
+		c.RouteHTTP.Update().Where(routehttp.RouteID(web)).SetHostHeader("backend.internal:8080").ExecX(f.sys)
+		c.HealthCheck.Update().Where(healthcheck.RouteID(web)).SetIntervalSeconds(3).ExecX(f.sys)
+		for _, r := range routesOf(f.compile(t, pki.KindConnector, f.c1)) {
+			if hc := r.GetConnectorRoute().GetHealthCheck(); r.GetId() == web && (hc.GetHost() != "backend.internal:8080" ||
+				hc.GetIntervalMs() != 3000 || hc.GetTimeoutMs() != 2000) {
+				t.Errorf("an overridden host: %v", hc)
+			}
+		}
+		c.RouteHTTP.Update().Where(routehttp.RouteID(web)).SetHostHeader("preserve").ExecX(f.sys)
 
 		// Only a wildcard: no host; an http upstream: no TLS.
 		c.RouteHostname.Delete().Where(routehostname.Hostname("app.example.com")).ExecX(f.sys)

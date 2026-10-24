@@ -23,6 +23,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/policy"
@@ -211,6 +212,36 @@ func TestHealthCheckOf(t *testing.T) {
 		Unhealthy: 5, Healthy: 1}
 	if *got != want {
 		t.Errorf("set %+v, want %+v", *got, want)
+	}
+	// The default timeout stays below a short interval, as the controller's does, and such a check
+	// is valid; a timeout set to the interval is not.
+	for interval, timeout := range map[uint32]time.Duration{2000: time.Second, 3000: 2 * time.Second, 5000: 4 * time.Second, 6000: 5 * time.Second} {
+		c := &agentv1.HealthCheck{Type: "tcp", IntervalMs: interval}
+		if got := healthCheckOf(c); got.Timeout != timeout {
+			t.Errorf("interval %d ms: timeout %v, want %v", interval, got.Timeout, timeout)
+		}
+		if err := validCheck(c, "tcp", nil); err != nil {
+			t.Errorf("interval %d ms without a timeout: %v", interval, err)
+		}
+	}
+	if err := validCheck(&agentv1.HealthCheck{Type: "tcp", IntervalMs: 2000, TimeoutMs: 2000}, "tcp", nil); err == nil {
+		t.Error("a timeout of the interval was valid")
+	}
+	if err := validCheck(&agentv1.HealthCheck{Type: "http"}, "tls_passthrough", nil); err == nil {
+		t.Error("an http check of a tls_passthrough route was valid")
+	}
+}
+
+// TestFailureText: a failed check's text leaves out the connection's local end, which changes
+// with every check, and stays within its bound.
+func TestFailureText(t *testing.T) {
+	err := &net.OpError{Op: "read", Net: "tcp", Source: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 50214},
+		Addr: &net.TCPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 80}, Err: errors.New("i/o timeout")}
+	if got := failureText(err); got != "read tcp 10.0.0.5:80: i/o timeout" {
+		t.Errorf("text %q", got)
+	}
+	if got := failureText(errors.New(strings.Repeat("é", 400))); len(got) > maxFailureText || !utf8.ValidString(got) {
+		t.Errorf("%d bytes, valid UTF-8 %v", len(got), utf8.ValidString(got))
 	}
 }
 

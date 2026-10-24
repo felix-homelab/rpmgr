@@ -149,7 +149,7 @@ func (r *Routes) DeleteRouteTarget(ctx context.Context, req *connect.Request[rpm
 
 // checkTarget checks a target against its route's type (docs/06-data-model.md, "Routing"): what
 // it speaks, its PROXY header and its TLS settings; no Unix socket where the route's health check
-// names a port; an http route's targets share one protocol, as its first target decides how the
+// names a port, and no h2c target under an http check; an http route's targets share one protocol, as its first target decides how the
 // gateway speaks to them all. self is the target's own ID on an update.
 func checkTarget(ctx context.Context, tx *ent.Tx, rt *ent.Route, t *rpmgrv1.RouteTarget, self string) error {
 	invalid := func(format string, args ...any) error {
@@ -192,6 +192,15 @@ func checkTarget(ctx context.Context, tx *ent.Tx, rt *ent.Route, t *rpmgrv1.Rout
 		}
 		if ported {
 			return connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: the route's health check names a port, which a Unix socket has not"))
+		}
+	}
+	if up == routetarget.UpstreamProtocolH2c {
+		http, err := tx.HealthCheck.Query().Where(healthcheck.RouteID(rt.ID), healthcheck.TypeEQ(healthcheck.TypeHTTP)).Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if http {
+			return connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: the route's http health check speaks HTTP/1.1, which an h2c target does not"))
 		}
 	}
 	if rt.Type == route.TypeHTTP && t.GetEnabled() {

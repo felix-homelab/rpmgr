@@ -12,8 +12,14 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
+	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
+	"github.com/felix-homelab/rpmgr/internal/connector"
+	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/routes"
+	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
@@ -24,7 +30,8 @@ import (
 // one or with the route; an interval below the minimum, a timeout not below the interval or above
 // its maximum, a udp route's http check or tcp check without a port, half a status range, a
 // relative path and a tcp check with a path are refused, as are a check port and a Unix socket
-// target on one route; a Viewer reads the check and changes nothing.
+// target on one route, and an http check and an h2c target; a Viewer reads the check and changes
+// nothing.
 func TestRouteHealthCheck(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
@@ -103,6 +110,33 @@ func TestRouteHealthCheck(t *testing.T) {
 	}
 	if _, err := update(ada, created.GetId(), tcpCheck); code(err) != connect.CodeFailedPrecondition {
 		t.Errorf("a check port over a socket target: %v", err)
+	}
+
+	// An http check speaks HTTP/1.1: no h2c target under it, either way round.
+	grpc := httpRoute("grpc", group, "grpc.example.com")
+	grpcRt, err := createRoute(ada, org, grpc, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2c := addressTarget(sock.GetConnectorId(), "10.0.0.8", 9000)
+	h2c.UpstreamProtocol = rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_H2C
+	if _, err := ada.rt.CreateRouteTarget(ctx, connect.NewRequest(&rpmgrv1.CreateRouteTargetRequest{RouteId: grpcRt.GetId(), Target: h2c})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := update(ada, grpcRt.GetId(), httpCheck); code(err) != connect.CodeFailedPrecondition {
+		t.Errorf("an http check over an h2c target: %v", err)
+	}
+	if _, err := update(ada, grpcRt.GetId(), &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_TCP}); err != nil {
+		t.Errorf("a tcp check over an h2c target: %v", err)
+	}
+	web2 := httpRoute("web2", group, "web2.example.com")
+	web2.HealthCheck = httpCheck
+	web2Rt, err := createRoute(ada, org, web2, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ada.rt.CreateRouteTarget(ctx, connect.NewRequest(&rpmgrv1.CreateRouteTargetRequest{RouteId: web2Rt.GetId(), Target: h2c})); code(err) != connect.CodeFailedPrecondition {
+		t.Errorf("an h2c target under an http check: %v", err)
 	}
 
 	// A Viewer sees the check and changes nothing.
@@ -198,5 +232,129 @@ func TestRouteStatus_Health(t *testing.T) {
 	notReady(c2, rt.GetId())
 	if st := status(); st.GetState() != rpmgrv1.RouteState_ROUTE_STATE_UNAVAILABLE || st.GetTargetsReady() != 0 {
 		t.Fatalf("every target unhealthy: %v", st)
+	}
+}
+
+// TestRouteHealthCheck_ConnectorAccepts: every check the API accepts, compiled for its connector,
+// passes the connector's own validation, so that no accepted check makes a connector reject its
+// snapshot: intervals near the minimum with and without a timeout, check ports, socket targets,
+// status ranges, host header overrides, https targets and every route type; and the checks the
+// connector would refuse, the API refuses too.
+func TestRouteHealthCheck_ConnectorAccepts(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	e.verified(t, org, "example.com", true)
+	for _, p := range []rpmgrv1.PortProtocol{tcp, udp} {
+		if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org,
+			PortPool: &rpmgrv1.PortPool{GatewayGroupId: group, Protocol: p, PortFrom: 20000, PortTo: 20099}})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	con := e.addConnector(t, org, "nas", nil).ID
+	tcpCheck := func(interval, timeout, port uint32) *rpmgrv1.HealthCheck {
+		return &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_TCP, IntervalSeconds: interval, TimeoutSeconds: timeout, Port: port}
+	}
+	httpCheck := &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP, HttpPath: "/healthz?x=1", ExpectedStatusMin: 100,
+		ExpectedStatusMax: 599, IntervalSeconds: 3600, TimeoutSeconds: 60, UnhealthyThreshold: 10, HealthyThreshold: 10}
+	port := uint32(20000)
+	next := func() uint32 { port++; return port }
+	web := func(name string, set func(*rpmgrv1.HTTPRouteSpec)) *rpmgrv1.Route {
+		r := httpRoute(name, group, name+".example.com")
+		if set != nil {
+			set(r.GetHttp())
+		}
+		return r
+	}
+	https := addressTarget(con, "10.0.0.9", 8443)
+	https.UpstreamProtocol, https.Tls = rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_HTTPS, &rpmgrv1.UpstreamTLSSettings{ServerName: "app.internal"}
+	socket := &rpmgrv1.RouteTarget{ConnectorId: con, Address: &rpmgrv1.RouteTarget_UnixPath{UnixPath: "/run/app.sock"}}
+	cases := []struct {
+		name    string
+		route   *rpmgrv1.Route
+		check   *rpmgrv1.HealthCheck
+		targets []*rpmgrv1.RouteTarget
+	}{
+		{"interval 2 s, no timeout", tcpRoute("i2", group, next()), tcpCheck(2, 0, 0), nil},
+		{"interval 3 s, no timeout", tcpRoute("i3", group, next()), tcpCheck(3, 0, 0), nil},
+		{"interval 5 s, no timeout", tcpRoute("i5", group, next()), tcpCheck(5, 0, 0), nil},
+		{"interval 6 s, no timeout", tcpRoute("i6", group, next()), tcpCheck(6, 0, 0), nil},
+		{"interval 2 s, timeout 1 s", tcpRoute("i2t", group, next()), tcpCheck(2, 1, 0), nil},
+		{"interval 5 s, timeout 4 s", tcpRoute("i5t", group, next()), tcpCheck(5, 4, 0), nil},
+		{"no interval, timeout 9 s", tcpRoute("t9", group, next()), tcpCheck(0, 9, 0), nil},
+		{"defaults", tcpRoute("def", group, next()), tcpCheck(0, 0, 0), nil},
+		{"a check port", tcpRoute("port", group, next()), tcpCheck(0, 0, 65535), nil},
+		{"an http check of a tcp route", tcpRoute("tcphttp", group, next()), httpCheck, nil},
+		{"udp, a port", udpRoute("udp", group, next()), tcpCheck(2, 0, 53), nil},
+		{"tcp_udp", tcpUDPRoute("both", group, next()), tcpCheck(0, 0, 0), nil},
+		{"tls_passthrough", passthroughRoute("pass", group, "pass.example.com"), tcpCheck(0, 0, 8443), nil},
+		{"http, the hostname", web("plain", nil), httpCheck, nil},
+		{"http, a host header", web("hh", func(h *rpmgrv1.HTTPRouteSpec) { h.HostHeader = "backend.internal:8080" }), httpCheck, nil},
+		{"http, preserve", web("keep", func(h *rpmgrv1.HTTPRouteSpec) { h.HostHeader = "preserve" }), httpCheck, nil},
+		{"http, a socket", web("sock", nil), httpCheck, []*rpmgrv1.RouteTarget{socket}},
+		{"http, https", web("tls", nil), httpCheck, []*rpmgrv1.RouteTarget{https}},
+		{"http, a tcp check of a socket", web("socktcp", nil), tcpCheck(2, 0, 0), []*rpmgrv1.RouteTarget{socket}},
+	}
+	for _, c := range cases {
+		c.route.HealthCheck = c.check
+		rt, err := createRoute(ada, org, c.route, "")
+		if err != nil {
+			t.Fatalf("%s: the API refused %v: %v", c.name, c.check, err)
+		}
+		targets := c.targets
+		if targets == nil {
+			targets = []*rpmgrv1.RouteTarget{addressTarget(con, "10.0.0.5", 8080)}
+		}
+		for _, tg := range targets {
+			if _, err := ada.rt.CreateRouteTarget(ctx, connect.NewRequest(&rpmgrv1.CreateRouteTargetRequest{RouteId: rt.GetId(),
+				Target: proto.Clone(tg).(*rpmgrv1.RouteTarget)})); err != nil {
+				t.Fatalf("%s: target %v: %v", c.name, tg, err)
+			}
+		}
+	}
+
+	snap := &agentv1.Snapshot{}
+	if err := store.ReadTx(e.sys, e.db, func(tx *ent.Tx, _ store.Revision) error {
+		a := snapshot.Agent{Identity: pki.Identity{TrustDomain: "rpmgr-teststor", Org: org, Kind: pki.KindConnector, ID: con}}
+		for _, src := range routes.Sources() {
+			rs, err := src(e.sys, tx, a)
+			if err != nil {
+				return err
+			}
+			snap.Resources = append(snap.Resources, rs...)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	for _, r := range snap.GetResources() {
+		if r.GetConnectorRoute().GetHealthCheck() != nil {
+			checked++
+		}
+	}
+	if checked != len(cases) {
+		t.Fatalf("%d compiled checks, want %d", checked, len(cases))
+	}
+	if errs := connector.NewApplier(nil, nil).Validate(snap); len(errs) != 0 {
+		t.Fatalf("the connector refuses checks the API accepted: %v", errs)
+	}
+
+	// What the connector refuses, the API refuses first.
+	for name, rt := range map[string]*rpmgrv1.Route{
+		"interval 1 s":               tcpRoute("x1", group, next()),
+		"an http check, passthrough": passthroughRoute("x2", group, "x2.example.com"),
+		"timeout 61 s":               tcpRoute("x3", group, next()),
+	} {
+		switch name {
+		case "interval 1 s":
+			rt.HealthCheck = tcpCheck(1, 0, 0)
+		case "an http check, passthrough":
+			rt.HealthCheck = httpCheck
+		default:
+			rt.HealthCheck = tcpCheck(3600, 61, 0)
+		}
+		if _, err := createRoute(ada, org, rt, ""); code(err) != connect.CodeInvalidArgument {
+			t.Errorf("%s: %v, want INVALID_ARGUMENT", name, err)
+		}
 	}
 }

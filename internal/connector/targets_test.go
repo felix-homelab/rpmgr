@@ -122,6 +122,7 @@ type targetsEnv struct {
 	mu      sync.Mutex
 	health  []*tunnelv1.RouteHealth
 	targets []*agentv1.ResourceStatus // the targets' health changes
+	batches []int                     // how many changes each report held
 }
 
 func newTargets(p *policy.Policy) *targetsEnv { return newTargetsWith(p, nil) }
@@ -134,9 +135,10 @@ func newTargetsWith(p *policy.Policy, metrics *connector.Metrics) *targetsEnv {
 		e.mu.Lock()
 		e.health = append(e.health, h)
 		e.mu.Unlock()
-	}, OnTargetHealth: func(s *agentv1.ResourceStatus) {
+	}, OnTargetHealth: func(s []*agentv1.ResourceStatus) {
 		e.mu.Lock()
-		e.targets = append(e.targets, s)
+		e.targets = append(e.targets, s...)
+		e.batches = append(e.batches, len(s))
 		e.mu.Unlock()
 	}})
 	return e

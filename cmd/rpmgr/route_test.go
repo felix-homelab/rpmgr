@@ -332,6 +332,12 @@ func TestRouteHealthFlags(t *testing.T) {
 			IntervalSeconds: 30}) {
 		t.Fatalf("a changed check: %d %q %v", code, errOut, a.updated)
 	}
+	// An empty status range goes back to the default.
+	a.route.HealthCheck = &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP, ExpectedStatusMin: 200, ExpectedStatusMax: 204}
+	if code, _, errOut := runWith(env, "", "update", "route", "--health-status", "", "rt_1"); code != cli.ExitOK ||
+		!proto.Equal(a.updated.GetRoute().GetHealthCheck(), &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP}) {
+		t.Fatalf("a cleared status range: %d %q %v", code, errOut, a.updated)
+	}
 	if code, _, errOut := runWith(env, "", "update", "route", "--health-check", "none", "rt_1"); code != cli.ExitOK ||
 		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"health_check"}) || a.updated.GetRoute().GetHealthCheck() != nil {
 		t.Fatalf("a removed check: %d %q %v", code, errOut, a.updated)

@@ -106,8 +106,9 @@ type TargetsOptions struct {
 	Policy func() *policy.Policy
 	// OnHealth gets every change of a route's readiness; normally Sessions.SetReady.
 	OnHealth func(*tunnelv1.RouteHealth)
-	// OnTargetHealth gets every change of a target's health, for the controller's route status.
-	OnTargetHealth func(*agentv1.ResourceStatus)
+	// OnTargetHealth gets the changes of a route's targets' health of one round of checks, for the
+	// controller's route status.
+	OnTargetHealth func([]*agentv1.ResourceStatus)
 	// UDPMetrics count the udp flows' oversize and dropped payloads; nil keeps them unregistered.
 	UDPMetrics *tunnel.UDPMetrics
 	// Metrics, if set, time the dials and count the refused ones.
@@ -139,6 +140,7 @@ type Targets struct {
 	checkers     map[string]*checker
 	targetHealth map[string]map[string]*targetHealth
 	checks       chan struct{} // the checks running, at most maxChecks
+	reportMu     sync.Mutex    // orders OnTargetHealth after Set's replaced checkers
 	ctx          context.Context
 	cancel       context.CancelFunc
 }
@@ -177,6 +179,8 @@ func (t *Targets) Close() {
 // Set makes routes the snapshot's routes. A route no longer among them is reported not ready at
 // once and still takes streams for the route drain period.
 func (t *Targets) Set(routes []Route) {
+	t.reportMu.Lock()
+	defer t.reportMu.Unlock()
 	t.mu.Lock()
 	now := time.Now()
 	next := map[string]Route{}

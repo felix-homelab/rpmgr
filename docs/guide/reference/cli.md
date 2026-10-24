@@ -769,7 +769,7 @@ rpmgr create route [flags]
 | `--health-interval duration` |  | how often each target is checked; 0 is the default |
 | `--health-path string` |  | http check: the path to GET, / if empty |
 | `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
-| `--health-status string` |  | http check: the passing statuses, as 200-399 |
+| `--health-status string` |  | http check: the passing statuses, as 200-399; empty for the default |
 | `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
 | `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
@@ -1039,7 +1039,7 @@ rpmgr update route [flags] <id or name>
 | `--health-interval duration` |  | how often each target is checked; 0 is the default |
 | `--health-path string` |  | http check: the path to GET, / if empty |
 | `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
-| `--health-status string` |  | http check: the passing statuses, as 200-399 |
+| `--health-status string` |  | http check: the passing statuses, as 200-399; empty for the default |
 | `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
 | `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
@@ -1459,7 +1459,7 @@ rpmgr preview route [flags]
 | `--health-interval duration` |  | how often each target is checked; 0 is the default |
 | `--health-path string` |  | http check: the path to GET, / if empty |
 | `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
-| `--health-status string` |  | http check: the passing statuses, as 200-399 |
+| `--health-status string` |  | http check: the passing statuses, as 200-399; empty for the default |
 | `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
 | `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |

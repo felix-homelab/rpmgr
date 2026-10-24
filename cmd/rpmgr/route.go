@@ -102,7 +102,7 @@ func (f *routeFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.StringVar(&f.healthCheck, "health-check", "", "the health check each connector runs against its targets: tcp, http, or none to remove it")
 	fs.UintVar(&f.healthPort, "health-port", 0, "the port to check instead of each target's; required on udp routes")
 	fs.StringVar(&f.healthPath, "health-path", "", "http check: the path to GET, / if empty")
-	fs.StringVar(&f.healthStatus, "health-status", "", "http check: the passing statuses, as 200-399")
+	fs.StringVar(&f.healthStatus, "health-status", "", "http check: the passing statuses, as 200-399; empty for the default")
 	fs.DurationVar(&f.healthInterval, "health-interval", 0, "how often each target is checked; 0 is the default")
 	fs.DurationVar(&f.healthTimeout, "health-timeout", 0, "how long one check may take, below the interval; 0 is the default")
 	fs.UintVar(&f.healthUnhealthy, "health-unhealthy", 0, "failed checks in a row that make a target unhealthy; 0 is the default")
@@ -137,7 +137,9 @@ func (f *routeFlags) healthCheckOf(set map[string]bool, cur *rpmgrv1.HealthCheck
 		}
 		c.Type = t
 	}
-	if set["health-status"] {
+	if set["health-status"] && f.healthStatus == "" {
+		c.ExpectedStatusMin, c.ExpectedStatusMax = 0, 0
+	} else if set["health-status"] {
 		lo, hi, ok := strings.Cut(f.healthStatus, "-")
 		a, err1 := strconv.ParseUint(lo, 10, 16)
 		b, err2 := strconv.ParseUint(hi, 10, 16)

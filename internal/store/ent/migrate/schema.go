@@ -715,6 +715,11 @@ var (
 				Unique:  true,
 				Columns: []*schema.Column{HealthChecksColumns[1], HealthChecksColumns[0]},
 			},
+			{
+				Name:    "healthcheck_route_id",
+				Unique:  true,
+				Columns: []*schema.Column{HealthChecksColumns[11]},
+			},
 		},
 	}
 	// InstanceColumns holds the columns for the "instance" table.

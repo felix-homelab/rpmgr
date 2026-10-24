@@ -4,6 +4,7 @@ package connector
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -11,7 +12,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,17 +53,36 @@ type HealthCheck struct {
 	Unhealthy, Healthy int
 }
 
+// checkTimes are a check's interval and timeout with their defaults: the timeout's stays below
+// the interval, as the controller's does (routes.CheckTimes).
+func checkTimes(c *agentv1.HealthCheck) (interval, timeout time.Duration) {
+	interval = cmp.Or(time.Duration(c.GetIntervalMs())*time.Millisecond, checkInterval)
+	return interval, cmp.Or(time.Duration(c.GetTimeoutMs())*time.Millisecond, min(checkTimeout, interval-time.Second))
+}
+
+// failureText is a failed check's error as the controller records it: without the local address
+// of the check's connection, which changes with every check and would make each one a new
+// failure, and at most maxFailureText bytes.
+func failureText(err error) string {
+	s := checkLocalEnd.ReplaceAllString(err.Error(), "")
+	if len(s) > maxFailureText {
+		s = strings.ToValidUTF8(s[:maxFailureText], "")
+	}
+	return s
+}
+
+// checkLocalEnd is the local end in a net.OpError's text, "read tcp 127.0.0.1:50214->10.0.0.5:80".
+var checkLocalEnd = regexp.MustCompile(`\S+->`)
+
+// maxFailureText bounds a failure's text, below what the controller keeps of a detail.
+const maxFailureText = 512
+
 // healthCheckOf is a snapshot's health check with its defaults, or nil without one.
 func healthCheckOf(c *agentv1.HealthCheck) *HealthCheck {
 	if c == nil {
 		return nil
 	}
-	ms := func(v uint32, def time.Duration) time.Duration {
-		if v == 0 {
-			return def
-		}
-		return time.Duration(v) * time.Millisecond
-	}
+	interval, timeout := checkTimes(c)
 	n := func(v uint32, def int) int {
 		if v == 0 {
 			return def
@@ -69,7 +91,7 @@ func healthCheckOf(c *agentv1.HealthCheck) *HealthCheck {
 	}
 	out := &HealthCheck{HTTP: c.GetType() == "http", HTTPS: c.GetHttps(), Path: c.GetPath(), Host: c.GetHost(),
 		Port:     uint16(c.GetPort()), //nolint:gosec // G115: Validate bounds the port
-		Interval: ms(c.GetIntervalMs(), checkInterval), Timeout: ms(c.GetTimeoutMs(), checkTimeout),
+		Interval: interval, Timeout: timeout,
 		Unhealthy: n(c.GetUnhealthyThreshold(), checkUnhealthy), Healthy: n(c.GetHealthyThreshold(), checkHealthy),
 		StatusMin: n(c.GetStatusMin(), 200), StatusMax: n(c.GetStatusMax(), 399)}
 	if out.Path == "" {
@@ -173,7 +195,7 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 				blocked = b.detail
 			}
 			if results[i] != nil {
-				hs[tg.ID].err = results[i].Error()
+				hs[tg.ID].err = failureText(results[i])
 			}
 			changed := hs[tg.ID].blocked != blocked && hs[tg.ID].unhealthy
 			hs[tg.ID].blocked = blocked
@@ -186,10 +208,17 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 		}
 	}
 	t.mu.Unlock()
-	if t.o.OnTargetHealth != nil {
-		for _, s := range targets {
-			t.o.OnTargetHealth(s)
+	if len(targets) > 0 && t.o.OnTargetHealth != nil {
+		// Set holds reportMu while it replaces checkers: a round of a checker it stopped reports
+		// nothing after the snapshot's own status, which would otherwise be overwritten.
+		t.reportMu.Lock()
+		t.mu.Lock()
+		current := t.checkers[r.ID] == c
+		t.mu.Unlock()
+		if current {
+			t.o.OnTargetHealth(targets)
 		}
+		t.reportMu.Unlock()
 	}
 	t.reportRoute(h)
 }

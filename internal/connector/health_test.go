@@ -17,6 +17,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
 	"github.com/felix-homelab/rpmgr/internal/connector"
+	"github.com/felix-homelab/rpmgr/internal/policy"
 )
 
 // fastCheck is a tcp health check every 20 ms, unhealthy after 3 failures, healthy after 2 passes.
@@ -258,5 +259,57 @@ func TestHealthCheck_UDPFlows(t *testing.T) {
 	_ = gw.Close()
 	if res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR || res.GetTargetId() != sick.ID {
 		t.Fatalf("a flow with every target unhealthy: %v, want the best priority as the last chance", res)
+	}
+}
+
+// TestHealthCheck_ReportsPerRound: the changes of one round of a route's checks go to the
+// controller in one report; a snapshot that replaces the route's checks waits for a report under
+// way, so that the old checks' report never lands after the snapshot's own status.
+func TestHealthCheck_ReportsPerRound(t *testing.T) {
+	var down atomic.Bool
+	down.Store(true)
+	a, _ := webTarget(t, "tg_a", &down)
+	b, _ := webTarget(t, "tg_b", &down)
+	reports := make(chan []*agentv1.ResourceStatus)
+	release := make(chan struct{})
+	pol := allowLoopback(t, a.Port, b.Port)
+	tg := connector.NewTargets(connector.TargetsOptions{Policy: func() *policy.Policy { return pol },
+		OnTargetHealth: func(s []*agentv1.ResourceStatus) {
+			reports <- s
+			<-release
+		}})
+	t.Cleanup(tg.Close)
+	check := &connector.HealthCheck{HTTP: true, Path: "/", StatusMin: 200, StatusMax: 399, Interval: 20 * time.Millisecond, Timeout: time.Second,
+		Unhealthy: 1, Healthy: 1}
+	route := connector.Route{ID: "rt_web", Targets: []connector.Target{a, b}, Check: check}
+	tg.Set([]connector.Route{route})
+	var first []*agentv1.ResourceStatus
+	select {
+	case first = <-reports:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no report")
+	}
+	if len(first) != 2 || first[0].GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY ||
+		first[1].GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY {
+		t.Fatalf("one round's report %v, want both targets unhealthy", first)
+	}
+	changed := route
+	changed.Check = &connector.HealthCheck{HTTP: true, Path: "/v2", StatusMin: 200, StatusMax: 399, Interval: time.Hour, Timeout: time.Second,
+		Unhealthy: 1, Healthy: 1}
+	set := make(chan struct{})
+	go func() {
+		tg.Set([]connector.Route{changed})
+		close(set)
+	}()
+	select {
+	case <-set:
+		t.Fatal("the snapshot replaced the checks while their report was under way")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-set:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the snapshot never took effect")
 	}
 }

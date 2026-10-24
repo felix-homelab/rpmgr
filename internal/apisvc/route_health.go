@@ -12,23 +12,23 @@ import (
 	"connectrpc.com/connect"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 )
 
 // The bounds of a health check (docs/03-connections.md, "Timeouts, keepalive and backoff"): an
-// interval of at least 2 s, 10 s unless set, and a timeout below it and at most 1 min, 5 s unless
-// set.
+// interval of at least 2 s and a timeout below it and at most 1 min; routes.CheckTimes has the
+// defaults.
 const (
 	minCheckIntervalSeconds = 2
-	defCheckIntervalSeconds = 10
-	defCheckTimeoutSeconds  = 5
 	maxCheckTimeoutSeconds  = 60
 )
 
 // checkHealth checks a route's health check (docs/03-connections.md, "Target health"): a udp
-// route has only a tcp check of a port it names; an interval of at least the minimum and a timeout
+// route has only a tcp check of a port it names, a tls_passthrough route only a tcp check, as its
+// targets speak TLS the gateway does not end; an interval of at least the minimum and a timeout
 // below it and at most the maximum; an http path a request line can carry; both statuses or neither, from 100.
 func checkHealth(in *rpmgrv1.Route) error {
 	c := in.GetHealthCheck()
@@ -38,17 +38,13 @@ func checkHealth(in *rpmgrv1.Route) error {
 	invalid := func(format string, args ...any) error {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: health check: "+format, args...))
 	}
-	interval, timeout := c.GetIntervalSeconds(), c.GetTimeoutSeconds()
-	if interval == 0 {
-		interval = defCheckIntervalSeconds
-	}
-	if timeout == 0 {
-		timeout = min(defCheckTimeoutSeconds, interval-1)
-	}
+	interval, timeout := routes.CheckTimes(int(c.GetIntervalSeconds()), int(c.GetTimeoutSeconds()))
 	tcp := c.GetType() == rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_TCP
 	switch {
 	case in.GetUdp() != nil && (!tcp || c.GetPort() == 0):
 		return invalid("a udp route has only a tcp check, of a port it names")
+	case in.GetTlsPassthrough() != nil && !tcp:
+		return invalid("a tls_passthrough route has only a tcp check: its targets expect TLS the gateway passes through")
 	case interval < minCheckIntervalSeconds:
 		return invalid("an interval of %d s, below the minimum of %d s", interval, minCheckIntervalSeconds)
 	case timeout >= interval || timeout > maxCheckTimeoutSeconds:
@@ -67,7 +63,8 @@ func checkHealth(in *rpmgrv1.Route) error {
 }
 
 // setHealthCheck replaces a route's health check with c; nil removes it. A check of a port of its
-// own needs targets that have ports, not Unix sockets.
+// own needs targets that have ports, not Unix sockets; an http check needs targets that speak
+// HTTP/1.1, which h2c targets do not.
 func setHealthCheck(ctx context.Context, tx *ent.Tx, row *ent.Route, c *rpmgrv1.HealthCheck) error {
 	if _, err := tx.HealthCheck.Delete().Where(healthcheck.RouteID(row.ID)).Exec(ctx); err != nil || c == nil {
 		return err
@@ -79,6 +76,15 @@ func setHealthCheck(ctx context.Context, tx *ent.Tx, row *ent.Route, c *rpmgrv1.
 		}
 		if sockets {
 			return connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: health check: a check port, but a target is a Unix socket"))
+		}
+	}
+	if c.GetType() == rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP {
+		h2c, err := tx.RouteTarget.Query().Where(routetarget.RouteID(row.ID), routetarget.UpstreamProtocolEQ(routetarget.UpstreamProtocolH2c)).Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if h2c {
+			return connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: health check: an http check speaks HTTP/1.1, but a target speaks h2c; use a tcp check"))
 		}
 	}
 	typ := healthcheck.TypeHTTP

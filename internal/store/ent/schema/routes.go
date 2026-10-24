@@ -487,3 +487,8 @@ func (HealthCheck) Fields() []ent.Field {
 func (HealthCheck) Edges() []ent.Edge {
 	return []ent.Edge{edge.To("route", Route.Type).Field("route_id").Unique().Required().Immutable()}
 }
+
+// Indexes of a health check: one per route.
+func (HealthCheck) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("route_id").Unique()}
+}
