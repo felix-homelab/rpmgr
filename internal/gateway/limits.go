@@ -7,6 +7,7 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -61,15 +62,23 @@ func routeLimitsOf(l *agentv1.RouteLimits, rules []*agentv1.RateLimitRule) Route
 }
 
 // Limits keeps the limit state of each route by ID, so that a route's open connections and
-// buckets carry over from one snapshot to the next, and the client table of each rate_limit rule,
-// which every route whose policies carry the rule shares.
+// buckets carry over from one snapshot to the next, and the client tables of each rate_limit rule:
+// one that every route whose policies carry the rule shares, and one for its udp flows, whose
+// sources can be forged, so that a flood of them never fills the table of the other routes (D137).
 type Limits struct {
 	// Now, if set before the Limits is used, is the clock of the client tables (tests).
 	Now func() time.Time
 
 	mu      sync.Mutex
 	routes  map[string]*RouteLimit
-	clients map[ClientRate]*clientTable
+	clients map[tableKey]*clientTable
+	budget  atomic.Int64 // the client entries of all tables
+}
+
+// tableKey names a client table: a rule, for udp flows or for the rest.
+type tableKey struct {
+	rule ClientRate
+	udp  bool
 }
 
 // Set makes l the limits of route id and returns the route's state, the same one for the same ID
@@ -86,20 +95,30 @@ func (ls *Limits) Set(id string, l RouteLimits) *RouteLimit {
 		ls.routes[id] = r
 	}
 	r.set(l)
-	tables := make([]*clientTable, 0, len(l.Clients))
-	for _, c := range l.Clients {
-		if ls.clients == nil {
-			ls.clients = map[ClientRate]*clientTable{}
-		}
-		t := ls.clients[c]
-		if t == nil {
-			t = newClientTable(c, ls.Now)
-			ls.clients[c] = t
-		}
-		tables = append(tables, t)
-	}
-	r.clients.Store(&tables)
+	r.clients.Store(ls.tables(l.Clients, false))
+	r.udpClients.Store(ls.tables(l.Clients, true))
 	return r
+}
+
+// tables returns the client tables of rules, each once, however often a route names it. Under
+// ls.mu.
+func (ls *Limits) tables(rules []ClientRate, udp bool) *[]*clientTable {
+	out := make([]*clientTable, 0, len(rules))
+	for _, c := range rules {
+		if ls.clients == nil {
+			ls.clients = map[tableKey]*clientTable{}
+		}
+		k := tableKey{rule: c, udp: udp}
+		t := ls.clients[k]
+		if t == nil {
+			t = newClientTable(c, ls.Now, &ls.budget)
+			ls.clients[k] = t
+		}
+		if !slices.Contains(out, t) {
+			out = append(out, t)
+		}
+	}
+	return &out
 }
 
 // Retain forgets the routes not in keep once they have no connection open: a removed route's
@@ -115,15 +134,18 @@ func (ls *Limits) Retain(keep map[string]bool) {
 	}
 	used := map[*clientTable]bool{}
 	for _, r := range ls.routes {
-		if p := r.clients.Load(); p != nil {
-			for _, t := range *p {
-				used[t] = true
+		for _, p := range []*[]*clientTable{r.clients.Load(), r.udpClients.Load()} {
+			if p != nil {
+				for _, t := range *p {
+					used[t] = true
+				}
 			}
 		}
 	}
-	for c, t := range ls.clients {
+	for k, t := range ls.clients {
 		if !used[t] {
-			delete(ls.clients, c)
+			t.drop()
+			delete(ls.clients, k)
 		}
 	}
 }
@@ -132,13 +154,14 @@ func (ls *Limits) Retain(keep map[string]bool) {
 // requests, and a byte bucket for each direction shared by all of them. A nil RouteLimit limits
 // nothing.
 type RouteLimit struct {
-	max       atomic.Int64 // 0 is no limit
-	conns     atomic.Int64
-	perSecond atomic.Uint32                // the route's requests a second, 0 is no limit
-	requests  atomic.Pointer[rate.Limiter] // nil is no limit
-	clients   atomic.Pointer[[]*clientTable]
-	bandwidth atomic.Uint64                // bytes per second, 0 is no limit
-	in, out   atomic.Pointer[rate.Limiter] // bytes from and to clients; nil is no limit
+	max        atomic.Int64 // 0 is no limit
+	conns      atomic.Int64
+	perSecond  atomic.Uint32                  // the route's requests a second, 0 is no limit
+	requests   atomic.Pointer[rate.Limiter]   // nil is no limit
+	clients    atomic.Pointer[[]*clientTable] // for requests, connections and passthrough
+	udpClients atomic.Pointer[[]*clientTable] // for udp flows
+	bandwidth  atomic.Uint64                  // bytes per second, 0 is no limit
+	in, out    atomic.Pointer[rate.Limiter]   // bytes from and to clients; nil is no limit
 }
 
 func (r *RouteLimit) set(l RouteLimits) {
@@ -164,21 +187,28 @@ func (r *RouteLimit) set(l RouteLimits) {
 }
 
 // Admit checks a new request, connection or flow of client against the route's rates: each
-// per-client rule, then the route's total; it takes from the buckets only when all admit it, so a
-// client over its rate does not use up the route's total, and a refusal of the total takes nothing
-// from the client's bucket. When it refuses, retry is how long until it may come again, and
-// perClient says whether a per-client rule refused it.
-func (r *RouteLimit) Admit(client netip.Addr) (ok bool, retry time.Duration, perClient bool) {
+// per-client rule, of udp flows if udp, then the route's total. It takes a client's tokens first
+// and gives them back when a later rule or the total refuses, so a client over its rate does not
+// use up the route's total, nor a refusal of the total the client's buckets. When it refuses, retry
+// is how long until it may come again, and perClient says whether a per-client rule refused it.
+func (r *RouteLimit) Admit(client netip.Addr, udp bool) (ok bool, retry time.Duration, perClient bool) {
 	if r == nil {
 		return true, 0, false
 	}
+	p := r.clients.Load()
+	if udp {
+		p = r.udpClients.Load()
+	}
 	var tables []*clientTable
-	if p := r.clients.Load(); p != nil {
+	if p != nil {
 		tables = *p
 	}
 	key := clientKey(client)
-	for _, t := range tables {
-		if ok, wait := t.has(key); !ok {
+	for i, t := range tables {
+		if ok, wait := t.take(key); !ok {
+			for _, taken := range tables[:i] {
+				taken.refund(key)
+			}
 			return false, wait, true
 		}
 	}
@@ -187,12 +217,10 @@ func (r *RouteLimit) Admit(client netip.Addr) (ok bool, retry time.Duration, per
 		res := b.ReserveN(now, 1)
 		if d := res.DelayFrom(now); d > 0 {
 			res.CancelAt(now)
+			for _, t := range tables {
+				t.refund(key)
+			}
 			return false, d, false
-		}
-	}
-	for _, t := range tables {
-		if ok, wait := t.take(key); !ok { // a request of the same client came in between
-			return false, wait, true
 		}
 	}
 	return true, 0, false

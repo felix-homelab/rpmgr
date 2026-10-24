@@ -3,6 +3,8 @@
 package gateway
 
 import (
+	"maps"
+	"slices"
 	"testing"
 	"time"
 )
@@ -89,4 +91,20 @@ func ClientTables(ls *Limits) []int {
 		out = append(out, t.size())
 	}
 	return out
+}
+
+// SetClientBudget sets how many client entries all tables of a gateway hold, for one test.
+func SetClientBudget(t testing.TB, n int) {
+	old := clientBudget
+	clientBudget = n
+	t.Cleanup(func() { clientBudget = old })
+}
+
+// AssignedRoutes returns the IDs the applier's assignment holds routes for, sorted.
+func AssignedRoutes(a Assignment) []string {
+	s := a.(*assignment).cur.Load()
+	if s == nil {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(s.routes))
 }
