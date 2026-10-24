@@ -28,6 +28,8 @@ const office = {
 
 const admins = { id: "pol_2", name: "admins", etag: "1", rules: [{ rule: { case: "ipAllow" as const, value: { cidrs: ["192.0.2.0/24"] } } }] };
 
+const cdn = { id: "pol_3", name: "cdn", etag: "2", routeIds: [], rules: [{ rule: { case: "requireHeader" as const, value: { name: "X-Origin-Token" } } }] };
+
 function page(policies: object[] = [office, admins]) {
   const calls = { create: [] as CreateAccessPolicyRequest[], update: [] as UpdateAccessPolicyRequest[], remove: [] as DeleteAccessPolicyRequest[] };
   show("/policies", auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
@@ -128,6 +130,55 @@ describe("Policies", () => {
     await waitFor(() => expect(placeholders(added)).toEqual(["unchanged"]));
     expect(marked(form).filter((m) => m === "Password")).toHaveLength(1);
     expect(unmatched(form)).toEqual([]);
+  });
+
+  it("requires a header with values it never shows, and generates one", async () => {
+    const calls = page([office, cdn]);
+    expect((await policy("cdn")).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["requires header X-Origin-Token"]);
+    fireEvent.click(await screen.findByRole("button", { name: "New access policy" }));
+    const form = within(await screen.findByRole("form", { name: "New access policy" }));
+    fireEvent.change(form.getByLabelText("Name"), { target: { value: "edge" } });
+    const rule = within(form.getByRole("group", { name: "Rule 1" }));
+    fireEvent.change(rule.getByLabelText("Kind"), { target: { value: "requireHeader" } });
+    fireEvent.change(rule.getByLabelText("Header"), { target: { value: "X-Edge" } });
+    expect(marked(form.getByRole("group", { name: "Rule 1" }))).toEqual(["Header", "Value"]);
+    fireEvent.change(rule.getByLabelText("Value"), { target: { value: "edge-secret-0123456789abcdefghijklmnop" } });
+    fireEvent.click(rule.getByRole("button", { name: "Generate a value" }));
+    const values = () => (rule.getAllByLabelText("Value") as HTMLInputElement[]).map((v) => v.value);
+    const [, generated] = values();
+    expect(values()).toHaveLength(2);
+    expect(generated).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    fireEvent.click(rule.getByRole("button", { name: "Add a value" }));
+    fireEvent.click(rule.getByRole("button", { name: "Add a value" }));
+    expect((rule.getByRole("button", { name: "Add a value" }) as HTMLButtonElement).disabled).toBe(true); // four at most
+    expect((rule.getByRole("button", { name: "Generate a value" }) as HTMLButtonElement).disabled).toBe(false); // an empty one is left
+    fireEvent.click(form.getByRole("button", { name: "Create the policy" }));
+    await waitFor(() => expect(calls.create).toHaveLength(1));
+    const r = calls.create[0]!.accessPolicy?.rules[0]?.rule;
+    expect(r?.case).toBe("requireHeader");
+    if (r?.case === "requireHeader") {
+      expect([r.value.name, r.value.values]).toEqual(["X-Edge", ["edge-secret-0123456789abcdefghijklmnop", generated]]); // empty ones left out
+    }
+  });
+
+  it("keeps a required header's values it does not change", async () => {
+    const calls = page([cdn]);
+    fireEvent.click((await policy("cdn")).getByRole("button", { name: "Edit…" }));
+    const form = await screen.findByRole("form", { name: "Edit access policy" });
+    const rule = within(within(form).getByRole("group", { name: "Rule 1" }));
+    const value = rule.getByLabelText("Value") as HTMLInputElement;
+    expect([(rule.getByLabelText("Header") as HTMLInputElement).value, value.value, value.placeholder]).toEqual(["X-Origin-Token", "", "unchanged"]);
+    expect(marked(form)).toEqual(["Name", "Header"]);
+    expect(unmatched(form)).toEqual([]);
+    // Another header is new, so it needs a value; the stored one, in any case, does not.
+    fireEvent.change(rule.getByLabelText("Header"), { target: { value: "X-Other" } });
+    await waitFor(() => expect(marked(form)).toEqual(["Name", "Header", "Value"]));
+    fireEvent.change(rule.getByLabelText("Header"), { target: { value: "x-origin-token" } });
+    await waitFor(() => expect(marked(form)).toEqual(["Name", "Header"]));
+    fireEvent.click(within(form).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.update).toHaveLength(1));
+    const r = calls.update[0]!.accessPolicy?.rules[0]?.rule;
+    expect(r?.case === "requireHeader" && [r.value.name, r.value.values]).toEqual(["x-origin-token", []]);
   });
 
   it("shows why a policy in use is not removed", async () => {
