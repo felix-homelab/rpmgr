@@ -25,32 +25,52 @@ import { largestPage, listAll } from "@/lib/list-all";
 import { useAgentNames, useRoutes } from "@/routes-data";
 import { useOrg } from "@/session";
 
-type Kind = "ipAllow" | "ipDeny" | "basicAuth";
+type Kind = "ipAllow" | "ipDeny" | "basicAuth" | "requireHeader";
 
-// A rule as the form edits it; a basic-auth user's empty password keeps the one the policy has.
+// A rule as the form edits it; a basic-auth user's empty password keeps the one the policy has,
+// and a required header without values keeps the values the policy has for it.
 interface RuleDraft {
   kind: Kind;
   cidrs: string[];
   users: { name: string; password: string }[];
+  header: string;
+  values: string[];
 }
+
+const emptyRule: RuleDraft = { kind: "ipAllow", cidrs: [], users: [], header: "", values: [""] };
+
+// maxHeaderValues is how many values a required header accepts, so that one can be rotated.
+const maxHeaderValues = 4;
 
 function draftOf(r: AccessRule): RuleDraft {
   switch (r.rule.case) {
     case "ipAllow":
     case "ipDeny":
-      return { kind: r.rule.case, cidrs: r.rule.value.cidrs, users: [] };
+      return { ...emptyRule, kind: r.rule.case, cidrs: r.rule.value.cidrs };
     case "basicAuth":
-      return { kind: "basicAuth", cidrs: [], users: r.rule.value.users.map((u) => ({ name: u.name, password: "" })) };
+      return { ...emptyRule, kind: "basicAuth", users: r.rule.value.users.map((u) => ({ name: u.name, password: "" })) };
+    case "requireHeader":
+      return { ...emptyRule, kind: "requireHeader", header: r.rule.value.name };
     default:
-      return { kind: "ipAllow", cidrs: [], users: [] };
+      return emptyRule;
   }
 }
 
 function ruleOf(d: RuleDraft): AccessRule {
-  if (d.kind === "basicAuth") {
-    return create(AccessRuleSchema, { rule: { case: "basicAuth", value: { users: d.users.map((u) => ({ name: u.name.trim(), password: u.password })) } } });
+  switch (d.kind) {
+    case "basicAuth":
+      return create(AccessRuleSchema, { rule: { case: "basicAuth", value: { users: d.users.map((u) => ({ name: u.name.trim(), password: u.password })) } } });
+    case "requireHeader":
+      return create(AccessRuleSchema, { rule: { case: "requireHeader", value: { name: d.header.trim(), values: d.values.filter((v) => v !== "") } } });
+    default:
+      return create(AccessRuleSchema, { rule: { case: d.kind, value: { cidrs: trimmed(d.cidrs) } } });
   }
-  return create(AccessRuleSchema, { rule: { case: d.kind, value: { cidrs: trimmed(d.cidrs) } } });
+}
+
+// generatedValue is a random header value: 32 bytes, base64url without padding, 43 characters.
+function generatedValue(): string {
+  const b = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...b)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
 
 export function usePolicies(orgId: string | undefined) {
@@ -108,6 +128,7 @@ function summary(t: TFunction, r: AccessRule): string {
     case "ipAllow": return t("policies.summary.allow", { cidrs: r.rule.value.cidrs.join(", ") });
     case "ipDeny": return t("policies.summary.deny", { cidrs: r.rule.value.cidrs.join(", ") });
     case "basicAuth": return t("policies.summary.basicAuth", { users: r.rule.value.users.map((u) => u.name).join(", ") });
+    case "requireHeader": return t("policies.summary.requireHeader", { header: r.rule.value.name });
     default: return "";
   }
 }
@@ -150,7 +171,7 @@ function PolicyRow({ policy: p, routeName, onEdit, onDone }: {
 }
 
 // PolicyForm creates a policy, or with policy changes one: the policy as read with its name,
-// description and rules, their mask and its etag (U1). Passwords are write-only.
+// description and rules, their mask and its etag (U1). Passwords and header values are write-only.
 function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessPolicy; onDone: (w?: { revision?: Revision; status?: ApplyStatus }) => void }) {
   const { t } = useTranslation();
   const add = useMutation(PolicyService.method.createAccessPolicy);
@@ -159,11 +180,13 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
   const [requestId] = useState(() => crypto.randomUUID());
   const [name, setName] = useState(policy?.name ?? "");
   const [description, setDescription] = useState(policy?.description ?? "");
-  const [rules, setRules] = useState<RuleDraft[]>(policy?.rules.map(draftOf) ?? [{ kind: "ipAllow", cidrs: [], users: [] }]);
+  const [rules, setRules] = useState<RuleDraft[]>(policy?.rules.map(draftOf) ?? [emptyRule]);
   const [error, setError] = useState("");
   // A user the stored policy already has keeps their password when it is left empty; a new one
   // needs one.
   const stored = new Set(policy?.rules.flatMap((r) => (r.rule.case === "basicAuth" ? r.rule.value.users.map((u) => u.name) : [])));
+  // Likewise, a header the stored policy requires keeps its values when none is given.
+  const storedHeaders = new Set(policy?.rules.flatMap((r) => (r.rule.case === "requireHeader" ? [r.rule.value.name.toLowerCase()] : [])));
   const setRule = (i: number, r: Partial<RuleDraft>) => setRules(rules.map((x, j) => (j === i ? { ...x, ...r } : x)));
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -196,7 +219,7 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
             <div className="flex flex-wrap items-center gap-2">
               <span aria-hidden="true" className="grid size-6 place-items-center rounded-full bg-muted text-xs font-medium text-muted-foreground">{i + 1}</span>
               <Select aria-label={t("policies.kind")} className="w-56" value={r.kind} onChange={(e) => setRule(i, { kind: e.target.value as Kind })}>
-                {(["ipAllow", "ipDeny", "basicAuth"] as Kind[]).map((k) => <option key={k} value={k}>{t(`policies.kinds.${k}`)}</option>)}
+                {(["ipAllow", "ipDeny", "basicAuth", "requireHeader"] as Kind[]).map((k) => <option key={k} value={k}>{t(`policies.kinds.${k}`)}</option>)}
               </Select>
               <span className="ml-auto flex flex-wrap gap-1">
                 <Button size="sm" variant="ghost" onClick={() => setRules(rules.filter((_, j) => j !== i))}>{t("policies.removeRule")}</Button>
@@ -218,12 +241,14 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
                 ))}
                 <Button size="sm" variant="outline" className="justify-self-start" onClick={() => setRule(i, { users: [...r.users, { name: "", password: "" }] })}>{t("policies.addUser")}</Button>
               </div>
+            ) : r.kind === "requireHeader" ? (
+              <HeaderRule rule={r} keep={storedHeaders.has(r.header.trim().toLowerCase())} onChange={(x) => setRule(i, x)} />
             ) : (
               <LinesField label={t("policies.cidrs")} required value={r.cidrs} onChange={(cidrs) => setRule(i, { cidrs })} />
             )}
           </div>
         ))}
-        <Button size="sm" variant="outline" className="justify-self-start" onClick={() => setRules([...rules, { kind: "ipAllow", cidrs: [], users: [] }])}>{t("policies.addRule")}</Button>
+        <Button size="sm" variant="outline" className="justify-self-start" onClick={() => setRules([...rules, emptyRule])}>{t("policies.addRule")}</Button>
       </fieldset>
       {error && <Alert>{error}</Alert>}
       <div className="flex gap-2">
@@ -231,5 +256,43 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
         <Button variant="outline" onClick={() => onDone()}>{t("stepUp.cancel")}</Button>
       </div>
     </form>
+  );
+}
+
+// HeaderRule edits a require-header rule: the header and up to four values, write-only, so that a
+// value can be rotated (docs/03-connections.md, "Access policies"). With keep, the policy already
+// requires the header, and no values keep the ones it has.
+function HeaderRule({ rule: r, keep, onChange }: { rule: RuleDraft; keep: boolean; onChange: (r: Partial<RuleDraft>) => void }) {
+  const { t } = useTranslation();
+  const setValue = (k: number, v: string) => onChange({ values: r.values.map((x, m) => (m === k ? v : x)) });
+  const generate = () => {
+    const empty = r.values.indexOf("");
+    onChange({ values: empty >= 0 ? r.values.map((x, m) => (m === empty ? generatedValue() : x)) : [...r.values, generatedValue()] });
+  };
+  return (
+    <div className="grid gap-2">
+      <Field label={t("policies.header")} required value={r.header} onChange={(e) => onChange({ header: e.target.value })} />
+      {r.values.map((v, k) => (
+        <div key={k} className="flex flex-wrap items-end gap-2">
+          <label className="grid min-w-80 flex-1 gap-1.5 text-sm font-medium">
+            <span className={keep || k > 0 ? undefined : "required-mark"}>{t("policies.value")}</span>
+            <Input className="font-mono" autoComplete="off" spellCheck={false} required={!keep && k === 0} minLength={32}
+              placeholder={keep ? t("policies.keepValues") : ""} value={v} onChange={(e) => setValue(k, e.target.value)} />
+          </label>
+          {r.values.length > 1 && (
+            <Button size="sm" variant="outline" onClick={() => onChange({ values: r.values.filter((_, m) => m !== k) })}>{t("policies.removeValue")}</Button>
+          )}
+        </div>
+      ))}
+      <span className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" disabled={r.values.length >= maxHeaderValues} onClick={() => onChange({ values: [...r.values, ""] })}>
+          {t("policies.addValue")}
+        </Button>
+        <Button size="sm" variant="outline" disabled={!r.values.includes("") && r.values.length >= maxHeaderValues} onClick={generate}>
+          {t("policies.generateValue")}
+        </Button>
+      </span>
+      <p className="text-xs text-muted-foreground">{t("policies.valueHint")}</p>
+    </div>
   );
 }

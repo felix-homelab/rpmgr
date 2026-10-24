@@ -39,6 +39,13 @@ const (
 	CapPagesCustom = "pages.custom"
 )
 
+// The capability strings of Phase 2 route features: the compiler leaves a route that uses one out
+// of the snapshot of an agent without it (docs/03-connections.md, "Versioning and capabilities").
+const (
+	// CapHTTPRequireHeader: the gateway enforces the require_header rules of access policies.
+	CapHTTPRequireHeader = "http.require-header"
+)
+
 // Phase1 lists every capability of Phase 1 agents.
 var Phase1 = []string{CapTunnelQUIC, CapTunnelH2, CapUDPDatagram, CapUDPOversizeStream,
 	CapProxyProtoV1, CapProxyProtoV2, CapControlPassthrough, CapProbeTarget}
