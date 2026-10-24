@@ -36,7 +36,9 @@ type Gateways struct {
 	API *api.Server
 	// Revocations revoke a decommissioned gateway's identity.
 	Revocations *Revocations
-	Now         func() time.Time
+	// Previews hands out the links of page previews; nil shows none.
+	Previews *PagePreviews
+	Now      func() time.Time
 }
 
 // groupFields are the fields of a gateway group a client may change.
