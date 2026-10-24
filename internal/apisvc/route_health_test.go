@@ -23,6 +23,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 )
 
 // TestRouteHealthCheck (docs/07-api.md, "Services"; R29): a route takes one health check, set with
@@ -163,8 +164,9 @@ func TestRouteHealthCheck(t *testing.T) {
 
 // TestRouteStatus_Health (D133): a target its connector reports unhealthy, while the route is ready
 // there, is not serving with the reason targets_unhealthy and the route degraded; a route whose
-// connectors all report every target unhealthy is unavailable; a target whose connector runs no
-// checks is listed as health not checked.
+// connectors all report every target unhealthy is unavailable, each target with its own failure
+// where its connector reported one; a target whose connector runs no checks is listed as health
+// not checked.
 func TestRouteStatus_Health(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
@@ -230,8 +232,16 @@ func TestRouteStatus_Health(t *testing.T) {
 	}
 	notReady(c1, rt.GetId())
 	notReady(c2, rt.GetId())
-	if st := status(); st.GetState() != rpmgrv1.RouteState_ROUTE_STATE_UNAVAILABLE || st.GetTargetsReady() != 0 {
+	st = status()
+	if st.GetState() != rpmgrv1.RouteState_ROUTE_STATE_UNAVAILABLE || st.GetTargetsReady() != 0 || len(st.GetNotServing()) != 3 {
 		t.Fatalf("every target unhealthy: %v", st)
+	}
+	// A target's own failure is shown rather than the route's, which says less.
+	c.ResourceStatus.Update().Where(resourcestatus.ResourceID(rt.GetId())).SetDetail("every target failed").ExecX(e.sys)
+	for _, ns := range status().GetNotServing() {
+		if want := map[bool]string{true: "connection refused", false: "every target failed"}[ns.GetId() == tgs[1]]; ns.GetDetail() != want {
+			t.Errorf("target %s: detail %q, want %q", ns.GetId(), ns.GetDetail(), want)
+		}
 	}
 }
 

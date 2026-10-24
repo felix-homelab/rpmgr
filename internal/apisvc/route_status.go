@@ -269,6 +269,10 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 		case v.missing[[2]string{t.ConnectorID, r.ID}] != nil:
 			out.NotServing = append(out.NotServing, capabilityMissing(t.ID, v.missing[[2]string{t.ConnectorID, r.ID}]))
 		case nr != nil:
+			// The target's own row, from its health checks, says more than the route's.
+			if nt := v.notReady[[2]string{t.ConnectorID, t.ID}]; nt != nil {
+				nr = nt
+			}
 			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: t.ID, Reason: notReadyReason(nr.Reason), Detail: nr.Detail})
 		case v.notReady[[2]string{t.ConnectorID, t.ID}] != nil:
 			// The route is ready on the connector, but this target failed its health check.
