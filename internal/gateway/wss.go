@@ -60,9 +60,10 @@ func ServeWSS(c *tls.Conn, inner *tls.Config, tunnel func(*tls.Conn)) {
 		if err != nil {
 			return // Accept answered the request already
 		}
-		ws.SetReadLimit(wssMessageLimit)
-		// The inner session's own PINGs keep it alive; the WebSocket adds none.
+		// The inner session's own PINGs keep it alive; the WebSocket adds none. NetConn lifts the
+		// read limit, so the limit is set after it.
 		nc := websocket.NetConn(context.Background(), ws, websocket.MessageBinary)
+		ws.SetReadLimit(wssMessageLimit)
 		tunnel(tls.Server(nc, inner))
 	})
 	mux.HandleFunc("/", http.NotFound)

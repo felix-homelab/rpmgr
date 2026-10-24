@@ -11,6 +11,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -99,6 +101,17 @@ func wssGateway(t *testing.T, w *world, ca *publicCA, handshake time.Duration) (
 // outer TLS, and returns it as a net.Conn.
 func dialWSS(t *testing.T, dial string, roots *x509.CertPool, path string) (net.Conn, error) {
 	t.Helper()
+	ws, err := dialWS(t, dial, roots, path)
+	if err != nil {
+		return nil, err
+	}
+	return websocket.NetConn(context.Background(), ws, websocket.MessageBinary), nil
+}
+
+// dialWS upgrades to the WebSocket at path through the TCP address dial, trusting roots for the
+// outer TLS.
+func dialWS(t *testing.T, dial string, roots *x509.CertPool, path string) (*websocket.Conn, error) {
+	t.Helper()
 	hc := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12},
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			var d net.Dialer
@@ -113,7 +126,7 @@ func dialWSS(t *testing.T, dial string, roots *x509.CertPool, path string) (net.
 	if err != nil {
 		return nil, err
 	}
-	return websocket.NetConn(context.Background(), ws, websocket.MessageBinary), nil
+	return ws, nil
 }
 
 // TestDecide_WSS: the gateway's WSS hostname goes to WSS, before the routes; without one, or for
@@ -182,6 +195,52 @@ func TestWSS(t *testing.T) {
 		t.Fatalf("an upgrade without the inner handshake: %v after %s", err, time.Since(start))
 	}
 	drain(closed)
+}
+
+// TestWSS_MessageLimit: the gateway reads a WebSocket message of 64 KiB, and closes the
+// connection on a larger one.
+func TestWSS_MessageLimit(t *testing.T) {
+	w := newWorld(t)
+	ca := newPublicCA(t, "public root")
+	var name gateway.WSSHostname
+	name.Set(wssHost)
+	read := make(chan error, 2)
+	r := &gateway.Router{TrustDomain: td, GatewayID: w.gw.ID, WSSHostname: name.Get,
+		WSS: func(c *tls.Conn) {
+			gateway.ServeWSS(c, w.tunnelTLS, func(inner *tls.Conn) {
+				n, err := io.Copy(io.Discard, inner.NetConn())
+				if err == nil {
+					err = fmt.Errorf("%d bytes and the end", n)
+				}
+				read <- err
+			})
+		},
+		WSSTLS: &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{ca.leaf(t, wssHost)}, NextProtos: []string{"http/1.1"}}}
+	addr := serve(t, r)
+	for _, tc := range []struct {
+		size int
+		big  bool
+	}{{64 << 10, false}, {64<<10 + 1, true}} {
+		ws, err := dialWS(t, addr, ca.pool, gateway.WSSPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ws.Write(t.Context(), websocket.MessageBinary, make([]byte, tc.size)); err != nil {
+			t.Fatal(err)
+		}
+		if !tc.big {
+			_ = ws.Close(websocket.StatusNormalClosure, "")
+		}
+		select {
+		case err := <-read:
+			if got := errors.Is(err, websocket.ErrMessageTooBig); got != tc.big {
+				t.Fatalf("a message of %d bytes: %v", tc.size, err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("a message of %d bytes: the gateway still reads", tc.size)
+		}
+		_ = ws.CloseNow()
+	}
 }
 
 func drain(c chan error) {
