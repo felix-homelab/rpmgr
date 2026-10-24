@@ -4,6 +4,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import { ChevronLeft, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -21,7 +22,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
-import { RouteService, RouteState, UpstreamVerification, type Route, type RouteTarget } from "@/gen/rpmgr/v1/route_pb";
+import { HealthCheckType, RouteService, RouteState, UpstreamVerification, type Route, type RouteTarget } from "@/gen/rpmgr/v1/route_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { RouteTraffic } from "@/pages/route-traffic";
 import { RoutePolicies } from "@/route-form/route-policies";
@@ -150,6 +151,7 @@ export function RouteDetail() {
             {r.spec.case === "http" && r.spec.value.maintenance && r.spec.value.maintenanceMessage && (
               <p className="mt-1.5 whitespace-pre-wrap text-muted-foreground">{t("route.maintenanceMessage", { message: r.spec.value.maintenanceMessage })}</p>
             )}
+            <p className="mt-1.5 text-muted-foreground">{checkSummary(r, t)}</p>
           </dd>
         </div>
         <div className="grid gap-1.5">
@@ -199,7 +201,7 @@ export function RouteDetail() {
           <Table framed={false}>
             <THead>
               <tr>
-                {["connector", "address", "weight", "state"].map((c) => <TH key={c}>{t(`route.columns.${c}`)}</TH>)}
+                {["connector", "address", "weight", "health", "state"].map((c) => <TH key={c}>{t(`route.columns.${c}`)}</TH>)}
               </tr>
             </THead>
             <tbody>
@@ -246,6 +248,7 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
         )}
       </TD>
       <TD>{target.weight}</TD>
+      <TD><TargetHealth route={r} target={target} /></TD>
       <TD>
         {!target.enabled ? (
           <Status look="off">{t("route.targetDisabled")}</Status>
@@ -278,4 +281,46 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
       </TD>
     </TR>
   );
+}
+
+// checkSummary says what health check the route has, if any, and how often it runs when set.
+function checkSummary(r: Route, t: TFunction): string {
+  const c = r.healthCheck;
+  if (!c) {
+    return t("route.health.none");
+  }
+  const kind = c.type === HealthCheckType.HTTP ? t("route.health.http", { path: c.httpPath || "/" }) : t("route.health.tcp");
+  return c.intervalSeconds > 0 ? `${kind}, ${t("route.health.every", { interval: c.intervalSeconds })}` : kind;
+}
+
+// TargetHealth is what the route's health check found of an enabled target (docs/03-connections.md,
+// "Target health"): healthy, unhealthy with the last failure, or not checked by a connector of an
+// earlier release; nothing without a check or while the target does not serve for another reason,
+// which the status column names.
+function TargetHealth({ route: r, target }: { route: Route; target: RouteTarget }) {
+  const { t } = useTranslation();
+  const problem = r.status?.notServing.find((n) => n.id === target.id);
+  if (!r.healthCheck || !target.enabled || !r.status) {
+    return <span className="text-muted-foreground">{t("route.health.unknown")}</span>;
+  }
+  if (r.status.healthNotChecked.includes(target.id)) {
+    return (
+      <>
+        <Status look="off">{t("route.health.notChecked")}</Status>
+        <div className="mt-1 text-muted-foreground">{t("route.health.notCheckedNote")}</div>
+      </>
+    );
+  }
+  if (problem?.reason === "TARGETS_UNHEALTHY") {
+    return (
+      <>
+        <Status look="warn">{t("route.health.unhealthy")}</Status>
+        {problem.detail && <div className="mt-1 break-words text-muted-foreground">{t("route.health.lastFailure", { detail: problem.detail })}</div>}
+      </>
+    );
+  }
+  if (problem) {
+    return <span className="text-muted-foreground">{t("route.health.unknown")}</span>;
+  }
+  return <Status look="ok">{t("route.health.healthy")}</Status>;
 }

@@ -443,7 +443,9 @@ func (s *seeder) routes(c *clients, org, group, certID, bundleID, officeID strin
 		route   *rpmgrv1.Route
 		targets []target
 	}{
-		{&rpmgrv1.Route{Name: "wiki", Description: "The lab's wiki", Spec: http("wiki.example.com")},
+		// The wiki's health check finds its documentation address unreachable within seconds.
+		{&rpmgrv1.Route{Name: "wiki", Description: "The lab's wiki", Spec: http("wiki.example.com"), HealthCheck: &rpmgrv1.HealthCheck{
+			Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP, HttpPath: "/healthz", IntervalSeconds: 5, UnhealthyThreshold: 1}},
 			[]target{httpTarget("nas-01", "192.0.2.10", 8080), failover}},
 		{&rpmgrv1.Route{Name: "grafana", Description: "Dashboards", Spec: http("grafana.example.com"), PolicyIds: []string{officeID}},
 			[]target{httpTarget("db-host-1", "192.0.2.20", 3000)}},

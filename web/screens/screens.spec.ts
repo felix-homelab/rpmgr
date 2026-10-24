@@ -121,6 +121,11 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await page.getByRole("button", { name: "Close" }).click();
   await page.getByRole("link", { name: "wiki", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Route wiki (HTTP)", level: 1 })).toBeVisible();
+  // The health check's first round marks the unreachable target unhealthy.
+  await expect(async () => {
+    await page.reload();
+    await expect(page.getByText("unhealthy", { exact: true })).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 60_000 });
   await page.waitForTimeout(1200);
   await shot(page, "route-detail", true);
   const wiki = page.url().split("/routes/")[1]!;
