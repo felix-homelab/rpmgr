@@ -89,6 +89,29 @@ describe("Policies", () => {
     ]]);
   });
 
+  it("adds a per-client rate limit, a second's worth at once when no burst is given, and shows it", async () => {
+    const limited = { id: "pol_3", name: "slow", etag: "2", routeIds: [], rules: [{ rule: { case: "rateLimit" as const, value: { perSecond: 5, burst: 20 } } }] };
+    const calls = page([limited]);
+    const p = await policy("slow");
+    expect(p.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["rate limit: 5 a second per client, 20 at once"]);
+    fireEvent.click(p.getByRole("button", { name: "Edit…" }));
+    const form = within(await screen.findByRole("form", { name: "Edit access policy" }));
+    const rule = within(form.getByRole("group", { name: "Rule 1" }));
+    expect([(rule.getByLabelText(/^Requests or new connections a second/) as HTMLInputElement).value,
+      (rule.getByLabelText("At once (burst)") as HTMLInputElement).value]).toEqual(["5", "20"]);
+    fireEvent.click(form.getByRole("button", { name: "Add a rule" }));
+    const second = within(form.getByRole("group", { name: "Rule 2" }));
+    fireEvent.change(second.getByLabelText("Kind"), { target: { value: "rateLimit" } });
+    expect(second.getByText(/Over it, HTTP gets 429/)).toBeTruthy();
+    fireEvent.change(second.getByLabelText(/^Requests or new connections a second/), { target: { value: "50" } });
+    fireEvent.click(form.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.update).toHaveLength(1));
+    expect(calls.update[0]!.accessPolicy?.rules.map((r) => r.rule)).toEqual([
+      { case: "rateLimit", value: expect.objectContaining({ perSecond: 5, burst: 20 }) },
+      { case: "rateLimit", value: expect.objectContaining({ perSecond: 50, burst: 50 }) },
+    ]);
+  });
+
   it("keeps the users' passwords it does not change", async () => {
     const calls = page();
     fireEvent.click((await policy("office")).getByRole("button", { name: "Edit…" }));

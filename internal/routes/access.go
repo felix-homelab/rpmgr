@@ -20,7 +20,8 @@ import (
 // accessOf compiles who may use a route (docs/03-connections.md, "Access policies"): the IP rules
 // and, for an http route, the basic_auth rules of its access policies, in the order of the
 // policies and of each policy's rules, which the gateway does not depend on: a deny rule wins
-// (D85). A basic_auth rule on another route type, which the API does not create, denies everyone:
+// (D85); and the rate_limit rules, on every route type (D131). A basic_auth rule on another route
+// type, which the API does not create, denies everyone:
 // no client could pass it. Kinds of later phases are compiled with
 // them; until then the API does not create them.
 func accessOf(ctx context.Context, tx *ent.Tx, routeID string, http bool) (*agentv1.RouteAccess, error) {
@@ -31,7 +32,7 @@ func accessOf(ctx context.Context, tx *ent.Tx, routeID string, http bool) (*agen
 	access := &agentv1.RouteAccess{}
 	for _, rp := range rps {
 		rules, err := tx.PolicyRule.Query().Where(policyrule.PolicyID(rp.PolicyID),
-			policyrule.KindIn(policyrule.KindIPAllow, policyrule.KindIPDeny, policyrule.KindBasicAuth)).
+			policyrule.KindIn(policyrule.KindIPAllow, policyrule.KindIPDeny, policyrule.KindBasicAuth, policyrule.KindRateLimit)).
 			Order(ent.Asc(policyrule.FieldPosition)).All(ctx)
 		if err != nil {
 			return nil, err
@@ -46,7 +47,10 @@ func accessOf(ctx context.Context, tx *ent.Tx, routeID string, http bool) (*agen
 				sum := sha256.Sum256(r.Params)
 				access.BasicAuth = append(access.BasicAuth, &agentv1.BasicAuthRule{PolicyId: rp.PolicyID,
 					CredentialVersion: r.ID + "." + hex.EncodeToString(sum[:8]), Users: params.GetBasicAuth().GetUsers()})
-			case err == nil && r.Kind != policyrule.KindBasicAuth && params.GetIp() != nil:
+			case err == nil && r.Kind == policyrule.KindRateLimit && params.GetRateLimit() != nil:
+				access.RateLimits = append(access.RateLimits, &agentv1.RateLimitRule{PolicyId: rp.PolicyID,
+					PerSecond: params.GetRateLimit().GetPerSecond(), Burst: params.GetRateLimit().GetBurst()})
+			case err == nil && r.Kind != policyrule.KindBasicAuth && r.Kind != policyrule.KindRateLimit && params.GetIp() != nil:
 				access.IpRules = append(access.IpRules, &agentv1.IPRule{Allow: r.Kind == policyrule.KindIPAllow, Cidrs: params.GetIp().GetCidrs()})
 			default:
 				return nil, fmt.Errorf("routes: rule %s of policy %s: parameters do not parse", r.ID, rp.PolicyID)

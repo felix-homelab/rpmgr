@@ -17,8 +17,11 @@ Changes to the design documents are not recorded here: see the git history and t
   with `rpmgr create route` and `rpmgr update route` (`--max-connections`,
   `--requests-per-second`, `--bandwidth`) or the API. The gateways of the route's group share each
   limit; over it, HTTP gets 503 or 429 with `Retry-After`, TCP is reset and UDP dropped, and
-  bandwidth slows data down. A gateway of an earlier release does not get a route with limits.
-  (#622, #623, #624, #625)
+  bandwidth slows data down. Access policies gain a per-client rate limit, on every route type:
+  each client address, or IPv6 /64, may make so many requests, new connections or new flows a
+  second, with a burst (`--rule rate-limit:<per second>[,<burst>]`, the web UI's policy form, or
+  the API). A gateway of an earlier release does not get a route with limits or such a rule.
+  (#622, #623, #624, #625, #917)
 
 - Updates: **Check now** on Settings → Updates, `rpmgr check release` and
   `ReleaseService.CheckReleases` check for new releases at once instead of at the next daily

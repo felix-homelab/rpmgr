@@ -738,7 +738,7 @@
   },
   "policies": {
     "title": "Access policies",
-    "intro": "Who may reach a route: by address, or with a password on HTTP routes.",
+    "intro": "Who may reach a route and how often: by address, with a password on HTTP routes, and at a rate per client.",
     "add": "New access policy",
     "addTitle": "New access policy",
     "editTitle": "Edit access policy",
@@ -747,7 +747,8 @@
     "summary": {
       "allow": "allow {{cidrs}}",
       "deny": "deny {{cidrs}}",
-      "basicAuth": "basic auth: {{users}}"
+      "basicAuth": "basic auth: {{users}}",
+      "rateLimit": "rate limit: {{perSecond}} a second per client, {{burst}} at once"
     },
     "usedBy": "used by {{routes}}",
     "unused": "used by no route",
@@ -759,7 +760,8 @@
     "kinds": {
       "ipAllow": "Allow addresses",
       "ipDeny": "Deny addresses",
-      "basicAuth": "Basic auth (HTTP routes)"
+      "basicAuth": "Basic auth (HTTP routes)",
+      "rateLimit": "Rate limit per client"
     },
     "removeRule": "Remove the rule",
     "addRule": "Add a rule",
@@ -767,7 +769,10 @@
     "user": "User",
     "keep": "unchanged",
     "removeUser": "Remove the user",
-    "addUser": "Add a user"
+    "addUser": "Add a user",
+    "perSecond": "Requests or new connections a second",
+    "burst": "At once (burst)",
+    "rateLimitHelp": "Each client address, or IPv6 /64, on each gateway: HTTP requests, new connections or new UDP flows. Over it, HTTP gets 429, TCP is reset and UDP dropped. An empty burst is one second's worth."
   },
   "routePolicies": {
     "title": "Access policies",

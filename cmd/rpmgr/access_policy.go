@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,7 +56,7 @@ func (f *policyFlags) register(fs *flag.FlagSet, update bool) {
 	f.fs = fs
 	fs.StringVar(&f.name, "name", "", "the policy's name, unique in the org")
 	fs.StringVar(&f.description, "description", "", "a description for people")
-	fs.Var(&f.rules, "rule", "a rule: allow:<cidr>,…, deny:<cidr>,… or basic-auth:<user>,…; repeat for more; a deny wins over every allow")
+	fs.Var(&f.rules, "rule", "a rule: allow:<cidr>,…, deny:<cidr>,…, basic-auth:<user>,… or rate-limit:<per second>[,<burst>]; repeat for more; a deny wins over every allow")
 	fs.StringVar(&f.passwords, "passwords-file", "", "a file of user:password lines for the basic-auth users; the others are asked for")
 	fs.DurationVar(&f.wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
 	if update {
@@ -99,6 +100,27 @@ func warnOpenFile(env *cli.Env, what, path string) {
 	}
 }
 
+// rateLimitOf reads the requests a second and the burst of a rate-limit rule; the burst is a
+// second's worth when not given.
+func rateLimitOf(items []string) (*rpmgrv1.RateLimitRule, error) {
+	if len(items) > 2 {
+		return nil, fmt.Errorf("rate-limit takes the requests a second and a burst")
+	}
+	n := make([]uint32, len(items))
+	for i, it := range items {
+		v, err := strconv.ParseUint(it, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a whole number", it)
+		}
+		n[i] = uint32(v)
+	}
+	rl := &rpmgrv1.RateLimitRule{PerSecond: n[0], Burst: n[0]}
+	if len(n) == 2 {
+		rl.Burst = n[1]
+	}
+	return rl, nil
+}
+
 // rulesOf turns --rule values into rules, in order. A basic-auth user's password comes from
 // passwords, else from the prompt; with keep it may stay empty, which keeps the current one.
 func rulesOf(values []string, passwords map[string]string, keep bool) ([]*rpmgrv1.AccessRule, error) {
@@ -106,7 +128,7 @@ func rulesOf(values []string, passwords map[string]string, keep bool) ([]*rpmgrv
 	for _, v := range values {
 		kind, list, ok := strings.Cut(v, ":")
 		if !ok || list == "" {
-			return nil, cli.Usagef("--rule %q: allow:<cidr>,…, deny:<cidr>,… or basic-auth:<user>,…", v)
+			return nil, cli.Usagef("--rule %q: allow:<cidr>,…, deny:<cidr>,…, basic-auth:<user>,… or rate-limit:<per second>[,<burst>]", v)
 		}
 		items := strings.Split(list, ",")
 		switch kind {
@@ -133,8 +155,14 @@ func rulesOf(values []string, passwords map[string]string, keep bool) ([]*rpmgrv
 				ba.Users = append(ba.Users, &rpmgrv1.BasicAuthCredential{Name: user, Password: pw})
 			}
 			out = append(out, &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_BasicAuth{BasicAuth: ba}})
+		case "rate-limit":
+			rl, err := rateLimitOf(items)
+			if err != nil {
+				return nil, cli.Usagef("--rule %q: %v", v, err)
+			}
+			out = append(out, &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_RateLimit{RateLimit: rl}})
 		default:
-			return nil, cli.Usagef("--rule %q: the kind is allow, deny or basic-auth", v)
+			return nil, cli.Usagef("--rule %q: the kind is allow, deny, basic-auth or rate-limit", v)
 		}
 	}
 	return out, nil

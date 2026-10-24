@@ -11,7 +11,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routelimit"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 )
 
 // A route with limits reaches only gateways that enforce them (docs/03-connections.md, "Route
@@ -20,9 +22,17 @@ func init() {
 	Register(Gate{Capability: agentproto.CapRouteLimits, Kind: pki.KindGateway, Uses: usesLimits})
 }
 
-// usesLimits reports whether a route has limits; the API keeps a row only while one is set.
+// usesLimits reports whether a route has limits, of its own (the API keeps a row only while one is
+// set) or as a rate_limit rule of one of its policies.
 func usesLimits(ctx context.Context, c *ent.Client, routeID string) (bool, error) {
-	return c.RouteLimit.Query().Where(routelimit.RouteID(routeID)).Exist(ctx)
+	if ok, err := c.RouteLimit.Query().Where(routelimit.RouteID(routeID)).Exist(ctx); ok || err != nil {
+		return ok, err
+	}
+	policies, err := c.RoutePolicy.Query().Where(routepolicy.RouteID(routeID)).Select(routepolicy.FieldPolicyID).Strings(ctx)
+	if err != nil || len(policies) == 0 {
+		return false, err
+	}
+	return c.PolicyRule.Query().Where(policyrule.KindEQ(policyrule.KindRateLimit), policyrule.PolicyIDIn(policies...)).Exist(ctx)
 }
 
 // limitsOf compiles a route's limits for a gateway of its group: each limit divided by the group's

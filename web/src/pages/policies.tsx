@@ -25,13 +25,16 @@ import { largestPage, listAll } from "@/lib/list-all";
 import { useAgentNames, useRoutes } from "@/routes-data";
 import { useOrg } from "@/session";
 
-type Kind = "ipAllow" | "ipDeny" | "basicAuth";
+type Kind = "ipAllow" | "ipDeny" | "basicAuth" | "rateLimit";
 
-// A rule as the form edits it; a basic-auth user's empty password keeps the one the policy has.
+// A rule as the form edits it; a basic-auth user's empty password keeps the one the policy has. A
+// rate limit's numbers stay text until saved, so that the API's bounds speak for them.
 interface RuleDraft {
   kind: Kind;
   cidrs: string[];
   users: { name: string; password: string }[];
+  perSecond?: string;
+  burst?: string;
 }
 
 function draftOf(r: AccessRule): RuleDraft {
@@ -41,6 +44,8 @@ function draftOf(r: AccessRule): RuleDraft {
       return { kind: r.rule.case, cidrs: r.rule.value.cidrs, users: [] };
     case "basicAuth":
       return { kind: "basicAuth", cidrs: [], users: r.rule.value.users.map((u) => ({ name: u.name, password: "" })) };
+    case "rateLimit":
+      return { kind: "rateLimit", cidrs: [], users: [], perSecond: String(r.rule.value.perSecond), burst: String(r.rule.value.burst) };
     default:
       return { kind: "ipAllow", cidrs: [], users: [] };
   }
@@ -49,6 +54,12 @@ function draftOf(r: AccessRule): RuleDraft {
 function ruleOf(d: RuleDraft): AccessRule {
   if (d.kind === "basicAuth") {
     return create(AccessRuleSchema, { rule: { case: "basicAuth", value: { users: d.users.map((u) => ({ name: u.name.trim(), password: u.password })) } } });
+  }
+  if (d.kind === "rateLimit") {
+    // An empty burst is a second's worth of requests.
+    const perSecond = Number(d.perSecond?.trim() || 0);
+    const burst = d.burst?.trim() ? Number(d.burst.trim()) : perSecond;
+    return create(AccessRuleSchema, { rule: { case: "rateLimit", value: { perSecond, burst } } });
   }
   return create(AccessRuleSchema, { rule: { case: d.kind, value: { cidrs: trimmed(d.cidrs) } } });
 }
@@ -108,6 +119,7 @@ function summary(t: TFunction, r: AccessRule): string {
     case "ipAllow": return t("policies.summary.allow", { cidrs: r.rule.value.cidrs.join(", ") });
     case "ipDeny": return t("policies.summary.deny", { cidrs: r.rule.value.cidrs.join(", ") });
     case "basicAuth": return t("policies.summary.basicAuth", { users: r.rule.value.users.map((u) => u.name).join(", ") });
+    case "rateLimit": return t("policies.summary.rateLimit", { perSecond: r.rule.value.perSecond, burst: r.rule.value.burst });
     default: return "";
   }
 }
@@ -196,7 +208,7 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
             <div className="flex flex-wrap items-center gap-2">
               <span aria-hidden="true" className="grid size-6 place-items-center rounded-full bg-muted text-xs font-medium text-muted-foreground">{i + 1}</span>
               <Select aria-label={t("policies.kind")} className="w-56" value={r.kind} onChange={(e) => setRule(i, { kind: e.target.value as Kind })}>
-                {(["ipAllow", "ipDeny", "basicAuth"] as Kind[]).map((k) => <option key={k} value={k}>{t(`policies.kinds.${k}`)}</option>)}
+                {(["ipAllow", "ipDeny", "basicAuth", "rateLimit"] as Kind[]).map((k) => <option key={k} value={k}>{t(`policies.kinds.${k}`)}</option>)}
               </Select>
               <span className="ml-auto flex flex-wrap gap-1">
                 <Button size="sm" variant="ghost" onClick={() => setRules(rules.filter((_, j) => j !== i))}>{t("policies.removeRule")}</Button>
@@ -217,6 +229,14 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
                   </div>
                 ))}
                 <Button size="sm" variant="outline" className="justify-self-start" onClick={() => setRule(i, { users: [...r.users, { name: "", password: "" }] })}>{t("policies.addUser")}</Button>
+              </div>
+            ) : r.kind === "rateLimit" ? (
+              <div className="grid gap-2">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label={t("policies.perSecond")} required inputMode="numeric" value={r.perSecond ?? ""} onChange={(e) => setRule(i, { perSecond: e.target.value })} />
+                  <Field label={t("policies.burst")} inputMode="numeric" placeholder={r.perSecond?.trim() || ""} value={r.burst ?? ""} onChange={(e) => setRule(i, { burst: e.target.value })} />
+                </div>
+                <p className="text-xs text-muted-foreground">{t("policies.rateLimitHelp")}</p>
               </div>
             ) : (
               <LinesField label={t("policies.cidrs")} required value={r.cidrs} onChange={(cidrs) => setRule(i, { cidrs })} />

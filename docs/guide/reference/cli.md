@@ -944,7 +944,7 @@ rpmgr create access-policy [flags]
 | `--name string` |  | the policy's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--passwords-file string` |  | a file of user:password lines for the basic-auth users; the others are asked for |
-| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,… or basic-auth:\<user>,…; repeat for more; a deny wins over every allow |
+| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,…, basic-auth:\<user>,… or rate-limit:\<per second>[,\<burst>]; repeat for more; a deny wins over every allow |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr create invitation
@@ -1176,7 +1176,7 @@ rpmgr update access-policy [flags] <id or name>
 | `--name string` |  | the policy's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--passwords-file string` |  | a file of user:password lines for the basic-auth users; the others are asked for |
-| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,… or basic-auth:\<user>,…; repeat for more; a deny wins over every allow |
+| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,…, basic-auth:\<user>,… or rate-limit:\<per second>[,\<burst>]; repeat for more; a deny wins over every allow |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr update member

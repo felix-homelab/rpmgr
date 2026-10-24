@@ -86,7 +86,26 @@ message AccessRule {
     IPRuleParams ip_deny = 2;
     // On an http route, lets pass the users with their passwords.
     BasicAuthRule basic_auth = 3;
+    // On every route type, limits each client's requests, new connections or new flows (field 4
+    // is require_header's).
+    RateLimitRule rate_limit = 5;
   }
+}
+
+// RateLimitRule is a rate_limit rule (docs/03-connections.md, "Access policies"): each client, an
+// IPv4 address or an IPv6 /64, may make per_second requests, new connections or new flows a
+// second, burst of them at once, on each gateway.
+message RateLimitRule {
+  // Requests, new connections or new flows a second.
+  uint32 per_second = 1 [(buf.validate.field).uint32 = {
+    gte: 1
+    lte: 10000
+  }];
+  // How many may come at once.
+  uint32 burst = 2 [(buf.validate.field).uint32 = {
+    gte: 1
+    lte: 10000
+  }];
 }
 
 // BasicAuthRule is a basic_auth rule as the API takes and shows it.
@@ -213,6 +232,8 @@ message PolicyRuleParams {
     IPRuleParams ip = 1;
     // basic_auth: the users who may pass.
     BasicAuthParams basic_auth = 2;
+    // rate_limit: the rate and burst per client (field 3 is require_header's).
+    RateLimitRule rate_limit = 4;
   }
 }
 

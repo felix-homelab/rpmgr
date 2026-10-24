@@ -126,6 +126,7 @@ type AccessRule struct {
 	//	*AccessRule_IpAllow
 	//	*AccessRule_IpDeny
 	//	*AccessRule_BasicAuth
+	//	*AccessRule_RateLimit
 	Rule          isAccessRule_Rule `protobuf_oneof:"rule"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -195,6 +196,15 @@ func (x *AccessRule) GetBasicAuth() *BasicAuthRule {
 	return nil
 }
 
+func (x *AccessRule) GetRateLimit() *RateLimitRule {
+	if x != nil {
+		if x, ok := x.Rule.(*AccessRule_RateLimit); ok {
+			return x.RateLimit
+		}
+	}
+	return nil
+}
+
 type isAccessRule_Rule interface {
 	isAccessRule_Rule()
 }
@@ -214,11 +224,76 @@ type AccessRule_BasicAuth struct {
 	BasicAuth *BasicAuthRule `protobuf:"bytes,3,opt,name=basic_auth,json=basicAuth,proto3,oneof"`
 }
 
+type AccessRule_RateLimit struct {
+	// On every route type, limits each client's requests, new connections or new flows (field 4
+	// is require_header's).
+	RateLimit *RateLimitRule `protobuf:"bytes,5,opt,name=rate_limit,json=rateLimit,proto3,oneof"`
+}
+
 func (*AccessRule_IpAllow) isAccessRule_Rule() {}
 
 func (*AccessRule_IpDeny) isAccessRule_Rule() {}
 
 func (*AccessRule_BasicAuth) isAccessRule_Rule() {}
+
+func (*AccessRule_RateLimit) isAccessRule_Rule() {}
+
+// RateLimitRule is a rate_limit rule (docs/03-connections.md, "Access policies"): each client, an
+// IPv4 address or an IPv6 /64, may make per_second requests, new connections or new flows a
+// second, burst of them at once, on each gateway.
+type RateLimitRule struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Requests, new connections or new flows a second.
+	PerSecond uint32 `protobuf:"varint,1,opt,name=per_second,json=perSecond,proto3" json:"per_second,omitempty"`
+	// How many may come at once.
+	Burst         uint32 `protobuf:"varint,2,opt,name=burst,proto3" json:"burst,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RateLimitRule) Reset() {
+	*x = RateLimitRule{}
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RateLimitRule) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RateLimitRule) ProtoMessage() {}
+
+func (x *RateLimitRule) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RateLimitRule.ProtoReflect.Descriptor instead.
+func (*RateLimitRule) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *RateLimitRule) GetPerSecond() uint32 {
+	if x != nil {
+		return x.PerSecond
+	}
+	return 0
+}
+
+func (x *RateLimitRule) GetBurst() uint32 {
+	if x != nil {
+		return x.Burst
+	}
+	return 0
+}
 
 // BasicAuthRule is a basic_auth rule as the API takes and shows it.
 type BasicAuthRule struct {
@@ -231,7 +306,7 @@ type BasicAuthRule struct {
 
 func (x *BasicAuthRule) Reset() {
 	*x = BasicAuthRule{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[2]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -243,7 +318,7 @@ func (x *BasicAuthRule) String() string {
 func (*BasicAuthRule) ProtoMessage() {}
 
 func (x *BasicAuthRule) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[2]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -256,7 +331,7 @@ func (x *BasicAuthRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BasicAuthRule.ProtoReflect.Descriptor instead.
 func (*BasicAuthRule) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{2}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *BasicAuthRule) GetUsers() []*BasicAuthCredential {
@@ -280,7 +355,7 @@ type BasicAuthCredential struct {
 
 func (x *BasicAuthCredential) Reset() {
 	*x = BasicAuthCredential{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[3]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -292,7 +367,7 @@ func (x *BasicAuthCredential) String() string {
 func (*BasicAuthCredential) ProtoMessage() {}
 
 func (x *BasicAuthCredential) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[3]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -305,7 +380,7 @@ func (x *BasicAuthCredential) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BasicAuthCredential.ProtoReflect.Descriptor instead.
 func (*BasicAuthCredential) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{3}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *BasicAuthCredential) GetName() string {
@@ -337,7 +412,7 @@ type CreateAccessPolicyRequest struct {
 
 func (x *CreateAccessPolicyRequest) Reset() {
 	*x = CreateAccessPolicyRequest{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[4]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -349,7 +424,7 @@ func (x *CreateAccessPolicyRequest) String() string {
 func (*CreateAccessPolicyRequest) ProtoMessage() {}
 
 func (x *CreateAccessPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[4]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -362,7 +437,7 @@ func (x *CreateAccessPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAccessPolicyRequest.ProtoReflect.Descriptor instead.
 func (*CreateAccessPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{4}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CreateAccessPolicyRequest) GetOrgId() string {
@@ -402,7 +477,7 @@ type CreateAccessPolicyResponse struct {
 
 func (x *CreateAccessPolicyResponse) Reset() {
 	*x = CreateAccessPolicyResponse{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[5]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -414,7 +489,7 @@ func (x *CreateAccessPolicyResponse) String() string {
 func (*CreateAccessPolicyResponse) ProtoMessage() {}
 
 func (x *CreateAccessPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[5]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -427,7 +502,7 @@ func (x *CreateAccessPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAccessPolicyResponse.ProtoReflect.Descriptor instead.
 func (*CreateAccessPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{5}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *CreateAccessPolicyResponse) GetAccessPolicy() *AccessPolicy {
@@ -462,7 +537,7 @@ type GetAccessPolicyRequest struct {
 
 func (x *GetAccessPolicyRequest) Reset() {
 	*x = GetAccessPolicyRequest{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[6]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -474,7 +549,7 @@ func (x *GetAccessPolicyRequest) String() string {
 func (*GetAccessPolicyRequest) ProtoMessage() {}
 
 func (x *GetAccessPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[6]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -487,7 +562,7 @@ func (x *GetAccessPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAccessPolicyRequest.ProtoReflect.Descriptor instead.
 func (*GetAccessPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{6}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetAccessPolicyRequest) GetAccessPolicyId() string {
@@ -508,7 +583,7 @@ type GetAccessPolicyResponse struct {
 
 func (x *GetAccessPolicyResponse) Reset() {
 	*x = GetAccessPolicyResponse{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[7]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -520,7 +595,7 @@ func (x *GetAccessPolicyResponse) String() string {
 func (*GetAccessPolicyResponse) ProtoMessage() {}
 
 func (x *GetAccessPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[7]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -533,7 +608,7 @@ func (x *GetAccessPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAccessPolicyResponse.ProtoReflect.Descriptor instead.
 func (*GetAccessPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{7}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetAccessPolicyResponse) GetAccessPolicy() *AccessPolicy {
@@ -558,7 +633,7 @@ type ListAccessPoliciesRequest struct {
 
 func (x *ListAccessPoliciesRequest) Reset() {
 	*x = ListAccessPoliciesRequest{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -570,7 +645,7 @@ func (x *ListAccessPoliciesRequest) String() string {
 func (*ListAccessPoliciesRequest) ProtoMessage() {}
 
 func (x *ListAccessPoliciesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -583,7 +658,7 @@ func (x *ListAccessPoliciesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccessPoliciesRequest.ProtoReflect.Descriptor instead.
 func (*ListAccessPoliciesRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{8}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListAccessPoliciesRequest) GetOrgId() string {
@@ -620,7 +695,7 @@ type ListAccessPoliciesResponse struct {
 
 func (x *ListAccessPoliciesResponse) Reset() {
 	*x = ListAccessPoliciesResponse{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[9]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -632,7 +707,7 @@ func (x *ListAccessPoliciesResponse) String() string {
 func (*ListAccessPoliciesResponse) ProtoMessage() {}
 
 func (x *ListAccessPoliciesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[9]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -645,7 +720,7 @@ func (x *ListAccessPoliciesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAccessPoliciesResponse.ProtoReflect.Descriptor instead.
 func (*ListAccessPoliciesResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{9}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListAccessPoliciesResponse) GetAccessPolicies() []*AccessPolicy {
@@ -677,7 +752,7 @@ type UpdateAccessPolicyRequest struct {
 
 func (x *UpdateAccessPolicyRequest) Reset() {
 	*x = UpdateAccessPolicyRequest{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -689,7 +764,7 @@ func (x *UpdateAccessPolicyRequest) String() string {
 func (*UpdateAccessPolicyRequest) ProtoMessage() {}
 
 func (x *UpdateAccessPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -702,7 +777,7 @@ func (x *UpdateAccessPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAccessPolicyRequest.ProtoReflect.Descriptor instead.
 func (*UpdateAccessPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{10}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *UpdateAccessPolicyRequest) GetAccessPolicy() *AccessPolicy {
@@ -742,7 +817,7 @@ type UpdateAccessPolicyResponse struct {
 
 func (x *UpdateAccessPolicyResponse) Reset() {
 	*x = UpdateAccessPolicyResponse{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[11]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -754,7 +829,7 @@ func (x *UpdateAccessPolicyResponse) String() string {
 func (*UpdateAccessPolicyResponse) ProtoMessage() {}
 
 func (x *UpdateAccessPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[11]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -767,7 +842,7 @@ func (x *UpdateAccessPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAccessPolicyResponse.ProtoReflect.Descriptor instead.
 func (*UpdateAccessPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{11}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *UpdateAccessPolicyResponse) GetAccessPolicy() *AccessPolicy {
@@ -804,7 +879,7 @@ type DeleteAccessPolicyRequest struct {
 
 func (x *DeleteAccessPolicyRequest) Reset() {
 	*x = DeleteAccessPolicyRequest{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[12]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -816,7 +891,7 @@ func (x *DeleteAccessPolicyRequest) String() string {
 func (*DeleteAccessPolicyRequest) ProtoMessage() {}
 
 func (x *DeleteAccessPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[12]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -829,7 +904,7 @@ func (x *DeleteAccessPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAccessPolicyRequest.ProtoReflect.Descriptor instead.
 func (*DeleteAccessPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{12}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DeleteAccessPolicyRequest) GetAccessPolicyId() string {
@@ -860,7 +935,7 @@ type DeleteAccessPolicyResponse struct {
 
 func (x *DeleteAccessPolicyResponse) Reset() {
 	*x = DeleteAccessPolicyResponse{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[13]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -872,7 +947,7 @@ func (x *DeleteAccessPolicyResponse) String() string {
 func (*DeleteAccessPolicyResponse) ProtoMessage() {}
 
 func (x *DeleteAccessPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[13]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -885,7 +960,7 @@ func (x *DeleteAccessPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAccessPolicyResponse.ProtoReflect.Descriptor instead.
 func (*DeleteAccessPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{13}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DeleteAccessPolicyResponse) GetRevision() *Revision {
@@ -913,6 +988,7 @@ type PolicyRuleParams struct {
 	//
 	//	*PolicyRuleParams_Ip
 	//	*PolicyRuleParams_BasicAuth
+	//	*PolicyRuleParams_RateLimit
 	Params        isPolicyRuleParams_Params `protobuf_oneof:"params"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -920,7 +996,7 @@ type PolicyRuleParams struct {
 
 func (x *PolicyRuleParams) Reset() {
 	*x = PolicyRuleParams{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[14]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -932,7 +1008,7 @@ func (x *PolicyRuleParams) String() string {
 func (*PolicyRuleParams) ProtoMessage() {}
 
 func (x *PolicyRuleParams) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[14]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -945,7 +1021,7 @@ func (x *PolicyRuleParams) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyRuleParams.ProtoReflect.Descriptor instead.
 func (*PolicyRuleParams) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{14}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *PolicyRuleParams) GetParams() isPolicyRuleParams_Params {
@@ -973,6 +1049,15 @@ func (x *PolicyRuleParams) GetBasicAuth() *BasicAuthParams {
 	return nil
 }
 
+func (x *PolicyRuleParams) GetRateLimit() *RateLimitRule {
+	if x != nil {
+		if x, ok := x.Params.(*PolicyRuleParams_RateLimit); ok {
+			return x.RateLimit
+		}
+	}
+	return nil
+}
+
 type isPolicyRuleParams_Params interface {
 	isPolicyRuleParams_Params()
 }
@@ -987,9 +1072,16 @@ type PolicyRuleParams_BasicAuth struct {
 	BasicAuth *BasicAuthParams `protobuf:"bytes,2,opt,name=basic_auth,json=basicAuth,proto3,oneof"`
 }
 
+type PolicyRuleParams_RateLimit struct {
+	// rate_limit: the rate and burst per client (field 3 is require_header's).
+	RateLimit *RateLimitRule `protobuf:"bytes,4,opt,name=rate_limit,json=rateLimit,proto3,oneof"`
+}
+
 func (*PolicyRuleParams_Ip) isPolicyRuleParams_Params() {}
 
 func (*PolicyRuleParams_BasicAuth) isPolicyRuleParams_Params() {}
+
+func (*PolicyRuleParams_RateLimit) isPolicyRuleParams_Params() {}
 
 // BasicAuthParams are the users of a basic_auth rule (docs/04-security.md, "Secrets at rest and
 // in logs"): the controller keeps their argon2id hashes, never their passwords.
@@ -1003,7 +1095,7 @@ type BasicAuthParams struct {
 
 func (x *BasicAuthParams) Reset() {
 	*x = BasicAuthParams{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[15]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1015,7 +1107,7 @@ func (x *BasicAuthParams) String() string {
 func (*BasicAuthParams) ProtoMessage() {}
 
 func (x *BasicAuthParams) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[15]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1028,7 +1120,7 @@ func (x *BasicAuthParams) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BasicAuthParams.ProtoReflect.Descriptor instead.
 func (*BasicAuthParams) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{15}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *BasicAuthParams) GetUsers() []*BasicAuthUser {
@@ -1051,7 +1143,7 @@ type BasicAuthUser struct {
 
 func (x *BasicAuthUser) Reset() {
 	*x = BasicAuthUser{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[16]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1063,7 +1155,7 @@ func (x *BasicAuthUser) String() string {
 func (*BasicAuthUser) ProtoMessage() {}
 
 func (x *BasicAuthUser) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[16]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1076,7 +1168,7 @@ func (x *BasicAuthUser) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BasicAuthUser.ProtoReflect.Descriptor instead.
 func (*BasicAuthUser) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{16}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *BasicAuthUser) GetName() string {
@@ -1104,7 +1196,7 @@ type IPRuleParams struct {
 
 func (x *IPRuleParams) Reset() {
 	*x = IPRuleParams{}
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[17]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1116,7 +1208,7 @@ func (x *IPRuleParams) String() string {
 func (*IPRuleParams) ProtoMessage() {}
 
 func (x *IPRuleParams) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_policy_proto_msgTypes[17]
+	mi := &file_rpmgr_v1_policy_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1129,7 +1221,7 @@ func (x *IPRuleParams) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IPRuleParams.ProtoReflect.Descriptor instead.
 func (*IPRuleParams) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{17}
+	return file_rpmgr_v1_policy_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *IPRuleParams) GetCidrs() []string {
@@ -1150,14 +1242,22 @@ const file_rpmgr_v1_policy_proto_rawDesc = "" +
 	"\vdescription\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\xe8\aR\vdescription\x124\n" +
 	"\x05rules\x18\x04 \x03(\v2\x14.rpmgr.v1.AccessRuleB\b\xbaH\x05\x92\x01\x02\x102R\x05rules\x12\x1b\n" +
 	"\troute_ids\x18\x05 \x03(\tR\brouteIds\x12\x12\n" +
-	"\x04etag\x18\x06 \x01(\tR\x04etag\"\xbd\x01\n" +
+	"\x04etag\x18\x06 \x01(\tR\x04etag\"\xf7\x01\n" +
 	"\n" +
 	"AccessRule\x123\n" +
 	"\bip_allow\x18\x01 \x01(\v2\x16.rpmgr.v1.IPRuleParamsH\x00R\aipAllow\x121\n" +
 	"\aip_deny\x18\x02 \x01(\v2\x16.rpmgr.v1.IPRuleParamsH\x00R\x06ipDeny\x128\n" +
 	"\n" +
-	"basic_auth\x18\x03 \x01(\v2\x17.rpmgr.v1.BasicAuthRuleH\x00R\tbasicAuthB\r\n" +
-	"\x04rule\x12\x05\xbaH\x02\b\x01\"P\n" +
+	"basic_auth\x18\x03 \x01(\v2\x17.rpmgr.v1.BasicAuthRuleH\x00R\tbasicAuth\x128\n" +
+	"\n" +
+	"rate_limit\x18\x05 \x01(\v2\x17.rpmgr.v1.RateLimitRuleH\x00R\trateLimitB\r\n" +
+	"\x04rule\x12\x05\xbaH\x02\b\x01\"\\\n" +
+	"\rRateLimitRule\x12)\n" +
+	"\n" +
+	"per_second\x18\x01 \x01(\rB\n" +
+	"\xbaH\a*\x05\x18\x90N(\x01R\tperSecond\x12 \n" +
+	"\x05burst\x18\x02 \x01(\rB\n" +
+	"\xbaH\a*\x05\x18\x90N(\x01R\x05burst\"P\n" +
 	"\rBasicAuthRule\x12?\n" +
 	"\x05users\x18\x01 \x03(\v2\x1d.rpmgr.v1.BasicAuthCredentialB\n" +
 	"\xbaH\a\x92\x01\x04\b\x01\x10dR\x05users\"c\n" +
@@ -1199,11 +1299,13 @@ const file_rpmgr_v1_policy_proto_rawDesc = "" +
 	"\x04etag\x18\x02 \x01(\tR\x04etag\"\x86\x01\n" +
 	"\x1aDeleteAccessPolicyResponse\x12.\n" +
 	"\brevision\x18\x01 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
-	"\fapply_status\x18\x02 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"\x82\x01\n" +
+	"\fapply_status\x18\x02 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"\xbc\x01\n" +
 	"\x10PolicyRuleParams\x12(\n" +
 	"\x02ip\x18\x01 \x01(\v2\x16.rpmgr.v1.IPRuleParamsH\x00R\x02ip\x12:\n" +
 	"\n" +
-	"basic_auth\x18\x02 \x01(\v2\x19.rpmgr.v1.BasicAuthParamsH\x00R\tbasicAuthB\b\n" +
+	"basic_auth\x18\x02 \x01(\v2\x19.rpmgr.v1.BasicAuthParamsH\x00R\tbasicAuth\x128\n" +
+	"\n" +
+	"rate_limit\x18\x04 \x01(\v2\x17.rpmgr.v1.RateLimitRuleH\x00R\trateLimitB\b\n" +
 	"\x06params\"L\n" +
 	"\x0fBasicAuthParams\x129\n" +
 	"\x05users\x18\x01 \x03(\v2\x17.rpmgr.v1.BasicAuthUserB\n" +
@@ -1237,67 +1339,70 @@ func file_rpmgr_v1_policy_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_policy_proto_rawDescData
 }
 
-var file_rpmgr_v1_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_rpmgr_v1_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_rpmgr_v1_policy_proto_goTypes = []any{
 	(*AccessPolicy)(nil),               // 0: rpmgr.v1.AccessPolicy
 	(*AccessRule)(nil),                 // 1: rpmgr.v1.AccessRule
-	(*BasicAuthRule)(nil),              // 2: rpmgr.v1.BasicAuthRule
-	(*BasicAuthCredential)(nil),        // 3: rpmgr.v1.BasicAuthCredential
-	(*CreateAccessPolicyRequest)(nil),  // 4: rpmgr.v1.CreateAccessPolicyRequest
-	(*CreateAccessPolicyResponse)(nil), // 5: rpmgr.v1.CreateAccessPolicyResponse
-	(*GetAccessPolicyRequest)(nil),     // 6: rpmgr.v1.GetAccessPolicyRequest
-	(*GetAccessPolicyResponse)(nil),    // 7: rpmgr.v1.GetAccessPolicyResponse
-	(*ListAccessPoliciesRequest)(nil),  // 8: rpmgr.v1.ListAccessPoliciesRequest
-	(*ListAccessPoliciesResponse)(nil), // 9: rpmgr.v1.ListAccessPoliciesResponse
-	(*UpdateAccessPolicyRequest)(nil),  // 10: rpmgr.v1.UpdateAccessPolicyRequest
-	(*UpdateAccessPolicyResponse)(nil), // 11: rpmgr.v1.UpdateAccessPolicyResponse
-	(*DeleteAccessPolicyRequest)(nil),  // 12: rpmgr.v1.DeleteAccessPolicyRequest
-	(*DeleteAccessPolicyResponse)(nil), // 13: rpmgr.v1.DeleteAccessPolicyResponse
-	(*PolicyRuleParams)(nil),           // 14: rpmgr.v1.PolicyRuleParams
-	(*BasicAuthParams)(nil),            // 15: rpmgr.v1.BasicAuthParams
-	(*BasicAuthUser)(nil),              // 16: rpmgr.v1.BasicAuthUser
-	(*IPRuleParams)(nil),               // 17: rpmgr.v1.IPRuleParams
-	(*Revision)(nil),                   // 18: rpmgr.v1.Revision
-	(*ApplyStatus)(nil),                // 19: rpmgr.v1.ApplyStatus
-	(*fieldmaskpb.FieldMask)(nil),      // 20: google.protobuf.FieldMask
+	(*RateLimitRule)(nil),              // 2: rpmgr.v1.RateLimitRule
+	(*BasicAuthRule)(nil),              // 3: rpmgr.v1.BasicAuthRule
+	(*BasicAuthCredential)(nil),        // 4: rpmgr.v1.BasicAuthCredential
+	(*CreateAccessPolicyRequest)(nil),  // 5: rpmgr.v1.CreateAccessPolicyRequest
+	(*CreateAccessPolicyResponse)(nil), // 6: rpmgr.v1.CreateAccessPolicyResponse
+	(*GetAccessPolicyRequest)(nil),     // 7: rpmgr.v1.GetAccessPolicyRequest
+	(*GetAccessPolicyResponse)(nil),    // 8: rpmgr.v1.GetAccessPolicyResponse
+	(*ListAccessPoliciesRequest)(nil),  // 9: rpmgr.v1.ListAccessPoliciesRequest
+	(*ListAccessPoliciesResponse)(nil), // 10: rpmgr.v1.ListAccessPoliciesResponse
+	(*UpdateAccessPolicyRequest)(nil),  // 11: rpmgr.v1.UpdateAccessPolicyRequest
+	(*UpdateAccessPolicyResponse)(nil), // 12: rpmgr.v1.UpdateAccessPolicyResponse
+	(*DeleteAccessPolicyRequest)(nil),  // 13: rpmgr.v1.DeleteAccessPolicyRequest
+	(*DeleteAccessPolicyResponse)(nil), // 14: rpmgr.v1.DeleteAccessPolicyResponse
+	(*PolicyRuleParams)(nil),           // 15: rpmgr.v1.PolicyRuleParams
+	(*BasicAuthParams)(nil),            // 16: rpmgr.v1.BasicAuthParams
+	(*BasicAuthUser)(nil),              // 17: rpmgr.v1.BasicAuthUser
+	(*IPRuleParams)(nil),               // 18: rpmgr.v1.IPRuleParams
+	(*Revision)(nil),                   // 19: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),                // 20: rpmgr.v1.ApplyStatus
+	(*fieldmaskpb.FieldMask)(nil),      // 21: google.protobuf.FieldMask
 }
 var file_rpmgr_v1_policy_proto_depIdxs = []int32{
 	1,  // 0: rpmgr.v1.AccessPolicy.rules:type_name -> rpmgr.v1.AccessRule
-	17, // 1: rpmgr.v1.AccessRule.ip_allow:type_name -> rpmgr.v1.IPRuleParams
-	17, // 2: rpmgr.v1.AccessRule.ip_deny:type_name -> rpmgr.v1.IPRuleParams
-	2,  // 3: rpmgr.v1.AccessRule.basic_auth:type_name -> rpmgr.v1.BasicAuthRule
-	3,  // 4: rpmgr.v1.BasicAuthRule.users:type_name -> rpmgr.v1.BasicAuthCredential
-	0,  // 5: rpmgr.v1.CreateAccessPolicyRequest.access_policy:type_name -> rpmgr.v1.AccessPolicy
-	0,  // 6: rpmgr.v1.CreateAccessPolicyResponse.access_policy:type_name -> rpmgr.v1.AccessPolicy
-	18, // 7: rpmgr.v1.CreateAccessPolicyResponse.revision:type_name -> rpmgr.v1.Revision
-	19, // 8: rpmgr.v1.CreateAccessPolicyResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	0,  // 9: rpmgr.v1.GetAccessPolicyResponse.access_policy:type_name -> rpmgr.v1.AccessPolicy
-	0,  // 10: rpmgr.v1.ListAccessPoliciesResponse.access_policies:type_name -> rpmgr.v1.AccessPolicy
-	0,  // 11: rpmgr.v1.UpdateAccessPolicyRequest.access_policy:type_name -> rpmgr.v1.AccessPolicy
-	20, // 12: rpmgr.v1.UpdateAccessPolicyRequest.update_mask:type_name -> google.protobuf.FieldMask
-	0,  // 13: rpmgr.v1.UpdateAccessPolicyResponse.access_policy:type_name -> rpmgr.v1.AccessPolicy
-	18, // 14: rpmgr.v1.UpdateAccessPolicyResponse.revision:type_name -> rpmgr.v1.Revision
-	19, // 15: rpmgr.v1.UpdateAccessPolicyResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	18, // 16: rpmgr.v1.DeleteAccessPolicyResponse.revision:type_name -> rpmgr.v1.Revision
-	19, // 17: rpmgr.v1.DeleteAccessPolicyResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	17, // 18: rpmgr.v1.PolicyRuleParams.ip:type_name -> rpmgr.v1.IPRuleParams
-	15, // 19: rpmgr.v1.PolicyRuleParams.basic_auth:type_name -> rpmgr.v1.BasicAuthParams
-	16, // 20: rpmgr.v1.BasicAuthParams.users:type_name -> rpmgr.v1.BasicAuthUser
-	4,  // 21: rpmgr.v1.PolicyService.CreateAccessPolicy:input_type -> rpmgr.v1.CreateAccessPolicyRequest
-	6,  // 22: rpmgr.v1.PolicyService.GetAccessPolicy:input_type -> rpmgr.v1.GetAccessPolicyRequest
-	8,  // 23: rpmgr.v1.PolicyService.ListAccessPolicies:input_type -> rpmgr.v1.ListAccessPoliciesRequest
-	10, // 24: rpmgr.v1.PolicyService.UpdateAccessPolicy:input_type -> rpmgr.v1.UpdateAccessPolicyRequest
-	12, // 25: rpmgr.v1.PolicyService.DeleteAccessPolicy:input_type -> rpmgr.v1.DeleteAccessPolicyRequest
-	5,  // 26: rpmgr.v1.PolicyService.CreateAccessPolicy:output_type -> rpmgr.v1.CreateAccessPolicyResponse
-	7,  // 27: rpmgr.v1.PolicyService.GetAccessPolicy:output_type -> rpmgr.v1.GetAccessPolicyResponse
-	9,  // 28: rpmgr.v1.PolicyService.ListAccessPolicies:output_type -> rpmgr.v1.ListAccessPoliciesResponse
-	11, // 29: rpmgr.v1.PolicyService.UpdateAccessPolicy:output_type -> rpmgr.v1.UpdateAccessPolicyResponse
-	13, // 30: rpmgr.v1.PolicyService.DeleteAccessPolicy:output_type -> rpmgr.v1.DeleteAccessPolicyResponse
-	26, // [26:31] is the sub-list for method output_type
-	21, // [21:26] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	18, // 1: rpmgr.v1.AccessRule.ip_allow:type_name -> rpmgr.v1.IPRuleParams
+	18, // 2: rpmgr.v1.AccessRule.ip_deny:type_name -> rpmgr.v1.IPRuleParams
+	3,  // 3: rpmgr.v1.AccessRule.basic_auth:type_name -> rpmgr.v1.BasicAuthRule
+	2,  // 4: rpmgr.v1.AccessRule.rate_limit:type_name -> rpmgr.v1.RateLimitRule
+	4,  // 5: rpmgr.v1.BasicAuthRule.users:type_name -> rpmgr.v1.BasicAuthCredential
+	0,  // 6: rpmgr.v1.CreateAccessPolicyRequest.access_policy:type_name -> rpmgr.v1.AccessPolicy
+	0,  // 7: rpmgr.v1.CreateAccessPolicyResponse.access_policy:type_name -> rpmgr.v1.AccessPolicy
+	19, // 8: rpmgr.v1.CreateAccessPolicyResponse.revision:type_name -> rpmgr.v1.Revision
+	20, // 9: rpmgr.v1.CreateAccessPolicyResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	0,  // 10: rpmgr.v1.GetAccessPolicyResponse.access_policy:type_name -> rpmgr.v1.AccessPolicy
+	0,  // 11: rpmgr.v1.ListAccessPoliciesResponse.access_policies:type_name -> rpmgr.v1.AccessPolicy
+	0,  // 12: rpmgr.v1.UpdateAccessPolicyRequest.access_policy:type_name -> rpmgr.v1.AccessPolicy
+	21, // 13: rpmgr.v1.UpdateAccessPolicyRequest.update_mask:type_name -> google.protobuf.FieldMask
+	0,  // 14: rpmgr.v1.UpdateAccessPolicyResponse.access_policy:type_name -> rpmgr.v1.AccessPolicy
+	19, // 15: rpmgr.v1.UpdateAccessPolicyResponse.revision:type_name -> rpmgr.v1.Revision
+	20, // 16: rpmgr.v1.UpdateAccessPolicyResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	19, // 17: rpmgr.v1.DeleteAccessPolicyResponse.revision:type_name -> rpmgr.v1.Revision
+	20, // 18: rpmgr.v1.DeleteAccessPolicyResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	18, // 19: rpmgr.v1.PolicyRuleParams.ip:type_name -> rpmgr.v1.IPRuleParams
+	16, // 20: rpmgr.v1.PolicyRuleParams.basic_auth:type_name -> rpmgr.v1.BasicAuthParams
+	2,  // 21: rpmgr.v1.PolicyRuleParams.rate_limit:type_name -> rpmgr.v1.RateLimitRule
+	17, // 22: rpmgr.v1.BasicAuthParams.users:type_name -> rpmgr.v1.BasicAuthUser
+	5,  // 23: rpmgr.v1.PolicyService.CreateAccessPolicy:input_type -> rpmgr.v1.CreateAccessPolicyRequest
+	7,  // 24: rpmgr.v1.PolicyService.GetAccessPolicy:input_type -> rpmgr.v1.GetAccessPolicyRequest
+	9,  // 25: rpmgr.v1.PolicyService.ListAccessPolicies:input_type -> rpmgr.v1.ListAccessPoliciesRequest
+	11, // 26: rpmgr.v1.PolicyService.UpdateAccessPolicy:input_type -> rpmgr.v1.UpdateAccessPolicyRequest
+	13, // 27: rpmgr.v1.PolicyService.DeleteAccessPolicy:input_type -> rpmgr.v1.DeleteAccessPolicyRequest
+	6,  // 28: rpmgr.v1.PolicyService.CreateAccessPolicy:output_type -> rpmgr.v1.CreateAccessPolicyResponse
+	8,  // 29: rpmgr.v1.PolicyService.GetAccessPolicy:output_type -> rpmgr.v1.GetAccessPolicyResponse
+	10, // 30: rpmgr.v1.PolicyService.ListAccessPolicies:output_type -> rpmgr.v1.ListAccessPoliciesResponse
+	12, // 31: rpmgr.v1.PolicyService.UpdateAccessPolicy:output_type -> rpmgr.v1.UpdateAccessPolicyResponse
+	14, // 32: rpmgr.v1.PolicyService.DeleteAccessPolicy:output_type -> rpmgr.v1.DeleteAccessPolicyResponse
+	28, // [28:33] is the sub-list for method output_type
+	23, // [23:28] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_policy_proto_init() }
@@ -1312,10 +1417,12 @@ func file_rpmgr_v1_policy_proto_init() {
 		(*AccessRule_IpAllow)(nil),
 		(*AccessRule_IpDeny)(nil),
 		(*AccessRule_BasicAuth)(nil),
+		(*AccessRule_RateLimit)(nil),
 	}
-	file_rpmgr_v1_policy_proto_msgTypes[14].OneofWrappers = []any{
+	file_rpmgr_v1_policy_proto_msgTypes[15].OneofWrappers = []any{
 		(*PolicyRuleParams_Ip)(nil),
 		(*PolicyRuleParams_BasicAuth)(nil),
+		(*PolicyRuleParams_RateLimit)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1323,7 +1430,7 @@ func file_rpmgr_v1_policy_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_policy_proto_rawDesc), len(file_rpmgr_v1_policy_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   18,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

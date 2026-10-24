@@ -330,6 +330,10 @@ func storeRules(ctx context.Context, tx *ent.Tx, policy *ent.AccessPolicy, rules
 				ba.Users = append(ba.Users, &rpmgrv1.BasicAuthUser{Name: u.GetName(), PasswordHash: h})
 			}
 			params.Params = &rpmgrv1.PolicyRuleParams_BasicAuth{BasicAuth: ba}
+		case r.GetRateLimit() != nil:
+			// On every route type (D131): gateways count new connections and flows as requests.
+			kind = policyrule.KindRateLimit
+			params.Params = &rpmgrv1.PolicyRuleParams_RateLimit{RateLimit: r.GetRateLimit()}
 		default:
 			kind = policyrule.KindIPDeny
 			if r.GetIpAllow() != nil {
@@ -376,6 +380,8 @@ func policyOf(ctx context.Context, c *ent.Client, row *ent.AccessPolicy) (*rpmgr
 				ba.Users = append(ba.Users, &rpmgrv1.BasicAuthCredential{Name: u.GetName()})
 			}
 			out.Rules = append(out.Rules, &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_BasicAuth{BasicAuth: ba}})
+		case policyrule.KindRateLimit:
+			out.Rules = append(out.Rules, &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_RateLimit{RateLimit: params.GetRateLimit()}})
 		}
 	}
 	if out.RouteIds, err = c.RoutePolicy.Query().Where(routepolicy.PolicyID(row.ID)).Order(ent.Asc(routepolicy.FieldRouteID)).
