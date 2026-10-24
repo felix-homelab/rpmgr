@@ -186,7 +186,7 @@ func (p *Passthrough) handle(c net.Conn, id, sni string) {
 		}
 		p.mu.Unlock()
 	}()
-	carry(p.ctx, p.sessions, p.revision, p.logger, c, id, sni, 0)
+	carry(p.ctx, p.sessions, p.revision, p.logger, c, id, sni, 0, lim)
 }
 
 // Conns returns the number of open passthrough connections.

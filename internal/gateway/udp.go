@@ -300,6 +300,10 @@ func (u *UDPRoutes) read(p *udpPort) {
 			u.wg.Go(func() { u.run(p, f, r) })
 		}
 		p.mu.Unlock()
+		if !r.Limit.AllowDatagram(false, n) {
+			u.o.Metrics.Dropped.WithLabelValues(r.ID, "limit").Inc() // over the route's bandwidth
+			continue
+		}
 		f.touch()
 		select {
 		case f.queue <- payload:
@@ -407,6 +411,10 @@ func (u *UDPRoutes) run(p *udpPort, f *flow, r *UDPRoute) {
 		dg = nil
 	}
 	reply := func(b []byte) {
+		if !p.route.Load().Limit.AllowDatagram(true, len(b)) {
+			u.o.Metrics.Dropped.WithLabelValues(r.ID, "limit").Inc()
+			return
+		}
 		f.touch()
 		markActive(st) // a reply datagram passes the stream by
 		_, _ = p.conn.WriteToUDPAddrPort(b, f.client)

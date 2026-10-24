@@ -739,7 +739,10 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 	rt.tr = &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			c, err := h.dial(ctx, r.ID)
-			return rt.pool(c, c, err)
+			if err != nil {
+				return nil, err
+			}
+			return rt.pool(rt.route.Load().Limit.Conn(c), c, nil)
 		},
 		ResponseHeaderTimeout: httpUpstreamHeader,
 		MaxIdleConnsPerHost:   64,
@@ -953,7 +956,7 @@ func (h *HTTPRoutes) dialTLS(ctx context.Context, rt *routeTransport) (net.Conn,
 		_ = c.Close()
 		return nil, nil, fmt.Errorf("route %s: %w", route, err)
 	}
-	tc := tls.Client(tracked, u.cfg)
+	tc := tls.Client(rt.route.Load().Limit.Conn(tracked), u.cfg)
 	if err := tc.HandshakeContext(ctx); err != nil {
 		_ = tc.Close()
 		return nil, nil, fmt.Errorf("route %s: TLS to target %s: %w", route, target, err)
