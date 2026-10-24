@@ -3,6 +3,8 @@
 package gateway
 
 import (
+	"maps"
+	"slices"
 	"testing"
 	"time"
 )
@@ -71,4 +73,13 @@ func LimitOf(a *Applier, id string) *RouteLimit {
 	a.limits.mu.Lock()
 	defer a.limits.mu.Unlock()
 	return a.limits.routes[id]
+}
+
+// AssignedRoutes returns the IDs the applier's assignment holds routes for, sorted.
+func AssignedRoutes(a Assignment) []string {
+	s := a.(*assignment).cur.Load()
+	if s == nil {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(s.routes))
 }

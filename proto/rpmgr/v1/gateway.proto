@@ -154,6 +154,40 @@ service GatewayService {
       resource_field: "port_quota_id"
     };
   }
+  // SetGatewayPage replaces one of a gateway group's pages with the group's own HTML (D132): only
+  // the group's owner org, for a shared group the Instance Admin.
+  rpc SetGatewayPage(SetGatewayPageRequest) returns (SetGatewayPageResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "gateway_page.gateway_group_id"
+    };
+  }
+  // ListGatewayPages returns the pages a gateway group replaced, with their HTML.
+  rpc ListGatewayPages(ListGatewayPagesRequest) returns (ListGatewayPagesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "gateway_group_id"
+    };
+  }
+  // PreviewGatewayPage returns a link, valid for a few minutes, at which the controller shows a page
+  // of a gateway group exactly as its gateways send it, with sample values, under the page's
+  // Content-Security-Policy and a sandbox (D136): the group's own page of the kind, or the built-in
+  // one.
+  rpc PreviewGatewayPage(PreviewGatewayPageRequest) returns (PreviewGatewayPageResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "gateway_group_id"
+    };
+  }
+  // DeleteGatewayPage goes back to the built-in page of a kind.
+  rpc DeleteGatewayPage(DeleteGatewayPageRequest) returns (DeleteGatewayPageResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "gateway_group_id"
+    };
+  }
 }
 
 // Gateway is one gateway of a group.
@@ -425,6 +459,19 @@ enum PortProtocol {
   PORT_PROTOCOL_UDP = 2;
 }
 
+// GatewayPageKind is a page a gateway group may replace with its own (docs/03-connections.md,
+// "HTTP routes"; D132).
+enum GatewayPageKind {
+  // Not set.
+  GATEWAY_PAGE_KIND_UNSPECIFIED = 0;
+  // A name, or a path of it, that no route serves: 404.
+  GATEWAY_PAGE_KIND_NOT_FOUND = 1;
+  // The gateway's own 502, 503 or 504.
+  GATEWAY_PAGE_KIND_UNAVAILABLE = 2;
+  // The 503 of a route in maintenance.
+  GATEWAY_PAGE_KIND_MAINTENANCE = 3;
+}
+
 // PortPool is a range of public ports of a gateway group, from port_from to port_to inclusive.
 message PortPool {
   // The pool's ID, pp_…; output only.
@@ -623,4 +670,95 @@ message DeletePortQuotaResponse {
   // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
   // final or the wait is over (docs/07-api.md, "Writes and apply status").
   ApplyStatus apply_status = 2;
+}
+
+// GatewayPage is a page a gateway group replaced with its own (docs/03-connections.md, "HTTP
+// routes"): complete HTML without script, whose placeholders {{hostname}}, {{status}},
+// {{message}} and {{request_id}} gateways fill in as escaped text.
+message GatewayPage {
+  // The group.
+  string gateway_group_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The page it replaces.
+  GatewayPageKind kind = 2 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  // The HTML, UTF-8, at most 64 KiB.
+  string html = 3 [(buf.validate.field).string = {
+    min_len: 1
+    max_bytes: 65536
+  }];
+  // When it was last set; output only.
+  google.protobuf.Timestamp update_time = 4;
+  // Who set it last; output only.
+  string update_user_id = 5;
+}
+
+// SetGatewayPageRequest sets a page of a gateway group.
+message SetGatewayPageRequest {
+  // The page.
+  GatewayPage gateway_page = 1 [(buf.validate.field).required = true];
+}
+
+// SetGatewayPageResponse is the page as stored.
+message SetGatewayPageResponse {
+  // The page.
+  GatewayPage gateway_page = 1;
+  // The configuration revision of the change.
+  Revision revision = 2;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 3;
+}
+
+// ListGatewayPagesRequest names a gateway group.
+message ListGatewayPagesRequest {
+  // The group.
+  string gateway_group_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// ListGatewayPagesResponse is the group's own pages, by kind; a kind not listed is built in.
+message ListGatewayPagesResponse {
+  // The pages.
+  repeated GatewayPage gateway_pages = 1;
+}
+
+// DeleteGatewayPageRequest names a page of a gateway group.
+message DeleteGatewayPageRequest {
+  // The group.
+  string gateway_group_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The page.
+  GatewayPageKind kind = 2 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+}
+
+// DeleteGatewayPageResponse is the revision of the deletion.
+message DeleteGatewayPageResponse {
+  // The configuration revision of the change.
+  Revision revision = 1;
+  // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
+  // final or the wait is over (docs/07-api.md, "Writes and apply status").
+  ApplyStatus apply_status = 2;
+}
+
+// PreviewGatewayPageRequest names a page of a gateway group.
+message PreviewGatewayPageRequest {
+  // The group.
+  string gateway_group_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The page.
+  GatewayPageKind kind = 2 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+}
+
+// PreviewGatewayPageResponse is where the preview is.
+message PreviewGatewayPageResponse {
+  // The path of the preview on the controller, which a frame without scripts loads; it shows the
+  // page as it is now, and nothing once the page changed.
+  string url = 1;
+  // When the link stops working.
+  google.protobuf.Timestamp expire_time = 2;
 }

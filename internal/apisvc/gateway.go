@@ -21,6 +21,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
@@ -35,7 +36,9 @@ type Gateways struct {
 	API *api.Server
 	// Revocations revoke a decommissioned gateway's identity.
 	Revocations *Revocations
-	Now         func() time.Time
+	// Previews hands out the links of page previews; nil shows none.
+	Previews *PagePreviews
+	Now      func() time.Time
 }
 
 // groupFields are the fields of a gateway group a client may change.
@@ -162,8 +165,11 @@ func (g *Gateways) DeleteGatewayGroup(ctx context.Context, req *connect.Request[
 				return nil, errors.Join(err, errIf(n > 0, dependants(fmt.Sprintf("the group still has %d %s", n, c.what))))
 			}
 		}
-		// Decommissioned gateways and the group's quotas go with it.
+		// Decommissioned gateways and the group's quotas and pages go with it.
 		if _, err := tx.Gateway.Delete().Where(gateway.GatewayGroupID(id)).Exec(ctx); err != nil {
+			return nil, err
+		}
+		if _, err := tx.GatewayPage.Delete().Where(gatewaypage.GatewayGroupID(id)).Exec(ctx); err != nil {
 			return nil, err
 		}
 		if _, err := tx.PortQuota.Delete().Where(portquota.GatewayGroupID(id)).Exec(ctx); err != nil {

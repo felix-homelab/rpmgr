@@ -687,7 +687,18 @@ capabilities, so a gateway of an earlier release never serves a route without th
   served under a policy that forbids script and every load from elsewhere, and each placeholder
   is filled in as escaped HTML text, so neither a page's author nor a hostile hostname or
   maintenance message can run script in a visitor's browser
-  ([03](03-connections.md#http-routes)).
+  ([03](03-connections.md#http-routes)). The web UI previews a page through the controller
+  ([D136](14-open-decisions.md#engineering)): `PreviewGatewayPage`, which needs the same
+  permission, returns a link signed with a key derived from the KEK, which names the group, the
+  kind and the page's hash and ends after the time of
+  [03](03-connections.md#timeouts-keepalive-and-backoff). The link alone shows the page, rendered
+  by the gateways' code with sample values, under the page's own policy plus `sandbox`, so it has
+  an opaque origin and runs no script; only the web UI may frame it, and it is not cached or used
+  across origins. The controller serves the page only to a frame of its own origin, as a browser
+  states in `Sec-Fetch-Dest: iframe` and `Sec-Fetch-Site: same-origin`: opened on its own, framed
+  by another site, or requested without these headers, the link shows a 404 text under a policy
+  that allows nothing, so an org member's page never appears as a page of the controller's
+  hostname. A link of a page that changed since shows nothing.
 - **CONNECT listeners** belong to one org ([D130](14-open-decisions.md#engineering)). In the mode
   `plain_basic` the proxy password crosses the network in the clear: anyone on the path between
   client and gateway can read it and use it. rpmgr allows it for clients that speak no HTTPS

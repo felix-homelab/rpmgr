@@ -3,7 +3,9 @@
 package routes_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"maps"
 	"slices"
@@ -11,6 +13,8 @@ import (
 	"testing"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/pki"
@@ -18,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
@@ -274,4 +279,37 @@ func TestCompile_Gates(t *testing.T) {
 			routes.Register(g)
 		}()
 	}
+}
+
+// TestCompile_GatewayPages: a gateway that announces pages.custom gets its group's custom pages by
+// their hash; one without it, a gateway of another group and a connector get none (D132).
+func TestCompile_GatewayPages(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		sum := sha256.Sum256([]byte("<p>maintenance</p>"))
+		page := c.GatewayPage.Create().SetOrgID(f.orgA).SetGatewayGroupID(f.groupA).SetKind(gatewaypage.KindMaintenance).
+			SetHTML("<p>maintenance</p>").SetContentSha256(sum[:]).SaveX(f.sys)
+		pages := func(rs []*agentv1.Resource) []*agentv1.Resource {
+			return slices.DeleteFunc(rs, func(r *agentv1.Resource) bool { return r.GetGatewayPage() == nil })
+		}
+		got := pages(f.compileAs(t, pki.KindGateway, f.gateway, gateway.Capabilities...))
+		if len(got) != 1 || got[0].GetId() != page.ID || got[0].GetGatewayPage().GetKind() != rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE ||
+			!bytes.Equal(got[0].GetGatewayPage().GetContentSha256(), sum[:]) {
+			t.Fatalf("pages %v", got)
+		}
+		without := slices.DeleteFunc(slices.Clone(gateway.Capabilities), func(c string) bool { return c == agentproto.CapPagesCustom })
+		if got := pages(f.compileAs(t, pki.KindGateway, f.gateway, without...)); len(got) != 0 {
+			t.Errorf("a gateway without pages.custom got %v", got)
+		}
+		if got := pages(f.compileAs(t, pki.KindConnector, f.c1, gateway.Capabilities...)); len(got) != 0 {
+			t.Errorf("a connector got %v", got)
+		}
+		other := c.GatewayGroup.Create().SetOrgID(f.orgA).SetName("other").SaveX(f.sys)
+		gw := c.Gateway.Create().SetOrgID(f.orgA).SetGatewayGroupID(other.ID).SetName("gw-other").SetSlot(1).
+			SetTunnelEndpoints([]string{"gw-other.example.com:443"}).SaveX(f.sys)
+		if got := pages(f.compileAs(t, pki.KindGateway, gw.ID, gateway.Capabilities...)); len(got) != 0 {
+			t.Errorf("a gateway of another group got %v", got)
+		}
+	})
 }
