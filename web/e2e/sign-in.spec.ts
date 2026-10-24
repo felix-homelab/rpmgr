@@ -158,6 +158,15 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.goto("/routes/new");
   await expect(page.locator(".required-mark")).toHaveText(["Gateway group", "Name", "Hostnames", "HSTS max-age (seconds)", "Largest request body (bytes, 0 for no limit)"]);
   expect(await unmarked(page)).toEqual([]);
+  // Header matches and the route's own timeouts: a line not in its format is refused in the form,
+  // on its field, before anything is sent, and the form with its errors stays accessible.
+  await page.getByLabel("Serve only requests with these headers").fill("X-Env: beta\nX Env: a");
+  await page.getByLabel("Wait for the target's response headers (seconds)").fill("300");
+  await page.getByRole("button", { name: "Create the route" }).click();
+  await expect(page.getByText("Line 2: “X Env” is not a header name.", { exact: false })).toBeVisible();
+  await expect(page.getByLabel("Serve only requests with these headers")).toHaveAttribute("aria-invalid", "true");
+  await expectAccessible(page);
+  await page.goto("/routes/new");
   const top = async (label: string) => (await page.getByLabel(label, { exact: true }).boundingBox())!.y;
   expect(await top("Name")).toBe(await top("Gateway group"));
   await page.setViewportSize({ width: 390, height: desktop.height });

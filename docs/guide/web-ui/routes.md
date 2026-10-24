@@ -81,11 +81,16 @@ An **HTTP** route adds ([HTTP routes](../routes/http.md)):
 | **Largest request body (bytes, 0 for no limit)** | The largest request body the gateway lets through |
 | **Maintenance** | **Off: serve the route** or **On: show the maintenance page** ([D88](../../14-open-decisions.md#engineering)) |
 | **Maintenance message (plain text, at most 500 characters)** | The text the maintenance page shows |
+| **Serve only requests with these headers** | Header matches, one per line: `Name: value` for that exact value, or `Name` alone for any value. Where routes share a hostname and path prefix, the one with more matching headers wins ([Header matches](../routes/http.md#header-matches)). Empty matches every request |
+| **Wait for the target's response headers (seconds)**, **Keep an unused connection to the target (seconds)** | The route's own upstream timeouts; empty keeps the gateway's ([Timeouts](../routes/http.md#timeouts)) |
 
-Before it sends a route, the form checks each line of **Labels**, **Request headers to set** and
-**Response headers to set**. It names the first line without `=` or `:`, with a label key or header
-name the API refuses, or with a key or name an earlier line has, such as `Line 2: write a label as
-key=value.`; a header name is the same whatever its case.
+Before it sends a route, the form checks each line of **Labels**, **Request headers to set**,
+**Response headers to set** and **Serve only requests with these headers**. It names the first line
+without `=` or `:`, with a label key or header name the API refuses, with a header match whose
+colon has no value after it, or with a key or name an earlier line has, such as `Line 2: write a
+label as key=value.`; a header name is the same whatever its case. It also says when there are more
+header matches than a route may have, and refuses a timeout above the API's bound. What the server
+refuses, such as a match on `Host`, shows below the fields.
 
 A **TCP** route adds **Public port** and **Idle timeout (seconds)**; a **UDP** route **Public
 port** and **Flow idle timeout (seconds)**; a **TCP and UDP** route **Public port**, **TCP idle

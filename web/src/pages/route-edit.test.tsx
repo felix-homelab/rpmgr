@@ -30,7 +30,9 @@ const routes: Record<string, Route> = {
   http: create(RouteSchema, { ...common, spec: { case: "http", value: {
     hostnames: ["wiki.example.com", "w.example.com"], pathPrefix: "/docs", tlsMode: TLSMode.TLS_MODE_CERTIFICATE, certificateId: "crt_1",
     port80: Port80Mode.SERVE, hstsMaxAgeSeconds: 3600, hostHeader: "internal", requestHeadersSet: { "X-A": "1" },
-    responseHeadersSet: { "X-B": "a: b" }, websocket: false, maxBodyBytes: 1024n, maintenance: true, maintenanceMessage: "Back at 18:00.\nSorry." } } }),
+    responseHeadersSet: { "X-B": "a: b" }, websocket: false, maxBodyBytes: 1024n, maintenance: true, maintenanceMessage: "Back at 18:00.\nSorry.",
+    headerMatches: [{ name: "X-Env", match: { case: "exact", value: "beta" } }, { name: "X-Tenant", match: { case: "present", value: true } }],
+    upstreamResponseHeaderTimeoutSeconds: 300, upstreamIdleTimeoutSeconds: 30 } } }),
   tcp: create(RouteSchema, { ...common, spec: { case: "tcp", value: { port: 25432, idleTimeoutSeconds: 600 } } }),
   udp: create(RouteSchema, { ...common, spec: { case: "udp", value: { port: 53, flowIdleTimeoutSeconds: 30 } } }),
   tcpUdp: create(RouteSchema, { ...common, spec: { case: "tcpUdp", value: { port: 5353, idleTimeoutSeconds: 600, flowIdleTimeoutSeconds: 30 } } }),
@@ -123,6 +125,50 @@ describe("RouteEdit", () => {
     const spec = updates[0]!.route?.spec;
     expect(spec?.case === "tcpUdp" && [spec.value.port, spec.value.idleTimeoutSeconds, spec.value.flowIdleTimeoutSeconds]).toEqual([5354, 600, undefined]);
     expect(updates[0]!.updateMask?.paths).toEqual(expect.arrayContaining(["tcp_udp.port", "tcp_udp.flow_idle_timeout_seconds"]));
+  });
+
+  it("edits an http route's header matches and its own upstream timeouts", async () => {
+    const updates = edit(routes.http!);
+    const matches = await screen.findByLabelText("Serve only requests with these headers");
+    expect((matches as HTMLTextAreaElement).value).toBe("X-Env: beta\nX-Tenant");
+    expect((screen.getByLabelText("Wait for the target's response headers (seconds)") as HTMLInputElement).value).toBe("300");
+    fireEvent.change(matches, { target: { value: "x-canary: 1\n\n  X-Region  " } });
+    fireEvent.change(screen.getByLabelText("Wait for the target's response headers (seconds)"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Keep an unused connection to the target (seconds)"), { target: { value: "3600" } });
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    const spec = updates[0]!.route?.spec;
+    expect(spec?.case === "http" && [spec.value.headerMatches.map((m) => [m.name, m.match.case, m.match.value]),
+      spec.value.upstreamResponseHeaderTimeoutSeconds, spec.value.upstreamIdleTimeoutSeconds]).toEqual(
+      [[["x-canary", "exact", "1"], ["X-Region", "present", true]], 0, 3600]);
+    expect(updates[0]!.updateMask?.paths).toEqual(expect.arrayContaining(["http.header_matches",
+      "http.upstream_response_header_timeout_seconds", "http.upstream_idle_timeout_seconds"]));
+  });
+
+  it.each([
+    ["a match without a value", "Serve only requests with these headers", "X-Env:", "Line 1: give X-Env a value after the colon, or write the name alone to match any value."],
+    ["a match with a bad name", "Serve only requests with these headers", "X Env: a", "Line 1: “X Env” is not a header name. A name has letters, digits and the characters !#$%&'*+-.^_`|~ only."],
+    ["a header matched twice", "Serve only requests with these headers", "X-Env: a\nx-env", "Line 2: x-env is on line 1 already."],
+    ["nine matches", "Serve only requests with these headers", Array.from({ length: 9 }, (_, i) => `X-H${i}`).join("\n"), "A route matches at most 8 headers."],
+    ["a timeout that is no whole number", "Wait for the target's response headers (seconds)", "1.5", "Enter a whole number."],
+    ["a timeout above an hour", "Keep an unused connection to the target (seconds)", "3601", /less than or equal to 3600/],
+  ])("refuses %s before sending", async (_, label, value, message) => {
+    const updates = edit(routes.http!);
+    const field = await screen.findByLabelText(label);
+    fireEvent.change(field, { target: { value } });
+    save();
+    await waitFor(() => expect(field.getAttribute("aria-invalid")).toBe("true"));
+    expect(screen.getByText(message)).toBeTruthy();
+    expect(updates).toEqual([]);
+  });
+
+  it("shows what the server refuses in header matches", async () => {
+    edit(routes.http!, () => {
+      throw new ConnectError("headermatch: invalid header matches: header Host cannot be matched", Code.InvalidArgument);
+    });
+    fireEvent.change(await screen.findByLabelText("Serve only requests with these headers"), { target: { value: "Host: a.example.com" } });
+    save();
+    expect(await screen.findByText("headermatch: invalid header matches: header Host cannot be matched")).toBeTruthy();
   });
 
   it("checks the API's rules before sending", async () => {

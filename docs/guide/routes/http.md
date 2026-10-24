@@ -116,7 +116,7 @@ type and its gateway group never change.
 | Data-session transport | **Transport** | `--transport auto\|quic\|h2` | the connector's |
 | Hostnames, 1 to 100 | **Hostnames**, one per line | `--hostname`, repeated | required |
 | Path prefix | **Path prefix** | `--path-prefix` | every path |
-| Header matches | not in the web UI yet | `--match-header Name=value` or `--match-header Name`, repeated | none |
+| Header matches | **Serve only requests with these headers**, `Name: value` or `Name` per line | `--match-header Name=value` or `--match-header Name`, repeated | none |
 | Certificate source | **TLS certificate**: **From ACME** or **Uploaded** | `--tls-mode acme\|certificate` | ACME |
 | Uploaded certificate | **Uploaded certificate**, one that covers every hostname | `--certificate <id>` | none |
 | Port 80 | **Port 80**: **Redirect to HTTPS**, **Serve the route**, **Closed** | `--port80 redirect\|serve\|off` | redirect |
@@ -126,8 +126,8 @@ type and its gateway group never change.
 | Response headers to set | **Response headers to set**, `Name: value` per line | `--set-response-header Name=value`, repeated | none |
 | WebSocket upgrades | **WebSocket**: **Default**, **On**, **Off** | `--websocket=false` | on |
 | Largest request body | **Largest request body (bytes, 0 for no limit)** | `--max-body <bytes>` | 0, no limit |
-| Wait for the target's response headers | not in the web UI yet | `--upstream-header-timeout <duration>`, such as `5m` | the gateway's |
-| Keep an unused connection to the target | not in the web UI yet | `--upstream-idle-timeout <duration>` | the gateway's |
+| Wait for the target's response headers | **Wait for the target's response headers (seconds)** | `--upstream-header-timeout <duration>`, such as `5m` | the gateway's |
+| Keep an unused connection to the target | **Keep an unused connection to the target (seconds)** | `--upstream-idle-timeout <duration>` | the gateway's |
 | Maintenance | **Maintenance** | `--maintenance`, `--maintenance=false` | off |
 | Maintenance message | **Maintenance message** | `--maintenance-message` | empty |
 | Access policies | **Access policies** card on the route's page | `--policy`, repeated | none |
