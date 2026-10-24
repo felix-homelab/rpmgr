@@ -440,7 +440,9 @@ flowchart LR
 - **Pages** (Phase 2, [D132](14-open-decisions.md#engineering)) on a group's page, for the group's
   owner org: the not-found, unavailable and maintenance pages, each "built in" or "own" with a
   preview in a sandboxed frame without script, an upload of its HTML, the placeholders it may use,
-  and a reset to the built-in page after a confirmation.
+  and a reset to the built-in page after a confirmation. The preview frame inherits the web UI's
+  CSP, so it shows the page without its inline styles and with its placeholders unfilled; the
+  upload refuses a file above the size limit before it sends it.
 
 ### Domains and certificates
 
