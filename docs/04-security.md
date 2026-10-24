@@ -983,8 +983,11 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
      source's, such as a signed downgrade signed again so that hosts take it, is the one the mirror
      verifies and serves, with the source's artifacts; recording it clears the release's
      "mirrored" mark until the mirror holds it ([D125](14-open-decisions.md#engineering)).
-2. An Instance Admin creates a **staged rollout** of one release to the connectors and gateways
-   ([D121](14-open-decisions.md#engineering)):
+2. An Instance Admin creates a **rollout** of one release to the connectors and gateways, either
+   a **staged rollout** (the advanced mode, [D121](14-open-decisions.md#engineering)) as below, or
+   an [easy rollout](#easy-rollouts), a queue of agents updated one after another
+   ([D129](14-open-decisions.md#engineering)). Its target and the last item below hold for
+   both:
    - **Target:** the controller's own version, or an older release the Instance Admin uploaded on
      purpose (a signed downgrade). A target newer than the controller is refused, so no agent runs
      ahead of its controller, and so is one below the controller's `min_agent_version`
@@ -1003,11 +1006,13 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
      rollout waits until the Instance Admin resumes or cancels it. A target whose agent reports
      nothing for 30 minutes counts as stalled and pauses it too. Agents that are offline, or whose
      local policy says `notify` or `off`, are listed and skipped; they never block a stage.
-   - Only one rollout runs or is paused at a time. Creating, advancing, resuming and cancelling one
-     takes Instance Admin and a step-up, and is audited.
+   - Only one rollout, staged or easy, runs or is paused at a time. Creating, advancing, resuming
+     and cancelling one, and adding an agent to one, takes Instance Admin and a step-up, and is
+     audited.
 3. The controller **offers** the target to each agent of the current stage in its snapshot, but
    only to an agent that announced the capability `ota`
-   ([03](03-connections.md#versioning-and-capabilities)): gateways and connectors on Linux that
+   ([03](03-connections.md#versioning-and-capabilities)), and in an easy rollout only to the agent
+   whose turn it is: gateways and connectors on Linux that
    run on their own on a host with the root updater installed (its directory
    `/var/lib/rpmgr-update/` exists), never all-in-one's, whose roles share the controller's
    binary, nor one in the container image, which has no updater. The offer
@@ -1095,6 +1100,50 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    ([10](10-operations.md#hardened-systemd-units)). Afterwards the running version plays no role: a manifest with a higher `seq` may lower the
    floor, which makes **signed downgrades** possible. The automatic rollback to `.prev` is exempt,
    because floor and `seq` are only raised after success.
+
+#### Easy rollouts
+
+An easy rollout updates the agents an Instance Admin chose, **one after another**, without stages
+to approve ([D129](14-open-decisions.md#engineering)). It is meant for small installations, where
+a few connectors and gateways are updated at once and watched while they are.
+
+- **Mode.** The instance setting `rollout_mode` (`easy` or `advanced`) picks which kind of rollout
+  Settings → Updates starts ([09](09-web-ui.md#settings)). It is `easy` unless an Instance Admin
+  set it, so an installation upgraded from a release without the setting gets `easy` too. Each
+  rollout records its own mode, so a staged rollout that runs or is paused when the setting changes,
+  or when the controller is upgraded, finishes as a staged rollout. The API takes the mode with
+  each new rollout, whatever the setting says.
+- **Queue.** The rollout holds an ordered queue of agents, the connectors first and then the
+  gateways, each by name; the Instance Admin may reorder it before starting it. Its target follows
+  the same rules as a staged rollout's. Each agent added must be able to take the release: an
+  agent that is built in or decommissioned, or that has not announced `ota`, is refused with its
+  reason.
+- **One at a time.** The controller offers the release to the first agent of the queue that has
+  not had its turn, and to the next only once that one is `updated`, `rolled_back`, `refused` or
+  `stalled`. An agent that is offline at its turn, or that declines the offer because its local
+  policy says `notify` or `off`, is skipped with its reason at once; the local policy decides on
+  each host, as for every offer, and a rollout cannot override it. A gateway drains before its
+  update and is enabled again afterwards, and one an operator disabled is skipped, as in a staged
+  rollout; one agent at a time keeps the gateways of a group from updating together.
+- **A failure moves on.** A rollback, a refusal or a stall (the stall time of
+  [03](03-connections.md#timeouts-keepalive-and-backoff), the same as a staged rollout's) marks
+  the agent with its reason, and the queue continues with the next agent. A stalled agent that
+  reports the release later is marked `updated`. So that a broken release does not fail on every
+  agent in turn, the rollout **pauses** after the number of failures in a row that 03 names, until
+  the Instance Admin resumes it, which continues the queue, or cancels it.
+- **Update on an agent.** **Update** on a connector or a gateway adds it to the end of the queue of
+  the easy rollout that runs or is paused, when that rollout's target is the controller's own
+  version. When no rollout runs, it starts an easy rollout of the controller's own version with
+  that agent alone. It is refused with its reason while a staged rollout runs or is paused, or an
+  easy rollout of another release does; an agent already in the queue keeps its place. It works
+  whatever `rollout_mode` says. A signed downgrade is started from its release, never from an
+  agent.
+- **End.** Pausing, resuming and cancelling work as for a staged rollout. Cancelling stops the
+  offer to the agent whose turn it is; an install its updater has already begun finishes, and its
+  outcome is still recorded. Agents already updated stay on the release, because the version
+  floor rose with their update ([step 7](#over-the-air-updates)); taking them back needs a signed
+  downgrade. The rollout completes once every agent of the queue has had its turn, and reports how
+  many were updated, failed and skipped.
 
 ### Install scripts
 
