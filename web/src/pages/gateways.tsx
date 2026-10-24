@@ -26,6 +26,7 @@ import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
 import { useRolloutTargets } from "@/lib/updates";
 import { GatewayActions, GatewayForm, type Written } from "@/pages/gateway-actions";
+import { GatewayPages } from "@/pages/gateway-pages";
 import { PortPools } from "@/pages/port-pools";
 import { useAgentNames, useGateways, useGroups } from "@/routes-data";
 import { useOrg } from "@/session";
@@ -204,6 +205,7 @@ export function GatewayGroupPage() {
         )}
       </Card>
       <PortPools orgId={org.orgId} groupId={group.id} />
+      <GatewayPages groupId={group.id} onDone={(w) => void done(w)} />
       <Card title={t("gateways.settings")}>
         <GroupForm key={group.etag} orgId={org.orgId} group={group} />
       </Card>
