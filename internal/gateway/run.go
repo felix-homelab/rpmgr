@@ -227,7 +227,7 @@ func Run(ctx context.Context, o RunOptions) error {
 			switch c.RemoteAddr().Network() {
 			case "memory":
 				over = "memory"
-			case "websocket":
+			case "wss":
 				over = "WSS"
 			}
 			hctx, cancel := context.WithTimeout(run, tunnelHandshake)

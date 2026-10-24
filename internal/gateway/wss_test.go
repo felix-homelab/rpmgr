@@ -198,7 +198,8 @@ func TestWSS(t *testing.T) {
 }
 
 // TestWSS_MessageLimit: the gateway reads a WebSocket message of 64 KiB, and closes the
-// connection on a larger one.
+// connection on a larger one; the session's connection is on the network "wss", with the peer's
+// address.
 func TestWSS_MessageLimit(t *testing.T) {
 	w := newWorld(t)
 	ca := newPublicCA(t, "public root")
@@ -208,6 +209,10 @@ func TestWSS_MessageLimit(t *testing.T) {
 	r := &gateway.Router{TrustDomain: td, GatewayID: w.gw.ID, WSSHostname: name.Get,
 		WSS: func(c *tls.Conn) {
 			gateway.ServeWSS(c, w.tunnelTLS, func(inner *tls.Conn) {
+				if a := inner.RemoteAddr(); a.Network() != "wss" || !strings.HasPrefix(a.String(), "127.0.0.1:") {
+					read <- fmt.Errorf("remote address %s %s", a.Network(), a)
+					return
+				}
 				n, err := io.Copy(io.Discard, inner.NetConn())
 				if err == nil {
 					err = fmt.Errorf("%d bytes and the end", n)

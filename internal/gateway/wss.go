@@ -64,7 +64,7 @@ func ServeWSS(c *tls.Conn, inner *tls.Config, tunnel func(*tls.Conn)) {
 		// read limit, so the limit is set after it.
 		nc := websocket.NetConn(context.Background(), ws, websocket.MessageBinary)
 		ws.SetReadLimit(wssMessageLimit)
-		tunnel(tls.Server(nc, inner))
+		tunnel(tls.Server(wssConn{nc}, inner))
 	})
 	mux.HandleFunc("/", http.NotFound)
 	// Only the request's header has a deadline, which net/http clears once it is read, so that the
@@ -115,3 +115,13 @@ func (c *closeNotify) Close() error {
 	c.once.Do(func() { close(c.done) })
 	return err
 }
+
+// wssConn is a data session's connection inside a WebSocket: its remote address is the peer's,
+// on the network "wss".
+type wssConn struct{ net.Conn }
+
+func (c wssConn) RemoteAddr() net.Addr { return wssAddr{c.Conn.RemoteAddr()} }
+
+type wssAddr struct{ net.Addr }
+
+func (wssAddr) Network() string { return "wss" }
