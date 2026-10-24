@@ -3,7 +3,13 @@
 package apisvc_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"slices"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -15,7 +21,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
+	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
 // TestGatewayGroups: an Owner creates, reads, lists, changes and deletes gateway groups: a name is
@@ -386,5 +394,118 @@ func TestDecommissionGateway(t *testing.T) {
 	if _, err := ada.gw.DecommissionGateway(ctx, connect.NewRequest(&rpmgrv1.DecommissionGatewayRequest{GatewayId: "gw_missing"})); code(err) !=
 		connect.CodeNotFound {
 		t.Fatalf("a gateway that does not exist: %v", err)
+	}
+}
+
+// TestGatewayPages (D132): the group's owner org sets, lists, replaces and deletes the group's own
+// pages, each audited by the page's hash and size rather than its HTML; a page that is too large,
+// empty or of no kind is refused (a string that is not UTF-8 never reaches the service: protobuf
+// refuses it on the wire); another org and a Viewer change nothing; deleting the group takes its
+// pages along. Shared groups, whose pages are the Instance Admin's, come with P2-M11.
+func TestGatewayPages(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	set := func(b *browser, group string, kind rpmgrv1.GatewayPageKind, html string) (*rpmgrv1.GatewayPage, error) {
+		r, err := b.gw.SetGatewayPage(ctx, connect.NewRequest(&rpmgrv1.SetGatewayPageRequest{
+			GatewayPage: &rpmgrv1.GatewayPage{GatewayGroupId: group, Kind: kind, Html: html}}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetGatewayPage(), nil
+	}
+	list := func(b *browser) ([]*rpmgrv1.GatewayPage, error) {
+		r, err := b.gw.ListGatewayPages(ctx, connect.NewRequest(&rpmgrv1.ListGatewayPagesRequest{GatewayGroupId: group}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetGatewayPages(), nil
+	}
+	const notFound, maintenance = rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_NOT_FOUND, rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE
+	p, err := set(ada, group, maintenance, "<p>Back soon: {{message}}</p>")
+	if err != nil || p.GetKind() != maintenance || p.GetHtml() != "<p>Back soon: {{message}}</p>" || p.GetUpdateUserId() == "" || p.GetUpdateTime() == nil {
+		t.Fatalf("set: %v %v", p, err)
+	}
+	if _, err := set(ada, group, notFound, "<p>first</p>"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := set(ada, group, notFound, "<p>{{hostname}} is not here</p>"); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+	got, err := list(ada)
+	if err != nil || len(got) != 2 || got[0].GetKind() != maintenance && got[1].GetKind() != maintenance {
+		t.Fatalf("list: %v %v", got, err)
+	}
+	stored := e.db.Client().GatewayPage.Query().Where(gatewaypage.KindEQ(gatewaypage.KindNotFound)).OnlyX(e.sys)
+	if sum := sha256.Sum256([]byte("<p>{{hostname}} is not here</p>")); !bytes.Equal(stored.ContentSha256, sum[:]) || stored.OrgID != org {
+		t.Fatalf("stored %v", stored)
+	}
+
+	for name, tc := range map[string]struct {
+		kind rpmgrv1.GatewayPageKind
+		html string
+		code connect.Code
+	}{
+		"too large":       {notFound, strings.Repeat("a", 64<<10+1), connect.CodeInvalidArgument},
+		"empty":           {notFound, "", connect.CodeInvalidArgument},
+		"no kind":         {rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_UNSPECIFIED, "<p>x</p>", connect.CodeInvalidArgument},
+		"an unknown kind": {rpmgrv1.GatewayPageKind(9), "<p>x</p>", connect.CodeInvalidArgument},
+	} {
+		if _, err := set(ada, group, tc.kind, tc.html); code(err) != tc.code {
+			t.Errorf("%s: %v, want %v", name, err, tc.code)
+		}
+	}
+	if _, err := set(ada, group, notFound, strings.Repeat("a", 64<<10)); err != nil {
+		t.Errorf("a page of exactly 64 KiB: %v", err)
+	}
+
+	// Another org's owner neither sees nor changes the group's pages; a Viewer reads them only.
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	if _, err := set(bob, group, notFound, "<p>mine</p>"); code(err) != connect.CodeNotFound && code(err) != connect.CodePermissionDenied {
+		t.Errorf("another org sets: %v", err)
+	}
+	if _, err := list(bob); code(err) != connect.CodeNotFound && code(err) != connect.CodePermissionDenied {
+		t.Errorf("another org lists: %v", err)
+	}
+	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
+	if got, err := list(vwr); err != nil || len(got) != 2 {
+		t.Errorf("a Viewer lists: %v %v", got, err)
+	}
+	if _, err := set(vwr, group, notFound, "<p>x</p>"); code(err) != connect.CodePermissionDenied {
+		t.Errorf("a Viewer sets: %v", err)
+	}
+
+	del := func(kind rpmgrv1.GatewayPageKind) error {
+		_, err := ada.gw.DeleteGatewayPage(ctx, connect.NewRequest(&rpmgrv1.DeleteGatewayPageRequest{GatewayGroupId: group, Kind: kind}))
+		return err
+	}
+	if err := del(notFound); err != nil {
+		t.Fatal(err)
+	}
+	if err := del(notFound); code(err) != connect.CodeNotFound {
+		t.Errorf("a page deleted twice: %v", err)
+	}
+	if n := e.db.Client().AuditEntry.Query().Where(auditentry.ActionIn("rpmgr.v1.GatewayService.SetGatewayPage",
+		"rpmgr.v1.GatewayService.DeleteGatewayPage")).CountX(e.sys); n < 5 {
+		t.Errorf("%d audit entries of page changes", n)
+	}
+	const replaced = "<p>{{hostname}} is not here</p>"
+	sum := sha256.Sum256([]byte(replaced))
+	entries := e.db.Client().AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.GatewayService.SetGatewayPage")).AllX(e.sys)
+	if !slices.ContainsFunc(entries, func(a *ent.AuditEntry) bool {
+		return strings.Contains(a.Diff, hex.EncodeToString(sum[:])) && strings.Contains(a.Diff, fmt.Sprintf(`"html_bytes":%d`, len(replaced))) && strings.Contains(a.Diff, group)
+	}) {
+		t.Errorf("no audit entry names the page by its hash and size")
+	}
+	for _, a := range entries {
+		if strings.Contains(a.Diff, "is not here") || strings.Contains(a.Diff, "Back soon") {
+			t.Errorf("an audit entry holds the HTML: %s", a.Diff)
+		}
+	}
+	if _, err := ada.gw.DeleteGatewayGroup(ctx, connect.NewRequest(&rpmgrv1.DeleteGatewayGroupRequest{GatewayGroupId: group})); err != nil {
+		t.Fatalf("a group with a page: %v", err)
+	}
+	if n := e.db.Client().GatewayPage.Query().CountX(e.sys); n != 0 {
+		t.Errorf("%d pages left after their group", n)
 	}
 }
