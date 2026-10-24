@@ -3,7 +3,11 @@
 package apisvc_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"slices"
 	"strings"
 	"testing"
@@ -293,5 +297,161 @@ func TestRoutePolicies(t *testing.T) {
 	}
 	if _, err := ada.rt.DeleteRoute(ctx, connect.NewRequest(&rpmgrv1.DeleteRouteRequest{RouteId: tcpRt.GetId()})); err != nil {
 		t.Fatalf("a route with a policy: %v", err)
+	}
+}
+
+func requireHeader(name string, values ...string) *rpmgrv1.AccessRule {
+	return &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_RequireHeader{RequireHeader: &rpmgrv1.RequireHeaderRule{Name: name, Values: values}}}
+}
+
+// TestAccessPolicies_RequireHeader (docs/04-security.md, "Route edge rules"): a require_header
+// rule keeps only the SHA-256 of its values under the header's canonical name, never returns or
+// audits a value, and keeps its hashes in an update that gives no values; short, invisible,
+// repeated or too many values, headers that cannot be required and a header required twice are
+// refused; neither the rule on a policy a tcp route applies, nor that policy on a tcp route.
+func TestAccessPolicies_RequireHeader(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	c := e.db.Client()
+	const valueA, valueB, valueC = "origin-secret-a-0123456789abcdefghijkl", "origin-secret-b-0123456789abcdefghijkl",
+		"origin-secret-c-0123456789abcdefghijkl" //nolint:gosec // G101: test values
+	create := func(name string, rules ...*rpmgrv1.AccessRule) (*rpmgrv1.AccessPolicy, error) {
+		r, err := ada.pol.CreateAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.CreateAccessPolicyRequest{OrgId: org,
+			AccessPolicy: &rpmgrv1.AccessPolicy{Name: name, Rules: rules}}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetAccessPolicy(), nil
+	}
+	ap, err := create("cdn", requireHeader("x-origin-token", valueA, valueB))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []*rpmgrv1.AccessRule{requireHeader("X-Origin-Token")}
+	got, err := ada.pol.GetAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.GetAccessPolicyRequest{AccessPolicyId: ap.GetId()}))
+	if err != nil || !slices.EqualFunc(got.Msg.GetAccessPolicy().GetRules(), want, func(a, b *rpmgrv1.AccessRule) bool { return proto.Equal(a, b) }) {
+		t.Fatalf("read: %v %v, want the header without values", got, err)
+	}
+	stored := func() *rpmgrv1.RequireHeaderParams {
+		r := c.PolicyRule.Query().Where(policyrule.PolicyID(ap.GetId()), policyrule.KindEQ(policyrule.KindRequireHeader)).OnlyX(e.sys)
+		var params rpmgrv1.PolicyRuleParams
+		if err := proto.Unmarshal(r.Params, &params); err != nil {
+			t.Fatal(err)
+		}
+		return params.GetRequireHeader()
+	}
+	sums := func(values ...string) [][]byte {
+		var out [][]byte
+		for _, v := range values {
+			s := sha256.Sum256([]byte(v))
+			out = append(out, s[:])
+		}
+		return out
+	}
+	if s := stored(); s.GetName() != "X-Origin-Token" || !slices.EqualFunc(s.GetValueSha256(), sums(valueA, valueB), bytes.Equal) {
+		t.Fatalf("stored %v", s)
+	}
+
+	for name, rule := range map[string]*rpmgrv1.AccessRule{
+		"a 31-character value":        requireHeader("X-Origin", valueA[:31]),
+		"a value with a space":        requireHeader("X-Origin", "origin secret a 0123456789abcdefghijkl"),
+		"a value with a tab":          requireHeader("X-Origin", "origin\tsecret-a-0123456789abcdefghijkl"),
+		"a non-ASCII value":           requireHeader("X-Origin", "origin-secret-ä-0123456789abcdefghijkl"),
+		"a value twice":               requireHeader("X-Origin", valueA, valueA),
+		"five values":                 requireHeader("X-Origin", valueA, valueB, valueC, valueA+"d", valueA+"e"),
+		"no value":                    requireHeader("X-Origin"),
+		"a name with a space":         requireHeader("X Origin", valueA),
+		"Host":                        requireHeader("host", valueA),
+		"Authorization":               requireHeader("Authorization", valueA),
+		"Cookie":                      requireHeader("Cookie", valueA),
+		"an rpmgr header":             requireHeader("Rpmgr-User-Email", valueA),
+		"a forwarding header":         requireHeader("X-Forwarded-For", valueA),
+		"Traceparent":                 requireHeader("traceparent", valueA),
+		"Tracestate":                  requireHeader("Tracestate", valueA),
+		"Baggage":                     requireHeader("Baggage", valueA),
+		"a 129-character name":        requireHeader("X-"+strings.Repeat("a", 127), valueA),
+		"a 1025-character value":      requireHeader("X-Origin", valueA+strings.Repeat("x", 1025-len(valueA))),
+		"a value of one character":    requireHeader("X-Origin", strings.Repeat("a", 40)),
+		"a value of seven characters": requireHeader("X-Origin", strings.Repeat("abcdefg", 6)),
+		"a connection's header":       requireHeader("Transfer-Encoding", valueA),
+	} {
+		if _, err := create("x", rule); code(err) != connect.CodeInvalidArgument {
+			t.Errorf("%s: %v, want INVALID_ARGUMENT", name, err)
+		}
+	}
+	if _, err := create("x", requireHeader("X-Origin", valueA), requireHeader("x-origin", valueB)); code(err) != connect.CodeInvalidArgument {
+		t.Errorf("a header required twice: %v", err)
+	}
+
+	update := func(rules ...*rpmgrv1.AccessRule) error {
+		_, err := ada.pol.UpdateAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.UpdateAccessPolicyRequest{
+			AccessPolicy: &rpmgrv1.AccessPolicy{Id: ap.GetId(), Rules: rules}, UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"rules"}}}))
+		return err
+	}
+	// Without values, the rule keeps its hashes; with values, they replace them.
+	if err := update(ipAllow("10.0.0.0/8"), requireHeader("X-Origin-Token")); err != nil {
+		t.Fatal(err)
+	}
+	if s := stored(); !slices.EqualFunc(s.GetValueSha256(), sums(valueA, valueB), bytes.Equal) {
+		t.Fatalf("kept %v", s)
+	}
+	if err := update(requireHeader("X-Origin-Token", valueC)); err != nil {
+		t.Fatal(err)
+	}
+	if s := stored(); !slices.EqualFunc(s.GetValueSha256(), sums(valueC), bytes.Equal) {
+		t.Fatalf("rotated %v", s)
+	}
+	if err := update(requireHeader("X-Other")); code(err) != connect.CodeInvalidArgument {
+		t.Errorf("a new header without a value: %v", err)
+	}
+
+	// Only http routes: neither the rule on a policy a tcp route applies, nor the policy on one.
+	if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org,
+		PortPool: &rpmgrv1.PortPool{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20001}})); err != nil {
+		t.Fatal(err)
+	}
+	pg := tcpRoute("pg", group, 20000)
+	pg.PolicyIds = []string{ap.GetId()}
+	if _, err := createRoute(ada, org, pg, ""); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonRequireHeaderNotHTTP {
+		t.Errorf("the policy on a tcp route: %v", err)
+	}
+	ips, err := create("ips", ipAllow("10.0.0.0/8"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pg.PolicyIds = []string{ips.GetId()}
+	tcpRt, err := createRoute(ada, org, pg, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ada.rt.UpdateRoute(ctx, connect.NewRequest(&rpmgrv1.UpdateRouteRequest{
+		Route:      &rpmgrv1.Route{Id: tcpRt.GetId(), PolicyIds: []string{ips.GetId(), ap.GetId()}},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"policy_ids"}}})); code(err) != connect.CodeFailedPrecondition ||
+		reason(err) != apisvc.ReasonRequireHeaderNotHTTP {
+		t.Errorf("the policy added to a tcp route: %v", err)
+	}
+	if _, err := create("eight", requireHeader("X-Origin", strings.Repeat("abcdefgh", 5))); err != nil {
+		t.Errorf("a value of eight different characters: %v", err)
+	}
+	if _, err := ada.pol.UpdateAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.UpdateAccessPolicyRequest{
+		AccessPolicy: &rpmgrv1.AccessPolicy{Id: ips.GetId(), Rules: []*rpmgrv1.AccessRule{requireHeader("X-Origin", valueA)}},
+		UpdateMask:   &fieldmaskpb.FieldMask{Paths: []string{"rules"}}})); code(err) != connect.CodeFailedPrecondition ||
+		reason(err) != apisvc.ReasonRequireHeaderNotHTTP {
+		t.Errorf("the rule on a policy a tcp route applies: %v", err)
+	}
+
+	// No value and no hash reached the audit log, which records the header.
+	if n := c.AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.PolicyService.CreateAccessPolicy"), auditentry.DiffContains("X-Origin-Token")).
+		CountX(e.sys); n == 0 {
+		t.Error("no audit entry names the header")
+	}
+	for _, a := range c.AuditEntry.Query().AllX(e.sys) {
+		for _, v := range []string{valueA, valueB, valueC} {
+			s := sha256.Sum256([]byte(v))
+			if strings.Contains(a.Diff, v) || strings.Contains(a.Diff, string(s[:])) || strings.Contains(a.Diff, hex.EncodeToString(s[:])) ||
+				strings.Contains(a.Diff, base64.StdEncoding.EncodeToString(s[:])) {
+				t.Fatalf("audit entry %s holds a value or its hash", a.Action)
+			}
+		}
 	}
 }

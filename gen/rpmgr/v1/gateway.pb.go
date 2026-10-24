@@ -293,8 +293,11 @@ type GatewayStatus struct {
 	// The reason of the last Goodbye that refused it a session, e.g. "upgrade_required"; empty once
 	// a session is accepted.
 	LastGoodbyeReason string `protobuf:"bytes,7,opt,name=last_goodbye_reason,json=lastGoodbyeReason,proto3" json:"last_goodbye_reason,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Whether its last session announced over-the-air updates (the capability "ota"): it runs on its
+	// own on a Linux host with the root updater, so a rollout can update it (D129).
+	OverTheAir    bool `protobuf:"varint,8,opt,name=over_the_air,json=overTheAir,proto3" json:"over_the_air,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GatewayStatus) Reset() {
@@ -374,6 +377,13 @@ func (x *GatewayStatus) GetLastGoodbyeReason() string {
 		return x.LastGoodbyeReason
 	}
 	return ""
+}
+
+func (x *GatewayStatus) GetOverTheAir() bool {
+	if x != nil {
+		return x.OverTheAir
+	}
+	return false
 }
 
 // CreateGatewayRequest is a new gateway.
@@ -3321,7 +3331,7 @@ const file_rpmgr_v1_gateway_proto_rawDesc = "" +
 	"createTime\x12\x12\n" +
 	"\x04etag\x18\n" +
 	" \x01(\tR\x04etag\x12\x19\n" +
-	"\bbuilt_in\x18\v \x01(\bR\abuiltIn\"\xad\x02\n" +
+	"\bbuilt_in\x18\v \x01(\bR\abuiltIn\"\xcf\x02\n" +
 	"\rGatewayStatus\x12\x1a\n" +
 	"\benrolled\x18\x01 \x01(\bR\benrolled\x12\x1c\n" +
 	"\tconnected\x18\x02 \x01(\bR\tconnected\x12\x18\n" +
@@ -3330,7 +3340,9 @@ const file_rpmgr_v1_gateway_proto_rawDesc = "" +
 	"\vremote_addr\x18\x05 \x01(\tR\n" +
 	"remoteAddr\x125\n" +
 	"\x17below_min_agent_version\x18\x06 \x01(\bR\x14belowMinAgentVersion\x12.\n" +
-	"\x13last_goodbye_reason\x18\a \x01(\tR\x11lastGoodbyeReason\"\x94\x01\n" +
+	"\x13last_goodbye_reason\x18\a \x01(\tR\x11lastGoodbyeReason\x12 \n" +
+	"\fover_the_air\x18\b \x01(\bR\n" +
+	"overTheAir\"\x94\x01\n" +
 	"\x14CreateGatewayRequest\x12\x1e\n" +
 	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x123\n" +
 	"\agateway\x18\x02 \x01(\v2\x11.rpmgr.v1.GatewayB\x06\xbaH\x03\xc8\x01\x01R\agateway\x12'\n" +

@@ -234,6 +234,14 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 				bad(id, "basic auth: %v", err)
 			}
 		}
+		if rh := accessOf(res).GetRequireHeader(); len(rh) > 0 {
+			if res.GetGatewayHttpRoute() == nil {
+				bad(id, "require-header rules on a route that is not http")
+			}
+			if _, err := requireHeaderOf(rh); err != nil {
+				bad(id, "require-header rules: %v", err)
+			}
+		}
 		switch {
 		case res.GetGatewayTcpRoute() != nil:
 			port(id, "TCP", res.GetGatewayTcpRoute().GetPort())
@@ -426,7 +434,8 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 				HostHeader: r.GetHostHeader(), MaxBody: int64(min(r.GetMaxBodyBytes(), math.MaxInt64)), //nolint:gosec // G115: bounded above
 				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds()), Access: access, Maintenance: r.GetMaintenance(),
 				MaintenanceMessage: r.GetMaintenanceMessage()}
-			hr.BasicAuth, _ = basicAuthOf(r.GetAccess().GetBasicAuth()) // Validate refused any that does not parse
+			hr.BasicAuth, _ = basicAuthOf(r.GetAccess().GetBasicAuth())             // Validate refused any that does not parse
+			hr.RequireHeader, _ = requireHeaderOf(r.GetAccess().GetRequireHeader()) // and these too
 			for _, h := range r.GetRequestHeaders() {
 				hr.RequestHeaders = append(hr.RequestHeaders, HTTPHeader{Name: h.GetName(), Value: h.GetValue()})
 			}
