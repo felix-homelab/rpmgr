@@ -183,7 +183,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	defer udpRoutes.Close()
 	certificates := NewCertificates(CertificatesOptions{Dir: filepath.Join(cfg.StateDir, ResourcesDir), Fetch: ctl.Fetch,
 		OnChange: report.change, Now: o.Now, Logger: o.Logger})
-	pages := NewPages(PagesOptions{Fetch: ctl.Fetch, OnChange: report.change, Logger: o.Logger})
+	pages := NewPages(PagesOptions{Fetch: ctl.Fetch, OnChange: report.change, OnLogDropped: metrics.PageLogDropped, Now: o.Now,
+		Logger: o.Logger})
 	def, err := DefaultTLS()
 	if err != nil {
 		return err

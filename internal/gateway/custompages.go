@@ -20,7 +20,13 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/ratelimit"
 )
+
+// pageLogRate bounds the log lines of custom pages' request IDs, per second per gateway, with a
+// burst of as many (docs/03-connections.md, "Timeouts, keepalive and backoff"; D136): a flood of
+// requests for a missing name cannot flood the log.
+const pageLogRate = 20
 
 // maxCustomPage is the largest custom page (docs/03-connections.md, "Timeouts, keepalive and
 // backoff"); a fetched page above it is refused.
@@ -51,7 +57,10 @@ type PagesOptions struct {
 	// OnChange is told that a page became ready without a new snapshot: a retry fetched it. It
 	// must not block; it may be nil.
 	OnChange func()
-	Logger   *slog.Logger
+	// OnLogDropped counts a request ID's log line dropped over the bound; it may be nil.
+	OnLogDropped func()
+	Now          func() time.Time
+	Logger       *slog.Logger
 }
 
 // Pages holds the custom pages of the gateway's group (D132): the HTML of each kind its snapshot
@@ -60,6 +69,7 @@ type PagesOptions struct {
 type Pages struct {
 	o     PagesOptions
 	retry chan struct{}
+	logs  *ratelimit.Limiter // the bound of request-ID log lines
 
 	mu      sync.Mutex
 	want    []PageRef
@@ -79,7 +89,9 @@ func NewPages(o PagesOptions) *Pages {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
-	return &Pages{o: o, retry: make(chan struct{}, 1), byKind: map[string]string{}, loaded: map[string]string{},
+	logs := ratelimit.New(time.Second/pageLogRate, pageLogRate, o.Now)
+	logs.OnRefuse = o.OnLogDropped
+	return &Pages{o: o, retry: make(chan struct{}, 1), logs: logs, byKind: map[string]string{}, loaded: map[string]string{},
 		missing: map[string]missingPage{}}
 }
 

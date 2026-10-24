@@ -3,9 +3,11 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -147,5 +149,43 @@ func TestRenderCustom(t *testing.T) {
 	got := renderCustom("{{hostname}}|{{status}}|{{message}}|{{request_id}}|{{nope}}|{{ hostname }}", `a"b`, 404, "{{request_id}}<b>", "id1")
 	if want := "a&#34;b|404|{{request_id}}&lt;b&gt;|id1|{{nope}}|{{ hostname }}"; got != want {
 		t.Errorf("%q, want %q", got, want)
+	}
+}
+
+// TestPages_RequestIDLogBounded (D136): a page that shows {{request_id}} logs each ID while the
+// requests stay under the bound; a burst over it logs the bound's worth, drops and counts the rest,
+// and logging resumes as the bound refills. Every visitor still gets the page with an ID.
+func TestPages_RequestIDLogBounded(t *testing.T) {
+	var logs bytes.Buffer
+	var dropped atomic.Int32
+	now := time.Unix(1_700_000_000, 0)
+	page := "<p>{{request_id}}</p>"
+	sum := sha256.Sum256([]byte(page))
+	p := NewPages(PagesOptions{Fetch: func(context.Context, string, []byte) ([]byte, error) { return []byte(page), nil },
+		OnLogDropped: func() { dropped.Add(1) }, Now: func() time.Time { return now }, Logger: slog.New(slog.NewTextHandler(&logs, nil))})
+	p.Apply(context.Background(), []PageRef{{ID: "gwp_1", Kind: pageNotFound, ContentSHA256: sum[:]}})
+	lines := func() int { return strings.Count(logs.String(), "msg=\"custom page\"") }
+	serve := func(n int) {
+		for range n {
+			if w := customPageFor(p, "app.example.com", http.StatusNotFound, pageNotFound, ""); len(w.Body.String()) != len("<p></p>")+16 {
+				t.Fatalf("a page without its ID: %q", w.Body.String())
+			}
+		}
+	}
+	serve(pageLogRate)
+	if lines() != pageLogRate || dropped.Load() != 0 {
+		t.Fatalf("under the bound: %d lines, %d dropped", lines(), dropped.Load())
+	}
+	serve(15)
+	if lines() != pageLogRate || dropped.Load() != 15 {
+		t.Fatalf("over the bound: %d lines, %d dropped", lines(), dropped.Load())
+	}
+	now = now.Add(time.Second / 2) // refills half the bound
+	serve(pageLogRate)
+	if want := pageLogRate + pageLogRate/2; lines() != want || dropped.Load() != 15+pageLogRate/2 {
+		t.Fatalf("half a second later: %d lines, want %d; %d dropped", lines(), want, dropped.Load())
+	}
+	if !strings.Contains(logs.String(), "request_id=") {
+		t.Fatalf("a line without its ID: %s", logs.String())
 	}
 }

@@ -118,7 +118,9 @@ func (p *Pages) writePageMessage(w http.ResponseWriter, r *http.Request, status 
 		id := ""
 		if strings.Contains(custom, "{{request_id}}") {
 			id = newRequestID()
-			p.o.Logger.Info("custom page", "request_id", id, "host", host, "status", status, "page", kind)
+			if p.logs.Allow("") {
+				p.o.Logger.Info("custom page", "request_id", id, "host", host, "status", status, "page", kind)
+			}
 		}
 		b.WriteString(renderCustom(custom, host, status, message, id))
 		csp = customPageCSP

@@ -459,10 +459,11 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		case res.GetGatewayCertificate() != nil:
 			c := res.GetGatewayCertificate()
 			certs = append(certs, CertificateRoute{ID: res.GetId(), ContentSHA256: c.GetContentSha256(), Hostnames: c.GetHostnames()})
+			continue // serves no route of its own
 		case res.GetGatewayPage() != nil:
 			p := res.GetGatewayPage()
 			pages = append(pages, PageRef{ID: res.GetId(), Kind: pageKinds[p.GetKind()], ContentSHA256: p.GetContentSha256()})
-			continue // serves no route of its own
+			continue // neither
 		case res.GetGatewayDomainChallenge() != nil:
 			c := res.GetGatewayDomainChallenge()
 			tokens[res.GetId()] = DomainToken{FQDN: c.GetFqdn(), Value: c.GetValue()}
