@@ -228,7 +228,7 @@ func routeError(err error) error {
 
 // routeFields are the fields of a route of type t a client may change: never the type itself.
 func routeFields(t route.Type) []string {
-	fields := []string{"name", "enabled", "labels", "description", "transport", "policy_ids"}
+	fields := []string{"name", "enabled", "labels", "description", "transport", "policy_ids", "limits"}
 	switch t {
 	case route.TypeHTTP:
 		for _, f := range []string{"hostnames", "path_prefix", "tls_mode", "certificate_id", "port80", "hsts_max_age_seconds", "host_header",
@@ -311,6 +311,9 @@ func (r *Routes) createRouteTx(ctx context.Context, tx *ent.Tx, org string, in *
 			return nil, err
 		}
 	}
+	if err := setRouteLimits(ctx, tx, row, in.GetLimits()); err != nil {
+		return nil, err
+	}
 	return row, setRoutePolicies(ctx, tx, row, in.GetPolicyIds())
 }
 
@@ -371,6 +374,11 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 	row, err := u.Save(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if !proto.Equal(was.GetLimits(), next.GetLimits()) {
+		if err := setRouteLimits(ctx, tx, row, next.GetLimits()); err != nil {
+			return nil, err
+		}
 	}
 	if !slices.Equal(was.GetPolicyIds(), next.GetPolicyIds()) {
 		if err := setRoutePolicies(ctx, tx, row, next.GetPolicyIds()); err != nil {
@@ -538,6 +546,9 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 		return nil, err
 	}
 	out.Targets = targets
+	if out.Limits, err = routeLimitsOf(ctx, c, row.ID); err != nil {
+		return nil, err
+	}
 	if out.PolicyIds, err = c.RoutePolicy.Query().Where(routepolicy.RouteID(row.ID)).Order(ent.Asc(routepolicy.FieldPosition)).
 		Select(routepolicy.FieldPolicyID).Strings(ctx); err != nil {
 		return nil, err

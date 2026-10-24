@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -53,6 +54,8 @@ type routeFlags struct {
 	websocket, maintenance                         bool
 	maintenanceMessage                             string
 	maxBody                                        uint64
+	maxConnections, requestsPerSecond              uint
+	bandwidth                                      uint64
 	force                                          bool
 	wait                                           time.Duration
 	output                                         string
@@ -93,6 +96,9 @@ func (f *routeFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.UintVar(&f.port, "port", 0, "tcp, udp, tcp-udp: the public port; 0 on create picks a free one")
 	fs.DurationVar(&f.idleTimeout, "idle-timeout", 0, "tcp, tcp-udp: close a connection idle this long; udp: forget a flow idle this long")
 	fs.DurationVar(&f.flowIdleTimeout, "flow-idle-timeout", 0, "tcp-udp: forget a UDP flow idle this long")
+	fs.UintVar(&f.maxConnections, "max-connections", 0, "the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit")
+	fs.UintVar(&f.requestsPerSecond, "requests-per-second", 0, "the route's requests, new connections or new flows a second, shared by the group's gateways; 0 is no limit")
+	fs.Uint64Var(&f.bandwidth, "bandwidth", 0, "the route's bytes a second in each direction, shared by the group's gateways; 0 is no limit")
 	fs.DurationVar(&f.wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
 	outputFlag(fs, &f.output)
 }
@@ -153,6 +159,15 @@ func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Rout
 	do("disabled", "enabled", func() { r.Enabled = !f.disabled })
 	do("policy", "policy_ids", func() { r.PolicyIds = nil })
 	do("transport", "transport", func() { n, _ := enumOf("transport", f.transport); r.Transport = rpmgrv1.DataTransport(n) })
+	limits := func() *rpmgrv1.RouteLimits {
+		if r.Limits == nil {
+			r.Limits = &rpmgrv1.RouteLimits{}
+		}
+		return r.Limits
+	}
+	do("max-connections", "limits.max_connections", func() { limits().MaxConnections = uint32(min(f.maxConnections, math.MaxUint32)) })
+	do("requests-per-second", "limits.requests_per_second", func() { limits().RequestsPerSecond = uint32(min(f.requestsPerSecond, math.MaxUint32)) })
+	do("bandwidth", "limits.bandwidth_bytes_per_second", func() { limits().BandwidthBytesPerSecond = f.bandwidth })
 	idle := proto.Uint32(uint32(f.idleTimeout / time.Second)) //nolint:gosec // G115: protovalidate bounds it
 	port := uint32(f.port)                                    //nolint:gosec // G115: protovalidate bounds it
 	switch typ {

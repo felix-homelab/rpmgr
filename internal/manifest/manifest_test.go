@@ -45,6 +45,7 @@ var resolver = names{
 func stored() *rpmgrv1.Route {
 	return &rpmgrv1.Route{Id: "rt_1", Name: "nas-web", GatewayGroupId: "gwg_1", Enabled: true, Labels: map[string]string{"site": "home"},
 		Description: "the NAS", Transport: rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC, PolicyIds: []string{"ap_2", "ap_1"},
+		Limits: &rpmgrv1.RouteLimits{MaxConnections: 200, BandwidthBytesPerSecond: 10_000_000_000},
 		Spec: &rpmgrv1.Route_Http{Http: &rpmgrv1.HTTPRouteSpec{Hostnames: []string{"nas.example.com"}, TlsMode: rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE,
 			CertificateId: "crt_1", RequestHeadersSet: map[string]string{"X-Env": "prod"}, Maintenance: true,
 			MaintenanceMessage: "Back at 18:00.\nSorry."}},
@@ -85,7 +86,7 @@ func TestRoute(t *testing.T) {
 	text, back := roundTrip(t, stored())
 	for _, want := range []string{"kind: Route\nmetadata:\n  name: nas-web\n  labels:\n    site: home\nspec:\n", "  gatewayGroup: eu\n",
 		"  policies:\n    - auth\n    - office\n", "    - connector: nas\n", "        caBundle: internal\n", "    tlsMode: TLS_MODE_CERTIFICATE\n",
-		"    certificateId: crt_1\n", "        port: 5000\n", "    maintenance: true\n", "    maintenanceMessage: |-\n      Back at 18:00.\n      Sorry.\n"} {
+		"    certificateId: crt_1\n", "        port: 5000\n", "  limits:\n    bandwidthBytesPerSecond: \"10000000000\"\n    maxConnections: 200\n", "    maintenance: true\n", "    maintenanceMessage: |-\n      Back at 18:00.\n      Sorry.\n"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the manifest lacks %q:\n%s", want, text)
 		}

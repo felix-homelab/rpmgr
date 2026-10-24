@@ -960,7 +960,8 @@ the capability `route.limits`:
 - **Divided among gateways.** A route's limit applies to the gateway group: the compiler divides
   it by the number of the group's enabled gateways, rounded up and at least 1, and each gateway
   enforces its share. A gateway that is enabled but down keeps its share, so the route then gets
-  less than its limit until the gateway returns or is disabled. 0 means no limit.
+  less than its limit until the gateway returns or is disabled. 0 means no limit. A route allows
+  at most 1 000 000 connections, 1 000 000 requests a second and 100 GB (10¹¹ bytes) a second.
 - A slot of a connection or request is released when it ends, however it ends, panics and
   cancellations included. The per-client `rate_limit` rule of a policy comes on top
   ([Access policies](#access-policies)).

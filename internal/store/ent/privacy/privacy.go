@@ -1191,6 +1191,30 @@ func (f RouteHostnameMutationRuleFunc) EvalMutation(ctx context.Context, m ent.M
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RouteHostnameMutation", m)
 }
 
+// The RouteLimitQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type RouteLimitQueryRuleFunc func(context.Context, *ent.RouteLimitQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f RouteLimitQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteLimitQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.RouteLimitQuery", q)
+}
+
+// The RouteLimitMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type RouteLimitMutationRuleFunc func(context.Context, *ent.RouteLimitMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f RouteLimitMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.RouteLimitMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.RouteLimitMutation", m)
+}
+
 // The RoutePolicyQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type RoutePolicyQueryRuleFunc func(context.Context, *ent.RoutePolicyQuery) error
@@ -1580,6 +1604,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.RouteHostnameQuery:
 		return q.Filter(), nil
+	case *ent.RouteLimitQuery:
+		return q.Filter(), nil
 	case *ent.RoutePolicyQuery:
 		return q.Filter(), nil
 	case *ent.RouteTCPQuery:
@@ -1698,6 +1724,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.RouteHTTPMutation:
 		return m.Filter(), nil
 	case *ent.RouteHostnameMutation:
+		return m.Filter(), nil
+	case *ent.RouteLimitMutation:
 		return m.Filter(), nil
 	case *ent.RoutePolicyMutation:
 		return m.Filter(), nil

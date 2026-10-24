@@ -149,6 +149,9 @@ message Route {
     max_items: 20
     unique: true
   }];
+  // Its limits, for the route as a whole: each enabled gateway of its group enforces its share
+  // (docs/03-connections.md, "Route limits"). Not set is no limit.
+  RouteLimits limits = 22;
   // Its transport policy; the connector's if not set (docs/03-connections.md, "Transport
   // selection").
   DataTransport transport = 23 [(buf.validate.field).enum.defined_only = true];
@@ -366,6 +369,17 @@ enum ProxyProtocol {
   PROXY_PROTOCOL_V1 = 2;
   // Version 2, binary.
   PROXY_PROTOCOL_V2 = 3;
+}
+
+// RouteLimits are a route's limits, divided among the enabled gateways of its group, rounded up
+// and at least 1 each; 0 is no limit (docs/03-connections.md, "Route limits").
+message RouteLimits {
+  // Open connections, UDP flows, or HTTP requests in flight, upgraded ones included.
+  uint32 max_connections = 1 [(buf.validate.field).uint32.lte = 1000000];
+  // HTTP requests, new connections or new flows per second.
+  uint32 requests_per_second = 2 [(buf.validate.field).uint32.lte = 1000000];
+  // Bytes per second in each direction.
+  uint64 bandwidth_bytes_per_second = 3 [(buf.validate.field).uint64.lte = 100000000000];
 }
 
 // RouteTarget is where a route's streams go: a connector of the org and an address it dials.

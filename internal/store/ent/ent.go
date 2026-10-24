@@ -57,6 +57,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routelimit"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -173,6 +174,7 @@ func checkColumn(t, c string) error {
 			route.Table:              route.ValidColumn,
 			routehttp.Table:          routehttp.ValidColumn,
 			routehostname.Table:      routehostname.ValidColumn,
+			routelimit.Table:         routelimit.ValidColumn,
 			routepolicy.Table:        routepolicy.ValidColumn,
 			routetcp.Table:           routetcp.ValidColumn,
 			routetarget.Table:        routetarget.ValidColumn,

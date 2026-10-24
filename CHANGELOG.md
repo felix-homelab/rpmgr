@@ -12,6 +12,14 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Routes: limits for a route as a whole, on every route type: open connections, flows or HTTP
+  requests in flight, requests or new connections a second, and bandwidth in each direction, set
+  with `rpmgr create route` and `rpmgr update route` (`--max-connections`,
+  `--requests-per-second`, `--bandwidth`) or the API. The gateways of the route's group share each
+  limit; over it, HTTP gets 503 or 429 with `Retry-After`, TCP is reset and UDP dropped, and
+  bandwidth slows data down. A gateway of an earlier release does not get a route with limits.
+  (#622, #623, #624, #625)
+
 - Updates: **Check now** on Settings → Updates, `rpmgr check release` and
   `ReleaseService.CheckReleases` check for new releases at once instead of at the next daily
   check, for an Instance Admin, audited. The page and `ListReleases` show when the last check ended

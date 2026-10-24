@@ -291,3 +291,25 @@ func TestPreviewRoute(t *testing.T) {
 		t.Errorf("a change of nothing: %d %q", code, errOut)
 	}
 }
+
+// TestRouteLimitFlags (docs/16-cli.md): create route sends the limits its flags give, on any route
+// type; update route changes only the limits it names, by their paths; a limit above its bound is
+// refused before the API.
+func TestRouteLimitFlags(t *testing.T) {
+	a, env := routeEnv(t)
+	if code, _, errOut := runWith(env, "", "create", "route", "--udp", "--name", "dns", "--group", "eu", "--max-connections", "500",
+		"--requests-per-second", "50", "--bandwidth", "1048576"); code != cli.ExitOK ||
+		!proto.Equal(a.created.GetRoute().GetLimits(), &rpmgrv1.RouteLimits{MaxConnections: 500, RequestsPerSecond: 50, BandwidthBytesPerSecond: 1 << 20}) {
+		t.Fatalf("create with limits: %d %q %v", code, errOut, a.created)
+	}
+	if code, _, errOut := runWith(env, "", "update", "route", "--requests-per-second", "0", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"limits.requests_per_second"}) ||
+		a.updated.GetRoute().GetLimits().GetRequestsPerSecond() != 0 {
+		t.Fatalf("one limit: %d %q %v", code, errOut, a.updated)
+	}
+	calls := a.calls
+	if code, _, _ := runWith(env, "", "create", "route", "--tcp", "--name", "x", "--group", "eu", "--max-connections", "1000001"); code != cli.ExitUsage ||
+		a.calls != calls {
+		t.Errorf("a limit above its bound: exit %d", code)
+	}
+}
