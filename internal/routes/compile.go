@@ -20,6 +20,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectauthority"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
@@ -93,7 +95,7 @@ func gatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed str
 	}
 	var out []*agentv1.Resource
 	for _, r := range routes {
-		tcp, err := tx.RouteTCP.Query().Where(routetcp.RouteID(r.ID)).WithPort().Only(ctx)
+		tcp, err := tx.RouteTCP.Query().Where(routetcp.RouteID(r.ID)).WithPort().WithListener(func(q *ent.ConnectListenerQuery) { q.WithPort() }).Only(ctx)
 		if ent.IsNotFound(err) {
 			continue
 		}
@@ -107,15 +109,39 @@ func gatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed str
 		if len(connectors) == 0 && r.ID != previewed { // no gateway holds a port that no one serves (D78)
 			continue
 		}
-		access, err := accessOf(ctx, tx, r.ID, false)
+		l := tcp.Edges.Listener
+		access, err := accessOf(ctx, tx, r.ID, l != nil && l.AuthMode != connectlistener.AuthModeNone)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayTcpRoute{GatewayTcpRoute: &agentv1.GatewayTCPRoute{
-			Port: uint32(tcp.Edges.Port.Port), IdleTimeoutSeconds: uint32(tcp.IdleTimeoutSeconds), //nolint:gosec // G115: ports and timeouts are small and positive
-			Connectors: connectors, RankedConnectors: ranked, Access: access}}})
+		gr := &agentv1.GatewayTCPRoute{IdleTimeoutSeconds: uint32(tcp.IdleTimeoutSeconds), //nolint:gosec // G115: timeouts are small and positive
+			Connectors: connectors, RankedConnectors: ranked, Access: access}
+		switch {
+		case l != nil:
+			gr.Port = uint32(l.Edges.Port.Port) //nolint:gosec // G115: a port
+			if gr.HttpConnect, err = httpConnectOf(ctx, tx, r.ID, l); err != nil {
+				return nil, err
+			}
+		case tcp.Edges.Port != nil:
+			gr.Port = uint32(tcp.Edges.Port.Port) //nolint:gosec // G115: a port
+		default:
+			continue // an http_connect route between listeners
+		}
+		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayTcpRoute{GatewayTcpRoute: gr}})
 	}
 	return out, nil
+}
+
+// httpConnectOf is a route's place on its CONNECT listener as the gateway gets it.
+func httpConnectOf(ctx context.Context, tx *ent.Tx, routeID string, l *ent.ConnectListener) (*agentv1.HTTPConnect, error) {
+	authorities, err := tx.ConnectAuthority.Query().Where(connectauthority.RouteID(routeID)).Order(ent.Asc(connectauthority.FieldAuthority)).
+		Select(connectauthority.FieldAuthority).Strings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &agentv1.HTTPConnect{Authorities: authorities, Hostname: l.Hostname, OrgId: l.OrgID,
+		Auth: map[connectlistener.AuthMode]agentv1.ConnectAuth{connectlistener.AuthModeNone: agentv1.ConnectAuth_CONNECT_AUTH_NONE,
+			connectlistener.AuthModeTLSBasic: agentv1.ConnectAuth_CONNECT_AUTH_TLS_BASIC, connectlistener.AuthModePlainBasic: agentv1.ConnectAuth_CONNECT_AUTH_PLAIN_BASIC}[l.AuthMode]}, nil
 }
 
 // gatewayUDP compiles a gateway's udp routes: every enabled udp route of its gateway group with a

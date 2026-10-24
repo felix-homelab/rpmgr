@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
@@ -21,12 +22,13 @@ import (
 // RouteTCPQuery is the builder for querying RouteTCP entities.
 type RouteTCPQuery struct {
 	config
-	ctx        *QueryContext
-	order      []routetcp.OrderOption
-	inters     []Interceptor
-	predicates []predicate.RouteTCP
-	withRoute  *RouteQuery
-	withPort   *PortAllocationQuery
+	ctx          *QueryContext
+	order        []routetcp.OrderOption
+	inters       []Interceptor
+	predicates   []predicate.RouteTCP
+	withRoute    *RouteQuery
+	withPort     *PortAllocationQuery
+	withListener *ConnectListenerQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -100,6 +102,28 @@ func (_q *RouteTCPQuery) QueryPort() *PortAllocationQuery {
 			sqlgraph.From(routetcp.Table, routetcp.FieldID, selector),
 			sqlgraph.To(portallocation.Table, portallocation.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, false, routetcp.PortTable, routetcp.PortColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryListener chains the current query on the "listener" edge.
+func (_q *RouteTCPQuery) QueryListener() *ConnectListenerQuery {
+	query := (&ConnectListenerClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routetcp.Table, routetcp.FieldID, selector),
+			sqlgraph.To(connectlistener.Table, connectlistener.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routetcp.ListenerTable, routetcp.ListenerColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -294,13 +318,14 @@ func (_q *RouteTCPQuery) Clone() *RouteTCPQuery {
 		return nil
 	}
 	return &RouteTCPQuery{
-		config:     _q.config,
-		ctx:        _q.ctx.Clone(),
-		order:      append([]routetcp.OrderOption{}, _q.order...),
-		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.RouteTCP{}, _q.predicates...),
-		withRoute:  _q.withRoute.Clone(),
-		withPort:   _q.withPort.Clone(),
+		config:       _q.config,
+		ctx:          _q.ctx.Clone(),
+		order:        append([]routetcp.OrderOption{}, _q.order...),
+		inters:       append([]Interceptor{}, _q.inters...),
+		predicates:   append([]predicate.RouteTCP{}, _q.predicates...),
+		withRoute:    _q.withRoute.Clone(),
+		withPort:     _q.withPort.Clone(),
+		withListener: _q.withListener.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -326,6 +351,17 @@ func (_q *RouteTCPQuery) WithPort(opts ...func(*PortAllocationQuery)) *RouteTCPQ
 		opt(query)
 	}
 	_q.withPort = query
+	return _q
+}
+
+// WithListener tells the query-builder to eager-load the nodes that are connected to
+// the "listener" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *RouteTCPQuery) WithListener(opts ...func(*ConnectListenerQuery)) *RouteTCPQuery {
+	query := (&ConnectListenerClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withListener = query
 	return _q
 }
 
@@ -413,9 +449,10 @@ func (_q *RouteTCPQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Rou
 	var (
 		nodes       = []*RouteTCP{}
 		_spec       = _q.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [3]bool{
 			_q.withRoute != nil,
 			_q.withPort != nil,
+			_q.withListener != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -445,6 +482,12 @@ func (_q *RouteTCPQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Rou
 	if query := _q.withPort; query != nil {
 		if err := _q.loadPort(ctx, query, nodes, nil,
 			func(n *RouteTCP, e *PortAllocation) { n.Edges.Port = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withListener; query != nil {
+		if err := _q.loadListener(ctx, query, nodes, nil,
+			func(n *RouteTCP, e *ConnectListener) { n.Edges.Listener = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -484,7 +527,10 @@ func (_q *RouteTCPQuery) loadPort(ctx context.Context, query *PortAllocationQuer
 	ids := make([]string, 0, len(nodes))
 	nodeids := make(map[string][]*RouteTCP)
 	for i := range nodes {
-		fk := nodes[i].PortAllocationID
+		if nodes[i].PortAllocationID == nil {
+			continue
+		}
+		fk := *nodes[i].PortAllocationID
 		if _, ok := nodeids[fk]; !ok {
 			ids = append(ids, fk)
 		}
@@ -502,6 +548,38 @@ func (_q *RouteTCPQuery) loadPort(ctx context.Context, query *PortAllocationQuer
 		nodes, ok := nodeids[n.ID]
 		if !ok {
 			return fmt.Errorf(`unexpected foreign-key "port_allocation_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
+func (_q *RouteTCPQuery) loadListener(ctx context.Context, query *ConnectListenerQuery, nodes []*RouteTCP, init func(*RouteTCP), assign func(*RouteTCP, *ConnectListener)) error {
+	ids := make([]string, 0, len(nodes))
+	nodeids := make(map[string][]*RouteTCP)
+	for i := range nodes {
+		if nodes[i].ConnectListenerID == nil {
+			continue
+		}
+		fk := *nodes[i].ConnectListenerID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(connectlistener.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "connect_listener_id" returned %v`, n.ID)
 		}
 		for i := range nodes {
 			assign(nodes[i], n)
@@ -540,6 +618,9 @@ func (_q *RouteTCPQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if _q.withPort != nil {
 			_spec.Node.AddColumnOnce(routetcp.FieldPortAllocationID)
+		}
+		if _q.withListener != nil {
+			_spec.Node.AddColumnOnce(routetcp.FieldConnectListenerID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

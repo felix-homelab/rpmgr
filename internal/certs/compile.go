@@ -13,9 +13,11 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 )
 
 // Gateway compiles a gateway's certificates: for every enabled http route of its gateway group,
@@ -85,6 +87,21 @@ func Gateway(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Reso
 					hostnames[c.ID] = append(hostnames[c.ID], n)
 				}
 			}
+		}
+	}
+	// The TLS CONNECT listeners of the group present their uploaded certificate for their hostname
+	// while a route that is enabled is on them (docs/03-connections.md, "HTTP CONNECT routes").
+	listeners, err := tx.ConnectListener.Query().Where(connectlistener.GatewayGroupID(gw.GatewayGroupID),
+		connectlistener.AuthModeEQ(connectlistener.AuthModeTLSBasic), connectlistener.HasCertificateWith(certificate.StatusEQ(certificate.StatusActive)),
+		connectlistener.HasRoutesWith(routetcp.HasRouteWith(route.Enabled(true)))).WithCertificate().All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range listeners {
+		c := l.Edges.Certificate
+		if !slices.Contains(hostnames[c.ID], l.Hostname) {
+			served[c.ID] = c
+			hostnames[c.ID] = append(hostnames[c.ID], l.Hostname)
 		}
 	}
 	ids := make([]string, 0, len(served))

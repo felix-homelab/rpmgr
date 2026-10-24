@@ -1038,8 +1038,9 @@ through it. Gateways announce the capability `tcp.http-connect`.
   mode moves it to a listener of the new mode, so its port changes, as preview shows. A listener
   closes when its last route goes.
 - **TLS listener.** The listener's hostname lies under a verified domain of the org; its
-  certificate comes from ACME or an upload, as for http routes, with the same TLS versions
-  ([04](04-security.md#controller-certificates)).
+  certificate is an uploaded one of the org that covers the hostname, with the TLS versions of
+  http routes ([04](04-security.md#controller-certificates)). ACME for listener hostnames is not
+  built yet.
 - **Refusals.** A peer that no route of the listener admits by its IP rules is dropped before its
   TLS handshake and its request. A request whose method is not `CONNECT`, compared with case, is
   **405**. In the mode `none`, an authority no route of the listener names and one whose IP rules

@@ -9,6 +9,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -39,6 +40,14 @@ func (_c *RouteTCPCreate) SetPortAllocationID(v string) *RouteTCPCreate {
 	return _c
 }
 
+// SetNillablePortAllocationID sets the "port_allocation_id" field if the given value is not nil.
+func (_c *RouteTCPCreate) SetNillablePortAllocationID(v *string) *RouteTCPCreate {
+	if v != nil {
+		_c.SetPortAllocationID(*v)
+	}
+	return _c
+}
+
 // SetListenerMode sets the "listener_mode" field.
 func (_c *RouteTCPCreate) SetListenerMode(v routetcp.ListenerMode) *RouteTCPCreate {
 	_c.mutation.SetListenerMode(v)
@@ -49,6 +58,20 @@ func (_c *RouteTCPCreate) SetListenerMode(v routetcp.ListenerMode) *RouteTCPCrea
 func (_c *RouteTCPCreate) SetNillableListenerMode(v *routetcp.ListenerMode) *RouteTCPCreate {
 	if v != nil {
 		_c.SetListenerMode(*v)
+	}
+	return _c
+}
+
+// SetConnectListenerID sets the "connect_listener_id" field.
+func (_c *RouteTCPCreate) SetConnectListenerID(v string) *RouteTCPCreate {
+	_c.mutation.SetConnectListenerID(v)
+	return _c
+}
+
+// SetNillableConnectListenerID sets the "connect_listener_id" field if the given value is not nil.
+func (_c *RouteTCPCreate) SetNillableConnectListenerID(v *string) *RouteTCPCreate {
+	if v != nil {
+		_c.SetConnectListenerID(*v)
 	}
 	return _c
 }
@@ -78,9 +101,36 @@ func (_c *RouteTCPCreate) SetPortID(id string) *RouteTCPCreate {
 	return _c
 }
 
+// SetNillablePortID sets the "port" edge to the PortAllocation entity by ID if the given value is not nil.
+func (_c *RouteTCPCreate) SetNillablePortID(id *string) *RouteTCPCreate {
+	if id != nil {
+		_c = _c.SetPortID(*id)
+	}
+	return _c
+}
+
 // SetPort sets the "port" edge to the PortAllocation entity.
 func (_c *RouteTCPCreate) SetPort(v *PortAllocation) *RouteTCPCreate {
 	return _c.SetPortID(v.ID)
+}
+
+// SetListenerID sets the "listener" edge to the ConnectListener entity by ID.
+func (_c *RouteTCPCreate) SetListenerID(id string) *RouteTCPCreate {
+	_c.mutation.SetListenerID(id)
+	return _c
+}
+
+// SetNillableListenerID sets the "listener" edge to the ConnectListener entity by ID if the given value is not nil.
+func (_c *RouteTCPCreate) SetNillableListenerID(id *string) *RouteTCPCreate {
+	if id != nil {
+		_c = _c.SetListenerID(*id)
+	}
+	return _c
+}
+
+// SetListener sets the "listener" edge to the ConnectListener entity.
+func (_c *RouteTCPCreate) SetListener(v *ConnectListener) *RouteTCPCreate {
+	return _c.SetListenerID(v.ID)
 }
 
 // Mutation returns the RouteTCPMutation object of the builder.
@@ -149,14 +199,6 @@ func (_c *RouteTCPCreate) check() error {
 			return &ValidationError{Name: "route_id", err: fmt.Errorf(`ent: validator failed for field "RouteTCP.route_id": %w`, err)}
 		}
 	}
-	if _, ok := _c.mutation.PortAllocationID(); !ok {
-		return &ValidationError{Name: "port_allocation_id", err: errors.New(`ent: missing required field "RouteTCP.port_allocation_id"`)}
-	}
-	if v, ok := _c.mutation.PortAllocationID(); ok {
-		if err := routetcp.PortAllocationIDValidator(v); err != nil {
-			return &ValidationError{Name: "port_allocation_id", err: fmt.Errorf(`ent: validator failed for field "RouteTCP.port_allocation_id": %w`, err)}
-		}
-	}
 	if _, ok := _c.mutation.ListenerMode(); !ok {
 		return &ValidationError{Name: "listener_mode", err: errors.New(`ent: missing required field "RouteTCP.listener_mode"`)}
 	}
@@ -175,9 +217,6 @@ func (_c *RouteTCPCreate) check() error {
 	}
 	if len(_c.mutation.RouteIDs()) == 0 {
 		return &ValidationError{Name: "route", err: errors.New(`ent: missing required edge "RouteTCP.route"`)}
-	}
-	if len(_c.mutation.PortIDs()) == 0 {
-		return &ValidationError{Name: "port", err: errors.New(`ent: missing required edge "RouteTCP.port"`)}
 	}
 	return nil
 }
@@ -248,7 +287,24 @@ func (_c *RouteTCPCreate) createSpec() (*RouteTCP, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
-		_node.PortAllocationID = nodes[0]
+		_node.PortAllocationID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ListenerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetcp.ListenerTable,
+			Columns: []string{routetcp.ListenerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(connectlistener.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.ConnectListenerID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

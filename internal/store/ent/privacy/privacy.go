@@ -471,6 +471,54 @@ func (f ConfigSeqMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutat
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.ConfigSeqMutation", m)
 }
 
+// The ConnectAuthorityQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type ConnectAuthorityQueryRuleFunc func(context.Context, *ent.ConnectAuthorityQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f ConnectAuthorityQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ConnectAuthorityQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.ConnectAuthorityQuery", q)
+}
+
+// The ConnectAuthorityMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type ConnectAuthorityMutationRuleFunc func(context.Context, *ent.ConnectAuthorityMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f ConnectAuthorityMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.ConnectAuthorityMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.ConnectAuthorityMutation", m)
+}
+
+// The ConnectListenerQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type ConnectListenerQueryRuleFunc func(context.Context, *ent.ConnectListenerQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f ConnectListenerQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ConnectListenerQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.ConnectListenerQuery", q)
+}
+
+// The ConnectListenerMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type ConnectListenerMutationRuleFunc func(context.Context, *ent.ConnectListenerMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f ConnectListenerMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.ConnectListenerMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.ConnectListenerMutation", m)
+}
+
 // The ConnectorQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type ConnectorQueryRuleFunc func(context.Context, *ent.ConnectorQuery) error
@@ -1544,6 +1592,10 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.ConfigSeqQuery:
 		return q.Filter(), nil
+	case *ent.ConnectAuthorityQuery:
+		return q.Filter(), nil
+	case *ent.ConnectListenerQuery:
+		return q.Filter(), nil
 	case *ent.ConnectorQuery:
 		return q.Filter(), nil
 	case *ent.DataSessionQuery:
@@ -1664,6 +1716,10 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.ConfigRevisionMutation:
 		return m.Filter(), nil
 	case *ent.ConfigSeqMutation:
+		return m.Filter(), nil
+	case *ent.ConnectAuthorityMutation:
+		return m.Filter(), nil
+	case *ent.ConnectListenerMutation:
 		return m.Filter(), nil
 	case *ent.ConnectorMutation:
 		return m.Filter(), nil

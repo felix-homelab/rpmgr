@@ -80,7 +80,7 @@ func (r *Routes) CreateRoute(ctx context.Context, req *connect.Request[rpmgrv1.C
 		if err != nil {
 			return nil, routeError(err)
 		}
-		return &rpmgrv1.CreateRouteResponse{Route: out, Revision: revisionOf(rev)}, nil
+		return &rpmgrv1.CreateRouteResponse{Route: out, Revision: revisionOf(rev), Warnings: connectWarnings(out)}, nil
 	})
 	if err != nil {
 		return nil, err
@@ -149,7 +149,9 @@ func checkSpec(in *rpmgrv1.Route) error {
 	switch {
 	case in.GetSpec() == nil:
 		return invalid("a route needs a spec: http, tcp, udp, tcp_udp or tls_passthrough")
-	case in.GetTcp() != nil || in.GetUdp() != nil || in.GetTcpUdp() != nil:
+	case in.GetTcp() != nil:
+		return checkConnect(in.GetTcp())
+	case in.GetUdp() != nil || in.GetTcpUdp() != nil:
 		return nil
 	case len(hostnames) == 0 || len(hostnames) > maxHostnames:
 		// The request's validation sees an update's hostnames only if it names them.
@@ -215,6 +217,9 @@ func routeError(err error) error {
 	if perr := portError(err); perr != nil {
 		return perr
 	}
+	if cerr := connectError(err); cerr != nil {
+		return cerr
+	}
 	switch {
 	case errors.Is(err, domains.ErrNotOwned):
 		return withReason(connect.NewError(connect.CodeFailedPrecondition, err), ReasonDomainNotVerified)
@@ -238,7 +243,7 @@ func routeFields(t route.Type) []string {
 	case route.TypeTLSPassthrough:
 		fields = append(fields, "tls_passthrough.hostnames")
 	case route.TypeTCP:
-		fields = append(fields, "tcp.port", "tcp.idle_timeout_seconds")
+		fields = append(fields, "tcp.port", "tcp.idle_timeout_seconds", "tcp.listener_mode", "tcp.connect")
 	case route.TypeUDP:
 		fields = append(fields, "udp.port", "udp.flow_idle_timeout_seconds")
 	case route.TypeTCPUDP:
@@ -264,7 +269,7 @@ func (r *Routes) UpdateRoute(ctx context.Context, req *connect.Request[rpmgrv1.U
 	if err != nil {
 		return nil, routeError(err)
 	}
-	return connect.NewResponse(&rpmgrv1.UpdateRouteResponse{Route: out, Revision: revisionOf(rev)}), nil
+	return connect.NewResponse(&rpmgrv1.UpdateRouteResponse{Route: out, Revision: revisionOf(rev), Warnings: connectWarnings(out)}), nil
 }
 
 // createRouteTx creates a route in tx: the route, its settings, its port and its hostnames.
@@ -324,7 +329,11 @@ func setRoutePolicies(ctx context.Context, tx *ent.Tx, row *ent.Route, ids []str
 		if _, err := tx.AccessPolicy.Get(ctx, id); err != nil {
 			return err
 		}
-		if row.Type != route.TypeHTTP {
+		allowed, err := routes.BasicAuthAllowed(ctx, tx, row)
+		if err != nil {
+			return err
+		}
+		if !allowed {
 			n, err := tx.PolicyRule.Query().Where(policyrule.PolicyID(id), policyrule.KindEQ(policyrule.KindBasicAuth)).Count(ctx)
 			if err != nil {
 				return err
@@ -380,11 +389,6 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 	if err != nil {
 		return nil, err
 	}
-	if !slices.Equal(was.GetPolicyIds(), next.GetPolicyIds()) {
-		if err := setRoutePolicies(ctx, tx, row, next.GetPolicyIds()); err != nil {
-			return nil, err
-		}
-	}
 	if row.Type == route.TypeTCP || row.Type == route.TypeUDP || row.Type == route.TypeTCPUDP {
 		if err := updatePortRoute(ctx, tx, row, was, next); err != nil {
 			return nil, err
@@ -414,6 +418,12 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 			if _, err := routes.AddHostname(ctx, tx, row.ID, name, prefix); err != nil {
 				return nil, err
 			}
+		}
+	}
+	// After the spec, as a CONNECT route's listener decides whether basic auth applies to it.
+	if !slices.Equal(was.GetPolicyIds(), next.GetPolicyIds()) || !proto.Equal(was.GetTcp(), next.GetTcp()) {
+		if err := setRoutePolicies(ctx, tx, row, next.GetPolicyIds()); err != nil {
+			return nil, err
 		}
 	}
 	return row, nil

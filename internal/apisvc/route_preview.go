@@ -59,7 +59,7 @@ func (r *Routes) PreviewRoute(ctx context.Context, req *connect.Request[rpmgrv1.
 		if !update {
 			rt.Id, rt.Etag, rt.CreateTime, rt.UpdateTime = "", "", nil, nil
 		}
-		out = &rpmgrv1.PreviewRouteResponse{Route: rt}
+		out = &rpmgrv1.PreviewRouteResponse{Route: rt, Warnings: connectWarnings(rt)}
 		if out.GatewayIds, out.Problems, err = previewGateways(ctx, tx, row); err != nil {
 			return nil, err
 		}

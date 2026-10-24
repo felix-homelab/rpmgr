@@ -37,17 +37,24 @@ func Delete(ctx context.Context, tx *ent.Tx, r *ent.Route) error {
 			return err
 		},
 	}
-	// The spec rows refer to their allocations, which are deleted after them.
+	// The spec rows refer to their allocations, which are deleted after them; a route in
+	// http_connect mode leaves its CONNECT listener, which closes with its last route.
+	if err := LeaveListener(ctx, tx, r.ID); err != nil {
+		return err
+	}
 	var ports []string
-	tcp, err := tx.RouteTCP.Query().Where(routetcp.RouteID(r.ID)).Select(routetcp.FieldPortAllocationID).Strings(ctx)
+	tcp, err := tx.RouteTCP.Query().Where(routetcp.RouteID(r.ID), routetcp.PortAllocationIDNotNil()).All(ctx)
 	if err != nil {
 		return err
+	}
+	for _, t := range tcp {
+		ports = append(ports, *t.PortAllocationID)
 	}
 	udp, err := tx.RouteUDP.Query().Where(routeudp.RouteID(r.ID)).Select(routeudp.FieldPortAllocationID).Strings(ctx)
 	if err != nil {
 		return err
 	}
-	ports = append(append(ports, tcp...), udp...)
+	ports = append(ports, udp...)
 	for _, step := range steps {
 		if err := step(); err != nil {
 			return err

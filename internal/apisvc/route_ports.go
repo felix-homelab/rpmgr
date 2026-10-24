@@ -70,6 +70,8 @@ func allocateBoth(ctx context.Context, tx *ent.Tx, row *ent.Route, port uint32, 
 // tcp and a udp part, on one port number.
 func createPortRoute(ctx context.Context, tx *ent.Tx, row *ent.Route, in *rpmgrv1.Route) error {
 	switch {
+	case in.GetTcp().GetListenerMode() == rpmgrv1.ListenerMode_LISTENER_MODE_HTTP_CONNECT:
+		return createConnectRoute(ctx, tx, row, in.GetTcp())
 	case in.GetTcp() != nil:
 		a, err := allocate(ctx, tx, row, routes.TCP, in.GetTcp().GetPort(), "")
 		if err != nil {
@@ -96,6 +98,11 @@ func createPortRoute(ctx context.Context, tx *ent.Tx, row *ent.Route, in *rpmgrv
 			SetFlowIdleTimeoutSeconds(flowIdleTimeout(spec.FlowIdleTimeoutSeconds)).Exec(ctx)
 	}
 	return nil
+}
+
+// connectMode reports whether a tcp route's spec is in http_connect mode; not set is plain.
+func connectMode(t *rpmgrv1.TCPRouteSpec) bool {
+	return t.GetListenerMode() == rpmgrv1.ListenerMode_LISTENER_MODE_HTTP_CONNECT
 }
 
 // idleTimeout is a tcp or tcp_udp route's idle timeout in seconds, given as set: the default when
@@ -126,9 +133,16 @@ func updatePortRoute(ctx context.Context, tx *ent.Tx, row *ent.Route, was, next 
 		if err != nil {
 			return err
 		}
+		if connectMode(was.GetTcp()) != connectMode(next.GetTcp()) {
+			return withReason(connect.NewError(connect.CodeFailedPrecondition, errors.New(
+				"apisvc: a tcp route's listener mode cannot change; create the route anew")), ReasonListenerModeChange)
+		}
+		if cur.ListenerMode == routetcp.ListenerModeHTTPConnect {
+			return updateConnectRoute(ctx, tx, row, was.GetTcp(), next.GetTcp())
+		}
 		u := tx.RouteTCP.UpdateOne(cur).SetIdleTimeoutSeconds(idleTimeout(next.GetTcp().IdleTimeoutSeconds))
 		if p := next.GetTcp().GetPort(); p != was.GetTcp().GetPort() {
-			a, err := allocate(ctx, tx, row, routes.TCP, p, cur.PortAllocationID)
+			a, err := allocate(ctx, tx, row, routes.TCP, p, *cur.PortAllocationID)
 			if err != nil {
 				return err
 			}
@@ -136,7 +150,7 @@ func updatePortRoute(ctx context.Context, tx *ent.Tx, row *ent.Route, was, next 
 			if err := u.Exec(ctx); err != nil {
 				return err
 			}
-			return routes.Release(ctx, tx, cur.PortAllocationID)
+			return routes.Release(ctx, tx, *cur.PortAllocationID)
 		}
 		return u.Exec(ctx)
 	case route.TypeUDP:
@@ -177,7 +191,7 @@ func updateTCPUDP(ctx context.Context, tx *ent.Tx, row *ent.Route, was, next *rp
 	uu := tx.RouteUDP.UpdateOne(curUDP).SetFlowIdleTimeoutSeconds(flowIdleTimeout(next.FlowIdleTimeoutSeconds))
 	moved := next.GetPort() != was.GetPort()
 	if moved {
-		tcp, udp, err := allocateBoth(ctx, tx, row, next.GetPort(), curTCP.PortAllocationID, curUDP.PortAllocationID)
+		tcp, udp, err := allocateBoth(ctx, tx, row, next.GetPort(), *curTCP.PortAllocationID, curUDP.PortAllocationID)
 		if err != nil {
 			return err
 		}
@@ -193,7 +207,7 @@ func updateTCPUDP(ctx context.Context, tx *ent.Tx, row *ent.Route, was, next *rp
 	if !moved {
 		return nil
 	}
-	if err := routes.Release(ctx, tx, curTCP.PortAllocationID); err != nil {
+	if err := routes.Release(ctx, tx, *curTCP.PortAllocationID); err != nil {
 		return err
 	}
 	return routes.Release(ctx, tx, curUDP.PortAllocationID)
@@ -207,7 +221,10 @@ func setPortSpec(ctx context.Context, c *ent.Client, row *ent.Route, out *rpmgrv
 		if err != nil {
 			return err
 		}
-		a, err := c.PortAllocation.Get(ctx, t.PortAllocationID)
+		if t.ListenerMode == routetcp.ListenerModeHTTPConnect {
+			return setConnectSpec(ctx, c, t, out)
+		}
+		a, err := c.PortAllocation.Get(ctx, *t.PortAllocationID)
 		if err != nil {
 			return err
 		}
