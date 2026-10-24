@@ -327,6 +327,21 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 	}
 }
 
+// TestApplier_ItemsAreNoRoutes: certificates, pages and domain tokens serve no route of their own,
+// so the assignment holds no route for them; the routes of the snapshot it does hold.
+func TestApplier_ItemsAreNoRoutes(t *testing.T) {
+	a, assign := gateway.NewApplier()
+	cert := &agentv1.Resource{Id: "crt_1", Kind: &agentv1.Resource_GatewayCertificate{GatewayCertificate: &agentv1.GatewayCertificate{
+		ContentSha256: make([]byte, 32), Hostnames: []string{"app.example.com"}}}}
+	if st := a.Apply(t.Context(), gatewaySnapshot(3, cert, pageResource("gwp_1", rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_NOT_FOUND, 32),
+		tokenResource("dom_1", "example.com", "abc"), httpResource("rt_1", "http", "app.example.com")), agent.Changes{}); len(st) != 0 {
+		t.Fatalf("status %v", st)
+	}
+	if got := gateway.AssignedRoutes(assign); !slices.Equal(got, []string{"rt_1"}) {
+		t.Fatalf("assigned routes %v, want only rt_1", got)
+	}
+}
+
 // TestApplier_Disable (R22): the drain mark of a disabled gateway drains its data sessions rather
 // than closing them, and the connections of its removed tcp routes stay open for the gateway drain
 // period, not the route drain period; a snapshot without the mark enables the gateway again.
