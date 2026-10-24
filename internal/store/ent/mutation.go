@@ -33549,35 +33549,39 @@ func (m *RouteMutation) ResetEdge(name string) error {
 // RouteHTTPMutation represents an operation that mutates the RouteHTTP nodes in the graph.
 type RouteHTTPMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *int
-	org_id                  *string
-	path_prefix             *string
-	header_matches          *[]headermatch.Match
-	appendheader_matches    []headermatch.Match
-	match_key               *string
-	tls_mode                *routehttp.TLSMode
-	port80                  *routehttp.Port80
-	hsts_max_age_seconds    *int
-	addhsts_max_age_seconds *int
-	host_header             *string
-	request_headers_set     *map[string]string
-	response_headers_set    *map[string]string
-	websocket               *bool
-	max_body_bytes          *int64
-	addmax_body_bytes       *int64
-	dns_proxied             *bool
-	maintenance             *bool
-	maintenance_message     *string
-	clearedFields           map[string]struct{}
-	route                   *string
-	clearedroute            bool
-	certificate             *string
-	clearedcertificate      bool
-	done                    bool
-	oldValue                func(context.Context) (*RouteHTTP, error)
-	predicates              []predicate.RouteHTTP
+	op                                          Op
+	typ                                         string
+	id                                          *int
+	org_id                                      *string
+	path_prefix                                 *string
+	header_matches                              *[]headermatch.Match
+	appendheader_matches                        []headermatch.Match
+	match_key                                   *string
+	tls_mode                                    *routehttp.TLSMode
+	port80                                      *routehttp.Port80
+	hsts_max_age_seconds                        *int
+	addhsts_max_age_seconds                     *int
+	host_header                                 *string
+	request_headers_set                         *map[string]string
+	response_headers_set                        *map[string]string
+	websocket                                   *bool
+	max_body_bytes                              *int64
+	addmax_body_bytes                           *int64
+	dns_proxied                                 *bool
+	maintenance                                 *bool
+	maintenance_message                         *string
+	upstream_response_header_timeout_seconds    *int
+	addupstream_response_header_timeout_seconds *int
+	upstream_idle_timeout_seconds               *int
+	addupstream_idle_timeout_seconds            *int
+	clearedFields                               map[string]struct{}
+	route                                       *string
+	clearedroute                                bool
+	certificate                                 *string
+	clearedcertificate                          bool
+	done                                        bool
+	oldValue                                    func(context.Context) (*RouteHTTP, error)
+	predicates                                  []predicate.RouteHTTP
 }
 
 var _ ent.Mutation = (*RouteHTTPMutation)(nil)
@@ -34398,6 +34402,118 @@ func (m *RouteHTTPMutation) ResetMaintenanceMessage() {
 	m.maintenance_message = nil
 }
 
+// SetUpstreamResponseHeaderTimeoutSeconds sets the "upstream_response_header_timeout_seconds" field.
+func (m *RouteHTTPMutation) SetUpstreamResponseHeaderTimeoutSeconds(i int) {
+	m.upstream_response_header_timeout_seconds = &i
+	m.addupstream_response_header_timeout_seconds = nil
+}
+
+// UpstreamResponseHeaderTimeoutSeconds returns the value of the "upstream_response_header_timeout_seconds" field in the mutation.
+func (m *RouteHTTPMutation) UpstreamResponseHeaderTimeoutSeconds() (r int, exists bool) {
+	v := m.upstream_response_header_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamResponseHeaderTimeoutSeconds returns the old "upstream_response_header_timeout_seconds" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldUpstreamResponseHeaderTimeoutSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamResponseHeaderTimeoutSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamResponseHeaderTimeoutSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamResponseHeaderTimeoutSeconds: %w", err)
+	}
+	return oldValue.UpstreamResponseHeaderTimeoutSeconds, nil
+}
+
+// AddUpstreamResponseHeaderTimeoutSeconds adds i to the "upstream_response_header_timeout_seconds" field.
+func (m *RouteHTTPMutation) AddUpstreamResponseHeaderTimeoutSeconds(i int) {
+	if m.addupstream_response_header_timeout_seconds != nil {
+		*m.addupstream_response_header_timeout_seconds += i
+	} else {
+		m.addupstream_response_header_timeout_seconds = &i
+	}
+}
+
+// AddedUpstreamResponseHeaderTimeoutSeconds returns the value that was added to the "upstream_response_header_timeout_seconds" field in this mutation.
+func (m *RouteHTTPMutation) AddedUpstreamResponseHeaderTimeoutSeconds() (r int, exists bool) {
+	v := m.addupstream_response_header_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUpstreamResponseHeaderTimeoutSeconds resets all changes to the "upstream_response_header_timeout_seconds" field.
+func (m *RouteHTTPMutation) ResetUpstreamResponseHeaderTimeoutSeconds() {
+	m.upstream_response_header_timeout_seconds = nil
+	m.addupstream_response_header_timeout_seconds = nil
+}
+
+// SetUpstreamIdleTimeoutSeconds sets the "upstream_idle_timeout_seconds" field.
+func (m *RouteHTTPMutation) SetUpstreamIdleTimeoutSeconds(i int) {
+	m.upstream_idle_timeout_seconds = &i
+	m.addupstream_idle_timeout_seconds = nil
+}
+
+// UpstreamIdleTimeoutSeconds returns the value of the "upstream_idle_timeout_seconds" field in the mutation.
+func (m *RouteHTTPMutation) UpstreamIdleTimeoutSeconds() (r int, exists bool) {
+	v := m.upstream_idle_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamIdleTimeoutSeconds returns the old "upstream_idle_timeout_seconds" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldUpstreamIdleTimeoutSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamIdleTimeoutSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamIdleTimeoutSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamIdleTimeoutSeconds: %w", err)
+	}
+	return oldValue.UpstreamIdleTimeoutSeconds, nil
+}
+
+// AddUpstreamIdleTimeoutSeconds adds i to the "upstream_idle_timeout_seconds" field.
+func (m *RouteHTTPMutation) AddUpstreamIdleTimeoutSeconds(i int) {
+	if m.addupstream_idle_timeout_seconds != nil {
+		*m.addupstream_idle_timeout_seconds += i
+	} else {
+		m.addupstream_idle_timeout_seconds = &i
+	}
+}
+
+// AddedUpstreamIdleTimeoutSeconds returns the value that was added to the "upstream_idle_timeout_seconds" field in this mutation.
+func (m *RouteHTTPMutation) AddedUpstreamIdleTimeoutSeconds() (r int, exists bool) {
+	v := m.addupstream_idle_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUpstreamIdleTimeoutSeconds resets all changes to the "upstream_idle_timeout_seconds" field.
+func (m *RouteHTTPMutation) ResetUpstreamIdleTimeoutSeconds() {
+	m.upstream_idle_timeout_seconds = nil
+	m.addupstream_idle_timeout_seconds = nil
+}
+
 // ClearRoute clears the "route" edge to the Route entity.
 func (m *RouteHTTPMutation) ClearRoute() {
 	m.clearedroute = true
@@ -34486,7 +34602,7 @@ func (m *RouteHTTPMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteHTTPMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 19)
 	if m.org_id != nil {
 		fields = append(fields, routehttp.FieldOrgID)
 	}
@@ -34538,6 +34654,12 @@ func (m *RouteHTTPMutation) Fields() []string {
 	if m.maintenance_message != nil {
 		fields = append(fields, routehttp.FieldMaintenanceMessage)
 	}
+	if m.upstream_response_header_timeout_seconds != nil {
+		fields = append(fields, routehttp.FieldUpstreamResponseHeaderTimeoutSeconds)
+	}
+	if m.upstream_idle_timeout_seconds != nil {
+		fields = append(fields, routehttp.FieldUpstreamIdleTimeoutSeconds)
+	}
 	return fields
 }
 
@@ -34580,6 +34702,10 @@ func (m *RouteHTTPMutation) Field(name string) (ent.Value, bool) {
 		return m.Maintenance()
 	case routehttp.FieldMaintenanceMessage:
 		return m.MaintenanceMessage()
+	case routehttp.FieldUpstreamResponseHeaderTimeoutSeconds:
+		return m.UpstreamResponseHeaderTimeoutSeconds()
+	case routehttp.FieldUpstreamIdleTimeoutSeconds:
+		return m.UpstreamIdleTimeoutSeconds()
 	}
 	return nil, false
 }
@@ -34623,6 +34749,10 @@ func (m *RouteHTTPMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldMaintenance(ctx)
 	case routehttp.FieldMaintenanceMessage:
 		return m.OldMaintenanceMessage(ctx)
+	case routehttp.FieldUpstreamResponseHeaderTimeoutSeconds:
+		return m.OldUpstreamResponseHeaderTimeoutSeconds(ctx)
+	case routehttp.FieldUpstreamIdleTimeoutSeconds:
+		return m.OldUpstreamIdleTimeoutSeconds(ctx)
 	}
 	return nil, fmt.Errorf("unknown RouteHTTP field %s", name)
 }
@@ -34751,6 +34881,20 @@ func (m *RouteHTTPMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetMaintenanceMessage(v)
 		return nil
+	case routehttp.FieldUpstreamResponseHeaderTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamResponseHeaderTimeoutSeconds(v)
+		return nil
+	case routehttp.FieldUpstreamIdleTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamIdleTimeoutSeconds(v)
+		return nil
 	}
 	return fmt.Errorf("unknown RouteHTTP field %s", name)
 }
@@ -34765,6 +34909,12 @@ func (m *RouteHTTPMutation) AddedFields() []string {
 	if m.addmax_body_bytes != nil {
 		fields = append(fields, routehttp.FieldMaxBodyBytes)
 	}
+	if m.addupstream_response_header_timeout_seconds != nil {
+		fields = append(fields, routehttp.FieldUpstreamResponseHeaderTimeoutSeconds)
+	}
+	if m.addupstream_idle_timeout_seconds != nil {
+		fields = append(fields, routehttp.FieldUpstreamIdleTimeoutSeconds)
+	}
 	return fields
 }
 
@@ -34777,6 +34927,10 @@ func (m *RouteHTTPMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedHstsMaxAgeSeconds()
 	case routehttp.FieldMaxBodyBytes:
 		return m.AddedMaxBodyBytes()
+	case routehttp.FieldUpstreamResponseHeaderTimeoutSeconds:
+		return m.AddedUpstreamResponseHeaderTimeoutSeconds()
+	case routehttp.FieldUpstreamIdleTimeoutSeconds:
+		return m.AddedUpstreamIdleTimeoutSeconds()
 	}
 	return nil, false
 }
@@ -34799,6 +34953,20 @@ func (m *RouteHTTPMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddMaxBodyBytes(v)
+		return nil
+	case routehttp.FieldUpstreamResponseHeaderTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUpstreamResponseHeaderTimeoutSeconds(v)
+		return nil
+	case routehttp.FieldUpstreamIdleTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUpstreamIdleTimeoutSeconds(v)
 		return nil
 	}
 	return fmt.Errorf("unknown RouteHTTP numeric field %s", name)
@@ -34904,6 +35072,12 @@ func (m *RouteHTTPMutation) ResetField(name string) error {
 		return nil
 	case routehttp.FieldMaintenanceMessage:
 		m.ResetMaintenanceMessage()
+		return nil
+	case routehttp.FieldUpstreamResponseHeaderTimeoutSeconds:
+		m.ResetUpstreamResponseHeaderTimeoutSeconds()
+		return nil
+	case routehttp.FieldUpstreamIdleTimeoutSeconds:
+		m.ResetUpstreamIdleTimeoutSeconds()
 		return nil
 	}
 	return fmt.Errorf("unknown RouteHTTP field %s", name)

@@ -148,6 +148,7 @@ func TestCreateRoute(t *testing.T) {
 		"a hostname on tcp":      {"--tcp", "--name", "x", "--group", "eu", "--hostname", "a.example.com"},
 		"maintenance on tcp":     {"--tcp", "--name", "x", "--group", "eu", "--maintenance"},
 		"a header match on tcp":  {"--tcp", "--name", "x", "--group", "eu", "--match-header", "X-Env=a"},
+		"a timeout on udp":       {"--udp", "--name", "x", "--group", "eu", "--upstream-idle-timeout", "1m"},
 		"a message on udp":       {"--udp", "--name", "x", "--group", "eu", "--maintenance-message", "back soon"},
 		"a port on http":         {"--http", "--name", "x", "--group", "eu", "--hostname", "a.example.com", "--port", "80"},
 		"a name the API refuses": {"--http", "--name", "Not_A_Name", "--group", "eu", "--hostname", "a.example.com"},
@@ -250,6 +251,22 @@ func TestUpdateRoute(t *testing.T) {
 		t.Fatalf("header matches removed: %d %q %v", code, errOut, a.updated)
 	}
 	a.route.GetHttp().HeaderMatches = nil
+	// Per-route timeouts (D94): durations in whole seconds, each in the mask only when given.
+	if code, _, errOut := runWith(env, "", "update", "route", "--upstream-header-timeout", "5m", "--upstream-idle-timeout", "30s", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(slices.Sorted(slices.Values(a.updated.GetUpdateMask().GetPaths())),
+			[]string{"http.upstream_idle_timeout_seconds", "http.upstream_response_header_timeout_seconds"}) ||
+		a.updated.GetRoute().GetHttp().GetUpstreamResponseHeaderTimeoutSeconds() != 300 || a.updated.GetRoute().GetHttp().GetUpstreamIdleTimeoutSeconds() != 30 {
+		t.Fatalf("timeouts: %d %q %v", code, errOut, a.updated)
+	}
+	calls = a.calls
+	for name, d := range map[string]string{"above an hour": "61m", "negative": "-1s"} {
+		if code, _, errOut := runWith(env, "", "update", "route", "--upstream-header-timeout", d, "rt_1"); code != cli.ExitUsage {
+			t.Errorf("a timeout %s: exit %d %q", name, code, errOut)
+		}
+	}
+	if a.calls != calls {
+		t.Errorf("refused timeouts reached the API %d times", a.calls-calls)
+	}
 	calls = a.calls
 	nine := []string{"update", "route"}
 	for i := range 9 {

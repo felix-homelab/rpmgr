@@ -284,6 +284,66 @@ func TestGateway_ReservedPathNeverUpstream(t *testing.T) {
 	}
 }
 
+// TestHTTPRoutes_RouteTimeouts (D94): a route's own upstream response-header timeout turns a slow
+// upstream into 504 where the gateway's would wait, 0 keeps the gateway's, and a change applies
+// to the next request; a route's own idle timeout closes an unused upstream connection sooner.
+func TestHTTPRoutes_RouteTimeouts(t *testing.T) {
+	gateway.SetHTTPTimers(t, time.Second, 5*time.Second)
+	var conns atomic.Int32
+	up := &http.Server{ReadHeaderTimeout: 5 * time.Second,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/slow" {
+				time.Sleep(time.Second)
+			}
+			_, _ = io.WriteString(w, "ok")
+		}),
+		ConnState: func(_ net.Conn, s http.ConnState) {
+			if s == http.StateNew {
+				conns.Add(1)
+			}
+		}}
+	upLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = up.Serve(upLn) }()
+	t.Cleanup(func() { _ = up.Close() })
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}},
+		UpstreamHeaderTimeout: 300 * time.Millisecond}
+	p := newPlaneWith(t, upLn.Addr().String(), "none", route.ID)
+	e := newHTTPEnvOn(t, p.sessions, route)
+	c := e.client(false)
+	if r := get(t, c, "https://app.example.com/slow", nil); r.status != http.StatusGatewayTimeout {
+		t.Errorf("the route's own timeout: %d %q", r.status, r.body)
+	}
+	route.UpstreamHeaderTimeout = 0
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	if r := get(t, c, "https://app.example.com/slow", nil); r.status != http.StatusOK {
+		t.Errorf("the gateway's timeout: %d %q", r.status, r.body)
+	}
+	// Idle: with the gateway's 120 s the pooled connection serves the next request; with the
+	// route's own 1 s it is closed by then and a new one is opened.
+	gets := func() int32 {
+		before := conns.Load()
+		for range 2 {
+			if r := get(t, c, "https://app.example.com/", nil); r.status != http.StatusOK {
+				t.Fatalf("%d %q", r.status, r.body)
+			}
+			time.Sleep(1500 * time.Millisecond)
+		}
+		return conns.Load() - before
+	}
+	_ = get(t, c, "https://app.example.com/", nil) // a pooled connection to start from
+	if n := gets(); n != 0 {
+		t.Errorf("the gateway's idle timeout opened %d new upstream connections, want 0", n)
+	}
+	route.UpstreamIdleTimeout = time.Second
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	if n := gets(); n != 2 {
+		t.Errorf("the route's idle timeout opened %d new upstream connections, want 2", n)
+	}
+}
+
 // TestHTTPRoutes_Proxy: HTTP/1.1 and HTTP/2 clients reach the upstream over a tunnel stream with
 // their Host kept and X-Forwarded-* set by the gateway, never taken from the client.
 func TestHTTPRoutes_Proxy(t *testing.T) {

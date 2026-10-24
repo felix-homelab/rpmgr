@@ -113,6 +113,16 @@ func MaintenanceMessage(v string) predicate.RouteHTTP {
 	return predicate.RouteHTTP(sql.FieldEQ(FieldMaintenanceMessage, v))
 }
 
+// UpstreamResponseHeaderTimeoutSeconds applies equality check predicate on the "upstream_response_header_timeout_seconds" field. It's identical to UpstreamResponseHeaderTimeoutSecondsEQ.
+func UpstreamResponseHeaderTimeoutSeconds(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEQ(FieldUpstreamResponseHeaderTimeoutSeconds, v))
+}
+
+// UpstreamIdleTimeoutSeconds applies equality check predicate on the "upstream_idle_timeout_seconds" field. It's identical to UpstreamIdleTimeoutSecondsEQ.
+func UpstreamIdleTimeoutSeconds(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEQ(FieldUpstreamIdleTimeoutSeconds, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.RouteHTTP {
 	return predicate.RouteHTTP(sql.FieldEQ(FieldOrgID, v))
@@ -756,6 +766,86 @@ func MaintenanceMessageEqualFold(v string) predicate.RouteHTTP {
 // MaintenanceMessageContainsFold applies the ContainsFold predicate on the "maintenance_message" field.
 func MaintenanceMessageContainsFold(v string) predicate.RouteHTTP {
 	return predicate.RouteHTTP(sql.FieldContainsFold(FieldMaintenanceMessage, v))
+}
+
+// UpstreamResponseHeaderTimeoutSecondsEQ applies the EQ predicate on the "upstream_response_header_timeout_seconds" field.
+func UpstreamResponseHeaderTimeoutSecondsEQ(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEQ(FieldUpstreamResponseHeaderTimeoutSeconds, v))
+}
+
+// UpstreamResponseHeaderTimeoutSecondsNEQ applies the NEQ predicate on the "upstream_response_header_timeout_seconds" field.
+func UpstreamResponseHeaderTimeoutSecondsNEQ(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldNEQ(FieldUpstreamResponseHeaderTimeoutSeconds, v))
+}
+
+// UpstreamResponseHeaderTimeoutSecondsIn applies the In predicate on the "upstream_response_header_timeout_seconds" field.
+func UpstreamResponseHeaderTimeoutSecondsIn(vs ...int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldIn(FieldUpstreamResponseHeaderTimeoutSeconds, vs...))
+}
+
+// UpstreamResponseHeaderTimeoutSecondsNotIn applies the NotIn predicate on the "upstream_response_header_timeout_seconds" field.
+func UpstreamResponseHeaderTimeoutSecondsNotIn(vs ...int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldNotIn(FieldUpstreamResponseHeaderTimeoutSeconds, vs...))
+}
+
+// UpstreamResponseHeaderTimeoutSecondsGT applies the GT predicate on the "upstream_response_header_timeout_seconds" field.
+func UpstreamResponseHeaderTimeoutSecondsGT(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldGT(FieldUpstreamResponseHeaderTimeoutSeconds, v))
+}
+
+// UpstreamResponseHeaderTimeoutSecondsGTE applies the GTE predicate on the "upstream_response_header_timeout_seconds" field.
+func UpstreamResponseHeaderTimeoutSecondsGTE(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldGTE(FieldUpstreamResponseHeaderTimeoutSeconds, v))
+}
+
+// UpstreamResponseHeaderTimeoutSecondsLT applies the LT predicate on the "upstream_response_header_timeout_seconds" field.
+func UpstreamResponseHeaderTimeoutSecondsLT(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldLT(FieldUpstreamResponseHeaderTimeoutSeconds, v))
+}
+
+// UpstreamResponseHeaderTimeoutSecondsLTE applies the LTE predicate on the "upstream_response_header_timeout_seconds" field.
+func UpstreamResponseHeaderTimeoutSecondsLTE(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldLTE(FieldUpstreamResponseHeaderTimeoutSeconds, v))
+}
+
+// UpstreamIdleTimeoutSecondsEQ applies the EQ predicate on the "upstream_idle_timeout_seconds" field.
+func UpstreamIdleTimeoutSecondsEQ(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEQ(FieldUpstreamIdleTimeoutSeconds, v))
+}
+
+// UpstreamIdleTimeoutSecondsNEQ applies the NEQ predicate on the "upstream_idle_timeout_seconds" field.
+func UpstreamIdleTimeoutSecondsNEQ(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldNEQ(FieldUpstreamIdleTimeoutSeconds, v))
+}
+
+// UpstreamIdleTimeoutSecondsIn applies the In predicate on the "upstream_idle_timeout_seconds" field.
+func UpstreamIdleTimeoutSecondsIn(vs ...int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldIn(FieldUpstreamIdleTimeoutSeconds, vs...))
+}
+
+// UpstreamIdleTimeoutSecondsNotIn applies the NotIn predicate on the "upstream_idle_timeout_seconds" field.
+func UpstreamIdleTimeoutSecondsNotIn(vs ...int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldNotIn(FieldUpstreamIdleTimeoutSeconds, vs...))
+}
+
+// UpstreamIdleTimeoutSecondsGT applies the GT predicate on the "upstream_idle_timeout_seconds" field.
+func UpstreamIdleTimeoutSecondsGT(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldGT(FieldUpstreamIdleTimeoutSeconds, v))
+}
+
+// UpstreamIdleTimeoutSecondsGTE applies the GTE predicate on the "upstream_idle_timeout_seconds" field.
+func UpstreamIdleTimeoutSecondsGTE(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldGTE(FieldUpstreamIdleTimeoutSeconds, v))
+}
+
+// UpstreamIdleTimeoutSecondsLT applies the LT predicate on the "upstream_idle_timeout_seconds" field.
+func UpstreamIdleTimeoutSecondsLT(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldLT(FieldUpstreamIdleTimeoutSeconds, v))
+}
+
+// UpstreamIdleTimeoutSecondsLTE applies the LTE predicate on the "upstream_idle_timeout_seconds" field.
+func UpstreamIdleTimeoutSecondsLTE(v int) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldLTE(FieldUpstreamIdleTimeoutSeconds, v))
 }
 
 // HasRoute applies the HasEdge predicate on the "route" edge.

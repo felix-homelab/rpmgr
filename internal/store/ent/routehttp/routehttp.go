@@ -49,6 +49,10 @@ const (
 	FieldMaintenance = "maintenance"
 	// FieldMaintenanceMessage holds the string denoting the maintenance_message field in the database.
 	FieldMaintenanceMessage = "maintenance_message"
+	// FieldUpstreamResponseHeaderTimeoutSeconds holds the string denoting the upstream_response_header_timeout_seconds field in the database.
+	FieldUpstreamResponseHeaderTimeoutSeconds = "upstream_response_header_timeout_seconds"
+	// FieldUpstreamIdleTimeoutSeconds holds the string denoting the upstream_idle_timeout_seconds field in the database.
+	FieldUpstreamIdleTimeoutSeconds = "upstream_idle_timeout_seconds"
 	// EdgeRoute holds the string denoting the route edge name in mutations.
 	EdgeRoute = "route"
 	// EdgeCertificate holds the string denoting the certificate edge name in mutations.
@@ -91,6 +95,8 @@ var Columns = []string{
 	FieldDNSProxied,
 	FieldMaintenance,
 	FieldMaintenanceMessage,
+	FieldUpstreamResponseHeaderTimeoutSeconds,
+	FieldUpstreamIdleTimeoutSeconds,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -142,6 +148,14 @@ var (
 	DefaultMaintenanceMessage string
 	// MaintenanceMessageValidator is a validator for the "maintenance_message" field. It is called by the builders before save.
 	MaintenanceMessageValidator func(string) error
+	// DefaultUpstreamResponseHeaderTimeoutSeconds holds the default value on creation for the "upstream_response_header_timeout_seconds" field.
+	DefaultUpstreamResponseHeaderTimeoutSeconds int
+	// UpstreamResponseHeaderTimeoutSecondsValidator is a validator for the "upstream_response_header_timeout_seconds" field. It is called by the builders before save.
+	UpstreamResponseHeaderTimeoutSecondsValidator func(int) error
+	// DefaultUpstreamIdleTimeoutSeconds holds the default value on creation for the "upstream_idle_timeout_seconds" field.
+	DefaultUpstreamIdleTimeoutSeconds int
+	// UpstreamIdleTimeoutSecondsValidator is a validator for the "upstream_idle_timeout_seconds" field. It is called by the builders before save.
+	UpstreamIdleTimeoutSecondsValidator func(int) error
 )
 
 // TLSMode defines the type for the "tls_mode" enum field.
@@ -273,6 +287,16 @@ func ByMaintenance(opts ...sql.OrderTermOption) OrderOption {
 // ByMaintenanceMessage orders the results by the maintenance_message field.
 func ByMaintenanceMessage(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMaintenanceMessage, opts...).ToFunc()
+}
+
+// ByUpstreamResponseHeaderTimeoutSeconds orders the results by the upstream_response_header_timeout_seconds field.
+func ByUpstreamResponseHeaderTimeoutSeconds(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpstreamResponseHeaderTimeoutSeconds, opts...).ToFunc()
+}
+
+// ByUpstreamIdleTimeoutSeconds orders the results by the upstream_idle_timeout_seconds field.
+func ByUpstreamIdleTimeoutSeconds(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpstreamIdleTimeoutSeconds, opts...).ToFunc()
 }
 
 // ByRouteField orders the results by route field.

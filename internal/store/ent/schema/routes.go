@@ -256,6 +256,9 @@ func (RouteHTTP) Fields() []ent.Field {
 		field.Bool("dns_proxied").Default(false),
 		field.Bool("maintenance").Default(false),
 		field.String("maintenance_message").MaxLen(2000).Default(""),
+		// The route's own upstream timeouts in seconds; 0 keeps the gateway's (D94).
+		field.Int("upstream_response_header_timeout_seconds").NonNegative().Default(0),
+		field.Int("upstream_idle_timeout_seconds").NonNegative().Default(0),
 	}
 }
 

@@ -33,6 +33,11 @@ Changes to the design documents are not recorded here: see the git history and t
   `rpmgr create route`/`update route --match-header`, the API's `header_matches` and manifests; the
   web UI follows. Gateways of earlier releases never get such a route. (#617, #618)
 
+- Routes: an http route can set its own upstream response-header timeout, after which a request
+  gets 504, and its own idle timeout for unused connections to its targets; 0 keeps the gateway's.
+  Set with `--upstream-header-timeout` and `--upstream-idle-timeout`, the API and manifests; the
+  web UI follows. Gateways of earlier releases keep their own values. (#619)
+
 ### Changed
 
 - Gateways: paths under `/.rpmgr/` on an http route's hostnames belong to the gateway and get its

@@ -68,6 +68,7 @@ type routeFlags struct {
 	hsts                                           time.Duration
 	port                                           uint
 	idleTimeout, flowIdleTimeout                   time.Duration
+	upstreamHeaderTimeout, upstreamIdleTimeout     time.Duration
 	websocket, maintenance                         bool
 	maintenanceMessage                             string
 	maxBody                                        uint64
@@ -105,6 +106,10 @@ func (f *routeFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.StringVar(&f.host, "host-header", "", "http: the Host header towards the upstream; empty keeps the client's")
 	fs.Var(f.requestHeaders, "set-request-header", "http: a header Name=value set towards the upstream; repeat for more")
 	fs.Var(f.responseHeaders, "set-response-header", "http: a header Name=value set towards the client; repeat for more")
+	fs.DurationVar(&f.upstreamHeaderTimeout, "upstream-header-timeout", 0,
+		"http: how long to wait for the upstream's response headers before 504; 0 is the gateway's")
+	fs.DurationVar(&f.upstreamIdleTimeout, "upstream-idle-timeout", 0,
+		"http: how long an unused connection to the upstream is kept; 0 is the gateway's")
 	fs.Var(&f.matches, "match-header", "http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more")
 	fs.BoolVar(&f.websocket, "websocket", true, "http: whether WebSocket upgrades pass")
 	fs.Uint64Var(&f.maxBody, "max-body", 0, "http: the largest request body in bytes; 0 is no limit")
@@ -148,7 +153,7 @@ func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Rout
 	for flagName, types := range map[string]string{"hostname": "http tls_passthrough", "path-prefix": "http", "tls-mode": "http",
 		"certificate": "http", "port80": "http", "hsts": "http", "host-header": "http", "set-request-header": "http",
 		"set-response-header": "http", "websocket": "http", "max-body": "http", "maintenance": "http", "maintenance-message": "http",
-		"match-header": "http", "port": "tcp udp tcp_udp", "idle-timeout": "tcp udp tcp_udp", "flow-idle-timeout": "tcp_udp"} {
+		"match-header": "http", "upstream-header-timeout": "http", "upstream-idle-timeout": "http", "port": "tcp udp tcp_udp", "idle-timeout": "tcp udp tcp_udp", "flow-idle-timeout": "tcp_udp"} {
 		if set[flagName] && !slices.Contains(strings.Fields(types), typ) {
 			return nil, nil, cli.Usagef("--%s is not for a %s route", flagName, typ)
 		}
@@ -196,6 +201,12 @@ func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Rout
 		do("maintenance", "http.maintenance", func() { h.Maintenance = f.maintenance })
 		do("maintenance-message", "http.maintenance_message", func() { h.MaintenanceMessage = f.maintenanceMessage })
 		do("match-header", "http.header_matches", func() { h.HeaderMatches = f.matches })
+		do("upstream-header-timeout", "http.upstream_response_header_timeout_seconds", func() {
+			h.UpstreamResponseHeaderTimeoutSeconds = uint32(f.upstreamHeaderTimeout / time.Second) //nolint:gosec // G115: protovalidate bounds it
+		})
+		do("upstream-idle-timeout", "http.upstream_idle_timeout_seconds", func() {
+			h.UpstreamIdleTimeoutSeconds = uint32(f.upstreamIdleTimeout / time.Second) //nolint:gosec // G115: protovalidate bounds it
+		})
 	case "tls_passthrough":
 		t := r.GetTlsPassthrough()
 		if t == nil {

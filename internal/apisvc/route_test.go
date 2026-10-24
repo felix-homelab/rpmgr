@@ -374,6 +374,68 @@ func TestHTTPRoutes_HeaderMatches(t *testing.T) {
 	}
 }
 
+// TestHTTPRoutes_Timeouts (D94): an http route's own upstream timeouts are stored, read back and
+// compiled, 0 keeping the gateway's; above an hour is refused; they need no capability, so a
+// gateway that announces none still gets the route.
+func TestHTTPRoutes_Timeouts(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	e.verified(t, org, "example.com", true)
+	slow := httpRoute("slow", group, "slow.example.com")
+	slow.GetHttp().UpstreamResponseHeaderTimeoutSeconds, slow.GetHttp().UpstreamIdleTimeoutSeconds = 600, 30
+	got, err := createRoute(ada, org, slow, "")
+	if err != nil || got.GetHttp().GetUpstreamResponseHeaderTimeoutSeconds() != 600 || got.GetHttp().GetUpstreamIdleTimeoutSeconds() != 30 {
+		t.Fatalf("a route with its own timeouts: %v %v", got, err)
+	}
+	plain, err := createRoute(ada, org, httpRoute("plain", group, "plain.example.com"), "")
+	if err != nil || plain.GetHttp().GetUpstreamResponseHeaderTimeoutSeconds() != 0 || plain.GetHttp().GetUpstreamIdleTimeoutSeconds() != 0 {
+		t.Fatalf("a route with the gateway's: %v %v", plain, err)
+	}
+	for name, set := range map[string]func(h *rpmgrv1.HTTPRouteSpec){
+		"a header timeout above an hour": func(h *rpmgrv1.HTTPRouteSpec) { h.UpstreamResponseHeaderTimeoutSeconds = 3601 },
+		"an idle timeout above an hour":  func(h *rpmgrv1.HTTPRouteSpec) { h.UpstreamIdleTimeoutSeconds = 3601 },
+	} {
+		r := httpRoute("bad", group, "bad.example.com")
+		set(r.GetHttp())
+		if _, err := createRoute(ada, org, r, ""); code(err) != connect.CodeInvalidArgument {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	upd := proto.Clone(got).(*rpmgrv1.Route)
+	upd.GetHttp().UpstreamResponseHeaderTimeoutSeconds = 3600
+	res, err := ada.rt.UpdateRoute(ctx, connect.NewRequest(&rpmgrv1.UpdateRouteRequest{Route: upd, Etag: got.GetEtag(),
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"http.upstream_response_header_timeout_seconds"}}}))
+	if err != nil || res.Msg.GetRoute().GetHttp().GetUpstreamResponseHeaderTimeoutSeconds() != 3600 ||
+		res.Msg.GetRoute().GetHttp().GetUpstreamIdleTimeoutSeconds() != 30 {
+		t.Fatalf("an update of one timeout: %v %v", res, err)
+	}
+	gw, err := createGateway(ada, org, group, "gw1", "gw1.example.com:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	if err := store.ReadTx(e.sys, e.db, func(tx *ent.Tx, _ store.Revision) error {
+		a := snapshot.Agent{Identity: pki.Identity{TrustDomain: "rpmgr-teststor", Org: org, Kind: pki.KindGateway, ID: gw.GetId()}}
+		for _, src := range routes.Sources() {
+			rs, err := src(e.sys, tx, a)
+			if err != nil {
+				return err
+			}
+			for _, r := range rs {
+				if h := r.GetGatewayHttpRoute(); r.GetId() == got.GetId() {
+					found = h.GetUpstreamResponseHeaderTimeoutSeconds() == 3600 && h.GetUpstreamIdleTimeoutSeconds() == 30
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("a gateway without capabilities did not get the route with its timeouts")
+	}
+}
+
 // TestRoutes_GatewayAcceptsThem: routes the API accepts, with every http setting, access
 // policies and a target each, an HTTPS one verified by a pin, compile into a snapshot the gateway
 // validates without an error.
@@ -391,6 +453,7 @@ func TestRoutes_GatewayAcceptsThem(t *testing.T) {
 	h.RequestHeadersSet = map[string]string{"x-env": "prod", "Authorization": "Bearer abc"}
 	h.ResponseHeadersSet = map[string]string{"cache-control": "no-store"}
 	h.Websocket, h.MaxBodyBytes = &off, 1<<20
+	h.UpstreamResponseHeaderTimeoutSeconds, h.UpstreamIdleTimeoutSeconds = 3600, 1
 	h.HeaderMatches = []*rpmgrv1.HeaderMatch{{Name: "x-env", Match: &rpmgrv1.HeaderMatch_Exact{Exact: "beta"}},
 		{Name: "X-Tenant", Match: &rpmgrv1.HeaderMatch_Present{Present: true}}}
 	for _, p := range []*rpmgrv1.PortPool{{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009},

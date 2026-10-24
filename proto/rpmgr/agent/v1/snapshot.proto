@@ -269,6 +269,12 @@ message GatewayHTTPRoute {
   // route with the smaller ID wins a tie (docs/03-connections.md, "HTTP routes"). Only a gateway
   // announcing the capability http.header-match gets a route that has them.
   repeated HTTPHeaderMatch header_matches = 17;
+  // How long the gateway waits for the upstream's response headers before the request gets 504;
+  // 0 keeps the gateway's own. A gateway that does not know the field keeps its own.
+  uint32 upstream_response_header_timeout_seconds = 18;
+  // How long a pooled keep-alive connection to the upstream may stay unused; 0 keeps the
+  // gateway's own.
+  uint32 upstream_idle_timeout_seconds = 19;
 }
 
 // HTTPHeaderMatch is a request header an http route matches on.

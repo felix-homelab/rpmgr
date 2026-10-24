@@ -71,3 +71,11 @@ func SetBasicAuthTTL(t testing.TB, d time.Duration) {
 
 // BasicAuthBusy returns how many basic-auth verifications run now.
 func (h *HTTPRoutes) BasicAuthBusy() int64 { return int64(h.basic.busy.Load()) }
+
+// RouteTimeouts returns the upstream timeouts in force for http route id.
+func RouteTimeouts(h *HTTPRoutes, id string) (header, idle time.Duration) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	rt := h.transports[id]
+	return rt.tr.ResponseHeaderTimeout, rt.tr.IdleConnTimeout
+}

@@ -320,6 +320,12 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 			}), withHTTP(httpResource("rt_2", "http", "app.example.com|/api"), func(r *agentv1.GatewayHTTPRoute) {
 				r.HeaderMatches = []*agentv1.HTTPHeaderMatch{{Name: "X-Env", Value: "beta"}}
 			})), "also served by rt_1 with the same header matches"},
+		{"an upstream header timeout above an hour", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.UpstreamResponseHeaderTimeoutSeconds = 3601
+		})), "upstream timeout above 3600 seconds"},
+		{"an upstream idle timeout above an hour", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.UpstreamIdleTimeoutSeconds = 3601
+		})), "upstream timeout above 3600 seconds"},
 		{"nine header matches", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
 			for i := range 9 {
 				r.HeaderMatches = append(r.HeaderMatches, &agentv1.HTTPHeaderMatch{Name: "X-" + strings.Repeat("a", i+1), Present: true})
@@ -528,5 +534,28 @@ func TestApplier_HeaderMatches(t *testing.T) {
 	}
 	if got := gateway.RouteFor(h, "app.example.com", "/", http.Header{"X-Env": {"prod"}}); got != "rt_main" {
 		t.Errorf("with another value: %q", got)
+	}
+}
+
+// TestApplier_RouteTimeouts (D94): an http route's own upstream timeouts in the snapshot are the
+// ones its transport uses; 0 keeps the gateway's.
+func TestApplier_RouteTimeouts(t *testing.T) {
+	a, assign := gateway.NewApplier()
+	m := gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: "gw_01", Assignment: assign})
+	t.Cleanup(m.Close)
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Sessions: m})
+	t.Cleanup(h.Close)
+	a.Bind(gateway.Served{HTTP: h, Sessions: m})
+	own := withHTTP(httpResource("rt_own", "http", "own.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+		r.UpstreamResponseHeaderTimeoutSeconds, r.UpstreamIdleTimeoutSeconds = 300, 15
+	})
+	if st := a.Apply(t.Context(), gatewaySnapshot(1, own, httpResource("rt_def", "http", "def.example.com")), agent.Changes{}); len(st) != 0 {
+		t.Fatal(st)
+	}
+	if header, idle := gateway.RouteTimeouts(h, "rt_own"); header != 5*time.Minute || idle != 15*time.Second {
+		t.Errorf("the route's own: %v %v", header, idle)
+	}
+	if header, idle := gateway.RouteTimeouts(h, "rt_def"); header != time.Minute || idle != 2*time.Minute {
+		t.Errorf("the gateway's: %v %v", header, idle)
 	}
 }
