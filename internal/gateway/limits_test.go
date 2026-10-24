@@ -7,9 +7,11 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -89,10 +91,8 @@ func TestTCPRoutes_ConnectionLimit(t *testing.T) {
 	if err := ping(a, "first"); err != nil {
 		t.Fatal(err)
 	}
-	b := dialPort(t, port)
-	_ = b.SetReadDeadline(time.Now().Add(5 * time.Second))
-	if n, err := b.Read(make([]byte, 1)); err == nil || isTimeout(err) {
-		t.Fatalf("a connection over the limit: %d bytes, %v", n, err)
+	if err := reset(port); err != nil {
+		t.Fatalf("a connection over the limit: %v", err)
 	}
 	_ = a.Close()
 	eventually(t, "the closed connection kept its slot", func() bool { return lim.Open() == 0 })
@@ -104,6 +104,22 @@ func TestTCPRoutes_ConnectionLimit(t *testing.T) {
 	if err := ping(dialPort(t, port), "a raised limit"); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// reset reports an error unless a connection to port is reset, during the handshake already on a
+// slow host, or right after it.
+func reset(port uint16) error {
+	c, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port))))
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = c.Close() }()
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	n, err := c.Read(make([]byte, 1))
+	if err == nil || isTimeout(err) {
+		return fmt.Errorf("not reset: %d bytes, %v", n, err)
+	}
+	return nil
 }
 
 func isTimeout(err error) bool {
