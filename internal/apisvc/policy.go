@@ -4,18 +4,23 @@ package apisvc
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net/netip"
+	"net/textproto"
 	"slices"
+	"strings"
 	"sync"
 
 	"connectrpc.com/connect"
+	"golang.org/x/net/http/httpguts"
 	"google.golang.org/protobuf/proto"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/password"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -29,6 +34,29 @@ import (
 // ReasonBasicAuthNotHTTP: a basic_auth rule would apply to a route that is not an http route,
 // where no client could pass it (docs/03-connections.md, "Access policies").
 const ReasonBasicAuthNotHTTP = "BASIC_AUTH_NOT_HTTP"
+
+// ReasonRequireHeaderNotHTTP: a require_header rule would apply to a route that is not an http
+// route, where no client could pass it (docs/03-connections.md, "Access policies").
+const ReasonRequireHeaderNotHTTP = "REQUIRE_HEADER_NOT_HTTP"
+
+// minHeaderValue is the shortest require_header value: a shared secret of this length is not
+// guessable, so the controller keeps only its SHA-256 (docs/04-security.md, "Route edge rules").
+const minHeaderValue = 32
+
+// headerNotRequired reports why a request header cannot be required, or "": the gateway's own and
+// the connection's headers, the credentials and cookies that other rules and backends read, and
+// the Rpmgr- headers the gateway sets.
+func headerNotRequired(name string) string {
+	switch c := textproto.CanonicalMIMEHeaderKey(name); {
+	case slices.Contains(gateway.ReservedHeaders, c):
+		return "is the gateway's own"
+	case c == "Authorization" || c == "Cookie":
+		return "carries credentials of basic auth or the backend"
+	case strings.HasPrefix(c, "Rpmgr-"):
+		return "is an rpmgr header"
+	}
+	return ""
+}
 
 // Policies is PolicyService. Its methods run in the org scope the interceptor gives them.
 type Policies struct {
@@ -59,7 +87,7 @@ func (p *Policies) CreateAccessPolicy(ctx context.Context, req *connect.Request[
 			if err != nil {
 				return nil, err
 			}
-			return []string{row.ID}, storeRules(ctx, tx, row, in.GetRules(), hashes, nil)
+			return []string{row.ID}, storeRules(ctx, tx, row, in.GetRules(), hashes, keptSecrets{})
 		})
 		if err != nil {
 			return nil, storeError(err)
@@ -219,6 +247,7 @@ func (p *Policies) DeleteAccessPolicy(ctx context.Context, req *connect.Request[
 // at once. It runs outside a transaction, which the hashes would hold for long.
 func (p *Policies) hashRules(ctx context.Context, rules []*rpmgrv1.AccessRule) (map[*rpmgrv1.BasicAuthCredential]string, error) {
 	var users []*rpmgrv1.BasicAuthCredential
+	headers := map[string]bool{} // the policy's required headers, by canonical name
 	for i, r := range rules {
 		invalid := func(format string, args ...any) error {
 			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: rule %d: "+format, append([]any{i + 1}, args...)...))
@@ -226,6 +255,11 @@ func (p *Policies) hashRules(ctx context.Context, rules []*rpmgrv1.AccessRule) (
 		for _, c := range ipRuleOf(r).GetCidrs() {
 			if _, err := netip.ParsePrefix(c); err != nil {
 				return nil, invalid("%q is not a CIDR", c)
+			}
+		}
+		if rh := r.GetRequireHeader(); rh != nil {
+			if err := checkRequireHeader(rh, headers); err != nil {
+				return nil, invalid("%v", err)
 			}
 		}
 		names := map[string]bool{}
@@ -267,6 +301,35 @@ func (p *Policies) hashRules(ctx context.Context, rules []*rpmgrv1.AccessRule) (
 	return out, nil
 }
 
+// checkRequireHeader checks a require_header rule: a header that may be required, once per policy
+// (seen), and up to 4 distinct values of 32 to 1024 visible ASCII characters. A rule without
+// values keeps the stored ones, which storeRules checks.
+func checkRequireHeader(rh *rpmgrv1.RequireHeaderRule, seen map[string]bool) error {
+	name := textproto.CanonicalMIMEHeaderKey(rh.GetName())
+	switch {
+	case !httpguts.ValidHeaderFieldName(rh.GetName()):
+		return fmt.Errorf("header name %q", rh.GetName())
+	case headerNotRequired(name) != "":
+		return fmt.Errorf("header %s %s and cannot be required", name, headerNotRequired(name))
+	case seen[name]:
+		return fmt.Errorf("header %s is required twice; give its values in one rule", name)
+	case len(rh.GetValues()) > 4:
+		return fmt.Errorf("header %s has %d values, at most 4", name, len(rh.GetValues()))
+	}
+	seen[name] = true
+	for i, v := range rh.GetValues() {
+		switch {
+		case len(v) < minHeaderValue:
+			return fmt.Errorf("value %d of header %s is shorter than %d characters", i+1, name, minHeaderValue)
+		case strings.IndexFunc(v, func(r rune) bool { return r < 0x21 || r > 0x7e }) >= 0:
+			return fmt.Errorf("value %d of header %s has a character that is not visible ASCII", i+1, name)
+		case slices.Contains(rh.GetValues()[:i], v):
+			return fmt.Errorf("value %d of header %s is given twice", i+1, name)
+		}
+	}
+	return nil
+}
+
 // ipRuleOf is an IP rule's parameters; nil for another kind.
 func ipRuleOf(r *rpmgrv1.AccessRule) *rpmgrv1.IPRuleParams {
 	if r.GetIpAllow() != nil {
@@ -275,55 +338,84 @@ func ipRuleOf(r *rpmgrv1.AccessRule) *rpmgrv1.IPRuleParams {
 	return r.GetIpDeny()
 }
 
-// keptHashes are the password hashes of a policy's basic_auth users, by name; the first rule's
-// where two have the name.
-func keptHashes(ctx context.Context, tx *ent.Tx, policyID string) (map[string]string, error) {
-	rows, err := tx.PolicyRule.Query().Where(policyrule.PolicyID(policyID), policyrule.KindEQ(policyrule.KindBasicAuth)).
-		Order(ent.Asc(policyrule.FieldPosition)).All(ctx)
+// keptSecrets are the hashes of a policy's secrets that an update keeps when it does not give them
+// again: passwords by basic_auth user name, the first rule's where two have the name, and value
+// hashes by required header.
+type keptSecrets struct {
+	passwords map[string]string
+	headers   map[string][][]byte
+}
+
+// keptHashes reads the hashes of a policy's secrets.
+func keptHashes(ctx context.Context, tx *ent.Tx, policyID string) (keptSecrets, error) {
+	out := keptSecrets{passwords: map[string]string{}, headers: map[string][][]byte{}}
+	rows, err := tx.PolicyRule.Query().Where(policyrule.PolicyID(policyID), policyrule.KindIn(policyrule.KindBasicAuth,
+		policyrule.KindRequireHeader)).Order(ent.Asc(policyrule.FieldPosition)).All(ctx)
 	if err != nil {
-		return nil, err
+		return out, err
 	}
-	out := map[string]string{}
 	for _, r := range rows {
 		var params rpmgrv1.PolicyRuleParams
 		if err := proto.Unmarshal(r.Params, &params); err != nil {
-			return nil, err
+			return out, err
 		}
 		for _, u := range params.GetBasicAuth().GetUsers() {
-			if _, ok := out[u.GetName()]; !ok {
-				out[u.GetName()] = u.GetPasswordHash()
+			if _, ok := out.passwords[u.GetName()]; !ok {
+				out.passwords[u.GetName()] = u.GetPasswordHash()
 			}
+		}
+		if rh := params.GetRequireHeader(); rh != nil {
+			out.headers[rh.GetName()] = rh.GetValueSha256()
 		}
 	}
 	return out, nil
 }
 
 // storeRules adds a policy's rules in order: CIDRs in their masked form, basic_auth users with the
-// hash of their password or, without one, their kept hash. A basic_auth rule is refused while a
-// route that is not an http route applies the policy.
+// hash of their password or, without one, their kept hash, and require_header rules with the
+// SHA-256 of their values or, without any, the kept ones. A basic_auth or require_header rule is
+// refused while a route that is not an http route applies the policy.
 func storeRules(ctx context.Context, tx *ent.Tx, policy *ent.AccessPolicy, rules []*rpmgrv1.AccessRule,
-	hashes map[*rpmgrv1.BasicAuthCredential]string, kept map[string]string) error {
+	hashes map[*rpmgrv1.BasicAuthCredential]string, kept keptSecrets) error {
+	httpOnly := func(i int, what, reason string) error {
+		n, err := tx.RoutePolicy.Query().Where(routepolicy.PolicyID(policy.ID),
+			routepolicy.HasRouteWith(route.TypeNEQ(route.TypeHTTP))).Count(ctx)
+		if err != nil || n == 0 {
+			return err
+		}
+		return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"apisvc: rule %d: %d routes that are not http routes apply the policy, and no client could pass %s there", i+1, n, what)), reason)
+	}
 	for i, r := range rules {
 		params := &rpmgrv1.PolicyRuleParams{}
 		var kind policyrule.Kind
 		switch {
-		case r.GetBasicAuth() != nil:
-			kind = policyrule.KindBasicAuth
-			n, err := tx.RoutePolicy.Query().Where(routepolicy.PolicyID(policy.ID),
-				routepolicy.HasRouteWith(route.TypeNEQ(route.TypeHTTP))).Count(ctx)
-			if err != nil {
+		case r.GetRequireHeader() != nil:
+			kind = policyrule.KindRequireHeader
+			if err := httpOnly(i, "a require-header rule", ReasonRequireHeaderNotHTTP); err != nil {
 				return err
 			}
-			if n > 0 {
-				return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
-					"apisvc: rule %d: %d routes that are not http routes apply the policy, and no client could pass basic auth there", i+1, n)),
-					ReasonBasicAuthNotHTTP)
+			rh := &rpmgrv1.RequireHeaderParams{Name: textproto.CanonicalMIMEHeaderKey(r.GetRequireHeader().GetName())}
+			for _, v := range r.GetRequireHeader().GetValues() {
+				sum := sha256.Sum256([]byte(v))
+				rh.ValueSha256 = append(rh.ValueSha256, sum[:])
+			}
+			if len(rh.ValueSha256) == 0 {
+				if rh.ValueSha256 = kept.headers[rh.GetName()]; len(rh.ValueSha256) == 0 {
+					return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: rule %d: header %s needs a value", i+1, rh.GetName()))
+				}
+			}
+			params.Params = &rpmgrv1.PolicyRuleParams_RequireHeader{RequireHeader: rh}
+		case r.GetBasicAuth() != nil:
+			kind = policyrule.KindBasicAuth
+			if err := httpOnly(i, "basic auth", ReasonBasicAuthNotHTTP); err != nil {
+				return err
 			}
 			ba := &rpmgrv1.BasicAuthParams{}
 			for _, u := range r.GetBasicAuth().GetUsers() {
 				h, ok := hashes[u]
 				if !ok {
-					if h, ok = kept[u.GetName()]; !ok {
+					if h, ok = kept.passwords[u.GetName()]; !ok {
 						return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: rule %d: user %q needs a password", i+1, u.GetName()))
 					}
 				}
@@ -353,7 +445,7 @@ func storeRules(ctx context.Context, tx *ent.Tx, policy *ent.AccessPolicy, rules
 }
 
 // policyOf is an access policy as the API shows it: its rules in order, basic_auth users by name
-// only, and the routes that apply it.
+// only, require_header rules by header only, and the routes that apply it.
 func policyOf(ctx context.Context, c *ent.Client, row *ent.AccessPolicy) (*rpmgrv1.AccessPolicy, error) {
 	out := &rpmgrv1.AccessPolicy{Id: row.ID, Name: row.Name, Description: row.Description, Etag: etagOf(row.Version)}
 	rules, err := c.PolicyRule.Query().Where(policyrule.PolicyID(row.ID)).Order(ent.Asc(policyrule.FieldPosition)).All(ctx)
@@ -376,6 +468,9 @@ func policyOf(ctx context.Context, c *ent.Client, row *ent.AccessPolicy) (*rpmgr
 				ba.Users = append(ba.Users, &rpmgrv1.BasicAuthCredential{Name: u.GetName()})
 			}
 			out.Rules = append(out.Rules, &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_BasicAuth{BasicAuth: ba}})
+		case policyrule.KindRequireHeader:
+			out.Rules = append(out.Rules, &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_RequireHeader{
+				RequireHeader: &rpmgrv1.RequireHeaderRule{Name: params.GetRequireHeader().GetName()}}})
 		}
 	}
 	if out.RouteIds, err = c.RoutePolicy.Query().Where(routepolicy.PolicyID(row.ID)).Order(ent.Asc(routepolicy.FieldRouteID)).

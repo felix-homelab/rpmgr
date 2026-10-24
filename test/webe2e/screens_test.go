@@ -294,6 +294,11 @@ func (s *seeder) seed(firstUserLink string) {
 			{Rule: &rpmgrv1.AccessRule_BasicAuth{BasicAuth: &rpmgrv1.BasicAuthRule{Users: []*rpmgrv1.BasicAuthCredential{
 				{Name: "staff", Password: screensPassword}, {Name: "guest", Password: screensPassword}}}}},
 		}}})
+	call(s, "policy cdn-only", ada.pol.CreateAccessPolicy, &rpmgrv1.CreateAccessPolicyRequest{OrgId: org, RequestId: uuid.NewString(),
+		AccessPolicy: &rpmgrv1.AccessPolicy{Name: "cdn-only", Description: "Requests through the CDN only", Rules: []*rpmgrv1.AccessRule{
+			{Rule: &rpmgrv1.AccessRule_RequireHeader{RequireHeader: &rpmgrv1.RequireHeaderRule{Name: "X-Origin-Token",
+				Values: []string{"cdn-origin-token-0123456789abcdefghijkl"}}}},
+		}}})
 
 	// Connectors: two hosts of the home network, enrolled and running beside the all-in-one, and
 	// a token that may enroll a few CI runners.

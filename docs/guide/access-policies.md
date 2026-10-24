@@ -1,7 +1,8 @@
 # Access policies
 
 An access policy decides who may reach a route: by the client's IP address on every route type,
-and with a user name and password (basic auth) on HTTP routes. Policies are reusable: one policy,
+and on HTTP routes with a user name and password (basic auth) or with a header that only your CDN
+or your clients know (a required header). Policies are reusable: one policy,
 such as "office only", can guard many routes. This page is for anyone who publishes services and
 wants to limit who reaches them.
 
@@ -17,13 +18,14 @@ wants to limit who reaches them.
 
 ## The rules
 
-A policy has a name, an optional description and up to 50 rules of three kinds:
+A policy has a name, an optional description and up to 50 rules of four kinds:
 
 | Kind | Web UI | Command line | Applies to |
 |---|---|---|---|
 | Allow addresses | **Allow addresses** | `--rule allow:<cidr>,…` | every route type |
 | Deny addresses | **Deny addresses** | `--rule deny:<cidr>,…` | every route type |
 | Basic auth | **Basic auth (HTTP routes)** | `--rule basic-auth:<user>,…` | HTTP routes only |
+| Required header | **Require a header (HTTP routes)** | `--rule require-header:<header>` | HTTP routes only |
 
 An address rule holds up to 1000 CIDRs, IPv4 or IPv6, such as `203.0.113.0/24`, `2001:db8::/32`, or
 `198.51.100.7/32` for a single address; an address without a prefix length is refused. A CIDR with
@@ -80,6 +82,31 @@ length rule of account passwords ([04](../04-security.md#human-authentication-an
   passthrough route, whose clients could never answer it, and a policy that such a route applies
   cannot get a basic-auth rule.
 
+### Required header
+
+A required-header rule admits only requests that carry a header with one of its values, a shared
+secret. Use it when a CDN or another proxy that you control sits in front of the route: the CDN
+adds the header to every request it forwards, so a client that goes around the CDN to the gateway
+is refused.
+
+- A rule names one header, such as `X-Origin-Token`, and up to four values, so that you can add a
+  new value, change the CDN over to it, and then remove the old one. A value has at least 32
+  visible characters and no spaces; the web UI generates one for you.
+- The controller stores only a SHA-256 hash of each value, and the gateways get only the hashes. A
+  value is never shown again: copy it to your CDN before you save. When you edit a policy, a
+  required header whose values you leave empty keeps them.
+- A request that the address rules admit must carry the header of every required-header rule of
+  the route's policies, with one of its values, or it gets 403. The rules are checked before
+  basic auth.
+- The gateway removes the header before the request goes upstream, so the service never sees the
+  secret.
+- A policy requires a header once. Headers that HTTP uses for the connection, the gateway's
+  forwarding headers, `Host`, `Authorization`, `Cookie` and `Rpmgr-` headers cannot be required.
+- As with basic auth, a policy with a required header cannot be attached to a route that is not an
+  HTTP route, and a policy that such a route applies cannot get one.
+- A gateway that is older than the rule does not serve a route that applies it until the gateway
+  is upgraded; the route's status names the gateway ([Upgrades](install/upgrades.md)).
+
 ## Create a policy
 
 ### With the web UI
@@ -90,13 +117,15 @@ length rule of account passwords ([04](../04-security.md#human-authentication-an
    each further one. Each rule starts with a list that chooses its kind:
    - for **Allow addresses** or **Deny addresses**, enter the **Addresses (CIDRs, one per line)**;
    - for **Basic auth (HTTP routes)**, choose **Add a user** for each user, the first one too, and
-     enter a **User** and a **Password**.
+     enter a **User** and a **Password**;
+   - for **Require a header (HTTP routes)**, enter the **Header** and a **Value**, or choose
+     **Generate a value**; **Add a value** adds another, up to four.
 
    **Remove the rule** takes a rule out.
 4. Choose **Create the policy**.
 
 The list shows each policy's rules in short, such as "allow 192.0.2.0/24", "basic auth: alice,
-bob", and the routes that use it. **Edit…** changes a policy; **Remove…** removes it, which is
+bob", "requires header X-Origin-Token", and the routes that use it. **Edit…** changes a policy; **Remove…** removes it, which is
 refused while a route applies it.
 
 ### With the command line
@@ -127,8 +156,22 @@ rpmgr create access-policy --name staff-login \
 The command warns when other users may read the file. Blank lines and lines starting with `#` are
 skipped.
 
+A required header for a CDN. Its values come from a file of `header: value` lines, one line per
+value, or, for a header the file does not name, one value from the terminal:
+
+```text
+# cdn-values.txt
+X-Origin-Token: replace-me-with-the-value-your-cdn-sends
+```
+
+```sh
+rpmgr create access-policy --name cdn-only \
+  --rule require-header:X-Origin-Token --header-values-file cdn-values.txt
+```
+
 To change a policy, give the flags you change. The rules given replace all of the policy's rules;
-when asked for a password of a user who has one, an empty answer keeps it:
+when asked for a password of a user who has one, or for the value of a header the policy requires,
+an empty answer keeps it:
 
 ```sh
 rpmgr update access-policy \
@@ -161,11 +204,11 @@ rule of any policy wins over every allow rule, and the web UI offers no order to
 
 ## What clients see
 
-| Route type | Refused by an address rule | Basic auth |
-|---|---|---|
-| HTTP | 403 | 401 without or with wrong credentials, 429 after too many attempts |
-| TCP, TLS passthrough | the connection is reset before it reaches a connector | — |
-| UDP | the datagram is dropped and counted; no flow starts | — |
+| Route type | Refused by an address rule | Required header | Basic auth |
+|---|---|---|---|
+| HTTP | 403 | 403 without the header or with a wrong value | 401 without or with wrong credentials, 429 after too many attempts |
+| TCP, TLS passthrough | the connection is reset before it reaches a connector | — | — |
+| UDP | the datagram is dropped and counted; no flow starts | — | — |
 
 ## Changes and open connections
 
@@ -176,8 +219,9 @@ rule of any policy wins over every allow rule, and the web UI offers no order to
 - **Loosening** takes effect for the next connection or request.
 - A changed basic-auth user list applies to the next request; the gateways forget what they had
   verified for the policy before.
+- A required header whose value you remove ends the requests and WebSockets that were admitted
+  with that value; adding a value ends nothing.
 
 A gateway of v0.1.0-rc.6 or earlier decides by the first matching rule until it is upgraded
-([Upgrades](install/upgrades.md)). Single sign-on with OIDC in front of a route, rate and
-connection limits and a required header are planned for Phase 2
-([05](../05-features.md#edge-access-control-and-limits)).
+([Upgrades](install/upgrades.md)). Single sign-on with OIDC in front of a route and rate and
+connection limits are planned for Phase 2 ([05](../05-features.md#edge-access-control-and-limits)).
