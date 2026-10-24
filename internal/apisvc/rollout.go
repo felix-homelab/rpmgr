@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/settings"
@@ -33,6 +34,8 @@ const (
 	ReasonReleaseBelowMin = "RELEASE_BELOW_MIN_AGENT_VERSION"
 	ReasonReleaseChannel  = "RELEASE_NOT_ON_CHANNEL"
 	ReasonRolloutState    = "ROLLOUT_STATE"
+	ReasonRolloutMode     = "ROLLOUT_MODE"
+	ReasonNotUpgradable   = "AGENT_NOT_UPGRADABLE"
 )
 
 // pausedByHand is the pause reason of a rollout an Instance Admin paused.
@@ -55,15 +58,27 @@ var (
 		rollouttarget.StateStalled:    rpmgrv1.RolloutTargetState_ROLLOUT_TARGET_STATE_STALLED}
 	agentKinds = map[rollouttarget.AgentKind]rpmgrv1.AgentKind{rollouttarget.AgentKindConnector: rpmgrv1.AgentKind_AGENT_KIND_CONNECTOR,
 		rollouttarget.AgentKindGateway: rpmgrv1.AgentKind_AGENT_KIND_GATEWAY}
+	rolloutModes = map[rollout.Mode]rpmgrv1.RolloutMode{rollout.ModeAdvanced: rpmgrv1.RolloutMode_ROLLOUT_MODE_ADVANCED,
+		rollout.ModeEasy: rpmgrv1.RolloutMode_ROLLOUT_MODE_EASY}
 )
 
-// CreateRollout implements ReleaseService. Every connector and enrolled gateway that is not
-// decommissioned and not built in gets a target; built-in agents run in the controller's process
-// and update with it.
+// CreateRollout implements ReleaseService. In a staged rollout every connector and enrolled gateway
+// that is not decommissioned and not built in gets a target; built-in agents run in the
+// controller's process and update with it. An easy rollout gets a target for each agent of its
+// queue, in its order (D129).
 func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgrv1.CreateRolloutRequest]) (
 	*connect.Response[rpmgrv1.CreateRolloutResponse], error) {
 	sys := store.CarryTxHook(r.Sys, ctx)
 	m := req.Msg
+	easy := m.GetMode() == rpmgrv1.RolloutMode_ROLLOUT_MODE_EASY
+	switch {
+	case easy && (len(m.GetAgentIds()) == 0 || len(m.GetCanaryAgentIds()) > 0):
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			errors.New("apisvc: an easy rollout takes its queue in agent_ids, at least one agent, and no canary agents"))
+	case !easy && (len(m.GetCanaryAgentIds()) == 0 || len(m.GetAgentIds()) > 0):
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			errors.New("apisvc: a staged rollout takes at least one canary agent, and no agent_ids"))
+	}
 	var row *ent.Rollout
 	mirrored := false
 	create := func(tx *ent.Tx) error {
@@ -71,34 +86,26 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 		if err != nil {
 			return err
 		}
-		switch {
-		case !release.Releasable(r.Version):
-			return withReason(connect.NewError(connect.CodeFailedPrecondition,
-				errors.New("apisvc: a development build of the controller runs no rollout")), ReasonReleaseNewer)
-		case compareVersions(rel.Version, r.Version) > 0:
-			return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
-				"apisvc: release %s is newer than the controller's %s; upgrade the controller first", rel.Version, r.Version)), ReasonReleaseNewer)
-		case r.MinAgentVersion != "" && compareVersions(rel.Version, r.MinAgentVersion) < 0:
-			return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
-				"apisvc: release %s is below %s, the oldest agent version the controller accepts; its agents could not connect",
-				rel.Version, r.MinAgentVersion)), ReasonReleaseBelowMin)
-		}
-		mirrored = rel.MirroredAt != nil
-		set, _, err := settings.Instance(sys, tx.Client())
-		if err != nil {
+		if err := r.checkTarget(sys, tx, rel); err != nil {
 			return err
 		}
-		if pre := rel.Channel == entrelease.ChannelPrerelease || semver.Prerelease("v"+rel.Version) != ""; pre &&
-			set.GetUpdateChannel() != rpmgrv1.UpdateChannel_UPDATE_CHANNEL_PRERELEASE {
-			return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
-				"apisvc: release %s is a pre-release and the instance's update channel is stable; every host on it would refuse it",
-				rel.Version)), ReasonReleaseChannel)
-		}
+		mirrored = rel.MirroredAt != nil
 		if n, err := tx.Rollout.Query().Where(rollout.Active(true)).Count(sys); err != nil || n > 0 {
 			return errors.Join(err, errIf(n > 0, rolloutActive()))
 		}
 		agents, err := rolloutAgents(sys, tx)
 		if err != nil {
+			return err
+		}
+		if easy {
+			queue, err := queueOf(agents, m.GetAgentIds())
+			if err != nil {
+				return err
+			}
+			if row, err = tx.Rollout.Create().SetReleaseID(rel.ID).SetMode(rollout.ModeEasy).SetCreatedBy(callerID(ctx)).Save(sys); err != nil {
+				return err
+			}
+			_, err = store.QueueRolloutTargets(sys, tx, row.ID, queue)
 			return err
 		}
 		for _, id := range m.GetCanaryAgentIds() {
@@ -152,6 +159,126 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 		return nil, err
 	}
 	return connect.NewResponse(&rpmgrv1.CreateRolloutResponse{Rollout: out}), nil
+}
+
+// UpgradeAgents implements ReleaseService (docs/04-security.md, "Easy rollouts"; D129): the agents
+// join the end of the queue of the easy rollout of the controller's own version that runs or is
+// paused, or start one when no rollout does. An agent queued before keeps its place.
+func (r *Releases) UpgradeAgents(ctx context.Context, req *connect.Request[rpmgrv1.UpgradeAgentsRequest]) (
+	*connect.Response[rpmgrv1.UpgradeAgentsResponse], error) {
+	sys := store.CarryTxHook(r.Sys, ctx)
+	var row *ent.Rollout
+	var targets []*ent.RolloutTarget
+	mirrored := true
+	_, err := store.ConfigTx(sys, r.DB, func(tx *ent.Tx) ([]string, error) {
+		rel, err := tx.Release.Query().Where(entrelease.Version(r.Version)).Only(sys)
+		switch {
+		case ent.IsNotFound(err) || !release.Releasable(r.Version):
+			return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+				"apisvc: the controller's own release %s is not recorded; upload it or let the release check find it", r.Version))
+		case err != nil:
+			return nil, err
+		}
+		agents, err := rolloutAgents(sys, tx)
+		if err != nil {
+			return nil, err
+		}
+		queue, err := queueOf(agents, req.Msg.GetAgentIds())
+		if err != nil {
+			return nil, err
+		}
+		row, err = tx.Rollout.Query().Where(rollout.Active(true)).Only(sys)
+		switch {
+		case ent.IsNotFound(err):
+			if err := r.checkTarget(sys, tx, rel); err != nil {
+				return nil, err
+			}
+			mirrored = rel.MirroredAt != nil
+			if row, err = tx.Rollout.Create().SetReleaseID(rel.ID).SetMode(rollout.ModeEasy).SetCreatedBy(callerID(ctx)).Save(sys); err != nil {
+				return nil, err
+			}
+		case err != nil:
+			return nil, err
+		case row.Mode != rollout.ModeEasy:
+			return nil, withReason(connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("apisvc: a staged rollout runs or is paused; let it complete or cancel it first")), ReasonRolloutActive)
+		case row.ReleaseID != rel.ID:
+			return nil, withReason(connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("apisvc: an easy rollout of another release runs or is paused; let it complete or cancel it first")), ReasonRolloutActive)
+		}
+		if targets, err = store.QueueRolloutTargets(sys, tx, row.ID, queue); err != nil {
+			return nil, err
+		}
+		return []string{row.ID}, nil
+	})
+	if store.IsUniqueViolation(err) {
+		err = rolloutActive() // another rollout was created at the same time
+	}
+	if err != nil {
+		return nil, storeError(err)
+	}
+	if !mirrored {
+		r.mirrorNow()
+	}
+	out := &rpmgrv1.UpgradeAgentsResponse{}
+	if out.Rollout, err = r.rolloutOf(sys, row); err != nil {
+		return nil, err
+	}
+	if out.RolloutTargets, err = r.targetsOf(sys, r.DB.ReadClient(), targets); err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(out), nil
+}
+
+// checkTarget refuses a release no rollout may target: one of a development build of the
+// controller, one newer than the controller, one below its min_agent_version, and a pre-release
+// on a stable instance.
+func (r *Releases) checkTarget(ctx context.Context, tx *ent.Tx, rel *ent.Release) error {
+	switch {
+	case !release.Releasable(r.Version):
+		return withReason(connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("apisvc: a development build of the controller runs no rollout")), ReasonReleaseNewer)
+	case compareVersions(rel.Version, r.Version) > 0:
+		return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"apisvc: release %s is newer than the controller's %s; upgrade the controller first", rel.Version, r.Version)), ReasonReleaseNewer)
+	case r.MinAgentVersion != "" && compareVersions(rel.Version, r.MinAgentVersion) < 0:
+		return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"apisvc: release %s is below %s, the oldest agent version the controller accepts; its agents could not connect",
+			rel.Version, r.MinAgentVersion)), ReasonReleaseBelowMin)
+	}
+	set, _, err := settings.Instance(ctx, tx.Client())
+	if err != nil {
+		return err
+	}
+	if pre := rel.Channel == entrelease.ChannelPrerelease || semver.Prerelease("v"+rel.Version) != ""; pre &&
+		set.GetUpdateChannel() != rpmgrv1.UpdateChannel_UPDATE_CHANNEL_PRERELEASE {
+		return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"apisvc: release %s is a pre-release and the instance's update channel is stable; every host on it would refuse it",
+			rel.Version)), ReasonReleaseChannel)
+	}
+	return nil
+}
+
+// queueOf is an easy rollout's queue of the agents named, in their order. An agent that is not a
+// connector or enrolled gateway in service, that is built in, or that has not announced the
+// capability ota is refused with its reason (D129).
+func queueOf(agents map[string]rolloutAgent, ids []string) ([]store.RolloutAgent, error) {
+	out := make([]store.RolloutAgent, 0, len(ids))
+	for _, id := range ids {
+		a, ok := agents[id]
+		switch {
+		case !ok:
+			return nil, withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+				"apisvc: agent %s is not a connector or enrolled gateway in service that updates over the air; built-in agents update with the controller", id)),
+				ReasonNotUpgradable)
+		case !a.ota:
+			return nil, withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+				"apisvc: agent %s has not announced over-the-air updates: it runs without the root updater, in the container image, or has never connected", id)),
+				ReasonNotUpgradable)
+		}
+		out = append(out, store.RolloutAgent{ID: id, Kind: a.kind, VersionBefore: a.version})
+	}
+	return out, nil
 }
 
 // GetRollout implements ReleaseService.
@@ -242,17 +369,30 @@ func (r *Releases) ListRolloutTargets(ctx context.Context, req *connect.Request[
 		rows = rows[:size]
 		out.NextPageToken = r.API.PageToken(rows[size-1].ID, m)
 	}
-	names, err := agentNames(sys, c, rows)
+	if out.RolloutTargets, err = r.targetsOf(sys, c, rows); err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(out), nil
+}
+
+// targetsOf are rollout targets as the API shows them, with their agents' names and orgs.
+func (r *Releases) targetsOf(ctx context.Context, c *ent.Client, rows []*ent.RolloutTarget) ([]*rpmgrv1.RolloutTarget, error) {
+	names, err := agentNames(ctx, c, rows)
 	if err != nil {
 		return nil, storeError(err)
 	}
+	out := make([]*rpmgrv1.RolloutTarget, 0, len(rows))
 	for _, t := range rows {
 		n := names[t.AgentID]
-		out.RolloutTargets = append(out.RolloutTargets, &rpmgrv1.RolloutTarget{Id: t.ID, RolloutId: t.RolloutID, AgentId: t.AgentID,
+		x := &rpmgrv1.RolloutTarget{Id: t.ID, RolloutId: t.RolloutID, AgentId: t.AgentID,
 			AgentKind: agentKinds[t.AgentKind], AgentName: n[0], OrgId: n[1], Canary: t.Canary, Bucket: int32(t.Bucket), //nolint:gosec // G115: 0 to 99
-			State: targetStates[t.State], Reason: t.Reason, VersionBefore: t.VersionBefore, UpdateTime: timestamppb.New(t.UpdatedAt)})
+			State: targetStates[t.State], Reason: t.Reason, VersionBefore: t.VersionBefore, UpdateTime: timestamppb.New(t.UpdatedAt)}
+		if t.Position != nil {
+			x.Position = int32(*t.Position) //nolint:gosec // G115: one per agent
+		}
+		out = append(out, x)
 	}
-	return connect.NewResponse(out), nil
+	return out, nil
 }
 
 // AdvanceRollout implements ReleaseService: a running rollout moves to a higher percentage or to
@@ -262,6 +402,9 @@ func (r *Releases) AdvanceRollout(ctx context.Context, req *connect.Request[rpmg
 	m := req.Msg
 	out, err := r.change(ctx, m.GetRolloutId(), m.GetEtag(), []rollout.State{rollout.StateRunning}, func(cur *ent.Rollout, u *ent.RolloutUpdateOne) error {
 		switch {
+		case cur.Mode == rollout.ModeEasy:
+			return withReason(connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("apisvc: an easy rollout has no stages; its agents update one after another")), ReasonRolloutMode)
 		case cur.Stage == rollout.StageAll:
 			return stateError("the rollout reaches every agent already")
 		case m.GetAll():
@@ -387,10 +530,12 @@ func stateError(what string) error {
 	return withReason(connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: "+what)), ReasonRolloutState)
 }
 
-// rolloutAgent is an agent a rollout updates.
+// rolloutAgent is an agent a rollout updates: its kind, the version it last connected with and
+// whether it announced the capability ota.
 type rolloutAgent struct {
 	kind    rollouttarget.AgentKind
 	version string
+	ota     bool
 }
 
 // rolloutAgents are the agents a new rollout updates, by ID, with the version each last connected
@@ -411,13 +556,14 @@ func rolloutAgents(ctx context.Context, tx *ent.Tx) (map[string]rolloutAgent, er
 	for _, id := range gws {
 		out[id] = rolloutAgent{kind: rollouttarget.AgentKindGateway}
 	}
-	sessions, err := tx.AgentSession.Query().Select(agentsession.FieldID, agentsession.FieldAgentVersion).All(ctx)
+	sessions, err := tx.AgentSession.Query().
+		Select(agentsession.FieldID, agentsession.FieldAgentVersion, agentsession.FieldCapabilities).All(ctx)
 	if err != nil {
 		return nil, err
 	}
 	for _, s := range sessions {
 		if a, ok := out[s.ID]; ok {
-			a.version = s.AgentVersion
+			a.version, a.ota = s.AgentVersion, slices.Contains(s.Capabilities, agentproto.CapOTA)
 			out[s.ID] = a
 		}
 	}
@@ -518,7 +664,7 @@ func (r *Releases) rolloutsOf(ctx context.Context, rows []*ent.Rollout) ([]*rpmg
 		out[i] = &rpmgrv1.Rollout{Id: x.ID, ReleaseId: x.ReleaseID, Version: versions[x.ReleaseID], Stage: rolloutStages[x.Stage],
 			Percentage: int32(x.Percentage), State: rolloutStates[x.State], PauseReason: x.PauseReason, Counts: byRollout[x.ID], //nolint:gosec // G115: 0 to 100
 			CreateUserId: x.CreatedBy, CreateTime: timestamppb.New(x.CreatedAt), UpdateUserId: x.UpdatedBy,
-			UpdateTime: timestamppb.New(x.UpdatedAt), Etag: etagOf(x.Version)}
+			UpdateTime: timestamppb.New(x.UpdatedAt), Etag: etagOf(x.Version), Mode: rolloutModes[x.Mode]}
 	}
 	return out, nil
 }

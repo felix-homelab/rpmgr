@@ -5,10 +5,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -34,6 +36,7 @@ type releaseAPI struct {
 	advance *rpmgrv1.AdvanceRolloutRequest
 	changes []string // the pause, resume and cancel calls, each with its etag
 	targets *rpmgrv1.ListRolloutTargetsRequest
+	upgrade *rpmgrv1.UpgradeAgentsRequest
 }
 
 func (a *releaseAPI) needStepUp() error {
@@ -125,6 +128,24 @@ func (a *releaseAPI) ListRolloutTargets(_ context.Context, req *connect.Request[
 	a.targets = req.Msg
 	return connect.NewResponse(&rpmgrv1.ListRolloutTargetsResponse{RolloutTargets: []*rpmgrv1.RolloutTarget{{Id: "rlt_1", AgentId: "con_1",
 		AgentName: "nas", Canary: true, State: rpmgrv1.RolloutTargetState_ROLLOUT_TARGET_STATE_ROLLED_BACK, Reason: "not ready"}}}), nil
+}
+
+func (a *releaseAPI) UpgradeAgents(_ context.Context, req *connect.Request[rpmgrv1.UpgradeAgentsRequest]) (*connect.Response[rpmgrv1.UpgradeAgentsResponse], error) {
+	if err := a.needStepUp(); err != nil {
+		return nil, err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.upgrade = req.Msg
+	if slices.Contains(req.Msg.GetAgentIds(), "gw_busy") {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("a staged rollout runs or is paused"))
+	}
+	out := &rpmgrv1.UpgradeAgentsResponse{Rollout: &rpmgrv1.Rollout{Id: "rol_3", Version: "1.5.0", Mode: rpmgrv1.RolloutMode_ROLLOUT_MODE_EASY}}
+	for i, id := range req.Msg.GetAgentIds() {
+		out.RolloutTargets = append(out.RolloutTargets, &rpmgrv1.RolloutTarget{Id: "rlt_" + id, AgentId: id, Position: int32(i + 4), //nolint:gosec // G115: a few
+			State: rpmgrv1.RolloutTargetState_ROLLOUT_TARGET_STATE_PENDING})
+	}
+	return connect.NewResponse(out), nil
 }
 
 func (a *releaseAPI) ListGateways(context.Context, *connect.Request[rpmgrv1.ListGatewaysRequest]) (*connect.Response[rpmgrv1.ListGatewaysResponse], error) {
@@ -248,5 +269,76 @@ func TestReleasesAndRollouts(t *testing.T) {
 	}
 	if code, out, _ := run("get", "rollout", "rol_1"); code != cli.ExitOK || !strings.Contains(out, "PERCENTAGE") || !strings.Contains(out, "25") {
 		t.Errorf("get rollout: %d %q", code, out)
+	}
+}
+
+// TestEasyRolloutCommands (docs/16-cli.md; D129): create rollout --easy sends the queue in the
+// order given and no canary; upgrade connector and upgrade gateway resolve names of their kind
+// only, send each agent once, after a step-up, and say each agent's place in the queue.
+func TestEasyRolloutCommands(t *testing.T) {
+	a := &releaseAPI{}
+	mux := http.NewServeMux()
+	mux.Handle(rpmgrv1connect.NewReleaseServiceHandler(a))
+	mux.Handle(rpmgrv1connect.NewAuthServiceHandler(a))
+	mux.Handle(rpmgrv1connect.NewConnectorServiceHandler(a))
+	mux.Handle(rpmgrv1connect.NewGatewayServiceHandler(a))
+	srv := httptest.NewTLSServer(mux)
+	t.Cleanup(srv.Close)
+	creds := filepath.Join(t.TempDir(), "credentials.yaml")
+	if err := apicli.Save(creds, &apicli.Credentials{Controller: srv.URL, Org: "org_1", Token: secret.FromBytes([]byte("rpmgr_pat_good")),
+		CAFile: writeCA(t, srv)}); err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) (int, string, string) {
+		return runWith(map[string]string{"RPMGR_CREDENTIALS": creds}, "", args...)
+	}
+	prompts := 0
+	old := stepUpPrompt
+	stepUpPrompt = func() (string, error) { prompts++; return "right", nil }
+	t.Cleanup(func() { stepUpPrompt = old })
+
+	for _, args := range [][]string{
+		{"--release", "1.4.2", "--easy"},
+		{"--release", "1.4.2", "--easy", "--agent", "nas", "--canary", "edge"},
+		{"--release", "1.4.2", "--agent", "nas"},
+		{"--easy", "--agent", "nas"},
+	} {
+		if code, _, _ := run(append([]string{"create", "rollout"}, args...)...); code != cli.ExitUsage {
+			t.Errorf("create rollout %v: %d", args, code)
+		}
+	}
+	if a.create != nil {
+		t.Fatalf("a refused command sent %v", a.create)
+	}
+	code, out, errOut := run("create", "rollout", "--release", "1.4.2", "--easy", "--agent", "edge", "--agent", "nas", "--agent", "con_7")
+	if code != cli.ExitOK || a.create.GetMode() != rpmgrv1.RolloutMode_ROLLOUT_MODE_EASY || len(a.create.GetCanaryAgentIds()) != 0 ||
+		strings.Join(a.create.GetAgentIds(), ",") != "gw_1,con_1,con_7" || !strings.Contains(out, "Started easy rollout rol_1 of 1.4.2") {
+		t.Fatalf("create rollout --easy: %d %q %q %v", code, out, errOut, a.create)
+	}
+
+	code, out, errOut = run("upgrade", "connector", "nas", "con_7", "nas")
+	if code != cli.ExitOK || strings.Join(a.upgrade.GetAgentIds(), ",") != "con_1,con_7" ||
+		!strings.Contains(out, "connector con_1 is number 4 in the queue of easy rollout rol_3 of 1.5.0") ||
+		!strings.Contains(out, "connector con_7 is number 5") {
+		t.Fatalf("upgrade connector: %d %q %q %v", code, out, errOut, a.upgrade)
+	}
+	code, out, _ = run("upgrade", "gateway", "edge", "-o", "json")
+	var listed []map[string]any
+	if code != cli.ExitOK || json.Unmarshal([]byte(out), &listed) != nil || len(listed) != 1 || listed[0]["agentId"] != "gw_1" ||
+		listed[0]["position"] != float64(4) {
+		t.Errorf("upgrade gateway -o json: %d %q", code, out)
+	}
+	a.upgrade = nil
+	if code, _, errOut := run("upgrade", "connector", "edge"); code != cli.ExitError || a.upgrade != nil {
+		t.Errorf("upgrade connector with a gateway's name: %d %q", code, errOut)
+	}
+	if code, _, _ := run("upgrade", "gateway"); code != cli.ExitUsage {
+		t.Errorf("upgrade gateway without one: %d", code)
+	}
+	if code, _, errOut := run("upgrade", "gateway", "gw_busy"); code != cli.ExitError || !strings.Contains(errOut, "staged rollout") {
+		t.Errorf("upgrade while a staged rollout runs: %d %q", code, errOut)
+	}
+	if prompts != 1 {
+		t.Errorf("%d step-up prompts, want 1", prompts)
 	}
 }

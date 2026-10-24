@@ -19,6 +19,14 @@ Changes to the design documents are not recorded here: see the git history and t
   and shortly after the last one or while the release source limits requests, with the time to
   wait. (#890)
 
+- API and CLI: easy rollouts, which update the chosen connectors and gateways one after another
+  without stages to approve. A failed agent is marked and skipped and the queue continues, and the
+  rollout pauses after a few failures in a row. `ReleaseService.CreateRollout` takes the mode and
+  the queue (`rpmgr create rollout --easy --agent …`), `ReleaseService.UpgradeAgents` (`rpmgr
+  upgrade connector|gateway <agent>…`) adds agents to the running easy rollout of the controller's
+  version or starts one, and the instance setting `rollout_mode` says which kind the web UI starts,
+  `easy` unless set. (#892, #893, #894, #895)
+
 ## [0.2.0] - 2026-10-24
 
 ### Added

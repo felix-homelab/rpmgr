@@ -36,7 +36,7 @@ var ErrInvalid = errors.New("settings: invalid")
 
 const day = 24 * time.Hour
 
-// InstanceDefaults returns the default instance settings (D4, D8, D45; docs/06-data-model.md).
+// InstanceDefaults returns the default instance settings (D4, D8, D45, D129; docs/06-data-model.md).
 func InstanceDefaults() *rpmgrv1.InstanceSettings {
 	return &rpmgrv1.InstanceSettings{
 		DefaultTransport:        rpmgrv1.TransportPolicy_TRANSPORT_POLICY_AUTO.Enum(),
@@ -49,6 +49,7 @@ func InstanceDefaults() *rpmgrv1.InstanceSettings {
 		DailyRollupRetention:    durationpb.New(400 * day),
 		AuditRetention:          durationpb.New(365 * day),
 		AcmeDirectoryUrl:        proto.String(LetsEncrypt),
+		RolloutMode:             rpmgrv1.RolloutMode_ROLLOUT_MODE_EASY.Enum(),
 	}
 }
 

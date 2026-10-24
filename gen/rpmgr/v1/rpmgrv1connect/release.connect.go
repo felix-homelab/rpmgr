@@ -47,6 +47,9 @@ const (
 	// ReleaseServiceCreateRolloutProcedure is the fully-qualified name of the ReleaseService's
 	// CreateRollout RPC.
 	ReleaseServiceCreateRolloutProcedure = "/rpmgr.v1.ReleaseService/CreateRollout"
+	// ReleaseServiceUpgradeAgentsProcedure is the fully-qualified name of the ReleaseService's
+	// UpgradeAgents RPC.
+	ReleaseServiceUpgradeAgentsProcedure = "/rpmgr.v1.ReleaseService/UpgradeAgents"
 	// ReleaseServiceGetRolloutProcedure is the fully-qualified name of the ReleaseService's GetRollout
 	// RPC.
 	ReleaseServiceGetRolloutProcedure = "/rpmgr.v1.ReleaseService/GetRollout"
@@ -84,17 +87,22 @@ type ReleaseServiceClient interface {
 	// signatures, verified like the release check, for air-gapped installations and signed
 	// downgrades. Its artifacts come from the release source or `rpmgr release import`.
 	UploadRelease(context.Context, *connect.Request[v1.UploadReleaseRequest]) (*connect.Response[v1.UploadReleaseResponse], error)
-	// CreateRollout starts a rollout of a release with its canary agents. It is refused for a
-	// release newer than the controller and while another rollout runs or is paused. A release the
-	// mirror does not hold yet is mirrored now, and offered once the mirror holds it (D125).
+	// CreateRollout starts a rollout of a release: a staged one with its canary agents, or an easy
+	// one with its queue of agents. It is refused for a release newer than the controller and while
+	// another rollout runs or is paused. A release the mirror does not hold yet is mirrored now, and
+	// offered once the mirror holds it (D125).
 	CreateRollout(context.Context, *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error)
+	// UpgradeAgents adds connectors or gateways to the end of the queue of the easy rollout of the
+	// controller's own version that runs or is paused, or starts one with them when no rollout does
+	// (D129). It is refused while a staged rollout or a rollout of another release runs or is paused.
+	UpgradeAgents(context.Context, *connect.Request[v1.UpgradeAgentsRequest]) (*connect.Response[v1.UpgradeAgentsResponse], error)
 	// GetRollout returns a rollout with how many of its agents are in each state.
 	GetRollout(context.Context, *connect.Request[v1.GetRolloutRequest]) (*connect.Response[v1.GetRolloutResponse], error)
 	// ListRollouts pages through the rollouts, the newest first.
 	ListRollouts(context.Context, *connect.Request[v1.ListRolloutsRequest]) (*connect.Response[v1.ListRolloutsResponse], error)
 	// ListRolloutTargets pages through a rollout's agents, each with its state and reason.
 	ListRolloutTargets(context.Context, *connect.Request[v1.ListRolloutTargetsRequest]) (*connect.Response[v1.ListRolloutTargetsResponse], error)
-	// AdvanceRollout moves a running rollout to a higher percentage or to all agents.
+	// AdvanceRollout moves a running staged rollout to a higher percentage or to all agents.
 	AdvanceRollout(context.Context, *connect.Request[v1.AdvanceRolloutRequest]) (*connect.Response[v1.AdvanceRolloutResponse], error)
 	// PauseRollout pauses a running rollout: agents offered the release keep it, no further agent
 	// is offered it.
@@ -140,6 +148,12 @@ func NewReleaseServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			httpClient,
 			baseURL+ReleaseServiceCreateRolloutProcedure,
 			connect.WithSchema(releaseServiceMethods.ByName("CreateRollout")),
+			connect.WithClientOptions(opts...),
+		),
+		upgradeAgents: connect.NewClient[v1.UpgradeAgentsRequest, v1.UpgradeAgentsResponse](
+			httpClient,
+			baseURL+ReleaseServiceUpgradeAgentsProcedure,
+			connect.WithSchema(releaseServiceMethods.ByName("UpgradeAgents")),
 			connect.WithClientOptions(opts...),
 		),
 		getRollout: connect.NewClient[v1.GetRolloutRequest, v1.GetRolloutResponse](
@@ -196,6 +210,7 @@ type releaseServiceClient struct {
 	checkReleases      *connect.Client[v1.CheckReleasesRequest, v1.CheckReleasesResponse]
 	uploadRelease      *connect.Client[v1.UploadReleaseRequest, v1.UploadReleaseResponse]
 	createRollout      *connect.Client[v1.CreateRolloutRequest, v1.CreateRolloutResponse]
+	upgradeAgents      *connect.Client[v1.UpgradeAgentsRequest, v1.UpgradeAgentsResponse]
 	getRollout         *connect.Client[v1.GetRolloutRequest, v1.GetRolloutResponse]
 	listRollouts       *connect.Client[v1.ListRolloutsRequest, v1.ListRolloutsResponse]
 	listRolloutTargets *connect.Client[v1.ListRolloutTargetsRequest, v1.ListRolloutTargetsResponse]
@@ -223,6 +238,11 @@ func (c *releaseServiceClient) UploadRelease(ctx context.Context, req *connect.R
 // CreateRollout calls rpmgr.v1.ReleaseService.CreateRollout.
 func (c *releaseServiceClient) CreateRollout(ctx context.Context, req *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error) {
 	return c.createRollout.CallUnary(ctx, req)
+}
+
+// UpgradeAgents calls rpmgr.v1.ReleaseService.UpgradeAgents.
+func (c *releaseServiceClient) UpgradeAgents(ctx context.Context, req *connect.Request[v1.UpgradeAgentsRequest]) (*connect.Response[v1.UpgradeAgentsResponse], error) {
+	return c.upgradeAgents.CallUnary(ctx, req)
 }
 
 // GetRollout calls rpmgr.v1.ReleaseService.GetRollout.
@@ -274,17 +294,22 @@ type ReleaseServiceHandler interface {
 	// signatures, verified like the release check, for air-gapped installations and signed
 	// downgrades. Its artifacts come from the release source or `rpmgr release import`.
 	UploadRelease(context.Context, *connect.Request[v1.UploadReleaseRequest]) (*connect.Response[v1.UploadReleaseResponse], error)
-	// CreateRollout starts a rollout of a release with its canary agents. It is refused for a
-	// release newer than the controller and while another rollout runs or is paused. A release the
-	// mirror does not hold yet is mirrored now, and offered once the mirror holds it (D125).
+	// CreateRollout starts a rollout of a release: a staged one with its canary agents, or an easy
+	// one with its queue of agents. It is refused for a release newer than the controller and while
+	// another rollout runs or is paused. A release the mirror does not hold yet is mirrored now, and
+	// offered once the mirror holds it (D125).
 	CreateRollout(context.Context, *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error)
+	// UpgradeAgents adds connectors or gateways to the end of the queue of the easy rollout of the
+	// controller's own version that runs or is paused, or starts one with them when no rollout does
+	// (D129). It is refused while a staged rollout or a rollout of another release runs or is paused.
+	UpgradeAgents(context.Context, *connect.Request[v1.UpgradeAgentsRequest]) (*connect.Response[v1.UpgradeAgentsResponse], error)
 	// GetRollout returns a rollout with how many of its agents are in each state.
 	GetRollout(context.Context, *connect.Request[v1.GetRolloutRequest]) (*connect.Response[v1.GetRolloutResponse], error)
 	// ListRollouts pages through the rollouts, the newest first.
 	ListRollouts(context.Context, *connect.Request[v1.ListRolloutsRequest]) (*connect.Response[v1.ListRolloutsResponse], error)
 	// ListRolloutTargets pages through a rollout's agents, each with its state and reason.
 	ListRolloutTargets(context.Context, *connect.Request[v1.ListRolloutTargetsRequest]) (*connect.Response[v1.ListRolloutTargetsResponse], error)
-	// AdvanceRollout moves a running rollout to a higher percentage or to all agents.
+	// AdvanceRollout moves a running staged rollout to a higher percentage or to all agents.
 	AdvanceRollout(context.Context, *connect.Request[v1.AdvanceRolloutRequest]) (*connect.Response[v1.AdvanceRolloutResponse], error)
 	// PauseRollout pauses a running rollout: agents offered the release keep it, no further agent
 	// is offered it.
@@ -326,6 +351,12 @@ func NewReleaseServiceHandler(svc ReleaseServiceHandler, opts ...connect.Handler
 		ReleaseServiceCreateRolloutProcedure,
 		svc.CreateRollout,
 		connect.WithSchema(releaseServiceMethods.ByName("CreateRollout")),
+		connect.WithHandlerOptions(opts...),
+	)
+	releaseServiceUpgradeAgentsHandler := connect.NewUnaryHandler(
+		ReleaseServiceUpgradeAgentsProcedure,
+		svc.UpgradeAgents,
+		connect.WithSchema(releaseServiceMethods.ByName("UpgradeAgents")),
 		connect.WithHandlerOptions(opts...),
 	)
 	releaseServiceGetRolloutHandler := connect.NewUnaryHandler(
@@ -383,6 +414,8 @@ func NewReleaseServiceHandler(svc ReleaseServiceHandler, opts ...connect.Handler
 			releaseServiceUploadReleaseHandler.ServeHTTP(w, r)
 		case ReleaseServiceCreateRolloutProcedure:
 			releaseServiceCreateRolloutHandler.ServeHTTP(w, r)
+		case ReleaseServiceUpgradeAgentsProcedure:
+			releaseServiceUpgradeAgentsHandler.ServeHTTP(w, r)
 		case ReleaseServiceGetRolloutProcedure:
 			releaseServiceGetRolloutHandler.ServeHTTP(w, r)
 		case ReleaseServiceListRolloutsProcedure:
@@ -420,6 +453,10 @@ func (UnimplementedReleaseServiceHandler) UploadRelease(context.Context, *connec
 
 func (UnimplementedReleaseServiceHandler) CreateRollout(context.Context, *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.CreateRollout is not implemented"))
+}
+
+func (UnimplementedReleaseServiceHandler) UpgradeAgents(context.Context, *connect.Request[v1.UpgradeAgentsRequest]) (*connect.Response[v1.UpgradeAgentsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.UpgradeAgents is not implemented"))
 }
 
 func (UnimplementedReleaseServiceHandler) GetRollout(context.Context, *connect.Request[v1.GetRolloutRequest]) (*connect.Response[v1.GetRolloutResponse], error) {
