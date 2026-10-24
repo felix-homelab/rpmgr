@@ -758,7 +758,7 @@
   },
   "policies": {
     "title": "Access policies",
-    "intro": "Who may reach a route and how often: by address, with a password on HTTP routes, and at a rate per client.",
+    "intro": "Who may reach a route and how often: by address, on HTTP routes with a password or a header that only your CDN or clients know, and at a rate per client.",
     "add": "New access policy",
     "addTitle": "New access policy",
     "editTitle": "Edit access policy",
@@ -768,7 +768,8 @@
       "allow": "allow {{cidrs}}",
       "deny": "deny {{cidrs}}",
       "basicAuth": "basic auth: {{users}}",
-      "rateLimit": "rate limit: {{perSecond}} a second per client, {{burst}} at once"
+      "rateLimit": "rate limit: {{perSecond}} a second per client, {{burst}} at once",
+      "requireHeader": "requires header {{header}}"
     },
     "usedBy": "used by {{routes}}",
     "unused": "used by no route",
@@ -781,7 +782,8 @@
       "ipAllow": "Allow addresses",
       "ipDeny": "Deny addresses",
       "basicAuth": "Basic auth (HTTP routes)",
-      "rateLimit": "Rate limit per client"
+      "rateLimit": "Rate limit per client",
+      "requireHeader": "Require a header (HTTP routes)"
     },
     "removeRule": "Remove the rule",
     "addRule": "Add a rule",
@@ -794,7 +796,14 @@
     "burst": "At once (burst)",
     "oneRateLimit": "A policy has at most one rate limit.",
     "rateLimitBounds": "A rate limit takes whole numbers from 1 to 10000, a second and at once; an empty burst is a second's worth.",
-    "rateLimitHelp": "Each client address, or IPv6 /64, on each gateway: HTTP requests, new connections or new UDP flows. Over it, HTTP gets 429, TCP is reset and UDP dropped. An empty burst is one second's worth."
+    "rateLimitHelp": "Each client address, or IPv6 /64, on each gateway: HTTP requests, new connections or new UDP flows. Over it, HTTP gets 429, TCP is reset and UDP dropped. An empty burst is one second's worth.",
+    "header": "Header",
+    "value": "Value",
+    "keepValues": "unchanged",
+    "addValue": "Add a value",
+    "removeValue": "Remove the value",
+    "generateValue": "Generate a value",
+    "valueHint": "A random value of at least 32 characters: use Generate a value. Up to four values, so that one can be rotated. Copy a value to your CDN or client before you save: it is never shown again."
   },
   "routePolicies": {
     "title": "Access policies",
@@ -940,7 +949,8 @@
       "smtpFrom": "Sender address",
       "smtpUser": "User name",
       "smtpSecurity": "Encryption",
-      "auditRetention": "Keep audit entries (days)"
+      "auditRetention": "Keep audit entries (days)",
+      "rolloutMode": "Rollouts"
     },
     "hints": {
       "leafLifetime": "1 to 30 days.",
@@ -950,7 +960,8 @@
       "hourly": "1 to 400 days.",
       "daily": "1 to 3650 days.",
       "smtpServer": "Empty: the controller sends no mail.",
-      "auditRetention": "30 to 3650 days."
+      "auditRetention": "30 to 3650 days.",
+      "rolloutMode": "What Roll out… starts. Update on a connector or gateway works in both."
     },
     "options": {
       "transport": {
@@ -969,6 +980,10 @@
       "smtpSecurity": {
         "starttls": "STARTTLS, usually port 587",
         "tls": "TLS, usually port 465"
+      },
+      "rolloutMode": {
+        "easy": "Easy: the agents you choose, one after another",
+        "advanced": "Advanced: test agents, then stages you approve"
       }
     },
     "smtpPassword": "Relay password",
@@ -1221,7 +1236,36 @@
     "belowMinimum": "below the minimum version",
     "targetColumns": {"agent": "Agent", "kind": "Kind", "state": "State", "reason": "Why"},
     "targetStates": {"unspecified": "unknown", "pending": "pending", "offered": "offered", "staged": "staged",
-      "updated": "updated", "rolledBack": "rolled back", "refused": "refused", "skipped": "skipped", "stalled": "stalled"}
+      "updated": "updated", "rolledBack": "rolled back", "refused": "refused", "skipped": "skipped", "stalled": "stalled"},
+    "easy": {
+      "help": "Tick the agents that get the release. They update one after another, in the order on the right; one that fails is skipped and the next one goes on.",
+      "agents": "Agents that can take the release",
+      "selectAll": "Select all",
+      "noEligible": "No agent of your org can take this release.",
+      "cannot": "Cannot take it",
+      "cannotOne": "{{name}}: {{why}}",
+      "why": {"builtIn": "built in, updates with the controller", "notEnrolled": "not enrolled", "neverConnected": "never connected",
+        "noUpdater": "no over-the-air updater on its host", "alreadyRuns": "runs {{version}} already"},
+      "order": "Order",
+      "orderEmpty": "Tick agents to put them in the queue.",
+      "moveUp": "Move {{name}} up",
+      "moveDown": "Move {{name}} down",
+      "offlineChosen": "An agent that is offline when its turn comes is skipped.",
+      "chooseOne": "Choose at least one agent.",
+      "tooMany": "At most {{max}} agents at a time.",
+      "start_one": "Start: update {{count}} agent",
+      "start_other": "Start: update {{count}} agents",
+      "rolloutOf": "Rollout of {{version}}, one agent after another",
+      "failedCount_one": "{{count}} failed",
+      "failedCount_other": "{{count}} failed",
+      "pausedHelp": "Several agents in a row failed, so the rollout waits for you. Resume goes on with the next agent; Cancel ends the rollout.",
+      "now": "Now",
+      "next": "Next",
+      "updated": "Updated",
+      "failed": "Failed",
+      "skipped": "Skipped",
+      "nobody": "—"
+    }
   },
   "users": {
     "title": "Users",

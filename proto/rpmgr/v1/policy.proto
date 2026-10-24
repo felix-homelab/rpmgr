@@ -86,10 +86,38 @@ message AccessRule {
     IPRuleParams ip_deny = 2;
     // On an http route, lets pass the users with their passwords.
     BasicAuthRule basic_auth = 3;
-    // On every route type, limits each client's requests, new connections or new flows (field 4
-    // is require_header's).
+    // On an http route, lets pass only requests that carry a header with one of the values.
+    RequireHeaderRule require_header = 4;
+    // On every route type, limits each client's requests, new connections or new flows.
     RateLimitRule rate_limit = 5;
   }
+}
+
+// RequireHeaderRule is a require_header rule as the API takes and shows it
+// (docs/03-connections.md, "Access policies"): a shared secret, such as a CDN's origin header,
+// that every request must carry. The gateway removes the header before the request goes upstream.
+message RequireHeaderRule {
+  // The header's name: an HTTP token, compared without case. Neither one HTTP uses for framing or
+  // the connection, nor Host, Authorization, Cookie or an Rpmgr- header.
+  string name = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 128
+    pattern: "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+  }];
+  // The accepted values, 1 to 4 so that a value can be rotated, each of 32 to 1024 visible ASCII
+  // characters with at least 8 different ones. A value must be random, such as one of
+  // `openssl rand -base64 32`: gateways hold its unsalted SHA-256. Write-only, never returned. In
+  // an update, a rule without values keeps the values of the policy's require_header rule of that
+  // name.
+  repeated string values = 2 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).repeated = {
+      max_items: 4
+      items: {
+        string: {max_len: 1024}
+      }
+    }
+  ];
 }
 
 // RateLimitRule is a rate_limit rule (docs/03-connections.md, "Access policies"): each client, an
@@ -232,9 +260,21 @@ message PolicyRuleParams {
     IPRuleParams ip = 1;
     // basic_auth: the users who may pass.
     BasicAuthParams basic_auth = 2;
-    // rate_limit: the rate and burst per client (field 3 is require_header's).
+    // require_header: the header and its accepted values.
+    RequireHeaderParams require_header = 3;
+    // rate_limit: the rate and burst per client.
     RateLimitRule rate_limit = 4;
   }
+}
+
+// RequireHeaderParams are a require_header rule as the controller keeps it and gateways check it
+// (docs/04-security.md, "Route edge rules"): the header's canonical name and the SHA-256 of each
+// accepted value, never the values.
+message RequireHeaderParams {
+  // The header's name in its canonical form.
+  string name = 1;
+  // The SHA-256 of each accepted value, 1 to 4.
+  repeated bytes value_sha256 = 2 [(rpmgr.v1.sensitive) = true];
 }
 
 // BasicAuthParams are the users of a basic_auth rule (docs/04-security.md, "Secrets at rest and

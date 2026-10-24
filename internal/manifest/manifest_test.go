@@ -105,18 +105,21 @@ func TestRoute(t *testing.T) {
 }
 
 // TestKinds: every kind reads back to its resource, without what the server sets; a resource
-// without a name is named by its ID; fields marked sensitive, such as a basic-auth password, are
-// never written.
+// without a name is named by its ID; fields marked sensitive, such as a basic-auth password or a
+// required header's value, are never written.
 func TestKinds(t *testing.T) {
 	now := timestamppb.Now()
 	for _, c := range []struct{ in, want proto.Message }{
 		{&rpmgrv1.AccessPolicy{Id: "ap_1", Name: "office", Etag: "2", RouteIds: []string{"rt_1"}, Rules: []*rpmgrv1.AccessRule{
 			{Rule: &rpmgrv1.AccessRule_IpAllow{IpAllow: &rpmgrv1.IPRuleParams{Cidrs: []string{"10.0.0.0/8"}}}},
 			{Rule: &rpmgrv1.AccessRule_BasicAuth{BasicAuth: &rpmgrv1.BasicAuthRule{Users: []*rpmgrv1.BasicAuthCredential{{Name: "alice", Password: "correct horse"}}}}},
+			{Rule: &rpmgrv1.AccessRule_RequireHeader{RequireHeader: &rpmgrv1.RequireHeaderRule{Name: "X-Origin-Token",
+				Values: []string{"correct horse origin header value 1"}}}},
 			{Rule: &rpmgrv1.AccessRule_RateLimit{RateLimit: &rpmgrv1.RateLimitRule{PerSecond: 20, Burst: 50}}}}},
 			&rpmgrv1.AccessPolicy{Name: "office", Rules: []*rpmgrv1.AccessRule{
 				{Rule: &rpmgrv1.AccessRule_IpAllow{IpAllow: &rpmgrv1.IPRuleParams{Cidrs: []string{"10.0.0.0/8"}}}},
 				{Rule: &rpmgrv1.AccessRule_BasicAuth{BasicAuth: &rpmgrv1.BasicAuthRule{Users: []*rpmgrv1.BasicAuthCredential{{Name: "alice"}}}}},
+				{Rule: &rpmgrv1.AccessRule_RequireHeader{RequireHeader: &rpmgrv1.RequireHeaderRule{Name: "X-Origin-Token"}}},
 				{Rule: &rpmgrv1.AccessRule_RateLimit{RateLimit: &rpmgrv1.RateLimitRule{PerSecond: 20, Burst: 50}}}}}},
 		{&rpmgrv1.GatewayGroup{Id: "gwg_1", Name: "eu", Region: "fra", PublicHostnames: []string{"eu.example.com"}, Etag: "1"},
 			&rpmgrv1.GatewayGroup{Name: "eu", Region: "fra", PublicHostnames: []string{"eu.example.com"}}},
