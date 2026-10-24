@@ -27,6 +27,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
@@ -882,6 +883,53 @@ func TestCompile_TCPUDP(t *testing.T) {
 		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
 			if r.GetGatewayTcpUdpRoute() != nil {
 				t.Fatalf("a tcp_udp route no connector serves: %v", r)
+			}
+		}
+	})
+}
+
+// TestCompile_HealthCheck (D133): a connector route carries its route's health check, intervals in
+// milliseconds; an http check of an http route asks for the route's first hostname that is not a
+// wildcard, none if all are, and of an https route over TLS, with each target's own TLS settings;
+// a route without a check carries none.
+func TestCompile_HealthCheck(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		f.verifiedExample(t)
+		c.HealthCheck.Create().SetOrgID(f.orgA).SetRouteID(f.r1).SetType("tcp").SetPort(8081).SetIntervalSeconds(5).SetTimeoutSeconds(2).
+			SetUnhealthyThreshold(4).SetHealthyThreshold(1).ExecX(f.sys)
+		web := f.httpRoute(t, "web", true, true, nil, "*.web.example.com", "app.example.com/api")
+		webTarget := c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(web).SetConnectorID(f.c1).SetKind("address").SetHost("10.0.0.7").
+			SetPort(8443).SetUpstreamProtocol(routetarget.UpstreamProtocolHTTPS).SetTLSServerName("app.internal").SaveX(f.sys).ID
+		c.HealthCheck.Create().SetOrgID(f.orgA).SetRouteID(web).SetType("http").SetHTTPPath("/healthz").SetExpectedStatusMin(200).
+			SetExpectedStatusMax(204).ExecX(f.sys)
+		got := map[string]*agentv1.ConnectorRoute{}
+		for _, r := range routesOf(f.compile(t, pki.KindConnector, f.c1)) {
+			got[r.GetId()] = r.GetConnectorRoute()
+		}
+		want := &agentv1.HealthCheck{Type: "tcp", Port: 8081, IntervalMs: 5000, TimeoutMs: 2000, UnhealthyThreshold: 4, HealthyThreshold: 1}
+		if !proto.Equal(got[f.r1].GetHealthCheck(), want) {
+			t.Errorf("tcp check %v, want %v", got[f.r1].GetHealthCheck(), want)
+		}
+		want = &agentv1.HealthCheck{Type: "http", Path: "/healthz", StatusMin: 200, StatusMax: 204, Host: "app.example.com", Https: true}
+		if !proto.Equal(got[web].GetHealthCheck(), want) {
+			t.Errorf("https check %v, want %v", got[web].GetHealthCheck(), want)
+		}
+		if ts := got[web].GetTargets(); len(ts) != 1 || ts[0].GetId() != webTarget || ts[0].GetTls().GetServerName() != "app.internal" {
+			t.Errorf("https check targets %v", ts)
+		}
+		if got[f.rOther].GetHealthCheck() != nil {
+			t.Errorf("a route without a check: %v", got[f.rOther].GetHealthCheck())
+		}
+
+		// Only a wildcard: no host; an http upstream: no TLS.
+		c.RouteHostname.Delete().Where(routehostname.Hostname("app.example.com")).ExecX(f.sys)
+		c.RouteTarget.UpdateOneID(webTarget).SetUpstreamProtocol(routetarget.UpstreamProtocolHTTP).SetTLSServerName("").ExecX(f.sys)
+		for _, r := range routesOf(f.compile(t, pki.KindConnector, f.c1)) {
+			if hc := r.GetConnectorRoute().GetHealthCheck(); r.GetId() == web && (hc.GetHost() != "" || hc.GetHttps() ||
+				r.GetConnectorRoute().GetTargets()[0].GetTls() != nil) {
+				t.Errorf("http check %v, targets %v", hc, r.GetConnectorRoute().GetTargets())
 			}
 		}
 	})

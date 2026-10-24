@@ -22,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -493,9 +494,16 @@ func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agen
 			ProxyProtocol: string(t.ProxyProtocol), Weight: uint32(t.Weight), Priority: uint32(t.Priority)}) //nolint:gosec // G115: small and positive
 	}
 	slices.Sort(ids)
+	https := map[string]bool{} // routes whose targets speak https
+	for _, t := range targets {
+		https[t.RouteID] = https[t.RouteID] || t.UpstreamProtocol == routetarget.UpstreamProtocolHTTPS
+	}
 	out := make([]*agentv1.Resource, 0, len(ids))
 	for _, id := range ids {
 		cr := byRoute[id]
+		if err := addHealthCheck(ctx, tx, id, cr, https[id]); err != nil {
+			return nil, err
+		}
 		slices.SortFunc(cr.Targets, func(x, y *agentv1.Target) int {
 			if x.Priority != y.Priority {
 				return int(x.Priority) - int(y.Priority)
@@ -505,6 +513,52 @@ func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agen
 		out = append(out, &agentv1.Resource{Id: id, Kind: &agentv1.Resource_ConnectorRoute{ConnectorRoute: cr}})
 	}
 	return out, nil
+}
+
+// addHealthCheck gives a connector's route its health check, if it has one (docs/03-connections.md,
+// "Target health"): an http check sends the route's first hostname as Host, and of an http route
+// whose targets speak https it speaks TLS, verified by each target's settings as the gateway
+// verifies the route's traffic.
+func addHealthCheck(ctx context.Context, tx *ent.Tx, routeID string, cr *agentv1.ConnectorRoute, https bool) error {
+	c, err := tx.HealthCheck.Query().Where(healthcheck.RouteID(routeID)).Only(ctx)
+	if ent.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	u := func(v int) uint32 { return uint32(v) } //nolint:gosec // G115: the schema bounds them
+	hc := &agentv1.HealthCheck{Type: string(c.Type), Port: u(c.Port), Path: c.HTTPPath, StatusMin: u(c.ExpectedStatusMin),
+		StatusMax: u(c.ExpectedStatusMax), IntervalMs: u(c.IntervalSeconds) * 1000, TimeoutMs: u(c.TimeoutSeconds) * 1000,
+		UnhealthyThreshold: u(c.UnhealthyThreshold), HealthyThreshold: u(c.HealthyThreshold)}
+	if c.Type == healthcheck.TypeHTTP && cr.GetType() == string(route.TypeHTTP) {
+		// The first exact hostname; a wildcard names no host to ask for, so a route with only
+		// wildcards leaves the connector to send the target's address.
+		names, err := tx.RouteHostname.Query().Where(routehostname.RouteID(routeID), routehostname.Not(routehostname.HostnameHasPrefix("*."))).
+			Order(ent.Asc(routehostname.FieldHostname)).Select(routehostname.FieldHostname).Strings(ctx)
+		if err != nil {
+			return err
+		}
+		if len(names) > 0 {
+			hc.Host = names[0]
+		}
+		if https {
+			hc.Https = true
+			tls, err := upstreamTLSOf(ctx, tx, routeID)
+			if err != nil {
+				return err
+			}
+			for _, t := range cr.GetTargets() {
+				for _, u := range tls {
+					if u.GetTargetId() == t.GetId() {
+						t.Tls = u
+					}
+				}
+			}
+		}
+	}
+	cr.HealthCheck = hc
+	return nil
 }
 
 // ConnectorGateways compiles the gateways a connector keeps data sessions to: every enabled

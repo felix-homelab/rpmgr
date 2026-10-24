@@ -11,6 +11,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -296,5 +298,68 @@ func TestHealthCheck_UnixHost(t *testing.T) {
 	}
 	if h := <-hosts; h != "localhost" {
 		t.Errorf("Host %q, want localhost", h)
+	}
+}
+
+// TestHealthCheck_Bounded (docs/03-connections.md, "Timeouts, keepalive and backoff"): a
+// connector runs at most maxChecks checks at once, over all its routes; the others wait for a
+// place, and a check whose context ends while it waits fails without dialling.
+func TestHealthCheck_Bounded(t *testing.T) {
+	var mu sync.Mutex
+	active, peak, total := 0, 0, 0
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			active, total = active+1, total+1
+			peak = max(peak, active)
+			mu.Unlock()
+			go func() {
+				_, _ = io.Copy(io.Discard, c) // never answers; the check's timeout ends it
+				_ = c.Close()
+				mu.Lock()
+				active--
+				mu.Unlock()
+			}()
+		}
+	}()
+	port := uint16(ln.Addr().(*net.TCPAddr).Port) //nolint:gosec // G115: a port
+	targets := checking(t, loopbackPolicy(t, int(port)))
+	c := &HealthCheck{HTTP: true, Path: "/", StatusMin: 200, StatusMax: 399, Timeout: 300 * time.Millisecond}
+	var wg sync.WaitGroup
+	for i := range maxChecks + 36 {
+		route := Route{ID: "rt_" + strconv.Itoa(i%4), Check: c}
+		wg.Go(func() {
+			_ = targets.boundedCheck(context.Background(), route, Target{ID: "tg_" + strconv.Itoa(i), Host: "127.0.0.1", Port: port})
+		})
+	}
+	wg.Wait()
+	mu.Lock()
+	if peak > maxChecks || total != maxChecks+36 {
+		t.Errorf("%d checks at once, %d in all; want at most %d, %d", peak, total, maxChecks, maxChecks+36)
+	}
+	mu.Unlock()
+
+	// Every place taken: a waiting check ends with its context.
+	for range maxChecks {
+		targets.checks <- struct{}{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := targets.boundedCheck(ctx, Route{ID: "rt_1", Check: c}, Target{ID: "tg_x", Host: "127.0.0.1", Port: port}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("a check waiting for a place: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if total != maxChecks+36 {
+		t.Errorf("a check without a place dialled")
 	}
 }

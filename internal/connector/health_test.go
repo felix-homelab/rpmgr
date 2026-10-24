@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
 	"github.com/felix-homelab/rpmgr/internal/connector"
@@ -36,6 +38,28 @@ func (e *targetsEnv) readyPriorities(t *testing.T, route string, want ...uint32)
 		h := e.lastOf(route)
 		return h.GetReady() && slices.Equal(h.GetReadyPriorities(), want)
 	})
+}
+
+// lastTarget is the target's last health change, or nil.
+func (e *targetsEnv) lastTarget(target string) *agentv1.ResourceStatus {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for i := len(e.targets) - 1; i >= 0; i-- {
+		if e.targets[i].GetResourceId() == target {
+			return e.targets[i]
+		}
+	}
+	return nil
+}
+
+// statusOf is the target's entry in Status, or nil.
+func (e *targetsEnv) statusOf(target string) *agentv1.ResourceStatus {
+	for _, s := range e.Status() {
+		if s.GetResourceId() == target {
+			return s
+		}
+	}
+	return nil
 }
 
 // lastOf is the route's last health report.
@@ -96,6 +120,13 @@ func TestHealthCheck_ObeysLocalPolicy(t *testing.T) {
 	if d := e.lastOf("rt_port").GetDetail(); !strings.Contains(d, strconv.Itoa(int(blocked.port()))) {
 		t.Errorf("the blocked check port's detail %q", d)
 	}
+	// The controller hears of each target: blocked, with the policy's detail, not unhealthy.
+	for _, id := range []string{byAddress.ID, deniedName.ID} {
+		if st := e.statusOf(id); st.GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY || st.GetDetail() == "" ||
+			!proto.Equal(e.lastTarget(id), st) {
+			t.Errorf("target %s: status %v, last change %v", id, st, e.lastTarget(id))
+		}
+	}
 	time.Sleep(100 * time.Millisecond) // more rounds
 	if n := blocked.conns.Load() + denied.conns.Load(); n != 0 {
 		t.Fatalf("checks dialled blocked targets %d times", n)
@@ -131,7 +162,9 @@ func webTarget(t *testing.T, id string, down *atomic.Bool) (connector.Target, *a
 // TestHealthCheck_PrioritiesAndStreams: a target that fails its checks leaves its priority's
 // readiness once the unhealthy threshold is reached, and comes back after the healthy threshold;
 // a stream meanwhile goes to the healthy priority; when every target fails, the route is not ready
-// with the reason targets_unhealthy; a route without a check names no priorities.
+// with the reason targets_unhealthy; a route without a check names no priorities. Each target's
+// change goes to the controller, unhealthy with the last failure and ready again without a reason,
+// and Status lists the targets unhealthy at the time.
 func TestHealthCheck_PrioritiesAndStreams(t *testing.T) {
 	var down atomic.Bool
 	flaky, _ := webTarget(t, "tg_flaky", &down)
@@ -163,9 +196,24 @@ func TestHealthCheck_PrioritiesAndStreams(t *testing.T) {
 		return !h.GetReady() && h.GetReason() == agentv1.NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY
 	})
 
+	if st := e.statusOf(flaky.ID); st.GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY ||
+		!strings.Contains(st.GetDetail(), "503") || !proto.Equal(e.lastTarget(flaky.ID), st) {
+		t.Errorf("an unhealthy target: status %v, last change %v", st, e.lastTarget(flaky.ID))
+	}
+	if st := e.statusOf(steady.ID); st != nil || e.lastTarget(steady.ID) != nil {
+		t.Errorf("a healthy target: status %v, change %v", st, e.lastTarget(steady.ID))
+	}
+
 	down.Store(false)
 	e.readyPriorities(t, "rt_web", 0, 1)
 	e.readyPriorities(t, "rt_only", 0)
+	eventually(t, "the target's recovery never reached the controller", func() bool {
+		last := e.lastTarget(only.ID)
+		return last != nil && last.GetReason() == agentv1.NotReadyReason_NOT_READY_REASON_UNSPECIFIED
+	})
+	if st := e.statusOf(flaky.ID); st != nil {
+		t.Errorf("a recovered target in Status: %v", st)
+	}
 	if h := e.lastOf("rt_plain"); !h.GetReady() || len(h.GetReadyPriorities()) != 0 {
 		t.Errorf("a route without a check: %v", h)
 	}

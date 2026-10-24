@@ -764,6 +764,14 @@ rpmgr create route [flags]
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--group string` |  | the gateway group, by name or ID |
+| `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
+| `--health-healthy uint` |  | passed checks in a row that make it healthy again; 0 is the default |
+| `--health-interval duration` |  | how often each target is checked; 0 is the default |
+| `--health-path string` |  | http check: the path to GET, / if empty |
+| `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
+| `--health-status string` |  | http check: the passing statuses, as 200-399 |
+| `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
+| `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
@@ -1026,6 +1034,14 @@ rpmgr update route [flags] <id or name>
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--force` |  | update without checking that the route is unchanged since this command read it |
+| `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
+| `--health-healthy uint` |  | passed checks in a row that make it healthy again; 0 is the default |
+| `--health-interval duration` |  | how often each target is checked; 0 is the default |
+| `--health-path string` |  | http check: the path to GET, / if empty |
+| `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
+| `--health-status string` |  | http check: the passing statuses, as 200-399 |
+| `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
+| `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
@@ -1438,6 +1454,14 @@ rpmgr preview route [flags]
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--group string` |  | the gateway group, by name or ID |
+| `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
+| `--health-healthy uint` |  | passed checks in a row that make it healthy again; 0 is the default |
+| `--health-interval duration` |  | how often each target is checked; 0 is the default |
+| `--health-path string` |  | http check: the path to GET, / if empty |
+| `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
+| `--health-status string` |  | http check: the passing statuses, as 200-399 |
+| `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
+| `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |

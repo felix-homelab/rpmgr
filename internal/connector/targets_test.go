@@ -118,9 +118,10 @@ func allowLoopback(t *testing.T, ports ...uint16) *policy.Policy {
 // targets returns a Targets with the policy in cur, recording health reports.
 type targetsEnv struct {
 	*connector.Targets
-	cur    atomic.Pointer[policy.Policy]
-	mu     sync.Mutex
-	health []*tunnelv1.RouteHealth
+	cur     atomic.Pointer[policy.Policy]
+	mu      sync.Mutex
+	health  []*tunnelv1.RouteHealth
+	targets []*agentv1.ResourceStatus // the targets' health changes
 }
 
 func newTargets(p *policy.Policy) *targetsEnv { return newTargetsWith(p, nil) }
@@ -132,6 +133,10 @@ func newTargetsWith(p *policy.Policy, metrics *connector.Metrics) *targetsEnv {
 	e.Targets = connector.NewTargets(connector.TargetsOptions{Policy: e.cur.Load, Metrics: metrics, OnHealth: func(h *tunnelv1.RouteHealth) {
 		e.mu.Lock()
 		e.health = append(e.health, h)
+		e.mu.Unlock()
+	}, OnTargetHealth: func(s *agentv1.ResourceStatus) {
+		e.mu.Lock()
+		e.targets = append(e.targets, s)
 		e.mu.Unlock()
 	}})
 	return e

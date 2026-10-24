@@ -974,19 +974,21 @@ the capability `route.limits`:
 
 - **Active checks** ([D133](14-open-decisions.md#engineering)). A route has at most one health
   check, which each connector runs against each of its own targets of the route: `tcp` (the dial
-  succeeds) or `http` (a `GET` of a path, with the route's `Host`, that answers with a status in
-  the expected range, 200–399 unless set, sent with the route's `Host`, or `localhost` for a socket
-  target). A check may name another port than the target's, except on a route with a socket target.
-  It dials like traffic: the connector-local policy applies, and a target it blocks, by address, by
-  the address a name resolves to, or by the port the check names, is never dialled and counts as
-  blocked by the policy (`not_ready(blocked_by_local_policy)` with the policy's detail), not as
-  unhealthy; an `https` target is verified with the target's own TLS settings; no
-  redirect is followed and at most a capped part of the body is read. A target that expects a
-  PROXY header gets a `LOCAL` one when the check dials its own port. A `udp` route allows only a
-  `tcp` check on a port it names. A target counts as healthy until checked; it becomes unhealthy
-  after the unhealthy threshold of failed checks in a row and healthy again after the healthy
-  threshold of passed ones, so a target whose results alternate keeps its state. A changed route or
-  check starts its targets healthy again.
+  succeeds) or `http` (a `GET` of a path that answers with a status in the expected range, 200–399
+  unless set, sent with the `Host` of the route's first hostname that is not a wildcard, else the
+  target's address, or `localhost` for a socket target). A check may name another port than the
+  target's, except on a route with a socket target. It dials like traffic: the connector-local
+  policy applies, and a target it blocks, by address, by the address a name resolves to, or by the
+  port the check names, is never dialled and counts as blocked by the policy
+  (`not_ready(blocked_by_local_policy)` with the policy's detail), not as unhealthy; an `https`
+  target is verified with the target's own TLS settings; no redirect is followed and at most a
+  capped part of the body is read. A target that expects a PROXY header gets a `LOCAL` one when the
+  check dials its own port. A `udp` route allows only a `tcp` check on a port it names. A target
+  counts as healthy until checked; it becomes unhealthy after the unhealthy threshold of failed
+  checks in a row and healthy again after the healthy threshold of passed ones, so a target whose
+  results alternate keeps its state. A changed route or check starts its targets healthy again. Each
+  change of a target's health also goes to the controller in a `Status`, the target's ID as the
+  resource, for the route's status ([06](06-data-model.md#desired-vs-observed-state)).
 - **What gateways see.** The connector skips unhealthy targets when it picks one for a stream or a
   UDP flow, unless every one is unhealthy, and reports, per route, the priorities that still have a
   healthy target (`RouteHealth.ready_priorities`); a route whose every allowed target is unhealthy
@@ -1400,7 +1402,7 @@ sequenceDiagram
 | Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |
 | Per-route HTTP timeouts (Phase 2) | upstream response header 1 s to 1 h; upstream idle 1 s to 1 h; 0 = the HTTP server row above | [R] Slow reports and long polls fit; a pooled connection outliving a backend's keep-alive is avoided ([HTTP routes](#http-routes)) |
-| Active health check (Phase 2) | interval 10 s by default, from 2 s to 1 h; timeout 5 s by default, below the interval and at most 1 min; unhealthy after 3 failures in a row, healthy after 2 passes; an HTTP check reads at most 16 KiB of status line and header and 64 KiB of the body | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
+| Active health check (Phase 2) | interval 10 s by default, from 2 s to 1 h; timeout 5 s by default, below the interval and at most 1 min; unhealthy after 3 failures in a row, healthy after 2 passes, each threshold from 1 to 10; an HTTP check reads at most 16 KiB of status line and header and 64 KiB of the body; a connector runs at most 64 checks at once, over all its routes, the others waiting their turn | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
 | Passive health (Phase 2) | 3 refused or timed-out stream opens in a row; back-off 10 s, doubling to 60 s; one half-open try after it | [R] A target that refuses is passed over at once and tried again soon |
 | Per-client rate limit (Phase 2) | at most 65 536 client addresses per route on each gateway; an address unused for 10 min is dropped | [R] A flood of addresses cannot exhaust a gateway's memory ([Access policies](#access-policies)) |
 | Custom page (Phase 2) | at most 64 KiB of HTML per page; the log lines of its `{{request_id}}` at most 20 per second per gateway, with a burst of 20, the rest dropped and counted; a link to the web UI's preview of a page works for 5 min | [R] A page loads fast and fits a snapshot item fetch; a flood of requests cannot flood the log ([HTTP routes](#http-routes), [D136](14-open-decisions.md#engineering)) |
