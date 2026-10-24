@@ -9,6 +9,7 @@ import (
 	"time"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
@@ -312,9 +313,23 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 	return out
 }
 
-// capabilityMissing is the reason of an agent that lacks capabilities a route needs.
+// capabilityMissing is the reason of an agent that lacks capabilities a route needs, with what
+// that means for the route's clients where it is more than the route not being served there.
 func capabilityMissing(id string, caps []string) *rpmgrv1.RouteNotServing {
-	return &rpmgrv1.RouteNotServing{Id: id, Reason: routes.CapabilityMissing, Detail: strings.Join(caps, ", ")}
+	detail := strings.Join(caps, ", ")
+	for _, c := range caps {
+		if note := capabilityNotes[c]; note != "" {
+			detail += "; " + note
+		}
+	}
+	return &rpmgrv1.RouteNotServing{Id: id, Reason: routes.CapabilityMissing, Detail: detail}
+}
+
+// capabilityNotes say what clients meet on an agent that lacks a capability, where another route
+// takes the route's requests there (docs/03-connections.md, "Versioning and capabilities").
+var capabilityNotes = map[string]string{
+	agentproto.CapHTTPHeaderMatch: "this gateway sends the route's requests to a route of the same hostname and path prefix " +
+		"without header matches, if there is one",
 }
 
 // linked reports whether gateway has a data session with one of connectors.

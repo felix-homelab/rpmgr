@@ -546,7 +546,14 @@ affect agents take effect through reconciliation and show apply status like any 
   a route that uses a feature an agent's release lacks, such as a require-header rule on a gateway
   of the previous minor, is left out of that agent's snapshot, and the route status shows the agent
   with `CAPABILITY_MISSING` until it is upgraded. With mixed gateways in a group, only the upgraded
-  ones serve such a route; upgrade the gateways before using a new route feature.
+  ones serve such a route; upgrade the gateways before using a new route feature. A route with
+  header matches is a special case: on a gateway without `http.header-match`, its requests reach
+  the route of the same hostname and path prefix without matches, if there is one, which the
+  gated route's status says.
+- **Controller replicas during a rolling upgrade to v0.3.0** (HA): the release stores a route's
+  header matches in a new form. A replica of the previous release that reads a route with header
+  matches fails on it, so its snapshots and API answers that need the route fail closed until it
+  is upgraded too; upgrade all replicas before setting header matches.
 - Before the first release, one change of meaning shipped without a capability: access policies'
   deny rules win ([D85](14-open-decisions.md#engineering)). A gateway of a release candidate
   (v0.1.0-rc.1 to rc.6) applies the first matching rule to the same snapshot, so a deny placed

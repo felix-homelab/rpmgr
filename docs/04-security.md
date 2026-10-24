@@ -674,9 +674,10 @@ capabilities, so a gateway of an earlier release never serves a route without th
 ([03](03-connections.md#versioning-and-capabilities)).
 
 - **Reserved path and identity headers.** `/.rpmgr/` on an http route hostname never goes
-  upstream, and the gateway removes `Rpmgr-User-Email`, `Rpmgr-User-Subject` and
-  `Rpmgr-User-Groups` from every client request on every http route, so that only the gateway sets
-  them ([03](03-connections.md#http-routes)).
+  upstream, and the gateway removes every header and trailer whose name starts with `Rpmgr-User-`
+  from every client request on every http route, also when the name is spelt with `_` for `-`,
+  which CGI-style servers read alike, so that only the gateway sets them
+  ([03](03-connections.md#http-routes), [D135](14-open-decisions.md#engineering)).
 - **Require-header values** are shared secrets of at least 32 characters, such as a CDN's origin
   header. The controller keeps only their SHA-256, which the gateways receive; a value is
   write-only and never read back. Plain SHA-256 suffices because a value of that length is not
