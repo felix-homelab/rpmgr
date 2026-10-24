@@ -3,7 +3,7 @@
 import { create } from "@bufbuild/protobuf";
 import type { Duration } from "@bufbuild/protobuf/wkt";
 import {
-  PasswordHashProfile, SmtpSecurity, SmtpSettingsSchema, TransportPolicy, UpdateChannel, type InstanceSettings,
+  PasswordHashProfile, RolloutMode, SmtpSecurity, SmtpSettingsSchema, TransportPolicy, UpdateChannel, type InstanceSettings,
 } from "@/gen/rpmgr/v1/settings_pb";
 
 // The sections of the instance settings; the PKI and Updates pages show theirs (docs/09-web-ui.md,
@@ -50,6 +50,10 @@ export const settingFields: SettingField[] = [
   { key: "channel", section: "updates", mask: "update_channel", kind: "select",
     options: [[UpdateChannel.STABLE, "stable"], [UpdateChannel.PRERELEASE, "prerelease"]],
     get: (s) => String(s.updateChannel ?? UpdateChannel.STABLE), set: (s, v) => (s.updateChannel = Number(v)) },
+  // Which rollout Roll out… starts: easy, a queue of agents one after another, unless set (D129).
+  { key: "rolloutMode", section: "updates", mask: "rollout_mode", kind: "select",
+    options: [[RolloutMode.EASY, "easy"], [RolloutMode.ADVANCED, "advanced"]],
+    get: (s) => String(s.rolloutMode || RolloutMode.EASY), set: (s, v) => (s.rolloutMode = Number(v)) },
   { key: "aliases", section: "endpoints", mask: "public_url_aliases", kind: "lines", get: (s) => s.publicUrlAliases.join("\n"), set: (s, v) => (s.publicUrlAliases = lines(v)) },
   { key: "endpoints", section: "endpoints", mask: "controller_endpoints", kind: "lines", get: (s) => s.controllerEndpoints.join("\n"), set: (s, v) => (s.controllerEndpoints = lines(v)) },
   { key: "hourly", section: "traffic", mask: "hourly_rollup_retention", kind: "days", get: (s) => days(s.hourlyRollupRetention), set: (s, v) => (s.hourlyRollupRetention = toDays(v)) },
