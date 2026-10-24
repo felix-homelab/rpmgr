@@ -665,6 +665,85 @@ provider and never stored.
   signed snapshot. A connector cannot announce routes; it can only report readiness for routes it
   was assigned.
 
+## Route edge rules
+
+The rules a gateway applies to visitors in Phase 2 beyond IP rules and basic auth
+([03](03-connections.md#access-policies), [D130](14-open-decisions.md#engineering)–
+[D135](14-open-decisions.md#engineering)). The rules a gateway enforces on a route are gated by
+capabilities, so a gateway of an earlier release never serves a route without them
+([03](03-connections.md#versioning-and-capabilities)).
+
+- **Reserved path and identity headers.** `/.rpmgr/` on an http route hostname never goes
+  upstream, and the gateway removes `Rpmgr-User-Email`, `Rpmgr-User-Subject` and
+  `Rpmgr-User-Groups` from every client request on every http route, so that only the gateway sets
+  them ([03](03-connections.md#http-routes)).
+- **Require-header values** are shared secrets of at least 32 characters, such as a CDN's origin
+  header. The controller keeps only their SHA-256, which the gateways receive; a value is
+  write-only and never read back. Plain SHA-256 suffices because a value of that length is not
+  guessable as a password is; the gateway compares in constant time and removes the header before
+  the request goes upstream.
+- **Custom pages** of a gateway group are set only by the group's owner org
+  (`infrastructure.write`), for a shared group by the Instance Admin, and audited. A page is
+  served under a policy that forbids script and every load from elsewhere, and each placeholder
+  is filled in as escaped HTML text, so neither a page's author nor a hostile hostname or
+  maintenance message can run script in a visitor's browser
+  ([03](03-connections.md#http-routes)).
+- **CONNECT listeners** belong to one org ([D130](14-open-decisions.md#engineering)). In the mode
+  `plain_basic` the proxy password crosses the network in the clear: anyone on the path between
+  client and gateway can read it and use it. rpmgr allows it for clients that speak no HTTPS
+  proxy, and the API, the CLI and the web UI warn each time it is chosen. `tls_basic` protects
+  the password with TLS, with the versions and suites of http routes
+  ([Controller certificates](#controller-certificates)); `none` relies on IP rules alone. The
+  passwords are hashed as for route basic auth ([Secrets at rest and in
+  logs](#secrets-at-rest-and-in-logs)).
+- **WSS hostnames** of gateways lie under a verified domain of the gateway group's owner org, the
+  system org for a shared group, so that no org can make a gateway present a name it does not
+  hold. The certificate, from ACME or an upload, is an ordinary public certificate; the data
+  session's identity is only the inner mutual TLS to `<gateway-id>.gateway.<td>`
+  ([03](03-connections.md#transport-selection)).
+
+### OIDC sign-in on routes
+
+Built with P2-M10 ([05](05-features.md#edge-access-control-and-limits)); designed here so that the
+gateway's side of P2-M03 leaves room for it.
+
+- **Separate providers.** Route identity providers are their own records, apart from the SSO
+  providers of the web UI, so that letting visitors of a route sign in never lets them into the
+  control plane. The client secret is kept under the KEK and **never leaves the controller**:
+  gateways hold no secret of the provider.
+- **Flow.**
+  1. The gateway sets a state cookie `__Host-rpmgr-state` (256-bit random) and redirects the
+     browser to the controller's public URL, naming the route, the hostname and a hash of the
+     state.
+  2. The controller runs the authorization code flow with PKCE (S256), `state` and `nonce` at the
+     route's provider, verified as for SSO ([Human authentication and
+     sessions](#human-authentication-and-sessions)). It checks the claims against the rule: an
+     e-mail address or domain counts only with `email_verified` true; groups come from the
+     provider's group claim. A user the rule does not accept gets the gateway's 403 page.
+  3. The controller signs an **assertion** and redirects the browser to `/.rpmgr/oidc` on the
+     route hostname. The assertion names the hostname, the route and rule, the hash of the state
+     cookie, the subject, the e-mail address, the groups the rule names that the user holds, and
+     the session's end.
+  4. The gateway checks the signature, that the hostname is the request's, that the state hash is
+     that of its own state cookie, and that the assertion is fresh, then sets the session cookie
+     `__Host-rpmgr-auth` to the signed session part of the assertion and removes the state
+     cookie. An assertion carried to another browser fails the state check.
+- **Signing key.** An Ed25519 key of its own (`route_assertion`), kept and rotated like the other
+  keys of the CA ([CA rotation](#ca-rotation)); gateways get the active and next public keys in
+  their snapshots.
+- **Each request** with a session cookie is checked against the signature, the hostname and the
+  session's end, and its claims against the rule **as it is now**, so a tightened rule shuts out
+  users it no longer accepts at once. A user removed at the provider keeps access until the
+  session ends; that is the weakness of a self-contained cookie, and why the session length is
+  bounded ([D134](14-open-decisions.md#engineering)). `/.rpmgr/oidc/logout` clears the cookie.
+
+| Item | Value |
+|---|---|
+| State cookie | 256-bit random, valid 10 min; `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/` |
+| Assertion in the redirect | valid 60 s |
+| Session (`__Host-rpmgr-auth`) | a setting of each `oidc` rule: 12 h by default, 5 min to 7 d; `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/` |
+| Groups carried | only those the rule names, at most 50 |
+
 ## Connector-local policy
 
 The **local policy** is a file on each connector host that limits what the connector does,
@@ -794,7 +873,8 @@ Rules:
 |---|---|
 | User passwords, recovery codes | argon2id hash |
 | Session, API, enrollment tokens | SHA-256 hash (tokens are 256-bit random, so a fast hash is sufficient) |
-| Route basic-auth credentials | argon2id hash; gateways receive the hash, never the password. Because browsers send basic-auth credentials with **every** request, a gateway verifies with argon2id once and then caches `HMAC-SHA256(gateway-local random key, policy_id ‖ credential_version ‖ len(user) ‖ user ‖ password)` together with the matched user, for 5 minutes in a bounded LRU. The policy ID and credential version keep an entry from being reused on another route, org or credential; the length prefix prevents ambiguous user/password splits; entries for a policy are flushed as soon as a snapshot changes that policy, so tightened policies apply immediately; failed attempts are rate-limited per client IP **before** hashing, and hashing has a per-gateway concurrency cap. This keeps argon2id from becoming a CPU/memory amplifier for unauthenticated clients. [R] The cache holds 10 000 entries; a client address gets 20 verifications at once, refilled at 10 per minute; a gateway runs 2 at once; a request without credentials is refused without one; a gateway verifies only hashes within m ≤ 256 MiB, t ≤ 10, p ≤ 16 |
+| Route basic-auth credentials | argon2id hash; gateways receive the hash, never the password. Because browsers send basic-auth credentials with **every** request, a gateway verifies with argon2id once and then caches `HMAC-SHA256(gateway-local random key, policy_id ‖ credential_version ‖ len(user) ‖ user ‖ password)` together with the matched user, for 5 minutes in a bounded LRU. The policy ID and credential version keep an entry from being reused on another route, org or credential; the length prefix prevents ambiguous user/password splits; entries for a policy are flushed as soon as a snapshot changes that policy, so tightened policies apply immediately; failed attempts are rate-limited per client IP **before** hashing, and hashing has a per-gateway concurrency cap. This keeps argon2id from becoming a CPU/memory amplifier for unauthenticated clients. [R] The cache holds 10 000 entries; a client address gets 20 verifications at once, refilled at 10 per minute; a gateway runs 2 at once; a request without credentials is refused without one; a gateway verifies only hashes within m ≤ 256 MiB, t ≤ 10, p ≤ 16. The same holds for the proxy passwords of CONNECT listeners (Phase 2) |
+| Require-header values (Phase 2) | SHA-256; write-only, at least 32 characters, compared in constant time on the gateway ([Route edge rules](#route-edge-rules)) |
 | CA, intermediate, config-signing and audit keys; ACME account key; TLS private keys of public certificates; TOTP seeds; OIDC client secrets; DNS-provider tokens (one per `dns_providers` row, per org); SMTP and webhook secrets | **Envelope encryption**: a random data key per secret encrypts it with AES-256-GCM (AAD = table, column, row ID); the data key is wrapped by the KEK with AES-256-GCM (AAD = the same plus the KEK version). Rotating the KEK re-wraps only data keys, never the secrets. The KEK version is derived from the key itself (the first 8 bytes of a SHA-256 over it), so it needs no configuration |
 | Agent private keys, WireGuard private keys | **Never stored centrally**. Generated on the agent; only public keys reach the controller |
 

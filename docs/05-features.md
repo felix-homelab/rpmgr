@@ -18,7 +18,7 @@
 | `udp` routes, carried as QUIC datagrams ([03](03-connections.md#udp-routes)) | P1 |
 | `tcp_udp` routes: one public port with TCP and UDP to the same targets ([03](03-connections.md#udp-routes)) | P1 |
 | `tls_passthrough` routes, routed by SNI without terminating TLS | P1 |
-| `tcp` routes in `http_connect` mode (HTTP CONNECT multiplexer on one port) | P2 |
+| `tcp` routes in `http_connect` mode (HTTP CONNECT multiplexer on one port), without proxy credentials, with basic auth over TLS, or with basic auth in the clear ([03](03-connections.md#http-connect-routes-phase-2)) | P2 |
 | Port pools per gateway group and port quotas per org and gateway group | P1 |
 | Route enable/disable with one switch, applied without touching other routes | P1 |
 | Route preview: compile and show what agents would receive, without saving | P1 |
@@ -51,8 +51,8 @@
 | Upstream protocols: TCP, HTTP, HTTPS **with certificate verification** (custom CA, server name), h2c | P1 |
 | PROXY protocol v1/v2 to the target | P1 |
 | Several targets per route: weights, priorities (failover), also across connectors | P1 |
-| Active health checks (TCP, HTTP) run by the connector next to the target | P2 |
-| Passive health: gateway marks a target unhealthy after consecutive upstream failures | P2 |
+| Active health checks (TCP, HTTP) run by the connector next to the target, one per route ([03](03-connections.md#target-health-phase-2)) | P2 |
+| Passive health: gateway marks a target unhealthy after consecutive upstream failures ([03](03-connections.md#target-health-phase-2)) | P2 |
 | Targets on different connectors (multi-site redundancy), with fallback to another connector when a target refuses | P1 |
 
 ### Edge access control and limits
@@ -62,10 +62,10 @@
 | Reusable access policies attached to routes; a deny rule wins over every allow rule | P1 |
 | IP allow/deny lists | P1 |
 | HTTP basic auth (credentials stored as argon2id hashes) | P1 |
-| OIDC single sign-on in front of a route (forward-auth style) | P2 |
-| Per-route bandwidth limit, enforced on the gateway | P2 |
-| Per-route connection limit and request rate limit | P2 |
-| Require-header rule (e.g. shared secret header from a CDN) | P2 |
+| OIDC single sign-on in front of a route (forward-auth style, [04](04-security.md#oidc-sign-in-on-routes)) | P2 |
+| Per-route bandwidth limit, enforced on the gateway ([03](03-connections.md#route-limits-phase-2)) | P2 |
+| Per-route connection limit and request rate limit; a per-client rate limit as a policy rule, on every route type ([03](03-connections.md#route-limits-phase-2)) | P2 |
+| Require-header rule (e.g. shared secret header from a CDN, [04](04-security.md#route-edge-rules)) | P2 |
 
 ### HTTP features
 
@@ -77,7 +77,7 @@
 | Request body size limit | P1 |
 | Per-route HTTP timeouts, where Phase 1 has the fixed ones of [03](03-connections.md#timeouts-keepalive-and-backoff) ([D94](14-open-decisions.md#engineering)) | P2 |
 | Built-in pages for a name no route serves (404) and for the gateway's own errors (502/503/504), to browsers ([D87](14-open-decisions.md#engineering)) | P1 |
-| Custom error pages (502/503/504/404) per gateway group | P2 |
+| Custom pages per gateway group: not found (404), unavailable (502/503/504) and maintenance ([03](03-connections.md#http-routes)) | P2 |
 
 ### Private services
 
