@@ -193,4 +193,46 @@ func TestAccessPolicies(t *testing.T) {
 			t.Errorf("update with %s: %d", name, code)
 		}
 	}
+
+	// Required headers: values from a file, up to the API's limit, or one from the prompt; never
+	// from arguments.
+	header := func(r *rpmgrv1.AccessRule) (string, []string) {
+		return r.GetRequireHeader().GetName(), r.GetRequireHeader().GetValues()
+	}
+	asked = nil
+	valuesFile := file("values", "# the CDN's origin header\nX-Origin-Token: origin-secret-a-0123456789abcdefghijkl\n"+
+		"x-origin-token:origin-b-aaaaaaaaaaaaa:aaaaaaaaaaaaaaaaaaaa\r\n", 0o600)
+	code, out, errOut = run("create", "access-policy", "--name", "cdn", "--rule", "require-header:X-Origin-Token", "--header-values-file", valuesFile)
+	name, vals := header(a.created.GetAccessPolicy().GetRules()[0])
+	if code != cli.ExitOK || errOut != "" || len(asked) != 0 || name != "X-Origin-Token" ||
+		!slices.Equal(vals, []string{"origin-secret-a-0123456789abcdefghijkl", "origin-b-aaaaaaaaaaaaa:aaaaaaaaaaaaaaaaaaaa"}) ||
+		strings.Contains(out, "origin-secret") {
+		t.Fatalf("a required header from a file: %d %q %q %v %v", code, out, errOut, asked, a.created)
+	}
+	answers["header X-Edge"] = "edge-secret-0123456789abcdefghijklmnop"
+	if code, _, _ := run("create", "access-policy", "--name", "edge", "--rule", "require-header:X-Edge"); code != cli.ExitOK ||
+		!slices.Equal(asked, []ask{{"header X-Edge", false}}) {
+		t.Fatalf("a required header from the prompt: %d %v", code, asked)
+	} else if _, vals := header(a.created.GetAccessPolicy().GetRules()[0]); !slices.Equal(vals, []string{"edge-secret-0123456789abcdefghijklmnop"}) {
+		t.Fatalf("the prompted value: %v", vals)
+	}
+	answers["header X-Edge"] = ""
+	for name, args := range map[string][]string{
+		"no value":               {"--name", "x", "--rule", "require-header:X-Edge"},
+		"two headers":            {"--name", "x", "--rule", "require-header:X-Edge,X-Other"},
+		"a bad values file":      {"--name", "x", "--rule", "require-header:X-Edge", "--header-values-file", file("badvalues", "no colon\n", 0o600)},
+		"a value as an argument": {"--name", "x", "--rule", "require-header:X-Edge:edge-secret-0123456789abcdefghijklmnop"},
+	} {
+		a.created = nil
+		if code, _, _ := run(append([]string{"create", "access-policy"}, args...)...); code != cli.ExitUsage || a.created != nil {
+			t.Errorf("%s: %d, sent %v", name, code, a.created)
+		}
+	}
+	asked = nil
+	if code, _, _ := run("update", "access-policy", "--rule", "require-header:X-Edge", "ap_1"); code != cli.ExitOK ||
+		!slices.Equal(asked, []ask{{"header X-Edge", true}}) {
+		t.Fatalf("an update keeping the values: %d %v", code, asked)
+	} else if name, vals := header(a.updated.GetAccessPolicy().GetRules()[0]); name != "X-Edge" || len(vals) != 0 {
+		t.Fatalf("an update keeping the values sent %q %v", name, vals)
+	}
 }

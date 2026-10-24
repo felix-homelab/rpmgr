@@ -743,7 +743,7 @@ rpmgr create <command>
 | [`rpmgr create gateway-token`](#rpmgr-create-gateway-token) | Make the token that enrolls a gateway; it is shown once |
 | [`rpmgr create domain`](#rpmgr-create-domain) | Create a domain |
 | [`rpmgr create ca-bundle`](#rpmgr-create-ca-bundle) | Create a ca bundle |
-| [`rpmgr create access-policy`](#rpmgr-create-access-policy) | Create an access policy of IP rules, where a deny wins, and basic auth |
+| [`rpmgr create access-policy`](#rpmgr-create-access-policy) | Create an access policy of IP rules, where a deny wins, basic auth and required headers |
 | [`rpmgr create invitation`](#rpmgr-create-invitation) | Invite someone to the org and print the one-time link; as Admin or Owner it takes a step-up |
 | [`rpmgr create token`](#rpmgr-create-token) | Personal API tokens are made in the web UI |
 | [`rpmgr create reset-link`](#rpmgr-create-reset-link) | Print a one-time link that sets a member's password, for one who forgot it; takes a step-up |
@@ -932,7 +932,7 @@ rpmgr create ca-bundle [flags]
 
 ## rpmgr create access-policy
 
-Create an access policy of IP rules, where a deny wins, and basic auth.
+Create an access policy of IP rules, where a deny wins, basic auth and required headers.
 
 ```text
 rpmgr create access-policy [flags]
@@ -941,10 +941,11 @@ rpmgr create access-policy [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--description string` |  | a description for people |
+| `--header-values-file string` |  | a file of header:value lines, up to 4 per header, for the require-header rules; each value random, such as from openssl rand -base64 32; the others are asked for |
 | `--name string` |  | the policy's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--passwords-file string` |  | a file of user:password lines for the basic-auth users; the others are asked for |
-| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,… or basic-auth:\<user>,…; repeat for more; a deny wins over every allow |
+| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,…, basic-auth:\<user>,… or require-header:\<header>; repeat for more; a deny wins over every allow |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr create invitation
@@ -1173,10 +1174,11 @@ rpmgr update access-policy [flags] <id or name>
 |---|---|---|
 | `--description string` |  | a description for people |
 | `--force` |  | update without checking that the policy is unchanged since this command read it |
+| `--header-values-file string` |  | a file of header:value lines, up to 4 per header, for the require-header rules; each value random, such as from openssl rand -base64 32; the others are asked for |
 | `--name string` |  | the policy's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--passwords-file string` |  | a file of user:password lines for the basic-auth users; the others are asked for |
-| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,… or basic-auth:\<user>,…; repeat for more; a deny wins over every allow |
+| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,…, basic-auth:\<user>,… or require-header:\<header>; repeat for more; a deny wins over every allow |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr update member

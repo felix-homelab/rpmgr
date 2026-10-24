@@ -43,6 +43,15 @@ Changes to the design documents are not recorded here: see the git history and t
   version or starts one, and the instance setting `rollout_mode` says which kind the web UI starts,
   `easy` unless set. (#892, #893, #894, #895)
 
+- Access policies: a **require-header** rule admits on HTTP routes only requests that carry a
+  header with one of up to four values, such as the origin header a CDN adds, so that clients that
+  go around the CDN get 403. The controller keeps only the values' SHA-256 and never shows a value
+  again; gateways compare in constant time and remove the header before the request goes
+  upstream. In the web UI's **Access policies** page, with a value generator, in `rpmgr create
+  access-policy --rule require-header:<header> --header-values-file <file>`, and in manifests.
+  Gateways of earlier releases do not serve a route that applies such a rule until they are
+  upgraded. (#620, #621)
+
 ## [0.2.0] - 2026-10-24
 
 ### Added

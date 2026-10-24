@@ -685,9 +685,11 @@ capabilities, so a gateway of an earlier release never serves a route without th
   bound what passes ([D137](14-open-decisions.md#engineering)).
 - **Require-header values** are shared secrets of at least 32 characters, such as a CDN's origin
   header. The controller keeps only their SHA-256, which the gateways receive; a value is
-  write-only and never read back. Plain SHA-256 suffices because a value of that length is not
-  guessable as a password is; the gateway compares in constant time and removes the header before
-  the request goes upstream.
+  write-only and never read back. Plain, unsalted SHA-256 suffices only because a value is
+  **random**, such as one of `openssl rand -base64 32` or the web UI's generator, and so cannot be
+  guessed as a password can; the API refuses a value with fewer than 8 different characters, and
+  the docs, the CLI and the web UI say that a value must be random. The gateway compares in
+  constant time and removes the header before the request goes upstream.
 - **Custom pages** of a gateway group are set only by the group's owner org
   (`infrastructure.write`), for a shared group by the Instance Admin, and audited. A page is
   served under a policy that forbids script and every load from elsewhere, and each placeholder

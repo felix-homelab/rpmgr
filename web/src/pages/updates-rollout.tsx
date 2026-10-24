@@ -18,7 +18,9 @@ import {
   AgentKind, ReleaseService, RolloutStage, RolloutState, RolloutTargetState,
   type Release, type Rollout, type RolloutTarget,
 } from "@/gen/rpmgr/v1/release_pb";
+import { RolloutMode } from "@/gen/rpmgr/v1/settings_pb";
 import { Reason, reasonOf } from "@/lib/errors";
+import { EasyRolloutCard } from "@/pages/updates-easy";
 import { useOrg } from "@/session";
 import { useStepUp } from "@/step-up";
 
@@ -30,7 +32,8 @@ const percents = [10, 25, 50, 75];
 // The most test agents a rollout takes (CreateRolloutRequest).
 const maxTestAgents = 50;
 
-const states: Record<RolloutState, [string, Look]> = {
+// rolloutStates are a rollout's state as its key in the texts and its look.
+export const rolloutStates: Record<RolloutState, [string, Look]> = {
   [RolloutState.UNSPECIFIED]: ["unspecified", "unknown"],
   [RolloutState.RUNNING]: ["running", "pending"],
   [RolloutState.PAUSED]: ["paused", "warn"],
@@ -269,7 +272,8 @@ function groupTargets(targets: RolloutTarget[], r: Rollout) {
 export function ActiveRollout() {
   const active = useQuery(ReleaseService.method.listRollouts, { activeOnly: true }, { refetchInterval: 5000 });
   const rollout = active.data?.rollouts[0];
-  return rollout ? <RolloutCard rollout={rollout} /> : null;
+  if (!rollout) return null;
+  return rollout.mode === RolloutMode.EASY ? <EasyRolloutCard rollout={rollout} /> : <RolloutCard rollout={rollout} />;
 }
 
 function RolloutCard({ rollout }: { rollout: Rollout }) {
@@ -279,7 +283,7 @@ function RolloutCard({ rollout }: { rollout: Rollout }) {
   // Only a complete list tells that the stage is done; with more than one page the server decides.
   const complete = !!list.data && !list.data.nextPageToken;
   const groups = groupTargets(targets, rollout);
-  const [state, look] = states[rollout.state];
+  const [state, look] = rolloutStates[rollout.state];
   return (
     <Card title={t("updates.rollout")} description={t("updates.rolloutOf", { version: rollout.version })}
       actions={<Status look={look}>{t(`updates.states.${state}`)}</Status>}>
@@ -338,7 +342,7 @@ function Stages({ rollout, targets }: { rollout: Rollout; targets: RolloutTarget
 }
 
 // Progress is the share of the rollout's agents that updated, of those it did not skip.
-function Progress({ rollout }: { rollout: Rollout }) {
+export function Progress({ rollout }: { rollout: Rollout }) {
   const { t } = useTranslation();
   const c = rollout.counts;
   const all = c ? c.pending + c.offered + c.staged + c.updated + c.rolledBack + c.refused + c.skipped + c.stalled : 0;
@@ -359,36 +363,21 @@ function Progress({ rollout }: { rollout: Rollout }) {
   );
 }
 
-// RolloutActions continues, pauses, resumes or cancels the rollout under the etag the page read; a
-// stale etag reloads it. Continue is offered while the rollout runs below "all agents", as the API
-// allows, and once the agents of the current stage are done (updated, skipped or failed).
+// RolloutActions continues the rollout under the etag the page read, and pauses, resumes or cancels
+// it (RolloutControls); a stale etag reloads it. Continue is offered while the rollout runs below
+// "all agents", as the API allows, and once the agents of the current stage are done (updated,
+// skipped or failed).
 function RolloutActions({ rollout, targets, updating }: { rollout: Rollout; targets: RolloutTarget[]; updating: number }) {
   const { t } = useTranslation();
   const id = useId();
   const stepUp = useStepUp();
   const queryClient = useQueryClient();
   const advance = useMutation(ReleaseService.method.advanceRollout);
-  const pause = useMutation(ReleaseService.method.pauseRollout);
-  const resume = useMutation(ReleaseService.method.resumeRollout);
-  const cancel = useMutation(ReleaseService.method.cancelRollout);
   const [choice, setChoice] = useState<Next | "other">();
   const [other, setOther] = useState("");
   const [choosing, setChoosing] = useState(false);
-  const [asking, setAsking] = useState(false);
   const [error, setError] = useState("");
-  async function run(f: () => Promise<unknown>) {
-    setError("");
-    try {
-      await f();
-      await queryClient.invalidateQueries();
-      return true;
-    } catch (err) {
-      if (reasonOf(err) !== Reason.stepUpRequired) {
-        setError(ConnectError.from(err).rawMessage);
-      }
-      return false;
-    }
-  }
+  const run = (f: () => Promise<unknown>) => runChange(f, queryClient, setError);
   const running = rollout.state === RolloutState.RUNNING;
   const options: Next[] = [...percents.filter((p) => p > rollout.percentage), "all"];
   // A choice the rollout has passed meanwhile falls back to the default path.
@@ -447,6 +436,43 @@ function RolloutActions({ rollout, targets, updating }: { rollout: Rollout; targ
         </div>
       )}
       {running && rollout.stage === RolloutStage.ALL && <p className="text-sm text-muted-foreground">{t("updates.allNow")}</p>}
+      {error && <Alert>{error}</Alert>}
+      <RolloutControls rollout={rollout} />
+    </div>
+  );
+}
+
+// runChange runs a change of a rollout and reloads the page's data; an error other than a step-up
+// the user declined is shown.
+async function runChange(f: () => Promise<unknown>, queryClient: ReturnType<typeof useQueryClient>, setError: (e: string) => void) {
+  setError("");
+  try {
+    await f();
+    await queryClient.invalidateQueries();
+    return true;
+  } catch (err) {
+    if (reasonOf(err) !== Reason.stepUpRequired) {
+      setError(ConnectError.from(err).rawMessage);
+    }
+    return false;
+  }
+}
+
+// RolloutControls pauses a running rollout, resumes a paused one and cancels either, after asking,
+// under the etag the page read; all but a pause after a step-up. Staged and easy rollouts share it.
+export function RolloutControls({ rollout }: { rollout: Rollout }) {
+  const { t } = useTranslation();
+  const stepUp = useStepUp();
+  const queryClient = useQueryClient();
+  const pause = useMutation(ReleaseService.method.pauseRollout);
+  const resume = useMutation(ReleaseService.method.resumeRollout);
+  const cancel = useMutation(ReleaseService.method.cancelRollout);
+  const [asking, setAsking] = useState(false);
+  const [error, setError] = useState("");
+  const run = (f: () => Promise<unknown>) => runChange(f, queryClient, setError);
+  const running = rollout.state === RolloutState.RUNNING;
+  return (
+    <div className="grid gap-3">
       <div className="flex flex-wrap items-center gap-2">
         {running && (
           <Button size="sm" variant="outline" disabled={pause.isPending}
