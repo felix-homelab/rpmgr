@@ -962,7 +962,8 @@ the capability `route.limits`:
   enforces its share. A gateway that is enabled but down keeps its share, so the route then gets
   less than its limit until the gateway returns or is disabled. 0 means no limit.
 - A slot of a connection or request is released when it ends, however it ends, panics and
-  cancellations included. The per-client `rate_limit` rule of a policy comes on top
+  cancellations included. A gateway keeps counting the connections of a removed route while they
+  drain, so the route, added back meanwhile, never admits more than its limit. The per-client `rate_limit` rule of a policy comes on top
   ([Access policies](#access-policies)).
 
 ### Target health (Phase 2)
