@@ -34,6 +34,9 @@ const (
 	// CapOTA: the agent stages the release its snapshot offers for the root updater and reports
 	// the update state in Status; an agent without it is never offered a release.
 	CapOTA = "ota"
+	// CapPagesCustom: the gateway serves the custom pages of its group, which its snapshot names;
+	// a gateway without it gets none and serves the built-in pages.
+	CapPagesCustom = "pages.custom"
 )
 
 // Phase1 lists every capability of Phase 1 agents.
