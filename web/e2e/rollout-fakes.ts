@@ -26,6 +26,9 @@ const releases = [
     createTime: "2026-10-19T06:27:00Z" },
 ];
 
+// releaseCheck is the controller's last release check, which "Check now" asks for again.
+const releaseCheck = { checkTime: "2026-10-24T08:00:00Z", outcome: "RELEASE_CHECK_OUTCOME_OK" };
+
 const target = (name: string, kind: "CONNECTOR" | "GATEWAY", bucket: number, state: string, canary = false, reason = "") =>
   ({ id: `rlt_${name}`, rolloutId: "rol_1", agentId: name, agentKind: `AGENT_KIND_${kind}`, agentName: name, orgId: "org_lab",
     canary, bucket, state: `ROLLOUT_TARGET_STATE_${state}`, reason, versionBefore: "0.1.0" });
@@ -50,12 +53,13 @@ function rollout(paused: boolean) {
     counts: { pending: 4, offered: 1, staged: paused ? 0 : 1, updated: 2, rolledBack: paused ? 1 : 0, skipped: 1 }, etag: "r1" };
 }
 
-// fakeUpdates answers the page's release, rollout and agent calls; rolloutState says whether a
+// fakeUpdates answers the page's release, release check, rollout and agent calls; rolloutState says whether a
 // rollout runs, is paused, or none is there, and is read at every call.
 export async function fakeUpdates(page: Page, rolloutState: () => "none" | "running" | "paused") {
   const answer = (method: string, body: () => object) =>
     page.route(`**/rpmgr.v1.${method}`, (route) => route.fulfill({ json: body() }));
-  await answer("ReleaseService/ListReleases", () => ({ releases, controllerVersion: "0.2.0" }));
+  await answer("ReleaseService/ListReleases", () => ({ releases, controllerVersion: "0.2.0", releaseCheck }));
+  await answer("ReleaseService/CheckReleases", () => ({ releaseCheck: { running: true } }));
   await answer("ReleaseService/ListRollouts", () => ({ rollouts: rolloutState() === "none" ? [] : [rollout(rolloutState() === "paused")] }));
   await answer("ReleaseService/ListRolloutTargets", () => ({ rolloutTargets: rolloutTargets(rolloutState() === "paused") }));
   await answer("ConnectorService/ListConnectors", () => ({ connectors }));

@@ -1079,6 +1079,15 @@
     "notYours": "You cannot recover this account: the user is also a member of another organisation, or an Instance Admin. Ask the Instance Admin."
   },
   "updates": {
+    "checkNow": "Check now",
+    "checking": "Checking for releases…",
+    "checkNever": "Not checked since the controller started.",
+    "checkNone": "This build checks for no releases.",
+    "checkResult": {
+      "ok": "Last checked {{when}}: ok",
+      "failed": "Last checked {{when}}: failed: {{error}}",
+      "off": "Last checked {{when}}: the release check is off; only the releases of rollouts were kept"
+    },
     "releases": "Releases",
     "upload": "Upload release…",
     "uploadTitle": "Upload a release",

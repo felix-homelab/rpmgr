@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
@@ -25,7 +26,7 @@ import (
 // maxReleaseFile bounds each signed file upload release reads; the API takes at most 1 MiB.
 const maxReleaseFile = 1 << 20
 
-// rolloutCommands are upload release, create rollout and advance, pause, resume and cancel
+// rolloutCommands are check release, upload release, create rollout and advance, pause, resume and cancel
 // rollout (docs/16-cli.md); list release, get rollout, list rollout and list rollout-target are
 // part of get and list. All are for an Instance Admin.
 func rolloutCommands() map[string][]*cli.Command {
@@ -76,10 +77,58 @@ func rolloutCommands() map[string][]*cli.Command {
 			return s.writeRollout(ctx, env, output, "Started rollout %s of %s to its canary agents.\n", ro)
 		},
 	}
-	return map[string][]*cli.Command{"upload": {uploadRelease()}, "create": {create}, "advance": {advanceRollout()},
+	return map[string][]*cli.Command{"check": {checkRelease()}, "upload": {uploadRelease()}, "create": {create}, "advance": {advanceRollout()},
 		"pause":  {changeRollout("pause", "pause a running rollout; agents offered the release keep it", false)},
 		"resume": {changeRollout("resume", "let a paused rollout run again", true)},
 		"cancel": {changeRollout("cancel", "end a running or paused rollout for good", true)}}
+}
+
+// checkPoll is how often check release asks whether the release check has ended.
+var checkPoll = time.Second
+
+// checkRelease is `rpmgr check release`: the controller's release check runs now, and the command
+// waits for it to end.
+func checkRelease() *cli.Command {
+	return &cli.Command{
+		Name: "release", Summary: "check for new releases now and wait for the check to end (Instance Admin)",
+		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			if len(args) > 0 {
+				return cli.Usagef("expected no argument")
+			}
+			s, err := newAPISession(env)
+			if err != nil {
+				return err
+			}
+			rc := rpmgrv1connect.NewReleaseServiceClient(s.hc, s.creds.Controller)
+			resp, err := rc.CheckReleases(ctx, connect.NewRequest(&rpmgrv1.CheckReleasesRequest{}))
+			if err != nil {
+				return apiError(err)
+			}
+			st := resp.Msg.GetReleaseCheck()
+			for st.GetRunning() {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(checkPoll):
+				}
+				list, err := rc.ListReleases(ctx, connect.NewRequest(&rpmgrv1.ListReleasesRequest{PageSize: 1}))
+				if err != nil {
+					return apiError(err)
+				}
+				st = list.Msg.GetReleaseCheck()
+			}
+			at := st.GetCheckTime().AsTime().UTC().Format(time.RFC3339)
+			switch st.GetOutcome() {
+			case rpmgrv1.ReleaseCheckOutcome_RELEASE_CHECK_OUTCOME_OK:
+				_, err = fmt.Fprintf(env.Stdout, "Checked for releases at %s; rpmgr list release shows the releases the controller knows.\n", at)
+				return err
+			case rpmgrv1.ReleaseCheckOutcome_RELEASE_CHECK_OUTCOME_FAILED:
+				return fmt.Errorf("the release check at %s failed, and the mirror keeps what it had: %s", at, st.GetError())
+			default:
+				return fmt.Errorf("the release check at %s listed no releases: it was turned off", at)
+			}
+		},
+	}
 }
 
 // uploadRelease is `rpmgr upload release <dir>`: a release's signed files, as a GitHub release

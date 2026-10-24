@@ -10,6 +10,15 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+### Added
+
+- Updates: **Check now** on Settings → Updates, `rpmgr check release` and
+  `ReleaseService.CheckReleases` check for new releases at once instead of at the next daily
+  check, for an Instance Admin, audited. The page and `ListReleases` show when the last check ended
+  and how: ok, failed with its error, or off. A check is refused while the release check is off,
+  and shortly after the last one or while the release source limits requests, with the time to
+  wait. (#890)
+
 ## [0.2.0] - 2026-10-24
 
 ### Added

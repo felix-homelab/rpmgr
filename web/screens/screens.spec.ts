@@ -198,8 +198,14 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await expect(page.getByRole("heading", { name: "PKI", level: 1 })).toBeVisible();
   await page.waitForTimeout(800);
   await shot(page, "settings-pki", true);
+  // The installation knows no release, and its release check fetches its own from GitHub, which
+  // can take long: the page is shown with that list and a check that ended.
+  const listReleases = "**/rpmgr.v1.ReleaseService/ListReleases";
+  await page.route(listReleases, (route) => route.fulfill({ json: { releases: [], controllerVersion: "0.1.0",
+    releaseCheck: { checkTime: "2026-10-24T08:00:00Z", outcome: "RELEASE_CHECK_OUTCOME_OK" } } }));
   await page.getByRole("link", { name: "Updates" }).click();
   await expect(page.getByRole("heading", { name: "Updates", level: 1 })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Releases" }).getByRole("status")).toHaveText(/^Last checked/);
   await page.waitForTimeout(800);
   await shot(page, "settings-updates", true);
   // The upload dialog with three of the four signed files chosen, which is cancelled.
@@ -210,6 +216,7 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await expect(upload.getByText("Still missing: manifest.json.minisig")).toBeVisible();
   await shot(page, "release-upload");
   await upload.getByRole("button", { name: "Cancel" }).click();
+  await page.unroute(listReleases);
   await page.getByRole("link", { name: "Users" }).click();
   await expect(page.getByRole("heading", { name: "Users", level: 1 })).toBeVisible();
   await page.waitForTimeout(800);
@@ -255,6 +262,9 @@ test("screenshots of a rollout", async ({ page }) => {
     await page.emulateMedia({ colorScheme: scheme });
     state = "none";
     await page.goto("/settings/updates");
+    const releasesCard = page.getByRole("region", { name: "Releases" });
+    await expect(releasesCard.getByRole("status")).toHaveText(/^Last checked/);
+    await part(page, releasesCard, named("release-check"), !!suffix);
     await page.getByRole("button", { name: "Roll out…" }).first().click();
     const dialog = page.getByRole("dialog", { name: "Roll out 0.2.0" });
     await expect(dialog.getByRole("checkbox", { name: /^gw-eu-1/ })).toBeChecked();

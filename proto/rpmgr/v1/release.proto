@@ -21,6 +21,14 @@ service ReleaseService {
     option idempotency_level = NO_SIDE_EFFECTS;
     option (rpmgr.v1.authz) = {permission: "instance.admin"};
   }
+  // CheckReleases asks the controller's release check to run now rather than at its next daily
+  // check, and returns its state; the releases it finds appear in ListReleases once it ends. While
+  // a check runs it joins it. It is refused while the release check is off or the build checks for
+  // no releases, and for a while after the last check started or the release source limited the
+  // rate (docs/03-connections.md, "Timeouts, keepalive and backoff").
+  rpc CheckReleases(CheckReleasesRequest) returns (CheckReleasesResponse) {
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
   // UploadRelease records a release from its signed manifest, signing-key statement and their
   // signatures, verified like the release check, for air-gapped installations and signed
   // downgrades. Its artifacts come from the release source or `rpmgr release import`.
@@ -93,6 +101,33 @@ enum ReleaseSource {
   RELEASE_SOURCE_UPLOAD = 2;
   // `rpmgr release import` on the controller host.
   RELEASE_SOURCE_IMPORT = 3;
+}
+
+// ReleaseCheckOutcome is how the controller's last release check ended.
+enum ReleaseCheckOutcome {
+  // No check has ended since the controller started.
+  RELEASE_CHECK_OUTCOME_UNSPECIFIED = 0;
+  // The check listed the releases and the mirror holds what it keeps.
+  RELEASE_CHECK_OUTCOME_OK = 1;
+  // The check failed; the mirror keeps what it had.
+  RELEASE_CHECK_OUTCOME_FAILED = 2;
+  // The release check is off: the mirror only kept the targets of rollouts.
+  RELEASE_CHECK_OUTCOME_OFF = 3;
+  // The build checks for no releases: a development build, or one without release root keys.
+  RELEASE_CHECK_OUTCOME_NONE = 4;
+}
+
+// ReleaseCheck is the state of the controller's release check; output only. Each controller
+// checks for its own mirror, so it is the state of the controller that answers.
+message ReleaseCheck {
+  // Whether a check runs now, or was asked for and starts at once.
+  bool running = 1;
+  // When the last check ended; not set before the first ends.
+  google.protobuf.Timestamp check_time = 2;
+  // How it ended.
+  ReleaseCheckOutcome outcome = 3;
+  // The error of a failed check.
+  string error = 4;
 }
 
 // Release is a release whose signed manifest the controller verified; output only.
@@ -272,6 +307,18 @@ message ListReleasesResponse {
   string next_page_token = 2;
   // The version the controller runs.
   string controller_version = 3;
+  // The state of the release check.
+  ReleaseCheck release_check = 4;
+}
+
+// CheckReleasesRequest asks for a release check now.
+message CheckReleasesRequest {}
+
+// CheckReleasesResponse is the state of the release check, running unless the build checks for
+// no releases.
+message CheckReleasesResponse {
+  // The state of the release check.
+  ReleaseCheck release_check = 1;
 }
 
 // UploadReleaseRequest is a release's signed files, as a GitHub release has them.
