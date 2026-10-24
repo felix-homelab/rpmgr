@@ -144,10 +144,8 @@ func TestTCPRoutes_RequestRate(t *testing.T) {
 	if err := ping(dialPort(t, port), "first"); err != nil {
 		t.Fatal(err)
 	}
-	b := dialPort(t, port)
-	_ = b.SetReadDeadline(time.Now().Add(5 * time.Second))
-	if n, err := b.Read(make([]byte, 1)); err == nil || isTimeout(err) {
-		t.Fatalf("a connection over the rate: %d bytes, %v", n, err)
+	if err := reset(port); err != nil {
+		t.Fatalf("a connection over the rate: %v", err)
 	}
 }
 
