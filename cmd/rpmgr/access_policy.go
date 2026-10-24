@@ -44,19 +44,20 @@ var passwordPrompt = func(user string, keep bool) (string, error) {
 
 // policyFlags are the flags of create and update access-policy.
 type policyFlags struct {
-	name, description, passwords, output string
-	rules                                cli.List
-	force                                bool
-	wait                                 time.Duration
-	fs                                   *flag.FlagSet
+	name, description, passwords, values, output string
+	rules                                        cli.List
+	force                                        bool
+	wait                                         time.Duration
+	fs                                           *flag.FlagSet
 }
 
 func (f *policyFlags) register(fs *flag.FlagSet, update bool) {
 	f.fs = fs
 	fs.StringVar(&f.name, "name", "", "the policy's name, unique in the org")
 	fs.StringVar(&f.description, "description", "", "a description for people")
-	fs.Var(&f.rules, "rule", "a rule: allow:<cidr>,…, deny:<cidr>,… or basic-auth:<user>,…; repeat for more; a deny wins over every allow")
+	fs.Var(&f.rules, "rule", "a rule: allow:<cidr>,…, deny:<cidr>,…, basic-auth:<user>,… or require-header:<header>; repeat for more; a deny wins over every allow")
 	fs.StringVar(&f.passwords, "passwords-file", "", "a file of user:password lines for the basic-auth users; the others are asked for")
+	fs.StringVar(&f.values, "header-values-file", "", "a file of header:value lines, up to 4 per header, for the require-header rules; each value random, such as from openssl rand -base64 32; the others are asked for")
 	fs.DurationVar(&f.wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
 	if update {
 		fs.BoolVar(&f.force, "force", false, "update without checking that the policy is unchanged since this command read it")
@@ -99,14 +100,44 @@ func warnOpenFile(env *cli.Env, what, path string) {
 	}
 }
 
+// readHeaderValues reads a file of header:value lines, a header's values in order under its name
+// as written; blank lines and lines starting with # are skipped. A file other users may read is
+// reported.
+func readHeaderValues(env *cli.Env, path string) (map[string][]string, error) {
+	out := map[string][]string{}
+	if path == "" {
+		return out, nil
+	}
+	warnOpenFile(env, "header values", path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304: the user's file
+	if err != nil {
+		return nil, err
+	}
+	for n, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		name, value, ok := strings.Cut(line, ":")
+		if !ok || name == "" {
+			return nil, cli.Usagef("%s, line %d: not header:value", path, n+1)
+		}
+		key := strings.ToLower(strings.TrimSpace(name))
+		out[key] = append(out[key], strings.TrimSpace(value))
+	}
+	return out, nil
+}
+
 // rulesOf turns --rule values into rules, in order. A basic-auth user's password comes from
-// passwords, else from the prompt; with keep it may stay empty, which keeps the current one.
-func rulesOf(values []string, passwords map[string]string, keep bool) ([]*rpmgrv1.AccessRule, error) {
+// passwords, else from the prompt; with keep it may stay empty, which keeps the current one. A
+// required header's values come from values, else one from the prompt; with keep an empty answer
+// keeps the current values.
+func rulesOf(values []string, passwords map[string]string, headerValues map[string][]string, keep bool) ([]*rpmgrv1.AccessRule, error) {
 	var out []*rpmgrv1.AccessRule
 	for _, v := range values {
 		kind, list, ok := strings.Cut(v, ":")
 		if !ok || list == "" {
-			return nil, cli.Usagef("--rule %q: allow:<cidr>,…, deny:<cidr>,… or basic-auth:<user>,…", v)
+			return nil, cli.Usagef("--rule %q: allow:<cidr>,…, deny:<cidr>,…, basic-auth:<user>,… or require-header:<header>", v)
 		}
 		items := strings.Split(list, ",")
 		switch kind {
@@ -133,8 +164,27 @@ func rulesOf(values []string, passwords map[string]string, keep bool) ([]*rpmgrv
 				ba.Users = append(ba.Users, &rpmgrv1.BasicAuthCredential{Name: user, Password: pw})
 			}
 			out = append(out, &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_BasicAuth{BasicAuth: ba}})
+		case "require-header":
+			if strings.ContainsAny(list, ",:") {
+				return nil, cli.Usagef("--rule %q: one header per rule; values come from --header-values-file or the prompt", "require-header:…")
+			}
+			vals, ok := headerValues[strings.ToLower(list)]
+			if !ok {
+				val, err := passwordPrompt("header "+list, keep)
+				if err != nil {
+					return nil, err
+				}
+				if val == "" && !keep {
+					return nil, cli.Usagef("no value for header %s", list)
+				}
+				if val != "" {
+					vals = []string{val}
+				}
+			}
+			out = append(out, &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_RequireHeader{
+				RequireHeader: &rpmgrv1.RequireHeaderRule{Name: list, Values: vals}}})
 		default:
-			return nil, cli.Usagef("--rule %q: the kind is allow, deny or basic-auth", v)
+			return nil, cli.Usagef("--rule %q: the kind is allow, deny, basic-auth or require-header", v)
 		}
 	}
 	return out, nil
@@ -146,11 +196,15 @@ func (f *policyFlags) buildRules(env *cli.Env, keep bool) ([]*rpmgrv1.AccessRule
 	if err != nil {
 		return nil, err
 	}
-	return rulesOf(f.rules, passwords, keep)
+	headerValues, err := readHeaderValues(env, f.values)
+	if err != nil {
+		return nil, err
+	}
+	return rulesOf(f.rules, passwords, headerValues, keep)
 }
 
-// accessPolicyCommands are create and update access-policy. Passwords never come from arguments:
-// they come from a file or a prompt.
+// accessPolicyCommands are create and update access-policy. Passwords and required header values
+// never come from arguments: they come from a file or a prompt.
 func accessPolicyCommands() (create, update *cli.Command) {
 	k, err := apicli.KindOf("access-policy")
 	if err != nil {
@@ -158,7 +212,7 @@ func accessPolicyCommands() (create, update *cli.Command) {
 	}
 	var cf, uf policyFlags
 	create = &cli.Command{
-		Name: "access-policy", Summary: "create an access policy of IP rules, where a deny wins, and basic auth",
+		Name: "access-policy", Summary: "create an access policy of IP rules, where a deny wins, basic auth and required headers",
 		Flags: func(fs *flag.FlagSet) { cf.register(fs, false) },
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) > 0 {

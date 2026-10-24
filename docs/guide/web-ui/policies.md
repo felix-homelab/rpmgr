@@ -1,7 +1,7 @@
 # Access policies
 
-An access policy says who may reach a route: by client address, or with a password on HTTP
-routes. This page describes the web UI's **Access policies** page, where the organisation's
+An access policy says who may reach a route: by client address, or on HTTP routes with a password
+or a required header. This page describes the web UI's **Access policies** page, where the organisation's
 policies are made and changed; they are attached to routes on each route's page. Every member sees
 the page; creating, changing and removing policies needs the Owner, Admin or Operator role
 (`routes.write`). The how-to page is [Access policies](../access-policies.md).
@@ -11,8 +11,8 @@ the page; creating, changing and removing policies needs the Owner, Admin or Ope
 ## The list
 
 Each policy shows its name, its description, its rules, numbered, and the routes that use it, or
-`used by no route`. A rule reads as `allow …` or `deny …` with its addresses, or `basic auth: …`
-with its users' names.
+`used by no route`. A rule reads as `allow …` or `deny …` with its addresses, `basic auth: …`
+with its users' names, or `requires header …` with the header's name.
 
 - **Export YAML** shows every policy as YAML ([The YAML view](README.md#the-yaml-view)).
 - **New access policy** opens the [form](#the-form) above the list.
@@ -34,6 +34,10 @@ After a change, the page follows it to the gateways
     IPv6, such as `198.51.100.0/24`.
   - **Basic auth (HTTP routes)** takes users: each a **User** and a **Password**. The rule starts
     with no user: **Add a user** adds each one, the first too, and **Remove the user** removes one.
+  - **Require a header (HTTP routes)** takes a **Header** and one **Value** to start with. **Add a
+    value** adds another, up to four; **Remove the value** removes one; **Generate a value** fills
+    the first empty value with a random one, or adds it. The form says how long a value must be,
+    and to copy it before saving.
 - **Remove the rule** removes a rule; **Add a rule** adds one, an **Allow addresses** rule to start
   with.
 - **Create the policy** or **Save** saves the policy; **Cancel** closes the form.
@@ -48,6 +52,11 @@ user needs a password. The gateway asks for these users' names and passwords on 
 the controller refuses a basic-auth rule wherever a route of another type would apply it: in a
 policy such a route uses, and when you attach a policy with one to such a route
 ([03](../../03-connections.md#access-policies)).
+
+Header values are write-only too. When you edit a policy, a header it already requires shows
+`unchanged` in its empty value field and keeps its values unless you type new ones, which replace
+them all; a header it does not require yet needs a value. As with basic auth, the controller
+refuses a required header wherever a route that is not an HTTP route would apply it.
 
 ## Attach a policy to a route
 

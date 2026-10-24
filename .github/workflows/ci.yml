@@ -170,7 +170,9 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.go == 'true' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Full runs test on two PostgreSQL versions, one after the other, each package with up to
+    # 20 minutes (check-store.sh).
+    timeout-minutes: ${{ inputs.full && 60 || 30 }}
     services:
       pg16:
         image: mirror.gcr.io/library/postgres:16@sha256:65b16a8b326e0cfbdf33fa7e783f2a0cb352a61448616ccccfd616ef42aa0f65
