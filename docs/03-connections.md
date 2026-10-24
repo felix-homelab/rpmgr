@@ -1458,6 +1458,11 @@ field of the feature exists, and the compiler fails closed:
   gateways keep listing that connector among the route's entries, as they cannot know its
   capabilities: a stream they choose for it fails with `ROUTE_UNKNOWN` instead of moving to a
   connector that has the capability. That costs availability until the connector is upgraded.
+- A gateway without a capability may still serve another route that covers the gated route's
+  requests: with `http.header-match` missing, a request meant for a route with header matches goes
+  to a route of the same hostname and path prefix without them, if there is one, as the gateway
+  does not know the gated route. The gated route's status says so for each such gateway. That
+  route fails closed; the other route's delivery is unchanged.
   Whether gateways should pass over such connectors is decided by the first slice that registers a
   connector-side gate.
 - Capabilities are read from each control session's `Hello`. An agent that reconnects after its

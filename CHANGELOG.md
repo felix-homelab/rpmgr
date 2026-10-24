@@ -41,9 +41,9 @@ Changes to the design documents are not recorded here: see the git history and t
 ### Changed
 
 - Gateways: paths under `/.rpmgr/` on an http route's hostnames belong to the gateway and get its
-  404 page instead of going to the upstream, and the `Rpmgr-User-Email`, `Rpmgr-User-Subject` and
-  `Rpmgr-User-Groups` headers a client sends are removed before a request goes upstream; both are
-  kept for the gateway's own endpoints and OIDC sign-in. (#617)
+  404 page instead of going to the upstream, and every header and trailer a client sends whose name
+  starts with `Rpmgr-User-`, also spelt with `_`, is removed before a request goes upstream; both
+  are kept for the gateway's own endpoints and OIDC sign-in. (#617)
 
 ## [0.2.0] - 2026-10-24
 

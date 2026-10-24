@@ -344,6 +344,45 @@ func TestHTTPRoutes_RouteTimeouts(t *testing.T) {
 	}
 }
 
+// TestGateway_IdentityHeadersAnySpelling (D135): every header and trailer a client sends whose
+// name starts with Rpmgr-User-, in any case and with "_" for "-", which CGI-style servers read
+// alike, is removed before the request goes upstream; other headers pass.
+func TestGateway_IdentityHeadersAnySpelling(t *testing.T) {
+	upstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body) // trailers arrive after the body
+		// Trailers are compared by name: what reaches the upstream is the names the client declared.
+		var got []string
+		for i, h := range []http.Header{r.Header, r.Trailer} {
+			for name, v := range h {
+				if n := strings.ToLower(strings.ReplaceAll(name, "_", "-")); strings.HasPrefix(n, "rpmgr-user-") || n == "x-keep" || n == "x-late" {
+					got = append(got, map[int]string{0: name + "=" + strings.Join(v, ","), 1: "trailer " + name}[i])
+				}
+			}
+		}
+		slices.Sort(got)
+		_, _ = io.WriteString(w, strings.Join(got, " "))
+	})
+	e := newHTTPEnv(t, upstream, gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}})
+	for _, h2 := range []bool{false, true} {
+		req, _ := http.NewRequest(http.MethodPost, "https://app.example.com/x", io.NopCloser(strings.NewReader("body")))
+		req.ContentLength = -1 // chunked on HTTP/1.1, so the trailers go
+		req.Header["rpmgr_user_email"] = []string{"admin@example.com"}
+		req.Header["Rpmgr-User-Role"] = []string{"admin"}
+		req.Header["RPMGR-USER_ORG"] = []string{"org_1"}
+		req.Header.Set("X-Keep", "1")
+		req.Trailer = http.Header{"Rpmgr-User-Email": {"late@example.com"}, "rpmgr_user_x": {"t"}, "X-Late": {"t"}}
+		resp, err := e.client(h2).Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if string(b) != "X-Keep=1 trailer X-Late" {
+			t.Errorf("h2 %v: the upstream got %q, want only X-Keep and the trailer X-Late", h2, b)
+		}
+	}
+}
+
 // TestHTTPRoutes_Proxy: HTTP/1.1 and HTTP/2 clients reach the upstream over a tunnel stream with
 // their Host kept and X-Forwarded-* set by the gateway, never taken from the client.
 func TestHTTPRoutes_Proxy(t *testing.T) {

@@ -33,13 +33,17 @@ type Match struct {
 	Present bool `json:"present,omitempty"`
 }
 
+// unmatchable are the headers a request's header never holds where the gateway reads it.
+var unmatchable = map[string]bool{"Host": true, "Content-Length": true, "Transfer-Encoding": true, "Trailer": true}
+
 // ErrInvalid is the error of a set of matches the rules refuse.
 var ErrInvalid = errors.New("headermatch: invalid header matches")
 
 // Check returns an error wrapping ErrInvalid if ms is not a valid set: at most Max matches, each
 // with a valid header name that no other match has, and either Present or a non-empty valid
-// field value. Host, which Go keeps apart from the other headers, and the identity headers the
-// gateway removes cannot be matched.
+// field value without leading or trailing blanks. Host, Content-Length, Transfer-Encoding and
+// Trailer, which Go keeps apart from the other headers or takes out of them, and the identity
+// headers the gateway removes (Rpmgr-User-*) cannot be matched.
 func Check(ms []Match) error {
 	if len(ms) > Max {
 		return fmt.Errorf("%w: %d matches, at most %d", ErrInvalid, len(ms), Max)
@@ -50,7 +54,7 @@ func Check(ms []Match) error {
 		switch {
 		case !httpguts.ValidHeaderFieldName(m.Name):
 			return fmt.Errorf("%w: header name %q", ErrInvalid, m.Name)
-		case name == "Host" || strings.HasPrefix(name, "Rpmgr-User-"):
+		case unmatchable[name] || strings.HasPrefix(textproto.CanonicalMIMEHeaderKey(strings.ReplaceAll(m.Name, "_", "-")), "Rpmgr-User-"):
 			return fmt.Errorf("%w: header %s cannot be matched", ErrInvalid, name)
 		case seen[name]:
 			return fmt.Errorf("%w: header %s is matched twice", ErrInvalid, name)
@@ -58,6 +62,9 @@ func Check(ms []Match) error {
 			return fmt.Errorf("%w: header %s is matched by presence and by a value", ErrInvalid, name)
 		case !m.Present && (m.Value == "" || !httpguts.ValidHeaderFieldValue(m.Value)):
 			return fmt.Errorf("%w: header %s needs a valid, non-empty value or presence", ErrInvalid, name)
+		case !m.Present && strings.Trim(m.Value, " \t") != m.Value:
+			// A server drops a field value's leading and trailing blanks, so no request could match.
+			return fmt.Errorf("%w: the value of header %s starts or ends with a blank", ErrInvalid, name)
 		}
 		seen[name] = true
 	}

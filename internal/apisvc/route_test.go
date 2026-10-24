@@ -316,6 +316,10 @@ func TestHTTPRoutes_HeaderMatches(t *testing.T) {
 		"a bad name":                         {matching("bad", exact("X Env", "a")), connect.CodeInvalidArgument},
 		"Host":                               {matching("host", exact("host", "a.example.com")), connect.CodeInvalidArgument},
 		"an identity header":                 {matching("ident", present("Rpmgr-User-Email")), connect.CodeInvalidArgument},
+		"another identity header":            {matching("ident2", present("rpmgr_user_role")), connect.CodeInvalidArgument},
+		"Transfer-Encoding":                  {matching("te", exact("Transfer-Encoding", "chunked")), connect.CodeInvalidArgument},
+		"Content-Length":                     {matching("cl", exact("Content-Length", "0")), connect.CodeInvalidArgument},
+		"a value with a leading blank":       {matching("blank", exact("X-Env", " beta")), connect.CodeInvalidArgument},
 		"a header matched twice":             {matching("twice", exact("X-Env", "a"), present("x-env")), connect.CodeInvalidArgument},
 		"presence set to false":              {matching("false", &rpmgrv1.HeaderMatch{Name: "X-Env", Match: &rpmgrv1.HeaderMatch_Present{}}), connect.CodeInvalidArgument},
 	} {

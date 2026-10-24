@@ -305,7 +305,8 @@ message HTTPRouteSpec {
 // HeaderMatch is a request header an http route matches on: its name, with an exact value or
 // with presence alone.
 message HeaderMatch {
-  // The header's name, compared without regard to case; not Host or an Rpmgr-User- header.
+  // The header's name, compared without regard to case; not Host, Content-Length,
+  // Transfer-Encoding, Trailer or an Rpmgr-User- header.
   string name = 1 [(buf.validate.field).string = {
     min_len: 1
     max_len: 256
@@ -314,10 +315,12 @@ message HeaderMatch {
   // How it matches.
   oneof match {
     option (buf.validate.oneof).required = true;
-    // One of the header's values equals this exactly.
+    // One of the header's values equals this exactly; no leading or trailing blank, which a
+    // server drops.
     string exact = 2 [(buf.validate.field).string = {
       min_len: 1
       max_len: 1024
+      pattern: "^[^ \\t](.*[^ \\t])?$"
       well_known_regex: KNOWN_REGEX_HTTP_HEADER_VALUE
     }];
     // The header is present, with any value; must be true.

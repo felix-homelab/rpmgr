@@ -1022,7 +1022,8 @@ func (x *HTTPRouteSpec) GetUpstreamIdleTimeoutSeconds() uint32 {
 // with presence alone.
 type HeaderMatch struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The header's name, compared without regard to case; not Host or an Rpmgr-User- header.
+	// The header's name, compared without regard to case; not Host, Content-Length,
+	// Transfer-Encoding, Trailer or an Rpmgr-User- header.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// How it matches.
 	//
@@ -1102,7 +1103,8 @@ type isHeaderMatch_Match interface {
 }
 
 type HeaderMatch_Exact struct {
-	// One of the header's values equals this exactly.
+	// One of the header's values equals this exactly; no leading or trailing blank, which a
+	// server drops.
 	Exact string `protobuf:"bytes,2,opt,name=exact,proto3,oneof"`
 }
 
@@ -3190,12 +3192,11 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\f\n" +
 	"\n" +
-	"_websocket\"\x8c\x01\n" +
+	"_websocket\"\xa1\x01\n" +
 	"\vHeaderMatch\x12!\n" +
 	"\x04name\x18\x01 \x01(\tB\r\xbaH\n" +
-	"r\b\x10\x01\x18\x80\x02\xc0\x01\x01R\x04name\x12%\n" +
-	"\x05exact\x18\x02 \x01(\tB\r\xbaH\n" +
-	"r\b\x10\x01\x18\x80\b\xc0\x01\x02H\x00R\x05exact\x12#\n" +
+	"r\b\x10\x01\x18\x80\x02\xc0\x01\x01R\x04name\x12:\n" +
+	"\x05exact\x18\x02 \x01(\tB\"\xbaH\x1fr\x1d\x10\x01\x18\x80\b2\x13^[^ \\t](.*[^ \\t])?$\xc0\x01\x02H\x00R\x05exact\x12#\n" +
 	"\apresent\x18\x03 \x01(\bB\a\xbaH\x04j\x02\b\x01H\x00R\apresentB\x0e\n" +
 	"\x05match\x12\x05\xbaH\x02\b\x01\"\x88\x01\n" +
 	"\fTCPRouteSpec\x12\x1d\n" +

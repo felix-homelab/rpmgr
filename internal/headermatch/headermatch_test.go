@@ -34,6 +34,13 @@ func TestCheck(t *testing.T) {
 		{"twice, other case", []headermatch.Match{{Name: "X-Env", Value: "a"}, {Name: "x-env", Value: "b"}}, false},
 		{"host", []headermatch.Match{{Name: "host", Value: "a"}}, false},
 		{"identity header", []headermatch.Match{{Name: "rpmgr-user-email", Present: true}}, false},
+		{"any identity header, with underscores", []headermatch.Match{{Name: "rpmgr_user_role", Present: true}}, false},
+		{"content-length", []headermatch.Match{{Name: "content-length", Value: "0"}}, false},
+		{"transfer-encoding", []headermatch.Match{{Name: "Transfer-Encoding", Value: "chunked"}}, false},
+		{"trailer", []headermatch.Match{{Name: "trailer", Present: true}}, false},
+		{"a leading blank", []headermatch.Match{{Name: "X-Env", Value: " beta"}}, false},
+		{"a trailing tab", []headermatch.Match{{Name: "X-Env", Value: "beta\t"}}, false},
+		{"a blank inside", []headermatch.Match{{Name: "X-Env", Value: "beta 2"}}, true},
 	} {
 		err := headermatch.Check(tc.ms)
 		if (err == nil) != tc.ok || err != nil && !errors.Is(err, headermatch.ErrInvalid) {

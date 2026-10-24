@@ -15,6 +15,7 @@ import (
 	"net/http/httptrace"
 	"net/http/httputil"
 	"net/netip"
+	"net/textproto"
 	"net/url"
 	"reflect"
 	"slices"
@@ -801,9 +802,7 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 			if len(route.BasicAuth) > 0 {
 				pr.Out.Header.Del("Authorization") // the gateway's credentials, not the upstream's
 			}
-			for _, name := range identityHeaders {
-				pr.Out.Header.Del(name)
-			}
+			dropIdentityHeaders(pr.Out.Header, pr.Out.Trailer)
 			apply(pr.Out.Header, route.RequestHeaders)
 		},
 		Transport:     rt,
@@ -1220,9 +1219,23 @@ func reservedPath(p string) bool {
 	return false
 }
 
-// identityHeaders are set only by the gateway, after an OIDC sign-in; a client's never go
-// upstream (docs/04-security.md, "Route edge rules").
-var identityHeaders = []string{"Rpmgr-User-Email", "Rpmgr-User-Subject", "Rpmgr-User-Groups"}
+// identityPrefix starts the names of the headers only the gateway sets, after an OIDC sign-in
+// (docs/04-security.md, "Route edge rules", D135).
+const identityPrefix = "Rpmgr-User-"
+
+// dropIdentityHeaders removes from a request's headers and trailers every field a client sent
+// whose name starts with identityPrefix, also when it is spelt with "_" for "-": CGI and similar
+// servers read rpmgr_user_email as RPMGR_USER_EMAIL too, so a backend could not tell it from the
+// gateway's own.
+func dropIdentityHeaders(hs ...http.Header) {
+	for _, h := range hs {
+		for name := range h {
+			if strings.HasPrefix(textproto.CanonicalMIMEHeaderKey(strings.ReplaceAll(name, "_", "-")), identityPrefix) {
+				delete(h, name)
+			}
+		}
+	}
+}
 
 // lookup returns the entries for a host: its own, or else those of the wildcard hostname one
 // label up.
