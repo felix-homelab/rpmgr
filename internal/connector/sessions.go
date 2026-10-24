@@ -149,9 +149,9 @@ type session struct {
 	send      func(*tunnelv1.SessionMessage) error
 	requests  *tunnel.OpenRequester
 	streams   atomic.Int64
-	pingSeq   atomic.Uint64   // the last Ping sent
-	pingAt    atomic.Int64    // when, in Unix nanoseconds
-	srtt      atomic.Int64    // the smoothed round-trip time from Ping and Pong, 0 before the first
+	pingSeq   atomic.Uint64     // the last Ping sent
+	pingAt    atomic.Int64      // when, in Unix nanoseconds
+	srtt      atomic.Int64      // the smoothed round-trip time from Ping and Pong, 0 before the first
 	announced map[string]string // routes reported ready on it, with their priorities (prioKey); under Sessions.mu
 	retired   bool              // under Sessions.mu
 }
