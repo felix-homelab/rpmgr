@@ -337,7 +337,7 @@ func TestHealthCheck_UnixHost(t *testing.T) {
 // place, and a check whose context ends while it waits fails without dialling.
 func TestHealthCheck_Bounded(t *testing.T) {
 	var mu sync.Mutex
-	active, peak, total := 0, 0, 0
+	active, total := 0, 0
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -351,7 +351,6 @@ func TestHealthCheck_Bounded(t *testing.T) {
 			}
 			mu.Lock()
 			active, total = active+1, total+1
-			peak = max(peak, active)
 			mu.Unlock()
 			go func() {
 				_, _ = io.Copy(io.Discard, c) // never answers; the check's timeout ends it
@@ -364,7 +363,7 @@ func TestHealthCheck_Bounded(t *testing.T) {
 	}()
 	port := uint16(ln.Addr().(*net.TCPAddr).Port) //nolint:gosec // G115: a port
 	targets := checking(t, loopbackPolicy(t, int(port)))
-	c := &HealthCheck{HTTP: true, Path: "/", StatusMin: 200, StatusMax: 399, Timeout: 300 * time.Millisecond}
+	c := &HealthCheck{HTTP: true, Path: "/", StatusMin: 200, StatusMax: 399, Timeout: time.Second}
 	var wg sync.WaitGroup
 	for i := range maxChecks + 36 {
 		route := Route{ID: "rt_" + strconv.Itoa(i%4), Check: c}
@@ -372,10 +371,18 @@ func TestHealthCheck_Bounded(t *testing.T) {
 			_ = targets.boundedCheck(context.Background(), route, Target{ID: "tg_" + strconv.Itoa(i), Host: "127.0.0.1", Port: port})
 		})
 	}
+	// Before the first checks time out, exactly maxChecks connections are open; the server counts
+	// a connection's end only once it sees it, so it is not looked at after the timeouts.
+	time.Sleep(500 * time.Millisecond)
+	mu.Lock()
+	if active != maxChecks || total != maxChecks {
+		t.Errorf("%d checks at once, %d so far; want %d", active, total, maxChecks)
+	}
+	mu.Unlock()
 	wg.Wait()
 	mu.Lock()
-	if peak > maxChecks || total != maxChecks+36 {
-		t.Errorf("%d checks at once, %d in all; want at most %d, %d", peak, total, maxChecks, maxChecks+36)
+	if total != maxChecks+36 {
+		t.Errorf("%d checks in all, want %d", total, maxChecks+36)
 	}
 	mu.Unlock()
 
