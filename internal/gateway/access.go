@@ -86,3 +86,12 @@ func (a Access) AllowsAddr(addr net.Addr) bool {
 
 // Same reports whether two Accesses have the same rules.
 func (a Access) Same(b Access) bool { return a.key == b.key }
+
+// addrOf is the IP address of a connection's remote address; the zero Addr for one that is not IP.
+func addrOf(addr net.Addr) netip.Addr {
+	ap, err := netip.ParseAddrPort(addr.String())
+	if err != nil {
+		return netip.Addr{}
+	}
+	return ap.Addr()
+}

@@ -80,7 +80,7 @@ TestCompile_GatedRouteNeverReachesOldGateway	done	1.4	#597	Phase 2 (P2-M01); int
 TestGateway_UncleanPathRefused	done	-	#813	bug fix outside the slice plan
 TestGateway_ReservedPathNeverUpstream	pending	3.2	#617	reserved path and identity headers (D135)
 TestRequireHeader_StrippedAndConstantTime	done	3.5	#620	internal/gateway; the constant-time clause is TestRequireHeaderPasses_ConstantTime
-TestRateLimit_ClientAddressNotSpoofable	pending	3.8	#623	route edge rules (D131)
+TestRateLimit_ClientAddressNotSpoofable	done	3.8	#623	route edge rules (D131)
 TestPages_CustomPageCannotRunScript	done	3.11	#626	custom pages (D132)
 TestHealthCheck_ObeysLocalPolicy	pending	4.1	#629	target health (D133)
 TestHTTPConnect_OnlyOwnAuthorities	done	4.6	#634	CONNECT routes (D130); internal/gateway

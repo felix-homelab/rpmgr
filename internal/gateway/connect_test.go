@@ -467,3 +467,39 @@ func TestHTTPConnect_Answers(t *testing.T) {
 		}
 	}
 }
+
+// TestHTTPConnect_Limits: a CONNECT route's limits apply once the authority picks the route, with
+// HTTP's answers before the tunnel: over its connection limit 503 with Retry-After, over a rate of
+// the route or of a client's rate_limit rule 429 with Retry-After; a closed tunnel frees its slot.
+func TestHTTPConnect_Limits(t *testing.T) {
+	p := newPlaneWith(t, rawEcho(t), "none", "rt_a", "rt_b")
+	var ls gateway.Limits
+	a := connectRoute("rt_a", freePort(t), gateway.ConnectNone, "a.internal")
+	a.Limit = ls.Set("rt_a", gateway.RouteLimits{MaxConnections: 1})
+	b := connectRoute("rt_b", a.Port, gateway.ConnectNone, "b.internal")
+	b.Limit = ls.Set("rt_b", gateway.RouteLimits{Clients: []gateway.ClientRate{{Policy: "pol_1", PerSecond: 1, Burst: 1}}})
+	p.routes.Apply([]gateway.TCPRoute{a, b})
+	first := dialPort(t, a.Port)
+	resp, br := connectHead(t, first, "CONNECT a.internal:22 HTTP/1.1\r\n\r\n")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("the first tunnel: %d", resp.StatusCode)
+	}
+	_ = first.SetDeadline(time.Time{})
+	tunnelEcho(t, first, br)
+	if got, _ := connectHead(t, dialPort(t, a.Port), "CONNECT a.internal:22 HTTP/1.1\r\n\r\n"); got.StatusCode != http.StatusServiceUnavailable ||
+		got.Header.Get("Retry-After") == "" {
+		t.Errorf("over the connection limit: %d %v", got.StatusCode, got.Header)
+	}
+	if got, _ := connectHead(t, dialPort(t, a.Port), "CONNECT b.internal:22 HTTP/1.1\r\n\r\n"); got.StatusCode != http.StatusOK {
+		t.Errorf("another route of the listener: %d", got.StatusCode)
+	}
+	if got, _ := connectHead(t, dialPort(t, a.Port), "CONNECT b.internal:22 HTTP/1.1\r\n\r\n"); got.StatusCode != http.StatusTooManyRequests ||
+		got.Header.Get("Retry-After") == "" {
+		t.Errorf("over a client's rate: %d %v", got.StatusCode, got.Header)
+	}
+	_ = first.Close()
+	eventually(t, "the closed tunnel's slot is not free", func() bool { return a.Limit.Open() == 0 })
+	if got, _ := connectHead(t, dialPort(t, a.Port), "CONNECT a.internal:22 HTTP/1.1\r\n\r\n"); got.StatusCode != http.StatusOK {
+		t.Errorf("after the first tunnel closed: %d", got.StatusCode)
+	}
+}

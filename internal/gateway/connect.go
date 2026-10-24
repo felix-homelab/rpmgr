@@ -166,6 +166,17 @@ func (t *TCPRoutes) handleConnect(c net.Conn, pl *portListener, table *connectTa
 	}
 	pl.conns[c] = r.ID
 	pl.mu.Unlock()
+	// The route's limits, as for an HTTP request: its rates (429), then a connection slot (503).
+	if ok, retry, _ := r.Limit.Admit(clientAddr(c), false); !ok {
+		refuseConnect(conn, connectRefusal{status: http.StatusTooManyRequests, header: "Retry-After: " + strconv.Itoa(retryAfter(retry)) + "\r\n"})
+		return
+	}
+	release, ok := r.Limit.Acquire()
+	if !ok {
+		refuseConnect(conn, connectRefusal{status: http.StatusServiceUnavailable, header: "Retry-After: " + strconv.Itoa(httpRetryAfter) + "\r\n"})
+		return
+	}
+	defer release()
 	st, err := openStream(ctx, t.o.Sessions, t.o.Revision, c, r.ID, "")
 	if err != nil {
 		t.o.Logger.Debug("no stream for a CONNECT", "route", r.ID, "error", err)
@@ -179,7 +190,7 @@ func (t *TCPRoutes) handleConnect(c net.Conn, pl *portListener, table *connectTa
 	}
 	_ = c.SetDeadline(time.Time{})
 	early, _ := br.Peek(br.Buffered()) // sent with the head, before the answer: the tunnel's first bytes
-	relayConn(st, &earlyConn{Conn: conn, early: early}, r.IdleTimeout)
+	relayConn(st, &earlyConn{Conn: conn, early: early}, r.IdleTimeout, r.Limit)
 }
 
 // earlyConn reads the bytes a client sent along with its CONNECT head first, then its connection.
