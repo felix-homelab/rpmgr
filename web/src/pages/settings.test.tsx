@@ -206,14 +206,14 @@ describe("Settings", () => {
     expect(calls.password).toEqual(["s3cret-relay", ""]);
   });
 
-  it("saves only the release check and the channel on the Updates page", async () => {
+  it("saves only the release check, the channel and the rollout mode on the Updates page", async () => {
     const { calls } = page({ admin: true, path: "/settings/updates" });
     const form = within(await screen.findByRole("form", { name: "Updates" }));
     fireEvent.click(form.getByLabelText("Check for releases once a day"));
     fireEvent.change(form.getByLabelText("Release channel"), { target: { value: String(UpdateChannel.PRERELEASE) } });
     fireEvent.click(form.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.instance).toHaveLength(1));
-    expect(calls.instance[0]!.updateMask?.paths).toEqual(["release_check", "update_channel"]);
+    expect(calls.instance[0]!.updateMask?.paths).toEqual(["release_check", "update_channel", "rollout_mode"]);
     expect(calls.instance[0]!.settings).toMatchObject({ releaseCheck: false, updateChannel: UpdateChannel.PRERELEASE });
     expect(screen.queryByRole("form", { name: "Relay password" })).toBeNull();
   });

@@ -244,6 +244,9 @@ message GatewayStatus {
   // The reason of the last Goodbye that refused it a session, e.g. "upgrade_required"; empty once
   // a session is accepted.
   string last_goodbye_reason = 7;
+  // Whether its last session announced over-the-air updates (the capability "ota"): it runs on its
+  // own on a Linux host with the root updater, so a rollout can update it (D129).
+  bool over_the_air = 8;
 }
 
 // CreateGatewayRequest is a new gateway.
