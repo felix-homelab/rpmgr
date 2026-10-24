@@ -200,7 +200,7 @@ func TestGateways(t *testing.T) {
 		SetLastSeenAt(e.clock).ExecX(e.sys)
 	got, err := ada.gw.GetGateway(ctx, connect.NewRequest(&rpmgrv1.GetGatewayRequest{GatewayId: gws[0].GetId()}))
 	if st := got.Msg.GetGateway().GetStatus(); err != nil || !st.GetConnected() || st.GetVersion() != "v0.1.0" ||
-		st.GetRemoteAddr() != "192.0.2.7:51000" || !st.GetLastSeenTime().AsTime().Equal(e.clock.Truncate(0)) {
+		st.GetRemoteAddr() != "192.0.2.7:51000" || !st.GetLastSeenTime().AsTime().Equal(e.clock.Truncate(0)) || st.GetOverTheAir() {
 		t.Fatalf("a connected gateway: %v %v", got, err)
 	}
 	// Disconnected, and connected but not seen for longer than a session lives: neither is connected.
@@ -217,6 +217,12 @@ func TestGateways(t *testing.T) {
 		if err != nil || got.Msg.GetGateway().GetStatus().GetConnected() || got.Msg.GetGateway().GetStatus().GetVersion() != "v0.1.0" {
 			t.Fatalf("a %s gateway: %v %v", name, got, err)
 		}
+	}
+	// A gateway whose session announced over-the-air updates can be updated by a rollout (D129).
+	e.db.Client().AgentSession.UpdateOneID(gws[0].GetId()).SetCapabilities([]string{"ota", "relay.v1"}).ExecX(e.sys)
+	if got, err := ada.gw.GetGateway(ctx, connect.NewRequest(&rpmgrv1.GetGatewayRequest{GatewayId: gws[0].GetId()})); err != nil ||
+		!got.Msg.GetGateway().GetStatus().GetOverTheAir() {
+		t.Fatalf("a gateway that announced ota: %v %v", got, err)
 	}
 	first, err := ada.gw.ListGateways(ctx, connect.NewRequest(&rpmgrv1.ListGatewaysRequest{OrgId: org, GatewayGroupId: group, PageSize: 3}))
 	if err != nil || len(first.Msg.GetGateways()) != 3 || first.Msg.GetNextPageToken() == "" {
