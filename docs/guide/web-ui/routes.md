@@ -87,7 +87,12 @@ Before it sends a route, the form checks each line of **Labels**, **Request head
 name the API refuses, or with a key or name an earlier line has, such as `Line 2: write a label as
 key=value.`; a header name is the same whatever its case.
 
-A **TCP** route adds **Public port** and **Idle timeout (seconds)**; a **UDP** route **Public
+A **TCP** route adds **Listener**, **Public port** and **Idle timeout (seconds)**; with **A CONNECT
+listener shared with other routes (HTTP proxy)** also **CONNECT names**, one per line, and **Proxy
+credentials**: **None: IP rules only**, **Basic auth over TLS (HTTPS proxy)**, which asks for
+**Listener hostname (HTTPS proxy)** and **Listener certificate**, or **Basic auth in the clear**,
+which the form warns about as long as it is chosen, as the server does after the save
+([CONNECT routes](../routes/tcp-and-udp.md#connect-routes)); a **UDP** route **Public
 port** and **Flow idle timeout (seconds)**; a **TCP and UDP** route **Public port**, **TCP idle
 timeout (seconds)** and **UDP flow idle timeout (seconds)**
 ([TCP and UDP routes](../routes/tcp-and-udp.md)). A public port of 0, the default, takes a random

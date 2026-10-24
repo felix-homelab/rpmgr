@@ -26,6 +26,7 @@ export function FormField<V extends RouteValues>({ field, form }: { field: Route
     return null;
   }
   const required = needsValue(field, values);
+  const warning = field.warning?.(values);
   const error = form.formState.errors[field.key]?.message as string | undefined;
   // A kind without a hint has no key, and t() would show the key itself.
   const hintKey = `routeForm.hints.${field.format?.kind ?? field.kind}`;
@@ -56,7 +57,7 @@ export function FormField<V extends RouteValues>({ field, form }: { field: Route
       break;
     case "certificate":
       // Controlled, so that it shows the form's value whatever certificates it offers.
-      input = <CertificateSelect {...aria} control={control} name={field.key} hostnames={values.hostnames ?? ""} />;
+      input = <CertificateSelect {...aria} control={control} name={field.key} hostnames={values[field.covers ?? "hostnames"] ?? ""} />;
       break;
     default:
       input = <Input inputMode={field.kind.endsWith("umber") ? "numeric" : undefined} {...common()} />;
@@ -66,6 +67,7 @@ export function FormField<V extends RouteValues>({ field, form }: { field: Route
       <label htmlFor={id} className={labelClass(required)}>{t(`routeForm.fields.${field.key}`)}</label>
       {input}
       {hint && <p id={`${id}-hint`} className="text-xs text-muted-foreground">{hint}</p>}
+      {warning && <p role="status" className="rounded-md border border-destructive/50 bg-destructive/5 p-2 text-sm text-destructive">{t(warning)}</p>}
       {error && <p id={`${id}-error`} role="alert" className="text-sm text-destructive">{error}</p>}
     </div>
   );

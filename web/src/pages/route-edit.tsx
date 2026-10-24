@@ -48,7 +48,7 @@ export function RouteEdit() {
 export function updateRequest(base: Route, values: RouteValues) {
   return create(UpdateRouteRequestSchema, {
     route: routeWith(base, values),
-    updateMask: { paths: routeFields(base).map((f) => f.path) },
+    updateMask: { paths: [...new Set(routeFields(base).map((f) => f.path))] },
     etag: base.etag,
   });
 }
@@ -77,7 +77,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
   const form = useForm<RouteValues>({ defaultValues: initial ?? valuesOf(base), resolver });
   const transport = useTransport();
   const [conflict, setConflict] = useState<{ theirs: Route; mine: RouteValues }>();
-  const [write, setWrite] = useState<{ revision?: Revision; status?: ApplyStatus }>();
+  const [write, setWrite] = useState<{ revision?: Revision; status?: ApplyStatus; warnings?: string[] }>();
   const [other, setOther] = useState<string[]>([]);
   const live = useLiveApplyStatus(org?.orgId ?? "", write?.revision, write?.status);
 
@@ -97,7 +97,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
     setOther([]);
     try {
       const res = await update.mutateAsync(updateRequest(base, values));
-      setWrite({ revision: res.revision, status: res.applyStatus });
+      setWrite({ revision: res.revision, status: res.applyStatus, warnings: res.warnings });
       await queryClient.invalidateQueries();
     } catch (err) {
       const e = ConnectError.from(err);
@@ -126,6 +126,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
       </div>
       {live ? (
         <>
+          {write?.warnings?.map((m) => <Alert key={m}>{t("routeForm.warning", { message: m })}</Alert>)}
           <ApplyStatusView status={live} revision={write?.revision} name={(id) => names.data?.get(id) || id} />
           <Button asChild className="justify-self-start">
             <Link to="/routes/$routeId" params={{ routeId: base.id }}>{t("routeForm.back")}</Link>

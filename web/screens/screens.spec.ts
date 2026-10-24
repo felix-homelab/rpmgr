@@ -138,6 +138,16 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await page.waitForTimeout(800);
   await shot(page, "route-new", true);
 
+  // A new CONNECT route: a tcp route on a CONNECT listener, with its names and proxy credentials.
+  await page.goto("/routes/new");
+  await page.getByRole("radio", { name: "TCP", exact: true }).check();
+  await page.getByLabel("Name", { exact: true }).fill("bastion");
+  await page.getByLabel("Listener", { exact: true }).selectOption({ label: "A CONNECT listener shared with other routes (HTTP proxy)" });
+  await page.getByLabel("CONNECT names").fill("bastion.internal\njump");
+  await page.getByLabel("Proxy credentials").selectOption({ label: "Basic auth in the clear" });
+  await page.waitForTimeout(800);
+  await shot(page, "route-new-connect", true);
+
   // A save that meets a newer version shows the conflict.
   await page.goto(`/routes/${wiki}/edit`);
   await expect(page.getByRole("heading", { name: "Edit route wiki (HTTP)", level: 1 })).toBeVisible();
