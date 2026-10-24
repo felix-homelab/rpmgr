@@ -178,6 +178,7 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await shot(page, "gateways");
   await page.getByRole("link", { name: "default", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Gateway group default", level: 1 })).toBeVisible();
+  await page.getByRole("listitem", { name: "Maintenance" }).getByRole("button", { name: "Preview" }).click();
   await page.waitForTimeout(1000);
   await shot(page, "gateway-group", true);
 
