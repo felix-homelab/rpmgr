@@ -87,3 +87,4 @@ TestHTTPConnect_OnlyOwnAuthorities	pending	4.6	#634	CONNECT routes (D130)
 TestWSS_InterceptorSeesOnlyInnerTLS	pending	4.9	#637	WSS transport
 TestRouteOIDC_SecretNeverLeavesController	pending	10.12	#718	route OIDC (P2-M10)
 TestRouteOIDC_AssertionBoundToBrowser	pending	10.12	#718	route OIDC (P2-M10, D134)
+TestRouteOIDC_NoOpenRedirect	pending	10.12	#718	route OIDC (P2-M10)

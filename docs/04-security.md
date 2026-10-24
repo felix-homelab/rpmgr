@@ -713,21 +713,32 @@ gateway's side of P2-M03 leaves room for it.
   gateways hold no secret of the provider.
 - **Flow.**
   1. The gateway sets a state cookie `__Host-rpmgr-state` (256-bit random) and redirects the
-     browser to the controller's public URL, naming the route, the hostname and a hash of the
-     state.
+     browser to the controller's public URL, naming the route, the hostname, a hash of the state
+     and the **path** the visitor asked for. The controller looks the route and hostname up in its
+     own records: a hostname that is not one of the named route's, a route of another org than the
+     rule's, a disabled route or one without an `oidc` rule gets an error page from the
+     controller, never a redirect.
   2. The controller runs the authorization code flow with PKCE (S256), `state` and `nonce` at the
      route's provider, verified as for SSO ([Human authentication and
-     sessions](#human-authentication-and-sessions)). It checks the claims against the rule: an
-     e-mail address or domain counts only with `email_verified` true; groups come from the
-     provider's group claim. A user the rule does not accept gets the gateway's 403 page.
-  3. The controller signs an **assertion** and redirects the browser to `/.rpmgr/oidc` on the
-     route hostname. The assertion names the hostname, the route and rule, the hash of the state
-     cookie, the subject, the e-mail address, the groups the rule names that the user holds, and
-     the session's end.
+     sessions](#human-authentication-and-sessions)). Its `redirect_uri` is fixed: the callback
+     under the controller's configured public URL, registered at the provider, never derived from
+     the request. It checks the claims against the rule: an e-mail address or domain counts only
+     with `email_verified` true; groups come from the provider's group claim. A user the rule does
+     not accept gets the gateway's 403 page.
+  3. The controller signs an **assertion** and redirects the browser only to
+     `https://<hostname>/.rpmgr/oidc`, for the hostname of the route it looked up in step 1. The
+     assertion names the hostname, the route and rule, the hash of the state cookie, the subject,
+     the e-mail address, the groups the rule names that the user holds, the session's end and the
+     path to return to.
   4. The gateway checks the signature, that the hostname is the request's, that the state hash is
      that of its own state cookie, and that the assertion is fresh, then sets the session cookie
      `__Host-rpmgr-auth` to the signed session part of the assertion and removes the state
      cookie. An assertion carried to another browser fails the state check.
+  5. The gateway then redirects to the path to return to on the **same hostname**, and only to a
+     path: one that starts with a single `/`, without a scheme or authority and without a leading
+     `//` or `/\`. Anything else, and a path that does not survive these checks after
+     percent-decoding, sends the visitor to `/`. No step ever redirects to a URL taken from the
+     request.
 - **Signing key.** An Ed25519 key of its own (`route_assertion`), kept and rotated like the other
   keys of the CA ([CA rotation](#ca-rotation)); gateways get the active and next public keys in
   their snapshots.
