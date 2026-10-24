@@ -90,6 +90,22 @@ nothing, shown as `no quota`, so that the pools alone limit the organisation. A 
 many ports are in use, such as `2 in use`. **Save** saves it; saving an empty field removes the
 quota.
 
+### Pages
+
+The **Pages** card shows the group's not-found, unavailable and maintenance pages, each `Built in`
+or `Own` ([Maintenance and error pages](../routes/maintenance-and-pages.md#your-own-pages)). Under
+each, the placeholders it may use, such as `{{hostname}}`.
+
+- **Upload HTML…** chooses an HTML file and makes it the group's own page of that kind. A file above
+  the size limit is refused before it is sent, with its size.
+- **Preview** shows an own page in a frame that runs no script. The frame shows the page's text and
+  layout without its styles, which the web UI's own security policy blocks there, and its
+  placeholders unfilled; the gateways serve it with both.
+- **Reset…** asks `Go back to the built-in page …?`; **Use the built-in page** does.
+
+Changing the pages needs the role Owner or Admin of the group's organisation; for a shared group,
+the Instance Admin.
+
 ### Settings
 
 The **Settings** card changes the group:
@@ -109,4 +125,5 @@ The **Settings** card changes the group:
 `rpmgr list gateway-group`, `rpmgr create gateway-group`, `rpmgr update gateway-group`,
 `rpmgr create gateway`, `rpmgr update gateway`, `rpmgr drain gateway`, `rpmgr enable gateway`,
 `rpmgr decommission gateway`, `rpmgr create gateway-token`, `rpmgr create port-pool`,
-`rpmgr set port-quota` and their siblings do the same ([Command line](../reference/cli.md)).
+`rpmgr set port-quota`, `rpmgr upload gateway-page`, `rpmgr remove gateway-page` and their
+siblings do the same ([Command line](../reference/cli.md)).
