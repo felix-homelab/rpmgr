@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ConnectorService } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import {
-  ReleaseService, ReleaseSource, RolloutStage, RolloutState,
+  ReleaseCheckOutcome, ReleaseService, ReleaseSource, RolloutStage, RolloutState,
   type AdvanceRolloutRequest, type CreateRolloutRequest, type PauseRolloutRequest,
   type ResumeRolloutRequest, type CancelRolloutRequest, type UploadReleaseRequest,
 } from "@/gen/rpmgr/v1/release_pb";
@@ -60,8 +60,11 @@ function rollout(over: Partial<{ id: string; state: RolloutState; stage: Rollout
     counts: { pending: 4, offered: 2, staged: 1, updated: 31, rolledBack: 1, refused: 0, skipped: 6, stalled: 0 } };
 }
 
-function page({ admin = true, active, target, wrongEtag = false, upload } = {} as {
+function page({ admin = true, active, target, wrongEtag = false, upload, check } = {} as {
   admin?: boolean;
+  // check is the release check: its state the list returns, the releases it adds, and Check now's
+  // answer (or the error it throws).
+  check?: { state: () => object; added?: () => ReturnType<typeof release>[]; ask?: () => object };
   active?: ReturnType<typeof rollout>;
   target?: Record<string, unknown>;
   wrongEtag?: boolean;
@@ -69,7 +72,7 @@ function page({ admin = true, active, target, wrongEtag = false, upload } = {} a
 }) {
   const calls = {
     create: [] as CreateRolloutRequest[], advance: [] as AdvanceRolloutRequest[], pause: [] as PauseRolloutRequest[],
-    resume: [] as ResumeRolloutRequest[], cancel: [] as CancelRolloutRequest[], upload: [] as UploadReleaseRequest[], steppedUp: 0,
+    resume: [] as ResumeRolloutRequest[], cancel: [] as CancelRolloutRequest[], upload: [] as UploadReleaseRequest[], steppedUp: 0, checks: 0,
   };
   let current = active;
   let steppedUp = false;
@@ -97,7 +100,10 @@ function page({ admin = true, active, target, wrongEtag = false, upload } = {} a
       listGateways: () => ({ gateways: [{ id: "gw_1", gatewayGroupId: "ggr_1", name: "edge", slot: 1, tunnelEndpoints: ["edge:443"], enabled: true }] }),
     });
     router.service(ReleaseService, {
-      listReleases: () => ({ releases: [release("1.5.0"), release("1.4.2", { controllerVersion: true }), release("1.6.0", { newerThanController: true, mirrored: false }), release("1.3.0", { mirrored: false })], controllerVersion: "1.4.2" }),
+      listReleases: () => ({ releases: [...(check?.added?.() ?? []), release("1.5.0"), release("1.4.2", { controllerVersion: true }),
+        release("1.6.0", { newerThanController: true, mirrored: false }), release("1.3.0", { mirrored: false })], controllerVersion: "1.4.2",
+      releaseCheck: check?.state() }),
+      checkReleases: () => (calls.checks++, check?.ask?.() ?? { releaseCheck: { running: true } }),
       listRollouts: () => ({ rollouts: current ? [current] : [] }),
       listRolloutTargets: () => ({ rolloutTargets: target ? [target] : [] }),
       createRollout: (req) => guarded(() => (calls.create.push(req), { rollout: current ?? rollout() })),
@@ -225,6 +231,52 @@ describe("Updates", () => {
     expect(busy.disabled).toBe(true);
     fireEvent.submit(busy.closest("form")!);
     expect(calls.upload).toHaveLength(1);
+  });
+
+  it("checks for releases now: the button waits while the check runs, and the release it finds appears without a reload", async () => {
+    let running = false;
+    let found = false;
+    const { calls } = page({ check: {
+      state: () => running
+        ? { running: true }
+        : { checkTime: { seconds: 1793001600n, nanos: 0 }, outcome: ReleaseCheckOutcome.OK },
+      added: () => (found ? [release("1.5.1")] : []),
+      ask: () => { running = true; return { releaseCheck: { running: true } }; },
+    } });
+    const card = within(await screen.findByRole("region", { name: "Releases" }));
+    expect((await card.findByRole("status")).textContent).toMatch(/^Last checked .+: ok$/);
+    fireEvent.click(card.getByRole("button", { name: "Check now" }));
+    await waitFor(() => expect((card.getByRole("status")).textContent).toContain("Checking for releases…"));
+    expect((card.getByRole("button", { name: "Check now" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(calls.checks).toBe(1);
+    running = false;
+    found = true;
+    expect(await card.findByRole("cell", { name: "1.5.1" }, { timeout: 4000 })).toBeTruthy();
+    expect((card.getByRole("button", { name: "Check now" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((card.getByRole("status")).textContent).toMatch(/: ok$/);
+  });
+
+  it("shows why Check now was refused, and a failed check with its error", async () => {
+    page({ check: {
+      state: () => ({ checkTime: { seconds: 1793001600n, nanos: 0 }, outcome: ReleaseCheckOutcome.FAILED, error: "dial tcp: no route to host" }),
+      ask: () => { throw new ConnectError("apisvc: the release check ran a moment ago; check again in 42s", Code.ResourceExhausted); },
+    } });
+    const card = within(await screen.findByRole("region", { name: "Releases" }));
+    expect((await card.findByRole("status")).textContent).toMatch(/failed: dial tcp: no route to host$/);
+    fireEvent.click(card.getByRole("button", { name: "Check now" }));
+    expect((await card.findByRole("alert")).textContent).toContain("check again in 42s");
+    expect((card.getByRole("button", { name: "Check now" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("says when the release check is off, and offers no check on a build that checks for no releases", async () => {
+    page({ check: { state: () => ({ checkTime: { seconds: 1793001600n, nanos: 0 }, outcome: ReleaseCheckOutcome.OFF }) } });
+    let card = within(await screen.findByRole("region", { name: "Releases" }));
+    expect((await card.findByRole("status")).textContent).toMatch(/the release check is off/);
+    cleanup();
+    page({ check: { state: () => ({ outcome: ReleaseCheckOutcome.NONE }) } });
+    card = within(await screen.findByRole("region", { name: "Releases" }));
+    expect((await card.findByRole("status")).textContent).toContain("This build checks for no releases.");
+    expect(card.queryByRole("button", { name: "Check now" })).toBeNull();
   });
 
   it("shows nothing but the way back to others", async () => {

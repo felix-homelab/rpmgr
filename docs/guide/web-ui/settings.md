@@ -94,6 +94,12 @@ GiB)**). Their ranges and defaults are in the design documents
   air-gapped installation, after a step-up. **Roll out…** starts a staged rollout of a release that
   is no newer than the controller. The release need not be mirrored yet: the controller fetches it
   and offers it to agents once the mirror holds it.
+- Under **Releases**, **Last checked …** says when the release check last ended and how: **ok**,
+  **failed** with its error, or that the release check is off. **Check now** checks for releases
+  at once instead of waiting for the next day; while the check runs the line reads **Checking for
+  releases…**, and the releases it finds appear without reloading the page. A check shortly after
+  the last one is refused with the time to wait. A development build says it checks for no
+  releases and has no **Check now**.
 - **Roll out…** opens two steps: **Test agents**, the agents that update first, grouped into
   connectors and gateways with their version and whether they are online, with a search box and
   one online connector and one online gateway ticked; then the plan, which **Start the rollout**

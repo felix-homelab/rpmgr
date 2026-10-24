@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"golang.org/x/mod/semver"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/audit"
@@ -34,6 +36,129 @@ const (
 	ReleaseRetryFirst = 15 * time.Minute
 )
 
+// ReleaseCheckGap is how long after a release check started an Instance Admin may ask for the
+// next one (docs/03-connections.md, "Timeouts, keepalive and backoff").
+const ReleaseCheckGap = time.Minute
+
+// ReleaseChecks is the state of a controller's release check, which ReleaseCheck records and
+// the API shows, and the requests to check at once: for a rollout or an upload (Wake, D125), and
+// an Instance Admin's "Check now" (CheckNow). Its methods are safe on nil, which records nothing.
+type ReleaseChecks struct {
+	none bool // the build checks for no releases
+	now  func() time.Time
+	wake chan struct{}
+
+	mu             sync.Mutex
+	running, asked bool
+	started, ended time.Time
+	outcome        rpmgrv1.ReleaseCheckOutcome
+	err            string
+	limited        time.Time // the release source accepts requests again
+}
+
+// NewReleaseChecks is the state of the release check of the mirror m, before its first check.
+func NewReleaseChecks(m *release.Mirror) *ReleaseChecks {
+	now := m.Now
+	if now == nil {
+		now = time.Now
+	}
+	return &ReleaseChecks{none: !release.Releasable(m.Version) || len(m.Roots) == 0, now: now, wake: make(chan struct{}, 1)}
+}
+
+// Wakes is the channel of ReleaseCheckOptions.Wake.
+func (c *ReleaseChecks) Wakes() <-chan struct{} {
+	if c == nil {
+		return nil
+	}
+	return c.wake
+}
+
+// Wake asks for a check at once, without waiting for it and without the gap of CheckNow (D125).
+func (c *ReleaseChecks) Wake() {
+	if c == nil {
+		return
+	}
+	select {
+	case c.wake <- struct{}{}:
+	default:
+	}
+}
+
+// CheckNow asks for a check at once and returns the state: it joins a check that runs or was
+// asked for. A positive wait refuses it until the gap after the last check's start, or the
+// release source's rate limit, has passed. A build that checks for no releases returns
+// release.ErrDevelopment.
+func (c *ReleaseChecks) CheckNow() (*rpmgrv1.ReleaseCheck, time.Duration, error) {
+	if c == nil || c.none {
+		return nil, 0, release.ErrDevelopment
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.running && !c.asked {
+		now := c.now()
+		if wait := max(c.started.Add(ReleaseCheckGap).Sub(now), c.limited.Sub(now)); wait > 0 {
+			return c.statusLocked(), wait, nil
+		}
+		c.asked = true
+		c.Wake()
+	}
+	return c.statusLocked(), 0, nil
+}
+
+// Status is the state of the release check.
+func (c *ReleaseChecks) Status() *rpmgrv1.ReleaseCheck {
+	if c == nil || c.none {
+		return &rpmgrv1.ReleaseCheck{Outcome: rpmgrv1.ReleaseCheckOutcome_RELEASE_CHECK_OUTCOME_NONE}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.statusLocked()
+}
+
+func (c *ReleaseChecks) statusLocked() *rpmgrv1.ReleaseCheck {
+	st := &rpmgrv1.ReleaseCheck{Running: c.running || c.asked, Outcome: c.outcome, Error: c.err}
+	if !c.ended.IsZero() {
+		st.CheckTime = timestamppb.New(c.ended)
+	}
+	return st
+}
+
+func (c *ReleaseChecks) begin() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.running, c.asked, c.started = true, false, c.now()
+}
+
+// end records a check that ended with err, which listed releases if checked. A check that ctx
+// ended records nothing.
+func (c *ReleaseChecks) end(ctx context.Context, err error, checked bool) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.running = false
+	if ctx.Err() != nil {
+		return
+	}
+	c.ended, c.err = c.now(), ""
+	var rl *release.RateLimitedError
+	switch {
+	case errors.As(err, &rl):
+		c.limited = rl.Until
+		fallthrough
+	case err != nil:
+		c.outcome, c.err = rpmgrv1.ReleaseCheckOutcome_RELEASE_CHECK_OUTCOME_FAILED, err.Error()
+	case checked:
+		c.outcome = rpmgrv1.ReleaseCheckOutcome_RELEASE_CHECK_OUTCOME_OK
+	default:
+		c.outcome = rpmgrv1.ReleaseCheckOutcome_RELEASE_CHECK_OUTCOME_OFF
+	}
+}
+
 // releaseBase is where GitHub serves the release assets of felix-homelab/rpmgr, and releaseAPI
 // where its REST API lists them.
 const (
@@ -55,7 +180,9 @@ type ReleaseCheckOptions struct {
 	// (HTTPS_PROXY, else ALL_PROXY; NO_PROXY; R44, D93).
 	Proxy func(*http.Request) (*url.URL, error)
 	// Wake, if set, starts a check at once, as a new rollout or upload asks for one (D125).
-	Wake   <-chan struct{}
+	Wake <-chan struct{}
+	// Checks, if set, records each check (ReleaseChecks.Wakes is the Wake of a controller).
+	Checks *ReleaseChecks
 	Logger *slog.Logger
 }
 
@@ -133,7 +260,10 @@ func nextReleaseCheck(err error, retry time.Duration, now time.Time) (wait, next
 // their manifests without their artifacts. Always, it keeps the target of each running or paused
 // rollout, also one the mirror does not hold yet (D125), and removes the versions nothing keeps
 // (docs/04-security.md, "Over-the-air updates").
-func CheckRelease(ctx context.Context, o ReleaseCheckOptions) error {
+func CheckRelease(ctx context.Context, o ReleaseCheckOptions) (err error) {
+	checked := false
+	o.Checks.begin()
+	defer func() { o.Checks.end(ctx, err, checked) }()
 	set, _, err := settings.Instance(ctx, o.DB.ReadClient())
 	if err != nil {
 		if ctx.Err() == nil {
@@ -153,7 +283,7 @@ func CheckRelease(ctx context.Context, o ReleaseCheckOptions) error {
 		return err
 	}
 	var errs []error
-	if set.GetReleaseCheck() {
+	if checked = set.GetReleaseCheck(); checked {
 		errs = append(errs, o.check(ctx, set.GetUpdateChannel() == rpmgrv1.UpdateChannel_UPDATE_CHANNEL_PRERELEASE, keep))
 	} else {
 		errs = append(errs, o.sync(ctx, targets))

@@ -86,6 +86,7 @@ rpmgr <command>
 | [`rpmgr set`](#rpmgr-set) | Set an org's limit |
 | [`rpmgr preview`](#rpmgr-preview) | Show what a change would do, saving nothing |
 | [`rpmgr verify`](#rpmgr-verify) | Check a proof now |
+| [`rpmgr check`](#rpmgr-check) | Check for new releases now |
 | [`rpmgr trust`](#rpmgr-trust) | Trust something without a proof |
 | [`rpmgr upload`](#rpmgr-upload) | Upload a file to the controller |
 | [`rpmgr renew`](#rpmgr-renew) | Renew a certificate now |
@@ -1479,6 +1480,26 @@ Check a domain claim's proof now.
 
 ```text
 rpmgr verify domain <id>
+```
+
+## rpmgr check
+
+Check for new releases now.
+
+```text
+rpmgr check <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr check release`](#rpmgr-check-release) | Check for new releases now and wait for the check to end (Instance Admin) |
+
+## rpmgr check release
+
+Check for new releases now and wait for the check to end (Instance Admin).
+
+```text
+rpmgr check release
 ```
 
 ## rpmgr trust

@@ -38,6 +38,9 @@ const (
 	// ReleaseServiceListReleasesProcedure is the fully-qualified name of the ReleaseService's
 	// ListReleases RPC.
 	ReleaseServiceListReleasesProcedure = "/rpmgr.v1.ReleaseService/ListReleases"
+	// ReleaseServiceCheckReleasesProcedure is the fully-qualified name of the ReleaseService's
+	// CheckReleases RPC.
+	ReleaseServiceCheckReleasesProcedure = "/rpmgr.v1.ReleaseService/CheckReleases"
 	// ReleaseServiceUploadReleaseProcedure is the fully-qualified name of the ReleaseService's
 	// UploadRelease RPC.
 	ReleaseServiceUploadReleaseProcedure = "/rpmgr.v1.ReleaseService/UploadRelease"
@@ -71,6 +74,12 @@ const (
 type ReleaseServiceClient interface {
 	// ListReleases pages through the releases, the newest version first.
 	ListReleases(context.Context, *connect.Request[v1.ListReleasesRequest]) (*connect.Response[v1.ListReleasesResponse], error)
+	// CheckReleases asks the controller's release check to run now rather than at its next daily
+	// check, and returns its state; the releases it finds appear in ListReleases once it ends. While
+	// a check runs it joins it. It is refused while the release check is off or the build checks for
+	// no releases, and for a while after the last check started or the release source limited the
+	// rate (docs/03-connections.md, "Timeouts, keepalive and backoff").
+	CheckReleases(context.Context, *connect.Request[v1.CheckReleasesRequest]) (*connect.Response[v1.CheckReleasesResponse], error)
 	// UploadRelease records a release from its signed manifest, signing-key statement and their
 	// signatures, verified like the release check, for air-gapped installations and signed
 	// downgrades. Its artifacts come from the release source or `rpmgr release import`.
@@ -113,6 +122,12 @@ func NewReleaseServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			baseURL+ReleaseServiceListReleasesProcedure,
 			connect.WithSchema(releaseServiceMethods.ByName("ListReleases")),
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		checkReleases: connect.NewClient[v1.CheckReleasesRequest, v1.CheckReleasesResponse](
+			httpClient,
+			baseURL+ReleaseServiceCheckReleasesProcedure,
+			connect.WithSchema(releaseServiceMethods.ByName("CheckReleases")),
 			connect.WithClientOptions(opts...),
 		),
 		uploadRelease: connect.NewClient[v1.UploadReleaseRequest, v1.UploadReleaseResponse](
@@ -178,6 +193,7 @@ func NewReleaseServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 // releaseServiceClient implements ReleaseServiceClient.
 type releaseServiceClient struct {
 	listReleases       *connect.Client[v1.ListReleasesRequest, v1.ListReleasesResponse]
+	checkReleases      *connect.Client[v1.CheckReleasesRequest, v1.CheckReleasesResponse]
 	uploadRelease      *connect.Client[v1.UploadReleaseRequest, v1.UploadReleaseResponse]
 	createRollout      *connect.Client[v1.CreateRolloutRequest, v1.CreateRolloutResponse]
 	getRollout         *connect.Client[v1.GetRolloutRequest, v1.GetRolloutResponse]
@@ -192,6 +208,11 @@ type releaseServiceClient struct {
 // ListReleases calls rpmgr.v1.ReleaseService.ListReleases.
 func (c *releaseServiceClient) ListReleases(ctx context.Context, req *connect.Request[v1.ListReleasesRequest]) (*connect.Response[v1.ListReleasesResponse], error) {
 	return c.listReleases.CallUnary(ctx, req)
+}
+
+// CheckReleases calls rpmgr.v1.ReleaseService.CheckReleases.
+func (c *releaseServiceClient) CheckReleases(ctx context.Context, req *connect.Request[v1.CheckReleasesRequest]) (*connect.Response[v1.CheckReleasesResponse], error) {
+	return c.checkReleases.CallUnary(ctx, req)
 }
 
 // UploadRelease calls rpmgr.v1.ReleaseService.UploadRelease.
@@ -243,6 +264,12 @@ func (c *releaseServiceClient) CancelRollout(ctx context.Context, req *connect.R
 type ReleaseServiceHandler interface {
 	// ListReleases pages through the releases, the newest version first.
 	ListReleases(context.Context, *connect.Request[v1.ListReleasesRequest]) (*connect.Response[v1.ListReleasesResponse], error)
+	// CheckReleases asks the controller's release check to run now rather than at its next daily
+	// check, and returns its state; the releases it finds appear in ListReleases once it ends. While
+	// a check runs it joins it. It is refused while the release check is off or the build checks for
+	// no releases, and for a while after the last check started or the release source limited the
+	// rate (docs/03-connections.md, "Timeouts, keepalive and backoff").
+	CheckReleases(context.Context, *connect.Request[v1.CheckReleasesRequest]) (*connect.Response[v1.CheckReleasesResponse], error)
 	// UploadRelease records a release from its signed manifest, signing-key statement and their
 	// signatures, verified like the release check, for air-gapped installations and signed
 	// downgrades. Its artifacts come from the release source or `rpmgr release import`.
@@ -281,6 +308,12 @@ func NewReleaseServiceHandler(svc ReleaseServiceHandler, opts ...connect.Handler
 		svc.ListReleases,
 		connect.WithSchema(releaseServiceMethods.ByName("ListReleases")),
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	releaseServiceCheckReleasesHandler := connect.NewUnaryHandler(
+		ReleaseServiceCheckReleasesProcedure,
+		svc.CheckReleases,
+		connect.WithSchema(releaseServiceMethods.ByName("CheckReleases")),
 		connect.WithHandlerOptions(opts...),
 	)
 	releaseServiceUploadReleaseHandler := connect.NewUnaryHandler(
@@ -344,6 +377,8 @@ func NewReleaseServiceHandler(svc ReleaseServiceHandler, opts ...connect.Handler
 		switch r.URL.Path {
 		case ReleaseServiceListReleasesProcedure:
 			releaseServiceListReleasesHandler.ServeHTTP(w, r)
+		case ReleaseServiceCheckReleasesProcedure:
+			releaseServiceCheckReleasesHandler.ServeHTTP(w, r)
 		case ReleaseServiceUploadReleaseProcedure:
 			releaseServiceUploadReleaseHandler.ServeHTTP(w, r)
 		case ReleaseServiceCreateRolloutProcedure:
@@ -373,6 +408,10 @@ type UnimplementedReleaseServiceHandler struct{}
 
 func (UnimplementedReleaseServiceHandler) ListReleases(context.Context, *connect.Request[v1.ListReleasesRequest]) (*connect.Response[v1.ListReleasesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.ListReleases is not implemented"))
+}
+
+func (UnimplementedReleaseServiceHandler) CheckReleases(context.Context, *connect.Request[v1.CheckReleasesRequest]) (*connect.Response[v1.CheckReleasesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.CheckReleases is not implemented"))
 }
 
 func (UnimplementedReleaseServiceHandler) UploadRelease(context.Context, *connect.Request[v1.UploadReleaseRequest]) (*connect.Response[v1.UploadReleaseResponse], error) {

@@ -364,7 +364,11 @@ func withReason(err *connect.Error, reason string) error {
 
 // limited is RESOURCE_EXHAUSTED with the time to wait (docs/07-api.md, "Errors").
 func limited(wait time.Duration) error {
-	err := connect.NewError(connect.CodeResourceExhausted, fmt.Errorf("apisvc: too many attempts; retry in %s", wait.Round(time.Second)))
+	return retryAfter(connect.NewError(connect.CodeResourceExhausted, fmt.Errorf("apisvc: too many attempts; retry in %s", wait.Round(time.Second))), wait)
+}
+
+// retryAfter adds the time to wait (google.rpc.RetryInfo) to an error.
+func retryAfter(err *connect.Error, wait time.Duration) error {
 	if d, derr := connect.NewErrorDetail(&errdetails.RetryInfo{RetryDelay: durationpb.New(wait)}); derr == nil {
 		err.AddDetail(d)
 	}
