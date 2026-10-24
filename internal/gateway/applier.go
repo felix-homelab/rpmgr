@@ -150,6 +150,10 @@ func limitsOf(res *agentv1.Resource) (*agentv1.RouteLimits, bool) {
 	return nil, false
 }
 
+// maxClientRate bounds a rate_limit rule's rate and burst well above what the API allows, so that
+// no snapshot makes a client's bucket refill in no time.
+const maxClientRate = 1_000_000
+
 // ReservedHeaders are the headers a route cannot set: the gateway's forwarding headers and those
 // of the connection itself.
 var ReservedHeaders = []string{"Connection", "Content-Length", "Forwarded", "Host", "Keep-Alive", "Proxy-Connection", "Te",
@@ -240,8 +244,9 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			bad(id, "access rules: %v", err)
 		}
 		for _, rl := range accessOf(res).GetRateLimits() {
-			if rl.GetPerSecond() == 0 {
-				bad(id, "rate_limit rule of policy %s allows no request", rl.GetPolicyId())
+			if rl.GetPerSecond() == 0 || rl.GetPerSecond() > maxClientRate || rl.GetBurst() > maxClientRate {
+				bad(id, "rate_limit rule of policy %s: %d a second, %d at once, beyond 1 to %d", rl.GetPolicyId(), rl.GetPerSecond(),
+					rl.GetBurst(), maxClientRate)
 			}
 		}
 		if ba := accessOf(res).GetBasicAuth(); len(ba) > 0 {
