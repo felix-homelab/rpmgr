@@ -193,6 +193,59 @@ func (UpdateChannel) EnumDescriptor() ([]byte, []int) {
 	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{2}
 }
 
+// RolloutMode is the kind of a rollout (docs/04-security.md, "Over-the-air updates"; D121, D129).
+type RolloutMode int32
+
+const (
+	// Not set: a staged rollout in a request, the default in the settings.
+	RolloutMode_ROLLOUT_MODE_UNSPECIFIED RolloutMode = 0
+	// A staged rollout: canary agents, then percentages and all, each stage approved.
+	RolloutMode_ROLLOUT_MODE_ADVANCED RolloutMode = 1
+	// An easy rollout: a queue of agents updated one after another.
+	RolloutMode_ROLLOUT_MODE_EASY RolloutMode = 2
+)
+
+// Enum value maps for RolloutMode.
+var (
+	RolloutMode_name = map[int32]string{
+		0: "ROLLOUT_MODE_UNSPECIFIED",
+		1: "ROLLOUT_MODE_ADVANCED",
+		2: "ROLLOUT_MODE_EASY",
+	}
+	RolloutMode_value = map[string]int32{
+		"ROLLOUT_MODE_UNSPECIFIED": 0,
+		"ROLLOUT_MODE_ADVANCED":    1,
+		"ROLLOUT_MODE_EASY":        2,
+	}
+)
+
+func (x RolloutMode) Enum() *RolloutMode {
+	p := new(RolloutMode)
+	*p = x
+	return p
+}
+
+func (x RolloutMode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RolloutMode) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_v1_settings_proto_enumTypes[3].Descriptor()
+}
+
+func (RolloutMode) Type() protoreflect.EnumType {
+	return &file_rpmgr_v1_settings_proto_enumTypes[3]
+}
+
+func (x RolloutMode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RolloutMode.Descriptor instead.
+func (RolloutMode) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{3}
+}
+
 // SmtpSecurity is how a connection to a mail relay is encrypted.
 type SmtpSecurity int32
 
@@ -230,11 +283,11 @@ func (x SmtpSecurity) String() string {
 }
 
 func (SmtpSecurity) Descriptor() protoreflect.EnumDescriptor {
-	return file_rpmgr_v1_settings_proto_enumTypes[3].Descriptor()
+	return file_rpmgr_v1_settings_proto_enumTypes[4].Descriptor()
 }
 
 func (SmtpSecurity) Type() protoreflect.EnumType {
-	return &file_rpmgr_v1_settings_proto_enumTypes[3]
+	return &file_rpmgr_v1_settings_proto_enumTypes[4]
 }
 
 func (x SmtpSecurity) Number() protoreflect.EnumNumber {
@@ -243,7 +296,7 @@ func (x SmtpSecurity) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SmtpSecurity.Descriptor instead.
 func (SmtpSecurity) EnumDescriptor() ([]byte, []int) {
-	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{3}
+	return file_rpmgr_v1_settings_proto_rawDescGZIP(), []int{4}
 }
 
 // InstanceSettings are the runtime settings of the installation, changed by the Instance Admin
@@ -287,8 +340,11 @@ type InstanceSettings struct {
 	// How long audit entries are kept, 30 to 3650 days; default 365 days. Retention removes only
 	// whole prefixes of a chain up to a checkpoint (docs/04-security.md, "Audit log").
 	AuditRetention *durationpb.Duration `protobuf:"bytes,14,opt,name=audit_retention,json=auditRetention,proto3" json:"audit_retention,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Which kind of rollout the web UI starts; default EASY (D129). Update on an agent, and the API,
+	// take either kind whatever it says.
+	RolloutMode   *RolloutMode `protobuf:"varint,15,opt,name=rollout_mode,json=rolloutMode,proto3,enum=rpmgr.v1.RolloutMode,oneof" json:"rollout_mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *InstanceSettings) Reset() {
@@ -417,6 +473,13 @@ func (x *InstanceSettings) GetAuditRetention() *durationpb.Duration {
 		return x.AuditRetention
 	}
 	return nil
+}
+
+func (x *InstanceSettings) GetRolloutMode() RolloutMode {
+	if x != nil && x.RolloutMode != nil {
+		return *x.RolloutMode
+	}
+	return RolloutMode_ROLLOUT_MODE_UNSPECIFIED
 }
 
 // SmtpSettings are a mail relay (docs/04-security.md, "Human authentication and sessions"). Its
@@ -1207,8 +1270,7 @@ var File_rpmgr_v1_settings_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\n" +
-	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xfa\n" +
-	"\n" +
+	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xd6\v\n" +
 	"\x10InstanceSettings\x12W\n" +
 	"\x11default_transport\x18\x01 \x01(\x0e2\x19.rpmgr.v1.TransportPolicyB\n" +
 	"\xbaH\a\x82\x01\x04\x10\x01 \x00H\x00R\x10defaultTransport\x88\x01\x01\x12j\n" +
@@ -1230,13 +1292,16 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"acme_email\x18\f \x01(\tB\n" +
 	"\xbaH\ar\x05\x18\xfe\x01`\x01H\x05R\tacmeEmail\x88\x01\x01\x12*\n" +
 	"\x04smtp\x18\r \x01(\v2\x16.rpmgr.v1.SmtpSettingsR\x04smtp\x12Y\n" +
-	"\x0faudit_retention\x18\x0e \x01(\v2\x19.google.protobuf.DurationB\x15\xbaH\x12\xaa\x01\x0f\"\x06\b\x80\x86\xb0\x96\x012\x05\b\x80\x9a\x9e\x01R\x0eauditRetentionB\x14\n" +
+	"\x0faudit_retention\x18\x0e \x01(\v2\x19.google.protobuf.DurationB\x15\xbaH\x12\xaa\x01\x0f\"\x06\b\x80\x86\xb0\x96\x012\x05\b\x80\x9a\x9e\x01R\x0eauditRetention\x12I\n" +
+	"\frollout_mode\x18\x0f \x01(\x0e2\x15.rpmgr.v1.RolloutModeB\n" +
+	"\xbaH\a\x82\x01\x04\x10\x01 \x00H\x06R\vrolloutMode\x88\x01\x01B\x14\n" +
 	"\x12_default_transportB\x18\n" +
 	"\x16_password_hash_profileB\x10\n" +
 	"\x0e_release_checkB\x11\n" +
 	"\x0f_update_channelB\x15\n" +
 	"\x13_acme_directory_urlB\r\n" +
-	"\v_acme_email\"\xb8\x01\n" +
+	"\v_acme_emailB\x0f\n" +
+	"\r_rollout_mode\"\xb8\x01\n" +
 	"\fSmtpSettings\x12\"\n" +
 	"\x06server\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x03\x18\x84\x02R\x06server\x12\x1e\n" +
@@ -1303,7 +1368,11 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\rUpdateChannel\x12\x1e\n" +
 	"\x1aUPDATE_CHANNEL_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15UPDATE_CHANNEL_STABLE\x10\x01\x12\x1d\n" +
-	"\x19UPDATE_CHANNEL_PRERELEASE\x10\x02*`\n" +
+	"\x19UPDATE_CHANNEL_PRERELEASE\x10\x02*]\n" +
+	"\vRolloutMode\x12\x1c\n" +
+	"\x18ROLLOUT_MODE_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15ROLLOUT_MODE_ADVANCED\x10\x01\x12\x15\n" +
+	"\x11ROLLOUT_MODE_EASY\x10\x02*`\n" +
 	"\fSmtpSecurity\x12\x1d\n" +
 	"\x19SMTP_SECURITY_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16SMTP_SECURITY_STARTTLS\x10\x01\x12\x15\n" +
@@ -1332,72 +1401,74 @@ func file_rpmgr_v1_settings_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_settings_proto_rawDescData
 }
 
-var file_rpmgr_v1_settings_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_rpmgr_v1_settings_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
 var file_rpmgr_v1_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_rpmgr_v1_settings_proto_goTypes = []any{
 	(TransportPolicy)(0),                   // 0: rpmgr.v1.TransportPolicy
 	(PasswordHashProfile)(0),               // 1: rpmgr.v1.PasswordHashProfile
 	(UpdateChannel)(0),                     // 2: rpmgr.v1.UpdateChannel
-	(SmtpSecurity)(0),                      // 3: rpmgr.v1.SmtpSecurity
-	(*InstanceSettings)(nil),               // 4: rpmgr.v1.InstanceSettings
-	(*SmtpSettings)(nil),                   // 5: rpmgr.v1.SmtpSettings
-	(*OrgSettings)(nil),                    // 6: rpmgr.v1.OrgSettings
-	(*GetInstanceSettingsRequest)(nil),     // 7: rpmgr.v1.GetInstanceSettingsRequest
-	(*GetInstanceSettingsResponse)(nil),    // 8: rpmgr.v1.GetInstanceSettingsResponse
-	(*RevocationLogStatus)(nil),            // 9: rpmgr.v1.RevocationLogStatus
-	(*UpdateInstanceSettingsRequest)(nil),  // 10: rpmgr.v1.UpdateInstanceSettingsRequest
-	(*UpdateInstanceSettingsResponse)(nil), // 11: rpmgr.v1.UpdateInstanceSettingsResponse
-	(*SetSmtpPasswordRequest)(nil),         // 12: rpmgr.v1.SetSmtpPasswordRequest
-	(*SetSmtpPasswordResponse)(nil),        // 13: rpmgr.v1.SetSmtpPasswordResponse
-	(*GetOrgSettingsRequest)(nil),          // 14: rpmgr.v1.GetOrgSettingsRequest
-	(*GetOrgSettingsResponse)(nil),         // 15: rpmgr.v1.GetOrgSettingsResponse
-	(*UpdateOrgSettingsRequest)(nil),       // 16: rpmgr.v1.UpdateOrgSettingsRequest
-	(*UpdateOrgSettingsResponse)(nil),      // 17: rpmgr.v1.UpdateOrgSettingsResponse
-	(*durationpb.Duration)(nil),            // 18: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),          // 19: google.protobuf.Timestamp
-	(*fieldmaskpb.FieldMask)(nil),          // 20: google.protobuf.FieldMask
-	(*Revision)(nil),                       // 21: rpmgr.v1.Revision
-	(*ApplyStatus)(nil),                    // 22: rpmgr.v1.ApplyStatus
+	(RolloutMode)(0),                       // 3: rpmgr.v1.RolloutMode
+	(SmtpSecurity)(0),                      // 4: rpmgr.v1.SmtpSecurity
+	(*InstanceSettings)(nil),               // 5: rpmgr.v1.InstanceSettings
+	(*SmtpSettings)(nil),                   // 6: rpmgr.v1.SmtpSettings
+	(*OrgSettings)(nil),                    // 7: rpmgr.v1.OrgSettings
+	(*GetInstanceSettingsRequest)(nil),     // 8: rpmgr.v1.GetInstanceSettingsRequest
+	(*GetInstanceSettingsResponse)(nil),    // 9: rpmgr.v1.GetInstanceSettingsResponse
+	(*RevocationLogStatus)(nil),            // 10: rpmgr.v1.RevocationLogStatus
+	(*UpdateInstanceSettingsRequest)(nil),  // 11: rpmgr.v1.UpdateInstanceSettingsRequest
+	(*UpdateInstanceSettingsResponse)(nil), // 12: rpmgr.v1.UpdateInstanceSettingsResponse
+	(*SetSmtpPasswordRequest)(nil),         // 13: rpmgr.v1.SetSmtpPasswordRequest
+	(*SetSmtpPasswordResponse)(nil),        // 14: rpmgr.v1.SetSmtpPasswordResponse
+	(*GetOrgSettingsRequest)(nil),          // 15: rpmgr.v1.GetOrgSettingsRequest
+	(*GetOrgSettingsResponse)(nil),         // 16: rpmgr.v1.GetOrgSettingsResponse
+	(*UpdateOrgSettingsRequest)(nil),       // 17: rpmgr.v1.UpdateOrgSettingsRequest
+	(*UpdateOrgSettingsResponse)(nil),      // 18: rpmgr.v1.UpdateOrgSettingsResponse
+	(*durationpb.Duration)(nil),            // 19: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),          // 20: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),          // 21: google.protobuf.FieldMask
+	(*Revision)(nil),                       // 22: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),                    // 23: rpmgr.v1.ApplyStatus
 }
 var file_rpmgr_v1_settings_proto_depIdxs = []int32{
 	0,  // 0: rpmgr.v1.InstanceSettings.default_transport:type_name -> rpmgr.v1.TransportPolicy
-	18, // 1: rpmgr.v1.InstanceSettings.leaf_certificate_lifetime:type_name -> google.protobuf.Duration
-	18, // 2: rpmgr.v1.InstanceSettings.expired_certificate_grace:type_name -> google.protobuf.Duration
+	19, // 1: rpmgr.v1.InstanceSettings.leaf_certificate_lifetime:type_name -> google.protobuf.Duration
+	19, // 2: rpmgr.v1.InstanceSettings.expired_certificate_grace:type_name -> google.protobuf.Duration
 	1,  // 3: rpmgr.v1.InstanceSettings.password_hash_profile:type_name -> rpmgr.v1.PasswordHashProfile
 	2,  // 4: rpmgr.v1.InstanceSettings.update_channel:type_name -> rpmgr.v1.UpdateChannel
-	18, // 5: rpmgr.v1.InstanceSettings.hourly_rollup_retention:type_name -> google.protobuf.Duration
-	18, // 6: rpmgr.v1.InstanceSettings.daily_rollup_retention:type_name -> google.protobuf.Duration
-	5,  // 7: rpmgr.v1.InstanceSettings.smtp:type_name -> rpmgr.v1.SmtpSettings
-	18, // 8: rpmgr.v1.InstanceSettings.audit_retention:type_name -> google.protobuf.Duration
-	3,  // 9: rpmgr.v1.SmtpSettings.security:type_name -> rpmgr.v1.SmtpSecurity
-	4,  // 10: rpmgr.v1.GetInstanceSettingsResponse.settings:type_name -> rpmgr.v1.InstanceSettings
-	9,  // 11: rpmgr.v1.GetInstanceSettingsResponse.revocation_log:type_name -> rpmgr.v1.RevocationLogStatus
-	19, // 12: rpmgr.v1.RevocationLogStatus.oldest_unshipped_time:type_name -> google.protobuf.Timestamp
-	4,  // 13: rpmgr.v1.UpdateInstanceSettingsRequest.settings:type_name -> rpmgr.v1.InstanceSettings
-	20, // 14: rpmgr.v1.UpdateInstanceSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
-	4,  // 15: rpmgr.v1.UpdateInstanceSettingsResponse.settings:type_name -> rpmgr.v1.InstanceSettings
-	21, // 16: rpmgr.v1.UpdateInstanceSettingsResponse.revision:type_name -> rpmgr.v1.Revision
-	6,  // 17: rpmgr.v1.GetOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
-	6,  // 18: rpmgr.v1.UpdateOrgSettingsRequest.settings:type_name -> rpmgr.v1.OrgSettings
-	20, // 19: rpmgr.v1.UpdateOrgSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
-	6,  // 20: rpmgr.v1.UpdateOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
-	21, // 21: rpmgr.v1.UpdateOrgSettingsResponse.revision:type_name -> rpmgr.v1.Revision
-	22, // 22: rpmgr.v1.UpdateOrgSettingsResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	7,  // 23: rpmgr.v1.SettingsService.GetInstanceSettings:input_type -> rpmgr.v1.GetInstanceSettingsRequest
-	10, // 24: rpmgr.v1.SettingsService.UpdateInstanceSettings:input_type -> rpmgr.v1.UpdateInstanceSettingsRequest
-	12, // 25: rpmgr.v1.SettingsService.SetSmtpPassword:input_type -> rpmgr.v1.SetSmtpPasswordRequest
-	14, // 26: rpmgr.v1.SettingsService.GetOrgSettings:input_type -> rpmgr.v1.GetOrgSettingsRequest
-	16, // 27: rpmgr.v1.SettingsService.UpdateOrgSettings:input_type -> rpmgr.v1.UpdateOrgSettingsRequest
-	8,  // 28: rpmgr.v1.SettingsService.GetInstanceSettings:output_type -> rpmgr.v1.GetInstanceSettingsResponse
-	11, // 29: rpmgr.v1.SettingsService.UpdateInstanceSettings:output_type -> rpmgr.v1.UpdateInstanceSettingsResponse
-	13, // 30: rpmgr.v1.SettingsService.SetSmtpPassword:output_type -> rpmgr.v1.SetSmtpPasswordResponse
-	15, // 31: rpmgr.v1.SettingsService.GetOrgSettings:output_type -> rpmgr.v1.GetOrgSettingsResponse
-	17, // 32: rpmgr.v1.SettingsService.UpdateOrgSettings:output_type -> rpmgr.v1.UpdateOrgSettingsResponse
-	28, // [28:33] is the sub-list for method output_type
-	23, // [23:28] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	19, // 5: rpmgr.v1.InstanceSettings.hourly_rollup_retention:type_name -> google.protobuf.Duration
+	19, // 6: rpmgr.v1.InstanceSettings.daily_rollup_retention:type_name -> google.protobuf.Duration
+	6,  // 7: rpmgr.v1.InstanceSettings.smtp:type_name -> rpmgr.v1.SmtpSettings
+	19, // 8: rpmgr.v1.InstanceSettings.audit_retention:type_name -> google.protobuf.Duration
+	3,  // 9: rpmgr.v1.InstanceSettings.rollout_mode:type_name -> rpmgr.v1.RolloutMode
+	4,  // 10: rpmgr.v1.SmtpSettings.security:type_name -> rpmgr.v1.SmtpSecurity
+	5,  // 11: rpmgr.v1.GetInstanceSettingsResponse.settings:type_name -> rpmgr.v1.InstanceSettings
+	10, // 12: rpmgr.v1.GetInstanceSettingsResponse.revocation_log:type_name -> rpmgr.v1.RevocationLogStatus
+	20, // 13: rpmgr.v1.RevocationLogStatus.oldest_unshipped_time:type_name -> google.protobuf.Timestamp
+	5,  // 14: rpmgr.v1.UpdateInstanceSettingsRequest.settings:type_name -> rpmgr.v1.InstanceSettings
+	21, // 15: rpmgr.v1.UpdateInstanceSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
+	5,  // 16: rpmgr.v1.UpdateInstanceSettingsResponse.settings:type_name -> rpmgr.v1.InstanceSettings
+	22, // 17: rpmgr.v1.UpdateInstanceSettingsResponse.revision:type_name -> rpmgr.v1.Revision
+	7,  // 18: rpmgr.v1.GetOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
+	7,  // 19: rpmgr.v1.UpdateOrgSettingsRequest.settings:type_name -> rpmgr.v1.OrgSettings
+	21, // 20: rpmgr.v1.UpdateOrgSettingsRequest.update_mask:type_name -> google.protobuf.FieldMask
+	7,  // 21: rpmgr.v1.UpdateOrgSettingsResponse.settings:type_name -> rpmgr.v1.OrgSettings
+	22, // 22: rpmgr.v1.UpdateOrgSettingsResponse.revision:type_name -> rpmgr.v1.Revision
+	23, // 23: rpmgr.v1.UpdateOrgSettingsResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	8,  // 24: rpmgr.v1.SettingsService.GetInstanceSettings:input_type -> rpmgr.v1.GetInstanceSettingsRequest
+	11, // 25: rpmgr.v1.SettingsService.UpdateInstanceSettings:input_type -> rpmgr.v1.UpdateInstanceSettingsRequest
+	13, // 26: rpmgr.v1.SettingsService.SetSmtpPassword:input_type -> rpmgr.v1.SetSmtpPasswordRequest
+	15, // 27: rpmgr.v1.SettingsService.GetOrgSettings:input_type -> rpmgr.v1.GetOrgSettingsRequest
+	17, // 28: rpmgr.v1.SettingsService.UpdateOrgSettings:input_type -> rpmgr.v1.UpdateOrgSettingsRequest
+	9,  // 29: rpmgr.v1.SettingsService.GetInstanceSettings:output_type -> rpmgr.v1.GetInstanceSettingsResponse
+	12, // 30: rpmgr.v1.SettingsService.UpdateInstanceSettings:output_type -> rpmgr.v1.UpdateInstanceSettingsResponse
+	14, // 31: rpmgr.v1.SettingsService.SetSmtpPassword:output_type -> rpmgr.v1.SetSmtpPasswordResponse
+	16, // 32: rpmgr.v1.SettingsService.GetOrgSettings:output_type -> rpmgr.v1.GetOrgSettingsResponse
+	18, // 33: rpmgr.v1.SettingsService.UpdateOrgSettings:output_type -> rpmgr.v1.UpdateOrgSettingsResponse
+	29, // [29:34] is the sub-list for method output_type
+	24, // [24:29] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_settings_proto_init() }
@@ -1415,7 +1486,7 @@ func file_rpmgr_v1_settings_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_settings_proto_rawDesc), len(file_rpmgr_v1_settings_proto_rawDesc)),
-			NumEnums:      4,
+			NumEnums:      5,
 			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,

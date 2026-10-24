@@ -3,6 +3,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,24 +28,34 @@ import (
 // maxReleaseFile bounds each signed file upload release reads; the API takes at most 1 MiB.
 const maxReleaseFile = 1 << 20
 
-// rolloutCommands are check release, upload release, create rollout and advance, pause, resume and cancel
-// rollout (docs/16-cli.md); list release, get rollout, list rollout and list rollout-target are
-// part of get and list. All are for an Instance Admin.
+// rolloutCommands are check release, upload release, create rollout, advance, pause, resume and
+// cancel rollout, and upgrade connector and gateway (docs/16-cli.md); list release, get rollout,
+// list rollout and list rollout-target are part of get and list. All are for an Instance Admin.
 func rolloutCommands() map[string][]*cli.Command {
 	var (
 		release, output string
 		canaries        cli.List
+		agents          cli.List
+		easy            bool
 	)
 	create := &cli.Command{
-		Name: "rollout", Summary: "roll a release out to the connectors and gateways, its canary agents first", Args: "--release <version> --canary <agent>…",
+		Name: "rollout", Summary: "roll a release out to the connectors and gateways: staged, its canary agents first, or easy, one agent after another",
+		Args: "--release <version> (--canary <agent>… | --easy --agent <agent>…)",
 		Flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&release, "release", "", "the release, by version or ID; no newer than the controller")
-			fs.Var(&canaries, "canary", "a canary agent: a connector or gateway of the org by name, or of any org by ID; repeat for more")
+			fs.Var(&canaries, "canary", "a staged rollout's canary agent: a connector or gateway of the org by name, or of any org by ID; repeat for more")
+			fs.BoolVar(&easy, "easy", false, "an easy rollout: the --agent agents update one after another, and a failed one is skipped")
+			fs.Var(&agents, "agent", "an easy rollout's agent, in the order they update: a connector or gateway of the org by name, or of any org by ID; repeat for more")
 			outputFlag(fs, &output)
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
-			if len(args) > 0 || release == "" || len(canaries) == 0 {
-				return cli.Usagef("give --release and at least one --canary, and no argument")
+			switch {
+			case len(args) > 0 || release == "":
+				return cli.Usagef("give --release, and no argument")
+			case easy && (len(agents) == 0 || len(canaries) > 0):
+				return cli.Usagef("an easy rollout takes at least one --agent, and no --canary")
+			case !easy && (len(canaries) == 0 || len(agents) > 0):
+				return cli.Usagef("a staged rollout takes at least one --canary, and no --agent; give --easy for an easy rollout")
 			}
 			s, err := newAPISession(env)
 			if err != nil {
@@ -60,6 +72,16 @@ func rolloutCommands() map[string][]*cli.Command {
 				}
 				req.CanaryAgentIds = append(req.CanaryAgentIds, id)
 			}
+			if easy {
+				req.Mode = rpmgrv1.RolloutMode_ROLLOUT_MODE_EASY
+				for _, a := range agents {
+					id, err := s.agentID(ctx, a)
+					if err != nil {
+						return err
+					}
+					req.AgentIds = append(req.AgentIds, id)
+				}
+			}
 			if err := protovalidate.Validate(req); err != nil {
 				return cli.Usagef("%v", err)
 			}
@@ -74,13 +96,18 @@ func rolloutCommands() map[string][]*cli.Command {
 			}); err != nil {
 				return apiError(err)
 			}
-			return s.writeRollout(ctx, env, output, "Started rollout %s of %s to its canary agents.\n", ro)
+			what := "Started rollout %s of %s to its canary agents.\n"
+			if easy {
+				what = "Started easy rollout %s of %s; its agents update one after another.\n"
+			}
+			return s.writeRollout(ctx, env, output, what, ro)
 		},
 	}
 	return map[string][]*cli.Command{"check": {checkRelease()}, "upload": {uploadRelease()}, "create": {create}, "advance": {advanceRollout()},
-		"pause":  {changeRollout("pause", "pause a running rollout; agents offered the release keep it", false)},
-		"resume": {changeRollout("resume", "let a paused rollout run again", true)},
-		"cancel": {changeRollout("cancel", "end a running or paused rollout for good", true)}}
+		"upgrade": {upgradeAgents("connector"), upgradeAgents("gateway")},
+		"pause":   {changeRollout("pause", "pause a running rollout; agents offered the release keep it", false)},
+		"resume":  {changeRollout("resume", "let a paused rollout run again", true)},
+		"cancel":  {changeRollout("cancel", "end a running or paused rollout for good", true)}}
 }
 
 // checkPoll is how often check release asks whether the release check has ended.
@@ -180,6 +207,59 @@ func uploadRelease() *cli.Command {
 				return nil
 			}
 			return s.print(ctx, env.Stdout, kindOf("release"), output, []protoreflect.Message{rel.ProtoReflect()}, nil, false)
+		},
+	}
+}
+
+// upgradeAgents is `rpmgr upgrade connector|gateway <agent>…`: the agents join the easy rollout of
+// the controller's own version, or start one (D129).
+func upgradeAgents(kind string) *cli.Command {
+	var output string
+	return &cli.Command{
+		Name: kind, Summary: "update " + kind + "s to the controller's version, one after another, in its easy rollout (Instance Admin)",
+		Args:  "<" + kind + ">…",
+		Flags: func(fs *flag.FlagSet) { outputFlag(fs, &output) },
+		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			if len(args) == 0 {
+				return cli.Usagef("expected at least one %s, by name (the org's) or ID (any org's)", kind)
+			}
+			s, err := newAPISession(env)
+			if err != nil {
+				return err
+			}
+			k := kindOf(kind)
+			req := &rpmgrv1.UpgradeAgentsRequest{}
+			for _, ref := range args {
+				id, err := k.Resolve(ctx, s.hc, s.creds.Controller, s.creds.Org, ref)
+				if err != nil {
+					return apiError(err)
+				}
+				if !slices.Contains(req.AgentIds, id) {
+					req.AgentIds = append(req.AgentIds, id)
+				}
+			}
+			if err := protovalidate.Validate(req); err != nil {
+				return cli.Usagef("%v", err)
+			}
+			rc := rpmgrv1connect.NewReleaseServiceClient(s.hc, s.creds.Controller)
+			var resp *connect.Response[rpmgrv1.UpgradeAgentsResponse]
+			if err := s.withStepUp(ctx, func() error {
+				resp, err = rc.UpgradeAgents(ctx, connect.NewRequest(req))
+				return err
+			}); err != nil {
+				return apiError(err)
+			}
+			ro := resp.Msg.GetRollout()
+			w := notes(env, output).Stdout
+			rows := make([]protoreflect.Message, 0, len(resp.Msg.GetRolloutTargets()))
+			for _, t := range resp.Msg.GetRolloutTargets() {
+				if _, err := fmt.Fprintf(w, "%s %s is number %d in the queue of easy rollout %s of %s.\n", kind,
+					cmp.Or(t.GetAgentName(), t.GetAgentId()), t.GetPosition(), ro.GetId(), ro.GetVersion()); err != nil {
+					return err
+				}
+				rows = append(rows, t.ProtoReflect())
+			}
+			return s.print(ctx, env.Stdout, kindOf("rollout-target"), output, rows, nil, true)
 		},
 	}
 }
