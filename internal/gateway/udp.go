@@ -35,6 +35,8 @@ type UDPRoute struct {
 	FlowIdle time.Duration
 	// Access is who may send.
 	Access Access
+	// Limit is the route's limit state; nil limits nothing.
+	Limit *RouteLimit
 }
 
 // UDPOptions configure UDPRoutes.
@@ -82,6 +84,8 @@ type flow struct {
 	last   atomic.Int64
 	done   chan struct{}
 	once   sync.Once
+	// release frees the flow's slot of the route's connection limit.
+	release func()
 }
 
 func (f *flow) touch()              { f.last.Store(time.Now().UnixNano()) }
@@ -282,14 +286,24 @@ func (u *UDPRoutes) read(p *udpPort) {
 			u.o.Metrics.Dropped.WithLabelValues(p.route.Load().ID, "flow_limit").Inc()
 			continue
 		}
+		r := p.route.Load()
 		if f == nil {
-			f = &flow{client: client, queue: make(chan []byte, flowQueue), done: make(chan struct{})}
+			release, ok := r.Limit.Acquire()
+			if !ok {
+				p.mu.Unlock()
+				u.o.Metrics.Dropped.WithLabelValues(r.ID, "limit").Inc() // over the route's connection limit
+				continue
+			}
+			f = &flow{client: client, queue: make(chan []byte, flowQueue), done: make(chan struct{}), release: release}
 			f.touch()
 			p.flows[client] = f
-			r := p.route.Load()
 			u.wg.Go(func() { u.run(p, f, r) })
 		}
 		p.mu.Unlock()
+		if !r.Limit.AllowDatagram(false, n) {
+			u.o.Metrics.Dropped.WithLabelValues(r.ID, "limit").Inc() // over the route's bandwidth
+			continue
+		}
 		f.touch()
 		select {
 		case f.queue <- payload:
@@ -366,6 +380,7 @@ func (u *UDPRoutes) serving(p *udpPort) bool {
 // or frames, and returns the connector's to the client, until the flow ends.
 func (u *UDPRoutes) run(p *udpPort, f *flow, r *UDPRoute) {
 	defer func() {
+		f.release()
 		f.close()
 		p.mu.Lock()
 		if p.flows[f.client] == f {
@@ -396,6 +411,10 @@ func (u *UDPRoutes) run(p *udpPort, f *flow, r *UDPRoute) {
 		dg = nil
 	}
 	reply := func(b []byte) {
+		if !p.route.Load().Limit.AllowDatagram(true, len(b)) {
+			u.o.Metrics.Dropped.WithLabelValues(r.ID, "limit").Inc()
+			return
+		}
 		f.touch()
 		markActive(st) // a reply datagram passes the stream by
 		_, _ = p.conn.WriteToUDPAddrPort(b, f.client)

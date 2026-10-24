@@ -976,7 +976,8 @@ the capability `route.limits`:
   enforces its share. A gateway that is enabled but down keeps its share, so the route then gets
   less than its limit until the gateway returns or is disabled. 0 means no limit.
 - A slot of a connection or request is released when it ends, however it ends, panics and
-  cancellations included. The per-client `rate_limit` rule of a policy comes on top
+  cancellations included. A gateway keeps counting the connections of a removed route while they
+  drain, so the route, added back meanwhile, never admits more than its limit. The per-client `rate_limit` rule of a policy comes on top
   ([Access policies](#access-policies)).
 
 ### Target health (Phase 2)
@@ -1401,6 +1402,7 @@ sequenceDiagram
 | Per-route HTTP timeouts (Phase 2) | upstream response header 1 s to 1 h; upstream idle 1 s to 1 h; 0 = the HTTP server row above | [R] Slow reports and long polls fit; a pooled connection outliving a backend's keep-alive is avoided ([HTTP routes](#http-routes)) |
 | Active health check (Phase 2) | interval 10 s by default, at least 2 s; timeout 5 s by default, below the interval; unhealthy after 3 failures in a row, healthy after 2 passes; an HTTP check reads at most 64 KiB of the body | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
 | Passive health (Phase 2) | 3 refused or timed-out stream opens in a row; back-off 10 s, doubling to 60 s; one half-open try after it | [R] A target that refuses is passed over at once and tried again soon |
+| Route limits (Phase 2) | an HTTP request over the connection limit gets **503** with `Retry-After: 1`; a bandwidth bucket holds 100 ms of the rate, at least 64 KiB, the largest UDP payload, and a connection moves at most 100 ms of the rate, at least 512 bytes, at a time | [R] A client tries again soon, as a slot frees when a request ends; a datagram always fits the bucket, and a connection under a low limit moves on in small steps rather than stalling ([Route limits](#route-limits-phase-2)) |
 | Per-client rate limit (Phase 2) | at most 65 536 client addresses per route on each gateway; an address unused for 10 min is dropped | [R] A flood of addresses cannot exhaust a gateway's memory ([Access policies](#access-policies)) |
 | Custom page (Phase 2) | at most 64 KiB of HTML per page; the log lines of its `{{request_id}}` at most 20 per second per gateway, with a burst of 20, the rest dropped and counted; a link to the web UI's preview of a page works for 5 min | [R] A page loads fast and fits a snapshot item fetch; a flood of requests cannot flood the log ([HTTP routes](#http-routes), [D136](14-open-decisions.md#engineering)) |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |

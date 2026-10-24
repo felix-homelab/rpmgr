@@ -37,6 +37,8 @@ type TCPRoute struct {
 	IdleTimeout time.Duration
 	// Access is who may connect.
 	Access Access
+	// Limit is the route's limit state; nil limits nothing.
+	Limit *RouteLimit
 }
 
 // TCPOptions configure TCPRoutes.
@@ -221,20 +223,28 @@ func (t *TCPRoutes) serve(ln net.Listener, r TCPRoute) {
 			// Checked and recorded under pl.mu, which enforce takes after Apply swapped the route
 			// in: either enforce sees the connection, or the check sees the new rules (#523).
 			pl.mu.Lock()
-			if !pl.route.Load().Access.AllowsAddr(c.RemoteAddr()) {
+			r := pl.route.Load()
+			if !r.Access.AllowsAddr(c.RemoteAddr()) {
 				pl.mu.Unlock()
 				abort(c)
+				continue
+			}
+			release, ok := r.Limit.Acquire()
+			if !ok {
+				pl.mu.Unlock()
+				abort(c) // over the route's connection limit: reset before a stream opens
 				continue
 			}
 			pl.conns[c] = struct{}{}
 			pl.mu.Unlock()
 			t.wg.Go(func() {
 				defer func() {
+					release()
 					pl.mu.Lock()
 					delete(pl.conns, c)
 					pl.mu.Unlock()
 				}()
-				t.handle(c, pl.route.Load())
+				t.handle(c, r)
 			})
 		}
 	})
@@ -341,14 +351,15 @@ func (t *TCPRoutes) Close() {
 // handle carries one public connection over a stream to a connector of the route. A connection
 // that gets no stream is reset, as an unreachable service would reset it.
 func (t *TCPRoutes) handle(c net.Conn, r *TCPRoute) {
-	carry(t.ctx, t.o.Sessions, t.o.Revision, t.o.Logger, c, r.ID, "", r.IdleTimeout)
+	carry(t.ctx, t.o.Sessions, t.o.Revision, t.o.Logger, c, r.ID, "", r.IdleTimeout, r.Limit)
 }
 
 // carry opens a stream for a route on one of its connectors' sessions and relays c over it, with
 // the client's and the listener's address and, for TLS passthrough, the SNI in StreamOpen. A
-// connection that gets no stream is reset, as an unreachable service would reset it.
+// connection that gets no stream is reset, as an unreachable service would reset it. lim limits its
+// bandwidth.
 func carry(ctx context.Context, s *Sessions, rev func() *agentv1.Revision, logger *slog.Logger, c net.Conn, routeID, sni string,
-	idle time.Duration) {
+	idle time.Duration, lim *RouteLimit) {
 	open := &tunnelv1.StreamOpen{Kind: tunnelv1.StreamKind_STREAM_KIND_TCP, RouteId: routeID, Sni: sni}
 	if rev != nil {
 		open.SnapshotRev = rev()
@@ -370,7 +381,7 @@ func carry(ctx context.Context, s *Sessions, rev func() *agentv1.Revision, logge
 	if idle > 0 {
 		c = newIdleConn(c, idle)
 	}
-	tunnel.Relay(st, c)
+	tunnel.Relay(st, lim.Conn(c))
 }
 
 // idleConn closes its connection when no byte moved in either direction for the idle timeout.
