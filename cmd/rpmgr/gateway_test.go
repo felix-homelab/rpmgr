@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -39,6 +40,18 @@ type gatewayAPI struct {
 	quota        *rpmgrv1.SetPortQuotaRequest
 	quotaDeleted string
 	gwToken      *rpmgrv1.CreateGatewayEnrollmentTokenRequest
+	page         *rpmgrv1.SetGatewayPageRequest
+	pageDeleted  *rpmgrv1.DeleteGatewayPageRequest
+}
+
+func (a *gatewayAPI) SetGatewayPage(_ context.Context, req *connect.Request[rpmgrv1.SetGatewayPageRequest]) (*connect.Response[rpmgrv1.SetGatewayPageResponse], error) {
+	a.record(func() { a.page = req.Msg })
+	return connect.NewResponse(&rpmgrv1.SetGatewayPageResponse{GatewayPage: req.Msg.GetGatewayPage(), Revision: &rpmgrv1.Revision{Seq: 40}}), nil
+}
+
+func (a *gatewayAPI) DeleteGatewayPage(_ context.Context, req *connect.Request[rpmgrv1.DeleteGatewayPageRequest]) (*connect.Response[rpmgrv1.DeleteGatewayPageResponse], error) {
+	a.record(func() { a.pageDeleted = req.Msg })
+	return connect.NewResponse(&rpmgrv1.DeleteGatewayPageResponse{Revision: &rpmgrv1.Revision{Seq: 41}}), nil
 }
 
 var (
@@ -204,6 +217,41 @@ func TestInfrastructure(t *testing.T) {
 	}
 	if code, _, errOut := run("delete", "port-quota", "pq_1"); code != cli.ExitOK || a.quotaDeleted != "pq_1" {
 		t.Fatalf("a quota deleted: %d %q", code, errOut)
+	}
+
+	// A group's own pages: uploaded from a file, removed again; a wrong kind, no group, a missing
+	// file and a page above the size limit are refused before any request.
+	page := filepath.Join(t.TempDir(), "404.html")
+	if err := os.WriteFile(page, []byte("<p>{{hostname}} is not here</p>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, out, errOut := run("upload", "gateway-page", "--group", "eu", "--kind", "not-found", page); code != cli.ExitOK ||
+		a.page.GetGatewayPage().GetGatewayGroupId() != "gwg_1" || a.page.GetGatewayPage().GetKind() != rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_NOT_FOUND ||
+		a.page.GetGatewayPage().GetHtml() != "<p>{{hostname}} is not here</p>" || !strings.Contains(out, "not-found page of gateway group eu is your own now") {
+		t.Fatalf("a page: %d %q %q %v", code, out, errOut, a.page)
+	}
+	if code, out, errOut := run("remove", "gateway-page", "--group", "eu", "--kind", "maintenance"); code != cli.ExitOK ||
+		a.pageDeleted.GetKind() != rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE || !strings.Contains(out, "built-in maintenance page") {
+		t.Fatalf("a page removed: %d %q %q %v", code, out, errOut, a.pageDeleted)
+	}
+	big := filepath.Join(t.TempDir(), "big.html")
+	if err := os.WriteFile(big, make([]byte, 64<<10+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.page = nil
+	for name, args := range map[string][]string{
+		"a wrong kind":   {"upload", "gateway-page", "--group", "eu", "--kind", "error", page},
+		"no group":       {"upload", "gateway-page", "--kind", "not-found", page},
+		"no file":        {"upload", "gateway-page", "--group", "eu", "--kind", "not-found"},
+		"too large":      {"upload", "gateway-page", "--group", "eu", "--kind", "not-found", big},
+		"remove no kind": {"remove", "gateway-page", "--group", "eu"},
+	} {
+		if code, _, _ := run(args...); code != cli.ExitUsage || a.page != nil {
+			t.Errorf("%s: %d, sent %v", name, code, a.page)
+		}
+	}
+	if code, _, _ := run("upload", "gateway-page", "--group", "eu", "--kind", "not-found", filepath.Join(t.TempDir(), "missing.html")); code != cli.ExitError {
+		t.Errorf("a missing file: %d", code)
 	}
 
 	answer := "right"

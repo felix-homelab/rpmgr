@@ -85,22 +85,23 @@ const maxShownHost = 253
 
 // writeMaintenance answers a request to a route in maintenance: 503 with the maintenance page and
 // the route's message, or the message as text.
-func writeMaintenance(w http.ResponseWriter, r *http.Request, message string) {
+func (p *Pages) writeMaintenance(w http.ResponseWriter, r *http.Request, message string) {
 	text := "Service Unavailable: down for maintenance"
 	if message != "" {
 		text += "\n\n" + message
 	}
-	writePageMessage(w, r, http.StatusServiceUnavailable, pageMaintenance, text, message)
+	p.writePageMessage(w, r, http.StatusServiceUnavailable, pageMaintenance, text, message)
 }
 
 // writePage answers a request with one of the gateway's pages if the client asks for HTML, and with
-// text, as before the pages existed, if it does not.
-func writePage(w http.ResponseWriter, r *http.Request, status int, kind, text string) {
-	writePageMessage(w, r, status, kind, text, "")
+// text, as before the pages existed, if it does not. The page is the group's own of the kind, if p
+// holds one (D132), or else the built-in one; p may be nil.
+func (p *Pages) writePage(w http.ResponseWriter, r *http.Request, status int, kind, text string) {
+	p.writePageMessage(w, r, status, kind, text, "")
 }
 
 // writePageMessage is writePage with a message the page shows as text.
-func writePageMessage(w http.ResponseWriter, r *http.Request, status int, kind, text, message string) {
+func (p *Pages) writePageMessage(w http.ResponseWriter, r *http.Request, status int, kind, text, message string) {
 	client := pageRequestOf(r)
 	if !client.html {
 		http.Error(w, text, status)
@@ -110,16 +111,27 @@ func writePageMessage(w http.ResponseWriter, r *http.Request, status int, kind, 
 	if len(host) > maxShownHost {
 		host = host[:maxShownHost]
 	}
+	host, message = strings.ToValidUTF8(host, "�"), strings.ToValidUTF8(message, "�")
 	var b bytes.Buffer
-	err := pageTemplate.Execute(&b, page{Kind: kind, Title: pageTitles[kind], Status: status, StatusText: http.StatusText(status),
-		Host: strings.ToValidUTF8(host, "�"), Message: strings.ToValidUTF8(message, "�")})
-	if err != nil {
+	csp := pageCSP
+	if custom, ok := p.page(kind); ok {
+		id := ""
+		if strings.Contains(custom, "{{request_id}}") {
+			id = newRequestID()
+			if p.logs.Allow("") {
+				p.o.Logger.Info("custom page", "request_id", id, "host", host, "status", status, "page", kind)
+			}
+		}
+		b.WriteString(renderCustom(custom, host, status, message, id))
+		csp = customPageCSP
+	} else if err := pageTemplate.Execute(&b, page{Kind: kind, Title: pageTitles[kind], Status: status, StatusText: http.StatusText(status),
+		Host: host, Message: message}); err != nil {
 		http.Error(w, text, status)
 		return
 	}
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
-	h.Set("Content-Security-Policy", pageCSP)
+	h.Set("Content-Security-Policy", csp)
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Content-Length", strconv.Itoa(b.Len()))

@@ -89,6 +89,15 @@ const (
 	// GatewayServiceDeletePortQuotaProcedure is the fully-qualified name of the GatewayService's
 	// DeletePortQuota RPC.
 	GatewayServiceDeletePortQuotaProcedure = "/rpmgr.v1.GatewayService/DeletePortQuota"
+	// GatewayServiceSetGatewayPageProcedure is the fully-qualified name of the GatewayService's
+	// SetGatewayPage RPC.
+	GatewayServiceSetGatewayPageProcedure = "/rpmgr.v1.GatewayService/SetGatewayPage"
+	// GatewayServiceListGatewayPagesProcedure is the fully-qualified name of the GatewayService's
+	// ListGatewayPages RPC.
+	GatewayServiceListGatewayPagesProcedure = "/rpmgr.v1.GatewayService/ListGatewayPages"
+	// GatewayServiceDeleteGatewayPageProcedure is the fully-qualified name of the GatewayService's
+	// DeleteGatewayPage RPC.
+	GatewayServiceDeleteGatewayPageProcedure = "/rpmgr.v1.GatewayService/DeleteGatewayPage"
 )
 
 // GatewayServiceClient is a client for the rpmgr.v1.GatewayService service.
@@ -134,6 +143,13 @@ type GatewayServiceClient interface {
 	ListPortQuotas(context.Context, *connect.Request[v1.ListPortQuotasRequest]) (*connect.Response[v1.ListPortQuotasResponse], error)
 	// DeletePortQuota removes a quota; then only the pools limit the org's ports in the group.
 	DeletePortQuota(context.Context, *connect.Request[v1.DeletePortQuotaRequest]) (*connect.Response[v1.DeletePortQuotaResponse], error)
+	// SetGatewayPage replaces one of a gateway group's pages with the group's own HTML (D132): only
+	// the group's owner org, for a shared group the Instance Admin.
+	SetGatewayPage(context.Context, *connect.Request[v1.SetGatewayPageRequest]) (*connect.Response[v1.SetGatewayPageResponse], error)
+	// ListGatewayPages returns the pages a gateway group replaced, with their HTML.
+	ListGatewayPages(context.Context, *connect.Request[v1.ListGatewayPagesRequest]) (*connect.Response[v1.ListGatewayPagesResponse], error)
+	// DeleteGatewayPage goes back to the built-in page of a kind.
+	DeleteGatewayPage(context.Context, *connect.Request[v1.DeleteGatewayPageRequest]) (*connect.Response[v1.DeleteGatewayPageResponse], error)
 }
 
 // NewGatewayServiceClient constructs a client for the rpmgr.v1.GatewayService service. By default,
@@ -262,6 +278,25 @@ func NewGatewayServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(gatewayServiceMethods.ByName("DeletePortQuota")),
 			connect.WithClientOptions(opts...),
 		),
+		setGatewayPage: connect.NewClient[v1.SetGatewayPageRequest, v1.SetGatewayPageResponse](
+			httpClient,
+			baseURL+GatewayServiceSetGatewayPageProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("SetGatewayPage")),
+			connect.WithClientOptions(opts...),
+		),
+		listGatewayPages: connect.NewClient[v1.ListGatewayPagesRequest, v1.ListGatewayPagesResponse](
+			httpClient,
+			baseURL+GatewayServiceListGatewayPagesProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("ListGatewayPages")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		deleteGatewayPage: connect.NewClient[v1.DeleteGatewayPageRequest, v1.DeleteGatewayPageResponse](
+			httpClient,
+			baseURL+GatewayServiceDeleteGatewayPageProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("DeleteGatewayPage")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -285,6 +320,9 @@ type gatewayServiceClient struct {
 	setPortQuota        *connect.Client[v1.SetPortQuotaRequest, v1.SetPortQuotaResponse]
 	listPortQuotas      *connect.Client[v1.ListPortQuotasRequest, v1.ListPortQuotasResponse]
 	deletePortQuota     *connect.Client[v1.DeletePortQuotaRequest, v1.DeletePortQuotaResponse]
+	setGatewayPage      *connect.Client[v1.SetGatewayPageRequest, v1.SetGatewayPageResponse]
+	listGatewayPages    *connect.Client[v1.ListGatewayPagesRequest, v1.ListGatewayPagesResponse]
+	deleteGatewayPage   *connect.Client[v1.DeleteGatewayPageRequest, v1.DeleteGatewayPageResponse]
 }
 
 // CreateGatewayGroup calls rpmgr.v1.GatewayService.CreateGatewayGroup.
@@ -377,6 +415,21 @@ func (c *gatewayServiceClient) DeletePortQuota(ctx context.Context, req *connect
 	return c.deletePortQuota.CallUnary(ctx, req)
 }
 
+// SetGatewayPage calls rpmgr.v1.GatewayService.SetGatewayPage.
+func (c *gatewayServiceClient) SetGatewayPage(ctx context.Context, req *connect.Request[v1.SetGatewayPageRequest]) (*connect.Response[v1.SetGatewayPageResponse], error) {
+	return c.setGatewayPage.CallUnary(ctx, req)
+}
+
+// ListGatewayPages calls rpmgr.v1.GatewayService.ListGatewayPages.
+func (c *gatewayServiceClient) ListGatewayPages(ctx context.Context, req *connect.Request[v1.ListGatewayPagesRequest]) (*connect.Response[v1.ListGatewayPagesResponse], error) {
+	return c.listGatewayPages.CallUnary(ctx, req)
+}
+
+// DeleteGatewayPage calls rpmgr.v1.GatewayService.DeleteGatewayPage.
+func (c *gatewayServiceClient) DeleteGatewayPage(ctx context.Context, req *connect.Request[v1.DeleteGatewayPageRequest]) (*connect.Response[v1.DeleteGatewayPageResponse], error) {
+	return c.deleteGatewayPage.CallUnary(ctx, req)
+}
+
 // GatewayServiceHandler is an implementation of the rpmgr.v1.GatewayService service.
 type GatewayServiceHandler interface {
 	// CreateGatewayGroup creates a gateway group, which holds up to four gateways.
@@ -420,6 +473,13 @@ type GatewayServiceHandler interface {
 	ListPortQuotas(context.Context, *connect.Request[v1.ListPortQuotasRequest]) (*connect.Response[v1.ListPortQuotasResponse], error)
 	// DeletePortQuota removes a quota; then only the pools limit the org's ports in the group.
 	DeletePortQuota(context.Context, *connect.Request[v1.DeletePortQuotaRequest]) (*connect.Response[v1.DeletePortQuotaResponse], error)
+	// SetGatewayPage replaces one of a gateway group's pages with the group's own HTML (D132): only
+	// the group's owner org, for a shared group the Instance Admin.
+	SetGatewayPage(context.Context, *connect.Request[v1.SetGatewayPageRequest]) (*connect.Response[v1.SetGatewayPageResponse], error)
+	// ListGatewayPages returns the pages a gateway group replaced, with their HTML.
+	ListGatewayPages(context.Context, *connect.Request[v1.ListGatewayPagesRequest]) (*connect.Response[v1.ListGatewayPagesResponse], error)
+	// DeleteGatewayPage goes back to the built-in page of a kind.
+	DeleteGatewayPage(context.Context, *connect.Request[v1.DeleteGatewayPageRequest]) (*connect.Response[v1.DeleteGatewayPageResponse], error)
 }
 
 // NewGatewayServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -544,6 +604,25 @@ func NewGatewayServiceHandler(svc GatewayServiceHandler, opts ...connect.Handler
 		connect.WithSchema(gatewayServiceMethods.ByName("DeletePortQuota")),
 		connect.WithHandlerOptions(opts...),
 	)
+	gatewayServiceSetGatewayPageHandler := connect.NewUnaryHandler(
+		GatewayServiceSetGatewayPageProcedure,
+		svc.SetGatewayPage,
+		connect.WithSchema(gatewayServiceMethods.ByName("SetGatewayPage")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gatewayServiceListGatewayPagesHandler := connect.NewUnaryHandler(
+		GatewayServiceListGatewayPagesProcedure,
+		svc.ListGatewayPages,
+		connect.WithSchema(gatewayServiceMethods.ByName("ListGatewayPages")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	gatewayServiceDeleteGatewayPageHandler := connect.NewUnaryHandler(
+		GatewayServiceDeleteGatewayPageProcedure,
+		svc.DeleteGatewayPage,
+		connect.WithSchema(gatewayServiceMethods.ByName("DeleteGatewayPage")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.GatewayService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GatewayServiceCreateGatewayGroupProcedure:
@@ -582,6 +661,12 @@ func NewGatewayServiceHandler(svc GatewayServiceHandler, opts ...connect.Handler
 			gatewayServiceListPortQuotasHandler.ServeHTTP(w, r)
 		case GatewayServiceDeletePortQuotaProcedure:
 			gatewayServiceDeletePortQuotaHandler.ServeHTTP(w, r)
+		case GatewayServiceSetGatewayPageProcedure:
+			gatewayServiceSetGatewayPageHandler.ServeHTTP(w, r)
+		case GatewayServiceListGatewayPagesProcedure:
+			gatewayServiceListGatewayPagesHandler.ServeHTTP(w, r)
+		case GatewayServiceDeleteGatewayPageProcedure:
+			gatewayServiceDeleteGatewayPageHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -661,4 +746,16 @@ func (UnimplementedGatewayServiceHandler) ListPortQuotas(context.Context, *conne
 
 func (UnimplementedGatewayServiceHandler) DeletePortQuota(context.Context, *connect.Request[v1.DeletePortQuotaRequest]) (*connect.Response[v1.DeletePortQuotaResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.DeletePortQuota is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) SetGatewayPage(context.Context, *connect.Request[v1.SetGatewayPageRequest]) (*connect.Response[v1.SetGatewayPageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.SetGatewayPage is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) ListGatewayPages(context.Context, *connect.Request[v1.ListGatewayPagesRequest]) (*connect.Response[v1.ListGatewayPagesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.ListGatewayPages is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) DeleteGatewayPage(context.Context, *connect.Request[v1.DeleteGatewayPageRequest]) (*connect.Response[v1.DeleteGatewayPageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.DeleteGatewayPage is not implemented"))
 }

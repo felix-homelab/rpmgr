@@ -95,6 +95,7 @@ command tree yet.
 | `rpmgr decommission gateway [--force] <id>` | Take a gateway out of service for good: its identity is revoked and its slot is free | any | available |
 | `rpmgr create gateway-token --gateway <gateway> [--ttl <duration>]` | Make the token that enrolls that gateway, with a step-up, and print it once | any | available |
 | `rpmgr create port-pool --group <group> --protocol tcp\|udp --from <port> --to <port>`, `update port-pool [--force] [--from] [--to] <id>` | Create a pool of public ports of a group, or resize it | any | available |
+| `rpmgr upload gateway-page --group <group> --kind not-found\|unavailable\|maintenance <file>`, `remove gateway-page --group <group> --kind <kind>` | Make an HTML file the group's own page of a kind, or go back to the built-in one ([D132](14-open-decisions.md#engineering)); the group's owner org only. `--wait` | any | available |
 | `rpmgr set port-quota --group <group> --protocol tcp\|udp --max <n>` | Set how many ports of a group's pools the org may hold; `list port-quota` and `delete port-quota <id>` show and remove them | any | available |
 | `rpmgr create domain --fqdn <name> [--wildcard] [--method txt\|http]` | Claim a domain for the org and print how to prove it: the TXT record to add, or the HTTP token the org's gateways serve ([15](15-dns.md)) | any | available |
 | `rpmgr verify domain <id>`, `trust domain <id>` | Check a claim's proof now, and say why it is not verified yet; or, for an Instance Admin with a step-up, mark it verified without a proof | any | available |

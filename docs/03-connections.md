@@ -852,11 +852,16 @@ sequenceDiagram
   ([04](04-security.md#route-edge-rules)). The gateway fills in placeholders, each escaped as HTML
   text: `{{hostname}}` (the name the client asked for), `{{status}}` (the status code),
   `{{message}}` (the route's maintenance message, on the maintenance page only) and
-  `{{request_id}}` (a random ID the gateway also writes to its log line for the request); any other
-  `{{…}}` stays as it is. A custom page goes out with
-  `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:` and
-  `Cache-Control: no-store`, so it runs no script and loads nothing from elsewhere, and only to
-  clients whose `Accept` names `text/html`, like the built-in pages. Gateways fetch the pages by
+  `{{request_id}}` (a random ID the gateway also writes to its log line for the request, at level
+  info, only for a page that shows it and at most at the rate of
+  [Timeouts, keepalive and backoff](#timeouts-keepalive-and-backoff), the lines over it dropped and
+  counted, [D136](14-open-decisions.md#engineering)); any other `{{…}}` stays as it is, and a filled-in value is
+  never searched for placeholders again. A custom page goes out with
+  `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:;
+  frame-ancestors 'none'; base-uri 'none'; form-action 'none'` and `Cache-Control: no-store`, so it
+  runs no script and loads nothing from elsewhere, and only to clients whose `Accept` names
+  `text/html`, like the built-in pages. A gateway refuses a fetched page that does not match its
+  hash, is larger than the limit or is not UTF-8, and keeps the built-in page for its kind. Gateways fetch the pages by
   their SHA-256 like certificates ([Configuration reconciliation](#configuration-reconciliation));
   until a page is fetched, for a kind the group did not replace, and on a gateway without the
   capability `pages.custom`, the built-in page is served.
@@ -1397,7 +1402,7 @@ sequenceDiagram
 | Active health check (Phase 2) | interval 10 s by default, at least 2 s; timeout 5 s by default, below the interval; unhealthy after 3 failures in a row, healthy after 2 passes; an HTTP check reads at most 64 KiB of the body | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
 | Passive health (Phase 2) | 3 refused or timed-out stream opens in a row; back-off 10 s, doubling to 60 s; one half-open try after it | [R] A target that refuses is passed over at once and tried again soon |
 | Per-client rate limit (Phase 2) | at most 65 536 client addresses per route on each gateway; an address unused for 10 min is dropped | [R] A flood of addresses cannot exhaust a gateway's memory ([Access policies](#access-policies)) |
-| Custom page (Phase 2) | at most 64 KiB of HTML per page | [R] A page loads fast and fits a snapshot item fetch ([HTTP routes](#http-routes)) |
+| Custom page (Phase 2) | at most 64 KiB of HTML per page; the log lines of its `{{request_id}}` at most 20 per second per gateway, with a burst of 20, the rest dropped and counted | [R] A page loads fast and fits a snapshot item fetch; a flood of requests cannot flood the log ([HTTP routes](#http-routes), [D136](14-open-decisions.md#engineering)) |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |
 | Snapshot item fetch | 10 s per `FetchResource`; a failed fetch is retried after 1 s, doubling up to 1 min, and its resource is `not_ready(environment)` until then | A controller outage delays a new certificate without a retry storm |
 | Target certificate probe | the connector's dial and TLS handshake together 10 s; at most 4 at once per connector, another is refused at once; `ProbeTargetCertificate` waits at most 15 s for the connector's answer | [R] A silent target or connector answers within the time a user waits for a button; a user who may change routes cannot make a connector open many dials at once |

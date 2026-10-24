@@ -21,10 +21,12 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -119,6 +121,65 @@ func TestFetchResource(t *testing.T) {
 		db.Client().Certificate.UpdateOneID(c.ID).SetContentSha256(make([]byte, 32)).ExecX(e.sys)
 		if _, err := e.client(t, certA).FetchResource(testCtx(t), &agentv1.FetchResourceRequest{Id: c.ID, Hash: c.ContentSha256}); code(err) != codes.NotFound {
 			t.Errorf("a changed item: %v, want NotFound", err)
+		}
+	})
+}
+
+// TestFetchResource_Page: an agent fetches a custom page its snapshot names, by its hash, and gets
+// the HTML; another agent, a wrong hash and a page changed since the snapshot are NotFound.
+func TestFetchResource_Page(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		var (
+			mu    sync.Mutex
+			owner string
+			res   *agentv1.Resource
+		)
+		source := func(_ context.Context, _ *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			if a.Identity.ID != owner || res == nil {
+				return nil, nil
+			}
+			return []*agentv1.Resource{proto.Clone(res).(*agentv1.Resource)}, nil
+		}
+		e := pushEnv(t, db, source)
+		const html = "<!doctype html><p>{{status}}: not here</p>"
+		sum := sha256.Sum256([]byte(html))
+		c := db.Client()
+		group := c.GatewayGroup.Create().SetOrgID(e.org).SetName("eu").SaveX(e.sys)
+		page := c.GatewayPage.Create().SetOrgID(e.org).SetGatewayGroupID(group.ID).SetKind(gatewaypage.KindNotFound).SetHTML(html).
+			SetContentSha256(sum[:]).SaveX(e.sys)
+		certA, a := e.agentCert(t)
+		certB, _ := e.agentCert(t)
+		mu.Lock()
+		owner = a.ID
+		res = &agentv1.Resource{Id: page.ID, Kind: &agentv1.Resource_GatewayPage{GatewayPage: &agentv1.GatewayPage{
+			Kind: rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_NOT_FOUND, ContentSha256: sum[:]}}}
+		mu.Unlock()
+		st := e.open(t, testCtx(t), certA, hello("0.1.0"))
+		recv(t, st) // Welcome
+		if _, snap := e.recvSnapshot(t, st, a); len(snap.GetResources()) != 1 {
+			t.Fatalf("snapshot %v", snap)
+		}
+		got, err := e.client(t, certA).FetchResource(testCtx(t), &agentv1.FetchResourceRequest{Id: page.ID, Hash: sum[:]})
+		if err != nil || string(got.GetContent()) != html {
+			t.Fatalf("fetched %q %v", got.GetContent(), err)
+		}
+		for name, tc := range map[string]struct {
+			client agentv1.ControlClient
+			req    *agentv1.FetchResourceRequest
+		}{
+			"another agent": {e.client(t, certB), &agentv1.FetchResourceRequest{Id: page.ID, Hash: sum[:]}},
+			"a wrong hash":  {e.client(t, certA), &agentv1.FetchResourceRequest{Id: page.ID, Hash: make([]byte, 32)}},
+		} {
+			if _, err := tc.client.FetchResource(testCtx(t), tc.req); code(err) != codes.NotFound {
+				t.Errorf("%s: %v, want NotFound", name, err)
+			}
+		}
+		other := sha256.Sum256([]byte("<p>changed</p>"))
+		c.GatewayPage.UpdateOneID(page.ID).SetHTML("<p>changed</p>").SetContentSha256(other[:]).ExecX(e.sys)
+		if _, err := e.client(t, certA).FetchResource(testCtx(t), &agentv1.FetchResourceRequest{Id: page.ID, Hash: sum[:]}); code(err) != codes.NotFound {
+			t.Errorf("a changed page: %v, want NotFound", err)
 		}
 	})
 }
