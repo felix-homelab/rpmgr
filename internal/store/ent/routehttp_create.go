@@ -9,6 +9,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -48,8 +49,22 @@ func (_c *RouteHTTPCreate) SetNillablePathPrefix(v *string) *RouteHTTPCreate {
 }
 
 // SetHeaderMatches sets the "header_matches" field.
-func (_c *RouteHTTPCreate) SetHeaderMatches(v map[string]string) *RouteHTTPCreate {
+func (_c *RouteHTTPCreate) SetHeaderMatches(v []headermatch.Match) *RouteHTTPCreate {
 	_c.mutation.SetHeaderMatches(v)
+	return _c
+}
+
+// SetMatchKey sets the "match_key" field.
+func (_c *RouteHTTPCreate) SetMatchKey(v string) *RouteHTTPCreate {
+	_c.mutation.SetMatchKey(v)
+	return _c
+}
+
+// SetNillableMatchKey sets the "match_key" field if the given value is not nil.
+func (_c *RouteHTTPCreate) SetNillableMatchKey(v *string) *RouteHTTPCreate {
+	if v != nil {
+		_c.SetMatchKey(*v)
+	}
 	return _c
 }
 
@@ -256,6 +271,10 @@ func (_c *RouteHTTPCreate) defaults() error {
 		v := routehttp.DefaultPathPrefix
 		_c.mutation.SetPathPrefix(v)
 	}
+	if _, ok := _c.mutation.MatchKey(); !ok {
+		v := routehttp.DefaultMatchKey
+		_c.mutation.SetMatchKey(v)
+	}
 	if _, ok := _c.mutation.TLSMode(); !ok {
 		v := routehttp.DefaultTLSMode
 		_c.mutation.SetTLSMode(v)
@@ -315,6 +334,9 @@ func (_c *RouteHTTPCreate) check() error {
 	}
 	if _, ok := _c.mutation.PathPrefix(); !ok {
 		return &ValidationError{Name: "path_prefix", err: errors.New(`ent: missing required field "RouteHTTP.path_prefix"`)}
+	}
+	if _, ok := _c.mutation.MatchKey(); !ok {
+		return &ValidationError{Name: "match_key", err: errors.New(`ent: missing required field "RouteHTTP.match_key"`)}
 	}
 	if _, ok := _c.mutation.TLSMode(); !ok {
 		return &ValidationError{Name: "tls_mode", err: errors.New(`ent: missing required field "RouteHTTP.tls_mode"`)}
@@ -413,6 +435,10 @@ func (_c *RouteHTTPCreate) createSpec() (*RouteHTTP, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.HeaderMatches(); ok {
 		_spec.SetField(routehttp.FieldHeaderMatches, field.TypeJSON, value)
 		_node.HeaderMatches = value
+	}
+	if value, ok := _c.mutation.MatchKey(); ok {
+		_spec.SetField(routehttp.FieldMatchKey, field.TypeString, value)
+		_node.MatchKey = value
 	}
 	if value, ok := _c.mutation.TLSMode(); ok {
 		_spec.SetField(routehttp.FieldTLSMode, field.TypeEnum, value)

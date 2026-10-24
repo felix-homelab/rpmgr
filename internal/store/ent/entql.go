@@ -972,6 +972,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routehttp.FieldRouteID:            {Type: field.TypeString, Column: routehttp.FieldRouteID},
 			routehttp.FieldPathPrefix:         {Type: field.TypeString, Column: routehttp.FieldPathPrefix},
 			routehttp.FieldHeaderMatches:      {Type: field.TypeJSON, Column: routehttp.FieldHeaderMatches},
+			routehttp.FieldMatchKey:           {Type: field.TypeString, Column: routehttp.FieldMatchKey},
 			routehttp.FieldTLSMode:            {Type: field.TypeEnum, Column: routehttp.FieldTLSMode},
 			routehttp.FieldCertificateID:      {Type: field.TypeString, Column: routehttp.FieldCertificateID},
 			routehttp.FieldPort80:             {Type: field.TypeEnum, Column: routehttp.FieldPort80},
@@ -1003,6 +1004,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			routehostname.FieldRouteType:      {Type: field.TypeEnum, Column: routehostname.FieldRouteType},
 			routehostname.FieldHostname:       {Type: field.TypeString, Column: routehostname.FieldHostname},
 			routehostname.FieldPathPrefix:     {Type: field.TypeString, Column: routehostname.FieldPathPrefix},
+			routehostname.FieldMatchKey:       {Type: field.TypeString, Column: routehostname.FieldMatchKey},
 			routehostname.FieldDomainID:       {Type: field.TypeString, Column: routehostname.FieldDomainID},
 		},
 	}
@@ -5242,6 +5244,11 @@ func (f *RouteHTTPFilter) WhereHeaderMatches(p entql.BytesP) {
 	f.Where(p.Field(routehttp.FieldHeaderMatches))
 }
 
+// WhereMatchKey applies the entql string predicate on the match_key field.
+func (f *RouteHTTPFilter) WhereMatchKey(p entql.StringP) {
+	f.Where(p.Field(routehttp.FieldMatchKey))
+}
+
 // WhereTLSMode applies the entql string predicate on the tls_mode field.
 func (f *RouteHTTPFilter) WhereTLSMode(p entql.StringP) {
 	f.Where(p.Field(routehttp.FieldTLSMode))
@@ -5398,6 +5405,11 @@ func (f *RouteHostnameFilter) WhereHostname(p entql.StringP) {
 // WherePathPrefix applies the entql string predicate on the path_prefix field.
 func (f *RouteHostnameFilter) WherePathPrefix(p entql.StringP) {
 	f.Where(p.Field(routehostname.FieldPathPrefix))
+}
+
+// WhereMatchKey applies the entql string predicate on the match_key field.
+func (f *RouteHostnameFilter) WhereMatchKey(p entql.StringP) {
+	f.Where(p.Field(routehostname.FieldMatchKey))
 }
 
 // WhereDomainID applies the entql string predicate on the domain_id field.

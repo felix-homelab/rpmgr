@@ -27,6 +27,12 @@ Changes to the design documents are not recorded here: see the git history and t
   version or starts one, and the instance setting `rollout_mode` says which kind the web UI starts,
   `easy` unless set. (#892, #893, #894, #895)
 
+- Routes: an http route can match on request headers, an exact value or presence alone, so that
+  routes share a hostname and path prefix and a header such as `X-Env: beta` chooses between them;
+  the route with more matching headers wins, the one created first a tie. Set with
+  `rpmgr create route`/`update route --match-header`, the API's `header_matches` and manifests; the
+  web UI follows. Gateways of earlier releases never get such a route. (#617, #618)
+
 ### Changed
 
 - Gateways: paths under `/.rpmgr/` on an http route's hostnames belong to the gateway and get its

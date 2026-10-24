@@ -11,6 +11,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
@@ -33553,7 +33554,9 @@ type RouteHTTPMutation struct {
 	id                      *int
 	org_id                  *string
 	path_prefix             *string
-	header_matches          *map[string]string
+	header_matches          *[]headermatch.Match
+	appendheader_matches    []headermatch.Match
+	match_key               *string
 	tls_mode                *routehttp.TLSMode
 	port80                  *routehttp.Port80
 	hsts_max_age_seconds    *int
@@ -33784,12 +33787,13 @@ func (m *RouteHTTPMutation) ResetPathPrefix() {
 }
 
 // SetHeaderMatches sets the "header_matches" field.
-func (m *RouteHTTPMutation) SetHeaderMatches(value map[string]string) {
-	m.header_matches = &value
+func (m *RouteHTTPMutation) SetHeaderMatches(h []headermatch.Match) {
+	m.header_matches = &h
+	m.appendheader_matches = nil
 }
 
 // HeaderMatches returns the value of the "header_matches" field in the mutation.
-func (m *RouteHTTPMutation) HeaderMatches() (r map[string]string, exists bool) {
+func (m *RouteHTTPMutation) HeaderMatches() (r []headermatch.Match, exists bool) {
 	v := m.header_matches
 	if v == nil {
 		return
@@ -33800,7 +33804,7 @@ func (m *RouteHTTPMutation) HeaderMatches() (r map[string]string, exists bool) {
 // OldHeaderMatches returns the old "header_matches" field's value of the RouteHTTP entity.
 // If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *RouteHTTPMutation) OldHeaderMatches(ctx context.Context) (v map[string]string, err error) {
+func (m *RouteHTTPMutation) OldHeaderMatches(ctx context.Context) (v []headermatch.Match, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldHeaderMatches is only allowed on UpdateOne operations")
 	}
@@ -33814,9 +33818,23 @@ func (m *RouteHTTPMutation) OldHeaderMatches(ctx context.Context) (v map[string]
 	return oldValue.HeaderMatches, nil
 }
 
+// AppendHeaderMatches adds h to the "header_matches" field.
+func (m *RouteHTTPMutation) AppendHeaderMatches(h []headermatch.Match) {
+	m.appendheader_matches = append(m.appendheader_matches, h...)
+}
+
+// AppendedHeaderMatches returns the list of values that were appended to the "header_matches" field in this mutation.
+func (m *RouteHTTPMutation) AppendedHeaderMatches() ([]headermatch.Match, bool) {
+	if len(m.appendheader_matches) == 0 {
+		return nil, false
+	}
+	return m.appendheader_matches, true
+}
+
 // ClearHeaderMatches clears the value of the "header_matches" field.
 func (m *RouteHTTPMutation) ClearHeaderMatches() {
 	m.header_matches = nil
+	m.appendheader_matches = nil
 	m.clearedFields[routehttp.FieldHeaderMatches] = struct{}{}
 }
 
@@ -33829,7 +33847,44 @@ func (m *RouteHTTPMutation) HeaderMatchesCleared() bool {
 // ResetHeaderMatches resets all changes to the "header_matches" field.
 func (m *RouteHTTPMutation) ResetHeaderMatches() {
 	m.header_matches = nil
+	m.appendheader_matches = nil
 	delete(m.clearedFields, routehttp.FieldHeaderMatches)
+}
+
+// SetMatchKey sets the "match_key" field.
+func (m *RouteHTTPMutation) SetMatchKey(s string) {
+	m.match_key = &s
+}
+
+// MatchKey returns the value of the "match_key" field in the mutation.
+func (m *RouteHTTPMutation) MatchKey() (r string, exists bool) {
+	v := m.match_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMatchKey returns the old "match_key" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldMatchKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMatchKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMatchKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMatchKey: %w", err)
+	}
+	return oldValue.MatchKey, nil
+}
+
+// ResetMatchKey resets all changes to the "match_key" field.
+func (m *RouteHTTPMutation) ResetMatchKey() {
+	m.match_key = nil
 }
 
 // SetTLSMode sets the "tls_mode" field.
@@ -34431,7 +34486,7 @@ func (m *RouteHTTPMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteHTTPMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.org_id != nil {
 		fields = append(fields, routehttp.FieldOrgID)
 	}
@@ -34443,6 +34498,9 @@ func (m *RouteHTTPMutation) Fields() []string {
 	}
 	if m.header_matches != nil {
 		fields = append(fields, routehttp.FieldHeaderMatches)
+	}
+	if m.match_key != nil {
+		fields = append(fields, routehttp.FieldMatchKey)
 	}
 	if m.tls_mode != nil {
 		fields = append(fields, routehttp.FieldTLSMode)
@@ -34496,6 +34554,8 @@ func (m *RouteHTTPMutation) Field(name string) (ent.Value, bool) {
 		return m.PathPrefix()
 	case routehttp.FieldHeaderMatches:
 		return m.HeaderMatches()
+	case routehttp.FieldMatchKey:
+		return m.MatchKey()
 	case routehttp.FieldTLSMode:
 		return m.TLSMode()
 	case routehttp.FieldCertificateID:
@@ -34537,6 +34597,8 @@ func (m *RouteHTTPMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldPathPrefix(ctx)
 	case routehttp.FieldHeaderMatches:
 		return m.OldHeaderMatches(ctx)
+	case routehttp.FieldMatchKey:
+		return m.OldMatchKey(ctx)
 	case routehttp.FieldTLSMode:
 		return m.OldTLSMode(ctx)
 	case routehttp.FieldCertificateID:
@@ -34592,11 +34654,18 @@ func (m *RouteHTTPMutation) SetField(name string, value ent.Value) error {
 		m.SetPathPrefix(v)
 		return nil
 	case routehttp.FieldHeaderMatches:
-		v, ok := value.(map[string]string)
+		v, ok := value.([]headermatch.Match)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetHeaderMatches(v)
+		return nil
+	case routehttp.FieldMatchKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMatchKey(v)
 		return nil
 	case routehttp.FieldTLSMode:
 		v, ok := value.(routehttp.TLSMode)
@@ -34797,6 +34866,9 @@ func (m *RouteHTTPMutation) ResetField(name string) error {
 	case routehttp.FieldHeaderMatches:
 		m.ResetHeaderMatches()
 		return nil
+	case routehttp.FieldMatchKey:
+		m.ResetMatchKey()
+		return nil
 	case routehttp.FieldTLSMode:
 		m.ResetTLSMode()
 		return nil
@@ -34940,6 +35012,7 @@ type RouteHostnameMutation struct {
 	route_type       *routehostname.RouteType
 	hostname         *string
 	path_prefix      *string
+	match_key        *string
 	clearedFields    map[string]struct{}
 	route            *string
 	clearedroute     bool
@@ -35264,6 +35337,42 @@ func (m *RouteHostnameMutation) ResetPathPrefix() {
 	m.path_prefix = nil
 }
 
+// SetMatchKey sets the "match_key" field.
+func (m *RouteHostnameMutation) SetMatchKey(s string) {
+	m.match_key = &s
+}
+
+// MatchKey returns the value of the "match_key" field in the mutation.
+func (m *RouteHostnameMutation) MatchKey() (r string, exists bool) {
+	v := m.match_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMatchKey returns the old "match_key" field's value of the RouteHostname entity.
+// If the RouteHostname object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHostnameMutation) OldMatchKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMatchKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMatchKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMatchKey: %w", err)
+	}
+	return oldValue.MatchKey, nil
+}
+
+// ResetMatchKey resets all changes to the "match_key" field.
+func (m *RouteHostnameMutation) ResetMatchKey() {
+	m.match_key = nil
+}
+
 // SetDomainID sets the "domain_id" field.
 func (m *RouteHostnameMutation) SetDomainID(s string) {
 	m.domain = &s
@@ -35388,7 +35497,7 @@ func (m *RouteHostnameMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteHostnameMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.org_id != nil {
 		fields = append(fields, routehostname.FieldOrgID)
 	}
@@ -35406,6 +35515,9 @@ func (m *RouteHostnameMutation) Fields() []string {
 	}
 	if m.path_prefix != nil {
 		fields = append(fields, routehostname.FieldPathPrefix)
+	}
+	if m.match_key != nil {
+		fields = append(fields, routehostname.FieldMatchKey)
 	}
 	if m.domain != nil {
 		fields = append(fields, routehostname.FieldDomainID)
@@ -35430,6 +35542,8 @@ func (m *RouteHostnameMutation) Field(name string) (ent.Value, bool) {
 		return m.Hostname()
 	case routehostname.FieldPathPrefix:
 		return m.PathPrefix()
+	case routehostname.FieldMatchKey:
+		return m.MatchKey()
 	case routehostname.FieldDomainID:
 		return m.DomainID()
 	}
@@ -35453,6 +35567,8 @@ func (m *RouteHostnameMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldHostname(ctx)
 	case routehostname.FieldPathPrefix:
 		return m.OldPathPrefix(ctx)
+	case routehostname.FieldMatchKey:
+		return m.OldMatchKey(ctx)
 	case routehostname.FieldDomainID:
 		return m.OldDomainID(ctx)
 	}
@@ -35505,6 +35621,13 @@ func (m *RouteHostnameMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPathPrefix(v)
+		return nil
+	case routehostname.FieldMatchKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMatchKey(v)
 		return nil
 	case routehostname.FieldDomainID:
 		v, ok := value.(string)
@@ -35579,6 +35702,9 @@ func (m *RouteHostnameMutation) ResetField(name string) error {
 		return nil
 	case routehostname.FieldPathPrefix:
 		m.ResetPathPrefix()
+		return nil
+	case routehostname.FieldMatchKey:
+		m.ResetMatchKey()
 		return nil
 	case routehostname.FieldDomainID:
 		m.ResetDomainID()

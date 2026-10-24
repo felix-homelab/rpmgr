@@ -47,7 +47,8 @@ func stored() *rpmgrv1.Route {
 		Description: "the NAS", Transport: rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC, PolicyIds: []string{"ap_2", "ap_1"},
 		Spec: &rpmgrv1.Route_Http{Http: &rpmgrv1.HTTPRouteSpec{Hostnames: []string{"nas.example.com"}, TlsMode: rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE,
 			CertificateId: "crt_1", RequestHeadersSet: map[string]string{"X-Env": "prod"}, Maintenance: true,
-			MaintenanceMessage: "Back at 18:00.\nSorry."}},
+			MaintenanceMessage: "Back at 18:00.\nSorry.", HeaderMatches: []*rpmgrv1.HeaderMatch{
+				{Name: "X-Env", Match: &rpmgrv1.HeaderMatch_Exact{Exact: "beta"}}, {Name: "X-Tenant", Match: &rpmgrv1.HeaderMatch_Present{Present: true}}}}},
 		Targets: []*rpmgrv1.RouteTarget{{Id: "rtt_1", ConnectorId: "con_1", Etag: "3", Enabled: true, Weight: 2,
 			Address:          &rpmgrv1.RouteTarget_HostPort{HostPort: &rpmgrv1.HostPort{Host: "192.168.10.20", Port: 5000}},
 			UpstreamProtocol: rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_HTTPS,
@@ -85,7 +86,8 @@ func TestRoute(t *testing.T) {
 	text, back := roundTrip(t, stored())
 	for _, want := range []string{"kind: Route\nmetadata:\n  name: nas-web\n  labels:\n    site: home\nspec:\n", "  gatewayGroup: eu\n",
 		"  policies:\n    - auth\n    - office\n", "    - connector: nas\n", "        caBundle: internal\n", "    tlsMode: TLS_MODE_CERTIFICATE\n",
-		"    certificateId: crt_1\n", "        port: 5000\n", "    maintenance: true\n", "    maintenanceMessage: |-\n      Back at 18:00.\n      Sorry.\n"} {
+		"    certificateId: crt_1\n", "        port: 5000\n", "    maintenance: true\n", "    maintenanceMessage: |-\n      Back at 18:00.\n      Sorry.\n",
+		"    headerMatches:\n      - exact: beta\n        name: X-Env\n      - name: X-Tenant\n        present: true\n"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the manifest lacks %q:\n%s", want, text)
 		}

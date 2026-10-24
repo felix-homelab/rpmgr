@@ -147,6 +147,7 @@ func TestCreateRoute(t *testing.T) {
 		"two types":              {"--tcp", "--udp", "--name", "x", "--group", "eu"},
 		"a hostname on tcp":      {"--tcp", "--name", "x", "--group", "eu", "--hostname", "a.example.com"},
 		"maintenance on tcp":     {"--tcp", "--name", "x", "--group", "eu", "--maintenance"},
+		"a header match on tcp":  {"--tcp", "--name", "x", "--group", "eu", "--match-header", "X-Env=a"},
 		"a message on udp":       {"--udp", "--name", "x", "--group", "eu", "--maintenance-message", "back soon"},
 		"a port on http":         {"--http", "--name", "x", "--group", "eu", "--hostname", "a.example.com", "--port", "80"},
 		"a name the API refuses": {"--http", "--name", "Not_A_Name", "--group", "eu", "--hostname", "a.example.com"},
@@ -236,6 +237,36 @@ func TestUpdateRoute(t *testing.T) {
 	}
 	a.route.PolicyIds, a.route.Labels = nil, nil
 	a.route.GetHttp().RequestHeadersSet = nil
+	// Header matches (D135): Name=value is an exact value, Name alone presence; empty removes them.
+	if code, _, errOut := runWith(env, "", "update", "route", "--match-header", "X-Env=beta", "--match-header", "X-Tenant", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"http.header_matches"}) ||
+		len(a.updated.GetRoute().GetHttp().GetHeaderMatches()) != 2 ||
+		a.updated.GetRoute().GetHttp().GetHeaderMatches()[0].GetExact() != "beta" || !a.updated.GetRoute().GetHttp().GetHeaderMatches()[1].GetPresent() {
+		t.Fatalf("header matches: %d %q %v", code, errOut, a.updated)
+	}
+	a.route.GetHttp().HeaderMatches = []*rpmgrv1.HeaderMatch{{Name: "X-Env", Match: &rpmgrv1.HeaderMatch_Exact{Exact: "beta"}}}
+	if code, _, errOut := runWith(env, "", "update", "route", "--match-header", "", "rt_1"); code != cli.ExitOK ||
+		len(a.updated.GetRoute().GetHttp().GetHeaderMatches()) != 0 || !slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"http.header_matches"}) {
+		t.Fatalf("header matches removed: %d %q %v", code, errOut, a.updated)
+	}
+	a.route.GetHttp().HeaderMatches = nil
+	calls = a.calls
+	nine := []string{"update", "route"}
+	for i := range 9 {
+		nine = append(nine, "--match-header", "X-"+strings.Repeat("a", i+1))
+	}
+	for name, args := range map[string][]string{
+		"nine matches":         append(nine, "rt_1"),
+		"an empty exact value": {"update", "route", "--match-header", "X-Env=", "rt_1"},
+		"a bad header name":    {"update", "route", "--match-header", "X Env=a", "rt_1"},
+	} {
+		if code, _, errOut := runWith(env, "", args...); code != cli.ExitUsage {
+			t.Errorf("%s: exit %d %q", name, code, errOut)
+		}
+	}
+	if a.calls != calls {
+		t.Errorf("refused header matches reached the API %d times", a.calls-calls)
+	}
 	// A route is named by its ID or its name.
 	if code, _, errOut := runWith(env, "", "update", "route", "--port80", "redirect", "web"); code != cli.ExitOK ||
 		a.updated.GetRoute().GetId() != "rt_1" || a.updated.GetRoute().GetHttp().GetPort80() != rpmgrv1.Port80Mode_PORT80_MODE_REDIRECT {

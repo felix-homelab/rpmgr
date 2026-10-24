@@ -1266,6 +1266,7 @@ var (
 		{Name: "org_id", Type: field.TypeString},
 		{Name: "path_prefix", Type: field.TypeString, Default: ""},
 		{Name: "header_matches", Type: field.TypeJSON, Nullable: true},
+		{Name: "match_key", Type: field.TypeString, Default: ""},
 		{Name: "tls_mode", Type: field.TypeEnum, Enums: []string{"acme", "certificate"}, Default: "acme"},
 		{Name: "port80", Type: field.TypeEnum, Enums: []string{"redirect", "serve", "off"}, Default: "redirect"},
 		{Name: "hsts_max_age_seconds", Type: field.TypeInt, Default: 0},
@@ -1288,13 +1289,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "route_http_routes_route",
-				Columns:    []*schema.Column{RouteHTTPColumns[15]},
+				Columns:    []*schema.Column{RouteHTTPColumns[16]},
 				RefColumns: []*schema.Column{RoutesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_http_certificates_certificate",
-				Columns:    []*schema.Column{RouteHTTPColumns[16]},
+				Columns:    []*schema.Column{RouteHTTPColumns[17]},
 				RefColumns: []*schema.Column{CertificatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1308,12 +1309,12 @@ var (
 			{
 				Name:    "routehttp_route_id",
 				Unique:  true,
-				Columns: []*schema.Column{RouteHTTPColumns[15]},
+				Columns: []*schema.Column{RouteHTTPColumns[16]},
 			},
 			{
 				Name:    "routehttp_certificate_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteHTTPColumns[16]},
+				Columns: []*schema.Column{RouteHTTPColumns[17]},
 			},
 		},
 	}
@@ -1325,6 +1326,7 @@ var (
 		{Name: "route_type", Type: field.TypeEnum, Enums: []string{"http", "tls_passthrough"}},
 		{Name: "hostname", Type: field.TypeString, Size: 253},
 		{Name: "path_prefix", Type: field.TypeString, Default: ""},
+		{Name: "match_key", Type: field.TypeString, Default: ""},
 		{Name: "route_id", Type: field.TypeString},
 		{Name: "domain_id", Type: field.TypeString},
 	}
@@ -1336,13 +1338,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "route_hostnames_routes_route",
-				Columns:    []*schema.Column{RouteHostnamesColumns[6]},
+				Columns:    []*schema.Column{RouteHostnamesColumns[7]},
 				RefColumns: []*schema.Column{RoutesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_hostnames_domains_domain",
-				Columns:    []*schema.Column{RouteHostnamesColumns[7]},
+				Columns:    []*schema.Column{RouteHostnamesColumns[8]},
 				RefColumns: []*schema.Column{DomainsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -1354,14 +1356,14 @@ var (
 				Columns: []*schema.Column{RouteHostnamesColumns[1], RouteHostnamesColumns[0]},
 			},
 			{
-				Name:    "routehostname_gateway_group_id_hostname_path_prefix",
+				Name:    "routehostname_gateway_group_id_hostname_path_prefix_match_key",
 				Unique:  true,
-				Columns: []*schema.Column{RouteHostnamesColumns[2], RouteHostnamesColumns[4], RouteHostnamesColumns[5]},
+				Columns: []*schema.Column{RouteHostnamesColumns[2], RouteHostnamesColumns[4], RouteHostnamesColumns[5], RouteHostnamesColumns[6]},
 			},
 			{
 				Name:    "routehostname_route_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteHostnamesColumns[6]},
+				Columns: []*schema.Column{RouteHostnamesColumns[7]},
 			},
 		},
 	}

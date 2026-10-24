@@ -772,6 +772,7 @@ rpmgr create route [flags]
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
+| `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
@@ -1033,6 +1034,7 @@ rpmgr update route [flags] <id or name>
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
+| `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
@@ -1446,6 +1448,7 @@ rpmgr preview route [flags]
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
+| `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |

@@ -288,6 +288,34 @@ message HTTPRouteSpec {
     max_len: 500
     pattern: "^[^\\x00-\\x09\\x0B-\\x1F\\x7F-\\x9F]*$"
   }];
+  // Request headers a request must carry for this route (docs/03-connections.md, "HTTP routes"):
+  // among the routes of a hostname and path prefix, one whose matches all hold wins over one with
+  // fewer, and the route created first wins a tie. A route of a group with the same hostname,
+  // path prefix and set of matches as another is refused.
+  repeated HeaderMatch header_matches = 14 [(buf.validate.field).repeated.max_items = 8];
+}
+
+// HeaderMatch is a request header an http route matches on: its name, with an exact value or
+// with presence alone.
+message HeaderMatch {
+  // The header's name, compared without regard to case; not Host or an Rpmgr-User- header.
+  string name = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 256
+    well_known_regex: KNOWN_REGEX_HTTP_HEADER_NAME
+  }];
+  // How it matches.
+  oneof match {
+    option (buf.validate.oneof).required = true;
+    // One of the header's values equals this exactly.
+    string exact = 2 [(buf.validate.field).string = {
+      min_len: 1
+      max_len: 1024
+      well_known_regex: KNOWN_REGEX_HTTP_HEADER_VALUE
+    }];
+    // The header is present, with any value; must be true.
+    bool present = 3 [(buf.validate.field).bool.const = true];
+  }
 }
 
 // TCPRouteSpec is a tcp route: a public port of the gateway group, from its TCP port pools.
