@@ -20,6 +20,8 @@ const (
 	FieldVersion = "version"
 	// FieldReleaseID holds the string denoting the release_id field in the database.
 	FieldReleaseID = "release_id"
+	// FieldMode holds the string denoting the mode field in the database.
+	FieldMode = "mode"
 	// FieldStage holds the string denoting the stage field in the database.
 	FieldStage = "stage"
 	// FieldPercentage holds the string denoting the percentage field in the database.
@@ -56,6 +58,7 @@ var Columns = []string{
 	FieldID,
 	FieldVersion,
 	FieldReleaseID,
+	FieldMode,
 	FieldStage,
 	FieldPercentage,
 	FieldState,
@@ -115,6 +118,32 @@ var (
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
+
+// Mode defines the type for the "mode" enum field.
+type Mode string
+
+// ModeAdvanced is the default value of the Mode enum.
+const DefaultMode = ModeAdvanced
+
+// Mode values.
+const (
+	ModeAdvanced Mode = "advanced"
+	ModeEasy     Mode = "easy"
+)
+
+func (m Mode) String() string {
+	return string(m)
+}
+
+// ModeValidator is a validator for the "mode" field enum values. It is called by the builders before save.
+func ModeValidator(m Mode) error {
+	switch m {
+	case ModeAdvanced, ModeEasy:
+		return nil
+	default:
+		return fmt.Errorf("rollout: invalid enum value for mode field: %q", m)
+	}
+}
 
 // Stage defines the type for the "stage" enum field.
 type Stage string
@@ -187,6 +216,11 @@ func ByVersion(opts ...sql.OrderTermOption) OrderOption {
 // ByReleaseID orders the results by the release_id field.
 func ByReleaseID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldReleaseID, opts...).ToFunc()
+}
+
+// ByMode orders the results by the mode field.
+func ByMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMode, opts...).ToFunc()
 }
 
 // ByStage orders the results by the stage field.

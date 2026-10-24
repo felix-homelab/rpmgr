@@ -30397,6 +30397,7 @@ type RolloutMutation struct {
 	id             *string
 	version        *int64
 	addversion     *int64
+	mode           *rollout.Mode
 	stage          *rollout.Stage
 	percentage     *int
 	addpercentage  *int
@@ -30609,6 +30610,42 @@ func (m *RolloutMutation) OldReleaseID(ctx context.Context) (v string, err error
 // ResetReleaseID resets all changes to the "release_id" field.
 func (m *RolloutMutation) ResetReleaseID() {
 	m.release = nil
+}
+
+// SetMode sets the "mode" field.
+func (m *RolloutMutation) SetMode(r rollout.Mode) {
+	m.mode = &r
+}
+
+// Mode returns the value of the "mode" field in the mutation.
+func (m *RolloutMutation) Mode() (r rollout.Mode, exists bool) {
+	v := m.mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMode returns the old "mode" field's value of the Rollout entity.
+// If the Rollout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutMutation) OldMode(ctx context.Context) (v rollout.Mode, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMode: %w", err)
+	}
+	return oldValue.Mode, nil
+}
+
+// ResetMode resets all changes to the "mode" field.
+func (m *RolloutMutation) ResetMode() {
+	m.mode = nil
 }
 
 // SetStage sets the "stage" field.
@@ -31016,12 +31053,15 @@ func (m *RolloutMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RolloutMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.version != nil {
 		fields = append(fields, rollout.FieldVersion)
 	}
 	if m.release != nil {
 		fields = append(fields, rollout.FieldReleaseID)
+	}
+	if m.mode != nil {
+		fields = append(fields, rollout.FieldMode)
 	}
 	if m.stage != nil {
 		fields = append(fields, rollout.FieldStage)
@@ -31062,6 +31102,8 @@ func (m *RolloutMutation) Field(name string) (ent.Value, bool) {
 		return m.Version()
 	case rollout.FieldReleaseID:
 		return m.ReleaseID()
+	case rollout.FieldMode:
+		return m.Mode()
 	case rollout.FieldStage:
 		return m.Stage()
 	case rollout.FieldPercentage:
@@ -31093,6 +31135,8 @@ func (m *RolloutMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldVersion(ctx)
 	case rollout.FieldReleaseID:
 		return m.OldReleaseID(ctx)
+	case rollout.FieldMode:
+		return m.OldMode(ctx)
 	case rollout.FieldStage:
 		return m.OldStage(ctx)
 	case rollout.FieldPercentage:
@@ -31133,6 +31177,13 @@ func (m *RolloutMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetReleaseID(v)
+		return nil
+	case rollout.FieldMode:
+		v, ok := value.(rollout.Mode)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMode(v)
 		return nil
 	case rollout.FieldStage:
 		v, ok := value.(rollout.Stage)
@@ -31279,6 +31330,9 @@ func (m *RolloutMutation) ResetField(name string) error {
 	case rollout.FieldReleaseID:
 		m.ResetReleaseID()
 		return nil
+	case rollout.FieldMode:
+		m.ResetMode()
+		return nil
 	case rollout.FieldStage:
 		m.ResetStage()
 		return nil
@@ -31395,6 +31449,8 @@ type RolloutTargetMutation struct {
 	canary           *bool
 	bucket           *int
 	addbucket        *int
+	position         *int
+	addposition      *int
 	state            *rollouttarget.State
 	reason           *string
 	version_before   *string
@@ -31712,6 +31768,76 @@ func (m *RolloutTargetMutation) ResetBucket() {
 	m.addbucket = nil
 }
 
+// SetPosition sets the "position" field.
+func (m *RolloutTargetMutation) SetPosition(i int) {
+	m.position = &i
+	m.addposition = nil
+}
+
+// Position returns the value of the "position" field in the mutation.
+func (m *RolloutTargetMutation) Position() (r int, exists bool) {
+	v := m.position
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPosition returns the old "position" field's value of the RolloutTarget entity.
+// If the RolloutTarget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RolloutTargetMutation) OldPosition(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPosition is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPosition requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPosition: %w", err)
+	}
+	return oldValue.Position, nil
+}
+
+// AddPosition adds i to the "position" field.
+func (m *RolloutTargetMutation) AddPosition(i int) {
+	if m.addposition != nil {
+		*m.addposition += i
+	} else {
+		m.addposition = &i
+	}
+}
+
+// AddedPosition returns the value that was added to the "position" field in this mutation.
+func (m *RolloutTargetMutation) AddedPosition() (r int, exists bool) {
+	v := m.addposition
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPosition clears the value of the "position" field.
+func (m *RolloutTargetMutation) ClearPosition() {
+	m.position = nil
+	m.addposition = nil
+	m.clearedFields[rollouttarget.FieldPosition] = struct{}{}
+}
+
+// PositionCleared returns if the "position" field was cleared in this mutation.
+func (m *RolloutTargetMutation) PositionCleared() bool {
+	_, ok := m.clearedFields[rollouttarget.FieldPosition]
+	return ok
+}
+
+// ResetPosition resets all changes to the "position" field.
+func (m *RolloutTargetMutation) ResetPosition() {
+	m.position = nil
+	m.addposition = nil
+	delete(m.clearedFields, rollouttarget.FieldPosition)
+}
+
 // SetState sets the "state" field.
 func (m *RolloutTargetMutation) SetState(r rollouttarget.State) {
 	m.state = &r
@@ -31966,7 +32092,7 @@ func (m *RolloutTargetMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RolloutTargetMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.rollout != nil {
 		fields = append(fields, rollouttarget.FieldRolloutID)
 	}
@@ -31981,6 +32107,9 @@ func (m *RolloutTargetMutation) Fields() []string {
 	}
 	if m.bucket != nil {
 		fields = append(fields, rollouttarget.FieldBucket)
+	}
+	if m.position != nil {
+		fields = append(fields, rollouttarget.FieldPosition)
 	}
 	if m.state != nil {
 		fields = append(fields, rollouttarget.FieldState)
@@ -32015,6 +32144,8 @@ func (m *RolloutTargetMutation) Field(name string) (ent.Value, bool) {
 		return m.Canary()
 	case rollouttarget.FieldBucket:
 		return m.Bucket()
+	case rollouttarget.FieldPosition:
+		return m.Position()
 	case rollouttarget.FieldState:
 		return m.State()
 	case rollouttarget.FieldReason:
@@ -32044,6 +32175,8 @@ func (m *RolloutTargetMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldCanary(ctx)
 	case rollouttarget.FieldBucket:
 		return m.OldBucket(ctx)
+	case rollouttarget.FieldPosition:
+		return m.OldPosition(ctx)
 	case rollouttarget.FieldState:
 		return m.OldState(ctx)
 	case rollouttarget.FieldReason:
@@ -32098,6 +32231,13 @@ func (m *RolloutTargetMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetBucket(v)
 		return nil
+	case rollouttarget.FieldPosition:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPosition(v)
+		return nil
 	case rollouttarget.FieldState:
 		v, ok := value.(rollouttarget.State)
 		if !ok {
@@ -32144,6 +32284,9 @@ func (m *RolloutTargetMutation) AddedFields() []string {
 	if m.addbucket != nil {
 		fields = append(fields, rollouttarget.FieldBucket)
 	}
+	if m.addposition != nil {
+		fields = append(fields, rollouttarget.FieldPosition)
+	}
 	return fields
 }
 
@@ -32154,6 +32297,8 @@ func (m *RolloutTargetMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case rollouttarget.FieldBucket:
 		return m.AddedBucket()
+	case rollouttarget.FieldPosition:
+		return m.AddedPosition()
 	}
 	return nil, false
 }
@@ -32170,6 +32315,13 @@ func (m *RolloutTargetMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddBucket(v)
 		return nil
+	case rollouttarget.FieldPosition:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPosition(v)
+		return nil
 	}
 	return fmt.Errorf("unknown RolloutTarget numeric field %s", name)
 }
@@ -32178,6 +32330,9 @@ func (m *RolloutTargetMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *RolloutTargetMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(rollouttarget.FieldPosition) {
+		fields = append(fields, rollouttarget.FieldPosition)
+	}
 	if m.FieldCleared(rollouttarget.FieldDrainStartedAt) {
 		fields = append(fields, rollouttarget.FieldDrainStartedAt)
 	}
@@ -32195,6 +32350,9 @@ func (m *RolloutTargetMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *RolloutTargetMutation) ClearField(name string) error {
 	switch name {
+	case rollouttarget.FieldPosition:
+		m.ClearPosition()
+		return nil
 	case rollouttarget.FieldDrainStartedAt:
 		m.ClearDrainStartedAt()
 		return nil
@@ -32220,6 +32378,9 @@ func (m *RolloutTargetMutation) ResetField(name string) error {
 		return nil
 	case rollouttarget.FieldBucket:
 		m.ResetBucket()
+		return nil
+	case rollouttarget.FieldPosition:
+		m.ResetPosition()
 		return nil
 	case rollouttarget.FieldState:
 		m.ResetState()

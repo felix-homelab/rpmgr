@@ -2305,33 +2305,33 @@ func init() {
 	// rollout.ReleaseIDValidator is a validator for the "release_id" field. It is called by the builders before save.
 	rollout.ReleaseIDValidator = rolloutDescReleaseID.Validators[0].(func(string) error)
 	// rolloutDescPercentage is the schema descriptor for percentage field.
-	rolloutDescPercentage := rolloutFields[3].Descriptor()
+	rolloutDescPercentage := rolloutFields[4].Descriptor()
 	// rollout.DefaultPercentage holds the default value on creation for the percentage field.
 	rollout.DefaultPercentage = rolloutDescPercentage.Default.(int)
 	// rollout.PercentageValidator is a validator for the "percentage" field. It is called by the builders before save.
 	rollout.PercentageValidator = rolloutDescPercentage.Validators[0].(func(int) error)
 	// rolloutDescActive is the schema descriptor for active field.
-	rolloutDescActive := rolloutFields[5].Descriptor()
+	rolloutDescActive := rolloutFields[6].Descriptor()
 	// rollout.DefaultActive holds the default value on creation for the active field.
 	rollout.DefaultActive = rolloutDescActive.Default.(bool)
 	// rolloutDescPauseReason is the schema descriptor for pause_reason field.
-	rolloutDescPauseReason := rolloutFields[6].Descriptor()
+	rolloutDescPauseReason := rolloutFields[7].Descriptor()
 	// rollout.DefaultPauseReason holds the default value on creation for the pause_reason field.
 	rollout.DefaultPauseReason = rolloutDescPauseReason.Default.(string)
 	// rolloutDescCreatedBy is the schema descriptor for created_by field.
-	rolloutDescCreatedBy := rolloutFields[7].Descriptor()
+	rolloutDescCreatedBy := rolloutFields[8].Descriptor()
 	// rollout.CreatedByValidator is a validator for the "created_by" field. It is called by the builders before save.
 	rollout.CreatedByValidator = rolloutDescCreatedBy.Validators[0].(func(string) error)
 	// rolloutDescCreatedAt is the schema descriptor for created_at field.
-	rolloutDescCreatedAt := rolloutFields[8].Descriptor()
+	rolloutDescCreatedAt := rolloutFields[9].Descriptor()
 	// rollout.DefaultCreatedAt holds the default value on creation for the created_at field.
 	rollout.DefaultCreatedAt = rolloutDescCreatedAt.Default.(func() time.Time)
 	// rolloutDescUpdatedBy is the schema descriptor for updated_by field.
-	rolloutDescUpdatedBy := rolloutFields[9].Descriptor()
+	rolloutDescUpdatedBy := rolloutFields[10].Descriptor()
 	// rollout.DefaultUpdatedBy holds the default value on creation for the updated_by field.
 	rollout.DefaultUpdatedBy = rolloutDescUpdatedBy.Default.(string)
 	// rolloutDescUpdatedAt is the schema descriptor for updated_at field.
-	rolloutDescUpdatedAt := rolloutFields[10].Descriptor()
+	rolloutDescUpdatedAt := rolloutFields[11].Descriptor()
 	// rollout.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	rollout.DefaultUpdatedAt = rolloutDescUpdatedAt.Default.(func() time.Time)
 	// rollout.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -2389,16 +2389,20 @@ func init() {
 	rollouttargetDescBucket := rollouttargetFields[5].Descriptor()
 	// rollouttarget.BucketValidator is a validator for the "bucket" field. It is called by the builders before save.
 	rollouttarget.BucketValidator = rollouttargetDescBucket.Validators[0].(func(int) error)
+	// rollouttargetDescPosition is the schema descriptor for position field.
+	rollouttargetDescPosition := rollouttargetFields[6].Descriptor()
+	// rollouttarget.PositionValidator is a validator for the "position" field. It is called by the builders before save.
+	rollouttarget.PositionValidator = rollouttargetDescPosition.Validators[0].(func(int) error)
 	// rollouttargetDescReason is the schema descriptor for reason field.
-	rollouttargetDescReason := rollouttargetFields[7].Descriptor()
+	rollouttargetDescReason := rollouttargetFields[8].Descriptor()
 	// rollouttarget.DefaultReason holds the default value on creation for the reason field.
 	rollouttarget.DefaultReason = rollouttargetDescReason.Default.(string)
 	// rollouttargetDescVersionBefore is the schema descriptor for version_before field.
-	rollouttargetDescVersionBefore := rollouttargetFields[8].Descriptor()
+	rollouttargetDescVersionBefore := rollouttargetFields[9].Descriptor()
 	// rollouttarget.DefaultVersionBefore holds the default value on creation for the version_before field.
 	rollouttarget.DefaultVersionBefore = rollouttargetDescVersionBefore.Default.(string)
 	// rollouttargetDescUpdatedAt is the schema descriptor for updated_at field.
-	rollouttargetDescUpdatedAt := rollouttargetFields[10].Descriptor()
+	rollouttargetDescUpdatedAt := rollouttargetFields[11].Descriptor()
 	// rollouttarget.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	rollouttarget.DefaultUpdatedAt = rollouttargetDescUpdatedAt.Default.(func() time.Time)
 	// rollouttarget.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

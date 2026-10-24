@@ -22,6 +22,8 @@ type Rollout struct {
 	Version int64 `json:"version,omitempty"`
 	// ReleaseID holds the value of the "release_id" field.
 	ReleaseID string `json:"release_id,omitempty"`
+	// Mode holds the value of the "mode" field.
+	Mode rollout.Mode `json:"mode,omitempty"`
 	// Stage holds the value of the "stage" field.
 	Stage rollout.Stage `json:"stage,omitempty"`
 	// Percentage holds the value of the "percentage" field.
@@ -75,7 +77,7 @@ func (*Rollout) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case rollout.FieldVersion, rollout.FieldPercentage:
 			values[i] = new(sql.NullInt64)
-		case rollout.FieldID, rollout.FieldReleaseID, rollout.FieldStage, rollout.FieldState, rollout.FieldPauseReason, rollout.FieldCreatedBy, rollout.FieldUpdatedBy:
+		case rollout.FieldID, rollout.FieldReleaseID, rollout.FieldMode, rollout.FieldStage, rollout.FieldState, rollout.FieldPauseReason, rollout.FieldCreatedBy, rollout.FieldUpdatedBy:
 			values[i] = new(sql.NullString)
 		case rollout.FieldCreatedAt, rollout.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -111,6 +113,12 @@ func (_m *Rollout) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field release_id", values[i])
 			} else if value.Valid {
 				_m.ReleaseID = value.String
+			}
+		case rollout.FieldMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field mode", values[i])
+			} else if value.Valid {
+				_m.Mode = rollout.Mode(value.String)
 			}
 		case rollout.FieldStage:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -212,6 +220,9 @@ func (_m *Rollout) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("release_id=")
 	builder.WriteString(_m.ReleaseID)
+	builder.WriteString(", ")
+	builder.WriteString("mode=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Mode))
 	builder.WriteString(", ")
 	builder.WriteString("stage=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Stage))

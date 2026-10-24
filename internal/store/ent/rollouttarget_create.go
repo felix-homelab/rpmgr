@@ -59,6 +59,20 @@ func (_c *RolloutTargetCreate) SetBucket(v int) *RolloutTargetCreate {
 	return _c
 }
 
+// SetPosition sets the "position" field.
+func (_c *RolloutTargetCreate) SetPosition(v int) *RolloutTargetCreate {
+	_c.mutation.SetPosition(v)
+	return _c
+}
+
+// SetNillablePosition sets the "position" field if the given value is not nil.
+func (_c *RolloutTargetCreate) SetNillablePosition(v *int) *RolloutTargetCreate {
+	if v != nil {
+		_c.SetPosition(*v)
+	}
+	return _c
+}
+
 // SetState sets the "state" field.
 func (_c *RolloutTargetCreate) SetState(v rollouttarget.State) *RolloutTargetCreate {
 	_c.mutation.SetState(v)
@@ -255,6 +269,11 @@ func (_c *RolloutTargetCreate) check() error {
 			return &ValidationError{Name: "bucket", err: fmt.Errorf(`ent: validator failed for field "RolloutTarget.bucket": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.Position(); ok {
+		if err := rollouttarget.PositionValidator(v); err != nil {
+			return &ValidationError{Name: "position", err: fmt.Errorf(`ent: validator failed for field "RolloutTarget.position": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.State(); !ok {
 		return &ValidationError{Name: "state", err: errors.New(`ent: missing required field "RolloutTarget.state"`)}
 	}
@@ -330,6 +349,10 @@ func (_c *RolloutTargetCreate) createSpec() (*RolloutTarget, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.Bucket(); ok {
 		_spec.SetField(rollouttarget.FieldBucket, field.TypeInt, value)
 		_node.Bucket = value
+	}
+	if value, ok := _c.mutation.Position(); ok {
+		_spec.SetField(rollouttarget.FieldPosition, field.TypeInt, value)
+		_node.Position = &value
 	}
 	if value, ok := _c.mutation.State(); ok {
 		_spec.SetField(rollouttarget.FieldState, field.TypeEnum, value)
