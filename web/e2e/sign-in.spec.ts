@@ -108,6 +108,12 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   let rollout: "none" | "running" = "none";
   await fakeUpdates(page, () => rollout);
   await page.reload();
+  // Check now asks for a release check, and the page shows how the last one ended (#890).
+  const releasesCard = page.getByRole("region", { name: "Releases" });
+  await expect(releasesCard.getByRole("status")).toHaveText(/^Last checked .*: ok$/);
+  await releasesCard.getByRole("button", { name: "Check now" }).click();
+  await expect(releasesCard.getByRole("button", { name: "Check now" })).toBeEnabled();
+  await expectAccessible(page);
   await page.getByRole("button", { name: "Roll out…" }).first().click();
   const start = page.getByRole("dialog", { name: "Roll out 0.2.0" });
   await expect(start.getByRole("checkbox", { name: /^gw-eu-1/ })).toBeChecked();

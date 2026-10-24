@@ -3,16 +3,17 @@
 import { ConnectError } from "@connectrpc/connect";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, CircleDashed, FileUp, Upload } from "lucide-react";
+import { CircleCheck, CircleDashed, FileUp, LoaderCircle, RefreshCw, Upload } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
-import { ReleaseService, ReleaseSource, type Release } from "@/gen/rpmgr/v1/release_pb";
+import { ReleaseCheckOutcome, ReleaseService, ReleaseSource, type Release, type ReleaseCheck } from "@/gen/rpmgr/v1/release_pb";
 import { UpdateChannel } from "@/gen/rpmgr/v1/settings_pb";
 import { Reason, reasonOf } from "@/lib/errors";
+import { when } from "@/lib/format";
 import { InstanceAdminPage, InstanceSettingsSection } from "@/pages/settings";
 import { ActiveRollout, RolloutDialog } from "@/pages/updates-rollout";
 import { useStepUp } from "@/step-up";
@@ -41,14 +42,23 @@ export function Updates() {
 // Releases lists the releases the controller verified and starts a rollout of one of them.
 function Releases() {
   const { t } = useTranslation();
-  const list = useQuery(ReleaseService.method.listReleases, { pageSize: 200 });
+  // While a release check runs, the list asks again every 2 s, so its releases appear as it ends.
+  const list = useQuery(ReleaseService.method.listReleases, { pageSize: 200 },
+    { refetchInterval: (q) => (q.state.data?.releaseCheck?.running ? 2000 : false) });
   const active = useQuery(ReleaseService.method.listRollouts, { activeOnly: true });
   const [uploading, setUploading] = useState(false);
   const [rolling, setRolling] = useState<Release>();
+  const [checkError, setCheckError] = useState("");
   const running = active.data?.rollouts[0];
   return (
     <>
-      <Card title={t("updates.releases")} actions={<Button size="sm" variant="outline" onClick={() => setUploading(true)}>{t("updates.upload")}</Button>}>
+      <Card title={t("updates.releases")} actions={
+        <div className="flex gap-2">
+          <CheckNow check={list.data?.releaseCheck} onError={setCheckError} />
+          <Button size="sm" variant="outline" onClick={() => setUploading(true)}>{t("updates.upload")}</Button>
+        </div>}>
+        <CheckState check={list.data?.releaseCheck} />
+        {checkError && <Alert>{checkError}</Alert>}
         {list.error && <Alert>{ConnectError.from(list.error).rawMessage}</Alert>}
         {list.data && (
           <Table framed={false}>
@@ -79,6 +89,47 @@ function Releases() {
       {rolling && <RolloutDialog release={rolling} onClose={() => setRolling(undefined)} />}
     </>
   );
+}
+
+// CheckNow asks the controller's release check to run at once (#890); the list then follows it.
+function CheckNow({ check, onError }: { check?: ReleaseCheck; onError: (message: string) => void }) {
+  const { t } = useTranslation();
+  const ask = useMutation(ReleaseService.method.checkReleases);
+  const queryClient = useQueryClient();
+  if (!check || check.outcome === ReleaseCheckOutcome.NONE) return null;
+  const busy = check.running || ask.isPending;
+  async function run() {
+    onError("");
+    try {
+      await ask.mutateAsync({});
+    } catch (err) {
+      onError(ConnectError.from(err).rawMessage);
+    }
+    await queryClient.invalidateQueries();
+  }
+  return (
+    <Button size="sm" variant="outline" disabled={busy} onClick={run}>
+      {busy
+        ? <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
+        : <RefreshCw aria-hidden="true" />}
+      {t("updates.checkNow")}
+    </Button>
+  );
+}
+
+// CheckState says when the release check last ended and how, or that it runs now.
+function CheckState({ check }: { check?: ReleaseCheck }) {
+  const { t } = useTranslation();
+  if (!check) return null;
+  let text: string;
+  if (check.running) text = t("updates.checking");
+  else if (check.outcome === ReleaseCheckOutcome.NONE) text = t("updates.checkNone");
+  else if (check.outcome === ReleaseCheckOutcome.OK) text = t("updates.checkResult.ok", { when: when(check.checkTime) });
+  else if (check.outcome === ReleaseCheckOutcome.FAILED) text = t("updates.checkResult.failed", { when: when(check.checkTime), error: check.error });
+  else if (check.outcome === ReleaseCheckOutcome.OFF) text = t("updates.checkResult.off", { when: when(check.checkTime) });
+  else text = t("updates.checkNever");
+  const failed = !check.running && check.outcome === ReleaseCheckOutcome.FAILED;
+  return <p role="status" className={`mb-3 text-sm ${failed ? "text-warn" : "text-muted-foreground"}`}>{text}</p>;
 }
 
 // uploadFiles are the four signed files of a release upload, with the names a GitHub release gives

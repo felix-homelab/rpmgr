@@ -966,7 +966,11 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    - **When it checks:** at start, then daily, while the release check is on, and when a rollout
      needs a release it has not kept yet, also while the release check is off: creating such a
      rollout, or uploading a manifest the mirror does not hold, starts a check at once
-     ([D125](14-open-decisions.md#engineering)). A failed or rate-limited check is tried again sooner
+     ([D125](14-open-decisions.md#engineering)). While the release check is on, an Instance Admin
+     can also start one at once with "Check now" (`ReleaseService.CheckReleases`), audited, which
+     joins a check that runs and waits out a short gap after the last one and the source's rate
+     limit ([03](03-connections.md#timeouts-keepalive-and-backoff)); the controller reports when
+     its last check ended and how: ok, failed with its error, or off (#890). A failed or rate-limited check is tried again sooner
      ([03](03-connections.md#timeouts-keepalive-and-backoff)). Each controller keeps its own copy
      on its disk, so each one checks; the release's "mirrored" mark tells the time the checking
      controller last held it complete.

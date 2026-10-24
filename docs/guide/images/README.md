@@ -12,9 +12,11 @@ Lab", in the light theme, in a window of 1440 × 900 pixels. Most pages are show
 public pages, the dialogs and a few pages, such as `audit.png`, `gateways.png` and
 `settings-updates.png`, show only the window, so a page longer than the window is cut off at its
 foot. `mobile-menu.png` alone shows a phone's screen, 390 × 844 pixels, as the menu exists only on
-small screens. The `rollout*.png` pictures show only the start dialog or the rollout's card; the
-installation has no signed release, so the browser is given made-up answers about the releases,
-the rollout and the agents (`web/e2e/rollout-fakes.ts`).
+small screens. The `rollout*.png` pictures show only the start dialog or the rollout's card, and
+`release-check.png` only the releases card; the installation has no signed release, so the browser
+is given made-up answers about the releases, the release check, the rollout and the agents
+(`web/e2e/rollout-fakes.ts`). `settings-updates.png` shows the installation's empty list of
+releases with a release check that ended, as its own check fetches from GitHub for a while.
 
 Screenshots named `check-…` are not part of the guide. They are taken only when named, in the dark
 theme and at a phone's width of 400 pixels, to look at the layout, such as

@@ -12,12 +12,15 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/release/releasetest"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
@@ -168,6 +171,95 @@ func TestReleases(t *testing.T) {
 	}
 	if _, err := upload(bob, signedRelease(t, e.clock, "1.3.0", 1, release.Stable)); code(err) != connect.CodePermissionDenied {
 		t.Errorf("an Owner uploads: %v", err)
+	}
+}
+
+// fakeChecks is a release check that answers what the test sets.
+type fakeChecks struct {
+	status *rpmgrv1.ReleaseCheck
+	wait   time.Duration
+	err    error
+	asked  int
+}
+
+func (f *fakeChecks) Status() *rpmgrv1.ReleaseCheck { return f.status }
+func (f *fakeChecks) CheckNow() (*rpmgrv1.ReleaseCheck, time.Duration, error) {
+	f.asked++
+	return f.status, f.wait, f.err
+}
+
+// TestReleases_CheckNow (#890): the Instance Admin asks for a release check without a step-up and
+// gets its state, which ListReleases also returns; it is refused with the time to wait within the
+// gap, and with a reason while the release check is off or the build checks for no releases; each
+// request is audited; an org Owner asks for nothing.
+func TestReleases_CheckNow(t *testing.T) {
+	e, ada, _, _ := gatewayEnv(t)
+	ctx := context.Background()
+	check := func(b *browser) (*rpmgrv1.ReleaseCheck, error) {
+		resp, err := b.rel.CheckReleases(ctx, connect.NewRequest(&rpmgrv1.CheckReleasesRequest{}))
+		if err != nil {
+			return nil, err
+		}
+		return resp.Msg.GetReleaseCheck(), nil
+	}
+	listed := func() *rpmgrv1.ReleaseCheck {
+		t.Helper()
+		resp, err := ada.rel.ListReleases(ctx, connect.NewRequest(&rpmgrv1.ListReleasesRequest{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp.Msg.GetReleaseCheck()
+	}
+
+	if _, err := check(ada); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonReleaseCheckOff {
+		t.Errorf("a build without a release check: %v", err)
+	}
+	if got := listed(); got.GetOutcome() != rpmgrv1.ReleaseCheckOutcome_RELEASE_CHECK_OUTCOME_NONE {
+		t.Errorf("listed without a release check: %v", got)
+	}
+
+	at := timestamppb.New(e.clock)
+	f := &fakeChecks{status: &rpmgrv1.ReleaseCheck{Running: true, CheckTime: at, Outcome: rpmgrv1.ReleaseCheckOutcome_RELEASE_CHECK_OUTCOME_FAILED, Error: "dial tcp: no route to host"}}
+	e.rel.Checks = f
+	got, err := check(ada)
+	if err != nil || !got.GetRunning() || got.GetError() != "dial tcp: no route to host" || f.asked != 1 {
+		t.Fatalf("check now: %v %v", got, err)
+	}
+	if got := listed(); !got.GetRunning() || !got.GetCheckTime().AsTime().Equal(e.clock) {
+		t.Errorf("listed while it runs: %v", got)
+	}
+	f.wait = 42 * time.Second
+	if _, err := check(ada); code(err) != connect.CodeResourceExhausted || retryAfter(err) != 42*time.Second {
+		t.Errorf("within the gap: %v", err)
+	}
+	f.wait, f.err = 0, release.ErrDevelopment
+	if _, err := check(ada); reason(err) != apisvc.ReasonReleaseCheckOff {
+		t.Errorf("a development build: %v", err)
+	}
+	f.err = nil
+	if _, err := settings.UpdateInstance(e.sys, e.db, &rpmgrv1.InstanceSettings{ReleaseCheck: new(false)},
+		&fieldmaskpb.FieldMask{Paths: []string{"release_check"}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	asked := f.asked
+	if _, err := check(ada); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonReleaseCheckOff ||
+		!strings.Contains(err.Error(), "off") || f.asked != asked {
+		t.Errorf("the release check off: %v", err)
+	}
+
+	c := e.db.Client()
+	if n := c.AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.ReleaseService.CheckReleases")).CountX(e.sys); n != 5 {
+		t.Errorf("%d audit entries of a release check, want 5", n)
+	}
+	if n := c.AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.ReleaseService.CheckReleases"), auditentry.ResultEQ(auditentry.ResultSuccess)).
+		CountX(e.sys); n != 1 {
+		t.Errorf("%d audit entries of a successful release check, want 1", n)
+	}
+
+	bob, _ := e.addOwner(t, storetest.Org(t, e.db, "org-b"), "bob@example.com")
+	asked = f.asked
+	if _, err := check(bob); code(err) != connect.CodePermissionDenied || f.asked != asked {
+		t.Errorf("an Owner asks for a release check: %v", err)
 	}
 }
 

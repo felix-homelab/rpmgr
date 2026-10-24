@@ -533,7 +533,11 @@ flowchart LR
   rollouts ([04](04-security.md#over-the-air-updates),
   [D121](14-open-decisions.md#engineering)):
   - **Releases:** each listed release with its channel, where it came from and whether the mirror
-    holds it; "Upload release…" takes the signed manifest, the signing-key statement and their
+    holds it. Under the title, when the release check last ended and how (ok, failed with its
+    error, or off), or "Checking for releases…" while one runs; "Check now" starts one at once,
+    waits with a spinner while it runs, and the releases it finds appear without a reload; a
+    refusal, such as one within a minute of the last check, is shown in the card. A build that
+    checks for no releases says so and has no "Check now" (#890). "Upload release…" takes the signed manifest, the signing-key statement and their
     signatures, after a step-up. Its dialog has a "Choose files…" button and a drop zone that take
     the four files at once and sort them by name, leaving others out with a note; each file also
     has a row with its state (chosen, chosen under another name, empty, missing) and its own
@@ -578,7 +582,8 @@ flowchart LR
   ```
   ┌ Updates ────────────────────────────────────────────────────────────────┐
   │ Release check  [on]   Channel  (stable ▾)                               │
-  │ Releases                                                 [Upload…]      │
+  │ Releases                                    [Check now]  [Upload…]      │
+  │ Last checked 24 Oct 2026, 08:00: ok                                     │
   │  1.5.0  stable  release check  mirrored     [Roll out…]                 │
   │  1.4.2  stable  release check  mirrored     (controller's previous)     │
   │ Rollout of 1.5.0                                              running   │

@@ -26,6 +26,22 @@ Hosts need the root updater and a policy that allows updates
 ([Install](../install/install-script.md)). A host in the container image, or on Windows or macOS,
 is not updated over the air.
 
+## Check for a new release now
+
+The controller looks for new releases once a day. To see a release that was just published,
+choose **Check now** above the list of releases on **Settings → Updates**, or run:
+
+```sh
+rpmgr check release
+```
+
+![The releases with Check now and the result of the last check](../images/web/release-check.png)
+
+The page shows when the last check ended and whether it went well; a failed check names its error,
+and the controller keeps the releases it had. The release check must be on (**Check for releases
+once a day**). A check shortly after the last one, or while the release source limits requests,
+is refused with the time to wait ([03](../../03-connections.md#timeouts-keepalive-and-backoff)).
+
 ## Run a rollout
 
 1. Open **Settings → Updates**. **Releases** lists what the controller verified, with its channel,
