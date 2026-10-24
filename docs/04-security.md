@@ -683,6 +683,12 @@ capabilities, so a gateway of an earlier release never serves a route without th
   upstream, and the gateway removes `Rpmgr-User-Email`, `Rpmgr-User-Subject` and
   `Rpmgr-User-Groups` from every client request on every http route, so that only the gateway sets
   them ([03](03-connections.md#http-routes)).
+- **Per-client rate limits** count each client address, or IPv6 /64, in bounded tables on each
+  gateway ([03](03-connections.md#access-policies)). A UDP source address can be forged at will, so
+  udp flows count in tables of their own: a flood of forged sources never fills the table that
+  limits real clients of http and tcp routes. When a table is full, a new address passes rather
+  than being refused, so that a flood never locks real clients out; the route's own limits still
+  bound what passes ([D137](14-open-decisions.md#engineering)).
 - **Require-header values** are shared secrets of at least 32 characters, such as a CDN's origin
   header. The controller keeps only their SHA-256, which the gateways receive; a value is
   write-only and never read back. Plain, unsalted SHA-256 suffices only because a value is
