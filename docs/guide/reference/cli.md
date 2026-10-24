@@ -95,6 +95,7 @@ rpmgr <command>
 | [`rpmgr pause`](#rpmgr-pause) | Pause a rollout |
 | [`rpmgr resume`](#rpmgr-resume) | Let a paused rollout run again |
 | [`rpmgr cancel`](#rpmgr-cancel) | End a rollout for good |
+| [`rpmgr upgrade`](#rpmgr-upgrade) | Update agents to the controller's version |
 
 ## rpmgr controller
 
@@ -746,7 +747,7 @@ rpmgr create <command>
 | [`rpmgr create invitation`](#rpmgr-create-invitation) | Invite someone to the org and print the one-time link; as Admin or Owner it takes a step-up |
 | [`rpmgr create token`](#rpmgr-create-token) | Personal API tokens are made in the web UI |
 | [`rpmgr create reset-link`](#rpmgr-create-reset-link) | Print a one-time link that sets a member's password, for one who forgot it; takes a step-up |
-| [`rpmgr create rollout`](#rpmgr-create-rollout) | Roll a release out to the connectors and gateways, its canary agents first |
+| [`rpmgr create rollout`](#rpmgr-create-rollout) | Roll a release out to the connectors and gateways: staged, its canary agents first, or easy, one agent after another |
 
 ## rpmgr create route
 
@@ -974,15 +975,17 @@ rpmgr create reset-link <user ID or e-mail address>
 
 ## rpmgr create rollout
 
-Roll a release out to the connectors and gateways, its canary agents first.
+Roll a release out to the connectors and gateways: staged, its canary agents first, or easy, one agent after another.
 
 ```text
-rpmgr create rollout [flags] --release <version> --canary <agent>…
+rpmgr create rollout [flags] --release <version> (--canary <agent>… | --easy --agent <agent>…)
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--canary value` |  | a canary agent: a connector or gateway of the org by name, or of any org by ID; repeat for more |
+| `--agent value` |  | an easy rollout's agent, in the order they update: a connector or gateway of the org by name, or of any org by ID; repeat for more |
+| `--canary value` |  | a staged rollout's canary agent: a connector or gateway of the org by name, or of any org by ID; repeat for more |
+| `--easy` |  | an easy rollout: the --agent agents update one after another, and a failed one is skipped |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--release string` |  | the release, by version or ID; no newer than the controller |
 
@@ -1709,4 +1712,41 @@ rpmgr cancel rollout [flags] <rollout>
 | Flag | Default | Description |
 |---|---|---|
 | `--force` |  | cancel without checking that the rollout is unchanged since this command read it |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+
+## rpmgr upgrade
+
+Update agents to the controller's version.
+
+```text
+rpmgr upgrade <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr upgrade connector`](#rpmgr-upgrade-connector) | Update connectors to the controller's version, one after another, in its easy rollout (Instance Admin) |
+| [`rpmgr upgrade gateway`](#rpmgr-upgrade-gateway) | Update gateways to the controller's version, one after another, in its easy rollout (Instance Admin) |
+
+## rpmgr upgrade connector
+
+Update connectors to the controller's version, one after another, in its easy rollout (Instance Admin).
+
+```text
+rpmgr upgrade connector [flags] <connector>…
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+
+## rpmgr upgrade gateway
+
+Update gateways to the controller's version, one after another, in its easy rollout (Instance Admin).
+
+```text
+rpmgr upgrade gateway [flags] <gateway>…
+```
+
+| Flag | Default | Description |
+|---|---|---|
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |

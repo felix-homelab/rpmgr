@@ -28,6 +28,8 @@ type RolloutTarget struct {
 	Canary bool `json:"canary,omitempty"`
 	// Bucket holds the value of the "bucket" field.
 	Bucket int `json:"bucket,omitempty"`
+	// Position holds the value of the "position" field.
+	Position *int `json:"position,omitempty"`
 	// State holds the value of the "state" field.
 	State rollouttarget.State `json:"state,omitempty"`
 	// Reason holds the value of the "reason" field.
@@ -71,7 +73,7 @@ func (*RolloutTarget) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case rollouttarget.FieldCanary:
 			values[i] = new(sql.NullBool)
-		case rollouttarget.FieldBucket:
+		case rollouttarget.FieldBucket, rollouttarget.FieldPosition:
 			values[i] = new(sql.NullInt64)
 		case rollouttarget.FieldID, rollouttarget.FieldRolloutID, rollouttarget.FieldAgentID, rollouttarget.FieldAgentKind, rollouttarget.FieldState, rollouttarget.FieldReason, rollouttarget.FieldVersionBefore:
 			values[i] = new(sql.NullString)
@@ -127,6 +129,13 @@ func (_m *RolloutTarget) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field bucket", values[i])
 			} else if value.Valid {
 				_m.Bucket = int(value.Int64)
+			}
+		case rollouttarget.FieldPosition:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field position", values[i])
+			} else if value.Valid {
+				_m.Position = new(int)
+				*_m.Position = int(value.Int64)
 			}
 		case rollouttarget.FieldState:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -214,6 +223,11 @@ func (_m *RolloutTarget) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("bucket=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Bucket))
+	builder.WriteString(", ")
+	if v := _m.Position; v != nil {
+		builder.WriteString("position=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("state=")
 	builder.WriteString(fmt.Sprintf("%v", _m.State))

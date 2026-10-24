@@ -83,6 +83,16 @@ enum UpdateChannel {
   UPDATE_CHANNEL_PRERELEASE = 2;
 }
 
+// RolloutMode is the kind of a rollout (docs/04-security.md, "Over-the-air updates"; D121, D129).
+enum RolloutMode {
+  // Not set: a staged rollout in a request, the default in the settings.
+  ROLLOUT_MODE_UNSPECIFIED = 0;
+  // A staged rollout: canary agents, then percentages and all, each stage approved.
+  ROLLOUT_MODE_ADVANCED = 1;
+  // An easy rollout: a queue of agents updated one after another.
+  ROLLOUT_MODE_EASY = 2;
+}
+
 // InstanceSettings are the runtime settings of the installation, changed by the Instance Admin
 // (docs/10-operations.md, "Runtime settings"). A field that is not set has its default, which the
 // server fills in when it reads them.
@@ -175,6 +185,12 @@ message InstanceSettings {
   google.protobuf.Duration audit_retention = 14 [(buf.validate.field).duration = {
     gte: {seconds: 2592000}
     lte: {seconds: 315360000}
+  }];
+  // Which kind of rollout the web UI starts; default EASY (D129). Update on an agent, and the API,
+  // take either kind whatever it says.
+  optional RolloutMode rollout_mode = 15 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
   }];
 }
 

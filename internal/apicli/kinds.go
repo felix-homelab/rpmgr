@@ -69,9 +69,9 @@ var Kinds = []Kind{
 	{Name: "release", Prefix: "rel_", Service: "rpmgr.v1.ReleaseService", Resource: "Release", Plural: "Releases",
 		Columns: []string{"channel", "source", "mirrored", "controllerVersion", "newerThanController"}, NoGet: true},
 	{Name: "rollout", Prefix: "rol_", Service: "rpmgr.v1.ReleaseService", Resource: "Rollout", Plural: "Rollouts", IDField: "rollout_id",
-		Columns: []string{"stage", "percentage", "state", "counts.updated", "counts.pending", "pauseReason"}},
+		Columns: []string{"mode", "stage", "percentage", "state", "counts.updated", "counts.pending", "pauseReason"}},
 	{Name: "rollout-target", Prefix: "rlt_", Service: "rpmgr.v1.ReleaseService", Resource: "RolloutTarget", Plural: "RolloutTargets",
-		Parent: "rollout_id", Columns: []string{"agentKind", "canary", "bucket", "state", "reason", "versionBefore"}, NoGet: true},
+		Parent: "rollout_id", Columns: []string{"agentKind", "position", "canary", "bucket", "state", "reason", "versionBefore"}, NoGet: true},
 }
 
 // KindOf returns the kind with name.

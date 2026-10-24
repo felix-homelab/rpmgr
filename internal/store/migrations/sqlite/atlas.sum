@@ -1,4 +1,4 @@
-h1:DF80pdiqHeYEEBpI7Z7+v5EzHiUmrW3j32n0KTzhLMY=
+h1:Gabh+WNYtmrgTtCtbMPFzhgeFqUQbvAyGxwnIyFLMZk=
 20261009220802_baseline.sql h1:P98oQ4RhN7c+aa0SgKZ9ZRM8/T6XYO+Yd4dzlDOBvr4=
 20261013061720_agent_names_active.sql h1:pSxlk4IT2yuwmcSmLQ4GrPs6B7VaQUX7L1NcrOHzvqg=
 20261014071548_target_tls_verification.sql h1:6F+dOuC0QwNWsAQhvW7rRkPRrB/RC/OgLAL0vWfs0oY=
@@ -7,3 +7,4 @@ h1:DF80pdiqHeYEEBpI7Z7+v5EzHiUmrW3j32n0KTzhLMY=
 20261020084021_releases_rollouts.sql h1:ox1H0N4qG0KhoGr6QHIkeaxGvuwSM3cKDvJ4afJV9WU=
 20261022061753_agent_last_goodbye.sql h1:V+o4L7Ie9MF9Wrs3bWUC8y1H5w+/c2YteLmdy00TShA=
 20261022174257_rollout_target_drain.sql h1:QywinfL/+DcA3pWEivx4xaIFkO4/3YX/80tkuvWRW+U=
+20261024141249_rollout_easy_queue.sql h1:K86lHMDM9giqEzc47rvgx3RqHYy7+wVZDsi+9jfbW0Y=

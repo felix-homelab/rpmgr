@@ -30,6 +30,11 @@ const (
 	rolloutDrainPeriod = 60 * time.Second
 )
 
+// EasyRolloutFailuresInRow is how many agents in a row may fail to take an easy rollout's release
+// (rolled back, refused or stalled) before the rollout pauses (docs/03-connections.md, "Timeouts,
+// keepalive and backoff"; D129).
+const EasyRolloutFailuresInRow = 3
+
 // rolloutSystem is the actor the job records when it changes a rollout.
 const rolloutSystem = "system"
 
@@ -40,12 +45,14 @@ type RolloutOptions struct {
 	Logger *slog.Logger
 }
 
-// RolloutJob offers a running rollout's release to its current stage and follows each agent
-// (docs/04-security.md, "Over-the-air updates"; D121): the canaries, then the agents of the
-// percentage, then all. A gateway drains before it is offered the release, one at a time per
+// RolloutJob offers a running rollout's release and follows each agent (docs/04-security.md,
+// "Over-the-air updates"). A staged rollout (D121) offers it to its current stage: the canaries,
+// then the agents of the percentage, then all; a rollback or an agent that stops reporting pauses
+// it until an Instance Admin resumes or cancels it, and the end of the last stage completes it. An
+// easy rollout (D129) offers it to one agent of its queue at a time; a failed agent is marked and
+// the queue moves on, until EasyRolloutFailuresInRow failures in a row pause it, and the end of
+// the queue completes it. A gateway drains before it is offered the release, one at a time per
 // gateway group. A release the mirror does not hold yet is offered to no one until it does (D125).
-// A rollback or an agent that stops reporting pauses the rollout until an Instance
-// Admin resumes or cancels it; the end of the last stage completes it.
 func RolloutJob(o RolloutOptions) lease.Job {
 	if o.Now == nil {
 		o.Now = time.Now
@@ -71,13 +78,20 @@ func runRollout(ctx context.Context, o RolloutOptions) error {
 	if err != nil {
 		return err
 	}
-	targets, err := c.RolloutTarget.Query().Where(rollouttarget.RolloutID(ro.ID)).Order(ent.Asc(rollouttarget.FieldAgentID)).All(ctx)
+	order := rollouttarget.FieldAgentID
+	if ro.Mode == rollout.ModeEasy {
+		order = rollouttarget.FieldPosition
+	}
+	targets, err := c.RolloutTarget.Query().Where(rollouttarget.RolloutID(ro.ID)).Order(ent.Asc(order)).All(ctx)
 	if err != nil {
 		return err
 	}
-	// Targets already in flight go first: a gateway that finishes frees its group for the next
-	// one in the same run.
+	// In a staged rollout, targets already in flight go first: a gateway that finishes frees its
+	// group for the next one in the same run. An easy rollout keeps the order of its queue.
 	slices.SortStableFunc(targets, func(a, b *ent.RolloutTarget) int {
+		if ro.Mode == rollout.ModeEasy {
+			return 0
+		}
 		switch {
 		case a.State == rollouttarget.StatePending && b.State != rollouttarget.StatePending:
 			return 1
@@ -99,8 +113,12 @@ func runRollout(ctx context.Context, o RolloutOptions) error {
 			}
 		}
 	}
-	for _, t := range targets {
-		plan.consider(ro, t, agents[t.AgentID])
+	if ro.Mode == rollout.ModeEasy {
+		plan.queue(ro, targets, agents)
+	} else {
+		for _, t := range targets {
+			plan.consider(ro, t, agents[t.AgentID])
+		}
 	}
 	reason := plan.pauseReason()
 	remaining := 0
@@ -109,7 +127,8 @@ func runRollout(ctx context.Context, o RolloutOptions) error {
 			remaining++
 		}
 	}
-	complete := ro.State == rollout.StateRunning && reason == "" && ro.Stage == rollout.StageAll && remaining == 0
+	complete := ro.State == rollout.StateRunning && reason == "" && remaining == 0 &&
+		(ro.Stage == rollout.StageAll || ro.Mode == rollout.ModeEasy)
 	return plan.apply(ctx, o, ro, reason, complete)
 }
 
@@ -240,6 +259,61 @@ func (p *rolloutPlan) consider(ro *ent.Rollout, t *ent.RolloutTarget, f rolloutF
 	if !rolloutInStage(ro, t) {
 		return
 	}
+	if p.step(t, f) {
+		p.pause = p.pauseReasonOf(rollouttarget.StateStalled, t.AgentID)
+	}
+}
+
+// queue decides an easy rollout's targets in the order of its queue (D129). Only the first agent
+// that has not had its turn takes a step; when it comes to rest in this run, the next one takes
+// its turn at once, so offline agents are skipped without waiting. A rollback, a refusal or a stall
+// marks the agent and the queue moves on, but EasyRolloutFailuresInRow of them in a row, counted
+// since the rollout last changed, pause it. A stalled agent that runs the release later counts as
+// updated.
+func (p *rolloutPlan) queue(ro *ent.Rollout, targets []*ent.RolloutTarget, facts map[string]rolloutFacts) {
+	turn := ro.State == rollout.StateRunning
+	failures, last := 0, ""
+	for _, t := range targets {
+		f := facts[t.AgentID]
+		switch {
+		case t.State == rollouttarget.StateStalled && f.version == p.version:
+			p.set(t, rollouttarget.StateUpdated, "")
+		case terminal(t.State):
+			p.finishDrain(t)
+		case !turn || failures >= EasyRolloutFailuresInRow:
+			// Not this agent's turn; a rollout about to pause offers the release to no one else.
+			turn = false
+			if ro.State != rollout.StateRunning {
+				p.finishDrain(t)
+			}
+			continue
+		default:
+			p.step(t, f)
+			if !terminal(p.stateOf(t)) {
+				turn = false // the agent whose turn it is has not come to rest yet
+				continue
+			}
+		}
+		switch s := p.stateOf(t); {
+		case s == rollouttarget.StateUpdated:
+			failures = 0
+		case pausedByAgent(s) && (p.changed(t) || t.UpdatedAt.After(ro.UpdatedAt)):
+			failures++
+			last = p.pauseReasonOf(s, t.AgentID)
+		case pausedByAgent(s):
+			failures = 0 // seen before the rollout last changed, as when it was resumed past it
+		}
+	}
+	if failures >= EasyRolloutFailuresInRow && ro.State == rollout.StateRunning {
+		p.pause = fmt.Sprintf("%d agents in a row failed to take the release; the last: %s", failures, last)
+	}
+}
+
+// step moves one target of the agents whose turn it is: an offline agent is skipped, one that runs
+// the release is updated, an agent is offered the release once the mirror holds it, a gateway
+// after its drain, and an agent offered it that reports nothing within RolloutStallAfter is
+// stalled, which step reports.
+func (p *rolloutPlan) step(t *ent.RolloutTarget, f rolloutFacts) (stalled bool) {
 	switch t.State {
 	case rollouttarget.StatePending:
 		switch {
@@ -261,12 +335,13 @@ func (p *rolloutPlan) consider(ro *ent.Rollout, t *ent.RolloutTarget, f rolloutF
 			p.set(t, rollouttarget.StateUpdated, "")
 		} else if p.mirrored && p.now.Sub(t.UpdatedAt) >= RolloutStallAfter {
 			p.set(t, rollouttarget.StateStalled, "the agent reported nothing for 30 minutes")
-			p.pause = p.pauseReasonOf(rollouttarget.StateStalled, t.AgentID)
+			stalled = true
 		}
 	}
 	if terminal(p.stateOf(t)) && p.busyGroups[f.group] == t.AgentID {
 		delete(p.busyGroups, f.group)
 	}
+	return stalled
 }
 
 // drain schedules a gateway's drain before its update, and offers the release once the drain
@@ -311,6 +386,16 @@ func (p *rolloutPlan) set(t *ent.RolloutTarget, state rollouttarget.State, reaso
 		p.enable = append(p.enable, t.AgentID)
 	}
 	p.updates = append(p.updates, u)
+}
+
+// changed reports whether the plan changes a target's state.
+func (p *rolloutPlan) changed(t *ent.RolloutTarget) bool {
+	for _, u := range p.updates {
+		if u.target.ID == t.ID && u.state != t.State {
+			return true
+		}
+	}
+	return false
 }
 
 // stateOf is a target's state after the plan.
@@ -378,6 +463,16 @@ func (p *rolloutPlan) apply(ctx context.Context, o RolloutOptions, ro *ent.Rollo
 			}
 			changed = append(changed, id)
 		}
+		if complete {
+			// Agents may have joined an easy rollout since the job read it (D129); the configuration
+			// transaction's lock makes the count see them.
+			n, err := tx.RolloutTarget.Query().Where(rollouttarget.RolloutID(ro.ID),
+				rollouttarget.StateIn(rollouttarget.StatePending, rollouttarget.StateOffered, rollouttarget.StateStaged)).Count(ctx)
+			if err != nil {
+				return nil, err
+			}
+			complete = n == 0
+		}
 		switch {
 		case complete:
 			if _, err := tx.Rollout.UpdateOneID(ro.ID).SetState(rollout.StateCompleted).
@@ -433,24 +528,30 @@ func inFlight(s rollouttarget.State) bool {
 
 // recordUpdate records what an agent reports about the release it was offered (docs/04-security.md,
 // "Over-the-air updates", step 7): the phase of its own staging and the root updater's outcome.
-// It applies to the agent's target in the running rollout only; a report about another version,
-// or for an agent without a target, changes nothing.
+// It applies to the agent's target in the newest rollout that runs, is paused or was cancelled; a
+// report about another version, or for an agent without such a target, changes nothing.
 func (s *Sessions) recordUpdate(id pki.Identity, u *agentv1.UpdateState) {
 	err := store.WriteTx(s.sys, s.db, func(tx *ent.Tx) error {
-		t, err := tx.RolloutTarget.Query().
-			Where(rollouttarget.AgentID(id.ID), rollouttarget.HasRolloutWith(rollout.StateEQ(rollout.StateRunning))).
-			WithRollout(func(q *ent.RolloutQuery) { q.WithRelease() }).Only(s.sys)
-		if ent.IsNotFound(err) {
-			return nil
-		}
-		if err != nil {
+		// The newest rollout that runs, is paused or was cancelled: an install its updater began
+		// before a pause or a cancel finishes, and its outcome is recorded all the same.
+		rows, err := tx.RolloutTarget.Query().
+			Where(rollouttarget.AgentID(id.ID), rollouttarget.HasRolloutWith(
+				rollout.StateIn(rollout.StateRunning, rollout.StatePaused, rollout.StateCancelled))).
+			WithRollout(func(q *ent.RolloutQuery) { q.WithRelease() }).All(s.sys)
+		if err != nil || len(rows) == 0 {
 			return err
 		}
-		if terminal(t.State) {
+		t := slices.MaxFunc(rows, func(a, b *ent.RolloutTarget) int {
+			return a.Edges.Rollout.CreatedAt.Compare(b.Edges.Rollout.CreatedAt)
+		})
+		// An easy rollout moved on from a stalled agent; one that reports the release later is
+		// updated after all (D129).
+		late := t.State == rollouttarget.StateStalled && t.Edges.Rollout.Mode == rollout.ModeEasy
+		if terminal(t.State) && !late {
 			return nil
 		}
 		state, reason, ok := rolloutUpdateState(t.State, u, t.Edges.Rollout.Edges.Release.Version)
-		if !ok || (state == t.State && reason == t.Reason) {
+		if !ok || (state == t.State && reason == t.Reason) || (late && state != rollouttarget.StateUpdated) {
 			return nil
 		}
 		return tx.RolloutTarget.UpdateOneID(t.ID).SetState(state).SetReason(reason).Exec(s.sys)

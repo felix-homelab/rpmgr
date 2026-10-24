@@ -63,12 +63,15 @@ func (Rollout) Annotations() []schema.Annotation {
 	return []schema.Annotation{entsql.Annotation{Table: "rollouts"}}
 }
 
-// Fields of a rollout. percentage is the share of agents the current stage covers, 0 for the
-// canary stage and 100 for all.
+// Fields of a rollout. mode is a staged rollout's `advanced` (D121) or an easy rollout's `easy`, a
+// queue of agents updated one after another (D129); rows from before the column are `advanced`.
+// percentage is the share of agents a staged rollout's current stage covers, 0 for the canary
+// stage and 100 for all; an easy rollout leaves stage and percentage at their defaults.
 func (Rollout) Fields() []ent.Field {
 	return []ent.Field{
 		idField("rol"),
 		field.String("release_id").NotEmpty().Immutable(),
+		field.Enum("mode").Values("advanced", "easy").Default("advanced").Immutable(),
 		field.Enum("stage").Values("canary", "percentage", "all").Default("canary"),
 		field.Int("percentage").Range(0, 100).Default(0),
 		field.Enum("state").Values("running", "paused", "completed", "cancelled").Default("running"),
@@ -91,8 +94,8 @@ func (Rollout) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("active").Unique().Annotations(entsql.IndexWhere("active"))}
 }
 
-// RolloutTarget is one agent's progress in a rollout, one row per agent from the rollout's
-// creation. There is no foreign key to the agent, a connector or a gateway; deleting an agent's
+// RolloutTarget is one agent's progress in a rollout: in a staged rollout one row per agent from
+// the rollout's creation, in an easy rollout one per queued agent. There is no foreign key to the agent, a connector or a gateway; deleting an agent's
 // row deletes its targets with it.
 type RolloutTarget struct{ ent.Schema }
 
@@ -104,8 +107,9 @@ func (RolloutTarget) Annotations() []schema.Annotation {
 	return []schema.Annotation{entsql.Annotation{Table: "rollout_targets"}}
 }
 
-// Fields of a rollout target. bucket places the agent in the percentages (Bucket); version_before
-// is the version it ran when the rollout was created.
+// Fields of a rollout target. bucket places the agent in the percentages (Bucket); position is its
+// place in an easy rollout's queue, from 1, and nil in a staged rollout; version_before is the
+// version it ran when it became a target.
 func (RolloutTarget) Fields() []ent.Field {
 	return []ent.Field{
 		idField("rlt"),
@@ -114,6 +118,7 @@ func (RolloutTarget) Fields() []ent.Field {
 		field.Enum("agent_kind").Values("connector", "gateway").Immutable(),
 		field.Bool("canary").Default(false).Immutable(),
 		field.Int("bucket").Range(0, 99).Immutable(),
+		field.Int("position").Positive().Optional().Nillable().Immutable(),
 		field.Enum("state").
 			Values("pending", "offered", "staged", "updated", "rolled_back", "refused", "skipped", "stalled").
 			Default("pending"),
@@ -131,7 +136,12 @@ func (RolloutTarget) Edges() []ent.Edge {
 	return []ent.Edge{edge.To("rollout", Rollout.Type).Field("rollout_id").Unique().Required().Immutable()}
 }
 
-// Indexes: one row per rollout and agent; an agent's rows are found by its ID.
+// Indexes: one row per rollout and agent, and one per place in an easy rollout's queue, where the
+// nil positions of a staged rollout never collide; an agent's rows are found by its ID.
 func (RolloutTarget) Indexes() []ent.Index {
-	return []ent.Index{index.Fields("rollout_id", "agent_id").Unique(), index.Fields("agent_id")}
+	return []ent.Index{
+		index.Fields("rollout_id", "agent_id").Unique(),
+		index.Fields("rollout_id", "position").Unique(),
+		index.Fields("agent_id"),
+	}
 }

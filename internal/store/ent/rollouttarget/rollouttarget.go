@@ -26,6 +26,8 @@ const (
 	FieldCanary = "canary"
 	// FieldBucket holds the string denoting the bucket field in the database.
 	FieldBucket = "bucket"
+	// FieldPosition holds the string denoting the position field in the database.
+	FieldPosition = "position"
 	// FieldState holds the string denoting the state field in the database.
 	FieldState = "state"
 	// FieldReason holds the string denoting the reason field in the database.
@@ -57,6 +59,7 @@ var Columns = []string{
 	FieldAgentKind,
 	FieldCanary,
 	FieldBucket,
+	FieldPosition,
 	FieldState,
 	FieldReason,
 	FieldVersionBefore,
@@ -91,6 +94,8 @@ var (
 	DefaultCanary bool
 	// BucketValidator is a validator for the "bucket" field. It is called by the builders before save.
 	BucketValidator func(int) error
+	// PositionValidator is a validator for the "position" field. It is called by the builders before save.
+	PositionValidator func(int) error
 	// DefaultReason holds the default value on creation for the "reason" field.
 	DefaultReason string
 	// DefaultVersionBefore holds the default value on creation for the "version_before" field.
@@ -191,6 +196,11 @@ func ByCanary(opts ...sql.OrderTermOption) OrderOption {
 // ByBucket orders the results by the bucket field.
 func ByBucket(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBucket, opts...).ToFunc()
+}
+
+// ByPosition orders the results by the position field.
+func ByPosition(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPosition, opts...).ToFunc()
 }
 
 // ByState orders the results by the state field.

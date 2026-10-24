@@ -215,6 +215,26 @@ func ReleaseIDContainsFold(v string) predicate.Rollout {
 	return predicate.Rollout(sql.FieldContainsFold(FieldReleaseID, v))
 }
 
+// ModeEQ applies the EQ predicate on the "mode" field.
+func ModeEQ(v Mode) predicate.Rollout {
+	return predicate.Rollout(sql.FieldEQ(FieldMode, v))
+}
+
+// ModeNEQ applies the NEQ predicate on the "mode" field.
+func ModeNEQ(v Mode) predicate.Rollout {
+	return predicate.Rollout(sql.FieldNEQ(FieldMode, v))
+}
+
+// ModeIn applies the In predicate on the "mode" field.
+func ModeIn(vs ...Mode) predicate.Rollout {
+	return predicate.Rollout(sql.FieldIn(FieldMode, vs...))
+}
+
+// ModeNotIn applies the NotIn predicate on the "mode" field.
+func ModeNotIn(vs ...Mode) predicate.Rollout {
+	return predicate.Rollout(sql.FieldNotIn(FieldMode, vs...))
+}
+
 // StageEQ applies the EQ predicate on the "stage" field.
 func StageEQ(v Stage) predicate.Rollout {
 	return predicate.Rollout(sql.FieldEQ(FieldStage, v))
