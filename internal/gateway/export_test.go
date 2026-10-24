@@ -72,3 +72,10 @@ func LimitOf(a *Applier, id string) *RouteLimit {
 	defer a.limits.mu.Unlock()
 	return a.limits.routes[id]
 }
+
+// SetClientKeys sets how many client addresses a per-client rate_limit rule keeps, for one test.
+func SetClientKeys(t testing.TB, n int) {
+	old := clientKeys
+	clientKeys = n
+	t.Cleanup(func() { clientKeys = old })
+}

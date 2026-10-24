@@ -239,6 +239,11 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		if _, err := AccessOf(accessOf(res)); err != nil {
 			bad(id, "access rules: %v", err)
 		}
+		for _, rl := range accessOf(res).GetRateLimits() {
+			if rl.GetPerSecond() == 0 {
+				bad(id, "rate_limit rule of policy %s allows no request", rl.GetPolicyId())
+			}
+		}
 		if ba := accessOf(res).GetBasicAuth(); len(ba) > 0 {
 			if res.GetGatewayHttpRoute() == nil {
 				bad(id, "basic auth on a route that is not http")
@@ -408,7 +413,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		// the connections already open.
 		var limit *RouteLimit
 		if l, ok := limitsOf(res); ok {
-			limit = a.limits.Set(res.GetId(), routeLimitsOf(l))
+			limit = a.limits.Set(res.GetId(), routeLimitsOf(l, accessOf(res).GetRateLimits()))
 		}
 		switch {
 		case res.GetGatewayTcpRoute() != nil:

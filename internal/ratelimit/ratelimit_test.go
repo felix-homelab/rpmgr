@@ -96,3 +96,29 @@ func TestOnRefuse(t *testing.T) {
 		t.Fatalf("the backoff reported %d refusals, want 1", refused)
 	}
 }
+
+// TestTake: a refused event says how long until the key has a token again, and a full table of a
+// sized Limiter refuses new keys for an interval while keeping the keys it limits.
+func TestTake(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	l := ratelimit.NewSized(time.Second, 2, 2, func() time.Time { return now })
+	for i := range 2 {
+		if ok, wait := l.Take("a"); !ok || wait != 0 {
+			t.Fatalf("event %d of the burst: %t, %s", i+1, ok, wait)
+		}
+	}
+	now = now.Add(250 * time.Millisecond)
+	if ok, wait := l.Take("a"); ok || wait != 750*time.Millisecond {
+		t.Fatalf("over the burst: %t, %s", ok, wait)
+	}
+	if ok, _ := l.Take("b"); !ok {
+		t.Fatal("a second key was refused")
+	}
+	if ok, wait := l.Take("c"); ok || wait != time.Second {
+		t.Fatalf("a third key with two allowed: %t, %s", ok, wait)
+	}
+	now = now.Add(2 * time.Second)
+	if ok, _ := l.Take("c"); !ok || ratelimit.Keys(l) != 1 { // a and b, full again, were dropped
+		t.Fatalf("after the buckets refilled, a new key: %t, %d keys", ok, ratelimit.Keys(l))
+	}
+}

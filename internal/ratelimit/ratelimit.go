@@ -10,8 +10,8 @@ import (
 )
 
 // maxKeys bounds the memory of a Limiter. When it is reached, buckets that are full again are
-// dropped, at most once per refill interval so a flood of keys costs no more than one scan per
-// interval; if none is, new keys are refused until some are. Keys that are being limited are never
+// dropped, at most once per refill interval, and at most once a second, so a flood of keys costs
+// no more than one scan per interval; if none is, new keys are refused until some are. Keys that are being limited are never
 // dropped, so a flood of other keys cannot reset them.
 const maxKeys = 100_000
 
@@ -22,6 +22,7 @@ type Limiter struct {
 
 	every time.Duration
 	burst float64
+	keys  int
 	now   func() time.Time
 
 	mu        sync.Mutex
@@ -36,32 +37,44 @@ type bucket struct {
 
 // New returns a Limiter of burst events per key, refilled at one per every. now may be nil.
 func New(every time.Duration, burst int, now func() time.Time) *Limiter {
+	return NewSized(every, burst, maxKeys, now)
+}
+
+// NewSized is New with at most keys keys instead of maxKeys.
+func NewSized(every time.Duration, burst, keys int, now func() time.Time) *Limiter {
 	if now == nil {
 		now = time.Now
 	}
-	return &Limiter{every: every, burst: float64(burst), now: now, buckets: map[string]*bucket{}}
+	return &Limiter{every: every, burst: float64(burst), keys: keys, now: now, buckets: map[string]*bucket{}}
 }
 
 // Allow takes one token of key's bucket and reports whether there was one.
 func (l *Limiter) Allow(key string) bool {
-	ok := l.allow(key)
-	if !ok && l.OnRefuse != nil {
-		l.OnRefuse()
-	}
+	ok, _ := l.Take(key)
 	return ok
 }
 
-func (l *Limiter) allow(key string) bool {
+// Take is Allow that also returns, when it refuses, how long until key's bucket has a token again;
+// a key the full table refuses waits one interval.
+func (l *Limiter) Take(key string) (bool, time.Duration) {
+	ok, wait := l.allow(key)
+	if !ok && l.OnRefuse != nil {
+		l.OnRefuse()
+	}
+	return ok, wait
+}
+
+func (l *Limiter) allow(key string) (bool, time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
 	b := l.buckets[key]
 	if b == nil {
-		if len(l.buckets) >= maxKeys && now.Sub(l.lastSweep) >= l.every {
+		if len(l.buckets) >= l.keys && now.Sub(l.lastSweep) >= max(l.every, time.Second) {
 			l.sweep(now)
 		}
-		if len(l.buckets) >= maxKeys {
-			return false
+		if len(l.buckets) >= l.keys {
+			return false, l.every
 		}
 		b = &bucket{tokens: l.burst, last: now}
 		l.buckets[key] = b
@@ -69,10 +82,10 @@ func (l *Limiter) allow(key string) bool {
 	b.tokens = min(l.burst, b.tokens+float64(now.Sub(b.last))/float64(l.every))
 	b.last = now
 	if b.tokens < 1 {
-		return false
+		return false, time.Duration((1 - b.tokens) * float64(l.every))
 	}
 	b.tokens--
-	return true
+	return true, 0
 }
 
 // sweep drops the buckets that are full again: forgetting them changes nothing.

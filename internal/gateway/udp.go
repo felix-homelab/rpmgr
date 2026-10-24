@@ -288,6 +288,15 @@ func (u *UDPRoutes) read(p *udpPort) {
 		}
 		r := p.route.Load()
 		if f == nil {
+			if ok, _, perClient := r.Limit.Admit(client.Addr()); !ok {
+				p.mu.Unlock()
+				reason := "limit" // the route's rate
+				if perClient {
+					reason = "rate_limit"
+				}
+				u.o.Metrics.Dropped.WithLabelValues(r.ID, reason).Inc()
+				continue
+			}
 			release, ok := r.Limit.Acquire()
 			if !ok {
 				p.mu.Unlock()
