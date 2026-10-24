@@ -170,6 +170,17 @@ service GatewayService {
       resource_field: "gateway_group_id"
     };
   }
+  // PreviewGatewayPage returns a link, valid for a few minutes, at which the controller shows a page
+  // of a gateway group exactly as its gateways send it, with sample values, under the page's
+  // Content-Security-Policy and a sandbox (D136): the group's own page of the kind, or the built-in
+  // one.
+  rpc PreviewGatewayPage(PreviewGatewayPageRequest) returns (PreviewGatewayPageResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "gateway_group_id"
+    };
+  }
   // DeleteGatewayPage goes back to the built-in page of a kind.
   rpc DeleteGatewayPage(DeleteGatewayPageRequest) returns (DeleteGatewayPageResponse) {
     option (rpmgr.v1.authz) = {
@@ -730,4 +741,24 @@ message DeleteGatewayPageResponse {
   // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
   // final or the wait is over (docs/07-api.md, "Writes and apply status").
   ApplyStatus apply_status = 2;
+}
+
+// PreviewGatewayPageRequest names a page of a gateway group.
+message PreviewGatewayPageRequest {
+  // The group.
+  string gateway_group_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The page.
+  GatewayPageKind kind = 2 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+}
+
+// PreviewGatewayPageResponse is where the preview is.
+message PreviewGatewayPageResponse {
+  // The path of the preview on the controller, which a frame without scripts loads; it shows the
+  // page as it is now, and nothing once the page changed.
+  string url = 1;
+  // When the link stops working.
+  google.protobuf.Timestamp expire_time = 2;
 }

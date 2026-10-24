@@ -27,13 +27,17 @@ mapfile -t pkgs < <(go list -f '{{.ImportPath}} {{join .TestImports " "}} {{join
   awk '$1 ~ /\/internal\/store(\/|$)/ { print $1; next }
     { for (i = 2; i <= NF; i++) if ($i ~ /\/internal\/store\/storetest$/) { print $1; next } }')
 echo "== database test packages: ${pkgs[*]}"
+# internal/controller alone runs for 8 to 10 minutes on PostgreSQL on a CI runner, at go test's
+# default limit of 10 minutes per package, so a slow run timed out without a failing test (#905,
+# #896). The limit is 20 minutes; a test that hangs still fails, only later.
+timeout=20m
 # CI's go job runs these packages on SQLite already, with the same flags (check-go.sh), so the store
 # job sets STORE_SKIP_SQLITE and runs them on PostgreSQL only.
 if [[ ${STORE_SKIP_SQLITE-} == 1 ]]; then
   echo "skipped: store tests on SQLite (STORE_SKIP_SQLITE=1, the go job runs them)"
 else
   echo "== store tests, SQLite"
-  if ! go test -race -count=1 "${pkgs[@]}"; then
+  if ! go test -race -count=1 -timeout "$timeout" "${pkgs[@]}"; then
     fail "store tests failed on SQLite"
   fi
 fi
@@ -43,7 +47,7 @@ if ((${#pgs[@]} == 0)) && [[ ${REQUIRE_PG-} == 1 ]]; then
 fi
 for pg in "${pgs[@]}"; do
   echo "== store tests, PostgreSQL $pg"
-  if ! RPMGR_TEST_PG=$pg RPMGR_TEST_REQUIRE_PG=1 go test -race -count=1 "${pkgs[@]}"; then
+  if ! RPMGR_TEST_PG=$pg RPMGR_TEST_REQUIRE_PG=1 go test -race -count=1 -timeout "$timeout" "${pkgs[@]}"; then
     fail "store tests failed on PostgreSQL ($pg)"
   fi
 done

@@ -8,12 +8,15 @@ import (
 	"crypto/sha256"
 	_ "embed" // the page template
 	"encoding/base64"
+	"fmt"
 	"html/template"
 	"mime"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 )
 
 // The gateway's own pages (docs/03-connections.md, "HTTP routes"), which a browser gets instead of bare
@@ -111,21 +114,16 @@ func (p *Pages) writePageMessage(w http.ResponseWriter, r *http.Request, status 
 	if len(host) > maxShownHost {
 		host = host[:maxShownHost]
 	}
-	host, message = strings.ToValidUTF8(host, "�"), strings.ToValidUTF8(message, "�")
-	var b bytes.Buffer
-	csp := pageCSP
-	if custom, ok := p.page(kind); ok {
-		id := ""
-		if strings.Contains(custom, "{{request_id}}") {
-			id = newRequestID()
-			if p.logs.Allow("") {
-				p.o.Logger.Info("custom page", "request_id", id, "host", host, "status", status, "page", kind)
-			}
+	custom, own := p.page(kind)
+	id := ""
+	if own && strings.Contains(custom, "{{request_id}}") {
+		id = newRequestID()
+		if p.logs.Allow("") {
+			p.o.Logger.Info("custom page", "request_id", id, "host", host, "status", status, "page", kind)
 		}
-		b.WriteString(renderCustom(custom, host, status, message, id))
-		csp = customPageCSP
-	} else if err := pageTemplate.Execute(&b, page{Kind: kind, Title: pageTitles[kind], Status: status, StatusText: http.StatusText(status),
-		Host: host, Message: message}); err != nil {
+	}
+	body, csp, err := render(kind, custom, own, host, status, message, id)
+	if err != nil {
 		http.Error(w, text, status)
 		return
 	}
@@ -134,11 +132,35 @@ func (p *Pages) writePageMessage(w http.ResponseWriter, r *http.Request, status 
 	h.Set("Content-Security-Policy", csp)
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("Content-Length", strconv.Itoa(b.Len()))
+	h.Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(status)
 	if r.Method != http.MethodHead {
-		_, _ = w.Write(b.Bytes())
+		_, _ = w.Write(body)
 	}
+}
+
+// render makes a page as the gateway sends it, with its CSP: the group's own page of the kind with
+// its placeholders filled in, if own, or else the built-in one.
+func render(kind, custom string, own bool, host string, status int, message, requestID string) ([]byte, string, error) {
+	host, message = strings.ToValidUTF8(host, "�"), strings.ToValidUTF8(message, "�")
+	if own {
+		return []byte(renderCustom(custom, host, status, message, requestID)), customPageCSP, nil
+	}
+	var b bytes.Buffer
+	err := pageTemplate.Execute(&b, page{Kind: kind, Title: pageTitles[kind], Status: status, StatusText: http.StatusText(status),
+		Host: host, Message: message})
+	return b.Bytes(), pageCSP, err
+}
+
+// RenderPage makes a page of a kind exactly as gateways send it (D136), for the controller's
+// preview: the group's own HTML, if own, with its placeholders filled in as escaped text, or the
+// built-in page; it returns the body and the Content-Security-Policy that goes with it.
+func RenderPage(kind rpmgrv1.GatewayPageKind, custom string, own bool, host string, status int, message, requestID string) ([]byte, string, error) {
+	k, ok := pageKinds[kind]
+	if !ok {
+		return nil, "", fmt.Errorf("gateway: page kind %v", kind)
+	}
+	return render(k, custom, own, host, status, message, requestID)
 }
 
 // wantsHTML reports whether a request's Accept header names text/html with a quality above zero:
