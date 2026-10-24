@@ -79,3 +79,14 @@ func SetClientKeys(t testing.TB, n int) {
 	clientKeys = n
 	t.Cleanup(func() { clientKeys = old })
 }
+
+// ClientTables is the number of client tables ls keeps, and the clients of each.
+func ClientTables(ls *Limits) []int {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	var out []int
+	for _, t := range ls.clients {
+		out = append(out, t.size())
+	}
+	return out
+}

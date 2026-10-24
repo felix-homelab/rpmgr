@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -202,5 +203,97 @@ func TestApplier_RateLimitRules(t *testing.T) {
 	}
 	if ok, _, perClient := lim.Admit(client); ok || !perClient {
 		t.Fatal("the rule of the snapshot was not set: " + strconv.FormatBool(ok))
+	}
+}
+
+// TestRouteLimit_ClientTables (docs/03-connections.md, "Timeouts, keepalive and backoff"): the
+// routes whose policies carry a rate_limit rule share its client table; a table holds at most its
+// bound of clients and refuses new ones while those are limited; clients whose bucket is full
+// again are dropped when the table is full, and every minute; a table no route uses goes.
+func TestRouteLimit_ClientTables(t *testing.T) {
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	ls := gateway.Limits{Now: func() time.Time { return now }}
+	rule := gateway.ClientRate{Policy: "pol_1", PerSecond: 1, Burst: 1}
+	a := ls.Set("rt_a", gateway.RouteLimits{Clients: []gateway.ClientRate{rule}})
+	b := ls.Set("rt_b", gateway.RouteLimits{Clients: []gateway.ClientRate{rule}})
+	c := ls.Set("rt_c", gateway.RouteLimits{Clients: []gateway.ClientRate{{Policy: "pol_2", PerSecond: 1, Burst: 1}}})
+	client := netip.MustParseAddr("192.0.2.1")
+	if ok, _, _ := a.Admit(client); !ok {
+		t.Fatal("the first request was refused")
+	}
+	if ok, _, perClient := b.Admit(client); ok || !perClient {
+		t.Fatal("a route sharing the rule has a bucket of its own for the client")
+	}
+	if ok, _, _ := c.Admit(client); !ok {
+		t.Fatal("another rule shares the client's bucket")
+	}
+
+	// The bound: the default table holds 65 536 clients and refuses the next.
+	for i := range 65_535 {
+		if ok, _, _ := a.Admit(netip.AddrFrom4([4]byte{10, byte(i >> 16), byte(i >> 8), byte(i)})); !ok {
+			t.Fatalf("client %d refused", i)
+		}
+	}
+	newcomer := netip.MustParseAddr("198.51.100.1")
+	if ok, wait, perClient := b.Admit(newcomer); ok || !perClient || wait != time.Second {
+		t.Fatalf("a client beyond the bound: %t %s %t", ok, wait, perClient)
+	}
+	if got := gateway.ClientTables(&ls); !slices.Contains(got, 65_536) {
+		t.Fatalf("tables %v", got)
+	}
+	// Held clients stay limited; once their buckets are full again, the full table drops them.
+	if ok, _, _ := a.Admit(client); ok {
+		t.Fatal("a held client was forgotten")
+	}
+	now = now.Add(2 * time.Second)
+	if ok, _, _ := b.Admit(newcomer); !ok {
+		t.Fatal("a client was refused after the others' buckets refilled")
+	}
+	if got := gateway.ClientTables(&ls); slices.Contains(got, 65_536) {
+		t.Fatalf("the full table kept idle clients: %v", got)
+	}
+
+	// Every minute, idle clients go even from a table that is not full.
+	ls.Set("rt_c", gateway.RouteLimits{Clients: []gateway.ClientRate{{Policy: "pol_2", PerSecond: 1, Burst: 1}}})
+	now = now.Add(time.Minute)
+	if ok, _, _ := c.Admit(netip.MustParseAddr("203.0.113.9")); !ok {
+		t.Fatal("refused")
+	}
+	if got := gateway.ClientTables(&ls); !slices.Contains(got, 1) {
+		t.Fatalf("idle clients stayed: %v", got)
+	}
+
+	ls.Retain(map[string]bool{"rt_a": true})
+	if got := gateway.ClientTables(&ls); len(got) != 1 {
+		t.Fatalf("tables of rules no route uses stayed: %v", got)
+	}
+}
+
+// TestRouteLimit_AdmitOrder: a request a client rule refuses gives the route's total back, and one
+// the total refuses takes nothing from the client's bucket.
+func TestRouteLimit_AdmitOrder(t *testing.T) {
+	var ls gateway.Limits
+	lim := ls.Set("rt_1", gateway.RouteLimits{RequestsPerSecond: 3, Clients: []gateway.ClientRate{{Policy: "pol_1", PerSecond: 1, Burst: 1}}})
+	a := netip.MustParseAddr("192.0.2.1")
+	if ok, _, _ := lim.Admit(a); !ok {
+		t.Fatal("the first request was refused")
+	}
+	for range 5 {
+		if ok, _, perClient := lim.Admit(a); ok || !perClient {
+			t.Fatal("a client over its rate was admitted")
+		}
+	}
+	for i := range 2 {
+		if ok, _, _ := lim.Admit(netip.AddrFrom4([4]byte{192, 0, 2, byte(10 + i)})); !ok {
+			t.Fatalf("client %d: the refused requests used up the route's total", i)
+		}
+	}
+	other := netip.MustParseAddr("198.51.100.7")
+	if ok, _, perClient := lim.Admit(other); ok || perClient {
+		t.Fatal("over the route's total")
+	}
+	lim = ls.Set("rt_1", gateway.RouteLimits{RequestsPerSecond: 1000, Clients: []gateway.ClientRate{{Policy: "pol_1", PerSecond: 1, Burst: 1}}})
+	if ok, _, _ := lim.Admit(other); !ok {
+		t.Fatal("a refusal of the total used up the client's bucket")
 	}
 }
