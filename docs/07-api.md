@@ -80,15 +80,15 @@ names.
 | `TokenService` | `CreateAPIToken`, `ListAPITokens`, `RevokeAPIToken`, `CreateServiceAccount`, … | Personal API tokens: 1; service accounts: 2 |
 | `EnrollmentService` | `CreateEnrollmentToken` (connectors, also re-enrollment; `connectors.write`), `CreateGatewayEnrollmentToken` (a gateway an Admin created, R15; `infrastructure.write`), both with step-up and shown once; `ListEnrollmentTokens`, `RevokeEnrollmentToken`, `GetInstallCommand` | 1 |
 | `ConnectorService` | `ListConnectors`, `GetConnector` (with its control session), `UpdateConnector` (name, labels, `transport`), `DecommissionConnector` (with the routes it deletes, [D78](14-open-decisions.md#engineering); `FAILED_PRECONDITION` for the all-in-one's own connector, whose `built_in` is set, [ADR-0019](adr/0019-all-in-one-runs-a-connector.md)), `GetConnectorStatus` (control session, data sessions as its gateways report them, routes it reports not ready) | 1 |
-| `GatewayService` | `CreateGateway`, `GetGateway`, `ListGateways`, `UpdateGateway` (name, tunnel endpoints, `enabled`), `DecommissionGateway` (revokes the gateway's identity; `FAILED_PRECONDITION` for the all-in-one's own gateway, whose `built_in` is set, and so is an enrollment token bound to either); CRUD on gateway groups and port pools; `SetPortQuota`, `ListPortQuotas`, `DeletePortQuota`; shared-group grants | 1 (shared-group grants: 2) |
-| `RouteService` | CRUD on routes (`CreateRoute`, `GetRoute`, `ListRoutes`, `UpdateRoute`, `DeleteRoute`) and their targets (`CreateRouteTarget`, `GetRouteTarget` with its route's ID, `UpdateRouteTarget`, `DeleteRouteTarget`; a route shows its targets), `ProbeTargetCertificate` (an enabled connector of the org reads the certificate a target presents, for its key pin, [ADR-0018](adr/0018-pin-the-key-a-target-presents.md); `routes.write`), `PreviewRoute` (compile without saving: the write's checks and each gateway's own, the route as it would be stored, the gateways and connectors it would reach, judged by the capabilities each announced in its latest control session, or by this release's for one that never connected, so that a gateway or connector whose release lacks a capability the route needs is not listed, [03](03-connections.md#versioning-and-capabilities)). A hostname outside the org's verified domains is refused with `DOMAIN_NOT_VERIFIED`; ACME for a wildcard hostname with `WILDCARD_NEEDS_CERTIFICATE` (R42); a route in certificate mode names an uploaded certificate that covers each of its hostnames, or is refused with `CERTIFICATE_NOT_COVERING`. A tcp or udp route takes an explicit or a random port of its group's pools, and a tcp_udp route one port number from both protocols' pools, free in both and counted against both quotas; `PORT_NOT_IN_POOL`, `POOL_EXHAUSTED` and `QUOTA_REACHED` refuse one. A route applies access policies of its org, each once; one with a `basic_auth` rule only on an http route (`BASIC_AUTH_NOT_HTTP`). The order of `policy_ids`, like that of a policy's rules, is still stored but no longer changes who is admitted: a deny rule of any of them wins (D85). An http route's `maintenance` and `maintenance_message` (plain text, at most 500 characters, line feeds the only control characters, no bidirectional embedding, override or isolate) put it in maintenance (D88); changing only them leaves its hostnames as they are, so it works while a domain claim has lapsed | 1 |
+| `GatewayService` | `CreateGateway`, `GetGateway`, `ListGateways`, `UpdateGateway` (name, tunnel endpoints, `enabled`, and in Phase 2 `wss_hostname`, under a verified domain of the group's owner org), `DecommissionGateway` (revokes the gateway's identity; `FAILED_PRECONDITION` for the all-in-one's own gateway, whose `built_in` is set, and so is an enrollment token bound to either); CRUD on gateway groups and port pools; `SetPortQuota`, `ListPortQuotas`, `DeletePortQuota`; shared-group grants; in Phase 2 `SetGatewayPage`, `GetGatewayPage`, `DeleteGatewayPage` (a group's own not-found, unavailable and maintenance pages, at most the size of [03](03-connections.md#timeouts-keepalive-and-backoff); `infrastructure.write` of the group's owner org, audited, [D132](14-open-decisions.md#engineering)) | 1 (shared-group grants: 2) |
+| `RouteService` | CRUD on routes (`CreateRoute`, `GetRoute`, `ListRoutes`, `UpdateRoute`, `DeleteRoute`) and their targets (`CreateRouteTarget`, `GetRouteTarget` with its route's ID, `UpdateRouteTarget`, `DeleteRouteTarget`; a route shows its targets), `ProbeTargetCertificate` (an enabled connector of the org reads the certificate a target presents, for its key pin, [ADR-0018](adr/0018-pin-the-key-a-target-presents.md); `routes.write`), `PreviewRoute` (compile without saving: the write's checks and each gateway's own, the route as it would be stored, the gateways and connectors it would reach, judged by the capabilities each announced in its latest control session, or by this release's for one that never connected, so that a gateway or connector whose release lacks a capability the route needs is not listed, [03](03-connections.md#versioning-and-capabilities)). A hostname outside the org's verified domains is refused with `DOMAIN_NOT_VERIFIED`; ACME for a wildcard hostname with `WILDCARD_NEEDS_CERTIFICATE` (R42); a route in certificate mode names an uploaded certificate that covers each of its hostnames, or is refused with `CERTIFICATE_NOT_COVERING`. A tcp or udp route takes an explicit or a random port of its group's pools, and a tcp_udp route one port number from both protocols' pools, free in both and counted against both quotas; `PORT_NOT_IN_POOL`, `POOL_EXHAUSTED` and `QUOTA_REACHED` refuse one. A route applies access policies of its org, each once; one with a `basic_auth` rule only on an http route (`BASIC_AUTH_NOT_HTTP`). The order of `policy_ids`, like that of a policy's rules, is still stored but no longer changes who is admitted: a deny rule of any of them wins (D85). An http route's `maintenance` and `maintenance_message` (plain text, at most 500 characters, line feeds the only control characters, no bidirectional embedding, override or isolate) put it in maintenance (D88); changing only them leaves its hostnames as they are, so it works while a domain claim has lapsed. Phase 2 ([03](03-connections.md#http-routes)): an http route's header matches (at most 8; a second route with the same hostname, prefix and set is refused with `ALREADY_EXISTS`, as a taken hostname is) and its two upstream timeouts; a route's `RouteLimits`; its health check (`SetRouteHealthCheck`, `DeleteRouteHealthCheck`, and the observed health of each target in `GetRoute`, which a Viewer reads too); a tcp route in `http_connect` mode with its authorities and authentication mode, placed on a CONNECT listener of the org (`CONNECT_MODE_MISMATCH` for a named port whose listener has another mode or hostname; choosing `plain_basic` returns a warning that the password crosses the network in the clear, [D130](14-open-decisions.md#engineering)) | 1 (header matches, timeouts, limits, health checks, CONNECT: 2) |
 | `DomainService` | `CreateDomain` (returns the TXT record or HTTP token that proves the claim), `GetDomain`, `VerifyDomain`, `ListDomains`, `DeleteDomain` (refused while route hostnames lie under it), `MarkDomainTrusted` (Instance Admin, step-up), `DelegateDomain` and `ApproveDomainClaim` (Instance Admin, step-up) | 1 (`DelegateDomain`, `ApproveDomainClaim`: 2) |
 | `CertificateService` | `UploadCertificate` (a chain and its key, checked as [04](04-security.md#controller-certificates) requires; the key is kept under the KEK and never returned), `GetCertificate`, `ListCertificates` (source, names, validity, status and the last ACME error; an uploaded certificate with the routes that serve it), `DeleteCertificate` (an uploaded certificate no route serves), `RenewCertificate` (an ACME certificate of a route in acme mode, renewed now even if not due, or obtained if it has none; the answer comes at once, and the outcome shows in the certificate); CRUD on CA bundles for HTTPS upstreams (`CreateCABundle`, `GetCABundle`, `ListCABundles`, `UpdateCABundle`, `DeleteCABundle`; shown with their certificates' subjects and expiry and the targets that use them, not deleted while one does) | 1 |
 | `PkiService` | `GetPkiStatus` (the trust domain, the root's pin, and the CA's keys that have not expired, with their state and when the schedule replaces them), `RotateIntermediate` (replaces the intermediate before its half-life; the old one keeps verifying its leaves until it expires); Instance Admin, the rotation with step-up | 1 |
 | `DnsProviderService` | `ConnectDnsProvider`, `ListDnsProviders`, `UpdateDnsProvider` (rename, rotate token), `DeleteDnsProvider`, `ListProviderZones` | 2 |
 | `DnsZoneService` | `ImportZone`, `ListZones`, `UpdateZone` (gates), `RemoveZone` (keep or remove records), `PlanZoneSync`, `ApproveZonePlan` (plan hash), `SyncZone`, `ListZoneRecords` (owned and foreign, read live; Owner/Admin), `AdoptRecords`, `ReleaseRecord` (optionally restore the original) | 2 |
 | `DnsNameService` | `CreateDnsName`, `GetDnsName`, `ListDnsNames`, `UpdateDnsName`, `DeleteDnsName` | 2 |
-| `PolicyService` | CRUD on access policies (`CreateAccessPolicy`, `GetAccessPolicy`, `ListAccessPolicies`, `UpdateAccessPolicy`, `DeleteAccessPolicy`) with their rules (`ip_allow`, `ip_deny`, `basic_auth`; their order is stored but a deny wins over every allow, D85; a CIDR with host bits set is accepted and kept in its masked form, so `10.0.0.1/16` is `10.0.0.0/16`); a policy shows the routes that apply it and cannot be deleted while one does. An update replaces the rules as a whole. Basic-auth passwords are write-only: the controller hashes them ([04](04-security.md#secrets-at-rest-and-in-logs)) under the account password rules, and in an update a user without a password keeps the one of its name. A `basic_auth` rule on a policy that a route other than an http route applies is refused with `BASIC_AUTH_NOT_HTTP`; health checks | 2 (basic auth, IP rules: 1) |
+| `PolicyService` | CRUD on access policies (`CreateAccessPolicy`, `GetAccessPolicy`, `ListAccessPolicies`, `UpdateAccessPolicy`, `DeleteAccessPolicy`) with their rules (`ip_allow`, `ip_deny`, `basic_auth`; their order is stored but a deny wins over every allow, D85; a CIDR with host bits set is accepted and kept in its masked form, so `10.0.0.1/16` is `10.0.0.0/16`); a policy shows the routes that apply it and cannot be deleted while one does. An update replaces the rules as a whole. Basic-auth passwords are write-only: the controller hashes them ([04](04-security.md#secrets-at-rest-and-in-logs)) under the account password rules, and in an update a user without a password keeps the one of its name. A `basic_auth` rule on a policy that a route other than an http route, or a CONNECT route in a basic mode, applies is refused with `BASIC_AUTH_NOT_HTTP`. Phase 2 rule kinds ([03](03-connections.md#access-policies), [04](04-security.md#route-edge-rules)): `rate_limit` (a rate and a burst per client, on every route type); `require_header` (a header name and 1 to 4 write-only values of at least 32 characters, hashed by the controller; on a policy a route other than an http route applies, `REQUIRE_HEADER_NOT_HTTP`); `oidc` (a route identity provider, the accepted e-mail addresses, domains and groups, the session length; with basic auth on one route, `OIDC_WITH_BASIC_AUTH`). Route identity providers are managed here too, their client secret write-only | 2 (basic auth, IP rules: 1) |
 | `PrivateServiceService` | private services and visitor grants | 2 |
 | `StatusService` | `GetApplyStatus`, `WatchApplyStatus` (stream), `WatchEvents` (stream) | 1 |
 | `LogService` | `StreamLogs` (server stream from an agent via an imperative operation) | 2 |
@@ -102,6 +102,9 @@ names.
 
 ### Example: a route
 
+The sketch follows `proto/rpmgr/v1/route.proto`, with its validation left out; fields marked
+Phase 2 are planned and take the numbers shown.
+
 ```protobuf
 // rpmgr/v1/route.proto (sketch)
 message Route {
@@ -110,46 +113,100 @@ message Route {
   string gateway_group_id = 3;
   bool enabled = 4;                    // the only desired on/off switch
   map<string, string> labels = 5;
+  string description = 6;
   oneof spec {
-    HttpRouteSpec http = 10;
-    TcpRouteSpec tcp = 11;
-    UdpRouteSpec udp = 12;
-    TlsPassthroughRouteSpec tls_passthrough = 13;
+    HTTPRouteSpec http = 10;
+    TCPRouteSpec tcp = 11;
+    UDPRouteSpec udp = 12;
+    TLSPassthroughRouteSpec tls_passthrough = 13;
+    TCPUDPRouteSpec tcp_udp = 14;
   }
-  repeated Target targets = 20;
+  repeated RouteTarget targets = 20;
   repeated string policy_ids = 21;
-  RouteLimits limits = 22;
-  TransportPolicy transport = 23;      // AUTO, QUIC, H2; UNSPECIFIED = the connector's (03)
+  RouteLimits limits = 22;             // Phase 2: for the route as a whole, divided among gateways
+  DataTransport transport = 23;        // AUTO, QUIC, H2; UNSPECIFIED = the connector's (03)
+  google.protobuf.Timestamp create_time = 24;  // output only
+  google.protobuf.Timestamp update_time = 25;  // output only
+  string update_user_id = 26;          // output only
+  HealthCheck health_check = 27;       // Phase 2: one per route, run against each target
   string etag = 30;                    // output only; send back on update
   RouteStatus status = 31;             // output only; derived from observed state (see 06-data-model)
-  repeated HostnameDnsStatus dns_status = 32;  // output only; per hostname, not part of status
+  repeated HostnameDnsStatus dns_status = 32;  // Phase 2, output only; per hostname
 }
 
-message HttpRouteSpec {
-  repeated string hostnames = 1 [(buf.validate.field).repeated = {min_items: 1, max_items: 100}];
+message HTTPRouteSpec {
+  repeated string hostnames = 1;       // 1 to 100
   string path_prefix = 2;              // longest prefix wins among routes sharing a hostname
-  TlsMode tls_mode = 3;                // ACME or an uploaded certificate
-  Port80Mode port80 = 4;               // REDIRECT (default), SERVE or OFF; ACME HTTP-01 always works
-  map<string, string> request_headers_set = 5;
-  map<string, string> response_headers_set = 6;
-  bool dns_proxied = 7;                // Phase 2: opt into Cloudflare's proxy (15-dns)
-  bool maintenance = 8;                // answer every request with the maintenance page, 503 (D88)
-  string maintenance_message = 9;      // plain text on that page, at most 500 characters
+  TLSMode tls_mode = 3;                // ACME or an uploaded certificate
+  string certificate_id = 4;           // in certificate mode
+  Port80Mode port80 = 5;               // REDIRECT (default), SERVE or OFF; ACME HTTP-01 always works
+  uint32 hsts_max_age_seconds = 6;     // 0 = no HSTS
+  string host_header = 7;              // empty = the client's
+  map<string, string> request_headers_set = 8;
+  map<string, string> response_headers_set = 9;
+  optional bool websocket = 10;        // upgrades pass unless false
+  uint64 max_body_bytes = 11;          // 0 = no limit
+  bool maintenance = 12;               // answer every request with the maintenance page, 503 (D88)
+  string maintenance_message = 13;     // plain text on that page, at most 500 characters
+  repeated HeaderMatch header_matches = 14;            // Phase 2: at most 8
+  uint32 upstream_response_header_timeout_seconds = 15;  // Phase 2: 0 = the gateway's
+  uint32 upstream_idle_timeout_seconds = 16;           // Phase 2: 0 = the gateway's
+  bool dns_proxied = 17;               // Phase 2: opt into Cloudflare's proxy (15-dns)
 }
 
-message Target {
+message HeaderMatch {                  // Phase 2
+  string name = 1;                     // compared without regard to case
+  oneof match { string exact = 2; bool present = 3; }
+}
+
+message TCPRouteSpec {
+  uint32 port = 1;                     // 0 = a random free port of the pool
+  optional uint32 idle_timeout_seconds = 2;
+  ListenerMode listener_mode = 3;      // Phase 2: PLAIN (default) or HTTP_CONNECT
+  ConnectSpec connect = 4;             // Phase 2: with HTTP_CONNECT
+}
+
+message ConnectSpec {                  // Phase 2 (D130)
+  repeated string authorities = 1;     // host names, unique on the listener
+  ConnectAuthMode auth_mode = 2;       // NONE (default), TLS_BASIC, PLAIN_BASIC (password in clear)
+  string hostname = 3;                 // TLS_BASIC: the listener's name, under a verified domain
+}
+
+message RouteLimits {                  // Phase 2; 0 = no limit
+  uint32 max_connections = 1;
+  uint32 requests_per_second = 2;
+  uint64 bandwidth_bytes_per_second = 3;
+}
+
+message HealthCheck {                  // Phase 2
+  HealthCheckType type = 1;            // TCP or HTTP
+  uint32 port = 2;                     // 0 = the target's; required on udp routes
+  string http_path = 3;
+  uint32 expected_status_min = 4;      // 200 unless set
+  uint32 expected_status_max = 5;      // 399 unless set
+  uint32 interval_seconds = 6;
+  uint32 timeout_seconds = 7;
+  uint32 unhealthy_threshold = 8;
+  uint32 healthy_threshold = 9;
+}
+
+message RouteTarget {
   string id = 1;
   string connector_id = 2;
   oneof address { HostPort host_port = 3; string unix_path = 4; }
   UpstreamProtocol upstream_protocol = 5;   // TCP, HTTP, HTTPS, H2C; one per http route; HTTPS
                                             // verified, or unverified by choice (ADR-0017)
-  ProxyProtocol proxy_protocol = 6;         // NONE, V1, V2
-  uint32 weight = 7;
-  uint32 priority = 8;                      // lower = preferred; higher priorities are failover
-  string health_check_id = 9;
+  UpstreamTLSSettings tls = 6;
+  ProxyProtocol proxy_protocol = 7;         // NONE, V1, V2
+  uint32 weight = 8;
+  uint32 priority = 9;                      // lower = preferred; higher priorities are failover
   bool enabled = 10;
+  string etag = 11;
 }
 ```
+
+The values and bounds of these fields live in
+[03](03-connections.md#timeouts-keepalive-and-backoff).
 
 ```protobuf
 // rpmgr/v1/dns.proto (sketch)
