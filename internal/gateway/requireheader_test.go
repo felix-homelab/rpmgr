@@ -44,34 +44,10 @@ func TestRequireHeader_StrippedAndConstantTime(t *testing.T) {
 	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}},
 		RequireHeader: []gateway.RequireHeaderRule{requireRule("X-Origin-Token", originA, originB)}}
 	e := newHTTPEnv(t, upstream, route)
-	c := e.client(false)
-	for _, tc := range []struct {
-		name   string
-		header http.Header
-		want   int
-	}{
-		{"no header", nil, http.StatusForbidden},
-		{"a wrong value", http.Header{"X-Origin-Token": {originC}}, http.StatusForbidden},
-		{"an empty value", http.Header{"X-Origin-Token": {""}}, http.StatusForbidden},
-		{"a prefix of a value", http.Header{"X-Origin-Token": {originA[:32]}}, http.StatusForbidden},
-		{"the value in another header", http.Header{"X-Other": {originA}}, http.StatusForbidden},
-		{"the first value", http.Header{"X-Origin-Token": {originA}}, http.StatusOK},
-		{"the second value", http.Header{"X-Origin-Token": {originB}}, http.StatusOK},
-		{"the name in lower case", http.Header{"x-origin-token": {originB}}, http.StatusOK},
-		{"a wrong and a right value", http.Header{"X-Origin-Token": {originC, originA}}, http.StatusOK},
-	} {
-		r := get(t, c, "https://app.example.com/", tc.header)
-		if r.status != tc.want {
-			t.Errorf("%s: %d, want %d", tc.name, r.status, tc.want)
-			continue
-		}
-		if r.status == http.StatusOK && !strings.HasPrefix(r.body, `origin=[] `) {
-			t.Errorf("%s: the upstream saw the header: %s", tc.name, r.body)
-		}
-		if strings.Contains(r.body, "origin-secret") {
-			t.Errorf("%s: a value reached the upstream or the client: %s", tc.name, r.body)
-		}
+	for _, h2 := range []bool{false, true} {
+		requireHeaderCases(t, e.client(h2), h2)
 	}
+	c := e.client(false)
 	// Two rules of two policies: each must pass, and both headers stay at the gateway.
 	route.RequireHeader = append(route.RequireHeader, requireRule("X-Edge", originC))
 	e.routes.Apply([]gateway.HTTPRoute{route})
@@ -141,4 +117,87 @@ func TestRequireHeader_TighteningClosesUpgrades(t *testing.T) {
 	if errors.As(err, &ne) && ne.Timeout() {
 		t.Fatal("an upgraded connection whose value the tightened rule dropped went on")
 	}
+}
+
+// requireHeaderCases checks a route that requires X-Origin-Token with originA or originB, over
+// HTTP/1.1 or HTTP/2.
+func requireHeaderCases(t *testing.T, c *http.Client, h2 bool) {
+	t.Helper()
+	for _, tc := range []struct {
+		name   string
+		header http.Header
+		want   int
+	}{
+		{"no header", nil, http.StatusForbidden},
+		{"a wrong value", http.Header{"X-Origin-Token": {originC}}, http.StatusForbidden},
+		{"an empty value", http.Header{"X-Origin-Token": {""}}, http.StatusForbidden},
+		{"a prefix of a value", http.Header{"X-Origin-Token": {originA[:32]}}, http.StatusForbidden},
+		{"the value in another header", http.Header{"X-Other": {originA}}, http.StatusForbidden},
+		{"the first value", http.Header{"X-Origin-Token": {originA}}, http.StatusOK},
+		{"the second value", http.Header{"X-Origin-Token": {originB}}, http.StatusOK},
+		{"the name in lower case", http.Header{"x-origin-token": {originB}}, http.StatusOK},
+		{"a wrong and a right value", http.Header{"X-Origin-Token": {originC, originA}}, http.StatusOK},
+	} {
+		r := get(t, c, "https://app.example.com/", tc.header)
+		if r.status != tc.want {
+			t.Errorf("HTTP/2 %t, %s: %d, want %d", h2, tc.name, r.status, tc.want)
+			continue
+		}
+		if r.status == http.StatusOK && !strings.HasPrefix(r.body, `origin=[] `) {
+			t.Errorf("HTTP/2 %t, %s: the upstream saw the header: %s", h2, tc.name, r.body)
+		}
+		if strings.Contains(r.body, "origin-secret") {
+			t.Errorf("HTTP/2 %t, %s: a value reached the upstream or the client: %s", h2, tc.name, r.body)
+		}
+	}
+}
+
+// TestRequireHeader_TighteningOnReplacedTransport: a WebSocket that stays on a transport the route
+// replaced, as its upstream changed, still ends when a later snapshot drops its value.
+func TestRequireHeader_TighteningOnReplacedTransport(t *testing.T) {
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", WebSocket: true, Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}},
+		RequireHeader: []gateway.RequireHeaderRule{requireRule("X-Origin-Token", originA)}}
+	e := newHTTPEnv(t, websocketEcho, route)
+	c, br := upgraded(t, e, originA)
+	route.Upstream = "h2c" // a new transport; the WebSocket stays on the old one
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	if _, err := c.Write([]byte("ping")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadFull(br, make([]byte, 4)); err != nil {
+		t.Fatalf("the WebSocket after the upstream changed: %v", err)
+	}
+	route.RequireHeader = []gateway.RequireHeaderRule{requireRule("X-Origin-Token", originB)}
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_, _ = c.Write([]byte("x"))
+	_, err := io.Copy(io.Discard, br)
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		t.Fatal("a WebSocket on a replaced transport went on after the rule dropped its value")
+	}
+}
+
+// upgraded opens a WebSocket to app.example.com with an X-Origin-Token value.
+func upgraded(t *testing.T, e *httpEnv, value string) (*tls.Conn, *bufio.Reader) {
+	t.Helper()
+	c, err := tls.Dial("tcp", e.addr, &tls.Config{ServerName: "app.example.com", RootCAs: e.pool, MinVersion: tls.VersionTLS13,
+		NextProtos: []string{"http/1.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	_, _ = c.Write([]byte("GET /ws HTTP/1.1\r\nHost: app.example.com\r\nX-Origin-Token: " + value +
+		"\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"))
+	br := bufio.NewReader(c)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("upgrade: %v", resp.Status)
+	}
+	return c, br
 }

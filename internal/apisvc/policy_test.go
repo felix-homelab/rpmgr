@@ -353,20 +353,27 @@ func TestAccessPolicies_RequireHeader(t *testing.T) {
 	}
 
 	for name, rule := range map[string]*rpmgrv1.AccessRule{
-		"a 31-character value":  requireHeader("X-Origin", valueA[:31]),
-		"a value with a space":  requireHeader("X-Origin", "origin secret a 0123456789abcdefghijkl"),
-		"a value with a tab":    requireHeader("X-Origin", "origin\tsecret-a-0123456789abcdefghijkl"),
-		"a non-ASCII value":     requireHeader("X-Origin", "origin-secret-ä-0123456789abcdefghijkl"),
-		"a value twice":         requireHeader("X-Origin", valueA, valueA),
-		"five values":           requireHeader("X-Origin", valueA, valueB, valueC, valueA+"d", valueA+"e"),
-		"no value":              requireHeader("X-Origin"),
-		"a name with a space":   requireHeader("X Origin", valueA),
-		"Host":                  requireHeader("host", valueA),
-		"Authorization":         requireHeader("Authorization", valueA),
-		"Cookie":                requireHeader("Cookie", valueA),
-		"an rpmgr header":       requireHeader("Rpmgr-User-Email", valueA),
-		"a forwarding header":   requireHeader("X-Forwarded-For", valueA),
-		"a connection's header": requireHeader("Transfer-Encoding", valueA),
+		"a 31-character value":        requireHeader("X-Origin", valueA[:31]),
+		"a value with a space":        requireHeader("X-Origin", "origin secret a 0123456789abcdefghijkl"),
+		"a value with a tab":          requireHeader("X-Origin", "origin\tsecret-a-0123456789abcdefghijkl"),
+		"a non-ASCII value":           requireHeader("X-Origin", "origin-secret-ä-0123456789abcdefghijkl"),
+		"a value twice":               requireHeader("X-Origin", valueA, valueA),
+		"five values":                 requireHeader("X-Origin", valueA, valueB, valueC, valueA+"d", valueA+"e"),
+		"no value":                    requireHeader("X-Origin"),
+		"a name with a space":         requireHeader("X Origin", valueA),
+		"Host":                        requireHeader("host", valueA),
+		"Authorization":               requireHeader("Authorization", valueA),
+		"Cookie":                      requireHeader("Cookie", valueA),
+		"an rpmgr header":             requireHeader("Rpmgr-User-Email", valueA),
+		"a forwarding header":         requireHeader("X-Forwarded-For", valueA),
+		"Traceparent":                 requireHeader("traceparent", valueA),
+		"Tracestate":                  requireHeader("Tracestate", valueA),
+		"Baggage":                     requireHeader("Baggage", valueA),
+		"a 129-character name":        requireHeader("X-"+strings.Repeat("a", 127), valueA),
+		"a 1025-character value":      requireHeader("X-Origin", valueA+strings.Repeat("x", 1025-len(valueA))),
+		"a value of one character":    requireHeader("X-Origin", strings.Repeat("a", 40)),
+		"a value of seven characters": requireHeader("X-Origin", strings.Repeat("abcdefg", 6)),
+		"a connection's header":       requireHeader("Transfer-Encoding", valueA),
 	} {
 		if _, err := create("x", rule); code(err) != connect.CodeInvalidArgument {
 			t.Errorf("%s: %v, want INVALID_ARGUMENT", name, err)
@@ -413,8 +420,18 @@ func TestAccessPolicies_RequireHeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	pg.PolicyIds = []string{ips.GetId()}
-	if _, err := createRoute(ada, org, pg, ""); err != nil {
+	tcpRt, err := createRoute(ada, org, pg, "")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if _, err := ada.rt.UpdateRoute(ctx, connect.NewRequest(&rpmgrv1.UpdateRouteRequest{
+		Route:      &rpmgrv1.Route{Id: tcpRt.GetId(), PolicyIds: []string{ips.GetId(), ap.GetId()}},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"policy_ids"}}})); code(err) != connect.CodeFailedPrecondition ||
+		reason(err) != apisvc.ReasonRequireHeaderNotHTTP {
+		t.Errorf("the policy added to a tcp route: %v", err)
+	}
+	if _, err := create("eight", requireHeader("X-Origin", strings.Repeat("abcdefgh", 5))); err != nil {
+		t.Errorf("a value of eight different characters: %v", err)
 	}
 	if _, err := ada.pol.UpdateAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.UpdateAccessPolicyRequest{
 		AccessPolicy: &rpmgrv1.AccessPolicy{Id: ips.GetId(), Rules: []*rpmgrv1.AccessRule{requireHeader("X-Origin", valueA)}},

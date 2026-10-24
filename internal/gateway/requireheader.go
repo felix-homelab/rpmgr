@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 
 	"golang.org/x/net/http/httpguts"
 
@@ -24,13 +25,34 @@ type RequireHeaderRule struct {
 	Sums [][sha256.Size]byte
 }
 
-// requireHeaderOf parses a route's require_header rules: each names a valid header and has 1 to 4
-// hashes of SHA-256's size.
+// NotRequirable reports why a request header cannot be required, or "": the gateway's own and the
+// connection's headers; the credentials and cookies that basic auth and backends read; the trace
+// context the gateway reads before it checks access, which would carry a required value into its
+// spans and break the trace when removed; and the Rpmgr- headers the gateway sets.
+func NotRequirable(name string) string {
+	switch c := http.CanonicalHeaderKey(name); {
+	case slices.Contains(ReservedHeaders, c):
+		return "is the gateway's own"
+	case c == "Authorization" || c == "Cookie":
+		return "carries credentials of basic auth or the backend"
+	case c == "Traceparent" || c == "Tracestate" || c == "Baggage":
+		return "carries the trace context"
+	case strings.HasPrefix(c, "Rpmgr-"):
+		return "is an rpmgr header"
+	}
+	return ""
+}
+
+// requireHeaderOf parses a route's require_header rules: each names a valid header that may be
+// required and has 1 to 4 hashes of SHA-256's size.
 func requireHeaderOf(rules []*rpmgrv1.RequireHeaderParams) ([]RequireHeaderRule, error) {
 	var out []RequireHeaderRule
 	for i, r := range rules {
 		if !httpguts.ValidHeaderFieldName(r.GetName()) {
 			return nil, fmt.Errorf("rule %d: header name %q", i+1, r.GetName())
+		}
+		if why := NotRequirable(r.GetName()); why != "" {
+			return nil, fmt.Errorf("rule %d: header %s %s", i+1, r.GetName(), why)
 		}
 		if n := len(r.GetValueSha256()); n < 1 || n > 4 {
 			return nil, fmt.Errorf("rule %d: %d values, not 1 to 4", i+1, n)

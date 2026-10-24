@@ -57,7 +57,7 @@ func (f *policyFlags) register(fs *flag.FlagSet, update bool) {
 	fs.StringVar(&f.description, "description", "", "a description for people")
 	fs.Var(&f.rules, "rule", "a rule: allow:<cidr>,…, deny:<cidr>,…, basic-auth:<user>,… or require-header:<header>; repeat for more; a deny wins over every allow")
 	fs.StringVar(&f.passwords, "passwords-file", "", "a file of user:password lines for the basic-auth users; the others are asked for")
-	fs.StringVar(&f.values, "header-values-file", "", "a file of header:value lines, up to 4 per header, for the require-header rules; the others are asked for")
+	fs.StringVar(&f.values, "header-values-file", "", "a file of header:value lines, up to 4 per header, for the require-header rules; each value random, such as from openssl rand -base64 32; the others are asked for")
 	fs.DurationVar(&f.wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
 	if update {
 		fs.BoolVar(&f.force, "force", false, "update without checking that the policy is unchanged since this command read it")

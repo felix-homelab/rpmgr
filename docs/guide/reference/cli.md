@@ -937,7 +937,7 @@ rpmgr create access-policy [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--description string` |  | a description for people |
-| `--header-values-file string` |  | a file of header:value lines, up to 4 per header, for the require-header rules; the others are asked for |
+| `--header-values-file string` |  | a file of header:value lines, up to 4 per header, for the require-header rules; each value random, such as from openssl rand -base64 32; the others are asked for |
 | `--name string` |  | the policy's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--passwords-file string` |  | a file of user:password lines for the basic-auth users; the others are asked for |
@@ -1165,7 +1165,7 @@ rpmgr update access-policy [flags] <id or name>
 |---|---|---|
 | `--description string` |  | a description for people |
 | `--force` |  | update without checking that the policy is unchanged since this command read it |
-| `--header-values-file string` |  | a file of header:value lines, up to 4 per header, for the require-header rules; the others are asked for |
+| `--header-values-file string` |  | a file of header:value lines, up to 4 per header, for the require-header rules; each value random, such as from openssl rand -base64 32; the others are asked for |
 | `--name string` |  | the policy's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--passwords-file string` |  | a file of user:password lines for the basic-auth users; the others are asked for |

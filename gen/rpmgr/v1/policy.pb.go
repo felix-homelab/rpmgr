@@ -246,8 +246,10 @@ type RequireHeaderRule struct {
 	// the connection, nor Host, Authorization, Cookie or an Rpmgr- header.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// The accepted values, 1 to 4 so that a value can be rotated, each of 32 to 1024 visible ASCII
-	// characters; write-only, never returned. In an update, a rule without values keeps the values
-	// of the policy's require_header rule of that name.
+	// characters with at least 8 different ones. A value must be random, such as one of
+	// `openssl rand -base64 32`: gateways hold its unsalted SHA-256. Write-only, never returned. In
+	// an update, a rule without values keeps the values of the policy's require_header rule of that
+	// name.
 	Values        []string `protobuf:"bytes,2,rep,name=values,proto3" json:"values,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

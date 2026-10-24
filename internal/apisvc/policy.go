@@ -43,19 +43,26 @@ const ReasonRequireHeaderNotHTTP = "REQUIRE_HEADER_NOT_HTTP"
 // guessable, so the controller keeps only its SHA-256 (docs/04-security.md, "Route edge rules").
 const minHeaderValue = 32
 
-// headerNotRequired reports why a request header cannot be required, or "": the gateway's own and
-// the connection's headers, the credentials and cookies that other rules and backends read, and
-// the Rpmgr- headers the gateway sets.
-func headerNotRequired(name string) string {
-	switch c := textproto.CanonicalMIMEHeaderKey(name); {
-	case slices.Contains(gateway.ReservedHeaders, c):
-		return "is the gateway's own"
-	case c == "Authorization" || c == "Cookie":
-		return "carries credentials of basic auth or the backend"
-	case strings.HasPrefix(c, "Rpmgr-"):
-		return "is an rpmgr header"
+// Limits of a require_header rule that the proto also states, checked here as well so that no
+// path around the request validation stores more.
+const (
+	maxHeaderName  = 128
+	maxHeaderValue = 1024
+	// minDistinct is the fewest distinct characters a value needs: the gateways hold unsalted
+	// SHA-256, so a value must be random, and one such as "aaaa…" or "12341234…" is refused.
+	minDistinct = 8
+)
+
+// distinct counts the distinct bytes of s.
+func distinct(s string) int {
+	var seen [256]bool
+	n := 0
+	for i := range len(s) {
+		if !seen[s[i]] {
+			seen[s[i]], n = true, n+1
+		}
 	}
-	return ""
+	return n
 }
 
 // Policies is PolicyService. Its methods run in the org scope the interceptor gives them.
@@ -307,10 +314,10 @@ func (p *Policies) hashRules(ctx context.Context, rules []*rpmgrv1.AccessRule) (
 func checkRequireHeader(rh *rpmgrv1.RequireHeaderRule, seen map[string]bool) error {
 	name := textproto.CanonicalMIMEHeaderKey(rh.GetName())
 	switch {
-	case !httpguts.ValidHeaderFieldName(rh.GetName()):
+	case !httpguts.ValidHeaderFieldName(rh.GetName()) || len(rh.GetName()) > maxHeaderName:
 		return fmt.Errorf("header name %q", rh.GetName())
-	case headerNotRequired(name) != "":
-		return fmt.Errorf("header %s %s and cannot be required", name, headerNotRequired(name))
+	case gateway.NotRequirable(name) != "":
+		return fmt.Errorf("header %s %s and cannot be required", name, gateway.NotRequirable(name))
 	case seen[name]:
 		return fmt.Errorf("header %s is required twice; give its values in one rule", name)
 	case len(rh.GetValues()) > 4:
@@ -319,12 +326,14 @@ func checkRequireHeader(rh *rpmgrv1.RequireHeaderRule, seen map[string]bool) err
 	seen[name] = true
 	for i, v := range rh.GetValues() {
 		switch {
-		case len(v) < minHeaderValue:
-			return fmt.Errorf("value %d of header %s is shorter than %d characters", i+1, name, minHeaderValue)
+		case len(v) < minHeaderValue || len(v) > maxHeaderValue:
+			return fmt.Errorf("value %d of header %s has %d characters, not %d to %d", i+1, name, len(v), minHeaderValue, maxHeaderValue)
 		case strings.IndexFunc(v, func(r rune) bool { return r < 0x21 || r > 0x7e }) >= 0:
 			return fmt.Errorf("value %d of header %s has a character that is not visible ASCII", i+1, name)
 		case slices.Contains(rh.GetValues()[:i], v):
 			return fmt.Errorf("value %d of header %s is given twice", i+1, name)
+		case distinct(v) < minDistinct:
+			return fmt.Errorf("value %d of header %s has fewer than %d different characters; use a random value, such as one of openssl rand -base64 32", i+1, name, minDistinct)
 		}
 	}
 	return nil

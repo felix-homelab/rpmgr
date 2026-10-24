@@ -91,7 +91,9 @@ is refused.
 
 - A rule names one header, such as `X-Origin-Token`, and up to four values, so that you can add a
   new value, change the CDN over to it, and then remove the old one. A value has at least 32
-  visible characters and no spaces; the web UI generates one for you.
+  visible characters and no spaces, and it **must be random**: the gateways hold an unsalted hash
+  of it, so a value that could be guessed could be found. Use the web UI's generator or
+  `openssl rand -base64 32`; a value with fewer than 8 different characters is refused.
 - The controller stores only a SHA-256 hash of each value, and the gateways get only the hashes. A
   value is never shown again: copy it to your CDN before you save. When you edit a policy, a
   required header whose values you leave empty keeps them.
@@ -101,7 +103,8 @@ is refused.
 - The gateway removes the header before the request goes upstream, so the service never sees the
   secret.
 - A policy requires a header once. Headers that HTTP uses for the connection, the gateway's
-  forwarding headers, `Host`, `Authorization`, `Cookie` and `Rpmgr-` headers cannot be required.
+  forwarding headers, `Host`, `Authorization`, `Cookie`, the trace headers `Traceparent`,
+  `Tracestate` and `Baggage`, and `Rpmgr-` headers cannot be required.
 - As with basic auth, a policy with a required header cannot be attached to a route that is not an
   HTTP route, and a policy that such a route applies cannot get one.
 - A gateway that is older than the rule does not serve a route that applies it until the gateway
@@ -220,7 +223,9 @@ rule of any policy wins over every allow rule, and the web UI offers no order to
 - A changed basic-auth user list applies to the next request; the gateways forget what they had
   verified for the policy before.
 - A required header whose value you remove ends the requests and WebSockets that were admitted
-  with that value; adding a value ends nothing.
+  with that value; adding a value ends nothing. A gateway of an earlier release does not serve the
+  route at all, but lets a WebSocket it admitted before the rule existed run until it ends
+  ([Upgrades](install/upgrades.md)).
 
 A gateway of v0.1.0-rc.6 or earlier decides by the first matching rule until it is upgraded
 ([Upgrades](install/upgrades.md)). Single sign-on with OIDC in front of a route and rate and

@@ -547,6 +547,10 @@ affect agents take effect through reconciliation and show apply status like any 
   of the previous minor, is left out of that agent's snapshot, and the route status shows the agent
   with `CAPABILITY_MISSING` until it is upgraded. With mixed gateways in a group, only the upgraded
   ones serve such a route; upgrade the gateways before using a new route feature.
+  Weakness: the gate only withholds the route. A gateway of the previous minor that served the
+  route before the feature was added lets its requests in flight and upgraded connections, such as
+  WebSockets, finish as for any removed route, so a connection admitted without a require-header
+  value stays open on such a gateway until it ends or the gateway is upgraded.
 - Before the first release, one change of meaning shipped without a capability: access policies'
   deny rules win ([D85](14-open-decisions.md#engineering)). A gateway of a release candidate
   (v0.1.0-rc.1 to rc.6) applies the first matching rule to the same snapshot, so a deny placed

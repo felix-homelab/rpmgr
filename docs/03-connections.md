@@ -931,10 +931,13 @@ It checks them in this order: IP rules, rate limits, require-header rules, then 
   holds only their SHA-256 and compares in constant time. A request without the header, or with a
   value none matches, is **403**; a request that repeats the header passes if one of its values
   matches, and each rule of the route must pass. The gateway removes the header before the request
-  goes upstream, so the backend never sees the shared secret, and a tightened rule ends the
-  requests and upgraded connections admitted with a value it dropped. A policy requires a header
-  once. The header cannot be one HTTP uses for the connection or its framing, a forwarding header
-  of the gateway, `Host`, `Authorization`, `Cookie` or an `Rpmgr-` header. Such a rule on another
+  goes upstream, so the backend never sees the shared secret, and on gateways that enforce the rule
+  a tightened rule ends the requests and upgraded connections admitted with a value it dropped
+  (gateways of an earlier release: [10](10-operations.md#upgrades-and-version-skew)). A policy
+  requires a header once. The header cannot be one HTTP uses for the connection or its framing, a
+  forwarding header of the gateway, `Host`, `Authorization`, `Cookie`, the trace context
+  (`Traceparent`, `Tracestate`, `Baggage`), which the gateway reads before it checks access, or an
+  `Rpmgr-` header; the gateways refuse a snapshot that requires one. Such a rule on another
   route type denies everyone, and the API refuses it there. A gateway without the capability
   `http.require-header` does not get a route with such a rule
   ([Versioning and capabilities](#versioning-and-capabilities)).

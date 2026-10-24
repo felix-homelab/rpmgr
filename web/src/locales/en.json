@@ -776,7 +776,7 @@
     "addValue": "Add a value",
     "removeValue": "Remove the value",
     "generateValue": "Generate a value",
-    "valueHint": "At least 32 characters; up to four values, so that one can be rotated. Copy a value to your CDN or client before you save: it is never shown again."
+    "valueHint": "A random value of at least 32 characters: use Generate a value. Up to four values, so that one can be rotated. Copy a value to your CDN or client before you save: it is never shown again."
   },
   "routePolicies": {
     "title": "Access policies",
