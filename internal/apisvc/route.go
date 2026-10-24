@@ -347,7 +347,7 @@ func (r *Routes) createRouteTx(ctx context.Context, tx *ent.Tx, org string, in *
 }
 
 // setRoutePolicies makes a route apply policies, in order. Each must be a policy of the route's
-// org, and one with a basic_auth rule needs an http route.
+// org, and one with a basic_auth or require_header rule needs an http route.
 func setRoutePolicies(ctx context.Context, tx *ent.Tx, row *ent.Route, ids []string) error {
 	if _, err := tx.RoutePolicy.Delete().Where(routepolicy.RouteID(row.ID)).Exec(ctx); err != nil {
 		return err
@@ -364,6 +364,14 @@ func setRoutePolicies(ctx context.Context, tx *ent.Tx, row *ent.Route, ids []str
 			if n > 0 {
 				return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
 					"apisvc: policy %s has a basic_auth rule, which no client could pass on a %s route", id, row.Type)), ReasonBasicAuthNotHTTP)
+			}
+			n, err = tx.PolicyRule.Query().Where(policyrule.PolicyID(id), policyrule.KindEQ(policyrule.KindRequireHeader)).Count(ctx)
+			if err != nil {
+				return err
+			}
+			if n > 0 {
+				return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+					"apisvc: policy %s has a require_header rule, which no client could pass on a %s route", id, row.Type)), ReasonRequireHeaderNotHTTP)
 			}
 		}
 		if err := tx.RoutePolicy.Create().SetOrgID(row.OrgID).SetRouteID(row.ID).SetPolicyID(id).SetPosition(i).Exec(ctx); err != nil {

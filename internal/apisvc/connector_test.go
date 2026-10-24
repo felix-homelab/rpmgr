@@ -48,7 +48,7 @@ func TestConnectors_Read(t *testing.T) {
 	old := e.addConnector(t, org, "old", func(c *ent.ConnectorCreate) { c.SetDecommissionedAt(e.clock).SetEnabled(false) })
 	seen := e.clock.Add(-time.Minute).UTC().Truncate(time.Second)
 	e.db.Client().AgentSession.Create().SetID(nas.ID).SetOrgID(org).SetSessionEpoch(1).SetControllerNode("ctn_1").
-		SetRemoteAddr("192.0.2.9:40000").SetAgentVersion("v0.1.0").SetConnectedAt(seen).SetLastSeenAt(seen).ExecX(e.sys)
+		SetRemoteAddr("192.0.2.9:40000").SetAgentVersion("v0.1.0").SetCapabilities([]string{"ota"}).SetConnectedAt(seen).SetLastSeenAt(seen).ExecX(e.sys)
 	for _, d := range []struct {
 		gw, tr string
 		rtt    int64
@@ -87,10 +87,10 @@ func TestConnectors_Read(t *testing.T) {
 	n := byName["nas"]
 	if !n.GetSession().GetConnected() || n.GetSession().GetVersion() != "v0.1.0" || n.GetSession().GetRemoteAddr() != "192.0.2.9:40000" ||
 		!n.GetSession().GetLastSeenTime().AsTime().Equal(seen) || n.GetTransport() != rpmgrv1.DataTransport_DATA_TRANSPORT_H2 ||
-		n.GetLabels()["site"] != "office" || n.GetEtag() != "1" {
+		n.GetLabels()["site"] != "office" || n.GetEtag() != "1" || !n.GetSession().GetOverTheAir() {
 		t.Fatalf("nas: %v", n)
 	}
-	if p := byName["pi"]; p.GetSession().GetConnected() || p.GetSession().GetVersion() != "v0.0.9" ||
+	if p := byName["pi"]; p.GetSession().GetConnected() || p.GetSession().GetVersion() != "v0.0.9" || p.GetSession().GetOverTheAir() ||
 		p.GetTransport() != rpmgrv1.DataTransport_DATA_TRANSPORT_UNSPECIFIED {
 		t.Fatalf("pi, disconnected: %v", p)
 	}

@@ -239,8 +239,11 @@ type AgentSession struct {
 	// The reason of the last Goodbye that refused it a session, e.g. "upgrade_required"; empty once
 	// a session is accepted.
 	LastGoodbyeReason string `protobuf:"bytes,6,opt,name=last_goodbye_reason,json=lastGoodbyeReason,proto3" json:"last_goodbye_reason,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Whether its last session announced over-the-air updates (the capability "ota"): it runs on its
+	// own on a Linux host with the root updater, so a rollout can update it (D129).
+	OverTheAir    bool `protobuf:"varint,7,opt,name=over_the_air,json=overTheAir,proto3" json:"over_the_air,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AgentSession) Reset() {
@@ -313,6 +316,13 @@ func (x *AgentSession) GetLastGoodbyeReason() string {
 		return x.LastGoodbyeReason
 	}
 	return ""
+}
+
+func (x *AgentSession) GetOverTheAir() bool {
+	if x != nil {
+		return x.OverTheAir
+	}
+	return false
 }
 
 // ConnectorStatus is a connector's state as the controller last heard of it.
@@ -1181,7 +1191,7 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\bbuilt_in\x18\v \x01(\bR\abuiltIn\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x90\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb2\x02\n" +
 	"\fAgentSession\x12\x1c\n" +
 	"\tconnected\x18\x01 \x01(\bR\tconnected\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12@\n" +
@@ -1189,7 +1199,9 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\vremote_addr\x18\x04 \x01(\tR\n" +
 	"remoteAddr\x125\n" +
 	"\x17below_min_agent_version\x18\x05 \x01(\bR\x14belowMinAgentVersion\x12.\n" +
-	"\x13last_goodbye_reason\x18\x06 \x01(\tR\x11lastGoodbyeReason\"\xc1\x01\n" +
+	"\x13last_goodbye_reason\x18\x06 \x01(\tR\x11lastGoodbyeReason\x12 \n" +
+	"\fover_the_air\x18\a \x01(\bR\n" +
+	"overTheAir\"\xc1\x01\n" +
 	"\x0fConnectorStatus\x120\n" +
 	"\asession\x18\x01 \x01(\v2\x16.rpmgr.v1.AgentSessionR\asession\x12C\n" +
 	"\rdata_sessions\x18\x02 \x03(\v2\x1e.rpmgr.v1.ConnectorDataSessionR\fdataSessions\x127\n" +
