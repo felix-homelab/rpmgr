@@ -34,7 +34,7 @@ import (
 // Capabilities are what this connector version implements (docs/03-connections.md, "Versioning
 // and capabilities").
 var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapProxyProtoV1,
-	agentproto.CapProxyProtoV2, agentproto.CapProbeTarget}
+	agentproto.CapProxyProtoV2, agentproto.CapProbeTarget, agentproto.CapHealthActive}
 
 // RunOptions configure Run.
 type RunOptions struct {
@@ -119,6 +119,7 @@ func Run(ctx context.Context, o RunOptions) error {
 					Readiness: []*agentv1.ResourceStatus{{ResourceId: h.GetRouteId(), Reason: h.GetReason(), Detail: h.GetDetail()}}}}})
 			}
 		}})
+	defer targets.Close() // the health checks
 	// The UDP socket of QUIC sessions; all-in-one's connector has none, so it opens no port
 	// (ADR-0019): it reaches its own gateway in memory and other gateways of its group over h2.
 	var tr *quic.Transport

@@ -978,11 +978,17 @@ the capability `route.limits`:
   the expected range, 200–399 unless set). A check may name another port than the target's. It
   dials like traffic: the connector-local policy applies, and a target it blocks is unhealthy
   without being dialled; an `https` target is verified with the target's own TLS settings; no
-  redirect is followed and at most a capped part of the body is read. A `udp` route allows only a
-  `tcp` check on a port it names. A target becomes unhealthy after the unhealthy threshold of
-  failed checks in a row and healthy again after the healthy threshold of passed ones.
-- **What gateways see.** The connector skips unhealthy targets when it picks one for a stream and
-  reports, per route, the priorities that still have a healthy target (`RouteHealth`). A gateway
+  redirect is followed and at most a capped part of the body is read. A target that expects a
+  PROXY header gets a `LOCAL` one when the check dials its own port. A `udp` route allows only a
+  `tcp` check on a port it names. A target counts as healthy until checked; it becomes unhealthy
+  after the unhealthy threshold of failed checks in a row and healthy again after the healthy
+  threshold of passed ones, so a target whose results alternate keeps its state. A changed route or
+  check starts its targets healthy again.
+- **What gateways see.** The connector skips unhealthy targets when it picks one for a stream, unless
+  every one is unhealthy, and reports, per route, the priorities that still have a healthy target
+  (`RouteHealth.ready_priorities`); a route whose every allowed target is unhealthy is not ready,
+  `not_ready(targets_unhealthy)`. A `SessionHello` names only the routes ready at every priority;
+  the others follow as `RouteHealth` with their priorities. A gateway
   passes over a connector whose priority has none and, for http routes, moves new requests back to
   a better priority once it is healthy again. When no target of a route is healthy on any
   connector, the gateway answers as when no connector is ready (**503**, reset, drop) and the

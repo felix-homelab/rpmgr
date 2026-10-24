@@ -157,6 +157,8 @@ enum NotReadyReason {
   NOT_READY_REASON_ENVIRONMENT = 4;
   // The connector's local policy file does not parse, or others may write it: nothing is allowed.
   NOT_READY_REASON_POLICY_INVALID = 5;
+  // Phase 2: every target the local policy allows failed its health check.
+  NOT_READY_REASON_TARGETS_UNHEALTHY = 6;
 }
 
 // Status reports readiness and counters.

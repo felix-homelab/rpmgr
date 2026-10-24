@@ -19,6 +19,12 @@ func routeResource(id string, transport agentv1.TransportPolicy, targets ...*age
 		Type: "tcp", Transport: transport, Targets: targets}}}
 }
 
+// withCheck gives a route resource a health check.
+func withCheck(r *agentv1.Resource, c *agentv1.HealthCheck) *agentv1.Resource {
+	r.GetConnectorRoute().HealthCheck = c
+	return r
+}
+
 func udpRouteResource(id string, targets ...*agentv1.Target) *agentv1.Resource {
 	r := routeResource(id, agentv1.TransportPolicy_TRANSPORT_POLICY_AUTO, targets...)
 	r.GetConnectorRoute().Type = "udp"
@@ -52,6 +58,11 @@ func TestApplier_Validate(t *testing.T) {
 		tcpUDPRouteResource("rt_4", &agentv1.Target{Id: "tg_1", Host: "10.0.0.53", Port: 53, ProxyProtocol: "v1"},
 			&agentv1.Target{Id: "tg_2", Host: "10.0.0.54", Port: 53, ProxyProtocol: "v2"}),
 		gatewayResource("gw_1", []string{"gw1.example:443", "[2001:db8::1]:443"}, "rt_1", "rt_2", "rt_3", "rt_4"),
+		withCheck(routeResource("rt_5", auto, addrTarget("10.0.0.5", 80)), &agentv1.HealthCheck{Type: "http", Path: "/healthz?full=1",
+			Host: "app.example.com", StatusMin: 200, StatusMax: 204, IntervalMs: 2000, TimeoutMs: 1000}),
+		withCheck(udpRouteResource("rt_6", addrTarget("10.0.0.53", 53)), &agentv1.HealthCheck{Type: "tcp", Port: 53}),
+		withCheck(routeResource("rt_7", auto, &agentv1.Target{Id: "tg_1", Host: "10.0.0.5", Port: 443,
+			Tls: &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "app.internal"}}), &agentv1.HealthCheck{Type: "http", Https: true}),
 	}}
 	if errs := a.Validate(ok); len(errs) != 0 {
 		t.Fatalf("a valid snapshot: %v", errs)
@@ -82,6 +93,28 @@ func TestApplier_Validate(t *testing.T) {
 		{"endpoint without a port", snap(gatewayResource("gw_1", []string{"gw1.example"})), "not host:port"},
 		{"endpoint port 0", snap(gatewayResource("gw_1", []string{"gw1.example:0"})), "not host:port"},
 		{"unknown route", snap(gatewayResource("gw_1", []string{"gw1.example:443"}, "rt_9")), "not in the snapshot"},
+		{"a check of no type", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 1)), &agentv1.HealthCheck{Type: "icmp"})), "type"},
+		{"an http check of a udp route", snap(withCheck(udpRouteResource("rt_1", addrTarget("h", 53)), &agentv1.HealthCheck{Type: "http", Port: 80})),
+			"only a tcp check"},
+		{"a udp check without a port", snap(withCheck(udpRouteResource("rt_1", addrTarget("h", 53)), &agentv1.HealthCheck{Type: "tcp"})),
+			"only a tcp check"},
+		{"a check port 65536", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 1)), &agentv1.HealthCheck{Type: "tcp", Port: 65536})), "port"},
+		{"an interval of 1 s", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 1)), &agentv1.HealthCheck{Type: "tcp", IntervalMs: 1000})),
+			"interval"},
+		{"a timeout of the interval", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 1)),
+			&agentv1.HealthCheck{Type: "tcp", IntervalMs: 3000, TimeoutMs: 3000})), "interval"},
+		{"a relative path", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 1)), &agentv1.HealthCheck{Type: "http", Path: "healthz"})), "path"},
+		{"CR LF in the path", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 1)),
+			&agentv1.HealthCheck{Type: "http", Path: "/x\r\nX-Admin: 1"})), "path"},
+		{"a host with a space", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 1)), &agentv1.HealthCheck{Type: "http", Host: "a b"})), "host"},
+		{"statuses upside down", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 1)),
+			&agentv1.HealthCheck{Type: "http", StatusMin: 300, StatusMax: 200})), "statuses"},
+		{"a status minimum alone", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 1)), &agentv1.HealthCheck{Type: "http", StatusMin: 200})),
+			"statuses"},
+		{"status 600", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 1)),
+			&agentv1.HealthCheck{Type: "http", StatusMin: 200, StatusMax: 600})), "statuses"},
+		{"https without TLS settings", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 443)), &agentv1.HealthCheck{Type: "http", Https: true})),
+			"TLS settings"},
 	} {
 		errs := a.Validate(tc.snap)
 		if len(errs) == 0 || !strings.Contains(errs[0].GetMessage(), tc.want) {

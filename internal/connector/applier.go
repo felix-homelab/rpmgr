@@ -3,12 +3,18 @@
 package connector
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
+	"time"
+
+	"golang.org/x/net/http/httpguts"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
@@ -91,6 +97,14 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 				if udp && t.GetUnixPath() != "" {
 					bad(id, "target %s: a udp target is an address, not a socket path", t.GetId())
 				}
+				if hc := r.GetHealthCheck(); hc.GetHttps() && t.GetTls() == nil {
+					bad(id, "target %s: an https health check without the target's TLS settings", t.GetId())
+				}
+			}
+			if hc := r.GetHealthCheck(); hc != nil {
+				if err := validCheck(hc, r.GetType()); err != nil {
+					bad(id, "health check: %v", err)
+				}
 			}
 		case res.GetConnectorGateway() != nil:
 			g := res.GetConnectorGateway()
@@ -115,6 +129,37 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 	return errs
 }
 
+// The bounds of a health check (docs/03-connections.md, "Timeouts, keepalive and backoff").
+const minCheckInterval = 2 * time.Second
+
+// validCheck checks a route's health check: tcp, or http with a path and Host a request can carry
+// and a range of statuses; a udp route only a tcp check of a port it names; an interval of at least
+// minCheckInterval and a timeout below it.
+func validCheck(c *agentv1.HealthCheck, routeType string) error {
+	ms := func(v uint32) time.Duration { return time.Duration(v) * time.Millisecond }
+	interval, timeout := cmp.Or(ms(c.GetIntervalMs()), checkInterval), cmp.Or(ms(c.GetTimeoutMs()), checkTimeout)
+	switch {
+	case c.GetType() != "tcp" && c.GetType() != "http":
+		return fmt.Errorf("type %q", c.GetType())
+	case routeType == "udp" && (c.GetType() != "tcp" || c.GetPort() == 0):
+		return errors.New("a udp route has only a tcp check of a port it names")
+	case c.GetPort() > 65535:
+		return fmt.Errorf("port %d", c.GetPort())
+	case interval < minCheckInterval || timeout >= interval:
+		return fmt.Errorf("an interval of %v and a timeout of %v", interval, timeout)
+	case c.GetType() == "tcp":
+		return nil
+	case c.GetPath() != "" && (!strings.HasPrefix(c.GetPath(), "/") || strings.ContainsAny(c.GetPath(), " \r\n\t")):
+		return fmt.Errorf("path %q", c.GetPath())
+	case c.GetHost() != "" && !httpguts.ValidHostHeader(c.GetHost()):
+		return fmt.Errorf("host %q", c.GetHost())
+	case (c.GetStatusMin() == 0) != (c.GetStatusMax() == 0) || c.GetStatusMin() > c.GetStatusMax() || c.GetStatusMax() > 599 ||
+		c.GetStatusMin() != 0 && c.GetStatusMin() < 100:
+		return fmt.Errorf("statuses %d to %d", c.GetStatusMin(), c.GetStatusMax())
+	}
+	return nil
+}
+
 // Apply implements agent.Applier: the targets first, so that each route's readiness is known
 // before a data session announces it, then the gateways.
 func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Changes) []*agentv1.ResourceStatus {
@@ -127,8 +172,10 @@ func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Chang
 			route := Route{ID: res.GetId(), UDP: r.GetType() == "udp", Both: r.GetType() == "tcp_udp"}
 			for _, t := range r.GetTargets() {
 				route.Targets = append(route.Targets, Target{ID: t.GetId(), Host: t.GetHost(), Port: uint16(t.GetPort()), //nolint:gosec // G115: Validate bounds the port
-					UnixPath: t.GetUnixPath(), ProxyProtocol: t.GetProxyProtocol(), Weight: t.GetWeight(), Priority: t.GetPriority()})
+					UnixPath: t.GetUnixPath(), ProxyProtocol: t.GetProxyProtocol(), Weight: t.GetWeight(), Priority: t.GetPriority(),
+					TLS: tlsOf(t.GetTls())})
 			}
+			route.Check = healthCheckOf(r.GetHealthCheck())
 			routes = append(routes, route)
 		}
 	}

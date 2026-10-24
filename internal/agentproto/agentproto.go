@@ -37,6 +37,10 @@ const (
 	// CapPagesCustom: the gateway serves the custom pages of its group, which its snapshot names;
 	// a gateway without it gets none and serves the built-in pages.
 	CapPagesCustom = "pages.custom"
+	// CapHealthActive: the connector runs the routes' active health checks against its targets
+	// and reports the priorities with a healthy target; one without it counts every target as
+	// healthy (D133).
+	CapHealthActive = "health.active"
 )
 
 // Phase1 lists every capability of Phase 1 agents.
