@@ -49,6 +49,10 @@ const (
 	// gateway with it gets its WSS hostname and serves /.rpmgr/tunnel on it; a connector with it
 	// dials a gateway's WSS hostname.
 	CapTunnelWSS = "tunnel.wss"
+	// CapHealthActive: the connector runs the routes' active health checks against its targets
+	// and reports the priorities with a healthy target; one without it counts every target as
+	// healthy (D133).
+	CapHealthActive = "health.active"
 )
 
 // The capability strings of Phase 2 route features: the compiler leaves a route that uses one out

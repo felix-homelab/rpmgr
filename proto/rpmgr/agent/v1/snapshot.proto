@@ -436,6 +436,36 @@ message ConnectorRoute {
   repeated Target targets = 2;
   // The effective transport policy: the route's, else the connector's, else the instance default.
   TransportPolicy transport = 3;
+  // Phase 2: the route's health check, which the connector runs against each of its targets of the
+  // route (docs/03-connections.md, "Target health"); unset, every target counts as healthy.
+  HealthCheck health_check = 4;
+}
+
+// HealthCheck is a route's active health check as connectors run it. A value of 0 takes the
+// default of docs/03-connections.md, "Timeouts, keepalive and backoff".
+message HealthCheck {
+  // "tcp": the dial succeeds; "http": a GET of path answers with a status from status_min to
+  // status_max.
+  string type = 1;
+  // The port to check instead of the target's; 0 is the target's. A udp route's tcp check names
+  // one.
+  uint32 port = 2;
+  // http: the path, starting with "/".
+  string path = 3;
+  // http: the Host header, the route's first hostname.
+  string host = 4;
+  // http: the range of passing statuses; 0 is 200 to 399.
+  uint32 status_min = 5;
+  uint32 status_max = 6;
+  // How often, and how long one check may take, in milliseconds.
+  uint32 interval_ms = 7;
+  uint32 timeout_ms = 8;
+  // Failed checks in a row that make a target unhealthy, and passed ones that make it healthy.
+  uint32 unhealthy_threshold = 9;
+  uint32 healthy_threshold = 10;
+  // http: the check speaks TLS, verified by each target's tls settings, as the gateway verifies the
+  // route's traffic.
+  bool https = 11;
 }
 
 // ConnectorGateway is a gateway that a connector keeps data sessions to (docs/03-connections.md,
@@ -466,6 +496,9 @@ message Target {
   uint32 weight = 6;
   // Lower first; higher priorities are failovers.
   uint32 priority = 7;
+  // Phase 2, an https health check: how the target's certificate is checked, as the gateway checks
+  // the route's traffic to it.
+  UpstreamTLS tls = 8;
 }
 
 // ResourceReference points to content fetched with Control.FetchResource.
