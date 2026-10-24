@@ -1105,7 +1105,7 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 		return
 	}
 	// The rates come before basic auth, so that a flood never reaches its password checks.
-	if ok, wait, _ := route.Limit.Admit(client); !ok {
+	if ok, wait, _ := route.Limit.Admit(client, false); !ok {
 		if r.ContentLength != 0 {
 			closeUnread(w, r)
 		}

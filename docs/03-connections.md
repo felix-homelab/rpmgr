@@ -920,12 +920,15 @@ It checks them in this order: IP rules, rate limits, require-header rules, then 
   **429** with `Retry-After`, a connection is reset before any stream opens, and a datagram opens no
   flow and is counted (`reason="rate_limit"`). Each `rate_limit` rule of a route applies, so the
   strictest one decides. A client is an IPv4 address or an IPv6 /64, found as for IP rules; each
-  gateway counts on its own, for all the routes that apply the policy together, and the rule is not
-  divided among the gateways, as a client mostly stays with one gateway. The key table of a rule on
-  a gateway has a fixed size ([Timeouts, keepalive and backoff](#timeouts-keepalive-and-backoff));
-  when it is full, new addresses are refused, rather than the gateway forgetting addresses that it
-  is limiting ([04](04-security.md#human-authentication-and-sessions)). The route's own total rate
-  is a limit of the route, not of a policy ([Route limits](#route-limits-phase-2)).
+  gateway counts on its own, for all the routes that apply the policy together, udp flows apart, and
+  the rule is not divided among the gateways, as a client mostly stays with one gateway. The client
+  tables of a gateway have a fixed size ([Timeouts, keepalive and
+  backoff](#timeouts-keepalive-and-backoff)); when they are full, a new address passes unlimited by
+  the rule, while the route's total and its connection limit still apply, rather than the gateway
+  refusing every new client or forgetting the clients it limits
+  ([D137](14-open-decisions.md#engineering)). New UDP flows count in a table of their own, as UDP
+  sources can be forged ([04](04-security.md#route-edge-rules)). The route's own total rate is a
+  limit of the route, not of a policy ([Route limits](#route-limits-phase-2)).
 - **Require-header rules** (Phase 2, [04](04-security.md#route-edge-rules)). A `require_header`
   rule names a header and up to 4 accepted values, so that a value can be rotated; the gateway
   holds only their SHA-256 and compares in constant time. A request without the header, or with a
@@ -1389,7 +1392,7 @@ sequenceDiagram
 | Active health check (Phase 2) | interval 10 s by default, at least 2 s; timeout 5 s by default, below the interval; unhealthy after 3 failures in a row, healthy after 2 passes; an HTTP check reads at most 64 KiB of the body | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
 | Passive health (Phase 2) | 3 refused or timed-out stream opens in a row; back-off 10 s, doubling to 60 s; one half-open try after it | [R] A target that refuses is passed over at once and tried again soon |
 | Route limits (Phase 2) | an HTTP request over the connection limit gets **503** with `Retry-After: 1`, one over a request rate **429** with `Retry-After` the seconds until it may come again, at least 1; the route's total rate allows a second's worth of requests at once; a bandwidth bucket holds 100 ms of the rate, at least 64 KiB, the largest UDP payload, and a connection moves at most 100 ms of the rate, at least 512 bytes, at a time | [R] A client tries again soon, as a slot frees when a request ends; a datagram always fits the bucket, and a connection under a low limit moves on in small steps rather than stalling ([Route limits](#route-limits-phase-2)) |
-| Per-client rate limit (Phase 2) | one table per rate_limit rule on each gateway, which every route whose policies carry the rule shares: at most 65 536 client addresses, about 7 MiB; when they are taken, the addresses whose bucket is full again are dropped, at most once a second, and a new address is refused until one is; every minute the idle addresses are dropped and the table is made anew, which gives its memory back | [R] A flood of addresses costs a gateway at most 7 MiB per rule, whatever the number of routes, and never makes it forget the clients it limits ([Access policies](#access-policies)) |
+| Per-client rate limit (Phase 2) | at most 4 rate_limit rules a route on a gateway; each rule has a table for udp flows and one for the rest, which every route whose policies carry the rule shares, each of at most 65 536 client addresses, and all tables of a gateway together hold at most 262 144, about 28 MiB; when a table or the gateway is full, the addresses whose bucket is full again are dropped, at most once a second, and a new address that still finds no room passes uncounted (D137); every minute the idle addresses are dropped and each table is made anew, which gives its memory back | [R] A flood of addresses costs a gateway at most about 28 MiB, whatever the number of routes and rules, never locks real clients out and never makes it forget the clients it limits ([Access policies](#access-policies)) |
 | Custom page (Phase 2) | at most 64 KiB of HTML per page | [R] A page loads fast and fits a snapshot item fetch ([HTTP routes](#http-routes)) |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |
 | Snapshot item fetch | 10 s per `FetchResource`; a failed fetch is retried after 1 s, doubling up to 1 min, and its resource is `not_ready(environment)` until then | A controller outage delays a new certificate without a retry storm |

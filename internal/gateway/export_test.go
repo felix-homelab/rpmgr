@@ -90,3 +90,10 @@ func ClientTables(ls *Limits) []int {
 	}
 	return out
 }
+
+// SetClientBudget sets how many client entries all tables of a gateway hold, for one test.
+func SetClientBudget(t testing.TB, n int) {
+	old := clientBudget
+	clientBudget = n
+	t.Cleanup(func() { clientBudget = old })
+}
