@@ -531,19 +531,24 @@ flowchart LR
   says so ([04](04-security.md#account-recovery)).
 - **`/settings/updates`** holds the release check and the update channel. In Phase 2 it also runs
   rollouts ([04](04-security.md#over-the-air-updates),
-  [D121](14-open-decisions.md#engineering)):
+  [D121](14-open-decisions.md#engineering), [D129](14-open-decisions.md#engineering)):
+  - **Rollout mode:** a switch, "Easy" or "Advanced", saved as the instance setting
+    `rollout_mode`, says which rollout "Roll out…" starts: an easy rollout, a queue of agents
+    updated one after another ([04](04-security.md#easy-rollouts)), or the staged rollout below.
+    It is "Easy" until an Instance Admin changes it. A rollout that runs keeps its own kind when
+    the switch changes.
   - **Releases:** each listed release with its channel, where it came from and whether the mirror
-    holds it. Under the title, when the release check last ended and how (ok, failed with its
-    error, or off), or "Checking for releases…" while one runs; "Check now" starts one at once,
-    waits with a spinner while it runs, and the releases it finds appear without a reload; a
-    refusal, such as one within a minute of the last check, is shown in the card. A build that
-    checks for no releases says so and has no "Check now" (#890). "Upload release…" takes the signed manifest, the signing-key statement and their
-    signatures, after a step-up. Its dialog has a "Choose files…" button and a drop zone that take
-    the four files at once and sort them by name, leaving others out with a note; each file also
-    has a row with its state (chosen, chosen under another name, empty, missing) and its own
-    "Choose…". "Upload" stays at the foot of the dialog, off until all four are there, and says
-    which are still missing; it reads "Uploading…" while the upload runs, and an error from the API
-    is shown in the dialog with the files kept (#874).
+    holds it. Under the title, when the release check last ended and how (ok, failed with its error,
+    or off), or "Checking for releases…" while one runs; "Check now" starts one at once, waits with
+    a spinner while it runs, and the releases it finds appear without a reload; a refusal, such as
+    one shortly after the last check, is shown in the card. A build that checks for no releases says
+    so and has no "Check now" (#890). "Upload release…" takes the signed manifest, the signing-key
+    statement and their signatures, after a step-up. Its dialog has a "Choose files…" button and a
+    drop zone that take the four files at once and sort them by name, leaving others out with a
+    note; each file also has a row with its state (chosen, chosen under another name, empty,
+    missing) and its own "Choose…". "Upload" stays at the foot of the dialog, off until all four are
+    there, and says which are still missing; it reads "Uploading…" while the upload runs, and an
+    error from the API is shown in the dialog with the files kept (#874).
 
     ```
     ┌ Upload a release ────────────────────────────────────────────────┐
@@ -559,7 +564,42 @@ flowchart LR
     │ Still missing: manifest.json.minisig        [Cancel]  [Upload]   │
     └──────────────────────────────────────────────────────────────────┘
     ```
-  - **Starting a rollout:** "Roll out…" on a release no newer than the controller opens two steps.
+  - **Starting an easy rollout:** "Roll out…" on a release no newer than the controller, in the
+    easy mode, opens one dialog. It lists the connectors and gateways that can take the release,
+    the connectors first and then the gateways, each by name, with their version and whether they
+    are online, a search box and "Select all"; agents that cannot (built in, without the
+    over-the-air updater, or already on the release) are listed below with their reason and cannot
+    be ticked. The ticked agents form the queue, shown in its order on the right with "Move up" and
+    "Move down" on each. "Start" starts it after a step-up and is off while no agent is ticked.
+  - **Following an easy rollout:** its card shows the agent whose turn it is with its step
+    (offered, downloading, staged, installing), then the queue still to come, the agents updated
+    and those that failed or were skipped, each with its reason. A count of the failures stands
+    next to the title in the error colour as soon as there is one; three in a row pause the
+    rollout, and the card says so above "Resume" and "Cancel". "Pause", "Resume" and "Cancel"
+    work as for a staged rollout.
+
+  ```
+  ┌ Roll out 1.5.0 ─────────────────────────────────────────────────────────┐
+  │ Agents that get 1.5.0, one after another                                │
+  │ [ Search agents…              ]  [Select all]       Order               │
+  │ CONNECTORS                                          1 db-host  [↑] [↓]  │
+  │  [x] db-host   1.4.2  online                        2 nas      [↑] [↓]  │
+  │  [x] nas       1.4.2  online                        3 edge     [↑] [↓]  │
+  │ GATEWAYS                                                                │
+  │  [x] edge      1.4.2  online                                            │
+  │ Cannot update: aio (built in) · lab (no over-the-air updater)           │
+  │                                                    [Cancel]  [Start]    │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+  ┌ Rollout of 1.5.0 (easy) ───────────────────────────  running · 1 failed ┐
+  │ Now        nas       staged, installing                                 │
+  │ Next       edge                                                         │
+  │ Updated    db-host                                                      │
+  │ Failed     lab-2     rolled back: not ready within the readiness window │
+  │ [Pause]  [Cancel]                                                       │
+  └─────────────────────────────────────────────────────────────────────────┘
+  ```
+  - **Starting a staged rollout:** "Roll out…" in the advanced mode opens two steps.
     "Test agents" says that they update first and that all other agents wait until the Instance
     Admin continues; it lists the org's connectors and gateways that a rollout updates, grouped by
     kind with their version and whether they are online, with a search box, and ticks the first
@@ -567,16 +607,16 @@ flowchart LR
     that get the release, those that run it already and those left out (built in, decommissioned
     or not enrolled). "Review" shows the plan, test agents → 25 % → all agents, and starts the
     rollout after a step-up.
-  - **Following a rollout:** the running or paused rollout shows its stages, each done, current or
-    to come with its agents, and a bar of the agents updated, of those not skipped. One primary
-    button continues on the default path, "Continue to 25 % (k more agents)" and then "Continue to
-    all agents"; it is enabled once no agent of the current stage is still offered or staging, and
-    otherwise says how many still are. "Choose another stage" offers the other percentages above
-    the current one, any other from there to 99 and all agents. "Pause", "Resume" and "Cancel" are
-    next to it, each after a step-up but "Pause". The agents are grouped: those that need
-    attention (rolled back, refused or stalled, with the reason) first, then those updating in the
-    current stage, those waiting for a later stage, the updated and the skipped. A rollback or a
-    stalled agent pauses the rollout, and the page says which agent and why.
+  - **Following a staged rollout:** the running or paused rollout shows its stages, each done,
+    current or to come with its agents, and a bar of the agents updated, of those not skipped. One
+    primary button continues on the default path, "Continue to 25 % (k more agents)" and then
+    "Continue to all agents"; it is enabled once no agent of the current stage is still offered or
+    staging, and otherwise says how many still are. "Choose another stage" offers the other
+    percentages above the current one, any other from there to 99 and all agents. "Pause", "Resume"
+    and "Cancel" are next to it, each after a step-up but "Pause". The agents are grouped: those
+    that need attention (rolled back, refused or stalled, with the reason) first, then those
+    updating in the current stage, those waiting for a later stage, the updated and the skipped. A
+    rollback or a stalled agent pauses the rollout, and the page says which agent and why.
   - Others never see the page; connectors and gateways show their own update state on their pages.
 
   ```
@@ -609,6 +649,14 @@ flowchart LR
 - **Connector and gateway lists** show each agent's version, and from Phase 2 its update state
   (offered, staged, updated, rolled back, skipped and why), and a warning when it is below
   `min_agent_version`, with the reason of its last `Goodbye`.
+- **Update** ([D129](14-open-decisions.md#engineering)), for the Instance Admin only: each
+  connector and gateway, in its list row and on its detail page, has "Update to 1.5.0" with the
+  controller's own version when it runs an older one. After a step-up it adds the agent to the end
+  of the running easy rollout of that version, or starts one with that agent alone
+  ([04](04-security.md#easy-rollouts)); the button then shows the agent's place in the queue. It
+  works in both rollout modes. It is off, with the reason next to it, when the agent is up to
+  date, built in, has no over-the-air updater, declined the last offer because of its local policy,
+  or is offline, and while a staged rollout or a rollout of another release runs.
 - **Saving** sends the settings as read with the page's fields changed, the mask of those fields and
   the etag (U1); a page never saves another page's fields. If the settings changed since they were
   read, the page says so and shows them as they are now.
