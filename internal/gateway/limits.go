@@ -22,7 +22,15 @@ import (
 const (
 	bandwidthBurst = 100 * time.Millisecond
 	bandwidthStep  = 512
+	// maxBucket caps a bucket and a step, so that a tenth of a second of the largest rate fits an
+	// int on 32-bit platforms too.
+	maxBucket = 1 << 30
 )
+
+// tenth is a tenth of a second of perSecond bytes, at most maxBucket.
+func tenth(perSecond float64) int {
+	return int(min(perSecond*bandwidthBurst.Seconds(), maxBucket))
+}
 
 // RouteLimits are this gateway's share of a route's limits, from its snapshot; 0 is no limit.
 type RouteLimits struct {
@@ -61,12 +69,14 @@ func (ls *Limits) Set(id string, l RouteLimits) *RouteLimit {
 	return r
 }
 
-// Retain forgets the routes not in keep; their connections keep the slots they hold.
+// Retain forgets the routes not in keep once they have no connection open: a removed route's
+// connections drain for a while, and a route that comes back meanwhile must count them, or it
+// would admit up to twice its limit.
 func (ls *Limits) Retain(keep map[string]bool) {
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
-	for id := range ls.routes {
-		if !keep[id] {
+	for id, r := range ls.routes {
+		if !keep[id] && r.Open() == 0 {
 			delete(ls.routes, id)
 		}
 	}
@@ -93,7 +103,7 @@ func (r *RouteLimit) set(l RouteLimits) {
 			continue
 		}
 		perSecond := float64(l.BandwidthBytesPerSecond)
-		b.Store(rate.NewLimiter(rate.Limit(perSecond), max(int(perSecond*bandwidthBurst.Seconds()), tunnel.MaxUDPPayload)))
+		b.Store(rate.NewLimiter(rate.Limit(perSecond), max(tenth(perSecond), tunnel.MaxUDPPayload)))
 	}
 }
 
@@ -133,23 +143,37 @@ func (r *RouteLimit) AllowDatagram(out bool, n int) bool {
 	return b == nil || b.AllowN(time.Now(), n)
 }
 
-// Conn returns c with the route's bandwidth limit on what it reads (from the client) and what it
-// writes (to the client); the limit in force is read at every step, so a change reaches open
-// connections.
+// Conn returns a client's connection c with the route's bandwidth limit on what it reads (bytes
+// from the client) and what it writes (bytes to the client); the limit in force is read at every
+// step, so a change reaches open connections.
 func (r *RouteLimit) Conn(c net.Conn) net.Conn {
 	if r == nil {
 		return c
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	return &limitedConn{Conn: c, r: r, ctx: ctx, cancel: cancel}
+	return newLimitedConn(c, &r.in, &r.out)
 }
 
-// limitedConn waits for the route's byte buckets.
+// UpstreamConn is Conn for a connection towards the route's upstream, as HTTP routes pool them:
+// what it reads goes to clients, what it writes comes from them.
+func (r *RouteLimit) UpstreamConn(c net.Conn) net.Conn {
+	if r == nil {
+		return c
+	}
+	return newLimitedConn(c, &r.out, &r.in)
+}
+
+func newLimitedConn(c net.Conn, reads, writes *atomic.Pointer[rate.Limiter]) *limitedConn {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &limitedConn{Conn: c, reads: reads, writes: writes, ctx: ctx, cancel: cancel}
+}
+
+// limitedConn waits for the route's byte buckets: reads for what it reads, writes for what it
+// writes.
 type limitedConn struct {
 	net.Conn
-	r      *RouteLimit
-	ctx    context.Context
-	cancel context.CancelFunc
+	reads, writes *atomic.Pointer[rate.Limiter]
+	ctx           context.Context
+	cancel        context.CancelFunc
 }
 
 // step is how many bytes one read or write moves under the bucket b: all of n without a limit.
@@ -157,11 +181,11 @@ func step(b *rate.Limiter, n int) int {
 	if b == nil {
 		return n
 	}
-	return min(n, b.Burst(), max(int(float64(b.Limit())*bandwidthBurst.Seconds()), bandwidthStep))
+	return min(n, b.Burst(), max(tenth(float64(b.Limit())), bandwidthStep))
 }
 
 func (c *limitedConn) Read(p []byte) (int, error) {
-	b := c.r.in.Load()
+	b := c.reads.Load()
 	if len(p) == 0 || b == nil {
 		return c.Conn.Read(p)
 	}
@@ -177,7 +201,7 @@ func (c *limitedConn) Read(p []byte) (int, error) {
 func (c *limitedConn) Write(p []byte) (int, error) {
 	written := 0
 	for written < len(p) {
-		b := c.r.out.Load()
+		b := c.writes.Load()
 		k := step(b, len(p)-written)
 		if b != nil {
 			if err := b.WaitN(c.ctx, k); err != nil {
