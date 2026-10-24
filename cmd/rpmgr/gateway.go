@@ -6,6 +6,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"os"
 	"time"
 
 	"buf.build/go/protovalidate"
@@ -49,6 +51,8 @@ func infrastructureCommands() (create, update []*cli.Command, more map[string][]
 		"decommission": {decommissionGateway()},
 		"create":       {gatewayTokenCommand()},
 		"set":          {quotaCommand()},
+		"upload":       {uploadPage()},
+		"remove":       {removePage()},
 	}
 	return create, update, more
 }
@@ -216,6 +220,108 @@ func quotaCommand() *cli.Command {
 			}
 			q := resp.Msg.GetPortQuota()
 			_, err = fmt.Fprintf(env.Stdout, "Port quota %s: at most %d %s ports, %d held.\n", q.GetId(), q.GetMaxPorts(), protocol, q.GetAllocatedPorts())
+			return err
+		},
+	}
+}
+
+// pageKinds are the kinds of a gateway group's own pages, as the CLI names them.
+var pageKinds = map[string]rpmgrv1.GatewayPageKind{"not-found": rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_NOT_FOUND,
+	"unavailable": rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_UNAVAILABLE, "maintenance": rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE}
+
+// pageFlags are the flags that name a page of a gateway group.
+func pageFlags(fs *flag.FlagSet, group, kind *string, wait *time.Duration) {
+	fs.StringVar(group, "group", "", "the gateway group, by name or ID")
+	fs.StringVar(kind, "kind", "", "the page: not-found, unavailable or maintenance")
+	fs.DurationVar(wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
+}
+
+// uploadPage is `upload gateway-page`: a gateway group's own page of a kind, from an HTML file
+// (D132).
+func uploadPage() *cli.Command {
+	var group, kind string
+	var wait time.Duration
+	return &cli.Command{
+		Name: "gateway-page", Summary: "replace a gateway group's not-found, unavailable or maintenance page with your own HTML", Args: "<file>",
+		Flags: func(fs *flag.FlagSet) { pageFlags(fs, &group, &kind, &wait) },
+		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			k, ok := pageKinds[kind]
+			if len(args) != 1 || group == "" || !ok {
+				return cli.Usagef("give --group, --kind not-found, unavailable or maintenance, and the HTML file")
+			}
+			html, err := readPage(args[0])
+			if err != nil {
+				return err
+			}
+			s, err := newAPISession(env)
+			if err != nil {
+				return err
+			}
+			req := &rpmgrv1.SetGatewayPageRequest{GatewayPage: &rpmgrv1.GatewayPage{Kind: k, Html: string(html)}}
+			if err := s.resolve(ctx, "gateway-group", group, &req.GatewayPage.GatewayGroupId); err != nil {
+				return err
+			}
+			if err := protovalidate.Validate(req); err != nil {
+				return cli.Usagef("%v", err)
+			}
+			cr := connect.NewRequest(req)
+			setWait(cr.Header(), wait)
+			resp, err := rpmgrv1connect.NewGatewayServiceClient(s.hc, s.creds.Controller).SetGatewayPage(ctx, cr)
+			if err != nil {
+				return apiError(err)
+			}
+			_, err = fmt.Fprintf(env.Stdout, "The %s page of gateway group %s is your own now (%d bytes)%s.\n", kind, group, len(html),
+				applied(resp.Msg.ProtoReflect()))
+			return err
+		},
+	}
+}
+
+// maxPage is the largest page the API takes (docs/03-connections.md, "Timeouts, keepalive and
+// backoff").
+const maxPage = 64 << 10
+
+// readPage reads a page's file, refusing one above maxPage without reading more of it.
+func readPage(path string) ([]byte, error) {
+	f, err := os.Open(path) //nolint:gosec // G304: the user's file
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	b, err := io.ReadAll(io.LimitReader(f, maxPage+1))
+	if err == nil && len(b) > maxPage {
+		return nil, cli.Usagef("%s is larger than %d bytes, the most a page has", path, maxPage)
+	}
+	return b, err
+}
+
+// removePage is `remove gateway-page`: the group's gateways serve the built-in page again.
+func removePage() *cli.Command {
+	var group, kind string
+	var wait time.Duration
+	return &cli.Command{
+		Name: "gateway-page", Summary: "go back to the built-in page of a gateway group",
+		Flags: func(fs *flag.FlagSet) { pageFlags(fs, &group, &kind, &wait) },
+		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			k, ok := pageKinds[kind]
+			if len(args) > 0 || group == "" || !ok {
+				return cli.Usagef("give --group and --kind not-found, unavailable or maintenance")
+			}
+			s, err := newAPISession(env)
+			if err != nil {
+				return err
+			}
+			req := &rpmgrv1.DeleteGatewayPageRequest{Kind: k}
+			if err := s.resolve(ctx, "gateway-group", group, &req.GatewayGroupId); err != nil {
+				return err
+			}
+			cr := connect.NewRequest(req)
+			setWait(cr.Header(), wait)
+			resp, err := rpmgrv1connect.NewGatewayServiceClient(s.hc, s.creds.Controller).DeleteGatewayPage(ctx, cr)
+			if err != nil {
+				return apiError(err)
+			}
+			_, err = fmt.Fprintf(env.Stdout, "Gateway group %s serves its built-in %s page again%s.\n", group, kind, applied(resp.Msg.ProtoReflect()))
 			return err
 		},
 	}

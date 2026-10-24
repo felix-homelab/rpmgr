@@ -136,7 +136,9 @@ type HTTPOptions struct {
 	// no route serves get the gateway's 404 page.
 	Fallback80    http.Handler
 	FallbackNames []string
-	Logger        *slog.Logger
+	// Pages are the custom pages of the gateway's group; nil serves the built-in pages.
+	Pages  *Pages
+	Logger *slog.Logger
 }
 
 // HTTPRoutes serves the http routes (docs/03-connections.md, "HTTP routes"): it terminates TLS
@@ -529,11 +531,11 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 			h.o.Fallback80.ServeHTTP(w, r)
 			return
 		}
-		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+		h.o.Pages.writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 		return
 	}
 	if reservedPath(r.URL.Path) {
-		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+		h.o.Pages.writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 		return
 	}
 	switch rt.route.Load().Port80 {
@@ -645,7 +647,7 @@ func (h *HTTPRoutes) serveUnrouted(w http.ResponseWriter, r *http.Request) {
 		if r.ContentLength != 0 {
 			closeUnread(w, r)
 		}
-		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+		h.o.Pages.writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 	}
 }
 
@@ -1010,7 +1012,7 @@ func (h *HTTPRoutes) proxyError(w http.ResponseWriter, r *http.Request, err erro
 		http.Error(w, http.StatusText(status), status)
 		return
 	}
-	writePage(w, r, status, pageUnavailable, http.StatusText(status))
+	h.o.Pages.writePage(w, r, status, pageUnavailable, http.StatusText(status))
 }
 
 // ServeHTTP routes a request by its host and the longest matching path prefix.
@@ -1031,14 +1033,14 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			misdirected(w, r)
 			return
 		}
-		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+		h.o.Pages.writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 		return
 	}
 	if age := rt.route.Load().HSTS; age > 0 && r.TLS != nil {
 		w.Header().Set("Strict-Transport-Security", "max-age="+strconv.Itoa(age))
 	}
 	if reservedPath(r.URL.Path) {
-		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+		h.o.Pages.writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 		return
 	}
 	h.proxy(w, r, rt)
@@ -1166,7 +1168,7 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 			closeUnread(w, r) // nothing reads the body
 		}
 		w.Header().Set("Retry-After", strconv.Itoa(maintenanceRetryAfter))
-		writeMaintenance(w, r, route.MaintenanceMessage)
+		h.o.Pages.writeMaintenance(w, r, route.MaintenanceMessage)
 		return
 	}
 	if !route.WebSocket && r.Header.Get("Upgrade") != "" {

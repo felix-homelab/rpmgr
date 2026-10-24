@@ -33,6 +33,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -101,6 +102,7 @@ const (
 	TypeEnrollmentToken    = "EnrollmentToken"
 	TypeGateway            = "Gateway"
 	TypeGatewayGroup       = "GatewayGroup"
+	TypeGatewayPage        = "GatewayPage"
 	TypeInstance           = "Instance"
 	TypeInstanceSecret     = "InstanceSecret"
 	TypeInstanceSetting    = "InstanceSetting"
@@ -18225,6 +18227,751 @@ func (m *GatewayGroupMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *GatewayGroupMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown GatewayGroup edge %s", name)
+}
+
+// GatewayPageMutation represents an operation that mutates the GatewayPage nodes in the graph.
+type GatewayPageMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *string
+	org_id         *string
+	kind           *gatewaypage.Kind
+	html           *string
+	content_sha256 *[]byte
+	updated_at     *time.Time
+	updated_by     *string
+	clearedFields  map[string]struct{}
+	group          *string
+	clearedgroup   bool
+	done           bool
+	oldValue       func(context.Context) (*GatewayPage, error)
+	predicates     []predicate.GatewayPage
+}
+
+var _ ent.Mutation = (*GatewayPageMutation)(nil)
+
+// gatewaypageOption allows management of the mutation configuration using functional options.
+type gatewaypageOption func(*GatewayPageMutation)
+
+// newGatewayPageMutation creates new mutation for the GatewayPage entity.
+func newGatewayPageMutation(c config, op Op, opts ...gatewaypageOption) *GatewayPageMutation {
+	m := &GatewayPageMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeGatewayPage,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withGatewayPageID sets the ID field of the mutation.
+func withGatewayPageID(id string) gatewaypageOption {
+	return func(m *GatewayPageMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *GatewayPage
+		)
+		m.oldValue = func(ctx context.Context) (*GatewayPage, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().GatewayPage.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withGatewayPage sets the old GatewayPage of the mutation.
+func withGatewayPage(node *GatewayPage) gatewaypageOption {
+	return func(m *GatewayPageMutation) {
+		m.oldValue = func(context.Context) (*GatewayPage, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m GatewayPageMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m GatewayPageMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of GatewayPage entities.
+func (m *GatewayPageMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *GatewayPageMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *GatewayPageMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().GatewayPage.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *GatewayPageMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *GatewayPageMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the GatewayPage entity.
+// If the GatewayPage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayPageMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *GatewayPageMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetGatewayGroupID sets the "gateway_group_id" field.
+func (m *GatewayPageMutation) SetGatewayGroupID(s string) {
+	m.group = &s
+}
+
+// GatewayGroupID returns the value of the "gateway_group_id" field in the mutation.
+func (m *GatewayPageMutation) GatewayGroupID() (r string, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGatewayGroupID returns the old "gateway_group_id" field's value of the GatewayPage entity.
+// If the GatewayPage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayPageMutation) OldGatewayGroupID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGatewayGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGatewayGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGatewayGroupID: %w", err)
+	}
+	return oldValue.GatewayGroupID, nil
+}
+
+// ResetGatewayGroupID resets all changes to the "gateway_group_id" field.
+func (m *GatewayPageMutation) ResetGatewayGroupID() {
+	m.group = nil
+}
+
+// SetKind sets the "kind" field.
+func (m *GatewayPageMutation) SetKind(ga gatewaypage.Kind) {
+	m.kind = &ga
+}
+
+// Kind returns the value of the "kind" field in the mutation.
+func (m *GatewayPageMutation) Kind() (r gatewaypage.Kind, exists bool) {
+	v := m.kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKind returns the old "kind" field's value of the GatewayPage entity.
+// If the GatewayPage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayPageMutation) OldKind(ctx context.Context) (v gatewaypage.Kind, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKind: %w", err)
+	}
+	return oldValue.Kind, nil
+}
+
+// ResetKind resets all changes to the "kind" field.
+func (m *GatewayPageMutation) ResetKind() {
+	m.kind = nil
+}
+
+// SetHTML sets the "html" field.
+func (m *GatewayPageMutation) SetHTML(s string) {
+	m.html = &s
+}
+
+// HTML returns the value of the "html" field in the mutation.
+func (m *GatewayPageMutation) HTML() (r string, exists bool) {
+	v := m.html
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHTML returns the old "html" field's value of the GatewayPage entity.
+// If the GatewayPage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayPageMutation) OldHTML(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHTML is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHTML requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHTML: %w", err)
+	}
+	return oldValue.HTML, nil
+}
+
+// ResetHTML resets all changes to the "html" field.
+func (m *GatewayPageMutation) ResetHTML() {
+	m.html = nil
+}
+
+// SetContentSha256 sets the "content_sha256" field.
+func (m *GatewayPageMutation) SetContentSha256(b []byte) {
+	m.content_sha256 = &b
+}
+
+// ContentSha256 returns the value of the "content_sha256" field in the mutation.
+func (m *GatewayPageMutation) ContentSha256() (r []byte, exists bool) {
+	v := m.content_sha256
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentSha256 returns the old "content_sha256" field's value of the GatewayPage entity.
+// If the GatewayPage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayPageMutation) OldContentSha256(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentSha256 is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentSha256 requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentSha256: %w", err)
+	}
+	return oldValue.ContentSha256, nil
+}
+
+// ResetContentSha256 resets all changes to the "content_sha256" field.
+func (m *GatewayPageMutation) ResetContentSha256() {
+	m.content_sha256 = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *GatewayPageMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *GatewayPageMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the GatewayPage entity.
+// If the GatewayPage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayPageMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *GatewayPageMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetUpdatedBy sets the "updated_by" field.
+func (m *GatewayPageMutation) SetUpdatedBy(s string) {
+	m.updated_by = &s
+}
+
+// UpdatedBy returns the value of the "updated_by" field in the mutation.
+func (m *GatewayPageMutation) UpdatedBy() (r string, exists bool) {
+	v := m.updated_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedBy returns the old "updated_by" field's value of the GatewayPage entity.
+// If the GatewayPage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayPageMutation) OldUpdatedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedBy: %w", err)
+	}
+	return oldValue.UpdatedBy, nil
+}
+
+// ClearUpdatedBy clears the value of the "updated_by" field.
+func (m *GatewayPageMutation) ClearUpdatedBy() {
+	m.updated_by = nil
+	m.clearedFields[gatewaypage.FieldUpdatedBy] = struct{}{}
+}
+
+// UpdatedByCleared returns if the "updated_by" field was cleared in this mutation.
+func (m *GatewayPageMutation) UpdatedByCleared() bool {
+	_, ok := m.clearedFields[gatewaypage.FieldUpdatedBy]
+	return ok
+}
+
+// ResetUpdatedBy resets all changes to the "updated_by" field.
+func (m *GatewayPageMutation) ResetUpdatedBy() {
+	m.updated_by = nil
+	delete(m.clearedFields, gatewaypage.FieldUpdatedBy)
+}
+
+// SetGroupID sets the "group" edge to the GatewayGroup entity by id.
+func (m *GatewayPageMutation) SetGroupID(id string) {
+	m.group = &id
+}
+
+// ClearGroup clears the "group" edge to the GatewayGroup entity.
+func (m *GatewayPageMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[gatewaypage.FieldGatewayGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the GatewayGroup entity was cleared.
+func (m *GatewayPageMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupID returns the "group" edge ID in the mutation.
+func (m *GatewayPageMutation) GroupID() (id string, exists bool) {
+	if m.group != nil {
+		return *m.group, true
+	}
+	return
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *GatewayPageMutation) GroupIDs() (ids []string) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *GatewayPageMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// Where appends a list predicates to the GatewayPageMutation builder.
+func (m *GatewayPageMutation) Where(ps ...predicate.GatewayPage) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the GatewayPageMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *GatewayPageMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.GatewayPage, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *GatewayPageMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *GatewayPageMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (GatewayPage).
+func (m *GatewayPageMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *GatewayPageMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.org_id != nil {
+		fields = append(fields, gatewaypage.FieldOrgID)
+	}
+	if m.group != nil {
+		fields = append(fields, gatewaypage.FieldGatewayGroupID)
+	}
+	if m.kind != nil {
+		fields = append(fields, gatewaypage.FieldKind)
+	}
+	if m.html != nil {
+		fields = append(fields, gatewaypage.FieldHTML)
+	}
+	if m.content_sha256 != nil {
+		fields = append(fields, gatewaypage.FieldContentSha256)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, gatewaypage.FieldUpdatedAt)
+	}
+	if m.updated_by != nil {
+		fields = append(fields, gatewaypage.FieldUpdatedBy)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *GatewayPageMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case gatewaypage.FieldOrgID:
+		return m.OrgID()
+	case gatewaypage.FieldGatewayGroupID:
+		return m.GatewayGroupID()
+	case gatewaypage.FieldKind:
+		return m.Kind()
+	case gatewaypage.FieldHTML:
+		return m.HTML()
+	case gatewaypage.FieldContentSha256:
+		return m.ContentSha256()
+	case gatewaypage.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case gatewaypage.FieldUpdatedBy:
+		return m.UpdatedBy()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *GatewayPageMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case gatewaypage.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case gatewaypage.FieldGatewayGroupID:
+		return m.OldGatewayGroupID(ctx)
+	case gatewaypage.FieldKind:
+		return m.OldKind(ctx)
+	case gatewaypage.FieldHTML:
+		return m.OldHTML(ctx)
+	case gatewaypage.FieldContentSha256:
+		return m.OldContentSha256(ctx)
+	case gatewaypage.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case gatewaypage.FieldUpdatedBy:
+		return m.OldUpdatedBy(ctx)
+	}
+	return nil, fmt.Errorf("unknown GatewayPage field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GatewayPageMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case gatewaypage.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case gatewaypage.FieldGatewayGroupID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGatewayGroupID(v)
+		return nil
+	case gatewaypage.FieldKind:
+		v, ok := value.(gatewaypage.Kind)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKind(v)
+		return nil
+	case gatewaypage.FieldHTML:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHTML(v)
+		return nil
+	case gatewaypage.FieldContentSha256:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentSha256(v)
+		return nil
+	case gatewaypage.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case gatewaypage.FieldUpdatedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedBy(v)
+		return nil
+	}
+	return fmt.Errorf("unknown GatewayPage field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *GatewayPageMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *GatewayPageMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GatewayPageMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown GatewayPage numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *GatewayPageMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(gatewaypage.FieldUpdatedBy) {
+		fields = append(fields, gatewaypage.FieldUpdatedBy)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *GatewayPageMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *GatewayPageMutation) ClearField(name string) error {
+	switch name {
+	case gatewaypage.FieldUpdatedBy:
+		m.ClearUpdatedBy()
+		return nil
+	}
+	return fmt.Errorf("unknown GatewayPage nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *GatewayPageMutation) ResetField(name string) error {
+	switch name {
+	case gatewaypage.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case gatewaypage.FieldGatewayGroupID:
+		m.ResetGatewayGroupID()
+		return nil
+	case gatewaypage.FieldKind:
+		m.ResetKind()
+		return nil
+	case gatewaypage.FieldHTML:
+		m.ResetHTML()
+		return nil
+	case gatewaypage.FieldContentSha256:
+		m.ResetContentSha256()
+		return nil
+	case gatewaypage.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case gatewaypage.FieldUpdatedBy:
+		m.ResetUpdatedBy()
+		return nil
+	}
+	return fmt.Errorf("unknown GatewayPage field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *GatewayPageMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.group != nil {
+		edges = append(edges, gatewaypage.EdgeGroup)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *GatewayPageMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case gatewaypage.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *GatewayPageMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *GatewayPageMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *GatewayPageMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedgroup {
+		edges = append(edges, gatewaypage.EdgeGroup)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *GatewayPageMutation) EdgeCleared(name string) bool {
+	switch name {
+	case gatewaypage.EdgeGroup:
+		return m.clearedgroup
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *GatewayPageMutation) ClearEdge(name string) error {
+	switch name {
+	case gatewaypage.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown GatewayPage unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *GatewayPageMutation) ResetEdge(name string) error {
+	switch name {
+	case gatewaypage.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown GatewayPage edge %s", name)
 }
 
 // InstanceMutation represents an operation that mutates the Instance nodes in the graph.

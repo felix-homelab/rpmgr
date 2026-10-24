@@ -90,7 +90,7 @@ rpmgr <command>
 | [`rpmgr trust`](#rpmgr-trust) | Trust something without a proof |
 | [`rpmgr upload`](#rpmgr-upload) | Upload a file to the controller |
 | [`rpmgr renew`](#rpmgr-renew) | Renew a certificate now |
-| [`rpmgr remove`](#rpmgr-remove) | Remove a member from the org, or a user's second factor |
+| [`rpmgr remove`](#rpmgr-remove) | Remove a member from the org, a user's second factor, or a gateway group's own page |
 | [`rpmgr advance`](#rpmgr-advance) | Move a rollout to its next stage |
 | [`rpmgr pause`](#rpmgr-pause) | Pause a rollout |
 | [`rpmgr resume`](#rpmgr-resume) | Let a paused rollout run again |
@@ -1538,8 +1538,23 @@ rpmgr upload <command>
 
 | Command | What it does |
 |---|---|
+| [`rpmgr upload gateway-page`](#rpmgr-upload-gateway-page) | Replace a gateway group's not-found, unavailable or maintenance page with your own HTML |
 | [`rpmgr upload certificate`](#rpmgr-upload-certificate) | Upload a certificate chain and its key for http routes |
 | [`rpmgr upload release`](#rpmgr-upload-release) | Upload a release's signed manifest and signing-key statement (Instance Admin) |
+
+## rpmgr upload gateway-page
+
+Replace a gateway group's not-found, unavailable or maintenance page with your own HTML.
+
+```text
+rpmgr upload gateway-page [flags] <file>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--group string` |  | the gateway group, by name or ID |
+| `--kind string` |  | the page: not-found, unavailable or maintenance |
+| `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr upload certificate
 
@@ -1588,7 +1603,7 @@ rpmgr renew certificate <id>
 
 ## rpmgr remove
 
-Remove a member from the org, or a user's second factor.
+Remove a member from the org, a user's second factor, or a gateway group's own page.
 
 ```text
 rpmgr remove <command>
@@ -1596,8 +1611,23 @@ rpmgr remove <command>
 
 | Command | What it does |
 |---|---|
+| [`rpmgr remove gateway-page`](#rpmgr-remove-gateway-page) | Go back to the built-in page of a gateway group |
 | [`rpmgr remove member`](#rpmgr-remove-member) | End a membership; the user's tokens lose their access to the org |
 | [`rpmgr remove second-factor`](#rpmgr-remove-second-factor) | Remove a user's authenticator and recovery codes, for one who lost both, and end their sessions; takes a step-up |
+
+## rpmgr remove gateway-page
+
+Go back to the built-in page of a gateway group.
+
+```text
+rpmgr remove gateway-page [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--group string` |  | the gateway group, by name or ID |
+| `--kind string` |  | the page: not-found, unavailable or maintenance |
+| `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr remove member
 

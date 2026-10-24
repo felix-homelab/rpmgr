@@ -3,7 +3,9 @@
 package gateway
 
 import (
+	"maps"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 )
@@ -71,3 +73,12 @@ func SetBasicAuthTTL(t testing.TB, d time.Duration) {
 
 // BasicAuthBusy returns how many basic-auth verifications run now.
 func (h *HTTPRoutes) BasicAuthBusy() int64 { return int64(h.basic.busy.Load()) }
+
+// AssignedRoutes returns the IDs the applier's assignment holds routes for, sorted.
+func AssignedRoutes(a Assignment) []string {
+	s := a.(*assignment).cur.Load()
+	if s == nil {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(s.routes))
+}
