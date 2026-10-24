@@ -344,6 +344,67 @@ func TestHTTPRoutes_RouteTimeouts(t *testing.T) {
 	}
 }
 
+// TestHTTPRoutes_ReplacedTransportClosesIdle: a transport that a change of the route's timeouts
+// replaced while a request ran on it leaves no upstream connection open once a later snapshot
+// finds it idle. Over HTTP/1.1 Go's transport closes a connection given back after
+// CloseIdleConnections by itself; an h2c connection that was busy then stays open until the
+// gateway closes the transport's idle connections when it drops it.
+func TestHTTPRoutes_ReplacedTransportClosesIdle(t *testing.T) {
+	for _, upstream := range []string{"http", "h2c"} {
+		t.Run(upstream, func(t *testing.T) {
+			var opened, closed atomic.Int32
+			running, release := make(chan struct{}), make(chan struct{})
+			up := &http.Server{ReadHeaderTimeout: 5 * time.Second,
+				Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == "/block" {
+						close(running)
+						<-release
+					}
+					_, _ = io.WriteString(w, "ok")
+				}),
+				ConnState: func(_ net.Conn, s http.ConnState) {
+					switch s {
+					case http.StateNew:
+						opened.Add(1)
+					case http.StateClosed:
+						closed.Add(1)
+					}
+				}}
+			if upstream == "h2c" {
+				p := new(http.Protocols)
+				p.SetUnencryptedHTTP2(true)
+				up.Protocols = p
+			}
+			upLn, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			go func() { _ = up.Serve(upLn) }()
+			t.Cleanup(func() { _ = up.Close() })
+			route := gateway.HTTPRoute{ID: "rt_web", Upstream: upstream, Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
+			p := newPlaneWith(t, upLn.Addr().String(), "none", route.ID)
+			e := newHTTPEnvOn(t, p.sessions, route)
+			done := make(chan reply, 1)
+			go func() { done <- get(t, e.client(false), "https://app.example.com/block", nil) }()
+			<-running
+			route.UpstreamIdleTimeout = time.Hour // a new transport; the request goes on on the old one
+			e.routes.Apply([]gateway.HTTPRoute{route})
+			close(release)
+			if r := <-done; r.status != http.StatusOK {
+				t.Fatalf("the request on the replaced transport: %d %q", r.status, r.body)
+			}
+			e.routes.Apply([]gateway.HTTPRoute{route})
+			deadline := time.Now().Add(5 * time.Second)
+			for closed.Load() < opened.Load() && time.Now().Before(deadline) {
+				time.Sleep(20 * time.Millisecond)
+			}
+			if n := opened.Load() - closed.Load(); n != 0 {
+				t.Fatalf("%d upstream connections of the replaced transport stay open", n)
+			}
+		})
+	}
+}
+
 // TestGateway_IdentityHeadersAnySpelling (D135): every header and trailer a client sends whose
 // name starts with Rpmgr-User-, in any case and with "_" for "-", which CGI-style servers read
 // alike, is removed before the request goes upstream; other headers pass.

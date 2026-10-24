@@ -701,7 +701,13 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		}
 		h.replaced[r.ID] = slices.DeleteFunc(h.replaced[r.ID], func(old *routeTransport) bool {
 			old.enforce(r.Access)
-			return old.idle()
+			if !old.idle() {
+				return false
+			}
+			// The connections its last requests gave back to its pool would stay open until its
+			// idle timeout.
+			old.closeIdle()
+			return true
 		})
 		next[r.ID] = rt
 		h.upstreamOf(r.ID).set(r.TLS)
@@ -725,8 +731,11 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		}
 	}
 	h.transports = next
-	for id := range h.replaced {
+	for id, olds := range h.replaced {
 		if next[id] == nil {
+			for _, old := range olds {
+				old.closeIdle() // its requests finish; nothing takes its pooled connections
+			}
 			delete(h.replaced, id) // a removed route's requests finish
 		}
 	}
