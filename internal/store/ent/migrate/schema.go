@@ -1136,6 +1136,7 @@ var (
 	RolloutsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
 		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "mode", Type: field.TypeEnum, Enums: []string{"advanced", "easy"}, Default: "advanced"},
 		{Name: "stage", Type: field.TypeEnum, Enums: []string{"canary", "percentage", "all"}, Default: "canary"},
 		{Name: "percentage", Type: field.TypeInt, Default: 0},
 		{Name: "state", Type: field.TypeEnum, Enums: []string{"running", "paused", "completed", "cancelled"}, Default: "running"},
@@ -1155,7 +1156,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "rollouts_releases_release",
-				Columns:    []*schema.Column{RolloutsColumns[11]},
+				Columns:    []*schema.Column{RolloutsColumns[12]},
 				RefColumns: []*schema.Column{ReleasesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -1164,7 +1165,7 @@ var (
 			{
 				Name:    "rollout_active",
 				Unique:  true,
-				Columns: []*schema.Column{RolloutsColumns[5]},
+				Columns: []*schema.Column{RolloutsColumns[6]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "active",
 				},
@@ -1178,6 +1179,7 @@ var (
 		{Name: "agent_kind", Type: field.TypeEnum, Enums: []string{"connector", "gateway"}},
 		{Name: "canary", Type: field.TypeBool, Default: false},
 		{Name: "bucket", Type: field.TypeInt},
+		{Name: "position", Type: field.TypeInt, Nullable: true},
 		{Name: "state", Type: field.TypeEnum, Enums: []string{"pending", "offered", "staged", "updated", "rolled_back", "refused", "skipped", "stalled"}, Default: "pending"},
 		{Name: "reason", Type: field.TypeString, Default: ""},
 		{Name: "version_before", Type: field.TypeString, Default: ""},
@@ -1193,7 +1195,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "rollout_targets_rollouts_rollout",
-				Columns:    []*schema.Column{RolloutTargetsColumns[10]},
+				Columns:    []*schema.Column{RolloutTargetsColumns[11]},
 				RefColumns: []*schema.Column{RolloutsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -1202,7 +1204,12 @@ var (
 			{
 				Name:    "rollouttarget_rollout_id_agent_id",
 				Unique:  true,
-				Columns: []*schema.Column{RolloutTargetsColumns[10], RolloutTargetsColumns[1]},
+				Columns: []*schema.Column{RolloutTargetsColumns[11], RolloutTargetsColumns[1]},
+			},
+			{
+				Name:    "rollouttarget_rollout_id_position",
+				Unique:  true,
+				Columns: []*schema.Column{RolloutTargetsColumns[11], RolloutTargetsColumns[5]},
 			},
 			{
 				Name:    "rollouttarget_agent_id",

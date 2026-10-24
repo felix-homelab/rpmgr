@@ -108,6 +108,21 @@ rpmgr cancel rollout rol_…
 Each change but a pause is audited and asks for the step-up
 ([04](../../04-security.md#over-the-air-updates)).
 
+An **easy rollout** updates the agents you name one after another, in the order you give, with no
+stages to approve. An agent that rolls back, refuses the release or stalls is marked and skipped,
+and the next one takes its turn; after a few failures in a row the rollout pauses, so that a
+broken release stops early. `rpmgr upgrade connector` and `rpmgr upgrade gateway` add agents to the
+end of the easy rollout of the controller's version, or start one, and say each agent's place in
+the queue. They are refused while a staged rollout, or a rollout of another release, runs
+([04](../../04-security.md#easy-rollouts)).
+
+```
+rpmgr create rollout --easy --release 1.5.0 --agent db-host-1 --agent nas --agent edge
+rpmgr upgrade connector db-host-2
+rpmgr upgrade gateway edge-2
+rpmgr list rollout-target rol_…
+```
+
 ## Choose what a host takes
 
 Each connector and gateway host decides for itself, in its local policy, whether it takes updates

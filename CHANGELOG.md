@@ -19,6 +19,14 @@ Changes to the design documents are not recorded here: see the git history and t
   and shortly after the last one or while the release source limits requests, with the time to
   wait. (#890)
 
+- API and CLI: easy rollouts, which update the chosen connectors and gateways one after another
+  without stages to approve. A failed agent is marked and skipped and the queue continues, and the
+  rollout pauses after a few failures in a row. `ReleaseService.CreateRollout` takes the mode and
+  the queue (`rpmgr create rollout --easy --agent …`), `ReleaseService.UpgradeAgents` (`rpmgr
+  upgrade connector|gateway <agent>…`) adds agents to the running easy rollout of the controller's
+  version or starts one, and the instance setting `rollout_mode` says which kind the web UI starts,
+  `easy` unless set. (#892, #893, #894, #895)
+
 - Access policies: a **require-header** rule admits on HTTP routes only requests that carry a
   header with one of up to four values, such as the origin header a CDN adds, so that clients that
   go around the CDN get 403. The controller keeps only the values' SHA-256 and never shows a value
