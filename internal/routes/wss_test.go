@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
@@ -116,6 +117,42 @@ func TestCompile_WSSCertificate(t *testing.T) {
 			SetTunnelEndpoints([]string{"gw2.example:443"}).SaveX(f.sys).ID
 		if got := certsOf(other); len(got) != 0 {
 			t.Fatalf("another gateway got the WSS certificate: %v", got)
+		}
+	})
+}
+
+// TestCompile_GatewayWSS: a gateway that announces tunnel.wss gets its WSS hostname; one without
+// the capability, a disabled one and one without a name get none.
+func TestCompile_GatewayWSS(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		f.verifiedExample(t)
+		wss := func(caps ...string) string {
+			for _, r := range f.compileAs(t, pki.KindGateway, f.gateway, caps...) {
+				if g := r.GetGatewayWss(); g != nil {
+					return g.GetHostname()
+				}
+			}
+			return ""
+		}
+		if got := wss(agentproto.CapTunnelWSS); got != "" {
+			t.Fatalf("without a name: %q", got)
+		}
+		if err := f.tx(t, func(tx *ent.Tx) error {
+			_, err := routes.SetWSSHostname(f.sys, tx, f.gateway, "tunnel.example.com")
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if got := wss(agentproto.CapTunnelWSS); got != "tunnel.example.com" {
+			t.Fatalf("with the capability: %q", got)
+		}
+		if got := wss(); got != "" {
+			t.Fatalf("a gateway without tunnel.wss got %q", got)
+		}
+		db.Client().Gateway.UpdateOneID(f.gateway).SetEnabled(false).ExecX(f.sys)
+		if got := wss(agentproto.CapTunnelWSS); got != "" {
+			t.Fatalf("a disabled gateway got %q", got)
 		}
 	})
 }

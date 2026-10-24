@@ -188,6 +188,7 @@ type Served struct {
 	HTTP         *HTTPRoutes
 	Certificates *Certificates
 	Pages        *Pages
+	WSS          *WSSHostname
 	Sessions     *Sessions
 	// DrainPeriod is how long a disabled gateway keeps its streams; 0 is DrainPeriod.
 	DrainPeriod time.Duration
@@ -387,6 +388,10 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			if v := c.GetValue(); v == "" || len(v) > 64 || strings.Trim(v, "abcdefghijklmnopqrstuvwxyz234567") != "" {
 				bad(id, "a challenge value that is not lower-case base32")
 			}
+		case res.GetGatewayWss() != nil:
+			if n, err := domains.Normalize(res.GetGatewayWss().GetHostname(), false); err != nil || n != res.GetGatewayWss().GetHostname() {
+				bad(id, "WSS hostname %q is not normalised", res.GetGatewayWss().GetHostname())
+			}
 		case res.GetGatewayDrain() != nil:
 		case res.GetGatewayPage() != nil:
 			p := res.GetGatewayPage()
@@ -444,6 +449,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		pages       []PageRef
 		tokens      = map[string]DomainToken{}
 		disabled    bool
+		wss         string
 	)
 	for _, res := range snap.GetResources() {
 		access, _ := AccessOf(accessOf(res)) // Validate refused any that does not parse
@@ -518,6 +524,9 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			c := res.GetGatewayDomainChallenge()
 			tokens[res.GetId()] = DomainToken{FQDN: c.GetFqdn(), Value: c.GetValue()}
 			continue
+		case res.GetGatewayWss() != nil:
+			wss = res.GetGatewayWss().GetHostname()
+			continue // serves no route of its own
 		case res.GetGatewayDrain() != nil:
 			disabled = true
 			continue
@@ -574,6 +583,9 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 	}
 	if s.Pages != nil {
 		status = append(status, s.Pages.Apply(ctx, pages)...)
+	}
+	if s.WSS != nil {
+		s.WSS.Set(wss)
 	}
 	if s.HTTP != nil {
 		s.HTTP.Apply(httpRoutes)

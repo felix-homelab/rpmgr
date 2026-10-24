@@ -84,7 +84,7 @@ TestRateLimit_ClientAddressNotSpoofable	done	3.8	#623	route edge rules (D131)
 TestPages_CustomPageCannotRunScript	done	3.11	#626	custom pages (D132)
 TestHealthCheck_ObeysLocalPolicy	pending	4.1	#629	target health (D133)
 TestHTTPConnect_OnlyOwnAuthorities	pending	4.6	#634	CONNECT routes (D130)
-TestWSS_InterceptorSeesOnlyInnerTLS	pending	4.9	#637	WSS transport
+TestWSS_InterceptorSeesOnlyInnerTLS	done	4.9	#637	WSS transport
 TestRouteOIDC_SecretNeverLeavesController	pending	10.12	#718	route OIDC (P2-M10)
 TestRouteOIDC_AssertionBoundToBrowser	pending	10.12	#718	route OIDC (P2-M10, D134)
 TestRouteOIDC_NoOpenRedirect	pending	10.12	#718	route OIDC (P2-M10)

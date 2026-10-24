@@ -1381,6 +1381,7 @@ sequenceDiagram
 | Item | Value | Rationale |
 |---|---|---|
 | QUIC handshake idle | 5 s | Fast fallback to TCP |
+| WSS transport (Phase 2) | the HTTP request of the upgrade 10 s; the inner TLS handshake 10 s, as over TLS + reverse HTTP/2; a WebSocket message at most 64 KiB; no WebSocket pings, the inner session's own PINGs keep it alive | [R] An upgrade that never begins the inner session holds a gateway for seconds only, and a peer cannot make it buffer large messages ([Transport selection](#transport-selection)) |
 | QUIC idle / keepalive | 30 s / 10 s | See [QUIC parameters](#quic-parameters) |
 | Data-session liveness | transport-level: QUIC keepalive and idle timeout, HTTP/2 PING frames (not flow-controlled) | A flow-controlled application message can be stuck behind an exhausted window, so it must not decide liveness |
 | Application `Ping` (session control stream) | every 15 s, padded to ≥ 64 bytes; measures RTT only, never takes a session out of service by itself | Padding makes a restarted gateway answer with a stateless reset (see below) |

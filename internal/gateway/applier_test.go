@@ -566,3 +566,28 @@ func TestApplier_Limits(t *testing.T) {
 		t.Fatal("a removed route kept its state")
 	}
 }
+
+// TestApplier_WSS: a snapshot's WSS hostname reaches the router, and goes with the next snapshot
+// that has none; a name that is not normalised is refused.
+func TestApplier_WSS(t *testing.T) {
+	a, _ := gateway.NewApplier()
+	var name gateway.WSSHostname
+	a.Bind(gateway.Served{WSS: &name})
+	res := func(host string) *agentv1.Resource {
+		return &agentv1.Resource{Id: "gw_1.wss", Kind: &agentv1.Resource_GatewayWss{GatewayWss: &agentv1.GatewayWSS{Hostname: host}}}
+	}
+	if errs := a.Validate(gatewaySnapshot(1, res("Tunnel.Example.com"))); len(errs) != 1 {
+		t.Fatalf("a name that is not normalised: %v", errs)
+	}
+	if errs := a.Validate(gatewaySnapshot(1, res("tunnel.example.com"))); len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	a.Apply(t.Context(), gatewaySnapshot(1, res("tunnel.example.com")), agent.Changes{})
+	if name.Get() != "tunnel.example.com" {
+		t.Fatalf("applied %q", name.Get())
+	}
+	a.Apply(t.Context(), gatewaySnapshot(2), agent.Changes{})
+	if name.Get() != "" {
+		t.Fatalf("removed: %q", name.Get())
+	}
+}
