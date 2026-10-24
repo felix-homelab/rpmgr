@@ -990,7 +990,8 @@ the capability `route.limits`:
   `not_ready(targets_unhealthy)`. A `SessionHello` names only the routes ready at every priority;
   the others follow as `RouteHealth` with their priorities. A gateway
   passes over a connector whose priority has none and, for http routes, moves new requests back to
-  a better priority once it is healthy again. When no target of a route is healthy on any
+  a better priority once it is healthy again. An entry the controller did not rank names no
+  priority in its streams, so its connector's readiness alone counts there. When no target of a route is healthy on any
   connector, the gateway answers as when no connector is ready (**503**, reset, drop) and the
   route's status is `unavailable`.
 - **Connectors of an earlier release** do not run checks: they report every priority as ready, so
