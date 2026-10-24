@@ -11,10 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { ReleaseCheckOutcome, ReleaseService, ReleaseSource, type Release, type ReleaseCheck } from "@/gen/rpmgr/v1/release_pb";
-import { UpdateChannel } from "@/gen/rpmgr/v1/settings_pb";
+import { RolloutMode, SettingsService, UpdateChannel } from "@/gen/rpmgr/v1/settings_pb";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
 import { InstanceAdminPage, InstanceSettingsSection } from "@/pages/settings";
+import { EasyRolloutDialog } from "@/pages/updates-easy";
 import { ActiveRollout, RolloutDialog } from "@/pages/updates-rollout";
 import { useStepUp } from "@/step-up";
 
@@ -25,9 +26,9 @@ const sources: Record<ReleaseSource, string> = {
   [ReleaseSource.IMPORT]: "import",
 };
 
-// Updates runs staged rollouts and uploads signed releases for air-gapped installations, next to
-// the release check and the update channel (docs/09-web-ui.md, "Settings";
-// docs/04-security.md, "Over-the-air updates"; D121).
+// Updates runs rollouts, easy or staged as the instance setting rollout_mode says, and uploads
+// signed releases for air-gapped installations, next to the release check and the update channel
+// (docs/09-web-ui.md, "Settings"; docs/04-security.md, "Over-the-air updates"; D121, D129).
 export function Updates() {
   const { t } = useTranslation();
   return (
@@ -46,6 +47,9 @@ function Releases() {
   const list = useQuery(ReleaseService.method.listReleases, { pageSize: 200 },
     { refetchInterval: (q) => (q.state.data?.releaseCheck?.running ? 2000 : false) });
   const active = useQuery(ReleaseService.method.listRollouts, { activeOnly: true });
+  // The server fills in the default, easy; until the settings are read, Roll out… waits.
+  const settings = useQuery(SettingsService.method.getInstanceSettings, {});
+  const mode = settings.data ? settings.data.settings?.rolloutMode || RolloutMode.EASY : undefined;
   const [uploading, setUploading] = useState(false);
   const [rolling, setRolling] = useState<Release>();
   const [checkError, setCheckError] = useState("");
@@ -74,7 +78,7 @@ function Releases() {
                   <TD>{r.mirrored ? t("updates.yes") : t("updates.no")}</TD>
                   <TD>{r.controllerVersion ? t("updates.thisController") : r.newerThanController ? t("updates.newer") : "—"}</TD>
                   <TD className="text-right">
-                    <Button size="sm" variant="outline" disabled={r.newerThanController || !!running}
+                    <Button size="sm" variant="outline" disabled={r.newerThanController || !!running || mode === undefined}
                       onClick={() => setRolling(r)}>{t("updates.rollOut")}</Button>
                   </TD>
                 </TR>
@@ -86,7 +90,9 @@ function Releases() {
         {list.data?.nextPageToken && <p className="text-sm text-muted-foreground">{t("updates.more")}</p>}
       </Card>
       {uploading && <UploadDialog onClose={() => setUploading(false)} />}
-      {rolling && <RolloutDialog release={rolling} onClose={() => setRolling(undefined)} />}
+      {rolling && (mode === RolloutMode.ADVANCED
+        ? <RolloutDialog release={rolling} onClose={() => setRolling(undefined)} />
+        : <EasyRolloutDialog release={rolling} onClose={() => setRolling(undefined)} />)}
     </>
   );
 }
