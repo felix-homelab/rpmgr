@@ -28,6 +28,14 @@ const (
 	CapProbeTarget        = "probe.target"        // reads the certificate a target presents (ProbeTarget)
 )
 
+// The capability strings of Phase 2's gated route features: the compiler leaves a route that uses
+// one out of the snapshot of every agent of the feature's kind that does not announce it
+// (docs/03-connections.md, "Versioning and capabilities", D113).
+const (
+	// CapTCPHTTPConnect: a gateway serves tcp routes in http_connect mode on CONNECT listeners.
+	CapTCPHTTPConnect = "tcp.http-connect"
+)
+
 // The capability strings of Phase 2 that are not route features, each checked where its feature
 // is used (docs/03-connections.md, "Versioning and capabilities").
 const (

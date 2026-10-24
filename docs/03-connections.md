@@ -1032,6 +1032,14 @@ through it. Gateways announce the capability `tcp.http-connect`.
   basic mode are **407** with `Proxy-Authenticate: Basic`. `Proxy-Authorization` is never passed
   on. Over a limit or a rule, the answer is the one of [Route limits](#route-limits-phase-2) and
   [Access policies](#access-policies) for HTTP, sent before the tunnel opens.
+- **One request, then the tunnel.** The head, with the TLS handshake of a TLS listener, must
+  arrive within the HTTP server's header timeout and fit in 16 KiB, else the connection closes.
+  A request target not in authority form (`host:port`), an HTTP version other than 1.0 or 1.1, a
+  body (`Content-Length` or `Transfer-Encoding`), a `Host` other than the authority, or bytes sent
+  after the head before the answer is **400**: nothing behind the head can be read as a second
+  request. The gateway answers **200** only once a stream to a connector is open, and **503**
+  with `Retry-After` when none is ready or when the listener's routes changed while the request
+  was read.
 
 ### Port 443 multiplexing
 
