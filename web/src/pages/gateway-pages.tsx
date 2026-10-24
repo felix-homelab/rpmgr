@@ -27,8 +27,8 @@ function placeholders(kind: GatewayPageKind): string[] {
 const maxPage = 64 * 1024;
 
 // GatewayPages shows a gateway group's not-found, unavailable and maintenance pages, each built in
-// or the group's own with a preview in a frame that runs no script, and uploads or resets them
-// (docs/09-web-ui.md, "Gateways"; D132). Only the group's owner org may change them.
+// or the group's own, with a preview the controller renders as gateways do (D136), and uploads or
+// resets them (docs/09-web-ui.md, "Gateways"; D132). Only the group's owner org may change them.
 export function GatewayPages({ groupId, onDone }: { groupId: string; onDone: (w: Written) => void }) {
   const { t } = useTranslation();
   const pages = useQuery(GatewayService.method.listGatewayPages, { gatewayGroupId: groupId });
@@ -51,8 +51,21 @@ function PageRow({ groupId, kind, name, page, onDone }: {
   const queryClient = useQueryClient();
   const set = useMutation(GatewayService.method.setGatewayPage);
   const remove = useMutation(GatewayService.method.deleteGatewayPage);
+  const link = useMutation(GatewayService.method.previewGatewayPage);
   const [asking, setAsking] = useState(false);
-  const [preview, setPreview] = useState(false);
+  const [preview, setPreview] = useState<string>(); // the preview's link while it shows
+  async function togglePreview() {
+    setError("");
+    if (preview) {
+      setPreview(undefined);
+      return;
+    }
+    try {
+      setPreview((await link.mutateAsync({ gatewayGroupId: groupId, kind })).url);
+    } catch (err) {
+      setError(ConnectError.from(err).rawMessage);
+    }
+  }
   const [error, setError] = useState("");
   const title = t(`gwPages.kinds.${name}`);
   async function upload(e: ChangeEvent<HTMLInputElement>) {
@@ -69,6 +82,7 @@ function PageRow({ groupId, kind, name, page, onDone }: {
     try {
       const res = await set.mutateAsync({ gatewayPage: { gatewayGroupId: groupId, kind, html: await file.text() } });
       await queryClient.invalidateQueries();
+      setPreview(undefined); // its link shows the page it was made for, which changed
       onDone({ revision: res.revision, status: res.applyStatus });
     } catch (err) {
       setError(ConnectError.from(err).rawMessage);
@@ -80,6 +94,7 @@ function PageRow({ groupId, kind, name, page, onDone }: {
       const res = await remove.mutateAsync({ gatewayGroupId: groupId, kind });
       setAsking(false);
       await queryClient.invalidateQueries();
+      setPreview(undefined); // its link shows the page it was made for, which changed
       onDone({ revision: res.revision, status: res.applyStatus });
     } catch (err) {
       setError(ConnectError.from(err).rawMessage);
@@ -92,7 +107,9 @@ function PageRow({ groupId, kind, name, page, onDone }: {
           {title}<Badge tone={page ? "accent" : "neutral"}>{t(page ? "gwPages.own" : "gwPages.builtIn")}</Badge>
         </span>
         <span className="flex flex-wrap items-center gap-2">
-          {page && <Button size="sm" variant="outline" aria-expanded={preview} onClick={() => setPreview(!preview)}>{t(preview ? "gwPages.hide" : "gwPages.preview")}</Button>}
+          <Button size="sm" variant="outline" aria-expanded={!!preview} disabled={link.isPending} onClick={() => void togglePreview()}>
+            {t(preview ? "gwPages.hide" : "gwPages.preview")}
+          </Button>
           <label className="inline-flex h-8 cursor-pointer items-center rounded-md border border-border bg-background px-3 text-sm font-medium hover:bg-muted focus-within:ring-2 focus-within:ring-ring">
             {t("gwPages.upload")}
             <input type="file" accept=".html,.htm,text/html" className="sr-only" disabled={set.isPending} onChange={(e) => void upload(e)} />
@@ -110,9 +127,10 @@ function PageRow({ groupId, kind, name, page, onDone }: {
         {t("gwPages.placeholders")}{" "}
         {placeholders(kind).map((p, i) => <span key={p}>{i > 0 && ", "}<code>{`{{${p}}}`}</code></span>)}
       </p>
-      {page && preview && (
-        // An empty sandbox runs no script, submits no form and gets an origin of its own.
-        <iframe title={t("gwPages.previewOf", { page: title })} sandbox="" srcDoc={page.html} className="h-72 w-full rounded-lg border border-border bg-white" />
+      {preview && (
+        // The controller renders the page as gateways send it, under its own CSP and a sandbox; the
+        // frame's empty sandbox adds that it runs no script, submits no form and has no origin of ours.
+        <iframe title={t("gwPages.previewOf", { page: title })} sandbox="" src={preview} className="h-72 w-full rounded-lg border border-border bg-white" />
       )}
       {error && <Alert>{error}</Alert>}
     </li>

@@ -32,6 +32,7 @@ function page(refuse?: Error) {
         return { gatewayPage: req.gatewayPage, revision: { dbEpoch: "e", seq: 7n } };
       },
       deleteGatewayPage: (req) => (deletes.push(req), { revision: { dbEpoch: "e", seq: 8n } }),
+      previewGatewayPage: (req) => ({ url: `/gateway-page-preview/token-${req.kind}` }),
     });
   });
   return { sets, deletes };
@@ -51,20 +52,27 @@ describe("GatewayPages", () => {
     page();
     const notFound = await row("Not found (404)");
     expect(notFound.getByText("Built in")).toBeTruthy();
-    expect(notFound.queryByRole("button", { name: "Preview" })).toBeNull();
     expect(notFound.getAllByRole("code").map((c) => c.textContent)).toEqual(["{{hostname}}", "{{status}}", "{{request_id}}"]);
     const maintenance = await row("Maintenance");
     await waitFor(() => expect(maintenance.getByText("Own")).toBeTruthy());
     expect(maintenance.getAllByRole("code").map((c) => c.textContent)).toContain("{{message}}");
   });
 
-  it("previews an own page in a frame that runs no script", async () => {
+  it("previews a page as the controller renders it, in a frame that runs no script", async () => {
     page();
     const maintenance = await row("Maintenance");
     fireEvent.click(await maintenance.findByRole("button", { name: "Preview" }));
-    const frame = maintenance.getByTitle("Preview of the page Maintenance") as HTMLIFrameElement;
+    const frame = (await maintenance.findByTitle("Preview of the page Maintenance")) as HTMLIFrameElement;
     expect(frame.getAttribute("sandbox")).toBe("");
-    expect(frame.getAttribute("srcdoc")).toBe(own.html);
+    expect(frame.getAttribute("src")).toBe(`/gateway-page-preview/token-${GatewayPageKind.MAINTENANCE}`);
+    expect(frame.hasAttribute("srcdoc")).toBe(false); // never the page's HTML under the UI's own origin
+    fireEvent.click(maintenance.getByRole("button", { name: "Hide the preview" }));
+    expect(maintenance.queryByTitle("Preview of the page Maintenance")).toBeNull();
+    // A built-in page has a preview too.
+    const notFound = await row("Not found (404)");
+    fireEvent.click(notFound.getByRole("button", { name: "Preview" }));
+    expect(((await notFound.findByTitle("Preview of the page Not found (404)")) as HTMLIFrameElement).getAttribute("src"))
+      .toBe(`/gateway-page-preview/token-${GatewayPageKind.NOT_FOUND}`);
   });
 
   it("uploads a page's HTML, and refuses a file above the limit before it uploads", async () => {
