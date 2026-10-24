@@ -1229,6 +1229,24 @@
       "failed": "Failed",
       "skipped": "Skipped",
       "nobody": "—"
+    },
+    "button": {
+      "label": "Update to {{version}}",
+      "labelNone": "Update",
+      "why": {
+        "builtIn": "Built in: updates with the controller.",
+        "notEnrolled": "Not enrolled yet.",
+        "neverConnected": "Never connected.",
+        "noUpdater": "No over-the-air updater on its host.",
+        "noRelease": "The controller has not recorded its own release.",
+        "upToDate": "Up to date.",
+        "staged": "A staged rollout runs; let it end first.",
+        "otherRelease": "A rollout of {{version}} runs; let it end first.",
+        "queued": "Number {{position}} in the queue.",
+        "skipped": "Skipped: {{reason}}",
+        "failed": "Failed in this rollout: {{reason}}",
+        "offline": "Offline."
+      }
     }
   },
   "users": {
