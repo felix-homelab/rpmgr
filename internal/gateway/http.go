@@ -179,8 +179,8 @@ type routeTransport struct {
 	mu            sync.Mutex
 	access        Access              // the route's IP rules in force, which enforce sets
 	requireHeader []RequireHeaderRule // and its require_header rules
-	active   map[*activeRequest]struct{}
-	upstream *upstreamConns // the route's TLS connections to its targets, of every transport
+	active        map[*activeRequest]struct{}
+	upstream      *upstreamConns // the route's TLS connections to its targets, of every transport
 
 	best      func() (uint32, bool)     // the route's best priority with a ready session (Sessions.BestPriority)
 	entry     func(string, uint32) bool // whether a connector at a priority is still an entry of the route

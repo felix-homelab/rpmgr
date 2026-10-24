@@ -218,9 +218,9 @@ func TestAccessPolicies(t *testing.T) {
 	}
 	answers["header X-Edge"] = ""
 	for name, args := range map[string][]string{
-		"no value":           {"--name", "x", "--rule", "require-header:X-Edge"},
-		"two headers":        {"--name", "x", "--rule", "require-header:X-Edge,X-Other"},
-		"a bad values file":  {"--name", "x", "--rule", "require-header:X-Edge", "--header-values-file", file("badvalues", "no colon\n", 0o600)},
+		"no value":               {"--name", "x", "--rule", "require-header:X-Edge"},
+		"two headers":            {"--name", "x", "--rule", "require-header:X-Edge,X-Other"},
+		"a bad values file":      {"--name", "x", "--rule", "require-header:X-Edge", "--header-values-file", file("badvalues", "no colon\n", 0o600)},
 		"a value as an argument": {"--name", "x", "--rule", "require-header:X-Edge:edge-secret-0123456789abcdefghijklmnop"},
 	} {
 		a.created = nil

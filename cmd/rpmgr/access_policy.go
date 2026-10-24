@@ -45,10 +45,10 @@ var passwordPrompt = func(user string, keep bool) (string, error) {
 // policyFlags are the flags of create and update access-policy.
 type policyFlags struct {
 	name, description, passwords, values, output string
-	rules                                cli.List
-	force                                bool
-	wait                                 time.Duration
-	fs                                   *flag.FlagSet
+	rules                                        cli.List
+	force                                        bool
+	wait                                         time.Duration
+	fs                                           *flag.FlagSet
 }
 
 func (f *policyFlags) register(fs *flag.FlagSet, update bool) {
