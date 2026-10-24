@@ -183,7 +183,7 @@ checks every file against the release root keys it embeds. With `--version`, the
 API nothing, so a mirror of the release files alone is enough:
 
 ```sh
-sudo env RPMGR_INSTALL_GITHUB=https://mirror.lan sh install.sh --version 0.1.0
+sudo env RPMGR_INSTALL_GITHUB=https://mirror.lan sh install.sh --version 0.2.0
 ```
 
 ## QUIC library variables

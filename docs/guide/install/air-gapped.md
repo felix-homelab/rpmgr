@@ -36,7 +36,7 @@ manifest lists, and nothing else ([04](../../04-security.md#over-the-air-updates
 Check what the mirror serves:
 
 ```sh
-curl -fsS https://panel.example.com/dl/0.1.0/manifest.json
+curl -fsS https://panel.example.com/dl/0.2.0/manifest.json
 ```
 
 ## Before you start
@@ -50,7 +50,7 @@ On a machine with internet access, download every file of the release you will i
 - `install.sh`, if you install with it.
 
 ```sh
-v=0.1.0
+v=0.2.0
 mkdir rpmgr-$v && cd rpmgr-$v
 for f in signing-key.json signing-key.json.minisig manifest.json manifest.json.minisig \
   rpmgr-$v-linux-amd64 rpmgr-$v-linux-arm64 rpmgr-$v-linux-arm rpmgr-$v-linux-riscv64 install.sh; do
@@ -71,7 +71,7 @@ it
 ([Environment variables](../reference/environment.md#rpmgr_install_github-and-rpmgr_install_api)):
 
 ```sh
-sudo env RPMGR_INSTALL_GITHUB=https://mirror.lan sh install.sh --version 0.1.0
+sudo env RPMGR_INSTALL_GITHUB=https://mirror.lan sh install.sh --version 0.2.0
 ```
 
 Then set the host up with `rpmgr setup` ([Set up a host with rpmgr setup](setup.md)), with a
@@ -83,11 +83,11 @@ self-signed`, or `--acme-directory` with your own ACME CA ([below](#certificates
 On the controller's host, import the release of the controller's own version:
 
 ```sh
-sudo rpmgr release import /root/rpmgr-0.1.0
+sudo rpmgr release import /root/rpmgr-0.2.0
 ```
 
 ```text
-Imported rpmgr 0.1.0 (manifest …); the controller serves it under /dl/0.1.0/.
+Imported rpmgr 0.2.0 (manifest …); the controller serves it under /dl/0.2.0/.
 ```
 
 - **Which release:** only the release of the binary's own version. A directory with another

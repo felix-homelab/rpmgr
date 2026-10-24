@@ -202,7 +202,7 @@ rpmgr list connector
 
 ```text
 ID                              NAME  ENABLED  CONNECTED  VERSION
-con_01M4ZEK2EXFBJRKFW4JB7DQVZ6  nas   true     true       0.1.0
+con_01M4ZEK2EXFBJRKFW4JB7DQVZ6  nas   true     true       0.2.0
 ```
 
 `rpmgr get -o json connector nas` adds the control session's address and last contact. The API's

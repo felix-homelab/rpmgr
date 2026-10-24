@@ -94,10 +94,10 @@ until it is back.
 
 ### 3. The connectors
 
-Through the rollout: offer the release to the canaries, then to a percentage, then to all, and
-approve each stage ([Updates](../operations/updates.md)). A connector whose updater rolls back
-pauses the rollout, and the page says which one and why. A connector on `auto_update: off` or
-`notify` is skipped and is upgraded by hand:
+Through the rollout: offer the release to the test agents you choose, then to a percentage, then
+to all, and approve each stage ([Updates](../operations/updates.md)). A connector whose updater
+rolls back pauses the rollout, and the page says which one and why. A connector on
+`auto_update: off` or `notify` is skipped and is upgraded by hand:
 
 Run the install script with `--upgrade --restart` on each connector's host, and check it with
 `sudo rpmgr status`. A route whose targets are on several connectors keeps serving through the
