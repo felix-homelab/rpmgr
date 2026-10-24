@@ -12,14 +12,16 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
 
-// newFile is what AllowTarget and DenyTarget write when there is no policy file: the update keys
-// always explicit, as the installer writes them.
+// newFile is what the edits write when there is no policy file: the update keys always explicit,
+// as the installer writes them.
 const newFile = `# Connector-local policy (docs/04-security.md, "Connector-local policy"). Edit with
-# "rpmgr policy allow-target", "deny-target" and their "remove-" forms, or by hand as root.
+# "rpmgr policy allow-target", "deny-target" and their "remove-" forms, "set-auto-update" and
+# "set-update-channel", or by hand as root.
 version: 1
 allow_targets: []
 deny_targets: []
@@ -192,9 +194,92 @@ func removeTarget(path, key, s string) (bool, error) {
 	})
 }
 
-// edit applies change to the list key, allow_targets or deny_targets, of the file at path under
-// its lock, validates the result and writes it atomically with mode 0644.
+// SetAutoUpdate sets auto_update, auto, notify or off, in the policy file at path, keeping the rest
+// of the file and its comments, and reports whether the file changed. Without a file it writes a
+// new one. It refuses a file the root updater would not trust (D120).
+func SetAutoUpdate(path, value string) (bool, error) {
+	return setKey(path, "auto_update", value, AutoUpdateAuto, AutoUpdateNotify, AutoUpdateOff)
+}
+
+// SetUpdateChannel sets update_channel, stable or prerelease, as SetAutoUpdate sets auto_update.
+func SetUpdateChannel(path, value string) (bool, error) {
+	return setKey(path, "update_channel", value, ChannelStable, ChannelPrerelease)
+}
+
+// setKey sets the scalar key to value, one of allowed.
+func setKey(path, key, value string, allowed ...string) (bool, error) {
+	if !slices.Contains(allowed, value) {
+		return false, fmt.Errorf("policy: %s %q, want %s", key, value, strings.Join(allowed, ", "))
+	}
+	if err := trusted(path); err != nil {
+		return false, err
+	}
+	return editDoc(path, func(root *yaml.Node) (bool, error) {
+		v := field(root, key)
+		if v == nil {
+			root.Content = append(root.Content, str(key), str(value))
+			return true, nil
+		}
+		if v.Kind == yaml.ScalarNode && v.Value == value {
+			return false, nil
+		}
+		// The value's comments, such as "# auto | notify | off" after it, stay with the new value.
+		head, line, foot := v.HeadComment, v.LineComment, v.FootComment
+		*v = *str(value)
+		v.HeadComment, v.LineComment, v.FootComment = head, line, foot
+		return true, nil
+	})
+}
+
+// trusted refuses a policy file that the root updater counts as auto_update: off whatever it says
+// (D120): a symbolic link, a file that is not regular, one the user running this does not own (root,
+// as `rpmgr policy` demands), or one its group or other users may write. A missing file is fine:
+// the edit writes a new one.
+func trusted(path string) error {
+	fi, err := os.Lstat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return err
+	case fi.Mode()&fs.ModeSymlink != 0:
+		return fmt.Errorf("policy: %s is a symbolic link, which the updater does not trust; replace it with the file", path)
+	case !fi.Mode().IsRegular():
+		return fmt.Errorf("policy: %s is no regular file", path)
+	case owner(fi) != os.Geteuid():
+		return fmt.Errorf("policy: %s is owned by user %d, which the updater does not trust; chown it to root first", path, owner(fi))
+	case fi.Mode().Perm()&0o022 != 0:
+		return fmt.Errorf("policy: %s has mode %04o, which the updater does not trust; chmod go-w it first", path, fi.Mode().Perm())
+	}
+	return nil
+}
+
+// edit applies change to the list key, allow_targets or deny_targets, of the file at path, as
+// editDoc does.
 func edit(path, key string, change func(targets *yaml.Node) (bool, error)) (bool, error) {
+	return editDoc(path, func(root *yaml.Node) (bool, error) {
+		targets := field(root, key)
+		if targets == nil {
+			targets = &yaml.Node{Kind: yaml.SequenceNode}
+			root.Content = append(root.Content, str(key), targets)
+		}
+		if targets.Kind != yaml.SequenceNode {
+			return false, fmt.Errorf("policy: %s is not a list", key)
+		}
+		changed, err := change(targets)
+		if err != nil || !changed {
+			return false, err
+		}
+		if len(targets.Content) == 0 {
+			targets.Style = yaml.FlowStyle
+		}
+		return true, nil
+	})
+}
+
+// editDoc applies change to the top-level mapping of the file at path under its lock, validates
+// the result and writes it atomically with mode 0644. A file that does not parse is left alone.
+func editDoc(path string, change func(root *yaml.Node) (bool, error)) (bool, error) {
 	unlock, err := lockPolicy(path + ".lock")
 	if err != nil {
 		return false, err
@@ -213,21 +298,9 @@ func edit(path, key string, change func(targets *yaml.Node) (bool, error)) (bool
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return false, err
 	}
-	root := doc.Content[0]
-	targets := field(root, key)
-	if targets == nil {
-		targets = &yaml.Node{Kind: yaml.SequenceNode}
-		root.Content = append(root.Content, str(key), targets)
-	}
-	if targets.Kind != yaml.SequenceNode {
-		return false, fmt.Errorf("policy: %s is not a list", key)
-	}
-	changed, err := change(targets)
+	changed, err := change(doc.Content[0])
 	if err != nil || !changed {
 		return false, err
-	}
-	if len(targets.Content) == 0 {
-		targets.Style = yaml.FlowStyle
 	}
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)

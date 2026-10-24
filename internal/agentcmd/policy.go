@@ -71,6 +71,34 @@ func Policy() *cli.Command {
 				return nil
 			}}
 	}
+	// set changes one of the update keys, which the connector, the gateway and the root updater of
+	// this host read; they pick a change up without a restart or a reload (docs/04-security.md,
+	// "Over-the-air updates").
+	set := func(name, summary, values string, do func(path, value string) (bool, error)) *cli.Command {
+		return &cli.Command{Name: name, Summary: summary, Args: values, Flags: pathFlag,
+			Run: func(_ context.Context, env *cli.Env, args []string) error {
+				if len(args) != 1 {
+					return cli.Usagef("%s needs one value: %s", name, values)
+				}
+				if geteuid() != 0 {
+					return errors.New("the local policy is root's; run this as root (sudo)")
+				}
+				changed, err := do(path, args[0])
+				if err != nil {
+					return err
+				}
+				p, err := policy.Load(path)
+				if err != nil {
+					return err
+				}
+				what := "nothing to change"
+				if changed {
+					what = "updated; running agents and the updater take it up without a restart"
+				}
+				_, _ = fmt.Fprintf(env.Stdout, "%s: %s\nauto_update: %s\nupdate_channel: %s\n", path, what, p.AutoUpdate, p.UpdateChannel)
+				return nil
+			}}
+	}
 	return group("policy", "show or change the connector-local policy of this host",
 		&cli.Command{Name: "show", Summary: "print the effective local policy", Flags: pathFlag,
 			Run: func(_ context.Context, env *cli.Env, _ []string) error {
@@ -91,5 +119,9 @@ func Policy() *cli.Command {
 		edit("remove-target", "stop allowing a target", policy.RemoveTarget),
 		edit("deny-target", "deny a target, whatever allows it", policy.DenyTarget),
 		edit("remove-deny-target", "stop denying a target", policy.RemoveDenyTarget),
+		set("set-auto-update", "set whether this host takes over-the-air updates: auto, notify (only report them) or off",
+			"auto | notify | off", policy.SetAutoUpdate),
+		set("set-update-channel", "set which releases this host takes: stable, or prerelease for betas and release candidates too",
+			"stable | prerelease", policy.SetUpdateChannel),
 	)
 }

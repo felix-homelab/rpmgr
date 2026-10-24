@@ -88,14 +88,56 @@ func TestPolicyCommands(t *testing.T) {
 	}
 }
 
+// TestPolicyCommands_UpdateKeys: set-auto-update and set-update-channel write the key, print both
+// update keys, say when nothing changed, and need no reload; a wrong value or count is refused.
+func TestPolicyCommands_UpdateKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "policy.yaml")
+	reloads := asUser(t, 0)
+
+	code, out, errOut := runRpmgr("policy", "set-update-channel", "--file", path, "prerelease")
+	if code != 0 || !strings.Contains(out, "updated") || !strings.Contains(out, "auto_update: auto\nupdate_channel: prerelease") {
+		t.Fatalf("set-update-channel: %d %q %q", code, out, errOut)
+	}
+	code, out, _ = runRpmgr("policy", "set-update-channel", "--file", path, "prerelease")
+	if code != 0 || !strings.Contains(out, "nothing to change") || !strings.Contains(out, "update_channel: prerelease") {
+		t.Fatalf("the same channel again: %d %q", code, out)
+	}
+	code, out, _ = runRpmgr("policy", "set-auto-update", "--file", path, "notify")
+	if code != 0 || !strings.Contains(out, "updated") || !strings.Contains(out, "auto_update: notify\nupdate_channel: prerelease") {
+		t.Fatalf("set-auto-update: %d %q", code, out)
+	}
+	if code, out, _ := runRpmgr("policy", "show", "--file", path); code != 0 || !strings.Contains(out, "auto_update: notify") ||
+		!strings.Contains(out, "update_channel: prerelease") {
+		t.Fatalf("show: %d %q", code, out)
+	}
+	if *reloads != 0 {
+		t.Fatalf("%d reloads; the update keys need none", *reloads)
+	}
+	for _, args := range [][]string{{"set-auto-update", "never"}, {"set-update-channel", "beta"}} {
+		if code, _, errOut := runRpmgr("policy", args[0], "--file", path, args[1]); code != cli.ExitError ||
+			!strings.Contains(errOut, "want ") {
+			t.Errorf("%v: %d %q", args, code, errOut)
+		}
+	}
+	for _, args := range [][]string{{"set-auto-update"}, {"set-update-channel", "stable", "prerelease"}} {
+		if code, _, _ := runRpmgr(append([]string{"policy", args[0], "--file", path}, args[1:]...)...); code != cli.ExitUsage {
+			t.Errorf("%v: %d, want a usage error", args, code)
+		}
+	}
+	if code, out, _ := runRpmgr("policy", "show", "--file", path); code != 0 || !strings.Contains(out, "auto_update: notify") {
+		t.Fatalf("a refused value changed the file: %d %q", code, out)
+	}
+}
+
 // TestPolicyCommands_NotRoot: only root edits the policy; anyone may show it.
 func TestPolicyCommands_NotRoot(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "policy.yaml")
 	asUser(t, 1000)
-	for _, cmd := range []string{"allow-target", "remove-target"} {
-		code, _, errOut := runRpmgr("policy", cmd, "--file", path, "10.0.0.5:5432")
+	for _, args := range [][]string{{"allow-target", "10.0.0.5:5432"}, {"remove-target", "10.0.0.5:5432"},
+		{"set-auto-update", "off"}, {"set-update-channel", "prerelease"}} {
+		code, _, errOut := runRpmgr("policy", args[0], "--file", path, args[1])
 		if code != cli.ExitError || !strings.Contains(errOut, "run this as root") {
-			t.Errorf("%s as a user: %d %q", cmd, code, errOut)
+			t.Errorf("%s as a user: %d %q", args[0], code, errOut)
 		}
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
