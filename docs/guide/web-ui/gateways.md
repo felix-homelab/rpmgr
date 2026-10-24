@@ -98,9 +98,10 @@ each, the placeholders it may use, such as `{{hostname}}`.
 
 - **Upload HTML…** chooses an HTML file and makes it the group's own page of that kind. A file above
   the size limit is refused before it is sent, with its size.
-- **Preview** shows an own page in a frame that runs no script. The frame shows the page's text and
-  layout without its styles, which the web UI's own security policy blocks there, and its
-  placeholders unfilled; the gateways serve it with both.
+- **Preview** shows the page, your own or the built-in one, as visitors will see it: with its
+  styles, and with sample values such as `www.example.com` for its placeholders. The preview runs
+  no script, as the gateways' page does not either. **Hide the preview** closes it; after an
+  upload or a reset, open it again.
 - **Reset…** asks `Go back to the built-in page …?`; **Use the built-in page** does.
 
 Changing the pages needs the role Owner or Admin of the group's organisation; for a shared group,

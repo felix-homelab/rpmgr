@@ -244,6 +244,11 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
+	previewKey, err := sealer.DeriveKey("gateway-page-preview")
+	if err != nil {
+		return err
+	}
+	previews := &apisvc.PagePreviews{DB: db, Sys: sys, Key: previewKey, Now: o.Now}
 	webSessions := websession.New(websession.Options{DB: db, Sys: sys, RevLog: rl, Now: o.Now, Logger: o.Logger})
 	acc := accounts.New(db, sys, o.Now)
 	acc.ResetLog, acc.ResetLogger = rl, o.Logger
@@ -292,7 +297,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_gateway_proto.Services().ByName("GatewayService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: apiServer, Revocations: revocations, Now: o.Now}, opts...)
+			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: apiServer, Revocations: revocations, Previews: previews, Now: o.Now}, opts...)
 		}); err != nil {
 		return err
 	}
@@ -395,7 +400,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	mux.Handle("/dl/", mirror.Handler()) // the controller's own release, for /install.sh (D59)
+	mux.Handle("/dl/", mirror.Handler())     // the controller's own release, for /install.sh (D59)
+	mux.Handle(apisvc.PreviewPath, previews) // previews of gateway pages, by signed link (D136)
 	mux.Handle("/install.sh", installsh.Handler(o.Version, mirror.Roots))
 	mux.Handle("/", ui) // every path the API, the trust bundle and /dl/ do not take
 	// The port-80 handler, with ACME's HTTP-01 answers, stays outside misdirected: it has no TLS.

@@ -3202,6 +3202,117 @@ func (x *DeleteGatewayPageResponse) GetApplyStatus() *ApplyStatus {
 	return nil
 }
 
+// PreviewGatewayPageRequest names a page of a gateway group.
+type PreviewGatewayPageRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The group.
+	GatewayGroupId string `protobuf:"bytes,1,opt,name=gateway_group_id,json=gatewayGroupId,proto3" json:"gateway_group_id,omitempty"`
+	// The page.
+	Kind          GatewayPageKind `protobuf:"varint,2,opt,name=kind,proto3,enum=rpmgr.v1.GatewayPageKind" json:"kind,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreviewGatewayPageRequest) Reset() {
+	*x = PreviewGatewayPageRequest{}
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreviewGatewayPageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreviewGatewayPageRequest) ProtoMessage() {}
+
+func (x *PreviewGatewayPageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreviewGatewayPageRequest.ProtoReflect.Descriptor instead.
+func (*PreviewGatewayPageRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *PreviewGatewayPageRequest) GetGatewayGroupId() string {
+	if x != nil {
+		return x.GatewayGroupId
+	}
+	return ""
+}
+
+func (x *PreviewGatewayPageRequest) GetKind() GatewayPageKind {
+	if x != nil {
+		return x.Kind
+	}
+	return GatewayPageKind_GATEWAY_PAGE_KIND_UNSPECIFIED
+}
+
+// PreviewGatewayPageResponse is where the preview is.
+type PreviewGatewayPageResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The path of the preview on the controller, which a frame without scripts loads; it shows the
+	// page as it is now, and nothing once the page changed.
+	Url string `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
+	// When the link stops working.
+	ExpireTime    *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expire_time,json=expireTime,proto3" json:"expire_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreviewGatewayPageResponse) Reset() {
+	*x = PreviewGatewayPageResponse{}
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreviewGatewayPageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreviewGatewayPageResponse) ProtoMessage() {}
+
+func (x *PreviewGatewayPageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreviewGatewayPageResponse.ProtoReflect.Descriptor instead.
+func (*PreviewGatewayPageResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *PreviewGatewayPageResponse) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *PreviewGatewayPageResponse) GetExpireTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpireTime
+	}
+	return nil
+}
+
 var File_rpmgr_v1_gateway_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_gateway_proto_rawDesc = "" +
@@ -3420,7 +3531,15 @@ const file_rpmgr_v1_gateway_proto_rawDesc = "" +
 	"\xbaH\a\x82\x01\x04\x10\x01 \x00R\x04kind\"\x85\x01\n" +
 	"\x19DeleteGatewayPageResponse\x12.\n" +
 	"\brevision\x18\x01 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
-	"\fapply_status\x18\x02 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus*[\n" +
+	"\fapply_status\x18\x02 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"\x89\x01\n" +
+	"\x19PreviewGatewayPageRequest\x121\n" +
+	"\x10gateway_group_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x0egatewayGroupId\x129\n" +
+	"\x04kind\x18\x02 \x01(\x0e2\x19.rpmgr.v1.GatewayPageKindB\n" +
+	"\xbaH\a\x82\x01\x04\x10\x01 \x00R\x04kind\"k\n" +
+	"\x1aPreviewGatewayPageResponse\x12\x10\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\x12;\n" +
+	"\vexpire_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"expireTime*[\n" +
 	"\fPortProtocol\x12\x1d\n" +
 	"\x19PORT_PROTOCOL_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11PORT_PROTOCOL_TCP\x10\x01\x12\x15\n" +
@@ -3429,7 +3548,7 @@ const file_rpmgr_v1_gateway_proto_rawDesc = "" +
 	"\x1dGATEWAY_PAGE_KIND_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bGATEWAY_PAGE_KIND_NOT_FOUND\x10\x01\x12!\n" +
 	"\x1dGATEWAY_PAGE_KIND_UNAVAILABLE\x10\x02\x12!\n" +
-	"\x1dGATEWAY_PAGE_KIND_MAINTENANCE\x10\x032\xd1\x14\n" +
+	"\x1dGATEWAY_PAGE_KIND_MAINTENANCE\x10\x032\xe4\x15\n" +
 	"\x0eGatewayService\x12\x83\x01\n" +
 	"\x12CreateGatewayGroup\x12#.rpmgr.v1.CreateGatewayGroupRequest\x1a$.rpmgr.v1.CreateGatewayGroupResponse\"\"\x8a\xb5\x18\x1e\n" +
 	"\x14infrastructure.write\x12\x06org_id\x12{\n" +
@@ -3474,7 +3593,9 @@ const file_rpmgr_v1_gateway_proto_rawDesc = "" +
 	"\x0eSetGatewayPage\x12\x1f.rpmgr.v1.SetGatewayPageRequest\x1a .rpmgr.v1.SetGatewayPageResponse\"9\x8a\xb5\x185\n" +
 	"\x14infrastructure.write\x12\x1dgateway_page.gateway_group_id\x12~\n" +
 	"\x10ListGatewayPages\x12!.rpmgr.v1.ListGatewayPagesRequest\x1a\".rpmgr.v1.ListGatewayPagesResponse\"#\x8a\xb5\x18\x1c\n" +
-	"\borg.read\x12\x10gateway_group_id\x90\x02\x01\x12\x8a\x01\n" +
+	"\borg.read\x12\x10gateway_group_id\x90\x02\x01\x12\x90\x01\n" +
+	"\x12PreviewGatewayPage\x12#.rpmgr.v1.PreviewGatewayPageRequest\x1a$.rpmgr.v1.PreviewGatewayPageResponse\"/\x8a\xb5\x18(\n" +
+	"\x14infrastructure.write\x12\x10gateway_group_id\x90\x02\x01\x12\x8a\x01\n" +
 	"\x11DeleteGatewayPage\x12\".rpmgr.v1.DeleteGatewayPageRequest\x1a#.rpmgr.v1.DeleteGatewayPageResponse\",\x8a\xb5\x18(\n" +
 	"\x14infrastructure.write\x12\x10gateway_group_idB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
@@ -3491,7 +3612,7 @@ func file_rpmgr_v1_gateway_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_gateway_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_rpmgr_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 48)
+var file_rpmgr_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 50)
 var file_rpmgr_v1_gateway_proto_goTypes = []any{
 	(PortProtocol)(0),                   // 0: rpmgr.v1.PortProtocol
 	(GatewayPageKind)(0),                // 1: rpmgr.v1.GatewayPageKind
@@ -3543,122 +3664,128 @@ var file_rpmgr_v1_gateway_proto_goTypes = []any{
 	(*ListGatewayPagesResponse)(nil),    // 47: rpmgr.v1.ListGatewayPagesResponse
 	(*DeleteGatewayPageRequest)(nil),    // 48: rpmgr.v1.DeleteGatewayPageRequest
 	(*DeleteGatewayPageResponse)(nil),   // 49: rpmgr.v1.DeleteGatewayPageResponse
-	(*timestamppb.Timestamp)(nil),       // 50: google.protobuf.Timestamp
-	(*Revision)(nil),                    // 51: rpmgr.v1.Revision
-	(*ApplyStatus)(nil),                 // 52: rpmgr.v1.ApplyStatus
-	(*fieldmaskpb.FieldMask)(nil),       // 53: google.protobuf.FieldMask
+	(*PreviewGatewayPageRequest)(nil),   // 50: rpmgr.v1.PreviewGatewayPageRequest
+	(*PreviewGatewayPageResponse)(nil),  // 51: rpmgr.v1.PreviewGatewayPageResponse
+	(*timestamppb.Timestamp)(nil),       // 52: google.protobuf.Timestamp
+	(*Revision)(nil),                    // 53: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),                 // 54: rpmgr.v1.ApplyStatus
+	(*fieldmaskpb.FieldMask)(nil),       // 55: google.protobuf.FieldMask
 }
 var file_rpmgr_v1_gateway_proto_depIdxs = []int32{
 	3,  // 0: rpmgr.v1.Gateway.status:type_name -> rpmgr.v1.GatewayStatus
-	50, // 1: rpmgr.v1.Gateway.decommission_time:type_name -> google.protobuf.Timestamp
-	50, // 2: rpmgr.v1.Gateway.create_time:type_name -> google.protobuf.Timestamp
-	50, // 3: rpmgr.v1.GatewayStatus.last_seen_time:type_name -> google.protobuf.Timestamp
+	52, // 1: rpmgr.v1.Gateway.decommission_time:type_name -> google.protobuf.Timestamp
+	52, // 2: rpmgr.v1.Gateway.create_time:type_name -> google.protobuf.Timestamp
+	52, // 3: rpmgr.v1.GatewayStatus.last_seen_time:type_name -> google.protobuf.Timestamp
 	2,  // 4: rpmgr.v1.CreateGatewayRequest.gateway:type_name -> rpmgr.v1.Gateway
 	2,  // 5: rpmgr.v1.CreateGatewayResponse.gateway:type_name -> rpmgr.v1.Gateway
-	51, // 6: rpmgr.v1.CreateGatewayResponse.revision:type_name -> rpmgr.v1.Revision
-	52, // 7: rpmgr.v1.CreateGatewayResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	53, // 6: rpmgr.v1.CreateGatewayResponse.revision:type_name -> rpmgr.v1.Revision
+	54, // 7: rpmgr.v1.CreateGatewayResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	2,  // 8: rpmgr.v1.GetGatewayResponse.gateway:type_name -> rpmgr.v1.Gateway
 	2,  // 9: rpmgr.v1.ListGatewaysResponse.gateways:type_name -> rpmgr.v1.Gateway
 	2,  // 10: rpmgr.v1.UpdateGatewayRequest.gateway:type_name -> rpmgr.v1.Gateway
-	53, // 11: rpmgr.v1.UpdateGatewayRequest.update_mask:type_name -> google.protobuf.FieldMask
+	55, // 11: rpmgr.v1.UpdateGatewayRequest.update_mask:type_name -> google.protobuf.FieldMask
 	2,  // 12: rpmgr.v1.UpdateGatewayResponse.gateway:type_name -> rpmgr.v1.Gateway
-	51, // 13: rpmgr.v1.UpdateGatewayResponse.revision:type_name -> rpmgr.v1.Revision
-	52, // 14: rpmgr.v1.UpdateGatewayResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	53, // 13: rpmgr.v1.UpdateGatewayResponse.revision:type_name -> rpmgr.v1.Revision
+	54, // 14: rpmgr.v1.UpdateGatewayResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	2,  // 15: rpmgr.v1.DecommissionGatewayResponse.gateway:type_name -> rpmgr.v1.Gateway
-	51, // 16: rpmgr.v1.DecommissionGatewayResponse.revision:type_name -> rpmgr.v1.Revision
-	52, // 17: rpmgr.v1.DecommissionGatewayResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	53, // 16: rpmgr.v1.DecommissionGatewayResponse.revision:type_name -> rpmgr.v1.Revision
+	54, // 17: rpmgr.v1.DecommissionGatewayResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	14, // 18: rpmgr.v1.CreateGatewayGroupRequest.gateway_group:type_name -> rpmgr.v1.GatewayGroup
 	14, // 19: rpmgr.v1.CreateGatewayGroupResponse.gateway_group:type_name -> rpmgr.v1.GatewayGroup
-	51, // 20: rpmgr.v1.CreateGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
-	52, // 21: rpmgr.v1.CreateGatewayGroupResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	53, // 20: rpmgr.v1.CreateGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
+	54, // 21: rpmgr.v1.CreateGatewayGroupResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	14, // 22: rpmgr.v1.GetGatewayGroupResponse.gateway_group:type_name -> rpmgr.v1.GatewayGroup
 	14, // 23: rpmgr.v1.ListGatewayGroupsResponse.gateway_groups:type_name -> rpmgr.v1.GatewayGroup
 	14, // 24: rpmgr.v1.UpdateGatewayGroupRequest.gateway_group:type_name -> rpmgr.v1.GatewayGroup
-	53, // 25: rpmgr.v1.UpdateGatewayGroupRequest.update_mask:type_name -> google.protobuf.FieldMask
+	55, // 25: rpmgr.v1.UpdateGatewayGroupRequest.update_mask:type_name -> google.protobuf.FieldMask
 	14, // 26: rpmgr.v1.UpdateGatewayGroupResponse.gateway_group:type_name -> rpmgr.v1.GatewayGroup
-	51, // 27: rpmgr.v1.UpdateGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
-	52, // 28: rpmgr.v1.UpdateGatewayGroupResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	51, // 29: rpmgr.v1.DeleteGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
-	52, // 30: rpmgr.v1.DeleteGatewayGroupResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	53, // 27: rpmgr.v1.UpdateGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
+	54, // 28: rpmgr.v1.UpdateGatewayGroupResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	53, // 29: rpmgr.v1.DeleteGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
+	54, // 30: rpmgr.v1.DeleteGatewayGroupResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	0,  // 31: rpmgr.v1.PortPool.protocol:type_name -> rpmgr.v1.PortProtocol
 	25, // 32: rpmgr.v1.CreatePortPoolRequest.port_pool:type_name -> rpmgr.v1.PortPool
 	25, // 33: rpmgr.v1.CreatePortPoolResponse.port_pool:type_name -> rpmgr.v1.PortPool
-	51, // 34: rpmgr.v1.CreatePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
-	52, // 35: rpmgr.v1.CreatePortPoolResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	53, // 34: rpmgr.v1.CreatePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
+	54, // 35: rpmgr.v1.CreatePortPoolResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	25, // 36: rpmgr.v1.GetPortPoolResponse.port_pool:type_name -> rpmgr.v1.PortPool
 	25, // 37: rpmgr.v1.ListPortPoolsResponse.port_pools:type_name -> rpmgr.v1.PortPool
 	25, // 38: rpmgr.v1.UpdatePortPoolRequest.port_pool:type_name -> rpmgr.v1.PortPool
-	53, // 39: rpmgr.v1.UpdatePortPoolRequest.update_mask:type_name -> google.protobuf.FieldMask
+	55, // 39: rpmgr.v1.UpdatePortPoolRequest.update_mask:type_name -> google.protobuf.FieldMask
 	25, // 40: rpmgr.v1.UpdatePortPoolResponse.port_pool:type_name -> rpmgr.v1.PortPool
-	51, // 41: rpmgr.v1.UpdatePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
-	52, // 42: rpmgr.v1.UpdatePortPoolResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	51, // 43: rpmgr.v1.DeletePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
-	52, // 44: rpmgr.v1.DeletePortPoolResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	53, // 41: rpmgr.v1.UpdatePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
+	54, // 42: rpmgr.v1.UpdatePortPoolResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	53, // 43: rpmgr.v1.DeletePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
+	54, // 44: rpmgr.v1.DeletePortPoolResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	0,  // 45: rpmgr.v1.PortQuota.protocol:type_name -> rpmgr.v1.PortProtocol
 	0,  // 46: rpmgr.v1.SetPortQuotaRequest.protocol:type_name -> rpmgr.v1.PortProtocol
 	36, // 47: rpmgr.v1.SetPortQuotaResponse.port_quota:type_name -> rpmgr.v1.PortQuota
-	51, // 48: rpmgr.v1.SetPortQuotaResponse.revision:type_name -> rpmgr.v1.Revision
-	52, // 49: rpmgr.v1.SetPortQuotaResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	53, // 48: rpmgr.v1.SetPortQuotaResponse.revision:type_name -> rpmgr.v1.Revision
+	54, // 49: rpmgr.v1.SetPortQuotaResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	36, // 50: rpmgr.v1.ListPortQuotasResponse.port_quotas:type_name -> rpmgr.v1.PortQuota
-	51, // 51: rpmgr.v1.DeletePortQuotaResponse.revision:type_name -> rpmgr.v1.Revision
-	52, // 52: rpmgr.v1.DeletePortQuotaResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	53, // 51: rpmgr.v1.DeletePortQuotaResponse.revision:type_name -> rpmgr.v1.Revision
+	54, // 52: rpmgr.v1.DeletePortQuotaResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	1,  // 53: rpmgr.v1.GatewayPage.kind:type_name -> rpmgr.v1.GatewayPageKind
-	50, // 54: rpmgr.v1.GatewayPage.update_time:type_name -> google.protobuf.Timestamp
+	52, // 54: rpmgr.v1.GatewayPage.update_time:type_name -> google.protobuf.Timestamp
 	43, // 55: rpmgr.v1.SetGatewayPageRequest.gateway_page:type_name -> rpmgr.v1.GatewayPage
 	43, // 56: rpmgr.v1.SetGatewayPageResponse.gateway_page:type_name -> rpmgr.v1.GatewayPage
-	51, // 57: rpmgr.v1.SetGatewayPageResponse.revision:type_name -> rpmgr.v1.Revision
-	52, // 58: rpmgr.v1.SetGatewayPageResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	53, // 57: rpmgr.v1.SetGatewayPageResponse.revision:type_name -> rpmgr.v1.Revision
+	54, // 58: rpmgr.v1.SetGatewayPageResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	43, // 59: rpmgr.v1.ListGatewayPagesResponse.gateway_pages:type_name -> rpmgr.v1.GatewayPage
 	1,  // 60: rpmgr.v1.DeleteGatewayPageRequest.kind:type_name -> rpmgr.v1.GatewayPageKind
-	51, // 61: rpmgr.v1.DeleteGatewayPageResponse.revision:type_name -> rpmgr.v1.Revision
-	52, // 62: rpmgr.v1.DeleteGatewayPageResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	15, // 63: rpmgr.v1.GatewayService.CreateGatewayGroup:input_type -> rpmgr.v1.CreateGatewayGroupRequest
-	17, // 64: rpmgr.v1.GatewayService.GetGatewayGroup:input_type -> rpmgr.v1.GetGatewayGroupRequest
-	19, // 65: rpmgr.v1.GatewayService.ListGatewayGroups:input_type -> rpmgr.v1.ListGatewayGroupsRequest
-	21, // 66: rpmgr.v1.GatewayService.UpdateGatewayGroup:input_type -> rpmgr.v1.UpdateGatewayGroupRequest
-	23, // 67: rpmgr.v1.GatewayService.DeleteGatewayGroup:input_type -> rpmgr.v1.DeleteGatewayGroupRequest
-	4,  // 68: rpmgr.v1.GatewayService.CreateGateway:input_type -> rpmgr.v1.CreateGatewayRequest
-	6,  // 69: rpmgr.v1.GatewayService.GetGateway:input_type -> rpmgr.v1.GetGatewayRequest
-	8,  // 70: rpmgr.v1.GatewayService.ListGateways:input_type -> rpmgr.v1.ListGatewaysRequest
-	10, // 71: rpmgr.v1.GatewayService.UpdateGateway:input_type -> rpmgr.v1.UpdateGatewayRequest
-	12, // 72: rpmgr.v1.GatewayService.DecommissionGateway:input_type -> rpmgr.v1.DecommissionGatewayRequest
-	26, // 73: rpmgr.v1.GatewayService.CreatePortPool:input_type -> rpmgr.v1.CreatePortPoolRequest
-	28, // 74: rpmgr.v1.GatewayService.GetPortPool:input_type -> rpmgr.v1.GetPortPoolRequest
-	30, // 75: rpmgr.v1.GatewayService.ListPortPools:input_type -> rpmgr.v1.ListPortPoolsRequest
-	32, // 76: rpmgr.v1.GatewayService.UpdatePortPool:input_type -> rpmgr.v1.UpdatePortPoolRequest
-	34, // 77: rpmgr.v1.GatewayService.DeletePortPool:input_type -> rpmgr.v1.DeletePortPoolRequest
-	37, // 78: rpmgr.v1.GatewayService.SetPortQuota:input_type -> rpmgr.v1.SetPortQuotaRequest
-	39, // 79: rpmgr.v1.GatewayService.ListPortQuotas:input_type -> rpmgr.v1.ListPortQuotasRequest
-	41, // 80: rpmgr.v1.GatewayService.DeletePortQuota:input_type -> rpmgr.v1.DeletePortQuotaRequest
-	44, // 81: rpmgr.v1.GatewayService.SetGatewayPage:input_type -> rpmgr.v1.SetGatewayPageRequest
-	46, // 82: rpmgr.v1.GatewayService.ListGatewayPages:input_type -> rpmgr.v1.ListGatewayPagesRequest
-	48, // 83: rpmgr.v1.GatewayService.DeleteGatewayPage:input_type -> rpmgr.v1.DeleteGatewayPageRequest
-	16, // 84: rpmgr.v1.GatewayService.CreateGatewayGroup:output_type -> rpmgr.v1.CreateGatewayGroupResponse
-	18, // 85: rpmgr.v1.GatewayService.GetGatewayGroup:output_type -> rpmgr.v1.GetGatewayGroupResponse
-	20, // 86: rpmgr.v1.GatewayService.ListGatewayGroups:output_type -> rpmgr.v1.ListGatewayGroupsResponse
-	22, // 87: rpmgr.v1.GatewayService.UpdateGatewayGroup:output_type -> rpmgr.v1.UpdateGatewayGroupResponse
-	24, // 88: rpmgr.v1.GatewayService.DeleteGatewayGroup:output_type -> rpmgr.v1.DeleteGatewayGroupResponse
-	5,  // 89: rpmgr.v1.GatewayService.CreateGateway:output_type -> rpmgr.v1.CreateGatewayResponse
-	7,  // 90: rpmgr.v1.GatewayService.GetGateway:output_type -> rpmgr.v1.GetGatewayResponse
-	9,  // 91: rpmgr.v1.GatewayService.ListGateways:output_type -> rpmgr.v1.ListGatewaysResponse
-	11, // 92: rpmgr.v1.GatewayService.UpdateGateway:output_type -> rpmgr.v1.UpdateGatewayResponse
-	13, // 93: rpmgr.v1.GatewayService.DecommissionGateway:output_type -> rpmgr.v1.DecommissionGatewayResponse
-	27, // 94: rpmgr.v1.GatewayService.CreatePortPool:output_type -> rpmgr.v1.CreatePortPoolResponse
-	29, // 95: rpmgr.v1.GatewayService.GetPortPool:output_type -> rpmgr.v1.GetPortPoolResponse
-	31, // 96: rpmgr.v1.GatewayService.ListPortPools:output_type -> rpmgr.v1.ListPortPoolsResponse
-	33, // 97: rpmgr.v1.GatewayService.UpdatePortPool:output_type -> rpmgr.v1.UpdatePortPoolResponse
-	35, // 98: rpmgr.v1.GatewayService.DeletePortPool:output_type -> rpmgr.v1.DeletePortPoolResponse
-	38, // 99: rpmgr.v1.GatewayService.SetPortQuota:output_type -> rpmgr.v1.SetPortQuotaResponse
-	40, // 100: rpmgr.v1.GatewayService.ListPortQuotas:output_type -> rpmgr.v1.ListPortQuotasResponse
-	42, // 101: rpmgr.v1.GatewayService.DeletePortQuota:output_type -> rpmgr.v1.DeletePortQuotaResponse
-	45, // 102: rpmgr.v1.GatewayService.SetGatewayPage:output_type -> rpmgr.v1.SetGatewayPageResponse
-	47, // 103: rpmgr.v1.GatewayService.ListGatewayPages:output_type -> rpmgr.v1.ListGatewayPagesResponse
-	49, // 104: rpmgr.v1.GatewayService.DeleteGatewayPage:output_type -> rpmgr.v1.DeleteGatewayPageResponse
-	84, // [84:105] is the sub-list for method output_type
-	63, // [63:84] is the sub-list for method input_type
-	63, // [63:63] is the sub-list for extension type_name
-	63, // [63:63] is the sub-list for extension extendee
-	0,  // [0:63] is the sub-list for field type_name
+	53, // 61: rpmgr.v1.DeleteGatewayPageResponse.revision:type_name -> rpmgr.v1.Revision
+	54, // 62: rpmgr.v1.DeleteGatewayPageResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	1,  // 63: rpmgr.v1.PreviewGatewayPageRequest.kind:type_name -> rpmgr.v1.GatewayPageKind
+	52, // 64: rpmgr.v1.PreviewGatewayPageResponse.expire_time:type_name -> google.protobuf.Timestamp
+	15, // 65: rpmgr.v1.GatewayService.CreateGatewayGroup:input_type -> rpmgr.v1.CreateGatewayGroupRequest
+	17, // 66: rpmgr.v1.GatewayService.GetGatewayGroup:input_type -> rpmgr.v1.GetGatewayGroupRequest
+	19, // 67: rpmgr.v1.GatewayService.ListGatewayGroups:input_type -> rpmgr.v1.ListGatewayGroupsRequest
+	21, // 68: rpmgr.v1.GatewayService.UpdateGatewayGroup:input_type -> rpmgr.v1.UpdateGatewayGroupRequest
+	23, // 69: rpmgr.v1.GatewayService.DeleteGatewayGroup:input_type -> rpmgr.v1.DeleteGatewayGroupRequest
+	4,  // 70: rpmgr.v1.GatewayService.CreateGateway:input_type -> rpmgr.v1.CreateGatewayRequest
+	6,  // 71: rpmgr.v1.GatewayService.GetGateway:input_type -> rpmgr.v1.GetGatewayRequest
+	8,  // 72: rpmgr.v1.GatewayService.ListGateways:input_type -> rpmgr.v1.ListGatewaysRequest
+	10, // 73: rpmgr.v1.GatewayService.UpdateGateway:input_type -> rpmgr.v1.UpdateGatewayRequest
+	12, // 74: rpmgr.v1.GatewayService.DecommissionGateway:input_type -> rpmgr.v1.DecommissionGatewayRequest
+	26, // 75: rpmgr.v1.GatewayService.CreatePortPool:input_type -> rpmgr.v1.CreatePortPoolRequest
+	28, // 76: rpmgr.v1.GatewayService.GetPortPool:input_type -> rpmgr.v1.GetPortPoolRequest
+	30, // 77: rpmgr.v1.GatewayService.ListPortPools:input_type -> rpmgr.v1.ListPortPoolsRequest
+	32, // 78: rpmgr.v1.GatewayService.UpdatePortPool:input_type -> rpmgr.v1.UpdatePortPoolRequest
+	34, // 79: rpmgr.v1.GatewayService.DeletePortPool:input_type -> rpmgr.v1.DeletePortPoolRequest
+	37, // 80: rpmgr.v1.GatewayService.SetPortQuota:input_type -> rpmgr.v1.SetPortQuotaRequest
+	39, // 81: rpmgr.v1.GatewayService.ListPortQuotas:input_type -> rpmgr.v1.ListPortQuotasRequest
+	41, // 82: rpmgr.v1.GatewayService.DeletePortQuota:input_type -> rpmgr.v1.DeletePortQuotaRequest
+	44, // 83: rpmgr.v1.GatewayService.SetGatewayPage:input_type -> rpmgr.v1.SetGatewayPageRequest
+	46, // 84: rpmgr.v1.GatewayService.ListGatewayPages:input_type -> rpmgr.v1.ListGatewayPagesRequest
+	50, // 85: rpmgr.v1.GatewayService.PreviewGatewayPage:input_type -> rpmgr.v1.PreviewGatewayPageRequest
+	48, // 86: rpmgr.v1.GatewayService.DeleteGatewayPage:input_type -> rpmgr.v1.DeleteGatewayPageRequest
+	16, // 87: rpmgr.v1.GatewayService.CreateGatewayGroup:output_type -> rpmgr.v1.CreateGatewayGroupResponse
+	18, // 88: rpmgr.v1.GatewayService.GetGatewayGroup:output_type -> rpmgr.v1.GetGatewayGroupResponse
+	20, // 89: rpmgr.v1.GatewayService.ListGatewayGroups:output_type -> rpmgr.v1.ListGatewayGroupsResponse
+	22, // 90: rpmgr.v1.GatewayService.UpdateGatewayGroup:output_type -> rpmgr.v1.UpdateGatewayGroupResponse
+	24, // 91: rpmgr.v1.GatewayService.DeleteGatewayGroup:output_type -> rpmgr.v1.DeleteGatewayGroupResponse
+	5,  // 92: rpmgr.v1.GatewayService.CreateGateway:output_type -> rpmgr.v1.CreateGatewayResponse
+	7,  // 93: rpmgr.v1.GatewayService.GetGateway:output_type -> rpmgr.v1.GetGatewayResponse
+	9,  // 94: rpmgr.v1.GatewayService.ListGateways:output_type -> rpmgr.v1.ListGatewaysResponse
+	11, // 95: rpmgr.v1.GatewayService.UpdateGateway:output_type -> rpmgr.v1.UpdateGatewayResponse
+	13, // 96: rpmgr.v1.GatewayService.DecommissionGateway:output_type -> rpmgr.v1.DecommissionGatewayResponse
+	27, // 97: rpmgr.v1.GatewayService.CreatePortPool:output_type -> rpmgr.v1.CreatePortPoolResponse
+	29, // 98: rpmgr.v1.GatewayService.GetPortPool:output_type -> rpmgr.v1.GetPortPoolResponse
+	31, // 99: rpmgr.v1.GatewayService.ListPortPools:output_type -> rpmgr.v1.ListPortPoolsResponse
+	33, // 100: rpmgr.v1.GatewayService.UpdatePortPool:output_type -> rpmgr.v1.UpdatePortPoolResponse
+	35, // 101: rpmgr.v1.GatewayService.DeletePortPool:output_type -> rpmgr.v1.DeletePortPoolResponse
+	38, // 102: rpmgr.v1.GatewayService.SetPortQuota:output_type -> rpmgr.v1.SetPortQuotaResponse
+	40, // 103: rpmgr.v1.GatewayService.ListPortQuotas:output_type -> rpmgr.v1.ListPortQuotasResponse
+	42, // 104: rpmgr.v1.GatewayService.DeletePortQuota:output_type -> rpmgr.v1.DeletePortQuotaResponse
+	45, // 105: rpmgr.v1.GatewayService.SetGatewayPage:output_type -> rpmgr.v1.SetGatewayPageResponse
+	47, // 106: rpmgr.v1.GatewayService.ListGatewayPages:output_type -> rpmgr.v1.ListGatewayPagesResponse
+	51, // 107: rpmgr.v1.GatewayService.PreviewGatewayPage:output_type -> rpmgr.v1.PreviewGatewayPageResponse
+	49, // 108: rpmgr.v1.GatewayService.DeleteGatewayPage:output_type -> rpmgr.v1.DeleteGatewayPageResponse
+	87, // [87:109] is the sub-list for method output_type
+	65, // [65:87] is the sub-list for method input_type
+	65, // [65:65] is the sub-list for extension type_name
+	65, // [65:65] is the sub-list for extension extendee
+	0,  // [0:65] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_gateway_proto_init() }
@@ -3675,7 +3802,7 @@ func file_rpmgr_v1_gateway_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_gateway_proto_rawDesc), len(file_rpmgr_v1_gateway_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   48,
+			NumMessages:   50,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -80,7 +80,7 @@ browsers instead of the built-in one; clients that do not ask for HTML still get
   ([Upgrades](../install/upgrades.md)).
 
 With the web UI, use the **Pages** card on the group's page under **Gateways**
-([Gateways](../web-ui/gateways.md#pages)). With the command line:
+([Gateways](../web-ui/gateways.md#pages)), whose **Preview** shows a page as visitors will see it. With the command line:
 
 ```sh
 rpmgr upload gateway-page --group default --kind maintenance maintenance.html
