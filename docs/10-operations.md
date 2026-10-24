@@ -789,7 +789,7 @@ gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection))
 | `rpmgr_route_connection_setup_seconds{route}` | histogram | gateway | 1 | Asking a connector for a stream → its `StreamResult` |
 | `rpmgr_http_requests_total{route,code}` | counter | gateway | 1 | Requests of HTTP routes by status, the route's refusals included |
 | `rpmgr_udp_oversize_total{route}` | counter | gateway, connector | 1 | UDP payloads too large for a datagram, sent on the flow stream ([03](03-connections.md#udp-routes)) |
-| `rpmgr_udp_datagrams_dropped_total{route,reason}` | counter | gateway, connector | 1 | Drops: queue full, flow limit, unknown flow, policy |
+| `rpmgr_udp_datagrams_dropped_total{route,reason}` | counter | gateway, connector | 1 | Drops: queue full, flow limit, unknown flow, policy; from Phase 2 also a route limit (`limit`) and a per-client rate limit (`rate_limit`), [03](03-connections.md#route-limits-phase-2) |
 | `rpmgr_connector_session_rtt_seconds{gateway,transport}` | gauge | connector | 1 | Smoothed RTT, the lowest of the data sessions to a gateway over a transport: QUIC's own estimate, or for h2 from the session `Ping` and `Pong` ([03](03-connections.md#timeouts-keepalive-and-backoff)) |
 | `rpmgr_connector_target_dial_seconds{route}` | histogram | connector | 1 | Upstream dial time; dials the local policy refuses are not timed |
 | `rpmgr_connector_policy_denied_total{route}` | counter | connector | 1 | Dials refused by local policy |

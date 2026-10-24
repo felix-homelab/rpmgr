@@ -761,6 +761,29 @@ sequenceDiagram
   an HTTP/2 one under a wildcard certificate, asks again on a connection of its own. TLS is
   terminated with the route certificate for the server name
   ([04](04-security.md#controller-certificates)).
+- **Header matches** (Phase 2, [D135](14-open-decisions.md#engineering)). An http route may also
+  match on request headers: at most 8 matches, each a header name with an exact value or with
+  presence alone. Names compare without regard to case, values exactly; a header that comes several
+  times matches when any of its values equals. Among the routes of a hostname and path prefix, a
+  route whose matches all hold wins over one with fewer matches, and a route without matches serves
+  what no other takes; a request no route of its prefix takes goes to the next shorter prefix, and
+  else gets the 404 above. Two routes with the same prefix and the same number of matches that
+  both hold are a tie, which the route created first wins; route preview warns about such
+  overlapping sets. The store refuses two routes of a group with the same hostname, prefix and
+  set of matches ([06](06-data-model.md#routing)). Header matches never choose a certificate,
+  which follows the hostname alone, and apply on port 80 as on 443.
+- **Reserved path** (Phase 2, [D135](14-open-decisions.md#engineering)). `/.rpmgr/` belongs to the
+  gateway on every http route hostname and never goes upstream: it carries the gateway's own
+  endpoints, such as the end of an OIDC sign-in ([Access policies](#access-policies)). A request
+  under it that names no such endpoint gets **404** with the site-not-available page. A gateway of
+  an earlier release still passes the path upstream.
+- **Per-route timeouts** (Phase 2, [D94](14-open-decisions.md#engineering),
+  [D135](14-open-decisions.md#engineering)). A route may set two timeouts of its own, within the
+  bounds of [Timeouts, keepalive and backoff](#timeouts-keepalive-and-backoff), and 0 keeps the
+  gateway's: the **upstream response-header timeout**, after which the request gets **504**, and
+  the **upstream idle timeout**, how long a pooled keep-alive connection to the upstream may stay
+  unused. The client connection's timeouts stay fixed, and WebSockets and streamed responses keep
+  no idle timeout. A gateway of an earlier release ignores both and keeps the fixed values.
 - **Clean paths only.** The path goes upstream unchanged, so a backend that reads it differently
   from the gateway could serve, under a broader route and its access policies, a path that a
   narrower route protects. Before it chooses a route, on 443 and on port 80, the gateway therefore
@@ -811,8 +834,9 @@ sequenceDiagram
   through when the target speaks HTTP/2 (h2c, or TLS with ALPN `h2`); the gateway streams every
   response as it comes, so it sends a gRPC status that arrived without a body as trailers.
 - Error mapping: no ready session or connector → **503** with `Retry-After: 5`; upstream refused or
-  reset → **502**; upstream timeout → **504**. Each comes with the service-unavailable page. A
-  response the upstream sent, its own 5xx included, passes unchanged.
+  reset → **502**; upstream timeout, the route's response-header timeout included → **504**. Each
+  comes with the service-unavailable page. A response the upstream sent, its own 5xx included,
+  passes unchanged.
 - **Pages** ([D87](14-open-decisions.md#engineering)): a browser gets a page from the gateway, not
   bare text, for a name or path no route serves ("Site not available", 404) and for the errors
   above ("Service unavailable"). A page is self-contained HTML in English: one inline style, which
@@ -821,8 +845,21 @@ sequenceDiagram
   text, never one the route sends upstream, and `Cache-Control: no-store`. Only a client whose
   own `Accept` names `text/html` gets it; any other, such as curl or an API client, gets the plain
   text it got before. HEAD gets the headers alone.
-  The pages are built in; pages of one's own per gateway group come in Phase 2
-  ([05](05-features.md#http-features)).
+  The pages are built in; pages of one's own per gateway group come in Phase 2 (next item).
+- **Custom pages** (Phase 2, [D132](14-open-decisions.md#engineering)). A gateway group may replace
+  three pages with its own: **not found** (404), **unavailable** (502, 503 and 504) and
+  **maintenance**. A page is complete HTML of at most 64 KiB, set by the group's owner org
+  ([04](04-security.md#route-edge-rules)). The gateway fills in placeholders, each escaped as HTML
+  text: `{{hostname}}` (the name the client asked for), `{{status}}` (the status code),
+  `{{message}}` (the route's maintenance message, on the maintenance page only) and
+  `{{request_id}}` (a random ID the gateway also writes to its log line for the request); any other
+  `{{…}}` stays as it is. A custom page goes out with
+  `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:` and
+  `Cache-Control: no-store`, so it runs no script and loads nothing from elsewhere, and only to
+  clients whose `Accept` names `text/html`, like the built-in pages. Gateways fetch the pages by
+  their SHA-256 like certificates ([Configuration reconciliation](#configuration-reconciliation));
+  until a page is fetched, for a kind the group did not replace, and on a gateway without the
+  capability `pages.custom`, the built-in page is served.
 - **Maintenance** ([D88](14-open-decisions.md#engineering)): an http route in maintenance stays on
   its gateways with its certificate, HSTS and port-80 mode. A request its access policies admit,
   basic auth included, gets **503** with `Retry-After: 300` and the "Down for maintenance" page,
@@ -853,7 +890,9 @@ on the inner name.
 ### Access policies
 
 A route applies the rules of all its access policies ([06](06-data-model.md#routing)). The gateway
-enforces IP rules on every route type and basic auth on http routes:
+enforces IP rules and, from Phase 2, per-client rate limits on every route type; basic auth on
+http routes and on CONNECT listeners that ask for it; require-header rules and OIDC on http routes.
+It checks them in this order: IP rules, rate limits, require-header rules, then basic auth or OIDC.
 
 - **IP rules.** A deny wins ([D85](14-open-decisions.md#engineering)): an `ip_deny` rule whose
   CIDRs contain the client's address refuses it, whatever `ip_allow` rule contains it and in
@@ -872,10 +911,122 @@ enforces IP rules on every route type and basic auth on http routes:
   without credentials or with wrong ones it is **401** with `WWW-Authenticate: Basic`, and a
   client address that has used its verifications is **429** with `Retry-After`
   ([04](04-security.md#secrets-at-rest-and-in-logs)). The gateway removes `Authorization` before
-  the request goes upstream. A `basic_auth` rule on another route type denies everyone.
+  the request goes upstream. A `basic_auth` rule on another route type denies everyone, except on
+  a `tcp` route in `http_connect` mode whose listener asks for basic auth
+  ([HTTP CONNECT routes](#http-connect-routes-phase-2)).
+- **Rate limits** (Phase 2, [D131](14-open-decisions.md#engineering)). A `rate_limit` rule allows
+  each client address a rate with a burst: HTTP requests on an http route, new connections on a
+  `tcp`, `tls_passthrough` or CONNECT route, new flows on a `udp` route. Over it, an HTTP request
+  is **429** with `Retry-After`, a connection is reset before any stream opens, and a datagram
+  opens no flow and is counted (`reason="rate_limit"`). Each `rate_limit` rule of a route applies,
+  so the strictest one decides. A client is an IPv4 address or an IPv6 /64, found as for IP rules;
+  each gateway counts on its own, and the rule is not divided among them, as a client mostly stays
+  with one gateway. The key table of a route on a gateway has a fixed size
+  ([Timeouts, keepalive and backoff](#timeouts-keepalive-and-backoff)); when it is full, new
+  addresses are refused, rather than the gateway forgetting addresses that it is limiting
+  ([04](04-security.md#human-authentication-and-sessions)). The route's own total rate is a limit
+  of the route, not of a policy ([Route limits](#route-limits-phase-2)).
+- **Require-header rules** (Phase 2, [04](04-security.md#route-edge-rules)). A `require_header`
+  rule names a header and up to 4 accepted values, so that a value can be rotated; the gateway
+  holds only their SHA-256 and compares in constant time. A request without the header, or with a
+  value none matches, is **403**. The gateway removes the header before the request goes upstream,
+  so the backend never sees the shared secret. Such a rule on another route type denies everyone,
+  and the API refuses it there.
+- **OIDC sign-in** (Phase 2, built with P2-M10, [04](04-security.md#route-edge-rules)). An `oidc`
+  rule admits users that a route identity provider signs in and whose claims the rule accepts
+  (e-mail addresses, e-mail domains, groups). A request without a valid session cookie
+  `__Host-rpmgr-auth` for the hostname is sent to the controller to sign in: a browser `GET` that
+  asks for HTML gets a redirect, anything else **401**. The controller runs the sign-in and sends
+  the browser back to `/.rpmgr/oidc` on the route hostname with a short signed assertion, which the
+  gateway checks and turns into the session cookie. Upstream, the request carries
+  `Rpmgr-User-Email`, `Rpmgr-User-Subject` and `Rpmgr-User-Groups`; on **every** http route the
+  gateway removes these headers from what the client sent, so a backend can trust them. OIDC and
+  basic auth on one route are refused.
 - **Tightening applies at once**: a snapshot that changes a route's rules resets the connections,
   ends the UDP flows and cancels the HTTP requests, upgraded connections included, of the clients
   the new rules deny ([Configuration reconciliation](#configuration-reconciliation)).
+
+### Route limits (Phase 2)
+
+A route may set limits ([D131](14-open-decisions.md#engineering)), enforced on the gateways with
+the capability `route.limits`:
+
+| Limit | Counts | Over the limit |
+|---|---|---|
+| Connections | open `tcp`, `tls_passthrough` and CONNECT connections; open UDP flows; HTTP requests in flight, upgraded ones included | TCP reset before a stream opens; datagram dropped, no flow (`reason="limit"`); HTTP **503** with `Retry-After` |
+| Request rate | HTTP requests, new connections or new flows per second, for the route as a whole | HTTP **429** with `Retry-After`; reset; datagram dropped (`reason="limit"`) |
+| Bandwidth | bytes per second, in each direction separately with the same value | data waits, without loss on TCP; UDP datagrams over it are dropped (`reason="limit"`) |
+
+- **Divided among gateways.** A route's limit applies to the gateway group: the compiler divides
+  it by the number of the group's enabled gateways, rounded up and at least 1, and each gateway
+  enforces its share. A gateway that is enabled but down keeps its share, so the route then gets
+  less than its limit until the gateway returns or is disabled. 0 means no limit.
+- A slot of a connection or request is released when it ends, however it ends, panics and
+  cancellations included. The per-client `rate_limit` rule of a policy comes on top
+  ([Access policies](#access-policies)).
+
+### Target health (Phase 2)
+
+- **Active checks** ([D133](14-open-decisions.md#engineering)). A route has at most one health
+  check, which each connector runs against each of its own targets of the route: `tcp` (the dial
+  succeeds) or `http` (a `GET` of a path, with the route's `Host`, that answers with a status in
+  the expected range, 200–399 unless set). A check may name another port than the target's. It
+  dials like traffic: the connector-local policy applies, and a target it blocks is unhealthy
+  without being dialled; an `https` target is verified with the target's own TLS settings; no
+  redirect is followed and at most a capped part of the body is read. A `udp` route allows only a
+  `tcp` check on a port it names. A target becomes unhealthy after the unhealthy threshold of
+  failed checks in a row and healthy again after the healthy threshold of passed ones.
+- **What gateways see.** The connector skips unhealthy targets when it picks one for a stream and
+  reports, per route, the priorities that still have a healthy target (`RouteHealth`). A gateway
+  passes over a connector whose priority has none and, for http routes, moves new requests back to
+  a better priority once it is healthy again. When no target of a route is healthy on any
+  connector, the gateway answers as when no connector is ready (**503**, reset, drop) and the
+  route's status is `unavailable`.
+- **Connectors of an earlier release** do not run checks: they report every priority as ready, so
+  their targets count as healthy, and the route's status notes "health not checked" for them. The
+  route is not left out of their snapshot (no gate, D133). Connectors that run checks announce the
+  capability `health.active`.
+- **Passive health.** Each gateway also marks a (connector, priority) entry of a route as failing
+  after 3 refused or timed-out stream opens in a row, never for an HTTP 5xx: the entry is passed
+  over for a back-off that starts at 10 s and doubles to at most 60 s, after which one stream tries
+  it again (half-open); a success restores it. When every entry is marked, the gateway still tries
+  the last one rather than refusing. Each gateway decides alone.
+
+### HTTP CONNECT routes (Phase 2)
+
+A `tcp` route in `http_connect` mode ([D104](14-open-decisions.md#engineering),
+[D130](14-open-decisions.md#engineering)) does not take a port of its own: many such routes of an
+org share a **CONNECT listener**, a port of the org's TCP pool in the gateway group, counted once
+against its quota. A client asks the listener `CONNECT <host>:<port>`; the listener finds the route
+that names `<host>` among its **authorities**, ignoring the port, and splices the connection to it
+as a `tcp` route does. Authorities are host names chosen freely, which never reach DNS, and are
+unique on their listener. A listener belongs to one org, so no client reaches another org's route
+through it. Gateways announce the capability `tcp.http-connect`.
+
+- **Authentication mode**, an option of each `http_connect` route, which all routes of one
+  listener share, because a listener either speaks TLS or does not:
+
+  | Mode | Listener | Proxy credentials |
+  |---|---|---|
+  | `none` (default) | plain CONNECT | none; IP and rate-limit rules only |
+  | `tls_basic` | TLS (an HTTPS proxy) with the certificate of the listener's hostname | basic auth in `Proxy-Authorization`, protected by TLS |
+  | `plain_basic` | plain CONNECT | basic auth in `Proxy-Authorization`, **readable by anyone on the path**; the API, the CLI and the web UI warn every time it is chosen |
+
+- **Placement.** A route names a port, or lets the controller choose. A named port that is
+  already a CONNECT listener of the org takes the route only if the route's mode, and for
+  `tls_basic` the listener hostname, are the listener's; else the write is refused
+  (`CONNECT_MODE_MISMATCH`). Without a port, the route joins the org's listener of that mode, and
+  hostname, in the group, or a new listener is opened on a random free port. Changing a route's
+  mode moves it to a listener of the new mode, so its port changes, as preview shows. A listener
+  closes when its last route goes.
+- **TLS listener.** The listener's hostname lies under a verified domain of the org; its
+  certificate comes from ACME or an upload, as for http routes, with the same TLS versions
+  ([04](04-security.md#controller-certificates)).
+- **Refusals.** A request that is not `CONNECT` is **405**; an authority no route of the listener
+  names is **403**, with no hint whether it exists elsewhere; missing or wrong credentials in a
+  basic mode are **407** with `Proxy-Authenticate: Basic`. `Proxy-Authorization` is never passed
+  on. Over a limit or a rule, the answer is the one of [Route limits](#route-limits-phase-2) and
+  [Access policies](#access-policies) for HTTP, sent before the tunnel opens.
 
 ### Port 443 multiplexing
 
@@ -975,7 +1126,22 @@ Which transport a connector uses is a setting
   reconciliation](#configuration-reconciliation)): new user connections use the new transport at
   once; connections already open finish on their session; a session no route needs any more is
   closed after its last stream has ended. Unchanged routes are untouched.
-- Phase 2 adds `wss` as a fourth value and as the last step of `auto`.
+- Phase 2 adds `wss` as a fourth value and as the last step of `auto`
+  ([D135](14-open-decisions.md#engineering)):
+  - `auto` tries WSS only after TLS + reverse HTTP/2 to the gateway failed in the TLS handshake,
+    as an intercepting proxy makes it fail; `wss` pins it. WSS goes direct or through the
+    connector's `HTTPS_PROXY`.
+  - Each gateway that offers WSS has its own **WSS hostname**, so that the connector knows which
+    gateway it reaches. It lies under a verified domain of the gateway group's owner org (the
+    system org for a shared group), is no route hostname of the group, and has a certificate
+    from ACME or an upload that covers it ([04](04-security.md#route-edge-rules)).
+  - The proxy sees only the outer TLS to that public hostname; inside the upgraded connection
+    the connector runs TLS 1.3 with mutual authentication to `<gateway-id>.gateway.<td>` and
+    checks the gateway's pinned root, so an intercepting proxy reads nothing. A request to the
+    WSS hostname for another path than `/.rpmgr/tunnel` is **404**, and an upgrade that does not
+    complete the inner handshake is closed.
+  - A connector without the capability `tunnel.wss`, or a gateway without a WSS hostname, cannot
+    serve a route pinned to `wss`: the route is `not_ready(transport_unavailable: wss)` there.
 - **The all-in-one's own connector** ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md),
   [D89](14-open-decisions.md#engineering)) reaches the gateway of its own process in memory: a
   pipe that buffers 1 MiB each way, with the same TLS handshake, gateway pin, ALPN
@@ -1218,6 +1384,11 @@ sequenceDiagram
 | Controller web server (UI and public API) | header read 10 s, which applies to HTTP/1.1 only; idle 120 s; HTTP/2: at most 100 requests open at once per connection. An HTTP/2 header block that stalls is bounded by the idle timeout once no other request is open on its connection, which then closes; no total read or write timeout | [R] Server streams and downloads must work; one connection cannot hold more requests than a browser needs ([D92](14-open-decisions.md#engineering)) |
 | Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |
+| Per-route HTTP timeouts (Phase 2) | upstream response header 1 s to 1 h; upstream idle 1 s to 1 h; 0 = the HTTP server row above | [R] Slow reports and long polls fit; a pooled connection outliving a backend's keep-alive is avoided ([HTTP routes](#http-routes)) |
+| Active health check (Phase 2) | interval 10 s by default, at least 2 s; timeout 5 s by default, below the interval; unhealthy after 3 failures in a row, healthy after 2 passes; an HTTP check reads at most 64 KiB of the body | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
+| Passive health (Phase 2) | 3 refused or timed-out stream opens in a row; back-off 10 s, doubling to 60 s; one half-open try after it | [R] A target that refuses is passed over at once and tried again soon |
+| Per-client rate limit (Phase 2) | at most 65 536 client addresses per route on each gateway; an address unused for 10 min is dropped | [R] A flood of addresses cannot exhaust a gateway's memory ([Access policies](#access-policies)) |
+| Custom page (Phase 2) | at most 64 KiB of HTML per page | [R] A page loads fast and fits a snapshot item fetch ([HTTP routes](#http-routes)) |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |
 | Snapshot item fetch | 10 s per `FetchResource`; a failed fetch is retried after 1 s, doubling up to 1 min, and its resource is `not_ready(environment)` until then | A controller outage delays a new certificate without a retry storm |
 | Target certificate probe | the connector's dial and TLS handshake together 10 s; at most 4 at once per connector, another is refused at once; `ProbeTargetCertificate` waits at most 15 s for the connector's answer | [R] A silent target or connector answers within the time a user waits for a button; a user who may change routes cannot make a connector open many dials at once |
@@ -1298,17 +1469,22 @@ The gated route features of Phase 2, each registered by the slice that adds the 
 |---|---|---|
 | `http.header-match` | Gateway | Header matching of `http` routes |
 | `http.require-header` | Gateway | Require-header rules of access policies |
-| `route.limits` | Gateway | Per-route connection, rate and bandwidth limits |
+| `route.limits` | Gateway | Per-route connection, rate and bandwidth limits, and the per-client `rate_limit` rule of access policies |
 | `tcp.http-connect` | Gateway | `tcp` routes in `http_connect` mode |
 | `http.oidc` | Gateway | OIDC forward-auth on `http` routes |
 | `http.cf-connecting-ip` | Gateway | The client address from `CF-Connecting-IP` on proxied routes |
+
+Per-route HTTP timeouts are no gated feature: a gateway without them keeps its fixed values, which
+fails safe. Health checks are not gated either (D133), so the route edge features of Phase 2
+register no connector-side gate.
 
 The other capabilities of Phase 2 are not route features. Each is checked where its feature is
 used, not by the route compiler:
 
 | Capability | Kind | Feature |
 |---|---|---|
-| `pages.custom` | Gateway | Custom error pages of a gateway group |
+| `pages.custom` | Gateway | Custom pages of a gateway group; a gateway without it serves the built-in pages |
+| `health.active` | Connector | Active health checks of targets; a connector without it counts its targets as healthy, and the route status notes "health not checked" ([D133](14-open-decisions.md#engineering)) |
 | `tunnel.wss` | Gateway, connector | Data sessions over WSS |
 | `logs.stream` | Gateway, connector | Live logs (`Open` and `Attach`) |
 | `ota` | Gateway, connector | Over-the-air updates: the agent takes a release offer in its snapshot, stages it for the root updater and reports the update state and the updater's outcome in `Status`; an agent without it is never offered a release. Announced only on a Linux host with the root updater installed ([04](04-security.md#over-the-air-updates)) |

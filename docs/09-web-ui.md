@@ -352,6 +352,19 @@ flowchart LR
     hostname the form has, by its names, ID and expiry; the form stores its ID. The choice shows
     only while the route uses an uploaded certificate. A certificate chosen before stays offered,
     marked if it does not cover the hostnames, so the form never changes it unasked.
+  - **Phase 2 sections** ([03](03-connections.md#http-routes)), each folded until used:
+    - **Header matches** (http): up to eight rows of a header name with "equals" and a value, or
+      "is present"; a hint explains that more matches win and that the route created first wins
+      a tie, which preview reports.
+    - **Timeouts** (http): upstream response header and upstream idle, empty for the gateway's.
+    - **Limits** (every type): connections, request rate and bandwidth for the route as a whole,
+      with a hint that the group's enabled gateways share them.
+    - **Health check** (every type): TCP or HTTP, port, path, expected status, interval, timeout
+      and thresholds; route detail shows each target's health, and "health not checked" for a
+      connector that runs no checks.
+    - **CONNECT** (tcp in `http_connect` mode): the authorities and the authentication mode; for
+      "basic auth in the clear" a warning stays on the form, in the colour of errors, that the
+      password crosses the network readable by anyone on the path.
   - **After a save,** the apply status follows live, as for the switch.
   - **A save that meets a newer version (U6)** opens a panel in the form. It says who changed the
     route and how long ago, and lists the fields either side changed, with the user's value next to
@@ -406,7 +419,9 @@ flowchart LR
 - **Gateway actions** on a group's page:
   - **Add a gateway** with its name and its own tunnel endpoints. A group has at most four; the
     server says so.
-  - **Edit** its name and endpoints.
+  - **Edit** its name and endpoints, and in Phase 2 its WSS hostname, which the server checks
+    against the verified domains of the group's owner org
+    ([03](03-connections.md#transport-selection)).
   - **Drain or resume** it (R22, [03](03-connections.md#multiple-gateways)). A drained gateway takes
     no new public connections, and it ends the open ones after the gateway drain period.
   - **Decommission** it, after a confirmation that names it. The all-in-one's own gateway is marked
@@ -422,6 +437,10 @@ flowchart LR
   - a range is checked first: 1 to 65535, the first port no larger than the last;
   - per protocol, the org's quota of the group's ports, with how many are in use. An empty quota is
     removed, so that the pools alone limit the org.
+- **Pages** (Phase 2, [D132](14-open-decisions.md#engineering)) on a group's page, for the group's
+  owner org: the not-found, unavailable and maintenance pages, each "built in" or "own" with a
+  preview in a sandboxed frame without script, an upload of its HTML, the placeholders it may use,
+  and a reset to the built-in page after a confirmation.
 
 ### Domains and certificates
 
@@ -462,6 +481,11 @@ flowchart LR
     wins over every allow rule ([D85](14-open-decisions.md#engineering)).
   - **Basic auth:** each user has a name and a password. Passwords are write-only: an existing user
     whose password field stays empty keeps their password.
+  - **Phase 2 rules** ([03](03-connections.md#access-policies)): **rate limit** (requests or new
+    connections per second per client, and a burst); **require header** (a header name and up to
+    four values, write-only like passwords, at least 32 characters, with a "generate" button);
+    **OIDC sign-in** (a route identity provider, accepted e-mail addresses, domains and groups, and
+    the session length). The form says which route types each rule applies to.
 - **Removal** comes after a confirmation. The server refuses a policy that routes use, and says
   which.
 - **After each change,** the apply status follows live.
