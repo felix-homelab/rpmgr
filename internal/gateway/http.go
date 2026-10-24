@@ -93,6 +93,9 @@ type HTTPRoute struct {
 	Access Access
 	// BasicAuth are the basic_auth rules a request the IP rules allow must pass, in order.
 	BasicAuth []BasicAuthRule
+	// RequireHeader are the require_header rules a request the IP rules allow must pass, before
+	// basic auth; their headers never go upstream.
+	RequireHeader []RequireHeaderRule
 	// Maintenance answers every request the access rules admit with the maintenance page, which
 	// shows MaintenanceMessage, and opens no stream.
 	Maintenance        bool
@@ -189,10 +192,11 @@ type routeTransport struct {
 	proxy *httputil.ReverseProxy
 	tls   map[string]upstreamTLS // by route target ID
 
-	mu       sync.Mutex
-	access   Access // the route's access rules in force, which enforce sets
-	active   map[*activeRequest]struct{}
-	upstream *upstreamConns // the route's TLS connections to its targets, of every transport
+	mu            sync.Mutex
+	access        Access              // the route's IP rules in force, which enforce sets
+	requireHeader []RequireHeaderRule // and its require_header rules
+	active        map[*activeRequest]struct{}
+	upstream      *upstreamConns // the route's TLS connections to its targets, of every transport
 
 	best      func() (uint32, bool)     // the route's best priority with a ready session (Sessions.BestPriority)
 	entry     func(string, uint32) bool // whether a connector at a priority is still an entry of the route
@@ -415,20 +419,26 @@ func (u *upstreamConns) track(target string, checked UpstreamTLS, c net.Conn) (n
 // activeRequest is a request being proxied, which a tightened access policy cancels.
 type activeRequest struct {
 	client netip.Addr
+	header http.Header // the client's request header, which the proxy never changes
 	cancel context.CancelFunc
 }
 
-// enforce cancels the requests, upgraded connections included, whose clients the route's new
-// access rules no longer allow.
-func (rt *routeTransport) enforce(a Access) {
+// enforce cancels the requests, upgraded connections included, that the route's new access rules
+// no longer allow: by their client's address, or by the headers the require_header rules ask for.
+func (rt *routeTransport) enforce(r *HTTPRoute) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	rt.access = a
+	rt.access, rt.requireHeader = r.Access, r.RequireHeader
 	for ar := range rt.active {
-		if !a.Allows(ar.client) {
+		if !rt.allows(ar) {
 			ar.cancel()
 		}
 	}
+}
+
+// allows reports whether the rules in force admit a request; rt.mu is held.
+func (rt *routeTransport) allows(ar *activeRequest) bool {
+	return rt.access.Allows(ar.client) && requireHeaderPasses(rt.requireHeader, ar.header)
 }
 
 // idle reports whether no request runs on the transport.
@@ -692,11 +702,11 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 				h.replaced[r.ID] = append(h.replaced[r.ID], rt)
 			}
 			rt = h.newTransport(r)
-		} else if old := rt.route.Swap(&r); !old.Access.Same(r.Access) {
-			rt.enforce(r.Access)
+		} else if old := rt.route.Swap(&r); !old.Access.Same(r.Access) || !sameRequireHeader(old.RequireHeader, r.RequireHeader) {
+			rt.enforce(&r)
 		}
 		h.replaced[r.ID] = slices.DeleteFunc(h.replaced[r.ID], func(old *routeTransport) bool {
-			old.enforce(r.Access)
+			old.enforce(&r)
 			return old.idle()
 		})
 		next[r.ID] = rt
@@ -750,7 +760,7 @@ func (h *HTTPRoutes) upstreamOf(route string) *upstreamConns {
 
 // newTransport returns the proxy of a route; its transport dials tunnel streams to the route.
 func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
-	rt := &routeTransport{access: r.Access, active: map[*activeRequest]struct{}{}, upstream: h.upstreamOf(r.ID),
+	rt := &routeTransport{access: r.Access, requireHeader: r.RequireHeader, active: map[*activeRequest]struct{}{}, upstream: h.upstreamOf(r.ID),
 		pooled: map[net.Conn]*pooledConn{}, best: func() (uint32, bool) { return h.o.Sessions.BestPriority(r.ID) },
 		entry: func(con string, p uint32) bool { return h.o.Sessions.HasEntry(r.ID, con, p) }}
 	rt.route.Store(&r)
@@ -799,6 +809,9 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 				pr.Out.Header.Del("Authorization") // the gateway's credentials, not the upstream's
 			}
 			dropIdentityHeaders(pr.Out.Header, pr.Out.Trailer)
+			for _, rh := range route.RequireHeader {
+				pr.Out.Header.Del(rh.Name) // a shared secret between the client and the gateway
+			}
 			apply(pr.Out.Header, route.RequestHeaders)
 		},
 		Transport:     rt,
@@ -1120,7 +1133,7 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 		span.End()
 	}()
 	client := clientOf(r, route.TrustedProxies)
-	if !route.Access.Allows(client) {
+	if !route.Access.Allows(client) || !requireHeaderPasses(route.RequireHeader, r.Header) {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
@@ -1146,12 +1159,12 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 	}
 	ctx, cancel := context.WithCancel(withPageRequest(r.Context(), r))
 	defer cancel()
-	ar := &activeRequest{client: client, cancel: cancel}
+	ar := &activeRequest{client: client, header: r.Header, cancel: cancel}
 	rt.mu.Lock()
 	rt.active[ar] = struct{}{}
 	// The rules may have changed while the request was checked, basic auth taking a while; under
 	// rt.mu, either enforce sees the request, or this check sees the rules it set (#523).
-	allowed := rt.access.Allows(client)
+	allowed := rt.allows(ar)
 	rt.mu.Unlock()
 	defer func() {
 		rt.mu.Lock()

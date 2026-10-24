@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"connectrpc.com/connect"
@@ -14,6 +15,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -391,6 +393,7 @@ func (g *Gateways) gatewayOf(ctx context.Context, r *ent.Gateway) *rpmgrv1.Gatew
 		out.Status.Connected = schema.AgentSessionLive(s.DisconnectedAt, s.LastSeenAt, g.now())
 		out.Status.Version, out.Status.RemoteAddr, out.Status.LastSeenTime = s.AgentVersion, s.RemoteAddr, timestamppb.New(s.LastSeenAt)
 		out.Status.LastGoodbyeReason, out.Status.BelowMinAgentVersion = s.LastGoodbye, s.LastGoodbye == upgradeRequired
+		out.Status.OverTheAir = slices.Contains(s.Capabilities, agentproto.CapOTA)
 	}
 	return out
 }

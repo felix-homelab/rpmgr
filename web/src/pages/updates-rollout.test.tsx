@@ -10,7 +10,7 @@ import {
   type AdvanceRolloutRequest, type CancelRolloutRequest, type CreateRolloutRequest, type PauseRolloutRequest,
   type ResumeRolloutRequest,
 } from "@/gen/rpmgr/v1/release_pb";
-import { InstanceSettingsSchema, SettingsService, UpdateChannel } from "@/gen/rpmgr/v1/settings_pb";
+import { InstanceSettingsSchema, RolloutMode, SettingsService, UpdateChannel } from "@/gen/rpmgr/v1/settings_pb";
 import { UserService } from "@/gen/rpmgr/v1/user_pb";
 import { apiError, auth, show } from "@/testing/api";
 import { create } from "@bufbuild/protobuf";
@@ -90,7 +90,8 @@ function page({ active, targets = [], lists = agents, createError, wrongEtag = f
   }), (router) => {
     router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: 0 } }) });
     router.service(SettingsService, {
-      getInstanceSettings: () => ({ settings: create(InstanceSettingsSchema, { releaseCheck: true, updateChannel: UpdateChannel.STABLE }), etag: "i1" }),
+      getInstanceSettings: () => ({ settings: create(InstanceSettingsSchema, { releaseCheck: true, updateChannel: UpdateChannel.STABLE,
+        rolloutMode: RolloutMode.ADVANCED }), etag: "i1" }),
     });
     router.service(ConnectorService, { listConnectors: () => ({ connectors: lists.connectors }) });
     router.service(GatewayService, { listGateways: () => ({ gateways: lists.gateways }) });
