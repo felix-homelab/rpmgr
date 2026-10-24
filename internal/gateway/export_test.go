@@ -3,7 +3,9 @@
 package gateway
 
 import (
+	"maps"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 )
@@ -78,4 +80,13 @@ func RouteTimeouts(h *HTTPRoutes, id string) (header, idle time.Duration) {
 	defer h.mu.Unlock()
 	rt := h.transports[id]
 	return rt.tr.ResponseHeaderTimeout, rt.tr.IdleConnTimeout
+}
+
+// AssignedRoutes returns the IDs the applier's assignment holds routes for, sorted.
+func AssignedRoutes(a Assignment) []string {
+	s := a.(*assignment).cur.Load()
+	if s == nil {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(s.routes))
 }

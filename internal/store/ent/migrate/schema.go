@@ -644,6 +644,43 @@ var (
 			},
 		},
 	}
+	// GatewayPagesColumns holds the columns for the "gateway_pages" table.
+	GatewayPagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"not_found", "unavailable", "maintenance"}},
+		{Name: "html", Type: field.TypeString, Size: 65536},
+		{Name: "content_sha256", Type: field.TypeBytes, Size: 32},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "updated_by", Type: field.TypeString, Nullable: true},
+		{Name: "gateway_group_id", Type: field.TypeString},
+	}
+	// GatewayPagesTable holds the schema information for the "gateway_pages" table.
+	GatewayPagesTable = &schema.Table{
+		Name:       "gateway_pages",
+		Columns:    GatewayPagesColumns,
+		PrimaryKey: []*schema.Column{GatewayPagesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "gateway_pages_gateway_groups_group",
+				Columns:    []*schema.Column{GatewayPagesColumns[7]},
+				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "gatewaypage_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{GatewayPagesColumns[1], GatewayPagesColumns[0]},
+			},
+			{
+				Name:    "gatewaypage_gateway_group_id_kind",
+				Unique:  true,
+				Columns: []*schema.Column{GatewayPagesColumns[7], GatewayPagesColumns[2]},
+			},
+		},
+	}
 	// InstanceColumns holds the columns for the "instance" table.
 	InstanceColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -1819,6 +1856,7 @@ var (
 		EnrollmentTokensTable,
 		GatewaysTable,
 		GatewayGroupsTable,
+		GatewayPagesTable,
 		InstanceTable,
 		InstanceSecretsTable,
 		InstanceSettingsTable,
@@ -1910,6 +1948,10 @@ func init() {
 	EnrollmentTokensTable.ForeignKeys[1].RefTable = GatewaysTable
 	EnrollmentTokensTable.ForeignKeys[2].RefTable = ConnectorsTable
 	GatewaysTable.ForeignKeys[0].RefTable = GatewayGroupsTable
+	GatewayPagesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
+	GatewayPagesTable.Annotation = &entsql.Annotation{
+		Table: "gateway_pages",
+	}
 	InstanceTable.Annotation = &entsql.Annotation{
 		Table: "instance",
 	}

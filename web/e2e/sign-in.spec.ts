@@ -174,6 +174,27 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.setViewportSize(desktop);
   await page.goto("/settings/pki");
 
+  // A gateway group's own page: uploaded, then previewed as the controller renders it, with its
+  // inline style applied and its placeholders filled in, in a frame that runs no script (D136).
+  await page.getByRole("link", { name: "Gateways" }).click();
+  await page.getByRole("link", { name: "default", exact: true }).click();
+  const maintenance = page.getByRole("region", { name: "Pages" }).getByRole("listitem", { name: "Maintenance" });
+  await maintenance.getByLabel("Upload HTML…").setInputFiles({ name: "maintenance.html", mimeType: "text/html", buffer: Buffer.from(
+    "<!doctype html><html lang=\"en\"><head><title>Back soon</title><style>h1{color:rgb(200, 0, 0)}</style></head>" +
+    "<body><h1>{{status}} at {{hostname}}</h1><p>{{message}}</p><script>document.title = 'ran'</script></body></html>") });
+  await expect(maintenance.getByText("Own")).toBeVisible();
+  await maintenance.getByRole("button", { name: "Preview" }).click();
+  const frame = page.frameLocator('iframe[title="Preview of the page Maintenance"]');
+  await expect(frame.locator("h1")).toHaveText(/^503 at /);
+  await expect(frame.locator("h1")).toHaveCSS("color", "rgb(200, 0, 0)");
+  await expect(frame.locator("p")).toHaveText("Back soon: the service is being updated.");
+  expect(await frame.locator("title").textContent()).toBe("Back soon"); // the script did not run
+  // The frame shows the group's own HTML, whose accessibility is its author's; the card is ours.
+  await expectAccessible(page, ['iframe[title="Preview of the page Maintenance"]']);
+  await maintenance.getByRole("button", { name: "Reset…" }).click();
+  await maintenance.getByRole("button", { name: "Use the built-in page" }).click();
+  await expect(maintenance.getByText("Built in")).toBeVisible();
+
   // The YAML view: CodeMirror's style elements carry the page's nonce, so its styles apply (VB-07).
   await page.getByRole("link", { name: "Routes" }).click();
   await page.getByRole("button", { name: "Export YAML" }).click();

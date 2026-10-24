@@ -61,7 +61,8 @@ type env struct {
 	sealer   *secret.Sealer
 	pki      *apisvc.Pki
 	rel      *apisvc.Releases
-	logs     *telemetrytest.Sink // where every service logs; a secret in a line fails the test
+	previews *apisvc.PagePreviews // the previews of gateway pages
+	logs     *telemetrytest.Sink  // where every service logs; a secret in a line fails the test
 	// revlogStatus, if set, is where SettingsService finds the revocation log's status.
 	revlogStatus func() revlog.Status
 }
@@ -136,7 +137,9 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_gateway_proto.Services().ByName("GatewayService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: srv, Revocations: revocations, Now: now}, o...)
+			e.previews = &apisvc.PagePreviews{DB: db, Sys: sys, Key: []byte("a preview key of the tests, 32 b"), Now: now}
+			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: srv, Revocations: revocations, Previews: e.previews,
+				Now: now}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}

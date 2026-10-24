@@ -8,12 +8,15 @@ import (
 	"crypto/sha256"
 	_ "embed" // the page template
 	"encoding/base64"
+	"fmt"
 	"html/template"
 	"mime"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 )
 
 // The gateway's own pages (docs/03-connections.md, "HTTP routes"), which a browser gets instead of bare
@@ -85,22 +88,23 @@ const maxShownHost = 253
 
 // writeMaintenance answers a request to a route in maintenance: 503 with the maintenance page and
 // the route's message, or the message as text.
-func writeMaintenance(w http.ResponseWriter, r *http.Request, message string) {
+func (p *Pages) writeMaintenance(w http.ResponseWriter, r *http.Request, message string) {
 	text := "Service Unavailable: down for maintenance"
 	if message != "" {
 		text += "\n\n" + message
 	}
-	writePageMessage(w, r, http.StatusServiceUnavailable, pageMaintenance, text, message)
+	p.writePageMessage(w, r, http.StatusServiceUnavailable, pageMaintenance, text, message)
 }
 
 // writePage answers a request with one of the gateway's pages if the client asks for HTML, and with
-// text, as before the pages existed, if it does not.
-func writePage(w http.ResponseWriter, r *http.Request, status int, kind, text string) {
-	writePageMessage(w, r, status, kind, text, "")
+// text, as before the pages existed, if it does not. The page is the group's own of the kind, if p
+// holds one (D132), or else the built-in one; p may be nil.
+func (p *Pages) writePage(w http.ResponseWriter, r *http.Request, status int, kind, text string) {
+	p.writePageMessage(w, r, status, kind, text, "")
 }
 
 // writePageMessage is writePage with a message the page shows as text.
-func writePageMessage(w http.ResponseWriter, r *http.Request, status int, kind, text, message string) {
+func (p *Pages) writePageMessage(w http.ResponseWriter, r *http.Request, status int, kind, text, message string) {
 	client := pageRequestOf(r)
 	if !client.html {
 		http.Error(w, text, status)
@@ -110,23 +114,53 @@ func writePageMessage(w http.ResponseWriter, r *http.Request, status int, kind, 
 	if len(host) > maxShownHost {
 		host = host[:maxShownHost]
 	}
-	var b bytes.Buffer
-	err := pageTemplate.Execute(&b, page{Kind: kind, Title: pageTitles[kind], Status: status, StatusText: http.StatusText(status),
-		Host: strings.ToValidUTF8(host, "�"), Message: strings.ToValidUTF8(message, "�")})
+	custom, own := p.page(kind)
+	id := ""
+	if own && strings.Contains(custom, "{{request_id}}") {
+		id = newRequestID()
+		if p.logs.Allow("") {
+			p.o.Logger.Info("custom page", "request_id", id, "host", host, "status", status, "page", kind)
+		}
+	}
+	body, csp, err := render(kind, custom, own, host, status, message, id)
 	if err != nil {
 		http.Error(w, text, status)
 		return
 	}
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
-	h.Set("Content-Security-Policy", pageCSP)
+	h.Set("Content-Security-Policy", csp)
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("Content-Length", strconv.Itoa(b.Len()))
+	h.Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(status)
 	if r.Method != http.MethodHead {
-		_, _ = w.Write(b.Bytes())
+		_, _ = w.Write(body)
 	}
+}
+
+// render makes a page as the gateway sends it, with its CSP: the group's own page of the kind with
+// its placeholders filled in, if own, or else the built-in one.
+func render(kind, custom string, own bool, host string, status int, message, requestID string) ([]byte, string, error) {
+	host, message = strings.ToValidUTF8(host, "�"), strings.ToValidUTF8(message, "�")
+	if own {
+		return []byte(renderCustom(custom, host, status, message, requestID)), customPageCSP, nil
+	}
+	var b bytes.Buffer
+	err := pageTemplate.Execute(&b, page{Kind: kind, Title: pageTitles[kind], Status: status, StatusText: http.StatusText(status),
+		Host: host, Message: message})
+	return b.Bytes(), pageCSP, err
+}
+
+// RenderPage makes a page of a kind exactly as gateways send it (D136), for the controller's
+// preview: the group's own HTML, if own, with its placeholders filled in as escaped text, or the
+// built-in page; it returns the body and the Content-Security-Policy that goes with it.
+func RenderPage(kind rpmgrv1.GatewayPageKind, custom string, own bool, host string, status int, message, requestID string) ([]byte, string, error) {
+	k, ok := pageKinds[kind]
+	if !ok {
+		return nil, "", fmt.Errorf("gateway: page kind %v", kind)
+	}
+	return render(k, custom, own, host, status, message, requestID)
 }
 
 // wantsHTML reports whether a request's Accept header names text/html with a quality above zero:
