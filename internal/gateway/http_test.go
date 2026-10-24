@@ -34,6 +34,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 )
 
 // httpFront serves h's routes on a TLS listener, as the router hands them over, and returns its
@@ -188,6 +189,98 @@ func TestHTTPRoutes_RoutePrecedence(t *testing.T) {
 	}
 	if !h.Serves("www.example.com") || !h.Serves("app.example.com") || h.Serves("example.com") || h.Serves("other.net") {
 		t.Error("Serves")
+	}
+}
+
+// TestHTTPRoutes_HeaderMatches (D135): among the routes of a hostname and prefix, one whose header
+// matches all hold wins over one with fewer; the route with the smaller ID wins a tie; a request
+// no route of its prefix takes goes to a shorter prefix, and else nowhere.
+func TestHTTPRoutes_HeaderMatches(t *testing.T) {
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{})
+	t.Cleanup(h.Close)
+	host := func(prefix string) []gateway.HTTPHost {
+		return []gateway.HTTPHost{{Hostname: "app.example.com", PathPrefix: prefix}}
+	}
+	h.Apply([]gateway.HTTPRoute{
+		{ID: "rt_main", Hosts: host("")},
+		{ID: "rt_api", Hosts: host("/api")},
+		{ID: "rt_b", Hosts: host("/api"), HeaderMatches: []headermatch.Match{{Name: "X-Env", Value: "beta"}}},
+		{ID: "rt_a", Hosts: host("/api"), HeaderMatches: []headermatch.Match{{Name: "X-Tenant", Present: true}}},
+		{ID: "rt_both", Hosts: host("/api"), HeaderMatches: []headermatch.Match{{Name: "X-Env", Value: "beta"}, {Name: "X-Tenant", Present: true}}},
+		{ID: "rt_only", Hosts: host("/admin"), HeaderMatches: []headermatch.Match{{Name: "X-Admin", Value: "1"}}},
+	})
+	for _, tc := range []struct {
+		path   string
+		header http.Header
+		want   string
+	}{
+		{"/api/x", nil, "rt_api"},
+		{"/api/x", http.Header{"X-Env": {"beta"}}, "rt_b"},
+		{"/api/x", http.Header{"X-Env": {"Beta"}}, "rt_api"},                      // values compare exactly
+		{"/api/x", http.Header{"X-Env": {"prod", "beta"}}, "rt_b"},                // any of several values
+		{"/api/x", http.Header{"X-Tenant": {""}}, "rt_a"},                         // presence, an empty value too
+		{"/api/x", http.Header{"X-Env": {"beta"}, "X-Tenant": {"t1"}}, "rt_both"}, // more matches win
+		{"/admin", http.Header{"X-Admin": {"1"}}, "rt_only"},
+		{"/admin", nil, "rt_main"}, // no route of /admin takes it: the next shorter prefix
+		{"/", http.Header{"X-Env": {"beta"}}, "rt_main"},
+	} {
+		if got := gateway.RouteFor(h, "app.example.com", tc.path, tc.header); got != tc.want {
+			t.Errorf("%s %v: %q, want %q", tc.path, tc.header, got, tc.want)
+		}
+	}
+	// A tie of equally many matches that both hold: the route created first, with the smaller ID.
+	h.Apply([]gateway.HTTPRoute{
+		{ID: "rte_2", Hosts: host(""), HeaderMatches: []headermatch.Match{{Name: "X-Tenant", Present: true}}},
+		{ID: "rte_1", Hosts: host(""), HeaderMatches: []headermatch.Match{{Name: "X-Env", Value: "beta"}}},
+	})
+	if got := gateway.RouteFor(h, "app.example.com", "/", http.Header{"X-Env": {"beta"}, "X-Tenant": {"t"}}); got != "rte_1" {
+		t.Errorf("a tie: %q", got)
+	}
+	if got := gateway.RouteFor(h, "app.example.com", "/", nil); got != "" {
+		t.Errorf("no match holds: %q", got)
+	}
+}
+
+// TestGateway_ReservedPathNeverUpstream (security regression, docs/12): a request under /.rpmgr/
+// on an http route hostname, in any case, with ";" parameters or percent-encoded, never reaches
+// the upstream and gets the gateway's 404, on 443 and on port 80; the identity headers a client
+// sends never reach the upstream on any route.
+func TestGateway_ReservedPathNeverUpstream(t *testing.T) {
+	var reached atomic.Int32
+	upstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached.Add(1)
+		//nolint:gosec // G705: the test upstream echoes the request as plain text
+		_, _ = fmt.Fprintf(w, "%s|%s|%s|%s", r.URL.Path, r.Header.Get("Rpmgr-User-Email"), r.Header.Get("Rpmgr-User-Subject"),
+			r.Header.Get("Rpmgr-User-Groups"))
+	})
+	e := newHTTPEnv(t, upstream, gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Port80: "serve",
+		Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}})
+	addr80 := e.serve80(t)
+	for _, path := range []string{"/.rpmgr/oidc", "/.rpmgr", "/.rpmgr/", "/.RPMGR/oidc", "/%2Erpmgr/oidc", "/.rpmgr;x/oidc",
+		"/.rpmgr/tunnel", "/%2e%72pmgr/x"} {
+		for _, h2 := range []bool{false, true} {
+			if r := get(t, e.client(h2), "https://app.example.com"+path, nil); r.status != http.StatusNotFound {
+				t.Errorf("%s (h2 %v): %d %q", path, h2, r.status, r.body)
+			}
+		}
+		if r, err := plain(t, addr80, http.MethodGet, "app.example.com", path); err != nil || r.status != http.StatusNotFound {
+			t.Errorf("%s on port 80: %v %v", path, r, err)
+		}
+	}
+	if n := reached.Load(); n != 0 {
+		t.Fatalf("%d requests under /.rpmgr/ reached the upstream", n)
+	}
+	// Neighbours of the reserved path are ordinary paths.
+	for _, path := range []string{"/.rpmgrx", "/x/.rpmgr/y", "/rpmgr/"} {
+		if r := get(t, e.client(false), "https://app.example.com"+path, nil); r.status != http.StatusOK || !strings.HasPrefix(r.body, path) {
+			t.Errorf("%s: %d %q", path, r.status, r.body)
+		}
+	}
+	spoofed := http.Header{"Rpmgr-User-Email": {"admin@example.com"}, "Rpmgr-User-Subject": {"admin"}, "rpmgr-user-groups": {"admins"}}
+	for _, h2 := range []bool{false, true} {
+		if r := get(t, e.client(h2), "https://app.example.com/x", spoofed); r.body != "/x|||" {
+			t.Errorf("identity headers from the client reached the upstream (h2 %v): %q", h2, r.body)
+		}
 	}
 }
 

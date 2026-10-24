@@ -264,6 +264,21 @@ message GatewayHTTPRoute {
   // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
   // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 16;
+  // The request headers a request must carry for this route, sorted by name: among the routes of
+  // a hostname and path prefix, one whose matches all hold wins over one with fewer, and the
+  // route with the smaller ID wins a tie (docs/03-connections.md, "HTTP routes"). Only a gateway
+  // announcing the capability http.header-match gets a route that has them.
+  repeated HTTPHeaderMatch header_matches = 17;
+}
+
+// HTTPHeaderMatch is a request header an http route matches on.
+message HTTPHeaderMatch {
+  // The canonical header name.
+  string name = 1;
+  // The exact value one of the header's values must have; unused with present.
+  string value = 2;
+  // Any value of the header matches.
+  bool present = 3;
 }
 
 // HTTPHeader is a header name with its value.

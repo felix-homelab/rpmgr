@@ -23,6 +23,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/domains"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 )
 
 // assignment is the connector assignment of the applied snapshot: which connectors serve which
@@ -295,6 +296,11 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 					bad(id, "trusted proxy %q is not a CIDR", c)
 				}
 			}
+			matches := headerMatchesOf(r)
+			if err := headermatch.Check(matches); err != nil {
+				bad(id, "%v", err)
+			}
+			key := headermatch.Key(matches)
 			targets := map[string]bool{}
 			for _, u := range r.GetUpstreamTls() {
 				switch {
@@ -324,10 +330,10 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 					bad(id, "path prefix %q does not start with /", prefix)
 				case hostnames[h] != "":
 					bad(id, "hostname %s is also a hostname of %s", h, hostnames[h])
-				case hostnames["http "+h+prefix] != "":
-					bad(id, "%s%s is also served by %s", h, prefix, hostnames["http "+h+prefix])
+				case hostnames["http "+h+prefix+" "+key] != "":
+					bad(id, "%s%s is also served by %s with the same header matches", h, prefix, hostnames["http "+h+prefix+" "+key])
 				default:
-					hostnames["http "+h+prefix] = id
+					hostnames["http "+h+prefix+" "+key] = id
 					hostnames["http "+h] = id
 				}
 			}
@@ -407,7 +413,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket(),
 				HostHeader: r.GetHostHeader(), MaxBody: int64(min(r.GetMaxBodyBytes(), math.MaxInt64)), //nolint:gosec // G115: bounded above
 				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds()), Access: access, Maintenance: r.GetMaintenance(),
-				MaintenanceMessage: r.GetMaintenanceMessage()}
+				MaintenanceMessage: r.GetMaintenanceMessage(), HeaderMatches: headermatch.Canonical(headerMatchesOf(r))}
 			hr.BasicAuth, _ = basicAuthOf(r.GetAccess().GetBasicAuth()) // Validate refused any that does not parse
 			for _, h := range r.GetRequestHeaders() {
 				hr.RequestHeaders = append(hr.RequestHeaders, HTTPHeader{Name: h.GetName(), Value: h.GetValue()})
@@ -507,4 +513,13 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		s.Sessions.Recheck()
 	}
 	return status
+}
+
+// headerMatchesOf returns an http route's header matches.
+func headerMatchesOf(r *agentv1.GatewayHTTPRoute) []headermatch.Match {
+	var out []headermatch.Match
+	for _, m := range r.GetHeaderMatches() {
+		out = append(out, headermatch.Match{Name: m.GetName(), Value: m.GetValue(), Present: m.GetPresent()})
+	}
+	return out
 }

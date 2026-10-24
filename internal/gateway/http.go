@@ -32,6 +32,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/tunnel"
 )
 
@@ -95,6 +96,9 @@ type HTTPRoute struct {
 	// shows MaintenanceMessage, and opens no stream.
 	Maintenance        bool
 	MaintenanceMessage string
+	// HeaderMatches are the request headers a request must carry for the route, canonical and
+	// sorted (docs/03-connections.md, "HTTP routes").
+	HeaderMatches []headermatch.Match
 }
 
 // HTTPHeader is a header name, canonical, and its value; "" removes the header.
@@ -156,12 +160,21 @@ type HTTPRoutes struct {
 }
 
 type httpTable struct {
-	byHost map[string][]httpEntry // longest prefix first
+	byHost map[string][]httpEntry // in the order routeFor tries them
 }
 
 type httpEntry struct {
-	prefix string
-	route  *routeTransport
+	prefix  string
+	matches []headermatch.Match
+	id      string
+	route   *routeTransport
+}
+
+// compareEntries orders a hostname's entries as routeFor tries them: the longest path prefix
+// first; among the same prefix, more header matches first; then the smaller route ID, the route
+// created first.
+func compareEntries(a, b httpEntry) int {
+	return cmp.Or(len(b.prefix)-len(a.prefix), len(b.matches)-len(a.matches), strings.Compare(a.id, b.id))
 }
 
 // routeTransport is one route's proxy, whose transport pools the route's tunnel streams. route
@@ -493,7 +506,7 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 		h.domainToken(w, r, host, id)
 		return
 	}
-	rt := h.routeFor(r.Host, r.URL.Path)
+	rt := h.routeFor(r.Host, r.URL.Path, r.Header)
 	if token, ok := strings.CutPrefix(r.URL.Path, acmePath); ok {
 		if h.o.Challenges != nil {
 			if ka, ok := h.o.Challenges(strings.ToLower(host), token); ok {
@@ -515,6 +528,10 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 			h.o.Fallback80.ServeHTTP(w, r)
 			return
 		}
+		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+		return
+	}
+	if reservedPath(r.URL.Path) {
 		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 		return
 	}
@@ -682,11 +699,12 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		next[r.ID] = rt
 		h.upstreamOf(r.ID).set(r.TLS)
 		for _, host := range r.Hosts {
-			t.byHost[host.Hostname] = append(t.byHost[host.Hostname], httpEntry{prefix: host.PathPrefix, route: rt})
+			t.byHost[host.Hostname] = append(t.byHost[host.Hostname],
+				httpEntry{prefix: host.PathPrefix, matches: r.HeaderMatches, id: r.ID, route: rt})
 		}
 	}
 	for _, entries := range t.byHost {
-		slices.SortFunc(entries, func(a, b httpEntry) int { return len(b.prefix) - len(a.prefix) })
+		slices.SortFunc(entries, compareEntries)
 	}
 	h.table.Store(t)
 	var rules []BasicAuthRule
@@ -776,6 +794,9 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 			otel.GetTextMapPropagator().Inject(pr.Out.Context(), propagation.HeaderCarrier(pr.Out.Header))
 			if len(route.BasicAuth) > 0 {
 				pr.Out.Header.Del("Authorization") // the gateway's credentials, not the upstream's
+			}
+			for _, name := range identityHeaders {
+				pr.Out.Header.Del(name)
 			}
 			apply(pr.Out.Header, route.RequestHeaders)
 		},
@@ -1000,7 +1021,7 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if refuseUnclean(w, r) {
 		return
 	}
-	rt := h.routeFor(r.Host, r.URL.Path)
+	rt := h.routeFor(r.Host, r.URL.Path, r.Header)
 	if rt == nil {
 		// A name this gateway does not route, on a connection of another name: a client that
 		// reused the connection, such as an HTTP/2 one under a wildcard certificate, asks again
@@ -1016,6 +1037,10 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if age := rt.route.Load().HSTS; age > 0 && r.TLS != nil {
 		w.Header().Set("Strict-Transport-Security", "max-age="+strconv.Itoa(age))
+	}
+	if reservedPath(r.URL.Path) {
+		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+		return
 	}
 	h.proxy(w, r, rt)
 }
@@ -1159,20 +1184,39 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 	rt.proxy.ServeHTTP(w, r)
 }
 
-// routeFor returns the route for a request's host, with or without a port, and path, or nil.
-func (h *HTTPRoutes) routeFor(host, path string) *routeTransport {
+// routeFor returns the route for a request's host, with or without a port, path and header, or
+// nil: the first entry of the host whose prefix the path falls under and whose header matches
+// all hold.
+func (h *HTTPRoutes) routeFor(host, path string, header http.Header) *routeTransport {
 	entries, _ := h.table.Load().lookup(hostOnly(host))
 	// A path with ";" parameters goes to the longest prefix that either it or its form without them
 	// matches, so a backend that drops the parameters never gets a path that a narrower route
 	// serves through a broader one.
 	bare := withoutParams(path)
 	for _, e := range entries {
-		if matchPrefix(path, e.prefix) || matchPrefix(bare, e.prefix) {
+		if (matchPrefix(path, e.prefix) || matchPrefix(bare, e.prefix)) && headermatch.Holds(header, e.matches) {
 			return e.route
 		}
 	}
 	return nil
 }
+
+// reservedPath reports whether a request's decoded path lies under /.rpmgr/, the gateway's own
+// on every http route hostname, which never goes upstream (docs/03-connections.md, "HTTP
+// routes"); case and ";" parameters do not matter, as a backend might ignore them.
+func reservedPath(p string) bool {
+	for _, q := range []string{p, withoutParams(p)} {
+		q = strings.ToLower(q)
+		if q == "/.rpmgr" || strings.HasPrefix(q, "/.rpmgr/") {
+			return true
+		}
+	}
+	return false
+}
+
+// identityHeaders are set only by the gateway, after an OIDC sign-in; a client's never go
+// upstream (docs/04-security.md, "Route edge rules").
+var identityHeaders = []string{"Rpmgr-User-Email", "Rpmgr-User-Subject", "Rpmgr-User-Groups"}
 
 // lookup returns the entries for a host: its own, or else those of the wildcard hostname one
 // label up.

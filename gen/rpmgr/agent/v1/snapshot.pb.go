@@ -1405,8 +1405,13 @@ type GatewayHTTPRoute struct {
 	// opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
 	// (D90). A gateway that does not know the field treats every connector alike.
 	RankedConnectors []*RouteConnector `protobuf:"bytes,16,rep,name=ranked_connectors,json=rankedConnectors,proto3" json:"ranked_connectors,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// The request headers a request must carry for this route, sorted by name: among the routes of
+	// a hostname and path prefix, one whose matches all hold wins over one with fewer, and the
+	// route with the smaller ID wins a tie (docs/03-connections.md, "HTTP routes"). Only a gateway
+	// announcing the capability http.header-match gets a route that has them.
+	HeaderMatches []*HTTPHeaderMatch `protobuf:"bytes,17,rep,name=header_matches,json=headerMatches,proto3" json:"header_matches,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GatewayHTTPRoute) Reset() {
@@ -1551,6 +1556,77 @@ func (x *GatewayHTTPRoute) GetRankedConnectors() []*RouteConnector {
 	return nil
 }
 
+func (x *GatewayHTTPRoute) GetHeaderMatches() []*HTTPHeaderMatch {
+	if x != nil {
+		return x.HeaderMatches
+	}
+	return nil
+}
+
+// HTTPHeaderMatch is a request header an http route matches on.
+type HTTPHeaderMatch struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The canonical header name.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The exact value one of the header's values must have; unused with present.
+	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	// Any value of the header matches.
+	Present       bool `protobuf:"varint,3,opt,name=present,proto3" json:"present,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HTTPHeaderMatch) Reset() {
+	*x = HTTPHeaderMatch{}
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HTTPHeaderMatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HTTPHeaderMatch) ProtoMessage() {}
+
+func (x *HTTPHeaderMatch) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HTTPHeaderMatch.ProtoReflect.Descriptor instead.
+func (*HTTPHeaderMatch) Descriptor() ([]byte, []int) {
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *HTTPHeaderMatch) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *HTTPHeaderMatch) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+func (x *HTTPHeaderMatch) GetPresent() bool {
+	if x != nil {
+		return x.Present
+	}
+	return false
+}
+
 // HTTPHeader is a header name with its value.
 type HTTPHeader struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1564,7 +1640,7 @@ type HTTPHeader struct {
 
 func (x *HTTPHeader) Reset() {
 	*x = HTTPHeader{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[16]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1576,7 +1652,7 @@ func (x *HTTPHeader) String() string {
 func (*HTTPHeader) ProtoMessage() {}
 
 func (x *HTTPHeader) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[16]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1589,7 +1665,7 @@ func (x *HTTPHeader) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HTTPHeader.ProtoReflect.Descriptor instead.
 func (*HTTPHeader) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{16}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *HTTPHeader) GetName() string {
@@ -1628,7 +1704,7 @@ type UpstreamTLS struct {
 
 func (x *UpstreamTLS) Reset() {
 	*x = UpstreamTLS{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[17]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1640,7 +1716,7 @@ func (x *UpstreamTLS) String() string {
 func (*UpstreamTLS) ProtoMessage() {}
 
 func (x *UpstreamTLS) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[17]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1653,7 +1729,7 @@ func (x *UpstreamTLS) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpstreamTLS.ProtoReflect.Descriptor instead.
 func (*UpstreamTLS) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{17}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *UpstreamTLS) GetTargetId() string {
@@ -1711,7 +1787,7 @@ type HTTPHost struct {
 
 func (x *HTTPHost) Reset() {
 	*x = HTTPHost{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[18]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1723,7 +1799,7 @@ func (x *HTTPHost) String() string {
 func (*HTTPHost) ProtoMessage() {}
 
 func (x *HTTPHost) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[18]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1736,7 +1812,7 @@ func (x *HTTPHost) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HTTPHost.ProtoReflect.Descriptor instead.
 func (*HTTPHost) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{18}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *HTTPHost) GetHostname() string {
@@ -1770,7 +1846,7 @@ type GatewayCertificate struct {
 
 func (x *GatewayCertificate) Reset() {
 	*x = GatewayCertificate{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[19]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1782,7 +1858,7 @@ func (x *GatewayCertificate) String() string {
 func (*GatewayCertificate) ProtoMessage() {}
 
 func (x *GatewayCertificate) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[19]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1795,7 +1871,7 @@ func (x *GatewayCertificate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayCertificate.ProtoReflect.Descriptor instead.
 func (*GatewayCertificate) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{19}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *GatewayCertificate) GetContentSha256() []byte {
@@ -1832,7 +1908,7 @@ type CertificateItem struct {
 
 func (x *CertificateItem) Reset() {
 	*x = CertificateItem{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[20]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1844,7 +1920,7 @@ func (x *CertificateItem) String() string {
 func (*CertificateItem) ProtoMessage() {}
 
 func (x *CertificateItem) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[20]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1857,7 +1933,7 @@ func (x *CertificateItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CertificateItem.ProtoReflect.Descriptor instead.
 func (*CertificateItem) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{20}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *CertificateItem) GetChain() [][]byte {
@@ -1894,7 +1970,7 @@ type GatewayPassthroughRoute struct {
 
 func (x *GatewayPassthroughRoute) Reset() {
 	*x = GatewayPassthroughRoute{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[21]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1906,7 +1982,7 @@ func (x *GatewayPassthroughRoute) String() string {
 func (*GatewayPassthroughRoute) ProtoMessage() {}
 
 func (x *GatewayPassthroughRoute) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[21]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1919,7 +1995,7 @@ func (x *GatewayPassthroughRoute) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayPassthroughRoute.ProtoReflect.Descriptor instead.
 func (*GatewayPassthroughRoute) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{21}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GatewayPassthroughRoute) GetHostnames() []string {
@@ -1966,7 +2042,7 @@ type ConnectorRoute struct {
 
 func (x *ConnectorRoute) Reset() {
 	*x = ConnectorRoute{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[22]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1978,7 +2054,7 @@ func (x *ConnectorRoute) String() string {
 func (*ConnectorRoute) ProtoMessage() {}
 
 func (x *ConnectorRoute) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[22]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1991,7 +2067,7 @@ func (x *ConnectorRoute) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectorRoute.ProtoReflect.Descriptor instead.
 func (*ConnectorRoute) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{22}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ConnectorRoute) GetType() string {
@@ -2032,7 +2108,7 @@ type ConnectorGateway struct {
 
 func (x *ConnectorGateway) Reset() {
 	*x = ConnectorGateway{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[23]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2044,7 +2120,7 @@ func (x *ConnectorGateway) String() string {
 func (*ConnectorGateway) ProtoMessage() {}
 
 func (x *ConnectorGateway) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[23]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2057,7 +2133,7 @@ func (x *ConnectorGateway) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectorGateway.ProtoReflect.Descriptor instead.
 func (*ConnectorGateway) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{23}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ConnectorGateway) GetTunnelEndpoints() []string {
@@ -2104,7 +2180,7 @@ type Target struct {
 
 func (x *Target) Reset() {
 	*x = Target{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[24]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2116,7 +2192,7 @@ func (x *Target) String() string {
 func (*Target) ProtoMessage() {}
 
 func (x *Target) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[24]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2129,7 +2205,7 @@ func (x *Target) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Target.ProtoReflect.Descriptor instead.
 func (*Target) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{24}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *Target) GetId() string {
@@ -2192,7 +2268,7 @@ type ResourceReference struct {
 
 func (x *ResourceReference) Reset() {
 	*x = ResourceReference{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[25]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2204,7 +2280,7 @@ func (x *ResourceReference) String() string {
 func (*ResourceReference) ProtoMessage() {}
 
 func (x *ResourceReference) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[25]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2217,7 +2293,7 @@ func (x *ResourceReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceReference.ProtoReflect.Descriptor instead.
 func (*ResourceReference) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{25}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ResourceReference) GetSize() uint64 {
@@ -2243,7 +2319,7 @@ type DenyList struct {
 
 func (x *DenyList) Reset() {
 	*x = DenyList{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[26]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2255,7 +2331,7 @@ func (x *DenyList) String() string {
 func (*DenyList) ProtoMessage() {}
 
 func (x *DenyList) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[26]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2268,7 +2344,7 @@ func (x *DenyList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DenyList.ProtoReflect.Descriptor instead.
 func (*DenyList) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{26}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *DenyList) GetVersion() *Revision {
@@ -2310,7 +2386,7 @@ type DenyEntry struct {
 
 func (x *DenyEntry) Reset() {
 	*x = DenyEntry{}
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[27]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2322,7 +2398,7 @@ func (x *DenyEntry) String() string {
 func (*DenyEntry) ProtoMessage() {}
 
 func (x *DenyEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[27]
+	mi := &file_rpmgr_agent_v1_snapshot_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2335,7 +2411,7 @@ func (x *DenyEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DenyEntry.ProtoReflect.Descriptor instead.
 func (*DenyEntry) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{27}
+	return file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *DenyEntry) GetSubject() isDenyEntry_Subject {
@@ -2475,7 +2551,7 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"connectors\x18\x03 \x03(\tR\n" +
 	"connectors\x123\n" +
 	"\x06access\x18\x04 \x01(\v2\x1b.rpmgr.agent.v1.RouteAccessR\x06access\x12K\n" +
-	"\x11ranked_connectors\x18\x05 \x03(\v2\x1e.rpmgr.agent.v1.RouteConnectorR\x10rankedConnectors\"\x87\x06\n" +
+	"\x11ranked_connectors\x18\x05 \x03(\v2\x1e.rpmgr.agent.v1.RouteConnectorR\x10rankedConnectors\"\xcf\x06\n" +
 	"\x10GatewayHTTPRoute\x12.\n" +
 	"\x05hosts\x18\x01 \x03(\v2\x18.rpmgr.agent.v1.HTTPHostR\x05hosts\x12+\n" +
 	"\x11upstream_protocol\x18\x02 \x01(\tR\x10upstreamProtocol\x12\x1e\n" +
@@ -2496,7 +2572,12 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\x06access\x18\r \x01(\v2\x1b.rpmgr.agent.v1.RouteAccessR\x06access\x12 \n" +
 	"\vmaintenance\x18\x0e \x01(\bR\vmaintenance\x12/\n" +
 	"\x13maintenance_message\x18\x0f \x01(\tR\x12maintenanceMessage\x12K\n" +
-	"\x11ranked_connectors\x18\x10 \x03(\v2\x1e.rpmgr.agent.v1.RouteConnectorR\x10rankedConnectors\"6\n" +
+	"\x11ranked_connectors\x18\x10 \x03(\v2\x1e.rpmgr.agent.v1.RouteConnectorR\x10rankedConnectors\x12F\n" +
+	"\x0eheader_matches\x18\x11 \x03(\v2\x1f.rpmgr.agent.v1.HTTPHeaderMatchR\rheaderMatches\"U\n" +
+	"\x0fHTTPHeaderMatch\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\x12\x18\n" +
+	"\apresent\x18\x03 \x01(\bR\apresent\"6\n" +
 	"\n" +
 	"HTTPHeader\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
@@ -2582,7 +2663,7 @@ func file_rpmgr_agent_v1_snapshot_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_agent_v1_snapshot_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_rpmgr_agent_v1_snapshot_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_rpmgr_agent_v1_snapshot_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_rpmgr_agent_v1_snapshot_proto_goTypes = []any{
 	(UpstreamVerification)(0),       // 0: rpmgr.agent.v1.UpstreamVerification
 	(TransportPolicy)(0),            // 1: rpmgr.agent.v1.TransportPolicy
@@ -2602,20 +2683,21 @@ var file_rpmgr_agent_v1_snapshot_proto_goTypes = []any{
 	(*GatewayTCPUDPRoute)(nil),      // 15: rpmgr.agent.v1.GatewayTCPUDPRoute
 	(*GatewayUDPRoute)(nil),         // 16: rpmgr.agent.v1.GatewayUDPRoute
 	(*GatewayHTTPRoute)(nil),        // 17: rpmgr.agent.v1.GatewayHTTPRoute
-	(*HTTPHeader)(nil),              // 18: rpmgr.agent.v1.HTTPHeader
-	(*UpstreamTLS)(nil),             // 19: rpmgr.agent.v1.UpstreamTLS
-	(*HTTPHost)(nil),                // 20: rpmgr.agent.v1.HTTPHost
-	(*GatewayCertificate)(nil),      // 21: rpmgr.agent.v1.GatewayCertificate
-	(*CertificateItem)(nil),         // 22: rpmgr.agent.v1.CertificateItem
-	(*GatewayPassthroughRoute)(nil), // 23: rpmgr.agent.v1.GatewayPassthroughRoute
-	(*ConnectorRoute)(nil),          // 24: rpmgr.agent.v1.ConnectorRoute
-	(*ConnectorGateway)(nil),        // 25: rpmgr.agent.v1.ConnectorGateway
-	(*Target)(nil),                  // 26: rpmgr.agent.v1.Target
-	(*ResourceReference)(nil),       // 27: rpmgr.agent.v1.ResourceReference
-	(*DenyList)(nil),                // 28: rpmgr.agent.v1.DenyList
-	(*DenyEntry)(nil),               // 29: rpmgr.agent.v1.DenyEntry
-	(*v1.BasicAuthUser)(nil),        // 30: rpmgr.v1.BasicAuthUser
-	(*timestamppb.Timestamp)(nil),   // 31: google.protobuf.Timestamp
+	(*HTTPHeaderMatch)(nil),         // 18: rpmgr.agent.v1.HTTPHeaderMatch
+	(*HTTPHeader)(nil),              // 19: rpmgr.agent.v1.HTTPHeader
+	(*UpstreamTLS)(nil),             // 20: rpmgr.agent.v1.UpstreamTLS
+	(*HTTPHost)(nil),                // 21: rpmgr.agent.v1.HTTPHost
+	(*GatewayCertificate)(nil),      // 22: rpmgr.agent.v1.GatewayCertificate
+	(*CertificateItem)(nil),         // 23: rpmgr.agent.v1.CertificateItem
+	(*GatewayPassthroughRoute)(nil), // 24: rpmgr.agent.v1.GatewayPassthroughRoute
+	(*ConnectorRoute)(nil),          // 25: rpmgr.agent.v1.ConnectorRoute
+	(*ConnectorGateway)(nil),        // 26: rpmgr.agent.v1.ConnectorGateway
+	(*Target)(nil),                  // 27: rpmgr.agent.v1.Target
+	(*ResourceReference)(nil),       // 28: rpmgr.agent.v1.ResourceReference
+	(*DenyList)(nil),                // 29: rpmgr.agent.v1.DenyList
+	(*DenyEntry)(nil),               // 30: rpmgr.agent.v1.DenyEntry
+	(*v1.BasicAuthUser)(nil),        // 31: rpmgr.v1.BasicAuthUser
+	(*timestamppb.Timestamp)(nil),   // 32: google.protobuf.Timestamp
 }
 var file_rpmgr_agent_v1_snapshot_proto_depIdxs = []int32{
 	2,  // 0: rpmgr.agent.v1.Snapshot.revision:type_name -> rpmgr.agent.v1.Revision
@@ -2623,46 +2705,47 @@ var file_rpmgr_agent_v1_snapshot_proto_depIdxs = []int32{
 	5,  // 2: rpmgr.agent.v1.Snapshot.release_offer:type_name -> rpmgr.agent.v1.ReleaseOffer
 	6,  // 3: rpmgr.agent.v1.ReleaseOffer.files:type_name -> rpmgr.agent.v1.ReleaseFile
 	10, // 4: rpmgr.agent.v1.Resource.gateway_tcp_route:type_name -> rpmgr.agent.v1.GatewayTCPRoute
-	24, // 5: rpmgr.agent.v1.Resource.connector_route:type_name -> rpmgr.agent.v1.ConnectorRoute
-	25, // 6: rpmgr.agent.v1.Resource.connector_gateway:type_name -> rpmgr.agent.v1.ConnectorGateway
-	23, // 7: rpmgr.agent.v1.Resource.gateway_passthrough_route:type_name -> rpmgr.agent.v1.GatewayPassthroughRoute
+	25, // 5: rpmgr.agent.v1.Resource.connector_route:type_name -> rpmgr.agent.v1.ConnectorRoute
+	26, // 6: rpmgr.agent.v1.Resource.connector_gateway:type_name -> rpmgr.agent.v1.ConnectorGateway
+	24, // 7: rpmgr.agent.v1.Resource.gateway_passthrough_route:type_name -> rpmgr.agent.v1.GatewayPassthroughRoute
 	16, // 8: rpmgr.agent.v1.Resource.gateway_udp_route:type_name -> rpmgr.agent.v1.GatewayUDPRoute
-	21, // 9: rpmgr.agent.v1.Resource.gateway_certificate:type_name -> rpmgr.agent.v1.GatewayCertificate
+	22, // 9: rpmgr.agent.v1.Resource.gateway_certificate:type_name -> rpmgr.agent.v1.GatewayCertificate
 	17, // 10: rpmgr.agent.v1.Resource.gateway_http_route:type_name -> rpmgr.agent.v1.GatewayHTTPRoute
 	8,  // 11: rpmgr.agent.v1.Resource.gateway_domain_challenge:type_name -> rpmgr.agent.v1.GatewayDomainChallenge
 	9,  // 12: rpmgr.agent.v1.Resource.gateway_drain:type_name -> rpmgr.agent.v1.GatewayDrain
 	15, // 13: rpmgr.agent.v1.Resource.gateway_tcp_udp_route:type_name -> rpmgr.agent.v1.GatewayTCPUDPRoute
-	27, // 14: rpmgr.agent.v1.Resource.reference:type_name -> rpmgr.agent.v1.ResourceReference
+	28, // 14: rpmgr.agent.v1.Resource.reference:type_name -> rpmgr.agent.v1.ResourceReference
 	12, // 15: rpmgr.agent.v1.GatewayTCPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
 	11, // 16: rpmgr.agent.v1.GatewayTCPRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
 	14, // 17: rpmgr.agent.v1.RouteAccess.ip_rules:type_name -> rpmgr.agent.v1.IPRule
 	13, // 18: rpmgr.agent.v1.RouteAccess.basic_auth:type_name -> rpmgr.agent.v1.BasicAuthRule
-	30, // 19: rpmgr.agent.v1.BasicAuthRule.users:type_name -> rpmgr.v1.BasicAuthUser
+	31, // 19: rpmgr.agent.v1.BasicAuthRule.users:type_name -> rpmgr.v1.BasicAuthUser
 	12, // 20: rpmgr.agent.v1.GatewayTCPUDPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
 	11, // 21: rpmgr.agent.v1.GatewayTCPUDPRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
 	12, // 22: rpmgr.agent.v1.GatewayUDPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
 	11, // 23: rpmgr.agent.v1.GatewayUDPRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
-	20, // 24: rpmgr.agent.v1.GatewayHTTPRoute.hosts:type_name -> rpmgr.agent.v1.HTTPHost
-	19, // 25: rpmgr.agent.v1.GatewayHTTPRoute.upstream_tls:type_name -> rpmgr.agent.v1.UpstreamTLS
-	18, // 26: rpmgr.agent.v1.GatewayHTTPRoute.request_headers:type_name -> rpmgr.agent.v1.HTTPHeader
-	18, // 27: rpmgr.agent.v1.GatewayHTTPRoute.response_headers:type_name -> rpmgr.agent.v1.HTTPHeader
+	21, // 24: rpmgr.agent.v1.GatewayHTTPRoute.hosts:type_name -> rpmgr.agent.v1.HTTPHost
+	20, // 25: rpmgr.agent.v1.GatewayHTTPRoute.upstream_tls:type_name -> rpmgr.agent.v1.UpstreamTLS
+	19, // 26: rpmgr.agent.v1.GatewayHTTPRoute.request_headers:type_name -> rpmgr.agent.v1.HTTPHeader
+	19, // 27: rpmgr.agent.v1.GatewayHTTPRoute.response_headers:type_name -> rpmgr.agent.v1.HTTPHeader
 	12, // 28: rpmgr.agent.v1.GatewayHTTPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
 	11, // 29: rpmgr.agent.v1.GatewayHTTPRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
-	0,  // 30: rpmgr.agent.v1.UpstreamTLS.verification:type_name -> rpmgr.agent.v1.UpstreamVerification
-	31, // 31: rpmgr.agent.v1.GatewayCertificate.not_after:type_name -> google.protobuf.Timestamp
-	12, // 32: rpmgr.agent.v1.GatewayPassthroughRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
-	11, // 33: rpmgr.agent.v1.GatewayPassthroughRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
-	26, // 34: rpmgr.agent.v1.ConnectorRoute.targets:type_name -> rpmgr.agent.v1.Target
-	1,  // 35: rpmgr.agent.v1.ConnectorRoute.transport:type_name -> rpmgr.agent.v1.TransportPolicy
-	1,  // 36: rpmgr.agent.v1.ConnectorGateway.transports:type_name -> rpmgr.agent.v1.TransportPolicy
-	2,  // 37: rpmgr.agent.v1.DenyList.version:type_name -> rpmgr.agent.v1.Revision
-	29, // 38: rpmgr.agent.v1.DenyList.entries:type_name -> rpmgr.agent.v1.DenyEntry
-	31, // 39: rpmgr.agent.v1.DenyEntry.not_after:type_name -> google.protobuf.Timestamp
-	40, // [40:40] is the sub-list for method output_type
-	40, // [40:40] is the sub-list for method input_type
-	40, // [40:40] is the sub-list for extension type_name
-	40, // [40:40] is the sub-list for extension extendee
-	0,  // [0:40] is the sub-list for field type_name
+	18, // 30: rpmgr.agent.v1.GatewayHTTPRoute.header_matches:type_name -> rpmgr.agent.v1.HTTPHeaderMatch
+	0,  // 31: rpmgr.agent.v1.UpstreamTLS.verification:type_name -> rpmgr.agent.v1.UpstreamVerification
+	32, // 32: rpmgr.agent.v1.GatewayCertificate.not_after:type_name -> google.protobuf.Timestamp
+	12, // 33: rpmgr.agent.v1.GatewayPassthroughRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
+	11, // 34: rpmgr.agent.v1.GatewayPassthroughRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
+	27, // 35: rpmgr.agent.v1.ConnectorRoute.targets:type_name -> rpmgr.agent.v1.Target
+	1,  // 36: rpmgr.agent.v1.ConnectorRoute.transport:type_name -> rpmgr.agent.v1.TransportPolicy
+	1,  // 37: rpmgr.agent.v1.ConnectorGateway.transports:type_name -> rpmgr.agent.v1.TransportPolicy
+	2,  // 38: rpmgr.agent.v1.DenyList.version:type_name -> rpmgr.agent.v1.Revision
+	30, // 39: rpmgr.agent.v1.DenyList.entries:type_name -> rpmgr.agent.v1.DenyEntry
+	32, // 40: rpmgr.agent.v1.DenyEntry.not_after:type_name -> google.protobuf.Timestamp
+	41, // [41:41] is the sub-list for method output_type
+	41, // [41:41] is the sub-list for method input_type
+	41, // [41:41] is the sub-list for extension type_name
+	41, // [41:41] is the sub-list for extension extendee
+	0,  // [0:41] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_agent_v1_snapshot_proto_init() }
@@ -2683,7 +2766,7 @@ func file_rpmgr_agent_v1_snapshot_proto_init() {
 		(*Resource_GatewayTcpUdpRoute)(nil),
 		(*Resource_Reference)(nil),
 	}
-	file_rpmgr_agent_v1_snapshot_proto_msgTypes[27].OneofWrappers = []any{
+	file_rpmgr_agent_v1_snapshot_proto_msgTypes[28].OneofWrappers = []any{
 		(*DenyEntry_Serial)(nil),
 		(*DenyEntry_Identity)(nil),
 	}
@@ -2693,7 +2776,7 @@ func file_rpmgr_agent_v1_snapshot_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_agent_v1_snapshot_proto_rawDesc), len(file_rpmgr_agent_v1_snapshot_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   28,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
