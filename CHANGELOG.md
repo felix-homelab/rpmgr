@@ -12,6 +12,12 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Gateways: passive health. A gateway passes over a connector at a priority whose targets refused
+  or timed out several new connections in a row, for a back-off that grows with each failed try,
+  then tries it again with one connection; a success brings it back. HTTP error statuses never count,
+  and when every connector is passed over the gateway still tries one. Each gateway decides alone.
+  (#632)
+
 - Gateways: a gateway group may replace its not-found, unavailable and maintenance pages with its
   own HTML, with the placeholders `{{hostname}}`, `{{status}}`, `{{message}}` and
   `{{request_id}}` filled in as escaped text. The pages run no script and load nothing from
