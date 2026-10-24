@@ -5,6 +5,7 @@ package apisvc
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"connectrpc.com/connect"
@@ -14,6 +15,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/pki"
@@ -279,7 +281,7 @@ func agentSessionOf(s *ent.AgentSession, now time.Time) *rpmgrv1.AgentSession {
 	}
 	return &rpmgrv1.AgentSession{Connected: schema.AgentSessionLive(s.DisconnectedAt, s.LastSeenAt, now), Version: s.AgentVersion,
 		LastSeenTime: timestamppb.New(s.LastSeenAt), RemoteAddr: s.RemoteAddr, LastGoodbyeReason: s.LastGoodbye,
-		BelowMinAgentVersion: s.LastGoodbye == upgradeRequired}
+		BelowMinAgentVersion: s.LastGoodbye == upgradeRequired, OverTheAir: slices.Contains(s.Capabilities, agentproto.CapOTA)}
 }
 
 // upgradeRequired is the reason of the Goodbye that refuses an agent below min_agent_version
