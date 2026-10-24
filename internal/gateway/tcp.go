@@ -250,10 +250,11 @@ func (t *TCPRoutes) serve(ln net.Listener, rs []TCPRoute) {
 			}
 			// Checked and recorded under pl.mu, which enforce takes after Apply swapped the route
 			// in: either enforce sees the connection, or the check sees the new rules (#523). A
-			// CONNECT's route, and so its rules, is known only once its request is read.
+			// CONNECT's route is known only once its request is read; a peer that no route of the
+			// listener admits is dropped at once.
 			pl.mu.Lock()
 			r, table := pl.route.Load(), pl.connect.Load()
-			if r != nil && !r.Access.AllowsAddr(c.RemoteAddr()) {
+			if r != nil && !r.Access.AllowsAddr(c.RemoteAddr()) || table != nil && !table.admits(c.RemoteAddr()) {
 				pl.mu.Unlock()
 				abort(c)
 				continue
@@ -304,9 +305,9 @@ func (r *removalDrain) period() time.Duration {
 
 // enforce resets the connections the port's new routes no longer allow, given the route or
 // CONNECT table the port had before: a tightened policy applies at once (docs/03-connections.md,
-// "Configuration reconciliation"). A CONNECT listener whose mode, name, routes or credentials
-// changed resets every connection, as they were admitted under the old ones; one that changed only
-// access rules resets the connections those refuse.
+// "Configuration reconciliation"). A CONNECT tunnel is reset when its listener's org, mode or name
+// changed, its route went or changed its credentials, or the route's access rules refuse it now;
+// a connection still reading its CONNECT is left to its own check.
 func (pl *portListener) enforce(oldRoute *TCPRoute, oldTable *connectTable) {
 	r, table := pl.route.Load(), pl.connect.Load()
 	pl.mu.Lock()
@@ -318,8 +319,8 @@ func (pl *portListener) enforce(oldRoute *TCPRoute, oldTable *connectTable) {
 			if !r.Access.AllowsAddr(c.RemoteAddr()) {
 				abort(c)
 			}
-		case table != nil && oldTable != nil && table.same(oldTable):
-			if cr := table.byID(id); cr != nil && !cr.Access.AllowsAddr(c.RemoteAddr()) {
+		case table != nil && oldTable != nil:
+			if id != "" && !table.keeps(oldTable, id, c.RemoteAddr()) {
 				abort(c)
 			}
 		default: // the port changed between a plain route and a CONNECT listener, or the listener changed

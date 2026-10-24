@@ -161,6 +161,9 @@ message HTTPConnect {
   ConnectAuth auth = 2;
   // With CONNECT_AUTH_TLS_BASIC: the listener's name, whose certificate it presents.
   string hostname = 3;
+  // The org that owns the listener: a listener is one org's, so no client reaches another org's
+  // route through it.
+  string org_id = 4;
 }
 
 // ConnectAuth is a CONNECT listener's authentication mode (D130).

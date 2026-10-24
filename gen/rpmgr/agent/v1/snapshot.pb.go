@@ -1034,7 +1034,10 @@ type HTTPConnect struct {
 	// How the listener checks proxy credentials.
 	Auth ConnectAuth `protobuf:"varint,2,opt,name=auth,proto3,enum=rpmgr.agent.v1.ConnectAuth" json:"auth,omitempty"`
 	// With CONNECT_AUTH_TLS_BASIC: the listener's name, whose certificate it presents.
-	Hostname      string `protobuf:"bytes,3,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	Hostname string `protobuf:"bytes,3,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	// The org that owns the listener: a listener is one org's, so no client reaches another org's
+	// route through it.
+	OrgId         string `protobuf:"bytes,4,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1086,6 +1089,13 @@ func (x *HTTPConnect) GetAuth() ConnectAuth {
 func (x *HTTPConnect) GetHostname() string {
 	if x != nil {
 		return x.Hostname
+	}
+	return ""
+}
+
+func (x *HTTPConnect) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
 	}
 	return ""
 }
@@ -2652,11 +2662,12 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"connectors\x123\n" +
 	"\x06access\x18\x04 \x01(\v2\x1b.rpmgr.agent.v1.RouteAccessR\x06access\x12K\n" +
 	"\x11ranked_connectors\x18\x05 \x03(\v2\x1e.rpmgr.agent.v1.RouteConnectorR\x10rankedConnectors\x12>\n" +
-	"\fhttp_connect\x18\x06 \x01(\v2\x1b.rpmgr.agent.v1.HTTPConnectR\vhttpConnect\"|\n" +
+	"\fhttp_connect\x18\x06 \x01(\v2\x1b.rpmgr.agent.v1.HTTPConnectR\vhttpConnect\"\x93\x01\n" +
 	"\vHTTPConnect\x12 \n" +
 	"\vauthorities\x18\x01 \x03(\tR\vauthorities\x12/\n" +
 	"\x04auth\x18\x02 \x01(\x0e2\x1b.rpmgr.agent.v1.ConnectAuthR\x04auth\x12\x1a\n" +
-	"\bhostname\x18\x03 \x01(\tR\bhostname\"g\n" +
+	"\bhostname\x18\x03 \x01(\tR\bhostname\x12\x15\n" +
+	"\x06org_id\x18\x04 \x01(\tR\x05orgId\"g\n" +
 	"\x0eRouteConnector\x12!\n" +
 	"\fconnector_id\x18\x01 \x01(\tR\vconnectorId\x12\x1a\n" +
 	"\bpriority\x18\x02 \x01(\rR\bpriority\x12\x16\n" +

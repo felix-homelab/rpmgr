@@ -1027,19 +1027,25 @@ through it. Gateways announce the capability `tcp.http-connect`.
 - **TLS listener.** The listener's hostname lies under a verified domain of the org; its
   certificate comes from ACME or an upload, as for http routes, with the same TLS versions
   ([04](04-security.md#controller-certificates)).
-- **Refusals.** A request that is not `CONNECT` is **405**; an authority no route of the listener
-  names is **403**, with no hint whether it exists elsewhere; missing or wrong credentials in a
-  basic mode are **407** with `Proxy-Authenticate: Basic`. `Proxy-Authorization` is never passed
-  on. Over a limit or a rule, the answer is the one of [Route limits](#route-limits-phase-2) and
+- **Refusals.** A peer that no route of the listener admits by its IP rules is dropped before its
+  TLS handshake and its request. A request whose method is not `CONNECT`, compared with case, is
+  **405**. In the mode `none`, an authority no route of the listener names and one whose IP rules
+  refuse the client are both **403**, with no hint whether it exists elsewhere. In a basic mode the
+  credentials come first: missing or wrong ones are **407** with `Proxy-Authenticate: Basic`, for
+  an unknown authority too, after the same verification as a wrong password, and only a client
+  with the right ones meets the route's IP rules (**403**); too many verifications from an
+  address are **429** with `Retry-After`. `Proxy-Authorization` is never passed on. Over a limit
+  or a rule, the answer is the one of [Route limits](#route-limits-phase-2) and
   [Access policies](#access-policies) for HTTP, sent before the tunnel opens.
 - **One request, then the tunnel.** The head, with the TLS handshake of a TLS listener, must
-  arrive within the HTTP server's header timeout and fit in 16 KiB, else the connection closes.
-  A request target not in authority form (`host:port`), an HTTP version other than 1.0 or 1.1, a
-  body (`Content-Length` or `Transfer-Encoding`), a `Host` other than the authority, or bytes sent
-  after the head before the answer is **400**: nothing behind the head can be read as a second
-  request. The gateway answers **200** only once a stream to a connector is open, and **503**
-  with `Retry-After` when none is ready or when the listener's routes changed while the request
-  was read.
+  arrive within the HTTP server's header timeout and fit in 16 KiB and 100 fields, else the
+  connection closes. Its lines end in CRLF, none is folded, and a field value holds no control
+  character. A request target not in authority form (`host:port`), an HTTP version other than 1.0
+  or 1.1, a body (`Content-Length` or `Transfer-Encoding`), or a `Host` other than the authority
+  is **400**: nothing behind the head is read as a second request. Bytes the client sends along
+  with the head, before the answer, become the tunnel's first bytes. The gateway answers **200**
+  only once a stream to a connector is open, and **503** with `Retry-After` when none is ready or
+  when the listener's routes changed while the request was read.
 
 ### Port 443 multiplexing
 

@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
@@ -12,11 +13,12 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"net/textproto"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/net/http/httpguts"
 )
 
 // ConnectMode is how a CONNECT listener checks proxy credentials (docs/03-connections.md, "HTTP
@@ -33,6 +35,8 @@ const (
 // Connect is a tcp route's place on a CONNECT listener: the port is shared by the routes of one
 // org, each named by its authorities, and every route of the port has the same Mode and Hostname.
 type Connect struct {
+	// Org owns the listener: every route of a port has the same.
+	Org string
 	// Authorities are the lower-case host names that choose the route; a CONNECT's port is ignored.
 	Authorities []string
 	Mode        ConnectMode
@@ -44,13 +48,14 @@ type Connect struct {
 
 // connectTable is a CONNECT listener's routes by authority.
 type connectTable struct {
+	org      string
 	mode     ConnectMode
 	hostname string
 	routes   map[string]*TCPRoute
 }
 
 func newConnectTable(routes []TCPRoute) *connectTable {
-	t := &connectTable{mode: routes[0].Connect.Mode, hostname: routes[0].Connect.Hostname, routes: map[string]*TCPRoute{}}
+	t := &connectTable{org: routes[0].Connect.Org, mode: routes[0].Connect.Mode, hostname: routes[0].Connect.Hostname, routes: map[string]*TCPRoute{}}
 	for i := range routes {
 		for _, a := range routes[i].Connect.Authorities {
 			t.routes[a] = &routes[i]
@@ -69,18 +74,26 @@ func (t *connectTable) byID(id string) *TCPRoute {
 	return nil
 }
 
-// same reports whether u serves the clients of t as t does: the same mode, name and routes, so a
-// connection admitted under t is admitted under u. Access rules are checked by enforce.
-func (t *connectTable) same(u *connectTable) bool {
-	if t.mode != u.mode || t.hostname != u.hostname || len(t.routes) != len(u.routes) {
+// keeps reports whether a tunnel of route id, admitted under old, may stay open under t: the
+// listener's org, mode and name are the same, the route is still there with the same credentials,
+// and its access rules still admit the client.
+func (t *connectTable) keeps(old *connectTable, id string, client net.Addr) bool {
+	if t.org != old.org || t.mode != old.mode || t.hostname != old.hostname {
 		return false
 	}
-	for a, r := range t.routes {
-		if v, ok := u.routes[a]; !ok || v.ID != r.ID || !sameRules(v.Connect.BasicAuth, r.Connect.BasicAuth) {
-			return false
+	r, was := t.byID(id), old.byID(id)
+	return r != nil && was != nil && sameRules(r.Connect.BasicAuth, was.Connect.BasicAuth) && r.Access.AllowsAddr(client)
+}
+
+// admits reports whether the access rules of a route of t admit the client: a peer no route
+// admits is dropped before its TLS handshake and its request.
+func (t *connectTable) admits(client net.Addr) bool {
+	for _, r := range t.routes {
+		if r.Access.AllowsAddr(client) {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 func sameRules(a, b []BasicAuthRule) bool {
@@ -110,18 +123,22 @@ type connectRefusal struct {
 
 // handleConnect serves one connection of a CONNECT listener (docs/03-connections.md, "HTTP
 // CONNECT routes"): a TLS handshake for ConnectTLSBasic, then one CONNECT request in authority
-// form, which chooses a route of the listener by its host, is checked against the route's access
-// rules and, in a basic mode, its credentials, and is answered 200 once a stream to a connector
-// is open; then the connection is relayed over the stream. Anything else is answered and closed:
-// the head is read within the HTTP server's header timeout and up to connectHeadMax, and a
-// request with a body, data sent after the head before the answer, or a Host other than the
-// authority is refused, so no second request can hide behind the first.
+// form, which chooses a route of the listener by its host, is checked against the route's
+// credentials in a basic mode and its access rules, and is answered 200 once a stream to a
+// connector is open; then the connection is relayed over the stream, with any bytes the client
+// sent along with the head first. Anything else is answered and closed. The head, with the
+// handshake, is read within the HTTP server's header timeout and up to connectHeadMax; a request
+// with a body or a Host other than the authority is refused, so no second request can hide
+// behind the first.
 func (t *TCPRoutes) handleConnect(c net.Conn, pl *portListener, table *connectTable) {
-	_ = c.SetDeadline(time.Now().Add(httpReadHeader))
+	deadline := time.Now().Add(httpReadHeader)
+	_ = c.SetDeadline(deadline)
+	ctx, cancel := context.WithDeadline(t.ctx, deadline) // no wait outlives the head's deadline
+	defer cancel()
 	conn := c
 	if table.mode == ConnectTLSBasic {
 		tc := tls.Server(c, t.connectTLS(table.hostname))
-		if err := tc.HandshakeContext(t.ctx); err != nil {
+		if err := tc.HandshakeContext(ctx); err != nil {
 			_ = c.Close()
 			return
 		}
@@ -133,7 +150,7 @@ func (t *TCPRoutes) handleConnect(c net.Conn, pl *portListener, table *connectTa
 		refuseConnect(conn, connectRefusal{status: http.StatusBadRequest})
 		return
 	}
-	r, refusal := t.admit(req, br, clientAddr(c), table)
+	r, refusal := t.admit(ctx, req, clientAddr(c), table)
 	if r == nil {
 		refuseConnect(conn, refusal)
 		return
@@ -149,7 +166,7 @@ func (t *TCPRoutes) handleConnect(c net.Conn, pl *portListener, table *connectTa
 	}
 	pl.conns[c] = r.ID
 	pl.mu.Unlock()
-	st, err := openStream(t.ctx, t.o.Sessions, t.o.Revision, c, r.ID, "")
+	st, err := openStream(ctx, t.o.Sessions, t.o.Revision, c, r.ID, "")
 	if err != nil {
 		t.o.Logger.Debug("no stream for a CONNECT", "route", r.ID, "error", err)
 		refuseConnect(conn, connectRefusal{status: http.StatusServiceUnavailable, header: "Retry-After: " + strconv.Itoa(httpRetryAfter) + "\r\n"})
@@ -161,36 +178,99 @@ func (t *TCPRoutes) handleConnect(c net.Conn, pl *portListener, table *connectTa
 		return
 	}
 	_ = c.SetDeadline(time.Time{})
-	relayConn(st, conn, r.IdleTimeout)
+	early, _ := br.Peek(br.Buffered()) // sent with the head, before the answer: the tunnel's first bytes
+	relayConn(st, &earlyConn{Conn: conn, early: early}, r.IdleTimeout)
+}
+
+// earlyConn reads the bytes a client sent along with its CONNECT head first, then its connection.
+type earlyConn struct {
+	net.Conn
+	early []byte
+}
+
+func (c *earlyConn) Read(p []byte) (int, error) {
+	if len(c.early) > 0 {
+		n := copy(p, c.early)
+		c.early = c.early[n:]
+		return n, nil
+	}
+	return c.Conn.Read(p)
+}
+
+// CloseWrite half-closes the connection, as Relay needs.
+func (c *earlyConn) CloseWrite() error {
+	if hc, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return hc.CloseWrite()
+	}
+	return nil
+}
+
+// SetLinger lets Relay reset the connection.
+func (c *earlyConn) SetLinger(sec int) error {
+	if l, ok := c.Conn.(lingerer); ok {
+		return l.SetLinger(sec)
+	}
+	return nil
 }
 
 // connectHead is the head of a request to a CONNECT listener.
 type connectHead struct {
 	method, target, proto string
-	header                textproto.MIMEHeader
+	header                http.Header
 }
 
-// readConnectHead reads a request's line and header fields as they came; net/http's ReadRequest
-// would drop the Host field, which must match the authority.
+// connectHeadFields bounds the header fields of a CONNECT head.
+const connectHeadFields = 100
+
+// readConnectHead reads a request's line and header fields as they came, strictly: lines end in
+// CRLF, a field is a token, a colon and a value without control characters, and no line is folded.
+// net/http's ReadRequest would drop the Host field, which must match the authority, and accepts
+// lines that other parsers read otherwise.
 func readConnectHead(br *bufio.Reader) (*connectHead, error) {
-	tp := textproto.NewReader(br)
-	line, err := tp.ReadLine()
+	line := func() (string, error) {
+		l, err := br.ReadString('\n')
+		if err != nil {
+			return "", err
+		}
+		l, ok := strings.CutSuffix(l, "\r\n")
+		if !ok || strings.ContainsAny(l, "\r\n") {
+			return "", errors.New("gateway: a line that does not end in CRLF")
+		}
+		return l, nil
+	}
+	first, err := line()
 	if err != nil {
 		return nil, err
 	}
-	parts := strings.Split(line, " ")
+	parts := strings.Split(first, " ")
 	if len(parts) != 3 {
 		return nil, errors.New("gateway: not a request line")
 	}
-	h, err := tp.ReadMIMEHeader()
-	if err != nil {
-		return nil, err
+	h := http.Header{}
+	for range connectHeadFields + 1 {
+		l, err := line()
+		if err != nil {
+			return nil, err
+		}
+		if l == "" {
+			return &connectHead{method: parts[0], target: parts[1], proto: parts[2], header: h}, nil
+		}
+		name, value, ok := strings.Cut(l, ":")
+		value = strings.Trim(value, " \t")
+		if !ok || !httpguts.ValidHeaderFieldName(name) || !httpguts.ValidHeaderFieldValue(value) {
+			return nil, errors.New("gateway: not a header field") // a folded line starts with a blank, which no name has
+		}
+		h.Add(name, value)
 	}
-	return &connectHead{method: parts[0], target: parts[1], proto: parts[2], header: h}, nil
+	return nil, errors.New("gateway: too many header fields")
 }
 
-// admit checks a CONNECT request and returns its route, or the refusal.
-func (t *TCPRoutes) admit(req *connectHead, br *bufio.Reader, client netip.Addr, table *connectTable) (*TCPRoute, connectRefusal) {
+// admit checks a CONNECT request and returns its route, or the refusal. The method compares
+// with case, as RFC 9110 has it: "connect" is no CONNECT. In a basic mode the credentials are
+// checked first, against an unknown authority too, so that a client without them learns nothing
+// of the listener's routes; then, as in the mode none, an unknown authority and one whose access
+// rules refuse the client get the same 403.
+func (t *TCPRoutes) admit(ctx context.Context, req *connectHead, client netip.Addr, table *connectTable) (*TCPRoute, connectRefusal) {
 	target := req.target
 	host, _, err := net.SplitHostPort(target)
 	hosts := req.header.Values("Host")
@@ -199,33 +279,39 @@ func (t *TCPRoutes) admit(req *connectHead, br *bufio.Reader, client netip.Addr,
 		return nil, connectRefusal{status: http.StatusMethodNotAllowed, header: "Allow: CONNECT\r\n"}
 	case req.proto != "HTTP/1.1" && req.proto != "HTTP/1.0", !authorityRe.MatchString(target), err != nil, host == "":
 		return nil, connectRefusal{status: http.StatusBadRequest}
-	case len(req.header.Values("Content-Length")) > 0 || len(req.header.Values("Transfer-Encoding")) > 0 || br.Buffered() > 0:
-		// A body, or bytes sent before the answer, could be read as a second request.
+	case len(req.header.Values("Content-Length")) > 0 || len(req.header.Values("Transfer-Encoding")) > 0:
+		// A body could be read as a second request.
 		return nil, connectRefusal{status: http.StatusBadRequest}
 	case len(hosts) > 1 || len(hosts) == 1 && !strings.EqualFold(hosts[0], target):
 		return nil, connectRefusal{status: http.StatusBadRequest}
 	}
 	r := table.routes[strings.TrimSuffix(strings.ToLower(host), ".")]
-	if r == nil || !r.Access.Allows(client) {
-		// The same answer for an authority the listener does not know and one whose rules refuse
-		// the client, so a client learns nothing of the listener's other routes.
-		return nil, connectRefusal{status: http.StatusForbidden}
-	}
 	if table.mode == ConnectTLSBasic || table.mode == ConnectPlainBasic {
 		user, password, given := proxyBasicAuth(req.header.Get("Proxy-Authorization"))
+		rules := unknownUser
+		if r != nil && len(r.Connect.BasicAuth) > 0 {
+			rules = r.Connect.BasicAuth
+		}
 		ok := false
-		if given && len(r.Connect.BasicAuth) > 0 {
-			ok, err = t.basic.Check(t.ctx, client, r.Connect.BasicAuth, user, password)
+		if given {
+			ok, err = t.basic.Check(ctx, client, rules, user, password)
 		}
 		switch {
 		case errors.Is(err, ErrRateLimited):
 			return nil, connectRefusal{status: http.StatusTooManyRequests, header: "Retry-After: " + strconv.Itoa(int(basicAuthRefill.Seconds())) + "\r\n"}
-		case err != nil || !ok:
+		case err != nil || !ok || r == nil || len(r.Connect.BasicAuth) == 0:
 			return nil, connectRefusal{status: http.StatusProxyAuthRequired, header: "Proxy-Authenticate: Basic realm=\"rpmgr\", charset=\"UTF-8\"\r\n"}
 		}
 	}
+	if r == nil || !r.Access.Allows(client) {
+		return nil, connectRefusal{status: http.StatusForbidden}
+	}
 	return r, connectRefusal{}
 }
+
+// unknownUser is a rule no user passes, checked for an authority the listener does not know, so
+// that it costs the same as a wrong password.
+var unknownUser = []BasicAuthRule{{PolicyID: "-", CredentialVersion: "-", Users: map[string]PHC{}}}
 
 // proxyBasicAuth parses a Proxy-Authorization header of the Basic scheme.
 func proxyBasicAuth(h string) (user, password string, ok bool) {

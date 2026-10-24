@@ -42,9 +42,9 @@ func rawEcho(t *testing.T) string {
 	return ln.Addr().String()
 }
 
-// connectRoute is a route of a CONNECT listener on port.
+// connectRoute is a route of org_a's CONNECT listener on port.
 func connectRoute(id string, port uint16, mode gateway.ConnectMode, authorities ...string) gateway.TCPRoute {
-	return gateway.TCPRoute{ID: id, Port: port, Connect: &gateway.Connect{Authorities: authorities, Mode: mode}}
+	return gateway.TCPRoute{ID: id, Port: port, Connect: &gateway.Connect{Org: "org_a", Authorities: authorities, Mode: mode}}
 }
 
 // connectHead sends head on c and returns the status line and headers of the answer, with what
@@ -93,15 +93,17 @@ func basicHeader(user, password string) string {
 }
 
 // TestHTTPConnect_OnlyOwnAuthorities (security regression, docs/12): a CONNECT listener routes
-// only to the authorities of its own routes, whatever the CONNECT's port and case; another
-// listener's authority, an unknown one and a request that is no CONNECT are refused, the first two
-// alike; nothing of the CONNECT head, Proxy-Authorization included, reaches a target; a TLS
-// listener refuses a plain CONNECT.
+// only to the authorities of its own org's routes, whatever the CONNECT's port and case; another
+// org's authority, of a listener on the same gateway, and an unknown one are refused alike, and a
+// request that is no CONNECT too; nothing of the CONNECT head, Proxy-Authorization included,
+// reaches a target; a TLS listener refuses a plain CONNECT.
 func TestHTTPConnect_OnlyOwnAuthorities(t *testing.T) {
 	p := newPlaneWith(t, rawEcho(t), "none", "rt_a", "rt_b", "rt_c")
 	own, other := freePort(t), freePort(t)
+	c := connectRoute("rt_c", other, gateway.ConnectNone, "c.internal")
+	c.Connect.Org = "org_b"
 	if st := p.routes.Apply([]gateway.TCPRoute{connectRoute("rt_a", own, gateway.ConnectNone, "a.internal", "db.internal"),
-		connectRoute("rt_b", own, gateway.ConnectNone, "b.internal"), connectRoute("rt_c", other, gateway.ConnectNone, "c.internal")}); len(st) != 0 {
+		connectRoute("rt_b", own, gateway.ConnectNone, "b.internal"), c}); len(st) != 0 {
 		t.Fatal(st)
 	}
 	for _, authority := range []string{"a.internal:22", "DB.Internal:5432", "b.internal:1", "a.internal.:443"} {
@@ -113,34 +115,36 @@ func TestHTTPConnect_OnlyOwnAuthorities(t *testing.T) {
 		tunnelEcho(t, c, br)
 	}
 	for _, tc := range []struct{ name, head string }{
-		{"another listener's authority", "CONNECT c.internal:22 HTTP/1.1\r\n\r\n"},
+		{"another org's authority", "CONNECT c.internal:22 HTTP/1.1\r\n\r\n"},
 		{"an unknown authority", "CONNECT nowhere.internal:22 HTTP/1.1\r\n\r\n"},
 		{"an IP address", "CONNECT 127.0.0.1:22 HTTP/1.1\r\n\r\n"},
+		{"an IPv6 address", "CONNECT [::1]:22 HTTP/1.1\r\n\r\n"},
 	} {
 		if resp, _ := connectHead(t, dialPort(t, own), tc.head); resp.StatusCode != http.StatusForbidden {
 			t.Errorf("%s: %d", tc.name, resp.StatusCode)
 		}
 	}
-	if resp, _ := connectHead(t, dialPort(t, own), "GET / HTTP/1.1\r\nHost: a.internal\r\n\r\n"); resp.StatusCode != http.StatusMethodNotAllowed ||
-		resp.Header.Get("Allow") != "CONNECT" {
-		t.Errorf("a GET: %d %v", resp.StatusCode, resp.Header)
+	for _, method := range []string{"GET", "connect"} { // methods compare with case
+		if resp, _ := connectHead(t, dialPort(t, own), method+" a.internal:22 HTTP/1.1\r\n\r\n"); resp.StatusCode != http.StatusMethodNotAllowed ||
+			resp.Header.Get("Allow") != "CONNECT" {
+			t.Errorf("%s: %d %v", method, resp.StatusCode, resp.Header)
+		}
 	}
 	// A TLS listener answers no plain CONNECT.
 	tlsPort := freePort(t)
 	r := connectRoute("rt_a", tlsPort, gateway.ConnectTLSBasic, "a.internal")
 	r.Connect.Hostname = "proxy.example.com"
 	p.routes.Apply([]gateway.TCPRoute{r})
-	c := dialPort(t, tlsPort)
-	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
-	_, _ = io.WriteString(c, "CONNECT a.internal:22 HTTP/1.1\r\n\r\n")
-	if b, _ := io.ReadAll(c); strings.HasPrefix(string(b), "HTTP/1.1 200") {
+	tc := dialPort(t, tlsPort)
+	_ = tc.SetDeadline(time.Now().Add(10 * time.Second))
+	_, _ = io.WriteString(tc, "CONNECT a.internal:22 HTTP/1.1\r\n\r\n")
+	if b, _ := io.ReadAll(tc); strings.HasPrefix(string(b), "HTTP/1.1 200") {
 		t.Fatalf("a plain CONNECT on a TLS listener: %q", b)
 	}
 }
 
-// TestHTTPConnect_RefusesSmuggling: a CONNECT head that is not one request in authority form, with
-// no body and nothing after it before the answer, is refused, so no second request can hide behind
-// the first.
+// TestHTTPConnect_RefusesSmuggling: a CONNECT head that is not one strict request in authority
+// form without a body is refused, so no second request can hide behind the first.
 func TestHTTPConnect_RefusesSmuggling(t *testing.T) {
 	p := newPlaneWith(t, rawEcho(t), "none", "rt_a")
 	port := freePort(t)
@@ -153,9 +157,13 @@ func TestHTTPConnect_RefusesSmuggling(t *testing.T) {
 		{"another Host", "CONNECT a.internal:22 HTTP/1.1\r\nHost: b.internal:22\r\n\r\n"},
 		{"a body", "CONNECT a.internal:22 HTTP/1.1\r\nContent-Length: 5\r\n\r\nhello"},
 		{"a chunked body", "CONNECT a.internal:22 HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n"},
-		{"data before the answer", "CONNECT a.internal:22 HTTP/1.1\r\n\r\nSSH-2.0-early"},
-		{"a pipelined request", "CONNECT a.internal:22 HTTP/1.1\r\n\r\nCONNECT b.internal:22 HTTP/1.1\r\n\r\n"},
 		{"two Host headers", "CONNECT a.internal:22 HTTP/1.1\r\nHost: a.internal:22\r\nHost: a.internal:22\r\n\r\n"},
+		{"HTTP/2.0", "CONNECT a.internal:22 HTTP/2.0\r\n\r\n"},
+		{"a bare LF", "CONNECT a.internal:22 HTTP/1.1\nHost: a.internal:22\r\n\r\n"},
+		{"a folded line", "CONNECT a.internal:22 HTTP/1.1\r\nX-A: 1\r\n 2\r\n\r\n"},
+		{"a NUL", "CONNECT a.internal:22 HTTP/1.1\r\nX-A: 1\x002\r\n\r\n"},
+		{"a space before the colon", "CONNECT a.internal:22 HTTP/1.1\r\nHost : b.internal:22\r\n\r\n"},
+		{"too many fields", "CONNECT a.internal:22 HTTP/1.1\r\n" + strings.Repeat("X-A: 1\r\n", 101) + "\r\n"},
 		{"a head too long", "CONNECT a.internal:22 HTTP/1.1\r\n" + strings.Repeat("X-Pad: "+strings.Repeat("a", 1000)+"\r\n", 20) + "\r\n"},
 	} {
 		c := dialPort(t, port)
@@ -254,7 +262,8 @@ func TestHTTPConnect_TLSListener(t *testing.T) {
 
 // TestHTTPConnect_AccessAndChanges: a route's IP rules refuse a client with 403 before any
 // stream; a tightened rule resets an open tunnel of the route, and a removed route's tunnel ends,
-// while another route's tunnel on the listener stays open.
+// while another route's tunnel on the listener stays open; a listener of another org on the port
+// ends every tunnel.
 func TestHTTPConnect_AccessAndChanges(t *testing.T) {
 	p := newPlaneWith(t, rawEcho(t), "none", "rt_a", "rt_b")
 	port := freePort(t)
@@ -288,6 +297,21 @@ func TestHTTPConnect_AccessAndChanges(t *testing.T) {
 		t.Fatal("a tunnel the tightened rule refuses stayed open")
 	}
 	tunnelEcho(t, cb, brb)
+	p.routes.Apply([]gateway.TCPRoute{a, b})
+	ca, bra = open("a.internal:22")
+	p.routes.Apply([]gateway.TCPRoute{b}) // rt_a goes
+	_ = ca.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := bra.ReadByte(); err == nil {
+		t.Fatal("the tunnel of a removed route stayed open")
+	}
+	tunnelEcho(t, cb, brb)
+	other := b
+	other.Connect = &gateway.Connect{Org: "org_b", Authorities: b.Connect.Authorities, Mode: b.Connect.Mode}
+	p.routes.Apply([]gateway.TCPRoute{other})
+	_ = cb.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := brb.ReadByte(); err == nil {
+		t.Fatal("a tunnel stayed open after its listener became another org's")
+	}
 }
 
 // TestApplier_ValidateConnect: CONNECT routes share a port only with the same mode and hostname
@@ -297,7 +321,7 @@ func TestApplier_ValidateConnect(t *testing.T) {
 	a, _ := gateway.NewApplier()
 	route := func(id string, port uint32, auth agentv1.ConnectAuth, hostname string, authorities ...string) *agentv1.Resource {
 		return &agentv1.Resource{Id: id, Kind: &agentv1.Resource_GatewayTcpRoute{GatewayTcpRoute: &agentv1.GatewayTCPRoute{Port: port,
-			HttpConnect: &agentv1.HTTPConnect{Auth: auth, Hostname: hostname, Authorities: authorities}}}}
+			HttpConnect: &agentv1.HTTPConnect{Auth: auth, Hostname: hostname, Authorities: authorities, OrgId: "org_a"}}}}
 	}
 	withUsers := func(res *agentv1.Resource) *agentv1.Resource {
 		res.GetGatewayTcpRoute().Access = &agentv1.RouteAccess{BasicAuth: []*agentv1.BasicAuthRule{{PolicyId: "pol_1", CredentialVersion: "1",
@@ -329,10 +353,117 @@ func TestApplier_ValidateConnect(t *testing.T) {
 		{"a hostname without TLS", gatewaySnapshot(1, route("rt_1", 7000, plainBasic, "p.example.com", "a.internal")), "hostname without TLS"},
 		{"an unknown mode", gatewaySnapshot(1, route("rt_1", 7000, agentv1.ConnectAuth(9), "", "a.internal")), "authentication mode"},
 		{"basic auth without a basic mode", gatewaySnapshot(1, withUsers(route("rt_1", 7000, none, "", "a.internal"))), "basic auth on a route"},
+		{"two orgs on the port", gatewaySnapshot(1, route("rt_1", 7000, none, "", "a.internal"), func() *agentv1.Resource {
+			r := route("rt_2", 7000, none, "", "b.internal")
+			r.GetGatewayTcpRoute().GetHttpConnect().OrgId = "org_b"
+			return r
+		}()), "of another org"},
+		{"no org", gatewaySnapshot(1, func() *agentv1.Resource {
+			r := route("rt_1", 7000, none, "", "a.internal")
+			r.GetGatewayTcpRoute().GetHttpConnect().OrgId = ""
+			return r
+		}()), "without an org"},
 	} {
 		errs := a.Validate(tc.snap)
 		if len(errs) == 0 || !strings.Contains(errs[0].GetMessage(), tc.want) {
 			t.Errorf("%s: %v, want an error about %q", tc.name, errs, tc.want)
+		}
+	}
+}
+
+// TestHTTPConnect_EarlyData: bytes a client sends along with its CONNECT head, before the answer,
+// are the tunnel's first bytes, after the 200, never a second request; so is a second CONNECT.
+func TestHTTPConnect_EarlyData(t *testing.T) {
+	p := newPlaneWith(t, rawEcho(t), "none", "rt_a")
+	port := freePort(t)
+	p.routes.Apply([]gateway.TCPRoute{connectRoute("rt_a", port, gateway.ConnectNone, "a.internal")})
+	for _, early := range []string{"SSH-2.0-early\r\n", "CONNECT b.internal:22 HTTP/1.1\r\n\r\n"} {
+		c := dialPort(t, port)
+		resp, br := connectHead(t, c, "CONNECT a.internal:22 HTTP/1.1\r\n\r\n"+early)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%q: %d", early, resp.StatusCode)
+		}
+		b := make([]byte, len(early))
+		if _, err := io.ReadFull(br, b); err != nil || string(b) != early {
+			t.Fatalf("the service got %q, %v; want %q", b, err, early)
+		}
+	}
+}
+
+// TestHTTPConnect_Answers: credentials of one route do not open another's; too many failed
+// verifications from an address are 429; a route no connector serves is 503 with Retry-After; a
+// CONNECT whose listener changed while its head was read is 503 too; a peer that no route of the
+// listener admits is dropped without an answer; an unknown authority in a basic mode is 407 like
+// a wrong password, and only right credentials meet the route's IP rules (403).
+func TestHTTPConnect_Answers(t *testing.T) {
+	p := newPlaneWith(t, rawEcho(t), "none", "rt_a", "rt_b")
+	port := freePort(t)
+	a := connectRoute("rt_a", port, gateway.ConnectPlainBasic, "a.internal")
+	a.Connect.BasicAuth = []gateway.BasicAuthRule{rule(t, "pol_a", "1", "ada", "pw-a")}
+	b := connectRoute("rt_b", port, gateway.ConnectPlainBasic, "b.internal")
+	b.Connect.BasicAuth = []gateway.BasicAuthRule{rule(t, "pol_b", "1", "bob", "pw-b")}
+	x := connectRoute("rt_x", port, gateway.ConnectPlainBasic, "x.internal") // the connector has no target for it
+	x.Connect.BasicAuth = a.Connect.BasicAuth
+	deny, err := gateway.AccessOf(&agentv1.RouteAccess{IpRules: []*agentv1.IPRule{{Cidrs: []string{"127.0.0.0/8"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := connectRoute("rt_d", port, gateway.ConnectPlainBasic, "d.internal")
+	d.Connect.BasicAuth, d.Access = a.Connect.BasicAuth, deny
+	p.routes.Apply([]gateway.TCPRoute{a, b, x, d})
+	status := func(head string) answer {
+		got, _ := connectHead(t, dialPort(t, port), head)
+		return got
+	}
+	for _, tc := range []struct {
+		name, head string
+		want       int
+	}{
+		{"route A's credentials for route B", "CONNECT b.internal:22 HTTP/1.1\r\n" + basicHeader("ada", "pw-a") + "\r\n", http.StatusProxyAuthRequired},
+		{"an unknown authority without credentials", "CONNECT nowhere.internal:22 HTTP/1.1\r\n\r\n", http.StatusProxyAuthRequired},
+		{"an unknown authority with credentials", "CONNECT nowhere.internal:22 HTTP/1.1\r\n" + basicHeader("ada", "pw-a") + "\r\n", http.StatusProxyAuthRequired},
+		{"an IP-denied route without credentials", "CONNECT d.internal:22 HTTP/1.1\r\n\r\n", http.StatusProxyAuthRequired},
+		{"an IP-denied route with credentials", "CONNECT d.internal:22 HTTP/1.1\r\n" + basicHeader("ada", "pw-a") + "\r\n", http.StatusForbidden},
+		{"no connector", "CONNECT x.internal:22 HTTP/1.1\r\n" + basicHeader("ada", "pw-a") + "\r\n", http.StatusServiceUnavailable},
+	} {
+		if got := status(tc.head); got.StatusCode != tc.want {
+			t.Errorf("%s: %d, want %d", tc.name, got.StatusCode, tc.want)
+		}
+	}
+	if got := status("CONNECT x.internal:22 HTTP/1.1\r\n" + basicHeader("ada", "pw-a") + "\r\n"); got.Header.Get("Retry-After") == "" {
+		t.Error("503 without Retry-After")
+	}
+	// The listener changes while a head is read: the CONNECT is answered 503 and asked again.
+	c := dialPort(t, port)
+	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	_, _ = io.WriteString(c, "CONNECT a.internal:22 HTTP/1.1\r\n"+basicHeader("ada", "pw-a"))
+	time.Sleep(100 * time.Millisecond)
+	p.routes.Apply([]gateway.TCPRoute{a, b, x, d})
+	if got, _ := connectHead(t, c, "\r\n"); got.StatusCode != http.StatusServiceUnavailable || got.Header.Get("Retry-After") != "1" {
+		t.Errorf("a listener changed mid-head: %d %v", got.StatusCode, got.Header)
+	}
+	// Wrong passwords from one address run into the rate limit.
+	limited := false
+	for range 40 {
+		if status("CONNECT a.internal:22 HTTP/1.1\r\n"+basicHeader("ada", "wrong")+"\r\n").StatusCode == http.StatusTooManyRequests {
+			limited = true
+			break
+		}
+	}
+	if !limited {
+		t.Error("no 429 after 40 wrong passwords")
+	}
+	// A listener none of whose routes admits the peer drops it before reading anything.
+	only := connectRoute("rt_a", port, gateway.ConnectNone, "a.internal")
+	only.Access = deny
+	p.routes.Apply([]gateway.TCPRoute{only})
+	// The reset may already reach the dial.
+	if dropped, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port)))); err == nil {
+		t.Cleanup(func() { _ = dropped.Close() })
+		_ = dropped.SetDeadline(time.Now().Add(10 * time.Second))
+		_, _ = io.WriteString(dropped, "CONNECT a.internal:22 HTTP/1.1\r\n\r\n")
+		if got, _ := io.ReadAll(dropped); len(got) != 0 {
+			t.Errorf("a peer no route admits got an answer: %q", got)
 		}
 	}
 }

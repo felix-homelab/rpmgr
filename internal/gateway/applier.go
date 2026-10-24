@@ -236,6 +236,8 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		if first, ok := listeners[r.GetPort()]; ok {
 			if f := first.GetHttpConnect(); connectAuthOf(f.GetAuth()) != connectAuthOf(hc.GetAuth()) || f.GetHostname() != hc.GetHostname() {
 				bad(id, "CONNECT port %d with another mode or hostname than the other routes of the port", r.GetPort())
+			} else if f.GetOrgId() != hc.GetOrgId() {
+				bad(id, "CONNECT port %d of another org than the other routes of the port", r.GetPort())
 			}
 		} else {
 			port(id, "TCP", r.GetPort())
@@ -253,6 +255,9 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		}
 		if len(hc.GetAuthorities()) == 0 {
 			bad(id, "a CONNECT route without authorities")
+		}
+		if hc.GetOrgId() == "" {
+			bad(id, "a CONNECT route without an org")
 		}
 		for _, a := range hc.GetAuthorities() {
 			key := strconv.Itoa(int(r.GetPort())) + " " + a
@@ -466,7 +471,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			tr := TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
 				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access}
 			if hc := r.GetHttpConnect(); hc != nil {
-				tr.Connect = &Connect{Authorities: hc.GetAuthorities(), Mode: connectAuthOf(hc.GetAuth()), Hostname: hc.GetHostname()}
+				tr.Connect = &Connect{Org: hc.GetOrgId(), Authorities: hc.GetAuthorities(), Mode: connectAuthOf(hc.GetAuth()), Hostname: hc.GetHostname()}
 				tr.Connect.BasicAuth, _ = basicAuthOf(r.GetAccess().GetBasicAuth()) // Validate refused any that does not parse
 			}
 			tcp = append(tcp, tr)
