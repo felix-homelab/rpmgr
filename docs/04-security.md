@@ -316,8 +316,10 @@ later.
   TLS settings, which the gateway uses for the route's traffic and the connector for the target's
   HTTPS health check, so both check the certificate alike (ADR-0017 names its first home,
   `UpstreamTLS.config` of `internal/gateway/upstreamtls.go`; it moved so that the connector-only
-  build, which links no gateway code, shares it, D119), and the connector's `readCertificate` of
-  `internal/connector/probe.go` ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)).
+  build, which links no gateway code, shares it, D119; the depguard rule `upstream-tls` of
+  `.golangci.yml` lets only the gateway and the connector import the package), and the connector's
+  `readCertificate` of `internal/connector/probe.go`
+  ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)).
   `tools/bannedapi` allows them in those functions of the rpmgr module and nowhere else, a module
   nested in the repository included. golangci skips forbidigo's findings in `upstreamtls.go` and
   gosec's G402 finding in `probe.go` (forbidigo does not see the field there); in both files

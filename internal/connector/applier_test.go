@@ -113,6 +113,12 @@ func TestApplier_Validate(t *testing.T) {
 			"statuses"},
 		{"status 600", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 1)),
 			&agentv1.HealthCheck{Type: "http", StatusMin: 200, StatusMax: 600})), "statuses"},
+		{"an interval of 2 h", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 1)), &agentv1.HealthCheck{Type: "tcp", IntervalMs: 7200000})),
+			"interval"},
+		{"a timeout of 2 min", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 1)),
+			&agentv1.HealthCheck{Type: "tcp", IntervalMs: 300000, TimeoutMs: 120000})), "timeout"},
+		{"a check port with a socket target", snap(withCheck(routeResource("rt_1", auto, &agentv1.Target{Id: "tg", UnixPath: "/run/app.sock"}),
+			&agentv1.HealthCheck{Type: "http", Port: 8080})), "socket target"},
 		{"https without TLS settings", snap(withCheck(routeResource("rt_1", auto, addrTarget("h", 443)), &agentv1.HealthCheck{Type: "http", Https: true})),
 			"TLS settings"},
 	} {

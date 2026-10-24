@@ -102,7 +102,7 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 				}
 			}
 			if hc := r.GetHealthCheck(); hc != nil {
-				if err := validCheck(hc, r.GetType()); err != nil {
+				if err := validCheck(hc, r.GetType(), r.GetTargets()); err != nil {
 					bad(id, "health check: %v", err)
 				}
 			}
@@ -130,12 +130,16 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 }
 
 // The bounds of a health check (docs/03-connections.md, "Timeouts, keepalive and backoff").
-const minCheckInterval = 2 * time.Second
+const (
+	minCheckInterval = 2 * time.Second
+	maxCheckInterval = time.Hour
+	maxCheckTimeout  = time.Minute
+)
 
 // validCheck checks a route's health check: tcp, or http with a path and Host a request can carry
-// and a range of statuses; a udp route only a tcp check of a port it names; an interval of at least
-// minCheckInterval and a timeout below it.
-func validCheck(c *agentv1.HealthCheck, routeType string) error {
+// and a range of statuses; a udp route only a tcp check of a port it names, and a route with a
+// socket target none; an interval within its bounds and a timeout below it and its own bound.
+func validCheck(c *agentv1.HealthCheck, routeType string, targets []*agentv1.Target) error {
 	ms := func(v uint32) time.Duration { return time.Duration(v) * time.Millisecond }
 	interval, timeout := cmp.Or(ms(c.GetIntervalMs()), checkInterval), cmp.Or(ms(c.GetTimeoutMs()), checkTimeout)
 	switch {
@@ -145,7 +149,9 @@ func validCheck(c *agentv1.HealthCheck, routeType string) error {
 		return errors.New("a udp route has only a tcp check of a port it names")
 	case c.GetPort() > 65535:
 		return fmt.Errorf("port %d", c.GetPort())
-	case interval < minCheckInterval || timeout >= interval:
+	case c.GetPort() != 0 && slices.ContainsFunc(targets, func(t *agentv1.Target) bool { return t.GetUnixPath() != "" }):
+		return errors.New("a check port with a socket target, which has no port")
+	case interval < minCheckInterval || interval > maxCheckInterval || timeout >= interval || timeout > maxCheckTimeout:
 		return fmt.Errorf("an interval of %v and a timeout of %v", interval, timeout)
 	case c.GetType() == "tcp":
 		return nil

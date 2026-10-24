@@ -29,6 +29,7 @@ const (
 	checkUnhealthy = 3
 	checkHealthy   = 2
 	checkBody      = 64 << 10
+	checkHeader    = 16 << 10 // the status line and header of an http check's answer
 )
 
 // HealthCheck is a route's active health check (docs/03-connections.md, "Target health"), with
@@ -78,7 +79,8 @@ func healthCheckOf(c *agentv1.HealthCheck) *HealthCheck {
 // fail, then unhealthy until Healthy checks in a row pass, so that one odd result moves nothing.
 type targetHealth struct {
 	unhealthy bool
-	streak    int // passes in a row if positive, failures in a row if negative
+	streak    int    // passes in a row if positive, failures in a row if negative
+	blocked   string // the local policy's refusal of the last check, which made it fail, or ""
 }
 
 // observe records one check of the target and reports whether its health changed.
@@ -141,10 +143,10 @@ func (t *Targets) stopChecks(id string) {
 // target's health changed, unless c was stopped meanwhile.
 func (t *Targets) checkRound(ctx context.Context, c *checker) {
 	r := c.r
-	results := make([]bool, len(r.Targets))
+	results := make([]error, len(r.Targets))
 	var wg sync.WaitGroup
 	for i, tg := range r.Targets {
-		wg.Go(func() { results[i] = t.check(ctx, r, tg) == nil })
+		wg.Go(func() { results[i] = t.check(ctx, r, tg) })
 	}
 	wg.Wait()
 	if ctx.Err() != nil {
@@ -159,7 +161,14 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 			if hs[tg.ID] == nil {
 				hs[tg.ID] = &targetHealth{}
 			}
-			changed = hs[tg.ID].observe(results[i], r.Check) || changed
+			var b *checkBlocked
+			blocked := ""
+			if errors.As(results[i], &b) {
+				blocked = b.detail
+			}
+			changed = hs[tg.ID].blocked != blocked || changed
+			hs[tg.ID].blocked = blocked
+			changed = hs[tg.ID].observe(results[i] == nil, r.Check) || changed
 		}
 		if cur, ok := t.routes[r.ID]; ok && changed {
 			h = t.updateHealthLocked(r.ID, readiness(cur, p, t.refused[r.ID], t.unhealthyLocked(r.ID)))
@@ -169,19 +178,23 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 	t.reportRoute(h)
 }
 
-// unhealthyLocked returns the route's targets its checks found unhealthy. Under t.mu.
-func (t *Targets) unhealthyLocked(route string) map[string]bool {
-	out := map[string]bool{}
+// unhealthyLocked returns the route's targets its checks found unhealthy, each with the local
+// policy's refusal if that is why its checks fail, else "". Under t.mu.
+func (t *Targets) unhealthyLocked(route string) map[string]string {
+	out := map[string]string{}
 	for id, h := range t.targetHealth[route] {
 		if h.unhealthy {
-			out[id] = true
+			out[id] = h.blocked
 		}
 	}
 	return out
 }
 
-// errCheckBlocked is a check of a target the local policy does not allow: it fails, undialled.
-var errCheckBlocked = errors.New("the local policy does not allow the target")
+// checkBlocked is a check the local policy refuses, the target's address or the port the check
+// names: it fails, undialled, and the target counts as blocked, not as unhealthy.
+type checkBlocked struct{ detail string }
+
+func (e *checkBlocked) Error() string { return "the local policy does not allow " + e.detail }
 
 // check runs r's health check against one target: it dials as traffic does, under the local
 // policy, which a target it blocks fails without being dialled; for an http check it then sends a
@@ -189,8 +202,8 @@ var errCheckBlocked = errors.New("the local policy does not allow the target")
 // reads at most checkBody of the answer's body.
 func (t *Targets) check(ctx context.Context, r Route, tg Target) error {
 	c := r.Check
-	if !tg.allowed(t.o.Policy()) {
-		return errCheckBlocked
+	if p := t.o.Policy(); !tg.allowed(p) {
+		return &checkBlocked{detail: tg.blockDetail(p)}
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
 	defer cancel()
@@ -205,7 +218,7 @@ func (t *Targets) check(ctx context.Context, r Route, tg Target) error {
 	if err != nil {
 		var b *policy.BlockedError
 		if errors.As(err, &b) {
-			return errCheckBlocked
+			return &checkBlocked{detail: b.Detail()}
 		}
 		return err
 	}
@@ -237,19 +250,24 @@ func (t *Targets) check(ctx context.Context, r Route, tg Target) error {
 		conn = tc
 	}
 	host := c.Host
-	if host == "" {
+	switch {
+	case host != "":
+	case tg.UnixPath != "":
+		host = "localhost" // never the socket's path
+	default:
 		host = tg.String()
 	}
 	if _, err := fmt.Fprintf(conn, "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: rpmgr-health-check\r\nAccept: */*\r\nConnection: close\r\n\r\n",
 		c.Path, host); err != nil {
 		return err
 	}
-	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	// At most checkHeader and checkBody are read, whatever the answer sends; the body is not
+	// closed, which would read it to its end, as closing the connection ends it.
+	resp, err := http.ReadResponse(bufio.NewReader(io.LimitReader(conn, checkHeader+checkBody)), nil) //nolint:bodyclose // conn.Close ends it
 	if err != nil {
 		return err
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, checkBody))
-	_ = resp.Body.Close()
 	if resp.StatusCode < c.StatusMin || resp.StatusCode > c.StatusMax {
 		return fmt.Errorf("the check's answer is %d, not %d to %d", resp.StatusCode, c.StatusMin, c.StatusMax)
 	}

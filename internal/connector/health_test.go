@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -59,31 +60,45 @@ func slicesString(v []uint32) string {
 
 // TestHealthCheck_ObeysLocalPolicy (docs/12, security regression tests): a health check dials as
 // traffic does: a target the connector-local policy blocks, by its address, by the name it
-// resolves to, or by the port the check names, fails without being dialled, so a check never
-// reaches what traffic may not; the targets the policy allows are checked and stay ready.
+// resolves to, or by the port the check names, and a target that deny_targets refuses, by address
+// or by a name resolving into it on an allowed port, fail without being dialled, so a check never
+// reaches what traffic may not; such a target counts as blocked by the policy, with the policy's
+// detail, not as unhealthy. The targets the policy allows are checked and stay ready.
 func TestHealthCheck_ObeysLocalPolicy(t *testing.T) {
 	allowed := startService(t, echoService)
 	blocked := startService(t, echoService)
-	e := newTargets(allowLoopback(t, allowed.port()))
+	denied := startService(t, echoService)
+	// 127.0.0.0/8 is allowed on the allowed and the denied service's ports, but deny_targets
+	// refuses 127.0.0.1 and ::1 on the denied one, which wins (D84).
+	dp := strconv.Itoa(int(denied.port()))
+	e := newTargets(policyOf(t, "allow_targets:\n  - cidr: 127.0.0.0/8\n    ports: ["+strconv.Itoa(int(allowed.port()))+", "+dp+"]\n"+
+		"deny_targets: [\"127.0.0.1/32:"+dp+"\", \"[::1]:"+dp+"\"]\n"))
 	t.Cleanup(e.Close)
 	byAddress, byName, ok := target("127.0.0.1", blocked.port()), target("localhost", blocked.port()), target("127.0.0.1", allowed.port())
-	byAddress.Priority, byName.Priority, ok.Priority = 0, 1, 2
+	deniedAddr, deniedName := target("127.0.0.1", denied.port()), target("localhost", denied.port())
+	byAddress.Priority, byName.Priority, deniedAddr.Priority, deniedName.Priority, ok.Priority = 0, 1, 3, 4, 2
 	e.Set([]connector.Route{
-		{ID: "rt_1", Targets: []connector.Target{byAddress, byName, ok}, Check: fastCheck()},
+		{ID: "rt_1", Targets: []connector.Target{byAddress, byName, deniedAddr, deniedName, ok}, Check: fastCheck()},
 		{ID: "rt_port", Targets: []connector.Target{ok}, Check: &connector.HealthCheck{Port: blocked.port(), Interval: 20 * time.Millisecond,
 			Timeout: time.Second, Unhealthy: 3, Healthy: 2}},
+		{ID: "rt_denied", Targets: []connector.Target{deniedName}, Check: fastCheck()},
 	})
-	// The name passes the policy until it resolves; its checks fail without a connection.
+	// The names pass the policy until they resolve; their checks fail without a connection.
 	e.readyPriorities(t, "rt_1", 2)
-	eventually(t, "a check of a blocked port left the route ready", func() bool {
-		st := e.Status()
-		return slices.ContainsFunc(st, func(s *agentv1.ResourceStatus) bool {
-			return s.GetResourceId() == "rt_port" && s.GetReason() == agentv1.NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY
-		})
-	})
+	blockedBy := func(route string) func() bool {
+		return func() bool {
+			h := e.lastOf(route)
+			return !h.GetReady() && h.GetReason() == agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY && h.GetDetail() != ""
+		}
+	}
+	eventually(t, "a check of a port the policy blocks did not count as blocked", blockedBy("rt_port"))
+	eventually(t, "a name resolving into deny_targets did not count as blocked", blockedBy("rt_denied"))
+	if d := e.lastOf("rt_port").GetDetail(); !strings.Contains(d, strconv.Itoa(int(blocked.port()))) {
+		t.Errorf("the blocked check port's detail %q", d)
+	}
 	time.Sleep(100 * time.Millisecond) // more rounds
-	if n := blocked.conns.Load(); n != 0 {
-		t.Fatalf("checks dialled a blocked target %d times", n)
+	if n := blocked.conns.Load() + denied.conns.Load(); n != 0 {
+		t.Fatalf("checks dialled blocked targets %d times", n)
 	}
 	if allowed.conns.Load() == 0 {
 		t.Fatal("the allowed target was never checked")
@@ -153,5 +168,47 @@ func TestHealthCheck_PrioritiesAndStreams(t *testing.T) {
 	e.readyPriorities(t, "rt_only", 0)
 	if h := e.lastOf("rt_plain"); !h.GetReady() || len(h.GetReadyPriorities()) != 0 {
 		t.Errorf("a route without a check: %v", h)
+	}
+}
+
+// TestHealthCheck_UDPFlows: a udp route's flows pass over a target its tcp check finds unhealthy,
+// as streams do, and use it again only as the last chance once every target is unhealthy.
+func TestHealthCheck_UDPFlows(t *testing.T) {
+	svc := startUDPService(t)
+	check, err := net.Listen("tcp", "127.0.0.1:0") // the check port, on 127.0.0.1 alone
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for {
+			c, err := check.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	checkPort := uint16(check.Addr().(*net.TCPAddr).Port) //nolint:gosec // G115: a port
+	sick, good := target("127.0.0.2", svc.port()), target("127.0.0.1", svc.port())
+	good.Priority = 1
+	e := newTargets(allowLoopback(t, svc.port(), checkPort))
+	t.Cleanup(e.Close)
+	c := fastCheck()
+	c.Port = checkPort
+	e.Set([]connector.Route{{ID: "rt_udp", UDP: true, Targets: []connector.Target{sick, good}, Check: c}})
+	e.readyPriorities(t, "rt_udp", 1)
+	for range 5 {
+		res, gw := e.handleResult(t, udpOpen("rt_udp"))
+		_ = gw.Close()
+		if res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR || res.GetTargetId() != good.ID {
+			t.Fatalf("a flow while %s is unhealthy: %v", sick.ID, res)
+		}
+	}
+	_ = check.Close()
+	eventually(t, "the route stayed ready with every target unhealthy", func() bool { return !e.lastOf("rt_udp").GetReady() })
+	res, gw := e.handleResult(t, udpOpen("rt_udp"))
+	_ = gw.Close()
+	if res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR || res.GetTargetId() != sick.ID {
+		t.Fatalf("a flow with every target unhealthy: %v, want the best priority as the last chance", res)
 	}
 }

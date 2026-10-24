@@ -287,7 +287,7 @@ func connAllowed(c net.Conn, p *policy.Policy) bool {
 // not among refused, the targets whose dial the policy refused on the resolved address, and not
 // among unhealthy, those the route's health check failed. A route with a health check names the
 // priorities that have such a target, which gateways pass over the others for (D133).
-func readiness(r Route, p *policy.Policy, refused map[string]string, unhealthy map[string]bool) *tunnelv1.RouteHealth {
+func readiness(r Route, p *policy.Policy, refused map[string]string, unhealthy map[string]string) *tunnelv1.RouteHealth {
 	h := &tunnelv1.RouteHealth{RouteId: r.ID}
 	if p == nil || p.Invalid != nil {
 		h.Reason = agentv1.NotReadyReason_NOT_READY_REASON_POLICY_INVALID
@@ -297,11 +297,15 @@ func readiness(r Route, p *policy.Policy, refused map[string]string, unhealthy m
 	sick := ""
 	for _, tg := range r.Targets {
 		detail, wasRefused := refused[tg.ID]
+		blockedCheck, isUnhealthy := unhealthy[tg.ID]
 		switch {
-		case tg.allowed(p) && !wasRefused && !unhealthy[tg.ID]:
+		case tg.allowed(p) && !wasRefused && !isUnhealthy:
 			prios = append(prios, tg.Priority)
-		case tg.allowed(p) && !wasRefused:
+		case tg.allowed(p) && !wasRefused && blockedCheck == "":
 			sick = cmp.Or(sick, tg.String())
+		case h.Detail != "":
+		case blockedCheck != "":
+			h.Detail = blockedCheck // its checks dial what the policy refuses
 		case h.Detail != "":
 		case wasRefused:
 			h.Detail = detail
@@ -557,7 +561,7 @@ func (t *Targets) healthy(route string, ts []Target) []Target {
 	if len(sick) == 0 {
 		return ts
 	}
-	if out := slices.DeleteFunc(slices.Clone(ts), func(tg Target) bool { return sick[tg.ID] }); len(out) > 0 {
+	if out := slices.DeleteFunc(slices.Clone(ts), func(tg Target) bool { _, ok := sick[tg.ID]; return ok }); len(out) > 0 {
 		return out
 	}
 	return ts

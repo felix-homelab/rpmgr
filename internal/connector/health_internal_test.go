@@ -211,3 +211,90 @@ func TestHealthCheckOf(t *testing.T) {
 		t.Errorf("set %+v, want %+v", *got, want)
 	}
 }
+
+// rawService answers every connection with answer, then keeps it open, as a keep-alive server
+// does, until the test ends.
+func rawService(t *testing.T, answer func(net.Conn)) uint16 {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer func() { _ = c.Close() }()
+				buf := make([]byte, 4096)
+				_, _ = c.Read(buf) // the request
+				answer(c)
+			}()
+		}
+	}()
+	return uint16(ln.Addr().(*net.TCPAddr).Port) //nolint:gosec // G115: a port
+}
+
+// TestHealthCheck_BoundedAnswer: an http check reads at most a capped header and body: a header
+// larger than the cap fails the check at once, and an endless chunked body on a kept-alive
+// connection passes once the status is read, without waiting for the timeout.
+func TestHealthCheck_BoundedAnswer(t *testing.T) {
+	huge := rawService(t, func(c net.Conn) {
+		_, _ = c.Write([]byte("HTTP/1.1 200 OK\r\nX-Big: " + strings.Repeat("x", 1<<20) + "\r\n\r\n"))
+	})
+	endless := rawService(t, func(c net.Conn) {
+		_, _ = c.Write([]byte("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n"))
+		chunk := []byte("1000\r\n" + strings.Repeat("y", 0x1000) + "\r\n")
+		for {
+			if _, err := c.Write(chunk); err != nil {
+				return
+			}
+		}
+	})
+	targets := checking(t, loopbackPolicy(t, int(huge), int(endless)))
+	c := &HealthCheck{HTTP: true, Path: "/", StatusMin: 200, StatusMax: 399, Timeout: 5 * time.Second}
+	start := time.Now()
+	if err := targets.check(context.Background(), Route{ID: "rt_1", Check: c}, Target{ID: "tg_1", Host: "127.0.0.1", Port: huge}); err == nil ||
+		time.Since(start) > 3*time.Second {
+		t.Errorf("a 1 MiB header: %v after %v", err, time.Since(start))
+	}
+	start = time.Now()
+	if err := targets.check(context.Background(), Route{ID: "rt_1", Check: c}, Target{ID: "tg_2", Host: "127.0.0.1", Port: endless}); err != nil ||
+		time.Since(start) > 3*time.Second {
+		t.Errorf("an endless chunked body: %v after %v", err, time.Since(start))
+	}
+}
+
+// TestHealthCheck_UnixHost: an http check of a socket target without a Host of its own sends
+// "localhost", never the socket's path.
+func TestHealthCheck_UnixHost(t *testing.T) {
+	path := t.TempDir() + "/app.sock"
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hosts := make(chan string, 1)
+	srv := &http.Server{ReadHeaderTimeout: time.Second, Handler: http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case hosts <- r.Host:
+		default:
+		}
+	})}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+	p, err := policy.Parse([]byte("version: 1\nallow_targets: [\"" + path + "\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := checking(t, p)
+	c := &HealthCheck{HTTP: true, Path: "/", StatusMin: 200, StatusMax: 399, Timeout: 5 * time.Second}
+	if err := targets.check(context.Background(), Route{ID: "rt_1", Check: c}, Target{ID: "tg_1", UnixPath: path}); err != nil {
+		t.Fatal(err)
+	}
+	if h := <-hosts; h != "localhost" {
+		t.Errorf("Host %q, want localhost", h)
+	}
+}
