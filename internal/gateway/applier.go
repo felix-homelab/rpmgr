@@ -161,6 +161,7 @@ type Served struct {
 	Passthrough  *Passthrough
 	HTTP         *HTTPRoutes
 	Certificates *Certificates
+	Pages        *Pages
 	Sessions     *Sessions
 	// DrainPeriod is how long a disabled gateway keeps its streams; 0 is DrainPeriod.
 	DrainPeriod time.Duration
@@ -170,7 +171,7 @@ type Served struct {
 func (a *Applier) Bind(s Served) { a.served = s }
 
 // Readiness implements agent.Applier: the tcp and udp routes whose port is not bound, and the
-// certificates not loaded.
+// certificates and custom pages not loaded.
 func (a *Applier) Readiness() []*agentv1.ResourceStatus {
 	s := a.served
 	var status []*agentv1.ResourceStatus
@@ -182,6 +183,9 @@ func (a *Applier) Readiness() []*agentv1.ResourceStatus {
 	}
 	if s.Certificates != nil {
 		status = append(status, s.Certificates.Status()...)
+	}
+	if s.Pages != nil {
+		status = append(status, s.Pages.Status()...)
 	}
 	return status
 }
@@ -216,6 +220,7 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		}
 		return true
 	}
+	pages := map[string]string{} // page IDs by kind
 	for _, res := range snap.GetResources() {
 		id := res.GetId()
 		if _, err := AccessOf(accessOf(res)); err != nil {
@@ -340,6 +345,18 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 				bad(id, "a challenge value that is not lower-case base32")
 			}
 		case res.GetGatewayDrain() != nil:
+		case res.GetGatewayPage() != nil:
+			p := res.GetGatewayPage()
+			kind, ok := pageKinds[p.GetKind()]
+			switch {
+			case !ok:
+				bad(id, "page kind %v", p.GetKind())
+			case pages[kind] != "":
+				bad(id, "a second %s page; %s is one", kind, pages[kind])
+			case len(p.GetContentSha256()) != sha256.Size:
+				bad(id, "a page without a SHA-256 content hash")
+			}
+			pages[kind] = id
 		default:
 			bad(id, "a gateway does not run %T resources", res.GetKind())
 		}
@@ -381,6 +398,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		passthrough []PassthroughRoute
 		httpRoutes  []HTTPRoute
 		certs       []CertificateRoute
+		pages       []PageRef
 		tokens      = map[string]DomainToken{}
 		disabled    bool
 	)
@@ -442,6 +460,10 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			c := res.GetGatewayCertificate()
 			certs = append(certs, CertificateRoute{ID: res.GetId(), ContentSHA256: c.GetContentSha256(), Hostnames: c.GetHostnames()})
 			continue // serves no route of its own
+		case res.GetGatewayPage() != nil:
+			p := res.GetGatewayPage()
+			pages = append(pages, PageRef{ID: res.GetId(), Kind: pageKinds[p.GetKind()], ContentSHA256: p.GetContentSha256()})
+			continue // neither
 		case res.GetGatewayDomainChallenge() != nil:
 			c := res.GetGatewayDomainChallenge()
 			tokens[res.GetId()] = DomainToken{FQDN: c.GetFqdn(), Value: c.GetValue()}
@@ -498,6 +520,9 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 	}
 	if s.Certificates != nil {
 		status = append(status, s.Certificates.Apply(ctx, certs)...)
+	}
+	if s.Pages != nil {
+		status = append(status, s.Pages.Apply(ctx, pages)...)
 	}
 	if s.HTTP != nil {
 		s.HTTP.Apply(httpRoutes)

@@ -425,6 +425,19 @@ enum PortProtocol {
   PORT_PROTOCOL_UDP = 2;
 }
 
+// GatewayPageKind is a page a gateway group may replace with its own (docs/03-connections.md,
+// "HTTP routes"; D132).
+enum GatewayPageKind {
+  // Not set.
+  GATEWAY_PAGE_KIND_UNSPECIFIED = 0;
+  // A name, or a path of it, that no route serves: 404.
+  GATEWAY_PAGE_KIND_NOT_FOUND = 1;
+  // The gateway's own 502, 503 or 504.
+  GATEWAY_PAGE_KIND_UNAVAILABLE = 2;
+  // The 503 of a route in maintenance.
+  GATEWAY_PAGE_KIND_MAINTENANCE = 3;
+}
+
 // PortPool is a range of public ports of a gateway group, from port_from to port_to inclusive.
 message PortPool {
   // The pool's ID, pp_…; output only.
