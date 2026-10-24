@@ -155,7 +155,7 @@ func TestWSS(t *testing.T) {
 	ca := newPublicCA(t, "public root")
 	addr, closed := wssGateway(t, w, ca, 300*time.Millisecond)
 
-	nc, err := dialWSS(t, addr, ca.pool, gateway.WSSPath)
+	nc, err := dialWSS(t, addr, ca.pool, tunnel.WSSPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestWSS(t *testing.T) {
 	}
 
 	// An upgrade that never starts the inner handshake.
-	nc, err = dialWSS(t, addr, ca.pool, gateway.WSSPath)
+	nc, err = dialWSS(t, addr, ca.pool, tunnel.WSSPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestWSS_MessageLimit(t *testing.T) {
 		size int
 		big  bool
 	}{{64 << 10, false}, {64<<10 + 1, true}} {
-		ws, err := dialWS(t, addr, ca.pool, gateway.WSSPath)
+		ws, err := dialWS(t, addr, ca.pool, tunnel.WSSPath)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -321,7 +321,7 @@ func TestWSS_InterceptorSeesOnlyInnerTLS(t *testing.T) {
 	var mitm interceptor
 	via := mitm.run(t, proxyCA, addr, public.pool)
 
-	nc, err := dialWSS(t, via, proxyCA.pool, gateway.WSSPath)
+	nc, err := dialWSS(t, via, proxyCA.pool, tunnel.WSSPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +343,7 @@ func TestWSS_InterceptorSeesOnlyInnerTLS(t *testing.T) {
 	}
 
 	// The proxy's root does not pass the inner TLS: the connector pins the controller's root.
-	nc, err = dialWSS(t, via, proxyCA.pool, gateway.WSSPath)
+	nc, err = dialWSS(t, via, proxyCA.pool, tunnel.WSSPath)
 	if err != nil {
 		t.Fatal(err)
 	}

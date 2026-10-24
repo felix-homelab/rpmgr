@@ -14,6 +14,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/pki"
@@ -509,7 +510,8 @@ func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agen
 
 // ConnectorGateways compiles the gateways a connector keeps data sessions to: every enabled
 // gateway, not decommissioned, of the groups of the routes ConnectorRoutes compiles, with the
-// effective transports and the IDs of those routes (docs/03-connections.md, "Multiple gateways").
+// effective transports and the IDs of those routes (docs/03-connections.md, "Multiple gateways"),
+// and its WSS hostname for a connector with the capability tunnel.wss.
 func ConnectorGateways(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
 	con, targets, inst, err := connectorTargets(ctx, tx, a)
 	if con == nil || err != nil {
@@ -541,8 +543,12 @@ func ConnectorGateways(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*ag
 	out := make([]*agentv1.Resource, 0, len(gws))
 	for _, gw := range gws {
 		n := byGroup[gw.GatewayGroupID]
-		out = append(out, &agentv1.Resource{Id: gw.ID, Kind: &agentv1.Resource_ConnectorGateway{ConnectorGateway: &agentv1.ConnectorGateway{
-			TunnelEndpoints: gw.TunnelEndpoints, Transports: slices.Sorted(maps.Keys(n.transports)), Routes: slices.Sorted(maps.Keys(n.routes))}}})
+		cg := &agentv1.ConnectorGateway{TunnelEndpoints: gw.TunnelEndpoints, Transports: slices.Sorted(maps.Keys(n.transports)),
+			Routes: slices.Sorted(maps.Keys(n.routes))}
+		if gw.WssHostname != nil && a.Has(agentproto.CapTunnelWSS) {
+			cg.WssHostname = *gw.WssHostname
+		}
+		out = append(out, &agentv1.Resource{Id: gw.ID, Kind: &agentv1.Resource_ConnectorGateway{ConnectorGateway: cg}})
 	}
 	return out, nil
 }

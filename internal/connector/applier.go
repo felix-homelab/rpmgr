@@ -18,6 +18,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
+	"github.com/felix-homelab/rpmgr/internal/domains"
 )
 
 // Applier runs a connector's snapshots (docs/03-connections.md, "Configuration reconciliation"):
@@ -41,6 +42,8 @@ func transportOf(p agentv1.TransportPolicy) (string, bool) {
 		return TransportQUIC, true
 	case agentv1.TransportPolicy_TRANSPORT_POLICY_H2:
 		return TransportH2, true
+	case agentv1.TransportPolicy_TRANSPORT_POLICY_WSS:
+		return TransportWSS, true
 	}
 	return "", false
 }
@@ -49,7 +52,8 @@ func transportOf(p agentv1.TransportPolicy) (string, bool) {
 // known transport and targets that are an address and port or an absolute socket path with a
 // known PROXY protocol version; a udp or tcp_udp route's targets are addresses, a udp route's
 // without a PROXY header (a tcp_udp route's header goes on its TCP connections only); a gateway
-// needs host:port endpoints and names only routes of the snapshot.
+// needs host:port endpoints, a normalised WSS hostname if any, and names only routes of the
+// snapshot.
 func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 	var errs []*agentv1.SnapshotError
 	bad := func(id, format string, args ...any) {
@@ -115,6 +119,11 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 				host, port, err := net.SplitHostPort(ep)
 				if n, perr := strconv.Atoi(port); err != nil || perr != nil || host == "" || n < 1 || n > 65535 {
 					bad(id, "tunnel endpoint %q is not host:port", ep)
+				}
+			}
+			if h := g.GetWssHostname(); h != "" {
+				if n, err := domains.Normalize(h, false); err != nil || n != h {
+					bad(id, "WSS hostname %q is not a normalised DNS name", h)
 				}
 			}
 			for _, r := range g.GetRoutes() {
@@ -187,7 +196,7 @@ func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Chang
 	}
 	for _, res := range snap.GetResources() {
 		if g := res.GetConnectorGateway(); g != nil {
-			gw := Gateway{ID: res.GetId(), Endpoints: g.GetTunnelEndpoints(), Routes: map[string]string{}}
+			gw := Gateway{ID: res.GetId(), Endpoints: g.GetTunnelEndpoints(), Routes: map[string]string{}, WSSHostname: g.GetWssHostname()}
 			for _, r := range g.GetRoutes() {
 				gw.Routes[r] = transport[r]
 			}
