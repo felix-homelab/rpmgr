@@ -52,7 +52,7 @@ func pageFor(method, host, accept string, status int, kind string) *httptest.Res
 		r.Header.Set("Accept", accept)
 	}
 	w := httptest.NewRecorder()
-	writePage(w, r, status, kind, "plain answer")
+	(*Pages)(nil).writePage(w, r, status, kind, "plain answer")
 	return w
 }
 

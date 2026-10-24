@@ -852,11 +852,14 @@ sequenceDiagram
   ([04](04-security.md#route-edge-rules)). The gateway fills in placeholders, each escaped as HTML
   text: `{{hostname}}` (the name the client asked for), `{{status}}` (the status code),
   `{{message}}` (the route's maintenance message, on the maintenance page only) and
-  `{{request_id}}` (a random ID the gateway also writes to its log line for the request); any other
-  `{{…}}` stays as it is. A custom page goes out with
-  `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:` and
-  `Cache-Control: no-store`, so it runs no script and loads nothing from elsewhere, and only to
-  clients whose `Accept` names `text/html`, like the built-in pages. Gateways fetch the pages by
+  `{{request_id}}` (a random ID the gateway also writes to its log line for the request, at level
+  info, only for a page that shows it); any other `{{…}}` stays as it is, and a filled-in value is
+  never searched for placeholders again. A custom page goes out with
+  `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:;
+  frame-ancestors 'none'; base-uri 'none'; form-action 'none'` and `Cache-Control: no-store`, so it
+  runs no script and loads nothing from elsewhere, and only to clients whose `Accept` names
+  `text/html`, like the built-in pages. A gateway refuses a fetched page that does not match its
+  hash, is larger than the limit or is not UTF-8, and keeps the built-in page for its kind. Gateways fetch the pages by
   their SHA-256 like certificates ([Configuration reconciliation](#configuration-reconciliation));
   until a page is fetched, for a kind the group did not replace, and on a gateway without the
   capability `pages.custom`, the built-in page is served.
