@@ -63,7 +63,7 @@ func apiCommands() []*cli.Command {
 		{"verify", "check a proof now"}, {"check", "check for new releases now"}, {"trust", "trust something without a proof"}, {"upload", "upload a file to the controller"},
 		{"renew", "renew a certificate now"}, {"remove", "remove a member from the org, or a user's second factor"},
 		{"advance", "move a rollout to its next stage"}, {"pause", "pause a rollout"}, {"resume", "let a paused rollout run again"},
-		{"cancel", "end a rollout for good"},
+		{"cancel", "end a rollout for good"}, {"upgrade", "update agents to the controller's version"},
 	} {
 		out = append(out, group(v.verb, v.summary, verbs[v.verb]...))
 	}

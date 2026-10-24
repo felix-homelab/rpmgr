@@ -702,7 +702,7 @@ func (x *RolloutCounts) GetStalled() int32 {
 	return 0
 }
 
-// Rollout is a staged rollout of one release; output only.
+// Rollout is a rollout of one release, staged or easy; output only.
 type Rollout struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The rollout's ID.
@@ -730,7 +730,10 @@ type Rollout struct {
 	// When it changed last.
 	UpdateTime *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
 	// The etag of the rollout's current state.
-	Etag          string `protobuf:"bytes,13,opt,name=etag,proto3" json:"etag,omitempty"`
+	Etag string `protobuf:"bytes,13,opt,name=etag,proto3" json:"etag,omitempty"`
+	// Its kind: ADVANCED for a staged rollout, EASY for a queue of agents; an easy rollout's stage
+	// and percentage stay at CANARY and 0.
+	Mode          RolloutMode `protobuf:"varint,14,opt,name=mode,proto3,enum=rpmgr.v1.RolloutMode" json:"mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -856,6 +859,13 @@ func (x *Rollout) GetEtag() string {
 	return ""
 }
 
+func (x *Rollout) GetMode() RolloutMode {
+	if x != nil {
+		return x.Mode
+	}
+	return RolloutMode_ROLLOUT_MODE_UNSPECIFIED
+}
+
 // RolloutTarget is one agent of a rollout; output only.
 type RolloutTarget struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -882,7 +892,9 @@ type RolloutTarget struct {
 	// The version it ran when the rollout was created; empty if it never connected.
 	VersionBefore string `protobuf:"bytes,11,opt,name=version_before,json=versionBefore,proto3" json:"version_before,omitempty"`
 	// When its state changed last.
-	UpdateTime    *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
+	UpdateTime *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
+	// Its place in an easy rollout's queue, from 1; 0 in a staged rollout.
+	Position      int32 `protobuf:"varint,13,opt,name=position,proto3" json:"position,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -999,6 +1011,13 @@ func (x *RolloutTarget) GetUpdateTime() *timestamppb.Timestamp {
 		return x.UpdateTime
 	}
 	return nil
+}
+
+func (x *RolloutTarget) GetPosition() int32 {
+	if x != nil {
+		return x.Position
+	}
+	return 0
 }
 
 // ListReleasesRequest pages through the releases.
@@ -1337,10 +1356,16 @@ type CreateRolloutRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The release to install.
 	ReleaseId string `protobuf:"bytes,1,opt,name=release_id,json=releaseId,proto3" json:"release_id,omitempty"`
-	// The canary agents, connectors or gateways of any org, by ID.
+	// A staged rollout's canary agents, connectors or gateways of any org, by ID; at least one.
+	// Empty in an easy rollout.
 	CanaryAgentIds []string `protobuf:"bytes,2,rep,name=canary_agent_ids,json=canaryAgentIds,proto3" json:"canary_agent_ids,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// The kind of rollout; not set is ADVANCED, a staged rollout.
+	Mode RolloutMode `protobuf:"varint,3,opt,name=mode,proto3,enum=rpmgr.v1.RolloutMode" json:"mode,omitempty"`
+	// An easy rollout's queue, connectors or gateways of any org, by ID, in the order they update;
+	// at least one. Empty in a staged rollout.
+	AgentIds      []string `protobuf:"bytes,4,rep,name=agent_ids,json=agentIds,proto3" json:"agent_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateRolloutRequest) Reset() {
@@ -1387,10 +1412,24 @@ func (x *CreateRolloutRequest) GetCanaryAgentIds() []string {
 	return nil
 }
 
+func (x *CreateRolloutRequest) GetMode() RolloutMode {
+	if x != nil {
+		return x.Mode
+	}
+	return RolloutMode_ROLLOUT_MODE_UNSPECIFIED
+}
+
+func (x *CreateRolloutRequest) GetAgentIds() []string {
+	if x != nil {
+		return x.AgentIds
+	}
+	return nil
+}
+
 // CreateRolloutResponse is the new rollout.
 type CreateRolloutResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The rollout, at its canary stage.
+	// The rollout, at its canary stage or with its queue.
 	Rollout       *Rollout `protobuf:"bytes,1,opt,name=rollout,proto3" json:"rollout,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1433,6 +1472,108 @@ func (x *CreateRolloutResponse) GetRollout() *Rollout {
 	return nil
 }
 
+// UpgradeAgentsRequest names the agents to update to the controller's own version.
+type UpgradeAgentsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Connectors or gateways of any org, by ID, in the order they join the queue.
+	AgentIds      []string `protobuf:"bytes,1,rep,name=agent_ids,json=agentIds,proto3" json:"agent_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpgradeAgentsRequest) Reset() {
+	*x = UpgradeAgentsRequest{}
+	mi := &file_rpmgr_v1_release_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpgradeAgentsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpgradeAgentsRequest) ProtoMessage() {}
+
+func (x *UpgradeAgentsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_release_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpgradeAgentsRequest.ProtoReflect.Descriptor instead.
+func (*UpgradeAgentsRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *UpgradeAgentsRequest) GetAgentIds() []string {
+	if x != nil {
+		return x.AgentIds
+	}
+	return nil
+}
+
+// UpgradeAgentsResponse is the easy rollout the agents are queued in.
+type UpgradeAgentsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The rollout: the one that ran, or the one the request started.
+	Rollout *Rollout `protobuf:"bytes,1,opt,name=rollout,proto3" json:"rollout,omitempty"`
+	// The agents' targets in the order of the request, each with its place in the queue; an agent
+	// queued before keeps its place.
+	RolloutTargets []*RolloutTarget `protobuf:"bytes,2,rep,name=rollout_targets,json=rolloutTargets,proto3" json:"rollout_targets,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *UpgradeAgentsResponse) Reset() {
+	*x = UpgradeAgentsResponse{}
+	mi := &file_rpmgr_v1_release_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpgradeAgentsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpgradeAgentsResponse) ProtoMessage() {}
+
+func (x *UpgradeAgentsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_release_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpgradeAgentsResponse.ProtoReflect.Descriptor instead.
+func (*UpgradeAgentsResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *UpgradeAgentsResponse) GetRollout() *Rollout {
+	if x != nil {
+		return x.Rollout
+	}
+	return nil
+}
+
+func (x *UpgradeAgentsResponse) GetRolloutTargets() []*RolloutTarget {
+	if x != nil {
+		return x.RolloutTargets
+	}
+	return nil
+}
+
 // GetRolloutRequest names a rollout.
 type GetRolloutRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1444,7 +1585,7 @@ type GetRolloutRequest struct {
 
 func (x *GetRolloutRequest) Reset() {
 	*x = GetRolloutRequest{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[13]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1456,7 +1597,7 @@ func (x *GetRolloutRequest) String() string {
 func (*GetRolloutRequest) ProtoMessage() {}
 
 func (x *GetRolloutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[13]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1469,7 +1610,7 @@ func (x *GetRolloutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRolloutRequest.ProtoReflect.Descriptor instead.
 func (*GetRolloutRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{13}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetRolloutRequest) GetRolloutId() string {
@@ -1490,7 +1631,7 @@ type GetRolloutResponse struct {
 
 func (x *GetRolloutResponse) Reset() {
 	*x = GetRolloutResponse{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[14]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1502,7 +1643,7 @@ func (x *GetRolloutResponse) String() string {
 func (*GetRolloutResponse) ProtoMessage() {}
 
 func (x *GetRolloutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[14]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1515,7 +1656,7 @@ func (x *GetRolloutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRolloutResponse.ProtoReflect.Descriptor instead.
 func (*GetRolloutResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{14}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *GetRolloutResponse) GetRollout() *Rollout {
@@ -1540,7 +1681,7 @@ type ListRolloutsRequest struct {
 
 func (x *ListRolloutsRequest) Reset() {
 	*x = ListRolloutsRequest{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[15]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1552,7 +1693,7 @@ func (x *ListRolloutsRequest) String() string {
 func (*ListRolloutsRequest) ProtoMessage() {}
 
 func (x *ListRolloutsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[15]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1565,7 +1706,7 @@ func (x *ListRolloutsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRolloutsRequest.ProtoReflect.Descriptor instead.
 func (*ListRolloutsRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{15}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ListRolloutsRequest) GetActiveOnly() bool {
@@ -1602,7 +1743,7 @@ type ListRolloutsResponse struct {
 
 func (x *ListRolloutsResponse) Reset() {
 	*x = ListRolloutsResponse{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[16]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1614,7 +1755,7 @@ func (x *ListRolloutsResponse) String() string {
 func (*ListRolloutsResponse) ProtoMessage() {}
 
 func (x *ListRolloutsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[16]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1627,7 +1768,7 @@ func (x *ListRolloutsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRolloutsResponse.ProtoReflect.Descriptor instead.
 func (*ListRolloutsResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{16}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListRolloutsResponse) GetRollouts() []*Rollout {
@@ -1661,7 +1802,7 @@ type ListRolloutTargetsRequest struct {
 
 func (x *ListRolloutTargetsRequest) Reset() {
 	*x = ListRolloutTargetsRequest{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[17]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1673,7 +1814,7 @@ func (x *ListRolloutTargetsRequest) String() string {
 func (*ListRolloutTargetsRequest) ProtoMessage() {}
 
 func (x *ListRolloutTargetsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[17]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1686,7 +1827,7 @@ func (x *ListRolloutTargetsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRolloutTargetsRequest.ProtoReflect.Descriptor instead.
 func (*ListRolloutTargetsRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{17}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ListRolloutTargetsRequest) GetRolloutId() string {
@@ -1730,7 +1871,7 @@ type ListRolloutTargetsResponse struct {
 
 func (x *ListRolloutTargetsResponse) Reset() {
 	*x = ListRolloutTargetsResponse{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[18]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1742,7 +1883,7 @@ func (x *ListRolloutTargetsResponse) String() string {
 func (*ListRolloutTargetsResponse) ProtoMessage() {}
 
 func (x *ListRolloutTargetsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[18]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1755,7 +1896,7 @@ func (x *ListRolloutTargetsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRolloutTargetsResponse.ProtoReflect.Descriptor instead.
 func (*ListRolloutTargetsResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{18}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListRolloutTargetsResponse) GetRolloutTargets() []*RolloutTarget {
@@ -1792,7 +1933,7 @@ type AdvanceRolloutRequest struct {
 
 func (x *AdvanceRolloutRequest) Reset() {
 	*x = AdvanceRolloutRequest{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[19]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1804,7 +1945,7 @@ func (x *AdvanceRolloutRequest) String() string {
 func (*AdvanceRolloutRequest) ProtoMessage() {}
 
 func (x *AdvanceRolloutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[19]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1817,7 +1958,7 @@ func (x *AdvanceRolloutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdvanceRolloutRequest.ProtoReflect.Descriptor instead.
 func (*AdvanceRolloutRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{19}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *AdvanceRolloutRequest) GetRolloutId() string {
@@ -1888,7 +2029,7 @@ type AdvanceRolloutResponse struct {
 
 func (x *AdvanceRolloutResponse) Reset() {
 	*x = AdvanceRolloutResponse{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[20]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1900,7 +2041,7 @@ func (x *AdvanceRolloutResponse) String() string {
 func (*AdvanceRolloutResponse) ProtoMessage() {}
 
 func (x *AdvanceRolloutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[20]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1913,7 +2054,7 @@ func (x *AdvanceRolloutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdvanceRolloutResponse.ProtoReflect.Descriptor instead.
 func (*AdvanceRolloutResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{20}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *AdvanceRolloutResponse) GetRollout() *Rollout {
@@ -1936,7 +2077,7 @@ type PauseRolloutRequest struct {
 
 func (x *PauseRolloutRequest) Reset() {
 	*x = PauseRolloutRequest{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[21]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1948,7 +2089,7 @@ func (x *PauseRolloutRequest) String() string {
 func (*PauseRolloutRequest) ProtoMessage() {}
 
 func (x *PauseRolloutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[21]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1961,7 +2102,7 @@ func (x *PauseRolloutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PauseRolloutRequest.ProtoReflect.Descriptor instead.
 func (*PauseRolloutRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{21}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *PauseRolloutRequest) GetRolloutId() string {
@@ -1989,7 +2130,7 @@ type PauseRolloutResponse struct {
 
 func (x *PauseRolloutResponse) Reset() {
 	*x = PauseRolloutResponse{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[22]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2001,7 +2142,7 @@ func (x *PauseRolloutResponse) String() string {
 func (*PauseRolloutResponse) ProtoMessage() {}
 
 func (x *PauseRolloutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[22]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2014,7 +2155,7 @@ func (x *PauseRolloutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PauseRolloutResponse.ProtoReflect.Descriptor instead.
 func (*PauseRolloutResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{22}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *PauseRolloutResponse) GetRollout() *Rollout {
@@ -2037,7 +2178,7 @@ type ResumeRolloutRequest struct {
 
 func (x *ResumeRolloutRequest) Reset() {
 	*x = ResumeRolloutRequest{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[23]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2049,7 +2190,7 @@ func (x *ResumeRolloutRequest) String() string {
 func (*ResumeRolloutRequest) ProtoMessage() {}
 
 func (x *ResumeRolloutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[23]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2062,7 +2203,7 @@ func (x *ResumeRolloutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeRolloutRequest.ProtoReflect.Descriptor instead.
 func (*ResumeRolloutRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{23}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ResumeRolloutRequest) GetRolloutId() string {
@@ -2090,7 +2231,7 @@ type ResumeRolloutResponse struct {
 
 func (x *ResumeRolloutResponse) Reset() {
 	*x = ResumeRolloutResponse{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[24]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2102,7 +2243,7 @@ func (x *ResumeRolloutResponse) String() string {
 func (*ResumeRolloutResponse) ProtoMessage() {}
 
 func (x *ResumeRolloutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[24]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2115,7 +2256,7 @@ func (x *ResumeRolloutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeRolloutResponse.ProtoReflect.Descriptor instead.
 func (*ResumeRolloutResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{24}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ResumeRolloutResponse) GetRollout() *Rollout {
@@ -2138,7 +2279,7 @@ type CancelRolloutRequest struct {
 
 func (x *CancelRolloutRequest) Reset() {
 	*x = CancelRolloutRequest{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[25]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2150,7 +2291,7 @@ func (x *CancelRolloutRequest) String() string {
 func (*CancelRolloutRequest) ProtoMessage() {}
 
 func (x *CancelRolloutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[25]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2163,7 +2304,7 @@ func (x *CancelRolloutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelRolloutRequest.ProtoReflect.Descriptor instead.
 func (*CancelRolloutRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{25}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *CancelRolloutRequest) GetRolloutId() string {
@@ -2191,7 +2332,7 @@ type CancelRolloutResponse struct {
 
 func (x *CancelRolloutResponse) Reset() {
 	*x = CancelRolloutResponse{}
-	mi := &file_rpmgr_v1_release_proto_msgTypes[26]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2203,7 +2344,7 @@ func (x *CancelRolloutResponse) String() string {
 func (*CancelRolloutResponse) ProtoMessage() {}
 
 func (x *CancelRolloutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_release_proto_msgTypes[26]
+	mi := &file_rpmgr_v1_release_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2216,7 +2357,7 @@ func (x *CancelRolloutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelRolloutResponse.ProtoReflect.Descriptor instead.
 func (*CancelRolloutResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{26}
+	return file_rpmgr_v1_release_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *CancelRolloutResponse) GetRollout() *Rollout {
@@ -2260,7 +2401,7 @@ const file_rpmgr_v1_release_proto_rawDesc = "" +
 	"rolledBack\x12\x18\n" +
 	"\arefused\x18\x06 \x01(\x05R\arefused\x12\x18\n" +
 	"\askipped\x18\a \x01(\x05R\askipped\x12\x18\n" +
-	"\astalled\x18\b \x01(\x05R\astalled\"\xfc\x03\n" +
+	"\astalled\x18\b \x01(\x05R\astalled\"\xa7\x04\n" +
 	"\aRollout\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -2280,7 +2421,8 @@ const file_rpmgr_v1_release_proto_rawDesc = "" +
 	"\x0eupdate_user_id\x18\v \x01(\tR\fupdateUserId\x12;\n" +
 	"\vupdate_time\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"updateTime\x12\x12\n" +
-	"\x04etag\x18\r \x01(\tR\x04etag\"\xa3\x03\n" +
+	"\x04etag\x18\r \x01(\tR\x04etag\x12)\n" +
+	"\x04mode\x18\x0e \x01(\x0e2\x15.rpmgr.v1.RolloutModeR\x04mode\"\xbf\x03\n" +
 	"\rRolloutTarget\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -2298,7 +2440,8 @@ const file_rpmgr_v1_release_proto_rawDesc = "" +
 	" \x01(\tR\x06reason\x12%\n" +
 	"\x0eversion_before\x18\v \x01(\tR\rversionBefore\x12;\n" +
 	"\vupdate_time\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"updateTime\"Q\n" +
+	"updateTime\x12\x1a\n" +
+	"\bposition\x18\r \x01(\x05R\bposition\"Q\n" +
 	"\x13ListReleasesRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
@@ -2319,13 +2462,20 @@ const file_rpmgr_v1_release_proto_rawDesc = "" +
 	"\x12manifest_signature\x18\x04 \x01(\fB\n" +
 	"\xbaH\az\x05\x10\x01\x18\x80 R\x11manifestSignature\"D\n" +
 	"\x15UploadReleaseResponse\x12+\n" +
-	"\arelease\x18\x01 \x01(\v2\x11.rpmgr.v1.ReleaseR\arelease\"~\n" +
+	"\arelease\x18\x01 \x01(\v2\x11.rpmgr.v1.ReleaseR\arelease\"\xe3\x01\n" +
 	"\x14CreateRolloutRequest\x12&\n" +
 	"\n" +
-	"release_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\treleaseId\x12>\n" +
-	"\x10canary_agent_ids\x18\x02 \x03(\tB\x14\xbaH\x11\x92\x01\x0e\b\x01\x102\x18\x01\"\x06r\x04\x10\x01\x18@R\x0ecanaryAgentIds\"D\n" +
+	"release_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\treleaseId\x12<\n" +
+	"\x10canary_agent_ids\x18\x02 \x03(\tB\x12\xbaH\x0f\x92\x01\f\x102\x18\x01\"\x06r\x04\x10\x01\x18@R\x0ecanaryAgentIds\x123\n" +
+	"\x04mode\x18\x03 \x01(\x0e2\x15.rpmgr.v1.RolloutModeB\b\xbaH\x05\x82\x01\x02\x10\x01R\x04mode\x120\n" +
+	"\tagent_ids\x18\x04 \x03(\tB\x13\xbaH\x10\x92\x01\r\x10\xe8\a\x18\x01\"\x06r\x04\x10\x01\x18@R\bagentIds\"D\n" +
 	"\x15CreateRolloutResponse\x12+\n" +
-	"\arollout\x18\x01 \x01(\v2\x11.rpmgr.v1.RolloutR\arollout\";\n" +
+	"\arollout\x18\x01 \x01(\v2\x11.rpmgr.v1.RolloutR\arollout\"J\n" +
+	"\x14UpgradeAgentsRequest\x122\n" +
+	"\tagent_ids\x18\x01 \x03(\tB\x15\xbaH\x12\x92\x01\x0f\b\x01\x10\xe8\a\x18\x01\"\x06r\x04\x10\x01\x18@R\bagentIds\"\x86\x01\n" +
+	"\x15UpgradeAgentsResponse\x12+\n" +
+	"\arollout\x18\x01 \x01(\v2\x11.rpmgr.v1.RolloutR\arollout\x12@\n" +
+	"\x0frollout_targets\x18\x02 \x03(\v2\x17.rpmgr.v1.RolloutTargetR\x0erolloutTargets\";\n" +
 	"\x11GetRolloutRequest\x12&\n" +
 	"\n" +
 	"rollout_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\trolloutId\"A\n" +
@@ -2414,7 +2564,8 @@ const file_rpmgr_v1_release_proto_rawDesc = "" +
 	"\tAgentKind\x12\x1a\n" +
 	"\x16AGENT_KIND_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14AGENT_KIND_CONNECTOR\x10\x01\x12\x16\n" +
-	"\x12AGENT_KIND_GATEWAY\x10\x022\x9e\t\n" +
+	"\x12AGENT_KIND_GATEWAY\x10\x022\x88\n" +
+	"\n" +
 	"\x0eReleaseService\x12f\n" +
 	"\fListReleases\x12\x1d.rpmgr.v1.ListReleasesRequest\x1a\x1e.rpmgr.v1.ListReleasesResponse\"\x17\x8a\xb5\x18\x10\n" +
 	"\x0einstance.admin\x90\x02\x01\x12f\n" +
@@ -2423,6 +2574,8 @@ const file_rpmgr_v1_release_proto_rawDesc = "" +
 	"\rUploadRelease\x12\x1e.rpmgr.v1.UploadReleaseRequest\x1a\x1f.rpmgr.v1.UploadReleaseResponse\"\x16\x8a\xb5\x18\x12\n" +
 	"\x0einstance.admin\x18\x01\x12h\n" +
 	"\rCreateRollout\x12\x1e.rpmgr.v1.CreateRolloutRequest\x1a\x1f.rpmgr.v1.CreateRolloutResponse\"\x16\x8a\xb5\x18\x12\n" +
+	"\x0einstance.admin\x18\x01\x12h\n" +
+	"\rUpgradeAgents\x12\x1e.rpmgr.v1.UpgradeAgentsRequest\x1a\x1f.rpmgr.v1.UpgradeAgentsResponse\"\x16\x8a\xb5\x18\x12\n" +
 	"\x0einstance.admin\x18\x01\x12`\n" +
 	"\n" +
 	"GetRollout\x12\x1b.rpmgr.v1.GetRolloutRequest\x1a\x1c.rpmgr.v1.GetRolloutResponse\"\x17\x8a\xb5\x18\x10\n" +
@@ -2453,7 +2606,7 @@ func file_rpmgr_v1_release_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_release_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_rpmgr_v1_release_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_rpmgr_v1_release_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_rpmgr_v1_release_proto_goTypes = []any{
 	(ReleaseSource)(0),                 // 0: rpmgr.v1.ReleaseSource
 	(ReleaseCheckOutcome)(0),           // 1: rpmgr.v1.ReleaseCheckOutcome
@@ -2474,78 +2627,87 @@ var file_rpmgr_v1_release_proto_goTypes = []any{
 	(*UploadReleaseResponse)(nil),      // 16: rpmgr.v1.UploadReleaseResponse
 	(*CreateRolloutRequest)(nil),       // 17: rpmgr.v1.CreateRolloutRequest
 	(*CreateRolloutResponse)(nil),      // 18: rpmgr.v1.CreateRolloutResponse
-	(*GetRolloutRequest)(nil),          // 19: rpmgr.v1.GetRolloutRequest
-	(*GetRolloutResponse)(nil),         // 20: rpmgr.v1.GetRolloutResponse
-	(*ListRolloutsRequest)(nil),        // 21: rpmgr.v1.ListRolloutsRequest
-	(*ListRolloutsResponse)(nil),       // 22: rpmgr.v1.ListRolloutsResponse
-	(*ListRolloutTargetsRequest)(nil),  // 23: rpmgr.v1.ListRolloutTargetsRequest
-	(*ListRolloutTargetsResponse)(nil), // 24: rpmgr.v1.ListRolloutTargetsResponse
-	(*AdvanceRolloutRequest)(nil),      // 25: rpmgr.v1.AdvanceRolloutRequest
-	(*AdvanceRolloutResponse)(nil),     // 26: rpmgr.v1.AdvanceRolloutResponse
-	(*PauseRolloutRequest)(nil),        // 27: rpmgr.v1.PauseRolloutRequest
-	(*PauseRolloutResponse)(nil),       // 28: rpmgr.v1.PauseRolloutResponse
-	(*ResumeRolloutRequest)(nil),       // 29: rpmgr.v1.ResumeRolloutRequest
-	(*ResumeRolloutResponse)(nil),      // 30: rpmgr.v1.ResumeRolloutResponse
-	(*CancelRolloutRequest)(nil),       // 31: rpmgr.v1.CancelRolloutRequest
-	(*CancelRolloutResponse)(nil),      // 32: rpmgr.v1.CancelRolloutResponse
-	(*timestamppb.Timestamp)(nil),      // 33: google.protobuf.Timestamp
-	(UpdateChannel)(0),                 // 34: rpmgr.v1.UpdateChannel
+	(*UpgradeAgentsRequest)(nil),       // 19: rpmgr.v1.UpgradeAgentsRequest
+	(*UpgradeAgentsResponse)(nil),      // 20: rpmgr.v1.UpgradeAgentsResponse
+	(*GetRolloutRequest)(nil),          // 21: rpmgr.v1.GetRolloutRequest
+	(*GetRolloutResponse)(nil),         // 22: rpmgr.v1.GetRolloutResponse
+	(*ListRolloutsRequest)(nil),        // 23: rpmgr.v1.ListRolloutsRequest
+	(*ListRolloutsResponse)(nil),       // 24: rpmgr.v1.ListRolloutsResponse
+	(*ListRolloutTargetsRequest)(nil),  // 25: rpmgr.v1.ListRolloutTargetsRequest
+	(*ListRolloutTargetsResponse)(nil), // 26: rpmgr.v1.ListRolloutTargetsResponse
+	(*AdvanceRolloutRequest)(nil),      // 27: rpmgr.v1.AdvanceRolloutRequest
+	(*AdvanceRolloutResponse)(nil),     // 28: rpmgr.v1.AdvanceRolloutResponse
+	(*PauseRolloutRequest)(nil),        // 29: rpmgr.v1.PauseRolloutRequest
+	(*PauseRolloutResponse)(nil),       // 30: rpmgr.v1.PauseRolloutResponse
+	(*ResumeRolloutRequest)(nil),       // 31: rpmgr.v1.ResumeRolloutRequest
+	(*ResumeRolloutResponse)(nil),      // 32: rpmgr.v1.ResumeRolloutResponse
+	(*CancelRolloutRequest)(nil),       // 33: rpmgr.v1.CancelRolloutRequest
+	(*CancelRolloutResponse)(nil),      // 34: rpmgr.v1.CancelRolloutResponse
+	(*timestamppb.Timestamp)(nil),      // 35: google.protobuf.Timestamp
+	(UpdateChannel)(0),                 // 36: rpmgr.v1.UpdateChannel
+	(RolloutMode)(0),                   // 37: rpmgr.v1.RolloutMode
 }
 var file_rpmgr_v1_release_proto_depIdxs = []int32{
-	33, // 0: rpmgr.v1.ReleaseCheck.check_time:type_name -> google.protobuf.Timestamp
+	35, // 0: rpmgr.v1.ReleaseCheck.check_time:type_name -> google.protobuf.Timestamp
 	1,  // 1: rpmgr.v1.ReleaseCheck.outcome:type_name -> rpmgr.v1.ReleaseCheckOutcome
-	34, // 2: rpmgr.v1.Release.channel:type_name -> rpmgr.v1.UpdateChannel
+	36, // 2: rpmgr.v1.Release.channel:type_name -> rpmgr.v1.UpdateChannel
 	0,  // 3: rpmgr.v1.Release.source:type_name -> rpmgr.v1.ReleaseSource
-	33, // 4: rpmgr.v1.Release.mirror_time:type_name -> google.protobuf.Timestamp
-	33, // 5: rpmgr.v1.Release.create_time:type_name -> google.protobuf.Timestamp
+	35, // 4: rpmgr.v1.Release.mirror_time:type_name -> google.protobuf.Timestamp
+	35, // 5: rpmgr.v1.Release.create_time:type_name -> google.protobuf.Timestamp
 	2,  // 6: rpmgr.v1.Rollout.stage:type_name -> rpmgr.v1.RolloutStage
 	3,  // 7: rpmgr.v1.Rollout.state:type_name -> rpmgr.v1.RolloutState
 	8,  // 8: rpmgr.v1.Rollout.counts:type_name -> rpmgr.v1.RolloutCounts
-	33, // 9: rpmgr.v1.Rollout.create_time:type_name -> google.protobuf.Timestamp
-	33, // 10: rpmgr.v1.Rollout.update_time:type_name -> google.protobuf.Timestamp
-	5,  // 11: rpmgr.v1.RolloutTarget.agent_kind:type_name -> rpmgr.v1.AgentKind
-	4,  // 12: rpmgr.v1.RolloutTarget.state:type_name -> rpmgr.v1.RolloutTargetState
-	33, // 13: rpmgr.v1.RolloutTarget.update_time:type_name -> google.protobuf.Timestamp
-	7,  // 14: rpmgr.v1.ListReleasesResponse.releases:type_name -> rpmgr.v1.Release
-	6,  // 15: rpmgr.v1.ListReleasesResponse.release_check:type_name -> rpmgr.v1.ReleaseCheck
-	6,  // 16: rpmgr.v1.CheckReleasesResponse.release_check:type_name -> rpmgr.v1.ReleaseCheck
-	7,  // 17: rpmgr.v1.UploadReleaseResponse.release:type_name -> rpmgr.v1.Release
-	9,  // 18: rpmgr.v1.CreateRolloutResponse.rollout:type_name -> rpmgr.v1.Rollout
-	9,  // 19: rpmgr.v1.GetRolloutResponse.rollout:type_name -> rpmgr.v1.Rollout
-	9,  // 20: rpmgr.v1.ListRolloutsResponse.rollouts:type_name -> rpmgr.v1.Rollout
-	4,  // 21: rpmgr.v1.ListRolloutTargetsRequest.states:type_name -> rpmgr.v1.RolloutTargetState
-	10, // 22: rpmgr.v1.ListRolloutTargetsResponse.rollout_targets:type_name -> rpmgr.v1.RolloutTarget
-	9,  // 23: rpmgr.v1.AdvanceRolloutResponse.rollout:type_name -> rpmgr.v1.Rollout
-	9,  // 24: rpmgr.v1.PauseRolloutResponse.rollout:type_name -> rpmgr.v1.Rollout
-	9,  // 25: rpmgr.v1.ResumeRolloutResponse.rollout:type_name -> rpmgr.v1.Rollout
-	9,  // 26: rpmgr.v1.CancelRolloutResponse.rollout:type_name -> rpmgr.v1.Rollout
-	11, // 27: rpmgr.v1.ReleaseService.ListReleases:input_type -> rpmgr.v1.ListReleasesRequest
-	13, // 28: rpmgr.v1.ReleaseService.CheckReleases:input_type -> rpmgr.v1.CheckReleasesRequest
-	15, // 29: rpmgr.v1.ReleaseService.UploadRelease:input_type -> rpmgr.v1.UploadReleaseRequest
-	17, // 30: rpmgr.v1.ReleaseService.CreateRollout:input_type -> rpmgr.v1.CreateRolloutRequest
-	19, // 31: rpmgr.v1.ReleaseService.GetRollout:input_type -> rpmgr.v1.GetRolloutRequest
-	21, // 32: rpmgr.v1.ReleaseService.ListRollouts:input_type -> rpmgr.v1.ListRolloutsRequest
-	23, // 33: rpmgr.v1.ReleaseService.ListRolloutTargets:input_type -> rpmgr.v1.ListRolloutTargetsRequest
-	25, // 34: rpmgr.v1.ReleaseService.AdvanceRollout:input_type -> rpmgr.v1.AdvanceRolloutRequest
-	27, // 35: rpmgr.v1.ReleaseService.PauseRollout:input_type -> rpmgr.v1.PauseRolloutRequest
-	29, // 36: rpmgr.v1.ReleaseService.ResumeRollout:input_type -> rpmgr.v1.ResumeRolloutRequest
-	31, // 37: rpmgr.v1.ReleaseService.CancelRollout:input_type -> rpmgr.v1.CancelRolloutRequest
-	12, // 38: rpmgr.v1.ReleaseService.ListReleases:output_type -> rpmgr.v1.ListReleasesResponse
-	14, // 39: rpmgr.v1.ReleaseService.CheckReleases:output_type -> rpmgr.v1.CheckReleasesResponse
-	16, // 40: rpmgr.v1.ReleaseService.UploadRelease:output_type -> rpmgr.v1.UploadReleaseResponse
-	18, // 41: rpmgr.v1.ReleaseService.CreateRollout:output_type -> rpmgr.v1.CreateRolloutResponse
-	20, // 42: rpmgr.v1.ReleaseService.GetRollout:output_type -> rpmgr.v1.GetRolloutResponse
-	22, // 43: rpmgr.v1.ReleaseService.ListRollouts:output_type -> rpmgr.v1.ListRolloutsResponse
-	24, // 44: rpmgr.v1.ReleaseService.ListRolloutTargets:output_type -> rpmgr.v1.ListRolloutTargetsResponse
-	26, // 45: rpmgr.v1.ReleaseService.AdvanceRollout:output_type -> rpmgr.v1.AdvanceRolloutResponse
-	28, // 46: rpmgr.v1.ReleaseService.PauseRollout:output_type -> rpmgr.v1.PauseRolloutResponse
-	30, // 47: rpmgr.v1.ReleaseService.ResumeRollout:output_type -> rpmgr.v1.ResumeRolloutResponse
-	32, // 48: rpmgr.v1.ReleaseService.CancelRollout:output_type -> rpmgr.v1.CancelRolloutResponse
-	38, // [38:49] is the sub-list for method output_type
-	27, // [27:38] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	35, // 9: rpmgr.v1.Rollout.create_time:type_name -> google.protobuf.Timestamp
+	35, // 10: rpmgr.v1.Rollout.update_time:type_name -> google.protobuf.Timestamp
+	37, // 11: rpmgr.v1.Rollout.mode:type_name -> rpmgr.v1.RolloutMode
+	5,  // 12: rpmgr.v1.RolloutTarget.agent_kind:type_name -> rpmgr.v1.AgentKind
+	4,  // 13: rpmgr.v1.RolloutTarget.state:type_name -> rpmgr.v1.RolloutTargetState
+	35, // 14: rpmgr.v1.RolloutTarget.update_time:type_name -> google.protobuf.Timestamp
+	7,  // 15: rpmgr.v1.ListReleasesResponse.releases:type_name -> rpmgr.v1.Release
+	6,  // 16: rpmgr.v1.ListReleasesResponse.release_check:type_name -> rpmgr.v1.ReleaseCheck
+	6,  // 17: rpmgr.v1.CheckReleasesResponse.release_check:type_name -> rpmgr.v1.ReleaseCheck
+	7,  // 18: rpmgr.v1.UploadReleaseResponse.release:type_name -> rpmgr.v1.Release
+	37, // 19: rpmgr.v1.CreateRolloutRequest.mode:type_name -> rpmgr.v1.RolloutMode
+	9,  // 20: rpmgr.v1.CreateRolloutResponse.rollout:type_name -> rpmgr.v1.Rollout
+	9,  // 21: rpmgr.v1.UpgradeAgentsResponse.rollout:type_name -> rpmgr.v1.Rollout
+	10, // 22: rpmgr.v1.UpgradeAgentsResponse.rollout_targets:type_name -> rpmgr.v1.RolloutTarget
+	9,  // 23: rpmgr.v1.GetRolloutResponse.rollout:type_name -> rpmgr.v1.Rollout
+	9,  // 24: rpmgr.v1.ListRolloutsResponse.rollouts:type_name -> rpmgr.v1.Rollout
+	4,  // 25: rpmgr.v1.ListRolloutTargetsRequest.states:type_name -> rpmgr.v1.RolloutTargetState
+	10, // 26: rpmgr.v1.ListRolloutTargetsResponse.rollout_targets:type_name -> rpmgr.v1.RolloutTarget
+	9,  // 27: rpmgr.v1.AdvanceRolloutResponse.rollout:type_name -> rpmgr.v1.Rollout
+	9,  // 28: rpmgr.v1.PauseRolloutResponse.rollout:type_name -> rpmgr.v1.Rollout
+	9,  // 29: rpmgr.v1.ResumeRolloutResponse.rollout:type_name -> rpmgr.v1.Rollout
+	9,  // 30: rpmgr.v1.CancelRolloutResponse.rollout:type_name -> rpmgr.v1.Rollout
+	11, // 31: rpmgr.v1.ReleaseService.ListReleases:input_type -> rpmgr.v1.ListReleasesRequest
+	13, // 32: rpmgr.v1.ReleaseService.CheckReleases:input_type -> rpmgr.v1.CheckReleasesRequest
+	15, // 33: rpmgr.v1.ReleaseService.UploadRelease:input_type -> rpmgr.v1.UploadReleaseRequest
+	17, // 34: rpmgr.v1.ReleaseService.CreateRollout:input_type -> rpmgr.v1.CreateRolloutRequest
+	19, // 35: rpmgr.v1.ReleaseService.UpgradeAgents:input_type -> rpmgr.v1.UpgradeAgentsRequest
+	21, // 36: rpmgr.v1.ReleaseService.GetRollout:input_type -> rpmgr.v1.GetRolloutRequest
+	23, // 37: rpmgr.v1.ReleaseService.ListRollouts:input_type -> rpmgr.v1.ListRolloutsRequest
+	25, // 38: rpmgr.v1.ReleaseService.ListRolloutTargets:input_type -> rpmgr.v1.ListRolloutTargetsRequest
+	27, // 39: rpmgr.v1.ReleaseService.AdvanceRollout:input_type -> rpmgr.v1.AdvanceRolloutRequest
+	29, // 40: rpmgr.v1.ReleaseService.PauseRollout:input_type -> rpmgr.v1.PauseRolloutRequest
+	31, // 41: rpmgr.v1.ReleaseService.ResumeRollout:input_type -> rpmgr.v1.ResumeRolloutRequest
+	33, // 42: rpmgr.v1.ReleaseService.CancelRollout:input_type -> rpmgr.v1.CancelRolloutRequest
+	12, // 43: rpmgr.v1.ReleaseService.ListReleases:output_type -> rpmgr.v1.ListReleasesResponse
+	14, // 44: rpmgr.v1.ReleaseService.CheckReleases:output_type -> rpmgr.v1.CheckReleasesResponse
+	16, // 45: rpmgr.v1.ReleaseService.UploadRelease:output_type -> rpmgr.v1.UploadReleaseResponse
+	18, // 46: rpmgr.v1.ReleaseService.CreateRollout:output_type -> rpmgr.v1.CreateRolloutResponse
+	20, // 47: rpmgr.v1.ReleaseService.UpgradeAgents:output_type -> rpmgr.v1.UpgradeAgentsResponse
+	22, // 48: rpmgr.v1.ReleaseService.GetRollout:output_type -> rpmgr.v1.GetRolloutResponse
+	24, // 49: rpmgr.v1.ReleaseService.ListRollouts:output_type -> rpmgr.v1.ListRolloutsResponse
+	26, // 50: rpmgr.v1.ReleaseService.ListRolloutTargets:output_type -> rpmgr.v1.ListRolloutTargetsResponse
+	28, // 51: rpmgr.v1.ReleaseService.AdvanceRollout:output_type -> rpmgr.v1.AdvanceRolloutResponse
+	30, // 52: rpmgr.v1.ReleaseService.PauseRollout:output_type -> rpmgr.v1.PauseRolloutResponse
+	32, // 53: rpmgr.v1.ReleaseService.ResumeRollout:output_type -> rpmgr.v1.ResumeRolloutResponse
+	34, // 54: rpmgr.v1.ReleaseService.CancelRollout:output_type -> rpmgr.v1.CancelRolloutResponse
+	43, // [43:55] is the sub-list for method output_type
+	31, // [31:43] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_release_proto_init() }
@@ -2555,7 +2717,7 @@ func file_rpmgr_v1_release_proto_init() {
 	}
 	file_rpmgr_v1_options_proto_init()
 	file_rpmgr_v1_settings_proto_init()
-	file_rpmgr_v1_release_proto_msgTypes[19].OneofWrappers = []any{
+	file_rpmgr_v1_release_proto_msgTypes[21].OneofWrappers = []any{
 		(*AdvanceRolloutRequest_Percentage)(nil),
 		(*AdvanceRolloutRequest_All)(nil),
 	}
@@ -2565,7 +2727,7 @@ func file_rpmgr_v1_release_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_release_proto_rawDesc), len(file_rpmgr_v1_release_proto_rawDesc)),
 			NumEnums:      6,
-			NumMessages:   27,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

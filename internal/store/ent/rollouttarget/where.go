@@ -85,6 +85,11 @@ func Bucket(v int) predicate.RolloutTarget {
 	return predicate.RolloutTarget(sql.FieldEQ(FieldBucket, v))
 }
 
+// Position applies equality check predicate on the "position" field. It's identical to PositionEQ.
+func Position(v int) predicate.RolloutTarget {
+	return predicate.RolloutTarget(sql.FieldEQ(FieldPosition, v))
+}
+
 // Reason applies equality check predicate on the "reason" field. It's identical to ReasonEQ.
 func Reason(v string) predicate.RolloutTarget {
 	return predicate.RolloutTarget(sql.FieldEQ(FieldReason, v))
@@ -303,6 +308,56 @@ func BucketLT(v int) predicate.RolloutTarget {
 // BucketLTE applies the LTE predicate on the "bucket" field.
 func BucketLTE(v int) predicate.RolloutTarget {
 	return predicate.RolloutTarget(sql.FieldLTE(FieldBucket, v))
+}
+
+// PositionEQ applies the EQ predicate on the "position" field.
+func PositionEQ(v int) predicate.RolloutTarget {
+	return predicate.RolloutTarget(sql.FieldEQ(FieldPosition, v))
+}
+
+// PositionNEQ applies the NEQ predicate on the "position" field.
+func PositionNEQ(v int) predicate.RolloutTarget {
+	return predicate.RolloutTarget(sql.FieldNEQ(FieldPosition, v))
+}
+
+// PositionIn applies the In predicate on the "position" field.
+func PositionIn(vs ...int) predicate.RolloutTarget {
+	return predicate.RolloutTarget(sql.FieldIn(FieldPosition, vs...))
+}
+
+// PositionNotIn applies the NotIn predicate on the "position" field.
+func PositionNotIn(vs ...int) predicate.RolloutTarget {
+	return predicate.RolloutTarget(sql.FieldNotIn(FieldPosition, vs...))
+}
+
+// PositionGT applies the GT predicate on the "position" field.
+func PositionGT(v int) predicate.RolloutTarget {
+	return predicate.RolloutTarget(sql.FieldGT(FieldPosition, v))
+}
+
+// PositionGTE applies the GTE predicate on the "position" field.
+func PositionGTE(v int) predicate.RolloutTarget {
+	return predicate.RolloutTarget(sql.FieldGTE(FieldPosition, v))
+}
+
+// PositionLT applies the LT predicate on the "position" field.
+func PositionLT(v int) predicate.RolloutTarget {
+	return predicate.RolloutTarget(sql.FieldLT(FieldPosition, v))
+}
+
+// PositionLTE applies the LTE predicate on the "position" field.
+func PositionLTE(v int) predicate.RolloutTarget {
+	return predicate.RolloutTarget(sql.FieldLTE(FieldPosition, v))
+}
+
+// PositionIsNil applies the IsNil predicate on the "position" field.
+func PositionIsNil() predicate.RolloutTarget {
+	return predicate.RolloutTarget(sql.FieldIsNull(FieldPosition))
+}
+
+// PositionNotNil applies the NotNil predicate on the "position" field.
+func PositionNotNil() predicate.RolloutTarget {
+	return predicate.RolloutTarget(sql.FieldNotNull(FieldPosition))
 }
 
 // StateEQ applies the EQ predicate on the "state" field.

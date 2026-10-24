@@ -41,6 +41,20 @@ func (_c *RolloutCreate) SetReleaseID(v string) *RolloutCreate {
 	return _c
 }
 
+// SetMode sets the "mode" field.
+func (_c *RolloutCreate) SetMode(v rollout.Mode) *RolloutCreate {
+	_c.mutation.SetMode(v)
+	return _c
+}
+
+// SetNillableMode sets the "mode" field if the given value is not nil.
+func (_c *RolloutCreate) SetNillableMode(v *rollout.Mode) *RolloutCreate {
+	if v != nil {
+		_c.SetMode(*v)
+	}
+	return _c
+}
+
 // SetStage sets the "stage" field.
 func (_c *RolloutCreate) SetStage(v rollout.Stage) *RolloutCreate {
 	_c.mutation.SetStage(v)
@@ -219,6 +233,10 @@ func (_c *RolloutCreate) defaults() error {
 		v := rollout.DefaultVersion
 		_c.mutation.SetVersion(v)
 	}
+	if _, ok := _c.mutation.Mode(); !ok {
+		v := rollout.DefaultMode
+		_c.mutation.SetMode(v)
+	}
 	if _, ok := _c.mutation.Stage(); !ok {
 		v := rollout.DefaultStage
 		_c.mutation.SetStage(v)
@@ -283,6 +301,14 @@ func (_c *RolloutCreate) check() error {
 	if v, ok := _c.mutation.ReleaseID(); ok {
 		if err := rollout.ReleaseIDValidator(v); err != nil {
 			return &ValidationError{Name: "release_id", err: fmt.Errorf(`ent: validator failed for field "Rollout.release_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Mode(); !ok {
+		return &ValidationError{Name: "mode", err: errors.New(`ent: missing required field "Rollout.mode"`)}
+	}
+	if v, ok := _c.mutation.Mode(); ok {
+		if err := rollout.ModeValidator(v); err != nil {
+			return &ValidationError{Name: "mode", err: fmt.Errorf(`ent: validator failed for field "Rollout.mode": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Stage(); !ok {
@@ -378,6 +404,10 @@ func (_c *RolloutCreate) createSpec() (*Rollout, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Version(); ok {
 		_spec.SetField(rollout.FieldVersion, field.TypeInt64, value)
 		_node.Version = value
+	}
+	if value, ok := _c.mutation.Mode(); ok {
+		_spec.SetField(rollout.FieldMode, field.TypeEnum, value)
+		_node.Mode = value
 	}
 	if value, ok := _c.mutation.Stage(); ok {
 		_spec.SetField(rollout.FieldStage, field.TypeEnum, value)

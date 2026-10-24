@@ -11,9 +11,9 @@ import "rpmgr/v1/settings.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
 
-// ReleaseService is the releases the controller knows and the staged rollouts of one of them to
-// the connectors and gateways (docs/07-api.md, "Services"; docs/04-security.md, "Over-the-air
-// updates"; D121), all for the Instance Admin. A rollout only records what the Instance Admin
+// ReleaseService is the releases the controller knows and the rollouts of one of them to the
+// connectors and gateways, staged (D121) or easy (D129) (docs/07-api.md, "Services";
+// docs/04-security.md, "Over-the-air updates"), all for the Instance Admin. A rollout only records what the Instance Admin
 // decides; the controller's rollout job offers the release and follows the agents.
 service ReleaseService {
   // ListReleases pages through the releases, the newest version first.
@@ -38,10 +38,20 @@ service ReleaseService {
       step_up: true
     };
   }
-  // CreateRollout starts a rollout of a release with its canary agents. It is refused for a
-  // release newer than the controller and while another rollout runs or is paused. A release the
-  // mirror does not hold yet is mirrored now, and offered once the mirror holds it (D125).
+  // CreateRollout starts a rollout of a release: a staged one with its canary agents, or an easy
+  // one with its queue of agents. It is refused for a release newer than the controller and while
+  // another rollout runs or is paused. A release the mirror does not hold yet is mirrored now, and
+  // offered once the mirror holds it (D125).
   rpc CreateRollout(CreateRolloutRequest) returns (CreateRolloutResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+  // UpgradeAgents adds connectors or gateways to the end of the queue of the easy rollout of the
+  // controller's own version that runs or is paused, or starts one with them when no rollout does
+  // (D129). It is refused while a staged rollout or a rollout of another release runs or is paused.
+  rpc UpgradeAgents(UpgradeAgentsRequest) returns (UpgradeAgentsResponse) {
     option (rpmgr.v1.authz) = {
       permission: "instance.admin"
       step_up: true
@@ -62,7 +72,7 @@ service ReleaseService {
     option idempotency_level = NO_SIDE_EFFECTS;
     option (rpmgr.v1.authz) = {permission: "instance.admin"};
   }
-  // AdvanceRollout moves a running rollout to a higher percentage or to all agents.
+  // AdvanceRollout moves a running staged rollout to a higher percentage or to all agents.
   rpc AdvanceRollout(AdvanceRolloutRequest) returns (AdvanceRolloutResponse) {
     option (rpmgr.v1.authz) = {
       permission: "instance.admin"
@@ -233,7 +243,7 @@ message RolloutCounts {
   int32 stalled = 8;
 }
 
-// Rollout is a staged rollout of one release; output only.
+// Rollout is a rollout of one release, staged or easy; output only.
 message Rollout {
   // The rollout's ID.
   string id = 1;
@@ -261,6 +271,9 @@ message Rollout {
   google.protobuf.Timestamp update_time = 12;
   // The etag of the rollout's current state.
   string etag = 13;
+  // Its kind: ADVANCED for a staged rollout, EASY for a queue of agents; an easy rollout's stage
+  // and percentage stay at CANARY and 0.
+  RolloutMode mode = 14;
 }
 
 // RolloutTarget is one agent of a rollout; output only.
@@ -289,6 +302,8 @@ message RolloutTarget {
   string version_before = 11;
   // When its state changed last.
   google.protobuf.Timestamp update_time = 12;
+  // Its place in an easy rollout's queue, from 1; 0 in a staged rollout.
+  int32 position = 13;
 }
 
 // ListReleasesRequest pages through the releases.
@@ -355,10 +370,24 @@ message UploadReleaseResponse {
 message CreateRolloutRequest {
   // The release to install.
   string release_id = 1 [(buf.validate.field).string.min_len = 1];
-  // The canary agents, connectors or gateways of any org, by ID.
+  // A staged rollout's canary agents, connectors or gateways of any org, by ID; at least one.
+  // Empty in an easy rollout.
   repeated string canary_agent_ids = 2 [(buf.validate.field).repeated = {
-    min_items: 1
     max_items: 50
+    unique: true
+    items: {
+      string: {
+        min_len: 1
+        max_len: 64
+      }
+    }
+  }];
+  // The kind of rollout; not set is ADVANCED, a staged rollout.
+  RolloutMode mode = 3 [(buf.validate.field).enum.defined_only = true];
+  // An easy rollout's queue, connectors or gateways of any org, by ID, in the order they update;
+  // at least one. Empty in a staged rollout.
+  repeated string agent_ids = 4 [(buf.validate.field).repeated = {
+    max_items: 1000
     unique: true
     items: {
       string: {
@@ -371,8 +400,33 @@ message CreateRolloutRequest {
 
 // CreateRolloutResponse is the new rollout.
 message CreateRolloutResponse {
-  // The rollout, at its canary stage.
+  // The rollout, at its canary stage or with its queue.
   Rollout rollout = 1;
+}
+
+// UpgradeAgentsRequest names the agents to update to the controller's own version.
+message UpgradeAgentsRequest {
+  // Connectors or gateways of any org, by ID, in the order they join the queue.
+  repeated string agent_ids = 1 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 1000
+    unique: true
+    items: {
+      string: {
+        min_len: 1
+        max_len: 64
+      }
+    }
+  }];
+}
+
+// UpgradeAgentsResponse is the easy rollout the agents are queued in.
+message UpgradeAgentsResponse {
+  // The rollout: the one that ran, or the one the request started.
+  Rollout rollout = 1;
+  // The agents' targets in the order of the request, each with its place in the queue; an agent
+  // queued before keeps its place.
+  repeated RolloutTarget rollout_targets = 2;
 }
 
 // GetRolloutRequest names a rollout.

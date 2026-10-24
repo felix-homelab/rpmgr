@@ -896,6 +896,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 		Fields: map[string]*sqlgraph.FieldSpec{
 			rollout.FieldVersion:     {Type: field.TypeInt64, Column: rollout.FieldVersion},
 			rollout.FieldReleaseID:   {Type: field.TypeString, Column: rollout.FieldReleaseID},
+			rollout.FieldMode:        {Type: field.TypeEnum, Column: rollout.FieldMode},
 			rollout.FieldStage:       {Type: field.TypeEnum, Column: rollout.FieldStage},
 			rollout.FieldPercentage:  {Type: field.TypeInt, Column: rollout.FieldPercentage},
 			rollout.FieldState:       {Type: field.TypeEnum, Column: rollout.FieldState},
@@ -923,6 +924,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			rollouttarget.FieldAgentKind:      {Type: field.TypeEnum, Column: rollouttarget.FieldAgentKind},
 			rollouttarget.FieldCanary:         {Type: field.TypeBool, Column: rollouttarget.FieldCanary},
 			rollouttarget.FieldBucket:         {Type: field.TypeInt, Column: rollouttarget.FieldBucket},
+			rollouttarget.FieldPosition:       {Type: field.TypeInt, Column: rollouttarget.FieldPosition},
 			rollouttarget.FieldState:          {Type: field.TypeEnum, Column: rollouttarget.FieldState},
 			rollouttarget.FieldReason:         {Type: field.TypeString, Column: rollouttarget.FieldReason},
 			rollouttarget.FieldVersionBefore:  {Type: field.TypeString, Column: rollouttarget.FieldVersionBefore},
@@ -4893,6 +4895,11 @@ func (f *RolloutFilter) WhereReleaseID(p entql.StringP) {
 	f.Where(p.Field(rollout.FieldReleaseID))
 }
 
+// WhereMode applies the entql string predicate on the mode field.
+func (f *RolloutFilter) WhereMode(p entql.StringP) {
+	f.Where(p.Field(rollout.FieldMode))
+}
+
 // WhereStage applies the entql string predicate on the stage field.
 func (f *RolloutFilter) WhereStage(p entql.StringP) {
 	f.Where(p.Field(rollout.FieldStage))
@@ -5015,6 +5022,11 @@ func (f *RolloutTargetFilter) WhereCanary(p entql.BoolP) {
 // WhereBucket applies the entql int predicate on the bucket field.
 func (f *RolloutTargetFilter) WhereBucket(p entql.IntP) {
 	f.Where(p.Field(rollouttarget.FieldBucket))
+}
+
+// WherePosition applies the entql int predicate on the position field.
+func (f *RolloutTargetFilter) WherePosition(p entql.IntP) {
+	f.Where(p.Field(rollouttarget.FieldPosition))
 }
 
 // WhereState applies the entql string predicate on the state field.
