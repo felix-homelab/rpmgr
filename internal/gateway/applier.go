@@ -133,6 +133,23 @@ func accessOf(res *agentv1.Resource) *agentv1.RouteAccess {
 	return nil
 }
 
+// limitsOf returns the limits of a gateway route resource, and whether res is one.
+func limitsOf(res *agentv1.Resource) (*agentv1.RouteLimits, bool) {
+	switch {
+	case res.GetGatewayTcpRoute() != nil:
+		return res.GetGatewayTcpRoute().GetLimits(), true
+	case res.GetGatewayUdpRoute() != nil:
+		return res.GetGatewayUdpRoute().GetLimits(), true
+	case res.GetGatewayTcpUdpRoute() != nil:
+		return res.GetGatewayTcpUdpRoute().GetLimits(), true
+	case res.GetGatewayPassthroughRoute() != nil:
+		return res.GetGatewayPassthroughRoute().GetLimits(), true
+	case res.GetGatewayHttpRoute() != nil:
+		return res.GetGatewayHttpRoute().GetLimits(), true
+	}
+	return nil, false
+}
+
 // ReservedHeaders are the headers a route cannot set: the gateway's forwarding headers and those
 // of the connection itself.
 var ReservedHeaders = []string{"Connection", "Content-Length", "Forwarded", "Host", "Keep-Alive", "Proxy-Connection", "Te",
@@ -144,6 +161,7 @@ var ReservedHeaders = []string{"Connection", "Content-Length", "Forwarded", "Hos
 type Applier struct {
 	served   Served
 	assign   *assignment
+	limits   Limits
 	revision atomic.Pointer[agentv1.Revision]
 }
 
@@ -386,28 +404,34 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 	)
 	for _, res := range snap.GetResources() {
 		access, _ := AccessOf(accessOf(res)) // Validate refused any that does not parse
+		// Every route keeps its limit state, also without limits, so that a limit set later counts
+		// the connections already open.
+		var limit *RouteLimit
+		if l, ok := limitsOf(res); ok {
+			limit = a.limits.Set(res.GetId(), routeLimitsOf(l))
+		}
 		switch {
 		case res.GetGatewayTcpRoute() != nil:
 			r := res.GetGatewayTcpRoute()
 			tcp = append(tcp, TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
-				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access})
+				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access, Limit: limit})
 		case res.GetGatewayUdpRoute() != nil:
 			r := res.GetGatewayUdpRoute()
 			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
-				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access})
+				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access, Limit: limit})
 		case res.GetGatewayTcpUdpRoute() != nil:
 			// A tcp route and a udp route with the route's ID, on one port number.
 			r := res.GetGatewayTcpUdpRoute()
 			tcp = append(tcp, TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
-				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access})
+				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access, Limit: limit})
 			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
-				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access})
+				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access, Limit: limit})
 		case res.GetGatewayHttpRoute() != nil:
 			r := res.GetGatewayHttpRoute()
 			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket(),
 				HostHeader: r.GetHostHeader(), MaxBody: int64(min(r.GetMaxBodyBytes(), math.MaxInt64)), //nolint:gosec // G115: bounded above
 				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds()), Access: access, Maintenance: r.GetMaintenance(),
-				MaintenanceMessage: r.GetMaintenanceMessage()}
+				MaintenanceMessage: r.GetMaintenanceMessage(), Limit: limit}
 			hr.BasicAuth, _ = basicAuthOf(r.GetAccess().GetBasicAuth()) // Validate refused any that does not parse
 			for _, h := range r.GetRequestHeaders() {
 				hr.RequestHeaders = append(hr.RequestHeaders, HTTPHeader{Name: h.GetName(), Value: h.GetValue()})
@@ -451,7 +475,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			continue
 		case res.GetGatewayPassthroughRoute() != nil:
 			p := res.GetGatewayPassthroughRoute()
-			passthrough = append(passthrough, PassthroughRoute{ID: res.GetId(), Hostnames: p.GetHostnames(), Access: access})
+			passthrough = append(passthrough, PassthroughRoute{ID: res.GetId(), Hostnames: p.GetHostnames(), Access: access, Limit: limit})
 		}
 		connectors, ranked := connectorsOf(res)
 		next.routes[res.GetId()] = rankOf(connectors, ranked)
@@ -486,6 +510,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		keep[id] = true
 	}
 	s.Sessions.metrics().retain(keep)
+	a.limits.Retain(keep)
 	var status []*agentv1.ResourceStatus
 	if s.TCP != nil {
 		status = append(status, s.TCP.Apply(tcp)...)

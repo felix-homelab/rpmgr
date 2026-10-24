@@ -41,6 +41,7 @@ const (
 	httpIdle              = 120 * time.Second // a keep-alive connection without a request
 	httpRetryAfter        = 5                 // seconds, in a 503 without a ready connector
 	maintenanceRetryAfter = 300               // seconds, in the 503 of a route in maintenance
+	limitRetryAfter       = 1                 // seconds, in the 503 of a route over its connection limit
 )
 
 var (
@@ -95,6 +96,8 @@ type HTTPRoute struct {
 	// shows MaintenanceMessage, and opens no stream.
 	Maintenance        bool
 	MaintenanceMessage string
+	// Limit is the route's limit state; nil limits nothing.
+	Limit *RouteLimit
 }
 
 // HTTPHeader is a header name, canonical, and its value; "" removes the header.
@@ -1156,6 +1159,18 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, route.MaxBody)
 	}
+	// A request in flight, an upgraded one until it ends, holds one of the route's connection slots,
+	// released however the request ends.
+	release, ok := route.Limit.Acquire()
+	if !ok {
+		if r.ContentLength != 0 {
+			closeUnread(w, r)
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(limitRetryAfter))
+		writePage(w, r, http.StatusServiceUnavailable, pageUnavailable, http.StatusText(http.StatusServiceUnavailable))
+		return
+	}
+	defer release()
 	rt.proxy.ServeHTTP(w, r)
 }
 

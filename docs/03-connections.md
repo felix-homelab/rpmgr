@@ -1387,6 +1387,7 @@ sequenceDiagram
 | Per-route HTTP timeouts (Phase 2) | upstream response header 1 s to 1 h; upstream idle 1 s to 1 h; 0 = the HTTP server row above | [R] Slow reports and long polls fit; a pooled connection outliving a backend's keep-alive is avoided ([HTTP routes](#http-routes)) |
 | Active health check (Phase 2) | interval 10 s by default, at least 2 s; timeout 5 s by default, below the interval; unhealthy after 3 failures in a row, healthy after 2 passes; an HTTP check reads at most 64 KiB of the body | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
 | Passive health (Phase 2) | 3 refused or timed-out stream opens in a row; back-off 10 s, doubling to 60 s; one half-open try after it | [R] A target that refuses is passed over at once and tried again soon |
+| Route limits (Phase 2) | an HTTP request over the connection limit gets **503** with `Retry-After: 1` | [R] A client tries again soon, as a slot frees when a request ends ([Route limits](#route-limits-phase-2)) |
 | Per-client rate limit (Phase 2) | at most 65 536 client addresses per route on each gateway; an address unused for 10 min is dropped | [R] A flood of addresses cannot exhaust a gateway's memory ([Access policies](#access-policies)) |
 | Custom page (Phase 2) | at most 64 KiB of HTML per page | [R] A page loads fast and fits a snapshot item fetch ([HTTP routes](#http-routes)) |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |

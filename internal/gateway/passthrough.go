@@ -20,6 +20,8 @@ type PassthroughRoute struct {
 	Hostnames []string // normalised; one may start with "*." for every name one label below
 	// Access is who may connect.
 	Access Access
+	// Limit is the route's limit state; nil limits nothing.
+	Limit *RouteLimit
 }
 
 // Passthrough serves the gateway's tls_passthrough routes on port 443 (docs/03-connections.md,
@@ -36,6 +38,7 @@ type Passthrough struct {
 
 	table  atomic.Pointer[map[string]string] // hostname → route ID
 	access atomic.Pointer[map[string]Access] // route ID → who may connect
+	limits atomic.Pointer[map[string]*RouteLimit]
 
 	mu      sync.Mutex
 	conns   map[string]map[net.Conn]struct{} // route ID → open connections
@@ -55,6 +58,8 @@ func NewPassthrough(sessions *Sessions, revision func() *agentv1.Revision, logge
 	p.table.Store(&empty)
 	none := map[string]Access{}
 	p.access.Store(&none)
+	unlimited := map[string]*RouteLimit{}
+	p.limits.Store(&unlimited)
 	return p
 }
 
@@ -63,12 +68,15 @@ func NewPassthrough(sessions *Sessions, revision func() *agentv1.Revision, logge
 func (p *Passthrough) Apply(routes []PassthroughRoute) {
 	next := map[string]string{}
 	access := map[string]Access{}
+	limits := map[string]*RouteLimit{}
 	for _, r := range routes {
 		for _, h := range r.Hostnames {
 			next[h] = r.ID
 		}
 		access[r.ID] = r.Access
+		limits[r.ID] = r.Limit
 	}
+	p.limits.Store(&limits)
 	old := *p.table.Load()
 	oldAccess := *p.access.Swap(&access)
 	p.table.Store(&next)
@@ -157,12 +165,20 @@ func (p *Passthrough) handle(c net.Conn, id, sni string) {
 		abort(c)
 		return
 	}
+	lim := (*p.limits.Load())[id]
+	release, ok := lim.Acquire()
+	if !ok {
+		p.mu.Unlock()
+		abort(c) // over the route's connection limit
+		return
+	}
 	if p.conns[id] == nil {
 		p.conns[id] = map[net.Conn]struct{}{}
 	}
 	p.conns[id][c] = struct{}{}
 	p.mu.Unlock()
 	defer func() {
+		release()
 		p.mu.Lock()
 		delete(p.conns[id], c)
 		if len(p.conns[id]) == 0 {

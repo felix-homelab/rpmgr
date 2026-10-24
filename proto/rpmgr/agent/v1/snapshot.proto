@@ -143,6 +143,20 @@ message GatewayTCPRoute {
   // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
   // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 5;
+  // This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
+  // route reaches only gateways with the capability route.limits when it sets one.
+  RouteLimits limits = 6;
+}
+
+// RouteLimits are a gateway's share of a route's limits: the route's own, divided among the enabled
+// gateways of its group (docs/03-connections.md, "Route limits"). 0 is no limit.
+message RouteLimits {
+  // Open connections, UDP flows, or HTTP requests in flight, upgraded ones included.
+  uint32 max_connections = 1;
+  // New connections, new flows or HTTP requests per second.
+  uint32 requests_per_second = 2;
+  // Bytes per second in each direction.
+  uint64 bandwidth_bytes_per_second = 3;
 }
 
 // RouteConnector is a connector that serves a route at one priority of its enabled targets of the
@@ -204,6 +218,9 @@ message GatewayTCPUDPRoute {
   // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
   // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 6;
+  // This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
+  // route reaches only gateways with the capability route.limits when it sets one.
+  RouteLimits limits = 7;
 }
 
 // GatewayUDPRoute is a udp route as a gateway serves it.
@@ -220,6 +237,9 @@ message GatewayUDPRoute {
   // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
   // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 5;
+  // This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
+  // route reaches only gateways with the capability route.limits when it sets one.
+  RouteLimits limits = 6;
 }
 
 // GatewayHTTPRoute is an http route as a gateway serves it on port 443: a request whose host and
@@ -264,6 +284,9 @@ message GatewayHTTPRoute {
   // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
   // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 16;
+  // This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
+  // route reaches only gateways with the capability route.limits when it sets one.
+  RouteLimits limits = 20;
 }
 
 // HTTPHeader is a header name with its value.
@@ -344,6 +367,9 @@ message GatewayPassthroughRoute {
   // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
   // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 4;
+  // This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
+  // route reaches only gateways with the capability route.limits when it sets one.
+  RouteLimits limits = 5;
 }
 
 // TransportPolicy is how a route chooses its data-session transport (docs/03-connections.md,

@@ -28,6 +28,14 @@ const (
 	CapProbeTarget        = "probe.target"        // reads the certificate a target presents (ProbeTarget)
 )
 
+// The capability strings of Phase 2 route features, each a gate that keeps a route that uses the
+// feature from agents without it (docs/03-connections.md, "Versioning and capabilities").
+const (
+	// CapRouteLimits: the gateway enforces a route's connection, rate and bandwidth limits and the
+	// per-client rate_limit rule of access policies.
+	CapRouteLimits = "route.limits"
+)
+
 // The capability strings of Phase 2 that are not route features, each checked where its feature
 // is used (docs/03-connections.md, "Versioning and capabilities").
 const (

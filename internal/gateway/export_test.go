@@ -65,3 +65,10 @@ func SetBasicAuthTTL(t testing.TB, d time.Duration) {
 
 // BasicAuthBusy returns how many basic-auth verifications run now.
 func (h *HTTPRoutes) BasicAuthBusy() int64 { return int64(h.basic.busy.Load()) }
+
+// LimitOf returns the limit state the applier keeps for a route, nil if none.
+func LimitOf(a *Applier, id string) *RouteLimit {
+	a.limits.mu.Lock()
+	defer a.limits.mu.Unlock()
+	return a.limits.routes[id]
+}

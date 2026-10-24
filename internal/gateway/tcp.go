@@ -37,6 +37,8 @@ type TCPRoute struct {
 	IdleTimeout time.Duration
 	// Access is who may connect.
 	Access Access
+	// Limit is the route's limit state; nil limits nothing.
+	Limit *RouteLimit
 }
 
 // TCPOptions configure TCPRoutes.
@@ -221,20 +223,28 @@ func (t *TCPRoutes) serve(ln net.Listener, r TCPRoute) {
 			// Checked and recorded under pl.mu, which enforce takes after Apply swapped the route
 			// in: either enforce sees the connection, or the check sees the new rules (#523).
 			pl.mu.Lock()
-			if !pl.route.Load().Access.AllowsAddr(c.RemoteAddr()) {
+			r := pl.route.Load()
+			if !r.Access.AllowsAddr(c.RemoteAddr()) {
 				pl.mu.Unlock()
 				abort(c)
+				continue
+			}
+			release, ok := r.Limit.Acquire()
+			if !ok {
+				pl.mu.Unlock()
+				abort(c) // over the route's connection limit: reset before a stream opens
 				continue
 			}
 			pl.conns[c] = struct{}{}
 			pl.mu.Unlock()
 			t.wg.Go(func() {
 				defer func() {
+					release()
 					pl.mu.Lock()
 					delete(pl.conns, c)
 					pl.mu.Unlock()
 				}()
-				t.handle(c, pl.route.Load())
+				t.handle(c, r)
 			})
 		}
 	})
