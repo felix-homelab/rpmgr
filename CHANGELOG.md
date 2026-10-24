@@ -15,9 +15,10 @@ Changes to the design documents are not recorded here: see the git history and t
 - Gateways: a gateway group may replace its not-found, unavailable and maintenance pages with its
   own HTML, with the placeholders `{{hostname}}`, `{{status}}`, `{{message}}` and
   `{{request_id}}` filled in as escaped text. The pages run no script and load nothing from
-  elsewhere. Set by the group's owner org in the **Pages** card of the group's page, with
+  elsewhere. Set by the group's owner org in the **Pages** card of the group's page, which also
+  previews each page exactly as visitors will see it, with sample values, with
   `rpmgr upload gateway-page` and `rpmgr remove gateway-page`, or `GatewayService.SetGatewayPage`;
-  gateways of earlier releases keep the built-in pages. (#626, #627)
+  gateways of earlier releases keep the built-in pages. (#626, #627, #914)
 
 - Updates: **Check now** on Settings → Updates, `rpmgr check release` and
   `ReleaseService.CheckReleases` check for new releases at once instead of at the next daily

@@ -95,6 +95,9 @@ const (
 	// GatewayServiceListGatewayPagesProcedure is the fully-qualified name of the GatewayService's
 	// ListGatewayPages RPC.
 	GatewayServiceListGatewayPagesProcedure = "/rpmgr.v1.GatewayService/ListGatewayPages"
+	// GatewayServicePreviewGatewayPageProcedure is the fully-qualified name of the GatewayService's
+	// PreviewGatewayPage RPC.
+	GatewayServicePreviewGatewayPageProcedure = "/rpmgr.v1.GatewayService/PreviewGatewayPage"
 	// GatewayServiceDeleteGatewayPageProcedure is the fully-qualified name of the GatewayService's
 	// DeleteGatewayPage RPC.
 	GatewayServiceDeleteGatewayPageProcedure = "/rpmgr.v1.GatewayService/DeleteGatewayPage"
@@ -148,6 +151,11 @@ type GatewayServiceClient interface {
 	SetGatewayPage(context.Context, *connect.Request[v1.SetGatewayPageRequest]) (*connect.Response[v1.SetGatewayPageResponse], error)
 	// ListGatewayPages returns the pages a gateway group replaced, with their HTML.
 	ListGatewayPages(context.Context, *connect.Request[v1.ListGatewayPagesRequest]) (*connect.Response[v1.ListGatewayPagesResponse], error)
+	// PreviewGatewayPage returns a link, valid for a few minutes, at which the controller shows a page
+	// of a gateway group exactly as its gateways send it, with sample values, under the page's
+	// Content-Security-Policy and a sandbox (D136): the group's own page of the kind, or the built-in
+	// one.
+	PreviewGatewayPage(context.Context, *connect.Request[v1.PreviewGatewayPageRequest]) (*connect.Response[v1.PreviewGatewayPageResponse], error)
 	// DeleteGatewayPage goes back to the built-in page of a kind.
 	DeleteGatewayPage(context.Context, *connect.Request[v1.DeleteGatewayPageRequest]) (*connect.Response[v1.DeleteGatewayPageResponse], error)
 }
@@ -291,6 +299,13 @@ func NewGatewayServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		previewGatewayPage: connect.NewClient[v1.PreviewGatewayPageRequest, v1.PreviewGatewayPageResponse](
+			httpClient,
+			baseURL+GatewayServicePreviewGatewayPageProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("PreviewGatewayPage")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
 		deleteGatewayPage: connect.NewClient[v1.DeleteGatewayPageRequest, v1.DeleteGatewayPageResponse](
 			httpClient,
 			baseURL+GatewayServiceDeleteGatewayPageProcedure,
@@ -322,6 +337,7 @@ type gatewayServiceClient struct {
 	deletePortQuota     *connect.Client[v1.DeletePortQuotaRequest, v1.DeletePortQuotaResponse]
 	setGatewayPage      *connect.Client[v1.SetGatewayPageRequest, v1.SetGatewayPageResponse]
 	listGatewayPages    *connect.Client[v1.ListGatewayPagesRequest, v1.ListGatewayPagesResponse]
+	previewGatewayPage  *connect.Client[v1.PreviewGatewayPageRequest, v1.PreviewGatewayPageResponse]
 	deleteGatewayPage   *connect.Client[v1.DeleteGatewayPageRequest, v1.DeleteGatewayPageResponse]
 }
 
@@ -425,6 +441,11 @@ func (c *gatewayServiceClient) ListGatewayPages(ctx context.Context, req *connec
 	return c.listGatewayPages.CallUnary(ctx, req)
 }
 
+// PreviewGatewayPage calls rpmgr.v1.GatewayService.PreviewGatewayPage.
+func (c *gatewayServiceClient) PreviewGatewayPage(ctx context.Context, req *connect.Request[v1.PreviewGatewayPageRequest]) (*connect.Response[v1.PreviewGatewayPageResponse], error) {
+	return c.previewGatewayPage.CallUnary(ctx, req)
+}
+
 // DeleteGatewayPage calls rpmgr.v1.GatewayService.DeleteGatewayPage.
 func (c *gatewayServiceClient) DeleteGatewayPage(ctx context.Context, req *connect.Request[v1.DeleteGatewayPageRequest]) (*connect.Response[v1.DeleteGatewayPageResponse], error) {
 	return c.deleteGatewayPage.CallUnary(ctx, req)
@@ -478,6 +499,11 @@ type GatewayServiceHandler interface {
 	SetGatewayPage(context.Context, *connect.Request[v1.SetGatewayPageRequest]) (*connect.Response[v1.SetGatewayPageResponse], error)
 	// ListGatewayPages returns the pages a gateway group replaced, with their HTML.
 	ListGatewayPages(context.Context, *connect.Request[v1.ListGatewayPagesRequest]) (*connect.Response[v1.ListGatewayPagesResponse], error)
+	// PreviewGatewayPage returns a link, valid for a few minutes, at which the controller shows a page
+	// of a gateway group exactly as its gateways send it, with sample values, under the page's
+	// Content-Security-Policy and a sandbox (D136): the group's own page of the kind, or the built-in
+	// one.
+	PreviewGatewayPage(context.Context, *connect.Request[v1.PreviewGatewayPageRequest]) (*connect.Response[v1.PreviewGatewayPageResponse], error)
 	// DeleteGatewayPage goes back to the built-in page of a kind.
 	DeleteGatewayPage(context.Context, *connect.Request[v1.DeleteGatewayPageRequest]) (*connect.Response[v1.DeleteGatewayPageResponse], error)
 }
@@ -617,6 +643,13 @@ func NewGatewayServiceHandler(svc GatewayServiceHandler, opts ...connect.Handler
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	gatewayServicePreviewGatewayPageHandler := connect.NewUnaryHandler(
+		GatewayServicePreviewGatewayPageProcedure,
+		svc.PreviewGatewayPage,
+		connect.WithSchema(gatewayServiceMethods.ByName("PreviewGatewayPage")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
 	gatewayServiceDeleteGatewayPageHandler := connect.NewUnaryHandler(
 		GatewayServiceDeleteGatewayPageProcedure,
 		svc.DeleteGatewayPage,
@@ -665,6 +698,8 @@ func NewGatewayServiceHandler(svc GatewayServiceHandler, opts ...connect.Handler
 			gatewayServiceSetGatewayPageHandler.ServeHTTP(w, r)
 		case GatewayServiceListGatewayPagesProcedure:
 			gatewayServiceListGatewayPagesHandler.ServeHTTP(w, r)
+		case GatewayServicePreviewGatewayPageProcedure:
+			gatewayServicePreviewGatewayPageHandler.ServeHTTP(w, r)
 		case GatewayServiceDeleteGatewayPageProcedure:
 			gatewayServiceDeleteGatewayPageHandler.ServeHTTP(w, r)
 		default:
@@ -754,6 +789,10 @@ func (UnimplementedGatewayServiceHandler) SetGatewayPage(context.Context, *conne
 
 func (UnimplementedGatewayServiceHandler) ListGatewayPages(context.Context, *connect.Request[v1.ListGatewayPagesRequest]) (*connect.Response[v1.ListGatewayPagesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.ListGatewayPages is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) PreviewGatewayPage(context.Context, *connect.Request[v1.PreviewGatewayPageRequest]) (*connect.Response[v1.PreviewGatewayPageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.PreviewGatewayPage is not implemented"))
 }
 
 func (UnimplementedGatewayServiceHandler) DeleteGatewayPage(context.Context, *connect.Request[v1.DeleteGatewayPageRequest]) (*connect.Response[v1.DeleteGatewayPageResponse], error) {
