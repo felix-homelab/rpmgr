@@ -180,6 +180,18 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
   async function save(e: FormEvent) {
     e.preventDefault();
     setError("");
+    // Whole numbers within the API's bounds, and one rate limit a policy, before anything is sent.
+    const whole = (v: string | undefined, empty: boolean) =>
+      (empty && !v?.trim()) || (/^\d+$/.test(v?.trim() ?? "") && Number(v) >= 1 && Number(v) <= 10000);
+    const limits = rules.filter((r) => r.kind === "rateLimit");
+    if (limits.length > 1) {
+      setError(t("policies.oneRateLimit"));
+      return;
+    }
+    if (limits.some((r) => !whole(r.perSecond, false) || !whole(r.burst, true))) {
+      setError(t("policies.rateLimitBounds"));
+      return;
+    }
     const next = policy ? clone(AccessPolicySchema, policy) : create(AccessPolicySchema);
     Object.assign(next, { name: name.trim(), description, rules: rules.map(ruleOf) });
     try {

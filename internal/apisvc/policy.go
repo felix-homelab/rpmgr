@@ -303,6 +303,7 @@ func keptHashes(ctx context.Context, tx *ent.Tx, policyID string) (map[string]st
 // route that is not an http route applies the policy.
 func storeRules(ctx context.Context, tx *ent.Tx, policy *ent.AccessPolicy, rules []*rpmgrv1.AccessRule,
 	hashes map[*rpmgrv1.BasicAuthCredential]string, kept map[string]string) error {
+	rateLimits := 0
 	for i, r := range rules {
 		params := &rpmgrv1.PolicyRuleParams{}
 		var kind policyrule.Kind
@@ -331,7 +332,12 @@ func storeRules(ctx context.Context, tx *ent.Tx, policy *ent.AccessPolicy, rules
 			}
 			params.Params = &rpmgrv1.PolicyRuleParams_BasicAuth{BasicAuth: ba}
 		case r.GetRateLimit() != nil:
-			// On every route type (D131): gateways count new connections and flows as requests.
+			// On every route type (D131): gateways count new connections and flows as requests. One
+			// rule a policy, as each new client takes an entry in a gateway's table of every rule
+			// (D137).
+			if rateLimits++; rateLimits > 1 {
+				return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: rule %d: a policy has at most one rate_limit rule", i+1))
+			}
 			kind = policyrule.KindRateLimit
 			params.Params = &rpmgrv1.PolicyRuleParams_RateLimit{RateLimit: r.GetRateLimit()}
 		default:

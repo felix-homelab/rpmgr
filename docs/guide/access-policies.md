@@ -96,7 +96,8 @@ without a burst, a second's worth may come at once. The bounds of both are in
   proxy names, as for address rules ([The client's address](#the-clients-address)).
 - **On each gateway, across routes:** every gateway of the group counts on its own, for all the
   routes that apply the policy together; a client mostly stays with one gateway.
-- With several rate-limit rules on a route, each applies, so the strictest decides.
+- A policy has at most one rate-limit rule. With several policies with one on a route, each
+  applies, so the strictest decides.
 - The rule needs gateways of the release that brought it: a gateway of an earlier release does not
   get a route whose policies carry it ([Route limits](routes/limits.md#gateways-of-an-earlier-release)).
 

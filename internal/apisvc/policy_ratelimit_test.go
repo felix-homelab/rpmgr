@@ -42,6 +42,9 @@ func TestAccessPolicies_RateLimit(t *testing.T) {
 			t.Errorf("rule %v: %v", bad, err)
 		}
 	}
+	if _, err := create("twice", rateLimit(20, 50), rateLimit(5, 5)); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("two rate_limit rules in one policy: %v", err)
+	}
 	got, err := ada.pol.GetAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.GetAccessPolicyRequest{AccessPolicyId: pol.GetId()}))
 	if err != nil || !proto.Equal(got.Msg.GetAccessPolicy().GetRules()[1], rateLimit(20, 50)) {
 		t.Fatalf("read back: %v %v", got.Msg.GetAccessPolicy(), err)

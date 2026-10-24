@@ -99,17 +99,38 @@ describe("Policies", () => {
     const rule = within(form.getByRole("group", { name: "Rule 1" }));
     expect([(rule.getByLabelText(/^Requests or new connections a second/) as HTMLInputElement).value,
       (rule.getByLabelText("At once (burst)") as HTMLInputElement).value]).toEqual(["5", "20"]);
-    fireEvent.click(form.getByRole("button", { name: "Add a rule" }));
-    const second = within(form.getByRole("group", { name: "Rule 2" }));
-    fireEvent.change(second.getByLabelText("Kind"), { target: { value: "rateLimit" } });
-    expect(second.getByText(/Over it, HTTP gets 429/)).toBeTruthy();
-    fireEvent.change(second.getByLabelText(/^Requests or new connections a second/), { target: { value: "50" } });
+    expect(rule.getByText(/Over it, HTTP gets 429/)).toBeTruthy();
+    fireEvent.change(rule.getByLabelText(/^Requests or new connections a second/), { target: { value: "50" } });
+    fireEvent.change(rule.getByLabelText("At once (burst)"), { target: { value: "" } });
     fireEvent.click(form.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.update).toHaveLength(1));
     expect(calls.update[0]!.accessPolicy?.rules.map((r) => r.rule)).toEqual([
-      { case: "rateLimit", value: expect.objectContaining({ perSecond: 5, burst: 20 }) },
       { case: "rateLimit", value: expect.objectContaining({ perSecond: 50, burst: 50 }) },
     ]);
+  });
+
+  it("refuses a rate limit that is not a whole number in its bounds, or a second one, before sending it", async () => {
+    const calls = page([]);
+    fireEvent.click(await screen.findByRole("button", { name: "New access policy" }));
+    const form = within(await screen.findByRole("form", { name: "New access policy" }));
+    fireEvent.change(form.getByLabelText("Name"), { target: { value: "slow" } });
+    const first = within(form.getByRole("group", { name: "Rule 1" }));
+    fireEvent.change(first.getByLabelText("Kind"), { target: { value: "rateLimit" } });
+    for (const [perSecond, burst] of [["2.5", ""], ["abc", ""], ["0", ""], ["10001", ""], ["5", "1.5"], ["5", "-1"]]) {
+      fireEvent.change(first.getByLabelText(/^Requests or new connections a second/), { target: { value: perSecond } });
+      fireEvent.change(first.getByLabelText("At once (burst)"), { target: { value: burst } });
+      fireEvent.click(form.getByRole("button", { name: "Create the policy" }));
+      expect((await form.findByRole("alert")).textContent).toContain("whole numbers from 1 to 10000");
+    }
+    fireEvent.change(first.getByLabelText(/^Requests or new connections a second/), { target: { value: "5" } });
+    fireEvent.change(first.getByLabelText("At once (burst)"), { target: { value: "" } });
+    fireEvent.click(form.getByRole("button", { name: "Add a rule" }));
+    const second = within(form.getByRole("group", { name: "Rule 2" }));
+    fireEvent.change(second.getByLabelText("Kind"), { target: { value: "rateLimit" } });
+    fireEvent.change(second.getByLabelText(/^Requests or new connections a second/), { target: { value: "9" } });
+    fireEvent.click(form.getByRole("button", { name: "Create the policy" }));
+    expect((await form.findByRole("alert")).textContent).toContain("at most one rate limit");
+    expect(calls.create).toHaveLength(0);
   });
 
   it("keeps the users' passwords it does not change", async () => {

@@ -772,6 +772,8 @@
     "addUser": "Add a user",
     "perSecond": "Requests or new connections a second",
     "burst": "At once (burst)",
+    "oneRateLimit": "A policy has at most one rate limit.",
+    "rateLimitBounds": "A rate limit takes whole numbers from 1 to 10000, a second and at once; an empty burst is a second's worth.",
     "rateLimitHelp": "Each client address, or IPv6 /64, on each gateway: HTTP requests, new connections or new UDP flows. Over it, HTTP gets 429, TCP is reset and UDP dropped. An empty burst is one second's worth."
   },
   "routePolicies": {
