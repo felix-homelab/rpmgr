@@ -45,6 +45,16 @@ func TestRouteLimits(t *testing.T) {
 			t.Errorf("limits %v above the bounds: %v", l, err)
 		}
 	}
+	if _, err := update("limits", &rpmgrv1.RouteLimits{BandwidthBytesPerSecond: 1023}); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("a bandwidth below 1 KiB a second: %v", err)
+	}
+	if up, err := update("limits.bandwidth_bytes_per_second", &rpmgrv1.RouteLimits{BandwidthBytesPerSecond: 1024}); err != nil ||
+		up.GetLimits().GetBandwidthBytesPerSecond() != 1024 {
+		t.Fatalf("a bandwidth of 1 KiB a second: %v %v", up.GetLimits(), err)
+	}
+	if _, err := update("limits.bandwidth_bytes_per_second", &rpmgrv1.RouteLimits{BandwidthBytesPerSecond: 1 << 20}); err != nil {
+		t.Fatal(err)
+	}
 	got, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: rt.GetId()}))
 	if err != nil || got.Msg.GetRoute().GetLimits().GetMaxConnections() != 5 {
 		t.Fatalf("after refused updates: %v %v", got.Msg.GetRoute().GetLimits(), err)

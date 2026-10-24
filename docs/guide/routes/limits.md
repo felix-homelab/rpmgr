@@ -15,9 +15,10 @@ it are in [03](../../03-connections.md#route-limits-phase-2) and
 | Bandwidth | bytes a second, in each direction separately | TCP and HTTP: the data slows down, nothing is lost; UDP: datagrams above it are dropped |
 
 Each limit is for the route as a whole. The gateways of the route's group share it: each enabled
-gateway enforces an equal part, rounded up. A gateway that is enabled but down keeps its part, so
-while it is down the route gets less than its limit; disable a gateway you take down for longer.
-0 means no limit. The largest values are in
+gateway enforces an equal part, rounded up; a gateway of an earlier release takes no part, as it
+does not get the route ([below](#gateways-of-an-earlier-release)). A gateway that is enabled but
+down keeps its part, so while it is down the route gets less than its limit; disable a gateway you
+take down for longer. 0 means no limit. The smallest and largest values are in
 [03](../../03-connections.md#route-limits-phase-2).
 
 ## Set limits

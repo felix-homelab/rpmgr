@@ -4,15 +4,26 @@ package apisvc
 
 import (
 	"context"
+	"fmt"
+
+	"connectrpc.com/connect"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routelimit"
 )
 
+// MinBandwidth is the smallest bandwidth limit of a route, bytes a second (docs/03-connections.md,
+// "Route limits"): below it a gateway's step of 512 bytes would wait for longer than half a second.
+const MinBandwidth = 1024
+
 // setRouteLimits records a route's limits (docs/03-connections.md, "Route limits"): a row while
 // any is set, none for a route without limits.
 func setRouteLimits(ctx context.Context, tx *ent.Tx, row *ent.Route, l *rpmgrv1.RouteLimits) error {
+	if b := l.GetBandwidthBytesPerSecond(); b > 0 && b < MinBandwidth {
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+			"apisvc: a bandwidth of %d bytes a second is below %d, under which data would wait for seconds at a time", b, MinBandwidth))
+	}
 	if _, err := tx.RouteLimit.Delete().Where(routelimit.RouteID(row.ID)).Exec(ctx); err != nil {
 		return err
 	}

@@ -69,6 +69,13 @@ func TestCompile_Limits(t *testing.T) {
 				SetSlot(i+2).SetTunnelEndpoints([]string{fmt.Sprintf("gw%d.example:443", i+2)}).SaveX(f.sys).ID)
 			check(fmt.Sprintf("%d gateways", i+2), want)
 		}
+		// A gateway of an earlier release, which does not get the route, takes no share; one that
+		// announced route.limits does.
+		c.AgentSession.Create().SetID(gws[0]).SetOrgID(f.orgA).SetSessionEpoch(1).SetControllerNode("ctn_1").SetAgentVersion("0.2.0").
+			SetCapabilities([]string{agentproto.CapTunnelQUIC}).ExecX(f.sys)
+		check("an old one of four", &agentv1.RouteLimits{MaxConnections: 4, RequestsPerSecond: 1, BandwidthBytesPerSecond: 334})
+		c.AgentSession.UpdateOneID(gws[0]).SetCapabilities([]string{agentproto.CapTunnelQUIC, agentproto.CapRouteLimits}).ExecX(f.sys)
+		check("updated", &agentv1.RouteLimits{MaxConnections: 3, RequestsPerSecond: 1, BandwidthBytesPerSecond: 250})
 		c.Gateway.UpdateOneID(gws[2]).SetEnabled(false).ExecX(f.sys)
 		check("a disabled one of four", &agentv1.RouteLimits{MaxConnections: 4, RequestsPerSecond: 1, BandwidthBytesPerSecond: 334})
 		c.Gateway.UpdateOneID(gws[1]).SetDecommissionedAt(time.Now()).ExecX(f.sys)
