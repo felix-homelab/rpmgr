@@ -150,6 +150,14 @@ func limitsOf(res *agentv1.Resource) (*agentv1.RouteLimits, bool) {
 	return nil, false
 }
 
+// maxClientRate bounds a rate_limit rule's rate and burst well above what the API allows, so that
+// no snapshot makes a client's bucket refill in no time.
+const maxClientRate = 1_000_000
+
+// maxClientRules bounds the rate_limit rules of a route, as each new client takes an entry in the
+// table of every one (docs/03-connections.md, "Timeouts, keepalive and backoff").
+const maxClientRules = 4
+
 // ReservedHeaders are the headers a route cannot set: the gateway's forwarding headers and those
 // of the connection itself.
 var ReservedHeaders = []string{"Connection", "Content-Length", "Forwarded", "Host", "Keep-Alive", "Proxy-Connection", "Te",
@@ -243,6 +251,15 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		id := res.GetId()
 		if _, err := AccessOf(accessOf(res)); err != nil {
 			bad(id, "access rules: %v", err)
+		}
+		if n := len(accessOf(res).GetRateLimits()); n > maxClientRules {
+			bad(id, "%d rate_limit rules, more than %d", n, maxClientRules)
+		}
+		for _, rl := range accessOf(res).GetRateLimits() {
+			if rl.GetPerSecond() == 0 || rl.GetPerSecond() > maxClientRate || rl.GetBurst() > maxClientRate {
+				bad(id, "rate_limit rule of policy %s: %d a second, %d at once, beyond 1 to %d", rl.GetPolicyId(), rl.GetPerSecond(),
+					rl.GetBurst(), maxClientRate)
+			}
 		}
 		if ba := accessOf(res).GetBasicAuth(); len(ba) > 0 {
 			if res.GetGatewayHttpRoute() == nil {
@@ -434,7 +451,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		// the connections already open.
 		var limit *RouteLimit
 		if l, ok := limitsOf(res); ok {
-			limit = a.limits.Set(res.GetId(), routeLimitsOf(l))
+			limit = a.limits.Set(res.GetId(), routeLimitsOf(l, accessOf(res).GetRateLimits()))
 		}
 		switch {
 		case res.GetGatewayTcpRoute() != nil:

@@ -188,6 +188,21 @@ message RouteAccess {
   // values, checked before basic auth; the gateway removes the header before the request goes
   // upstream. A gateway gets these only with the capability http.require-header.
   repeated rpmgr.v1.RequireHeaderParams require_header = 3;
+  // Every route type: each client may stay within each of these rates (docs/03-connections.md,
+  // "Access policies"); the route reaches only gateways with the capability route.limits when it
+  // has one.
+  repeated RateLimitRule rate_limits = 4;
+}
+
+// RateLimitRule is a rate_limit rule of an access policy as gateways enforce it: per client, an
+// IPv4 address or an IPv6 /64, on each gateway alone.
+message RateLimitRule {
+  // The policy the rule belongs to.
+  string policy_id = 1;
+  // HTTP requests, new connections or new flows per second.
+  uint32 per_second = 2;
+  // How many may come at once.
+  uint32 burst = 3;
 }
 
 // BasicAuthRule is a basic_auth rule of an access policy as gateways check it.
