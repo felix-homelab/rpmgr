@@ -2,7 +2,7 @@
 
 import { expect, test } from "@playwright/test";
 import { email, expectAccessible, password, sideways, totp, unfilled, unmarked, watchCSP } from "./helpers";
-import { fakeUpdates } from "./rollout-fakes";
+import { fakeUpdates, type FakeRollout } from "./rollout-fakes";
 
 // The flows of docs/09-web-ui.md, "Testing the UI": first-run setup, sign-in with and without a
 // second factor, the step-up prompt, token creation and revocation, the enroll dialog, the
@@ -34,6 +34,8 @@ test("first-run setup creates the first user and signs them in", async ({ page }
 });
 
 test("signs in, creates an API token with a step-up, sets up an authenticator and signs in with it", async ({ page }) => {
+  // One long walk through the pages, both kinds of rollout among them: more than the default 30 s.
+  test.setTimeout(90_000);
   const violations = await watchCSP(page);
   await page.goto("/");
   await expect(page).toHaveURL(/\/login\?redirect=/);
@@ -103,9 +105,9 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expectAccessible(page);
   await upload.getByRole("button", { name: "Cancel" }).click();
   await expect(upload).toBeHidden();
-  // The rollout dialog's two steps and a running rollout, from made-up answers: the instance has no
-  // signed release. Neither scrolls sideways, in a desktop window or on a phone (#877).
-  let rollout: "none" | "running" = "none";
+  // The rollout dialogs and running rollouts, from made-up answers: the instance has no signed
+  // release. None scrolls sideways, in a desktop window or on a phone (#877).
+  let rollout: FakeRollout = "none";
   await fakeUpdates(page, () => rollout);
   await page.reload();
   // Check now asks for a release check, and the page shows how the last one ended (#890).
@@ -114,6 +116,43 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await releasesCard.getByRole("button", { name: "Check now" }).click();
   await expect(releasesCard.getByRole("button", { name: "Check now" })).toBeEnabled();
   await expectAccessible(page);
+  // A new instance starts easy rollouts (D129): tick agents, order them, start.
+  await page.getByRole("button", { name: "Roll out…" }).first().click();
+  const easy = page.getByRole("dialog", { name: "Roll out 0.2.0" });
+  await easy.getByRole("checkbox", { name: /^gw-eu-1/ }).check();
+  await easy.getByRole("checkbox", { name: /^db-host-1/ }).check();
+  await expect(easy.getByRole("list", { name: "Order" }).getByRole("listitem")).toHaveCount(2);
+  await expect(easy.getByText("local: built in, updates with the controller")).toBeVisible();
+  await easy.getByRole("button", { name: "Move gw-eu-1 up" }).click();
+  await expect(easy.getByRole("button", { name: "Start: update 2 agents" })).toBeEnabled();
+  await expectAccessible(page);
+  const desktopSize = page.viewportSize()!;
+  for (const width of [desktopSize.width, 390]) {
+    await page.setViewportSize({ width, height: desktopSize.height });
+    expect(await sideways(page), `easy dialog, ${width} px wide`).toEqual([]);
+  }
+  await page.setViewportSize(desktopSize);
+  await page.keyboard.press("Escape");
+  for (const s of ["easy", "easy-paused"] as const) {
+    rollout = s;
+    await page.reload();
+    const easyCard = page.getByRole("region", { name: "Rollout" });
+    await expect(easyCard.getByText(s === "easy" ? "1 failed" : "3 failed")).toBeVisible();
+    await expect(easyCard.getByRole("button", { name: s === "easy" ? "Pause" : "Resume" })).toBeVisible();
+    await expectAccessible(page);
+    for (const width of [desktopSize.width, 390]) {
+      await page.setViewportSize({ width, height: desktopSize.height });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${s}, ${width} px wide`).toBe(0);
+    }
+    await page.setViewportSize(desktopSize);
+  }
+  // Advanced keeps the staged rollout.
+  rollout = "none";
+  await page.reload();
+  const updatesForm = page.getByRole("form", { name: "Updates" });
+  await updatesForm.getByLabel("Rollouts").selectOption({ label: "Advanced: test agents, then stages you approve" });
+  await updatesForm.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Roll out…" }).first().click();
   const start = page.getByRole("dialog", { name: "Roll out 0.2.0" });
   await expect(start.getByRole("checkbox", { name: /^gw-eu-1/ })).toBeChecked();
@@ -121,7 +160,6 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await start.getByRole("button", { name: "Next" }).click();
   await expect(start.getByRole("list", { name: "The plan" })).toBeVisible();
   await expectAccessible(page);
-  const desktopSize = page.viewportSize()!;
   for (const width of [desktopSize.width, 390]) {
     await page.setViewportSize({ width, height: desktopSize.height });
     expect(await sideways(page), `${width} px wide`).toEqual([]);
@@ -140,6 +178,10 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   }
   await page.setViewportSize(desktopSize);
   await page.unrouteAll({ behavior: "wait" });
+  await page.reload();
+  await updatesForm.getByLabel("Rollouts").selectOption({ label: "Easy: the agents you choose, one after another" });
+  await updatesForm.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
   await page.getByRole("main").getByRole("link", { name: "Settings" }).click();
   await page.getByRole("link", { name: "PKI" }).click();
   await expect(page.getByRole("cell", { name: "Root", exact: true })).toBeVisible();

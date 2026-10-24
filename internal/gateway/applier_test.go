@@ -221,6 +221,22 @@ func withHTTP(r *agentv1.Resource, f func(*agentv1.GatewayHTTPRoute)) *agentv1.R
 	return r
 }
 
+// requireHeader is a require_header rule of a header with n zero hashes.
+func requireHeader(name string, n int) *rpmgrv1.RequireHeaderParams {
+	r := &rpmgrv1.RequireHeaderParams{Name: name}
+	for range n {
+		r.ValueSha256 = append(r.ValueSha256, make([]byte, 32))
+	}
+	return r
+}
+
+// withRequireHeader is an http route with a require_header rule.
+func withRequireHeader(rh *rpmgrv1.RequireHeaderParams) *agentv1.Resource {
+	return withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+		r.Access = &agentv1.RouteAccess{RequireHeader: []*rpmgrv1.RequireHeaderParams{rh}}
+	})
+}
+
 // pageResource is a custom page of a kind with a zero hash of size bytes.
 func pageResource(id string, kind rpmgrv1.GatewayPageKind, size int) *agentv1.Resource {
 	return &agentv1.Resource{Id: id, Kind: &agentv1.Resource_GatewayPage{GatewayPage: &agentv1.GatewayPage{Kind: kind, ContentSha256: make([]byte, size)}}}
@@ -316,6 +332,20 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 			ConnectorId: "con_1", Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY})), "no SHA-256 pin"},
 		{"a pinned-key target with a CA bundle", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
 			ConnectorId: "con_1", SpkiSha256: make([]byte, 32), CaPem: []byte("x"), Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY})), "no SHA-256 pin"},
+		{"require-header on a tcp route", gatewaySnapshot(1, func() *agentv1.Resource {
+			r := tcpResource("rt_1", 2222)
+			r.GetGatewayTcpRoute().Access = &agentv1.RouteAccess{RequireHeader: []*rpmgrv1.RequireHeaderParams{requireHeader("X-Origin", 1)}}
+			return r
+		}()), "not http"},
+		{"require-header with a bad name", gatewaySnapshot(1, withRequireHeader(&rpmgrv1.RequireHeaderParams{Name: "X Origin",
+			ValueSha256: [][]byte{make([]byte, 32)}})), "header name"},
+		{"require-header without values", gatewaySnapshot(1, withRequireHeader(requireHeader("X-Origin", 0))), "not 1 to 4"},
+		{"a required trace header", gatewaySnapshot(1, withRequireHeader(requireHeader("tracestate", 1))), "trace context"},
+		{"a required host header", gatewaySnapshot(1, withRequireHeader(requireHeader("Host", 1))), "gateway's own"},
+		{"a required rpmgr header", gatewaySnapshot(1, withRequireHeader(requireHeader("Rpmgr-User-Email", 1))), "rpmgr header"},
+		{"require-header with five values", gatewaySnapshot(1, withRequireHeader(requireHeader("X-Origin", 5))), "not 1 to 4"},
+		{"require-header with a short hash", gatewaySnapshot(1, withRequireHeader(&rpmgrv1.RequireHeaderParams{Name: "X-Origin",
+			ValueSha256: [][]byte{make([]byte, 16)}})), "16 bytes"},
 		{"a page of no kind", gatewaySnapshot(1, pageResource("gwp_1", 0, 32)), "page kind"},
 		{"a page without a hash", gatewaySnapshot(1, pageResource("gwp_1", rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_NOT_FOUND, 16)), "SHA-256"},
 		{"two pages of a kind", gatewaySnapshot(1, pageResource("gwp_1", rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE, 32),
