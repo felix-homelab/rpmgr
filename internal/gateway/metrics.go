@@ -28,6 +28,7 @@ type Metrics struct {
 	bytes    *prometheus.CounterVec
 	setup    *prometheus.HistogramVec
 	requests *prometheus.CounterVec
+	pageLogs prometheus.Counter                    // custom-page log lines dropped over the bound
 	count    atomic.Pointer[func() map[string]int] // the sessions per transport
 	routes   sync.Map                              // route IDs with series
 }
@@ -45,12 +46,21 @@ func NewMetrics(reg prometheus.Registerer) (*Metrics, error) {
 			Help: "From asking for a stream to its StreamResult.", Buckets: prometheus.DefBuckets}, []string{"route"}),
 		requests: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "rpmgr_http_requests_total", Help: "Requests of http routes by status."},
 			[]string{"route", "code"}),
+		pageLogs: prometheus.NewCounter(prometheus.CounterOpts{Name: "rpmgr_gateway_page_log_lines_dropped_total",
+			Help: "Log lines of custom pages' request IDs not written, as they came faster than the bound."}),
 	}
 	var errs []error
-	for _, c := range []prometheus.Collector{m.streams, m.conns, m.bytes, m.setup, m.requests, sessionsCollector{m}} {
+	for _, c := range []prometheus.Collector{m.streams, m.conns, m.bytes, m.setup, m.requests, m.pageLogs, sessionsCollector{m}} {
 		errs = append(errs, reg.Register(c))
 	}
 	return m, errors.Join(errs...)
+}
+
+// PageLogDropped counts a custom page's log line that the bound dropped.
+func (m *Metrics) PageLogDropped() {
+	if m != nil {
+		m.pageLogs.Inc()
+	}
 }
 
 var sessionsDesc = prometheus.NewDesc("rpmgr_gateway_sessions", "Data sessions from connectors, by transport.", []string{"transport"}, nil)
