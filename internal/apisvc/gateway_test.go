@@ -531,10 +531,27 @@ func TestGatewayPagePreview(t *testing.T) {
 		}
 		return r.Msg.GetUrl(), nil
 	}
-	open := func(url string) *httptest.ResponseRecorder {
+	// fetch requests a link with the Sec-Fetch headers a browser sends, none if dest is empty.
+	fetch := func(method, url, dest, site string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, url, nil)
+		if dest != "" {
+			r.Header.Set("Sec-Fetch-Dest", dest)
+			r.Header.Set("Sec-Fetch-Site", site)
+		}
 		w := httptest.NewRecorder()
-		e.previews.ServeHTTP(w, httptest.NewRequest(http.MethodGet, url, nil))
+		e.previews.ServeHTTP(w, r)
 		return w
+	}
+	// open requests a link as the web UI's frame does.
+	open := func(url string) *httptest.ResponseRecorder {
+		return fetch(http.MethodGet, url, "iframe", "same-origin")
+	}
+	refused := func(name string, w *httptest.ResponseRecorder, code int) {
+		t.Helper()
+		if w.Code != code || w.Header().Get("Content-Security-Policy") != "default-src 'none'; sandbox" ||
+			strings.Contains(w.Body.String(), "alert") || strings.Contains(w.Body.String(), "<p") {
+			t.Errorf("%s: %d %v %q", name, w.Code, w.Header(), w.Body.String())
+		}
 	}
 	url, err := preview(ada, rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE)
 	if err != nil || !strings.HasPrefix(url, apisvc.PreviewPath) {
@@ -570,14 +587,24 @@ func TestGatewayPagePreview(t *testing.T) {
 		"no token": apisvc.PreviewPath,
 		"garbage":  apisvc.PreviewPath + "x.y",
 	} {
-		if w := open(u); w.Code != http.StatusNotFound || w.Header().Get("Content-Security-Policy") != "" || strings.Contains(w.Body.String(), "alert") {
-			t.Errorf("%s: %d %q", name, w.Code, w.Body.String())
-		}
+		refused(name, open(u), http.StatusNotFound)
 	}
-	w = httptest.NewRecorder()
-	e.previews.ServeHTTP(w, httptest.NewRequest(http.MethodPost, url, nil))
-	if w.Code != http.StatusMethodNotAllowed {
-		t.Errorf("POST: %d", w.Code)
+	refused("POST", fetch(http.MethodPost, url, "iframe", "same-origin"), http.StatusMethodNotAllowed)
+	// Only a frame of the controller's own origin: not a page opened on its own, not another site's
+	// frame, not a request without the headers browsers send.
+	for name, w := range map[string]*httptest.ResponseRecorder{
+		"opened on its own":        fetch(http.MethodGet, url, "document", "none"),
+		"a top-level navigation":   fetch(http.MethodGet, url, "document", "same-origin"),
+		"another site's frame":     fetch(http.MethodGet, url, "iframe", "cross-site"),
+		"a same-site frame":        fetch(http.MethodGet, url, "iframe", "same-site"),
+		"no Sec-Fetch headers":     fetch(http.MethodGet, url, "", ""),
+		"HEAD without the headers": fetch(http.MethodHead, url, "", ""),
+	} {
+		refused(name, w, http.StatusNotFound)
+	}
+	if w := fetch(http.MethodHead, url, "iframe", "same-origin"); w.Code != http.StatusOK || w.Body.Len() != 0 ||
+		!strings.HasSuffix(w.Header().Get("Content-Security-Policy"), "; sandbox") {
+		t.Errorf("HEAD from the frame: %d %v", w.Code, w.Header())
 	}
 	if _, err := ada.gw.SetGatewayPage(ctx, connect.NewRequest(&rpmgrv1.SetGatewayPageRequest{GatewayPage: &rpmgrv1.GatewayPage{
 		GatewayGroupId: group, Kind: rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE, Html: "<p>changed</p>"}})); err != nil {

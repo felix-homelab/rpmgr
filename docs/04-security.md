@@ -693,9 +693,12 @@ capabilities, so a gateway of an earlier release never serves a route without th
   kind and the page's hash and ends after the time of
   [03](03-connections.md#timeouts-keepalive-and-backoff). The link alone shows the page, rendered
   by the gateways' code with sample values, under the page's own policy plus `sandbox`, so it has
-  an opaque origin and runs no script even when opened outside the frame; only the web UI may
-  frame it, and it is not cached or used across origins. A link of a page that changed since shows
-  nothing.
+  an opaque origin and runs no script; only the web UI may frame it, and it is not cached or used
+  across origins. The controller serves the page only to a frame of its own origin, as a browser
+  states in `Sec-Fetch-Dest: iframe` and `Sec-Fetch-Site: same-origin`: opened on its own, framed
+  by another site, or requested without these headers, the link shows a 404 text under a policy
+  that allows nothing, so an org member's page never appears as a page of the controller's
+  hostname. A link of a page that changed since shows nothing.
 - **CONNECT listeners** belong to one org ([D130](14-open-decisions.md#engineering)). In the mode
   `plain_basic` the proxy password crosses the network in the clear: anyone on the path between
   client and gateway can read it and use it. rpmgr allows it for clients that speak no HTTPS

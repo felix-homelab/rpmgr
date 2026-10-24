@@ -118,18 +118,30 @@ func (g *Gateways) PreviewGatewayPage(ctx context.Context, req *connect.Request[
 
 // ServeHTTP shows the page a preview link names, as the group's gateways send it: with sample
 // values, under the page's own CSP, which may only be framed by the web UI, plus a sandbox, so that
-// the page has an opaque origin and runs no script even when opened on its own.
+// the page has an opaque origin and runs no script. It serves only a frame of the controller's own
+// origin: a page opened on its own, or framed by another site, would show an org member's text and
+// links under the controller's name. Browsers say so in Sec-Fetch-Dest and Sec-Fetch-Site; a
+// request without them is refused too. Every refusal is the same 404 text, under a CSP that allows
+// nothing.
 func (p *PagePreviews) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
-		return
-	}
-	body, csp, err := p.render(strings.TrimPrefix(r.URL.Path, PreviewPath))
 	h := w.Header()
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Cross-Origin-Resource-Policy", "same-origin")
 	h.Set("Referrer-Policy", "no-referrer")
+	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+	var (
+		body []byte
+		csp  string
+		err  = errPagePreview
+	)
+	if r.Header.Get("Sec-Fetch-Dest") == "iframe" && r.Header.Get("Sec-Fetch-Site") == "same-origin" {
+		body, csp, err = p.render(strings.TrimPrefix(r.URL.Path, PreviewPath))
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
