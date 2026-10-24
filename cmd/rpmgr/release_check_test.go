@@ -84,7 +84,9 @@ func TestCheckRelease(t *testing.T) {
 	old := checkPoll
 	checkPoll = time.Millisecond
 	t.Cleanup(func() { checkPoll = old })
-	run := func(args ...string) (int, string, string) { return runWith(map[string]string{"RPMGR_CREDENTIALS": creds}, "", args...) }
+	run := func(args ...string) (int, string, string) {
+		return runWith(map[string]string{"RPMGR_CREDENTIALS": creds}, "", args...)
+	}
 
 	a.polls, a.outcome = 3, rpmgrv1.ReleaseCheckOutcome_RELEASE_CHECK_OUTCOME_OK
 	if code, out, errOut := run("check", "release"); code != cli.ExitOK || !strings.Contains(out, "Checked for releases at 2026-10-24T12:00:00Z") ||
