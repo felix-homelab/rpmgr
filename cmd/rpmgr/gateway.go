@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -248,7 +249,7 @@ func uploadPage() *cli.Command {
 			if len(args) != 1 || group == "" || !ok {
 				return cli.Usagef("give --group, --kind not-found, unavailable or maintenance, and the HTML file")
 			}
-			html, err := os.ReadFile(args[0])
+			html, err := readPage(args[0])
 			if err != nil {
 				return err
 			}
@@ -274,6 +275,24 @@ func uploadPage() *cli.Command {
 			return err
 		},
 	}
+}
+
+// maxPage is the largest page the API takes (docs/03-connections.md, "Timeouts, keepalive and
+// backoff").
+const maxPage = 64 << 10
+
+// readPage reads a page's file, refusing one above maxPage without reading more of it.
+func readPage(path string) ([]byte, error) {
+	f, err := os.Open(path) //nolint:gosec // G304: the user's file
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	b, err := io.ReadAll(io.LimitReader(f, maxPage+1))
+	if err == nil && len(b) > maxPage {
+		return nil, cli.Usagef("%s is larger than %d bytes, the most a page has", path, maxPage)
+	}
+	return b, err
 }
 
 // removePage is `remove gateway-page`: the group's gateways serve the built-in page again.

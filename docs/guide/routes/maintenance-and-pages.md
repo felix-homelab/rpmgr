@@ -69,7 +69,9 @@ browsers instead of the built-in one; clients that do not ask for HTML still get
   | `{{message}}` | The route's maintenance message; on the maintenance page only |
   | `{{request_id}}` | A random ID that the gateway also writes to its log, so that a visitor's report finds the request |
 
-  Any other `{{…}}` stays as it is.
+  Any other `{{…}}` stays as it is. The values are escaped for HTML text and for attribute values
+  in quotes only: put a placeholder into an element's text or a quoted attribute, never into an
+  unquoted attribute, a `<style>` element or a URL.
 - Only the organisation that owns the group may set its pages, with the role Owner or Admin; a
   shared group's pages are the Instance Admin's. Each change is in the
   [audit log](../operations/audit-log.md).

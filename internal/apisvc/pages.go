@@ -5,6 +5,8 @@ package apisvc
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"unicode/utf8"
@@ -38,6 +40,11 @@ func (g *Gateways) SetGatewayPage(ctx context.Context, req *connect.Request[rpmg
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("apisvc: a page is UTF-8"))
 	}
 	sum := sha256.Sum256([]byte(in.GetHtml()))
+	// The audit entry records what identifies the page, not its up to 64 KiB of HTML.
+	if b, err := json.Marshal(map[string]any{"gateway_group_id": in.GetGatewayGroupId(), "kind": string(kind),
+		"html_sha256": hex.EncodeToString(sum[:]), "html_bytes": len(in.GetHtml())}); err == nil {
+		api.AuditDiff(ctx, string(b))
+	}
 	var row *ent.GatewayPage
 	rev, err := store.ConfigTx(ctx, g.DB, func(tx *ent.Tx) ([]string, error) {
 		group, err := tx.GatewayGroup.Get(ctx, in.GetGatewayGroupId())

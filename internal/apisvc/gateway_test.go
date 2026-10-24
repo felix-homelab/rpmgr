@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -389,8 +392,10 @@ func TestDecommissionGateway(t *testing.T) {
 }
 
 // TestGatewayPages (D132): the group's owner org sets, lists, replaces and deletes the group's own
-// pages, each audited; a page that is too large, not UTF-8 or of no kind is refused; another org
-// and a Viewer change nothing; deleting the group takes its pages along.
+// pages, each audited by the page's hash and size rather than its HTML; a page that is too large,
+// empty or of no kind is refused (a string that is not UTF-8 never reaches the service: protobuf
+// refuses it on the wire); another org and a Viewer change nothing; deleting the group takes its
+// pages along. Shared groups, whose pages are the Instance Admin's, come with P2-M11.
 func TestGatewayPages(t *testing.T) {
 	e, ada, org, group := gatewayEnv(t)
 	ctx := context.Background()
@@ -477,6 +482,19 @@ func TestGatewayPages(t *testing.T) {
 	if n := e.db.Client().AuditEntry.Query().Where(auditentry.ActionIn("rpmgr.v1.GatewayService.SetGatewayPage",
 		"rpmgr.v1.GatewayService.DeleteGatewayPage")).CountX(e.sys); n < 5 {
 		t.Errorf("%d audit entries of page changes", n)
+	}
+	const replaced = "<p>{{hostname}} is not here</p>"
+	sum := sha256.Sum256([]byte(replaced))
+	entries := e.db.Client().AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.GatewayService.SetGatewayPage")).AllX(e.sys)
+	if !slices.ContainsFunc(entries, func(a *ent.AuditEntry) bool {
+		return strings.Contains(a.Diff, hex.EncodeToString(sum[:])) && strings.Contains(a.Diff, fmt.Sprintf(`"html_bytes":%d`, len(replaced))) && strings.Contains(a.Diff, group)
+	}) {
+		t.Errorf("no audit entry names the page by its hash and size")
+	}
+	for _, a := range entries {
+		if strings.Contains(a.Diff, "is not here") || strings.Contains(a.Diff, "Back soon") {
+			t.Errorf("an audit entry holds the HTML: %s", a.Diff)
+		}
 	}
 	if _, err := ada.gw.DeleteGatewayGroup(ctx, connect.NewRequest(&rpmgrv1.DeleteGatewayGroupRequest{GatewayGroupId: group})); err != nil {
 		t.Fatalf("a group with a page: %v", err)
