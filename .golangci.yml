@@ -33,6 +33,17 @@ linters:
               desc: keys, tokens and nonces use crypto/rand
             - pkg: math/rand/v2
               desc: keys, tokens and nonces use crypto/rand
+        # The upstream TLS settings may turn certificate verification off (ADR-0017): only the
+        # gateway, for a route's traffic, and the connector, for its health check, use them.
+        upstream-tls:
+          files:
+            - "$all"
+            - "!**/internal/gateway/**"
+            - "!**/internal/connector/**"
+            - "!**/internal/upstreamtls/**"
+          deny:
+            - pkg: github.com/felix-homelab/rpmgr/internal/upstreamtls
+              desc: it may turn certificate verification off; only the gateway and the connector use it (docs/04)
     forbidigo:
       analyze-types: true
       forbid:
@@ -45,9 +56,9 @@ linters:
   exclusions:
     rules:
       # The allowed InsecureSkipVerify (D82). The first (ADR-0017, ADR-0018): a route target whose
-      # user marked it unverified or pinned its key only. tools/bannedapi narrows it to
-      # UpstreamTLS.config.
-      - path: ^internal/gateway/upstreamtls\.go$
+      # user marked it unverified or pinned its key only, for its traffic and its health check.
+      # tools/bannedapi narrows it to upstreamtls.Settings.Config.
+      - path: ^internal/upstreamtls/upstreamtls\.go$
         text: "`cfg\\.InsecureSkipVerify` forbidden"
         linters: [forbidigo]
       # The second (ADR-0018): the connector reads the certificate a target presents, for its key
