@@ -116,8 +116,11 @@ func reset(port uint16) error {
 	defer func() { _ = c.Close() }()
 	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
 	n, err := c.Read(make([]byte, 1))
-	if err == nil || isTimeout(err) {
-		return fmt.Errorf("not reset: %d bytes, %v", n, err)
+	switch {
+	case err == nil:
+		return fmt.Errorf("not reset: read %d bytes", n)
+	case isTimeout(err):
+		return fmt.Errorf("not reset: %w", err)
 	}
 	return nil
 }
