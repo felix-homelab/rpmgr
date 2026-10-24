@@ -207,6 +207,22 @@ func request(md protoreflect.MessageDescriptor, ids map[string]string) (_ *dynam
 			sub := m.Mutable(fd).Message()
 			sub.Set(sub.Descriptor().Fields().ByName("id"), protoreflect.ValueOfString(v))
 			named = true
+		case fd.Kind() == protoreflect.MessageKind && !fd.IsList() && !fd.IsMap():
+			// A message without an ID of its own, such as a gateway page, names its parent by the
+			// parent's ID: those the fixtures hold are filled in, others left empty.
+			sub, filled := dynamicpb.NewMessage(fd.Message()), false
+			subFields := fd.Message().Fields()
+			for k := range subFields.Len() {
+				sf := subFields.Get(k)
+				if v, ok := ids[string(sf.Name())]; ok && sf.Kind() == protoreflect.StringKind && !sf.IsList() && strings.HasSuffix(string(sf.Name()), "_id") {
+					sub.Set(sf, protoreflect.ValueOfString(v))
+					filled = true
+				}
+			}
+			if filled {
+				m.Set(fd, protoreflect.ValueOfMessage(sub))
+				named = true
+			}
 		}
 	}
 	return m, "", named

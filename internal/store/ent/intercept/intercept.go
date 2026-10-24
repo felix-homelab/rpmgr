@@ -29,6 +29,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -689,6 +690,33 @@ func (f TraverseGatewayGroup) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.GatewayGroupQuery", q)
+}
+
+// The GatewayPageFunc type is an adapter to allow the use of ordinary function as a Querier.
+type GatewayPageFunc func(context.Context, *ent.GatewayPageQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f GatewayPageFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.GatewayPageQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.GatewayPageQuery", q)
+}
+
+// The TraverseGatewayPage type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseGatewayPage func(context.Context, *ent.GatewayPageQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseGatewayPage) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseGatewayPage) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.GatewayPageQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.GatewayPageQuery", q)
 }
 
 // The InstanceFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1708,6 +1736,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.GatewayQuery, predicate.Gateway, gateway.OrderOption]{typ: ent.TypeGateway, tq: q}, nil
 	case *ent.GatewayGroupQuery:
 		return &query[*ent.GatewayGroupQuery, predicate.GatewayGroup, gatewaygroup.OrderOption]{typ: ent.TypeGatewayGroup, tq: q}, nil
+	case *ent.GatewayPageQuery:
+		return &query[*ent.GatewayPageQuery, predicate.GatewayPage, gatewaypage.OrderOption]{typ: ent.TypeGatewayPage, tq: q}, nil
 	case *ent.InstanceQuery:
 		return &query[*ent.InstanceQuery, predicate.Instance, instance.OrderOption]{typ: ent.TypeInstance, tq: q}, nil
 	case *ent.InstanceSecretQuery:

@@ -636,6 +636,26 @@
     "tokenIntro": "A token that enrolls {{name}} and nothing else, valid for 1 hour. Making it needs you to confirm it is you.",
     "decommissionWarning": "Decommissioning {{name}} revokes its identity and ends its sessions for good; its tunnel endpoints stop serving."
   },
+  "gwPages": {
+    "title": "Pages",
+    "intro": "The pages the group's gateways show browsers: built in, or your own complete HTML of at most 64 KiB. Your page runs no script and loads nothing from elsewhere; put styles and images (as data: URLs) into the page itself.",
+    "kinds": {
+      "notFound": "Not found (404)",
+      "unavailable": "Unavailable (502, 503, 504)",
+      "maintenance": "Maintenance"
+    },
+    "placeholders": "Placeholders, filled in as text:",
+    "own": "Own",
+    "builtIn": "Built in",
+    "preview": "Preview",
+    "hide": "Hide the preview",
+    "previewOf": "Preview of the page {{page}}",
+    "upload": "Upload HTML…",
+    "tooLarge": "The file has {{size}} bytes; a page has at most 65536.",
+    "resetAsk": "Reset…",
+    "ask": "Go back to the built-in page {{page}}?",
+    "reset": "Use the built-in page"
+  },
   "pools": {
     "title": "Port pools",
     "none": "The group has no port pool: TCP and UDP routes have no public ports.",

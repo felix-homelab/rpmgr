@@ -36,6 +36,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -123,6 +124,8 @@ type Client struct {
 	Gateway *GatewayClient
 	// GatewayGroup is the client for interacting with the GatewayGroup builders.
 	GatewayGroup *GatewayGroupClient
+	// GatewayPage is the client for interacting with the GatewayPage builders.
+	GatewayPage *GatewayPageClient
 	// Instance is the client for interacting with the Instance builders.
 	Instance *InstanceClient
 	// InstanceSecret is the client for interacting with the InstanceSecret builders.
@@ -227,6 +230,7 @@ func (c *Client) init() {
 	c.EnrollmentToken = NewEnrollmentTokenClient(c.config)
 	c.Gateway = NewGatewayClient(c.config)
 	c.GatewayGroup = NewGatewayGroupClient(c.config)
+	c.GatewayPage = NewGatewayPageClient(c.config)
 	c.Instance = NewInstanceClient(c.config)
 	c.InstanceSecret = NewInstanceSecretClient(c.config)
 	c.InstanceSetting = NewInstanceSettingClient(c.config)
@@ -376,6 +380,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		EnrollmentToken:    NewEnrollmentTokenClient(cfg),
 		Gateway:            NewGatewayClient(cfg),
 		GatewayGroup:       NewGatewayGroupClient(cfg),
+		GatewayPage:        NewGatewayPageClient(cfg),
 		Instance:           NewInstanceClient(cfg),
 		InstanceSecret:     NewInstanceSecretClient(cfg),
 		InstanceSetting:    NewInstanceSettingClient(cfg),
@@ -452,6 +457,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		EnrollmentToken:    NewEnrollmentTokenClient(cfg),
 		Gateway:            NewGatewayClient(cfg),
 		GatewayGroup:       NewGatewayGroupClient(cfg),
+		GatewayPage:        NewGatewayPageClient(cfg),
 		Instance:           NewInstanceClient(cfg),
 		InstanceSecret:     NewInstanceSecretClient(cfg),
 		InstanceSetting:    NewInstanceSettingClient(cfg),
@@ -521,8 +527,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AgentState, c.AuditCheckpoint, c.AuditEntry, c.AuditHead, c.CABundle,
 		c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq,
 		c.Connector, c.DataSession, c.Domain, c.EnrollmentToken, c.Gateway,
-		c.GatewayGroup, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
-		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
+		c.GatewayGroup, c.GatewayPage, c.Instance, c.InstanceSecret, c.InstanceSetting,
+		c.Invitation, c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
 		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
 		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
@@ -542,8 +548,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AgentState, c.AuditCheckpoint, c.AuditEntry, c.AuditHead, c.CABundle,
 		c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq,
 		c.Connector, c.DataSession, c.Domain, c.EnrollmentToken, c.Gateway,
-		c.GatewayGroup, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
-		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
+		c.GatewayGroup, c.GatewayPage, c.Instance, c.InstanceSecret, c.InstanceSetting,
+		c.Invitation, c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
 		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
 		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
@@ -600,6 +606,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Gateway.mutate(ctx, m)
 	case *GatewayGroupMutation:
 		return c.GatewayGroup.mutate(ctx, m)
+	case *GatewayPageMutation:
+		return c.GatewayPage.mutate(ctx, m)
 	case *InstanceMutation:
 		return c.Instance.mutate(ctx, m)
 	case *InstanceSecretMutation:
@@ -3571,6 +3579,157 @@ func (c *GatewayGroupClient) mutate(ctx context.Context, m *GatewayGroupMutation
 		return (&GatewayGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown GatewayGroup mutation op: %q", m.Op())
+	}
+}
+
+// GatewayPageClient is a client for the GatewayPage schema.
+type GatewayPageClient struct {
+	config
+}
+
+// NewGatewayPageClient returns a client for the GatewayPage from the given config.
+func NewGatewayPageClient(c config) *GatewayPageClient {
+	return &GatewayPageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `gatewaypage.Hooks(f(g(h())))`.
+func (c *GatewayPageClient) Use(hooks ...Hook) {
+	c.hooks.GatewayPage = append(c.hooks.GatewayPage, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `gatewaypage.Intercept(f(g(h())))`.
+func (c *GatewayPageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.GatewayPage = append(c.inters.GatewayPage, interceptors...)
+}
+
+// Create returns a builder for creating a GatewayPage entity.
+func (c *GatewayPageClient) Create() *GatewayPageCreate {
+	mutation := newGatewayPageMutation(c.config, OpCreate)
+	return &GatewayPageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of GatewayPage entities.
+func (c *GatewayPageClient) CreateBulk(builders ...*GatewayPageCreate) *GatewayPageCreateBulk {
+	return &GatewayPageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GatewayPageClient) MapCreateBulk(slice any, setFunc func(*GatewayPageCreate, int)) *GatewayPageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GatewayPageCreateBulk{err: fmt.Errorf("calling to GatewayPageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GatewayPageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GatewayPageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for GatewayPage.
+func (c *GatewayPageClient) Update() *GatewayPageUpdate {
+	mutation := newGatewayPageMutation(c.config, OpUpdate)
+	return &GatewayPageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GatewayPageClient) UpdateOne(_m *GatewayPage) *GatewayPageUpdateOne {
+	mutation := newGatewayPageMutation(c.config, OpUpdateOne, withGatewayPage(_m))
+	return &GatewayPageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *GatewayPageClient) UpdateOneID(id string) *GatewayPageUpdateOne {
+	mutation := newGatewayPageMutation(c.config, OpUpdateOne, withGatewayPageID(id))
+	return &GatewayPageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for GatewayPage.
+func (c *GatewayPageClient) Delete() *GatewayPageDelete {
+	mutation := newGatewayPageMutation(c.config, OpDelete)
+	return &GatewayPageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GatewayPageClient) DeleteOne(_m *GatewayPage) *GatewayPageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *GatewayPageClient) DeleteOneID(id string) *GatewayPageDeleteOne {
+	builder := c.Delete().Where(gatewaypage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &GatewayPageDeleteOne{builder}
+}
+
+// Query returns a query builder for GatewayPage.
+func (c *GatewayPageClient) Query() *GatewayPageQuery {
+	return &GatewayPageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGatewayPage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a GatewayPage entity by its id.
+func (c *GatewayPageClient) Get(ctx context.Context, id string) (*GatewayPage, error) {
+	return c.Query().Where(gatewaypage.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GatewayPageClient) GetX(ctx context.Context, id string) *GatewayPage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGroup queries the group edge of a GatewayPage.
+func (c *GatewayPageClient) QueryGroup(_m *GatewayPage) *GatewayGroupQuery {
+	query := (&GatewayGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gatewaypage.Table, gatewaypage.FieldID, id),
+			sqlgraph.To(gatewaygroup.Table, gatewaygroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, gatewaypage.GroupTable, gatewaypage.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *GatewayPageClient) Hooks() []Hook {
+	hooks := c.hooks.GatewayPage
+	return append(hooks[:len(hooks):len(hooks)], gatewaypage.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *GatewayPageClient) Interceptors() []Interceptor {
+	inters := c.inters.GatewayPage
+	return append(inters[:len(inters):len(inters)], gatewaypage.Interceptors[:]...)
+}
+
+func (c *GatewayPageClient) mutate(ctx context.Context, m *GatewayPageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GatewayPageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GatewayPageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GatewayPageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GatewayPageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown GatewayPage mutation op: %q", m.Op())
 	}
 }
 
@@ -8885,7 +9044,7 @@ type (
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
 		AuditCheckpoint, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
 		CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, DataSession, Domain,
-		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSecret,
+		EnrollmentToken, Gateway, GatewayGroup, GatewayPage, Instance, InstanceSecret,
 		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
 		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
 		RecoveryCode, Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,
@@ -8897,7 +9056,7 @@ type (
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
 		AuditCheckpoint, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
 		CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, DataSession, Domain,
-		EnrollmentToken, Gateway, GatewayGroup, Instance, InstanceSecret,
+		EnrollmentToken, Gateway, GatewayGroup, GatewayPage, Instance, InstanceSecret,
 		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
 		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
 		RecoveryCode, Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,

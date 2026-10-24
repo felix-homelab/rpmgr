@@ -166,7 +166,7 @@ func (p *Passthrough) handle(c net.Conn, id, sni string) {
 		return
 	}
 	lim := (*p.limits.Load())[id]
-	if ok, _, _ := lim.Admit(addrOf(c.RemoteAddr())); !ok {
+	if ok, _, _ := lim.Admit(addrOf(c.RemoteAddr()), false); !ok {
 		p.mu.Unlock()
 		abort(c) // over a rate of the route or of its client
 		return

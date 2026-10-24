@@ -229,7 +229,7 @@ func (t *TCPRoutes) serve(ln net.Listener, r TCPRoute) {
 				abort(c)
 				continue
 			}
-			if ok, _, _ := r.Limit.Admit(addrOf(c.RemoteAddr())); !ok {
+			if ok, _, _ := r.Limit.Admit(addrOf(c.RemoteAddr()), false); !ok {
 				pl.mu.Unlock()
 				abort(c) // over a rate of the route or of its client: reset before a stream opens
 				continue

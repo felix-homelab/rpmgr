@@ -3,8 +3,17 @@
 package apisvc_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -15,7 +24,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
+	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
 // TestGatewayGroups: an Owner creates, reads, lists, changes and deletes gateway groups: a name is
@@ -380,5 +391,242 @@ func TestDecommissionGateway(t *testing.T) {
 	if _, err := ada.gw.DecommissionGateway(ctx, connect.NewRequest(&rpmgrv1.DecommissionGatewayRequest{GatewayId: "gw_missing"})); code(err) !=
 		connect.CodeNotFound {
 		t.Fatalf("a gateway that does not exist: %v", err)
+	}
+}
+
+// TestGatewayPages (D132): the group's owner org sets, lists, replaces and deletes the group's own
+// pages, each audited by the page's hash and size rather than its HTML; a page that is too large,
+// empty or of no kind is refused (a string that is not UTF-8 never reaches the service: protobuf
+// refuses it on the wire); another org and a Viewer change nothing; deleting the group takes its
+// pages along. Shared groups, whose pages are the Instance Admin's, come with P2-M11.
+func TestGatewayPages(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	set := func(b *browser, group string, kind rpmgrv1.GatewayPageKind, html string) (*rpmgrv1.GatewayPage, error) {
+		r, err := b.gw.SetGatewayPage(ctx, connect.NewRequest(&rpmgrv1.SetGatewayPageRequest{
+			GatewayPage: &rpmgrv1.GatewayPage{GatewayGroupId: group, Kind: kind, Html: html}}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetGatewayPage(), nil
+	}
+	list := func(b *browser) ([]*rpmgrv1.GatewayPage, error) {
+		r, err := b.gw.ListGatewayPages(ctx, connect.NewRequest(&rpmgrv1.ListGatewayPagesRequest{GatewayGroupId: group}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetGatewayPages(), nil
+	}
+	const notFound, maintenance = rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_NOT_FOUND, rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE
+	p, err := set(ada, group, maintenance, "<p>Back soon: {{message}}</p>")
+	if err != nil || p.GetKind() != maintenance || p.GetHtml() != "<p>Back soon: {{message}}</p>" || p.GetUpdateUserId() == "" || p.GetUpdateTime() == nil {
+		t.Fatalf("set: %v %v", p, err)
+	}
+	if _, err := set(ada, group, notFound, "<p>first</p>"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := set(ada, group, notFound, "<p>{{hostname}} is not here</p>"); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+	got, err := list(ada)
+	if err != nil || len(got) != 2 || got[0].GetKind() != maintenance && got[1].GetKind() != maintenance {
+		t.Fatalf("list: %v %v", got, err)
+	}
+	stored := e.db.Client().GatewayPage.Query().Where(gatewaypage.KindEQ(gatewaypage.KindNotFound)).OnlyX(e.sys)
+	if sum := sha256.Sum256([]byte("<p>{{hostname}} is not here</p>")); !bytes.Equal(stored.ContentSha256, sum[:]) || stored.OrgID != org {
+		t.Fatalf("stored %v", stored)
+	}
+
+	for name, tc := range map[string]struct {
+		kind rpmgrv1.GatewayPageKind
+		html string
+		code connect.Code
+	}{
+		"too large":       {notFound, strings.Repeat("a", 64<<10+1), connect.CodeInvalidArgument},
+		"empty":           {notFound, "", connect.CodeInvalidArgument},
+		"no kind":         {rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_UNSPECIFIED, "<p>x</p>", connect.CodeInvalidArgument},
+		"an unknown kind": {rpmgrv1.GatewayPageKind(9), "<p>x</p>", connect.CodeInvalidArgument},
+	} {
+		if _, err := set(ada, group, tc.kind, tc.html); code(err) != tc.code {
+			t.Errorf("%s: %v, want %v", name, err, tc.code)
+		}
+	}
+	if _, err := set(ada, group, notFound, strings.Repeat("a", 64<<10)); err != nil {
+		t.Errorf("a page of exactly 64 KiB: %v", err)
+	}
+
+	// Another org's owner neither sees nor changes the group's pages; a Viewer reads them only.
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	if _, err := set(bob, group, notFound, "<p>mine</p>"); code(err) != connect.CodeNotFound && code(err) != connect.CodePermissionDenied {
+		t.Errorf("another org sets: %v", err)
+	}
+	if _, err := list(bob); code(err) != connect.CodeNotFound && code(err) != connect.CodePermissionDenied {
+		t.Errorf("another org lists: %v", err)
+	}
+	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
+	if got, err := list(vwr); err != nil || len(got) != 2 {
+		t.Errorf("a Viewer lists: %v %v", got, err)
+	}
+	if _, err := set(vwr, group, notFound, "<p>x</p>"); code(err) != connect.CodePermissionDenied {
+		t.Errorf("a Viewer sets: %v", err)
+	}
+
+	del := func(kind rpmgrv1.GatewayPageKind) error {
+		_, err := ada.gw.DeleteGatewayPage(ctx, connect.NewRequest(&rpmgrv1.DeleteGatewayPageRequest{GatewayGroupId: group, Kind: kind}))
+		return err
+	}
+	if err := del(notFound); err != nil {
+		t.Fatal(err)
+	}
+	if err := del(notFound); code(err) != connect.CodeNotFound {
+		t.Errorf("a page deleted twice: %v", err)
+	}
+	if n := e.db.Client().AuditEntry.Query().Where(auditentry.ActionIn("rpmgr.v1.GatewayService.SetGatewayPage",
+		"rpmgr.v1.GatewayService.DeleteGatewayPage")).CountX(e.sys); n < 5 {
+		t.Errorf("%d audit entries of page changes", n)
+	}
+	const replaced = "<p>{{hostname}} is not here</p>"
+	sum := sha256.Sum256([]byte(replaced))
+	entries := e.db.Client().AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.GatewayService.SetGatewayPage")).AllX(e.sys)
+	if !slices.ContainsFunc(entries, func(a *ent.AuditEntry) bool {
+		return strings.Contains(a.Diff, hex.EncodeToString(sum[:])) && strings.Contains(a.Diff, fmt.Sprintf(`"html_bytes":%d`, len(replaced))) && strings.Contains(a.Diff, group)
+	}) {
+		t.Errorf("no audit entry names the page by its hash and size")
+	}
+	for _, a := range entries {
+		if strings.Contains(a.Diff, "is not here") || strings.Contains(a.Diff, "Back soon") {
+			t.Errorf("an audit entry holds the HTML: %s", a.Diff)
+		}
+	}
+	if _, err := ada.gw.DeleteGatewayGroup(ctx, connect.NewRequest(&rpmgrv1.DeleteGatewayGroupRequest{GatewayGroupId: group})); err != nil {
+		t.Fatalf("a group with a page: %v", err)
+	}
+	if n := e.db.Client().GatewayPage.Query().CountX(e.sys); n != 0 {
+		t.Errorf("%d pages left after their group", n)
+	}
+}
+
+// TestGatewayPagePreview (D136): an Owner gets a link that shows the group's page exactly as its
+// gateways render it, with sample values, under the custom-page CSP plus a sandbox, framed only by
+// the web UI; a page with script, handlers and javascript: URLs cannot run them (the CSP allows no
+// script at all); a kind without a page shows the built-in page; the link fails once expired,
+// altered or once the page changed; another org and a Viewer get no link.
+func TestGatewayPagePreview(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	const hostile = `<p onclick="alert(1)">{{status}} {{hostname}} {{message}} {{request_id}}</p><script>alert(2)</script>` +
+		`<a href="javascript:alert(3)">x</a>`
+	if _, err := ada.gw.SetGatewayPage(ctx, connect.NewRequest(&rpmgrv1.SetGatewayPageRequest{GatewayPage: &rpmgrv1.GatewayPage{
+		GatewayGroupId: group, Kind: rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE, Html: hostile}})); err != nil {
+		t.Fatal(err)
+	}
+	preview := func(b *browser, kind rpmgrv1.GatewayPageKind) (string, error) {
+		r, err := b.gw.PreviewGatewayPage(ctx, connect.NewRequest(&rpmgrv1.PreviewGatewayPageRequest{GatewayGroupId: group, Kind: kind}))
+		if err != nil {
+			return "", err
+		}
+		if !r.Msg.GetExpireTime().AsTime().After(e.clock) {
+			t.Errorf("a link that ends at %v", r.Msg.GetExpireTime().AsTime())
+		}
+		return r.Msg.GetUrl(), nil
+	}
+	// fetch requests a link with the Sec-Fetch headers a browser sends, none if dest is empty.
+	fetch := func(method, url, dest, site string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, url, nil)
+		if dest != "" {
+			r.Header.Set("Sec-Fetch-Dest", dest)
+			r.Header.Set("Sec-Fetch-Site", site)
+		}
+		w := httptest.NewRecorder()
+		e.previews.ServeHTTP(w, r)
+		return w
+	}
+	// open requests a link as the web UI's frame does.
+	open := func(url string) *httptest.ResponseRecorder {
+		return fetch(http.MethodGet, url, "iframe", "same-origin")
+	}
+	refused := func(name string, w *httptest.ResponseRecorder, code int) {
+		t.Helper()
+		if w.Code != code || w.Header().Get("Content-Security-Policy") != "default-src 'none'; sandbox" ||
+			strings.Contains(w.Body.String(), "alert") || strings.Contains(w.Body.String(), "<p") {
+			t.Errorf("%s: %d %v %q", name, w.Code, w.Header(), w.Body.String())
+		}
+	}
+	url, err := preview(ada, rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE)
+	if err != nil || !strings.HasPrefix(url, apisvc.PreviewPath) {
+		t.Fatalf("a link: %q %v", url, err)
+	}
+	w := open(url)
+	h := w.Header()
+	if w.Code != http.StatusOK || h.Get("Content-Type") != "text/html; charset=utf-8" || h.Get("X-Content-Type-Options") != "nosniff" ||
+		h.Get("Cache-Control") != "no-store" || h.Get("Cross-Origin-Resource-Policy") != "same-origin" {
+		t.Fatalf("%d %v", w.Code, h)
+	}
+	csp := h.Get("Content-Security-Policy")
+	if !strings.HasPrefix(csp, "default-src 'none'; style-src 'unsafe-inline'; img-src data:") || !strings.HasSuffix(csp, "; sandbox") ||
+		!strings.Contains(csp, "frame-ancestors 'self'") || strings.Contains(csp, "script-src") {
+		t.Fatalf("CSP %q", csp)
+	}
+	if want := `<p onclick="alert(1)">503 www.example.com Back soon: the service is being updated. 0123456789abcdef</p>`; !strings.HasPrefix(w.Body.String(), want) {
+		t.Errorf("body %q, want it to start with %q", w.Body.String(), want)
+	}
+	// A kind without a page of its own: the built-in page, under its own policy and the sandbox.
+	nf, err := preview(ada, rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_NOT_FOUND)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := open(nf); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Site not available") ||
+		!strings.HasSuffix(w.Header().Get("Content-Security-Policy"), "; sandbox") {
+		t.Errorf("the built-in page: %d %v", w.Code, w.Header())
+	}
+
+	// Refused links: altered, unsigned, expired, of a changed page; POST.
+	for name, u := range map[string]string{
+		"altered":  url[:len(url)-2] + "AA",
+		"no token": apisvc.PreviewPath,
+		"garbage":  apisvc.PreviewPath + "x.y",
+	} {
+		refused(name, open(u), http.StatusNotFound)
+	}
+	refused("POST", fetch(http.MethodPost, url, "iframe", "same-origin"), http.StatusMethodNotAllowed)
+	// Only a frame of the controller's own origin: not a page opened on its own, not another site's
+	// frame, not a request without the headers browsers send.
+	for name, w := range map[string]*httptest.ResponseRecorder{
+		"opened on its own":        fetch(http.MethodGet, url, "document", "none"),
+		"a top-level navigation":   fetch(http.MethodGet, url, "document", "same-origin"),
+		"another site's frame":     fetch(http.MethodGet, url, "iframe", "cross-site"),
+		"a same-site frame":        fetch(http.MethodGet, url, "iframe", "same-site"),
+		"no Sec-Fetch headers":     fetch(http.MethodGet, url, "", ""),
+		"HEAD without the headers": fetch(http.MethodHead, url, "", ""),
+	} {
+		refused(name, w, http.StatusNotFound)
+	}
+	if w := fetch(http.MethodHead, url, "iframe", "same-origin"); w.Code != http.StatusOK || w.Body.Len() != 0 ||
+		!strings.HasSuffix(w.Header().Get("Content-Security-Policy"), "; sandbox") {
+		t.Errorf("HEAD from the frame: %d %v", w.Code, w.Header())
+	}
+	if _, err := ada.gw.SetGatewayPage(ctx, connect.NewRequest(&rpmgrv1.SetGatewayPageRequest{GatewayPage: &rpmgrv1.GatewayPage{
+		GatewayGroupId: group, Kind: rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE, Html: "<p>changed</p>"}})); err != nil {
+		t.Fatal(err)
+	}
+	if w := open(url); w.Code != http.StatusNotFound {
+		t.Errorf("a changed page: %d", w.Code)
+	}
+	fresh, _ := preview(ada, rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE)
+	e.clock = e.clock.Add(6 * time.Minute)
+	if w := open(fresh); w.Code != http.StatusNotFound {
+		t.Errorf("an expired link: %d", w.Code)
+	}
+
+	// Who gets a link: not another org's owner, not a Viewer.
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	if _, err := preview(bob, rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE); code(err) != connect.CodeNotFound && code(err) != connect.CodePermissionDenied {
+		t.Errorf("another org: %v", err)
+	}
+	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
+	if _, err := preview(vwr, rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE); code(err) != connect.CodePermissionDenied {
+		t.Errorf("a Viewer: %v", err)
 	}
 }
