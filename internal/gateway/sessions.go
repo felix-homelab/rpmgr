@@ -161,12 +161,19 @@ type dataSession struct {
 	writing atomic.Int64
 	readyMu sync.Mutex
 	ready   map[string]bool
+	// prios are, of a ready route, the priorities with a healthy target the connector reported;
+	// none for a route ready at every priority, as from a connector without health.active (D133).
+	prios map[string][]uint32
 }
 
-func (d *dataSession) isReady(route string) bool {
+// readyFor reports whether the route is ready on the session for an entry of it: at the entry's
+// priority, if the connector named its ready priorities and the controller ranked the entry; an
+// unranked entry's stream tries every priority, so readiness alone counts.
+func (d *dataSession) readyFor(route string, c RouteConnector) bool {
 	d.readyMu.Lock()
 	defer d.readyMu.Unlock()
-	return d.ready[route]
+	prios := d.prios[route]
+	return d.ready[route] && (len(prios) == 0 || !c.Ranked || slices.Contains(prios, c.Priority))
 }
 
 // rtt is the session's round-trip time where the transport knows it, else 1 ms.
@@ -248,7 +255,8 @@ func (m *Sessions) Serve(ctx context.Context, s tunnel.Session, peer *x509.Certi
 	if err != nil {
 		return err
 	}
-	d := &dataSession{connector: id.ID, boot: hello.GetBootId(), peer: peer, s: s, send: send, now: m.o.Now, ready: map[string]bool{}}
+	d := &dataSession{connector: id.ID, boot: hello.GetBootId(), peer: peer, s: s, send: send, now: m.o.Now, ready: map[string]bool{},
+		prios: map[string][]uint32{}}
 	for _, r := range hello.GetReadyRoutes() {
 		d.ready[r] = true
 	}
@@ -285,6 +293,7 @@ func (m *Sessions) Serve(ctx context.Context, s tunnel.Session, peer *x509.Certi
 			h := msg.GetRouteHealth()
 			d.readyMu.Lock()
 			d.ready[h.GetRouteId()] = h.GetReady()
+			d.prios[h.GetRouteId()] = slices.Clone(h.GetReadyPriorities())
 			d.readyMu.Unlock()
 		case msg.GetOpenRequest() != nil:
 			go func(r *tunnelv1.OpenRequest) {
@@ -556,8 +565,10 @@ type passedOver struct {
 	sessions map[*dataSession]bool
 }
 
-// candidates are the route's entries whose connector has a ready session, each with those
-// sessions, less the ones skip names.
+// candidates are the route's entries whose connector has a session ready for them, each with those
+// sessions, less the ones skip names: an entry whose priority the connector reports without a
+// healthy target is passed over, so new streams, and the requests of http routes, move to the
+// next priority and back once it is healthy again.
 func (m *Sessions) candidates(route string, skip passedOver) []rankedSessions {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -568,7 +579,7 @@ func (m *Sessions) candidates(route string, skip passedOver) []rankedSessions {
 		}
 		r := rankedSessions{RouteConnector: c}
 		for _, d := range m.byConnector[c.ID] {
-			if d.isReady(route) && !d.drained.Load() && !skip.sessions[d] {
+			if d.readyFor(route, c) && !d.drained.Load() && !skip.sessions[d] {
 				r.sessions = append(r.sessions, d)
 			}
 		}
