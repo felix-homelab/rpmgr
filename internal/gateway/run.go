@@ -40,7 +40,7 @@ const tunnelHandshake = 10 * time.Second
 
 // Capabilities are what this gateway version implements (docs/03-connections.md, "Versioning and
 // capabilities").
-var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2}
+var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapHTTPRequireHeader}
 
 // RunOptions configure Run.
 type RunOptions struct {

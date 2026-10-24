@@ -167,6 +167,10 @@ message RouteAccess {
   repeated IPRule ip_rules = 1;
   // http routes: a client the IP rules allow must also pass each of these, in order.
   repeated BasicAuthRule basic_auth = 2;
+  // http routes: a request the IP rules allow must carry each rule's header with one of its
+  // values, checked before basic auth; the gateway removes the header before the request goes
+  // upstream. A gateway gets these only with the capability http.require-header.
+  repeated rpmgr.v1.RequireHeaderParams require_header = 3;
 }
 
 // BasicAuthRule is a basic_auth rule of an access policy as gateways check it.

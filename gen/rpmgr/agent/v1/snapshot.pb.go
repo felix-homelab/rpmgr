@@ -1016,7 +1016,11 @@ type RouteAccess struct {
 	// matter.
 	IpRules []*IPRule `protobuf:"bytes,1,rep,name=ip_rules,json=ipRules,proto3" json:"ip_rules,omitempty"`
 	// http routes: a client the IP rules allow must also pass each of these, in order.
-	BasicAuth     []*BasicAuthRule `protobuf:"bytes,2,rep,name=basic_auth,json=basicAuth,proto3" json:"basic_auth,omitempty"`
+	BasicAuth []*BasicAuthRule `protobuf:"bytes,2,rep,name=basic_auth,json=basicAuth,proto3" json:"basic_auth,omitempty"`
+	// http routes: a request the IP rules allow must carry each rule's header with one of its
+	// values, checked before basic auth; the gateway removes the header before the request goes
+	// upstream. A gateway gets these only with the capability http.require-header.
+	RequireHeader []*v1.RequireHeaderParams `protobuf:"bytes,3,rep,name=require_header,json=requireHeader,proto3" json:"require_header,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1061,6 +1065,13 @@ func (x *RouteAccess) GetIpRules() []*IPRule {
 func (x *RouteAccess) GetBasicAuth() []*BasicAuthRule {
 	if x != nil {
 		return x.BasicAuth
+	}
+	return nil
+}
+
+func (x *RouteAccess) GetRequireHeader() []*v1.RequireHeaderParams {
+	if x != nil {
+		return x.RequireHeader
 	}
 	return nil
 }
@@ -2447,11 +2458,12 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\x0eRouteConnector\x12!\n" +
 	"\fconnector_id\x18\x01 \x01(\tR\vconnectorId\x12\x1a\n" +
 	"\bpriority\x18\x02 \x01(\rR\bpriority\x12\x16\n" +
-	"\x06weight\x18\x03 \x01(\rR\x06weight\"~\n" +
+	"\x06weight\x18\x03 \x01(\rR\x06weight\"\xc4\x01\n" +
 	"\vRouteAccess\x121\n" +
 	"\bip_rules\x18\x01 \x03(\v2\x16.rpmgr.agent.v1.IPRuleR\aipRules\x12<\n" +
 	"\n" +
-	"basic_auth\x18\x02 \x03(\v2\x1d.rpmgr.agent.v1.BasicAuthRuleR\tbasicAuth\"\x8a\x01\n" +
+	"basic_auth\x18\x02 \x03(\v2\x1d.rpmgr.agent.v1.BasicAuthRuleR\tbasicAuth\x12D\n" +
+	"\x0erequire_header\x18\x03 \x03(\v2\x1d.rpmgr.v1.RequireHeaderParamsR\rrequireHeader\"\x8a\x01\n" +
 	"\rBasicAuthRule\x12\x1b\n" +
 	"\tpolicy_id\x18\x01 \x01(\tR\bpolicyId\x12-\n" +
 	"\x12credential_version\x18\x02 \x01(\tR\x11credentialVersion\x12-\n" +
@@ -2614,8 +2626,9 @@ var file_rpmgr_agent_v1_snapshot_proto_goTypes = []any{
 	(*ResourceReference)(nil),       // 27: rpmgr.agent.v1.ResourceReference
 	(*DenyList)(nil),                // 28: rpmgr.agent.v1.DenyList
 	(*DenyEntry)(nil),               // 29: rpmgr.agent.v1.DenyEntry
-	(*v1.BasicAuthUser)(nil),        // 30: rpmgr.v1.BasicAuthUser
-	(*timestamppb.Timestamp)(nil),   // 31: google.protobuf.Timestamp
+	(*v1.RequireHeaderParams)(nil),  // 30: rpmgr.v1.RequireHeaderParams
+	(*v1.BasicAuthUser)(nil),        // 31: rpmgr.v1.BasicAuthUser
+	(*timestamppb.Timestamp)(nil),   // 32: google.protobuf.Timestamp
 }
 var file_rpmgr_agent_v1_snapshot_proto_depIdxs = []int32{
 	2,  // 0: rpmgr.agent.v1.Snapshot.revision:type_name -> rpmgr.agent.v1.Revision
@@ -2637,32 +2650,33 @@ var file_rpmgr_agent_v1_snapshot_proto_depIdxs = []int32{
 	11, // 16: rpmgr.agent.v1.GatewayTCPRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
 	14, // 17: rpmgr.agent.v1.RouteAccess.ip_rules:type_name -> rpmgr.agent.v1.IPRule
 	13, // 18: rpmgr.agent.v1.RouteAccess.basic_auth:type_name -> rpmgr.agent.v1.BasicAuthRule
-	30, // 19: rpmgr.agent.v1.BasicAuthRule.users:type_name -> rpmgr.v1.BasicAuthUser
-	12, // 20: rpmgr.agent.v1.GatewayTCPUDPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
-	11, // 21: rpmgr.agent.v1.GatewayTCPUDPRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
-	12, // 22: rpmgr.agent.v1.GatewayUDPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
-	11, // 23: rpmgr.agent.v1.GatewayUDPRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
-	20, // 24: rpmgr.agent.v1.GatewayHTTPRoute.hosts:type_name -> rpmgr.agent.v1.HTTPHost
-	19, // 25: rpmgr.agent.v1.GatewayHTTPRoute.upstream_tls:type_name -> rpmgr.agent.v1.UpstreamTLS
-	18, // 26: rpmgr.agent.v1.GatewayHTTPRoute.request_headers:type_name -> rpmgr.agent.v1.HTTPHeader
-	18, // 27: rpmgr.agent.v1.GatewayHTTPRoute.response_headers:type_name -> rpmgr.agent.v1.HTTPHeader
-	12, // 28: rpmgr.agent.v1.GatewayHTTPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
-	11, // 29: rpmgr.agent.v1.GatewayHTTPRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
-	0,  // 30: rpmgr.agent.v1.UpstreamTLS.verification:type_name -> rpmgr.agent.v1.UpstreamVerification
-	31, // 31: rpmgr.agent.v1.GatewayCertificate.not_after:type_name -> google.protobuf.Timestamp
-	12, // 32: rpmgr.agent.v1.GatewayPassthroughRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
-	11, // 33: rpmgr.agent.v1.GatewayPassthroughRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
-	26, // 34: rpmgr.agent.v1.ConnectorRoute.targets:type_name -> rpmgr.agent.v1.Target
-	1,  // 35: rpmgr.agent.v1.ConnectorRoute.transport:type_name -> rpmgr.agent.v1.TransportPolicy
-	1,  // 36: rpmgr.agent.v1.ConnectorGateway.transports:type_name -> rpmgr.agent.v1.TransportPolicy
-	2,  // 37: rpmgr.agent.v1.DenyList.version:type_name -> rpmgr.agent.v1.Revision
-	29, // 38: rpmgr.agent.v1.DenyList.entries:type_name -> rpmgr.agent.v1.DenyEntry
-	31, // 39: rpmgr.agent.v1.DenyEntry.not_after:type_name -> google.protobuf.Timestamp
-	40, // [40:40] is the sub-list for method output_type
-	40, // [40:40] is the sub-list for method input_type
-	40, // [40:40] is the sub-list for extension type_name
-	40, // [40:40] is the sub-list for extension extendee
-	0,  // [0:40] is the sub-list for field type_name
+	30, // 19: rpmgr.agent.v1.RouteAccess.require_header:type_name -> rpmgr.v1.RequireHeaderParams
+	31, // 20: rpmgr.agent.v1.BasicAuthRule.users:type_name -> rpmgr.v1.BasicAuthUser
+	12, // 21: rpmgr.agent.v1.GatewayTCPUDPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
+	11, // 22: rpmgr.agent.v1.GatewayTCPUDPRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
+	12, // 23: rpmgr.agent.v1.GatewayUDPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
+	11, // 24: rpmgr.agent.v1.GatewayUDPRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
+	20, // 25: rpmgr.agent.v1.GatewayHTTPRoute.hosts:type_name -> rpmgr.agent.v1.HTTPHost
+	19, // 26: rpmgr.agent.v1.GatewayHTTPRoute.upstream_tls:type_name -> rpmgr.agent.v1.UpstreamTLS
+	18, // 27: rpmgr.agent.v1.GatewayHTTPRoute.request_headers:type_name -> rpmgr.agent.v1.HTTPHeader
+	18, // 28: rpmgr.agent.v1.GatewayHTTPRoute.response_headers:type_name -> rpmgr.agent.v1.HTTPHeader
+	12, // 29: rpmgr.agent.v1.GatewayHTTPRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
+	11, // 30: rpmgr.agent.v1.GatewayHTTPRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
+	0,  // 31: rpmgr.agent.v1.UpstreamTLS.verification:type_name -> rpmgr.agent.v1.UpstreamVerification
+	32, // 32: rpmgr.agent.v1.GatewayCertificate.not_after:type_name -> google.protobuf.Timestamp
+	12, // 33: rpmgr.agent.v1.GatewayPassthroughRoute.access:type_name -> rpmgr.agent.v1.RouteAccess
+	11, // 34: rpmgr.agent.v1.GatewayPassthroughRoute.ranked_connectors:type_name -> rpmgr.agent.v1.RouteConnector
+	26, // 35: rpmgr.agent.v1.ConnectorRoute.targets:type_name -> rpmgr.agent.v1.Target
+	1,  // 36: rpmgr.agent.v1.ConnectorRoute.transport:type_name -> rpmgr.agent.v1.TransportPolicy
+	1,  // 37: rpmgr.agent.v1.ConnectorGateway.transports:type_name -> rpmgr.agent.v1.TransportPolicy
+	2,  // 38: rpmgr.agent.v1.DenyList.version:type_name -> rpmgr.agent.v1.Revision
+	29, // 39: rpmgr.agent.v1.DenyList.entries:type_name -> rpmgr.agent.v1.DenyEntry
+	32, // 40: rpmgr.agent.v1.DenyEntry.not_after:type_name -> google.protobuf.Timestamp
+	41, // [41:41] is the sub-list for method output_type
+	41, // [41:41] is the sub-list for method input_type
+	41, // [41:41] is the sub-list for extension type_name
+	41, // [41:41] is the sub-list for extension extendee
+	0,  // [0:41] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_agent_v1_snapshot_proto_init() }

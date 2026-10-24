@@ -213,7 +213,19 @@ message PolicyRuleParams {
     IPRuleParams ip = 1;
     // basic_auth: the users who may pass.
     BasicAuthParams basic_auth = 2;
+    // require_header: the header and its accepted values.
+    RequireHeaderParams require_header = 3;
   }
+}
+
+// RequireHeaderParams are a require_header rule as the controller keeps it and gateways check it
+// (docs/04-security.md, "Route edge rules"): the header's canonical name and the SHA-256 of each
+// accepted value, never the values.
+message RequireHeaderParams {
+  // The header's name in its canonical form.
+  string name = 1;
+  // The SHA-256 of each accepted value, 1 to 4.
+  repeated bytes value_sha256 = 2 [(rpmgr.v1.sensitive) = true];
 }
 
 // BasicAuthParams are the users of a basic_auth rule (docs/04-security.md, "Secrets at rest and

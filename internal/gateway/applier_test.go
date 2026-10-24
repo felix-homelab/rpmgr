@@ -15,6 +15,7 @@ import (
 	"time"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 )
@@ -220,6 +221,22 @@ func withHTTP(r *agentv1.Resource, f func(*agentv1.GatewayHTTPRoute)) *agentv1.R
 	return r
 }
 
+// requireHeader is a require_header rule of a header with n zero hashes.
+func requireHeader(name string, n int) *rpmgrv1.RequireHeaderParams {
+	r := &rpmgrv1.RequireHeaderParams{Name: name}
+	for range n {
+		r.ValueSha256 = append(r.ValueSha256, make([]byte, 32))
+	}
+	return r
+}
+
+// withRequireHeader is an http route with a require_header rule.
+func withRequireHeader(rh *rpmgrv1.RequireHeaderParams) *agentv1.Resource {
+	return withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+		r.Access = &agentv1.RouteAccess{RequireHeader: []*rpmgrv1.RequireHeaderParams{rh}}
+	})
+}
+
 func httpsResource(id string, tls ...*agentv1.UpstreamTLS) *agentv1.Resource {
 	r := httpResource(id, "https", "secure.example.com")
 	r.GetGatewayHttpRoute().UpstreamTls = tls
@@ -299,6 +316,17 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 			ConnectorId: "con_1", Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY})), "no SHA-256 pin"},
 		{"a pinned-key target with a CA bundle", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
 			ConnectorId: "con_1", SpkiSha256: make([]byte, 32), CaPem: []byte("x"), Verification: agentv1.UpstreamVerification_UPSTREAM_VERIFICATION_PINNED_KEY})), "no SHA-256 pin"},
+		{"require-header on a tcp route", gatewaySnapshot(1, func() *agentv1.Resource {
+			r := tcpResource("rt_1", 2222)
+			r.GetGatewayTcpRoute().Access = &agentv1.RouteAccess{RequireHeader: []*rpmgrv1.RequireHeaderParams{requireHeader("X-Origin", 1)}}
+			return r
+		}()), "not http"},
+		{"require-header with a bad name", gatewaySnapshot(1, withRequireHeader(&rpmgrv1.RequireHeaderParams{Name: "X Origin",
+			ValueSha256: [][]byte{make([]byte, 32)}})), "header name"},
+		{"require-header without values", gatewaySnapshot(1, withRequireHeader(requireHeader("X-Origin", 0))), "not 1 to 4"},
+		{"require-header with five values", gatewaySnapshot(1, withRequireHeader(requireHeader("X-Origin", 5))), "not 1 to 4"},
+		{"require-header with a short hash", gatewaySnapshot(1, withRequireHeader(&rpmgrv1.RequireHeaderParams{Name: "X-Origin",
+			ValueSha256: [][]byte{make([]byte, 16)}})), "16 bytes"},
 		{"no upstream", gatewaySnapshot(1, httpResource("rt_1", "", "app.example.com")), "upstream protocol"},
 		{"upper case", gatewaySnapshot(1, httpResource("rt_1", "http", "App.example.com")), "not normalised"},
 		{"a relative prefix", gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com|api")), "start with /"},
