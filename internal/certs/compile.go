@@ -19,7 +19,8 @@ import (
 )
 
 // Gateway compiles a gateway's certificates: for every enabled http route of its gateway group,
-// the certificate its tls_mode names, with the route hostnames that certificate covers. In
+// the certificate its tls_mode names, with the route hostnames that certificate covers; and for the
+// gateway's WSS hostname an uploaded certificate of its org that covers it, else its ACME one. In
 // certificate mode that is the route's uploaded certificate, which the composite foreign key keeps
 // in the route's org; in acme mode the org's active ACME certificates. Expired certificates stay in
 // the snapshot, which depends only on the configuration; the gateway passes them over. A disabled
@@ -87,6 +88,13 @@ func Gateway(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Reso
 			}
 		}
 	}
+	// The gateway's own WSS hostname, which no route of the group has (routes.SetWSSHostname).
+	if c, err := wssCertificate(ctx, tx, gw); err != nil {
+		return nil, err
+	} else if c != nil && !slices.Contains(hostnames[c.ID], *gw.WssHostname) {
+		served[c.ID] = c
+		hostnames[c.ID] = append(hostnames[c.ID], *gw.WssHostname)
+	}
 	ids := make([]string, 0, len(served))
 	for id := range served {
 		ids = append(ids, id)
@@ -104,4 +112,41 @@ func Gateway(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Reso
 			ContentSha256: c.ContentSha256, Hostnames: hosts, NotAfter: timestamppb.New(*c.NotAfter)}}})
 	}
 	return out, nil
+}
+
+// UploadedCovering returns the active uploaded certificate of org that covers name and is valid
+// the longest, or nil.
+func UploadedCovering(ctx context.Context, tx *ent.Tx, org, name string) (*ent.Certificate, error) {
+	rows, err := tx.Certificate.Query().Where(certificate.OrgID(org), certificate.SourceEQ(certificate.SourceUploaded),
+		certificate.StatusEQ(certificate.StatusActive)).Order(ent.Asc(certificate.FieldID)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var best *ent.Certificate
+	for _, c := range rows {
+		if c.NotAfter == nil || !slices.ContainsFunc(c.Sans, func(san string) bool { return Covers(san, name) }) {
+			continue
+		}
+		if best == nil || c.NotAfter.After(*best.NotAfter) {
+			best = c
+		}
+	}
+	return best, nil
+}
+
+// wssCertificate returns the certificate of a gateway's WSS hostname: an uploaded certificate of
+// the gateway's org that covers it, else its ACME certificate, or nil.
+func wssCertificate(ctx context.Context, tx *ent.Tx, gw *ent.Gateway) (*ent.Certificate, error) {
+	if gw.WssHostname == nil {
+		return nil, nil
+	}
+	c, err := UploadedCovering(ctx, tx, gw.OrgID, *gw.WssHostname)
+	if err != nil || c != nil {
+		return c, err
+	}
+	c, err = ACMERow(ctx, tx, gw.OrgID, *gw.WssHostname)
+	if err != nil || c == nil || c.Status != certificate.StatusActive {
+		return nil, err
+	}
+	return c, nil
 }

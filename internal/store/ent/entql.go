@@ -511,6 +511,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			gateway.FieldBuiltIn:          {Type: field.TypeBool, Column: gateway.FieldBuiltIn},
 			gateway.FieldCreatedAt:        {Type: field.TypeTime, Column: gateway.FieldCreatedAt},
 			gateway.FieldDecommissionedAt: {Type: field.TypeTime, Column: gateway.FieldDecommissionedAt},
+			gateway.FieldWssHostname:      {Type: field.TypeString, Column: gateway.FieldWssHostname},
 		},
 	}
 	graph.Nodes[20] = &sqlgraph.Node{
@@ -3395,6 +3396,11 @@ func (f *GatewayFilter) WhereCreatedAt(p entql.TimeP) {
 // WhereDecommissionedAt applies the entql time.Time predicate on the decommissioned_at field.
 func (f *GatewayFilter) WhereDecommissionedAt(p entql.TimeP) {
 	f.Where(p.Field(gateway.FieldDecommissionedAt))
+}
+
+// WhereWssHostname applies the entql string predicate on the wss_hostname field.
+func (f *GatewayFilter) WhereWssHostname(p entql.StringP) {
+	f.Where(p.Field(gateway.FieldWssHostname))
 }
 
 // WhereHasGroup applies a predicate to check if query has an edge group.

@@ -55,6 +55,12 @@ func AddHostname(ctx context.Context, tx *ent.Tx, routeID, hostname, pathPrefix 
 	if err != nil {
 		return nil, err
 	}
+	if wss, err := wssHostnameTaken(ctx, tx, r.GatewayGroupID, name); err != nil || wss {
+		if err == nil {
+			err = fmt.Errorf("%w: %s is a gateway's WSS hostname", ErrHostnameTaken, name)
+		}
+		return nil, err
+	}
 	others, err := tx.RouteHostname.Query().Where(routehostname.GatewayGroupID(r.GatewayGroupID), routehostname.Hostname(name)).All(ctx)
 	if err != nil {
 		return nil, err

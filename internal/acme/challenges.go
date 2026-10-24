@@ -127,8 +127,8 @@ func (s *ChallengeStorage) push(ctx context.Context, action agentv1.AcmeAction, 
 }
 
 // GatewaysServing returns GatewaysFor over the store: the enabled gateways of every group with an
-// enabled http route whose hostname is the name or the wildcard one label up. sys must carry the
-// system scope.
+// enabled http route whose hostname is the name or the wildcard one label up, and the gateway whose
+// WSS hostname it is. sys must carry the system scope.
 func GatewaysServing(db *store.DB, sys context.Context) GatewaysFor {
 	return func(_ context.Context, name string) ([]string, error) {
 		names := []string{name}
@@ -140,11 +140,11 @@ func GatewaysServing(db *store.DB, sys context.Context) GatewaysFor {
 			groups, err := tx.RouteHostname.Query().Where(routehostname.HostnameIn(names...),
 				routehostname.RouteTypeEQ(routehostname.RouteTypeHTTP), routehostname.HasRouteWith(route.Enabled(true))).
 				Select(routehostname.FieldGatewayGroupID).Strings(sys)
-			if err != nil || len(groups) == 0 {
+			if err != nil {
 				return err
 			}
-			ids, err = tx.Gateway.Query().Where(gateway.GatewayGroupIDIn(groups...), gateway.Enabled(true),
-				gateway.DecommissionedAtIsNil()).Order(ent.Asc(gateway.FieldID)).IDs(sys)
+			ids, err = tx.Gateway.Query().Where(gateway.Enabled(true), gateway.DecommissionedAtIsNil(),
+				gateway.Or(gateway.GatewayGroupIDIn(groups...), gateway.WssHostname(name))).Order(ent.Asc(gateway.FieldID)).IDs(sys)
 			return err
 		})
 		return ids, err
