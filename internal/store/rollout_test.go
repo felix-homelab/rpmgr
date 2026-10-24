@@ -4,12 +4,16 @@ package store_test
 
 import (
 	"context"
+	"errors"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollout"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
 )
 
 // TestRolloutBucket: an agent's bucket is fixed by its ID (values computed independently from
@@ -164,6 +168,149 @@ func TestRolloutTarget_OnePerAgent(t *testing.T) {
 		if err := c.RolloutTarget.Create().SetRolloutID(ro.ID).SetAgentID(ids.New("gw")).SetAgentKind("controller").
 			SetBucket(1).Exec(sys); err == nil {
 			t.Errorf("agent kind %q was stored", "controller")
+		}
+	})
+}
+
+// queue runs QueueRolloutTargets in its own transaction.
+func queue(ctx context.Context, c *ent.Client, rolloutID string, agents ...string) ([]*ent.RolloutTarget, error) {
+	tx, err := c.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	in := make([]store.RolloutAgent, 0, len(agents))
+	for _, a := range agents {
+		kind := rollouttarget.AgentKindConnector
+		if strings.HasPrefix(a, "gw_") {
+			kind = rollouttarget.AgentKindGateway
+		}
+		in = append(in, store.RolloutAgent{ID: a, Kind: kind, VersionBefore: "0.1.0"})
+	}
+	out, err := store.QueueRolloutTargets(ctx, tx, rolloutID, in)
+	if err != nil {
+		return nil, errors.Join(err, tx.Rollback())
+	}
+	return out, tx.Commit()
+}
+
+// TestQueueRolloutTargets (D129): an easy rollout's queue keeps the order agents were added in,
+// from position 1; agents join a running or paused one at the end; an agent already queued keeps
+// its place; a staged rollout and an ended one take no agents.
+func TestQueueRolloutTargets(t *testing.T) {
+	forEachDialect(t, func(t *testing.T, c *ent.Client, _ *store.DB) {
+		sys := systemCtx(t)
+		rel, err := newRelease(sys, c, "0.2.0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		staged := c.Rollout.Create().SetReleaseID(rel.ID).SetCreatedBy("usr_admin").SaveX(sys)
+		if staged.Mode != rollout.ModeAdvanced {
+			t.Fatalf("a rollout created without a mode is %q, want advanced", staged.Mode)
+		}
+		con1, con2, gw1, con3 := ids.New("con"), ids.New("con"), ids.New("gw"), ids.New("con")
+		if _, err := queue(sys, c, staged.ID, con1); !errors.Is(err, store.ErrRolloutNotEasy) {
+			t.Fatalf("queueing on a staged rollout: %v, want ErrRolloutNotEasy", err)
+		}
+		c.Rollout.UpdateOne(staged).SetState(rollout.StateCancelled).ExecX(sys)
+		if _, err := queue(sys, c, staged.ID, con1); !errors.Is(err, store.ErrRolloutNotEasy) {
+			t.Fatalf("queueing on a cancelled staged rollout: %v, want ErrRolloutNotEasy", err)
+		}
+		if _, err := queue(sys, c, "rol_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R", con1); !ent.IsNotFound(err) {
+			t.Fatalf("queueing on an unknown rollout: %v, want not found", err)
+		}
+
+		easy := c.Rollout.Create().SetReleaseID(rel.ID).SetMode(rollout.ModeEasy).SetCreatedBy("usr_admin").SaveX(sys)
+		got, err := queue(sys, c, easy.ID, con2, con1, gw1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, want := range []string{con2, con1, gw1} {
+			g := got[i]
+			if g.AgentID != want || pos(g) != i+1 || g.Canary || g.Bucket != store.RolloutBucket(want) ||
+				g.VersionBefore != "0.1.0" || g.State != rollouttarget.StatePending {
+				t.Errorf("target %d: %+v, want agent %s at position %d", i, g, want, i+1)
+			}
+		}
+		if got[2].AgentKind != rollouttarget.AgentKindGateway {
+			t.Errorf("the gateway's target has kind %q", got[2].AgentKind)
+		}
+
+		// A paused rollout takes agents too; one already queued keeps its place, also when named twice.
+		c.Rollout.UpdateOne(easy).SetState(rollout.StatePaused).ExecX(sys)
+		again, err := queue(sys, c, easy.ID, con3, con1, con3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pos(again[0]) != 4 || again[1].ID != got[1].ID || pos(again[1]) != 2 || again[2].ID != again[0].ID {
+			t.Errorf("queueing con3, con1, con3: positions %d, %d, %d", pos(again[0]), pos(again[1]), pos(again[2]))
+		}
+		var order []string
+		for _, r := range c.RolloutTarget.Query().Where(rollouttarget.RolloutID(easy.ID)).
+			Order(ent.Asc(rollouttarget.FieldPosition)).AllX(sys) {
+			order = append(order, r.AgentID)
+		}
+		if want := []string{con2, con1, gw1, con3}; !slices.Equal(order, want) {
+			t.Errorf("the queue is %v, want %v", order, want)
+		}
+		if _, err := queue(sys, c, easy.ID); err != nil {
+			t.Errorf("queueing no agent: %v", err)
+		}
+
+		for _, end := range []rollout.State{rollout.StateCompleted, rollout.StateCancelled} {
+			c.Rollout.UpdateOneID(easy.ID).SetState(end).ExecX(sys)
+			if _, err := queue(sys, c, easy.ID, ids.New("con")); !errors.Is(err, store.ErrRolloutEnded) {
+				t.Errorf("queueing on a %s rollout: %v, want ErrRolloutEnded", end, err)
+			}
+		}
+		if n := c.RolloutTarget.Query().Where(rollouttarget.RolloutID(easy.ID)).CountX(sys); n != 4 {
+			t.Errorf("the ended rollout holds %d targets, want 4", n)
+		}
+	})
+}
+
+// pos is a target's place in the queue, 0 for none.
+func pos(t *ent.RolloutTarget) int {
+	if t.Position == nil {
+		return 0
+	}
+	return *t.Position
+}
+
+// TestRolloutTarget_PositionUnique: a place in an easy rollout's queue is taken once, while the
+// targets of a staged rollout have none; a position is at least 1.
+func TestRolloutTarget_PositionUnique(t *testing.T) {
+	forEachDialect(t, func(t *testing.T, c *ent.Client, _ *store.DB) {
+		sys := systemCtx(t)
+		rel, err := newRelease(sys, c, "0.2.0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ro := c.Rollout.Create().SetReleaseID(rel.ID).SetCreatedBy("usr_admin").SaveX(sys)
+		target := func(position int) error {
+			id := ids.New("con")
+			create := c.RolloutTarget.Create().SetRolloutID(ro.ID).SetAgentID(id).SetAgentKind("connector").SetBucket(store.RolloutBucket(id))
+			if position != 0 {
+				create.SetPosition(position)
+			}
+			return create.Exec(sys)
+		}
+		for i := range 2 {
+			if err := target(0); err != nil {
+				t.Fatalf("staged target %d without a position: %v", i, err)
+			}
+		}
+		if err := target(1); err != nil {
+			t.Fatal(err)
+		}
+		if err := target(1); !store.IsUniqueViolation(err) {
+			t.Errorf("a second target at position 1: %v, want a unique violation", err)
+		}
+		if err := target(-1); err == nil {
+			t.Error("position -1 was stored")
+		}
+		if err := c.RolloutTarget.Create().SetRolloutID(ro.ID).SetAgentID(ids.New("con")).SetAgentKind("connector").
+			SetBucket(1).SetPosition(0).Exec(sys); err == nil {
+			t.Error("position 0 was stored")
 		}
 	})
 }

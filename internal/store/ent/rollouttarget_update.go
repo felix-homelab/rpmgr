@@ -168,6 +168,9 @@ func (_u *RolloutTargetUpdate) sqlSave(ctx context.Context) (_node int, err erro
 			}
 		}
 	}
+	if _u.mutation.PositionCleared() {
+		_spec.ClearField(rollouttarget.FieldPosition, field.TypeInt)
+	}
 	if value, ok := _u.mutation.State(); ok {
 		_spec.SetField(rollouttarget.FieldState, field.TypeEnum, value)
 	}
@@ -375,6 +378,9 @@ func (_u *RolloutTargetUpdateOne) sqlSave(ctx context.Context) (_node *RolloutTa
 				ps[i](selector)
 			}
 		}
+	}
+	if _u.mutation.PositionCleared() {
+		_spec.ClearField(rollouttarget.FieldPosition, field.TypeInt)
 	}
 	if value, ok := _u.mutation.State(); ok {
 		_spec.SetField(rollouttarget.FieldState, field.TypeEnum, value)
