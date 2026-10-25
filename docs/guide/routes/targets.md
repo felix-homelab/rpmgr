@@ -3,8 +3,8 @@
 A target is where a route's traffic goes: a connector of your organisation and an address that
 connector dials, with how it speaks to it. This page is for anyone who publishes services. It
 covers addresses and Unix sockets, the protocol to the target, how an HTTPS target's certificate is
-checked, the PROXY protocol, and how weights and priorities spread connections over targets on one
-or several connectors, with failover and failback.
+checked, the PROXY protocol, how weights and priorities spread connections over targets on one or
+several connectors, with failover and failback, and health checks.
 
 ## What a target is
 
@@ -280,8 +280,8 @@ connector at that priority is used again; if not, the pause grows, up to a limit
 
 ### Limits
 
-- **Without active health checks**, rpmgr knows whether a connector is ready, not whether a
-  target works. A target that is down is still tried until it has refused or timed out
+- **Without a health check**, rpmgr knows whether a connector is ready, not whether a target
+  works. A target that is down is still tried until it has refused or timed out
   several connections in a row ([Passing over failing targets](#passing-over-failing-targets)),
   and each of those waits for its dial to fail or time out before the next one is tried
   ([03](../../03-connections.md#timeouts-keepalive-and-backoff)). Meanwhile the fallback's HTTP
@@ -290,6 +290,61 @@ connector at that priority is used again; if not, the pause grows, up to a limit
   target answers, so it is never moved to another connector.
 - **Release candidates.** A gateway or connector of a release candidate (v0.1.0-rc.1 to rc.7)
   ignores priorities across connectors; upgrade every agent ([Upgrades](../install/upgrades.md)).
+
+## Health checks
+
+A route can have one health check. Each connector of the route runs it against each of its own
+targets of the route, and new connections pass over a target that fails it
+([03](../../03-connections.md#target-health-phase-2)).
+
+- A **TCP** check passes when the target accepts the connection. An **HTTP** check sends a `GET`
+  of a path and passes on the statuses you expect, any success or redirect unless you name a
+  range. It asks for the route's host header override, if it has one, else its first hostname
+  that is not a wildcard, and checks an HTTPS target's certificate as traffic does
+  ([HTTPS targets](#https-targets)). A TLS passthrough route, whose targets expect TLS, and a route
+  with an h2c target have TCP checks only.
+- The check uses each target's address and port, or another **port** on the same host, for a
+  service that answers its health checks there. A UDP route has only a TCP check, of a port you
+  name; a route with a Unix socket target has no check port.
+- A target turns **unhealthy** after a number of failed checks in a row and **healthy** again after
+  a number of passed ones, so a target that fails now and then keeps its state. You can set both
+  numbers, the interval and the timeout, within their bounds
+  ([03](../../03-connections.md#timeouts-keepalive-and-backoff)).
+- The connector's [local policy](../connectors/local-policy.md) applies to checks as to traffic: a
+  target or check port it does not allow is never checked, and shows as **blocked by the
+  connector's local policy**, not as unhealthy.
+
+What the route then does:
+
+- New connections pass over unhealthy targets. A connector whose targets of a priority are all
+  unhealthy gets none of that priority's connections, so they go to the next priority, and come back
+  once a target is healthy again ([Failback](#failback)).
+- While some targets are unhealthy, the route is **degraded** and its status lists each of them,
+  `TARGETS_UNHEALTHY` with the last check's failure. When every target on every connector is
+  unhealthy, the route is **unavailable**: an HTTP client gets a 503, a TCP client a reset.
+- A connector of an earlier release runs no checks. Its targets count as healthy, and the route's
+  status lists them under `healthNotChecked`; [upgrade](../install/upgrades.md) the connector.
+- A Viewer sees the check and the targets' health, and cannot change them.
+
+### With the command line
+
+```sh
+rpmgr update route wiki --health-check http --health-path /healthz --wait 30s
+rpmgr get -o yaml route wiki
+```
+
+| Flag | Meaning |
+|---|---|
+| `--health-check tcp\|http\|none` | The kind of check; `none` removes it. A route without a check needs this flag before the others |
+| `--health-port <port>` | The port to check instead of each target's; required on a UDP route |
+| `--health-path <path>` | An HTTP check's path and query, starting with `/`; `/` if not given |
+| `--health-status <from-to>` | The statuses an HTTP check passes on, as `200-204` |
+| `--health-interval`, `--health-timeout` | How often a target is checked and how long one check may take, in whole seconds such as `30s`; 0 keeps the default |
+| `--health-unhealthy`, `--health-healthy` | The failed and the passed checks in a row that change a target's health; 0 keeps the default |
+
+On `rpmgr update route`, a `--health-*` flag changes only its part of the check. `rpmgr create
+route` takes the same flags. In the route's YAML, the check is `healthCheck`, and the status lists
+the unhealthy targets under `notServing`.
 
 ## Targets on several connectors
 
@@ -305,8 +360,9 @@ target ([Connector lifecycle](../connectors/lifecycle.md)).
 The connector's local policy decides which targets it may dial
 ([The local policy](../connectors/local-policy.md)):
 
-- A target the policy does not allow is never dialled. A connector reports one readiness per
-  route, not per target.
+- A target the policy does not allow is never dialled. Without a health check, a connector reports
+  one readiness per route, not per target; a health check reports each target
+  ([Health checks](#health-checks)).
 - When none of a route's targets on a connector is allowed, the route's page shows each of them as
   **blocked by the connector's local policy**. Each shows the command for the first blocked target,
   to run on that connector's host, with a **Copy** button: `sudo rpmgr policy allow-target

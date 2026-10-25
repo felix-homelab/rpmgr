@@ -106,6 +106,9 @@ type TargetsOptions struct {
 	Policy func() *policy.Policy
 	// OnHealth gets every change of a route's readiness; normally Sessions.SetReady.
 	OnHealth func(*tunnelv1.RouteHealth)
+	// OnTargetHealth gets the changes of a route's targets' health of one round of checks, for the
+	// controller's route status.
+	OnTargetHealth func([]*agentv1.ResourceStatus)
 	// UDPMetrics count the udp flows' oversize and dropped payloads; nil keeps them unregistered.
 	UDPMetrics *tunnel.UDPMetrics
 	// Metrics, if set, time the dials and count the refused ones.
@@ -136,6 +139,8 @@ type Targets struct {
 	// and target; they stop with ctx.
 	checkers     map[string]*checker
 	targetHealth map[string]map[string]*targetHealth
+	checks       chan struct{} // the checks running, at most maxChecks
+	reportMu     sync.Mutex    // orders OnTargetHealth after Set's replaced checkers
 	ctx          context.Context
 	cancel       context.CancelFunc
 }
@@ -156,7 +161,8 @@ func NewTargets(o TargetsOptions) *Targets {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Targets{o: o, routes: map[string]Route{}, draining: map[string]drainingRoute{}, health: map[string]*tunnelv1.RouteHealth{},
 		refused: map[string]map[string]string{}, live: map[net.Conn]struct{}{}, probes: make(chan struct{}, maxProbes),
-		checkers: map[string]*checker{}, targetHealth: map[string]map[string]*targetHealth{}, ctx: ctx, cancel: cancel}
+		checkers: map[string]*checker{}, targetHealth: map[string]map[string]*targetHealth{}, checks: make(chan struct{}, maxChecks),
+		ctx: ctx, cancel: cancel}
 }
 
 // Close stops the health checks.
@@ -173,6 +179,8 @@ func (t *Targets) Close() {
 // Set makes routes the snapshot's routes. A route no longer among them is reported not ready at
 // once and still takes streams for the route drain period.
 func (t *Targets) Set(routes []Route) {
+	t.reportMu.Lock()
+	defer t.reportMu.Unlock()
 	t.mu.Lock()
 	now := time.Now()
 	next := map[string]Route{}
@@ -411,7 +419,8 @@ func (t *Targets) dialled(route, target string, gen uint64) {
 	t.reportRoute(h)
 }
 
-// Status returns the routes that are not ready, for the resource status of Applied.
+// Status returns the routes that are not ready, and the targets their health checks found
+// unhealthy, for the resource status of Applied.
 func (t *Targets) Status() []*agentv1.ResourceStatus {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -419,6 +428,12 @@ func (t *Targets) Status() []*agentv1.ResourceStatus {
 	for _, id := range slices.Sorted(maps.Keys(t.routes)) {
 		if h := t.health[id]; h != nil && !h.GetReady() {
 			out = append(out, &agentv1.ResourceStatus{ResourceId: id, Reason: h.GetReason(), Detail: h.GetDetail()})
+		}
+		hs := t.targetHealth[id]
+		for _, tg := range slices.Sorted(maps.Keys(hs)) {
+			if hs[tg].unhealthy {
+				out = append(out, targetStatus(tg, hs[tg]))
+			}
 		}
 	}
 	return out

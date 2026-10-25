@@ -72,6 +72,9 @@ type GatewayGroup func(*sql.Selector)
 // GatewayPage is the predicate function for gatewaypage builders.
 type GatewayPage func(*sql.Selector)
 
+// HealthCheck is the predicate function for healthcheck builders.
+type HealthCheck func(*sql.Selector)
+
 // Instance is the predicate function for instance builders.
 type Instance func(*sql.Selector)
 

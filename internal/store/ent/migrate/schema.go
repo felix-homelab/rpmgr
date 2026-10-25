@@ -681,6 +681,47 @@ var (
 			},
 		},
 	}
+	// HealthChecksColumns holds the columns for the "health_checks" table.
+	HealthChecksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"tcp", "http"}},
+		{Name: "port", Type: field.TypeInt, Default: 0},
+		{Name: "http_path", Type: field.TypeString, Size: 1024, Default: ""},
+		{Name: "expected_status_min", Type: field.TypeInt, Default: 0},
+		{Name: "expected_status_max", Type: field.TypeInt, Default: 0},
+		{Name: "interval_seconds", Type: field.TypeInt, Default: 0},
+		{Name: "timeout_seconds", Type: field.TypeInt, Default: 0},
+		{Name: "unhealthy_threshold", Type: field.TypeInt, Default: 0},
+		{Name: "healthy_threshold", Type: field.TypeInt, Default: 0},
+		{Name: "route_id", Type: field.TypeString},
+	}
+	// HealthChecksTable holds the schema information for the "health_checks" table.
+	HealthChecksTable = &schema.Table{
+		Name:       "health_checks",
+		Columns:    HealthChecksColumns,
+		PrimaryKey: []*schema.Column{HealthChecksColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "health_checks_routes_route",
+				Columns:    []*schema.Column{HealthChecksColumns[11]},
+				RefColumns: []*schema.Column{RoutesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "healthcheck_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{HealthChecksColumns[1], HealthChecksColumns[0]},
+			},
+			{
+				Name:    "healthcheck_route_id",
+				Unique:  true,
+				Columns: []*schema.Column{HealthChecksColumns[11]},
+			},
+		},
+	}
 	// InstanceColumns holds the columns for the "instance" table.
 	InstanceColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -1303,6 +1344,7 @@ var (
 		{Name: "org_id", Type: field.TypeString},
 		{Name: "path_prefix", Type: field.TypeString, Default: ""},
 		{Name: "header_matches", Type: field.TypeJSON, Nullable: true},
+		{Name: "match_key", Type: field.TypeString, Default: ""},
 		{Name: "tls_mode", Type: field.TypeEnum, Enums: []string{"acme", "certificate"}, Default: "acme"},
 		{Name: "port80", Type: field.TypeEnum, Enums: []string{"redirect", "serve", "off"}, Default: "redirect"},
 		{Name: "hsts_max_age_seconds", Type: field.TypeInt, Default: 0},
@@ -1314,6 +1356,8 @@ var (
 		{Name: "dns_proxied", Type: field.TypeBool, Default: false},
 		{Name: "maintenance", Type: field.TypeBool, Default: false},
 		{Name: "maintenance_message", Type: field.TypeString, Size: 2000, Default: ""},
+		{Name: "upstream_response_header_timeout_seconds", Type: field.TypeInt, Default: 0},
+		{Name: "upstream_idle_timeout_seconds", Type: field.TypeInt, Default: 0},
 		{Name: "route_id", Type: field.TypeString},
 		{Name: "certificate_id", Type: field.TypeString, Nullable: true},
 	}
@@ -1325,13 +1369,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "route_http_routes_route",
-				Columns:    []*schema.Column{RouteHTTPColumns[15]},
+				Columns:    []*schema.Column{RouteHTTPColumns[18]},
 				RefColumns: []*schema.Column{RoutesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_http_certificates_certificate",
-				Columns:    []*schema.Column{RouteHTTPColumns[16]},
+				Columns:    []*schema.Column{RouteHTTPColumns[19]},
 				RefColumns: []*schema.Column{CertificatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1345,12 +1389,12 @@ var (
 			{
 				Name:    "routehttp_route_id",
 				Unique:  true,
-				Columns: []*schema.Column{RouteHTTPColumns[15]},
+				Columns: []*schema.Column{RouteHTTPColumns[18]},
 			},
 			{
 				Name:    "routehttp_certificate_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteHTTPColumns[16]},
+				Columns: []*schema.Column{RouteHTTPColumns[19]},
 			},
 		},
 	}
@@ -1362,6 +1406,7 @@ var (
 		{Name: "route_type", Type: field.TypeEnum, Enums: []string{"http", "tls_passthrough"}},
 		{Name: "hostname", Type: field.TypeString, Size: 253},
 		{Name: "path_prefix", Type: field.TypeString, Default: ""},
+		{Name: "match_key", Type: field.TypeString, Default: ""},
 		{Name: "route_id", Type: field.TypeString},
 		{Name: "domain_id", Type: field.TypeString},
 	}
@@ -1373,13 +1418,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "route_hostnames_routes_route",
-				Columns:    []*schema.Column{RouteHostnamesColumns[6]},
+				Columns:    []*schema.Column{RouteHostnamesColumns[7]},
 				RefColumns: []*schema.Column{RoutesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_hostnames_domains_domain",
-				Columns:    []*schema.Column{RouteHostnamesColumns[7]},
+				Columns:    []*schema.Column{RouteHostnamesColumns[8]},
 				RefColumns: []*schema.Column{DomainsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -1391,14 +1436,14 @@ var (
 				Columns: []*schema.Column{RouteHostnamesColumns[1], RouteHostnamesColumns[0]},
 			},
 			{
-				Name:    "routehostname_gateway_group_id_hostname_path_prefix",
+				Name:    "routehostname_gateway_group_id_hostname_path_prefix_match_key",
 				Unique:  true,
-				Columns: []*schema.Column{RouteHostnamesColumns[2], RouteHostnamesColumns[4], RouteHostnamesColumns[5]},
+				Columns: []*schema.Column{RouteHostnamesColumns[2], RouteHostnamesColumns[4], RouteHostnamesColumns[5], RouteHostnamesColumns[6]},
 			},
 			{
 				Name:    "routehostname_route_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteHostnamesColumns[6]},
+				Columns: []*schema.Column{RouteHostnamesColumns[7]},
 			},
 		},
 	}
@@ -1853,6 +1898,7 @@ var (
 		GatewaysTable,
 		GatewayGroupsTable,
 		GatewayPagesTable,
+		HealthChecksTable,
 		InstanceTable,
 		InstanceSecretsTable,
 		InstanceSettingsTable,
@@ -1947,6 +1993,10 @@ func init() {
 	GatewayPagesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	GatewayPagesTable.Annotation = &entsql.Annotation{
 		Table: "gateway_pages",
+	}
+	HealthChecksTable.ForeignKeys[0].RefTable = RoutesTable
+	HealthChecksTable.Annotation = &entsql.Annotation{
+		Table: "health_checks",
 	}
 	InstanceTable.Annotation = &entsql.Annotation{
 		Table: "instance",

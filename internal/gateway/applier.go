@@ -12,7 +12,9 @@ import (
 	"math"
 	"net/netip"
 	"net/textproto"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -23,6 +25,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/domains"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 )
 
 // assignment is the connector assignment of the applied snapshot: which connectors serve which
@@ -133,6 +136,25 @@ func accessOf(res *agentv1.Resource) *agentv1.RouteAccess {
 	return nil
 }
 
+// maxRouteTimeout is the most seconds a route's own upstream timeouts may be
+// (docs/03-connections.md, "Timeouts, keepalive and backoff").
+const maxRouteTimeout = 3600
+
+// authorityHostRe is a CONNECT authority as the snapshot holds it: a lower-case host name.
+var authorityHostRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9._-]{0,251}[a-z0-9])?$`)
+
+// connectAuthOf is a CONNECT listener's mode, "" for a value this release does not know.
+func connectAuthOf(a agentv1.ConnectAuth) ConnectMode {
+	return map[agentv1.ConnectAuth]ConnectMode{agentv1.ConnectAuth_CONNECT_AUTH_UNSPECIFIED: ConnectNone, agentv1.ConnectAuth_CONNECT_AUTH_NONE: ConnectNone,
+		agentv1.ConnectAuth_CONNECT_AUTH_TLS_BASIC: ConnectTLSBasic, agentv1.ConnectAuth_CONNECT_AUTH_PLAIN_BASIC: ConnectPlainBasic}[a]
+}
+
+// basicConnect reports whether a CONNECT route's listener checks basic auth.
+func basicConnect(hc *agentv1.HTTPConnect) bool {
+	m := connectAuthOf(hc.GetAuth())
+	return hc != nil && (m == ConnectTLSBasic || m == ConnectPlainBasic)
+}
+
 // limitsOf returns the limits of a gateway route resource, and whether res is one.
 func limitsOf(res *agentv1.Resource) (*agentv1.RouteLimits, bool) {
 	switch {
@@ -238,6 +260,48 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			ports[proto][p] = id
 		}
 	}
+	// CONNECT listeners: the first route of each port, and the routes of each authority on it.
+	listeners, authorities := map[uint32]*agentv1.GatewayTCPRoute{}, map[string]string{}
+	connectRoute := func(id string, r *agentv1.GatewayTCPRoute) {
+		hc := r.GetHttpConnect()
+		if first, ok := listeners[r.GetPort()]; ok {
+			if f := first.GetHttpConnect(); connectAuthOf(f.GetAuth()) != connectAuthOf(hc.GetAuth()) || f.GetHostname() != hc.GetHostname() {
+				bad(id, "CONNECT port %d with another mode or hostname than the other routes of the port", r.GetPort())
+			} else if f.GetOrgId() != hc.GetOrgId() {
+				bad(id, "CONNECT port %d of another org than the other routes of the port", r.GetPort())
+			}
+		} else {
+			port(id, "TCP", r.GetPort())
+			listeners[r.GetPort()] = r
+		}
+		switch mode := connectAuthOf(hc.GetAuth()); {
+		case mode == "":
+			bad(id, "CONNECT authentication mode %v", hc.GetAuth())
+		case mode == ConnectTLSBasic:
+			if n, err := domains.Normalize(hc.GetHostname(), false); err != nil || n != hc.GetHostname() {
+				bad(id, "the CONNECT listener's hostname %q is not normalised", hc.GetHostname())
+			}
+		case hc.GetHostname() != "":
+			bad(id, "a CONNECT hostname without TLS")
+		}
+		if len(hc.GetAuthorities()) == 0 {
+			bad(id, "a CONNECT route without authorities")
+		}
+		if hc.GetOrgId() == "" {
+			bad(id, "a CONNECT route without an org")
+		}
+		for _, a := range hc.GetAuthorities() {
+			key := strconv.Itoa(int(r.GetPort())) + " " + a
+			switch {
+			case !authorityHostRe.MatchString(a):
+				bad(id, "CONNECT authority %q is not a lower-case host name", a)
+			case authorities[key] != "":
+				bad(id, "CONNECT authority %s is also a route of %s", a, authorities[key])
+			default:
+				authorities[key] = id
+			}
+		}
+	}
 	hostnames := map[string]string{} // passthrough hostnames, and http ones with their path prefix
 	hostname := func(id, h string) bool {
 		if n, err := domains.Normalize(h, true); err != nil || n != h {
@@ -262,8 +326,8 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			}
 		}
 		if ba := accessOf(res).GetBasicAuth(); len(ba) > 0 {
-			if res.GetGatewayHttpRoute() == nil {
-				bad(id, "basic auth on a route that is not http")
+			if res.GetGatewayHttpRoute() == nil && !basicConnect(res.GetGatewayTcpRoute().GetHttpConnect()) {
+				bad(id, "basic auth on a route that is not http or a CONNECT route in a basic mode")
 			}
 			if _, err := basicAuthOf(ba); err != nil {
 				bad(id, "basic auth: %v", err)
@@ -278,6 +342,8 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			}
 		}
 		switch {
+		case res.GetGatewayTcpRoute().GetHttpConnect() != nil:
+			connectRoute(id, res.GetGatewayTcpRoute())
 		case res.GetGatewayTcpRoute() != nil:
 			port(id, "TCP", res.GetGatewayTcpRoute().GetPort())
 		case res.GetGatewayUdpRoute() != nil:
@@ -343,6 +409,14 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 					bad(id, "trusted proxy %q is not a CIDR", c)
 				}
 			}
+			if r.GetUpstreamResponseHeaderTimeoutSeconds() > maxRouteTimeout || r.GetUpstreamIdleTimeoutSeconds() > maxRouteTimeout {
+				bad(id, "an upstream timeout above %d seconds", maxRouteTimeout)
+			}
+			matches := headerMatchesOf(r)
+			if err := headermatch.Check(matches); err != nil {
+				bad(id, "%v", err)
+			}
+			key := headermatch.Key(matches)
 			targets := map[string]bool{}
 			for _, u := range r.GetUpstreamTls() {
 				switch {
@@ -372,10 +446,10 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 					bad(id, "path prefix %q does not start with /", prefix)
 				case hostnames[h] != "":
 					bad(id, "hostname %s is also a hostname of %s", h, hostnames[h])
-				case hostnames["http "+h+prefix] != "":
-					bad(id, "%s%s is also served by %s", h, prefix, hostnames["http "+h+prefix])
+				case hostnames["http "+h+prefix+" "+key] != "":
+					bad(id, "%s%s is also served by %s with the same header matches", h, prefix, hostnames["http "+h+prefix+" "+key])
 				default:
-					hostnames["http "+h+prefix] = id
+					hostnames["http "+h+prefix+" "+key] = id
 					hostnames["http "+h] = id
 				}
 			}
@@ -456,8 +530,13 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		switch {
 		case res.GetGatewayTcpRoute() != nil:
 			r := res.GetGatewayTcpRoute()
-			tcp = append(tcp, TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
-				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access, Limit: limit})
+			tr := TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
+				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access, Limit: limit}
+			if hc := r.GetHttpConnect(); hc != nil {
+				tr.Connect = &Connect{Org: hc.GetOrgId(), Authorities: hc.GetAuthorities(), Mode: connectAuthOf(hc.GetAuth()), Hostname: hc.GetHostname()}
+				tr.Connect.BasicAuth, _ = basicAuthOf(r.GetAccess().GetBasicAuth()) // Validate refused any that does not parse
+			}
+			tcp = append(tcp, tr)
 		case res.GetGatewayUdpRoute() != nil:
 			r := res.GetGatewayUdpRoute()
 			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
@@ -474,7 +553,10 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket(),
 				HostHeader: r.GetHostHeader(), MaxBody: int64(min(r.GetMaxBodyBytes(), math.MaxInt64)), //nolint:gosec // G115: bounded above
 				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds()), Access: access, Maintenance: r.GetMaintenance(),
-				MaintenanceMessage: r.GetMaintenanceMessage(), Limit: limit}
+				MaintenanceMessage: r.GetMaintenanceMessage(), HeaderMatches: headermatch.Canonical(headerMatchesOf(r)),
+				UpstreamHeaderTimeout: time.Duration(r.GetUpstreamResponseHeaderTimeoutSeconds()) * time.Second,
+				UpstreamIdleTimeout:   time.Duration(r.GetUpstreamIdleTimeoutSeconds()) * time.Second,
+				Limit:                 limit}
 			hr.BasicAuth, _ = basicAuthOf(r.GetAccess().GetBasicAuth())             // Validate refused any that does not parse
 			hr.RequireHeader, _ = requireHeaderOf(r.GetAccess().GetRequireHeader()) // and these too
 			for _, h := range r.GetRequestHeaders() {
@@ -583,4 +665,13 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		s.Sessions.Recheck()
 	}
 	return status
+}
+
+// headerMatchesOf returns an http route's header matches.
+func headerMatchesOf(r *agentv1.GatewayHTTPRoute) []headermatch.Match {
+	var out []headermatch.Match
+	for _, m := range r.GetHeaderMatches() {
+		out = append(out, headermatch.Match{Name: m.GetName(), Value: m.GetValue(), Present: m.GetPresent()})
+	}
+	return out
 }

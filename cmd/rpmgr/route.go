@@ -6,7 +6,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,6 +41,24 @@ func (m mapFlag) Set(v string) error {
 	return nil
 }
 
+// matchFlag is a header match that may be given more than once: Name=value for an exact value,
+// Name alone for presence. An empty value adds nothing, so the flag given once with an empty
+// value removes every match.
+type matchFlag []*rpmgrv1.HeaderMatch
+
+func (m *matchFlag) String() string { return "" }
+func (m *matchFlag) Set(v string) error {
+	if v == "" {
+		return nil
+	}
+	if name, value, ok := strings.Cut(v, "="); ok {
+		*m = append(*m, &rpmgrv1.HeaderMatch{Name: name, Match: &rpmgrv1.HeaderMatch_Exact{Exact: value}})
+	} else {
+		*m = append(*m, &rpmgrv1.HeaderMatch{Name: name, Match: &rpmgrv1.HeaderMatch_Present{Present: true}})
+	}
+	return nil
+}
+
 // routeFlags are the flags of `create route` and `update route`; each sets the fields of a route
 // its paths name (docs/07-api.md, "Resource design").
 type routeFlags struct {
@@ -50,12 +70,18 @@ type routeFlags struct {
 	hsts                                           time.Duration
 	port                                           uint
 	idleTimeout, flowIdleTimeout                   time.Duration
+	upstreamHeaderTimeout, upstreamIdleTimeout     time.Duration
 	websocket, maintenance                         bool
 	maintenanceMessage                             string
 	maxBody                                        uint64
-	force                                          bool
-	wait                                           time.Duration
-	output                                         string
+	matches                                        matchFlag
+	// The health check (docs/03-connections.md, "Target health").
+	healthCheck, healthPath, healthStatus string
+	healthPort, healthUnhealthy, healthOK uint
+	healthInterval, healthTimeout         time.Duration
+	force                                 bool
+	wait                                  time.Duration
+	output                                string
 }
 
 // flags registers the flags; create adds the type and the group, which do not change.
@@ -86,6 +112,11 @@ func (f *routeFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.StringVar(&f.host, "host-header", "", "http: the Host header towards the upstream; empty keeps the client's")
 	fs.Var(f.requestHeaders, "set-request-header", "http: a header Name=value set towards the upstream; repeat for more")
 	fs.Var(f.responseHeaders, "set-response-header", "http: a header Name=value set towards the client; repeat for more")
+	fs.DurationVar(&f.upstreamHeaderTimeout, "upstream-header-timeout", 0,
+		"http: how long to wait for the upstream's response headers before 504; 0 is the gateway's")
+	fs.DurationVar(&f.upstreamIdleTimeout, "upstream-idle-timeout", 0,
+		"http: how long an unused connection to the upstream is kept; 0 is the gateway's")
+	fs.Var(&f.matches, "match-header", "http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more")
 	fs.BoolVar(&f.websocket, "websocket", true, "http: whether WebSocket upgrades pass")
 	fs.Uint64Var(&f.maxBody, "max-body", 0, "http: the largest request body in bytes; 0 is no limit")
 	fs.BoolVar(&f.maintenance, "maintenance", false, "http: answer every request with the maintenance page, 503")
@@ -93,8 +124,83 @@ func (f *routeFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.UintVar(&f.port, "port", 0, "tcp, udp, tcp-udp: the public port; 0 on create picks a free one")
 	fs.DurationVar(&f.idleTimeout, "idle-timeout", 0, "tcp, tcp-udp: close a connection idle this long; udp: forget a flow idle this long")
 	fs.DurationVar(&f.flowIdleTimeout, "flow-idle-timeout", 0, "tcp-udp: forget a UDP flow idle this long")
+	fs.StringVar(&f.healthCheck, "health-check", "", "the health check each connector runs against its targets: tcp, http, or none to remove it")
+	fs.UintVar(&f.healthPort, "health-port", 0, "the port to check instead of each target's; required on udp routes")
+	fs.StringVar(&f.healthPath, "health-path", "", "http check: the path to GET, / if empty")
+	fs.StringVar(&f.healthStatus, "health-status", "", "http check: the passing statuses, as 200-399; empty for the default")
+	fs.DurationVar(&f.healthInterval, "health-interval", 0, "how often each target is checked; 0 is the default")
+	fs.DurationVar(&f.healthTimeout, "health-timeout", 0, "how long one check may take, below the interval; 0 is the default")
+	fs.UintVar(&f.healthUnhealthy, "health-unhealthy", 0, "failed checks in a row that make a target unhealthy; 0 is the default")
+	fs.UintVar(&f.healthOK, "health-healthy", 0, "passed checks in a row that make it healthy again; 0 is the default")
 	fs.DurationVar(&f.wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
 	outputFlag(fs, &f.output)
+}
+
+// healthFlags are the flags of the health check.
+var healthFlags = []string{"health-check", "health-port", "health-path", "health-status", "health-interval", "health-timeout",
+	"health-unhealthy", "health-healthy"}
+
+// healthCheckOf applies the health check's flags to the route's check, cur, or a new one.
+func (f *routeFlags) healthCheckOf(set map[string]bool, cur *rpmgrv1.HealthCheck) (*rpmgrv1.HealthCheck, error) {
+	if set["health-check"] && f.healthCheck == "none" {
+		if n := slices.IndexFunc(healthFlags[1:], func(n string) bool { return set[n] }); n >= 0 {
+			return nil, cli.Usagef("--health-check none removes the check: --%s goes with tcp or http", healthFlags[1+n])
+		}
+		return nil, nil
+	}
+	c := &rpmgrv1.HealthCheck{}
+	if cur != nil {
+		c = proto.Clone(cur).(*rpmgrv1.HealthCheck)
+	} else if !set["health-check"] {
+		return nil, cli.Usagef("the route has no health check: give --health-check tcp or http")
+	}
+	if set["health-check"] {
+		t, ok := map[string]rpmgrv1.HealthCheckType{"tcp": rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_TCP,
+			"http": rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP}[f.healthCheck]
+		if !ok {
+			return nil, cli.Usagef("--health-check %q: tcp, http or none", f.healthCheck)
+		}
+		c.Type = t
+	}
+	if set["health-status"] && f.healthStatus == "" {
+		c.ExpectedStatusMin, c.ExpectedStatusMax = 0, 0
+	} else if set["health-status"] {
+		lo, hi, ok := strings.Cut(f.healthStatus, "-")
+		a, err1 := strconv.ParseUint(lo, 10, 16)
+		b, err2 := strconv.ParseUint(hi, 10, 16)
+		if !ok || err1 != nil || err2 != nil {
+			return nil, cli.Usagef("--health-status %q: as 200-399", f.healthStatus)
+		}
+		c.ExpectedStatusMin, c.ExpectedStatusMax = uint32(a), uint32(b)
+	}
+	for _, d := range []struct {
+		name string
+		v    time.Duration
+	}{{"health-interval", f.healthInterval}, {"health-timeout", f.healthTimeout}} {
+		if set[d.name] && (d.v < 0 || d.v%time.Second != 0 || d.v/time.Second > math.MaxUint32) {
+			return nil, cli.Usagef("--%s %v: whole seconds", d.name, d.v)
+		}
+	}
+	for _, n := range []struct {
+		name string
+		v    uint
+	}{{"health-port", f.healthPort}, {"health-unhealthy", f.healthUnhealthy}, {"health-healthy", f.healthOK}} {
+		if set[n.name] && n.v > math.MaxUint32 {
+			return nil, cli.Usagef("--%s %d: out of range", n.name, n.v)
+		}
+	}
+	u := func(v uint) uint32 { return uint32(v) }                           //nolint:gosec // G115: bounded above, protovalidate checks the rest
+	secs := func(d time.Duration) uint32 { return uint32(d / time.Second) } //nolint:gosec // G115: bounded above, protovalidate checks the rest
+	for name, assign := range map[string]func(){
+		"health-port": func() { c.Port = u(f.healthPort) }, "health-path": func() { c.HttpPath = f.healthPath },
+		"health-interval": func() { c.IntervalSeconds = secs(f.healthInterval) }, "health-timeout": func() { c.TimeoutSeconds = secs(f.healthTimeout) },
+		"health-unhealthy": func() { c.UnhealthyThreshold = u(f.healthUnhealthy) }, "health-healthy": func() { c.HealthyThreshold = u(f.healthOK) },
+	} {
+		if set[name] {
+			assign()
+		}
+	}
+	return c, nil
 }
 
 // enums are the command line's names of the API's enum values.
@@ -128,7 +234,7 @@ func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Rout
 	for flagName, types := range map[string]string{"hostname": "http tls_passthrough", "path-prefix": "http", "tls-mode": "http",
 		"certificate": "http", "port80": "http", "hsts": "http", "host-header": "http", "set-request-header": "http",
 		"set-response-header": "http", "websocket": "http", "max-body": "http", "maintenance": "http", "maintenance-message": "http",
-		"port": "tcp udp tcp_udp", "idle-timeout": "tcp udp tcp_udp", "flow-idle-timeout": "tcp_udp"} {
+		"match-header": "http", "upstream-header-timeout": "http", "upstream-idle-timeout": "http", "port": "tcp udp tcp_udp", "idle-timeout": "tcp udp tcp_udp", "flow-idle-timeout": "tcp_udp"} {
 		if set[flagName] && !slices.Contains(strings.Fields(types), typ) {
 			return nil, nil, cli.Usagef("--%s is not for a %s route", flagName, typ)
 		}
@@ -153,6 +259,13 @@ func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Rout
 	do("disabled", "enabled", func() { r.Enabled = !f.disabled })
 	do("policy", "policy_ids", func() { r.PolicyIds = nil })
 	do("transport", "transport", func() { n, _ := enumOf("transport", f.transport); r.Transport = rpmgrv1.DataTransport(n) })
+	if slices.ContainsFunc(healthFlags, func(n string) bool { return set[n] }) {
+		c, err := f.healthCheckOf(set, r.GetHealthCheck())
+		if err != nil {
+			return nil, nil, err
+		}
+		r.HealthCheck, paths = c, append(paths, "health_check")
+	}
 	idle := proto.Uint32(uint32(f.idleTimeout / time.Second)) //nolint:gosec // G115: protovalidate bounds it
 	port := uint32(f.port)                                    //nolint:gosec // G115: protovalidate bounds it
 	switch typ {
@@ -175,6 +288,13 @@ func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Rout
 		do("max-body", "http.max_body_bytes", func() { h.MaxBodyBytes = f.maxBody })
 		do("maintenance", "http.maintenance", func() { h.Maintenance = f.maintenance })
 		do("maintenance-message", "http.maintenance_message", func() { h.MaintenanceMessage = f.maintenanceMessage })
+		do("match-header", "http.header_matches", func() { h.HeaderMatches = f.matches })
+		do("upstream-header-timeout", "http.upstream_response_header_timeout_seconds", func() {
+			h.UpstreamResponseHeaderTimeoutSeconds = uint32(f.upstreamHeaderTimeout / time.Second) //nolint:gosec // G115: protovalidate bounds it
+		})
+		do("upstream-idle-timeout", "http.upstream_idle_timeout_seconds", func() {
+			h.UpstreamIdleTimeoutSeconds = uint32(f.upstreamIdleTimeout / time.Second) //nolint:gosec // G115: protovalidate bounds it
+		})
 	case "tls_passthrough":
 		t := r.GetTlsPassthrough()
 		if t == nil {

@@ -4,6 +4,7 @@ package connector
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -11,7 +12,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +33,9 @@ const (
 	checkHealthy   = 2
 	checkBody      = 64 << 10
 	checkHeader    = 16 << 10 // the status line and header of an http check's answer
+	// maxChecks bounds the checks one connector runs at once, over all its routes, so that many
+	// checked routes cost a bounded number of dials.
+	maxChecks = 64
 )
 
 // HealthCheck is a route's active health check (docs/03-connections.md, "Target health"), with
@@ -47,17 +53,36 @@ type HealthCheck struct {
 	Unhealthy, Healthy int
 }
 
+// checkTimes are a check's interval and timeout with their defaults: the timeout's stays below
+// the interval, as the controller's does (routes.CheckTimes).
+func checkTimes(c *agentv1.HealthCheck) (interval, timeout time.Duration) {
+	interval = cmp.Or(time.Duration(c.GetIntervalMs())*time.Millisecond, checkInterval)
+	return interval, cmp.Or(time.Duration(c.GetTimeoutMs())*time.Millisecond, min(checkTimeout, interval-time.Second))
+}
+
+// failureText is a failed check's error as the controller records it: without the local address
+// of the check's connection, which changes with every check and would make each one a new
+// failure, and at most maxFailureText bytes.
+func failureText(err error) string {
+	s := checkLocalEnd.ReplaceAllString(err.Error(), "")
+	if len(s) > maxFailureText {
+		s = strings.ToValidUTF8(s[:maxFailureText], "")
+	}
+	return s
+}
+
+// checkLocalEnd is the local end in a net.OpError's text, "read tcp 127.0.0.1:50214->10.0.0.5:80".
+var checkLocalEnd = regexp.MustCompile(`\S+->`)
+
+// maxFailureText bounds a failure's text, below what the controller keeps of a detail.
+const maxFailureText = 512
+
 // healthCheckOf is a snapshot's health check with its defaults, or nil without one.
 func healthCheckOf(c *agentv1.HealthCheck) *HealthCheck {
 	if c == nil {
 		return nil
 	}
-	ms := func(v uint32, def time.Duration) time.Duration {
-		if v == 0 {
-			return def
-		}
-		return time.Duration(v) * time.Millisecond
-	}
+	interval, timeout := checkTimes(c)
 	n := func(v uint32, def int) int {
 		if v == 0 {
 			return def
@@ -66,7 +91,7 @@ func healthCheckOf(c *agentv1.HealthCheck) *HealthCheck {
 	}
 	out := &HealthCheck{HTTP: c.GetType() == "http", HTTPS: c.GetHttps(), Path: c.GetPath(), Host: c.GetHost(),
 		Port:     uint16(c.GetPort()), //nolint:gosec // G115: Validate bounds the port
-		Interval: ms(c.GetIntervalMs(), checkInterval), Timeout: ms(c.GetTimeoutMs(), checkTimeout),
+		Interval: interval, Timeout: timeout,
 		Unhealthy: n(c.GetUnhealthyThreshold(), checkUnhealthy), Healthy: n(c.GetHealthyThreshold(), checkHealthy),
 		StatusMin: n(c.GetStatusMin(), 200), StatusMax: n(c.GetStatusMax(), 399)}
 	if out.Path == "" {
@@ -81,6 +106,7 @@ type targetHealth struct {
 	unhealthy bool
 	streak    int    // passes in a row if positive, failures in a row if negative
 	blocked   string // the local policy's refusal of the last check, which made it fail, or ""
+	err       string // why the last check failed
 }
 
 // observe records one check of the target and reports whether its health changed.
@@ -146,7 +172,7 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 	results := make([]error, len(r.Targets))
 	var wg sync.WaitGroup
 	for i, tg := range r.Targets {
-		wg.Go(func() { results[i] = t.check(ctx, r, tg) })
+		wg.Go(func() { results[i] = t.boundedCheck(ctx, r, tg) })
 	}
 	wg.Wait()
 	if ctx.Err() != nil {
@@ -154,9 +180,11 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 	}
 	p := t.o.Policy()
 	t.mu.Lock()
-	var h *tunnelv1.RouteHealth
+	var (
+		h       *tunnelv1.RouteHealth
+		targets []*agentv1.ResourceStatus // the targets whose health changed
+	)
 	if hs := t.targetHealth[r.ID]; hs != nil && t.checkers[r.ID] == c {
-		changed := false
 		for i, tg := range r.Targets {
 			if hs[tg.ID] == nil {
 				hs[tg.ID] = &targetHealth{}
@@ -166,16 +194,57 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 			if errors.As(results[i], &b) {
 				blocked = b.detail
 			}
-			changed = hs[tg.ID].blocked != blocked || changed
+			if results[i] != nil {
+				hs[tg.ID].err = failureText(results[i])
+			}
+			changed := hs[tg.ID].blocked != blocked && hs[tg.ID].unhealthy
 			hs[tg.ID].blocked = blocked
-			changed = hs[tg.ID].observe(results[i] == nil, r.Check) || changed
+			if hs[tg.ID].observe(results[i] == nil, r.Check) || changed {
+				targets = append(targets, targetStatus(tg.ID, hs[tg.ID]))
+			}
 		}
-		if cur, ok := t.routes[r.ID]; ok && changed {
+		if cur, ok := t.routes[r.ID]; ok && len(targets) > 0 {
 			h = t.updateHealthLocked(r.ID, readiness(cur, p, t.refused[r.ID], t.unhealthyLocked(r.ID)))
 		}
 	}
 	t.mu.Unlock()
+	if len(targets) > 0 && t.o.OnTargetHealth != nil {
+		// Set holds reportMu while it replaces checkers: a round of a checker it stopped reports
+		// nothing after the snapshot's own status, which would otherwise be overwritten.
+		t.reportMu.Lock()
+		t.mu.Lock()
+		current := t.checkers[r.ID] == c
+		t.mu.Unlock()
+		if current {
+			t.o.OnTargetHealth(targets)
+		}
+		t.reportMu.Unlock()
+	}
 	t.reportRoute(h)
+}
+
+// targetStatus is a target's health as the controller records it, while unhealthy: blocked by the
+// local policy with its refusal, if the policy refuses its checks, else targets_unhealthy with the
+// last failure; ready otherwise (docs/03-connections.md, "Target health").
+func targetStatus(id string, h *targetHealth) *agentv1.ResourceStatus {
+	switch {
+	case !h.unhealthy:
+		return &agentv1.ResourceStatus{ResourceId: id}
+	case h.blocked != "":
+		return &agentv1.ResourceStatus{ResourceId: id, Reason: agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY, Detail: h.blocked}
+	}
+	return &agentv1.ResourceStatus{ResourceId: id, Reason: agentv1.NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY, Detail: h.err}
+}
+
+// boundedCheck is check, waiting for one of the maxChecks places first.
+func (t *Targets) boundedCheck(ctx context.Context, r Route, tg Target) error {
+	select {
+	case t.checks <- struct{}{}:
+		defer func() { <-t.checks }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return t.check(ctx, r, tg)
 }
 
 // unhealthyLocked returns the route's targets its checks found unhealthy, each with the local

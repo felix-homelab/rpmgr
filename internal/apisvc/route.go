@@ -22,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -68,6 +69,9 @@ func (r *Routes) CreateRoute(ctx context.Context, req *connect.Request[rpmgrv1.C
 		if err := checkSpec(in); err != nil {
 			return nil, err
 		}
+		if err := checkHealth(in); err != nil {
+			return nil, err
+		}
 		var out *rpmgrv1.Route
 		rev, err := store.ConfigTx(ctx, r.DB, func(tx *ent.Tx) ([]string, error) {
 			row, err := r.createRouteTx(ctx, tx, m.GetOrgId(), in)
@@ -101,7 +105,12 @@ func createHTTP(ctx context.Context, tx *ent.Tx, row *ent.Route, h *rpmgrv1.HTTP
 		SetHstsMaxAgeSeconds(int(h.GetHstsMaxAgeSeconds())).SetRequestHeadersSet(canonicalHeaders(h.GetRequestHeadersSet())).
 		SetResponseHeadersSet(canonicalHeaders(h.GetResponseHeadersSet())).SetWebsocket(h.Websocket == nil || *h.Websocket).
 		SetMaxBodyBytes(int64(min(h.GetMaxBodyBytes(), 1<<62))). //nolint:gosec // G115: bounded above
-		SetMaintenance(h.GetMaintenance()).SetMaintenanceMessage(h.GetMaintenanceMessage())
+		SetMaintenance(h.GetMaintenance()).SetMaintenanceMessage(h.GetMaintenanceMessage()).
+		SetUpstreamResponseHeaderTimeoutSeconds(int(h.GetUpstreamResponseHeaderTimeoutSeconds())).
+		SetUpstreamIdleTimeoutSeconds(int(h.GetUpstreamIdleTimeoutSeconds()))
+	if ms := headerMatchesOf(h); len(ms) > 0 {
+		c.SetHeaderMatches(headermatch.Canonical(ms)).SetMatchKey(headermatch.Key(ms))
+	}
 	if hh := h.GetHostHeader(); hh != "" {
 		c.SetHostHeader(hh)
 	}
@@ -173,6 +182,9 @@ func checkSpec(in *rpmgrv1.Route) error {
 	if hh := h.GetHostHeader(); hh != "" && hh != "preserve" && !httpguts.ValidHostHeader(hh) {
 		return invalid("host header %q", hh)
 	}
+	if err := headermatch.Check(headerMatchesOf(h)); err != nil {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	// The pattern refuses control characters; these would turn the text around where it is shown.
 	if i := strings.IndexFunc(h.GetMaintenanceMessage(), func(r rune) bool {
 		return r >= 0x202A && r <= 0x202E || r >= 0x2066 && r <= 0x2069
@@ -196,6 +208,28 @@ func checkSpec(in *rpmgrv1.Route) error {
 		}
 	}
 	return nil
+}
+
+// headerMatchesOf returns an http route's header matches.
+func headerMatchesOf(h *rpmgrv1.HTTPRouteSpec) []headermatch.Match {
+	var out []headermatch.Match
+	for _, m := range h.GetHeaderMatches() {
+		out = append(out, headermatch.Match{Name: m.GetName(), Value: m.GetExact(), Present: m.GetPresent()})
+	}
+	return out
+}
+
+// apiHeaderMatches returns stored header matches as the API shows them.
+func apiHeaderMatches(ms []headermatch.Match) []*rpmgrv1.HeaderMatch {
+	var out []*rpmgrv1.HeaderMatch
+	for _, m := range ms {
+		if m.Present {
+			out = append(out, &rpmgrv1.HeaderMatch{Name: m.Name, Match: &rpmgrv1.HeaderMatch_Present{Present: true}})
+		} else {
+			out = append(out, &rpmgrv1.HeaderMatch{Name: m.Name, Match: &rpmgrv1.HeaderMatch_Exact{Exact: m.Value}})
+		}
+	}
+	return out
 }
 
 // canonicalHeaders is headers with canonical names, as the gateway expects them.
@@ -228,11 +262,12 @@ func routeError(err error) error {
 
 // routeFields are the fields of a route of type t a client may change: never the type itself.
 func routeFields(t route.Type) []string {
-	fields := []string{"name", "enabled", "labels", "description", "transport", "policy_ids"}
+	fields := []string{"name", "enabled", "labels", "description", "transport", "policy_ids", "health_check"}
 	switch t {
 	case route.TypeHTTP:
 		for _, f := range []string{"hostnames", "path_prefix", "tls_mode", "certificate_id", "port80", "hsts_max_age_seconds", "host_header",
-			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes", "maintenance", "maintenance_message"} {
+			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes", "maintenance", "maintenance_message", "header_matches",
+			"upstream_response_header_timeout_seconds", "upstream_idle_timeout_seconds"} {
 			fields = append(fields, "http."+f)
 		}
 	case route.TypeTLSPassthrough:
@@ -311,6 +346,9 @@ func (r *Routes) createRouteTx(ctx context.Context, tx *ent.Tx, org string, in *
 			return nil, err
 		}
 	}
+	if err := setHealthCheck(ctx, tx, row, in.GetHealthCheck()); err != nil {
+		return nil, err
+	}
 	return row, setRoutePolicies(ctx, tx, row, in.GetPolicyIds())
 }
 
@@ -369,6 +407,9 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 	if err := checkSpec(next); err != nil {
 		return nil, err
 	}
+	if err := checkHealth(next); err != nil {
+		return nil, err
+	}
 	u := tx.Route.UpdateOneID(cur.ID).Where(route.Version(cur.Version)).SetName(next.GetName()).SetEnabled(next.GetEnabled()).
 		SetLabels(next.GetLabels()).SetDescription(next.GetDescription()).SetUpdatedAt(r.now()).SetUpdatedBy(api.CallerFrom(ctx).UserID)
 	if t, ok := storeRouteTransports[next.GetTransport()]; ok {
@@ -382,6 +423,11 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 	}
 	if !slices.Equal(was.GetPolicyIds(), next.GetPolicyIds()) {
 		if err := setRoutePolicies(ctx, tx, row, next.GetPolicyIds()); err != nil {
+			return nil, err
+		}
+	}
+	if !proto.Equal(was.GetHealthCheck(), next.GetHealthCheck()) {
+		if err := setHealthCheck(ctx, tx, row, next.GetHealthCheck()); err != nil {
 			return nil, err
 		}
 	}
@@ -546,6 +592,9 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 		return nil, err
 	}
 	out.Targets = targets
+	if out.HealthCheck, err = healthCheckOf(ctx, c, row.ID); err != nil {
+		return nil, err
+	}
 	if out.PolicyIds, err = c.RoutePolicy.Query().Where(routepolicy.RouteID(row.ID)).Order(ent.Asc(routepolicy.FieldPosition)).
 		Select(routepolicy.FieldPolicyID).Strings(ctx); err != nil {
 		return nil, err
@@ -575,7 +624,9 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 				routehttp.Port80Serve: rpmgrv1.Port80Mode_PORT80_MODE_SERVE, routehttp.Port80Off: rpmgrv1.Port80Mode_PORT80_MODE_OFF}[h.Port80],
 			HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), HostHeader: h.HostHeader, RequestHeadersSet: h.RequestHeadersSet, //nolint:gosec // G115: bounded
 			ResponseHeadersSet: h.ResponseHeadersSet, Websocket: &h.Websocket, MaxBodyBytes: uint64(h.MaxBodyBytes), //nolint:gosec // G115: non-negative
-			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage}
+			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, HeaderMatches: apiHeaderMatches(h.HeaderMatches),
+			UpstreamResponseHeaderTimeoutSeconds: uint32(h.UpstreamResponseHeaderTimeoutSeconds), //nolint:gosec // G115: bounded
+			UpstreamIdleTimeoutSeconds:           uint32(h.UpstreamIdleTimeoutSeconds)}           //nolint:gosec // G115: bounded
 		if h.TLSMode == routehttp.TLSModeCertificate {
 			spec.TlsMode = rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE
 			if h.CertificateID != nil {
