@@ -30,6 +30,7 @@ The how-to pages are [Enrolling connectors](../connectors/enroll.md),
 | **Name** | The connector's name, a link to its page; `ephemeral` for an ephemeral connector, and `built in` for the all-in-one's own connector `local` |
 | **Session** | `disabled` for a connector that is switched off, else `connected` while it holds a control session to the controller, or `offline` |
 | **Version** | The rpmgr version the connector runs |
+| **Update** | Its state in the running rollout, or that it is below the oldest version the controller accepts; for an Instance Admin also **Update to …**, or why it cannot be updated now ([Updates](../operations/updates.md#update-one-agent)) |
 | **Last seen** | When the controller last heard from it |
 | **Labels** | Its labels, as `key=value` |
 
@@ -96,7 +97,9 @@ A connector's name opens its page:
 ![The page of the connector "nas-01"](../images/web/connector-detail.png)
 
 **All connectors** above the title returns to the list. Under the title: the connector's session
-state, its version, and `built in` for the all-in-one's own connector. Beside the title:
+state, its version, `built in` for the all-in-one's own connector, its state in the running
+rollout and, for an Instance Admin, **Update to …**
+([Updates](../operations/updates.md#update-one-agent)). Beside the title:
 
 - **Enabled** switches the connector on or off. A switched-off connector keeps its identity and
   its targets, but serves nothing; the list shows it as `disabled`, not offline, and the overview

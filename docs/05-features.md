@@ -140,9 +140,10 @@
 | Per-route traffic (bytes, connections, errors), hourly and daily | P1 |
 | Prometheus metrics from every role; OpenTelemetry tracing | P1 |
 | Audit log with hash chain and locally stored signed checkpoints | P1 |
-| Audit export and external sinks (syslog, OTLP, webhook, object storage) | P2 |
+| Audit export with proofs, verified offline; external sinks (syslog over TLS, webhook, object storage with Object Lock) | P2 |
+| OTLP audit sink ([D141](14-open-decisions.md#engineering)) | P3 |
 | Live agent logs in the UI, redacted on the agent | P2 |
-| Webhooks for events and alerts | P2 |
+| Webhooks for events and alerts; alert e-mails to Owners and Admins ([D139](14-open-decisions.md#engineering)) | P2 |
 | Active connections view per route | P3 |
 
 ### Operations

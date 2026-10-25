@@ -759,7 +759,12 @@ rpmgr create route [flags]
 
 | Flag | Default | Description |
 |---|---|---|
+| `--authority value` |  | tcp --http-connect: a host name clients ask for with CONNECT; repeat for more |
+| `--bandwidth uint` |  | the route's bytes a second in each direction, shared by the group's gateways; 0 is no limit |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
+| `--connect-auth string` |  | tcp --http-connect: none, tls-basic, or plain-basic (passwords in the clear) |
+| `--connect-certificate string` |  | tcp --http-connect --connect-auth tls-basic: an uploaded certificate's ID; without it, one that covers the hostname, else ACME's |
+| `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
@@ -776,17 +781,21 @@ rpmgr create route [flags]
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
 | `--http` |  | an http route: TLS ends at the gateway |
+| `--http-connect` |  | tcp: share a CONNECT listener with other routes of the org; set only on create |
 | `--idle-timeout duration` |  | tcp, tcp-udp: close a connection idle this long; udp: forget a flow idle this long |
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
+| `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
+| `--max-connections uint` |  | the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--path-prefix string` |  | http: the path prefix it serves |
 | `--policy value` |  | an access policy, by name or ID; repeat for more |
 | `--port uint` |  | tcp, udp, tcp-udp: the public port; 0 on create picks a free one |
 | `--port80 string` |  | http: what port 80 does: redirect, serve or off |
+| `--requests-per-second uint` |  | the route's requests, new connections or new flows a second, shared by the group's gateways; 0 is no limit |
 | `--set-request-header value` |  | http: a header Name=value set towards the upstream; repeat for more |
 | `--set-response-header value` |  | http: a header Name=value set towards the client; repeat for more |
 | `--tcp` |  | a tcp route on a public port |
@@ -795,6 +804,8 @@ rpmgr create route [flags]
 | `--tls-passthrough` |  | a TLS route the gateway passes through by its SNI |
 | `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
 | `--udp` |  | a udp route on a public port |
+| `--upstream-header-timeout duration` |  | http: how long to wait for the upstream's response headers before 504; 0 is the gateway's |
+| `--upstream-idle-timeout duration` |  | http: how long an unused connection to the upstream is kept; 0 is the gateway's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
 
@@ -950,7 +961,7 @@ rpmgr create access-policy [flags]
 | `--name string` |  | the policy's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--passwords-file string` |  | a file of user:password lines for the basic-auth users; the others are asked for |
-| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,…, basic-auth:\<user>,… or require-header:\<header>; repeat for more; a deny wins over every allow |
+| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,…, basic-auth:\<user>,…, require-header:\<header> or rate-limit:\<per second>[,\<burst>]; repeat for more; a deny wins over every allow |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr create invitation
@@ -1030,7 +1041,12 @@ rpmgr update route [flags] <id or name>
 
 | Flag | Default | Description |
 |---|---|---|
+| `--authority value` |  | tcp --http-connect: a host name clients ask for with CONNECT; repeat for more |
+| `--bandwidth uint` |  | the route's bytes a second in each direction, shared by the group's gateways; 0 is no limit |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
+| `--connect-auth string` |  | tcp --http-connect: none, tls-basic, or plain-basic (passwords in the clear) |
+| `--connect-certificate string` |  | tcp --http-connect --connect-auth tls-basic: an uploaded certificate's ID; without it, one that covers the hostname, else ACME's |
+| `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
@@ -1046,21 +1062,27 @@ rpmgr update route [flags] <id or name>
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
+| `--http-connect` |  | tcp: share a CONNECT listener with other routes of the org; set only on create |
 | `--idle-timeout duration` |  | tcp, tcp-udp: close a connection idle this long; udp: forget a flow idle this long |
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
+| `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
+| `--max-connections uint` |  | the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--path-prefix string` |  | http: the path prefix it serves |
 | `--policy value` |  | an access policy, by name or ID; repeat for more |
 | `--port uint` |  | tcp, udp, tcp-udp: the public port; 0 on create picks a free one |
 | `--port80 string` |  | http: what port 80 does: redirect, serve or off |
+| `--requests-per-second uint` |  | the route's requests, new connections or new flows a second, shared by the group's gateways; 0 is no limit |
 | `--set-request-header value` |  | http: a header Name=value set towards the upstream; repeat for more |
 | `--set-response-header value` |  | http: a header Name=value set towards the client; repeat for more |
 | `--tls-mode string` |  | http: acme or certificate |
 | `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
+| `--upstream-header-timeout duration` |  | http: how long to wait for the upstream's response headers before 504; 0 is the gateway's |
+| `--upstream-idle-timeout duration` |  | http: how long an unused connection to the upstream is kept; 0 is the gateway's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
 
@@ -1188,7 +1210,7 @@ rpmgr update access-policy [flags] <id or name>
 | `--name string` |  | the policy's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--passwords-file string` |  | a file of user:password lines for the basic-auth users; the others are asked for |
-| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,…, basic-auth:\<user>,… or require-header:\<header>; repeat for more; a deny wins over every allow |
+| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,…, basic-auth:\<user>,…, require-header:\<header> or rate-limit:\<per second>[,\<burst>]; repeat for more; a deny wins over every allow |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr update member
@@ -1451,7 +1473,12 @@ rpmgr preview route [flags]
 
 | Flag | Default | Description |
 |---|---|---|
+| `--authority value` |  | tcp --http-connect: a host name clients ask for with CONNECT; repeat for more |
+| `--bandwidth uint` |  | the route's bytes a second in each direction, shared by the group's gateways; 0 is no limit |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
+| `--connect-auth string` |  | tcp --http-connect: none, tls-basic, or plain-basic (passwords in the clear) |
+| `--connect-certificate string` |  | tcp --http-connect --connect-auth tls-basic: an uploaded certificate's ID; without it, one that covers the hostname, else ACME's |
+| `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
@@ -1468,17 +1495,21 @@ rpmgr preview route [flags]
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
 | `--http` |  | an http route: TLS ends at the gateway |
+| `--http-connect` |  | tcp: share a CONNECT listener with other routes of the org; set only on create |
 | `--idle-timeout duration` |  | tcp, tcp-udp: close a connection idle this long; udp: forget a flow idle this long |
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
+| `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
+| `--max-connections uint` |  | the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--path-prefix string` |  | http: the path prefix it serves |
 | `--policy value` |  | an access policy, by name or ID; repeat for more |
 | `--port uint` |  | tcp, udp, tcp-udp: the public port; 0 on create picks a free one |
 | `--port80 string` |  | http: what port 80 does: redirect, serve or off |
+| `--requests-per-second uint` |  | the route's requests, new connections or new flows a second, shared by the group's gateways; 0 is no limit |
 | `--route string` |  | the ID of a route whose change to preview, rather than a new route |
 | `--set-request-header value` |  | http: a header Name=value set towards the upstream; repeat for more |
 | `--set-response-header value` |  | http: a header Name=value set towards the client; repeat for more |
@@ -1488,6 +1519,8 @@ rpmgr preview route [flags]
 | `--tls-passthrough` |  | a TLS route the gateway passes through by its SNI |
 | `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
 | `--udp` |  | a udp route on a public port |
+| `--upstream-header-timeout duration` |  | http: how long to wait for the upstream's response headers before 504; 0 is the gateway's |
+| `--upstream-idle-timeout duration` |  | http: how long an unused connection to the upstream is kept; 0 is the gateway's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
 

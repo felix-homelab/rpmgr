@@ -23,6 +23,8 @@ const (
 	FieldPathPrefix = "path_prefix"
 	// FieldHeaderMatches holds the string denoting the header_matches field in the database.
 	FieldHeaderMatches = "header_matches"
+	// FieldMatchKey holds the string denoting the match_key field in the database.
+	FieldMatchKey = "match_key"
 	// FieldTLSMode holds the string denoting the tls_mode field in the database.
 	FieldTLSMode = "tls_mode"
 	// FieldCertificateID holds the string denoting the certificate_id field in the database.
@@ -47,6 +49,10 @@ const (
 	FieldMaintenance = "maintenance"
 	// FieldMaintenanceMessage holds the string denoting the maintenance_message field in the database.
 	FieldMaintenanceMessage = "maintenance_message"
+	// FieldUpstreamResponseHeaderTimeoutSeconds holds the string denoting the upstream_response_header_timeout_seconds field in the database.
+	FieldUpstreamResponseHeaderTimeoutSeconds = "upstream_response_header_timeout_seconds"
+	// FieldUpstreamIdleTimeoutSeconds holds the string denoting the upstream_idle_timeout_seconds field in the database.
+	FieldUpstreamIdleTimeoutSeconds = "upstream_idle_timeout_seconds"
 	// EdgeRoute holds the string denoting the route edge name in mutations.
 	EdgeRoute = "route"
 	// EdgeCertificate holds the string denoting the certificate edge name in mutations.
@@ -76,6 +82,7 @@ var Columns = []string{
 	FieldRouteID,
 	FieldPathPrefix,
 	FieldHeaderMatches,
+	FieldMatchKey,
 	FieldTLSMode,
 	FieldCertificateID,
 	FieldPort80,
@@ -88,6 +95,8 @@ var Columns = []string{
 	FieldDNSProxied,
 	FieldMaintenance,
 	FieldMaintenanceMessage,
+	FieldUpstreamResponseHeaderTimeoutSeconds,
+	FieldUpstreamIdleTimeoutSeconds,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -115,6 +124,8 @@ var (
 	RouteIDValidator func(string) error
 	// DefaultPathPrefix holds the default value on creation for the "path_prefix" field.
 	DefaultPathPrefix string
+	// DefaultMatchKey holds the default value on creation for the "match_key" field.
+	DefaultMatchKey string
 	// DefaultHstsMaxAgeSeconds holds the default value on creation for the "hsts_max_age_seconds" field.
 	DefaultHstsMaxAgeSeconds int
 	// HstsMaxAgeSecondsValidator is a validator for the "hsts_max_age_seconds" field. It is called by the builders before save.
@@ -137,6 +148,14 @@ var (
 	DefaultMaintenanceMessage string
 	// MaintenanceMessageValidator is a validator for the "maintenance_message" field. It is called by the builders before save.
 	MaintenanceMessageValidator func(string) error
+	// DefaultUpstreamResponseHeaderTimeoutSeconds holds the default value on creation for the "upstream_response_header_timeout_seconds" field.
+	DefaultUpstreamResponseHeaderTimeoutSeconds int
+	// UpstreamResponseHeaderTimeoutSecondsValidator is a validator for the "upstream_response_header_timeout_seconds" field. It is called by the builders before save.
+	UpstreamResponseHeaderTimeoutSecondsValidator func(int) error
+	// DefaultUpstreamIdleTimeoutSeconds holds the default value on creation for the "upstream_idle_timeout_seconds" field.
+	DefaultUpstreamIdleTimeoutSeconds int
+	// UpstreamIdleTimeoutSecondsValidator is a validator for the "upstream_idle_timeout_seconds" field. It is called by the builders before save.
+	UpstreamIdleTimeoutSecondsValidator func(int) error
 )
 
 // TLSMode defines the type for the "tls_mode" enum field.
@@ -215,6 +234,11 @@ func ByPathPrefix(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPathPrefix, opts...).ToFunc()
 }
 
+// ByMatchKey orders the results by the match_key field.
+func ByMatchKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMatchKey, opts...).ToFunc()
+}
+
 // ByTLSMode orders the results by the tls_mode field.
 func ByTLSMode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTLSMode, opts...).ToFunc()
@@ -263,6 +287,16 @@ func ByMaintenance(opts ...sql.OrderTermOption) OrderOption {
 // ByMaintenanceMessage orders the results by the maintenance_message field.
 func ByMaintenanceMessage(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMaintenanceMessage, opts...).ToFunc()
+}
+
+// ByUpstreamResponseHeaderTimeoutSeconds orders the results by the upstream_response_header_timeout_seconds field.
+func ByUpstreamResponseHeaderTimeoutSeconds(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpstreamResponseHeaderTimeoutSeconds, opts...).ToFunc()
+}
+
+// ByUpstreamIdleTimeoutSeconds orders the results by the upstream_idle_timeout_seconds field.
+func ByUpstreamIdleTimeoutSeconds(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpstreamIdleTimeoutSeconds, opts...).ToFunc()
 }
 
 // ByRouteField orders the results by route field.

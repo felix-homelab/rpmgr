@@ -34,6 +34,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 )
 
 // httpFront serves h's routes on a TLS listener, as the router hands them over, and returns its
@@ -188,6 +189,258 @@ func TestHTTPRoutes_RoutePrecedence(t *testing.T) {
 	}
 	if !h.Serves("www.example.com") || !h.Serves("app.example.com") || h.Serves("example.com") || h.Serves("other.net") {
 		t.Error("Serves")
+	}
+}
+
+// TestHTTPRoutes_HeaderMatches (D135): among the routes of a hostname and prefix, one whose header
+// matches all hold wins over one with fewer; the route with the smaller ID wins a tie; a request
+// no route of its prefix takes goes to a shorter prefix, and else nowhere.
+func TestHTTPRoutes_HeaderMatches(t *testing.T) {
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{})
+	t.Cleanup(h.Close)
+	host := func(prefix string) []gateway.HTTPHost {
+		return []gateway.HTTPHost{{Hostname: "app.example.com", PathPrefix: prefix}}
+	}
+	h.Apply([]gateway.HTTPRoute{
+		{ID: "rt_main", Hosts: host("")},
+		{ID: "rt_api", Hosts: host("/api")},
+		{ID: "rt_b", Hosts: host("/api"), HeaderMatches: []headermatch.Match{{Name: "X-Env", Value: "beta"}}},
+		{ID: "rt_a", Hosts: host("/api"), HeaderMatches: []headermatch.Match{{Name: "X-Tenant", Present: true}}},
+		{ID: "rt_both", Hosts: host("/api"), HeaderMatches: []headermatch.Match{{Name: "X-Env", Value: "beta"}, {Name: "X-Tenant", Present: true}}},
+		{ID: "rt_only", Hosts: host("/admin"), HeaderMatches: []headermatch.Match{{Name: "X-Admin", Value: "1"}}},
+	})
+	for _, tc := range []struct {
+		path   string
+		header http.Header
+		want   string
+	}{
+		{"/api/x", nil, "rt_api"},
+		{"/api/x", http.Header{"X-Env": {"beta"}}, "rt_b"},
+		{"/api/x", http.Header{"X-Env": {"Beta"}}, "rt_api"},                      // values compare exactly
+		{"/api/x", http.Header{"X-Env": {"prod", "beta"}}, "rt_b"},                // any of several values
+		{"/api/x", http.Header{"X-Tenant": {""}}, "rt_a"},                         // presence, an empty value too
+		{"/api/x", http.Header{"X-Env": {"beta"}, "X-Tenant": {"t1"}}, "rt_both"}, // more matches win
+		{"/admin", http.Header{"X-Admin": {"1"}}, "rt_only"},
+		{"/admin", nil, "rt_main"}, // no route of /admin takes it: the next shorter prefix
+		{"/", http.Header{"X-Env": {"beta"}}, "rt_main"},
+	} {
+		if got := gateway.RouteFor(h, "app.example.com", tc.path, tc.header); got != tc.want {
+			t.Errorf("%s %v: %q, want %q", tc.path, tc.header, got, tc.want)
+		}
+	}
+	// A tie of equally many matches that both hold: the route created first, with the smaller ID.
+	h.Apply([]gateway.HTTPRoute{
+		{ID: "rte_2", Hosts: host(""), HeaderMatches: []headermatch.Match{{Name: "X-Tenant", Present: true}}},
+		{ID: "rte_1", Hosts: host(""), HeaderMatches: []headermatch.Match{{Name: "X-Env", Value: "beta"}}},
+	})
+	if got := gateway.RouteFor(h, "app.example.com", "/", http.Header{"X-Env": {"beta"}, "X-Tenant": {"t"}}); got != "rte_1" {
+		t.Errorf("a tie: %q", got)
+	}
+	if got := gateway.RouteFor(h, "app.example.com", "/", nil); got != "" {
+		t.Errorf("no match holds: %q", got)
+	}
+}
+
+// TestGateway_ReservedPathNeverUpstream (security regression, docs/12): a request under /.rpmgr/
+// on an http route hostname, in any case, with ";" parameters or percent-encoded, never reaches
+// the upstream and gets the gateway's 404, on 443 and on port 80; the identity headers a client
+// sends never reach the upstream on any route.
+func TestGateway_ReservedPathNeverUpstream(t *testing.T) {
+	var reached atomic.Int32
+	upstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached.Add(1)
+		//nolint:gosec // G705: the test upstream echoes the request as plain text
+		_, _ = fmt.Fprintf(w, "%s|%s|%s|%s", r.URL.Path, r.Header.Get("Rpmgr-User-Email"), r.Header.Get("Rpmgr-User-Subject"),
+			r.Header.Get("Rpmgr-User-Groups"))
+	})
+	e := newHTTPEnv(t, upstream, gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Port80: "serve",
+		Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}})
+	addr80 := e.serve80(t)
+	for _, path := range []string{"/.rpmgr/oidc", "/.rpmgr", "/.rpmgr/", "/.RPMGR/oidc", "/%2Erpmgr/oidc", "/.rpmgr;x/oidc",
+		"/.rpmgr/tunnel", "/%2e%72pmgr/x"} {
+		for _, h2 := range []bool{false, true} {
+			if r := get(t, e.client(h2), "https://app.example.com"+path, nil); r.status != http.StatusNotFound {
+				t.Errorf("%s (h2 %v): %d %q", path, h2, r.status, r.body)
+			}
+		}
+		if r, err := plain(t, addr80, http.MethodGet, "app.example.com", path); err != nil || r.status != http.StatusNotFound {
+			t.Errorf("%s on port 80: %v %v", path, r, err)
+		}
+	}
+	if n := reached.Load(); n != 0 {
+		t.Fatalf("%d requests under /.rpmgr/ reached the upstream", n)
+	}
+	// Neighbours of the reserved path are ordinary paths.
+	for _, path := range []string{"/.rpmgrx", "/x/.rpmgr/y", "/rpmgr/"} {
+		if r := get(t, e.client(false), "https://app.example.com"+path, nil); r.status != http.StatusOK || !strings.HasPrefix(r.body, path) {
+			t.Errorf("%s: %d %q", path, r.status, r.body)
+		}
+	}
+	spoofed := http.Header{"Rpmgr-User-Email": {"admin@example.com"}, "Rpmgr-User-Subject": {"admin"}, "rpmgr-user-groups": {"admins"}}
+	for _, h2 := range []bool{false, true} {
+		if r := get(t, e.client(h2), "https://app.example.com/x", spoofed); r.body != "/x|||" {
+			t.Errorf("identity headers from the client reached the upstream (h2 %v): %q", h2, r.body)
+		}
+	}
+}
+
+// TestHTTPRoutes_RouteTimeouts (D94): a route's own upstream response-header timeout turns a slow
+// upstream into 504 where the gateway's would wait, 0 keeps the gateway's, and a change applies
+// to the next request; a route's own idle timeout closes an unused upstream connection sooner.
+func TestHTTPRoutes_RouteTimeouts(t *testing.T) {
+	gateway.SetHTTPTimers(t, time.Second, 5*time.Second)
+	var conns atomic.Int32
+	up := &http.Server{ReadHeaderTimeout: 5 * time.Second,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/slow" {
+				time.Sleep(time.Second)
+			}
+			_, _ = io.WriteString(w, "ok")
+		}),
+		ConnState: func(_ net.Conn, s http.ConnState) {
+			if s == http.StateNew {
+				conns.Add(1)
+			}
+		}}
+	upLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = up.Serve(upLn) }()
+	t.Cleanup(func() { _ = up.Close() })
+	route := gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}},
+		UpstreamHeaderTimeout: 300 * time.Millisecond}
+	p := newPlaneWith(t, upLn.Addr().String(), "none", route.ID)
+	e := newHTTPEnvOn(t, p.sessions, route)
+	c := e.client(false)
+	if r := get(t, c, "https://app.example.com/slow", nil); r.status != http.StatusGatewayTimeout {
+		t.Errorf("the route's own timeout: %d %q", r.status, r.body)
+	}
+	route.UpstreamHeaderTimeout = 0
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	if r := get(t, c, "https://app.example.com/slow", nil); r.status != http.StatusOK {
+		t.Errorf("the gateway's timeout: %d %q", r.status, r.body)
+	}
+	// Idle: with the gateway's 120 s the pooled connection serves the next request; with the
+	// route's own 1 s it is closed by then and a new one is opened.
+	gets := func() int32 {
+		before := conns.Load()
+		for range 2 {
+			if r := get(t, c, "https://app.example.com/", nil); r.status != http.StatusOK {
+				t.Fatalf("%d %q", r.status, r.body)
+			}
+			time.Sleep(1500 * time.Millisecond)
+		}
+		return conns.Load() - before
+	}
+	_ = get(t, c, "https://app.example.com/", nil) // a pooled connection to start from
+	if n := gets(); n != 0 {
+		t.Errorf("the gateway's idle timeout opened %d new upstream connections, want 0", n)
+	}
+	route.UpstreamIdleTimeout = time.Second
+	e.routes.Apply([]gateway.HTTPRoute{route})
+	if n := gets(); n != 2 {
+		t.Errorf("the route's idle timeout opened %d new upstream connections, want 2", n)
+	}
+}
+
+// TestHTTPRoutes_ReplacedTransportClosesIdle: a transport that a change of the route's timeouts
+// replaced while a request ran on it leaves no upstream connection open once a later snapshot
+// finds it idle. Over HTTP/1.1 Go's transport closes a connection given back after
+// CloseIdleConnections by itself; an h2c connection that was busy then stays open until the
+// gateway closes the transport's idle connections when it drops it.
+func TestHTTPRoutes_ReplacedTransportClosesIdle(t *testing.T) {
+	for _, upstream := range []string{"http", "h2c"} {
+		t.Run(upstream, func(t *testing.T) {
+			var opened, closed atomic.Int32
+			running, release := make(chan struct{}), make(chan struct{})
+			up := &http.Server{ReadHeaderTimeout: 5 * time.Second,
+				Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == "/block" {
+						close(running)
+						<-release
+					}
+					_, _ = io.WriteString(w, "ok")
+				}),
+				ConnState: func(_ net.Conn, s http.ConnState) {
+					switch s {
+					case http.StateNew:
+						opened.Add(1)
+					case http.StateClosed:
+						closed.Add(1)
+					}
+				}}
+			if upstream == "h2c" {
+				p := new(http.Protocols)
+				p.SetUnencryptedHTTP2(true)
+				up.Protocols = p
+			}
+			upLn, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			go func() { _ = up.Serve(upLn) }()
+			t.Cleanup(func() { _ = up.Close() })
+			route := gateway.HTTPRoute{ID: "rt_web", Upstream: upstream, Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}}
+			p := newPlaneWith(t, upLn.Addr().String(), "none", route.ID)
+			e := newHTTPEnvOn(t, p.sessions, route)
+			done := make(chan reply, 1)
+			go func() { done <- get(t, e.client(false), "https://app.example.com/block", nil) }()
+			<-running
+			route.UpstreamIdleTimeout = time.Hour // a new transport; the request goes on on the old one
+			e.routes.Apply([]gateway.HTTPRoute{route})
+			close(release)
+			if r := <-done; r.status != http.StatusOK {
+				t.Fatalf("the request on the replaced transport: %d %q", r.status, r.body)
+			}
+			e.routes.Apply([]gateway.HTTPRoute{route})
+			deadline := time.Now().Add(5 * time.Second)
+			for closed.Load() < opened.Load() && time.Now().Before(deadline) {
+				time.Sleep(20 * time.Millisecond)
+			}
+			if n := opened.Load() - closed.Load(); n != 0 {
+				t.Fatalf("%d upstream connections of the replaced transport stay open", n)
+			}
+		})
+	}
+}
+
+// TestGateway_IdentityHeadersAnySpelling (D135): every header and trailer a client sends whose
+// name starts with Rpmgr-User-, in any case and with "_" for "-", which CGI-style servers read
+// alike, is removed before the request goes upstream; other headers pass.
+func TestGateway_IdentityHeadersAnySpelling(t *testing.T) {
+	upstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body) // trailers arrive after the body
+		// Trailers are compared by name: what reaches the upstream is the names the client declared.
+		var got []string
+		for i, h := range []http.Header{r.Header, r.Trailer} {
+			for name, v := range h {
+				if n := strings.ToLower(strings.ReplaceAll(name, "_", "-")); strings.HasPrefix(n, "rpmgr-user-") || n == "x-keep" || n == "x-late" {
+					got = append(got, map[int]string{0: name + "=" + strings.Join(v, ","), 1: "trailer " + name}[i])
+				}
+			}
+		}
+		slices.Sort(got)
+		_, _ = io.WriteString(w, strings.Join(got, " "))
+	})
+	e := newHTTPEnv(t, upstream, gateway.HTTPRoute{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com"}}})
+	for _, h2 := range []bool{false, true} {
+		req, _ := http.NewRequest(http.MethodPost, "https://app.example.com/x", io.NopCloser(strings.NewReader("body")))
+		req.ContentLength = -1 // chunked on HTTP/1.1, so the trailers go
+		req.Header["rpmgr_user_email"] = []string{"admin@example.com"}
+		req.Header["Rpmgr-User-Role"] = []string{"admin"}
+		req.Header["RPMGR-USER_ORG"] = []string{"org_1"}
+		req.Header.Set("X-Keep", "1")
+		req.Trailer = http.Header{"Rpmgr-User-Email": {"late@example.com"}, "rpmgr_user_x": {"t"}, "X-Late": {"t"}}
+		resp, err := e.client(h2).Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if string(b) != "X-Keep=1 trailer X-Late" {
+			t.Errorf("h2 %v: the upstream got %q, want only X-Keep and the trailer X-Late", h2, b)
+		}
 	}
 }
 
