@@ -226,9 +226,12 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   has a deadline; unanswered operations fail with `DEADLINE_EXCEEDED` instead of blocking forever.
   "Diagnostics" are the existing `ProbeTarget` and live logs; there is no other diagnostic
   operation.
-  - `Open` takes a new field number of `ControllerMessage`; number 3, which an early draft gave it,
-    stays reserved, so no agent of an earlier release can read a reused number as something else
-    (VB-22). Agents that run operations announce the capability `logs.stream`.
+  - `Open` is the field `open_operation = 9` of `ControllerMessage`; the number 3 and the name
+    `open`, which an early draft gave it, stay reserved, as `buf breaking` refuses to give either
+    back (VB-22, resolved). Agents that run operations announce the capability `logs.stream`; the
+    agent refuses an operation it does not run with an `OpResult` error, and attaches on the
+    connection of its control session, which the controller accepts only from the agent the ticket
+    was made for.
   - [R] The **ticket** is 256 random bits, kept only as a hash in memory on the replica that holds
     the agent's control session, bound to the agent and the operation, single use and valid for the
     time in the timeout table. An `Attach` with an unknown, used, expired or another agent's

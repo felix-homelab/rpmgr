@@ -426,13 +426,13 @@ Defined in [03-connections.md](03-connections.md); summarised here for reference
 | | `Snapshot` | controller → agent | Desired state at a revision, signed; with the capability `ota`, the release the agent is offered (version, `seq`, its files under `/dl/` with sizes and SHA-256), Phase 2 |
 | | `Applied` / `Rejected` | agent → controller | Result of applying a revision |
 | | `Status` | agent → controller | Health, route readiness, counters; with `ota`, the update state (available, declined, downloading, staged or failed, and the updater's outcome) |
-| | `Open` | controller → agent | Start an imperative operation (Phase 2: live logs; Phase 3: shell); a new field number, 3 stays reserved |
+| | `Open` | controller → agent | Start an imperative operation (Phase 2: live logs; Phase 3: shell): `open_operation`, a new field number; 3 and `open` stay reserved |
 | | `Drain` / `Goodbye` | controller → agent | Reconnect elsewhere / session ends (superseded, revoked, upgrade required) |
 | | `DenyListUpdate` | controller → agent | Revocations; applied unconditionally, independent of snapshots |
 | | `AcmeChallenge` / `OpResult` | controller → gateway / back | An ACME HTTP-01 or TLS-ALPN-01 challenge the gateway answers (add, remove), and its acknowledgement |
 | Control unary | `Renew`, `FetchResource` | agent → controller | Certificate renewal; large resources by hash |
 | `Reauth` (SNI `reauth.controller.<td>`) | `Reauth` | agent → controller | New certificate for an agent whose certificate expired within the grace period; mutual TLS with the expired certificate |
-| Control `Attach` | `AttachFrame` | both | Data of an imperative operation |
+| Control `Attach` | `AttachFrame` | both | An imperative operation: the agent's first frame presents the ticket of its `Open`; log lines; `AttachEnd` from either side ([03](03-connections.md#control-session)) |
 | Data session control stream | `SessionHello` / `SessionWelcome`, `Ping`/`Pong`, `RouteHealth`, `OpenRequest` / `OpenRejected`, `Drain`, `P2PCandidates`, `Goodbye` | both | Data-session control; `OpenRequest` asks the gateway to open a stream (TCP transport) |
 | Data user/relay stream | `StreamOpen` / `StreamResult` | opener → other side / back | Per-connection preamble; the opener is the gateway, or the connector for `RELAY_OUT` and `CONTROL_PASSTHROUGH` on QUIC ([03](03-connections.md#framing)) |
 

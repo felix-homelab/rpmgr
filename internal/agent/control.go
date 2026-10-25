@@ -280,6 +280,19 @@ func (c *Client) Send(m *agentv1.AgentMessage) bool {
 	return c.stream != nil && c.stream.Send(m) == nil
 }
 
+// Attach opens an Attach stream for an imperative operation on the connection of the current
+// control session, so the operation needs no new connection (docs/03-connections.md, "Control
+// session"); it fails without a session.
+func (c *Client) Attach(ctx context.Context) (agentv1.Control_AttachClient, error) {
+	c.sendMu.Lock()
+	cc := c.conn
+	c.sendMu.Unlock()
+	if cc == nil {
+		return nil, errors.New("agent: no control session")
+	}
+	return agentv1.NewControlClient(cc).Attach(ctx, grpc.WaitForReady(false))
+}
+
 // SetEndpoints replaces the controller endpoints, as every snapshot names them; the next
 // connection attempt uses them. An empty list is ignored.
 func (c *Client) SetEndpoints(endpoints []string) {
