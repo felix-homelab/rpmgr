@@ -37,6 +37,8 @@ const (
 	// CapRouteLimits: the gateway enforces a route's connection, rate and bandwidth limits and the
 	// per-client rate_limit rule of access policies.
 	CapRouteLimits = "route.limits"
+	// CapTCPHTTPConnect: a gateway serves tcp routes in http_connect mode on CONNECT listeners.
+	CapTCPHTTPConnect = "tcp.http-connect"
 )
 
 // The capability strings of Phase 2 that are not route features, each checked where its feature

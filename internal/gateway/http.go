@@ -576,18 +576,22 @@ func (h *HTTPRoutes) fallback(host string) bool {
 	})
 }
 
+// httpCipherSuites are the TLS 1.2 suites of public TLS: ECDHE with AES-GCM or ChaCha20-Poly1305
+// (docs/04-security.md, "Controller certificates"); TLS 1.3's are not configurable.
+var httpCipherSuites = []uint16{
+	tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+	tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+	tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+}
+
 // TLSConfig is the configuration the router terminates http routes' TLS with: TLS 1.3, or TLS
 // 1.2 with forward secrecy and AEAD only, for public clients (docs/04-security.md, "Controller
 // certificates"); HTTP/2 or HTTP/1.1; and the route certificate for the server name.
 func (h *HTTPRoutes) TLSConfig() *tls.Config {
 	return &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		CipherSuites: []uint16{ // TLS 1.2 only; TLS 1.3's are not configurable
-			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-		},
-		NextProtos: []string{"h2", "http/1.1"},
+		MinVersion:   tls.VersionTLS12,
+		CipherSuites: httpCipherSuites,
+		NextProtos:   []string{"h2", "http/1.1"},
 		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			if h.o.Certificates != nil {
 				if c := h.o.Certificates.ForName(hello.ServerName); c != nil {

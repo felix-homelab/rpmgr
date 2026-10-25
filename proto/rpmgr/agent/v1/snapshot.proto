@@ -149,6 +149,10 @@ message GatewayTCPRoute {
   // This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
   // route reaches only gateways with the capability route.limits when it sets one.
   RouteLimits limits = 6;
+  // Set for a route in http_connect mode: the port is a CONNECT listener that routes of the same
+  // org share, each named by its authorities (docs/03-connections.md, "HTTP CONNECT routes"). Only
+  // a gateway announcing the capability tcp.http-connect gets such a route.
+  HTTPConnect http_connect = 7;
 }
 
 // RouteLimits are a gateway's share of a route's limits: the route's own, divided among the enabled
@@ -160,6 +164,32 @@ message RouteLimits {
   uint32 requests_per_second = 2;
   // Bytes per second in each direction.
   uint64 bandwidth_bytes_per_second = 3;
+}
+
+// HTTPConnect is a tcp route's place on a CONNECT listener. Every route of a listener has the
+// same auth and hostname.
+message HTTPConnect {
+  // The host names a client asks for with CONNECT <host>:<port>, lower case; the port is ignored.
+  repeated string authorities = 1;
+  // How the listener checks proxy credentials.
+  ConnectAuth auth = 2;
+  // With CONNECT_AUTH_TLS_BASIC: the listener's name, whose certificate it presents.
+  string hostname = 3;
+  // The org that owns the listener: a listener is one org's, so no client reaches another org's
+  // route through it.
+  string org_id = 4;
+}
+
+// ConnectAuth is a CONNECT listener's authentication mode (D130).
+enum ConnectAuth {
+  // Not set: none.
+  CONNECT_AUTH_UNSPECIFIED = 0;
+  // Plain CONNECT, IP rules only.
+  CONNECT_AUTH_NONE = 1;
+  // A TLS listener (an HTTPS proxy) with basic auth in Proxy-Authorization.
+  CONNECT_AUTH_TLS_BASIC = 2;
+  // Plain CONNECT with basic auth in the clear.
+  CONNECT_AUTH_PLAIN_BASIC = 3;
 }
 
 // RouteConnector is a connector that serves a route at one priority of its enabled targets of the
