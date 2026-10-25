@@ -361,6 +361,12 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 			}), withHTTP(httpResource("rt_2", "http", "app.example.com|/api"), func(r *agentv1.GatewayHTTPRoute) {
 				r.HeaderMatches = []*agentv1.HTTPHeaderMatch{{Name: "X-Env", Value: "beta"}}
 			})), "also served by rt_1 with the same header matches"},
+		{"an upstream header timeout above an hour", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.UpstreamResponseHeaderTimeoutSeconds = 3601
+		})), "upstream timeout above 3600 seconds"},
+		{"an upstream idle timeout above an hour", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.UpstreamIdleTimeoutSeconds = 3601
+		})), "upstream timeout above 3600 seconds"},
 		{"nine header matches", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
 			for i := range 9 {
 				r.HeaderMatches = append(r.HeaderMatches, &agentv1.HTTPHeaderMatch{Name: "X-" + strings.Repeat("a", i+1), Present: true})
@@ -587,6 +593,29 @@ func TestApplier_HeaderMatches(t *testing.T) {
 	}
 }
 
+// TestApplier_RouteTimeouts (D94): an http route's own upstream timeouts in the snapshot are the
+// ones its transport uses; 0 keeps the gateway's.
+func TestApplier_RouteTimeouts(t *testing.T) {
+	a, assign := gateway.NewApplier()
+	m := gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: "gw_01", Assignment: assign})
+	t.Cleanup(m.Close)
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Sessions: m})
+	t.Cleanup(h.Close)
+	a.Bind(gateway.Served{HTTP: h, Sessions: m})
+	own := withHTTP(httpResource("rt_own", "http", "own.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+		r.UpstreamResponseHeaderTimeoutSeconds, r.UpstreamIdleTimeoutSeconds = 300, 15
+	})
+	if st := a.Apply(t.Context(), gatewaySnapshot(1, own, httpResource("rt_def", "http", "def.example.com")), agent.Changes{}); len(st) != 0 {
+		t.Fatal(st)
+	}
+	if header, idle := gateway.RouteTimeouts(h, "rt_own"); header != 5*time.Minute || idle != 15*time.Second {
+		t.Errorf("the route's own: %v %v", header, idle)
+	}
+	if header, idle := gateway.RouteTimeouts(h, "rt_def"); header != time.Minute || idle != 2*time.Minute {
+		t.Errorf("the gateway's: %v %v", header, idle)
+	}
+}
+
 // TestApplier_Limits: every route of a snapshot gets its limit state, also one without limits,
 // which keeps it across snapshots while the limits change, and loses it when it leaves.
 func TestApplier_Limits(t *testing.T) {
@@ -614,5 +643,30 @@ func TestApplier_Limits(t *testing.T) {
 	}
 	if gateway.LimitOf(a, "rt_2") != nil {
 		t.Fatal("a removed route kept its state")
+	}
+}
+
+// TestApplier_WSS: a snapshot's WSS hostname reaches the router, and goes with the next snapshot
+// that has none; a name that is not normalised is refused.
+func TestApplier_WSS(t *testing.T) {
+	a, _ := gateway.NewApplier()
+	var name gateway.WSSHostname
+	a.Bind(gateway.Served{WSS: &name})
+	res := func(host string) *agentv1.Resource {
+		return &agentv1.Resource{Id: "gw_1.wss", Kind: &agentv1.Resource_GatewayWss{GatewayWss: &agentv1.GatewayWSS{Hostname: host}}}
+	}
+	if errs := a.Validate(gatewaySnapshot(1, res("Tunnel.Example.com"))); len(errs) != 1 {
+		t.Fatalf("a name that is not normalised: %v", errs)
+	}
+	if errs := a.Validate(gatewaySnapshot(1, res("tunnel.example.com"))); len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	a.Apply(t.Context(), gatewaySnapshot(1, res("tunnel.example.com")), agent.Changes{})
+	if name.Get() != "tunnel.example.com" {
+		t.Fatalf("applied %q", name.Get())
+	}
+	a.Apply(t.Context(), gatewaySnapshot(2), agent.Changes{})
+	if name.Get() != "" {
+		t.Fatalf("removed: %q", name.Get())
 	}
 }

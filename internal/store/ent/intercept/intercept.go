@@ -23,6 +23,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectauthority"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -56,6 +58,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routelimit"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -528,6 +531,60 @@ func (f TraverseConfigSeq) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.ConfigSeqQuery", q)
+}
+
+// The ConnectAuthorityFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ConnectAuthorityFunc func(context.Context, *ent.ConnectAuthorityQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ConnectAuthorityFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ConnectAuthorityQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ConnectAuthorityQuery", q)
+}
+
+// The TraverseConnectAuthority type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseConnectAuthority func(context.Context, *ent.ConnectAuthorityQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseConnectAuthority) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseConnectAuthority) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ConnectAuthorityQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ConnectAuthorityQuery", q)
+}
+
+// The ConnectListenerFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ConnectListenerFunc func(context.Context, *ent.ConnectListenerQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ConnectListenerFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ConnectListenerQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ConnectListenerQuery", q)
+}
+
+// The TraverseConnectListener type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseConnectListener func(context.Context, *ent.ConnectListenerQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseConnectListener) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseConnectListener) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ConnectListenerQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ConnectListenerQuery", q)
 }
 
 // The ConnectorFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1394,6 +1451,33 @@ func (f TraverseRouteHostname) Traverse(ctx context.Context, q ent.Query) error 
 	return fmt.Errorf("unexpected query type %T. expect *ent.RouteHostnameQuery", q)
 }
 
+// The RouteLimitFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RouteLimitFunc func(context.Context, *ent.RouteLimitQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RouteLimitFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RouteLimitQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RouteLimitQuery", q)
+}
+
+// The TraverseRouteLimit type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRouteLimit func(context.Context, *ent.RouteLimitQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRouteLimit) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRouteLimit) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteLimitQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RouteLimitQuery", q)
+}
+
 // The RoutePolicyFunc type is an adapter to allow the use of ordinary function as a Querier.
 type RoutePolicyFunc func(context.Context, *ent.RoutePolicyQuery) (ent.Value, error)
 
@@ -1724,6 +1808,10 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ConfigRevisionQuery, predicate.ConfigRevision, configrevision.OrderOption]{typ: ent.TypeConfigRevision, tq: q}, nil
 	case *ent.ConfigSeqQuery:
 		return &query[*ent.ConfigSeqQuery, predicate.ConfigSeq, configseq.OrderOption]{typ: ent.TypeConfigSeq, tq: q}, nil
+	case *ent.ConnectAuthorityQuery:
+		return &query[*ent.ConnectAuthorityQuery, predicate.ConnectAuthority, connectauthority.OrderOption]{typ: ent.TypeConnectAuthority, tq: q}, nil
+	case *ent.ConnectListenerQuery:
+		return &query[*ent.ConnectListenerQuery, predicate.ConnectListener, connectlistener.OrderOption]{typ: ent.TypeConnectListener, tq: q}, nil
 	case *ent.ConnectorQuery:
 		return &query[*ent.ConnectorQuery, predicate.Connector, connector.OrderOption]{typ: ent.TypeConnector, tq: q}, nil
 	case *ent.DataSessionQuery:
@@ -1788,6 +1876,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.RouteHTTPQuery, predicate.RouteHTTP, routehttp.OrderOption]{typ: ent.TypeRouteHTTP, tq: q}, nil
 	case *ent.RouteHostnameQuery:
 		return &query[*ent.RouteHostnameQuery, predicate.RouteHostname, routehostname.OrderOption]{typ: ent.TypeRouteHostname, tq: q}, nil
+	case *ent.RouteLimitQuery:
+		return &query[*ent.RouteLimitQuery, predicate.RouteLimit, routelimit.OrderOption]{typ: ent.TypeRouteLimit, tq: q}, nil
 	case *ent.RoutePolicyQuery:
 		return &query[*ent.RoutePolicyQuery, predicate.RoutePolicy, routepolicy.OrderOption]{typ: ent.TypeRoutePolicy, tq: q}, nil
 	case *ent.RouteTCPQuery:

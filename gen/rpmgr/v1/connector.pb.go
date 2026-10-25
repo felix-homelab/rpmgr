@@ -34,12 +34,16 @@ type DataTransport int32
 const (
 	// Not set: the instance default.
 	DataTransport_DATA_TRANSPORT_UNSPECIFIED DataTransport = 0
-	// QUIC, falling back to TLS and HTTP/2 over TCP.
+	// QUIC, falling back to TLS and HTTP/2 over TCP, and then to WSS.
 	DataTransport_DATA_TRANSPORT_AUTO DataTransport = 1
 	// QUIC only.
 	DataTransport_DATA_TRANSPORT_QUIC DataTransport = 2
 	// TLS and HTTP/2 over TCP only.
 	DataTransport_DATA_TRANSPORT_H2 DataTransport = 3
+	// WSS only (Phase 2): TLS and HTTP/2 inside a WebSocket to the gateway's WSS hostname, for
+	// networks whose proxies intercept TLS. Connectors without the capability tunnel.wss cannot
+	// serve a route on it.
+	DataTransport_DATA_TRANSPORT_WSS DataTransport = 4
 )
 
 // Enum value maps for DataTransport.
@@ -49,12 +53,14 @@ var (
 		1: "DATA_TRANSPORT_AUTO",
 		2: "DATA_TRANSPORT_QUIC",
 		3: "DATA_TRANSPORT_H2",
+		4: "DATA_TRANSPORT_WSS",
 	}
 	DataTransport_value = map[string]int32{
 		"DATA_TRANSPORT_UNSPECIFIED": 0,
 		"DATA_TRANSPORT_AUTO":        1,
 		"DATA_TRANSPORT_QUIC":        2,
 		"DATA_TRANSPORT_H2":          3,
+		"DATA_TRANSPORT_WSS":         4,
 	}
 )
 
@@ -394,7 +400,7 @@ type ConnectorDataSession struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The gateway.
 	GatewayId string `protobuf:"bytes,1,opt,name=gateway_id,json=gatewayId,proto3" json:"gateway_id,omitempty"`
-	// The transport: DATA_TRANSPORT_QUIC or DATA_TRANSPORT_H2.
+	// The transport: DATA_TRANSPORT_QUIC, DATA_TRANSPORT_H2 or DATA_TRANSPORT_WSS.
 	Transport DataTransport `protobuf:"varint,2,opt,name=transport,proto3,enum=rpmgr.v1.DataTransport" json:"transport,omitempty"`
 	// The lowest smoothed round-trip time a session measures; not set where none does.
 	Rtt *durationpb.Duration `protobuf:"bytes,3,opt,name=rtt,proto3" json:"rtt,omitempty"`
@@ -1258,12 +1264,13 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\x0edeleted_routes\x18\x04 \x03(\v2\x16.rpmgr.v1.DeletedRouteR\rdeletedRoutes\"2\n" +
 	"\fDeletedRoute\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name*x\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name*\x90\x01\n" +
 	"\rDataTransport\x12\x1e\n" +
 	"\x1aDATA_TRANSPORT_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13DATA_TRANSPORT_AUTO\x10\x01\x12\x17\n" +
 	"\x13DATA_TRANSPORT_QUIC\x10\x02\x12\x15\n" +
-	"\x11DATA_TRANSPORT_H2\x10\x032\x84\x05\n" +
+	"\x11DATA_TRANSPORT_H2\x10\x03\x12\x16\n" +
+	"\x12DATA_TRANSPORT_WSS\x10\x042\x84\x05\n" +
 	"\x10ConnectorService\x12n\n" +
 	"\x0eListConnectors\x12\x1f.rpmgr.v1.ListConnectorsRequest\x1a .rpmgr.v1.ListConnectorsResponse\"\x19\x8a\xb5\x18\x12\n" +
 	"\borg.read\x12\x06org_id\x90\x02\x01\x12n\n" +

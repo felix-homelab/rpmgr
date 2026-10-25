@@ -113,6 +113,8 @@ message Resource {
     ResourceReference reference = 15;
     // Gateways: a page of the gateway's group, fetched by hash.
     GatewayPage gateway_page = 16;
+    // The gateway's WSS hostname, to gateways with the capability tunnel.wss.
+    GatewayWSS gateway_wss = 17;
   }
 }
 
@@ -124,6 +126,14 @@ message GatewayDomainChallenge {
   string fqdn = 1;
   // The challenge value.
   string value = 2;
+}
+
+// GatewayWSS is a gateway's WSS hostname (docs/03-connections.md, "Transport selection"): the
+// name connectors reach it at over WebSocket, at /.rpmgr/tunnel, with the name's public
+// certificate, which a GatewayCertificate carries.
+message GatewayWSS {
+  // The hostname, normalised.
+  string hostname = 1;
 }
 
 // GatewayDrain is in the snapshot of a disabled gateway, which has no routes (R22). The gateway
@@ -341,6 +351,12 @@ message GatewayHTTPRoute {
   // route with the smaller ID wins a tie (docs/03-connections.md, "HTTP routes"). Only a gateway
   // announcing the capability http.header-match gets a route that has them.
   repeated HTTPHeaderMatch header_matches = 17;
+  // How long the gateway waits for the upstream's response headers before the request gets 504;
+  // 0 keeps the gateway's own. A gateway that does not know the field keeps its own.
+  uint32 upstream_response_header_timeout_seconds = 18;
+  // How long a pooled keep-alive connection to the upstream may stay unused; 0 keeps the
+  // gateway's own.
+  uint32 upstream_idle_timeout_seconds = 19;
   // This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
   // route reaches only gateways with the capability route.limits when it sets one.
   RouteLimits limits = 20;
@@ -454,12 +470,15 @@ message GatewayPassthroughRoute {
 enum TransportPolicy {
   // Not set.
   TRANSPORT_POLICY_UNSPECIFIED = 0;
-  // QUIC first, TLS + reverse HTTP/2 when UDP is blocked or QUIC loses the race.
+  // QUIC first, TLS + reverse HTTP/2 when UDP is blocked or QUIC loses the race, and WSS when TLS
+  // + reverse HTTP/2 failed in its handshake.
   TRANSPORT_POLICY_AUTO = 1;
   // QUIC only; never falls back.
   TRANSPORT_POLICY_QUIC = 2;
   // TLS + reverse HTTP/2 only; never falls back.
   TRANSPORT_POLICY_H2 = 3;
+  // WSS only; never falls back. Only for connectors with the capability tunnel.wss.
+  TRANSPORT_POLICY_WSS = 4;
 }
 
 // ConnectorRoute is a route as a connector serves it; the resource ID is the route's ID.
@@ -513,6 +532,9 @@ message ConnectorGateway {
   repeated TransportPolicy transports = 2;
   // The connector's routes on the gateway, sorted.
   repeated string routes = 3;
+  // The gateway's WSS hostname, whose port 443 the WSS transport dials; empty when the gateway
+  // has none or the connector lacks the capability tunnel.wss.
+  string wss_hostname = 4;
 }
 
 // Target is one destination of a route on the connector's host.

@@ -16,6 +16,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/headermatch"
@@ -23,6 +24,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectauthority"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
@@ -53,7 +56,7 @@ func PreviewSources(previewed string) []snapshot.Source {
 		return gatewayTCPUDP(ctx, tx, a, previewed)
 	}
 	srcs := []snapshot.Source{tcp, udp, both, GatewayPassthrough, GatewayHTTP, certs.Gateway, domains.GatewayChallenges,
-		GatewayDrain, GatewayPages, ConnectorRoutes, ConnectorGateways}
+		GatewayDrain, GatewayPages, GatewayWSS, ConnectorRoutes, ConnectorGateways}
 	for i, src := range srcs {
 		srcs[i] = gated(src)
 	}
@@ -97,7 +100,7 @@ func gatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed str
 	}
 	var out []*agentv1.Resource
 	for _, r := range routes {
-		tcp, err := tx.RouteTCP.Query().Where(routetcp.RouteID(r.ID)).WithPort().Only(ctx)
+		tcp, err := tx.RouteTCP.Query().Where(routetcp.RouteID(r.ID)).WithPort().WithListener(func(q *ent.ConnectListenerQuery) { q.WithPort() }).Only(ctx)
 		if ent.IsNotFound(err) {
 			continue
 		}
@@ -111,15 +114,43 @@ func gatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed str
 		if len(connectors) == 0 && r.ID != previewed { // no gateway holds a port that no one serves (D78)
 			continue
 		}
-		access, err := accessOf(ctx, tx, r.ID, false)
+		l := tcp.Edges.Listener
+		access, err := accessOf(ctx, tx, r.ID, l != nil && l.AuthMode != connectlistener.AuthModeNone)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayTcpRoute{GatewayTcpRoute: &agentv1.GatewayTCPRoute{
-			Port: uint32(tcp.Edges.Port.Port), IdleTimeoutSeconds: uint32(tcp.IdleTimeoutSeconds), //nolint:gosec // G115: ports and timeouts are small and positive
-			Connectors: connectors, RankedConnectors: ranked, Access: access}}})
+		limits, err := limitsOf(ctx, tx, r)
+		if err != nil {
+			return nil, err
+		}
+		gr := &agentv1.GatewayTCPRoute{IdleTimeoutSeconds: uint32(tcp.IdleTimeoutSeconds), //nolint:gosec // G115: timeouts are small and positive
+			Connectors: connectors, RankedConnectors: ranked, Access: access, Limits: limits}
+		switch {
+		case l != nil:
+			gr.Port = uint32(l.Edges.Port.Port) //nolint:gosec // G115: a port
+			if gr.HttpConnect, err = httpConnectOf(ctx, tx, r.ID, l); err != nil {
+				return nil, err
+			}
+		case tcp.Edges.Port != nil:
+			gr.Port = uint32(tcp.Edges.Port.Port) //nolint:gosec // G115: a port
+		default:
+			continue // an http_connect route between listeners
+		}
+		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayTcpRoute{GatewayTcpRoute: gr}})
 	}
 	return out, nil
+}
+
+// httpConnectOf is a route's place on its CONNECT listener as the gateway gets it.
+func httpConnectOf(ctx context.Context, tx *ent.Tx, routeID string, l *ent.ConnectListener) (*agentv1.HTTPConnect, error) {
+	authorities, err := tx.ConnectAuthority.Query().Where(connectauthority.RouteID(routeID)).Order(ent.Asc(connectauthority.FieldAuthority)).
+		Select(connectauthority.FieldAuthority).Strings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &agentv1.HTTPConnect{Authorities: authorities, Hostname: l.Hostname, OrgId: l.OrgID,
+		Auth: map[connectlistener.AuthMode]agentv1.ConnectAuth{connectlistener.AuthModeNone: agentv1.ConnectAuth_CONNECT_AUTH_NONE,
+			connectlistener.AuthModeTLSBasic: agentv1.ConnectAuth_CONNECT_AUTH_TLS_BASIC, connectlistener.AuthModePlainBasic: agentv1.ConnectAuth_CONNECT_AUTH_PLAIN_BASIC}[l.AuthMode]}, nil
 }
 
 // gatewayUDP compiles a gateway's udp routes: every enabled udp route of its gateway group with a
@@ -161,9 +192,13 @@ func gatewayUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed str
 		if err != nil {
 			return nil, err
 		}
+		limits, err := limitsOf(ctx, tx, r)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayUdpRoute{GatewayUdpRoute: &agentv1.GatewayUDPRoute{
 			Port: uint32(udp.Edges.Port.Port), FlowIdleTimeoutSeconds: uint32(udp.FlowIdleTimeoutSeconds), //nolint:gosec // G115: a port and a small positive number
-			Connectors: connectors, RankedConnectors: ranked, Access: access}}})
+			Connectors: connectors, RankedConnectors: ranked, Access: access, Limits: limits}}})
 	}
 	return out, nil
 }
@@ -214,9 +249,14 @@ func gatewayTCPUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed 
 		if err != nil {
 			return nil, err
 		}
+		limits, err := limitsOf(ctx, tx, r)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayTcpUdpRoute{GatewayTcpUdpRoute: &agentv1.GatewayTCPUDPRoute{
 			Port: uint32(tcp.Edges.Port.Port), IdleTimeoutSeconds: uint32(tcp.IdleTimeoutSeconds), //nolint:gosec // G115: ports and timeouts are small and positive
-			FlowIdleTimeoutSeconds: uint32(udp.FlowIdleTimeoutSeconds), Connectors: connectors, RankedConnectors: ranked, Access: access}}}) //nolint:gosec // G115: small and positive
+			FlowIdleTimeoutSeconds: uint32(udp.FlowIdleTimeoutSeconds), Connectors: connectors, RankedConnectors: ranked, Access: access, //nolint:gosec // G115: small and positive
+			Limits: limits}}})
 	}
 	return out, nil
 }
@@ -258,9 +298,13 @@ func GatewayPassthrough(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*a
 		if err != nil {
 			return nil, err
 		}
+		limits, err := limitsOf(ctx, tx, r)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayPassthroughRoute{
 			GatewayPassthroughRoute: &agentv1.GatewayPassthroughRoute{Hostnames: hostnames, Connectors: connectors, RankedConnectors: ranked,
-				Access: access}}})
+				Access: access, Limits: limits}}})
 	}
 	return out, nil
 }
@@ -337,13 +381,19 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 		if err != nil {
 			return nil, err
 		}
+		limits, err := limitsOf(ctx, tx, r)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayHttpRoute{GatewayHttpRoute: &agentv1.GatewayHTTPRoute{
 			Hosts: hosts, UpstreamProtocol: upstream, Connectors: connectors, Websocket: h.Websocket, UpstreamTls: upstreamTLS,
 			HostHeader: hostHeader, RequestHeaders: headersOf(h.RequestHeadersSet), ResponseHeaders: headersOf(h.ResponseHeadersSet),
 			MaxBodyBytes: uint64(h.MaxBodyBytes), TrustedProxies: group.TrustedProxyCidrs, //nolint:gosec // G115: the schema keeps it non-negative
 			Port80: h.Port80.String(), HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), Access: access, //nolint:gosec // G115: the schema keeps it non-negative
-			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, RankedConnectors: ranked,
-			HeaderMatches: headerMatchesOf(h.HeaderMatches)}}})
+			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, RankedConnectors: ranked, Limits: limits,
+			HeaderMatches:                        headerMatchesOf(h.HeaderMatches),
+			UpstreamResponseHeaderTimeoutSeconds: uint32(h.UpstreamResponseHeaderTimeoutSeconds), //nolint:gosec // G115: the API bounds it
+			UpstreamIdleTimeoutSeconds:           uint32(h.UpstreamIdleTimeoutSeconds)}}})        //nolint:gosec // G115: the API bounds it
 	}
 	return out, nil
 }
@@ -488,7 +538,8 @@ func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *e
 
 // ConnectorRoutes compiles a connector's routes: for every enabled route with an enabled target on
 // it, its type, its targets and the effective transport. A disabled or decommissioned connector
-// gets none.
+// gets none, and one without the capability tunnel.wss no route whose effective transport is wss,
+// which it would refuse (wssUnavailable).
 func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
 	con, targets, inst, err := connectorTargets(ctx, tx, a)
 	if con == nil || err != nil {
@@ -498,6 +549,9 @@ func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agen
 	var ids []string
 	for _, t := range targets {
 		r := t.Edges.Route
+		if wssUnavailable(r, con, inst, a) {
+			continue
+		}
 		cr := byRoute[r.ID]
 		if cr == nil {
 			cr = &agentv1.ConnectorRoute{Type: string(r.Type), Transport: effective(r, con, inst)}
@@ -601,7 +655,8 @@ func CheckTimes(intervalSeconds, timeoutSeconds int) (int, int) {
 
 // ConnectorGateways compiles the gateways a connector keeps data sessions to: every enabled
 // gateway, not decommissioned, of the groups of the routes ConnectorRoutes compiles, with the
-// effective transports and the IDs of those routes (docs/03-connections.md, "Multiple gateways").
+// effective transports and the IDs of those routes (docs/03-connections.md, "Multiple gateways"),
+// and its WSS hostname for a connector with the capability tunnel.wss.
 func ConnectorGateways(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
 	con, targets, inst, err := connectorTargets(ctx, tx, a)
 	if con == nil || err != nil {
@@ -614,6 +669,9 @@ func ConnectorGateways(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*ag
 	byGroup := map[string]*need{}
 	for _, t := range targets {
 		r := t.Edges.Route
+		if wssUnavailable(r, con, inst, a) {
+			continue
+		}
 		n := byGroup[r.GatewayGroupID]
 		if n == nil {
 			n = &need{transports: map[agentv1.TransportPolicy]bool{}, routes: map[string]bool{}}
@@ -633,8 +691,12 @@ func ConnectorGateways(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*ag
 	out := make([]*agentv1.Resource, 0, len(gws))
 	for _, gw := range gws {
 		n := byGroup[gw.GatewayGroupID]
-		out = append(out, &agentv1.Resource{Id: gw.ID, Kind: &agentv1.Resource_ConnectorGateway{ConnectorGateway: &agentv1.ConnectorGateway{
-			TunnelEndpoints: gw.TunnelEndpoints, Transports: slices.Sorted(maps.Keys(n.transports)), Routes: slices.Sorted(maps.Keys(n.routes))}}})
+		cg := &agentv1.ConnectorGateway{TunnelEndpoints: gw.TunnelEndpoints, Transports: slices.Sorted(maps.Keys(n.transports)),
+			Routes: slices.Sorted(maps.Keys(n.routes))}
+		if gw.WssHostname != nil && a.Has(agentproto.CapTunnelWSS) {
+			cg.WssHostname = *gw.WssHostname
+		}
+		out = append(out, &agentv1.Resource{Id: gw.ID, Kind: &agentv1.Resource_ConnectorGateway{ConnectorGateway: cg}})
 	}
 	return out, nil
 }
@@ -653,8 +715,22 @@ func effective(r *ent.Route, con *ent.Connector, inst *rpmgrv1.InstanceSettings)
 		return agentv1.TransportPolicy_TRANSPORT_POLICY_QUIC
 	case rpmgrv1.TransportPolicy_TRANSPORT_POLICY_H2:
 		return agentv1.TransportPolicy_TRANSPORT_POLICY_H2
+	case rpmgrv1.TransportPolicy_TRANSPORT_POLICY_WSS:
+		return agentv1.TransportPolicy_TRANSPORT_POLICY_WSS
 	}
 	return agentv1.TransportPolicy_TRANSPORT_POLICY_AUTO
+}
+
+// wssUnavailable reports whether route r's effective transport on connector con is wss while the
+// connector, a, lacks the capability tunnel.wss: it cannot serve the route, whose status says
+// transport_unavailable: wss for it (docs/03-connections.md, "Transport selection").
+func wssUnavailable(r *ent.Route, con *ent.Connector, inst *rpmgrv1.InstanceSettings, a snapshot.Agent) bool {
+	return effective(r, con, inst) == agentv1.TransportPolicy_TRANSPORT_POLICY_WSS && !a.Has(agentproto.CapTunnelWSS)
+}
+
+// WSSUnavailable is wssUnavailable for a connector whose capabilities are caps.
+func WSSUnavailable(r *ent.Route, con *ent.Connector, inst *rpmgrv1.InstanceSettings, caps []string) bool {
+	return wssUnavailable(r, con, inst, snapshot.Agent{Capabilities: caps})
 }
 
 func policyOf(s string) agentv1.TransportPolicy {
@@ -663,6 +739,8 @@ func policyOf(s string) agentv1.TransportPolicy {
 		return agentv1.TransportPolicy_TRANSPORT_POLICY_QUIC
 	case "h2":
 		return agentv1.TransportPolicy_TRANSPORT_POLICY_H2
+	case "wss":
+		return agentv1.TransportPolicy_TRANSPORT_POLICY_WSS
 	}
 	return agentv1.TransportPolicy_TRANSPORT_POLICY_AUTO
 }

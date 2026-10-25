@@ -220,11 +220,11 @@ func TestDataSessions(t *testing.T) {
 		}
 		quic, h2 := agentv1.Transport_TRANSPORT_QUIC, agentv1.Transport_TRANSPORT_H2
 		// con_other serves only a route of another group, con_gone is no connector: both are skipped.
-		report(gst, ds("con_a", quic, 12*time.Millisecond), ds("con_a", h2, 0), ds("con_b", h2, 0), ds("con_c", agentv1.Transport_TRANSPORT_UNSPECIFIED, 0),
-			ds("con_other", h2, 0), ds("con_gone", quic, 0))
-		got := waitFor("the first report", func(m map[string]*ent.DataSession) bool { return len(m) == 3 })
+		report(gst, ds("con_a", quic, 12*time.Millisecond), ds("con_a", h2, 0), ds("con_a", agentv1.Transport_TRANSPORT_WSS, 0), ds("con_b", h2, 0),
+			ds("con_c", agentv1.Transport_TRANSPORT_UNSPECIFIED, 0), ds("con_other", h2, 0), ds("con_gone", quic, 0))
+		got := waitFor("the first report", func(m map[string]*ent.DataSession) bool { return len(m) == 4 })
 		first := got[gw.ID+"/con_a/quic"]
-		if first == nil || first.RttMs != 12 || first.OrgID != gw.Org || got[gw.ID+"/con_a/h2"].RttMs != 0 {
+		if first == nil || first.RttMs != 12 || first.OrgID != gw.Org || got[gw.ID+"/con_a/h2"].RttMs != 0 || got[gw.ID+"/con_a/wss"] == nil {
 			t.Fatalf("after the first report: %v", got)
 		}
 

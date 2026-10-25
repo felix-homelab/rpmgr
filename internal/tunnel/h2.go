@@ -83,12 +83,13 @@ type plainConn struct{ net.Conn }
 
 // H2Gateway is the gateway's side of a data session over reverse HTTP/2.
 type H2Gateway struct {
-	cc       *http.ClientConn
-	ctx      context.Context
-	cancel   context.CancelFunc
-	done     chan struct{}
-	doneOnce sync.Once
-	control  atomic.Bool
+	cc        *http.ClientConn
+	transport string
+	ctx       context.Context
+	cancel    context.CancelFunc
+	done      chan struct{}
+	doneOnce  sync.Once
+	control   atomic.Bool
 }
 
 // NewH2Gateway starts the HTTP/2 client on conn, which the connector dialled and the gateway
@@ -111,7 +112,10 @@ func NewH2Gateway(conn net.Conn, w H2Windows) (*H2Gateway, error) {
 		cancel()
 		return nil, err
 	}
-	g := &H2Gateway{cc: cc, ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	g := &H2Gateway{cc: cc, transport: "h2", ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	if conn.RemoteAddr().Network() == "wss" {
+		g.transport = "wss" // inside a WebSocket (gateway.ServeWSS)
+	}
 	cc.SetStateHook(func(cc *http.ClientConn) {
 		if cc.Err() != nil {
 			g.doneOnce.Do(func() { close(g.done) })
@@ -178,8 +182,8 @@ func (g *H2Gateway) Close() error {
 // Done is closed when the session ended.
 func (g *H2Gateway) Done() <-chan struct{} { return g.done }
 
-// Transport is "h2".
-func (g *H2Gateway) Transport() string { return "h2" }
+// Transport is "h2", or "wss" on a connection whose remote address is on the network "wss".
+func (g *H2Gateway) Transport() string { return g.transport }
 
 // h2ClientStream is a stream on the gateway: the request body carries its bytes, the response
 // body the connector's chunks.

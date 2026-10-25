@@ -50,10 +50,16 @@ const (
 	// CapPagesCustom: the gateway serves the custom pages of its group, which its snapshot names;
 	// a gateway without it gets none and serves the built-in pages.
 	CapPagesCustom = "pages.custom"
+	// CapTunnelWSS: data sessions over WSS (docs/03-connections.md, "Transport selection"): a
+	// gateway with it gets its WSS hostname and serves /.rpmgr/tunnel on it; a connector with it
+	// dials a gateway's WSS hostname.
+	CapTunnelWSS = "tunnel.wss"
 	// CapHealthActive: the connector runs the routes' active health checks against its targets
 	// and reports the priorities with a healthy target; one without it counts every target as
 	// healthy (D133).
 	CapHealthActive = "health.active"
+	// CapLogsStream: the agent runs live-log operations (Open of OPERATION_KIND_LOGS, Attach).
+	CapLogsStream = "logs.stream"
 )
 
 // The capability strings of Phase 2 route features: the compiler leaves a route that uses one out

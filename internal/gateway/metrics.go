@@ -65,13 +65,13 @@ func (m *Metrics) PageLogDropped() {
 
 var sessionsDesc = prometheus.NewDesc("rpmgr_gateway_sessions", "Data sessions from connectors, by transport.", []string{"transport"}, nil)
 
-// sessionsCollector reports the sessions per transport at each scrape, quic and h2 even at 0.
+// sessionsCollector reports the sessions per transport at each scrape, quic, h2 and wss even at 0.
 type sessionsCollector struct{ m *Metrics }
 
 func (c sessionsCollector) Describe(ch chan<- *prometheus.Desc) { ch <- sessionsDesc }
 
 func (c sessionsCollector) Collect(ch chan<- prometheus.Metric) {
-	counts := map[string]int{"quic": 0, "h2": 0}
+	counts := map[string]int{"quic": 0, "h2": 0, "wss": 0}
 	if f := c.m.count.Load(); f != nil {
 		for t, n := range (*f)() {
 			counts[t] = n

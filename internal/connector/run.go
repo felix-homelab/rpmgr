@@ -34,7 +34,7 @@ import (
 // Capabilities are what this connector version implements (docs/03-connections.md, "Versioning
 // and capabilities").
 var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapProxyProtoV1,
-	agentproto.CapProxyProtoV2, agentproto.CapProbeTarget, agentproto.CapHealthActive}
+	agentproto.CapProxyProtoV2, agentproto.CapProbeTarget, agentproto.CapHealthActive, agentproto.CapTunnelWSS}
 
 // RunOptions configure Run.
 type RunOptions struct {

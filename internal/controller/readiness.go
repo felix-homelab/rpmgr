@@ -96,6 +96,8 @@ func (s *Sessions) dataSessions(id pki.Identity, list []*agentv1.DataSession) {
 			tr = "quic"
 		case agentv1.Transport_TRANSPORT_H2:
 			tr = "h2"
+		case agentv1.Transport_TRANSPORT_WSS:
+			tr = "wss"
 		}
 		if d.GetConnectorId() != "" && tr != "" && len(next) < maxDataSessions {
 			next[key{clip(d.GetConnectorId()), tr}] = d

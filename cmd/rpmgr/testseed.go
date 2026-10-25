@@ -115,7 +115,7 @@ func testseedCommand() *cli.Command {
 			fs.IntVar(&port, "port", 0, "public port")
 			fs.Var(&connectors, "connector", "connector name that serves the route (repeatable)")
 			fs.StringVar(&target, "target", "", "target host:port on the connectors' side")
-			fs.StringVar(&transport, "transport", "", "auto, quic or h2; empty inherits")
+			fs.StringVar(&transport, "transport", "", "auto, quic, h2 or wss; empty inherits")
 			fs.DurationVar(&idle, "idle", 0, "idle timeout; 0 keeps the default")
 		}, func(s *testseed.Seeder, _ *cli.Env) error {
 			return s.AddRoute(testseed.Route{Name: name, Group: group, Port: port, Connectors: connectors, Target: target,
@@ -127,7 +127,7 @@ func testseedCommand() *cli.Command {
 			fs.IntVar(&port, "port", 0, "public port")
 			fs.Var(&connectors, "connector", "connector name that serves the route (repeatable)")
 			fs.StringVar(&target, "target", "", "target host:port on the connectors' side")
-			fs.StringVar(&transport, "transport", "", "auto, quic or h2; empty inherits")
+			fs.StringVar(&transport, "transport", "", "auto, quic, h2 or wss; empty inherits")
 			fs.DurationVar(&idle, "idle", 0, "flow idle timeout; 0 keeps the default")
 		}, func(s *testseed.Seeder, _ *cli.Env) error {
 			return s.AddUDPRoute(testseed.Route{Name: name, Group: group, Port: port, Connectors: connectors, Target: target,
@@ -139,7 +139,7 @@ func testseedCommand() *cli.Command {
 			fs.IntVar(&port, "port", 0, "public port, for both protocols")
 			fs.Var(&connectors, "connector", "connector name that serves the route (repeatable)")
 			fs.StringVar(&target, "target", "", "target host:port on the connectors' side, for both protocols")
-			fs.StringVar(&transport, "transport", "", "auto, quic or h2; empty inherits")
+			fs.StringVar(&transport, "transport", "", "auto, quic, h2 or wss; empty inherits")
 			fs.DurationVar(&idle, "idle", 0, "TCP idle timeout; 0 keeps the default")
 		}, func(s *testseed.Seeder, _ *cli.Env) error {
 			return s.AddTCPUDPRoute(testseed.Route{Name: name, Group: group, Port: port, Connectors: connectors, Target: target,
@@ -151,7 +151,7 @@ func testseedCommand() *cli.Command {
 			fs.Var(&hostnames, "hostname", "hostname, its parent domain claimed and verified (repeatable)")
 			fs.Var(&connectors, "connector", "connector name that serves the route (repeatable)")
 			fs.StringVar(&target, "target", "", "upstream host:port on the connectors' side")
-			fs.StringVar(&transport, "transport", "", "auto, quic or h2; empty inherits")
+			fs.StringVar(&transport, "transport", "", "auto, quic, h2 or wss; empty inherits")
 			fs.StringVar(&upstream, "upstream", "http", "http, h2c or https")
 			fs.StringVar(&serverName, "server-name", "", "https: the name the upstream's certificate carries")
 			fs.StringVar(&ca, "ca-file", "", "https: PEM CA bundle that verifies the upstream")
@@ -183,7 +183,7 @@ func testseedCommand() *cli.Command {
 			fs.Var(&hostnames, "hostname", "hostname, its parent domain claimed and verified (repeatable)")
 			fs.Var(&connectors, "connector", "connector name that serves the route (repeatable)")
 			fs.StringVar(&target, "target", "", "TLS backend host:port on the connectors' side")
-			fs.StringVar(&transport, "transport", "", "auto, quic or h2; empty inherits")
+			fs.StringVar(&transport, "transport", "", "auto, quic, h2 or wss; empty inherits")
 		}, func(s *testseed.Seeder, _ *cli.Env) error {
 			return s.AddPassthroughRoute(name, group, hostnames, connectors, target, transport)
 		}),
@@ -203,7 +203,7 @@ func testseedCommand() *cli.Command {
 		}),
 		verb("route-update", "change a route", func(fs *flag.FlagSet) {
 			fs.StringVar(&name, "name", "", "route name")
-			fs.StringVar(&transport, "transport", "", "auto, quic or h2; empty keeps it")
+			fs.StringVar(&transport, "transport", "", "auto, quic, h2 or wss; empty keeps it")
 			fs.DurationVar(&idle, "idle", 0, "idle timeout; 0 keeps it")
 			fs.StringVar(&enabled, "enabled", "", "true or false; empty keeps it")
 		}, func(s *testseed.Seeder, _ *cli.Env) error {

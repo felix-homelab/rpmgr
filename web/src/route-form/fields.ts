@@ -2,7 +2,8 @@
 
 import { clone, create } from "@bufbuild/protobuf";
 import { DataTransport } from "@/gen/rpmgr/v1/connector_pb";
-import { HealthCheckSchema, HealthCheckType, Port80Mode, RouteSchema, TLSMode, type HealthCheck, type Route } from "@/gen/rpmgr/v1/route_pb";
+import { ConnectAuthMode, HealthCheckSchema, HealthCheckType, ListenerMode, Port80Mode, RouteSchema, TLSMode, type HealthCheck, type Route,
+  type TCPRouteSpec } from "@/gen/rpmgr/v1/route_pb";
 
 // A field of the route form: its form key, the route path the API's update mask names
 // (internal/apisvc routeFields), how it is edited, and how it reads from and writes to a route.
@@ -17,6 +18,9 @@ export interface RouteField {
   problem?: (v: string) => Problem | undefined; // what is wrong with its value that the rules do not say clearly
   required?: (values: RouteValues) => boolean; // whether the form needs a value; see needsValue
   shown?: (values: RouteValues) => boolean; // whether the form shows it; always if not set
+  warning?: (values: RouteValues) => string | undefined; // the i18n key of a warning that stays shown
+  covers?: string; // certificate: the key of the field with the names it must cover; hostnames if not set
+  fixed?: boolean; // set when the route is created: the edit page shows it read-only
   get: (r: Route) => string;
   set: (r: Route, v: string) => void;
 }
@@ -67,7 +71,7 @@ function spec<C extends NonNullable<Spec["case"]>>(c: C, field: Omit<RouteField,
 const num = (v: string) => (/^\d+$/.test(v.trim()) ? Number(v.trim()) : Number.NaN);
 const optional = (v: string) => (v.trim() === "" ? undefined : num(v));
 const transports: [string, string][] = [
-  [String(DataTransport.UNSPECIFIED), "default"], [String(DataTransport.AUTO), "auto"], [String(DataTransport.QUIC), "quic"], [String(DataTransport.H2), "h2"],
+  [String(DataTransport.UNSPECIFIED), "default"], [String(DataTransport.AUTO), "auto"], [String(DataTransport.QUIC), "quic"], [String(DataTransport.H2), "h2"], [String(DataTransport.WSS), "wss"],
 ];
 
 const common: RouteField[] = [
@@ -109,13 +113,49 @@ const http: RouteField[] = [
     set: (s, v) => (s.maintenanceMessage = v) }),
 ];
 
+// A tcp route in http_connect mode shares a CONNECT listener; its CONNECT fields go with that mode
+// only, and a TLS listener's hostname and certificate with tls_basic only (D130).
+const httpConnect = (v: RouteValues) => v.listenerMode === String(ListenerMode.HTTP_CONNECT);
+const tlsBasic = (v: RouteValues) => httpConnect(v) && v.connectAuth === String(ConnectAuthMode.TLS_BASIC);
+// connectOf is a tcp route's CONNECT spec, made when the route is in http_connect mode, which the
+// listener mode field, set before the others, decides; undefined otherwise.
+function connectOf(s: TCPRouteSpec) {
+  if (s.listenerMode !== ListenerMode.HTTP_CONNECT) {
+    s.connect = undefined;
+    return undefined;
+  }
+  s.connect ??= { $typeName: "rpmgr.v1.ConnectSpec", authorities: [], authMode: ConnectAuthMode.UNSPECIFIED, hostname: "", certificateId: "" };
+  return s.connect;
+}
+const connectFields: RouteField[] = [
+  spec("tcp", { key: "listenerMode", path: "tcp.listener_mode", kind: "select", fixed: true,
+    options: [[String(ListenerMode.UNSPECIFIED), "plain"], [String(ListenerMode.HTTP_CONNECT), "httpConnect"]],
+    get: (s) => String(s.listenerMode === ListenerMode.HTTP_CONNECT ? ListenerMode.HTTP_CONNECT : s.listenerMode),
+    set: (s, v) => (s.listenerMode = Number(v)) }),
+  spec("tcp", { key: "authorities", path: "tcp.connect", kind: "lines", required: httpConnect, shown: httpConnect,
+    get: (s) => s.connect?.authorities.join("\n") ?? "", set: (s, v) => { const c = connectOf(s); if (c) c.authorities = lines(v); } }),
+  spec("tcp", { key: "connectAuth", path: "tcp.connect", kind: "select", shown: httpConnect,
+    options: [[String(ConnectAuthMode.NONE), "none"], [String(ConnectAuthMode.TLS_BASIC), "tlsBasic"],
+      [String(ConnectAuthMode.PLAIN_BASIC), "plainBasic"]],
+    warning: (v) => (httpConnect(v) && v.connectAuth === String(ConnectAuthMode.PLAIN_BASIC) ? "routeForm.connect.plainBasic" : undefined),
+    get: (s) => String(s.connect?.authMode || ConnectAuthMode.NONE),
+    set: (s, v) => { const c = connectOf(s); if (c) c.authMode = Number(v); } }),
+  spec("tcp", { key: "connectHostname", path: "tcp.connect", kind: "text", required: tlsBasic, shown: tlsBasic,
+    get: (s) => s.connect?.hostname ?? "",
+    set: (s, v) => { const c = connectOf(s); if (c) c.hostname = c.authMode === ConnectAuthMode.TLS_BASIC ? v.trim() : ""; } }),
+  spec("tcp", { key: "connectCertificate", path: "tcp.connect", kind: "certificate", required: tlsBasic, shown: tlsBasic, covers: "connectHostname",
+    get: (s) => s.connect?.certificateId ?? "",
+    set: (s, v) => { const c = connectOf(s); if (c) c.certificateId = c.authMode === ConnectAuthMode.TLS_BASIC ? v.trim() : ""; } }),
+];
+
 const portField = <C extends "tcp" | "udp" | "tcpUdp">(c: C, path: string) =>
   spec(c, { key: "port", path: `${path}.port`, kind: "number", get: (s) => String(s.port), set: (s, v) => (s.port = num(v)) });
 
 const byType: Record<string, RouteField[]> = {
   http,
-  tcp: [portField("tcp", "tcp"), spec("tcp", { key: "idleTimeout", path: "tcp.idle_timeout_seconds", kind: "optionalNumber",
-    get: (s) => (s.idleTimeoutSeconds === undefined ? "" : String(s.idleTimeoutSeconds)), set: (s, v) => (s.idleTimeoutSeconds = optional(v)) })],
+  tcp: [connectFields[0]!, portField("tcp", "tcp"), spec("tcp", { key: "idleTimeout", path: "tcp.idle_timeout_seconds", kind: "optionalNumber",
+    get: (s) => (s.idleTimeoutSeconds === undefined ? "" : String(s.idleTimeoutSeconds)), set: (s, v) => (s.idleTimeoutSeconds = optional(v)) }),
+  ...connectFields.slice(1)],
   udp: [portField("udp", "udp"), spec("udp", { key: "flowIdleTimeout", path: "udp.flow_idle_timeout_seconds", kind: "optionalNumber",
     get: (s) => (s.flowIdleTimeoutSeconds === undefined ? "" : String(s.flowIdleTimeoutSeconds)), set: (s, v) => (s.flowIdleTimeoutSeconds = optional(v)) })],
   tcpUdp: [portField("tcpUdp", "tcp_udp"),

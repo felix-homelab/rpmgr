@@ -18,6 +18,14 @@ const (
 	ALPNH2   = "rpmgr-tunnel-h2/1"
 )
 
+// The WSS transport (docs/03-connections.md, "Transport selection"): a connector upgrades to a
+// WebSocket at WSSPath on a gateway's WSS hostname, and either side reads a WebSocket message of
+// at most WSSMessageLimit bytes, which carries a TLS record or a few of the inner session.
+const (
+	WSSPath         = "/.rpmgr/tunnel"
+	WSSMessageLimit = 64 << 10
+)
+
 // Stream is one bidirectional stream of a data session.
 type Stream interface {
 	io.Reader

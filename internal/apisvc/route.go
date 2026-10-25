@@ -72,19 +72,25 @@ func (r *Routes) CreateRoute(ctx context.Context, req *connect.Request[rpmgrv1.C
 		if err := checkHealth(in); err != nil {
 			return nil, err
 		}
-		var out *rpmgrv1.Route
+		var (
+			out      *rpmgrv1.Route
+			warnings []string
+		)
 		rev, err := store.ConfigTx(ctx, r.DB, func(tx *ent.Tx) ([]string, error) {
 			row, err := r.createRouteTx(ctx, tx, m.GetOrgId(), in)
 			if err != nil {
 				return nil, err
 			}
-			out, err = routeOf(ctx, tx.Client(), row)
+			if out, err = routeOf(ctx, tx.Client(), row); err != nil {
+				return nil, err
+			}
+			warnings, err = connectWarnings(ctx, tx, out)
 			return []string{row.ID}, err
 		})
 		if err != nil {
 			return nil, routeError(err)
 		}
-		return &rpmgrv1.CreateRouteResponse{Route: out, Revision: revisionOf(rev)}, nil
+		return &rpmgrv1.CreateRouteResponse{Route: out, Revision: revisionOf(rev), Warnings: warnings}, nil
 	})
 	if err != nil {
 		return nil, err
@@ -105,7 +111,9 @@ func createHTTP(ctx context.Context, tx *ent.Tx, row *ent.Route, h *rpmgrv1.HTTP
 		SetHstsMaxAgeSeconds(int(h.GetHstsMaxAgeSeconds())).SetRequestHeadersSet(canonicalHeaders(h.GetRequestHeadersSet())).
 		SetResponseHeadersSet(canonicalHeaders(h.GetResponseHeadersSet())).SetWebsocket(h.Websocket == nil || *h.Websocket).
 		SetMaxBodyBytes(int64(min(h.GetMaxBodyBytes(), 1<<62))). //nolint:gosec // G115: bounded above
-		SetMaintenance(h.GetMaintenance()).SetMaintenanceMessage(h.GetMaintenanceMessage())
+		SetMaintenance(h.GetMaintenance()).SetMaintenanceMessage(h.GetMaintenanceMessage()).
+		SetUpstreamResponseHeaderTimeoutSeconds(int(h.GetUpstreamResponseHeaderTimeoutSeconds())).
+		SetUpstreamIdleTimeoutSeconds(int(h.GetUpstreamIdleTimeoutSeconds()))
 	if ms := headerMatchesOf(h); len(ms) > 0 {
 		c.SetHeaderMatches(headermatch.Canonical(ms)).SetMatchKey(headermatch.Key(ms))
 	}
@@ -156,7 +164,9 @@ func checkSpec(in *rpmgrv1.Route) error {
 	switch {
 	case in.GetSpec() == nil:
 		return invalid("a route needs a spec: http, tcp, udp, tcp_udp or tls_passthrough")
-	case in.GetTcp() != nil || in.GetUdp() != nil || in.GetTcpUdp() != nil:
+	case in.GetTcp() != nil:
+		return checkConnect(in.GetTcp())
+	case in.GetUdp() != nil || in.GetTcpUdp() != nil:
 		return nil
 	case len(hostnames) == 0 || len(hostnames) > maxHostnames:
 		// The request's validation sees an update's hostnames only if it names them.
@@ -247,6 +257,9 @@ func routeError(err error) error {
 	if perr := portError(err); perr != nil {
 		return perr
 	}
+	if cerr := connectError(err); cerr != nil {
+		return cerr
+	}
 	switch {
 	case errors.Is(err, domains.ErrNotOwned):
 		return withReason(connect.NewError(connect.CodeFailedPrecondition, err), ReasonDomainNotVerified)
@@ -260,17 +273,18 @@ func routeError(err error) error {
 
 // routeFields are the fields of a route of type t a client may change: never the type itself.
 func routeFields(t route.Type) []string {
-	fields := []string{"name", "enabled", "labels", "description", "transport", "policy_ids", "health_check"}
+	fields := []string{"name", "enabled", "labels", "description", "transport", "policy_ids", "limits", "health_check"}
 	switch t {
 	case route.TypeHTTP:
 		for _, f := range []string{"hostnames", "path_prefix", "tls_mode", "certificate_id", "port80", "hsts_max_age_seconds", "host_header",
-			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes", "maintenance", "maintenance_message", "header_matches"} {
+			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes", "maintenance", "maintenance_message", "header_matches",
+			"upstream_response_header_timeout_seconds", "upstream_idle_timeout_seconds"} {
 			fields = append(fields, "http."+f)
 		}
 	case route.TypeTLSPassthrough:
 		fields = append(fields, "tls_passthrough.hostnames")
 	case route.TypeTCP:
-		fields = append(fields, "tcp.port", "tcp.idle_timeout_seconds")
+		fields = append(fields, "tcp.port", "tcp.idle_timeout_seconds", "tcp.listener_mode", "tcp.connect")
 	case route.TypeUDP:
 		fields = append(fields, "udp.port", "udp.flow_idle_timeout_seconds")
 	case route.TypeTCPUDP:
@@ -284,19 +298,25 @@ func routeFields(t route.Type) []string {
 func (r *Routes) UpdateRoute(ctx context.Context, req *connect.Request[rpmgrv1.UpdateRouteRequest]) (
 	*connect.Response[rpmgrv1.UpdateRouteResponse], error) {
 	m := req.Msg
-	var out *rpmgrv1.Route
+	var (
+		out      *rpmgrv1.Route
+		warnings []string
+	)
 	rev, err := store.ConfigTx(ctx, r.DB, func(tx *ent.Tx) ([]string, error) {
 		row, err := r.updateRouteTx(ctx, tx, m)
 		if err != nil {
 			return nil, err
 		}
-		out, err = routeOf(ctx, tx.Client(), row)
+		if out, err = routeOf(ctx, tx.Client(), row); err != nil {
+			return nil, err
+		}
+		warnings, err = connectWarnings(ctx, tx, out)
 		return []string{row.ID}, err
 	})
 	if err != nil {
 		return nil, routeError(err)
 	}
-	return connect.NewResponse(&rpmgrv1.UpdateRouteResponse{Route: out, Revision: revisionOf(rev)}), nil
+	return connect.NewResponse(&rpmgrv1.UpdateRouteResponse{Route: out, Revision: revisionOf(rev), Warnings: warnings}), nil
 }
 
 // createRouteTx creates a route in tx: the route, its settings, its port and its hostnames.
@@ -346,6 +366,9 @@ func (r *Routes) createRouteTx(ctx context.Context, tx *ent.Tx, org string, in *
 	if err := setHealthCheck(ctx, tx, row, in.GetHealthCheck()); err != nil {
 		return nil, err
 	}
+	if err := setRouteLimits(ctx, tx, row, in.GetLimits()); err != nil {
+		return nil, err
+	}
 	return row, setRoutePolicies(ctx, tx, row, in.GetPolicyIds())
 }
 
@@ -359,7 +382,11 @@ func setRoutePolicies(ctx context.Context, tx *ent.Tx, row *ent.Route, ids []str
 		if _, err := tx.AccessPolicy.Get(ctx, id); err != nil {
 			return err
 		}
-		if row.Type != route.TypeHTTP {
+		allowed, err := routes.BasicAuthAllowed(ctx, tx, row)
+		if err != nil {
+			return err
+		}
+		if !allowed {
 			n, err := tx.PolicyRule.Query().Where(policyrule.PolicyID(id), policyrule.KindEQ(policyrule.KindBasicAuth)).Count(ctx)
 			if err != nil {
 				return err
@@ -418,6 +445,11 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 	if err != nil {
 		return nil, err
 	}
+	if !proto.Equal(was.GetLimits(), next.GetLimits()) {
+		if err := setRouteLimits(ctx, tx, row, next.GetLimits()); err != nil {
+			return nil, err
+		}
+	}
 	if !slices.Equal(was.GetPolicyIds(), next.GetPolicyIds()) {
 		if err := setRoutePolicies(ctx, tx, row, next.GetPolicyIds()); err != nil {
 			return nil, err
@@ -457,6 +489,12 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 			if _, err := routes.AddHostname(ctx, tx, row.ID, name, prefix); err != nil {
 				return nil, err
 			}
+		}
+	}
+	// After the spec, as a CONNECT route's listener decides whether basic auth applies to it.
+	if !slices.Equal(was.GetPolicyIds(), next.GetPolicyIds()) || !proto.Equal(was.GetTcp(), next.GetTcp()) {
+		if err := setRoutePolicies(ctx, tx, row, next.GetPolicyIds()); err != nil {
+			return nil, err
 		}
 	}
 	return row, nil
@@ -571,7 +609,8 @@ func (r *Routes) now() time.Time {
 
 // storeRouteTransports are the store's transport policies by the API's; unspecified is none.
 var storeRouteTransports = map[rpmgrv1.DataTransport]route.Transport{rpmgrv1.DataTransport_DATA_TRANSPORT_AUTO: route.TransportAuto,
-	rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC: route.TransportQuic, rpmgrv1.DataTransport_DATA_TRANSPORT_H2: route.TransportH2}
+	rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC: route.TransportQuic, rpmgrv1.DataTransport_DATA_TRANSPORT_H2: route.TransportH2,
+	rpmgrv1.DataTransport_DATA_TRANSPORT_WSS: route.TransportWss}
 
 // routeOf is a route as the API shows it, with its spec and hostnames.
 func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route, error) {
@@ -590,6 +629,9 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 	}
 	out.Targets = targets
 	if out.HealthCheck, err = healthCheckOf(ctx, c, row.ID); err != nil {
+		return nil, err
+	}
+	if out.Limits, err = routeLimitsOf(ctx, c, row.ID); err != nil {
 		return nil, err
 	}
 	if out.PolicyIds, err = c.RoutePolicy.Query().Where(routepolicy.RouteID(row.ID)).Order(ent.Asc(routepolicy.FieldPosition)).
@@ -621,7 +663,9 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 				routehttp.Port80Serve: rpmgrv1.Port80Mode_PORT80_MODE_SERVE, routehttp.Port80Off: rpmgrv1.Port80Mode_PORT80_MODE_OFF}[h.Port80],
 			HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), HostHeader: h.HostHeader, RequestHeadersSet: h.RequestHeadersSet, //nolint:gosec // G115: bounded
 			ResponseHeadersSet: h.ResponseHeadersSet, Websocket: &h.Websocket, MaxBodyBytes: uint64(h.MaxBodyBytes), //nolint:gosec // G115: non-negative
-			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, HeaderMatches: apiHeaderMatches(h.HeaderMatches)}
+			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, HeaderMatches: apiHeaderMatches(h.HeaderMatches),
+			UpstreamResponseHeaderTimeoutSeconds: uint32(h.UpstreamResponseHeaderTimeoutSeconds), //nolint:gosec // G115: bounded
+			UpstreamIdleTimeoutSeconds:           uint32(h.UpstreamIdleTimeoutSeconds)}           //nolint:gosec // G115: bounded
 		if h.TLSMode == routehttp.TLSModeCertificate {
 			spec.TlsMode = rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE
 			if h.CertificateID != nil {

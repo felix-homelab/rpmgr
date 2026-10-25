@@ -23,6 +23,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/certs"
+	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/proxyenv"
 	"github.com/felix-homelab/rpmgr/internal/secret"
@@ -30,9 +31,12 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 )
 
 // JobEvery is how often the ACME job looks for certificates to obtain or renew
@@ -67,7 +71,15 @@ type failing struct {
 var ErrWildcard = errors.New("acme: a wildcard needs DNS-01 (Phase 2); upload a certificate for it")
 
 // ErrNotWanted is returned by Renew for a hostname of no enabled http route in acme mode.
-var ErrNotWanted = errors.New("acme: no enabled http route in acme mode has the hostname")
+var ErrNotWanted = errors.New("acme: no enabled http route in acme mode, gateway or CONNECT listener has the hostname")
+
+// ErrWSSNotVerified is the reason a gateway's WSS hostname gets no certificate, or no renewal: it
+// lies under no verified domain of the gateway's org any more.
+var ErrWSSNotVerified = errors.New("acme: the WSS hostname lies under no verified domain of the gateway's org")
+
+// ErrConnectNotVerified is the reason a TLS CONNECT listener's hostname gets no certificate, or
+// no renewal: it lies under no verified domain of the listener's org any more.
+var ErrConnectNotVerified = errors.New("acme: the CONNECT listener's hostname lies under no verified domain of its org")
 
 // ManagerOptions configure a Manager.
 type ManagerOptions struct {
@@ -140,24 +152,35 @@ type wanted struct{ org, name string }
 // reason. A hostname whose last attempt failed is tried only once its wait is over. It returns the
 // errors of the hostnames it tried.
 func (m *Manager) Sync(ctx context.Context) error {
-	want, err := m.wanted()
+	want, blocked, err := m.wanted()
 	if err != nil {
 		return err
 	}
+	// A name that may not have a certificate gets the reason, and keeps the certificate it has
+	// until it expires; it is not tried.
+	var errs []error
+	want = slices.DeleteFunc(want, func(w wanted) bool {
+		reason, ok := blocked[w]
+		if ok {
+			if err := m.record(w, nil, reason); !errors.Is(err, reason) {
+				errs = append(errs, err)
+			}
+		}
+		return ok
+	})
 	if err := m.remember(want); err != nil {
 		return err
 	}
 	now := m.o.Now()
 	due := slices.DeleteFunc(want, func(w wanted) bool { return m.waiting(w, now) })
 	if len(due) == 0 {
-		return nil
+		return errors.Join(errs...)
 	}
 	cfg, stop, err := m.config()
 	if err != nil {
 		return err
 	}
 	defer stop()
-	var errs []error
 	for _, w := range due {
 		if err := m.attempt(ctx, cfg, w, false); err != nil {
 			m.o.Logger.Warn("route certificate not obtained", "hostname", w.name, "error", err)
@@ -242,11 +265,14 @@ func (m *Manager) attempt(ctx context.Context, cfg *certmagic.Config, w wanted, 
 // with the outcome recorded as Sync does. It reports false if a renewal of the hostname runs
 // already.
 func (m *Manager) RenewAsync(ctx context.Context, org, name string) (bool, error) {
-	want, err := m.wanted()
+	want, blocked, err := m.wanted()
 	if err != nil {
 		return false, err
 	}
 	w := wanted{org: org, name: name}
+	if reason, ok := blocked[w]; ok {
+		return false, reason
+	}
 	if !slices.Contains(want, w) {
 		return false, ErrNotWanted
 	}
@@ -267,29 +293,72 @@ func (m *Manager) RenewAsync(ctx context.Context, org, name string) (bool, error
 	return true, nil
 }
 
-// wanted lists the hostnames of enabled http routes in acme mode, each once.
-func (m *Manager) wanted() ([]wanted, error) {
-	var out []wanted
-	err := store.ReadTx(m.o.Sys, m.o.DB, func(tx *ent.Tx, _ store.Revision) error {
+// wanted lists the hostnames of enabled http routes in acme mode, the WSS hostnames of the
+// gateways that are not decommissioned, and the hostnames of the TLS CONNECT listeners with an
+// enabled route and no certificate of their own, each once, where no uploaded certificate of the
+// org covers them; blocked holds those that may not have a certificate, with the reason.
+func (m *Manager) wanted() (out []wanted, blocked map[wanted]error, err error) {
+	blocked = map[wanted]error{}
+	add := func(w wanted) {
+		if !slices.Contains(out, w) {
+			out = append(out, w)
+		}
+	}
+	err = store.ReadTx(m.o.Sys, m.o.DB, func(tx *ent.Tx, _ store.Revision) error {
 		acmeRoutes, err := tx.RouteHTTP.Query().Where(routehttp.TLSModeEQ(routehttp.TLSModeAcme)).
 			Select(routehttp.FieldRouteID).Strings(m.o.Sys)
-		if err != nil || len(acmeRoutes) == 0 {
-			return err
-		}
-		hosts, err := tx.RouteHostname.Query().Where(routehostname.RouteIDIn(acmeRoutes...),
-			routehostname.HasRouteWith(route.Enabled(true))).Order(ent.Asc(routehostname.FieldHostname)).All(m.o.Sys)
 		if err != nil {
 			return err
 		}
-		for _, h := range hosts {
-			w := wanted{org: h.OrgID, name: h.Hostname}
-			if !slices.Contains(out, w) {
-				out = append(out, w)
+		if len(acmeRoutes) > 0 {
+			hosts, err := tx.RouteHostname.Query().Where(routehostname.RouteIDIn(acmeRoutes...),
+				routehostname.HasRouteWith(route.Enabled(true))).Order(ent.Asc(routehostname.FieldHostname)).All(m.o.Sys)
+			if err != nil {
+				return err
+			}
+			for _, h := range hosts {
+				add(wanted{org: h.OrgID, name: h.Hostname})
+			}
+		}
+		// A name of the org's own: an upload that covers it serves it (certs.Gateway), and one
+		// under no verified domain of the org is blocked with the reason.
+		own := func(w wanted, unverified error) error {
+			uploaded, err := certs.UploadedCovering(m.o.Sys, tx.Certificate, w.org, w.name)
+			if err != nil || uploaded != nil {
+				return err
+			}
+			add(w)
+			if _, err := domains.Covering(m.o.Sys, tx, w.org, w.name); errors.Is(err, domains.ErrNotOwned) {
+				blocked[w] = unverified
+			} else if err != nil {
+				return err
+			}
+			return nil
+		}
+		gws, err := tx.Gateway.Query().Where(gateway.WssHostnameNotNil(), gateway.DecommissionedAtIsNil()).
+			Order(ent.Asc(gateway.FieldWssHostname)).All(m.o.Sys)
+		if err != nil {
+			return err
+		}
+		for _, gw := range gws {
+			if err := own(wanted{org: gw.OrgID, name: *gw.WssHostname}, ErrWSSNotVerified); err != nil {
+				return err
+			}
+		}
+		listeners, err := tx.ConnectListener.Query().Where(connectlistener.AuthModeEQ(connectlistener.AuthModeTLSBasic),
+			connectlistener.CertificateIDIsNil(), connectlistener.HasRoutesWith(routetcp.HasRouteWith(route.Enabled(true)))).
+			Order(ent.Asc(connectlistener.FieldHostname), ent.Asc(connectlistener.FieldID)).All(m.o.Sys)
+		if err != nil {
+			return err
+		}
+		for _, l := range listeners {
+			if err := own(wanted{org: l.OrgID, name: l.Hostname}, ErrConnectNotVerified); err != nil {
+				return err
 			}
 		}
 		return nil
 	})
-	return out, err
+	return out, blocked, err
 }
 
 // config returns a certmagic configuration on the storage, with the CA and account of the

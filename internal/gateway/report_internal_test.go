@@ -24,8 +24,8 @@ type rttSession struct{ fakeSession }
 
 func (r rttSession) RTT() time.Duration { return r.rtt }
 
-// TestReport: one entry per connector and transport, sorted, with the lowest round-trip time a
-// session knows; none for h2, which does not measure it.
+// TestReport: one entry per connector and transport, wss its own, sorted, with the lowest
+// round-trip time a session knows; none for h2 and wss, which do not measure it.
 func TestReport(t *testing.T) {
 	m := NewSessions(SessionsOptions{})
 	for _, d := range []*dataSession{
@@ -34,6 +34,7 @@ func TestReport(t *testing.T) {
 		{connector: "con_b", s: rttSession{fakeSession{transport: "quic", rtt: 20 * time.Millisecond}}},
 		{connector: "con_a", s: fakeSession{transport: "h2"}},
 		{connector: "con_a", s: fakeSession{transport: "h2"}},
+		{connector: "con_a", s: fakeSession{transport: "wss"}},
 		{connector: "con_a", s: rttSession{fakeSession{transport: "quic", rtt: 5 * time.Millisecond}}},
 	} {
 		if err := m.add(d); err != nil {
@@ -46,7 +47,7 @@ func TestReport(t *testing.T) {
 		tr  agentv1.Transport
 		rtt time.Duration
 	}{{"con_a", agentv1.Transport_TRANSPORT_QUIC, 5 * time.Millisecond}, {"con_a", agentv1.Transport_TRANSPORT_H2, 0},
-		{"con_b", agentv1.Transport_TRANSPORT_QUIC, 20 * time.Millisecond}}
+		{"con_a", agentv1.Transport_TRANSPORT_WSS, 0}, {"con_b", agentv1.Transport_TRANSPORT_QUIC, 20 * time.Millisecond}}
 	if len(got) != len(want) {
 		t.Fatalf("report %v", got)
 	}
