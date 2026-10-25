@@ -11,6 +11,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -206,6 +208,7 @@ func TestWSS_MessageLimit(t *testing.T) {
 	var name gateway.WSSHostname
 	name.Set(wssHost)
 	read := make(chan error, 2)
+	var total atomic.Int64
 	r := &gateway.Router{TrustDomain: td, GatewayID: w.gw.ID, WSSHostname: name.Get,
 		WSS: func(c *tls.Conn) {
 			gateway.ServeWSS(c, w.tunnelTLS, func(inner *tls.Conn) {
@@ -214,9 +217,7 @@ func TestWSS_MessageLimit(t *testing.T) {
 					return
 				}
 				n, err := io.Copy(io.Discard, inner.NetConn())
-				if err == nil {
-					err = fmt.Errorf("%d bytes and the end", n)
-				}
+				total.Store(n)
 				read <- err
 			})
 		},
@@ -238,13 +239,41 @@ func TestWSS_MessageLimit(t *testing.T) {
 		}
 		select {
 		case err := <-read:
-			if got := errors.Is(err, websocket.ErrMessageTooBig); got != tc.big {
-				t.Fatalf("a message of %d bytes: %v", tc.size, err)
+			if got := errors.Is(err, websocket.ErrMessageTooBig); got != tc.big || (!tc.big && (err != nil || total.Load() != 65536)) {
+				t.Fatalf("a message of %d bytes: %d read, %v", tc.size, total.Load(), err)
 			}
 		case <-time.After(10 * time.Second):
 			t.Fatalf("a message of %d bytes: the gateway still reads", tc.size)
 		}
 		_ = ws.CloseNow()
+	}
+}
+
+// TestWSS_InnerClientWithoutCertificate: inside the WebSocket the gateway demands the connector's
+// certificate as over TCP; an inner client without one gets no session.
+func TestWSS_InnerClientWithoutCertificate(t *testing.T) {
+	w := newWorld(t)
+	ca := newPublicCA(t, "public root")
+	addr, closed := wssGateway(t, w, ca, 2*time.Second)
+	nc, err := dialWSS(t, addr, ca.pool, gateway.WSSPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := w.conTLS(w.gw.DNSName(), tunnel.ALPNH2)
+	cfg.Certificates, cfg.GetClientCertificate = nil, nil
+	inner := tls.Client(nc, cfg)
+	_ = inner.SetDeadline(time.Now().Add(5 * time.Second))
+	if err := ping(inner, "anonymous"); err == nil {
+		t.Fatal("an inner client without a certificate got a session")
+	}
+	select {
+	case err := <-closed:
+		if err == nil {
+			t.Fatal("the gateway served an inner client without a certificate")
+		}
+		t.Logf("refused as expected: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the gateway did not end the session")
 	}
 }
 
@@ -262,20 +291,72 @@ func drain(c chan error) {
 // CA, which the client trusts, opens its own TLS to the gateway, and records the plaintext it sees
 // both ways.
 type interceptor struct {
-	mu   sync.Mutex
-	seen bytes.Buffer
+	mu          sync.Mutex
+	toGateway   bytes.Buffer // the connector's plaintext: the upgrade, then masked frames
+	toConnector bytes.Buffer
 }
 
-func (i *interceptor) Write(p []byte) (int, error) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	return i.seen.Write(p)
+// oneWay records one direction into its buffer.
+type oneWay struct {
+	i *interceptor
+	b *bytes.Buffer
 }
 
+func (r oneWay) Write(p []byte) (int, error) {
+	r.i.mu.Lock()
+	defer r.i.mu.Unlock()
+	return r.b.Write(p)
+}
+
+// saw reports whether the proxy could read s in either direction: as sent towards the connector,
+// or in the connector's WebSocket frames once unmasked, as any proxy can.
 func (i *interceptor) saw(s string) bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	return bytes.Contains(i.seen.Bytes(), []byte(s))
+	return bytes.Contains(i.toConnector.Bytes(), []byte(s)) || bytes.Contains(unmask(i.toGateway.Bytes()), []byte(s))
+}
+
+// unmask returns the connector's upgrade request followed by the payloads of its WebSocket frames,
+// unmasked (RFC 6455, section 5.2); a frame cut short ends it.
+func unmask(b []byte) []byte {
+	head, frames, ok := bytes.Cut(b, []byte("\r\n\r\n"))
+	if !ok {
+		return b
+	}
+	out := append([]byte(nil), head...)
+	for len(frames) >= 2 {
+		n, at := uint64(frames[1]&0x7f), 2
+		switch n {
+		case 126:
+			if len(frames) < 4 {
+				return out
+			}
+			n, at = uint64(binary.BigEndian.Uint16(frames[2:])), 4
+		case 127:
+			if len(frames) < 10 {
+				return out
+			}
+			n, at = binary.BigEndian.Uint64(frames[2:]), 10
+		}
+		var key []byte
+		if frames[1]&0x80 != 0 {
+			if len(frames) < at+4 {
+				return out
+			}
+			key, at = frames[at:at+4], at+4
+		}
+		if uint64(len(frames)-at) < n {
+			return out
+		}
+		payload := append([]byte(nil), frames[at:at+int(n)]...)
+		for j := range payload {
+			if key != nil {
+				payload[j] ^= key[j%4]
+			}
+		}
+		out, frames = append(out, payload...), frames[at+int(n):]
+	}
+	return out
 }
 
 func (i *interceptor) run(t *testing.T, own *publicCA, gatewayAddr string, gatewayRoots *x509.CertPool) string {
@@ -300,8 +381,8 @@ func (i *interceptor) run(t *testing.T, own *publicCA, gatewayAddr string, gatew
 					_ = down.Close()
 					return
 				}
-				go func() { _, _ = io.Copy(io.MultiWriter(up, i), down); _ = up.Close() }()
-				_, _ = io.Copy(io.MultiWriter(down, i), up)
+				go func() { _, _ = io.Copy(io.MultiWriter(up, oneWay{i, &i.toGateway}), down); _ = up.Close() }()
+				_, _ = io.Copy(io.MultiWriter(down, oneWay{i, &i.toConnector}), up)
 				_ = down.Close()
 			}()
 		}
@@ -311,8 +392,9 @@ func (i *interceptor) run(t *testing.T, own *publicCA, gatewayAddr string, gatew
 
 // TestWSS_InterceptorSeesOnlyInnerTLS (docs/12-testing-and-quality.md): through a TLS-intercepting
 // proxy that the connector's outer TLS trusts, the data session's inner TLS 1.3 with mutual
-// authentication completes only against the pinned root; the proxy's view holds no plaintext of
-// the session; a wrong path is 404 and an upgrade without the inner handshake is closed (TestWSS).
+// authentication completes only against the pinned root; the proxy's view, the WebSocket frames
+// unmasked, holds the inner ClientHello, as TLS over TCP shows it, but no byte of the session; a
+// wrong path is 404 and an upgrade without the inner handshake is closed (TestWSS).
 func TestWSS_InterceptorSeesOnlyInnerTLS(t *testing.T) {
 	w := newWorld(t)
 	public := newPublicCA(t, "public root")
@@ -335,10 +417,10 @@ func TestWSS_InterceptorSeesOnlyInnerTLS(t *testing.T) {
 		t.Fatalf("the inner TLS: version %x, peer %v", st.Version, st.PeerCertificates)
 	}
 	_ = inner.Close()
-	if !mitm.saw("Upgrade") {
-		t.Fatal("the proxy saw no plaintext at all: the test does not intercept")
+	if !mitm.saw("Upgrade") || !mitm.saw(w.gw.DNSName()) {
+		t.Fatal("the proxy saw neither the upgrade nor the inner ClientHello's name: the test does not intercept")
 	}
-	if mitm.saw(payload) || mitm.saw(w.gw.DNSName()) {
+	if mitm.saw(payload) {
 		t.Fatal("the proxy read the inner session")
 	}
 

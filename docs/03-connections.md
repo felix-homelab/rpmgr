@@ -1163,11 +1163,13 @@ Which transport a connector uses is a setting
     gateway it reaches. It lies under a verified domain of the gateway group's owner org (the
     system org for a shared group), is no route hostname of the group, and has a certificate
     from ACME or an upload that covers it ([04](04-security.md#route-edge-rules)).
-  - The proxy sees only the outer TLS to that public hostname; inside the upgraded connection
+  - The proxy ends only the outer TLS to that public hostname; inside the upgraded connection
     the connector runs TLS 1.3 with mutual authentication to `<gateway-id>.gateway.<td>` and
-    checks the gateway's pinned root, so an intercepting proxy reads nothing. A request to the
-    WSS hostname for another path than `/.rpmgr/tunnel` is **404**, and an upgrade that does not
-    complete the inner handshake is closed.
+    checks the gateway's pinned root. An intercepting proxy sees the inner ClientHello, with
+    that name and the ALPN, as anyone on the path does for TLS over TCP, but none of the
+    session's contents, and cannot take the gateway's place. A request to the WSS hostname for
+    another path than `/.rpmgr/tunnel` is **404**, and an upgrade that does not complete the
+    inner handshake is closed.
   - A connector without the capability `tunnel.wss`, or a gateway without a WSS hostname, cannot
     serve a route pinned to `wss`: the route is `not_ready(transport_unavailable: wss)` there.
 - **The all-in-one's own connector** ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md),
