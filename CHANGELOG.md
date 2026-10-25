@@ -12,6 +12,17 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Routes: active health checks. A route may have one TCP or HTTP check, which each connector runs
+  against its own targets of the route, on their port or another one; new connections pass over a
+  target that fails it, gateways pass over a connector whose targets of a priority are all
+  unhealthy, and a route whose targets are all unhealthy is unavailable. Checks obey the connector's
+  local policy. The route's status lists the unhealthy targets with the last failure, and the
+  targets of connectors of earlier releases, which run no checks, as health not checked. Set in the
+  **Health check** fields of the route form, with `rpmgr create route` and `rpmgr update route`
+  (`--health-check` and the other `--health-*` flags), in the route's manifest, or as the route's
+  `health_check`; the route's page shows each target's health with the last failure. (#629, #630,
+  #631, #633)
+
 - Gateways: a gateway group may replace its not-found, unavailable and maintenance pages with its
   own HTML, with the placeholders `{{hostname}}`, `{{status}}`, `{{message}}` and
   `{{request_id}}` filled in as escaped text. The pages run no script and load nothing from
@@ -27,13 +38,17 @@ Changes to the design documents are not recorded here: see the git history and t
   and shortly after the last one or while the release source limits requests, with the time to
   wait. (#890)
 
-- API and CLI: easy rollouts, which update the chosen connectors and gateways one after another
+- Updates: easy rollouts, which update the chosen connectors and gateways one after another
   without stages to approve. A failed agent is marked and skipped and the queue continues, and the
-  rollout pauses after a few failures in a row. `ReleaseService.CreateRollout` takes the mode and
-  the queue (`rpmgr create rollout --easy --agent …`), `ReleaseService.UpgradeAgents` (`rpmgr
-  upgrade connector|gateway <agent>…`) adds agents to the running easy rollout of the controller's
-  version or starts one, and the instance setting `rollout_mode` says which kind the web UI starts,
-  `easy` unless set. (#892, #893, #894, #895)
+  rollout pauses after a few failures in a row. **Roll out…** on Settings → Updates starts one by
+  default: tick the agents, order them, start; the rollout card shows the agent whose turn it is,
+  the queue and the failures. **Update to …** on each connector and gateway joins the running easy
+  rollout of the controller's version or starts one. **Rollouts** switches to the staged rollouts
+  of v0.2.0 (instance setting `rollout_mode`, `easy` unless set). `ReleaseService.CreateRollout`
+  takes the mode and the queue (`rpmgr create rollout --easy --agent …`), and
+  `ReleaseService.UpgradeAgents` (`rpmgr upgrade connector|gateway <agent>…`) updates single agents.
+  Connectors and gateways report whether they take over-the-air updates (`over_the_air`). (#892,
+  #893, #894, #895, #896)
 
 - Routes: an http route can match on request headers, an exact value or presence alone, so that
   routes share a hostname and path prefix and a header such as `X-Env: beta` chooses between them;

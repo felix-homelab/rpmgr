@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import { MetricsService, TrafficResolution, type GetRouteTrafficRequest } from "@/gen/rpmgr/v1/metrics_pb";
-import { RouteService, RouteState, type DeleteRouteRequest, type UpdateRouteRequest } from "@/gen/rpmgr/v1/route_pb";
+import { HealthCheckType, RouteService, RouteState, type DeleteRouteRequest, type UpdateRouteRequest } from "@/gen/rpmgr/v1/route_pb";
 import { ApplyState } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { policyCommand, shellArg } from "@/routes-data";
@@ -112,6 +112,46 @@ describe("RouteDetail", () => {
     detail({ ...postgres, spec: { case: "tcp", value: { port: 0 } } });
     await waitFor(() => expect(screen.getByText("enabled · gateway group eu")).toBeTruthy());
     expect(screen.queryByText(/has no public hostname/)).toBeNull();
+  });
+
+  it("shows the route's health check and what it found of each target (D133)", async () => {
+    detail({
+      ...postgres,
+      healthCheck: { type: HealthCheckType.HTTP, httpPath: "/healthz", intervalSeconds: 30 },
+      targets: [
+        ...postgres.targets,
+        { id: "tgt_3", connectorId: "con_db", enabled: true, weight: 10, address: { case: "hostPort" as const, value: { host: "10.0.0.6", port: 5432 } } },
+        { id: "tgt_4", connectorId: "con_db", enabled: false, weight: 10, address: { case: "hostPort" as const, value: { host: "10.0.0.7", port: 5432 } } },
+      ],
+      status: { ...postgres.status, healthNotChecked: ["tgt_2"], notServing: [
+        { id: "tgt_3", reason: "TARGETS_UNHEALTHY", detail: "status 503, want 200 to 399" },
+        ...postgres.status.notServing,
+      ] },
+    });
+    expect(await screen.findByText("HTTP health check of /healthz, every 30 s")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Health" })).toBeTruthy();
+    const rows = within(await screen.findByRole("table")).getAllByRole("row");
+    const cell = (row: number) => within(rows[row]!).getAllByRole("cell")[3]!;
+    await waitFor(() => expect(rows[1]!.textContent).toContain("db-host-1"));
+    expect(cell(1).textContent).toBe("—"); // blocked by the policy: the status column says why
+    expect(cell(2).textContent).toBe("not checkedIts connector's rpmgr release runs no health checks, so the target counts as healthy. Upgrade the connector.");
+    expect(cell(3).textContent).toBe("unhealthyLast check: status 503, want 200 to 399");
+    expect(within(rows[3]!).getByText("its health checks fail")).toBeTruthy();
+    expect(cell(4).textContent).toBe("—"); // disabled
+  });
+
+  it("marks every target healthy that its connector checks and finds no fault in, and shows no column values without a check", async () => {
+    const ready = { ...postgres.status, state: RouteState.READY, notServing: [] };
+    detail({ ...postgres, healthCheck: { type: HealthCheckType.TCP }, status: ready });
+    expect(await screen.findByText("TCP health check")).toBeTruthy();
+    const rows = within(await screen.findByRole("table")).getAllByRole("row");
+    await waitFor(() => expect(rows[1]!.textContent).toContain("db-host-1"));
+    expect(rows.slice(1).map((r) => within(r).getAllByRole("cell")[3]!.textContent)).toEqual(["healthy", "healthy"]);
+    cleanup();
+    detail({ ...postgres, status: ready });
+    expect(await screen.findByText("no health check")).toBeTruthy();
+    const plain = within(await screen.findByRole("table")).getAllByRole("row");
+    expect(plain.slice(1).map((r) => within(r).getAllByRole("cell")[3]!.textContent)).toEqual(["—", "—"]);
   });
 
   it("gives a target that a local policy blocks the command for its host", async () => {

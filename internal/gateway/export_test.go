@@ -82,6 +82,38 @@ func RouteTimeouts(h *HTTPRoutes, id string) (header, idle time.Duration) {
 	return rt.tr.ResponseHeaderTimeout, rt.tr.IdleConnTimeout
 }
 
+// LimitOf returns the limit state the applier keeps for a route, nil if none.
+func LimitOf(a *Applier, id string) *RouteLimit {
+	a.limits.mu.Lock()
+	defer a.limits.mu.Unlock()
+	return a.limits.routes[id]
+}
+
+// SetClientKeys sets how many client addresses a per-client rate_limit rule keeps, for one test.
+func SetClientKeys(t testing.TB, n int) {
+	old := clientKeys
+	clientKeys = n
+	t.Cleanup(func() { clientKeys = old })
+}
+
+// ClientTables is the number of client tables ls keeps, and the clients of each.
+func ClientTables(ls *Limits) []int {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	var out []int
+	for _, t := range ls.clients {
+		out = append(out, t.size())
+	}
+	return out
+}
+
+// SetClientBudget sets how many client entries all tables of a gateway hold, for one test.
+func SetClientBudget(t testing.TB, n int) {
+	old := clientBudget
+	clientBudget = n
+	t.Cleanup(func() { clientBudget = old })
+}
+
 // AssignedRoutes returns the IDs the applier's assignment holds routes for, sorted.
 func AssignedRoutes(a Assignment) []string {
 	s := a.(*assignment).cur.Load()

@@ -505,8 +505,8 @@ the boot file.
 
 | Scope | Examples |
 |---|---|
-| Instance (Instance Admin) | Default data-session transport (`auto`, `quic`, `h2`; shipped `auto`, [03](03-connections.md#transport-selection); [R] pin `h2` on routes or connectors that carry bulk transfers over high-delay paths, where it carried single streams faster in the Phase 1 measurements, [ADR-0004](adr/0004-quic-default-transport-policy.md#phase-1-measurements)), public URL aliases (each alias is also accepted as `Origin` by the CSRF check, [04](04-security.md#human-authentication-and-sessions)), ACME account, Cloudflare IP ranges (refreshed automatically), SMTP (optional: the relay's `host:port`, sender address, user name, and STARTTLS or TLS from the start, as the controller sends no mail in plain text; the password is write-only and kept under the KEK), retention (audit entries: 365 days by default, 30 to 3650 days; metric rollups), external audit sink (Phase 2), revocation-log sink ([Backup and restore](#backup-and-restore)), controller endpoints advertised to agents (each `https://<host>[:<port>]`, tried in order; agents get them at enrollment and in every snapshot, and the public URL alone while none are listed, [03](03-connections.md#reaching-a-private-controller)). **PKI** page: leaf-certificate lifetime and grace period ([D8](14-open-decisions.md#security-defaults), values and ranges in [04](04-security.md#leaf-certificates)), password-hash profile. **Updates** page: release check (on by default, [D4](14-open-decisions.md#product-and-project)), update channel (`stable` or `prerelease`), manifest upload for air-gapped installs, rollout policy (Phase 2) |
-| Org (Owner) | MFA requirement, OIDC providers and group→role mapping, default gateway group, Operator may enroll connectors, branding ([04](04-security.md#roles)) |
+| Instance (Instance Admin) | Default data-session transport (`auto`, `quic`, `h2`; shipped `auto`, [03](03-connections.md#transport-selection); [R] pin `h2` on routes or connectors that carry bulk transfers over high-delay paths, where it carried single streams faster in the Phase 1 measurements, [ADR-0004](adr/0004-quic-default-transport-policy.md#phase-1-measurements)), public URL aliases (each alias is also accepted as `Origin` by the CSRF check, [04](04-security.md#human-authentication-and-sessions)), ACME account, Cloudflare IP ranges (refreshed automatically), SMTP (optional: the relay's `host:port`, sender address, user name, and STARTTLS or TLS from the start, as the controller sends no mail in plain text; the password is write-only and kept under the KEK), retention (audit entries: 365 days by default, 30 to 3650 days; metric rollups), external audit sink (Phase 2), revocation-log sink ([Backup and restore](#backup-and-restore)), controller endpoints advertised to agents (each `https://<host>[:<port>]`, tried in order; agents get them at enrollment and in every snapshot, and the public URL alone while none are listed, [03](03-connections.md#reaching-a-private-controller)). **PKI** page: leaf-certificate lifetime and grace period ([D8](14-open-decisions.md#security-defaults), values and ranges in [04](04-security.md#leaf-certificates)), password-hash profile. **Updates** page: release check (on by default, [D4](14-open-decisions.md#product-and-project)), update channel (`stable` or `prerelease`), manifest upload for air-gapped installs, rollout policy (Phase 2); Phase 2: the audit sinks ([04](04-security.md#audit-log)) and the private ranges webhook receivers may use (`webhook_private_ranges`, none; [04](04-security.md#webhooks-and-the-egress-guard-phase-2)) |
+| Org (Owner) | MFA requirement, OIDC providers and group→role mapping, default gateway group, Operator may enroll connectors, branding ([04](04-security.md#roles)); Phase 2: alert e-mails on or off (`alert_email`, on) and the alert types the org gets (`alert_types`, all) ([D139](14-open-decisions.md#engineering)) |
 | Gateway group (Admin) | Port pools, trusted-proxy CIDRs, DNS target for managed records, default TLS options, per-route limit defaults |
 | DNS (Owner/Admin; Instance Admin for the system org) | DNS providers and their tokens, managed zones and their gates. These are resources with their own pages, not settings ([15](15-dns.md)) |
 | Install command generator | Install prefix, gateway group, labels, ephemeral flag, `--allow-target` and `--deny-target` entries — the install location lives here, because it is a property of the install command, not of a running agent. There is no service-name suffix: one instance per role per host ([Supported platforms](#supported-platforms)) |
@@ -778,8 +778,9 @@ service that still runs the previous binary, with the command that restarts it.
 - Structured JSON via `log/slog`, one line per event, with `trace_id` where available.
 - Secrets are redacted by type and by field annotation; whole requests are never logged
   ([04](04-security.md#secrets-at-rest-and-in-logs)).
-- Live logs of an agent can be streamed to the UI (an imperative operation with a deadline,
-  [03](03-connections.md#service-sketch)).
+- Live logs of a connector or gateway can be streamed to the UI and the CLI (Phase 2: an
+  imperative operation with a deadline and limits, redacted on the agent, for `agents.logs`;
+  [03](03-connections.md#control-session), [04](04-security.md#secrets-at-rest-and-in-logs)).
 
 ### Metrics
 
@@ -815,7 +816,13 @@ gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection))
 | `rpmgr_revocation_log_sink` | gauge | controller | 1 | 1 if a sink keeps the revocation log off the host, 0 for a single node without one ([Backup and restore](#backup-and-restore)) |
 | `rpmgr_revocation_log_unshipped` | gauge | controller | 1 | Revocation log entries the sink does not hold yet |
 | `rpmgr_revocation_log_oldest_unshipped_timestamp_seconds` | gauge | controller | 1 | When the oldest unshipped entry was logged, 0 when none; the alert "revocation log not yet off-host" fires 5 min after it |
-| `rpmgr_ratelimit_refused_total{limit}` | counter | controller | 1 | [R] Requests a rate limit refused: `login` and `password_reset` per address, `account` per account, `enrollment` per address; the audit log leaves them out ([04](04-security.md#audit-log)) |
+| `rpmgr_audit_sink_backlog{sink}` | gauge | controller | 2 | Audit entries and checkpoints a sink has not acknowledged ([04](04-security.md#audit-log)) |
+| `rpmgr_audit_sink_oldest_unshipped_timestamp_seconds{sink}` | gauge | controller | 2 | When the oldest of them was appended, 0 when none |
+| `rpmgr_webhook_deliveries_total{result}` | counter | controller | 2 | Delivery attempts: `ok`, `failed`, `refused` (the egress guard), `given_up` |
+| `rpmgr_webhooks_disabled` | gauge | controller | 2 | Endpoints disabled for failing ([D143](14-open-decisions.md#engineering)) |
+| `rpmgr_events_pending` | gauge | controller | 2 | Events not yet delivered to every endpoint that wants them |
+| `rpmgr_live_log_operations` | gauge | controller | 2 | Open live-log operations |
+| `rpmgr_alerts_firing{kind}` | gauge | controller | 2 | Alerts the controller evaluates that fire now || `rpmgr_ratelimit_refused_total{limit}` | counter | controller | 1 | [R] Requests a rate limit refused: `login` and `password_reset` per address, `account` per account, `enrollment` per address; the audit log leaves them out ([04](04-security.md#audit-log)) |
 | `rpmgr_dns_sync_runs_total{zone,result}` | counter | controller | 2 | DNS passes per managed zone: `ok`, `held`, `failed`, `rate_limited` |
 | `rpmgr_dns_names{zone,status}` | gauge | controller | 2 | Names per `dns_status` ([15](15-dns.md#publication-rules)) |
 | `rpmgr_dns_records{zone,state}` | gauge | controller | 2 | Owned records per ledger state |
@@ -864,12 +871,26 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 | UDP payloads too large | `rpmgr_udp_oversize_total` rate > 0 sustained |
 | Clock skew | Agent clock offset > 30 s |
 | Audit checkpoints behind | `rpmgr_audit_checkpoint_age_seconds` > 1 h |
+| Audit sink backlog (Phase 2) | A sink's oldest unshipped item has waited longer than the period in [03](03-connections.md#timeouts-keepalive-and-backoff) |
+| Webhook endpoint failing (Phase 2) | An endpoint had no successful delivery for 1 h while deliveries were due; it is disabled after the period in 03 ([D143](14-open-decisions.md#engineering)) |
 | Revocation log not yet off-host | A revocation-log sink is configured and a controller replica has entries not yet shipped to it for > 5 min: `rpmgr_revocation_log_unshipped > 0` and `time() - rpmgr_revocation_log_oldest_unshipped_timestamp_seconds > 300` (without a sink, the UI shows a standing hardening warning instead) |
 | DNS conflict | A name in a managed zone is `conflict` or `ambiguous` for > 15 min |
 | DNS zone held | A managed zone is `held` (after import, restore or the deletion guard) |
 | DNS sync failing | No successful pass of a managed zone for > 30 min, or the provider status is not `ok` |
 | DNS-provider token invalid or expiring | The provider rejects the token, or it expires within the warning period ([15](15-dns.md#timers-and-limits)) |
 | Cloudflare IP ranges stale | The daily refresh was rejected by the sanity bounds or failed for > 3 days, while proxied routes exist |
+
+[R] **Alerts the controller evaluates** (Phase 2, [D142](14-open-decisions.md#engineering)): the
+conditions above stay fixed; they are not configured per org. The controller evaluates, from its
+own state: agent offline, configuration not applied, certificate renewal failing, public
+certificate expiring, route has no ready connector, clock skew and webhook endpoint failing for
+each org; audit checkpoints behind, revocation log not yet off-host and audit sink backlog for the
+instance; and, with DNS automation, the DNS alerts. "UDP payloads too large" stays a Prometheus
+alert. A firing or resolved alert is an event (`alert.fire`, `alert.resolve`) for the webhooks
+that want it, and an e-mail to the org's Owners and Admins, or the Instance Admins for an instance
+alert, when SMTP is configured; an org chooses the alert types it gets and can turn the e-mails off
+([D139](14-open-decisions.md#engineering), [07](07-api.md#webhooks-phase-2)). The Overview shows
+the alerts that fire.
 
 ## Hardening checklist
 
@@ -879,8 +900,10 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 - [ ] Admin listener bound to localhost or a private interface only.
 - [ ] MFA required for the org; WebAuthn for Owners and Instance Admins.
 - [ ] SSO configured with a break-glass local Owner whose credentials are stored offline.
-- [ ] External audit sink configured (Phase 2); revocation-log sink configured (required for more
-      than one controller replica).
+- [ ] External audit sink configured (Phase 2: object storage with Object Lock resists tampering
+      best); revocation-log sink configured (required for more than one controller replica).
+- [ ] Webhook receivers on private networks: only the ranges they need listed in
+      `webhook_private_ranges` (Phase 2).
 - [ ] Every connector's `policy.yaml` reviewed: `allow_targets` as narrow as possible (the default
       is `[]`, nothing; loopback is not allowed unless listed; a subnet without ports allows all of
       them), `deny_targets` for what a broad entry must not reach; shell, functions, egress proxy
@@ -1028,6 +1051,28 @@ Each runbook: **symptoms → steps → done when**.
   routes deleted on purpose), not a mistake. Approve the plan (step-up), or fix the configuration
   and let a new plan be computed.
 - **Done when**: the zone is `active` again.
+
+### Webhook endpoint failing or disabled
+
+- **Symptoms**: the "webhook endpoint failing" alert; deliveries of the endpoint show errors; the
+  endpoint shows **disabled: failing** after the period in
+  [03](03-connections.md#timeouts-keepalive-and-backoff).
+- **Steps**: read the last deliveries' status codes and errors. `refused` names a private range
+  the instance does not list: an Instance Admin adds it to `webhook_private_ranges` if the receiver
+  belongs there. A TLS error means the receiver's certificate does not verify against the system
+  roots. Fix the receiver, send a test event, then enable the endpoint again; events of the time it
+  was disabled are not resent.
+- **Done when**: a test event and the next real event are delivered with a 2xx answer.
+
+### Audit sink backlog
+
+- **Symptoms**: the "audit sink backlog" alert; the sink's status in Settings shows its last
+  error and a growing backlog.
+- **Steps**: check the sink's reachability and credentials from the controller host (syslog: the
+  server's TLS certificate against the sink's CA bundle; object storage: the bucket, Object Lock
+  and the credentials). Appends go on meanwhile; nothing is lost, as the sink's cursor holds its
+  place. Fix the sink; it catches up by itself.
+- **Done when**: the backlog is 0 and the alert resolved.
 
 ### Certificate expiry or clock skew
 

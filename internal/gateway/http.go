@@ -43,6 +43,7 @@ const (
 	httpIdle              = 120 * time.Second // a keep-alive connection without a request
 	httpRetryAfter        = 5                 // seconds, in a 503 without a ready connector
 	maintenanceRetryAfter = 300               // seconds, in the 503 of a route in maintenance
+	limitRetryAfter       = 1                 // seconds, in the 503 of a route over its connection limit
 )
 
 var (
@@ -107,6 +108,8 @@ type HTTPRoute struct {
 	// request gets 504, and UpstreamIdleTimeout how long a pooled upstream connection may stay
 	// unused; 0 keeps the gateway's (docs/03-connections.md, "Timeouts, keepalive and backoff").
 	UpstreamHeaderTimeout, UpstreamIdleTimeout time.Duration
+	// Limit is the route's limit state; nil limits nothing.
+	Limit *RouteLimit
 }
 
 // HTTPHeader is a header name, canonical, and its value; "" removes the header.
@@ -782,7 +785,10 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 	rt.tr = &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			c, err := h.dial(ctx, r.ID)
-			return rt.pool(c, c, err)
+			if err != nil {
+				return nil, err
+			}
+			return rt.pool(rt.route.Load().Limit.UpstreamConn(c), c, nil)
 		},
 		ResponseHeaderTimeout: cmp.Or(r.UpstreamHeaderTimeout, httpUpstreamHeader),
 		MaxIdleConnsPerHost:   64,
@@ -1000,7 +1006,7 @@ func (h *HTTPRoutes) dialTLS(ctx context.Context, rt *routeTransport) (net.Conn,
 		_ = c.Close()
 		return nil, nil, fmt.Errorf("route %s: %w", route, err)
 	}
-	tc := tls.Client(tracked, u.cfg)
+	tc := tls.Client(rt.route.Load().Limit.UpstreamConn(tracked), u.cfg)
 	if err := tc.HandshakeContext(ctx); err != nil {
 		_ = tc.Close()
 		return nil, nil, fmt.Errorf("route %s: TLS to target %s: %w", route, target, err)
@@ -1152,6 +1158,15 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
+	// The rates come before basic auth, so that a flood never reaches its password checks.
+	if ok, wait, _ := route.Limit.Admit(client, false); !ok {
+		if r.ContentLength != 0 {
+			closeUnread(w, r)
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(retryAfter(wait)))
+		http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+		return
+	}
 	if len(route.BasicAuth) > 0 {
 		user, password, given := r.BasicAuth()
 		ok := false
@@ -1210,6 +1225,18 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, route.MaxBody)
 	}
+	// A request in flight, an upgraded one until it ends, holds one of the route's connection slots,
+	// released however the request ends.
+	release, ok := route.Limit.Acquire()
+	if !ok {
+		if r.ContentLength != 0 {
+			closeUnread(w, r)
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(limitRetryAfter))
+		h.o.Pages.writePage(w, r, http.StatusServiceUnavailable, pageUnavailable, http.StatusText(http.StatusServiceUnavailable))
+		return
+	}
+	defer release()
 	rt.proxy.ServeHTTP(w, r)
 }
 

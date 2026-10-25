@@ -3,6 +3,7 @@
 package connector
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
@@ -12,6 +13,7 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"reflect"
 	"slices"
 	"strconv"
 	"sync"
@@ -28,6 +30,7 @@ import (
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/tunnel"
+	"github.com/felix-homelab/rpmgr/internal/upstreamtls"
 )
 
 // dialUpstream bounds the dial of a target (docs/03-connections.md, "Timeouts, keepalive and
@@ -43,8 +46,11 @@ type Route struct {
 	// UDP routes take UDP_FLOW streams, tcp_udp routes (Both) both kinds, every other route TCP
 	// streams.
 	UDP, Both bool
-	// Targets are tried by priority, lowest first, and by weight within a priority.
+	// Targets are tried by priority, lowest first, and by weight within a priority, those the
+	// health check found unhealthy left out.
 	Targets []Target
+	// Check is the route's health check; nil counts every target as healthy.
+	Check *HealthCheck
 }
 
 // Target is one destination of a route on the connector's host.
@@ -58,6 +64,8 @@ type Target struct {
 	ProxyProtocol string
 	Weight        uint32
 	Priority      uint32
+	// TLS verifies the target's certificate in an https health check.
+	TLS *upstreamtls.Settings
 }
 
 func (t Target) String() string {
@@ -98,6 +106,9 @@ type TargetsOptions struct {
 	Policy func() *policy.Policy
 	// OnHealth gets every change of a route's readiness; normally Sessions.SetReady.
 	OnHealth func(*tunnelv1.RouteHealth)
+	// OnTargetHealth gets the changes of a route's targets' health of one round of checks, for the
+	// controller's route status.
+	OnTargetHealth func([]*agentv1.ResourceStatus)
 	// UDPMetrics count the udp flows' oversize and dropped payloads; nil keeps them unregistered.
 	UDPMetrics *tunnel.UDPMetrics
 	// Metrics, if set, time the dials and count the refused ones.
@@ -124,6 +135,14 @@ type Targets struct {
 	gen     uint64                // counts Rechecks, so that a dial begun before one records no refusal after it
 	live    map[net.Conn]struct{} // the relayed target connections, which a stricter policy closes
 	probes  chan struct{}         // the certificate probes running, at most maxProbes
+	// checkers run the routes' health checks, and targetHealth holds what they found, by route
+	// and target; they stop with ctx.
+	checkers     map[string]*checker
+	targetHealth map[string]map[string]*targetHealth
+	checks       chan struct{} // the checks running, at most maxChecks
+	reportMu     sync.Mutex    // orders OnTargetHealth after Set's replaced checkers
+	ctx          context.Context
+	cancel       context.CancelFunc
 }
 
 type drainingRoute struct {
@@ -139,25 +158,50 @@ func NewTargets(o TargetsOptions) *Targets {
 	if o.UDPMetrics == nil {
 		o.UDPMetrics, _ = tunnel.NewUDPMetrics(nil)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Targets{o: o, routes: map[string]Route{}, draining: map[string]drainingRoute{}, health: map[string]*tunnelv1.RouteHealth{},
-		refused: map[string]map[string]string{}, live: map[net.Conn]struct{}{}, probes: make(chan struct{}, maxProbes)}
+		refused: map[string]map[string]string{}, live: map[net.Conn]struct{}{}, probes: make(chan struct{}, maxProbes),
+		checkers: map[string]*checker{}, targetHealth: map[string]map[string]*targetHealth{}, checks: make(chan struct{}, maxChecks),
+		ctx: ctx, cancel: cancel}
+}
+
+// Close stops the health checks.
+func (t *Targets) Close() {
+	t.cancel()
+	t.mu.Lock()
+	cs := slices.Collect(maps.Values(t.checkers))
+	t.mu.Unlock()
+	for _, c := range cs {
+		<-c.done
+	}
 }
 
 // Set makes routes the snapshot's routes. A route no longer among them is reported not ready at
 // once and still takes streams for the route drain period.
 func (t *Targets) Set(routes []Route) {
+	t.reportMu.Lock()
+	defer t.reportMu.Unlock()
 	t.mu.Lock()
 	now := time.Now()
 	next := map[string]Route{}
 	for _, r := range routes {
 		next[r.ID] = r
 		delete(t.draining, r.ID)
+		// A route's checks start again, its targets healthy, when the route or its check changed.
+		switch c := t.checkers[r.ID]; {
+		case r.Check == nil:
+			t.stopChecks(r.ID)
+		case c == nil || !reflect.DeepEqual(c.r, r):
+			t.stopChecks(r.ID)
+			t.startChecks(r)
+		}
 	}
 	var gone []string
 	for id, r := range t.routes {
 		if _, ok := next[id]; !ok {
 			t.draining[id] = drainingRoute{r: r, until: now.Add(routeDrain)}
 			delete(t.health, id)
+			t.stopChecks(id)
 			gone = append(gone, id)
 		}
 	}
@@ -190,7 +234,7 @@ func (t *Targets) Recheck() {
 	t.gen++
 	var changed []*tunnelv1.RouteHealth
 	for _, id := range slices.Sorted(maps.Keys(t.routes)) {
-		if h := t.updateHealthLocked(id, readiness(t.routes[id], p, nil)); h != nil {
+		if h := t.updateHealthLocked(id, readiness(t.routes[id], p, nil, t.unhealthyLocked(id))); h != nil {
 			changed = append(changed, h)
 		}
 	}
@@ -247,27 +291,47 @@ func connAllowed(c net.Conn, p *policy.Policy) bool {
 	return p.Allows(ap.Addr().Unmap(), ap.Port())
 }
 
-// readiness is the route's readiness under the policy: ready while one of its targets is allowed
-// and not among refused, the targets whose dial the policy refused on the resolved address.
-func readiness(r Route, p *policy.Policy, refused map[string]string) *tunnelv1.RouteHealth {
+// readiness is the route's readiness under the policy: ready while one of its targets is allowed,
+// not among refused, the targets whose dial the policy refused on the resolved address, and not
+// among unhealthy, those the route's health check failed. A route with a health check names the
+// priorities that have such a target, which gateways pass over the others for (D133).
+func readiness(r Route, p *policy.Policy, refused map[string]string, unhealthy map[string]string) *tunnelv1.RouteHealth {
 	h := &tunnelv1.RouteHealth{RouteId: r.ID}
 	if p == nil || p.Invalid != nil {
 		h.Reason = agentv1.NotReadyReason_NOT_READY_REASON_POLICY_INVALID
 		return h
 	}
+	var prios []uint32
+	sick := ""
 	for _, tg := range r.Targets {
 		detail, wasRefused := refused[tg.ID]
-		if tg.allowed(p) && !wasRefused {
-			return &tunnelv1.RouteHealth{RouteId: r.ID, Ready: true} // no detail of the others: one state, one report
-		}
-		if h.Detail != "" {
-			continue
-		}
-		if wasRefused {
+		blockedCheck, isUnhealthy := unhealthy[tg.ID]
+		switch {
+		case tg.allowed(p) && !wasRefused && !isUnhealthy:
+			prios = append(prios, tg.Priority)
+		case tg.allowed(p) && !wasRefused && blockedCheck == "":
+			sick = cmp.Or(sick, tg.String())
+		case h.Detail != "":
+		case blockedCheck != "":
+			h.Detail = blockedCheck // its checks dial what the policy refuses
+		case h.Detail != "":
+		case wasRefused:
 			h.Detail = detail
-		} else {
+		default:
 			h.Detail = tg.blockDetail(p)
 		}
+	}
+	switch {
+	case len(prios) > 0:
+		ready := &tunnelv1.RouteHealth{RouteId: r.ID, Ready: true} // no detail of the others: one state, one report
+		if r.Check != nil {
+			slices.Sort(prios)
+			ready.ReadyPriorities = slices.Compact(prios)
+		}
+		return ready
+	case sick != "":
+		h.Reason, h.Detail = agentv1.NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY, "every target failed its health check, "+sick+" too"
+		return h
 	}
 	h.Reason = agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY
 	return h
@@ -297,7 +361,8 @@ func (t *Targets) reportRoute(h *tunnelv1.RouteHealth) {
 }
 
 func sameHealth(a, b *tunnelv1.RouteHealth) bool {
-	return a.GetReady() == b.GetReady() && a.GetReason() == b.GetReason() && a.GetDetail() == b.GetDetail()
+	return a.GetReady() == b.GetReady() && a.GetReason() == b.GetReason() && a.GetDetail() == b.GetDetail() &&
+		slices.Equal(a.GetReadyPriorities(), b.GetReadyPriorities())
 }
 
 // updateHealthLocked records the route's readiness and returns it if it changed, to be reported
@@ -332,7 +397,7 @@ func (t *Targets) blocked(route, target, detail string, gen uint64) {
 			t.refused[route] = map[string]string{}
 		}
 		t.refused[route][target] = detail
-		h = t.updateHealthLocked(route, readiness(r, p, t.refused[route]))
+		h = t.updateHealthLocked(route, readiness(r, p, t.refused[route], t.unhealthyLocked(route)))
 	}
 	t.mu.Unlock()
 	t.reportRoute(h)
@@ -347,14 +412,15 @@ func (t *Targets) dialled(route, target string, gen uint64) {
 	if _, was := t.refused[route][target]; was && gen == t.gen {
 		delete(t.refused[route], target)
 		if r, active := t.routes[route]; active {
-			h = t.updateHealthLocked(route, readiness(r, t.o.Policy(), t.refused[route]))
+			h = t.updateHealthLocked(route, readiness(r, t.o.Policy(), t.refused[route], t.unhealthyLocked(route)))
 		}
 	}
 	t.mu.Unlock()
 	t.reportRoute(h)
 }
 
-// Status returns the routes that are not ready, for the resource status of Applied.
+// Status returns the routes that are not ready, and the targets their health checks found
+// unhealthy, for the resource status of Applied.
 func (t *Targets) Status() []*agentv1.ResourceStatus {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -362,6 +428,12 @@ func (t *Targets) Status() []*agentv1.ResourceStatus {
 	for _, id := range slices.Sorted(maps.Keys(t.routes)) {
 		if h := t.health[id]; h != nil && !h.GetReady() {
 			out = append(out, &agentv1.ResourceStatus{ResourceId: id, Reason: h.GetReason(), Detail: h.GetDetail()})
+		}
+		hs := t.targetHealth[id]
+		for _, tg := range slices.Sorted(maps.Keys(hs)) {
+			if hs[tg].unhealthy {
+				out = append(out, targetStatus(tg, hs[tg]))
+			}
 		}
 	}
 	return out
@@ -452,7 +524,7 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 	defer cancel()
 	d := &net.Dialer{KeepAlive: tcpKeepAlive, Control: policy.Control(t.o.Policy)}
 	code := tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED
-	for _, tg := range order(targetsFor(r, open)) {
+	for _, tg := range order(t.healthy(r.ID, targetsFor(r, open))) {
 		network := "tcp"
 		if tg.UnixPath != "" {
 			network = "unix"
@@ -493,6 +565,21 @@ func codeOf(err error) tunnelv1.ResultCode {
 		return tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_RESET
 	}
 	return tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED // refused, unreachable, or a name that does not resolve
+}
+
+// healthy returns the targets the route's health check did not find unhealthy, or all of them if it
+// found every one unhealthy: a stream still tries the last chance rather than none.
+func (t *Targets) healthy(route string, ts []Target) []Target {
+	t.mu.Lock()
+	sick := t.unhealthyLocked(route)
+	t.mu.Unlock()
+	if len(sick) == 0 {
+		return ts
+	}
+	if out := slices.DeleteFunc(slices.Clone(ts), func(tg Target) bool { _, ok := sick[tg.ID]; return ok }); len(out) > 0 {
+		return out
+	}
+	return ts
 }
 
 // targetsFor returns the targets of a route that a stream may use: those of the priority it names,
