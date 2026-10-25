@@ -2780,6 +2780,18 @@ func init() {
 	routehttp.DefaultMaintenanceMessage = routehttpDescMaintenanceMessage.Default.(string)
 	// routehttp.MaintenanceMessageValidator is a validator for the "maintenance_message" field. It is called by the builders before save.
 	routehttp.MaintenanceMessageValidator = routehttpDescMaintenanceMessage.Validators[0].(func(string) error)
+	// routehttpDescUpstreamResponseHeaderTimeoutSeconds is the schema descriptor for upstream_response_header_timeout_seconds field.
+	routehttpDescUpstreamResponseHeaderTimeoutSeconds := routehttpFields[16].Descriptor()
+	// routehttp.DefaultUpstreamResponseHeaderTimeoutSeconds holds the default value on creation for the upstream_response_header_timeout_seconds field.
+	routehttp.DefaultUpstreamResponseHeaderTimeoutSeconds = routehttpDescUpstreamResponseHeaderTimeoutSeconds.Default.(int)
+	// routehttp.UpstreamResponseHeaderTimeoutSecondsValidator is a validator for the "upstream_response_header_timeout_seconds" field. It is called by the builders before save.
+	routehttp.UpstreamResponseHeaderTimeoutSecondsValidator = routehttpDescUpstreamResponseHeaderTimeoutSeconds.Validators[0].(func(int) error)
+	// routehttpDescUpstreamIdleTimeoutSeconds is the schema descriptor for upstream_idle_timeout_seconds field.
+	routehttpDescUpstreamIdleTimeoutSeconds := routehttpFields[17].Descriptor()
+	// routehttp.DefaultUpstreamIdleTimeoutSeconds holds the default value on creation for the upstream_idle_timeout_seconds field.
+	routehttp.DefaultUpstreamIdleTimeoutSeconds = routehttpDescUpstreamIdleTimeoutSeconds.Default.(int)
+	// routehttp.UpstreamIdleTimeoutSecondsValidator is a validator for the "upstream_idle_timeout_seconds" field. It is called by the builders before save.
+	routehttp.UpstreamIdleTimeoutSecondsValidator = routehttpDescUpstreamIdleTimeoutSeconds.Validators[0].(func(int) error)
 	routehostnameMixin := schema.RouteHostname{}.Mixin()
 	routehostname.Policy = privacy.NewPolicies(routehostnameMixin[0], schema.RouteHostname{})
 	routehostname.Hooks[0] = func(next ent.Mutator) ent.Mutator {

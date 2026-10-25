@@ -136,6 +136,10 @@ func accessOf(res *agentv1.Resource) *agentv1.RouteAccess {
 	return nil
 }
 
+// maxRouteTimeout is the most seconds a route's own upstream timeouts may be
+// (docs/03-connections.md, "Timeouts, keepalive and backoff").
+const maxRouteTimeout = 3600
+
 // authorityHostRe is a CONNECT authority as the snapshot holds it: a lower-case host name.
 var authorityHostRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9._-]{0,251}[a-z0-9])?$`)
 
@@ -405,6 +409,9 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 					bad(id, "trusted proxy %q is not a CIDR", c)
 				}
 			}
+			if r.GetUpstreamResponseHeaderTimeoutSeconds() > maxRouteTimeout || r.GetUpstreamIdleTimeoutSeconds() > maxRouteTimeout {
+				bad(id, "an upstream timeout above %d seconds", maxRouteTimeout)
+			}
 			matches := headerMatchesOf(r)
 			if err := headermatch.Check(matches); err != nil {
 				bad(id, "%v", err)
@@ -546,7 +553,10 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket(),
 				HostHeader: r.GetHostHeader(), MaxBody: int64(min(r.GetMaxBodyBytes(), math.MaxInt64)), //nolint:gosec // G115: bounded above
 				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds()), Access: access, Maintenance: r.GetMaintenance(),
-				MaintenanceMessage: r.GetMaintenanceMessage(), HeaderMatches: headermatch.Canonical(headerMatchesOf(r)), Limit: limit}
+				MaintenanceMessage: r.GetMaintenanceMessage(), HeaderMatches: headermatch.Canonical(headerMatchesOf(r)),
+				UpstreamHeaderTimeout: time.Duration(r.GetUpstreamResponseHeaderTimeoutSeconds()) * time.Second,
+				UpstreamIdleTimeout:   time.Duration(r.GetUpstreamIdleTimeoutSeconds()) * time.Second,
+				Limit:                 limit}
 			hr.BasicAuth, _ = basicAuthOf(r.GetAccess().GetBasicAuth())             // Validate refused any that does not parse
 			hr.RequireHeader, _ = requireHeaderOf(r.GetAccess().GetRequireHeader()) // and these too
 			for _, h := range r.GetRequestHeaders() {

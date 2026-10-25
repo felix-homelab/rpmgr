@@ -56,6 +56,11 @@ Changes to the design documents are not recorded here: see the git history and t
   `rpmgr create route`/`update route --match-header`, the API's `header_matches` and manifests; the
   web UI follows. Gateways of earlier releases never get such a route. (#617, #618)
 
+- Routes: an http route can set its own upstream response-header timeout, after which a request
+  gets 504, and its own idle timeout for unused connections to its targets; 0 keeps the gateway's.
+  Set with `--upstream-header-timeout` and `--upstream-idle-timeout`, the API and manifests; the
+  web UI follows. Gateways of earlier releases keep their own values. (#619)
+
 - Access policies: a **require-header** rule admits on HTTP routes only requests that carry a
   header with one of up to four values, such as the origin header a CDN adds, so that clients that
   go around the CDN get 403. The controller keeps only the values' SHA-256 and never shows a value

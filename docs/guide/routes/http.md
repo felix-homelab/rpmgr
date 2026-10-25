@@ -126,6 +126,8 @@ type and its gateway group never change.
 | Response headers to set | **Response headers to set**, `Name: value` per line | `--set-response-header Name=value`, repeated | none |
 | WebSocket upgrades | **WebSocket**: **Default**, **On**, **Off** | `--websocket=false` | on |
 | Largest request body | **Largest request body (bytes, 0 for no limit)** | `--max-body <bytes>` | 0, no limit |
+| Wait for the target's response headers | not in the web UI yet | `--upstream-header-timeout <duration>`, such as `5m` | the gateway's |
+| Keep an unused connection to the target | not in the web UI yet | `--upstream-idle-timeout <duration>` | the gateway's |
 | Maintenance | **Maintenance** | `--maintenance`, `--maintenance=false` | off |
 | Maintenance message | **Maintenance message** | `--maintenance-message` | empty |
 | Access policies | **Access policies** card on the route's page | `--policy`, repeated | none |
@@ -249,6 +251,16 @@ with a short value. With 0, the gateway sends none and the upstream's own header
   `Authorization` header before the request goes upstream
   ([Access policies](../access-policies.md)).
 
+### Timeouts
+
+A target that takes long to start its answer, such as a report that is built first, gets **504**
+once the gateway has waited its response-header timeout. A route can wait longer, or shorter, with
+`--upstream-header-timeout`; a target that drops idle keep-alive connections sooner than the
+gateway expects can be met with a shorter `--upstream-idle-timeout`. Both are whole seconds within
+the bounds of [03](../../03-connections.md#timeouts-keepalive-and-backoff), and 0 sets the
+gateway's own back. The timeouts of the client's connection stay fixed, and WebSockets and
+streamed answers keep no idle timeout. Gateways of release 0.2 and earlier keep their own values.
+
 ### WebSockets, gRPC and request bodies
 
 - WebSocket and other upgrades pass through unless you turn them off; the gateway then answers an
@@ -288,8 +300,8 @@ clients get plain text. The pages and their rules are in
 
 ## Limits and what is not there yet
 
-- The sizes and timeouts that apply to every route are fixed
-  ([03](../../03-connections.md#timeouts-keepalive-and-backoff)). A route has at most 100
+- The sizes and timeouts that apply to every route are fixed, but for the two upstream timeouts
+  a route may set ([03](../../03-connections.md#timeouts-keepalive-and-backoff)). A route has at most 100
   hostnames, and 32 request and 32 response headers to set.
 - OIDC sign-in in front of a route, per-route rate and connection
   limits and custom error pages are planned for Phase 2, public HTTP/3 for Phase 3

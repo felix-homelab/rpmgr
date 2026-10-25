@@ -105,7 +105,9 @@ func createHTTP(ctx context.Context, tx *ent.Tx, row *ent.Route, h *rpmgrv1.HTTP
 		SetHstsMaxAgeSeconds(int(h.GetHstsMaxAgeSeconds())).SetRequestHeadersSet(canonicalHeaders(h.GetRequestHeadersSet())).
 		SetResponseHeadersSet(canonicalHeaders(h.GetResponseHeadersSet())).SetWebsocket(h.Websocket == nil || *h.Websocket).
 		SetMaxBodyBytes(int64(min(h.GetMaxBodyBytes(), 1<<62))). //nolint:gosec // G115: bounded above
-		SetMaintenance(h.GetMaintenance()).SetMaintenanceMessage(h.GetMaintenanceMessage())
+		SetMaintenance(h.GetMaintenance()).SetMaintenanceMessage(h.GetMaintenanceMessage()).
+		SetUpstreamResponseHeaderTimeoutSeconds(int(h.GetUpstreamResponseHeaderTimeoutSeconds())).
+		SetUpstreamIdleTimeoutSeconds(int(h.GetUpstreamIdleTimeoutSeconds()))
 	if ms := headerMatchesOf(h); len(ms) > 0 {
 		c.SetHeaderMatches(headermatch.Canonical(ms)).SetMatchKey(headermatch.Key(ms))
 	}
@@ -264,7 +266,8 @@ func routeFields(t route.Type) []string {
 	switch t {
 	case route.TypeHTTP:
 		for _, f := range []string{"hostnames", "path_prefix", "tls_mode", "certificate_id", "port80", "hsts_max_age_seconds", "host_header",
-			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes", "maintenance", "maintenance_message", "header_matches"} {
+			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes", "maintenance", "maintenance_message", "header_matches",
+			"upstream_response_header_timeout_seconds", "upstream_idle_timeout_seconds"} {
 			fields = append(fields, "http."+f)
 		}
 	case route.TypeTLSPassthrough:
@@ -621,7 +624,9 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 				routehttp.Port80Serve: rpmgrv1.Port80Mode_PORT80_MODE_SERVE, routehttp.Port80Off: rpmgrv1.Port80Mode_PORT80_MODE_OFF}[h.Port80],
 			HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), HostHeader: h.HostHeader, RequestHeadersSet: h.RequestHeadersSet, //nolint:gosec // G115: bounded
 			ResponseHeadersSet: h.ResponseHeadersSet, Websocket: &h.Websocket, MaxBodyBytes: uint64(h.MaxBodyBytes), //nolint:gosec // G115: non-negative
-			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, HeaderMatches: apiHeaderMatches(h.HeaderMatches)}
+			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, HeaderMatches: apiHeaderMatches(h.HeaderMatches),
+			UpstreamResponseHeaderTimeoutSeconds: uint32(h.UpstreamResponseHeaderTimeoutSeconds), //nolint:gosec // G115: bounded
+			UpstreamIdleTimeoutSeconds:           uint32(h.UpstreamIdleTimeoutSeconds)}           //nolint:gosec // G115: bounded
 		if h.TLSMode == routehttp.TLSModeCertificate {
 			spec.TlsMode = rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE
 			if h.CertificateID != nil {

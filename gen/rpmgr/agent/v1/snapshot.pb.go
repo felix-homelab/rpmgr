@@ -1752,6 +1752,12 @@ type GatewayHTTPRoute struct {
 	// route with the smaller ID wins a tie (docs/03-connections.md, "HTTP routes"). Only a gateway
 	// announcing the capability http.header-match gets a route that has them.
 	HeaderMatches []*HTTPHeaderMatch `protobuf:"bytes,17,rep,name=header_matches,json=headerMatches,proto3" json:"header_matches,omitempty"`
+	// How long the gateway waits for the upstream's response headers before the request gets 504;
+	// 0 keeps the gateway's own. A gateway that does not know the field keeps its own.
+	UpstreamResponseHeaderTimeoutSeconds uint32 `protobuf:"varint,18,opt,name=upstream_response_header_timeout_seconds,json=upstreamResponseHeaderTimeoutSeconds,proto3" json:"upstream_response_header_timeout_seconds,omitempty"`
+	// How long a pooled keep-alive connection to the upstream may stay unused; 0 keeps the
+	// gateway's own.
+	UpstreamIdleTimeoutSeconds uint32 `protobuf:"varint,19,opt,name=upstream_idle_timeout_seconds,json=upstreamIdleTimeoutSeconds,proto3" json:"upstream_idle_timeout_seconds,omitempty"`
 	// This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
 	// route reaches only gateways with the capability route.limits when it sets one.
 	Limits        *RouteLimits `protobuf:"bytes,20,opt,name=limits,proto3" json:"limits,omitempty"`
@@ -1906,6 +1912,20 @@ func (x *GatewayHTTPRoute) GetHeaderMatches() []*HTTPHeaderMatch {
 		return x.HeaderMatches
 	}
 	return nil
+}
+
+func (x *GatewayHTTPRoute) GetUpstreamResponseHeaderTimeoutSeconds() uint32 {
+	if x != nil {
+		return x.UpstreamResponseHeaderTimeoutSeconds
+	}
+	return 0
+}
+
+func (x *GatewayHTTPRoute) GetUpstreamIdleTimeoutSeconds() uint32 {
+	if x != nil {
+		return x.UpstreamIdleTimeoutSeconds
+	}
+	return 0
 }
 
 func (x *GatewayHTTPRoute) GetLimits() *RouteLimits {
@@ -3149,7 +3169,7 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"connectors\x123\n" +
 	"\x06access\x18\x04 \x01(\v2\x1b.rpmgr.agent.v1.RouteAccessR\x06access\x12K\n" +
 	"\x11ranked_connectors\x18\x05 \x03(\v2\x1e.rpmgr.agent.v1.RouteConnectorR\x10rankedConnectors\x123\n" +
-	"\x06limits\x18\x06 \x01(\v2\x1b.rpmgr.agent.v1.RouteLimitsR\x06limits\"\x84\a\n" +
+	"\x06limits\x18\x06 \x01(\v2\x1b.rpmgr.agent.v1.RouteLimitsR\x06limits\"\x9f\b\n" +
 	"\x10GatewayHTTPRoute\x12.\n" +
 	"\x05hosts\x18\x01 \x03(\v2\x18.rpmgr.agent.v1.HTTPHostR\x05hosts\x12+\n" +
 	"\x11upstream_protocol\x18\x02 \x01(\tR\x10upstreamProtocol\x12\x1e\n" +
@@ -3171,7 +3191,9 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\vmaintenance\x18\x0e \x01(\bR\vmaintenance\x12/\n" +
 	"\x13maintenance_message\x18\x0f \x01(\tR\x12maintenanceMessage\x12K\n" +
 	"\x11ranked_connectors\x18\x10 \x03(\v2\x1e.rpmgr.agent.v1.RouteConnectorR\x10rankedConnectors\x12F\n" +
-	"\x0eheader_matches\x18\x11 \x03(\v2\x1f.rpmgr.agent.v1.HTTPHeaderMatchR\rheaderMatches\x123\n" +
+	"\x0eheader_matches\x18\x11 \x03(\v2\x1f.rpmgr.agent.v1.HTTPHeaderMatchR\rheaderMatches\x12V\n" +
+	"(upstream_response_header_timeout_seconds\x18\x12 \x01(\rR$upstreamResponseHeaderTimeoutSeconds\x12A\n" +
+	"\x1dupstream_idle_timeout_seconds\x18\x13 \x01(\rR\x1aupstreamIdleTimeoutSeconds\x123\n" +
 	"\x06limits\x18\x14 \x01(\v2\x1b.rpmgr.agent.v1.RouteLimitsR\x06limits\"U\n" +
 	"\x0fHTTPHeaderMatch\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
