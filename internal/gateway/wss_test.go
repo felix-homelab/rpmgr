@@ -345,7 +345,7 @@ func unmask(b []byte) []byte {
 			}
 			key, at = frames[at:at+4], at+4
 		}
-		if uint64(len(frames)-at) < n {
+		if uint64(len(frames)-at) < n { //nolint:gosec // G115: at is at most len(frames)
 			return out
 		}
 		payload := append([]byte(nil), frames[at:at+int(n)]...)
