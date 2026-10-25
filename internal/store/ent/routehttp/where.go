@@ -68,6 +68,11 @@ func PathPrefix(v string) predicate.RouteHTTP {
 	return predicate.RouteHTTP(sql.FieldEQ(FieldPathPrefix, v))
 }
 
+// MatchKey applies equality check predicate on the "match_key" field. It's identical to MatchKeyEQ.
+func MatchKey(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEQ(FieldMatchKey, v))
+}
+
 // CertificateID applies equality check predicate on the "certificate_id" field. It's identical to CertificateIDEQ.
 func CertificateID(v string) predicate.RouteHTTP {
 	return predicate.RouteHTTP(sql.FieldEQ(FieldCertificateID, v))
@@ -311,6 +316,71 @@ func HeaderMatchesIsNil() predicate.RouteHTTP {
 // HeaderMatchesNotNil applies the NotNil predicate on the "header_matches" field.
 func HeaderMatchesNotNil() predicate.RouteHTTP {
 	return predicate.RouteHTTP(sql.FieldNotNull(FieldHeaderMatches))
+}
+
+// MatchKeyEQ applies the EQ predicate on the "match_key" field.
+func MatchKeyEQ(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEQ(FieldMatchKey, v))
+}
+
+// MatchKeyNEQ applies the NEQ predicate on the "match_key" field.
+func MatchKeyNEQ(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldNEQ(FieldMatchKey, v))
+}
+
+// MatchKeyIn applies the In predicate on the "match_key" field.
+func MatchKeyIn(vs ...string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldIn(FieldMatchKey, vs...))
+}
+
+// MatchKeyNotIn applies the NotIn predicate on the "match_key" field.
+func MatchKeyNotIn(vs ...string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldNotIn(FieldMatchKey, vs...))
+}
+
+// MatchKeyGT applies the GT predicate on the "match_key" field.
+func MatchKeyGT(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldGT(FieldMatchKey, v))
+}
+
+// MatchKeyGTE applies the GTE predicate on the "match_key" field.
+func MatchKeyGTE(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldGTE(FieldMatchKey, v))
+}
+
+// MatchKeyLT applies the LT predicate on the "match_key" field.
+func MatchKeyLT(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldLT(FieldMatchKey, v))
+}
+
+// MatchKeyLTE applies the LTE predicate on the "match_key" field.
+func MatchKeyLTE(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldLTE(FieldMatchKey, v))
+}
+
+// MatchKeyContains applies the Contains predicate on the "match_key" field.
+func MatchKeyContains(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldContains(FieldMatchKey, v))
+}
+
+// MatchKeyHasPrefix applies the HasPrefix predicate on the "match_key" field.
+func MatchKeyHasPrefix(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldHasPrefix(FieldMatchKey, v))
+}
+
+// MatchKeyHasSuffix applies the HasSuffix predicate on the "match_key" field.
+func MatchKeyHasSuffix(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldHasSuffix(FieldMatchKey, v))
+}
+
+// MatchKeyEqualFold applies the EqualFold predicate on the "match_key" field.
+func MatchKeyEqualFold(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldEqualFold(FieldMatchKey, v))
+}
+
+// MatchKeyContainsFold applies the ContainsFold predicate on the "match_key" field.
+func MatchKeyContainsFold(v string) predicate.RouteHTTP {
+	return predicate.RouteHTTP(sql.FieldContainsFold(FieldMatchKey, v))
 }
 
 // TLSModeEQ applies the EQ predicate on the "tls_mode" field.

@@ -9,6 +9,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -26,7 +27,9 @@ type RouteHTTP struct {
 	// PathPrefix holds the value of the "path_prefix" field.
 	PathPrefix string `json:"path_prefix,omitempty"`
 	// HeaderMatches holds the value of the "header_matches" field.
-	HeaderMatches map[string]string `json:"header_matches,omitempty"`
+	HeaderMatches []headermatch.Match `json:"header_matches,omitempty"`
+	// MatchKey holds the value of the "match_key" field.
+	MatchKey string `json:"match_key,omitempty"`
 	// TLSMode holds the value of the "tls_mode" field.
 	TLSMode routehttp.TLSMode `json:"tls_mode,omitempty"`
 	// CertificateID holds the value of the "certificate_id" field.
@@ -101,7 +104,7 @@ func (*RouteHTTP) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case routehttp.FieldID, routehttp.FieldHstsMaxAgeSeconds, routehttp.FieldMaxBodyBytes:
 			values[i] = new(sql.NullInt64)
-		case routehttp.FieldOrgID, routehttp.FieldRouteID, routehttp.FieldPathPrefix, routehttp.FieldTLSMode, routehttp.FieldCertificateID, routehttp.FieldPort80, routehttp.FieldHostHeader, routehttp.FieldMaintenanceMessage:
+		case routehttp.FieldOrgID, routehttp.FieldRouteID, routehttp.FieldPathPrefix, routehttp.FieldMatchKey, routehttp.FieldTLSMode, routehttp.FieldCertificateID, routehttp.FieldPort80, routehttp.FieldHostHeader, routehttp.FieldMaintenanceMessage:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -149,6 +152,12 @@ func (_m *RouteHTTP) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.HeaderMatches); err != nil {
 					return fmt.Errorf("unmarshal field header_matches: %w", err)
 				}
+			}
+		case routehttp.FieldMatchKey:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field match_key", values[i])
+			} else if value.Valid {
+				_m.MatchKey = value.String
 			}
 		case routehttp.FieldTLSMode:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -284,6 +293,9 @@ func (_m *RouteHTTP) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("header_matches=")
 	builder.WriteString(fmt.Sprintf("%v", _m.HeaderMatches))
+	builder.WriteString(", ")
+	builder.WriteString("match_key=")
+	builder.WriteString(_m.MatchKey)
 	builder.WriteString(", ")
 	builder.WriteString("tls_mode=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TLSMode))

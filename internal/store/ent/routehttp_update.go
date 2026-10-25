@@ -9,7 +9,9 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -43,14 +45,34 @@ func (_u *RouteHTTPUpdate) SetNillablePathPrefix(v *string) *RouteHTTPUpdate {
 }
 
 // SetHeaderMatches sets the "header_matches" field.
-func (_u *RouteHTTPUpdate) SetHeaderMatches(v map[string]string) *RouteHTTPUpdate {
+func (_u *RouteHTTPUpdate) SetHeaderMatches(v []headermatch.Match) *RouteHTTPUpdate {
 	_u.mutation.SetHeaderMatches(v)
+	return _u
+}
+
+// AppendHeaderMatches appends value to the "header_matches" field.
+func (_u *RouteHTTPUpdate) AppendHeaderMatches(v []headermatch.Match) *RouteHTTPUpdate {
+	_u.mutation.AppendHeaderMatches(v)
 	return _u
 }
 
 // ClearHeaderMatches clears the value of the "header_matches" field.
 func (_u *RouteHTTPUpdate) ClearHeaderMatches() *RouteHTTPUpdate {
 	_u.mutation.ClearHeaderMatches()
+	return _u
+}
+
+// SetMatchKey sets the "match_key" field.
+func (_u *RouteHTTPUpdate) SetMatchKey(v string) *RouteHTTPUpdate {
+	_u.mutation.SetMatchKey(v)
+	return _u
+}
+
+// SetNillableMatchKey sets the "match_key" field if the given value is not nil.
+func (_u *RouteHTTPUpdate) SetNillableMatchKey(v *string) *RouteHTTPUpdate {
+	if v != nil {
+		_u.SetMatchKey(*v)
+	}
 	return _u
 }
 
@@ -337,8 +359,16 @@ func (_u *RouteHTTPUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.HeaderMatches(); ok {
 		_spec.SetField(routehttp.FieldHeaderMatches, field.TypeJSON, value)
 	}
+	if value, ok := _u.mutation.AppendedHeaderMatches(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, routehttp.FieldHeaderMatches, value)
+		})
+	}
 	if _u.mutation.HeaderMatchesCleared() {
 		_spec.ClearField(routehttp.FieldHeaderMatches, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.MatchKey(); ok {
+		_spec.SetField(routehttp.FieldMatchKey, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.TLSMode(); ok {
 		_spec.SetField(routehttp.FieldTLSMode, field.TypeEnum, value)
@@ -449,14 +479,34 @@ func (_u *RouteHTTPUpdateOne) SetNillablePathPrefix(v *string) *RouteHTTPUpdateO
 }
 
 // SetHeaderMatches sets the "header_matches" field.
-func (_u *RouteHTTPUpdateOne) SetHeaderMatches(v map[string]string) *RouteHTTPUpdateOne {
+func (_u *RouteHTTPUpdateOne) SetHeaderMatches(v []headermatch.Match) *RouteHTTPUpdateOne {
 	_u.mutation.SetHeaderMatches(v)
+	return _u
+}
+
+// AppendHeaderMatches appends value to the "header_matches" field.
+func (_u *RouteHTTPUpdateOne) AppendHeaderMatches(v []headermatch.Match) *RouteHTTPUpdateOne {
+	_u.mutation.AppendHeaderMatches(v)
 	return _u
 }
 
 // ClearHeaderMatches clears the value of the "header_matches" field.
 func (_u *RouteHTTPUpdateOne) ClearHeaderMatches() *RouteHTTPUpdateOne {
 	_u.mutation.ClearHeaderMatches()
+	return _u
+}
+
+// SetMatchKey sets the "match_key" field.
+func (_u *RouteHTTPUpdateOne) SetMatchKey(v string) *RouteHTTPUpdateOne {
+	_u.mutation.SetMatchKey(v)
+	return _u
+}
+
+// SetNillableMatchKey sets the "match_key" field if the given value is not nil.
+func (_u *RouteHTTPUpdateOne) SetNillableMatchKey(v *string) *RouteHTTPUpdateOne {
+	if v != nil {
+		_u.SetMatchKey(*v)
+	}
 	return _u
 }
 
@@ -773,8 +823,16 @@ func (_u *RouteHTTPUpdateOne) sqlSave(ctx context.Context) (_node *RouteHTTP, er
 	if value, ok := _u.mutation.HeaderMatches(); ok {
 		_spec.SetField(routehttp.FieldHeaderMatches, field.TypeJSON, value)
 	}
+	if value, ok := _u.mutation.AppendedHeaderMatches(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, routehttp.FieldHeaderMatches, value)
+		})
+	}
 	if _u.mutation.HeaderMatchesCleared() {
 		_spec.ClearField(routehttp.FieldHeaderMatches, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.MatchKey(); ok {
+		_spec.SetField(routehttp.FieldMatchKey, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.TLSMode(); ok {
 		_spec.SetField(routehttp.FieldTLSMode, field.TypeEnum, value)
