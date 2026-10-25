@@ -43,6 +43,10 @@ type RunOptions struct {
 	Getenv  func(string) string // os.Getenv; for the proxy variables
 	Now     func() time.Time
 	Logger  *slog.Logger
+	// LiveLog, if set, is Logger's live log: the agent then runs live-log operations from it
+	// (docs/03-connections.md, "Control session"). The built-in agents of an all-in-one have
+	// none, as their log is the controller's.
+	LiveLog *telemetry.LiveLog
 	// Listening, if set, is called once the connector runs.
 	Listening func()
 	// ControlDial connects the control plane to a controller endpoint; nil dials TCP.
@@ -155,7 +159,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		update = &agent.UpdateOptions{Dir: filepath.Join(cfg.StateDir, "update"), Policy: watcher.Current, Variant: version.Variant}
 	}
 	ctl, err = agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
-		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, Update: update,
+		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, LiveLog: o.LiveLog, Update: update,
 		Dial: o.ControlDial, Fallback: sessions.ControlConn, OnProbeTarget: targets.Probe,
 		SessionStatus: func() *agentv1.Status {
 			return &agentv1.Status{Readiness: applier.Readiness(), ReadinessComplete: true}

@@ -42,6 +42,10 @@ func NewLogger(w io.Writer, cfg LogConfig) (*slog.Logger, error) {
 	}
 }
 
+// ParseLevel reads a level as the boot files and live logs name it: debug, info (also ""), warn
+// or error.
+func ParseLevel(s string) (slog.Level, error) { return parseLevel(s) }
+
 func parseLevel(s string) (slog.Level, error) {
 	switch s {
 	case "debug":

@@ -243,9 +243,13 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   - [R] **Live logs** (`kind = logs`): the agent tees its log records, after the logger's
     redaction and a text pass over each message ([04](04-security.md#secrets-at-rest-and-in-logs)),
     into a bounded buffer per operation; a slow viewer loses the oldest lines, marked with how many
-    were dropped, and never slows the agent. `params` name a minimum level and a text filter; a
-    viewer may raise the agent's level to `debug` for the operation's life, which ends with the
-    operation ([D140](14-open-decisions.md#engineering)). Limits are in the timeout table.
+    were dropped, and never slows the agent. `params` name a minimum level and a text filter, which
+    matches the redacted line, so it cannot search for a secret; a viewer may raise the level to
+    `debug` for the operation's life ([D140](14-open-decisions.md#engineering)): the operation
+    then gets the agent's debug records, while the agent's own log keeps its configured level.
+    Limits are in the timeout table. The built-in connector and gateway of an all-in-one run no
+    live logs: their log is the controller's, which holds every org's activity, and the host's
+    journal shows it.
 - **Large items** (certificate chains, function bundles) are referenced by content hash inside the
   snapshot and fetched with `FetchResource`, so snapshots stay small and unchanged resources are not
   re-sent. An agent can fetch only an item that one of its own snapshots names with that hash, among
