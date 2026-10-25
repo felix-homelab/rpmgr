@@ -18,7 +18,8 @@ list of targets: TCP connections and UDP flows on the port go to the same target
 instead of a TCP and a UDP route that you would have to keep in step by hand.
 
 For HTTP services use an [HTTP route](http.md), and for TLS services that should be reached by
-name on port 443 use [TLS passthrough](tls-passthrough.md).
+name on port 443 use [TLS passthrough](tls-passthrough.md). Many TCP services behind one port, each
+chosen by name through an HTTP proxy, are [CONNECT routes](#connect-routes).
 
 ## How it works
 
@@ -171,8 +172,55 @@ The hostnames' DNS records must point at the group's gateways; rpmgr does not pu
 
 TCP, UDP and "TCP and UDP" routes apply the IP rules of their access policies. A refused TCP
 connection is reset before it reaches a connector, and a refused UDP datagram is dropped. A policy
-with a basic-auth rule cannot be attached, as a TCP or UDP client cannot answer it
-([Access policies](../access-policies.md)).
+with a basic-auth rule cannot be attached, as a TCP or UDP client cannot answer it, except to a
+CONNECT route whose listener asks for basic auth ([Access policies](../access-policies.md)).
+
+## CONNECT routes
+
+A `tcp` route in `http_connect` mode takes no port of its own: the organisation's CONNECT routes
+on a gateway group share a **CONNECT listener**, one port, and a client picks the route by name
+through the listener as through an HTTP proxy, with `CONNECT <name>:<port>`. That serves many TCP
+services, such as SSH hosts or databases, behind one public port, for clients that can use an HTTP
+proxy.
+
+```sh
+rpmgr create route --tcp --http-connect --name bastion --group eu \
+  --authority bastion.internal --authority jump
+ssh -o ProxyCommand='nc -X connect -x edge.example.com:20001 %h %p' bastion.internal
+```
+
+In the web UI, **Create a route** with **TCP**, then **Listener**: **A CONNECT listener shared with
+other routes (HTTP proxy)**, the **CONNECT names**, one per line, and **Proxy credentials**:
+
+![The form for a new CONNECT route](../images/web/route-new-connect.png)
+
+- **Authorities** are the names clients ask for, compared in lower case; the port of the CONNECT is
+  ignored. Each name is one route's on its listener.
+- **Authentication mode**, the same for every route of a listener:
+  - `none` (the default): plain CONNECT, IP and rate-limit rules only.
+  - `tls-basic`: the listener speaks TLS, an HTTPS proxy, with the listener's hostname under a
+    verified domain (`--connect-hostname`), and asks for the users of a basic-auth access policy.
+    Its certificate is the uploaded one you name with `--connect-certificate`; without it, an
+    uploaded certificate that covers the hostname, or else one that rpmgr obtains and renews from
+    the ACME CA, as for http routes. Until there is one, the route shows its gateways waiting for
+    the certificate. Naming a renewed certificate on one route of the listener replaces it for all
+    its routes and keeps the port.
+  - `plain-basic`: plain CONNECT that asks for a basic-auth user. **The password crosses the
+    network in the clear**: anyone on the path between client and gateway can read and use it.
+    The command line, the API and the web UI warn every time. Use it only for clients that cannot
+    speak to an HTTPS proxy.
+  - In both basic modes, a route without an access policy that has a basic-auth rule admits no
+    one; the command line, the API and the web UI warn about it.
+- **The port:** `--port` names a listener of the organisation with the same mode, or a free port
+  of the pools, which becomes a new listener; without it, the route joins the organisation's
+  listener of its mode in the group, or opens one. A listener counts once against the port quota
+  and closes with its last route. A port of another mode is refused with `CONNECT_MODE_MISMATCH`.
+- A route's listener mode cannot change; changing its authentication mode or listener hostname
+  moves it to another listener, and its port changes. Gateways of earlier releases do not serve CONNECT routes
+  until they are upgraded.
+
+The rules a client meets, and its answers, are in
+[03](../../03-connections.md#http-connect-routes-phase-2).
 
 ## What clients see
 

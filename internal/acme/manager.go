@@ -31,10 +31,12 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 )
 
 // JobEvery is how often the ACME job looks for certificates to obtain or renew
@@ -69,11 +71,15 @@ type failing struct {
 var ErrWildcard = errors.New("acme: a wildcard needs DNS-01 (Phase 2); upload a certificate for it")
 
 // ErrNotWanted is returned by Renew for a hostname of no enabled http route in acme mode.
-var ErrNotWanted = errors.New("acme: no enabled http route in acme mode or gateway has the hostname")
+var ErrNotWanted = errors.New("acme: no enabled http route in acme mode, gateway or CONNECT listener has the hostname")
 
 // ErrWSSNotVerified is the reason a gateway's WSS hostname gets no certificate, or no renewal: it
 // lies under no verified domain of the gateway's org any more.
 var ErrWSSNotVerified = errors.New("acme: the WSS hostname lies under no verified domain of the gateway's org")
+
+// ErrConnectNotVerified is the reason a TLS CONNECT listener's hostname gets no certificate, or
+// no renewal: it lies under no verified domain of the listener's org any more.
+var ErrConnectNotVerified = errors.New("acme: the CONNECT listener's hostname lies under no verified domain of its org")
 
 // ManagerOptions configure a Manager.
 type ManagerOptions struct {
@@ -287,9 +293,10 @@ func (m *Manager) RenewAsync(ctx context.Context, org, name string) (bool, error
 	return true, nil
 }
 
-// wanted lists the hostnames of enabled http routes in acme mode, and the WSS hostnames of the
-// gateways that are not decommissioned and have no uploaded certificate of their org that covers
-// them, each once; blocked holds those that may not have a certificate, with the reason.
+// wanted lists the hostnames of enabled http routes in acme mode, the WSS hostnames of the
+// gateways that are not decommissioned, and the hostnames of the TLS CONNECT listeners with an
+// enabled route and no certificate of their own, each once, where no uploaded certificate of the
+// org covers them; blocked holds those that may not have a certificate, with the reason.
 func (m *Manager) wanted() (out []wanted, blocked map[wanted]error, err error) {
 	blocked = map[wanted]error{}
 	add := func(w wanted) {
@@ -313,24 +320,39 @@ func (m *Manager) wanted() (out []wanted, blocked map[wanted]error, err error) {
 				add(wanted{org: h.OrgID, name: h.Hostname})
 			}
 		}
+		// A name of the org's own: an upload that covers it serves it (certs.Gateway), and one
+		// under no verified domain of the org is blocked with the reason.
+		own := func(w wanted, unverified error) error {
+			uploaded, err := certs.UploadedCovering(m.o.Sys, tx.Certificate, w.org, w.name)
+			if err != nil || uploaded != nil {
+				return err
+			}
+			add(w)
+			if _, err := domains.Covering(m.o.Sys, tx, w.org, w.name); errors.Is(err, domains.ErrNotOwned) {
+				blocked[w] = unverified
+			} else if err != nil {
+				return err
+			}
+			return nil
+		}
 		gws, err := tx.Gateway.Query().Where(gateway.WssHostnameNotNil(), gateway.DecommissionedAtIsNil()).
 			Order(ent.Asc(gateway.FieldWssHostname)).All(m.o.Sys)
 		if err != nil {
 			return err
 		}
 		for _, gw := range gws {
-			w := wanted{org: gw.OrgID, name: *gw.WssHostname}
-			uploaded, err := certs.UploadedCovering(m.o.Sys, tx, gw.OrgID, w.name)
-			if err != nil {
+			if err := own(wanted{org: gw.OrgID, name: *gw.WssHostname}, ErrWSSNotVerified); err != nil {
 				return err
 			}
-			if uploaded != nil {
-				continue // the upload serves it (certs.Gateway)
-			}
-			add(w)
-			if _, err := domains.Covering(m.o.Sys, tx, gw.OrgID, w.name); errors.Is(err, domains.ErrNotOwned) {
-				blocked[w] = ErrWSSNotVerified
-			} else if err != nil {
+		}
+		listeners, err := tx.ConnectListener.Query().Where(connectlistener.AuthModeEQ(connectlistener.AuthModeTLSBasic),
+			connectlistener.CertificateIDIsNil(), connectlistener.HasRoutesWith(routetcp.HasRouteWith(route.Enabled(true)))).
+			Order(ent.Asc(connectlistener.FieldHostname), ent.Asc(connectlistener.FieldID)).All(m.o.Sys)
+		if err != nil {
+			return err
+		}
+		for _, l := range listeners {
+			if err := own(wanted{org: l.OrgID, name: l.Hostname}, ErrConnectNotVerified); err != nil {
 				return err
 			}
 		}

@@ -245,6 +245,14 @@ later.
   certificate with the error recorded. A wildcard hostname in `acme` mode is refused with that
   reason, as its certificate needs DNS-01 (Phase 2, R42). The ACME client honours `HTTPS_PROXY`,
   else `ALL_PROXY`, and `NO_PROXY` (R44, [D93](14-open-decisions.md#engineering)).
+- **ACME for CONNECT listeners** (Phase 2) [R]: the job treats the hostname of a TLS CONNECT
+  listener with an enabled route and no certificate of its own as it treats a WSS hostname
+  ([Route edge rules](#route-edge-rules)): an uploaded certificate of the listener's org that
+  covers the name serves it instead; otherwise the job obtains and renews one, with its challenges
+  answered by the gateways of the listener's group, which alone get it. A hostname that lies
+  under no verified domain of the org any more is not renewed: its row records the reason, and
+  the certificate it has serves until it expires. A listener that closes with its last route
+  takes its hostname out of the job ([03](03-connections.md#http-connect-routes-phase-2)).
 - **Failed ACME attempts** [R]: a hostname whose attempt failed, such as one whose DNS does not
   point at its gateways yet, must not use up the account's limits at the CA. Let's Encrypt allows
   5 failed authorizations per name and account an hour, and pauses a name after 1 152 failures in
@@ -687,9 +695,10 @@ capabilities, so a gateway of an earlier release never serves a route without th
 ([03](03-connections.md#versioning-and-capabilities)).
 
 - **Reserved path and identity headers.** `/.rpmgr/` on an http route hostname never goes
-  upstream, and the gateway removes `Rpmgr-User-Email`, `Rpmgr-User-Subject` and
-  `Rpmgr-User-Groups` from every client request on every http route, so that only the gateway sets
-  them ([03](03-connections.md#http-routes)).
+  upstream, and the gateway removes every header and trailer whose name starts with `Rpmgr-User-`
+  from every client request on every http route, also when the name is spelt with `_` for `-`,
+  which CGI-style servers read alike, so that only the gateway sets them
+  ([03](03-connections.md#http-routes), [D135](14-open-decisions.md#engineering)).
 - **Per-client rate limits** count each client address, or IPv6 /64, in bounded tables on each
   gateway ([03](03-connections.md#access-policies)). A UDP source address can be forged at will, so
   udp flows count in tables of their own: a flood of forged sources never fills the table that

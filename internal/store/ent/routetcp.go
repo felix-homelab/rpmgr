@@ -8,6 +8,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -23,9 +24,11 @@ type RouteTCP struct {
 	// RouteID holds the value of the "route_id" field.
 	RouteID string `json:"route_id,omitempty"`
 	// PortAllocationID holds the value of the "port_allocation_id" field.
-	PortAllocationID string `json:"port_allocation_id,omitempty"`
+	PortAllocationID *string `json:"port_allocation_id,omitempty"`
 	// ListenerMode holds the value of the "listener_mode" field.
 	ListenerMode routetcp.ListenerMode `json:"listener_mode,omitempty"`
+	// ConnectListenerID holds the value of the "connect_listener_id" field.
+	ConnectListenerID *string `json:"connect_listener_id,omitempty"`
 	// IdleTimeoutSeconds holds the value of the "idle_timeout_seconds" field.
 	IdleTimeoutSeconds int `json:"idle_timeout_seconds,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -40,9 +43,11 @@ type RouteTCPEdges struct {
 	Route *Route `json:"route,omitempty"`
 	// Port holds the value of the port edge.
 	Port *PortAllocation `json:"port,omitempty"`
+	// Listener holds the value of the listener edge.
+	Listener *ConnectListener `json:"listener,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // RouteOrErr returns the Route value or an error if the edge
@@ -67,6 +72,17 @@ func (e RouteTCPEdges) PortOrErr() (*PortAllocation, error) {
 	return nil, &NotLoadedError{edge: "port"}
 }
 
+// ListenerOrErr returns the Listener value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e RouteTCPEdges) ListenerOrErr() (*ConnectListener, error) {
+	if e.Listener != nil {
+		return e.Listener, nil
+	} else if e.loadedTypes[2] {
+		return nil, &NotFoundError{label: connectlistener.Label}
+	}
+	return nil, &NotLoadedError{edge: "listener"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*RouteTCP) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
@@ -74,7 +90,7 @@ func (*RouteTCP) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case routetcp.FieldID, routetcp.FieldIdleTimeoutSeconds:
 			values[i] = new(sql.NullInt64)
-		case routetcp.FieldOrgID, routetcp.FieldRouteID, routetcp.FieldPortAllocationID, routetcp.FieldListenerMode:
+		case routetcp.FieldOrgID, routetcp.FieldRouteID, routetcp.FieldPortAllocationID, routetcp.FieldListenerMode, routetcp.FieldConnectListenerID:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -113,13 +129,21 @@ func (_m *RouteTCP) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field port_allocation_id", values[i])
 			} else if value.Valid {
-				_m.PortAllocationID = value.String
+				_m.PortAllocationID = new(string)
+				*_m.PortAllocationID = value.String
 			}
 		case routetcp.FieldListenerMode:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field listener_mode", values[i])
 			} else if value.Valid {
 				_m.ListenerMode = routetcp.ListenerMode(value.String)
+			}
+		case routetcp.FieldConnectListenerID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field connect_listener_id", values[i])
+			} else if value.Valid {
+				_m.ConnectListenerID = new(string)
+				*_m.ConnectListenerID = value.String
 			}
 		case routetcp.FieldIdleTimeoutSeconds:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -148,6 +172,11 @@ func (_m *RouteTCP) QueryRoute() *RouteQuery {
 // QueryPort queries the "port" edge of the RouteTCP entity.
 func (_m *RouteTCP) QueryPort() *PortAllocationQuery {
 	return NewRouteTCPClient(_m.config).QueryPort(_m)
+}
+
+// QueryListener queries the "listener" edge of the RouteTCP entity.
+func (_m *RouteTCP) QueryListener() *ConnectListenerQuery {
+	return NewRouteTCPClient(_m.config).QueryListener(_m)
 }
 
 // Update returns a builder for updating this RouteTCP.
@@ -179,11 +208,18 @@ func (_m *RouteTCP) String() string {
 	builder.WriteString("route_id=")
 	builder.WriteString(_m.RouteID)
 	builder.WriteString(", ")
-	builder.WriteString("port_allocation_id=")
-	builder.WriteString(_m.PortAllocationID)
+	if v := _m.PortAllocationID; v != nil {
+		builder.WriteString("port_allocation_id=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("listener_mode=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ListenerMode))
+	builder.WriteString(", ")
+	if v := _m.ConnectListenerID; v != nil {
+		builder.WriteString("connect_listener_id=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("idle_timeout_seconds=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IdleTimeoutSeconds))

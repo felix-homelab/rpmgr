@@ -72,8 +72,9 @@ type Sessions struct {
 	denyMu sync.Mutex
 
 	mu       sync.Mutex
-	active   map[string]*session // by agent ID
-	ops      map[string]*op      // operations waiting for their OpResult, by ID
+	active   map[string]*session   // by agent ID
+	ops      map[string]*op        // operations waiting for their OpResult, by ID
+	pending  map[string]*pendingOp // operations waiting for their Attach, by ID
 	draining *time.Time
 }
 

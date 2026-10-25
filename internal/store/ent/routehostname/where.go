@@ -78,6 +78,11 @@ func PathPrefix(v string) predicate.RouteHostname {
 	return predicate.RouteHostname(sql.FieldEQ(FieldPathPrefix, v))
 }
 
+// MatchKey applies equality check predicate on the "match_key" field. It's identical to MatchKeyEQ.
+func MatchKey(v string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldEQ(FieldMatchKey, v))
+}
+
 // DomainID applies equality check predicate on the "domain_id" field. It's identical to DomainIDEQ.
 func DomainID(v string) predicate.RouteHostname {
 	return predicate.RouteHostname(sql.FieldEQ(FieldDomainID, v))
@@ -426,6 +431,71 @@ func PathPrefixEqualFold(v string) predicate.RouteHostname {
 // PathPrefixContainsFold applies the ContainsFold predicate on the "path_prefix" field.
 func PathPrefixContainsFold(v string) predicate.RouteHostname {
 	return predicate.RouteHostname(sql.FieldContainsFold(FieldPathPrefix, v))
+}
+
+// MatchKeyEQ applies the EQ predicate on the "match_key" field.
+func MatchKeyEQ(v string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldEQ(FieldMatchKey, v))
+}
+
+// MatchKeyNEQ applies the NEQ predicate on the "match_key" field.
+func MatchKeyNEQ(v string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldNEQ(FieldMatchKey, v))
+}
+
+// MatchKeyIn applies the In predicate on the "match_key" field.
+func MatchKeyIn(vs ...string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldIn(FieldMatchKey, vs...))
+}
+
+// MatchKeyNotIn applies the NotIn predicate on the "match_key" field.
+func MatchKeyNotIn(vs ...string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldNotIn(FieldMatchKey, vs...))
+}
+
+// MatchKeyGT applies the GT predicate on the "match_key" field.
+func MatchKeyGT(v string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldGT(FieldMatchKey, v))
+}
+
+// MatchKeyGTE applies the GTE predicate on the "match_key" field.
+func MatchKeyGTE(v string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldGTE(FieldMatchKey, v))
+}
+
+// MatchKeyLT applies the LT predicate on the "match_key" field.
+func MatchKeyLT(v string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldLT(FieldMatchKey, v))
+}
+
+// MatchKeyLTE applies the LTE predicate on the "match_key" field.
+func MatchKeyLTE(v string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldLTE(FieldMatchKey, v))
+}
+
+// MatchKeyContains applies the Contains predicate on the "match_key" field.
+func MatchKeyContains(v string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldContains(FieldMatchKey, v))
+}
+
+// MatchKeyHasPrefix applies the HasPrefix predicate on the "match_key" field.
+func MatchKeyHasPrefix(v string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldHasPrefix(FieldMatchKey, v))
+}
+
+// MatchKeyHasSuffix applies the HasSuffix predicate on the "match_key" field.
+func MatchKeyHasSuffix(v string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldHasSuffix(FieldMatchKey, v))
+}
+
+// MatchKeyEqualFold applies the EqualFold predicate on the "match_key" field.
+func MatchKeyEqualFold(v string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldEqualFold(FieldMatchKey, v))
+}
+
+// MatchKeyContainsFold applies the ContainsFold predicate on the "match_key" field.
+func MatchKeyContainsFold(v string) predicate.RouteHostname {
+	return predicate.RouteHostname(sql.FieldContainsFold(FieldMatchKey, v))
 }
 
 // DomainIDEQ applies the EQ predicate on the "domain_id" field.

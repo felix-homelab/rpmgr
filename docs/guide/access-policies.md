@@ -1,8 +1,9 @@
 # Access policies
 
-An access policy decides who may reach a route: by the client's IP address on every route type,
-and on HTTP routes with a user name and password (basic auth) or with a header that only your CDN
-or your clients know (a required header). Policies are reusable: one policy,
+An access policy decides who may reach a route and how often: by the client's IP address on every
+route type, on HTTP routes with a user name and password (basic auth) or with a header that only
+your CDN or your clients know (a required header), and at a rate per client on every route type.
+Policies are reusable: one policy,
 such as "office only", can guard many routes. This page is for anyone who publishes services and
 wants to limit who reaches them.
 
@@ -18,7 +19,7 @@ wants to limit who reaches them.
 
 ## The rules
 
-A policy has a name, an optional description and up to 50 rules of four kinds:
+A policy has a name, an optional description and up to 50 rules of five kinds:
 
 | Kind | Web UI | Command line | Applies to |
 |---|---|---|---|
@@ -26,6 +27,7 @@ A policy has a name, an optional description and up to 50 rules of four kinds:
 | Deny addresses | **Deny addresses** | `--rule deny:<cidr>,…` | every route type |
 | Basic auth | **Basic auth (HTTP routes)** | `--rule basic-auth:<user>,…` | HTTP routes only |
 | Required header | **Require a header (HTTP routes)** | `--rule require-header:<header>` | HTTP routes only |
+| Rate limit | **Rate limit per client** | `--rule rate-limit:<per second>[,<burst>]` | every route type |
 
 An address rule holds up to 1000 CIDRs, IPv4 or IPv6, such as `203.0.113.0/24`, `2001:db8::/32`, or
 `198.51.100.7/32` for a single address; an address without a prefix length is refused. A CIDR with
@@ -110,6 +112,25 @@ is refused.
 - A gateway that is older than the rule does not serve a route that applies it until the gateway
   is upgraded; the route's status names the gateway ([Upgrades](install/upgrades.md)).
 
+### Rate limits
+
+A rate-limit rule lets each client make so many requests a second, and a burst of them at once;
+without a burst, a second's worth may come at once. The bounds of both are in
+[03](../03-connections.md#access-policies).
+
+- **What counts:** HTTP requests on an HTTP route, new connections on a TCP or TLS passthrough
+  route, new flows on a UDP route. Traffic on a connection or flow that is open already does not
+  count; the route's own limits cap that ([Route limits](routes/limits.md)).
+- **Who is a client:** an IPv4 address, or an IPv6 /64, so that one host cannot escape with many
+  addresses of its own network. On an HTTP route behind a trusted proxy it is the address the
+  proxy names, as for address rules ([The client's address](#the-clients-address)).
+- **On each gateway, across routes:** every gateway of the group counts on its own, for all the
+  routes that apply the policy together; a client mostly stays with one gateway.
+- A policy has at most one rate-limit rule. With several policies with one on a route, each
+  applies, so the strictest decides.
+- The rule needs gateways of the release that brought it: a gateway of an earlier release does not
+  get a route whose policies carry it ([Route limits](routes/limits.md#gateways-of-an-earlier-release)).
+
 ## Create a policy
 
 ### With the web UI
@@ -123,12 +144,17 @@ is refused.
      enter a **User** and a **Password**;
    - for **Require a header (HTTP routes)**, enter the **Header** and a **Value**, or choose
      **Generate a value**; **Add a value** adds another, up to four.
+   - for **Rate limit per client**, enter the **Requests or new connections a second** and,
+     optionally, how many may come **At once (burst)**.
 
    **Remove the rule** takes a rule out.
 4. Choose **Create the policy**.
 
+![Access policies with an address list and a rate limit](images/web/policies.png)
+
 The list shows each policy's rules in short, such as "allow 192.0.2.0/24", "basic auth: alice,
-bob", "requires header X-Origin-Token", and the routes that use it. **Edit…** changes a policy; **Remove…** removes it, which is
+bob", "requires header X-Origin-Token", "rate limit: 20 a second per client, 50 at once", and the
+routes that use it. **Edit…** changes a policy; **Remove…** removes it, which is
 refused while a route applies it.
 
 ### With the command line
@@ -139,6 +165,12 @@ An allow list for an office network, with one address taken out:
 rpmgr create access-policy --name office-only \
   --rule allow:192.0.2.0/24,2001:db8:10::/48 \
   --rule deny:192.0.2.99/32
+```
+
+Twenty requests or new connections a second per client, fifty at once:
+
+```sh
+rpmgr create access-policy --name polite --rule rate-limit:20,50
 ```
 
 A basic-auth policy. Passwords are never given as arguments: they come from a file of
@@ -212,6 +244,10 @@ rule of any policy wins over every allow rule, and the web UI offers no order to
 | HTTP | 403 | 403 without the header or with a wrong value | 401 without or with wrong credentials, 429 after too many attempts |
 | TCP, TLS passthrough | the connection is reset before it reaches a connector | — | — |
 | UDP | the datagram is dropped and counted; no flow starts | — | — |
+
+Over a rate-limit rule, an HTTP request gets 429 with `Retry-After`, a TCP or TLS passthrough
+connection is reset before it reaches a connector, and a datagram that would start a flow is
+dropped and counted.
 
 ## Changes and open connections
 

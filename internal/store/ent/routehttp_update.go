@@ -9,7 +9,9 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -43,14 +45,34 @@ func (_u *RouteHTTPUpdate) SetNillablePathPrefix(v *string) *RouteHTTPUpdate {
 }
 
 // SetHeaderMatches sets the "header_matches" field.
-func (_u *RouteHTTPUpdate) SetHeaderMatches(v map[string]string) *RouteHTTPUpdate {
+func (_u *RouteHTTPUpdate) SetHeaderMatches(v []headermatch.Match) *RouteHTTPUpdate {
 	_u.mutation.SetHeaderMatches(v)
+	return _u
+}
+
+// AppendHeaderMatches appends value to the "header_matches" field.
+func (_u *RouteHTTPUpdate) AppendHeaderMatches(v []headermatch.Match) *RouteHTTPUpdate {
+	_u.mutation.AppendHeaderMatches(v)
 	return _u
 }
 
 // ClearHeaderMatches clears the value of the "header_matches" field.
 func (_u *RouteHTTPUpdate) ClearHeaderMatches() *RouteHTTPUpdate {
 	_u.mutation.ClearHeaderMatches()
+	return _u
+}
+
+// SetMatchKey sets the "match_key" field.
+func (_u *RouteHTTPUpdate) SetMatchKey(v string) *RouteHTTPUpdate {
+	_u.mutation.SetMatchKey(v)
+	return _u
+}
+
+// SetNillableMatchKey sets the "match_key" field if the given value is not nil.
+func (_u *RouteHTTPUpdate) SetNillableMatchKey(v *string) *RouteHTTPUpdate {
+	if v != nil {
+		_u.SetMatchKey(*v)
+	}
 	return _u
 }
 
@@ -238,6 +260,48 @@ func (_u *RouteHTTPUpdate) SetNillableMaintenanceMessage(v *string) *RouteHTTPUp
 	return _u
 }
 
+// SetUpstreamResponseHeaderTimeoutSeconds sets the "upstream_response_header_timeout_seconds" field.
+func (_u *RouteHTTPUpdate) SetUpstreamResponseHeaderTimeoutSeconds(v int) *RouteHTTPUpdate {
+	_u.mutation.ResetUpstreamResponseHeaderTimeoutSeconds()
+	_u.mutation.SetUpstreamResponseHeaderTimeoutSeconds(v)
+	return _u
+}
+
+// SetNillableUpstreamResponseHeaderTimeoutSeconds sets the "upstream_response_header_timeout_seconds" field if the given value is not nil.
+func (_u *RouteHTTPUpdate) SetNillableUpstreamResponseHeaderTimeoutSeconds(v *int) *RouteHTTPUpdate {
+	if v != nil {
+		_u.SetUpstreamResponseHeaderTimeoutSeconds(*v)
+	}
+	return _u
+}
+
+// AddUpstreamResponseHeaderTimeoutSeconds adds value to the "upstream_response_header_timeout_seconds" field.
+func (_u *RouteHTTPUpdate) AddUpstreamResponseHeaderTimeoutSeconds(v int) *RouteHTTPUpdate {
+	_u.mutation.AddUpstreamResponseHeaderTimeoutSeconds(v)
+	return _u
+}
+
+// SetUpstreamIdleTimeoutSeconds sets the "upstream_idle_timeout_seconds" field.
+func (_u *RouteHTTPUpdate) SetUpstreamIdleTimeoutSeconds(v int) *RouteHTTPUpdate {
+	_u.mutation.ResetUpstreamIdleTimeoutSeconds()
+	_u.mutation.SetUpstreamIdleTimeoutSeconds(v)
+	return _u
+}
+
+// SetNillableUpstreamIdleTimeoutSeconds sets the "upstream_idle_timeout_seconds" field if the given value is not nil.
+func (_u *RouteHTTPUpdate) SetNillableUpstreamIdleTimeoutSeconds(v *int) *RouteHTTPUpdate {
+	if v != nil {
+		_u.SetUpstreamIdleTimeoutSeconds(*v)
+	}
+	return _u
+}
+
+// AddUpstreamIdleTimeoutSeconds adds value to the "upstream_idle_timeout_seconds" field.
+func (_u *RouteHTTPUpdate) AddUpstreamIdleTimeoutSeconds(v int) *RouteHTTPUpdate {
+	_u.mutation.AddUpstreamIdleTimeoutSeconds(v)
+	return _u
+}
+
 // SetCertificate sets the "certificate" edge to the Certificate entity.
 func (_u *RouteHTTPUpdate) SetCertificate(v *Certificate) *RouteHTTPUpdate {
 	return _u.SetCertificateID(v.ID)
@@ -313,6 +377,16 @@ func (_u *RouteHTTPUpdate) check() error {
 			return &ValidationError{Name: "maintenance_message", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.maintenance_message": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UpstreamResponseHeaderTimeoutSeconds(); ok {
+		if err := routehttp.UpstreamResponseHeaderTimeoutSecondsValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_response_header_timeout_seconds", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.upstream_response_header_timeout_seconds": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.UpstreamIdleTimeoutSeconds(); ok {
+		if err := routehttp.UpstreamIdleTimeoutSecondsValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_idle_timeout_seconds", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.upstream_idle_timeout_seconds": %w`, err)}
+		}
+	}
 	if _u.mutation.RouteCleared() && len(_u.mutation.RouteIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "RouteHTTP.route"`)
 	}
@@ -337,8 +411,16 @@ func (_u *RouteHTTPUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.HeaderMatches(); ok {
 		_spec.SetField(routehttp.FieldHeaderMatches, field.TypeJSON, value)
 	}
+	if value, ok := _u.mutation.AppendedHeaderMatches(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, routehttp.FieldHeaderMatches, value)
+		})
+	}
 	if _u.mutation.HeaderMatchesCleared() {
 		_spec.ClearField(routehttp.FieldHeaderMatches, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.MatchKey(); ok {
+		_spec.SetField(routehttp.FieldMatchKey, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.TLSMode(); ok {
 		_spec.SetField(routehttp.FieldTLSMode, field.TypeEnum, value)
@@ -384,6 +466,18 @@ func (_u *RouteHTTPUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.MaintenanceMessage(); ok {
 		_spec.SetField(routehttp.FieldMaintenanceMessage, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UpstreamResponseHeaderTimeoutSeconds(); ok {
+		_spec.SetField(routehttp.FieldUpstreamResponseHeaderTimeoutSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedUpstreamResponseHeaderTimeoutSeconds(); ok {
+		_spec.AddField(routehttp.FieldUpstreamResponseHeaderTimeoutSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.UpstreamIdleTimeoutSeconds(); ok {
+		_spec.SetField(routehttp.FieldUpstreamIdleTimeoutSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedUpstreamIdleTimeoutSeconds(); ok {
+		_spec.AddField(routehttp.FieldUpstreamIdleTimeoutSeconds, field.TypeInt, value)
 	}
 	if _u.mutation.CertificateCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -449,14 +543,34 @@ func (_u *RouteHTTPUpdateOne) SetNillablePathPrefix(v *string) *RouteHTTPUpdateO
 }
 
 // SetHeaderMatches sets the "header_matches" field.
-func (_u *RouteHTTPUpdateOne) SetHeaderMatches(v map[string]string) *RouteHTTPUpdateOne {
+func (_u *RouteHTTPUpdateOne) SetHeaderMatches(v []headermatch.Match) *RouteHTTPUpdateOne {
 	_u.mutation.SetHeaderMatches(v)
+	return _u
+}
+
+// AppendHeaderMatches appends value to the "header_matches" field.
+func (_u *RouteHTTPUpdateOne) AppendHeaderMatches(v []headermatch.Match) *RouteHTTPUpdateOne {
+	_u.mutation.AppendHeaderMatches(v)
 	return _u
 }
 
 // ClearHeaderMatches clears the value of the "header_matches" field.
 func (_u *RouteHTTPUpdateOne) ClearHeaderMatches() *RouteHTTPUpdateOne {
 	_u.mutation.ClearHeaderMatches()
+	return _u
+}
+
+// SetMatchKey sets the "match_key" field.
+func (_u *RouteHTTPUpdateOne) SetMatchKey(v string) *RouteHTTPUpdateOne {
+	_u.mutation.SetMatchKey(v)
+	return _u
+}
+
+// SetNillableMatchKey sets the "match_key" field if the given value is not nil.
+func (_u *RouteHTTPUpdateOne) SetNillableMatchKey(v *string) *RouteHTTPUpdateOne {
+	if v != nil {
+		_u.SetMatchKey(*v)
+	}
 	return _u
 }
 
@@ -644,6 +758,48 @@ func (_u *RouteHTTPUpdateOne) SetNillableMaintenanceMessage(v *string) *RouteHTT
 	return _u
 }
 
+// SetUpstreamResponseHeaderTimeoutSeconds sets the "upstream_response_header_timeout_seconds" field.
+func (_u *RouteHTTPUpdateOne) SetUpstreamResponseHeaderTimeoutSeconds(v int) *RouteHTTPUpdateOne {
+	_u.mutation.ResetUpstreamResponseHeaderTimeoutSeconds()
+	_u.mutation.SetUpstreamResponseHeaderTimeoutSeconds(v)
+	return _u
+}
+
+// SetNillableUpstreamResponseHeaderTimeoutSeconds sets the "upstream_response_header_timeout_seconds" field if the given value is not nil.
+func (_u *RouteHTTPUpdateOne) SetNillableUpstreamResponseHeaderTimeoutSeconds(v *int) *RouteHTTPUpdateOne {
+	if v != nil {
+		_u.SetUpstreamResponseHeaderTimeoutSeconds(*v)
+	}
+	return _u
+}
+
+// AddUpstreamResponseHeaderTimeoutSeconds adds value to the "upstream_response_header_timeout_seconds" field.
+func (_u *RouteHTTPUpdateOne) AddUpstreamResponseHeaderTimeoutSeconds(v int) *RouteHTTPUpdateOne {
+	_u.mutation.AddUpstreamResponseHeaderTimeoutSeconds(v)
+	return _u
+}
+
+// SetUpstreamIdleTimeoutSeconds sets the "upstream_idle_timeout_seconds" field.
+func (_u *RouteHTTPUpdateOne) SetUpstreamIdleTimeoutSeconds(v int) *RouteHTTPUpdateOne {
+	_u.mutation.ResetUpstreamIdleTimeoutSeconds()
+	_u.mutation.SetUpstreamIdleTimeoutSeconds(v)
+	return _u
+}
+
+// SetNillableUpstreamIdleTimeoutSeconds sets the "upstream_idle_timeout_seconds" field if the given value is not nil.
+func (_u *RouteHTTPUpdateOne) SetNillableUpstreamIdleTimeoutSeconds(v *int) *RouteHTTPUpdateOne {
+	if v != nil {
+		_u.SetUpstreamIdleTimeoutSeconds(*v)
+	}
+	return _u
+}
+
+// AddUpstreamIdleTimeoutSeconds adds value to the "upstream_idle_timeout_seconds" field.
+func (_u *RouteHTTPUpdateOne) AddUpstreamIdleTimeoutSeconds(v int) *RouteHTTPUpdateOne {
+	_u.mutation.AddUpstreamIdleTimeoutSeconds(v)
+	return _u
+}
+
 // SetCertificate sets the "certificate" edge to the Certificate entity.
 func (_u *RouteHTTPUpdateOne) SetCertificate(v *Certificate) *RouteHTTPUpdateOne {
 	return _u.SetCertificateID(v.ID)
@@ -732,6 +888,16 @@ func (_u *RouteHTTPUpdateOne) check() error {
 			return &ValidationError{Name: "maintenance_message", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.maintenance_message": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UpstreamResponseHeaderTimeoutSeconds(); ok {
+		if err := routehttp.UpstreamResponseHeaderTimeoutSecondsValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_response_header_timeout_seconds", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.upstream_response_header_timeout_seconds": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.UpstreamIdleTimeoutSeconds(); ok {
+		if err := routehttp.UpstreamIdleTimeoutSecondsValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_idle_timeout_seconds", err: fmt.Errorf(`ent: validator failed for field "RouteHTTP.upstream_idle_timeout_seconds": %w`, err)}
+		}
+	}
 	if _u.mutation.RouteCleared() && len(_u.mutation.RouteIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "RouteHTTP.route"`)
 	}
@@ -773,8 +939,16 @@ func (_u *RouteHTTPUpdateOne) sqlSave(ctx context.Context) (_node *RouteHTTP, er
 	if value, ok := _u.mutation.HeaderMatches(); ok {
 		_spec.SetField(routehttp.FieldHeaderMatches, field.TypeJSON, value)
 	}
+	if value, ok := _u.mutation.AppendedHeaderMatches(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, routehttp.FieldHeaderMatches, value)
+		})
+	}
 	if _u.mutation.HeaderMatchesCleared() {
 		_spec.ClearField(routehttp.FieldHeaderMatches, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.MatchKey(); ok {
+		_spec.SetField(routehttp.FieldMatchKey, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.TLSMode(); ok {
 		_spec.SetField(routehttp.FieldTLSMode, field.TypeEnum, value)
@@ -820,6 +994,18 @@ func (_u *RouteHTTPUpdateOne) sqlSave(ctx context.Context) (_node *RouteHTTP, er
 	}
 	if value, ok := _u.mutation.MaintenanceMessage(); ok {
 		_spec.SetField(routehttp.FieldMaintenanceMessage, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UpstreamResponseHeaderTimeoutSeconds(); ok {
+		_spec.SetField(routehttp.FieldUpstreamResponseHeaderTimeoutSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedUpstreamResponseHeaderTimeoutSeconds(); ok {
+		_spec.AddField(routehttp.FieldUpstreamResponseHeaderTimeoutSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.UpstreamIdleTimeoutSeconds(); ok {
+		_spec.SetField(routehttp.FieldUpstreamIdleTimeoutSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedUpstreamIdleTimeoutSeconds(); ok {
+		_spec.AddField(routehttp.FieldUpstreamIdleTimeoutSeconds, field.TypeInt, value)
 	}
 	if _u.mutation.CertificateCleared() {
 		edge := &sqlgraph.EdgeSpec{
