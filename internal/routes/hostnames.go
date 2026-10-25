@@ -13,6 +13,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 )
 
 // Errors of the hostname functions.
@@ -33,11 +34,20 @@ func AddHostname(ctx context.Context, tx *ent.Tx, routeID, hostname, pathPrefix 
 		return nil, err
 	}
 	var rtype routehostname.RouteType
+	key := ""
 	switch r.Type {
 	case route.TypeHTTP:
 		rtype = routehostname.RouteTypeHTTP
 		if pathPrefix != "" && !strings.HasPrefix(pathPrefix, "/") {
 			return nil, ErrPathPrefix
+		}
+		// The route's header matches let it share the hostname and prefix with another route.
+		h, err := tx.RouteHTTP.Query().Where(routehttp.RouteID(r.ID)).Only(ctx)
+		if err != nil && !ent.IsNotFound(err) {
+			return nil, err
+		}
+		if h != nil {
+			key = h.MatchKey
 		}
 	case route.TypeTLSPassthrough:
 		rtype = routehostname.RouteTypeTLSPassthrough
@@ -65,7 +75,7 @@ func AddHostname(ctx context.Context, tx *ent.Tx, routeID, hostname, pathPrefix 
 		}
 	}
 	h, err := tx.RouteHostname.Create().SetOrgID(r.OrgID).SetRouteID(r.ID).SetGatewayGroupID(r.GatewayGroupID).SetRouteType(rtype).
-		SetHostname(name).SetPathPrefix(pathPrefix).SetDomainID(d.ID).Save(ctx)
+		SetHostname(name).SetPathPrefix(pathPrefix).SetMatchKey(key).SetDomainID(d.ID).Save(ctx)
 	if store.IsUniqueViolation(err) {
 		return nil, fmt.Errorf("%w: %s%s", ErrHostnameTaken, name, pathPrefix)
 	}

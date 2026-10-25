@@ -15,6 +15,7 @@ import (
 	"net/http/httptrace"
 	"net/http/httputil"
 	"net/netip"
+	"net/textproto"
 	"net/url"
 	"reflect"
 	"slices"
@@ -32,6 +33,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/tunnel"
 )
 
@@ -99,6 +101,9 @@ type HTTPRoute struct {
 	// shows MaintenanceMessage, and opens no stream.
 	Maintenance        bool
 	MaintenanceMessage string
+	// HeaderMatches are the request headers a request must carry for the route, canonical and
+	// sorted (docs/03-connections.md, "HTTP routes").
+	HeaderMatches []headermatch.Match
 	// Limit is the route's limit state; nil limits nothing.
 	Limit *RouteLimit
 }
@@ -164,12 +169,21 @@ type HTTPRoutes struct {
 }
 
 type httpTable struct {
-	byHost map[string][]httpEntry // longest prefix first
+	byHost map[string][]httpEntry // in the order routeFor tries them
 }
 
 type httpEntry struct {
-	prefix string
-	route  *routeTransport
+	prefix  string
+	matches []headermatch.Match
+	id      string
+	route   *routeTransport
+}
+
+// compareEntries orders a hostname's entries as routeFor tries them: the longest path prefix
+// first; among the same prefix, more header matches first; then the smaller route ID, the route
+// created first.
+func compareEntries(a, b httpEntry) int {
+	return cmp.Or(len(b.prefix)-len(a.prefix), len(b.matches)-len(a.matches), strings.Compare(a.id, b.id))
 }
 
 // routeTransport is one route's proxy, whose transport pools the route's tunnel streams. route
@@ -508,7 +522,7 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 		h.domainToken(w, r, host, id)
 		return
 	}
-	rt := h.routeFor(r.Host, r.URL.Path)
+	rt := h.routeFor(r.Host, r.URL.Path, r.Header)
 	if token, ok := strings.CutPrefix(r.URL.Path, acmePath); ok {
 		if h.o.Challenges != nil {
 			if ka, ok := h.o.Challenges(strings.ToLower(host), token); ok {
@@ -530,6 +544,10 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 			h.o.Fallback80.ServeHTTP(w, r)
 			return
 		}
+		h.o.Pages.writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+		return
+	}
+	if reservedPath(r.URL.Path) {
 		h.o.Pages.writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 		return
 	}
@@ -558,18 +576,22 @@ func (h *HTTPRoutes) fallback(host string) bool {
 	})
 }
 
+// httpCipherSuites are the TLS 1.2 suites of public TLS: ECDHE with AES-GCM or ChaCha20-Poly1305
+// (docs/04-security.md, "Controller certificates"); TLS 1.3's are not configurable.
+var httpCipherSuites = []uint16{
+	tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+	tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+	tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+}
+
 // TLSConfig is the configuration the router terminates http routes' TLS with: TLS 1.3, or TLS
 // 1.2 with forward secrecy and AEAD only, for public clients (docs/04-security.md, "Controller
 // certificates"); HTTP/2 or HTTP/1.1; and the route certificate for the server name.
 func (h *HTTPRoutes) TLSConfig() *tls.Config {
 	return &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		CipherSuites: []uint16{ // TLS 1.2 only; TLS 1.3's are not configurable
-			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-		},
-		NextProtos: []string{"h2", "http/1.1"},
+		MinVersion:   tls.VersionTLS12,
+		CipherSuites: httpCipherSuites,
+		NextProtos:   []string{"h2", "http/1.1"},
 		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			if h.o.Certificates != nil {
 				if c := h.o.Certificates.ForName(hello.ServerName); c != nil {
@@ -697,11 +719,12 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		next[r.ID] = rt
 		h.upstreamOf(r.ID).set(r.TLS)
 		for _, host := range r.Hosts {
-			t.byHost[host.Hostname] = append(t.byHost[host.Hostname], httpEntry{prefix: host.PathPrefix, route: rt})
+			t.byHost[host.Hostname] = append(t.byHost[host.Hostname],
+				httpEntry{prefix: host.PathPrefix, matches: r.HeaderMatches, id: r.ID, route: rt})
 		}
 	}
 	for _, entries := range t.byHost {
-		slices.SortFunc(entries, func(a, b httpEntry) int { return len(b.prefix) - len(a.prefix) })
+		slices.SortFunc(entries, compareEntries)
 	}
 	h.table.Store(t)
 	var rules []BasicAuthRule
@@ -795,6 +818,7 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 			if len(route.BasicAuth) > 0 {
 				pr.Out.Header.Del("Authorization") // the gateway's credentials, not the upstream's
 			}
+			dropIdentityHeaders(pr.Out.Header, pr.Out.Trailer)
 			for _, rh := range route.RequireHeader {
 				pr.Out.Header.Del(rh.Name) // a shared secret between the client and the gateway
 			}
@@ -1021,7 +1045,7 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if refuseUnclean(w, r) {
 		return
 	}
-	rt := h.routeFor(r.Host, r.URL.Path)
+	rt := h.routeFor(r.Host, r.URL.Path, r.Header)
 	if rt == nil {
 		// A name this gateway does not route, on a connection of another name: a client that
 		// reused the connection, such as an HTTP/2 one under a wildcard certificate, asks again
@@ -1037,6 +1061,10 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if age := rt.route.Load().HSTS; age > 0 && r.TLS != nil {
 		w.Header().Set("Strict-Transport-Security", "max-age="+strconv.Itoa(age))
+	}
+	if reservedPath(r.URL.Path) {
+		h.o.Pages.writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+		return
 	}
 	h.proxy(w, r, rt)
 }
@@ -1201,19 +1229,52 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 	rt.proxy.ServeHTTP(w, r)
 }
 
-// routeFor returns the route for a request's host, with or without a port, and path, or nil.
-func (h *HTTPRoutes) routeFor(host, path string) *routeTransport {
+// routeFor returns the route for a request's host, with or without a port, path and header, or
+// nil: the first entry of the host whose prefix the path falls under and whose header matches
+// all hold.
+func (h *HTTPRoutes) routeFor(host, path string, header http.Header) *routeTransport {
 	entries, _ := h.table.Load().lookup(hostOnly(host))
 	// A path with ";" parameters goes to the longest prefix that either it or its form without them
 	// matches, so a backend that drops the parameters never gets a path that a narrower route
 	// serves through a broader one.
 	bare := withoutParams(path)
 	for _, e := range entries {
-		if matchPrefix(path, e.prefix) || matchPrefix(bare, e.prefix) {
+		if (matchPrefix(path, e.prefix) || matchPrefix(bare, e.prefix)) && headermatch.Holds(header, e.matches) {
 			return e.route
 		}
 	}
 	return nil
+}
+
+// reservedPath reports whether a request's decoded path lies under /.rpmgr/, the gateway's own
+// on every http route hostname, which never goes upstream (docs/03-connections.md, "HTTP
+// routes"); case and ";" parameters do not matter, as a backend might ignore them.
+func reservedPath(p string) bool {
+	for _, q := range []string{p, withoutParams(p)} {
+		q = strings.ToLower(q)
+		if q == "/.rpmgr" || strings.HasPrefix(q, "/.rpmgr/") {
+			return true
+		}
+	}
+	return false
+}
+
+// identityPrefix starts the names of the headers only the gateway sets, after an OIDC sign-in
+// (docs/04-security.md, "Route edge rules", D135).
+const identityPrefix = "Rpmgr-User-"
+
+// dropIdentityHeaders removes from a request's headers and trailers every field a client sent
+// whose name starts with identityPrefix, also when it is spelt with "_" for "-": CGI and similar
+// servers read rpmgr_user_email as RPMGR_USER_EMAIL too, so a backend could not tell it from the
+// gateway's own.
+func dropIdentityHeaders(hs ...http.Header) {
+	for _, h := range hs {
+		for name := range h {
+			if strings.HasPrefix(textproto.CanonicalMIMEHeaderKey(strings.ReplaceAll(name, "_", "-")), identityPrefix) {
+				delete(h, name)
+			}
+		}
+	}
 }
 
 // lookup returns the entries for a host: its own, or else those of the wildcard hostname one

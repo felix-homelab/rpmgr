@@ -22,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -105,6 +106,9 @@ func createHTTP(ctx context.Context, tx *ent.Tx, row *ent.Route, h *rpmgrv1.HTTP
 		SetResponseHeadersSet(canonicalHeaders(h.GetResponseHeadersSet())).SetWebsocket(h.Websocket == nil || *h.Websocket).
 		SetMaxBodyBytes(int64(min(h.GetMaxBodyBytes(), 1<<62))). //nolint:gosec // G115: bounded above
 		SetMaintenance(h.GetMaintenance()).SetMaintenanceMessage(h.GetMaintenanceMessage())
+	if ms := headerMatchesOf(h); len(ms) > 0 {
+		c.SetHeaderMatches(headermatch.Canonical(ms)).SetMatchKey(headermatch.Key(ms))
+	}
 	if hh := h.GetHostHeader(); hh != "" {
 		c.SetHostHeader(hh)
 	}
@@ -176,6 +180,9 @@ func checkSpec(in *rpmgrv1.Route) error {
 	if hh := h.GetHostHeader(); hh != "" && hh != "preserve" && !httpguts.ValidHostHeader(hh) {
 		return invalid("host header %q", hh)
 	}
+	if err := headermatch.Check(headerMatchesOf(h)); err != nil {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	// The pattern refuses control characters; these would turn the text around where it is shown.
 	if i := strings.IndexFunc(h.GetMaintenanceMessage(), func(r rune) bool {
 		return r >= 0x202A && r <= 0x202E || r >= 0x2066 && r <= 0x2069
@@ -199,6 +206,28 @@ func checkSpec(in *rpmgrv1.Route) error {
 		}
 	}
 	return nil
+}
+
+// headerMatchesOf returns an http route's header matches.
+func headerMatchesOf(h *rpmgrv1.HTTPRouteSpec) []headermatch.Match {
+	var out []headermatch.Match
+	for _, m := range h.GetHeaderMatches() {
+		out = append(out, headermatch.Match{Name: m.GetName(), Value: m.GetExact(), Present: m.GetPresent()})
+	}
+	return out
+}
+
+// apiHeaderMatches returns stored header matches as the API shows them.
+func apiHeaderMatches(ms []headermatch.Match) []*rpmgrv1.HeaderMatch {
+	var out []*rpmgrv1.HeaderMatch
+	for _, m := range ms {
+		if m.Present {
+			out = append(out, &rpmgrv1.HeaderMatch{Name: m.Name, Match: &rpmgrv1.HeaderMatch_Present{Present: true}})
+		} else {
+			out = append(out, &rpmgrv1.HeaderMatch{Name: m.Name, Match: &rpmgrv1.HeaderMatch_Exact{Exact: m.Value}})
+		}
+	}
+	return out
 }
 
 // canonicalHeaders is headers with canonical names, as the gateway expects them.
@@ -235,7 +264,7 @@ func routeFields(t route.Type) []string {
 	switch t {
 	case route.TypeHTTP:
 		for _, f := range []string{"hostnames", "path_prefix", "tls_mode", "certificate_id", "port80", "hsts_max_age_seconds", "host_header",
-			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes", "maintenance", "maintenance_message"} {
+			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes", "maintenance", "maintenance_message", "header_matches"} {
 			fields = append(fields, "http."+f)
 		}
 	case route.TypeTLSPassthrough:
@@ -592,7 +621,7 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 				routehttp.Port80Serve: rpmgrv1.Port80Mode_PORT80_MODE_SERVE, routehttp.Port80Off: rpmgrv1.Port80Mode_PORT80_MODE_OFF}[h.Port80],
 			HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), HostHeader: h.HostHeader, RequestHeadersSet: h.RequestHeadersSet, //nolint:gosec // G115: bounded
 			ResponseHeadersSet: h.ResponseHeadersSet, Websocket: &h.Websocket, MaxBodyBytes: uint64(h.MaxBodyBytes), //nolint:gosec // G115: non-negative
-			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage}
+			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, HeaderMatches: apiHeaderMatches(h.HeaderMatches)}
 		if h.TLSMode == routehttp.TLSModeCertificate {
 			spec.TlsMode = rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE
 			if h.CertificateID != nil {

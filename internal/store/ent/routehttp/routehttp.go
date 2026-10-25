@@ -23,6 +23,8 @@ const (
 	FieldPathPrefix = "path_prefix"
 	// FieldHeaderMatches holds the string denoting the header_matches field in the database.
 	FieldHeaderMatches = "header_matches"
+	// FieldMatchKey holds the string denoting the match_key field in the database.
+	FieldMatchKey = "match_key"
 	// FieldTLSMode holds the string denoting the tls_mode field in the database.
 	FieldTLSMode = "tls_mode"
 	// FieldCertificateID holds the string denoting the certificate_id field in the database.
@@ -76,6 +78,7 @@ var Columns = []string{
 	FieldRouteID,
 	FieldPathPrefix,
 	FieldHeaderMatches,
+	FieldMatchKey,
 	FieldTLSMode,
 	FieldCertificateID,
 	FieldPort80,
@@ -115,6 +118,8 @@ var (
 	RouteIDValidator func(string) error
 	// DefaultPathPrefix holds the default value on creation for the "path_prefix" field.
 	DefaultPathPrefix string
+	// DefaultMatchKey holds the default value on creation for the "match_key" field.
+	DefaultMatchKey string
 	// DefaultHstsMaxAgeSeconds holds the default value on creation for the "hsts_max_age_seconds" field.
 	DefaultHstsMaxAgeSeconds int
 	// HstsMaxAgeSecondsValidator is a validator for the "hsts_max_age_seconds" field. It is called by the builders before save.
@@ -213,6 +218,11 @@ func ByRouteID(opts ...sql.OrderTermOption) OrderOption {
 // ByPathPrefix orders the results by the path_prefix field.
 func ByPathPrefix(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPathPrefix, opts...).ToFunc()
+}
+
+// ByMatchKey orders the results by the match_key field.
+func ByMatchKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMatchKey, opts...).ToFunc()
 }
 
 // ByTLSMode orders the results by the tls_mode field.
