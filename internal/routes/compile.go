@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 
+	"golang.org/x/net/http/httpguts"
+
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/certs"
@@ -22,6 +24,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -493,9 +496,16 @@ func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agen
 			ProxyProtocol: string(t.ProxyProtocol), Weight: uint32(t.Weight), Priority: uint32(t.Priority)}) //nolint:gosec // G115: small and positive
 	}
 	slices.Sort(ids)
+	https := map[string]bool{} // routes whose targets speak https
+	for _, t := range targets {
+		https[t.RouteID] = https[t.RouteID] || t.UpstreamProtocol == routetarget.UpstreamProtocolHTTPS
+	}
 	out := make([]*agentv1.Resource, 0, len(ids))
 	for _, id := range ids {
 		cr := byRoute[id]
+		if err := addHealthCheck(ctx, tx, id, cr, https[id]); err != nil {
+			return nil, err
+		}
 		slices.SortFunc(cr.Targets, func(x, y *agentv1.Target) int {
 			if x.Priority != y.Priority {
 				return int(x.Priority) - int(y.Priority)
@@ -505,6 +515,76 @@ func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agen
 		out = append(out, &agentv1.Resource{Id: id, Kind: &agentv1.Resource_ConnectorRoute{ConnectorRoute: cr}})
 	}
 	return out, nil
+}
+
+// addHealthCheck gives a connector's route its health check, if it has one (docs/03-connections.md,
+// "Target health"), with its interval and timeout as they take effect, so that the connector's
+// bounds see what the API checked: an http check sends the route's host header override as Host,
+// else its first hostname that is not a wildcard, and of an http route whose targets speak https
+// it speaks TLS, verified by each target's settings as the gateway verifies the route's traffic.
+func addHealthCheck(ctx context.Context, tx *ent.Tx, routeID string, cr *agentv1.ConnectorRoute, https bool) error {
+	c, err := tx.HealthCheck.Query().Where(healthcheck.RouteID(routeID)).Only(ctx)
+	if ent.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	u := func(v int) uint32 { return uint32(v) } //nolint:gosec // G115: the schema bounds them
+	interval, timeout := CheckTimes(c.IntervalSeconds, c.TimeoutSeconds)
+	hc := &agentv1.HealthCheck{Type: string(c.Type), Port: u(c.Port), Path: c.HTTPPath, StatusMin: u(c.ExpectedStatusMin),
+		StatusMax: u(c.ExpectedStatusMax), IntervalMs: u(interval) * 1000, TimeoutMs: u(timeout) * 1000,
+		UnhealthyThreshold: u(c.UnhealthyThreshold), HealthyThreshold: u(c.HealthyThreshold)}
+	if c.Type == healthcheck.TypeHTTP && cr.GetType() == string(route.TypeHTTP) {
+		// The override, else the first exact hostname; a wildcard names no host to ask for, so a
+		// route with only wildcards leaves the connector to send the target's address. Only a
+		// value the connector accepts as Host is sent.
+		names, err := tx.RouteHostname.Query().Where(routehostname.RouteID(routeID), routehostname.Not(routehostname.HostnameHasPrefix("*."))).
+			Order(ent.Asc(routehostname.FieldHostname)).Select(routehostname.FieldHostname).Strings(ctx)
+		if err != nil {
+			return err
+		}
+		h, err := tx.RouteHTTP.Query().Where(routehttp.RouteID(routeID)).Only(ctx)
+		if err != nil && !ent.IsNotFound(err) {
+			return err
+		}
+		if h != nil && h.HostHeader != "preserve" {
+			names = append([]string{h.HostHeader}, names...)
+		}
+		if i := slices.IndexFunc(names, httpguts.ValidHostHeader); i >= 0 {
+			hc.Host = names[i]
+		}
+		if https {
+			hc.Https = true
+			tls, err := upstreamTLSOf(ctx, tx, routeID)
+			if err != nil {
+				return err
+			}
+			for _, t := range cr.GetTargets() {
+				for _, u := range tls {
+					if u.GetTargetId() == t.GetId() {
+						t.Tls = u
+					}
+				}
+			}
+		}
+	}
+	cr.HealthCheck = hc
+	return nil
+}
+
+// The bounds of a health check (docs/03-connections.md, "Timeouts, keepalive and backoff"): 10 s
+// unless set, and a timeout of 5 s unless set, but always below the interval.
+const (
+	defCheckIntervalSeconds = 10
+	defCheckTimeoutSeconds  = 5
+)
+
+// CheckTimes are a health check's interval and timeout in seconds as they take effect: 0 is the
+// default, and the default timeout stays below the interval.
+func CheckTimes(intervalSeconds, timeoutSeconds int) (int, int) {
+	interval := cmp.Or(intervalSeconds, defCheckIntervalSeconds)
+	return interval, cmp.Or(timeoutSeconds, min(defCheckTimeoutSeconds, interval-1))
 }
 
 // ConnectorGateways compiles the gateways a connector keeps data sessions to: every enabled
