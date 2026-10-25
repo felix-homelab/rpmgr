@@ -169,8 +169,9 @@ Everything a team needs to run rpmgr in production.
 - Live logs; webhooks; audit export and external audit sinks.
 - Staged, signed over-the-air updates with rollback, for Linux script installs; update channels
   (`stable`, `prerelease`).
-- Socket hand-off: gateways and all-in-ones restart, for an upgrade too, without refusing a
-  visitor connection ([D127](14-open-decisions.md#project-and-process)).
+- Socket hand-off: gateways, all-in-ones and Linux connectors restart, for an upgrade too, without
+  refusing a visitor connection ([D127](14-open-decisions.md#project-and-process),
+  [D147](14-open-decisions.md#engineering)).
 - Optional connector-only build (D21).
 - Windows service and macOS launchd connectors, installed from the release download; no OTA for
   them before Phase 3 (D29, D99).
@@ -208,7 +209,8 @@ P2-M03 to P2-M05 ([D127](14-open-decisions.md#project-and-process)):
 14. importers;
 15. Windows and macOS connectors;
 16. the exit criteria;
-17. socket hand-off: gateways and all-in-ones restart without refusing a visitor connection.
+17. socket hand-off: gateways, all-in-ones and Linux connectors restart without refusing a visitor
+    connection.
 
 Each finished group of milestones is a minor release ([D100](14-open-decisions.md#project-and-process)),
 with a release milestone that holds its release issue:
@@ -314,7 +316,7 @@ implemented, and the result recorded in the PR.
 | VB-05 | ~~Tooling for cosign signatures, SLSA provenance and SBOM generation in the release pipeline~~ **Partly resolved** (2026-10-09, workflow `release`): syft 1.54.1 writes the SPDX JSON SBOM from the source tree, with the Go modules of `go.mod` and the npm packages of the web UI's lockfile that are not development dependencies, checked locally; `actions/attest-build-provenance` 4.2.2 records SLSA provenance and cosign (`sigstore/cosign-installer` 4.1.2) signs keylessly with the workflow's identity. Both need GitHub's OIDC token and are checked on the first release tag | [04](04-security.md#release-signing), [ADR-0013](adr/0013-signed-ota.md) |
 | VB-06 | ~~connect-query maturity with TanStack Query; fallback: thin hand-written hooks over generated clients~~ **Resolved** (2026-10-09): connect-query 2.3.1 calls the method descriptors that protoc-gen-es 2.16 generates, through TanStack Query 5.104, with typed requests and responses; the UI skeleton's overview uses it and is tested with Connect's router transport. The fallback is not needed | [08](08-software-stack.md#frontend), [ADR-0014](adr/0014-vite-react-spa.md) |
 | VB-07 | ~~CodeMirror 6 under the strict CSP (style nonces)~~ **Resolved** (2026-10-09): CodeMirror 6 (`@codemirror/view` 6.43.14) writes its styles into style elements and gives them the nonce set with `EditorView.cspNonce`. The UI reads the page's nonce from its `csp-nonce` meta element. Under the controller's CSP in Chromium (Playwright 1.63), the YAML view's styles apply with no CSP violation; without the nonce, the same browser test fails because they are blocked | [09](09-web-ui.md), [ADR-0014](adr/0014-vite-react-spa.md) |
-| VB-08 | Listening-socket hand-off across restarts of a gateway and of an all-in-one, between two processes on Linux (TCP straightforward; UDP/QUIC harder); Phase 2, verified by P2-M17's study slice ([D127](14-open-decisions.md#project-and-process)) | [05](05-features.md#operations) |
+| VB-08 | Listening-socket hand-off across restarts of a gateway and of an all-in-one, between two processes on Linux (TCP straightforward; UDP/QUIC harder); Phase 2, verified by P2-M17's study slice 17.2 under the rules S-1 to S-7 of [ADR-0022](adr/0022-socket-hand-off-by-re-exec.md#verification) ([D127](14-open-decisions.md#project-and-process), [D150](14-open-decisions.md#engineering)) | [05](05-features.md#operations) |
 | VB-09 | Cloudflare rate-limit scope: whether account-owned tokens have their own budget, and how a 429 caused by rpmgr affects the same user's dashboard and other tokens | [15](15-dns.md#batches-failures-and-the-rate-budget) |
 | VB-10 | Cloudflare record comments and batches: the marker round-trips unchanged; a batch patch can change the comment alone; which operation a failed batch reports; listing by comment | [15](15-dns.md#ownership-ledger) |
 | VB-11 | Cloudflare proxy: a proxied CNAME to a name in another Cloudflare account (error 1014 or not); proxied wildcards on all plans; request-size and timeout limits that affect routes; whether ACME HTTP-01 reaches the origin through the proxy | [15](15-dns.md#proxied-http-routes) |

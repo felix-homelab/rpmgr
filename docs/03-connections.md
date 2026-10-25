@@ -198,7 +198,8 @@ message ControllerMessage {
     Signed snapshot = 2;            // a Snapshot: revision, agent, controller endpoints, resources,
                                     // release offer (ota)
     Drain drain = 4;                // reconnect elsewhere before the deadline
-    Goodbye goodbye = 5;            // superseded, revoked, upgrade_required, shutdown, overloaded
+    Goodbye goodbye = 5;            // superseded, revoked, upgrade_required, shutdown, overloaded,
+                                    // restart (Phase 2: an all-in-one's controller hands over)
     Signed deny_list = 6;           // a DenyList; applied unconditionally, never shrinks early
     AcmeChallenge acme_challenge = 7; // gateways: add | remove, acknowledged with OpResult
     ProbeTarget probe_target = 8;   // connectors: read a target's certificate, OpResult has it
@@ -1347,7 +1348,9 @@ and 2 when it was closed before both directions ended. Phase 1 gives the whole w
   [V VB-18].
 - **Planned gateway restart**: the gateway sends `Drain{deadline}` on the session control stream, stops accepting new
   public connections (or lets the load balancer/DNS move them), and keeps existing streams until the
-  gateway drain deadline. Connectors reconnect to the restarted gateway when it is back.
+  gateway drain deadline. Connectors reconnect to the restarted gateway when it is back. From
+  Phase 2 a restart with **socket hand-off** keeps a lone gateway's listeners open instead
+  ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2)).
 - **Disabled gateway** ("drain" in the CLI and web UI): its snapshot has no routes and carries a
   drain mark, and connectors leave the gateway out of theirs. The gateway sends `Drain{deadline}`
   for the gateway drain period, admits no new data session or stream, and keeps open streams,
@@ -1453,6 +1456,10 @@ sequenceDiagram
 | Route drain | 30 s | Finish in-flight requests |
 | Route port in use | a `tcp` or `udp` route port the gateway cannot bind (`not_ready(port_in_use)`) is tried again every 5 s | [R] A port another process frees is taken within seconds, without a new revision |
 | Gateway drain | 60 s | Time for connectors to re-home |
+| Hand-off drain (Phase 2) | 10 min; the boot-file setting `handoff.drain` takes 0 to 24 h; at the end the old process cuts what is still open and exits ([D146](14-open-decisions.md#engineering)) | [R] Long-lived SSH, database, WebSocket and CONNECT connections survive almost every update; an old process costs only memory |
+| Hand-off readiness window (Phase 2) | 60 s from the exec until the new process reports ready, else the old one kills it and keeps serving | [R] Shorter than the updater's readiness window, so the updater sees the hand-off's outcome inside its own |
+| Hand-off session wait (Phase 2) | a new public connection in the new process waits up to 5 s for a session of its route before 503 or a reset | [R] Connectors redial at once on `Drain{handoff}`; the wait covers their reconnect, so no visitor sees the switch [V VB-08] |
+| Hand-off relay (Phase 2) | datagrams passed between the processes during the drain are queued up to 1 024 per socket; beyond that they are dropped and counted | [R] UDP may lose datagrams; a full queue never blocks the old process [V VB-08] |
 | Session liveness | each controller node marks its live sessions seen every 60 s; a session not seen for 3 min is not live | An agent shows as connected while its control session is live; a node that stops without recording its sessions' ends leaves them to age, and ends them when it starts again |
 | Data-session report | every 60 s, and 1 s after a change | A gateway's `Status` listing its connectors' data sessions, for their status in the API, its route counters, for the traffic rollups, and the resources that are not ready |
 | Revocation, tightened access policy, stricter TLS settings of an HTTPS target | immediate; a target's TLS settings that change, unless to unverified ones of the same connector, end the connections earlier ones checked | Security beats continuity |
@@ -1542,6 +1549,7 @@ used, not by the route compiler:
 | `logs.stream` | Gateway, connector | Live logs (`Open` and `Attach`) |
 | `ota` | Gateway, connector | Over-the-air updates: the agent takes a release offer in its snapshot, stages it for the root updater and reports the update state and the updater's outcome in `Status`; an agent without it is never offered a release. Announced only on a Linux host with the root updater installed ([04](04-security.md#over-the-air-updates)) |
 | `relay.v1` | Gateway, connector | Relayed private services |
+| `session.handoff` | Gateway | A connector's new process names its old one in `SessionHello.handoff_from`, and the gateway drains the old process's sessions instead of closing them; a gateway without it closes them as on a restart ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2)) |
 
 - Protobuf rules: fields are only added; unknown fields are ignored; an unknown `StreamOpen.kind`
   is answered with `PROTOCOL`.
@@ -1557,6 +1565,8 @@ used, not by the route compiler:
 | **Database down** | Controller serves reads from memory where possible, rejects writes, keeps sessions. New control sessions are refused as unavailable, because each needs a session epoch from the database; agents retry with backoff. |
 | **Gateway crashes** | New user connections for its routes go to the other gateways in the group. Public connections in flight on the crashed gateway are lost. With a persisted `StatelessResetKey` and padded session pings, connectors notice the restart within one ping interval (15 s) instead of after the idle timeout. |
 | **Gateway planned restart** | `Drain`, connectors re-home, in-flight connections get the gateway drain period. |
+| **Gateway or all-in-one restart with hand-off** (Phase 2) | The new process takes the listening sockets over before the old one stops accepting; no new visitor connection is refused, open ones get the hand-off drain; an all-in-one's API and web UI answer 503 for the seconds the controller moves ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2)). |
+| **Connector restart with hand-off** (Phase 2, Linux) | The new process opens its sessions before the old one stops taking streams; open streams get the hand-off drain ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2)). |
 | **Connector restarts** | Its sessions close; routes with no other ready connector return 503 (HTTP) or refuse (TCP). It restarts from the persisted last-known-good snapshot, reconnects, and reports a new `boot_id`. A killed process closes no session: a gateway closes the sessions of the earlier `boot_id` when the first session with the new one arrives, so that they neither take streams nor fill the connector's session cap. |
 | **Bad configuration** | Rejected at compile time by the controller, or `Rejected` by the agent; last-known-good keeps running; the UI shows the reasons. No outage. |
 | **Certificate expiring** | Renewed at 50 % of lifetime over the control session. If the agent was offline past expiry, it re-authenticates within the grace period using the same key, otherwise it must re-enroll ([04](04-security.md#enrollment)). |
@@ -1564,6 +1574,105 @@ used, not by the route compiler:
 | **UDP blocked** | With `auto`, happy eyeballs selects TCP within 300 ms plus the TCP and TLS handshake. If UDP is blackholed mid-session, the QUIC idle timeout fires, the connector moves to TCP, and QUIC is not retried for 1 h. With `quic` pinned, the routes that need QUIC are `not_ready(transport_unavailable: quic)` instead ([Transport selection](#transport-selection)). |
 | **Two controller replicas** | Revisions come from the database; one session per agent via `session_epoch` ([Revisions and ordering](#revisions-and-ordering)). |
 | **Connector local policy blocks a target** | Streams go to the route's other targets that the policy allows; with none, the route is `not_ready(blocked_by_local_policy: 10.0.0.5:5432)` on that connector. The UI shows the exact command to allow it on the host. |
+
+### Restarts with socket hand-off (Phase 2)
+
+A gateway, an all-in-one and, on Linux, a connector restart without refusing a visitor connection
+when the restart is a **hand-off** ([D127](14-open-decisions.md#project-and-process),
+[ADR-0022](adr/0022-socket-hand-off-by-re-exec.md)). The old process takes part, so the first
+restart that keeps traffic up starts from a release that has the hand-off; a restart from an
+earlier release, a plain `systemctl restart` and a container restart drain and stop as before
+([D149](14-open-decisions.md#engineering)). The values are in [Timeouts, keepalive and
+backoff](#timeouts-keepalive-and-backoff).
+
+**Trigger.** `systemctl reload` of the gateway or all-in-one unit, `rpmgr handoff <role>`, the
+install scripts' `--upgrade --restart` and the root updater
+([10](10-operations.md#hardened-systemd-units), [D148](14-open-decisions.md#engineering)). Each
+sends `SIGUSR2` to the role's main process, which only root and the service user may signal, and
+waits for the outcome. One hand-off runs at a time; a trigger during one is refused with "hand-off
+in progress".
+
+**Sequence** ([D150](14-open-decisions.md#engineering)):
+
+```mermaid
+sequenceDiagram
+  participant O as old process
+  participant N as new process
+  participant C as controller
+  participant K as connectors
+  O->>O: check the installed binary
+  O->>N: exec with the listening sockets and a status pipe
+  N->>N: check each socket against the manifest and the boot file
+  N->>C: control session (supersedes the old one's)
+  C-->>N: snapshot (or the stored last-known-good one)
+  N->>O: ready
+  O->>O: stop accepting, keep open connections
+  O->>K: Drain{reason: handoff}
+  K->>N: new data sessions at once
+  N->>N: main process of the unit (MAINPID)
+  O->>O: open connections end, or are cut at the hand-off drain
+```
+
+1. **Exec.** The old process checks the installed binary (the path of `install.json`, or the one
+   it was started from: a regular file owned by root that neither its group nor others may write,
+   in directories with the same rule) and starts it as its child, passing every listening socket,
+   a manifest naming each one (role, protocol, local address and what it serves) and a status
+   pipe. Anything else refuses the hand-off, which then needs a plain restart
+   ([04](04-security.md#socket-hand-off-phase-2)).
+2. **Adopt.** The new process checks each descriptor against the manifest and its own boot file
+   (socket type, listening state, local address) and closes, and logs, any it does not expect. It
+   binds what its configuration needs and was not handed, such as the port of a route added in
+   between, and leaves the sockets it took unread until it is ready. Both processes now hold the
+   same sockets, so a connection waiting to be accepted is taken by whichever accepts next and
+   none is lost.
+3. **Ready.** The new process starts from the stored last-known-good snapshot, opens its control
+   session, which supersedes the old process's (expected during a hand-off), applies the snapshot
+   it receives and reports ready over the pipe. A process that is not ready within the hand-off
+   readiness window is killed by the old one, which keeps serving as before; the hand-off is
+   reported as failed.
+4. **Switch.** The old process stops accepting, hands its admin listener over, and sends its data
+   sessions `Drain{reason: handoff}`. Connectors open new sessions to the same endpoint at once,
+   without backoff, and keep the draining ones for their open streams. Until a route has a session
+   in the new process, a new public connection waits up to the session wait for one before it gets
+   503 or is reset. The new process tells systemd it is the unit's main process.
+5. **Drain.** The old process serves its open connections until they end or the **hand-off drain**
+   cuts them ([D146](14-open-decisions.md#engineering)), then exits. A revocation, a tightened
+   access policy or a removed route that the new process applies meanwhile cuts the old process's
+   open connections at once ([04](04-security.md#socket-hand-off-phase-2)). A hand-off started
+   while a predecessor still drains ends that predecessor's drain early, so at most one old process
+   runs.
+
+**UDP and QUIC.** Datagrams on a shared socket go to whichever process reads, so only one reads at
+a time [V VB-08].
+
+- [T] Every QUIC connection ID the gateway issues carries a byte naming the process generation.
+  While the old process drains it alone reads the agent's UDP socket and passes Initial packets
+  and packets of the new generation to the new process over a local socket pair; the new process
+  writes to the shared socket directly and reads it itself once the old one exits. Packets of an
+  old session never reach the new process, so no stateless reset ends it.
+- [T] `udp` routes do the same per flow: the old process keeps its flows and passes datagrams of new
+  flows to the new process.
+- If the study (17.2) shows the relay does not meet its rule, the fallback of
+  [ADR-0022](adr/0022-socket-hand-off-by-re-exec.md) applies: the new process reads UDP only once
+  the old one has exited, connectors on `auto` use TCP meanwhile, and `udp` flows still open then
+  start again in the new process.
+
+**All-in-one.** The built-in gateway and connector hand off as above; the controller cannot run
+twice on one SQLite file. After step 2 the old process ends its control sessions with
+`Goodbye{restart}`, answers the API and the web UI with 503 and `Retry-After`, and closes the
+database; the new process opens it, migrates it and starts the controller, and its built-in agents
+connect in memory. If the migration or the start fails, the new process exits and the old one opens
+the database again and resumes its controller work; it never stopped serving visitors. The database
+is locked against a second writer throughout.
+
+**Connector** ([D147](14-open-decisions.md#engineering)). A connector has no listening socket; its
+hand-off is the sequence without the sockets. The new process opens its control session and its
+data sessions, and its `SessionHello` names the old process's `boot_id` as `handoff_from`, so that
+gateways mark the old process's sessions draining instead of closing them as a restart's
+([Failure modes](#failure-modes)). The old process takes no new stream and keeps its open ones for
+the hand-off drain. Gateways announce the capability `session.handoff`; an older gateway closes the
+old sessions as on a restart, which ends their streams. Windows and macOS connectors restart
+without a hand-off.
 
 ## Performance budget
 

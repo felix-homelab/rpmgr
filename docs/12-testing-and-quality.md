@@ -92,6 +92,9 @@ controller database restarts, and clock jumps, while a load generator checks int
   spikes. A connection held through one gateway and one connector must survive each of them.
 - **Hard events:** gateway and connector kills, and loss and reordering bursts. These may reset the
   connections through the process they hit. Afterwards every route answers again.
+- **Hand-off events** (Phase 2): restarts with socket hand-off of a gateway and a connector, which
+  count as soft events, and a kill of the new process during one, after which the old process must
+  still serve.
 
 **Where the cells run.** The in-process integration tests live in `internal/itest`, the container
 tests in `test/e2e` (Docker Compose, `tc netem`, IPv4 and IPv6). The browser tests of the web UI
@@ -162,6 +165,12 @@ test, in the order of [10](10-operations.md#upgrades-and-version-skew), under li
     come back changed.
   - A connection held through the other gateway survives the controller and gateway upgrades. Only
     a connector's restart may break the connections held through it.
+- **With the hand-off** (Phase 2, from a release that has it; slice 17.8): an all-in-one and a
+  gateway group with one gateway are upgraded under the same load by a restart with socket hand-off
+  ([03](03-connections.md#restarts-with-socket-hand-off-phase-2)). No new connection may be refused
+  or fail on either transport, a `udp` route keeps answering, and connections held across the
+  hand-off end only at the hand-off drain. A chaos step kills the new process during the hand-off;
+  the old one must serve on.
 - **Afterwards:**
   - the database has no pending migration and keeps every route;
   - every agent runs the new version and has applied the configuration of the controller's epoch;
@@ -377,6 +386,8 @@ Regression tests for design-review findings:
 | `TestAuditExport_TamperDetectedOffline` | `rpmgr audit verify-export` finds an edited, removed or reordered entry, a forged checkpoint and a wrong CA pin, and flags the unanchored tail |
 | `TestAuditSink_BacklogNeverBlocksAppend` | With every sink down, appends commit at full speed; the backlog grows, the alert fires, and once a sink is back it ships every item from its cursor, also after a restart, without a gap |
 | `TestAuditSink_RewriteDetectedAgainstSink` | A chain rewritten in the database under a checkpoint an object-storage sink holds fails verification against the sink; the sink's objects cannot be overwritten (412) |
+| `TestHandoff_OnlyVerifiedBinaryGetsSockets` | A restart with socket hand-off starts only the installed binary: one owned by another user, writable by its group or others, in a directory others may write, or replaced by a symlink is refused and the old process serves on; no listening socket is ever reachable by another local process during the hand-off, and a trigger cannot name a binary or a descriptor ([04](04-security.md#socket-hand-off-phase-2), slice 17.3) |
+| `TestHandoff_UnexpectedDescriptorsRefused` | The new process of a hand-off serves only the descriptors its manifest names and its boot file expects: an extra inherited descriptor, a socket of another type, address or state, and a manifest entry without its descriptor are closed or refused and logged, and nothing is served on them ([04](04-security.md#socket-hand-off-phase-2), slice 17.3) |
 
 ## Continuous integration
 
