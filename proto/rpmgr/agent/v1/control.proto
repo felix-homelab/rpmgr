@@ -356,6 +356,8 @@ enum Transport {
   TRANSPORT_QUIC = 1;
   // TLS and reverse HTTP/2 over TCP.
   TRANSPORT_H2 = 2;
+  // TLS and reverse HTTP/2 inside a WebSocket (Phase 2).
+  TRANSPORT_WSS = 3;
 }
 
 // OpResult answers an operation that needs no stream.

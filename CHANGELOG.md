@@ -12,6 +12,17 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Connectors: data sessions over WSS, for networks whose proxy intercepts TLS. A gateway gets a
+  WSS hostname of its own (`rpmgr update gateway --wss-hostname`, the API's
+  `Gateway.wss_hostname`) with a certificate from an upload or ACME; connectors on `auto` move to
+  WSS when TLS to the gateway fails in its handshake, and `wss` pins it on a route, a connector or
+  the instance (`--transport wss`). The connector's own TLS runs inside the WebSocket, so the proxy
+  sees which gateway it reaches but none of the traffic. Connectors and gateways of earlier
+  releases do not use WSS; a route on `wss` is not ready on such a connector. Data sessions and
+  the `rpmgr_gateway_sessions` metric show the transport `wss`; the web UI sets the WSS hostname
+  on the gateway's form and offers **WSS only** wherever it offers a transport. (#636, #637, #638,
+  #639)
+
 - Routes: tcp routes in `http_connect` mode share a CONNECT listener, one port of the organisation,
   and clients pick a route by name through it as through an HTTP proxy, with no proxy credentials,
   with basic auth over TLS, or with basic auth in the clear, which every write warns about. Set

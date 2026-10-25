@@ -21,15 +21,16 @@ import { useStepUp } from "@/step-up";
 export type Written = { revision?: Revision; status?: ApplyStatus };
 
 // The fields of a gateway the API changes (internal/apisvc gatewayFields).
-const gatewayMask = ["name", "tunnel_endpoints", "enabled"];
+const gatewayMask = ["name", "tunnel_endpoints", "enabled", "wss_hostname"];
 
 function message(err: unknown, fallback: (m: string) => string): string {
   const e = ConnectError.from(err);
   return e.code === Code.InvalidArgument || e.code === Code.FailedPrecondition || e.code === Code.AlreadyExists ? e.rawMessage : fallback(e.rawMessage);
 }
 
-// GatewayForm adds a gateway to a group, or with gateway changes its name and tunnel endpoints: the
-// gateway as read with those fields, its mask and etag (U1). A group has at most four gateways.
+// GatewayForm adds a gateway to a group, or with gateway changes its name, tunnel endpoints and WSS
+// hostname: the gateway as read with those fields, its mask and etag (U1). A group has at most four
+// gateways.
 export function GatewayForm({ orgId, groupId, gateway, onDone, onCancel }: {
   orgId: string; groupId: string; gateway?: Gateway; onDone: (w: Written) => void; onCancel: () => void;
 }) {
@@ -39,6 +40,7 @@ export function GatewayForm({ orgId, groupId, gateway, onDone, onCancel }: {
   const [requestId] = useState(() => crypto.randomUUID());
   const [name, setName] = useState(gateway?.name ?? "");
   const [endpoints, setEndpoints] = useState(gateway?.tunnelEndpoints ?? []);
+  const [wss, setWSS] = useState(gateway?.wssHostname ?? "");
   const [error, setError] = useState("");
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -46,6 +48,7 @@ export function GatewayForm({ orgId, groupId, gateway, onDone, onCancel }: {
     const next = gateway ? clone(GatewaySchema, gateway) : create(GatewaySchema, { gatewayGroupId: groupId, enabled: true });
     next.name = name.trim();
     next.tunnelEndpoints = trimmed(endpoints);
+    next.wssHostname = wss.trim();
     try {
       if (gateway) {
         const res = await update.mutateAsync({ gateway: next, updateMask: { paths: gatewayMask }, etag: gateway.etag });
@@ -62,6 +65,7 @@ export function GatewayForm({ orgId, groupId, gateway, onDone, onCancel }: {
     <form onSubmit={save} aria-label={t(gateway ? "gwActions.editTitle" : "gwActions.addTitle")} className="grid max-w-xl gap-4 rounded-lg border border-border bg-muted/40 p-4" noValidate>
       <Field label={t("routeForm.fields.name")} required value={name} onChange={(e) => setName(e.target.value)} />
       <LinesField label={t("gateways.gw.endpoints")} hint={t("gwActions.endpointsHint")} required value={endpoints} onChange={setEndpoints} />
+      <Field label={t("gateways.gw.wss")} hint={t("gwActions.wssHint")} value={wss} onChange={(e) => setWSS(e.target.value)} />
       {error && <Alert>{error}</Alert>}
       <div className="flex gap-2">
         <Button type="submit" disabled={add.isPending || update.isPending}>{t(gateway ? "routeForm.save" : "gwActions.add")}</Button>

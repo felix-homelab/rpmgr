@@ -63,7 +63,7 @@ Every route has these fields:
 | **Name** | The route's name: lowercase letters, digits and dashes |
 | **Description** | Free text for people |
 | **Labels** | One per line, as `key=value` |
-| **Transport** | How its connectors reach the gateways: **The connector's or the instance's default**, **QUIC, falling back to TLS and HTTP/2**, **QUIC only**, or **TLS and HTTP/2 only** ([Connector networking](../connectors/network.md)) |
+| **Transport** | How its connectors reach the gateways: **The connector's or the instance's default**, **QUIC, falling back to TLS and HTTP/2**, **QUIC only**, **TLS and HTTP/2 only**, or **WSS only** ([Connector networking](../connectors/network.md)) |
 
 An **HTTP** route adds ([HTTP routes](../routes/http.md)):
 

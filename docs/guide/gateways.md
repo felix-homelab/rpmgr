@@ -134,6 +134,31 @@ host, enroll with `rpmgr enroll --replace`, as for a connector
 To change a gateway's name or tunnel endpoints: **Edit…** in its row, or
 `rpmgr update gateway --tunnel-endpoint eu-2.example.com:443 eu-2`.
 
+## WSS hostnames
+
+Connectors behind a proxy that intercepts TLS cannot use the usual transports: the proxy replaces
+the gateway's certificate, which the connector refuses. They reach a gateway over **WSS** instead,
+at a hostname of the gateway's own that has an ordinary public certificate, which the proxy
+accepts like any website's
+([Connector networking](connectors/network.md#transports-quic-tls-with-http2-and-wss)).
+
+Give a gateway its WSS hostname under **Gateways**: **Edit…** in its row, **WSS hostname**,
+**Save**. Or with the command line:
+
+```sh
+rpmgr update gateway --wss-hostname tunnel-eu-1.example.com eu-1
+rpmgr update gateway --wss-hostname '' eu-1     # remove it
+```
+
+- The name lies under a verified domain of the organisation that owns the group
+  ([Domains and certificates](domains-and-certificates.md)), is no wildcard, and is not a hostname
+  of a route of the group, nor one a wildcard route hostname covers. Each gateway needs its own.
+- Point the name's DNS at that gateway, port 443. An uploaded certificate that covers it is used;
+  otherwise rpmgr obtains one from the ACME CA, as for http routes.
+- Connectors on `auto` use WSS by themselves when they need it; pin `wss` on a connector or route
+  to use only WSS. A connector of an earlier release cannot: its routes on `wss` show **no data
+  session over the route's transport** for it.
+
 ## Drain and resume a gateway
 
 Draining switches a gateway off: it takes no new data sessions or connections, its routes leave

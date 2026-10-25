@@ -285,6 +285,8 @@ const (
 	Transport_TRANSPORT_QUIC Transport = 1
 	// TLS and reverse HTTP/2 over TCP.
 	Transport_TRANSPORT_H2 Transport = 2
+	// TLS and reverse HTTP/2 inside a WebSocket (Phase 2).
+	Transport_TRANSPORT_WSS Transport = 3
 )
 
 // Enum value maps for Transport.
@@ -293,11 +295,13 @@ var (
 		0: "TRANSPORT_UNSPECIFIED",
 		1: "TRANSPORT_QUIC",
 		2: "TRANSPORT_H2",
+		3: "TRANSPORT_WSS",
 	}
 	Transport_value = map[string]int32{
 		"TRANSPORT_UNSPECIFIED": 0,
 		"TRANSPORT_QUIC":        1,
 		"TRANSPORT_H2":          2,
+		"TRANSPORT_WSS":         3,
 	}
 )
 
@@ -2924,11 +2928,12 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\x16UPDATER_RESULT_UPDATED\x10\x01\x12\x1e\n" +
 	"\x1aUPDATER_RESULT_ROLLED_BACK\x10\x02\x12\"\n" +
 	"\x1eUPDATER_RESULT_ROLLBACK_FAILED\x10\x03\x12\x1a\n" +
-	"\x16UPDATER_RESULT_REFUSED\x10\x04*L\n" +
+	"\x16UPDATER_RESULT_REFUSED\x10\x04*_\n" +
 	"\tTransport\x12\x19\n" +
 	"\x15TRANSPORT_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eTRANSPORT_QUIC\x10\x01\x12\x10\n" +
-	"\fTRANSPORT_H2\x10\x02*\xcb\x01\n" +
+	"\fTRANSPORT_H2\x10\x02\x12\x11\n" +
+	"\rTRANSPORT_WSS\x10\x03*\xcb\x01\n" +
 	"\rGoodbyeReason\x12\x1e\n" +
 	"\x1aGOODBYE_REASON_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19GOODBYE_REASON_SUPERSEDED\x10\x01\x12\x1a\n" +

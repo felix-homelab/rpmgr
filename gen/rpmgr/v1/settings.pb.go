@@ -34,12 +34,15 @@ type TransportPolicy int32
 const (
 	// Not set: the next less specific level decides (route, then connector, then instance).
 	TransportPolicy_TRANSPORT_POLICY_UNSPECIFIED TransportPolicy = 0
-	// QUIC first, TLS + reverse HTTP/2 when UDP is blocked or QUIC loses the race.
+	// QUIC first, TLS + reverse HTTP/2 when UDP is blocked or QUIC loses the race, and WSS when TLS
+	// + reverse HTTP/2 failed in its handshake.
 	TransportPolicy_TRANSPORT_POLICY_AUTO TransportPolicy = 1
 	// QUIC only; never falls back.
 	TransportPolicy_TRANSPORT_POLICY_QUIC TransportPolicy = 2
 	// TLS + reverse HTTP/2 only; never falls back.
 	TransportPolicy_TRANSPORT_POLICY_H2 TransportPolicy = 3
+	// WSS only (Phase 2); never falls back.
+	TransportPolicy_TRANSPORT_POLICY_WSS TransportPolicy = 4
 )
 
 // Enum value maps for TransportPolicy.
@@ -49,12 +52,14 @@ var (
 		1: "TRANSPORT_POLICY_AUTO",
 		2: "TRANSPORT_POLICY_QUIC",
 		3: "TRANSPORT_POLICY_H2",
+		4: "TRANSPORT_POLICY_WSS",
 	}
 	TransportPolicy_value = map[string]int32{
 		"TRANSPORT_POLICY_UNSPECIFIED": 0,
 		"TRANSPORT_POLICY_AUTO":        1,
 		"TRANSPORT_POLICY_QUIC":        2,
 		"TRANSPORT_POLICY_H2":          3,
+		"TRANSPORT_POLICY_WSS":         4,
 	}
 )
 
@@ -1355,12 +1360,13 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\bsettings\x18\x01 \x01(\v2\x15.rpmgr.v1.OrgSettingsR\bsettings\x12\x12\n" +
 	"\x04etag\x18\x02 \x01(\tR\x04etag\x12.\n" +
 	"\brevision\x18\x03 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
-	"\fapply_status\x18\x04 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus*\x82\x01\n" +
+	"\fapply_status\x18\x04 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus*\x9c\x01\n" +
 	"\x0fTransportPolicy\x12 \n" +
 	"\x1cTRANSPORT_POLICY_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15TRANSPORT_POLICY_AUTO\x10\x01\x12\x19\n" +
 	"\x15TRANSPORT_POLICY_QUIC\x10\x02\x12\x17\n" +
-	"\x13TRANSPORT_POLICY_H2\x10\x03*\x85\x01\n" +
+	"\x13TRANSPORT_POLICY_H2\x10\x03\x12\x18\n" +
+	"\x14TRANSPORT_POLICY_WSS\x10\x04*\x85\x01\n" +
 	"\x13PasswordHashProfile\x12%\n" +
 	"!PASSWORD_HASH_PROFILE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dPASSWORD_HASH_PROFILE_DEFAULT\x10\x01\x12$\n" +

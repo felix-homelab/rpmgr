@@ -172,7 +172,7 @@ function Settings({ connector: c, onWrite }: { connector: Connector; onWrite: (w
       setError(e.code === Code.FailedPrecondition ? t("connectors.changed") : e.code === Code.InvalidArgument ? e.rawMessage : t("link.failed", { message: e.rawMessage }));
     }
   }
-  const transports = [DataTransport.UNSPECIFIED, DataTransport.AUTO, DataTransport.QUIC, DataTransport.H2];
+  const transports = [DataTransport.UNSPECIFIED, DataTransport.AUTO, DataTransport.QUIC, DataTransport.H2, DataTransport.WSS];
   return (
     <Card title={t("connectors.settings")}>
       <form onSubmit={save} className="grid max-w-xl gap-4" noValidate>
