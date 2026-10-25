@@ -117,11 +117,7 @@ func listenerOf(ctx context.Context, tx *ent.Tx, org string, c *rpmgrv1.ConnectS
 	if err := checkCovers(crt, []string{name}); err != nil {
 		return l, err
 	}
-<<<<<<< HEAD
-	l.CertificateID = crt.ID
-=======
 	l.Hostname, l.DomainID, l.CertificateID = name, d.ID, crt.ID
->>>>>>> origin/main
 	return l, nil
 }
 

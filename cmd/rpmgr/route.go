@@ -74,6 +74,9 @@ type routeFlags struct {
 	websocket, maintenance                         bool
 	maintenanceMessage                             string
 	maxBody                                        uint64
+	httpConnect                                    bool
+	authorities                                    cli.List
+	connectAuth, connectHost, connectCert          string
 	maxConnections, requestsPerSecond              uint
 	bandwidth                                      uint64
 	matches                                        matchFlag
