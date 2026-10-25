@@ -16,8 +16,12 @@ export function FieldGrid({ children }: { children: ReactNode }) {
 
 // FormField is one labelled field of the route form, with its hint, if its kind or format has one,
 // and its error. Screen readers hear both with the field, and whether it is required. A field shown
-// only in some cases, such as the uploaded certificate, is left out otherwise.
-export function FormField<V extends RouteValues>({ field, form }: { field: RouteField; form: UseFormReturn<V> }) {
+// only in some cases, such as the uploaded certificate, is left out otherwise. On the edit page
+// (editing), a field set when the route is created shows its value read-only and is not sent
+// changed.
+export function FormField<V extends RouteValues>({ field, form, editing = false }: {
+  field: RouteField; form: UseFormReturn<V>; editing?: boolean;
+}) {
   const { t, i18n } = useTranslation();
   const id = useId();
   const control = form.control as unknown as Control<RouteValues>;
@@ -25,16 +29,22 @@ export function FormField<V extends RouteValues>({ field, form }: { field: Route
   if (field.shown && !field.shown(values)) {
     return null;
   }
-  const required = needsValue(field, values);
+  const fixed = editing && field.fixed;
+  const required = !fixed && needsValue(field, values);
+  const warning = field.warning?.(values);
   const error = form.formState.errors[field.key]?.message as string | undefined;
   // A kind without a hint has no key, and t() would show the key itself.
-  const hintKey = `routeForm.hints.${field.hint ?? field.format?.kind ?? field.kind}`;
+  const hintKey = `routeForm.hints.${fixed ? "fixed" : field.hint ?? field.format?.kind ?? field.kind}`;
   const hint = i18n.exists(hintKey) ? t(hintKey) : "";
   const described = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(" ") || undefined;
   const aria = { id, required, "aria-invalid": error ? true : undefined, "aria-describedby": described };
   const common = () => ({ ...aria, ...form.register(field.key as Path<V>) });
   let input;
-  switch (field.kind) {
+  if (fixed) {
+    const v = values[field.key] ?? "";
+    const option = field.options?.find(([o]) => o === v)?.[1];
+    input = <Input {...aria} readOnly value={option ? t(`routeForm.options.${field.key}.${option}`) : v} />;
+  } else switch (field.kind) {
     case "longtext":
     case "lines":
     case "pairs":
@@ -56,7 +66,7 @@ export function FormField<V extends RouteValues>({ field, form }: { field: Route
       break;
     case "certificate":
       // Controlled, so that it shows the form's value whatever certificates it offers.
-      input = <CertificateSelect {...aria} control={control} name={field.key} hostnames={values.hostnames ?? ""} />;
+      input = <CertificateSelect {...aria} control={control} name={field.key} hostnames={values[field.covers ?? "hostnames"] ?? ""} />;
       break;
     default:
       input = <Input inputMode={field.kind.endsWith("umber") ? "numeric" : undefined} {...common()} />;
@@ -66,6 +76,7 @@ export function FormField<V extends RouteValues>({ field, form }: { field: Route
       <label htmlFor={id} className={labelClass(required)}>{t(`routeForm.fields.${field.key}`)}</label>
       {input}
       {hint && <p id={`${id}-hint`} className="text-xs text-muted-foreground">{hint}</p>}
+      {warning && <p role="status" className="rounded-md border border-destructive/50 bg-destructive/5 p-2 text-sm text-destructive">{t(warning)}</p>}
       {error && <p id={`${id}-error`} role="alert" className="text-sm text-destructive">{error}</p>}
     </div>
   );

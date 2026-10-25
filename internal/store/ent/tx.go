@@ -44,6 +44,10 @@ type Tx struct {
 	ConfigRevision *ConfigRevisionClient
 	// ConfigSeq is the client for interacting with the ConfigSeq builders.
 	ConfigSeq *ConfigSeqClient
+	// ConnectAuthority is the client for interacting with the ConnectAuthority builders.
+	ConnectAuthority *ConnectAuthorityClient
+	// ConnectListener is the client for interacting with the ConnectListener builders.
+	ConnectListener *ConnectListenerClient
 	// Connector is the client for interacting with the Connector builders.
 	Connector *ConnectorClient
 	// DataSession is the client for interacting with the DataSession builders.
@@ -108,6 +112,8 @@ type Tx struct {
 	RouteHTTP *RouteHTTPClient
 	// RouteHostname is the client for interacting with the RouteHostname builders.
 	RouteHostname *RouteHostnameClient
+	// RouteLimit is the client for interacting with the RouteLimit builders.
+	RouteLimit *RouteLimitClient
 	// RoutePolicy is the client for interacting with the RoutePolicy builders.
 	RoutePolicy *RoutePolicyClient
 	// RouteTCP is the client for interacting with the RouteTCP builders.
@@ -276,6 +282,8 @@ func (tx *Tx) init() {
 	tx.CompiledSnapshot = NewCompiledSnapshotClient(tx.config)
 	tx.ConfigRevision = NewConfigRevisionClient(tx.config)
 	tx.ConfigSeq = NewConfigSeqClient(tx.config)
+	tx.ConnectAuthority = NewConnectAuthorityClient(tx.config)
+	tx.ConnectListener = NewConnectListenerClient(tx.config)
 	tx.Connector = NewConnectorClient(tx.config)
 	tx.DataSession = NewDataSessionClient(tx.config)
 	tx.Domain = NewDomainClient(tx.config)
@@ -308,6 +316,7 @@ func (tx *Tx) init() {
 	tx.Route = NewRouteClient(tx.config)
 	tx.RouteHTTP = NewRouteHTTPClient(tx.config)
 	tx.RouteHostname = NewRouteHostnameClient(tx.config)
+	tx.RouteLimit = NewRouteLimitClient(tx.config)
 	tx.RoutePolicy = NewRoutePolicyClient(tx.config)
 	tx.RouteTCP = NewRouteTCPClient(tx.config)
 	tx.RouteTarget = NewRouteTargetClient(tx.config)

@@ -213,7 +213,7 @@ func TestAllInOne_StartsFromAnOlderSchema(t *testing.T) {
 		"DELETE FROM enrollment_tokens WHERE built_in", "DELETE FROM connectors",
 		"ALTER TABLE gateways DROP COLUMN built_in", "ALTER TABLE connectors DROP COLUMN built_in",
 		"ALTER TABLE enrollment_tokens DROP COLUMN built_in",
-		"DROP TABLE health_checks", "DROP TABLE gateway_pages", "DROP TABLE rollout_targets", "DROP TABLE rollouts", "DROP TABLE releases",
+		"DROP TABLE health_checks", "DROP TABLE route_limits", "DROP TABLE gateway_pages", "DROP TABLE connect_authorities", "DROP TABLE connect_listeners", "DROP TABLE rollout_targets", "DROP TABLE rollouts", "DROP TABLE releases",
 		"DELETE FROM " + store.RevisionTable + " WHERE version >= '" + builtIn + "'",
 		"PRAGMA foreign_keys = ON",
 	} {

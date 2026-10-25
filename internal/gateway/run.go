@@ -40,8 +40,8 @@ const tunnelHandshake = 10 * time.Second
 
 // Capabilities are what this gateway version implements (docs/03-connections.md, "Versioning and
 // capabilities").
-var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapRouteLimits, agentproto.CapHTTPRequireHeader,
-	agentproto.CapPagesCustom, agentproto.CapTunnelWSS}
+var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapHTTPHeaderMatch, agentproto.CapRouteLimits,
+	agentproto.CapHTTPRequireHeader, agentproto.CapPagesCustom, agentproto.CapTCPHTTPConnect, agentproto.CapTunnelWSS}
 
 // RunOptions configure Run.
 type RunOptions struct {
@@ -167,8 +167,6 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	routes := NewTCPRoutes(TCPOptions{Host: host, Sessions: sessions, Revision: applier.Revision, OnChange: report.change, Logger: o.Logger})
-	defer routes.Close()
 	pass := NewPassthrough(sessions, applier.Revision, o.Logger)
 	defer pass.Close()
 	udpHost, _, err := net.SplitHostPort(cfg.Listen.UDP)
@@ -190,6 +188,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
+	routes := NewTCPRoutes(TCPOptions{Host: host, Sessions: sessions, Revision: applier.Revision, OnChange: report.change,
+		Certificates: certificates, Default: &def.Certificates[0], Logger: o.Logger})
+	defer routes.Close()
 	httpRoutes := NewHTTPRoutes(HTTPOptions{Sessions: sessions, Certificates: certificates, Default: &def.Certificates[0],
 		Revision: applier.Revision, Fallback80: o.Port80Fallback, FallbackNames: o.ControllerNames, Challenges: challenges.HTTP01,
 		Pages: pages, Logger: o.Logger})

@@ -10,6 +10,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
+	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
@@ -18,6 +19,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
@@ -25,6 +27,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 )
 
@@ -37,6 +40,8 @@ const (
 	notServingOffline       = "OFFLINE"
 	notServingDisabled      = "DISABLED"
 	notServingNoDataSession = "NO_DATA_SESSION"
+	// notServingCertificatePending: the route's TLS CONNECT listener has no certificate yet.
+	notServingCertificatePending = "CERTIFICATE_PENDING"
 )
 
 // routeStatuses derives the status of an org's routes from what their agents report
@@ -56,6 +61,9 @@ type routeStatuses struct {
 	missing map[[2]string][]string
 	// maintenance are the http routes in maintenance.
 	maintenance map[string]bool
+	// certPending are the routes on a TLS CONNECT listener without a certificate, with the
+	// listener's hostname and the last ACME error as detail.
+	certPending map[string]string
 	// checked are the routes with a health check, and caps the capabilities of each agent's
 	// session, which say whether a connector runs checks (D133).
 	checked map[string]bool
@@ -72,7 +80,8 @@ type routeStatuses struct {
 func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, routes []*ent.Route, now time.Time) (*routeStatuses, error) {
 	v := &routeStatuses{now: now, enabled: map[string]bool{}, online: map[string]bool{}, states: map[string]*ent.AgentState{},
 		notReady: map[[2]string]*ent.ResourceStatus{}, links: map[[2]string]bool{}, targets: map[string][]*ent.RouteTarget{},
-		changed: map[string]int64{}, maintenance: map[string]bool{}, missing: map[[2]string][]string{}, checked: map[string]bool{}}
+		changed: map[string]int64{}, maintenance: map[string]bool{}, missing: map[[2]string][]string{},
+		certPending: map[string]string{}, checked: map[string]bool{}}
 	inst, err := c.Instance.Get(sys, 1)
 	if err != nil {
 		return nil, err
@@ -164,7 +173,43 @@ func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, route
 	if err := v.readMissing(ctx, c, routes, caps); err != nil {
 		return nil, err
 	}
+	if err := v.readCertificates(ctx, c, routeIDs); err != nil {
+		return nil, err
+	}
 	return v, v.readChanges(sys, c, org, max(floor, 0))
+}
+
+// readCertificates notes the routes on a TLS CONNECT listener that has no certificate to present:
+// none it names that is active, no uploaded one that covers its hostname, and no ACME one yet.
+func (v *routeStatuses) readCertificates(ctx context.Context, c *ent.Client, routeIDs []string) error {
+	rows, err := c.RouteTCP.Query().Where(routetcp.RouteIDIn(routeIDs...),
+		routetcp.HasListenerWith(connectlistener.AuthModeEQ(connectlistener.AuthModeTLSBasic))).
+		WithListener(func(q *ent.ConnectListenerQuery) { q.WithCertificate() }).All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, t := range rows {
+		l := t.Edges.Listener
+		crt, err := certs.ListenerCertificate(ctx, c.Certificate, l)
+		if err != nil || crt != nil {
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		detail := l.Hostname
+		if l.CertificateID == nil {
+			acme, err := certs.ACMEOf(ctx, c.Certificate, l.OrgID, l.Hostname)
+			if err != nil {
+				return err
+			}
+			if acme != nil && acme.LastError != "" {
+				detail += ": " + acme.LastError
+			}
+		}
+		v.certPending[t.RouteID] = detail
+	}
+	return nil
 }
 
 // readMissing notes the capabilities each online agent of a route lacks for it, from the
@@ -306,6 +351,10 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 		case v.missing[[2]string{g.ID, r.ID}] != nil:
 			// Its snapshot leaves the route out, so it neither serves it nor reports it.
 			out.NotServing = append(out.NotServing, capabilityMissing(g.ID, v.missing[[2]string{g.ID, r.ID}]))
+		case v.certPending[r.ID] != "":
+			// Its listener completes no TLS handshake without a certificate.
+			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: g.ID, Reason: notServingCertificatePending,
+				Detail: v.certPending[r.ID]})
 		case nr != nil:
 			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: g.ID, Reason: notReadyReason(nr.Reason), Detail: nr.Detail})
 		case !v.linked(g.ID, ready):
@@ -338,9 +387,23 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 	return out
 }
 
-// capabilityMissing is the reason of an agent that lacks capabilities a route needs.
+// capabilityMissing is the reason of an agent that lacks capabilities a route needs, with what
+// that means for the route's clients where it is more than the route not being served there.
 func capabilityMissing(id string, caps []string) *rpmgrv1.RouteNotServing {
-	return &rpmgrv1.RouteNotServing{Id: id, Reason: routes.CapabilityMissing, Detail: strings.Join(caps, ", ")}
+	detail := strings.Join(caps, ", ")
+	for _, c := range caps {
+		if note := capabilityNotes[c]; note != "" {
+			detail += "; " + note
+		}
+	}
+	return &rpmgrv1.RouteNotServing{Id: id, Reason: routes.CapabilityMissing, Detail: detail}
+}
+
+// capabilityNotes say what clients meet on an agent that lacks a capability, where another route
+// takes the route's requests there (docs/03-connections.md, "Versioning and capabilities").
+var capabilityNotes = map[string]string{
+	agentproto.CapHTTPHeaderMatch: "this gateway sends the route's requests to a route of the same hostname and path prefix " +
+		"without header matches, if there is one",
 }
 
 // linked reports whether gateway has a data session with one of connectors.

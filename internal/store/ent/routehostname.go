@@ -30,6 +30,8 @@ type RouteHostname struct {
 	Hostname string `json:"hostname,omitempty"`
 	// PathPrefix holds the value of the "path_prefix" field.
 	PathPrefix string `json:"path_prefix,omitempty"`
+	// MatchKey holds the value of the "match_key" field.
+	MatchKey string `json:"match_key,omitempty"`
 	// DomainID holds the value of the "domain_id" field.
 	DomainID string `json:"domain_id,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -78,7 +80,7 @@ func (*RouteHostname) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case routehostname.FieldID:
 			values[i] = new(sql.NullInt64)
-		case routehostname.FieldOrgID, routehostname.FieldRouteID, routehostname.FieldGatewayGroupID, routehostname.FieldRouteType, routehostname.FieldHostname, routehostname.FieldPathPrefix, routehostname.FieldDomainID:
+		case routehostname.FieldOrgID, routehostname.FieldRouteID, routehostname.FieldGatewayGroupID, routehostname.FieldRouteType, routehostname.FieldHostname, routehostname.FieldPathPrefix, routehostname.FieldMatchKey, routehostname.FieldDomainID:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -136,6 +138,12 @@ func (_m *RouteHostname) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field path_prefix", values[i])
 			} else if value.Valid {
 				_m.PathPrefix = value.String
+			}
+		case routehostname.FieldMatchKey:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field match_key", values[i])
+			} else if value.Valid {
+				_m.MatchKey = value.String
 			}
 		case routehostname.FieldDomainID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -206,6 +214,9 @@ func (_m *RouteHostname) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("path_prefix=")
 	builder.WriteString(_m.PathPrefix)
+	builder.WriteString(", ")
+	builder.WriteString("match_key=")
+	builder.WriteString(_m.MatchKey)
 	builder.WriteString(", ")
 	builder.WriteString("domain_id=")
 	builder.WriteString(_m.DomainID)

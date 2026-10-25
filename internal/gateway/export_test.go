@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"maps"
+	"net/http"
 	"slices"
 	"testing"
 	"time"
@@ -49,9 +50,14 @@ func SetHTTPTimers(t testing.TB, readHeader, upstreamHeader time.Duration) {
 	t.Cleanup(func() { httpReadHeader, httpUpstreamHeader = oldRead, oldUp })
 }
 
-// RouteFor returns the ID of the http route that serves host and path, or "".
-func RouteFor(h *HTTPRoutes, host, path string) string {
-	if rt := h.routeFor(host, path); rt != nil {
+// RouteFor returns the ID of the http route that serves host and path, with the request headers
+// header if given, or "".
+func RouteFor(h *HTTPRoutes, host, path string, header ...http.Header) string {
+	var hdr http.Header
+	if len(header) > 0 {
+		hdr = header[0]
+	}
+	if rt := h.routeFor(host, path, hdr); rt != nil {
 		return rt.route.Load().ID
 	}
 	return ""
@@ -67,6 +73,14 @@ func SetBasicAuthTTL(t testing.TB, d time.Duration) {
 
 // BasicAuthBusy returns how many basic-auth verifications run now.
 func (h *HTTPRoutes) BasicAuthBusy() int64 { return int64(h.basic.busy.Load()) }
+
+// RouteTimeouts returns the upstream timeouts in force for http route id.
+func RouteTimeouts(h *HTTPRoutes, id string) (header, idle time.Duration) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	rt := h.transports[id]
+	return rt.tr.ResponseHeaderTimeout, rt.tr.IdleConnTimeout
+}
 
 // LimitOf returns the limit state the applier keeps for a route, nil if none.
 func LimitOf(a *Applier, id string) *RouteLimit {

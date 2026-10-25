@@ -245,6 +245,14 @@ later.
   certificate with the error recorded. A wildcard hostname in `acme` mode is refused with that
   reason, as its certificate needs DNS-01 (Phase 2, R42). The ACME client honours `HTTPS_PROXY`,
   else `ALL_PROXY`, and `NO_PROXY` (R44, [D93](14-open-decisions.md#engineering)).
+- **ACME for CONNECT listeners** (Phase 2) [R]: the job treats the hostname of a TLS CONNECT
+  listener with an enabled route and no certificate of its own as it treats a WSS hostname
+  ([Route edge rules](#route-edge-rules)): an uploaded certificate of the listener's org that
+  covers the name serves it instead; otherwise the job obtains and renews one, with its challenges
+  answered by the gateways of the listener's group, which alone get it. A hostname that lies
+  under no verified domain of the org any more is not renewed: its row records the reason, and
+  the certificate it has serves until it expires. A listener that closes with its last route
+  takes its hostname out of the job ([03](03-connections.md#http-connect-routes-phase-2)).
 - **Failed ACME attempts** [R]: a hostname whose attempt failed, such as one whose DNS does not
   point at its gateways yet, must not use up the account's limits at the CA. Let's Encrypt allows
   5 failed authorizations per name and account an hour, and pauses a name after 1 152 failures in
@@ -541,9 +549,16 @@ their own account this way. Further rules:
 | DNS providers, managed zones and their gates, DNS names; adopt, release, approve plans; view foreign records (Phase 2) | ✓ | ✓ | | |
 | Members (Admins cannot change Owners) (`members.write`) | ✓ | ✓ | | |
 | Service accounts and their tokens (Phase 2) | ✓ | ✓ | | |
-| Audit log read and export (`audit.read`) | ✓ | ✓ | | |
+| Audit log read and export; an export also takes a step-up (`audit.read`) | ✓ | ✓ | | |
+| Live logs of the org's connectors and gateways (`agents.logs`, Phase 2) | ✓ | ✓ | | |
+| Webhook endpoints, their secrets and deliveries (`webhooks.write`, Phase 2) | ✓ | ✓ | | |
 | SSO, MFA policy, org settings (`org.write`) | ✓ | | | |
 | `connector.shell` (Phase 3) | explicit per-user grant, plus host opt-in, plus step-up | | | |
+
+[R] **Live logs** (Phase 2): logs of a gateway of a group shared with other orgs are for the
+Instance Admin only, as they show other orgs' traffic. A host cannot refuse live logs in Phase 2.
+Opening a log, and raising its level, is audited as `agent.logs_open` with the level and filter
+([D140](14-open-decisions.md#engineering)).
 
 [R] `connectors.write` reaches routes: decommissioning a connector deletes each route left with no
 target, with its hostnames, ports and policy links, so a token with that scope and without
@@ -680,9 +695,10 @@ capabilities, so a gateway of an earlier release never serves a route without th
 ([03](03-connections.md#versioning-and-capabilities)).
 
 - **Reserved path and identity headers.** `/.rpmgr/` on an http route hostname never goes
-  upstream, and the gateway removes `Rpmgr-User-Email`, `Rpmgr-User-Subject` and
-  `Rpmgr-User-Groups` from every client request on every http route, so that only the gateway sets
-  them ([03](03-connections.md#http-routes)).
+  upstream, and the gateway removes every header and trailer whose name starts with `Rpmgr-User-`
+  from every client request on every http route, also when the name is spelt with `_` for `-`,
+  which CGI-style servers read alike, so that only the gateway sets them
+  ([03](03-connections.md#http-routes), [D135](14-open-decisions.md#engineering)).
 - **Per-client rate limits** count each client address, or IPv6 /64, in bounded tables on each
   gateway ([03](03-connections.md#access-policies)). A UDP source address can be forged at will, so
   udp flows count in tables of their own: a flood of forged sources never fills the table that
@@ -917,7 +933,7 @@ Rules:
 | Session, API, enrollment tokens | SHA-256 hash (tokens are 256-bit random, so a fast hash is sufficient) |
 | Route basic-auth credentials | argon2id hash; gateways receive the hash, never the password. Because browsers send basic-auth credentials with **every** request, a gateway verifies with argon2id once and then caches `HMAC-SHA256(gateway-local random key, policy_id ‖ credential_version ‖ len(user) ‖ user ‖ password)` together with the matched user, for 5 minutes in a bounded LRU. The policy ID and credential version keep an entry from being reused on another route, org or credential; the length prefix prevents ambiguous user/password splits; entries for a policy are flushed as soon as a snapshot changes that policy, so tightened policies apply immediately; failed attempts are rate-limited per client IP **before** hashing, and hashing has a per-gateway concurrency cap. This keeps argon2id from becoming a CPU/memory amplifier for unauthenticated clients. [R] The cache holds 10 000 entries; a client address gets 20 verifications at once, refilled at 10 per minute; a gateway runs 2 at once; a request without credentials is refused without one; a gateway verifies only hashes within m ≤ 256 MiB, t ≤ 10, p ≤ 16. The same holds for the proxy passwords of CONNECT listeners (Phase 2) |
 | Require-header values (Phase 2) | SHA-256; write-only, at least 32 characters, compared in constant time on the gateway ([Route edge rules](#route-edge-rules)) |
-| CA, intermediate, config-signing and audit keys; ACME account key; TLS private keys of public certificates; TOTP seeds; OIDC client secrets; DNS-provider tokens (one per `dns_providers` row, per org); SMTP and webhook secrets | **Envelope encryption**: a random data key per secret encrypts it with AES-256-GCM (AAD = table, column, row ID); the data key is wrapped by the KEK with AES-256-GCM (AAD = the same plus the KEK version). Rotating the KEK re-wraps only data keys, never the secrets. The KEK version is derived from the key itself (the first 8 bytes of a SHA-256 over it), so it needs no configuration |
+| CA, intermediate, config-signing and audit keys; ACME account key; TLS private keys of public certificates; TOTP seeds; OIDC client secrets; DNS-provider tokens (one per `dns_providers` row, per org); SMTP, webhook and audit-sink secrets (an S3 secret key, a syslog client key) | **Envelope encryption**: a random data key per secret encrypts it with AES-256-GCM (AAD = table, column, row ID); the data key is wrapped by the KEK with AES-256-GCM (AAD = the same plus the KEK version). Rotating the KEK re-wraps only data keys, never the secrets. The KEK version is derived from the key itself (the first 8 bytes of a SHA-256 over it), so it needs no configuration |
 | Agent private keys, WireGuard private keys | **Never stored centrally**. Generated on the agent; only public keys reach the controller |
 
 **KEK sources**, in order of preference:
@@ -956,6 +972,13 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
   v1.36.12: only `types/descriptorpb`, `internal/genid` and `reflect/protoreflect/source_gen.go`
   name it] (VB-04).
 - **Whole requests are never logged.** Access logs omit query strings and authentication headers.
+- [R] **Live logs** (Phase 2) leave the agent only after the logger's redaction and a second pass
+  over the text of each message and attribute, as a message may quote what a field annotation
+  never saw ([D145](14-open-decisions.md#engineering), E7). The pass replaces with `[REDACTED]`: an
+  `rpmgr_` token prefix and its random part; PEM blocks; the values of `Authorization`,
+  `Proxy-Authorization`, `Cookie` and `Set-Cookie`; the values of `password=`, `secret=` and
+  `token=` pairs; and strings shaped like a JWT. A raised level changes what is logged, never what
+  is redacted.
 - No secret appears in argv, in the environment of long-running processes, or in unit files.
 
 ## Supply chain and updates
@@ -1337,6 +1360,43 @@ a few connectors and gateways are updated at once and watched while they are.
   should verify the release (GitHub release + `gh attestation verify`) before running it. After
   installation, updates are protected by the compiled-in keys.
 
+## Webhooks and the egress guard (Phase 2)
+
+- **Who.** An org's endpoints are managed by its Owners and Admins (`webhooks.write`); instance
+  endpoints, which receive instance events, by the Instance Admin
+  ([07](07-api.md#webhooks-phase-2)). An org's endpoint receives only that org's events.
+- **Envelope.** [R] An event is a thin envelope: its ID, type, time, org, the IDs of its actor and
+  subject, a short summary and the names of the fields that changed. It never carries a resource,
+  a secret or anything of another org ([D144](14-open-decisions.md#engineering)).
+- **Signing.** `Rpmgr-Signature: t=<unix>,v1=<HMAC-SHA256(secret, t.body)>`. A secret is
+  `rpmgr_whs_` and 256 random bits, shown once when it is made or rotated, stored under the KEK and
+  never read back. After a rotation the old secret signs too, as a second `v1=` value, for the
+  period in [03](03-connections.md#timeouts-keepalive-and-backoff), so receivers switch without a
+  gap. **Receivers reject signatures older than 5 minutes.** Timestamps are used because receivers
+  are third-party HTTP endpoints without mutual TLS; rpmgr-internal authentication never uses them.
+- **Delivery.** HTTPS only, the receiver's certificate verified against the system roots; a
+  redirect is never followed; at least once, each request naming its event in `Rpmgr-Event-Id` so
+  a receiver drops duplicates. An endpoint without a successful delivery for the period in 03 is
+  disabled, with an event, an e-mail to the org's Owners and Admins and a notice in the UI; only a
+  person enables it again ([D143](14-open-decisions.md#engineering)).
+- **Egress guard** ([D138](14-open-decisions.md#engineering)). The controller dials every receiver
+  through one guard, which checks each address the name resolves to at the moment it dials, so a
+  name that changes its answer (DNS rebinding) gains nothing:
+  - **Always denied:** loopback, unspecified, link-local (`169.254.0.0/16`, `fe80::/10`), the cloud
+    metadata addresses (`169.254.169.254`, `fd00:ec2::254`, `100.100.100.200`), multicast and
+    broadcast, the controller's own listening addresses, and the IPv4-mapped and IPv4-compatible
+    forms of each.
+  - **Private ranges** (RFC 1918, `fc00::/7`, `100.64.0.0/10` and every other non-global unicast
+    range) are denied unless the Instance Admin lists the range in the instance setting
+    `webhook_private_ranges`. A refused delivery names the range, which the UI offers to list. A
+    listed range never admits an always-denied address.
+  - **Instance endpoints and audit sinks**, which only the Instance Admin sets, may reach private
+    ranges and loopback; link-local, metadata, multicast and broadcast addresses stay denied
+    ([D145](14-open-decisions.md#engineering), E5).
+  - **Through a proxy** (`HTTPS_PROXY`), the controller resolves and checks the receiver itself
+    and asks the proxy to connect to the checked address, with the receiver's name for TLS and
+    `Host`.
+
 ## Audit log
 
 - Every state-changing request and every security event (logins, failed logins, step-ups, token
@@ -1387,8 +1447,9 @@ a few connectors and gateways are updated at once and watched while they are.
   and lock its chain, at the flood's pace. A metric counts them instead
   ([10](10-operations.md#metrics)).
 - Signed **checkpoints** (chain head + count, signed with the audit-checkpoint key) are shipped to an
-  external sink (syslog, OTLP, webhook, or object storage with retention lock). The external copy
-  is what makes tampering evident: anyone with database write access could recompute a chain.
+  external sink (Phase 2: syslog over TLS, a webhook, or object storage with Object Lock; OTLP in
+  Phase 3, [D141](14-open-decisions.md#engineering)). The external copy is what makes tampering
+  evident: anyone with database write access could recompute a chain.
 - [R] A checkpoint's signature covers a version label, the chain's name, the seq, the head's hash
   and the time; the schedule is in the timeout table of
   [03](03-connections.md#timeouts-keepalive-and-backoff). A chain verifies from its genesis, or,
@@ -1402,8 +1463,36 @@ a few connectors and gateways are updated at once and watched while they are.
   alone. Until an external sink is configured (Phase 2, optional, [14](14-open-decisions.md) D11),
   an attacker with write access to the controller host can rewrite both, so tamper evidence is
   limited to attackers who reach only the database.
-- **Webhook signatures** (Phase 2, [07](07-api.md#webhooks-phase-2)): receivers reject signatures
-  older than **5 minutes**.
+- [R] **External sinks** (Phase 2, [D141](14-open-decisions.md#engineering)) are instance-level and
+  set by the Instance Admin. Each sink always receives every chain's checkpoints and, if chosen,
+  the entries too. Each keeps its own cursor per chain, advanced only after the sink acknowledged a
+  batch, so shipping is at least once and a sink that was down catches up from its cursor. An
+  append never waits for a sink. A sink has a backlog metric and an alert
+  ([10](10-operations.md#suggested-alerts)); the schedule is in
+  [03](03-connections.md#timeouts-keepalive-and-backoff).
+  - **Syslog**: RFC 5425 framing over TLS only, never UDP or plain TCP; the server is verified
+    against the sink's CA bundle. Each message is an RFC 5424 record holding the checkpoint or entry
+    as JSON (VB-23).
+  - **Webhook**: delivered and signed as a webhook ([Webhooks and the egress
+    guard](#webhooks-and-the-egress-guard-phase-2)), with the event type `audit.checkpoint` or
+    `audit.entry`.
+  - **Object storage** (S3-compatible, the client of the revocation log): each checkpoint or batch
+    is an object written with `If-None-Match: *` into a bucket with Object Lock in compliance
+    mode, so not even the sink's own credentials can rewrite or delete it before the lock ends; a
+    bucket without Object Lock, or a store without conditional create, is refused when the sink is
+    saved (VB-24). Verification can read the sink back and finds a chain rewritten under a
+    checkpoint it holds.
+- [R] **Export** (Phase 2, `ExportAudit`): an org's chain, for `audit.read` with a step-up, or the
+  instance chain for the Instance Admin with a step-up; audited as `audit.export`. The export is
+  JSON Lines: a header line (format version, chain, first and last seq, the signers' certificates),
+  then each entry with every stored field as in its canonical form plus `prev_hash` and `hash`,
+  with each checkpoint in its place. It ends at the newest checkpoint; entries after it are listed
+  as an unanchored tail, flagged so, which a later export anchors. `rpmgr audit verify-export
+  --ca-pin <sha256>` verifies an export offline against the CA root pin alone: links, hashes,
+  checkpoint signatures and their keys' certificates, and that nothing was removed, reordered or
+  edited.
+- **Webhook signatures** (Phase 2) and their maximum age are under
+  [Webhooks and the egress guard](#webhooks-and-the-egress-guard-phase-2).
 - Only the audit package writes the audit tables: the store refuses every create, update and delete
   through Ent. On PostgreSQL, the application role has no `UPDATE`/`DELETE` permission on the audit
   table.

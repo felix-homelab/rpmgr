@@ -188,6 +188,15 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expect(page.getByRole("cell", { name: "Intermediate", exact: true })).toBeVisible();
   await expectAccessible(page);
 
+  // The policy form with a per-client rate limit (#917), which is left unsaved.
+  await page.goto("/policies");
+  await page.getByRole("button", { name: "New access policy" }).first().click();
+  const policyForm = page.getByRole("form", { name: "New access policy" });
+  await policyForm.getByLabel("Kind").selectOption("rateLimit");
+  await expect(policyForm.getByText(/Over it, HTTP gets 429/)).toBeVisible();
+  await expectAccessible(page);
+  await policyForm.getByRole("button", { name: "Cancel" }).click();
+
   // On a wide screen every page fills the window beside the sidebar, and the route form stands in
   // two columns, which a phone stacks.
   const desktop = page.viewportSize()!;
@@ -200,6 +209,14 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.goto("/routes/new");
   await expect(page.locator(".required-mark")).toHaveText(["Gateway group", "Name", "Hostnames", "HSTS max-age (seconds)", "Largest request body (bytes, 0 for no limit)"]);
   expect(await unmarked(page)).toEqual([]);
+  // A CONNECT route: its fields come with the mode, and basic auth in the clear stays warned of.
+  await page.getByRole("radio", { name: "TCP", exact: true }).check();
+  await page.getByLabel("Listener", { exact: true }).selectOption({ label: "A CONNECT listener shared with other routes (HTTP proxy)" });
+  await expect(page.getByLabel("CONNECT names")).toBeVisible();
+  await page.getByLabel("Proxy credentials").selectOption({ label: "Basic auth in the clear" });
+  await expect(page.getByText(/anyone on the network between them and the gateway can read and use it/)).toBeVisible();
+  await expectAccessible(page);
+  await page.goto("/routes/new");
   const top = async (label: string) => (await page.getByLabel(label, { exact: true }).boundingBox())!.y;
   expect(await top("Name")).toBe(await top("Gateway group"));
   await page.setViewportSize({ width: 390, height: desktop.height });

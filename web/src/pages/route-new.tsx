@@ -114,7 +114,7 @@ function NewRouteForm({ type }: { type: RouteType }) {
       form.resetField("group", { defaultValue: preset });
     }
   }, [listed, preset, form]);
-  const [created, setCreated] = useState<{ route?: Route; revision?: Revision; status?: ApplyStatus }>();
+  const [created, setCreated] = useState<{ route?: Route; revision?: Revision; status?: ApplyStatus; warnings?: string[] }>();
   const [previewed, setPreviewed] = useState<PreviewRouteResponse>();
   const [other, setOther] = useState<string[]>([]);
   const live = useLiveApplyStatus(org?.orgId ?? "", created?.revision, created?.status);
@@ -134,7 +134,7 @@ function NewRouteForm({ type }: { type: RouteType }) {
     setOther([]);
     try {
       const res = await createRoute.mutateAsync(request(values));
-      setCreated({ route: res.route, revision: res.revision, status: res.applyStatus });
+      setCreated({ route: res.route, revision: res.revision, status: res.applyStatus, warnings: res.warnings });
       await queryClient.invalidateQueries();
     } catch (err) {
       failed(err);
@@ -153,6 +153,7 @@ function NewRouteForm({ type }: { type: RouteType }) {
   if (created?.route) {
     return (
       <div className="grid gap-3">
+        {created.warnings?.map((m) => <Alert key={m}>{t("routeForm.warning", { message: m })}</Alert>)}
         {live && <ApplyStatusView status={live} revision={created.revision} name={name} />}
         <Button asChild className="justify-self-start">
           <Link to="/routes/$routeId" params={{ routeId: created.route.id }}>{t("routeNew.open", { name: created.route.name })}</Link>
