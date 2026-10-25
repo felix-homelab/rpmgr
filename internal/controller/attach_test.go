@@ -19,6 +19,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
+	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -230,6 +231,40 @@ func TestOperation_Deadline(t *testing.T) {
 			}
 		case <-time.After(5 * time.Second):
 			t.Fatal("an operation never attached did not fail")
+		}
+	})
+}
+
+// TestOpenLogs_Unavailable: LogService learns that the live log of an agent without a session
+// here, of one whose release runs no live logs and of one that refuses the operation is
+// unavailable.
+func TestOpenLogs_Unavailable(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := startSessions(t, db, "0.1.0", 0)
+		capable := hello("0.1.0")
+		capable.Capabilities = append(capable.Capabilities, agentproto.CapLogsStream)
+		certA, a := e.agentCert(t)
+		stA := e.open(t, testCtx(t), certA, capable)
+		recv(t, stA)
+		certB, b := e.agentCert(t)
+		stB := e.open(t, testCtx(t), certB, hello("0.1.0"))
+		recv(t, stB)
+		done := make(chan error, 1)
+		go func() {
+			_, err := e.sessions.OpenLogs(testCtx(t), a.ID, &agentv1.LogParams{Level: "info"})
+			done <- err
+		}()
+		m := recv(t, stA).GetOpenOperation()
+		send(t, stA, &agentv1.AgentMessage{Msg: &agentv1.AgentMessage_OpResult{OpResult: &agentv1.OpResult{OpId: m.GetOpId(),
+			Error: "this agent does not run the operation"}}})
+		if err := <-done; !errors.Is(err, apisvc.ErrLogsUnavailable) {
+			t.Errorf("a refused live log: %v", err)
+		}
+		if _, err := e.sessions.OpenLogs(testCtx(t), b.ID, nil); !errors.Is(err, apisvc.ErrLogsUnavailable) {
+			t.Errorf("an agent without logs.stream: %v", err)
+		}
+		if _, err := e.sessions.OpenLogs(testCtx(t), "con_unknown", nil); !errors.Is(err, apisvc.ErrLogsUnavailable) {
+			t.Errorf("an agent without a session: %v", err)
 		}
 	})
 }

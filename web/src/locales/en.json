@@ -198,6 +198,7 @@
       "infrastructure_write": "gateways, gateway groups, port pools, domains and certificates",
       "members_write": "members and invitations",
       "audit_read": "read and export the audit log",
+      "agents_logs": "stream the live logs of connectors and gateways",
       "org_write": "SSO, the MFA policy and the org's settings",
       "instance_admin": "the instance: CA, KEK, system gateways and instance settings"
     }

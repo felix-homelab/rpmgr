@@ -28,3 +28,11 @@ func SetProbeWait(t testing.TB, d time.Duration) {
 
 // CapabilityMissingFor is the route status entry of an agent that lacks caps.
 var CapabilityMissingFor = capabilityMissing
+
+// SetLogHeartbeat shortens the heartbeat of live-log streams for one test, which must not run in
+// parallel with others.
+func SetLogHeartbeat(t testing.TB, d time.Duration) {
+	old := logHeartbeat
+	logHeartbeat = d
+	t.Cleanup(func() { logHeartbeat = old })
+}
