@@ -759,6 +759,7 @@ rpmgr create route [flags]
 
 | Flag | Default | Description |
 |---|---|---|
+| `--bandwidth uint` |  | the route's bytes a second in each direction, shared by the group's gateways; 0 is no limit |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
@@ -782,12 +783,14 @@ rpmgr create route [flags]
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
 | `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
+| `--max-connections uint` |  | the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--path-prefix string` |  | http: the path prefix it serves |
 | `--policy value` |  | an access policy, by name or ID; repeat for more |
 | `--port uint` |  | tcp, udp, tcp-udp: the public port; 0 on create picks a free one |
 | `--port80 string` |  | http: what port 80 does: redirect, serve or off |
+| `--requests-per-second uint` |  | the route's requests, new connections or new flows a second, shared by the group's gateways; 0 is no limit |
 | `--set-request-header value` |  | http: a header Name=value set towards the upstream; repeat for more |
 | `--set-response-header value` |  | http: a header Name=value set towards the client; repeat for more |
 | `--tcp` |  | a tcp route on a public port |
@@ -1033,6 +1036,7 @@ rpmgr update route [flags] <id or name>
 
 | Flag | Default | Description |
 |---|---|---|
+| `--bandwidth uint` |  | the route's bytes a second in each direction, shared by the group's gateways; 0 is no limit |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
@@ -1055,12 +1059,14 @@ rpmgr update route [flags] <id or name>
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
 | `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
+| `--max-connections uint` |  | the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--path-prefix string` |  | http: the path prefix it serves |
 | `--policy value` |  | an access policy, by name or ID; repeat for more |
 | `--port uint` |  | tcp, udp, tcp-udp: the public port; 0 on create picks a free one |
 | `--port80 string` |  | http: what port 80 does: redirect, serve or off |
+| `--requests-per-second uint` |  | the route's requests, new connections or new flows a second, shared by the group's gateways; 0 is no limit |
 | `--set-request-header value` |  | http: a header Name=value set towards the upstream; repeat for more |
 | `--set-response-header value` |  | http: a header Name=value set towards the client; repeat for more |
 | `--tls-mode string` |  | http: acme or certificate |
@@ -1457,6 +1463,7 @@ rpmgr preview route [flags]
 
 | Flag | Default | Description |
 |---|---|---|
+| `--bandwidth uint` |  | the route's bytes a second in each direction, shared by the group's gateways; 0 is no limit |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
@@ -1480,12 +1487,14 @@ rpmgr preview route [flags]
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
 | `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
+| `--max-connections uint` |  | the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--path-prefix string` |  | http: the path prefix it serves |
 | `--policy value` |  | an access policy, by name or ID; repeat for more |
 | `--port uint` |  | tcp, udp, tcp-udp: the public port; 0 on create picks a free one |
 | `--port80 string` |  | http: what port 80 does: redirect, serve or off |
+| `--requests-per-second uint` |  | the route's requests, new connections or new flows a second, shared by the group's gateways; 0 is no limit |
 | `--route string` |  | the ID of a route whose change to preview, rather than a new route |
 | `--set-request-header value` |  | http: a header Name=value set towards the upstream; repeat for more |
 | `--set-response-header value` |  | http: a header Name=value set towards the client; repeat for more |

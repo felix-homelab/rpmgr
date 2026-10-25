@@ -1447,6 +1447,41 @@ var (
 			},
 		},
 	}
+	// RouteLimitsColumns holds the columns for the "route_limits" table.
+	RouteLimitsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "max_connections", Type: field.TypeInt64, Default: 0},
+		{Name: "requests_per_sec", Type: field.TypeInt64, Default: 0},
+		{Name: "bandwidth_bytes_per_sec", Type: field.TypeInt64, Default: 0},
+		{Name: "route_id", Type: field.TypeString},
+	}
+	// RouteLimitsTable holds the schema information for the "route_limits" table.
+	RouteLimitsTable = &schema.Table{
+		Name:       "route_limits",
+		Columns:    RouteLimitsColumns,
+		PrimaryKey: []*schema.Column{RouteLimitsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "route_limits_routes_route",
+				Columns:    []*schema.Column{RouteLimitsColumns[5]},
+				RefColumns: []*schema.Column{RoutesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "routelimit_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteLimitsColumns[1], RouteLimitsColumns[0]},
+			},
+			{
+				Name:    "routelimit_route_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteLimitsColumns[5]},
+			},
+		},
+	}
 	// RoutePoliciesColumns holds the columns for the "route_policies" table.
 	RoutePoliciesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -1923,6 +1958,7 @@ var (
 		RoutesTable,
 		RouteHTTPTable,
 		RouteHostnamesTable,
+		RouteLimitsTable,
 		RoutePoliciesTable,
 		RouteTCPTable,
 		RouteTargetsTable,
@@ -2066,6 +2102,10 @@ func init() {
 	RouteHostnamesTable.ForeignKeys[1].RefTable = DomainsTable
 	RouteHostnamesTable.Annotation = &entsql.Annotation{
 		Table: "route_hostnames",
+	}
+	RouteLimitsTable.ForeignKeys[0].RefTable = RoutesTable
+	RouteLimitsTable.Annotation = &entsql.Annotation{
+		Table: "route_limits",
 	}
 	RoutePoliciesTable.ForeignKeys[0].RefTable = RoutesTable
 	RoutePoliciesTable.ForeignKeys[1].RefTable = AccessPoliciesTable

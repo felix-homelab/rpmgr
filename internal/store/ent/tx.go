@@ -108,6 +108,8 @@ type Tx struct {
 	RouteHTTP *RouteHTTPClient
 	// RouteHostname is the client for interacting with the RouteHostname builders.
 	RouteHostname *RouteHostnameClient
+	// RouteLimit is the client for interacting with the RouteLimit builders.
+	RouteLimit *RouteLimitClient
 	// RoutePolicy is the client for interacting with the RoutePolicy builders.
 	RoutePolicy *RoutePolicyClient
 	// RouteTCP is the client for interacting with the RouteTCP builders.
@@ -308,6 +310,7 @@ func (tx *Tx) init() {
 	tx.Route = NewRouteClient(tx.config)
 	tx.RouteHTTP = NewRouteHTTPClient(tx.config)
 	tx.RouteHostname = NewRouteHostnameClient(tx.config)
+	tx.RouteLimit = NewRouteLimitClient(tx.config)
 	tx.RoutePolicy = NewRoutePolicyClient(tx.config)
 	tx.RouteTCP = NewRouteTCPClient(tx.config)
 	tx.RouteTarget = NewRouteTargetClient(tx.config)

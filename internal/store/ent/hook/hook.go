@@ -573,6 +573,18 @@ func (f RouteHostnameFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteHostnameMutation", m)
 }
 
+// The RouteLimitFunc type is an adapter to allow the use of ordinary
+// function as RouteLimit mutator.
+type RouteLimitFunc func(context.Context, *ent.RouteLimitMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RouteLimitFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RouteLimitMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteLimitMutation", m)
+}
+
 // The RoutePolicyFunc type is an adapter to allow the use of ordinary
 // function as RoutePolicy mutator.
 type RoutePolicyFunc func(context.Context, *ent.RoutePolicyMutation) (ent.Value, error)

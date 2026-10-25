@@ -994,14 +994,17 @@ the capability `route.limits`:
 | Request rate | HTTP requests, new connections or new flows per second, for the route as a whole | HTTP **429** with `Retry-After`; reset; datagram dropped (`reason="limit"`) |
 | Bandwidth | bytes per second, in each direction separately with the same value | data waits, without loss on TCP; UDP datagrams over it are dropped (`reason="limit"`) |
 
-- **Divided among gateways.** A route's limit applies to the gateway group: the compiler divides
-  it by the number of the group's enabled gateways, rounded up and at least 1, and each gateway
-  enforces its share. A gateway that is enabled but down keeps its share, so the route then gets
-  less than its limit until the gateway returns or is disabled. 0 means no limit.
+- **Divided among gateways.** A route's limit applies to the gateway group: the compiler divides it
+  by the number of the group's enabled gateways that enforce limits, rounded up and at least 1, and
+  each gateway enforces its share; a gateway of an earlier release does not get the route. A gateway
+  that is enabled but down keeps its share, so the route then gets less than its limit until the
+  gateway returns or is disabled. 0 means no limit. A route allows at most 1 000 000 connections,
+  1 000 000 requests a second and 100 GB (10¹¹ bytes) a second, and a bandwidth of at least 1 KiB a
+  second, so that data never waits long between steps.
 - A slot of a connection or request is released when it ends, however it ends, panics and
   cancellations included. A gateway keeps counting the connections of a removed route while they
-  drain, so the route, added back meanwhile, never admits more than its limit. The per-client `rate_limit` rule of a policy comes on top
-  ([Access policies](#access-policies)).
+  drain, so the route, added back meanwhile, never admits more than its limit. The per-client
+  `rate_limit` rule of a policy comes on top ([Access policies](#access-policies)).
 
 ### Target health (Phase 2)
 
