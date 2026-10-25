@@ -112,6 +112,11 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	targets = NewTargets(TargetsOptions{Policy: watcher.Current, Logger: o.Logger, UDPMetrics: udpMetrics, Metrics: metrics,
+		OnTargetHealth: func(s []*agentv1.ResourceStatus) {
+			if ctl != nil {
+				ctl.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{Readiness: s}}})
+			}
+		},
 		OnHealth: func(h *tunnelv1.RouteHealth) {
 			sessions.SetReady(h)
 			if ctl != nil { // a change before the control plane exists goes out with its first session

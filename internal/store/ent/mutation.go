@@ -33,6 +33,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -102,6 +103,7 @@ const (
 	TypeGateway            = "Gateway"
 	TypeGatewayGroup       = "GatewayGroup"
 	TypeGatewayPage        = "GatewayPage"
+	TypeHealthCheck        = "HealthCheck"
 	TypeInstance           = "Instance"
 	TypeInstanceSecret     = "InstanceSecret"
 	TypeInstanceSetting    = "InstanceSetting"
@@ -19044,6 +19046,1166 @@ func (m *GatewayPageMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown GatewayPage edge %s", name)
+}
+
+// HealthCheckMutation represents an operation that mutates the HealthCheck nodes in the graph.
+type HealthCheckMutation struct {
+	config
+	op                     Op
+	typ                    string
+	id                     *string
+	org_id                 *string
+	_type                  *healthcheck.Type
+	port                   *int
+	addport                *int
+	http_path              *string
+	expected_status_min    *int
+	addexpected_status_min *int
+	expected_status_max    *int
+	addexpected_status_max *int
+	interval_seconds       *int
+	addinterval_seconds    *int
+	timeout_seconds        *int
+	addtimeout_seconds     *int
+	unhealthy_threshold    *int
+	addunhealthy_threshold *int
+	healthy_threshold      *int
+	addhealthy_threshold   *int
+	clearedFields          map[string]struct{}
+	route                  *string
+	clearedroute           bool
+	done                   bool
+	oldValue               func(context.Context) (*HealthCheck, error)
+	predicates             []predicate.HealthCheck
+}
+
+var _ ent.Mutation = (*HealthCheckMutation)(nil)
+
+// healthcheckOption allows management of the mutation configuration using functional options.
+type healthcheckOption func(*HealthCheckMutation)
+
+// newHealthCheckMutation creates new mutation for the HealthCheck entity.
+func newHealthCheckMutation(c config, op Op, opts ...healthcheckOption) *HealthCheckMutation {
+	m := &HealthCheckMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeHealthCheck,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withHealthCheckID sets the ID field of the mutation.
+func withHealthCheckID(id string) healthcheckOption {
+	return func(m *HealthCheckMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *HealthCheck
+		)
+		m.oldValue = func(ctx context.Context) (*HealthCheck, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().HealthCheck.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withHealthCheck sets the old HealthCheck of the mutation.
+func withHealthCheck(node *HealthCheck) healthcheckOption {
+	return func(m *HealthCheckMutation) {
+		m.oldValue = func(context.Context) (*HealthCheck, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m HealthCheckMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m HealthCheckMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of HealthCheck entities.
+func (m *HealthCheckMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *HealthCheckMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *HealthCheckMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().HealthCheck.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *HealthCheckMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *HealthCheckMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the HealthCheck entity.
+// If the HealthCheck object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HealthCheckMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *HealthCheckMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetRouteID sets the "route_id" field.
+func (m *HealthCheckMutation) SetRouteID(s string) {
+	m.route = &s
+}
+
+// RouteID returns the value of the "route_id" field in the mutation.
+func (m *HealthCheckMutation) RouteID() (r string, exists bool) {
+	v := m.route
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouteID returns the old "route_id" field's value of the HealthCheck entity.
+// If the HealthCheck object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HealthCheckMutation) OldRouteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouteID: %w", err)
+	}
+	return oldValue.RouteID, nil
+}
+
+// ResetRouteID resets all changes to the "route_id" field.
+func (m *HealthCheckMutation) ResetRouteID() {
+	m.route = nil
+}
+
+// SetType sets the "type" field.
+func (m *HealthCheckMutation) SetType(h healthcheck.Type) {
+	m._type = &h
+}
+
+// GetType returns the value of the "type" field in the mutation.
+func (m *HealthCheckMutation) GetType() (r healthcheck.Type, exists bool) {
+	v := m._type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldType returns the old "type" field's value of the HealthCheck entity.
+// If the HealthCheck object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HealthCheckMutation) OldType(ctx context.Context) (v healthcheck.Type, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldType: %w", err)
+	}
+	return oldValue.Type, nil
+}
+
+// ResetType resets all changes to the "type" field.
+func (m *HealthCheckMutation) ResetType() {
+	m._type = nil
+}
+
+// SetPort sets the "port" field.
+func (m *HealthCheckMutation) SetPort(i int) {
+	m.port = &i
+	m.addport = nil
+}
+
+// Port returns the value of the "port" field in the mutation.
+func (m *HealthCheckMutation) Port() (r int, exists bool) {
+	v := m.port
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPort returns the old "port" field's value of the HealthCheck entity.
+// If the HealthCheck object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HealthCheckMutation) OldPort(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPort is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPort requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPort: %w", err)
+	}
+	return oldValue.Port, nil
+}
+
+// AddPort adds i to the "port" field.
+func (m *HealthCheckMutation) AddPort(i int) {
+	if m.addport != nil {
+		*m.addport += i
+	} else {
+		m.addport = &i
+	}
+}
+
+// AddedPort returns the value that was added to the "port" field in this mutation.
+func (m *HealthCheckMutation) AddedPort() (r int, exists bool) {
+	v := m.addport
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPort resets all changes to the "port" field.
+func (m *HealthCheckMutation) ResetPort() {
+	m.port = nil
+	m.addport = nil
+}
+
+// SetHTTPPath sets the "http_path" field.
+func (m *HealthCheckMutation) SetHTTPPath(s string) {
+	m.http_path = &s
+}
+
+// HTTPPath returns the value of the "http_path" field in the mutation.
+func (m *HealthCheckMutation) HTTPPath() (r string, exists bool) {
+	v := m.http_path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHTTPPath returns the old "http_path" field's value of the HealthCheck entity.
+// If the HealthCheck object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HealthCheckMutation) OldHTTPPath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHTTPPath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHTTPPath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHTTPPath: %w", err)
+	}
+	return oldValue.HTTPPath, nil
+}
+
+// ResetHTTPPath resets all changes to the "http_path" field.
+func (m *HealthCheckMutation) ResetHTTPPath() {
+	m.http_path = nil
+}
+
+// SetExpectedStatusMin sets the "expected_status_min" field.
+func (m *HealthCheckMutation) SetExpectedStatusMin(i int) {
+	m.expected_status_min = &i
+	m.addexpected_status_min = nil
+}
+
+// ExpectedStatusMin returns the value of the "expected_status_min" field in the mutation.
+func (m *HealthCheckMutation) ExpectedStatusMin() (r int, exists bool) {
+	v := m.expected_status_min
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpectedStatusMin returns the old "expected_status_min" field's value of the HealthCheck entity.
+// If the HealthCheck object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HealthCheckMutation) OldExpectedStatusMin(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpectedStatusMin is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpectedStatusMin requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpectedStatusMin: %w", err)
+	}
+	return oldValue.ExpectedStatusMin, nil
+}
+
+// AddExpectedStatusMin adds i to the "expected_status_min" field.
+func (m *HealthCheckMutation) AddExpectedStatusMin(i int) {
+	if m.addexpected_status_min != nil {
+		*m.addexpected_status_min += i
+	} else {
+		m.addexpected_status_min = &i
+	}
+}
+
+// AddedExpectedStatusMin returns the value that was added to the "expected_status_min" field in this mutation.
+func (m *HealthCheckMutation) AddedExpectedStatusMin() (r int, exists bool) {
+	v := m.addexpected_status_min
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetExpectedStatusMin resets all changes to the "expected_status_min" field.
+func (m *HealthCheckMutation) ResetExpectedStatusMin() {
+	m.expected_status_min = nil
+	m.addexpected_status_min = nil
+}
+
+// SetExpectedStatusMax sets the "expected_status_max" field.
+func (m *HealthCheckMutation) SetExpectedStatusMax(i int) {
+	m.expected_status_max = &i
+	m.addexpected_status_max = nil
+}
+
+// ExpectedStatusMax returns the value of the "expected_status_max" field in the mutation.
+func (m *HealthCheckMutation) ExpectedStatusMax() (r int, exists bool) {
+	v := m.expected_status_max
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpectedStatusMax returns the old "expected_status_max" field's value of the HealthCheck entity.
+// If the HealthCheck object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HealthCheckMutation) OldExpectedStatusMax(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpectedStatusMax is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpectedStatusMax requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpectedStatusMax: %w", err)
+	}
+	return oldValue.ExpectedStatusMax, nil
+}
+
+// AddExpectedStatusMax adds i to the "expected_status_max" field.
+func (m *HealthCheckMutation) AddExpectedStatusMax(i int) {
+	if m.addexpected_status_max != nil {
+		*m.addexpected_status_max += i
+	} else {
+		m.addexpected_status_max = &i
+	}
+}
+
+// AddedExpectedStatusMax returns the value that was added to the "expected_status_max" field in this mutation.
+func (m *HealthCheckMutation) AddedExpectedStatusMax() (r int, exists bool) {
+	v := m.addexpected_status_max
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetExpectedStatusMax resets all changes to the "expected_status_max" field.
+func (m *HealthCheckMutation) ResetExpectedStatusMax() {
+	m.expected_status_max = nil
+	m.addexpected_status_max = nil
+}
+
+// SetIntervalSeconds sets the "interval_seconds" field.
+func (m *HealthCheckMutation) SetIntervalSeconds(i int) {
+	m.interval_seconds = &i
+	m.addinterval_seconds = nil
+}
+
+// IntervalSeconds returns the value of the "interval_seconds" field in the mutation.
+func (m *HealthCheckMutation) IntervalSeconds() (r int, exists bool) {
+	v := m.interval_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIntervalSeconds returns the old "interval_seconds" field's value of the HealthCheck entity.
+// If the HealthCheck object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HealthCheckMutation) OldIntervalSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIntervalSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIntervalSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIntervalSeconds: %w", err)
+	}
+	return oldValue.IntervalSeconds, nil
+}
+
+// AddIntervalSeconds adds i to the "interval_seconds" field.
+func (m *HealthCheckMutation) AddIntervalSeconds(i int) {
+	if m.addinterval_seconds != nil {
+		*m.addinterval_seconds += i
+	} else {
+		m.addinterval_seconds = &i
+	}
+}
+
+// AddedIntervalSeconds returns the value that was added to the "interval_seconds" field in this mutation.
+func (m *HealthCheckMutation) AddedIntervalSeconds() (r int, exists bool) {
+	v := m.addinterval_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetIntervalSeconds resets all changes to the "interval_seconds" field.
+func (m *HealthCheckMutation) ResetIntervalSeconds() {
+	m.interval_seconds = nil
+	m.addinterval_seconds = nil
+}
+
+// SetTimeoutSeconds sets the "timeout_seconds" field.
+func (m *HealthCheckMutation) SetTimeoutSeconds(i int) {
+	m.timeout_seconds = &i
+	m.addtimeout_seconds = nil
+}
+
+// TimeoutSeconds returns the value of the "timeout_seconds" field in the mutation.
+func (m *HealthCheckMutation) TimeoutSeconds() (r int, exists bool) {
+	v := m.timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTimeoutSeconds returns the old "timeout_seconds" field's value of the HealthCheck entity.
+// If the HealthCheck object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HealthCheckMutation) OldTimeoutSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTimeoutSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTimeoutSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTimeoutSeconds: %w", err)
+	}
+	return oldValue.TimeoutSeconds, nil
+}
+
+// AddTimeoutSeconds adds i to the "timeout_seconds" field.
+func (m *HealthCheckMutation) AddTimeoutSeconds(i int) {
+	if m.addtimeout_seconds != nil {
+		*m.addtimeout_seconds += i
+	} else {
+		m.addtimeout_seconds = &i
+	}
+}
+
+// AddedTimeoutSeconds returns the value that was added to the "timeout_seconds" field in this mutation.
+func (m *HealthCheckMutation) AddedTimeoutSeconds() (r int, exists bool) {
+	v := m.addtimeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTimeoutSeconds resets all changes to the "timeout_seconds" field.
+func (m *HealthCheckMutation) ResetTimeoutSeconds() {
+	m.timeout_seconds = nil
+	m.addtimeout_seconds = nil
+}
+
+// SetUnhealthyThreshold sets the "unhealthy_threshold" field.
+func (m *HealthCheckMutation) SetUnhealthyThreshold(i int) {
+	m.unhealthy_threshold = &i
+	m.addunhealthy_threshold = nil
+}
+
+// UnhealthyThreshold returns the value of the "unhealthy_threshold" field in the mutation.
+func (m *HealthCheckMutation) UnhealthyThreshold() (r int, exists bool) {
+	v := m.unhealthy_threshold
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUnhealthyThreshold returns the old "unhealthy_threshold" field's value of the HealthCheck entity.
+// If the HealthCheck object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HealthCheckMutation) OldUnhealthyThreshold(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUnhealthyThreshold is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUnhealthyThreshold requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUnhealthyThreshold: %w", err)
+	}
+	return oldValue.UnhealthyThreshold, nil
+}
+
+// AddUnhealthyThreshold adds i to the "unhealthy_threshold" field.
+func (m *HealthCheckMutation) AddUnhealthyThreshold(i int) {
+	if m.addunhealthy_threshold != nil {
+		*m.addunhealthy_threshold += i
+	} else {
+		m.addunhealthy_threshold = &i
+	}
+}
+
+// AddedUnhealthyThreshold returns the value that was added to the "unhealthy_threshold" field in this mutation.
+func (m *HealthCheckMutation) AddedUnhealthyThreshold() (r int, exists bool) {
+	v := m.addunhealthy_threshold
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUnhealthyThreshold resets all changes to the "unhealthy_threshold" field.
+func (m *HealthCheckMutation) ResetUnhealthyThreshold() {
+	m.unhealthy_threshold = nil
+	m.addunhealthy_threshold = nil
+}
+
+// SetHealthyThreshold sets the "healthy_threshold" field.
+func (m *HealthCheckMutation) SetHealthyThreshold(i int) {
+	m.healthy_threshold = &i
+	m.addhealthy_threshold = nil
+}
+
+// HealthyThreshold returns the value of the "healthy_threshold" field in the mutation.
+func (m *HealthCheckMutation) HealthyThreshold() (r int, exists bool) {
+	v := m.healthy_threshold
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHealthyThreshold returns the old "healthy_threshold" field's value of the HealthCheck entity.
+// If the HealthCheck object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HealthCheckMutation) OldHealthyThreshold(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHealthyThreshold is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHealthyThreshold requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHealthyThreshold: %w", err)
+	}
+	return oldValue.HealthyThreshold, nil
+}
+
+// AddHealthyThreshold adds i to the "healthy_threshold" field.
+func (m *HealthCheckMutation) AddHealthyThreshold(i int) {
+	if m.addhealthy_threshold != nil {
+		*m.addhealthy_threshold += i
+	} else {
+		m.addhealthy_threshold = &i
+	}
+}
+
+// AddedHealthyThreshold returns the value that was added to the "healthy_threshold" field in this mutation.
+func (m *HealthCheckMutation) AddedHealthyThreshold() (r int, exists bool) {
+	v := m.addhealthy_threshold
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetHealthyThreshold resets all changes to the "healthy_threshold" field.
+func (m *HealthCheckMutation) ResetHealthyThreshold() {
+	m.healthy_threshold = nil
+	m.addhealthy_threshold = nil
+}
+
+// ClearRoute clears the "route" edge to the Route entity.
+func (m *HealthCheckMutation) ClearRoute() {
+	m.clearedroute = true
+	m.clearedFields[healthcheck.FieldRouteID] = struct{}{}
+}
+
+// RouteCleared reports if the "route" edge to the Route entity was cleared.
+func (m *HealthCheckMutation) RouteCleared() bool {
+	return m.clearedroute
+}
+
+// RouteIDs returns the "route" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// RouteID instead. It exists only for internal usage by the builders.
+func (m *HealthCheckMutation) RouteIDs() (ids []string) {
+	if id := m.route; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetRoute resets all changes to the "route" edge.
+func (m *HealthCheckMutation) ResetRoute() {
+	m.route = nil
+	m.clearedroute = false
+}
+
+// Where appends a list predicates to the HealthCheckMutation builder.
+func (m *HealthCheckMutation) Where(ps ...predicate.HealthCheck) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the HealthCheckMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *HealthCheckMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.HealthCheck, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *HealthCheckMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *HealthCheckMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (HealthCheck).
+func (m *HealthCheckMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *HealthCheckMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.org_id != nil {
+		fields = append(fields, healthcheck.FieldOrgID)
+	}
+	if m.route != nil {
+		fields = append(fields, healthcheck.FieldRouteID)
+	}
+	if m._type != nil {
+		fields = append(fields, healthcheck.FieldType)
+	}
+	if m.port != nil {
+		fields = append(fields, healthcheck.FieldPort)
+	}
+	if m.http_path != nil {
+		fields = append(fields, healthcheck.FieldHTTPPath)
+	}
+	if m.expected_status_min != nil {
+		fields = append(fields, healthcheck.FieldExpectedStatusMin)
+	}
+	if m.expected_status_max != nil {
+		fields = append(fields, healthcheck.FieldExpectedStatusMax)
+	}
+	if m.interval_seconds != nil {
+		fields = append(fields, healthcheck.FieldIntervalSeconds)
+	}
+	if m.timeout_seconds != nil {
+		fields = append(fields, healthcheck.FieldTimeoutSeconds)
+	}
+	if m.unhealthy_threshold != nil {
+		fields = append(fields, healthcheck.FieldUnhealthyThreshold)
+	}
+	if m.healthy_threshold != nil {
+		fields = append(fields, healthcheck.FieldHealthyThreshold)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *HealthCheckMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case healthcheck.FieldOrgID:
+		return m.OrgID()
+	case healthcheck.FieldRouteID:
+		return m.RouteID()
+	case healthcheck.FieldType:
+		return m.GetType()
+	case healthcheck.FieldPort:
+		return m.Port()
+	case healthcheck.FieldHTTPPath:
+		return m.HTTPPath()
+	case healthcheck.FieldExpectedStatusMin:
+		return m.ExpectedStatusMin()
+	case healthcheck.FieldExpectedStatusMax:
+		return m.ExpectedStatusMax()
+	case healthcheck.FieldIntervalSeconds:
+		return m.IntervalSeconds()
+	case healthcheck.FieldTimeoutSeconds:
+		return m.TimeoutSeconds()
+	case healthcheck.FieldUnhealthyThreshold:
+		return m.UnhealthyThreshold()
+	case healthcheck.FieldHealthyThreshold:
+		return m.HealthyThreshold()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *HealthCheckMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case healthcheck.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case healthcheck.FieldRouteID:
+		return m.OldRouteID(ctx)
+	case healthcheck.FieldType:
+		return m.OldType(ctx)
+	case healthcheck.FieldPort:
+		return m.OldPort(ctx)
+	case healthcheck.FieldHTTPPath:
+		return m.OldHTTPPath(ctx)
+	case healthcheck.FieldExpectedStatusMin:
+		return m.OldExpectedStatusMin(ctx)
+	case healthcheck.FieldExpectedStatusMax:
+		return m.OldExpectedStatusMax(ctx)
+	case healthcheck.FieldIntervalSeconds:
+		return m.OldIntervalSeconds(ctx)
+	case healthcheck.FieldTimeoutSeconds:
+		return m.OldTimeoutSeconds(ctx)
+	case healthcheck.FieldUnhealthyThreshold:
+		return m.OldUnhealthyThreshold(ctx)
+	case healthcheck.FieldHealthyThreshold:
+		return m.OldHealthyThreshold(ctx)
+	}
+	return nil, fmt.Errorf("unknown HealthCheck field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *HealthCheckMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case healthcheck.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case healthcheck.FieldRouteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouteID(v)
+		return nil
+	case healthcheck.FieldType:
+		v, ok := value.(healthcheck.Type)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetType(v)
+		return nil
+	case healthcheck.FieldPort:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPort(v)
+		return nil
+	case healthcheck.FieldHTTPPath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHTTPPath(v)
+		return nil
+	case healthcheck.FieldExpectedStatusMin:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpectedStatusMin(v)
+		return nil
+	case healthcheck.FieldExpectedStatusMax:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpectedStatusMax(v)
+		return nil
+	case healthcheck.FieldIntervalSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIntervalSeconds(v)
+		return nil
+	case healthcheck.FieldTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTimeoutSeconds(v)
+		return nil
+	case healthcheck.FieldUnhealthyThreshold:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUnhealthyThreshold(v)
+		return nil
+	case healthcheck.FieldHealthyThreshold:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHealthyThreshold(v)
+		return nil
+	}
+	return fmt.Errorf("unknown HealthCheck field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *HealthCheckMutation) AddedFields() []string {
+	var fields []string
+	if m.addport != nil {
+		fields = append(fields, healthcheck.FieldPort)
+	}
+	if m.addexpected_status_min != nil {
+		fields = append(fields, healthcheck.FieldExpectedStatusMin)
+	}
+	if m.addexpected_status_max != nil {
+		fields = append(fields, healthcheck.FieldExpectedStatusMax)
+	}
+	if m.addinterval_seconds != nil {
+		fields = append(fields, healthcheck.FieldIntervalSeconds)
+	}
+	if m.addtimeout_seconds != nil {
+		fields = append(fields, healthcheck.FieldTimeoutSeconds)
+	}
+	if m.addunhealthy_threshold != nil {
+		fields = append(fields, healthcheck.FieldUnhealthyThreshold)
+	}
+	if m.addhealthy_threshold != nil {
+		fields = append(fields, healthcheck.FieldHealthyThreshold)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *HealthCheckMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case healthcheck.FieldPort:
+		return m.AddedPort()
+	case healthcheck.FieldExpectedStatusMin:
+		return m.AddedExpectedStatusMin()
+	case healthcheck.FieldExpectedStatusMax:
+		return m.AddedExpectedStatusMax()
+	case healthcheck.FieldIntervalSeconds:
+		return m.AddedIntervalSeconds()
+	case healthcheck.FieldTimeoutSeconds:
+		return m.AddedTimeoutSeconds()
+	case healthcheck.FieldUnhealthyThreshold:
+		return m.AddedUnhealthyThreshold()
+	case healthcheck.FieldHealthyThreshold:
+		return m.AddedHealthyThreshold()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *HealthCheckMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case healthcheck.FieldPort:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPort(v)
+		return nil
+	case healthcheck.FieldExpectedStatusMin:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddExpectedStatusMin(v)
+		return nil
+	case healthcheck.FieldExpectedStatusMax:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddExpectedStatusMax(v)
+		return nil
+	case healthcheck.FieldIntervalSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddIntervalSeconds(v)
+		return nil
+	case healthcheck.FieldTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTimeoutSeconds(v)
+		return nil
+	case healthcheck.FieldUnhealthyThreshold:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUnhealthyThreshold(v)
+		return nil
+	case healthcheck.FieldHealthyThreshold:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddHealthyThreshold(v)
+		return nil
+	}
+	return fmt.Errorf("unknown HealthCheck numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *HealthCheckMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *HealthCheckMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *HealthCheckMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown HealthCheck nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *HealthCheckMutation) ResetField(name string) error {
+	switch name {
+	case healthcheck.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case healthcheck.FieldRouteID:
+		m.ResetRouteID()
+		return nil
+	case healthcheck.FieldType:
+		m.ResetType()
+		return nil
+	case healthcheck.FieldPort:
+		m.ResetPort()
+		return nil
+	case healthcheck.FieldHTTPPath:
+		m.ResetHTTPPath()
+		return nil
+	case healthcheck.FieldExpectedStatusMin:
+		m.ResetExpectedStatusMin()
+		return nil
+	case healthcheck.FieldExpectedStatusMax:
+		m.ResetExpectedStatusMax()
+		return nil
+	case healthcheck.FieldIntervalSeconds:
+		m.ResetIntervalSeconds()
+		return nil
+	case healthcheck.FieldTimeoutSeconds:
+		m.ResetTimeoutSeconds()
+		return nil
+	case healthcheck.FieldUnhealthyThreshold:
+		m.ResetUnhealthyThreshold()
+		return nil
+	case healthcheck.FieldHealthyThreshold:
+		m.ResetHealthyThreshold()
+		return nil
+	}
+	return fmt.Errorf("unknown HealthCheck field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *HealthCheckMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.route != nil {
+		edges = append(edges, healthcheck.EdgeRoute)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *HealthCheckMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case healthcheck.EdgeRoute:
+		if id := m.route; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *HealthCheckMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *HealthCheckMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *HealthCheckMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedroute {
+		edges = append(edges, healthcheck.EdgeRoute)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *HealthCheckMutation) EdgeCleared(name string) bool {
+	switch name {
+	case healthcheck.EdgeRoute:
+		return m.clearedroute
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *HealthCheckMutation) ClearEdge(name string) error {
+	switch name {
+	case healthcheck.EdgeRoute:
+		m.ClearRoute()
+		return nil
+	}
+	return fmt.Errorf("unknown HealthCheck unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *HealthCheckMutation) ResetEdge(name string) error {
+	switch name {
+	case healthcheck.EdgeRoute:
+		m.ResetRoute()
+		return nil
+	}
+	return fmt.Errorf("unknown HealthCheck edge %s", name)
 }
 
 // InstanceMutation represents an operation that mutates the Instance nodes in the graph.

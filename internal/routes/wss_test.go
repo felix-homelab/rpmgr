@@ -29,8 +29,10 @@ func TestSetWSSHostname(t *testing.T) {
 		set := func(gw, name string) error {
 			return f.tx(t, func(tx *ent.Tx) error { _, err := routes.SetWSSHostname(f.sys, tx, gw, name); return err })
 		}
-		f.httpRoute(t, "web", true, true, nil, "app.example.com")
+		f.httpRoute(t, "web", true, true, nil, "app.example.com", "*.wild.example.com")
 		for name, want := range map[string]error{
+			"t.wild.example.com":      routes.ErrWSSHostnameTaken, // the wildcard route covers it
+			"a.t.wild.example.com":    nil,                        // a wildcard covers one label only
 			"tunnel.other.example":    domains.ErrNotOwned,
 			"*.example.com":           nil, // refused by Normalize, checked below
 			"app.example.com":         routes.ErrWSSHostnameTaken,
@@ -67,6 +69,14 @@ func TestSetWSSHostname(t *testing.T) {
 			return err
 		}); !errors.Is(err, routes.ErrHostnameTaken) {
 			t.Errorf("a route took a gateway's WSS hostname: %v", err)
+		}
+		for name, want := range map[string]error{"*.example.com": routes.ErrHostnameTaken, "*.tunnel.example.com": nil} {
+			if err := f.tx(t, func(tx *ent.Tx) error {
+				_, err := routes.AddHostname(f.sys, tx, web2, name, "")
+				return err
+			}); !errors.Is(err, want) {
+				t.Errorf("a wildcard route hostname %s next to the WSS hostname tunnel.example.com: %v, want %v", name, err, want)
+			}
 		}
 		if err := set(f.gateway, ""); err != nil || c.Gateway.GetX(f.sys, f.gateway).WssHostname != nil {
 			t.Fatalf("removed: %v", err)
