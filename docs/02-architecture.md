@@ -166,6 +166,12 @@ flowchart LR
   sessions, so it can restart while the Controller is down without forgetting revocations.
 - The gateway authorises every data session against its snapshot: a connector may serve a route
   only if the route lists that connector's identity ([04](04-security.md#authorization)).
+- From Phase 2 a gateway restarts, for an update too, by **handing its listening sockets** to a
+  new process of the installed binary: the old process stops accepting only once the new one is
+  ready, then drains its open connections. An all-in-one does the same and moves its controller
+  in between, and a connector hands over its sessions
+  ([03](03-connections.md#restarts-with-socket-hand-off-phase-2),
+  [ADR-0022](adr/0022-socket-hand-off-by-re-exec.md)).
 
 ### Connector
 

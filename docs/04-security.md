@@ -1218,14 +1218,18 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    cross-filesystem rename), fsyncs and re-hashes it, keeps the previous binary as `.prev`, renames
    `.rpmgr.new` over the binary at the path recorded in `/var/lib/rpmgr-update/install.json`
    (`/usr/local/bin/rpmgr` for script installs), and restarts each role service `install.json`
-   lists.
+   lists. From Phase 2 a role whose running process has the hand-off is restarted by one
+   ([Socket hand-off](#socket-hand-off-phase-2)): the old process keeps serving until the new one
+   is ready, so a lone gateway refuses no visitor connection during an update.
 6. The updater polls each role's admin `/readyz`, which reports ready only when the control session
    is established and a snapshot is applied, and counts a role as ready only while systemd has it
    active. If a role is not ready within the readiness window, or its service fails or restarts in
    a loop before then, the updater **rolls back** to `.prev`, restarts the roles again, and records
-   the version as failed. Before the rename it records the install as pending in its own
-   directory, so that a run that a crash or a reboot interrupts is finished by the next one: the
-   updater also runs once at boot, checks the roles and rolls back if one is not ready.
+   the version as failed. A hand-off whose new process is not ready leaves the old process
+   serving, so the rollback only puts `.prev` back and restarts nothing. Before the rename it
+   records the install as pending in its own directory, so that a run that a crash or a reboot
+   interrupts is finished by the next one: the updater also runs once at boot, checks the roles
+   and rolls back if one is not ready.
    A run that finds no staged manifest (the agent writes it last), as at boot or while the agent
    is still staging, does nothing else and reports nothing.
 7. The updater writes the outcome to `/run/rpmgr-update/status.json` (root-owned, readable by the
@@ -1359,6 +1363,33 @@ a few connectors and gateways are updated at once and watched while they are.
 - Caveat: a compromised controller can serve a malicious install script. High-assurance installs
   should verify the release (GitHub release + `gh attestation verify`) before running it. After
   installation, updates are protected by the compiled-in keys.
+
+### Socket hand-off (Phase 2)
+
+A restart with hand-off passes a role's listening sockets, which may sit on privileged ports, from
+the running process to a new one ([03](03-connections.md#restarts-with-socket-hand-off-phase-2),
+[ADR-0022](adr/0022-socket-hand-off-by-re-exec.md)). Only the installed binary may receive them:
+
+- **Who triggers it.** `SIGUSR2` to the role's main process, which only root and the service user
+  may send; `rpmgr handoff <role>`, `systemctl reload`, the install scripts and the root updater all
+  send it. A trigger never names a binary or a descriptor.
+- **Which binary.** The old process starts only the binary at the path of `install.json`, or the
+  path it was started from, and only if it is a regular file owned by root that neither its group
+  nor others may write, in directories that follow the same rule, so the service user cannot put a
+  binary of its own there. It passes the descriptors by inheritance to that child alone; no socket
+  or file is opened for another process to collect them. Anything else refuses the hand-off.
+- **Which descriptors.** The new process accepts only the descriptors the manifest on its status
+  pipe names, checks each one's socket type, listening state and local address against its own boot
+  file, and closes, and logs, any other it inherited. It never serves a socket its configuration
+  does not name.
+- **What the old process keeps.** It keeps its identity and serves its open connections until the
+  hand-off drain ends them; the new process uses the identity on disk, as on a restart. The old
+  process's control session was superseded, so it learns of no change itself: when the new process
+  applies a deny list or a snapshot that revokes, tightens an access policy or removes a route, it
+  tells the old one over the status pipe, which then cuts its open connections at once, as
+  security beats continuity ([03](03-connections.md#timeouts-keepalive-and-backoff)).
+- **Containers** restart without a hand-off: the process is the container's first process
+  ([D149](14-open-decisions.md#engineering)).
 
 ## Webhooks and the egress guard (Phase 2)
 

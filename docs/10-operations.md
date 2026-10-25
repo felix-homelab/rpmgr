@@ -204,6 +204,21 @@ RestartSec=2s
   the connector's `ExecReload`: its own connector reads `policy.yaml`, and `rpmgr policy …`
   reloads `rpmgr-all-in-one.service` on a host with an all-in-one boot file and no connector's
   ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
+- **Restarts with socket hand-off** (Phase 2;
+  [03](03-connections.md#restarts-with-socket-hand-off-phase-2),
+  [D148](14-open-decisions.md#engineering)): the gateway, all-in-one and connector units are
+  `Type=notify` with `NotifyAccess=all`, so that the new process of a hand-off can tell systemd it
+  is the main one, and `RuntimeDirectory=rpmgr` holds the outcome of the last hand-off.
+  - **Gateway and all-in-one:** `ExecReload=<bin> handoff <role>`, so that `systemctl reload`
+    restarts with a hand-off and fails, with the reason, if the new process does not become
+    ready; the old one then keeps serving. `systemctl restart` stays the restart without one.
+  - **All-in-one policy reload:** `rpmgr policy …` signals the running all-in-one with `SIGHUP`
+    itself (`systemctl kill --kill-whom=main --signal=SIGHUP`), since its reload is now the
+    hand-off.
+  - **Connector:** its `ExecReload` stays the policy reload; `rpmgr handoff connector` restarts it
+    with a hand-off.
+  - **Containers:** no hand-off; the image's process is the container's first one, and an
+    orchestrator replaces containers instead ([D149](14-open-decisions.md#engineering)).
 - **Updater** (every role): a root-owned pair `rpmgr-update.path` (watches `/var/lib/rpmgr/update/`)
   and oneshot `rpmgr-update.service` ([04](04-security.md#over-the-air-updates)). It:
   1. reads `auto_update` and `update_channel` from `/etc/rpmgr/policy.yaml` **itself** and stops
@@ -432,6 +447,7 @@ listen:
   tunnel_udp: ""                            # optional separate UDP port for tunnels; empty = share 443
   http: ":80"
   admin: "127.0.0.1:7382"
+# handoff: { drain: 10m }                   # Phase 2, with 17.x: an old process's drain (03)
 log: { level: info, format: json }
 tracing: { otlp_endpoint: "", sample_ratio: 0.01 }
 ```
@@ -573,10 +589,14 @@ affect agents take effect through reconciliation and show apply status like any 
 2. **Gateways.** One at a time per gateway group: the gateway drains, connectors re-home to the
    other gateways of the group, then it restarts ([03](03-connections.md#multiple-gateways)). From
    Phase 2 a rollout does this for gateways installed with the install scripts
-   ([D102](14-open-decisions.md#engineering)). [T] From v0.3.0 a gateway, and an all-in-one's
-   built-in gateway, hand their listening sockets to the new process on a restart, so that a lone
-   gateway refuses no visitor connection either
-   ([D127](14-open-decisions.md#project-and-process)).
+   ([D102](14-open-decisions.md#engineering)). [T] A gateway, an all-in-one and a Linux connector
+   that run v0.3.0 or later restart with a socket hand-off, so that a lone gateway refuses no
+   visitor connection either: the new process takes the listening sockets over and the old one
+   drains its open connections for the hand-off drain
+   ([03](03-connections.md#restarts-with-socket-hand-off-phase-2),
+   [D127](14-open-decisions.md#project-and-process)). An upgrade from an earlier release, a plain
+   `systemctl restart` and a container restart drain and stop as before; an all-in-one's web UI
+   and API answer 503 for the seconds its controller moves.
 3. **Connectors.** Through the staged OTA rollout: canary → percentage → all, with automatic
    rollback on failure, each stage approved by the Instance Admin; a rollback pauses the rollout
    ([04](04-security.md#over-the-air-updates)). A rollout's target is the controller's own
@@ -1073,6 +1093,19 @@ Each runbook: **symptoms → steps → done when**.
   and the credentials). Appends go on meanwhile; nothing is lost, as the sink's cursor holds its
   place. Fix the sink; it catches up by itself.
 - **Done when**: the backlog is 0 and the alert resolved.
+
+### A restart with hand-off failed
+
+- **Symptoms**: `systemctl reload rpmgr-<role>`, `rpmgr handoff <role>`, the install script or
+  the updater reports that the hand-off failed; the role still runs its previous process.
+- **Steps**: read the reason it printed (also in `/run/rpmgr/` and the journal of the unit): a
+  binary that fails the ownership check ([04](04-security.md#socket-hand-off-phase-2)) is fixed
+  with `chown root:root` and `chmod go-w` on it and its directories; a new process that did not
+  become ready is diagnosed like a failed start (`journalctl -u rpmgr-<role>`), as visitors were
+  served by the old process throughout. When a hand-off is not possible, `systemctl restart`
+  restarts the role with the drain of a planned restart.
+- **Done when**: `rpmgr handoff <role>` succeeds, or the role runs the new release after a plain
+  restart.
 
 ### Certificate expiry or clock skew
 
