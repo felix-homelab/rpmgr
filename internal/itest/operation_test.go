@@ -5,9 +5,11 @@ package itest_test
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -18,6 +20,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/itest"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
+	"github.com/felix-homelab/rpmgr/internal/telemetry"
 )
 
 // TestOperation_ThroughAgent (docs/03-connections.md, "Control session"): an agent that runs
@@ -105,4 +108,76 @@ func startOperationAgent(t *testing.T, c *itest.Controller, id agent.Loaded, sta
 		close(done)
 	}()
 	t.Cleanup(func() { cancel(); <-done })
+}
+
+// TestLiveLogs_ThroughAgent (docs/03-connections.md, "Control session"): an agent with a live log
+// announces logs.stream by itself and streams its log lines, redacted, at the operation's level
+// and filter, raised to debug for the operation only.
+func TestLiveLogs_ThroughAgent(t *testing.T) {
+	c := itest.StartController(t, itest.Options{Sources: []snapshot.Source{orgResources}})
+	dir := t.TempDir()
+	id := c.EnrollConnector(t, filepath.Join(dir, "identity"))
+	state := filepath.Join(dir, "state")
+	if err := os.MkdirAll(state, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	var own strings.Builder
+	logger, live, err := telemetry.NewLiveLogger(&lockedWriter{w: &own}, telemetry.LogConfig{Level: "info"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		_ = agent.RunControl(ctx, agent.ControlOptions{IdentityDir: id.Dir, StateDir: state, Version: "0.1.0",
+			Applier: &offerRecorder{}, Backoff: fast(), Logger: c.Logs.Logger(), LiveLog: live})
+		close(done)
+	}()
+	t.Cleanup(func() { cancel(); <-done })
+
+	var op *controller.Operation
+	waitFor(t, "the agent's control session", func() bool {
+		octx, ocancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer ocancel()
+		op, err = c.Sessions.Open(octx, id.AgentID, agentv1.OperationKind_OPERATION_KIND_LOGS,
+			&agentv1.LogParams{Level: "info", Filter: "probe", RaiseToDebug: true})
+		return !errors.Is(err, controller.ErrNotConnected)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer op.Close("")
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() { // log until the line arrives, as the subscription starts after the attach
+		for {
+			logger.Debug("probe dialing with Authorization: Bearer opaque-value")
+			logger.Info("unrelated line")
+			select {
+			case <-stop:
+				return
+			case <-time.After(50 * time.Millisecond):
+			}
+		}
+	}()
+	f, err := op.Recv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := f.GetLog(); l.GetLevel() != "debug" || !strings.Contains(l.GetText(), "probe dialing") ||
+		strings.Contains(l.GetText(), "opaque-value") || strings.Contains(l.GetText(), "unrelated") {
+		t.Fatalf("the line: %v", l)
+	}
+}
+
+// lockedWriter serialises writes to w.
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
 }

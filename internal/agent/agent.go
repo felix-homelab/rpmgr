@@ -21,6 +21,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
+	"github.com/felix-homelab/rpmgr/internal/telemetry"
 )
 
 // ControlOptions configure an agent's control plane.
@@ -53,6 +54,9 @@ type ControlOptions struct {
 	// the operation with that reason. Operations it does not run it refuses with
 	// ErrUnsupportedOperation. Without it every operation is refused.
 	OnOperation func(ctx context.Context, open *agentv1.Open, send func(*agentv1.AttachFrame) error) error
+	// LiveLog, if set, is the role's log with live-log subscriptions: the agent announces
+	// logs.stream and runs live-log operations from it.
+	LiveLog *telemetry.LiveLog
 	// SessionStatus, if set, returns the Status the agent sends at the start of each session, so
 	// that what changed while there was none is not lost: a connector's complete readiness, a
 	// gateway's data sessions.
@@ -89,6 +93,9 @@ func NewControl(o ControlOptions) (*Control, error) {
 	}
 	c := &Control{o: o, id: id}
 	caps := o.Capabilities
+	if o.LiveLog != nil {
+		caps = append(slices.Clone(caps), agentproto.CapLogsStream)
+	}
 	var onOffer func(*agentv1.ReleaseOffer)
 	if o.Update != nil {
 		now := o.Now
@@ -200,7 +207,13 @@ func (c *Control) operate(open *agentv1.Open) {
 		c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_OpResult{OpResult: &agentv1.OpResult{OpId: open.GetOpId(),
 			Error: err.Error()}}})
 	}
-	if c.o.OnOperation == nil {
+	run := c.o.OnOperation
+	if open.GetKind() == agentv1.OperationKind_OPERATION_KIND_LOGS && c.o.LiveLog != nil {
+		run = func(ctx context.Context, open *agentv1.Open, send func(*agentv1.AttachFrame) error) error {
+			return serveLogs(ctx, c.o.LiveLog, open.GetLogs(), send)
+		}
+	}
+	if run == nil {
 		refuse(ErrUnsupportedOperation)
 		return
 	}
@@ -233,7 +246,7 @@ func (c *Control) operate(open *agentv1.Open) {
 		defer mu.Unlock()
 		return st.Send(f)
 	}
-	err = c.o.OnOperation(ctx, open, send)
+	err = run(ctx, open, send)
 	reason := ""
 	if err != nil && ctx.Err() == nil {
 		reason = err.Error()

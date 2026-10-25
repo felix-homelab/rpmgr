@@ -49,6 +49,10 @@ type RunOptions struct {
 	Version string
 	Now     func() time.Time
 	Logger  *slog.Logger
+	// LiveLog, if set, is Logger's live log: the agent then runs live-log operations from it
+	// (docs/03-connections.md, "Control session"). The built-in agents of an all-in-one have
+	// none, as their log is the controller's.
+	LiveLog *telemetry.LiveLog
 	// DrainPeriod is how long a stopping gateway keeps its streams; 0 is DrainPeriod.
 	DrainPeriod time.Duration
 	// Listening, if set, is called once every listener is up.
@@ -116,7 +120,7 @@ func Run(ctx context.Context, o RunOptions) error {
 			Policy: func() *policy.Policy { p, _ := policy.Load(policy.DefaultPath); return p }}
 	}
 	ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
-		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, Dial: o.Dial, OnAcmeChallenge: challenges.Apply,
+		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, LiveLog: o.LiveLog, Dial: o.Dial, OnAcmeChallenge: challenges.Apply,
 		Update: update,
 		OnDenyList: func() {
 			if sessions != nil {

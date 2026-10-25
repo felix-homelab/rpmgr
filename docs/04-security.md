@@ -961,8 +961,8 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
   over the text of each message and attribute, as a message may quote what a field annotation
   never saw ([D145](14-open-decisions.md#engineering), E7). The pass replaces with `[REDACTED]`: an
   `rpmgr_` token prefix and its random part; PEM blocks; the values of `Authorization`,
-  `Proxy-Authorization`, `Cookie` and `Set-Cookie`; the values of `password=`, `secret=` and
-  `token=` pairs; and strings shaped like a JWT. A raised level changes what is logged, never what
+  `Proxy-Authorization`, `Cookie` and `Set-Cookie`; the values of `password=`, `passwd=`, `secret=`
+  and `token=` pairs; and strings shaped like a JWT. A raised level changes what is logged, never what
   is redacted.
 - No secret appears in argv, in the environment of long-running processes, or in unit files.
 
