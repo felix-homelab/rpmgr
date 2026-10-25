@@ -55,7 +55,7 @@ func PreviewSources(previewed string) []snapshot.Source {
 		return gatewayTCPUDP(ctx, tx, a, previewed)
 	}
 	srcs := []snapshot.Source{tcp, udp, both, GatewayPassthrough, GatewayHTTP, certs.Gateway, domains.GatewayChallenges,
-		GatewayDrain, GatewayPages, ConnectorRoutes, ConnectorGateways}
+		GatewayDrain, GatewayPages, GatewayWSS, ConnectorRoutes, ConnectorGateways}
 	for i, src := range srcs {
 		srcs[i] = gated(src)
 	}

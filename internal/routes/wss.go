@@ -9,7 +9,11 @@ import (
 	"slices"
 	"strings"
 
+	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/domains"
+	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
@@ -57,6 +61,23 @@ func SetWSSHostname(ctx context.Context, tx *ent.Tx, gatewayID, hostname string)
 		return nil, fmt.Errorf("%w: %s", ErrWSSHostnameTaken, name)
 	}
 	return gw, err
+}
+
+// GatewayWSS compiles a gateway's WSS hostname for its snapshot, if it has one and announces
+// tunnel.wss: a gateway of an earlier release would refuse a resource it does not know. A disabled
+// or decommissioned gateway gets none.
+func GatewayWSS(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
+	if a.Identity.Kind != pki.KindGateway || !a.Has(agentproto.CapTunnelWSS) {
+		return nil, nil
+	}
+	gw, err := tx.Gateway.Get(ctx, a.Identity.ID)
+	if ent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil || !gw.Enabled || gw.DecommissionedAt != nil || gw.WssHostname == nil {
+		return nil, err
+	}
+	return []*agentv1.Resource{{Id: gw.ID + ".wss", Kind: &agentv1.Resource_GatewayWss{GatewayWss: &agentv1.GatewayWSS{Hostname: *gw.WssHostname}}}}, nil
 }
 
 // wssHostnameTaken reports whether a gateway of a group has name as its WSS hostname, or, for a

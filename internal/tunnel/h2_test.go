@@ -394,3 +394,47 @@ func TestH2_SessionEnd(t *testing.T) {
 		t.Fatal("transport name")
 	}
 }
+
+// wssAddr is a remote address on the network "wss", as gateway.ServeWSS gives its connections.
+type wssAddr struct{ net.Addr }
+
+func (wssAddr) Network() string { return "wss" }
+
+type wssConn struct{ net.Conn }
+
+func (c wssConn) RemoteAddr() net.Addr { return wssAddr{c.Conn.RemoteAddr()} }
+
+// TestH2Gateway_Transport: a session is "h2", or "wss" on a connection inside a WebSocket.
+func TestH2Gateway_Transport(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() { _, _ = io.Copy(io.Discard, c) }()
+		}
+	}()
+	for _, tc := range []struct {
+		wrap func(net.Conn) net.Conn
+		want string
+	}{{func(c net.Conn) net.Conn { return c }, "h2"}, {func(c net.Conn) net.Conn { return wssConn{c} }, "wss"}} {
+		c, err := net.Dial("tcp", ln.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, err := tunnel.NewH2Gateway(tc.wrap(c), tunnel.DefaultH2Windows())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := g.Transport(); got != tc.want {
+			t.Errorf("Transport %q, want %q", got, tc.want)
+		}
+		_ = g.Close()
+	}
+}

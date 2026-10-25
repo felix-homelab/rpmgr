@@ -113,6 +113,8 @@ message Resource {
     ResourceReference reference = 15;
     // Gateways: a page of the gateway's group, fetched by hash.
     GatewayPage gateway_page = 16;
+    // The gateway's WSS hostname, to gateways with the capability tunnel.wss.
+    GatewayWSS gateway_wss = 17;
   }
 }
 
@@ -124,6 +126,14 @@ message GatewayDomainChallenge {
   string fqdn = 1;
   // The challenge value.
   string value = 2;
+}
+
+// GatewayWSS is a gateway's WSS hostname (docs/03-connections.md, "Transport selection"): the
+// name connectors reach it at over WebSocket, at /.rpmgr/tunnel, with the name's public
+// certificate, which a GatewayCertificate carries.
+message GatewayWSS {
+  // The hostname, normalised.
+  string hostname = 1;
 }
 
 // GatewayDrain is in the snapshot of a disabled gateway, which has no routes (R22). The gateway

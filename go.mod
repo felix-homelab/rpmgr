@@ -20,6 +20,7 @@ require (
 	entgo.io/ent v0.14.6
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/charmbracelet/x/ansi v0.11.9
+	github.com/coder/websocket v1.8.15
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/letsencrypt/pebble/v2 v2.10.1
