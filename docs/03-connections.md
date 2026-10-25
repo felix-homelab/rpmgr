@@ -1044,10 +1044,14 @@ the capability `route.limits`:
   route is not left out of their snapshot (no gate, D133). Connectors that run checks announce the
   capability `health.active`.
 - **Passive health.** Each gateway also marks a (connector, priority) entry of a route as failing
-  after 3 refused or timed-out stream opens in a row, never for an HTTP 5xx: the entry is passed
-  over for a back-off that starts at 10 s and doubles to at most 60 s, after which one stream tries
-  it again (half-open); a success restores it. When every entry is marked, the gateway still tries
-  the last one rather than refusing. Each gateway decides alone.
+  after 3 refused or timed-out stream opens in a row (`UPSTREAM_REFUSED`, `UPSTREAM_TIMEOUT`), never
+  for an HTTP 5xx or another result, such as `OVERLOADED`: the entry is passed over for a back-off
+  that starts at 10 s and doubles to at most 60 s, after which one stream tries it again (half-open)
+  while the others still pass over it; a success restores it, a failure starts the next back-off.
+  When every entry is marked, the gateway still tries the one whose back-off ends first rather than
+  refusing. Only streams whose result the gateway waits for count, TCP streams and HTTP requests; a
+  UDP flow sends before its result and is neither counted nor passed over. Each gateway decides
+  alone, and forgets an entry its snapshot no longer has.
 
 ### HTTP CONNECT routes (Phase 2)
 

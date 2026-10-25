@@ -12,6 +12,11 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Gateways: passive health. A gateway passes over a connector at a priority whose targets refused
+  or timed out several new connections in a row, for a back-off that grows with each failed try,
+  then tries it again with one connection; a success brings it back. HTTP error statuses never count,
+  and when every connector is passed over the gateway still tries one. Each gateway decides alone.
+  (#632)
 - Connectors: data sessions over WSS, for networks whose proxy intercepts TLS. A gateway gets a
   WSS hostname of its own (`rpmgr update gateway --wss-hostname`, the API's
   `Gateway.wss_hostname`) with a certificate from an upload or ACME; connectors on `auto` move to
