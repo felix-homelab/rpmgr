@@ -251,12 +251,19 @@ test("screenshots of the user guide", async ({ page, browser }) => {
 // The rollout pictures: the start dialog's two steps and a rollout in progress, running and paused.
 // The instance has no signed release to roll out, so fakeUpdates answers the release, rollout and
 // agent calls with a made-up fleet of Example Lab. The check- shots, in dark and at a phone's
-// width, are taken only when named, to look at the layout; the guide does not show them.
+// width, are taken only when named, to look at the layout; the guide does not show them. The guide
+// shows the staged rollout, which the dialog starts once Rollouts is Advanced: a new instance
+// starts easy rollouts (D129).
 test("screenshots of a rollout", async ({ page }) => {
   let state: "none" | "running" | "paused" = "none";
   await fakeUpdates(page, () => state);
   await signIn(page, "ada@example.com");
   await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
+  await page.goto("/settings/updates");
+  const updatesForm = page.getByRole("form", { name: "Updates" });
+  await updatesForm.getByLabel("Rollouts").selectOption({ label: "Advanced: test agents, then stages you approve" });
+  await updatesForm.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
   for (const [suffix, width, scheme] of [["", 1440, "light"], ["-dark", 1440, "dark"], ["-narrow", 400, "light"], ["-narrow-dark", 400, "dark"]] as const) {
     const named = (name: string) => suffix ? `check-${name}${suffix}` : name;
     await page.setViewportSize({ width, height: 900 });
