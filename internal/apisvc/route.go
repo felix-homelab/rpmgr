@@ -71,19 +71,25 @@ func (r *Routes) CreateRoute(ctx context.Context, req *connect.Request[rpmgrv1.C
 		if err := checkHealth(in); err != nil {
 			return nil, err
 		}
-		var out *rpmgrv1.Route
+		var (
+			out      *rpmgrv1.Route
+			warnings []string
+		)
 		rev, err := store.ConfigTx(ctx, r.DB, func(tx *ent.Tx) ([]string, error) {
 			row, err := r.createRouteTx(ctx, tx, m.GetOrgId(), in)
 			if err != nil {
 				return nil, err
 			}
-			out, err = routeOf(ctx, tx.Client(), row)
+			if out, err = routeOf(ctx, tx.Client(), row); err != nil {
+				return nil, err
+			}
+			warnings, err = connectWarnings(ctx, tx, out)
 			return []string{row.ID}, err
 		})
 		if err != nil {
 			return nil, routeError(err)
 		}
-		return &rpmgrv1.CreateRouteResponse{Route: out, Revision: revisionOf(rev), Warnings: connectWarnings(out)}, nil
+		return &rpmgrv1.CreateRouteResponse{Route: out, Revision: revisionOf(rev), Warnings: warnings}, nil
 	})
 	if err != nil {
 		return nil, err
@@ -260,19 +266,25 @@ func routeFields(t route.Type) []string {
 func (r *Routes) UpdateRoute(ctx context.Context, req *connect.Request[rpmgrv1.UpdateRouteRequest]) (
 	*connect.Response[rpmgrv1.UpdateRouteResponse], error) {
 	m := req.Msg
-	var out *rpmgrv1.Route
+	var (
+		out      *rpmgrv1.Route
+		warnings []string
+	)
 	rev, err := store.ConfigTx(ctx, r.DB, func(tx *ent.Tx) ([]string, error) {
 		row, err := r.updateRouteTx(ctx, tx, m)
 		if err != nil {
 			return nil, err
 		}
-		out, err = routeOf(ctx, tx.Client(), row)
+		if out, err = routeOf(ctx, tx.Client(), row); err != nil {
+			return nil, err
+		}
+		warnings, err = connectWarnings(ctx, tx, out)
 		return []string{row.ID}, err
 	})
 	if err != nil {
 		return nil, routeError(err)
 	}
-	return connect.NewResponse(&rpmgrv1.UpdateRouteResponse{Route: out, Revision: revisionOf(rev), Warnings: connectWarnings(out)}), nil
+	return connect.NewResponse(&rpmgrv1.UpdateRouteResponse{Route: out, Revision: revisionOf(rev), Warnings: warnings}), nil
 }
 
 // createRouteTx creates a route in tx: the route, its settings, its port and its hostnames.

@@ -3033,6 +3033,22 @@ func (c *ConnectListenerClient) QueryCertificate(_m *ConnectListener) *Certifica
 	return query
 }
 
+// QueryDomain queries the domain edge of a ConnectListener.
+func (c *ConnectListenerClient) QueryDomain(_m *ConnectListener) *DomainQuery {
+	query := (&DomainClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(connectlistener.Table, connectlistener.FieldID, id),
+			sqlgraph.To(domain.Table, domain.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, connectlistener.DomainTable, connectlistener.DomainColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryRoutes queries the routes edge of a ConnectListener.
 func (c *ConnectListenerClient) QueryRoutes(_m *ConnectListener) *RouteTCPQuery {
 	query := (&RouteTCPClient{config: c.config}).Query()

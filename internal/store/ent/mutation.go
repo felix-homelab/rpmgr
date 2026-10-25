@@ -12591,6 +12591,8 @@ type ConnectListenerMutation struct {
 	clearedport        bool
 	certificate        *string
 	clearedcertificate bool
+	domain             *string
+	cleareddomain      bool
 	routes             map[int]struct{}
 	removedroutes      map[int]struct{}
 	clearedroutes      bool
@@ -12883,6 +12885,55 @@ func (m *ConnectListenerMutation) ResetHostname() {
 	m.hostname = nil
 }
 
+// SetDomainID sets the "domain_id" field.
+func (m *ConnectListenerMutation) SetDomainID(s string) {
+	m.domain = &s
+}
+
+// DomainID returns the value of the "domain_id" field in the mutation.
+func (m *ConnectListenerMutation) DomainID() (r string, exists bool) {
+	v := m.domain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDomainID returns the old "domain_id" field's value of the ConnectListener entity.
+// If the ConnectListener object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConnectListenerMutation) OldDomainID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDomainID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDomainID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDomainID: %w", err)
+	}
+	return oldValue.DomainID, nil
+}
+
+// ClearDomainID clears the value of the "domain_id" field.
+func (m *ConnectListenerMutation) ClearDomainID() {
+	m.domain = nil
+	m.clearedFields[connectlistener.FieldDomainID] = struct{}{}
+}
+
+// DomainIDCleared returns if the "domain_id" field was cleared in this mutation.
+func (m *ConnectListenerMutation) DomainIDCleared() bool {
+	_, ok := m.clearedFields[connectlistener.FieldDomainID]
+	return ok
+}
+
+// ResetDomainID resets all changes to the "domain_id" field.
+func (m *ConnectListenerMutation) ResetDomainID() {
+	m.domain = nil
+	delete(m.clearedFields, connectlistener.FieldDomainID)
+}
+
 // SetCertificateID sets the "certificate_id" field.
 func (m *ConnectListenerMutation) SetCertificateID(s string) {
 	m.certificate = &s
@@ -12999,6 +13050,33 @@ func (m *ConnectListenerMutation) ResetCertificate() {
 	m.clearedcertificate = false
 }
 
+// ClearDomain clears the "domain" edge to the Domain entity.
+func (m *ConnectListenerMutation) ClearDomain() {
+	m.cleareddomain = true
+	m.clearedFields[connectlistener.FieldDomainID] = struct{}{}
+}
+
+// DomainCleared reports if the "domain" edge to the Domain entity was cleared.
+func (m *ConnectListenerMutation) DomainCleared() bool {
+	return m.DomainIDCleared() || m.cleareddomain
+}
+
+// DomainIDs returns the "domain" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// DomainID instead. It exists only for internal usage by the builders.
+func (m *ConnectListenerMutation) DomainIDs() (ids []string) {
+	if id := m.domain; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetDomain resets all changes to the "domain" edge.
+func (m *ConnectListenerMutation) ResetDomain() {
+	m.domain = nil
+	m.cleareddomain = false
+}
+
 // AddRouteIDs adds the "routes" edge to the RouteTCP entity by ids.
 func (m *ConnectListenerMutation) AddRouteIDs(ids ...int) {
 	if m.routes == nil {
@@ -13087,7 +13165,7 @@ func (m *ConnectListenerMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ConnectListenerMutation) Fields() []string {
-	fields := make([]string, 0, 6)
+	fields := make([]string, 0, 7)
 	if m.org_id != nil {
 		fields = append(fields, connectlistener.FieldOrgID)
 	}
@@ -13102,6 +13180,9 @@ func (m *ConnectListenerMutation) Fields() []string {
 	}
 	if m.hostname != nil {
 		fields = append(fields, connectlistener.FieldHostname)
+	}
+	if m.domain != nil {
+		fields = append(fields, connectlistener.FieldDomainID)
 	}
 	if m.certificate != nil {
 		fields = append(fields, connectlistener.FieldCertificateID)
@@ -13124,6 +13205,8 @@ func (m *ConnectListenerMutation) Field(name string) (ent.Value, bool) {
 		return m.AuthMode()
 	case connectlistener.FieldHostname:
 		return m.Hostname()
+	case connectlistener.FieldDomainID:
+		return m.DomainID()
 	case connectlistener.FieldCertificateID:
 		return m.CertificateID()
 	}
@@ -13145,6 +13228,8 @@ func (m *ConnectListenerMutation) OldField(ctx context.Context, name string) (en
 		return m.OldAuthMode(ctx)
 	case connectlistener.FieldHostname:
 		return m.OldHostname(ctx)
+	case connectlistener.FieldDomainID:
+		return m.OldDomainID(ctx)
 	case connectlistener.FieldCertificateID:
 		return m.OldCertificateID(ctx)
 	}
@@ -13191,6 +13276,13 @@ func (m *ConnectListenerMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetHostname(v)
 		return nil
+	case connectlistener.FieldDomainID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDomainID(v)
+		return nil
 	case connectlistener.FieldCertificateID:
 		v, ok := value.(string)
 		if !ok {
@@ -13228,6 +13320,9 @@ func (m *ConnectListenerMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *ConnectListenerMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(connectlistener.FieldDomainID) {
+		fields = append(fields, connectlistener.FieldDomainID)
+	}
 	if m.FieldCleared(connectlistener.FieldCertificateID) {
 		fields = append(fields, connectlistener.FieldCertificateID)
 	}
@@ -13245,6 +13340,9 @@ func (m *ConnectListenerMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *ConnectListenerMutation) ClearField(name string) error {
 	switch name {
+	case connectlistener.FieldDomainID:
+		m.ClearDomainID()
+		return nil
 	case connectlistener.FieldCertificateID:
 		m.ClearCertificateID()
 		return nil
@@ -13271,6 +13369,9 @@ func (m *ConnectListenerMutation) ResetField(name string) error {
 	case connectlistener.FieldHostname:
 		m.ResetHostname()
 		return nil
+	case connectlistener.FieldDomainID:
+		m.ResetDomainID()
+		return nil
 	case connectlistener.FieldCertificateID:
 		m.ResetCertificateID()
 		return nil
@@ -13280,12 +13381,15 @@ func (m *ConnectListenerMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ConnectListenerMutation) AddedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.port != nil {
 		edges = append(edges, connectlistener.EdgePort)
 	}
 	if m.certificate != nil {
 		edges = append(edges, connectlistener.EdgeCertificate)
+	}
+	if m.domain != nil {
+		edges = append(edges, connectlistener.EdgeDomain)
 	}
 	if m.routes != nil {
 		edges = append(edges, connectlistener.EdgeRoutes)
@@ -13305,6 +13409,10 @@ func (m *ConnectListenerMutation) AddedIDs(name string) []ent.Value {
 		if id := m.certificate; id != nil {
 			return []ent.Value{*id}
 		}
+	case connectlistener.EdgeDomain:
+		if id := m.domain; id != nil {
+			return []ent.Value{*id}
+		}
 	case connectlistener.EdgeRoutes:
 		ids := make([]ent.Value, 0, len(m.routes))
 		for id := range m.routes {
@@ -13317,7 +13425,7 @@ func (m *ConnectListenerMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ConnectListenerMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.removedroutes != nil {
 		edges = append(edges, connectlistener.EdgeRoutes)
 	}
@@ -13340,12 +13448,15 @@ func (m *ConnectListenerMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ConnectListenerMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.clearedport {
 		edges = append(edges, connectlistener.EdgePort)
 	}
 	if m.clearedcertificate {
 		edges = append(edges, connectlistener.EdgeCertificate)
+	}
+	if m.cleareddomain {
+		edges = append(edges, connectlistener.EdgeDomain)
 	}
 	if m.clearedroutes {
 		edges = append(edges, connectlistener.EdgeRoutes)
@@ -13361,6 +13472,8 @@ func (m *ConnectListenerMutation) EdgeCleared(name string) bool {
 		return m.clearedport
 	case connectlistener.EdgeCertificate:
 		return m.clearedcertificate
+	case connectlistener.EdgeDomain:
+		return m.cleareddomain
 	case connectlistener.EdgeRoutes:
 		return m.clearedroutes
 	}
@@ -13377,6 +13490,9 @@ func (m *ConnectListenerMutation) ClearEdge(name string) error {
 	case connectlistener.EdgeCertificate:
 		m.ClearCertificate()
 		return nil
+	case connectlistener.EdgeDomain:
+		m.ClearDomain()
+		return nil
 	}
 	return fmt.Errorf("unknown ConnectListener unique edge %s", name)
 }
@@ -13390,6 +13506,9 @@ func (m *ConnectListenerMutation) ResetEdge(name string) error {
 		return nil
 	case connectlistener.EdgeCertificate:
 		m.ResetCertificate()
+		return nil
+	case connectlistener.EdgeDomain:
+		m.ResetDomain()
 		return nil
 	case connectlistener.EdgeRoutes:
 		m.ResetRoutes()

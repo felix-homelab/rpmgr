@@ -26,9 +26,14 @@ var (
 
 // Listener is what a tcp route in http_connect mode asks of its CONNECT listener.
 type Listener struct {
-	Mode          connectlistener.AuthMode
-	Hostname      string // tls_basic
-	CertificateID string // tls_basic: an uploaded certificate that covers Hostname
+	Mode     connectlistener.AuthMode
+	Hostname string // tls_basic
+	// DomainID is the verified domain Hostname lies under, which cannot be deleted while it does.
+	DomainID string
+	// CertificateID is a certificate that covers Hostname: it is not part of the listener's
+	// identity, and a route that names one sets it for every route of the listener, so that a
+	// certificate can be replaced without moving the port.
+	CertificateID string
 }
 
 var authorityRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9._-]{0,251}[a-z0-9])?$`)
@@ -61,32 +66,56 @@ func JoinListener(ctx context.Context, tx *ent.Tx, r *ent.Route, want Listener, 
 		}
 		c := tx.ConnectListener.Create().SetOrgID(r.OrgID).SetGatewayGroupID(r.GatewayGroupID).SetPortAllocationID(a.ID).
 			SetAuthMode(want.Mode).SetHostname(want.Hostname)
-		if want.CertificateID != "" {
-			c.SetCertificateID(want.CertificateID)
+		if want.DomainID != "" {
+			c.SetDomainID(want.DomainID)
 		}
 		if l, err = c.Save(ctx); err != nil {
 			return nil, err
 		}
 	}
+	if err := SetListenerCertificate(ctx, tx, l, want.CertificateID); err != nil {
+		return nil, err
+	}
+	return l, SetAuthorities(ctx, tx, r, l.ID, authorities)
+}
+
+// SetListenerCertificate makes cert, "" for none, the certificate a CONNECT listener presents
+// for its hostname, for every route of the listener; the caller checked that it covers the name.
+func SetListenerCertificate(ctx context.Context, tx *ent.Tx, l *ent.ConnectListener, cert string) error {
+	switch {
+	case cert == "" && l.CertificateID == nil, l.CertificateID != nil && *l.CertificateID == cert:
+		return nil
+	case cert == "":
+		return tx.ConnectListener.UpdateOne(l).ClearCertificateID().Exec(ctx)
+	}
+	return tx.ConnectListener.UpdateOne(l).SetCertificateID(cert).Exec(ctx)
+}
+
+// SetAuthorities makes authorities the names of route r on its CONNECT listener listenerID, in
+// place of those it had; a name another route of the listener has is ErrAuthorityTaken.
+func SetAuthorities(ctx context.Context, tx *ent.Tx, r *ent.Route, listenerID string, authorities []string) error {
+	if _, err := tx.ConnectAuthority.Delete().Where(connectauthority.RouteID(r.ID)).Exec(ctx); err != nil {
+		return err
+	}
 	seen := map[string]bool{}
 	for _, raw := range authorities {
 		a, err := NormalizeAuthority(raw)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if seen[a] {
 			continue
 		}
 		seen[a] = true
-		err = tx.ConnectAuthority.Create().SetOrgID(r.OrgID).SetConnectListenerID(l.ID).SetRouteID(r.ID).SetAuthority(a).Exec(ctx)
+		err = tx.ConnectAuthority.Create().SetOrgID(r.OrgID).SetConnectListenerID(listenerID).SetRouteID(r.ID).SetAuthority(a).Exec(ctx)
 		if ent.IsConstraintError(err) {
-			return nil, fmt.Errorf("%w: %s", ErrAuthorityTaken, a)
+			return fmt.Errorf("%w: %s", ErrAuthorityTaken, a)
 		}
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return l, nil
+	return nil
 }
 
 // findListener returns the listener a route joins, or nil for a new one on port.
@@ -124,12 +153,10 @@ func findListener(ctx context.Context, tx *ent.Tx, r *ent.Route, want Listener, 
 	return l, nil
 }
 
+// same reports whether a listener is the one want asks for: its mode and hostname, not its
+// certificate, which a route may replace.
 func same(l *ent.ConnectListener, want Listener) bool {
-	cert := ""
-	if l.CertificateID != nil {
-		cert = *l.CertificateID
-	}
-	return l.AuthMode == want.Mode && l.Hostname == want.Hostname && cert == want.CertificateID
+	return l.AuthMode == want.Mode && l.Hostname == want.Hostname
 }
 
 // LeaveListener takes tcp route routeID off its CONNECT listener, in tx: its authorities go, and a

@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -29,6 +30,7 @@ type ConnectListenerQuery struct {
 	predicates      []predicate.ConnectListener
 	withPort        *PortAllocationQuery
 	withCertificate *CertificateQuery
+	withDomain      *DomainQuery
 	withRoutes      *RouteTCPQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -103,6 +105,28 @@ func (_q *ConnectListenerQuery) QueryCertificate() *CertificateQuery {
 			sqlgraph.From(connectlistener.Table, connectlistener.FieldID, selector),
 			sqlgraph.To(certificate.Table, certificate.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, false, connectlistener.CertificateTable, connectlistener.CertificateColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryDomain chains the current query on the "domain" edge.
+func (_q *ConnectListenerQuery) QueryDomain() *DomainQuery {
+	query := (&DomainClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(connectlistener.Table, connectlistener.FieldID, selector),
+			sqlgraph.To(domain.Table, domain.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, connectlistener.DomainTable, connectlistener.DomainColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -326,6 +350,7 @@ func (_q *ConnectListenerQuery) Clone() *ConnectListenerQuery {
 		predicates:      append([]predicate.ConnectListener{}, _q.predicates...),
 		withPort:        _q.withPort.Clone(),
 		withCertificate: _q.withCertificate.Clone(),
+		withDomain:      _q.withDomain.Clone(),
 		withRoutes:      _q.withRoutes.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
@@ -352,6 +377,17 @@ func (_q *ConnectListenerQuery) WithCertificate(opts ...func(*CertificateQuery))
 		opt(query)
 	}
 	_q.withCertificate = query
+	return _q
+}
+
+// WithDomain tells the query-builder to eager-load the nodes that are connected to
+// the "domain" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ConnectListenerQuery) WithDomain(opts ...func(*DomainQuery)) *ConnectListenerQuery {
+	query := (&DomainClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withDomain = query
 	return _q
 }
 
@@ -450,9 +486,10 @@ func (_q *ConnectListenerQuery) sqlAll(ctx context.Context, hooks ...queryHook) 
 	var (
 		nodes       = []*ConnectListener{}
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [4]bool{
 			_q.withPort != nil,
 			_q.withCertificate != nil,
+			_q.withDomain != nil,
 			_q.withRoutes != nil,
 		}
 	)
@@ -483,6 +520,12 @@ func (_q *ConnectListenerQuery) sqlAll(ctx context.Context, hooks ...queryHook) 
 	if query := _q.withCertificate; query != nil {
 		if err := _q.loadCertificate(ctx, query, nodes, nil,
 			func(n *ConnectListener, e *Certificate) { n.Edges.Certificate = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withDomain; query != nil {
+		if err := _q.loadDomain(ctx, query, nodes, nil,
+			func(n *ConnectListener, e *Domain) { n.Edges.Domain = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -557,6 +600,38 @@ func (_q *ConnectListenerQuery) loadCertificate(ctx context.Context, query *Cert
 	}
 	return nil
 }
+func (_q *ConnectListenerQuery) loadDomain(ctx context.Context, query *DomainQuery, nodes []*ConnectListener, init func(*ConnectListener), assign func(*ConnectListener, *Domain)) error {
+	ids := make([]string, 0, len(nodes))
+	nodeids := make(map[string][]*ConnectListener)
+	for i := range nodes {
+		if nodes[i].DomainID == nil {
+			continue
+		}
+		fk := *nodes[i].DomainID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(domain.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "domain_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 func (_q *ConnectListenerQuery) loadRoutes(ctx context.Context, query *RouteTCPQuery, nodes []*ConnectListener, init func(*ConnectListener), assign func(*ConnectListener, *RouteTCP)) error {
 	fks := make([]driver.Value, 0, len(nodes))
 	nodeids := make(map[string]*ConnectListener)
@@ -621,6 +696,9 @@ func (_q *ConnectListenerQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if _q.withCertificate != nil {
 			_spec.Node.AddColumnOnce(connectlistener.FieldCertificateID)
+		}
+		if _q.withDomain != nil {
+			_spec.Node.AddColumnOnce(connectlistener.FieldDomainID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

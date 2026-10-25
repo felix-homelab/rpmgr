@@ -119,7 +119,7 @@ organisation is refused, and the Instance Admin decides
 ### Remove a claim
 
 **Remove…** on the claim, or `rpmgr delete domain <id>`. The removal is refused while a route's
-hostname lies under the claim.
+hostname, or the hostname of a CONNECT listener, lies under the claim.
 
 ## Certificates
 

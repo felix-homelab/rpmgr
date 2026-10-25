@@ -423,6 +423,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			connectlistener.FieldPortAllocationID: {Type: field.TypeString, Column: connectlistener.FieldPortAllocationID},
 			connectlistener.FieldAuthMode:         {Type: field.TypeEnum, Column: connectlistener.FieldAuthMode},
 			connectlistener.FieldHostname:         {Type: field.TypeString, Column: connectlistener.FieldHostname},
+			connectlistener.FieldDomainID:         {Type: field.TypeString, Column: connectlistener.FieldDomainID},
 			connectlistener.FieldCertificateID:    {Type: field.TypeString, Column: connectlistener.FieldCertificateID},
 		},
 	}
@@ -1363,6 +1364,18 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		"ConnectListener",
 		"Certificate",
+	)
+	graph.MustAddE(
+		"domain",
+		&sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   connectlistener.DomainTable,
+			Columns: []string{connectlistener.DomainColumn},
+			Bidi:    false,
+		},
+		"ConnectListener",
+		"Domain",
 	)
 	graph.MustAddE(
 		"routes",
@@ -3151,6 +3164,11 @@ func (f *ConnectListenerFilter) WhereHostname(p entql.StringP) {
 	f.Where(p.Field(connectlistener.FieldHostname))
 }
 
+// WhereDomainID applies the entql string predicate on the domain_id field.
+func (f *ConnectListenerFilter) WhereDomainID(p entql.StringP) {
+	f.Where(p.Field(connectlistener.FieldDomainID))
+}
+
 // WhereCertificateID applies the entql string predicate on the certificate_id field.
 func (f *ConnectListenerFilter) WhereCertificateID(p entql.StringP) {
 	f.Where(p.Field(connectlistener.FieldCertificateID))
@@ -3178,6 +3196,20 @@ func (f *ConnectListenerFilter) WhereHasCertificate() {
 // WhereHasCertificateWith applies a predicate to check if query has an edge certificate with a given conditions (other predicates).
 func (f *ConnectListenerFilter) WhereHasCertificateWith(preds ...predicate.Certificate) {
 	f.Where(entql.HasEdgeWith("certificate", sqlgraph.WrapFunc(func(s *sql.Selector) {
+		for _, p := range preds {
+			p(s)
+		}
+	})))
+}
+
+// WhereHasDomain applies a predicate to check if query has an edge domain.
+func (f *ConnectListenerFilter) WhereHasDomain() {
+	f.Where(entql.HasEdge("domain"))
+}
+
+// WhereHasDomainWith applies a predicate to check if query has an edge domain with a given conditions (other predicates).
+func (f *ConnectListenerFilter) WhereHasDomainWith(preds ...predicate.Domain) {
+	f.Where(entql.HasEdgeWith("domain", sqlgraph.WrapFunc(func(s *sql.Selector) {
 		for _, p := range preds {
 			p(s)
 		}

@@ -457,6 +457,7 @@ var (
 		{Name: "hostname", Type: field.TypeString, Size: 253, Default: ""},
 		{Name: "port_allocation_id", Type: field.TypeString},
 		{Name: "certificate_id", Type: field.TypeString, Nullable: true},
+		{Name: "domain_id", Type: field.TypeString, Nullable: true},
 	}
 	// ConnectListenersTable holds the schema information for the "connect_listeners" table.
 	ConnectListenersTable = &schema.Table{
@@ -474,6 +475,12 @@ var (
 				Symbol:     "connect_listeners_certificates_certificate",
 				Columns:    []*schema.Column{ConnectListenersColumns[6]},
 				RefColumns: []*schema.Column{CertificatesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "connect_listeners_domains_domain",
+				Columns:    []*schema.Column{ConnectListenersColumns[7]},
+				RefColumns: []*schema.Column{DomainsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 		},
@@ -497,6 +504,11 @@ var (
 				Name:    "connectlistener_certificate_id",
 				Unique:  false,
 				Columns: []*schema.Column{ConnectListenersColumns[6]},
+			},
+			{
+				Name:    "connectlistener_domain_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConnectListenersColumns[7]},
 			},
 		},
 	}
@@ -2094,6 +2106,7 @@ func init() {
 	}
 	ConnectListenersTable.ForeignKeys[0].RefTable = PortAllocationsTable
 	ConnectListenersTable.ForeignKeys[1].RefTable = CertificatesTable
+	ConnectListenersTable.ForeignKeys[2].RefTable = DomainsTable
 	ConnectListenersTable.Annotation = &entsql.Annotation{
 		Table: "connect_listeners",
 	}

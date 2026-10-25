@@ -198,8 +198,8 @@ func (ConnectListener) Annotations() []schema.Annotation {
 	return []schema.Annotation{entsql.Annotation{Table: "connect_listeners"}}
 }
 
-// Fields of a CONNECT listener: hostname and certificate_id, an uploaded certificate that covers
-// it, belong to the mode tls_basic only.
+// Fields of a CONNECT listener: hostname, the verified domain it lies under, and certificate_id, a
+// certificate that covers it, belong to the mode tls_basic only.
 func (ConnectListener) Fields() []ent.Field {
 	return []ent.Field{
 		idField("cl"),
@@ -207,6 +207,7 @@ func (ConnectListener) Fields() []ent.Field {
 		field.String("port_allocation_id").NotEmpty().Unique().Immutable(),
 		field.Enum("auth_mode").Values("none", "tls_basic", "plain_basic").Immutable(),
 		field.String("hostname").MaxLen(253).Default("").Immutable(),
+		field.String("domain_id").Optional().Nillable().Immutable(),
 		field.String("certificate_id").Optional().Nillable(),
 	}
 }
@@ -216,13 +217,15 @@ func (ConnectListener) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("port", PortAllocation.Type).Field("port_allocation_id").Unique().Required().Immutable(),
 		edge.To("certificate", Certificate.Type).Field("certificate_id").Unique(),
+		edge.To("domain", Domain.Type).Field("domain_id").Unique().Immutable(),
 		edge.From("routes", RouteTCP.Type).Ref("listener"),
 	}
 }
 
 // Indexes: one listener per port allocation; a group's listeners, and a certificate's.
 func (ConnectListener) Indexes() []ent.Index {
-	return []ent.Index{index.Fields("port_allocation_id").Unique(), index.Fields("gateway_group_id"), index.Fields("certificate_id")}
+	return []ent.Index{index.Fields("port_allocation_id").Unique(), index.Fields("gateway_group_id"), index.Fields("certificate_id"),
+		index.Fields("domain_id")}
 }
 
 // ConnectAuthority is a host name that chooses a route on its CONNECT listener; it is unique on

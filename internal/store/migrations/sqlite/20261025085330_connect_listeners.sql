@@ -25,7 +25,7 @@ CREATE UNIQUE INDEX `connectauthority_connect_listener_id_authority` ON `connect
 -- Create index "connectauthority_route_id" to table: "connect_authorities"
 CREATE INDEX `connectauthority_route_id` ON `connect_authorities` (`route_id`);
 -- Create "connect_listeners" table
-CREATE TABLE `connect_listeners` (`id` text NOT NULL, `org_id` text NOT NULL, `gateway_group_id` text NOT NULL, `auth_mode` text NOT NULL, `hostname` text NOT NULL DEFAULT (''), `port_allocation_id` text NOT NULL, `certificate_id` text NULL, PRIMARY KEY (`id`), CONSTRAINT `connect_listeners_port_allocations_port` FOREIGN KEY (`org_id`, `port_allocation_id`) REFERENCES `port_allocations` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `connect_listeners_certificates_certificate` FOREIGN KEY (`org_id`, `certificate_id`) REFERENCES `certificates` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `connect_listeners_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+CREATE TABLE `connect_listeners` (`id` text NOT NULL, `org_id` text NOT NULL, `gateway_group_id` text NOT NULL, `auth_mode` text NOT NULL, `hostname` text NOT NULL DEFAULT (''), `port_allocation_id` text NOT NULL, `certificate_id` text NULL, `domain_id` text NULL, PRIMARY KEY (`id`), CONSTRAINT `connect_listeners_port_allocations_port` FOREIGN KEY (`org_id`, `port_allocation_id`) REFERENCES `port_allocations` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `connect_listeners_certificates_certificate` FOREIGN KEY (`org_id`, `certificate_id`) REFERENCES `certificates` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `connect_listeners_domains_domain` FOREIGN KEY (`org_id`, `domain_id`) REFERENCES `domains` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `connect_listeners_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
 -- Create index "connectlistener_org_id_id" to table: "connect_listeners"
 CREATE UNIQUE INDEX `connectlistener_org_id_id` ON `connect_listeners` (`org_id`, `id`);
 -- Create index "connectlistener_port_allocation_id" to table: "connect_listeners"
@@ -34,5 +34,7 @@ CREATE UNIQUE INDEX `connectlistener_port_allocation_id` ON `connect_listeners` 
 CREATE INDEX `connectlistener_gateway_group_id` ON `connect_listeners` (`gateway_group_id`);
 -- Create index "connectlistener_certificate_id" to table: "connect_listeners"
 CREATE INDEX `connectlistener_certificate_id` ON `connect_listeners` (`certificate_id`);
+-- Create index "connectlistener_domain_id" to table: "connect_listeners"
+CREATE INDEX `connectlistener_domain_id` ON `connect_listeners` (`domain_id`);
 -- Enable back the enforcement of foreign-keys constraints
 PRAGMA foreign_keys = on;
