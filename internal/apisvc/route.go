@@ -68,6 +68,9 @@ func (r *Routes) CreateRoute(ctx context.Context, req *connect.Request[rpmgrv1.C
 		if err := checkSpec(in); err != nil {
 			return nil, err
 		}
+		if err := checkHealth(in); err != nil {
+			return nil, err
+		}
 		var out *rpmgrv1.Route
 		rev, err := store.ConfigTx(ctx, r.DB, func(tx *ent.Tx) ([]string, error) {
 			row, err := r.createRouteTx(ctx, tx, m.GetOrgId(), in)
@@ -228,7 +231,7 @@ func routeError(err error) error {
 
 // routeFields are the fields of a route of type t a client may change: never the type itself.
 func routeFields(t route.Type) []string {
-	fields := []string{"name", "enabled", "labels", "description", "transport", "policy_ids"}
+	fields := []string{"name", "enabled", "labels", "description", "transport", "policy_ids", "health_check"}
 	switch t {
 	case route.TypeHTTP:
 		for _, f := range []string{"hostnames", "path_prefix", "tls_mode", "certificate_id", "port80", "hsts_max_age_seconds", "host_header",
@@ -311,6 +314,9 @@ func (r *Routes) createRouteTx(ctx context.Context, tx *ent.Tx, org string, in *
 			return nil, err
 		}
 	}
+	if err := setHealthCheck(ctx, tx, row, in.GetHealthCheck()); err != nil {
+		return nil, err
+	}
 	return row, setRoutePolicies(ctx, tx, row, in.GetPolicyIds())
 }
 
@@ -369,6 +375,9 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 	if err := checkSpec(next); err != nil {
 		return nil, err
 	}
+	if err := checkHealth(next); err != nil {
+		return nil, err
+	}
 	u := tx.Route.UpdateOneID(cur.ID).Where(route.Version(cur.Version)).SetName(next.GetName()).SetEnabled(next.GetEnabled()).
 		SetLabels(next.GetLabels()).SetDescription(next.GetDescription()).SetUpdatedAt(r.now()).SetUpdatedBy(api.CallerFrom(ctx).UserID)
 	if t, ok := storeRouteTransports[next.GetTransport()]; ok {
@@ -382,6 +391,11 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 	}
 	if !slices.Equal(was.GetPolicyIds(), next.GetPolicyIds()) {
 		if err := setRoutePolicies(ctx, tx, row, next.GetPolicyIds()); err != nil {
+			return nil, err
+		}
+	}
+	if !proto.Equal(was.GetHealthCheck(), next.GetHealthCheck()) {
+		if err := setHealthCheck(ctx, tx, row, next.GetHealthCheck()); err != nil {
 			return nil, err
 		}
 	}
@@ -546,6 +560,9 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 		return nil, err
 	}
 	out.Targets = targets
+	if out.HealthCheck, err = healthCheckOf(ctx, c, row.ID); err != nil {
+		return nil, err
+	}
 	if out.PolicyIds, err = c.RoutePolicy.Query().Where(routepolicy.RouteID(row.ID)).Order(ent.Asc(routepolicy.FieldPosition)).
 		Select(routepolicy.FieldPolicyID).Strings(ctx); err != nil {
 		return nil, err

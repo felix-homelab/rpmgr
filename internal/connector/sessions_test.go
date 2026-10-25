@@ -479,6 +479,42 @@ func TestSessions_RouteHealth(t *testing.T) {
 	}
 }
 
+// rankedAssignment ranks the world's connector at priorities 0 and 5 of every route.
+type rankedAssignment struct{ con string }
+
+func (a rankedAssignment) Known(id string) bool { return id == a.con }
+func (a rankedAssignment) Connectors(string) []gateway.RouteConnector {
+	return []gateway.RouteConnector{{ID: a.con, Weight: 1, Ranked: true}, {ID: a.con, Priority: 5, Weight: 1, Ranked: true}}
+}
+
+// TestSessions_ReadyPriorities (D133): the priorities with a healthy target reach the gateway, also
+// for a route ready before the session: its hello leaves such a route out, as a gateway takes a
+// route of the hello as ready at every priority, and RouteHealth names it with its priorities after
+// the welcome; a later change of the priorities alone reaches the gateway too.
+func TestSessions_ReadyPriorities(t *testing.T) {
+	w := newWorld(t)
+	id := w.gatewayID()
+	g := startGateway(t, w, id, w.leaf(t, w.is, w.inter, id))
+	gs := gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: id.ID, Assignment: rankedAssignment{w.con.ID}})
+	g.sessions.Store(gs)
+	m := newConnector(t, w)
+	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true, ReadyPriorities: []uint32{5}})
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_1": connector.TransportQUIC}}})
+	best := func(want uint32) func() bool {
+		return func() bool { p, ok := gs.BestPriority("rt_1"); return ok && p == want }
+	}
+	eventually(t, "the gateway never saw priority 5 alone", best(5))
+	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true, ReadyPriorities: []uint32{0, 5}})
+	eventually(t, "priority 0 healthy again never reached the gateway", best(0))
+	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true, ReadyPriorities: []uint32{5}})
+	eventually(t, "priority 0 unhealthy again never reached the gateway", best(5))
+	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
+	eventually(t, "readiness at every priority never reached the gateway", best(0))
+	if err := echo(t, gs, "rt_1"); err != nil {
+		t.Fatalf("a stream: %v", err)
+	}
+}
+
 // TestSessions_ManyReadyRoutes (docs/03-connections.md, "Framing"): a connector with more ready
 // routes than one SessionHello can list within the message limit still establishes its sessions,
 // on both transports; the hello carries what fits and RouteHealth the rest, so every route is
