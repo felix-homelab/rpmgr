@@ -35,6 +35,7 @@ var agentMethods = map[string]access{
 	agentv1.Control_Renew_FullMethodName:         {cert: true},
 	agentv1.Control_FetchResource_FullMethodName: {cert: true},
 	agentv1.Control_Leave_FullMethodName:         {cert: true},
+	agentv1.Control_Attach_FullMethodName:        {cert: true},
 	agentv1.Reauth_Reauth_FullMethodName:         {reauth: true, cert: true},
 }
 

@@ -30,7 +30,9 @@ fi
 if ! go run ./tools/bannedapi; then
   fail "banned TLS or QUIC settings (see above)"
 fi
-if ! go test -race -count=1 ./...; then
+# internal/controller runs for nearly 10 minutes with -race on a CI runner, go test's default limit
+# per package, so each package gets 20.
+if ! go test -race -count=1 -timeout 20m ./...; then
   fail "tests failed"
 fi
 # The test-only code of the rpmgrtest build (D60): vet everything with the tag, and test the
@@ -40,7 +42,7 @@ if ! go vet -tags rpmgrtest ./...; then
 fi
 tagged=$(git ls-files -z '*.go' | { xargs -0 -r grep -l '^//go:build rpmgrtest' || true; } | xargs -r -n1 dirname | sort -u |
   sed 's#^#./#')
-if [[ -n $tagged ]] && ! go test -race -count=1 -tags rpmgrtest $tagged; then
+if [[ -n $tagged ]] && ! go test -race -count=1 -timeout 20m -tags rpmgrtest $tagged; then
   fail "tests of the rpmgrtest build failed"
 fi
 finish

@@ -88,16 +88,16 @@ names.
 | `DnsProviderService` | `ConnectDnsProvider`, `ListDnsProviders`, `UpdateDnsProvider` (rename, rotate token), `DeleteDnsProvider`, `ListProviderZones` | 2 |
 | `DnsZoneService` | `ImportZone`, `ListZones`, `UpdateZone` (gates), `RemoveZone` (keep or remove records), `PlanZoneSync`, `ApproveZonePlan` (plan hash), `SyncZone`, `ListZoneRecords` (owned and foreign, read live; Owner/Admin), `AdoptRecords`, `ReleaseRecord` (optionally restore the original) | 2 |
 | `DnsNameService` | `CreateDnsName`, `GetDnsName`, `ListDnsNames`, `UpdateDnsName`, `DeleteDnsName` | 2 |
-| `PolicyService` | CRUD on access policies (`CreateAccessPolicy`, `GetAccessPolicy`, `ListAccessPolicies`, `UpdateAccessPolicy`, `DeleteAccessPolicy`) with their rules (`ip_allow`, `ip_deny`, `basic_auth`; their order is stored but a deny wins over every allow, D85; a CIDR with host bits set is accepted and kept in its masked form, so `10.0.0.1/16` is `10.0.0.0/16`); a policy shows the routes that apply it and cannot be deleted while one does. An update replaces the rules as a whole. Basic-auth passwords are write-only: the controller hashes them ([04](04-security.md#secrets-at-rest-and-in-logs)) under the account password rules, and in an update a user without a password keeps the one of its name. A `basic_auth` rule on a policy that a route other than an http route, or a CONNECT route in a basic mode, applies is refused with `BASIC_AUTH_NOT_HTTP`. Phase 2 rule kinds ([03](03-connections.md#access-policies), [04](04-security.md#route-edge-rules)): `rate_limit` (a rate and a burst per client, on every route type); `require_header` (a header name and 1 to 4 write-only values of at least 32 characters, hashed by the controller; on a policy a route other than an http route applies, `REQUIRE_HEADER_NOT_HTTP`); `oidc` (a route identity provider, the accepted e-mail addresses, domains and groups, the session length; with basic auth on one route, `OIDC_WITH_BASIC_AUTH`). Route identity providers are managed here too, their client secret write-only | 2 (basic auth, IP rules: 1) |
+| `PolicyService` | CRUD on access policies (`CreateAccessPolicy`, `GetAccessPolicy`, `ListAccessPolicies`, `UpdateAccessPolicy`, `DeleteAccessPolicy`) with their rules (`ip_allow`, `ip_deny`, `basic_auth`; their order is stored but a deny wins over every allow, D85; a CIDR with host bits set is accepted and kept in its masked form, so `10.0.0.1/16` is `10.0.0.0/16`); a policy shows the routes that apply it and cannot be deleted while one does. An update replaces the rules as a whole. Basic-auth passwords are write-only: the controller hashes them ([04](04-security.md#secrets-at-rest-and-in-logs)) under the account password rules, and in an update a user without a password keeps the one of its name. A `basic_auth` rule on a policy that a route other than an http route, or a CONNECT route in a basic mode, applies is refused with `BASIC_AUTH_NOT_HTTP`. Phase 2 rule kinds ([03](03-connections.md#access-policies), [04](04-security.md#route-edge-rules)): `rate_limit` (a rate and a burst per client, on every route type, at most one per policy); `require_header` (a header name, once per policy, and 1 to 4 write-only values of 32 to 1024 visible ASCII characters, kept as their SHA-256; a read shows the header only, and in an update a rule without values keeps the values of its header; on a policy a route other than an http route applies, `REQUIRE_HEADER_NOT_HTTP`); `oidc` (a route identity provider, the accepted e-mail addresses, domains and groups, the session length; with basic auth on one route, `OIDC_WITH_BASIC_AUTH`). Route identity providers are managed here too, their client secret write-only | 2 (basic auth, IP rules: 1) |
 | `PrivateServiceService` | private services and visitor grants | 2 |
 | `StatusService` | `GetApplyStatus`, `WatchApplyStatus` (stream), `WatchEvents` (stream) | 1 |
-| `LogService` | `StreamLogs` (server stream from an agent via an imperative operation) | 2 |
+| `LogService` | `StreamLogs` (a connector's or gateway's live log, server stream from an imperative operation; `agents.logs`) | 2 |
 | `MetricsService` | `GetRouteTraffic` (a route's hourly or daily buckets, at most 31 days of hours or 400 days of days), `GetOverview` (an org's last 24 hours per hour, and its 10 busiest routes); from the rollups, buckets without traffic left out | 1 |
-| `AuditService` | `ListAuditEntries`, `VerifyAuditChain` (an org's chain, `audit.read`), `ListInstanceAuditEntries`, `VerifyInstanceAuditChain` (the instance chain, Instance Admin), `ExportAudit` | 1 (export: 2) |
-| `SettingsService` | `GetInstanceSettings`, `UpdateInstanceSettings` (including `default_transport` and `rollout_mode`, `easy` when unset, which picks the kind of rollout the web UI starts, [D129](14-open-decisions.md#engineering)), `SetSmtpPassword` (write-only; a read says only whether it is set), all for the Instance Admin; `GetOrgSettings` (members), `UpdateOrgSettings` (Owners; a change of the MFA requirement needs a step-up, and a default gateway group must be one of the org's). Updates name their fields in a mask; a named field the request does not set returns to its default | 1 |
+| `AuditService` | `ListAuditEntries`, `VerifyAuditChain` (an org's chain, `audit.read`), `ListInstanceAuditEntries`, `VerifyInstanceAuditChain` (the instance chain, Instance Admin), `ExportAudit` (a server stream of a chain as JSON Lines with its proofs, ending at the newest checkpoint, after a step-up; [04](04-security.md#audit-log)) | 1 (export: 2) |
+| `SettingsService` | `GetInstanceSettings`, `UpdateInstanceSettings` (including `default_transport` and `rollout_mode`, `easy` when unset, which picks the kind of rollout the web UI starts, [D129](14-open-decisions.md#engineering)), `SetSmtpPassword` (write-only; a read says only whether it is set), Phase 2: `webhook_private_ranges` ([04](04-security.md#webhooks-and-the-egress-guard-phase-2)), the audit sinks with their status and backlog, and `SetAuditSinkSecret` (write-only), all for the Instance Admin; `GetOrgSettings` (members), `UpdateOrgSettings` (Owners; a change of the MFA requirement needs a step-up, and a default gateway group must be one of the org's; Phase 2: `alert_email` and `alert_types`, [Webhooks](#webhooks-phase-2)). Updates name their fields in a mask; a named field the request does not set returns to its default | 1 |
 | `ReleaseService` | `ListReleases` (the newest version first, each with its channel, source, whether the mirror holds it and whether it is newer than the controller, and the state of the release check: whether one runs, when the last ended and how, ok, failed with its error, off, or none on a build that checks for no releases), `CheckReleases` (the release check at once: joins a check that runs; refused while the release check is off or the build checks for no releases, and within a short gap after the last check started or while the release source limits the rate, with the time to wait, [03](03-connections.md#timeouts-keepalive-and-backoff)), `UploadRelease` (a release's signed manifest, signing-key statement and their signatures, verified like the release check; for air-gapped installs and signed downgrades; the artifacts come from the release source or `rpmgr release import`), `CreateRollout` (a release, a mode, `advanced` or `easy` ([D129](14-open-decisions.md#engineering)), and for a staged rollout its canary agents, for an easy one its ordered queue of agents, connectors or gateways of any org; an easy rollout refuses an agent that is built in, decommissioned or without the capability `ota`, and an empty queue; refused when the release is newer than the controller or the controller is a development build, when it is below the controller's `min_agent_version`, when it is a pre-release and the instance's update channel is stable, or while another rollout runs or is paused; a recorded release the mirror does not hold yet is accepted, the mirror checks for it at once and the rollout job offers it once the mirror holds it ([D125](14-open-decisions.md#engineering)); in a staged rollout every connector and enrolled gateway that is neither decommissioned nor built in becomes a target, in an easy one each agent of the queue, with the version it last connected with), `UpgradeAgents` (connectors or gateways added to the end of the queue of the easy rollout that runs or is paused, when its target is the controller's own version, or an easy rollout of the controller's own version started with them when none runs; an agent already queued keeps its place; refused while a staged rollout or an easy rollout of another release runs or is paused, and for an agent an easy rollout refuses), `GetRollout`, `ListRollouts`, `ListRolloutTargets` (each agent's state and reason, and its place in an easy rollout's queue), `AdvanceRollout` (a running staged rollout to a higher percentage, 1 to 99, or to all agents, under the rollout's etag), `PauseRollout` (a running one), `ResumeRollout` (a paused one), `CancelRollout` (a running or paused one, for good); each change may name the etag the caller read. Creating a rollout and each change are configuration changes with a revision, so the agents' snapshots compile again, and changes of one rollout happen one after the other. All for the Instance Admin; uploading, creating, upgrading agents, advancing, resuming and cancelling take a step-up, and each of these and a check is audited ([04](04-security.md#over-the-air-updates), [D121](14-open-decisions.md#engineering)). The release check and the instance's update channel are instance settings (`SettingsService`). A connector and a gateway show their version, their update state, and whether they are below `min_agent_version` with the reason of their last `Goodbye` | 2 |
 | `ManifestService` | `ExportManifests` (an org's resources as YAML manifests: all, of the kinds named, or the resources named), `Plan`, `Apply` (declarative manifests) | 1 (`Plan`, `Apply`: 2) |
-| `WebhookService` | webhook endpoints and deliveries | 2 |
+| `WebhookService` | `CreateWebhook`, `GetWebhook`, `ListWebhooks`, `UpdateWebhook` (URL, event types, enabled; enabling again clears a disable), `DeleteWebhook`, `RotateWebhookSecret` (the new secret returned once), `ListWebhookDeliveries`, `TestWebhook` (a `webhook.test` event, audited); an org's endpoints for `webhooks.write`, the instance's (`org_id` empty) for the Instance Admin ([Webhooks](#webhooks-phase-2)) | 2 |
 | `VirtualNetworkService`, `FunctionService`, `ShellService` | — | 3 |
 
 ### Example: a route
@@ -321,9 +321,15 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
     down. The stream compares the status with the one it saw when it opened, so a client reads the
     status it shows when it opens the stream. Status changes are not replayed after a reconnect,
     and their events carry the last resume token.
-- `LogService.StreamLogs(connector_id, filter)` opens an imperative log operation on the agent
-  ([03](03-connections.md#control-session)) and streams lines. Log lines pass through the agent's
-  redaction before they leave the host.
+- `LogService.StreamLogs(agent_id, level, filter, raise_to_debug)` opens an imperative log
+  operation on a connector or gateway ([03](03-connections.md#control-session)) and streams lines,
+  with a marker where lines were dropped or cut. Log lines pass through the agent's redaction
+  before they leave the host ([04](04-security.md#secrets-at-rest-and-in-logs)). It needs
+  `agents.logs`; a gateway of a shared group needs the Instance Admin. Another org's agent is
+  `NOT_FOUND`, an offline agent or one without `logs.stream` `UNAVAILABLE`, and a caller or agent
+  at its limit ([03](03-connections.md#timeouts-keepalive-and-backoff)) `RESOURCE_EXHAUSTED`.
+  Cancelling the stream ends the operation on the agent. `raise_to_debug` raises the agent's level
+  for the operation's life ([D140](14-open-decisions.md#engineering)).
 - Server streams work over HTTP/1.1 and HTTP/2 with the Connect protocol, so no WebSocket is needed
   except for the Phase 3 terminal.
 
@@ -381,15 +387,34 @@ spec:
 
 ## Webhooks (Phase 2)
 
-- Event types: route status changes, agent connect/disconnect, apply rejected, certificate expiring
-  or failed, enrollment, security events; DNS conflict, DNS zone held, DNS sync failing,
-  DNS-provider token invalid or expiring.
-- Delivery: `POST` with JSON, `Rpmgr-Signature: t=<unix>,v1=<HMAC-SHA256(secret, t.body)>`, a
-  delivery timeout ([03](03-connections.md#timeouts-keepalive-and-backoff)), TLS verification on,
-  retries with backoff, delivery log in the UI. Receivers should reject signatures older than the
-  maximum signature age defined in [04](04-security.md#audit-log). (Timestamps are used here
-  because webhook receivers are third-party HTTP endpoints without mutual TLS; rpmgr-internal
-  authentication never uses them.)
+- **Events.** [R] Every change an org's audit log records as a success is an event of the same
+  type as its audit action, such as `route.update` or `token.revoke`, written in the change's
+  transaction ([06](06-data-model.md#observability-phase-2)). Status changes add `route.status`
+  (a route's state changed), `agent.connect`, `agent.disconnect`, `apply.reject`, `alert.fire` and
+  `alert.resolve` ([10](10-operations.md#suggested-alerts)), `webhook.disable`, and with DNS
+  automation `dns.conflict`, `dns.zone_held`, `dns.sync_failing` and `dns.token_expiring`.
+  Instance events go to instance endpoints only: the instance chain's audit actions, releases and
+  rollouts, events of gateways in shared groups, and the instance alerts. An endpoint names the
+  types it wants, by name or by prefix such as `route.*`; none means all
+  ([D145](14-open-decisions.md#engineering), E1, E12).
+- **Envelope** ([D144](14-open-decisions.md#engineering)): `POST` of
+  `{"id", "type", "time", "org_id", "actor": {"type", "id"}, "subject": {"type", "id", "name"},
+  "summary", "changed": [field names]}`; no resource body. Fetch the resource through the API for
+  more.
+- **Headers:** `Rpmgr-Event-Id` (the event's ID, the same on every retry: delivery is at least
+  once), `Rpmgr-Event-Type`, and `Rpmgr-Signature: t=<unix>,v1=<HMAC-SHA256(secret, t.body)>`, with
+  a second `v1=` value while a rotated secret still signs. Receivers reject signatures older than
+  the age in [04](04-security.md#webhooks-and-the-egress-guard-phase-2).
+- **Delivery:** HTTPS only, TLS verified, no redirect followed, retries, give-up and the disabling
+  of a failing endpoint as in [03](03-connections.md#timeouts-keepalive-and-backoff); a 2xx answer
+  is a success, anything else or no answer a failure. Receivers on private networks need the
+  instance's allow-list ([04](04-security.md#webhooks-and-the-egress-guard-phase-2)).
+- **Deliveries** are listed per endpoint: event, attempt, time, status code or error, and the
+  next retry.
+- **Alert e-mails** ([D139](14-open-decisions.md#engineering)): with SMTP configured, an alert's
+  firing and resolving are also mailed to the org's Owners and Admins, and an instance alert to
+  the Instance Admins; an org turns this off with the org setting `alert_email`, and chooses which
+  alert types it gets with `alert_types` ([D142](14-open-decisions.md#engineering)).
 
 ## Agent protocol catalogue
 
@@ -402,13 +427,13 @@ Defined in [03-connections.md](03-connections.md); summarised here for reference
 | | `Snapshot` | controller → agent | Desired state at a revision, signed; with the capability `ota`, the release the agent is offered (version, `seq`, its files under `/dl/` with sizes and SHA-256), Phase 2 |
 | | `Applied` / `Rejected` | agent → controller | Result of applying a revision |
 | | `Status` | agent → controller | Health, route readiness, counters; with `ota`, the update state (available, declined, downloading, staged or failed, and the updater's outcome) |
-| | `Open` | controller → agent | Start an imperative operation (logs, diagnostics, shell) |
+| | `Open` | controller → agent | Start an imperative operation (Phase 2: live logs; Phase 3: shell): `open_operation`, a new field number; 3 and `open` stay reserved |
 | | `Drain` / `Goodbye` | controller → agent | Reconnect elsewhere / session ends (superseded, revoked, upgrade required) |
 | | `DenyListUpdate` | controller → agent | Revocations; applied unconditionally, independent of snapshots |
 | | `AcmeChallenge` / `OpResult` | controller → gateway / back | An ACME HTTP-01 or TLS-ALPN-01 challenge the gateway answers (add, remove), and its acknowledgement |
 | Control unary | `Renew`, `FetchResource` | agent → controller | Certificate renewal; large resources by hash |
 | `Reauth` (SNI `reauth.controller.<td>`) | `Reauth` | agent → controller | New certificate for an agent whose certificate expired within the grace period; mutual TLS with the expired certificate |
-| Control `Attach` | `AttachFrame` | both | Data of an imperative operation |
+| Control `Attach` | `AttachFrame` | both | An imperative operation: the agent's first frame presents the ticket of its `Open`; log lines; `AttachEnd` from either side ([03](03-connections.md#control-session)) |
 | Data session control stream | `SessionHello` / `SessionWelcome`, `Ping`/`Pong`, `RouteHealth`, `OpenRequest` / `OpenRejected`, `Drain`, `P2PCandidates`, `Goodbye` | both | Data-session control; `OpenRequest` asks the gateway to open a stream (TCP transport) |
 | Data user/relay stream | `StreamOpen` / `StreamResult` | opener → other side / back | Per-connection preamble; the opener is the gateway, or the connector for `RELAY_OUT` and `CONTROL_PASSTHROUGH` on QUIC ([03](03-connections.md#framing)) |
 

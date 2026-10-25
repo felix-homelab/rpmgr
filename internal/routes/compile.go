@@ -18,6 +18,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/domains"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
@@ -117,8 +118,12 @@ func gatewayTCP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed str
 		if err != nil {
 			return nil, err
 		}
+		limits, err := limitsOf(ctx, tx, r)
+		if err != nil {
+			return nil, err
+		}
 		gr := &agentv1.GatewayTCPRoute{IdleTimeoutSeconds: uint32(tcp.IdleTimeoutSeconds), //nolint:gosec // G115: timeouts are small and positive
-			Connectors: connectors, RankedConnectors: ranked, Access: access}
+			Connectors: connectors, RankedConnectors: ranked, Access: access, Limits: limits}
 		switch {
 		case l != nil:
 			gr.Port = uint32(l.Edges.Port.Port) //nolint:gosec // G115: a port
@@ -186,9 +191,13 @@ func gatewayUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed str
 		if err != nil {
 			return nil, err
 		}
+		limits, err := limitsOf(ctx, tx, r)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayUdpRoute{GatewayUdpRoute: &agentv1.GatewayUDPRoute{
 			Port: uint32(udp.Edges.Port.Port), FlowIdleTimeoutSeconds: uint32(udp.FlowIdleTimeoutSeconds), //nolint:gosec // G115: a port and a small positive number
-			Connectors: connectors, RankedConnectors: ranked, Access: access}}})
+			Connectors: connectors, RankedConnectors: ranked, Access: access, Limits: limits}}})
 	}
 	return out, nil
 }
@@ -239,9 +248,14 @@ func gatewayTCPUDP(ctx context.Context, tx *ent.Tx, a snapshot.Agent, previewed 
 		if err != nil {
 			return nil, err
 		}
+		limits, err := limitsOf(ctx, tx, r)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayTcpUdpRoute{GatewayTcpUdpRoute: &agentv1.GatewayTCPUDPRoute{
 			Port: uint32(tcp.Edges.Port.Port), IdleTimeoutSeconds: uint32(tcp.IdleTimeoutSeconds), //nolint:gosec // G115: ports and timeouts are small and positive
-			FlowIdleTimeoutSeconds: uint32(udp.FlowIdleTimeoutSeconds), Connectors: connectors, RankedConnectors: ranked, Access: access}}}) //nolint:gosec // G115: small and positive
+			FlowIdleTimeoutSeconds: uint32(udp.FlowIdleTimeoutSeconds), Connectors: connectors, RankedConnectors: ranked, Access: access, //nolint:gosec // G115: small and positive
+			Limits: limits}}})
 	}
 	return out, nil
 }
@@ -283,9 +297,13 @@ func GatewayPassthrough(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*a
 		if err != nil {
 			return nil, err
 		}
+		limits, err := limitsOf(ctx, tx, r)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayPassthroughRoute{
 			GatewayPassthroughRoute: &agentv1.GatewayPassthroughRoute{Hostnames: hostnames, Connectors: connectors, RankedConnectors: ranked,
-				Access: access}}})
+				Access: access, Limits: limits}}})
 	}
 	return out, nil
 }
@@ -362,14 +380,31 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 		if err != nil {
 			return nil, err
 		}
+		limits, err := limitsOf(ctx, tx, r)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayHttpRoute{GatewayHttpRoute: &agentv1.GatewayHTTPRoute{
 			Hosts: hosts, UpstreamProtocol: upstream, Connectors: connectors, Websocket: h.Websocket, UpstreamTls: upstreamTLS,
 			HostHeader: hostHeader, RequestHeaders: headersOf(h.RequestHeadersSet), ResponseHeaders: headersOf(h.ResponseHeadersSet),
 			MaxBodyBytes: uint64(h.MaxBodyBytes), TrustedProxies: group.TrustedProxyCidrs, //nolint:gosec // G115: the schema keeps it non-negative
 			Port80: h.Port80.String(), HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), Access: access, //nolint:gosec // G115: the schema keeps it non-negative
-			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, RankedConnectors: ranked}}})
+			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, RankedConnectors: ranked, Limits: limits,
+			HeaderMatches:                        headerMatchesOf(h.HeaderMatches),
+			UpstreamResponseHeaderTimeoutSeconds: uint32(h.UpstreamResponseHeaderTimeoutSeconds), //nolint:gosec // G115: the API bounds it
+			UpstreamIdleTimeoutSeconds:           uint32(h.UpstreamIdleTimeoutSeconds)}}})        //nolint:gosec // G115: the API bounds it
 	}
 	return out, nil
+}
+
+// headerMatchesOf returns a route's header matches as the snapshot carries them, canonical and
+// sorted by name.
+func headerMatchesOf(ms []headermatch.Match) []*agentv1.HTTPHeaderMatch {
+	var out []*agentv1.HTTPHeaderMatch
+	for _, m := range headermatch.Canonical(ms) {
+		out = append(out, &agentv1.HTTPHeaderMatch{Name: m.Name, Value: m.Value, Present: m.Present})
+	}
+	return out
 }
 
 // headersOf returns a route's header settings sorted by canonical name; an empty value removes

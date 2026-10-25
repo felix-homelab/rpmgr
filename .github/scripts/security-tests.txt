@@ -78,7 +78,7 @@ TestReauth_NoSessionTickets	done	2.10	#54
 TestCSR_BoundToConnection	done	2.10	#54	Enroll clause: TestEnroll_Binding (3.7); Renew and Reauth clauses: TestRenew_Binding (3.12)
 TestCompile_GatedRouteNeverReachesOldGateway	done	1.4	#597	Phase 2 (P2-M01); internal/routes, status clause in internal/apisvc
 TestGateway_UncleanPathRefused	done	-	#813	bug fix outside the slice plan
-TestGateway_ReservedPathNeverUpstream	pending	3.2	#617	reserved path and identity headers (D135)
+TestGateway_ReservedPathNeverUpstream	done	3.2	#617	reserved path and identity headers (D135)
 TestRequireHeader_StrippedAndConstantTime	done	3.5	#620	internal/gateway; the constant-time clause is TestRequireHeaderPasses_ConstantTime
 TestRateLimit_ClientAddressNotSpoofable	done	3.8	#623	route edge rules (D131)
 TestPages_CustomPageCannotRunScript	done	3.11	#626	custom pages (D132)
@@ -88,3 +88,14 @@ TestWSS_InterceptorSeesOnlyInnerTLS	pending	4.9	#637	WSS transport
 TestRouteOIDC_SecretNeverLeavesController	pending	10.12	#718	route OIDC (P2-M10)
 TestRouteOIDC_AssertionBoundToBrowser	pending	10.12	#718	route OIDC (P2-M10, D134)
 TestRouteOIDC_NoOpenRedirect	pending	10.12	#718	route OIDC (P2-M10)
+TestLiveLogs_TicketSingleUseAndBound	done	5.2	#642	internal/controller (D145 E13)
+TestLiveLogs_RedactedOnAgent	pending	5.3	#643	live logs (D145 E7)
+TestLiveLogs_CrossOrgRefused	pending	5.4	#644	live logs; cross-replica clause in 9.4 (#704)
+TestWebhook_EgressGuard	pending	5.8	#648	webhooks (D138); allow-list clause in 5.19 (#935)
+TestWebhook_SignatureAndReplayWindow	pending	5.8	#648	webhooks; rotation clause in 5.10 (#650)
+TestWebhook_EventsScopedToOrg	pending	5.9	#649	webhooks (D144)
+TestWebhook_SecretWriteOnly	pending	5.10	#650	webhooks
+TestAuditExport_StepUpAndOrgScoped	pending	5.12	#652	audit export
+TestAuditExport_TamperDetectedOffline	pending	5.13	#653	audit export
+TestAuditSink_BacklogNeverBlocksAppend	pending	5.14	#654	audit sinks (D141); syslog clause in 5.20 (#936)
+TestAuditSink_RewriteDetectedAgainstSink	pending	5.16	#656	audit sinks (D141)

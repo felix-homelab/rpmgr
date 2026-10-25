@@ -11,6 +11,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
@@ -61,6 +62,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routelimit"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -132,6 +134,7 @@ const (
 	TypeRoute              = "Route"
 	TypeRouteHTTP          = "RouteHTTP"
 	TypeRouteHostname      = "RouteHostname"
+	TypeRouteLimit         = "RouteLimit"
 	TypeRoutePolicy        = "RoutePolicy"
 	TypeRouteTCP           = "RouteTCP"
 	TypeRouteTarget        = "RouteTarget"
@@ -37003,33 +37006,39 @@ func (m *RouteMutation) ResetEdge(name string) error {
 // RouteHTTPMutation represents an operation that mutates the RouteHTTP nodes in the graph.
 type RouteHTTPMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *int
-	org_id                  *string
-	path_prefix             *string
-	header_matches          *map[string]string
-	tls_mode                *routehttp.TLSMode
-	port80                  *routehttp.Port80
-	hsts_max_age_seconds    *int
-	addhsts_max_age_seconds *int
-	host_header             *string
-	request_headers_set     *map[string]string
-	response_headers_set    *map[string]string
-	websocket               *bool
-	max_body_bytes          *int64
-	addmax_body_bytes       *int64
-	dns_proxied             *bool
-	maintenance             *bool
-	maintenance_message     *string
-	clearedFields           map[string]struct{}
-	route                   *string
-	clearedroute            bool
-	certificate             *string
-	clearedcertificate      bool
-	done                    bool
-	oldValue                func(context.Context) (*RouteHTTP, error)
-	predicates              []predicate.RouteHTTP
+	op                                          Op
+	typ                                         string
+	id                                          *int
+	org_id                                      *string
+	path_prefix                                 *string
+	header_matches                              *[]headermatch.Match
+	appendheader_matches                        []headermatch.Match
+	match_key                                   *string
+	tls_mode                                    *routehttp.TLSMode
+	port80                                      *routehttp.Port80
+	hsts_max_age_seconds                        *int
+	addhsts_max_age_seconds                     *int
+	host_header                                 *string
+	request_headers_set                         *map[string]string
+	response_headers_set                        *map[string]string
+	websocket                                   *bool
+	max_body_bytes                              *int64
+	addmax_body_bytes                           *int64
+	dns_proxied                                 *bool
+	maintenance                                 *bool
+	maintenance_message                         *string
+	upstream_response_header_timeout_seconds    *int
+	addupstream_response_header_timeout_seconds *int
+	upstream_idle_timeout_seconds               *int
+	addupstream_idle_timeout_seconds            *int
+	clearedFields                               map[string]struct{}
+	route                                       *string
+	clearedroute                                bool
+	certificate                                 *string
+	clearedcertificate                          bool
+	done                                        bool
+	oldValue                                    func(context.Context) (*RouteHTTP, error)
+	predicates                                  []predicate.RouteHTTP
 }
 
 var _ ent.Mutation = (*RouteHTTPMutation)(nil)
@@ -37239,12 +37248,13 @@ func (m *RouteHTTPMutation) ResetPathPrefix() {
 }
 
 // SetHeaderMatches sets the "header_matches" field.
-func (m *RouteHTTPMutation) SetHeaderMatches(value map[string]string) {
-	m.header_matches = &value
+func (m *RouteHTTPMutation) SetHeaderMatches(h []headermatch.Match) {
+	m.header_matches = &h
+	m.appendheader_matches = nil
 }
 
 // HeaderMatches returns the value of the "header_matches" field in the mutation.
-func (m *RouteHTTPMutation) HeaderMatches() (r map[string]string, exists bool) {
+func (m *RouteHTTPMutation) HeaderMatches() (r []headermatch.Match, exists bool) {
 	v := m.header_matches
 	if v == nil {
 		return
@@ -37255,7 +37265,7 @@ func (m *RouteHTTPMutation) HeaderMatches() (r map[string]string, exists bool) {
 // OldHeaderMatches returns the old "header_matches" field's value of the RouteHTTP entity.
 // If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *RouteHTTPMutation) OldHeaderMatches(ctx context.Context) (v map[string]string, err error) {
+func (m *RouteHTTPMutation) OldHeaderMatches(ctx context.Context) (v []headermatch.Match, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldHeaderMatches is only allowed on UpdateOne operations")
 	}
@@ -37269,9 +37279,23 @@ func (m *RouteHTTPMutation) OldHeaderMatches(ctx context.Context) (v map[string]
 	return oldValue.HeaderMatches, nil
 }
 
+// AppendHeaderMatches adds h to the "header_matches" field.
+func (m *RouteHTTPMutation) AppendHeaderMatches(h []headermatch.Match) {
+	m.appendheader_matches = append(m.appendheader_matches, h...)
+}
+
+// AppendedHeaderMatches returns the list of values that were appended to the "header_matches" field in this mutation.
+func (m *RouteHTTPMutation) AppendedHeaderMatches() ([]headermatch.Match, bool) {
+	if len(m.appendheader_matches) == 0 {
+		return nil, false
+	}
+	return m.appendheader_matches, true
+}
+
 // ClearHeaderMatches clears the value of the "header_matches" field.
 func (m *RouteHTTPMutation) ClearHeaderMatches() {
 	m.header_matches = nil
+	m.appendheader_matches = nil
 	m.clearedFields[routehttp.FieldHeaderMatches] = struct{}{}
 }
 
@@ -37284,7 +37308,44 @@ func (m *RouteHTTPMutation) HeaderMatchesCleared() bool {
 // ResetHeaderMatches resets all changes to the "header_matches" field.
 func (m *RouteHTTPMutation) ResetHeaderMatches() {
 	m.header_matches = nil
+	m.appendheader_matches = nil
 	delete(m.clearedFields, routehttp.FieldHeaderMatches)
+}
+
+// SetMatchKey sets the "match_key" field.
+func (m *RouteHTTPMutation) SetMatchKey(s string) {
+	m.match_key = &s
+}
+
+// MatchKey returns the value of the "match_key" field in the mutation.
+func (m *RouteHTTPMutation) MatchKey() (r string, exists bool) {
+	v := m.match_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMatchKey returns the old "match_key" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldMatchKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMatchKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMatchKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMatchKey: %w", err)
+	}
+	return oldValue.MatchKey, nil
+}
+
+// ResetMatchKey resets all changes to the "match_key" field.
+func (m *RouteHTTPMutation) ResetMatchKey() {
+	m.match_key = nil
 }
 
 // SetTLSMode sets the "tls_mode" field.
@@ -37798,6 +37859,118 @@ func (m *RouteHTTPMutation) ResetMaintenanceMessage() {
 	m.maintenance_message = nil
 }
 
+// SetUpstreamResponseHeaderTimeoutSeconds sets the "upstream_response_header_timeout_seconds" field.
+func (m *RouteHTTPMutation) SetUpstreamResponseHeaderTimeoutSeconds(i int) {
+	m.upstream_response_header_timeout_seconds = &i
+	m.addupstream_response_header_timeout_seconds = nil
+}
+
+// UpstreamResponseHeaderTimeoutSeconds returns the value of the "upstream_response_header_timeout_seconds" field in the mutation.
+func (m *RouteHTTPMutation) UpstreamResponseHeaderTimeoutSeconds() (r int, exists bool) {
+	v := m.upstream_response_header_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamResponseHeaderTimeoutSeconds returns the old "upstream_response_header_timeout_seconds" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldUpstreamResponseHeaderTimeoutSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamResponseHeaderTimeoutSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamResponseHeaderTimeoutSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamResponseHeaderTimeoutSeconds: %w", err)
+	}
+	return oldValue.UpstreamResponseHeaderTimeoutSeconds, nil
+}
+
+// AddUpstreamResponseHeaderTimeoutSeconds adds i to the "upstream_response_header_timeout_seconds" field.
+func (m *RouteHTTPMutation) AddUpstreamResponseHeaderTimeoutSeconds(i int) {
+	if m.addupstream_response_header_timeout_seconds != nil {
+		*m.addupstream_response_header_timeout_seconds += i
+	} else {
+		m.addupstream_response_header_timeout_seconds = &i
+	}
+}
+
+// AddedUpstreamResponseHeaderTimeoutSeconds returns the value that was added to the "upstream_response_header_timeout_seconds" field in this mutation.
+func (m *RouteHTTPMutation) AddedUpstreamResponseHeaderTimeoutSeconds() (r int, exists bool) {
+	v := m.addupstream_response_header_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUpstreamResponseHeaderTimeoutSeconds resets all changes to the "upstream_response_header_timeout_seconds" field.
+func (m *RouteHTTPMutation) ResetUpstreamResponseHeaderTimeoutSeconds() {
+	m.upstream_response_header_timeout_seconds = nil
+	m.addupstream_response_header_timeout_seconds = nil
+}
+
+// SetUpstreamIdleTimeoutSeconds sets the "upstream_idle_timeout_seconds" field.
+func (m *RouteHTTPMutation) SetUpstreamIdleTimeoutSeconds(i int) {
+	m.upstream_idle_timeout_seconds = &i
+	m.addupstream_idle_timeout_seconds = nil
+}
+
+// UpstreamIdleTimeoutSeconds returns the value of the "upstream_idle_timeout_seconds" field in the mutation.
+func (m *RouteHTTPMutation) UpstreamIdleTimeoutSeconds() (r int, exists bool) {
+	v := m.upstream_idle_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamIdleTimeoutSeconds returns the old "upstream_idle_timeout_seconds" field's value of the RouteHTTP entity.
+// If the RouteHTTP object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHTTPMutation) OldUpstreamIdleTimeoutSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamIdleTimeoutSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamIdleTimeoutSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamIdleTimeoutSeconds: %w", err)
+	}
+	return oldValue.UpstreamIdleTimeoutSeconds, nil
+}
+
+// AddUpstreamIdleTimeoutSeconds adds i to the "upstream_idle_timeout_seconds" field.
+func (m *RouteHTTPMutation) AddUpstreamIdleTimeoutSeconds(i int) {
+	if m.addupstream_idle_timeout_seconds != nil {
+		*m.addupstream_idle_timeout_seconds += i
+	} else {
+		m.addupstream_idle_timeout_seconds = &i
+	}
+}
+
+// AddedUpstreamIdleTimeoutSeconds returns the value that was added to the "upstream_idle_timeout_seconds" field in this mutation.
+func (m *RouteHTTPMutation) AddedUpstreamIdleTimeoutSeconds() (r int, exists bool) {
+	v := m.addupstream_idle_timeout_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUpstreamIdleTimeoutSeconds resets all changes to the "upstream_idle_timeout_seconds" field.
+func (m *RouteHTTPMutation) ResetUpstreamIdleTimeoutSeconds() {
+	m.upstream_idle_timeout_seconds = nil
+	m.addupstream_idle_timeout_seconds = nil
+}
+
 // ClearRoute clears the "route" edge to the Route entity.
 func (m *RouteHTTPMutation) ClearRoute() {
 	m.clearedroute = true
@@ -37886,7 +38059,7 @@ func (m *RouteHTTPMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteHTTPMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 19)
 	if m.org_id != nil {
 		fields = append(fields, routehttp.FieldOrgID)
 	}
@@ -37898,6 +38071,9 @@ func (m *RouteHTTPMutation) Fields() []string {
 	}
 	if m.header_matches != nil {
 		fields = append(fields, routehttp.FieldHeaderMatches)
+	}
+	if m.match_key != nil {
+		fields = append(fields, routehttp.FieldMatchKey)
 	}
 	if m.tls_mode != nil {
 		fields = append(fields, routehttp.FieldTLSMode)
@@ -37935,6 +38111,12 @@ func (m *RouteHTTPMutation) Fields() []string {
 	if m.maintenance_message != nil {
 		fields = append(fields, routehttp.FieldMaintenanceMessage)
 	}
+	if m.upstream_response_header_timeout_seconds != nil {
+		fields = append(fields, routehttp.FieldUpstreamResponseHeaderTimeoutSeconds)
+	}
+	if m.upstream_idle_timeout_seconds != nil {
+		fields = append(fields, routehttp.FieldUpstreamIdleTimeoutSeconds)
+	}
 	return fields
 }
 
@@ -37951,6 +38133,8 @@ func (m *RouteHTTPMutation) Field(name string) (ent.Value, bool) {
 		return m.PathPrefix()
 	case routehttp.FieldHeaderMatches:
 		return m.HeaderMatches()
+	case routehttp.FieldMatchKey:
+		return m.MatchKey()
 	case routehttp.FieldTLSMode:
 		return m.TLSMode()
 	case routehttp.FieldCertificateID:
@@ -37975,6 +38159,10 @@ func (m *RouteHTTPMutation) Field(name string) (ent.Value, bool) {
 		return m.Maintenance()
 	case routehttp.FieldMaintenanceMessage:
 		return m.MaintenanceMessage()
+	case routehttp.FieldUpstreamResponseHeaderTimeoutSeconds:
+		return m.UpstreamResponseHeaderTimeoutSeconds()
+	case routehttp.FieldUpstreamIdleTimeoutSeconds:
+		return m.UpstreamIdleTimeoutSeconds()
 	}
 	return nil, false
 }
@@ -37992,6 +38180,8 @@ func (m *RouteHTTPMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldPathPrefix(ctx)
 	case routehttp.FieldHeaderMatches:
 		return m.OldHeaderMatches(ctx)
+	case routehttp.FieldMatchKey:
+		return m.OldMatchKey(ctx)
 	case routehttp.FieldTLSMode:
 		return m.OldTLSMode(ctx)
 	case routehttp.FieldCertificateID:
@@ -38016,6 +38206,10 @@ func (m *RouteHTTPMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldMaintenance(ctx)
 	case routehttp.FieldMaintenanceMessage:
 		return m.OldMaintenanceMessage(ctx)
+	case routehttp.FieldUpstreamResponseHeaderTimeoutSeconds:
+		return m.OldUpstreamResponseHeaderTimeoutSeconds(ctx)
+	case routehttp.FieldUpstreamIdleTimeoutSeconds:
+		return m.OldUpstreamIdleTimeoutSeconds(ctx)
 	}
 	return nil, fmt.Errorf("unknown RouteHTTP field %s", name)
 }
@@ -38047,11 +38241,18 @@ func (m *RouteHTTPMutation) SetField(name string, value ent.Value) error {
 		m.SetPathPrefix(v)
 		return nil
 	case routehttp.FieldHeaderMatches:
-		v, ok := value.(map[string]string)
+		v, ok := value.([]headermatch.Match)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetHeaderMatches(v)
+		return nil
+	case routehttp.FieldMatchKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMatchKey(v)
 		return nil
 	case routehttp.FieldTLSMode:
 		v, ok := value.(routehttp.TLSMode)
@@ -38137,6 +38338,20 @@ func (m *RouteHTTPMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetMaintenanceMessage(v)
 		return nil
+	case routehttp.FieldUpstreamResponseHeaderTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamResponseHeaderTimeoutSeconds(v)
+		return nil
+	case routehttp.FieldUpstreamIdleTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamIdleTimeoutSeconds(v)
+		return nil
 	}
 	return fmt.Errorf("unknown RouteHTTP field %s", name)
 }
@@ -38151,6 +38366,12 @@ func (m *RouteHTTPMutation) AddedFields() []string {
 	if m.addmax_body_bytes != nil {
 		fields = append(fields, routehttp.FieldMaxBodyBytes)
 	}
+	if m.addupstream_response_header_timeout_seconds != nil {
+		fields = append(fields, routehttp.FieldUpstreamResponseHeaderTimeoutSeconds)
+	}
+	if m.addupstream_idle_timeout_seconds != nil {
+		fields = append(fields, routehttp.FieldUpstreamIdleTimeoutSeconds)
+	}
 	return fields
 }
 
@@ -38163,6 +38384,10 @@ func (m *RouteHTTPMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedHstsMaxAgeSeconds()
 	case routehttp.FieldMaxBodyBytes:
 		return m.AddedMaxBodyBytes()
+	case routehttp.FieldUpstreamResponseHeaderTimeoutSeconds:
+		return m.AddedUpstreamResponseHeaderTimeoutSeconds()
+	case routehttp.FieldUpstreamIdleTimeoutSeconds:
+		return m.AddedUpstreamIdleTimeoutSeconds()
 	}
 	return nil, false
 }
@@ -38185,6 +38410,20 @@ func (m *RouteHTTPMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddMaxBodyBytes(v)
+		return nil
+	case routehttp.FieldUpstreamResponseHeaderTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUpstreamResponseHeaderTimeoutSeconds(v)
+		return nil
+	case routehttp.FieldUpstreamIdleTimeoutSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUpstreamIdleTimeoutSeconds(v)
 		return nil
 	}
 	return fmt.Errorf("unknown RouteHTTP numeric field %s", name)
@@ -38252,6 +38491,9 @@ func (m *RouteHTTPMutation) ResetField(name string) error {
 	case routehttp.FieldHeaderMatches:
 		m.ResetHeaderMatches()
 		return nil
+	case routehttp.FieldMatchKey:
+		m.ResetMatchKey()
+		return nil
 	case routehttp.FieldTLSMode:
 		m.ResetTLSMode()
 		return nil
@@ -38287,6 +38529,12 @@ func (m *RouteHTTPMutation) ResetField(name string) error {
 		return nil
 	case routehttp.FieldMaintenanceMessage:
 		m.ResetMaintenanceMessage()
+		return nil
+	case routehttp.FieldUpstreamResponseHeaderTimeoutSeconds:
+		m.ResetUpstreamResponseHeaderTimeoutSeconds()
+		return nil
+	case routehttp.FieldUpstreamIdleTimeoutSeconds:
+		m.ResetUpstreamIdleTimeoutSeconds()
 		return nil
 	}
 	return fmt.Errorf("unknown RouteHTTP field %s", name)
@@ -38395,6 +38643,7 @@ type RouteHostnameMutation struct {
 	route_type       *routehostname.RouteType
 	hostname         *string
 	path_prefix      *string
+	match_key        *string
 	clearedFields    map[string]struct{}
 	route            *string
 	clearedroute     bool
@@ -38719,6 +38968,42 @@ func (m *RouteHostnameMutation) ResetPathPrefix() {
 	m.path_prefix = nil
 }
 
+// SetMatchKey sets the "match_key" field.
+func (m *RouteHostnameMutation) SetMatchKey(s string) {
+	m.match_key = &s
+}
+
+// MatchKey returns the value of the "match_key" field in the mutation.
+func (m *RouteHostnameMutation) MatchKey() (r string, exists bool) {
+	v := m.match_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMatchKey returns the old "match_key" field's value of the RouteHostname entity.
+// If the RouteHostname object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteHostnameMutation) OldMatchKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMatchKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMatchKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMatchKey: %w", err)
+	}
+	return oldValue.MatchKey, nil
+}
+
+// ResetMatchKey resets all changes to the "match_key" field.
+func (m *RouteHostnameMutation) ResetMatchKey() {
+	m.match_key = nil
+}
+
 // SetDomainID sets the "domain_id" field.
 func (m *RouteHostnameMutation) SetDomainID(s string) {
 	m.domain = &s
@@ -38843,7 +39128,7 @@ func (m *RouteHostnameMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteHostnameMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.org_id != nil {
 		fields = append(fields, routehostname.FieldOrgID)
 	}
@@ -38861,6 +39146,9 @@ func (m *RouteHostnameMutation) Fields() []string {
 	}
 	if m.path_prefix != nil {
 		fields = append(fields, routehostname.FieldPathPrefix)
+	}
+	if m.match_key != nil {
+		fields = append(fields, routehostname.FieldMatchKey)
 	}
 	if m.domain != nil {
 		fields = append(fields, routehostname.FieldDomainID)
@@ -38885,6 +39173,8 @@ func (m *RouteHostnameMutation) Field(name string) (ent.Value, bool) {
 		return m.Hostname()
 	case routehostname.FieldPathPrefix:
 		return m.PathPrefix()
+	case routehostname.FieldMatchKey:
+		return m.MatchKey()
 	case routehostname.FieldDomainID:
 		return m.DomainID()
 	}
@@ -38908,6 +39198,8 @@ func (m *RouteHostnameMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldHostname(ctx)
 	case routehostname.FieldPathPrefix:
 		return m.OldPathPrefix(ctx)
+	case routehostname.FieldMatchKey:
+		return m.OldMatchKey(ctx)
 	case routehostname.FieldDomainID:
 		return m.OldDomainID(ctx)
 	}
@@ -38960,6 +39252,13 @@ func (m *RouteHostnameMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPathPrefix(v)
+		return nil
+	case routehostname.FieldMatchKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMatchKey(v)
 		return nil
 	case routehostname.FieldDomainID:
 		v, ok := value.(string)
@@ -39034,6 +39333,9 @@ func (m *RouteHostnameMutation) ResetField(name string) error {
 		return nil
 	case routehostname.FieldPathPrefix:
 		m.ResetPathPrefix()
+		return nil
+	case routehostname.FieldMatchKey:
+		m.ResetMatchKey()
 		return nil
 	case routehostname.FieldDomainID:
 		m.ResetDomainID()
@@ -39132,6 +39434,704 @@ func (m *RouteHostnameMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown RouteHostname edge %s", name)
+}
+
+// RouteLimitMutation represents an operation that mutates the RouteLimit nodes in the graph.
+type RouteLimitMutation struct {
+	config
+	op                         Op
+	typ                        string
+	id                         *int
+	org_id                     *string
+	max_connections            *int64
+	addmax_connections         *int64
+	requests_per_sec           *int64
+	addrequests_per_sec        *int64
+	bandwidth_bytes_per_sec    *int64
+	addbandwidth_bytes_per_sec *int64
+	clearedFields              map[string]struct{}
+	route                      *string
+	clearedroute               bool
+	done                       bool
+	oldValue                   func(context.Context) (*RouteLimit, error)
+	predicates                 []predicate.RouteLimit
+}
+
+var _ ent.Mutation = (*RouteLimitMutation)(nil)
+
+// routelimitOption allows management of the mutation configuration using functional options.
+type routelimitOption func(*RouteLimitMutation)
+
+// newRouteLimitMutation creates new mutation for the RouteLimit entity.
+func newRouteLimitMutation(c config, op Op, opts ...routelimitOption) *RouteLimitMutation {
+	m := &RouteLimitMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRouteLimit,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRouteLimitID sets the ID field of the mutation.
+func withRouteLimitID(id int) routelimitOption {
+	return func(m *RouteLimitMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RouteLimit
+		)
+		m.oldValue = func(ctx context.Context) (*RouteLimit, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RouteLimit.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRouteLimit sets the old RouteLimit of the mutation.
+func withRouteLimit(node *RouteLimit) routelimitOption {
+	return func(m *RouteLimitMutation) {
+		m.oldValue = func(context.Context) (*RouteLimit, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RouteLimitMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RouteLimitMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RouteLimitMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RouteLimitMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RouteLimit.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *RouteLimitMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *RouteLimitMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the RouteLimit entity.
+// If the RouteLimit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteLimitMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *RouteLimitMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetRouteID sets the "route_id" field.
+func (m *RouteLimitMutation) SetRouteID(s string) {
+	m.route = &s
+}
+
+// RouteID returns the value of the "route_id" field in the mutation.
+func (m *RouteLimitMutation) RouteID() (r string, exists bool) {
+	v := m.route
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouteID returns the old "route_id" field's value of the RouteLimit entity.
+// If the RouteLimit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteLimitMutation) OldRouteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouteID: %w", err)
+	}
+	return oldValue.RouteID, nil
+}
+
+// ResetRouteID resets all changes to the "route_id" field.
+func (m *RouteLimitMutation) ResetRouteID() {
+	m.route = nil
+}
+
+// SetMaxConnections sets the "max_connections" field.
+func (m *RouteLimitMutation) SetMaxConnections(i int64) {
+	m.max_connections = &i
+	m.addmax_connections = nil
+}
+
+// MaxConnections returns the value of the "max_connections" field in the mutation.
+func (m *RouteLimitMutation) MaxConnections() (r int64, exists bool) {
+	v := m.max_connections
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxConnections returns the old "max_connections" field's value of the RouteLimit entity.
+// If the RouteLimit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteLimitMutation) OldMaxConnections(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxConnections is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxConnections requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxConnections: %w", err)
+	}
+	return oldValue.MaxConnections, nil
+}
+
+// AddMaxConnections adds i to the "max_connections" field.
+func (m *RouteLimitMutation) AddMaxConnections(i int64) {
+	if m.addmax_connections != nil {
+		*m.addmax_connections += i
+	} else {
+		m.addmax_connections = &i
+	}
+}
+
+// AddedMaxConnections returns the value that was added to the "max_connections" field in this mutation.
+func (m *RouteLimitMutation) AddedMaxConnections() (r int64, exists bool) {
+	v := m.addmax_connections
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMaxConnections resets all changes to the "max_connections" field.
+func (m *RouteLimitMutation) ResetMaxConnections() {
+	m.max_connections = nil
+	m.addmax_connections = nil
+}
+
+// SetRequestsPerSec sets the "requests_per_sec" field.
+func (m *RouteLimitMutation) SetRequestsPerSec(i int64) {
+	m.requests_per_sec = &i
+	m.addrequests_per_sec = nil
+}
+
+// RequestsPerSec returns the value of the "requests_per_sec" field in the mutation.
+func (m *RouteLimitMutation) RequestsPerSec() (r int64, exists bool) {
+	v := m.requests_per_sec
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestsPerSec returns the old "requests_per_sec" field's value of the RouteLimit entity.
+// If the RouteLimit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteLimitMutation) OldRequestsPerSec(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestsPerSec is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestsPerSec requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestsPerSec: %w", err)
+	}
+	return oldValue.RequestsPerSec, nil
+}
+
+// AddRequestsPerSec adds i to the "requests_per_sec" field.
+func (m *RouteLimitMutation) AddRequestsPerSec(i int64) {
+	if m.addrequests_per_sec != nil {
+		*m.addrequests_per_sec += i
+	} else {
+		m.addrequests_per_sec = &i
+	}
+}
+
+// AddedRequestsPerSec returns the value that was added to the "requests_per_sec" field in this mutation.
+func (m *RouteLimitMutation) AddedRequestsPerSec() (r int64, exists bool) {
+	v := m.addrequests_per_sec
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRequestsPerSec resets all changes to the "requests_per_sec" field.
+func (m *RouteLimitMutation) ResetRequestsPerSec() {
+	m.requests_per_sec = nil
+	m.addrequests_per_sec = nil
+}
+
+// SetBandwidthBytesPerSec sets the "bandwidth_bytes_per_sec" field.
+func (m *RouteLimitMutation) SetBandwidthBytesPerSec(i int64) {
+	m.bandwidth_bytes_per_sec = &i
+	m.addbandwidth_bytes_per_sec = nil
+}
+
+// BandwidthBytesPerSec returns the value of the "bandwidth_bytes_per_sec" field in the mutation.
+func (m *RouteLimitMutation) BandwidthBytesPerSec() (r int64, exists bool) {
+	v := m.bandwidth_bytes_per_sec
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBandwidthBytesPerSec returns the old "bandwidth_bytes_per_sec" field's value of the RouteLimit entity.
+// If the RouteLimit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteLimitMutation) OldBandwidthBytesPerSec(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBandwidthBytesPerSec is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBandwidthBytesPerSec requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBandwidthBytesPerSec: %w", err)
+	}
+	return oldValue.BandwidthBytesPerSec, nil
+}
+
+// AddBandwidthBytesPerSec adds i to the "bandwidth_bytes_per_sec" field.
+func (m *RouteLimitMutation) AddBandwidthBytesPerSec(i int64) {
+	if m.addbandwidth_bytes_per_sec != nil {
+		*m.addbandwidth_bytes_per_sec += i
+	} else {
+		m.addbandwidth_bytes_per_sec = &i
+	}
+}
+
+// AddedBandwidthBytesPerSec returns the value that was added to the "bandwidth_bytes_per_sec" field in this mutation.
+func (m *RouteLimitMutation) AddedBandwidthBytesPerSec() (r int64, exists bool) {
+	v := m.addbandwidth_bytes_per_sec
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBandwidthBytesPerSec resets all changes to the "bandwidth_bytes_per_sec" field.
+func (m *RouteLimitMutation) ResetBandwidthBytesPerSec() {
+	m.bandwidth_bytes_per_sec = nil
+	m.addbandwidth_bytes_per_sec = nil
+}
+
+// ClearRoute clears the "route" edge to the Route entity.
+func (m *RouteLimitMutation) ClearRoute() {
+	m.clearedroute = true
+	m.clearedFields[routelimit.FieldRouteID] = struct{}{}
+}
+
+// RouteCleared reports if the "route" edge to the Route entity was cleared.
+func (m *RouteLimitMutation) RouteCleared() bool {
+	return m.clearedroute
+}
+
+// RouteIDs returns the "route" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// RouteID instead. It exists only for internal usage by the builders.
+func (m *RouteLimitMutation) RouteIDs() (ids []string) {
+	if id := m.route; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetRoute resets all changes to the "route" edge.
+func (m *RouteLimitMutation) ResetRoute() {
+	m.route = nil
+	m.clearedroute = false
+}
+
+// Where appends a list predicates to the RouteLimitMutation builder.
+func (m *RouteLimitMutation) Where(ps ...predicate.RouteLimit) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RouteLimitMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RouteLimitMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RouteLimit, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RouteLimitMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RouteLimitMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RouteLimit).
+func (m *RouteLimitMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RouteLimitMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.org_id != nil {
+		fields = append(fields, routelimit.FieldOrgID)
+	}
+	if m.route != nil {
+		fields = append(fields, routelimit.FieldRouteID)
+	}
+	if m.max_connections != nil {
+		fields = append(fields, routelimit.FieldMaxConnections)
+	}
+	if m.requests_per_sec != nil {
+		fields = append(fields, routelimit.FieldRequestsPerSec)
+	}
+	if m.bandwidth_bytes_per_sec != nil {
+		fields = append(fields, routelimit.FieldBandwidthBytesPerSec)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RouteLimitMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case routelimit.FieldOrgID:
+		return m.OrgID()
+	case routelimit.FieldRouteID:
+		return m.RouteID()
+	case routelimit.FieldMaxConnections:
+		return m.MaxConnections()
+	case routelimit.FieldRequestsPerSec:
+		return m.RequestsPerSec()
+	case routelimit.FieldBandwidthBytesPerSec:
+		return m.BandwidthBytesPerSec()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RouteLimitMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case routelimit.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case routelimit.FieldRouteID:
+		return m.OldRouteID(ctx)
+	case routelimit.FieldMaxConnections:
+		return m.OldMaxConnections(ctx)
+	case routelimit.FieldRequestsPerSec:
+		return m.OldRequestsPerSec(ctx)
+	case routelimit.FieldBandwidthBytesPerSec:
+		return m.OldBandwidthBytesPerSec(ctx)
+	}
+	return nil, fmt.Errorf("unknown RouteLimit field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteLimitMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case routelimit.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case routelimit.FieldRouteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouteID(v)
+		return nil
+	case routelimit.FieldMaxConnections:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxConnections(v)
+		return nil
+	case routelimit.FieldRequestsPerSec:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestsPerSec(v)
+		return nil
+	case routelimit.FieldBandwidthBytesPerSec:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBandwidthBytesPerSec(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteLimit field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RouteLimitMutation) AddedFields() []string {
+	var fields []string
+	if m.addmax_connections != nil {
+		fields = append(fields, routelimit.FieldMaxConnections)
+	}
+	if m.addrequests_per_sec != nil {
+		fields = append(fields, routelimit.FieldRequestsPerSec)
+	}
+	if m.addbandwidth_bytes_per_sec != nil {
+		fields = append(fields, routelimit.FieldBandwidthBytesPerSec)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RouteLimitMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case routelimit.FieldMaxConnections:
+		return m.AddedMaxConnections()
+	case routelimit.FieldRequestsPerSec:
+		return m.AddedRequestsPerSec()
+	case routelimit.FieldBandwidthBytesPerSec:
+		return m.AddedBandwidthBytesPerSec()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouteLimitMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case routelimit.FieldMaxConnections:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMaxConnections(v)
+		return nil
+	case routelimit.FieldRequestsPerSec:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRequestsPerSec(v)
+		return nil
+	case routelimit.FieldBandwidthBytesPerSec:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBandwidthBytesPerSec(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouteLimit numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RouteLimitMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RouteLimitMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RouteLimitMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown RouteLimit nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RouteLimitMutation) ResetField(name string) error {
+	switch name {
+	case routelimit.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case routelimit.FieldRouteID:
+		m.ResetRouteID()
+		return nil
+	case routelimit.FieldMaxConnections:
+		m.ResetMaxConnections()
+		return nil
+	case routelimit.FieldRequestsPerSec:
+		m.ResetRequestsPerSec()
+		return nil
+	case routelimit.FieldBandwidthBytesPerSec:
+		m.ResetBandwidthBytesPerSec()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteLimit field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RouteLimitMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.route != nil {
+		edges = append(edges, routelimit.EdgeRoute)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RouteLimitMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case routelimit.EdgeRoute:
+		if id := m.route; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RouteLimitMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RouteLimitMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RouteLimitMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedroute {
+		edges = append(edges, routelimit.EdgeRoute)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RouteLimitMutation) EdgeCleared(name string) bool {
+	switch name {
+	case routelimit.EdgeRoute:
+		return m.clearedroute
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RouteLimitMutation) ClearEdge(name string) error {
+	switch name {
+	case routelimit.EdgeRoute:
+		m.ClearRoute()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteLimit unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RouteLimitMutation) ResetEdge(name string) error {
+	switch name {
+	case routelimit.EdgeRoute:
+		m.ResetRoute()
+		return nil
+	}
+	return fmt.Errorf("unknown RouteLimit edge %s", name)
 }
 
 // RoutePolicyMutation represents an operation that mutates the RoutePolicy nodes in the graph.

@@ -8,6 +8,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 )
 
@@ -15,10 +16,16 @@ import (
 // capabilities"), registered when the program starts so that every replica compiles with them.
 func init() {
 	Register(Gate{Capability: agentproto.CapTCPHTTPConnect, Kind: pki.KindGateway, Uses: usesHTTPConnect})
+	Register(Gate{Capability: agentproto.CapHTTPHeaderMatch, Kind: pki.KindGateway, Uses: usesHeaderMatches})
 }
 
 // usesHTTPConnect reports whether a tcp route is in http_connect mode: an older gateway would bind
 // its listener's port as a plain tcp route's, once per route.
 func usesHTTPConnect(ctx context.Context, c *ent.Client, routeID string) (bool, error) {
 	return c.RouteTCP.Query().Where(routetcp.RouteID(routeID), routetcp.ListenerModeEQ(routetcp.ListenerModeHTTPConnect)).Exist(ctx)
+}
+
+// usesHeaderMatches reports whether an http route matches on request headers.
+func usesHeaderMatches(ctx context.Context, c *ent.Client, routeID string) (bool, error) {
+	return c.RouteHTTP.Query().Where(routehttp.RouteID(routeID), routehttp.MatchKeyNEQ("")).Exist(ctx)
 }

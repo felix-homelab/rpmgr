@@ -45,9 +45,12 @@ var resolver = names{
 func stored() *rpmgrv1.Route {
 	return &rpmgrv1.Route{Id: "rt_1", Name: "nas-web", GatewayGroupId: "gwg_1", Enabled: true, Labels: map[string]string{"site": "home"},
 		Description: "the NAS", Transport: rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC, PolicyIds: []string{"ap_2", "ap_1"},
+		Limits: &rpmgrv1.RouteLimits{MaxConnections: 200, BandwidthBytesPerSecond: 10_000_000_000},
 		Spec: &rpmgrv1.Route_Http{Http: &rpmgrv1.HTTPRouteSpec{Hostnames: []string{"nas.example.com"}, TlsMode: rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE,
 			CertificateId: "crt_1", RequestHeadersSet: map[string]string{"X-Env": "prod"}, Maintenance: true,
-			MaintenanceMessage: "Back at 18:00.\nSorry."}},
+			MaintenanceMessage: "Back at 18:00.\nSorry.", HeaderMatches: []*rpmgrv1.HeaderMatch{
+				{Name: "X-Env", Match: &rpmgrv1.HeaderMatch_Exact{Exact: "beta"}}, {Name: "X-Tenant", Match: &rpmgrv1.HeaderMatch_Present{Present: true}}},
+			UpstreamResponseHeaderTimeoutSeconds: 300, UpstreamIdleTimeoutSeconds: 30}},
 		Targets: []*rpmgrv1.RouteTarget{{Id: "rtt_1", ConnectorId: "con_1", Etag: "3", Enabled: true, Weight: 2,
 			Address:          &rpmgrv1.RouteTarget_HostPort{HostPort: &rpmgrv1.HostPort{Host: "192.168.10.20", Port: 5000}},
 			UpstreamProtocol: rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_HTTPS,
@@ -86,7 +89,10 @@ func TestRoute(t *testing.T) {
 	text, back := roundTrip(t, stored())
 	for _, want := range []string{"kind: Route\nmetadata:\n  name: nas-web\n  labels:\n    site: home\nspec:\n", "  gatewayGroup: eu\n",
 		"  policies:\n    - auth\n    - office\n", "    - connector: nas\n", "        caBundle: internal\n", "    tlsMode: TLS_MODE_CERTIFICATE\n",
-		"    certificateId: crt_1\n", "        port: 5000\n", "    maintenance: true\n", "    maintenanceMessage: |-\n      Back at 18:00.\n      Sorry.\n",
+		"    certificateId: crt_1\n", "        port: 5000\n", "  limits:\n    bandwidthBytesPerSecond: \"10000000000\"\n    maxConnections: 200\n",
+		"    maintenance: true\n", "    maintenanceMessage: |-\n      Back at 18:00.\n      Sorry.\n",
+		"    upstreamResponseHeaderTimeoutSeconds: 300\n", "    upstreamIdleTimeoutSeconds: 30\n",
+		"    headerMatches:\n      - exact: beta\n        name: X-Env\n      - name: X-Tenant\n        present: true\n",
 		"  healthCheck:\n    httpPath: /healthz\n    intervalSeconds: 30\n    type: HEALTH_CHECK_TYPE_HTTP\n"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the manifest lacks %q:\n%s", want, text)
@@ -115,11 +121,13 @@ func TestKinds(t *testing.T) {
 			{Rule: &rpmgrv1.AccessRule_IpAllow{IpAllow: &rpmgrv1.IPRuleParams{Cidrs: []string{"10.0.0.0/8"}}}},
 			{Rule: &rpmgrv1.AccessRule_BasicAuth{BasicAuth: &rpmgrv1.BasicAuthRule{Users: []*rpmgrv1.BasicAuthCredential{{Name: "alice", Password: "correct horse"}}}}},
 			{Rule: &rpmgrv1.AccessRule_RequireHeader{RequireHeader: &rpmgrv1.RequireHeaderRule{Name: "X-Origin-Token",
-				Values: []string{"correct horse origin header value 1"}}}}}},
+				Values: []string{"correct horse origin header value 1"}}}},
+			{Rule: &rpmgrv1.AccessRule_RateLimit{RateLimit: &rpmgrv1.RateLimitRule{PerSecond: 20, Burst: 50}}}}},
 			&rpmgrv1.AccessPolicy{Name: "office", Rules: []*rpmgrv1.AccessRule{
 				{Rule: &rpmgrv1.AccessRule_IpAllow{IpAllow: &rpmgrv1.IPRuleParams{Cidrs: []string{"10.0.0.0/8"}}}},
 				{Rule: &rpmgrv1.AccessRule_BasicAuth{BasicAuth: &rpmgrv1.BasicAuthRule{Users: []*rpmgrv1.BasicAuthCredential{{Name: "alice"}}}}},
-				{Rule: &rpmgrv1.AccessRule_RequireHeader{RequireHeader: &rpmgrv1.RequireHeaderRule{Name: "X-Origin-Token"}}}}}},
+				{Rule: &rpmgrv1.AccessRule_RequireHeader{RequireHeader: &rpmgrv1.RequireHeaderRule{Name: "X-Origin-Token"}}},
+				{Rule: &rpmgrv1.AccessRule_RateLimit{RateLimit: &rpmgrv1.RateLimitRule{PerSecond: 20, Burst: 50}}}}}},
 		{&rpmgrv1.GatewayGroup{Id: "gwg_1", Name: "eu", Region: "fra", PublicHostnames: []string{"eu.example.com"}, Etag: "1"},
 			&rpmgrv1.GatewayGroup{Name: "eu", Region: "fra", PublicHostnames: []string{"eu.example.com"}}},
 		{&rpmgrv1.Gateway{Id: "gw_1", GatewayGroupId: "gwg_1", Name: "gw1", Slot: 2, TunnelEndpoints: []string{"gw1.example.com:443"}, Enabled: true,

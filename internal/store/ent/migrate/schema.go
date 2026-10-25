@@ -1453,6 +1453,7 @@ var (
 		{Name: "org_id", Type: field.TypeString},
 		{Name: "path_prefix", Type: field.TypeString, Default: ""},
 		{Name: "header_matches", Type: field.TypeJSON, Nullable: true},
+		{Name: "match_key", Type: field.TypeString, Default: ""},
 		{Name: "tls_mode", Type: field.TypeEnum, Enums: []string{"acme", "certificate"}, Default: "acme"},
 		{Name: "port80", Type: field.TypeEnum, Enums: []string{"redirect", "serve", "off"}, Default: "redirect"},
 		{Name: "hsts_max_age_seconds", Type: field.TypeInt, Default: 0},
@@ -1464,6 +1465,8 @@ var (
 		{Name: "dns_proxied", Type: field.TypeBool, Default: false},
 		{Name: "maintenance", Type: field.TypeBool, Default: false},
 		{Name: "maintenance_message", Type: field.TypeString, Size: 2000, Default: ""},
+		{Name: "upstream_response_header_timeout_seconds", Type: field.TypeInt, Default: 0},
+		{Name: "upstream_idle_timeout_seconds", Type: field.TypeInt, Default: 0},
 		{Name: "route_id", Type: field.TypeString},
 		{Name: "certificate_id", Type: field.TypeString, Nullable: true},
 	}
@@ -1475,13 +1478,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "route_http_routes_route",
-				Columns:    []*schema.Column{RouteHTTPColumns[15]},
+				Columns:    []*schema.Column{RouteHTTPColumns[18]},
 				RefColumns: []*schema.Column{RoutesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_http_certificates_certificate",
-				Columns:    []*schema.Column{RouteHTTPColumns[16]},
+				Columns:    []*schema.Column{RouteHTTPColumns[19]},
 				RefColumns: []*schema.Column{CertificatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1495,12 +1498,12 @@ var (
 			{
 				Name:    "routehttp_route_id",
 				Unique:  true,
-				Columns: []*schema.Column{RouteHTTPColumns[15]},
+				Columns: []*schema.Column{RouteHTTPColumns[18]},
 			},
 			{
 				Name:    "routehttp_certificate_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteHTTPColumns[16]},
+				Columns: []*schema.Column{RouteHTTPColumns[19]},
 			},
 		},
 	}
@@ -1512,6 +1515,7 @@ var (
 		{Name: "route_type", Type: field.TypeEnum, Enums: []string{"http", "tls_passthrough"}},
 		{Name: "hostname", Type: field.TypeString, Size: 253},
 		{Name: "path_prefix", Type: field.TypeString, Default: ""},
+		{Name: "match_key", Type: field.TypeString, Default: ""},
 		{Name: "route_id", Type: field.TypeString},
 		{Name: "domain_id", Type: field.TypeString},
 	}
@@ -1523,13 +1527,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "route_hostnames_routes_route",
-				Columns:    []*schema.Column{RouteHostnamesColumns[6]},
+				Columns:    []*schema.Column{RouteHostnamesColumns[7]},
 				RefColumns: []*schema.Column{RoutesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_hostnames_domains_domain",
-				Columns:    []*schema.Column{RouteHostnamesColumns[7]},
+				Columns:    []*schema.Column{RouteHostnamesColumns[8]},
 				RefColumns: []*schema.Column{DomainsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -1541,14 +1545,49 @@ var (
 				Columns: []*schema.Column{RouteHostnamesColumns[1], RouteHostnamesColumns[0]},
 			},
 			{
-				Name:    "routehostname_gateway_group_id_hostname_path_prefix",
+				Name:    "routehostname_gateway_group_id_hostname_path_prefix_match_key",
 				Unique:  true,
-				Columns: []*schema.Column{RouteHostnamesColumns[2], RouteHostnamesColumns[4], RouteHostnamesColumns[5]},
+				Columns: []*schema.Column{RouteHostnamesColumns[2], RouteHostnamesColumns[4], RouteHostnamesColumns[5], RouteHostnamesColumns[6]},
 			},
 			{
 				Name:    "routehostname_route_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteHostnamesColumns[6]},
+				Columns: []*schema.Column{RouteHostnamesColumns[7]},
+			},
+		},
+	}
+	// RouteLimitsColumns holds the columns for the "route_limits" table.
+	RouteLimitsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "max_connections", Type: field.TypeInt64, Default: 0},
+		{Name: "requests_per_sec", Type: field.TypeInt64, Default: 0},
+		{Name: "bandwidth_bytes_per_sec", Type: field.TypeInt64, Default: 0},
+		{Name: "route_id", Type: field.TypeString},
+	}
+	// RouteLimitsTable holds the schema information for the "route_limits" table.
+	RouteLimitsTable = &schema.Table{
+		Name:       "route_limits",
+		Columns:    RouteLimitsColumns,
+		PrimaryKey: []*schema.Column{RouteLimitsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "route_limits_routes_route",
+				Columns:    []*schema.Column{RouteLimitsColumns[5]},
+				RefColumns: []*schema.Column{RoutesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "routelimit_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteLimitsColumns[1], RouteLimitsColumns[0]},
+			},
+			{
+				Name:    "routelimit_route_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouteLimitsColumns[5]},
 			},
 		},
 	}
@@ -2042,6 +2081,7 @@ var (
 		RoutesTable,
 		RouteHTTPTable,
 		RouteHostnamesTable,
+		RouteLimitsTable,
 		RoutePoliciesTable,
 		RouteTCPTable,
 		RouteTargetsTable,
@@ -2196,6 +2236,10 @@ func init() {
 	RouteHostnamesTable.ForeignKeys[1].RefTable = DomainsTable
 	RouteHostnamesTable.Annotation = &entsql.Annotation{
 		Table: "route_hostnames",
+	}
+	RouteLimitsTable.ForeignKeys[0].RefTable = RoutesTable
+	RouteLimitsTable.Annotation = &entsql.Annotation{
+		Table: "route_limits",
 	}
 	RoutePoliciesTable.ForeignKeys[0].RefTable = RoutesTable
 	RoutePoliciesTable.ForeignKeys[1].RefTable = AccessPoliciesTable

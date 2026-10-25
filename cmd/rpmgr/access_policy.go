@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,7 +56,7 @@ func (f *policyFlags) register(fs *flag.FlagSet, update bool) {
 	f.fs = fs
 	fs.StringVar(&f.name, "name", "", "the policy's name, unique in the org")
 	fs.StringVar(&f.description, "description", "", "a description for people")
-	fs.Var(&f.rules, "rule", "a rule: allow:<cidr>,…, deny:<cidr>,…, basic-auth:<user>,… or require-header:<header>; repeat for more; a deny wins over every allow")
+	fs.Var(&f.rules, "rule", "a rule: allow:<cidr>,…, deny:<cidr>,…, basic-auth:<user>,…, require-header:<header> or rate-limit:<per second>[,<burst>]; repeat for more; a deny wins over every allow")
 	fs.StringVar(&f.passwords, "passwords-file", "", "a file of user:password lines for the basic-auth users; the others are asked for")
 	fs.StringVar(&f.values, "header-values-file", "", "a file of header:value lines, up to 4 per header, for the require-header rules; each value random, such as from openssl rand -base64 32; the others are asked for")
 	fs.DurationVar(&f.wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
@@ -128,6 +129,27 @@ func readHeaderValues(env *cli.Env, path string) (map[string][]string, error) {
 	return out, nil
 }
 
+// rateLimitOf reads the requests a second and the burst of a rate-limit rule; the burst is a
+// second's worth when not given.
+func rateLimitOf(items []string) (*rpmgrv1.RateLimitRule, error) {
+	if len(items) > 2 {
+		return nil, fmt.Errorf("rate-limit takes the requests a second and a burst")
+	}
+	n := make([]uint32, len(items))
+	for i, it := range items {
+		v, err := strconv.ParseUint(it, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a whole number", it)
+		}
+		n[i] = uint32(v)
+	}
+	rl := &rpmgrv1.RateLimitRule{PerSecond: n[0], Burst: n[0]}
+	if len(n) == 2 {
+		rl.Burst = n[1]
+	}
+	return rl, nil
+}
+
 // rulesOf turns --rule values into rules, in order. A basic-auth user's password comes from
 // passwords, else from the prompt; with keep it may stay empty, which keeps the current one. A
 // required header's values come from values, else one from the prompt; with keep an empty answer
@@ -137,7 +159,7 @@ func rulesOf(values []string, passwords map[string]string, headerValues map[stri
 	for _, v := range values {
 		kind, list, ok := strings.Cut(v, ":")
 		if !ok || list == "" {
-			return nil, cli.Usagef("--rule %q: allow:<cidr>,…, deny:<cidr>,…, basic-auth:<user>,… or require-header:<header>", v)
+			return nil, cli.Usagef("--rule %q: allow:<cidr>,…, deny:<cidr>,…, basic-auth:<user>,…, require-header:<header> or rate-limit:<per second>[,<burst>]", v)
 		}
 		items := strings.Split(list, ",")
 		switch kind {
@@ -183,8 +205,14 @@ func rulesOf(values []string, passwords map[string]string, headerValues map[stri
 			}
 			out = append(out, &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_RequireHeader{
 				RequireHeader: &rpmgrv1.RequireHeaderRule{Name: list, Values: vals}}})
+		case "rate-limit":
+			rl, err := rateLimitOf(items)
+			if err != nil {
+				return nil, cli.Usagef("--rule %q: %v", v, err)
+			}
+			out = append(out, &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_RateLimit{RateLimit: rl}})
 		default:
-			return nil, cli.Usagef("--rule %q: the kind is allow, deny, basic-auth or require-header", v)
+			return nil, cli.Usagef("--rule %q: the kind is allow, deny, basic-auth, require-header or rate-limit", v)
 		}
 	}
 	return out, nil

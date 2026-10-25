@@ -11,6 +11,8 @@ import (
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
+
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 )
 
 // Routes and ports (docs/06-data-model.md, "Routes", "Gateway groups and ports").
@@ -312,12 +314,15 @@ func (RouteHTTP) Annotations() []schema.Annotation {
 // of the route, whose route_hostnames rows copy it. tls_mode acme uses the certificate ACME obtains
 // for the hostnames, certificate the uploaded certificate_id. host_header is "preserve" or the
 // Host value sent upstream; max_body_bytes 0 sets no limit. maintenance answers every request with
-// the maintenance page and its plain-text maintenance_message (D88).
+// the maintenance page and its plain-text maintenance_message (D88). header_matches are the request
+// headers a request must carry, canonical and sorted, and match_key identifies them
+// (headermatch.Key); the route's route_hostnames rows copy it.
 func (RouteHTTP) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("route_id").NotEmpty().Unique().Immutable(),
 		field.String("path_prefix").Default(""),
-		field.JSON("header_matches", map[string]string{}).Optional(),
+		field.JSON("header_matches", []headermatch.Match{}).Optional(),
+		field.String("match_key").Default(""),
 		field.Enum("tls_mode").Values("acme", "certificate").Default("acme"),
 		field.String("certificate_id").Optional().Nillable(),
 		field.Enum("port80").Values("redirect", "serve", "off").Default("redirect"),
@@ -331,6 +336,9 @@ func (RouteHTTP) Fields() []ent.Field {
 		field.Bool("dns_proxied").Default(false),
 		field.Bool("maintenance").Default(false),
 		field.String("maintenance_message").MaxLen(2000).Default(""),
+		// The route's own upstream timeouts in seconds; 0 keeps the gateway's (D94).
+		field.Int("upstream_response_header_timeout_seconds").NonNegative().Default(0),
+		field.Int("upstream_idle_timeout_seconds").NonNegative().Default(0),
 	}
 }
 
@@ -412,7 +420,8 @@ func (RouteHostname) Annotations() []schema.Annotation {
 }
 
 // Fields of a route hostname. hostname is normalised (internal/domains) and may start with "*."
-// for http routes; path_prefix is "" for tls_passthrough.
+// for http routes; path_prefix is "" for tls_passthrough; match_key is the route's header matches'
+// (headermatch.Key), "" without any.
 func (RouteHostname) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("route_id").NotEmpty().Immutable(),
@@ -420,6 +429,7 @@ func (RouteHostname) Fields() []ent.Field {
 		field.Enum("route_type").Values("http", "tls_passthrough").Immutable(),
 		field.String("hostname").NotEmpty().MaxLen(253).Immutable(),
 		field.String("path_prefix").Default("").Immutable(),
+		field.String("match_key").Default("").Immutable(),
 		field.String("domain_id").NotEmpty(),
 	}
 }
@@ -432,10 +442,10 @@ func (RouteHostname) Edges() []ent.Edge {
 	}
 }
 
-// Indexes: a hostname and path prefix are served once per group; a route's hostnames are found
-// by route.
+// Indexes: a hostname and path prefix are served once per group and set of header matches; a
+// route's hostnames are found by route.
 func (RouteHostname) Indexes() []ent.Index {
-	return []ent.Index{index.Fields("gateway_group_id", "hostname", "path_prefix").Unique(), index.Fields("route_id")}
+	return []ent.Index{index.Fields("gateway_group_id", "hostname", "path_prefix", "match_key").Unique(), index.Fields("route_id")}
 }
 
 // AccessPolicy is an org's reusable list of rules that routes apply (docs/06-data-model.md,

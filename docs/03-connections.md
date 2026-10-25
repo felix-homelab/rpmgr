@@ -220,11 +220,31 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   hash is the SHA-256 of its payload. A snapshot names the agent it was compiled for; an agent
   refuses one for another identity. The signing key's certificate must chain to the pinned root
   with the config-signing URI; `key_id` names the key ([04](04-security.md#ca-hierarchy)).
-- **Imperative operations** (Phase 2: live logs and diagnostics; Phase 3: the shell; the field
-  number of `Open` is reserved): the controller sends
-  `Open{op_id, kind, ticket, deadline}`; the agent opens an `Attach` stream on the **same HTTP/2
-  connection** presenting the single-use ticket. No new TCP or TLS handshake. Every operation has a
-  deadline; unanswered operations fail with `DEADLINE_EXCEEDED` instead of blocking forever.
+- **Imperative operations** (Phase 2: live logs; Phase 3: the shell): the controller sends
+  `Open{op_id, kind, ticket, deadline, params}`; the agent opens an `Attach` stream on the **same
+  HTTP/2 connection** presenting the single-use ticket. No new TCP or TLS handshake. Every operation
+  has a deadline; unanswered operations fail with `DEADLINE_EXCEEDED` instead of blocking forever.
+  "Diagnostics" are the existing `ProbeTarget` and live logs; there is no other diagnostic
+  operation.
+  - `Open` is the field `open_operation = 9` of `ControllerMessage`; the number 3 and the name
+    `open`, which an early draft gave it, stay reserved, as `buf breaking` refuses to give either
+    back (VB-22, resolved). Agents that run operations announce the capability `logs.stream`; the
+    agent refuses an operation it does not run with an `OpResult` error, and attaches on the
+    connection of its control session, which the controller accepts only from the agent the ticket
+    was made for.
+  - [R] The **ticket** is 256 random bits, kept only as a hash in memory on the replica that holds
+    the agent's control session, bound to the agent and the operation, single use and valid for the
+    time in the timeout table. An `Attach` with an unknown, used, expired or another agent's
+    ticket, or without an `Open`, is refused, and the operation fails at once rather than at its
+    deadline ([D145](14-open-decisions.md#engineering), E13). With more than one replica, the
+    replica that serves the user forwards to the one holding the session
+    ([10](10-operations.md#high-availability)).
+  - [R] **Live logs** (`kind = logs`): the agent tees its log records, after the logger's
+    redaction and a text pass over each message ([04](04-security.md#secrets-at-rest-and-in-logs)),
+    into a bounded buffer per operation; a slow viewer loses the oldest lines, marked with how many
+    were dropped, and never slows the agent. `params` name a minimum level and a text filter; a
+    viewer may raise the agent's level to `debug` for the operation's life, which ends with the
+    operation ([D140](14-open-decisions.md#engineering)). Limits are in the timeout table.
 - **Large items** (certificate chains, function bundles) are referenced by content hash inside the
   snapshot and fetched with `FetchResource`, so snapshots stay small and unchanged resources are not
   re-sent. An agent can fetch only an item that one of its own snapshots names with that hash, among
@@ -974,14 +994,17 @@ the capability `route.limits`:
 | Request rate | HTTP requests, new connections or new flows per second, for the route as a whole | HTTP **429** with `Retry-After`; reset; datagram dropped (`reason="limit"`) |
 | Bandwidth | bytes per second, in each direction separately with the same value | data waits, without loss on TCP; UDP datagrams over it are dropped (`reason="limit"`) |
 
-- **Divided among gateways.** A route's limit applies to the gateway group: the compiler divides
-  it by the number of the group's enabled gateways, rounded up and at least 1, and each gateway
-  enforces its share. A gateway that is enabled but down keeps its share, so the route then gets
-  less than its limit until the gateway returns or is disabled. 0 means no limit.
+- **Divided among gateways.** A route's limit applies to the gateway group: the compiler divides it
+  by the number of the group's enabled gateways that enforce limits, rounded up and at least 1, and
+  each gateway enforces its share; a gateway of an earlier release does not get the route. A gateway
+  that is enabled but down keeps its share, so the route then gets less than its limit until the
+  gateway returns or is disabled. 0 means no limit. A route allows at most 1 000 000 connections,
+  1 000 000 requests a second and 100 GB (10¹¹ bytes) a second, and a bandwidth of at least 1 KiB a
+  second, so that data never waits long between steps.
 - A slot of a connection or request is released when it ends, however it ends, panics and
   cancellations included. A gateway keeps counting the connections of a removed route while they
-  drain, so the route, added back meanwhile, never admits more than its limit. The per-client `rate_limit` rule of a policy comes on top
-  ([Access policies](#access-policies)).
+  drain, so the route, added back meanwhile, never admits more than its limit. The per-client
+  `rate_limit` rule of a policy comes on top ([Access policies](#access-policies)).
 
 ### Target health (Phase 2)
 
@@ -1439,7 +1462,7 @@ sequenceDiagram
 | Active health check (Phase 2) | interval 10 s by default, from 2 s to 1 h; timeout 5 s by default, or 1 s below a shorter interval, below the interval and at most 1 min; unhealthy after 3 failures in a row, healthy after 2 passes, each threshold from 1 to 10; an HTTP check reads at most 16 KiB of status line and header and 64 KiB of the body; a connector runs at most 64 checks at once, over all its routes, the others waiting their turn | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
 | Passive health (Phase 2) | 3 refused or timed-out stream opens in a row; back-off 10 s, doubling to 60 s; one half-open try after it | [R] A target that refuses is passed over at once and tried again soon |
 | Route limits (Phase 2) | an HTTP request over the connection limit gets **503** with `Retry-After: 1`, one over a request rate **429** with `Retry-After` the seconds until it may come again, at least 1; the route's total rate allows a second's worth of requests at once; a bandwidth bucket holds 100 ms of the rate, at least 64 KiB, the largest UDP payload, and a connection moves at most 100 ms of the rate, at least 512 bytes, at a time | [R] A client tries again soon, as a slot frees when a request ends; a datagram always fits the bucket, and a connection under a low limit moves on in small steps rather than stalling ([Route limits](#route-limits-phase-2)) |
-| Per-client rate limit (Phase 2) | at most 4 rate_limit rules a route on a gateway; each rule has a table for udp flows and one for the rest, which every route whose policies carry the rule shares, each of at most 65 536 client addresses, and all tables of a gateway together hold at most 262 144, about 28 MiB; when a table or the gateway is full, the addresses whose bucket is full again are dropped, at most once a second, and a new address that still finds no room passes uncounted (D137); every minute the idle addresses are dropped and each table is made anew, which gives its memory back | [R] A flood of addresses costs a gateway at most about 28 MiB, whatever the number of routes and rules, never locks real clients out and never makes it forget the clients it limits ([Access policies](#access-policies)) |
+| Per-client rate limit (Phase 2) | a rule allows 1 to 10 000 requests, new connections or new flows a second, and a burst of 1 to 10 000, at most one rule a policy; at most 4 rate_limit rules a route on a gateway; each rule has a table for udp flows and one for the rest, which every route whose policies carry the rule shares, each of at most 65 536 client addresses, and all tables of a gateway together hold at most 262 144, about 28 MiB; when a table or the gateway is full, the addresses whose bucket is full again are dropped, at most once a second, and a new address that still finds no room passes uncounted (D137); every minute the idle addresses are dropped and each table is made anew, which gives its memory back | [R] A flood of addresses costs a gateway at most about 28 MiB, whatever the number of routes and rules, never locks real clients out and never makes it forget the clients it limits ([Access policies](#access-policies)) |
 | Custom page (Phase 2) | at most 64 KiB of HTML per page; the log lines of its `{{request_id}}` at most 20 per second per gateway, with a burst of 20, the rest dropped and counted; a link to the web UI's preview of a page works for 5 min | [R] A page loads fast and fits a snapshot item fetch; a flood of requests cannot flood the log ([HTTP routes](#http-routes), [D136](14-open-decisions.md#engineering)) |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |
 | Snapshot item fetch | 10 s per `FetchResource`; a failed fetch is retried after 1 s, doubling up to 1 min, and its resource is `not_ready(environment)` until then | A controller outage delays a new certificate without a retry storm |
@@ -1469,7 +1492,10 @@ sequenceDiagram
 | OTA download (Phase 2) | an artifact of at most 256 MiB, downloaded only with its size plus 64 MiB free on the staging filesystem; the whole download 10 min, a read that stalls 60 s; a failed download is retried after 1 min, doubling up to 1 h; an offer the local policy declined or only announced is checked against the policy again every 1 min | [R] A slow mirror or a full disk never leaves a half-written staging area, whose manifest is written last ([04](04-security.md#over-the-air-updates)) |
 | OTA updater (Phase 2) | a staged file of at most the manifest's size and 256 MiB, checked before and while copying; each role's `/readyz` polled every 2 s for up to 5 min after the restart; a role service that fails, or restarts 3 times, within that window rolls back at once | A compromised agent cannot fill the disk or hang the updater; a broken release is undone within minutes ([04](04-security.md#over-the-air-updates)) |
 | Rollout (Phase 2) | checked every 30 s (singleton job); an agent offered the target that reports neither the new version nor a failure within 30 min counts as stalled and pauses a staged rollout; an easy rollout marks it and moves on, and pauses after 3 failures in a row (rolled back, refused or stalled); a gateway is offered its update only after its drain ends | [R] A stage moves on as soon as its agents report; a silent agent stops the rollout instead of hiding, and a broken release stops an easy rollout after a few agents ([D129](14-open-decisions.md#engineering)) ([04](04-security.md#over-the-air-updates)) |
-| Webhook delivery (Phase 2) | 5 s timeout per attempt; retries with backoff | A slow receiver must not hold controller resources ([07](07-api.md#webhooks-phase-2)) |
+| Webhook delivery (Phase 2) | 5 s per attempt; a request body (the event envelope) of at most 64 KiB, and at most 64 KiB of the answer read; retries after 10 s, doubling to 1 h, given up 24 h after the event; at most 4 deliveries at once per endpoint; an endpoint without a successful delivery for 3 days is disabled ([D143](14-open-decisions.md#engineering)); after a secret rotation the old secret also signs for 24 h | [R] A slow or dead receiver holds neither controller resources nor the other endpoints' deliveries, and a receiver that is down for a weekend still gets its events ([07](07-api.md#webhooks-phase-2)) |
+| Events and alerts (Phase 2) | events kept 7 days; deliveries kept 30 days, at most 1 000 per endpoint; alerts evaluated every 30 s (singleton job), each with the duration of its condition ([10](10-operations.md#suggested-alerts)); an alert e-mail when an alert fires and when it resolves | [R] Long enough to retry every delivery and to read why one failed; an alert neither flaps nor is missed by a restart ([D142](14-open-decisions.md#engineering)) |
+| Live logs (Phase 2) | ticket valid 30 s, single use; an operation ends after 30 min, and a viewer may open a new one; at most 2 operations per user and 4 per agent; at most 200 lines per second per operation, a buffer of 256 lines on the agent, a line cut at 8 KiB with a marker; a raised level lasts until the operation ends | [R] A forgotten log view ends by itself and no viewer can load an agent ([D140](14-open-decisions.md#engineering)) |
+| Audit sinks (Phase 2) | each sink shipped every 10 s, at most 500 items per batch; after a failure, retried after 10 s, doubling to 5 min; the backlog alert fires when the oldest unshipped item has waited 15 min | [R] A sink outage never delays an append, and its backlog drains within minutes once it is back ([04](04-security.md#audit-log)) |
 | `request_id` deduplication of `Create` calls | 24 h; IDs past it are deleted every hour | Retries of a lost response stay idempotent ([07](07-api.md#resource-design)) |
 | Public API request | at most 4 MiB per message, also once decompressed; a larger one is refused with `resource_exhausted` before it is handled | [R] No request holds more of the controller's memory than the largest legitimate one, an uploaded certificate bundle, needs |
 | Enrollment token, certificates | see [04-security.md](04-security.md#pki-and-identity) | — |
@@ -1510,6 +1536,11 @@ field of the feature exists, and the compiler fails closed:
   gateways keep listing that connector among the route's entries, as they cannot know its
   capabilities: a stream they choose for it fails with `ROUTE_UNKNOWN` instead of moving to a
   connector that has the capability. That costs availability until the connector is upgraded.
+- A gateway without a capability may still serve another route that covers the gated route's
+  requests: with `http.header-match` missing, a request meant for a route with header matches goes
+  to a route of the same hostname and path prefix without them, if there is one, as the gateway
+  does not know the gated route. The gated route's status says so for each such gateway. That
+  route fails closed; the other route's delivery is unchanged.
   Whether gateways should pass over such connectors is decided by the first slice that registers a
   connector-side gate.
 - Capabilities are read from each control session's `Hello`. An agent that reconnects after its
