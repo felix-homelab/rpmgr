@@ -1,0 +1,6 @@
+-- Create "health_checks" table
+CREATE TABLE `health_checks` (`id` text NOT NULL, `org_id` text NOT NULL, `type` text NOT NULL, `port` integer NOT NULL DEFAULT (0), `http_path` text NOT NULL DEFAULT (''), `expected_status_min` integer NOT NULL DEFAULT (0), `expected_status_max` integer NOT NULL DEFAULT (0), `interval_seconds` integer NOT NULL DEFAULT (0), `timeout_seconds` integer NOT NULL DEFAULT (0), `unhealthy_threshold` integer NOT NULL DEFAULT (0), `healthy_threshold` integer NOT NULL DEFAULT (0), `route_id` text NOT NULL, PRIMARY KEY (`id`), CONSTRAINT `health_checks_routes_route` FOREIGN KEY (`org_id`, `route_id`) REFERENCES `routes` (`org_id`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `health_checks_orgs` FOREIGN KEY (`org_id`) REFERENCES `orgs` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION);
+-- Create index "healthcheck_org_id_id" to table: "health_checks"
+CREATE UNIQUE INDEX `healthcheck_org_id_id` ON `health_checks` (`org_id`, `id`);
+-- Create index "healthcheck_route_id" to table: "health_checks"
+CREATE UNIQUE INDEX `healthcheck_route_id` ON `health_checks` (`route_id`);

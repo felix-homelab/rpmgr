@@ -198,17 +198,20 @@ ssh -o ProxyCommand='nc -X connect -x edge.example.com:20001 %h %p' bastion.inte
     Its certificate is the uploaded one you name with `--connect-certificate`; without it, an
     uploaded certificate that covers the hostname, or else one that rpmgr obtains and renews from
     the ACME CA, as for http routes. Until there is one, the route shows its gateways waiting for
-    the certificate.
+    the certificate. Naming a renewed certificate on one route of the listener replaces it for all
+    its routes and keeps the port.
   - `plain-basic`: plain CONNECT that asks for a basic-auth user. **The password crosses the
     network in the clear**: anyone on the path between client and gateway can read and use it.
     The command line, the API and the web UI warn every time. Use it only for clients that cannot
     speak to an HTTPS proxy.
+  - In both basic modes, a route without an access policy that has a basic-auth rule admits no
+    one; the command line, the API and the web UI warn about it.
 - **The port:** `--port` names a listener of the organisation with the same mode, or a free port
   of the pools, which becomes a new listener; without it, the route joins the organisation's
   listener of its mode in the group, or opens one. A listener counts once against the port quota
   and closes with its last route. A port of another mode is refused with `CONNECT_MODE_MISMATCH`.
-- A route's listener mode cannot change; changing its authentication mode moves it to a listener
-  of the new mode, and its port changes. Gateways of earlier releases do not serve CONNECT routes
+- A route's listener mode cannot change; changing its authentication mode or listener hostname
+  moves it to another listener, and its port changes. Gateways of earlier releases do not serve CONNECT routes
   until they are upgraded.
 
 The rules a client meets, and its answers, are in

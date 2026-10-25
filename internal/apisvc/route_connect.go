@@ -16,13 +16,14 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connectauthority"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 )
 
 // The reasons of refused CONNECT routes (docs/03-connections.md, "HTTP CONNECT routes", D130).
 const (
-	// ReasonConnectModeMismatch: the named port is a CONNECT listener with another mode, hostname
-	// or certificate.
+	// ReasonConnectModeMismatch: the named port is a CONNECT listener with another mode or
+	// hostname.
 	ReasonConnectModeMismatch = "CONNECT_MODE_MISMATCH"
 	// ReasonListenerModeChange: a tcp route's listener mode cannot change.
 	ReasonListenerModeChange = "LISTENER_MODE_CHANGE"
@@ -33,13 +34,26 @@ const (
 const plainBasicWarning = "the route's CONNECT listener takes proxy passwords in the clear: anyone on the network path " +
 	"between client and gateway can read and use them; prefer CONNECT_AUTH_MODE_TLS_BASIC"
 
-// connectWarnings are the warnings of a route as it is now.
-func connectWarnings(r *rpmgrv1.Route) []string {
-	if c := r.GetTcp().GetConnect(); r.GetTcp().GetListenerMode() == rpmgrv1.ListenerMode_LISTENER_MODE_HTTP_CONNECT &&
-		c.GetAuthMode() == rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_PLAIN_BASIC {
-		return []string{plainBasicWarning}
+// noUsersWarning is the warning of a route on a CONNECT listener of a basic mode that applies no
+// basic-auth rule: no client passes.
+const noUsersWarning = "the route's CONNECT listener asks for proxy credentials, and the route applies no access policy " +
+	"with a basic-auth rule, so every client gets 407"
+
+// connectWarnings are the warnings of a route as it is now, in tx.
+func connectWarnings(ctx context.Context, tx *ent.Tx, r *rpmgrv1.Route) ([]string, error) {
+	var out []string
+	switch r.GetTcp().GetConnect().GetAuthMode() {
+	case rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_PLAIN_BASIC:
+		out = append(out, plainBasicWarning)
+	case rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_TLS_BASIC:
+	default:
+		return nil, nil
 	}
-	return nil
+	users, err := tx.PolicyRule.Query().Where(policyrule.PolicyIDIn(r.GetPolicyIds()...), policyrule.KindEQ(policyrule.KindBasicAuth)).Exist(ctx)
+	if err != nil || users {
+		return out, err
+	}
+	return append(out, noUsersWarning), nil
 }
 
 // checkConnect checks what the request's rules cannot of a tcp route's listener mode and CONNECT
@@ -88,7 +102,8 @@ func listenerOf(ctx context.Context, tx *ent.Tx, org string, c *rpmgrv1.ConnectS
 	if err != nil {
 		return l, err
 	}
-	if _, err := domains.Covering(ctx, tx, org, name); err != nil {
+	d, err := domains.Covering(ctx, tx, org, name)
+	if err != nil {
 		return l, err
 	}
 	l.Hostname = name
@@ -102,7 +117,11 @@ func listenerOf(ctx context.Context, tx *ent.Tx, org string, c *rpmgrv1.ConnectS
 	if err := checkCovers(crt, []string{name}); err != nil {
 		return l, err
 	}
+<<<<<<< HEAD
 	l.CertificateID = crt.ID
+=======
+	l.Hostname, l.DomainID, l.CertificateID = name, d.ID, crt.ID
+>>>>>>> origin/main
 	return l, nil
 }
 
@@ -129,33 +148,51 @@ func joinListener(ctx context.Context, tx *ent.Tx, row *ent.Route, t *rpmgrv1.TC
 	return tx.RouteTCP.Update().Where(routetcp.RouteID(row.ID)).SetConnectListenerID(l.ID).Exec(ctx)
 }
 
-// updateConnectRoute changes a tcp route in http_connect mode: a changed port, mode, hostname,
-// certificate or set of authorities moves it off its listener and onto the one asked for, which
-// may be the same; its old listener closes if it was the last route there. A changed mode,
-// hostname or certificate without a changed port moves the route to the org's listener of the new
-// mode, or a new one, as the old port's listener keeps its mode.
+// updateConnectRoute changes a tcp route in http_connect mode. Another port, mode or hostname
+// moves it off its listener and onto the one asked for; its old listener closes if it was the
+// last route there. A changed mode or hostname without a changed port moves it to the org's
+// listener of the new mode, or a new one, as the old port's listener keeps its mode. New
+// authorities or a new certificate keep it on its listener: a route's certificate becomes the
+// listener's for all its routes, so a certificate is replaced without moving the port. An update
+// that leaves the mode unset while the route's is not none is refused rather than read as none,
+// which would drop the route's proxy credentials.
 func updateConnectRoute(ctx context.Context, tx *ent.Tx, row *ent.Route, was, next *rpmgrv1.TCPRouteSpec) error {
+	if next.GetConnect().GetAuthMode() == rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_UNSPECIFIED &&
+		was.GetConnect().GetAuthMode() != rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_NONE {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New(
+			"apisvc: name the CONNECT auth_mode in an update; not set would be none and drop the route's proxy credentials"))
+	}
 	if err := tx.RouteTCP.Update().Where(routetcp.RouteID(row.ID)).SetIdleTimeoutSeconds(idleTimeout(next.IdleTimeoutSeconds)).
 		Exec(ctx); err != nil {
 		return err
 	}
-	if was.GetPort() == next.GetPort() && proto.Equal(was.GetConnect(), next.GetConnect()) {
+	port := next.GetPort()
+	if port == was.GetPort() && proto.Equal(was.GetConnect(), next.GetConnect()) {
 		return nil
 	}
-	if err := routes.LeaveListener(ctx, tx, row.ID); err != nil {
-		return err
+	if port != was.GetPort() || connectModeChanged(was.GetConnect(), next.GetConnect()) {
+		if err := routes.LeaveListener(ctx, tx, row.ID); err != nil {
+			return err
+		}
+		if port == was.GetPort() {
+			port = 0
+		}
 	}
-	port := next.GetPort()
-	if port == was.GetPort() && connectModeChanged(was.GetConnect(), next.GetConnect()) {
-		port = 0
-	}
+	// On the same port, mode and hostname, the route stays on its listener, and its authorities and
+	// the listener's certificate change in place.
 	return joinListener(ctx, tx, row, next, port)
 }
 
-// connectModeChanged reports whether a route asks for another listener mode, hostname or
-// certificate.
+// connectModeChanged reports whether a route asks for another listener mode or hostname; not
+// set is none.
 func connectModeChanged(a, b *rpmgrv1.ConnectSpec) bool {
-	return a.GetAuthMode() != b.GetAuthMode() || a.GetHostname() != b.GetHostname() || a.GetCertificateId() != b.GetCertificateId()
+	mode := func(c *rpmgrv1.ConnectSpec) rpmgrv1.ConnectAuthMode {
+		if c.GetAuthMode() == rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_UNSPECIFIED {
+			return rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_NONE
+		}
+		return c.GetAuthMode()
+	}
+	return mode(a) != mode(b) || a.GetHostname() != b.GetHostname()
 }
 
 // setConnectSpec sets out's spec to a tcp route's in http_connect mode.

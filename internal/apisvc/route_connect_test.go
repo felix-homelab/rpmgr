@@ -66,9 +66,9 @@ func TestConnectRoutes(t *testing.T) {
 		t.Fatalf("an authority twice on a listener: %v", err)
 	}
 	r, err := ada.rt.CreateRoute(ctx, connect.NewRequest(&rpmgrv1.CreateRouteRequest{OrgId: org, Route: connectTCP("legacy", group, 0, plainBasic, "old.internal")}))
-	if err != nil || r.Msg.GetRoute().GetTcp().GetPort() == 20001 || len(r.Msg.GetWarnings()) != 1 ||
-		!strings.Contains(r.Msg.GetWarnings()[0], "in the clear") {
-		t.Fatalf("a plain_basic route: another listener and a warning: %v %v", r, err)
+	if err != nil || r.Msg.GetRoute().GetTcp().GetPort() == 20001 || len(r.Msg.GetWarnings()) != 2 ||
+		!strings.Contains(r.Msg.GetWarnings()[0], "in the clear") || !strings.Contains(r.Msg.GetWarnings()[1], "407") {
+		t.Fatalf("a plain_basic route without basic-auth rule: another listener and two warnings: %v %v", r, err)
 	}
 	legacy := r.Msg.GetRoute()
 	// The two listeners take the quota of 2: a third listener is refused, a third route on one is not.
@@ -96,9 +96,9 @@ func TestConnectRoutes(t *testing.T) {
 			r.GetTcp().ListenerMode = rpmgrv1.ListenerMode_LISTENER_MODE_HTTP_CONNECT
 			return r
 		}(), connect.CodeInvalidArgument, ""},
-		"tls_basic without a hostname": {func() *rpmgrv1.Route {
+		"tls_basic without a certificate": {func() *rpmgrv1.Route {
 			r := connectTCP("x6", group, 0, rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_TLS_BASIC, "x.internal")
-			r.GetTcp().GetConnect().CertificateId = "crt_x"
+			r.GetTcp().GetConnect().Hostname = "proxy.example.com"
 			return r
 		}(), connect.CodeInvalidArgument, ""},
 		"a hostname without TLS": {func() *rpmgrv1.Route {
@@ -129,7 +129,7 @@ func TestConnectRoutes(t *testing.T) {
 	moved := proto.Clone(db).(*rpmgrv1.Route)
 	moved.GetTcp().GetConnect().AuthMode, moved.GetTcp().GetConnect().Authorities = plainBasic, []string{"db.internal", "pg.internal"}
 	got, err := update(moved, "tcp.connect")
-	if err != nil || got.GetRoute().GetTcp().GetPort() != legacy.GetTcp().GetPort() || len(got.GetWarnings()) != 1 ||
+	if err != nil || got.GetRoute().GetTcp().GetPort() != legacy.GetTcp().GetPort() || len(got.GetWarnings()) != 2 ||
 		len(got.GetRoute().GetTcp().GetConnect().GetAuthorities()) != 2 {
 		t.Fatalf("a mode change moves the route: %v %v", got, err)
 	}
@@ -257,10 +257,11 @@ func TestConnectRoutes_TLSAndBasicAuth(t *testing.T) {
 	pid := policy.Msg.GetAccessPolicy().GetId()
 	vpn := tlsRoute("vpn", "proxy.example.com", certID)
 	vpn.PolicyIds = []string{pid}
-	vpn, err = createRoute(ada, org, vpn, "")
-	if err != nil || vpn.GetTcp().GetConnect().GetCertificateId() != certID {
-		t.Fatalf("a tls_basic route with a basic-auth policy: %v %v", vpn, err)
+	res, err := ada.rt.CreateRoute(ctx, connect.NewRequest(&rpmgrv1.CreateRouteRequest{OrgId: org, Route: vpn}))
+	if err != nil || res.Msg.GetRoute().GetTcp().GetConnect().GetCertificateId() != certID || len(res.Msg.GetWarnings()) != 0 {
+		t.Fatalf("a tls_basic route with a basic-auth policy, without warnings: %v %v", res, err)
 	}
+	vpn = res.Msg.GetRoute()
 	none := connectTCP("open", group, 0, rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_NONE, "open.internal")
 	none.PolicyIds = []string{pid}
 	if _, err := createRoute(ada, org, none, ""); reason(err) != apisvc.ReasonBasicAuthNotHTTP {
@@ -305,7 +306,8 @@ func TestConnectRoutes_TLSAndBasicAuth(t *testing.T) {
 	}
 	var names []string
 	if err := store.ReadTx(e.sys, e.db, func(tx *ent.Tx, _ store.Revision) error {
-		rs, err := certs.Gateway(e.sys, tx, snapshot.Agent{Identity: pki.Identity{Org: org, Kind: pki.KindGateway, ID: gw.GetId()}})
+		rs, err := certs.Gateway(e.sys, tx, snapshot.Agent{Identity: pki.Identity{Org: org, Kind: pki.KindGateway, ID: gw.GetId()},
+			Capabilities: gateway.Capabilities})
 		for _, r := range rs {
 			names = append(names, r.GetGatewayCertificate().GetHostnames()...)
 		}
@@ -317,6 +319,201 @@ func TestConnectRoutes_TLSAndBasicAuth(t *testing.T) {
 		t.Fatalf("the gateway's certificates name %v, want the listener's hostname", names)
 	}
 }
+
+// TestConnectRoutes_Updates (D130): a route's certificate becomes its listener's for every route on
+// it and is replaced without moving the port, and only gateways with tcp.http-connect get it; a
+// named TLS port with another hostname is CONNECT_MODE_MISMATCH; a taken authority refuses an
+// update, which changes nothing; an update that leaves the auth mode unset on a route of a basic
+// mode is refused; another org's certificate is not found; routes of a basic mode without a
+// basic-auth rule are warned about, in previews too; the domain of a listener's hostname is not
+// removed while the listener is open; a mode change frees its old listener's quota.
+func TestConnectRoutes_Updates(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	domainID := e.verified(t, org, "example.com", true)
+	if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org,
+		PortPool: &rpmgrv1.PortPool{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009}})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ada.gw.SetPortQuota(ctx, connect.NewRequest(&rpmgrv1.SetPortQuotaRequest{OrgId: org, GatewayGroupId: group, Protocol: tcp,
+		MaxPorts: 2})); err != nil {
+		t.Fatal(err)
+	}
+	ca, caKey := testCert(t, &x509.Certificate{Subject: pkix.Name{CommonName: "Test CA"}, IsCA: true, BasicConstraintsValid: true,
+		KeyUsage: x509.KeyUsageCertSign}, nil, nil, e.clock.Add(-time.Hour), e.clock.Add(365*24*time.Hour))
+	upload := func(b *browser, org string, names ...string) string {
+		t.Helper()
+		leaf, key := testCert(t, &x509.Certificate{Subject: pkix.Name{CommonName: names[0]}, DNSNames: names,
+			ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, KeyUsage: x509.KeyUsageDigitalSignature}, ca, caKey,
+			e.clock.Add(-time.Hour), e.clock.Add(90*24*time.Hour))
+		keyText, _ := keyPEMOf(t, key)
+		up, err := b.crt.UploadCertificate(ctx, connect.NewRequest(&rpmgrv1.UploadCertificateRequest{OrgId: org, ChainPem: certPEM(leaf, ca),
+			PrivateKeyPem: keyText}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return up.Msg.GetCertificate().GetId()
+	}
+	first, second := upload(ada, org, "proxy.example.com"), upload(ada, org, "*.example.com")
+	policy, err := ada.pol.CreateAccessPolicy(ctx, connect.NewRequest(&rpmgrv1.CreateAccessPolicyRequest{OrgId: org,
+		AccessPolicy: &rpmgrv1.AccessPolicy{Name: "proxy-users", Rules: []*rpmgrv1.AccessRule{basicAuth(user("ada", "correct horse battery"))}}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tlsRoute := func(name, hostname, cert string) *rpmgrv1.Route {
+		r := connectTCP(name, group, 0, rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_TLS_BASIC, name+".internal")
+		r.GetTcp().GetConnect().Hostname, r.GetTcp().GetConnect().CertificateId = hostname, cert
+		r.PolicyIds = []string{policy.Msg.GetAccessPolicy().GetId()}
+		return r
+	}
+	update := func(rt *rpmgrv1.Route, paths ...string) (*rpmgrv1.UpdateRouteResponse, error) {
+		cur, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: rt.GetId()}))
+		if err != nil {
+			return nil, err
+		}
+		res, err := ada.rt.UpdateRoute(ctx, connect.NewRequest(&rpmgrv1.UpdateRouteRequest{Route: rt, Etag: cur.Msg.GetRoute().GetEtag(),
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: paths}}))
+		if err != nil {
+			return nil, err
+		}
+		return res.Msg, nil
+	}
+	get := func(rt *rpmgrv1.Route) *rpmgrv1.Route {
+		t.Helper()
+		cur, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: rt.GetId()}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cur.Msg.GetRoute()
+	}
+	vpn, err := createRoute(ada, org, tlsRoute("vpn", "proxy.example.com", first), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := vpn.GetTcp().GetPort()
+	noUsers := tlsRoute("git", "proxy.example.com", first)
+	noUsers.PolicyIds = nil
+	res, err := ada.rt.CreateRoute(ctx, connect.NewRequest(&rpmgrv1.CreateRouteRequest{OrgId: org, Route: noUsers}))
+	if err != nil || res.Msg.GetRoute().GetTcp().GetPort() != port || len(res.Msg.GetWarnings()) != 1 ||
+		!strings.Contains(res.Msg.GetWarnings()[0], "407") {
+		t.Fatalf("a tls_basic route without basic-auth rule: the listener and a warning: %v %v", res, err)
+	}
+	git := res.Msg.GetRoute()
+
+	// One route's new certificate is the listener's, for both routes, on the same port.
+	rotated := proto.Clone(vpn).(*rpmgrv1.Route)
+	rotated.GetTcp().GetConnect().CertificateId = second
+	got, err := update(rotated, "tcp.connect")
+	if err != nil || got.GetRoute().GetTcp().GetPort() != port || got.GetRoute().GetTcp().GetConnect().GetCertificateId() != second {
+		t.Fatalf("a certificate rotation: %v %v", got, err)
+	}
+	if g := get(git); g.GetTcp().GetPort() != port || g.GetTcp().GetConnect().GetCertificateId() != second {
+		t.Fatalf("the listener's other route after the rotation: %v", g)
+	}
+	if n := e.db.Client().ConnectListener.Query().CountX(e.sys); n != 1 {
+		t.Fatalf("%d listeners after the rotation, want 1", n)
+	}
+	gw, err := createGateway(ada, org, group, "gw1", "gw1.example.com:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := func(caps []string) map[string][]string {
+		t.Helper()
+		out := map[string][]string{}
+		if err := store.ReadTx(e.sys, e.db, func(tx *ent.Tx, _ store.Revision) error {
+			rs, err := certs.Gateway(e.sys, tx, snapshot.Agent{Identity: pki.Identity{Org: org, Kind: pki.KindGateway, ID: gw.GetId()},
+				Capabilities: caps})
+			for _, r := range rs {
+				out[r.GetId()] = r.GetGatewayCertificate().GetHostnames()
+			}
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	if got := served(gateway.Capabilities); len(got) != 1 || !slices.Equal(got[second], []string{"proxy.example.com"}) {
+		t.Fatalf("the gateway's certificates after the rotation: %v", got)
+	}
+	if got := served([]string{"tunnel.quic", "tunnel.h2"}); len(got) != 0 {
+		t.Fatalf("a gateway without tcp.http-connect got the listener's certificate: %v", got)
+	}
+
+	// The listener's port with another hostname is another listener.
+	other := tlsRoute("other", "vpn.example.com", second)
+	other.GetTcp().Port = port
+	if _, err := createRoute(ada, org, other, ""); reason(err) != apisvc.ReasonConnectModeMismatch {
+		t.Fatalf("another hostname on the listener's port: %v", err)
+	}
+	// A taken authority refuses the update, which changes nothing.
+	taken := proto.Clone(git).(*rpmgrv1.Route)
+	taken.GetTcp().GetConnect().Authorities = []string{"git.internal", "VPN.internal"}
+	if _, err := update(taken, "tcp.connect"); code(err) != connect.CodeAlreadyExists {
+		t.Fatalf("an update to a taken authority: %v", err)
+	}
+	if g := get(git); !slices.Equal(g.GetTcp().GetConnect().GetAuthorities(), []string{"git.internal"}) {
+		t.Fatalf("the refused update changed the authorities: %v", g.GetTcp().GetConnect().GetAuthorities())
+	}
+	// An unset auth mode is no move to mode none.
+	unset := proto.Clone(git).(*rpmgrv1.Route)
+	unset.GetTcp().Connect = &rpmgrv1.ConnectSpec{Authorities: []string{"git.internal"}}
+	if _, err := update(unset, "tcp.connect"); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("an update with the auth mode unset: %v", err)
+	}
+	// Another org's certificate, though it covers the hostname, is not found.
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	foreign := upload(bob, orgB, "proxy.example.com")
+	if _, err := createRoute(ada, org, tlsRoute("foreign", "proxy.example.com", foreign), ""); code(err) != connect.CodeNotFound {
+		t.Fatalf("a route naming another org's certificate: %v", err)
+	}
+	stolen := proto.Clone(vpn).(*rpmgrv1.Route)
+	stolen.GetTcp().GetConnect().CertificateId = foreign
+	if _, err := update(stolen, "tcp.connect"); code(err) != connect.CodeNotFound {
+		t.Fatalf("an update to another org's certificate: %v", err)
+	}
+	// A preview warns as a write does and stores nothing.
+	pv, err := ada.rt.PreviewRoute(ctx, connect.NewRequest(&rpmgrv1.PreviewRouteRequest{OrgId: org,
+		Route: connectTCP("pv", group, 0, rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_PLAIN_BASIC, "pv.internal")}))
+	if err != nil || len(pv.Msg.GetWarnings()) != 2 || !strings.Contains(pv.Msg.GetWarnings()[0], "in the clear") ||
+		!strings.Contains(pv.Msg.GetWarnings()[1], "407") {
+		t.Fatalf("the preview of a plain_basic route without basic-auth rule: %v %v", pv, err)
+	}
+	if n := e.db.Client().ConnectListener.Query().CountX(e.sys); n != 1 {
+		t.Fatalf("%d listeners after a preview, want 1", n)
+	}
+	// The listener's hostname keeps its domain.
+	if _, err := ada.dom.DeleteDomain(ctx, connect.NewRequest(&rpmgrv1.DeleteDomainRequest{DomainId: domainID})); reason(err) != apisvc.ReasonDependantsExist {
+		t.Fatalf("removing the domain of a listener's hostname: %v", err)
+	}
+	// With the quota of 2 taken, a mode change frees its old listener's port first.
+	open, err := createRoute(ada, org, connectTCP("open", group, 0, rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_NONE, "open.internal"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// On a route of mode none, an unset mode is that mode.
+	more := proto.Clone(open).(*rpmgrv1.Route)
+	more.GetTcp().Connect = &rpmgrv1.ConnectSpec{Authorities: []string{"open.internal", "more.internal"}}
+	if got, err := update(more, "tcp.connect"); err != nil || got.GetRoute().GetTcp().GetPort() != open.GetTcp().GetPort() ||
+		len(got.GetRoute().GetTcp().GetConnect().GetAuthorities()) != 2 {
+		t.Fatalf("an update of a route of mode none with the mode unset: %v %v", got, err)
+	}
+	moved := proto.Clone(open).(*rpmgrv1.Route)
+	moved.GetTcp().GetConnect().AuthMode = rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_PLAIN_BASIC
+	if got, err := update(moved, "tcp.connect"); err != nil || got.GetRoute().GetTcp().GetConnect().GetAuthMode() != moved.GetTcp().GetConnect().GetAuthMode() {
+		t.Fatalf("a mode change at the quota: %v %v", got, err)
+	}
+	// Once the listener closes with its last route, the domain can go.
+	for _, rt := range []*rpmgrv1.Route{vpn, git} {
+		if _, err := ada.rt.DeleteRoute(ctx, connect.NewRequest(&rpmgrv1.DeleteRouteRequest{RouteId: rt.GetId()})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := ada.dom.DeleteDomain(ctx, connect.NewRequest(&rpmgrv1.DeleteDomainRequest{DomainId: domainID})); err != nil {
+		t.Fatalf("removing the domain after the listener closed: %v", err)
+	}
+}
+
 
 // TestConnectRoutes_TLSWithoutCertificate (#934): a tls_basic route needs its listener's hostname
 // but no certificate; without one its listener presents an uploaded certificate of the org that

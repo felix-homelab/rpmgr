@@ -296,6 +296,7 @@ func (s *seeder) seed(firstUserLink string) {
 		AccessPolicy: &rpmgrv1.AccessPolicy{Name: "office", Description: "Only the office network", Rules: []*rpmgrv1.AccessRule{
 			{Rule: &rpmgrv1.AccessRule_IpAllow{IpAllow: &rpmgrv1.IPRuleParams{Cidrs: []string{"198.51.100.0/24", "2001:db8:100::/48"}}}},
 			{Rule: &rpmgrv1.AccessRule_IpDeny{IpDeny: &rpmgrv1.IPRuleParams{Cidrs: []string{"198.51.100.66/32"}}}},
+			{Rule: &rpmgrv1.AccessRule_RateLimit{RateLimit: &rpmgrv1.RateLimitRule{PerSecond: 20, Burst: 50}}},
 		}}}).GetAccessPolicy()
 	call(s, "policy staff-login", ada.pol.CreateAccessPolicy, &rpmgrv1.CreateAccessPolicyRequest{OrgId: org, RequestId: uuid.NewString(),
 		AccessPolicy: &rpmgrv1.AccessPolicy{Name: "staff-login", Description: "A password for the staff", Rules: []*rpmgrv1.AccessRule{
@@ -443,7 +444,9 @@ func (s *seeder) routes(c *clients, org, group, certID, bundleID, officeID strin
 		route   *rpmgrv1.Route
 		targets []target
 	}{
-		{&rpmgrv1.Route{Name: "wiki", Description: "The lab's wiki", Spec: http("wiki.example.com")},
+		// The wiki's health check finds its documentation address unreachable within seconds.
+		{&rpmgrv1.Route{Name: "wiki", Description: "The lab's wiki", Spec: http("wiki.example.com"), HealthCheck: &rpmgrv1.HealthCheck{
+			Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP, HttpPath: "/healthz", IntervalSeconds: 5, UnhealthyThreshold: 1}},
 			[]target{httpTarget("nas-01", "192.0.2.10", 8080), failover}},
 		{&rpmgrv1.Route{Name: "grafana", Description: "Dashboards", Spec: http("grafana.example.com"), PolicyIds: []string{officeID}},
 			[]target{httpTarget("db-host-1", "192.0.2.20", 3000)}},

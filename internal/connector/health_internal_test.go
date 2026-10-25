@@ -11,6 +11,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -21,6 +23,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/policy"
@@ -210,6 +213,36 @@ func TestHealthCheckOf(t *testing.T) {
 	if *got != want {
 		t.Errorf("set %+v, want %+v", *got, want)
 	}
+	// The default timeout stays below a short interval, as the controller's does, and such a check
+	// is valid; a timeout set to the interval is not.
+	for interval, timeout := range map[uint32]time.Duration{2000: time.Second, 3000: 2 * time.Second, 5000: 4 * time.Second, 6000: 5 * time.Second} {
+		c := &agentv1.HealthCheck{Type: "tcp", IntervalMs: interval}
+		if got := healthCheckOf(c); got.Timeout != timeout {
+			t.Errorf("interval %d ms: timeout %v, want %v", interval, got.Timeout, timeout)
+		}
+		if err := validCheck(c, "tcp", nil); err != nil {
+			t.Errorf("interval %d ms without a timeout: %v", interval, err)
+		}
+	}
+	if err := validCheck(&agentv1.HealthCheck{Type: "tcp", IntervalMs: 2000, TimeoutMs: 2000}, "tcp", nil); err == nil {
+		t.Error("a timeout of the interval was valid")
+	}
+	if err := validCheck(&agentv1.HealthCheck{Type: "http"}, "tls_passthrough", nil); err == nil {
+		t.Error("an http check of a tls_passthrough route was valid")
+	}
+}
+
+// TestFailureText: a failed check's text leaves out the connection's local end, which changes
+// with every check, and stays within its bound.
+func TestFailureText(t *testing.T) {
+	err := &net.OpError{Op: "read", Net: "tcp", Source: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 50214},
+		Addr: &net.TCPAddr{IP: net.IPv4(10, 0, 0, 5), Port: 80}, Err: errors.New("i/o timeout")}
+	if got := failureText(err); got != "read tcp 10.0.0.5:80: i/o timeout" {
+		t.Errorf("text %q", got)
+	}
+	if got := failureText(errors.New(strings.Repeat("é", 400))); len(got) > maxFailureText || !utf8.ValidString(got) {
+		t.Errorf("%d bytes, valid UTF-8 %v", len(got), utf8.ValidString(got))
+	}
 }
 
 // rawService answers every connection with answer, then keeps it open, as a keep-alive server
@@ -296,5 +329,75 @@ func TestHealthCheck_UnixHost(t *testing.T) {
 	}
 	if h := <-hosts; h != "localhost" {
 		t.Errorf("Host %q, want localhost", h)
+	}
+}
+
+// TestHealthCheck_Bounded (docs/03-connections.md, "Timeouts, keepalive and backoff"): a
+// connector runs at most maxChecks checks at once, over all its routes; the others wait for a
+// place, and a check whose context ends while it waits fails without dialling.
+func TestHealthCheck_Bounded(t *testing.T) {
+	var mu sync.Mutex
+	active, total := 0, 0
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			active, total = active+1, total+1
+			mu.Unlock()
+			go func() {
+				_, _ = io.Copy(io.Discard, c) // never answers; the check's timeout ends it
+				_ = c.Close()
+				mu.Lock()
+				active--
+				mu.Unlock()
+			}()
+		}
+	}()
+	port := uint16(ln.Addr().(*net.TCPAddr).Port) //nolint:gosec // G115: a port
+	targets := checking(t, loopbackPolicy(t, int(port)))
+	c := &HealthCheck{HTTP: true, Path: "/", StatusMin: 200, StatusMax: 399, Timeout: time.Second}
+	var wg sync.WaitGroup
+	for i := range maxChecks + 36 {
+		route := Route{ID: "rt_" + strconv.Itoa(i%4), Check: c}
+		wg.Go(func() {
+			_ = targets.boundedCheck(context.Background(), route, Target{ID: "tg_" + strconv.Itoa(i), Host: "127.0.0.1", Port: port})
+		})
+	}
+	// Before the first checks time out, exactly maxChecks connections are open; the server counts
+	// a connection's end only once it sees it, so it is not looked at after the timeouts.
+	time.Sleep(500 * time.Millisecond)
+	mu.Lock()
+	if active != maxChecks || total != maxChecks {
+		t.Errorf("%d checks at once, %d so far; want %d", active, total, maxChecks)
+	}
+	mu.Unlock()
+	wg.Wait()
+	mu.Lock()
+	if total != maxChecks+36 {
+		t.Errorf("%d checks in all, want %d", total, maxChecks+36)
+	}
+	mu.Unlock()
+
+	// Every place taken: a waiting check ends with its context.
+	for range maxChecks {
+		targets.checks <- struct{}{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := targets.boundedCheck(ctx, Route{ID: "rt_1", Check: c}, Target{ID: "tg_x", Host: "127.0.0.1", Port: port}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("a check waiting for a place: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if total != maxChecks+36 {
+		t.Errorf("a check without a place dialled")
 	}
 }

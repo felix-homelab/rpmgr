@@ -6,6 +6,7 @@ import (
 	"context"
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -316,5 +317,19 @@ func TestRouteStatus_CapabilityMissing(t *testing.T) {
 	c.AgentSession.UpdateOneID(c2).SetSessionEpoch(2).SetCapabilities([]string{"test.conn"}).ExecX(e.sys)
 	if st := status(gated); st.GetState() != rpmgrv1.RouteState_ROUTE_STATE_READY || len(st.GetNotServing()) != 0 {
 		t.Fatalf("after reconnecting with the capabilities: %v", st)
+	}
+}
+
+// TestRouteStatus_HeaderMatchNote: a gateway without http.header-match is named with what its
+// clients meet, as it sends a route's requests to another route of the hostname (03, "Versioning
+// and capabilities"); other capabilities are named alone.
+func TestRouteStatus_HeaderMatchNote(t *testing.T) {
+	got := apisvc.CapabilityMissingFor("gw_1", []string{"http.header-match"})
+	if got.GetId() != "gw_1" || got.GetReason() != routes.CapabilityMissing ||
+		!strings.HasPrefix(got.GetDetail(), "http.header-match; this gateway sends the route's requests to a route of the same hostname") {
+		t.Errorf("header matches: %v", got)
+	}
+	if got := apisvc.CapabilityMissingFor("gw_1", []string{"route.limits"}); got.GetDetail() != "route.limits" {
+		t.Errorf("another capability: %q", got.GetDetail())
 	}
 }

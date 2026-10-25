@@ -83,6 +83,11 @@ func Hostname(v string) predicate.ConnectListener {
 	return predicate.ConnectListener(sql.FieldEQ(FieldHostname, v))
 }
 
+// DomainID applies equality check predicate on the "domain_id" field. It's identical to DomainIDEQ.
+func DomainID(v string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldEQ(FieldDomainID, v))
+}
+
 // CertificateID applies equality check predicate on the "certificate_id" field. It's identical to CertificateIDEQ.
 func CertificateID(v string) predicate.ConnectListener {
 	return predicate.ConnectListener(sql.FieldEQ(FieldCertificateID, v))
@@ -368,6 +373,81 @@ func HostnameContainsFold(v string) predicate.ConnectListener {
 	return predicate.ConnectListener(sql.FieldContainsFold(FieldHostname, v))
 }
 
+// DomainIDEQ applies the EQ predicate on the "domain_id" field.
+func DomainIDEQ(v string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldEQ(FieldDomainID, v))
+}
+
+// DomainIDNEQ applies the NEQ predicate on the "domain_id" field.
+func DomainIDNEQ(v string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldNEQ(FieldDomainID, v))
+}
+
+// DomainIDIn applies the In predicate on the "domain_id" field.
+func DomainIDIn(vs ...string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldIn(FieldDomainID, vs...))
+}
+
+// DomainIDNotIn applies the NotIn predicate on the "domain_id" field.
+func DomainIDNotIn(vs ...string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldNotIn(FieldDomainID, vs...))
+}
+
+// DomainIDGT applies the GT predicate on the "domain_id" field.
+func DomainIDGT(v string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldGT(FieldDomainID, v))
+}
+
+// DomainIDGTE applies the GTE predicate on the "domain_id" field.
+func DomainIDGTE(v string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldGTE(FieldDomainID, v))
+}
+
+// DomainIDLT applies the LT predicate on the "domain_id" field.
+func DomainIDLT(v string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldLT(FieldDomainID, v))
+}
+
+// DomainIDLTE applies the LTE predicate on the "domain_id" field.
+func DomainIDLTE(v string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldLTE(FieldDomainID, v))
+}
+
+// DomainIDContains applies the Contains predicate on the "domain_id" field.
+func DomainIDContains(v string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldContains(FieldDomainID, v))
+}
+
+// DomainIDHasPrefix applies the HasPrefix predicate on the "domain_id" field.
+func DomainIDHasPrefix(v string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldHasPrefix(FieldDomainID, v))
+}
+
+// DomainIDHasSuffix applies the HasSuffix predicate on the "domain_id" field.
+func DomainIDHasSuffix(v string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldHasSuffix(FieldDomainID, v))
+}
+
+// DomainIDIsNil applies the IsNil predicate on the "domain_id" field.
+func DomainIDIsNil() predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldIsNull(FieldDomainID))
+}
+
+// DomainIDNotNil applies the NotNil predicate on the "domain_id" field.
+func DomainIDNotNil() predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldNotNull(FieldDomainID))
+}
+
+// DomainIDEqualFold applies the EqualFold predicate on the "domain_id" field.
+func DomainIDEqualFold(v string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldEqualFold(FieldDomainID, v))
+}
+
+// DomainIDContainsFold applies the ContainsFold predicate on the "domain_id" field.
+func DomainIDContainsFold(v string) predicate.ConnectListener {
+	return predicate.ConnectListener(sql.FieldContainsFold(FieldDomainID, v))
+}
+
 // CertificateIDEQ applies the EQ predicate on the "certificate_id" field.
 func CertificateIDEQ(v string) predicate.ConnectListener {
 	return predicate.ConnectListener(sql.FieldEQ(FieldCertificateID, v))
@@ -481,6 +561,29 @@ func HasCertificate() predicate.ConnectListener {
 func HasCertificateWith(preds ...predicate.Certificate) predicate.ConnectListener {
 	return predicate.ConnectListener(func(s *sql.Selector) {
 		step := newCertificateStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasDomain applies the HasEdge predicate on the "domain" edge.
+func HasDomain() predicate.ConnectListener {
+	return predicate.ConnectListener(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, DomainTable, DomainColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasDomainWith applies the HasEdge predicate on the "domain" edge with a given conditions (other predicates).
+func HasDomainWith(preds ...predicate.Domain) predicate.ConnectListener {
+	return predicate.ConnectListener(func(s *sql.Selector) {
+		step := newDomainStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

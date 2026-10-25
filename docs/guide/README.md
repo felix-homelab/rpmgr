@@ -35,6 +35,7 @@ New to rpmgr? Read [Concepts](concepts.md), then follow the [Quick start](quick-
 | [TCP and UDP routes](routes/tcp-and-udp.md) | Publish a port, for TCP, UDP or both |
 | [TLS passthrough](routes/tls-passthrough.md) | Pass TLS through to a service that keeps its own certificate |
 | [Targets](routes/targets.md) | Point a route at its services: addresses, HTTPS verification, PROXY protocol, weights, priorities and failover |
+| [Route limits](routes/limits.md) | Cap a route's connections, request rate and bandwidth |
 | [Maintenance and error pages](routes/maintenance-and-pages.md) | Take a service down for maintenance, and see what visitors get when a service is down |
 | [Preview and apply](routes/preview-and-apply.md) | Preview a change, follow it to every gateway and connector, and read a route's state |
 | [Domains and certificates](domains-and-certificates.md) | Prove your domains, get certificates from ACME or upload your own |

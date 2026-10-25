@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 )
@@ -60,6 +61,20 @@ func (_c *ConnectListenerCreate) SetNillableHostname(v *string) *ConnectListener
 	return _c
 }
 
+// SetDomainID sets the "domain_id" field.
+func (_c *ConnectListenerCreate) SetDomainID(v string) *ConnectListenerCreate {
+	_c.mutation.SetDomainID(v)
+	return _c
+}
+
+// SetNillableDomainID sets the "domain_id" field if the given value is not nil.
+func (_c *ConnectListenerCreate) SetNillableDomainID(v *string) *ConnectListenerCreate {
+	if v != nil {
+		_c.SetDomainID(*v)
+	}
+	return _c
+}
+
 // SetCertificateID sets the "certificate_id" field.
 func (_c *ConnectListenerCreate) SetCertificateID(v string) *ConnectListenerCreate {
 	_c.mutation.SetCertificateID(v)
@@ -102,6 +117,11 @@ func (_c *ConnectListenerCreate) SetPort(v *PortAllocation) *ConnectListenerCrea
 // SetCertificate sets the "certificate" edge to the Certificate entity.
 func (_c *ConnectListenerCreate) SetCertificate(v *Certificate) *ConnectListenerCreate {
 	return _c.SetCertificateID(v.ID)
+}
+
+// SetDomain sets the "domain" edge to the Domain entity.
+func (_c *ConnectListenerCreate) SetDomain(v *Domain) *ConnectListenerCreate {
+	return _c.SetDomainID(v.ID)
 }
 
 // AddRouteIDs adds the "routes" edge to the RouteTCP entity by IDs.
@@ -303,6 +323,23 @@ func (_c *ConnectListenerCreate) createSpec() (*ConnectListener, *sqlgraph.Creat
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.CertificateID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.DomainIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   connectlistener.DomainTable,
+			Columns: []string{connectlistener.DomainColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(domain.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.DomainID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := _c.mutation.RoutesIDs(); len(nodes) > 0 {

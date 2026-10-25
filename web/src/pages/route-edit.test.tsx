@@ -10,7 +10,7 @@ import { ViolationsSchema } from "@/gen/buf/validate/validate_pb";
 import { CertificateService, CertificateSource } from "@/gen/rpmgr/v1/certificate_pb";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
-import { Port80Mode, RouteSchema, RouteService, RouteState, TLSMode, type Route, type UpdateRouteRequest } from "@/gen/rpmgr/v1/route_pb";
+import { HealthCheckType, Port80Mode, RouteSchema, RouteService, RouteState, TLSMode, type Route, type UpdateRouteRequest } from "@/gen/rpmgr/v1/route_pb";
 import { ApplyState, StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
@@ -30,9 +30,12 @@ const routes: Record<string, Route> = {
   http: create(RouteSchema, { ...common, spec: { case: "http", value: {
     hostnames: ["wiki.example.com", "w.example.com"], pathPrefix: "/docs", tlsMode: TLSMode.TLS_MODE_CERTIFICATE, certificateId: "crt_1",
     port80: Port80Mode.SERVE, hstsMaxAgeSeconds: 3600, hostHeader: "internal", requestHeadersSet: { "X-A": "1" },
-    responseHeadersSet: { "X-B": "a: b" }, websocket: false, maxBodyBytes: 1024n, maintenance: true, maintenanceMessage: "Back at 18:00.\nSorry." } } }),
+    responseHeadersSet: { "X-B": "a: b" }, websocket: false, maxBodyBytes: 1024n, maintenance: true, maintenanceMessage: "Back at 18:00.\nSorry." } },
+    healthCheck: { type: HealthCheckType.HTTP, port: 8081, httpPath: "/healthz?deep=1", expectedStatusMin: 200, expectedStatusMax: 204,
+      intervalSeconds: 30, timeoutSeconds: 5, unhealthyThreshold: 4, healthyThreshold: 1 } }),
   tcp: create(RouteSchema, { ...common, spec: { case: "tcp", value: { port: 25432, idleTimeoutSeconds: 600 } } }),
-  udp: create(RouteSchema, { ...common, spec: { case: "udp", value: { port: 53, flowIdleTimeoutSeconds: 30 } } }),
+  udp: create(RouteSchema, { ...common, spec: { case: "udp", value: { port: 53, flowIdleTimeoutSeconds: 30 } },
+    healthCheck: { type: HealthCheckType.TCP, port: 53 } }),
   tcpUdp: create(RouteSchema, { ...common, spec: { case: "tcpUdp", value: { port: 5353, idleTimeoutSeconds: 600, flowIdleTimeoutSeconds: 30 } } }),
   tlsPassthrough: create(RouteSchema, { ...common, spec: { case: "tlsPassthrough", value: { hostnames: ["db.example.com"] } } }),
 };
@@ -123,6 +126,71 @@ describe("RouteEdit", () => {
     const spec = updates[0]!.route?.spec;
     expect(spec?.case === "tcpUdp" && [spec.value.port, spec.value.idleTimeoutSeconds, spec.value.flowIdleTimeoutSeconds]).toEqual([5354, 600, undefined]);
     expect(updates[0]!.updateMask?.paths).toEqual(expect.arrayContaining(["tcp_udp.port", "tcp_udp.flow_idle_timeout_seconds"]));
+  });
+
+  it("adds a health check to a route without one, sending the check whole under one mask path", async () => {
+    const updates = edit(routes.tcp!);
+    const kind = await screen.findByLabelText<HTMLSelectElement>("Health check");
+    expect(kind.value).toBe("none");
+    expect(screen.queryByLabelText("Check interval (seconds)")).toBeNull();
+    fireEvent.change(kind, { target: { value: String(HealthCheckType.TCP) } });
+    expect(screen.queryByLabelText("Path to request")).toBeNull(); // HTTP only
+    fireEvent.change(screen.getByLabelText("Check interval (seconds)"), { target: { value: "5" } });
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]!.route?.healthCheck).toMatchObject({ type: HealthCheckType.TCP, intervalSeconds: 5, timeoutSeconds: 0, port: 0 });
+    expect(updates[0]!.updateMask?.paths.filter((p) => p === "health_check")).toHaveLength(1);
+  });
+
+  it("turns an HTTP check into a TCP one, dropping its path and statuses, and removes a check", async () => {
+    const updates = edit(routes.http!);
+    const kind = await screen.findByLabelText<HTMLSelectElement>("Health check");
+    expect([kind.value, (screen.getByLabelText("Path to request") as HTMLInputElement).value,
+      (screen.getByLabelText("Passing statuses") as HTMLInputElement).value]).toEqual([String(HealthCheckType.HTTP), "/healthz?deep=1", "200-204"]);
+    fireEvent.change(kind, { target: { value: String(HealthCheckType.TCP) } });
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]!.route?.healthCheck).toMatchObject({ type: HealthCheckType.TCP, port: 8081, httpPath: "", expectedStatusMin: 0,
+      expectedStatusMax: 0, intervalSeconds: 30, timeoutSeconds: 5, unhealthyThreshold: 4, healthyThreshold: 1 });
+    cleanup();
+    const removed = edit(routes.udp!);
+    fireEvent.change(await screen.findByLabelText("Health check"), { target: { value: "none" } });
+    save();
+    await waitFor(() => expect(removed).toHaveLength(1));
+    expect(removed[0]!.route?.healthCheck).toBeUndefined();
+    expect(removed[0]!.updateMask?.paths).toContain("health_check");
+  });
+
+  it.each([["a status range without a dash", "200"], ["letters", "2xx-3xx"]])("refuses %s as passing statuses before sending", async (_, bad) => {
+    const updates = edit(routes.http!);
+    fireEvent.change(await screen.findByLabelText("Passing statuses"), { target: { value: bad } });
+    save();
+    expect(await screen.findByText("Write the passing statuses as two three-digit codes, such as 200-399.")).toBeTruthy();
+    expect(updates).toEqual([]);
+  });
+
+  it("clears the passing statuses back to the default with an empty field", async () => {
+    const updates = edit(routes.http!);
+    fireEvent.change(await screen.findByLabelText("Passing statuses"), { target: { value: "" } });
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]!.route?.healthCheck).toMatchObject({ expectedStatusMin: 0, expectedStatusMax: 0, httpPath: "/healthz?deep=1" });
+  });
+
+  it("shows a violation of a part of the health check on that part's field", async () => {
+    edit(routes.http!, () => {
+      const el = (name: string, n: number, t: FieldDescriptorProto_Type) => ({ fieldName: name, fieldNumber: n, fieldType: t });
+      const v = create(ViolationsSchema, { violations: [
+        { field: { elements: [el("route", 1, FieldDescriptorProto_Type.MESSAGE), el("health_check", 27, FieldDescriptorProto_Type.MESSAGE),
+          el("interval_seconds", 6, FieldDescriptorProto_Type.UINT32)] }, message: "value must be less than or equal to 3600" },
+      ] });
+      throw new ConnectError("invalid", Code.InvalidArgument, undefined, [{ desc: ViolationsSchema, value: v }]);
+    });
+    await screen.findByLabelText("Name");
+    save();
+    const interval = screen.getByLabelText("Check interval (seconds)");
+    await waitFor(() => expect(interval.getAttribute("aria-invalid")).toBe("true"));
+    expect(screen.getByLabelText("Health check").getAttribute("aria-invalid")).toBeNull();
   });
 
   it("checks the API's rules before sending", async () => {

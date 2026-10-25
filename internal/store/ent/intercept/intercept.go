@@ -32,6 +32,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -57,6 +58,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routelimit"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -774,6 +776,33 @@ func (f TraverseGatewayPage) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.GatewayPageQuery", q)
 }
 
+// The HealthCheckFunc type is an adapter to allow the use of ordinary function as a Querier.
+type HealthCheckFunc func(context.Context, *ent.HealthCheckQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f HealthCheckFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.HealthCheckQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.HealthCheckQuery", q)
+}
+
+// The TraverseHealthCheck type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseHealthCheck func(context.Context, *ent.HealthCheckQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseHealthCheck) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseHealthCheck) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.HealthCheckQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.HealthCheckQuery", q)
+}
+
 // The InstanceFunc type is an adapter to allow the use of ordinary function as a Querier.
 type InstanceFunc func(context.Context, *ent.InstanceQuery) (ent.Value, error)
 
@@ -1422,6 +1451,33 @@ func (f TraverseRouteHostname) Traverse(ctx context.Context, q ent.Query) error 
 	return fmt.Errorf("unexpected query type %T. expect *ent.RouteHostnameQuery", q)
 }
 
+// The RouteLimitFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RouteLimitFunc func(context.Context, *ent.RouteLimitQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RouteLimitFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RouteLimitQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RouteLimitQuery", q)
+}
+
+// The TraverseRouteLimit type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRouteLimit func(context.Context, *ent.RouteLimitQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRouteLimit) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRouteLimit) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteLimitQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RouteLimitQuery", q)
+}
+
 // The RoutePolicyFunc type is an adapter to allow the use of ordinary function as a Querier.
 type RoutePolicyFunc func(context.Context, *ent.RoutePolicyQuery) (ent.Value, error)
 
@@ -1770,6 +1826,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.GatewayGroupQuery, predicate.GatewayGroup, gatewaygroup.OrderOption]{typ: ent.TypeGatewayGroup, tq: q}, nil
 	case *ent.GatewayPageQuery:
 		return &query[*ent.GatewayPageQuery, predicate.GatewayPage, gatewaypage.OrderOption]{typ: ent.TypeGatewayPage, tq: q}, nil
+	case *ent.HealthCheckQuery:
+		return &query[*ent.HealthCheckQuery, predicate.HealthCheck, healthcheck.OrderOption]{typ: ent.TypeHealthCheck, tq: q}, nil
 	case *ent.InstanceQuery:
 		return &query[*ent.InstanceQuery, predicate.Instance, instance.OrderOption]{typ: ent.TypeInstance, tq: q}, nil
 	case *ent.InstanceSecretQuery:
@@ -1818,6 +1876,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.RouteHTTPQuery, predicate.RouteHTTP, routehttp.OrderOption]{typ: ent.TypeRouteHTTP, tq: q}, nil
 	case *ent.RouteHostnameQuery:
 		return &query[*ent.RouteHostnameQuery, predicate.RouteHostname, routehostname.OrderOption]{typ: ent.TypeRouteHostname, tq: q}, nil
+	case *ent.RouteLimitQuery:
+		return &query[*ent.RouteLimitQuery, predicate.RouteLimit, routelimit.OrderOption]{typ: ent.TypeRouteLimit, tq: q}, nil
 	case *ent.RoutePolicyQuery:
 		return &query[*ent.RoutePolicyQuery, predicate.RoutePolicy, routepolicy.OrderOption]{typ: ent.TypeRoutePolicy, tq: q}, nil
 	case *ent.RouteTCPQuery:

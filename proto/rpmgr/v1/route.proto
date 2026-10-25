@@ -149,6 +149,9 @@ message Route {
     max_items: 20
     unique: true
   }];
+  // Its limits, for the route as a whole: each enabled gateway of its group enforces its share
+  // (docs/03-connections.md, "Route limits"). Not set is no limit.
+  RouteLimits limits = 22;
   // Its transport policy; the connector's if not set (docs/03-connections.md, "Transport
   // selection").
   DataTransport transport = 23 [(buf.validate.field).enum.defined_only = true];
@@ -159,6 +162,9 @@ message Route {
   // The user who created or last changed it, empty for the system; output only. The UI names them
   // when a save meets a newer version (docs/09-web-ui.md, U6).
   string update_user_id = 26;
+  // Phase 2: the route's health check, which each connector runs against each of its targets of
+  // the route (docs/03-connections.md, "Target health"); unset, every target counts as healthy.
+  HealthCheck health_check = 27;
   // The version to send back with an update; output only.
   string etag = 30;
   // What the agents report about it, with GetRoute and ListRoutes; output only.
@@ -193,7 +199,8 @@ message RouteStatus {
   RouteState state = 1;
   // How many targets are enabled.
   int32 targets_total = 2;
-  // How many of them are ready: the connector is online and reports the route ready.
+  // How many of them are ready: the connector is online and reports the route ready and, with a
+  // health check, the target healthy.
   int32 targets_ready = 3;
   // How many gateways of the group are enabled.
   int32 gateways_total = 4;
@@ -204,6 +211,42 @@ message RouteStatus {
   repeated RouteNotServing not_serving = 6;
   // With ERROR: the agents that rejected the snapshot, with their reasons.
   repeated AgentApplyStatus rejections = 7;
+  // Phase 2, a route with a health check: its targets whose connector runs no checks, as it is of
+  // an earlier release, so they count as healthy without being checked (D133).
+  repeated string health_not_checked = 8;
+}
+
+// HealthCheck is a route's active health check (docs/03-connections.md, "Target health"). A value
+// of 0 takes the default of docs/03-connections.md, "Timeouts, keepalive and backoff".
+message HealthCheck {
+  // TCP: the dial succeeds; HTTP: a GET of http_path answers with an expected status.
+  HealthCheckType type = 1 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  // The port to check instead of each target's; required on udp routes.
+  uint32 port = 2 [(buf.validate.field).uint32.lte = 65535];
+  // HTTP: the path and query, starting with "/"; "/" if empty.
+  string http_path = 3 [(buf.validate.field).string.max_len = 1024];
+  // HTTP: the passing statuses, 200 to 399 unless both are set.
+  uint32 expected_status_min = 4 [(buf.validate.field).uint32.lte = 599];
+  uint32 expected_status_max = 5 [(buf.validate.field).uint32.lte = 599];
+  // How often each target is checked, and how long one check may take, below the interval.
+  uint32 interval_seconds = 6 [(buf.validate.field).uint32.lte = 3600];
+  uint32 timeout_seconds = 7 [(buf.validate.field).uint32.lte = 3600];
+  // Failed checks in a row that make a target unhealthy, and passed ones that make it healthy.
+  uint32 unhealthy_threshold = 8 [(buf.validate.field).uint32.lte = 10];
+  uint32 healthy_threshold = 9 [(buf.validate.field).uint32.lte = 10];
+}
+
+// HealthCheckType is what a health check checks.
+enum HealthCheckType {
+  // Not set.
+  HEALTH_CHECK_TYPE_UNSPECIFIED = 0;
+  // The dial succeeds.
+  HEALTH_CHECK_TYPE_TCP = 1;
+  // An HTTP GET answers with an expected status.
+  HEALTH_CHECK_TYPE_HTTP = 2;
 }
 
 // RouteNotServing is a target that is not ready, or a gateway that does not serve a route.
@@ -288,6 +331,44 @@ message HTTPRouteSpec {
     max_len: 500
     pattern: "^[^\\x00-\\x09\\x0B-\\x1F\\x7F-\\x9F]*$"
   }];
+  // Request headers a request must carry for this route (docs/03-connections.md, "HTTP routes"):
+  // among the routes of a hostname and path prefix, one whose matches all hold wins over one with
+  // fewer, and the route created first wins a tie. A route of a group with the same hostname,
+  // path prefix and set of matches as another is refused.
+  repeated HeaderMatch header_matches = 14 [(buf.validate.field).repeated.max_items = 8];
+  // How long its gateways wait for the upstream's response headers before the request gets 504,
+  // 1 to 3600 seconds; 0 keeps the gateway's (docs/03-connections.md, "Timeouts, keepalive and
+  // backoff", D94).
+  uint32 upstream_response_header_timeout_seconds = 15 [(buf.validate.field).uint32.lte = 3600];
+  // How long a pooled keep-alive connection to the upstream may stay unused, 1 to 3600 seconds;
+  // 0 keeps the gateway's.
+  uint32 upstream_idle_timeout_seconds = 16 [(buf.validate.field).uint32.lte = 3600];
+}
+
+// HeaderMatch is a request header an http route matches on: its name, with an exact value or
+// with presence alone.
+message HeaderMatch {
+  // The header's name, compared without regard to case; not Host, Content-Length,
+  // Transfer-Encoding, Trailer or an Rpmgr-User- header.
+  string name = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 256
+    well_known_regex: KNOWN_REGEX_HTTP_HEADER_NAME
+  }];
+  // How it matches.
+  oneof match {
+    option (buf.validate.oneof).required = true;
+    // One of the header's values equals this exactly; no leading or trailing blank, which a
+    // server drops.
+    string exact = 2 [(buf.validate.field).string = {
+      min_len: 1
+      max_len: 1024
+      pattern: "^[^ \\t](.*[^ \\t])?$"
+      well_known_regex: KNOWN_REGEX_HTTP_HEADER_VALUE
+    }];
+    // The header is present, with any value; must be true.
+    bool present = 3 [(buf.validate.field).bool.const = true];
+  }
 }
 
 // TCPRouteSpec is a tcp route: a public port of the gateway group, from its TCP port pools.
@@ -419,6 +500,17 @@ enum ProxyProtocol {
   PROXY_PROTOCOL_V1 = 2;
   // Version 2, binary.
   PROXY_PROTOCOL_V2 = 3;
+}
+
+// RouteLimits are a route's limits, divided among the enabled gateways of its group, rounded up
+// and at least 1 each; 0 is no limit (docs/03-connections.md, "Route limits").
+message RouteLimits {
+  // Open connections, UDP flows, or HTTP requests in flight, upgraded ones included.
+  uint32 max_connections = 1 [(buf.validate.field).uint32.lte = 1000000];
+  // HTTP requests, new connections or new flows per second.
+  uint32 requests_per_second = 2 [(buf.validate.field).uint32.lte = 1000000];
+  // Bytes per second in each direction.
+  uint64 bandwidth_bytes_per_second = 3 [(buf.validate.field).uint64.lte = 100000000000];
 }
 
 // RouteTarget is where a route's streams go: a connector of the org and an address it dials.

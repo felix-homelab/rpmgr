@@ -188,6 +188,15 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expect(page.getByRole("cell", { name: "Intermediate", exact: true })).toBeVisible();
   await expectAccessible(page);
 
+  // The policy form with a per-client rate limit (#917), which is left unsaved.
+  await page.goto("/policies");
+  await page.getByRole("button", { name: "New access policy" }).first().click();
+  const policyForm = page.getByRole("form", { name: "New access policy" });
+  await policyForm.getByLabel("Kind").selectOption("rateLimit");
+  await expect(policyForm.getByText(/Over it, HTTP gets 429/)).toBeVisible();
+  await expectAccessible(page);
+  await policyForm.getByRole("button", { name: "Cancel" }).click();
+
   // On a wide screen every page fills the window beside the sidebar, and the route form stands in
   // two columns, which a phone stacks.
   const desktop = page.viewportSize()!;
@@ -205,6 +214,18 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.setViewportSize({ width: 390, height: desktop.height });
   expect(await top("Name")).toBeGreaterThan(await top("Gateway group"));
   await page.setViewportSize(desktop);
+  // A health check's parts appear with its kind: an HTTP check has a path and passing statuses,
+  // a TCP check neither; none of them is required (D133).
+  await page.goto("/routes/new");
+  await page.getByLabel("Health check", { exact: true }).selectOption({ label: "HTTP: a GET answers with a passing status" });
+  await page.getByLabel("Path to request").fill("/healthz");
+  await page.getByLabel("Passing statuses").fill("200-204");
+  await page.getByLabel("Check interval (seconds)").fill("30");
+  await expectAccessible(page);
+  await page.getByLabel("Health check", { exact: true }).selectOption({ label: "TCP: the target accepts the connection" });
+  await expect(page.getByLabel("Path to request")).toHaveCount(0);
+  await expect(page.getByLabel("Port to check")).toBeVisible();
+  expect(await unmarked(page)).toEqual([]);
   await page.goto("/settings/pki");
 
   // A gateway group's own page: uploaded, then previewed as the controller renders it, with its

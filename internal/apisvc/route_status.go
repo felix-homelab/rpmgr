@@ -9,6 +9,7 @@ import (
 	"time"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
@@ -22,6 +23,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
@@ -62,6 +64,10 @@ type routeStatuses struct {
 	// certPending are the routes on a TLS CONNECT listener without a certificate, with the
 	// listener's hostname and the last ACME error as detail.
 	certPending map[string]string
+	// checked are the routes with a health check, and caps the capabilities of each agent's
+	// session, which say whether a connector runs checks (D133).
+	checked map[string]bool
+	caps    map[string][]string
 	// changed is the newest revision that changed each resource, among the revisions after the
 	// oldest one an online agent has applied. With more of them than statusWindow, cut is the
 	// oldest one read, and a change not read counts as that one.
@@ -74,7 +80,8 @@ type routeStatuses struct {
 func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, routes []*ent.Route, now time.Time) (*routeStatuses, error) {
 	v := &routeStatuses{now: now, enabled: map[string]bool{}, online: map[string]bool{}, states: map[string]*ent.AgentState{},
 		notReady: map[[2]string]*ent.ResourceStatus{}, links: map[[2]string]bool{}, targets: map[string][]*ent.RouteTarget{},
-		changed: map[string]int64{}, maintenance: map[string]bool{}, missing: map[[2]string][]string{}, certPending: map[string]string{}}
+		changed: map[string]int64{}, maintenance: map[string]bool{}, missing: map[[2]string][]string{},
+		certPending: map[string]string{}, checked: map[string]bool{}}
 	inst, err := c.Instance.Get(sys, 1)
 	if err != nil {
 		return nil, err
@@ -155,6 +162,14 @@ func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, route
 	for _, h := range inMaintenance {
 		v.maintenance[h.RouteID] = true
 	}
+	checked, err := c.HealthCheck.Query().Where(healthcheck.RouteIDIn(routeIDs...)).Select(healthcheck.FieldRouteID).Strings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range checked {
+		v.checked[id] = true
+	}
+	v.caps = caps
 	if err := v.readMissing(ctx, c, routes, caps); err != nil {
 		return nil, err
 	}
@@ -299,10 +314,22 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 		case v.missing[[2]string{t.ConnectorID, r.ID}] != nil:
 			out.NotServing = append(out.NotServing, capabilityMissing(t.ID, v.missing[[2]string{t.ConnectorID, r.ID}]))
 		case nr != nil:
+			// The target's own row, from its health checks, says more than the route's.
+			if nt := v.notReady[[2]string{t.ConnectorID, t.ID}]; nt != nil {
+				nr = nt
+			}
 			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: t.ID, Reason: notReadyReason(nr.Reason), Detail: nr.Detail})
+		case v.notReady[[2]string{t.ConnectorID, t.ID}] != nil:
+			// The route is ready on the connector, but this target failed its health check.
+			nt := v.notReady[[2]string{t.ConnectorID, t.ID}]
+			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: t.ID, Reason: notReadyReason(nt.Reason), Detail: nt.Detail})
+			ready[t.ConnectorID] = true // its other targets serve
 		default:
 			out.TargetsReady++
 			ready[t.ConnectorID] = true
+		}
+		if v.checked[r.ID] && v.online[t.ConnectorID] && !slices.Contains(v.caps[t.ConnectorID], agentproto.CapHealthActive) {
+			out.HealthNotChecked = append(out.HealthNotChecked, t.ID)
 		}
 		if known && enabled {
 			check(t.ConnectorID)
@@ -360,9 +387,23 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 	return out
 }
 
-// capabilityMissing is the reason of an agent that lacks capabilities a route needs.
+// capabilityMissing is the reason of an agent that lacks capabilities a route needs, with what
+// that means for the route's clients where it is more than the route not being served there.
 func capabilityMissing(id string, caps []string) *rpmgrv1.RouteNotServing {
-	return &rpmgrv1.RouteNotServing{Id: id, Reason: routes.CapabilityMissing, Detail: strings.Join(caps, ", ")}
+	detail := strings.Join(caps, ", ")
+	for _, c := range caps {
+		if note := capabilityNotes[c]; note != "" {
+			detail += "; " + note
+		}
+	}
+	return &rpmgrv1.RouteNotServing{Id: id, Reason: routes.CapabilityMissing, Detail: detail}
+}
+
+// capabilityNotes say what clients meet on an agent that lacks a capability, where another route
+// takes the route's requests there (docs/03-connections.md, "Versioning and capabilities").
+var capabilityNotes = map[string]string{
+	agentproto.CapHTTPHeaderMatch: "this gateway sends the route's requests to a route of the same hostname and path prefix " +
+		"without header matches, if there is one",
 }
 
 // linked reports whether gateway has a data session with one of connectors.
