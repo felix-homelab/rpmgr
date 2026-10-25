@@ -17,7 +17,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
-	"github.com/felix-homelab/rpmgr/internal/domains"
+	"github.com/felix-homelab/rpmgr/internal/dnsname"
 )
 
 // Applier runs a connector's snapshots (docs/03-connections.md, "Configuration reconciliation"):
@@ -121,7 +121,7 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 				}
 			}
 			if h := g.GetWssHostname(); h != "" {
-				if n, err := domains.Normalize(h, false); err != nil || n != h {
+				if n, err := dnsname.Normalize(h, false); err != nil || n != h {
 					bad(id, "WSS hostname %q is not a normalised DNS name", h)
 				}
 			}
