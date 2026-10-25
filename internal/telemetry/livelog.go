@@ -73,7 +73,13 @@ func NewLiveLogger(w io.Writer, cfg LogConfig) (*slog.Logger, *LiveLog, error) {
 		return nil, nil, err
 	}
 	st := &liveState{subs: map[*Subscription]struct{}{}}
-	text := slog.NewTextHandler(&st.buf, &slog.HandlerOptions{Level: slog.LevelDebug, ReplaceAttr: redact})
+	// A line carries its time and level as fields of its own, so its text leaves them out.
+	text := slog.NewTextHandler(&st.buf, &slog.HandlerOptions{Level: slog.LevelDebug, ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+		if len(groups) == 0 && (a.Key == slog.TimeKey || a.Key == slog.LevelKey) {
+			return slog.Attr{}
+		}
+		return redact(groups, a)
+	}})
 	l := &LiveLog{base: level, state: st}
 	return slog.New(&liveHandler{base: base.Handler(), text: text, level: level, state: st}), l, nil
 }

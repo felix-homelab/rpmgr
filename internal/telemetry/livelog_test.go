@@ -58,7 +58,7 @@ func TestLiveLog(t *testing.T) {
 		strings.Contains(lines[0].Text, "hunter2") || strings.Contains(lines[0].Text, "secretsecret") {
 		t.Fatalf("an info subscription with a filter: %+v", lines)
 	}
-	if lines, _ := debug.Take(); len(lines) != 3 || lines[0].Level != slog.LevelDebug {
+	if lines, _ := debug.Take(); len(lines) != 3 || lines[0].Level != slog.LevelDebug || lines[0].Text != `msg=dialing route=rte_1` {
 		t.Fatalf("a subscription raised to debug: %+v", lines)
 	}
 	for range telemetry.LiveLogBuffer + 10 {
