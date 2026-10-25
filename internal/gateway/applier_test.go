@@ -270,6 +270,16 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 	if errs := a.Validate(ok); len(errs) != 0 {
 		t.Fatal(errs)
 	}
+	// Two routes may share a hostname and prefix with different header matches.
+	shared := gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com|/api"),
+		withHTTP(httpResource("rt_2", "http", "app.example.com|/api"), func(r *agentv1.GatewayHTTPRoute) {
+			r.HeaderMatches = []*agentv1.HTTPHeaderMatch{{Name: "X-Env", Value: "beta"}}
+		}), withHTTP(httpResource("rt_3", "http", "app.example.com|/api"), func(r *agentv1.GatewayHTTPRoute) {
+			r.HeaderMatches = []*agentv1.HTTPHeaderMatch{{Name: "X-Env", Present: true}}
+		}))
+	if errs := a.Validate(shared); len(errs) != 0 {
+		t.Fatal(errs)
+	}
 	for _, tc := range []struct {
 		name string
 		snap *agentv1.Snapshot
@@ -345,6 +355,23 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 		{"a relative prefix", gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com|api")), "start with /"},
 		{"the same host and prefix twice", gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com|/api"),
 			httpResource("rt_2", "http", "app.example.com|/api")), "also served by rt_1"},
+		{"the same host, prefix and header matches twice", gatewaySnapshot(1,
+			withHTTP(httpResource("rt_1", "http", "app.example.com|/api"), func(r *agentv1.GatewayHTTPRoute) {
+				r.HeaderMatches = []*agentv1.HTTPHeaderMatch{{Name: "X-Env", Value: "beta"}}
+			}), withHTTP(httpResource("rt_2", "http", "app.example.com|/api"), func(r *agentv1.GatewayHTTPRoute) {
+				r.HeaderMatches = []*agentv1.HTTPHeaderMatch{{Name: "X-Env", Value: "beta"}}
+			})), "also served by rt_1 with the same header matches"},
+		{"nine header matches", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			for i := range 9 {
+				r.HeaderMatches = append(r.HeaderMatches, &agentv1.HTTPHeaderMatch{Name: "X-" + strings.Repeat("a", i+1), Present: true})
+			}
+		})), "at most 8"},
+		{"CR LF in a header match", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.HeaderMatches = []*agentv1.HTTPHeaderMatch{{Name: "X-Env", Value: "a\r\nX-Admin: 1"}}
+		})), "needs a valid"},
+		{"a header matched twice", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.HeaderMatches = []*agentv1.HTTPHeaderMatch{{Name: "X-Env", Value: "a"}, {Name: "X-Env", Present: true}}
+		})), "matched twice"},
 		{"http after passthrough", gatewaySnapshot(1, passResource("rt_1", "app.example.com"),
 			httpResource("rt_2", "http", "app.example.com")), "also a hostname of rt_1"},
 		{"passthrough after http", gatewaySnapshot(1, httpResource("rt_1", "http", "app.example.com|/x"),
@@ -534,6 +561,29 @@ func TestApplier_Maintenance(t *testing.T) {
 	}
 	if b := page(); !strings.Contains(b, "<h1>Service unavailable</h1>") { // no connector
 		t.Fatalf("out of maintenance: %s", b)
+	}
+}
+
+// TestApplier_HeaderMatches: an http route's header matches in the snapshot decide which of two
+// routes of one hostname and prefix a request reaches; names arrive canonical.
+func TestApplier_HeaderMatches(t *testing.T) {
+	a, assign := gateway.NewApplier()
+	m := gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: "gw_01", Assignment: assign})
+	t.Cleanup(m.Close)
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Sessions: m})
+	t.Cleanup(h.Close)
+	a.Bind(gateway.Served{HTTP: h, Sessions: m})
+	beta := withHTTP(httpResource("rt_beta", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+		r.HeaderMatches = []*agentv1.HTTPHeaderMatch{{Name: "X-Env", Value: "beta"}}
+	})
+	if st := a.Apply(t.Context(), gatewaySnapshot(1, httpResource("rt_main", "http", "app.example.com"), beta), agent.Changes{}); len(st) != 0 {
+		t.Fatal(st)
+	}
+	if got := gateway.RouteFor(h, "app.example.com", "/", http.Header{"X-Env": {"beta"}}); got != "rt_beta" {
+		t.Errorf("with the header: %q", got)
+	}
+	if got := gateway.RouteFor(h, "app.example.com", "/", http.Header{"X-Env": {"prod"}}); got != "rt_main" {
+		t.Errorf("with another value: %q", got)
 	}
 }
 

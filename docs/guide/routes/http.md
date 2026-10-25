@@ -116,6 +116,7 @@ type and its gateway group never change.
 | Data-session transport | **Transport** | `--transport auto\|quic\|h2` | the connector's |
 | Hostnames, 1 to 100 | **Hostnames**, one per line | `--hostname`, repeated | required |
 | Path prefix | **Path prefix** | `--path-prefix` | every path |
+| Header matches | not in the web UI yet | `--match-header Name=value` or `--match-header Name`, repeated | none |
 | Certificate source | **TLS certificate**: **From ACME** or **Uploaded** | `--tls-mode acme\|certificate` | ACME |
 | Uploaded certificate | **Uploaded certificate**, one that covers every hostname | `--certificate <id>` | none |
 | Port 80 | **Port 80**: **Redirect to HTTPS**, **Serve the route**, **Closed** | `--port80 redirect\|serve\|off` | redirect |
@@ -130,8 +131,8 @@ type and its gateway group never change.
 | Access policies | **Access policies** card on the route's page | `--policy`, repeated | none |
 | Served or not | **Enabled** switch on the route's page | `rpmgr enable route`, `rpmgr disable route` | enabled |
 
-On the command line, `--label`, `--hostname`, `--policy` and the header flags replace the whole
-list in an update; given once with an empty value, such as `--policy ""`, they empty it. A boolean
+On the command line, `--label`, `--hostname`, `--policy`, `--match-header` and the header flags
+replace the whole list in an update; given once with an empty value, such as `--policy ""`, they empty it. A boolean
 flag takes its value after `=`: `--websocket=false`, `--maintenance=false`.
 
 The transport decides how the route's streams travel between gateways and connectors; see
@@ -155,6 +156,8 @@ The transport decides how the route's streams travel between gateways and connec
   A request goes to the route with the longest prefix that matches at a segment boundary: `/api`
   matches `/api` and `/api/users`, not `/apix`. A prefix starts with `/`; empty serves every path.
 - The path goes to the upstream unchanged: the prefix is not removed.
+- Paths under `/.rpmgr/` belong to the gateway on every hostname and never reach the upstream;
+  they get the "Site not available" page ([03](../../03-connections.md#http-routes)).
 - A path that a backend might read differently from the gateway is refused with 400 before a
   route is chosen, so it cannot reach a path that a narrower route protects through a broader one:
   an empty, `.` or `..` segment (`//admin`, `/x/../admin`), also with `;` parameters
@@ -166,6 +169,33 @@ The transport decides how the route's streams travel between gateways and connec
 - A hostname that a [TLS passthrough](tls-passthrough.md) route of the group uses cannot be an
   HTTP route's, and the reverse; the refusal names the other route. A hostname with a prefix that
   another HTTP route of the group holds already is refused as taken.
+
+### Header matches
+
+A route can also ask for request headers, so that several routes share a hostname and path
+prefix and a header decides between them: a beta backend for requests with `X-Env: beta`, or a
+backend per tenant. Each match names a header and either an exact value or presence alone:
+
+```sh
+rpmgr update route app-beta --match-header X-Env=beta
+rpmgr update route app-tenants --match-header X-Tenant
+```
+
+- Header names compare without regard to case; values compare exactly, so `Beta` is not `beta`.
+  A header sent several times matches when any of its values does.
+- Among the routes of a hostname and path prefix, a route whose matches all hold wins over one
+  with fewer matches, and a route without matches serves the requests no other route takes. When
+  two routes with as many matches both hold, the route created first wins; route preview warns
+  about such overlaps. A request that no route of its prefix takes goes to the route of the next
+  shorter prefix.
+- Two routes of a group may not have the same hostname, prefix and set of matches; the second is
+  refused as taken. A route has a few matches at most, `Host` and the `Rpmgr-User-` headers cannot
+  be matched, and a header is matched once ([03](../../03-connections.md#http-routes)).
+- Header matches choose a route, not a certificate, and apply on port 80 too. They are no access
+  control: anyone can send a header. Use an [access policy](../access-policies.md) to keep clients
+  out.
+- Gateways of release 0.2 and earlier do not match headers: they never get a route that has
+  matches, and the route's status names them with `CAPABILITY_MISSING` until they are updated.
 
 ### Certificates
 
@@ -239,7 +269,7 @@ Phase 2 ([13](../../13-roadmap.md#phase-2--production)).
 |---|---|---|
 | The path is empty or has an empty, `.` or `..` segment, a `\` or a control character | 400 | text |
 | A `CONNECT` request | 501 | text |
-| No route serves the hostname or path, or the route is disabled | 404 | "Site not available" page |
+| No route serves the hostname, path and headers, the route is disabled, or the path is under `/.rpmgr/` | 404 | "Site not available" page |
 | The request names another host than the TLS connection, which no route serves | 421 | text |
 | An access policy refuses the client, or upgrades are off | 403 | text |
 | Basic auth missing or wrong | 401 | text, with `WWW-Authenticate` |
@@ -261,6 +291,6 @@ clients get plain text. The pages and their rules are in
 - The sizes and timeouts that apply to every route are fixed
   ([03](../../03-connections.md#timeouts-keepalive-and-backoff)). A route has at most 100
   hostnames, and 32 request and 32 response headers to set.
-- Routing on request headers, OIDC sign-in in front of a route, per-route rate and connection
+- OIDC sign-in in front of a route, per-route rate and connection
   limits and custom error pages are planned for Phase 2, public HTTP/3 for Phase 3
   ([05](../../05-features.md#http-features)).

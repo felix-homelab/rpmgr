@@ -687,9 +687,10 @@ capabilities, so a gateway of an earlier release never serves a route without th
 ([03](03-connections.md#versioning-and-capabilities)).
 
 - **Reserved path and identity headers.** `/.rpmgr/` on an http route hostname never goes
-  upstream, and the gateway removes `Rpmgr-User-Email`, `Rpmgr-User-Subject` and
-  `Rpmgr-User-Groups` from every client request on every http route, so that only the gateway sets
-  them ([03](03-connections.md#http-routes)).
+  upstream, and the gateway removes every header and trailer whose name starts with `Rpmgr-User-`
+  from every client request on every http route, also when the name is spelt with `_` for `-`,
+  which CGI-style servers read alike, so that only the gateway sets them
+  ([03](03-connections.md#http-routes), [D135](14-open-decisions.md#engineering)).
 - **Per-client rate limits** count each client address, or IPv6 /64, in bounded tables on each
   gateway ([03](03-connections.md#access-policies)). A UDP source address can be forged at will, so
   udp flows count in tables of their own: a flood of forged sources never fills the table that
