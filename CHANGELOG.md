@@ -16,8 +16,9 @@ Changes to the design documents are not recorded here: see the git history and t
   and clients pick a route by name through it as through an HTTP proxy, with no proxy credentials,
   with basic auth over TLS, or with basic auth in the clear, which every write warns about. Set
   with `rpmgr create route --tcp --http-connect --authority … --connect-auth …`, the API's
-  `TCPRouteSpec.listener_mode` and `connect`, and manifests; the web UI follows. Gateways of
-  earlier releases do not serve such routes. (#634, #635)
+  `TCPRouteSpec.listener_mode` and `connect`, manifests, and the web UI's route form, which keeps
+  warning while basic auth in the clear is chosen. Gateways of earlier releases do not serve such
+  routes. (#634, #635)
 
 - Routes: limits for a route as a whole, on every route type: open connections, flows or HTTP
   requests in flight, requests or new connections a second, and bandwidth in each direction, set

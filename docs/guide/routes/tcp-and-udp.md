@@ -189,6 +189,11 @@ rpmgr create route --tcp --http-connect --name bastion --group eu \
 ssh -o ProxyCommand='nc -X connect -x edge.example.com:20001 %h %p' bastion.internal
 ```
 
+In the web UI, **Create a route** with **TCP**, then **Listener**: **A CONNECT listener shared with
+other routes (HTTP proxy)**, the **CONNECT names**, one per line, and **Proxy credentials**:
+
+![The form for a new CONNECT route](../images/web/route-new-connect.png)
+
 - **Authorities** are the names clients ask for, compared in lower case; the port of the CONNECT is
   ignored. Each name is one route's on its listener.
 - **Authentication mode**, the same for every route of a listener:

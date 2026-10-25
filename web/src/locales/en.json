@@ -337,6 +337,7 @@
     "title": "Edit route {{name}} ({{type}})",
     "save": "Save",
     "back": "Back to the route",
+    "warning": "Warning: {{message}}.",
     "number": "Enter a whole number.",
     "fields": {
       "name": "Name",
@@ -361,6 +362,11 @@
       "flowIdleTimeout": "Flow idle timeout (seconds)",
       "tcpIdleTimeout": "TCP idle timeout (seconds)",
       "udpFlowIdleTimeout": "UDP flow idle timeout (seconds)",
+      "listenerMode": "Listener",
+      "authorities": "CONNECT names",
+      "connectAuth": "Proxy credentials",
+      "connectHostname": "Listener hostname (HTTPS proxy)",
+      "connectCertificate": "Listener certificate",
       "healthCheck": "Health check",
       "healthPort": "Port to check",
       "healthPath": "Path to request",
@@ -378,7 +384,11 @@
       "certificate": "The org's uploaded certificates that cover every hostname. Upload one under Domains & certificates.",
       "healthPort": "Empty for each target's own port. A UDP route needs one; a route with a Unix socket target cannot have one.",
       "healthPath": "Starts with /, may have a query. Empty for /.",
-      "healthStatus": "As 200-399. Empty for any success or redirect."
+      "healthStatus": "As 200-399. Empty for any success or redirect.",
+      "fixed": "Set when the route is created; it cannot change."
+    },
+    "connect": {
+      "plainBasic": "Clients send their proxy password in the clear: anyone on the network between them and the gateway can read and use it. Use basic auth over TLS unless the clients cannot speak to an HTTPS proxy."
     },
     "certificate": {
       "choose": "Choose a certificate",
@@ -418,6 +428,15 @@
       "maintenance": {
         "off": "Off: serve the route",
         "on": "On: show the maintenance page"
+      },
+      "listenerMode": {
+        "plain": "Its own public port",
+        "httpConnect": "A CONNECT listener shared with other routes (HTTP proxy)"
+      },
+      "connectAuth": {
+        "none": "None: IP rules only",
+        "tlsBasic": "Basic auth over TLS (HTTPS proxy)",
+        "plainBasic": "Basic auth in the clear"
       },
       "healthCheck": {
         "none": "None",

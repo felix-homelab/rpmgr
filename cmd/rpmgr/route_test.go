@@ -49,7 +49,11 @@ func (a *routeAPI) CreateRoute(_ context.Context, req *connect.Request[rpmgrv1.C
 	}
 	r := proto.Clone(req.Msg.GetRoute()).(*rpmgrv1.Route)
 	r.Id, r.Etag = "rt_new", "1"
-	return connect.NewResponse(&rpmgrv1.CreateRouteResponse{Route: r, Revision: &rpmgrv1.Revision{Seq: 7}}), nil
+	var warnings []string
+	if r.GetTcp().GetConnect().GetAuthMode() == rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_PLAIN_BASIC {
+		warnings = []string{"passwords in the clear"}
+	}
+	return connect.NewResponse(&rpmgrv1.CreateRouteResponse{Route: r, Revision: &rpmgrv1.Revision{Seq: 7}, Warnings: warnings}), nil
 }
 
 func (a *routeAPI) GetRoute(context.Context, *connect.Request[rpmgrv1.GetRouteRequest]) (*connect.Response[rpmgrv1.GetRouteResponse], error) {
@@ -138,23 +142,38 @@ func TestCreateRoute(t *testing.T) {
 		a.created.GetRoute().GetTcpUdp().GetIdleTimeoutSeconds() != 600 || a.created.GetRoute().GetTcpUdp().GetFlowIdleTimeoutSeconds() != 30 {
 		t.Fatalf("a tcp_udp route: %d %q %v", code, errOut, a.created)
 	}
+	// A CONNECT route (D130): its authorities and mode, and the API's warning on standard error.
+	code, _, errOut = runWith(env, "", "create", "route", "--tcp", "--name", "ssh", "--group", "eu", "--http-connect", "--authority", "ssh.internal",
+		"--authority", "bastion", "--connect-auth", "plain-basic")
+	if c := a.created.GetRoute().GetTcp(); code != cli.ExitOK || c.GetListenerMode() != rpmgrv1.ListenerMode_LISTENER_MODE_HTTP_CONNECT ||
+		!slices.Equal(c.GetConnect().GetAuthorities(), []string{"ssh.internal", "bastion"}) ||
+		c.GetConnect().GetAuthMode() != rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_PLAIN_BASIC || !strings.Contains(errOut, "Warning: passwords in the clear.") {
+		t.Fatalf("a CONNECT route: %d %q %v", code, errOut, a.created)
+	}
+	if code, _, errOut := runWith(env, "", "create", "route", "--tcp", "--name", "vpn", "--group", "eu", "--http-connect", "--authority", "vpn.internal",
+		"--connect-auth", "tls-basic", "--connect-hostname", "proxy.example.com", "--connect-certificate", "crt_1"); code != cli.ExitOK ||
+		a.created.GetRoute().GetTcp().GetConnect().GetCertificateId() != "crt_1" || strings.Contains(errOut, "Warning") {
+		t.Fatalf("a TLS CONNECT route: %d %q %v", code, errOut, a.created)
+	}
 	calls := a.calls
 	for name, args := range map[string][]string{
-		"no type":                {"--name", "x", "--group", "eu"},
-		"tcp-udp and udp":        {"--tcp-udp", "--udp", "--name", "x", "--group", "eu"},
-		"a flow idle on tcp":     {"--tcp", "--name", "x", "--group", "eu", "--flow-idle-timeout", "30s"},
-		"a zero flow idle":       {"--tcp-udp", "--name", "x", "--group", "eu", "--flow-idle-timeout", "0s"},
-		"two types":              {"--tcp", "--udp", "--name", "x", "--group", "eu"},
-		"a hostname on tcp":      {"--tcp", "--name", "x", "--group", "eu", "--hostname", "a.example.com"},
-		"maintenance on tcp":     {"--tcp", "--name", "x", "--group", "eu", "--maintenance"},
-		"a header match on tcp":  {"--tcp", "--name", "x", "--group", "eu", "--match-header", "X-Env=a"},
-		"a timeout on udp":       {"--udp", "--name", "x", "--group", "eu", "--upstream-idle-timeout", "1m"},
-		"a message on udp":       {"--udp", "--name", "x", "--group", "eu", "--maintenance-message", "back soon"},
-		"a port on http":         {"--http", "--name", "x", "--group", "eu", "--hostname", "a.example.com", "--port", "80"},
-		"a name the API refuses": {"--http", "--name", "Not_A_Name", "--group", "eu", "--hostname", "a.example.com"},
-		"a port above 65535":     {"--udp", "--name", "x", "--group", "eu", "--port", "70000"},
-		"an unknown transport":   {"--tcp", "--name", "x", "--group", "eu", "--transport", "carrier-pigeon"},
-		"an unknown TLS mode":    {"--http", "--name", "x", "--group", "eu", "--hostname", "a.example.com", "--tls-mode", "self"},
+		"an authority on udp":     {"--udp", "--name", "x", "--group", "eu", "--authority", "a.internal"},
+		"an unknown connect auth": {"--tcp", "--name", "x", "--group", "eu", "--http-connect", "--authority", "a", "--connect-auth", "digest"},
+		"no type":                 {"--name", "x", "--group", "eu"},
+		"tcp-udp and udp":         {"--tcp-udp", "--udp", "--name", "x", "--group", "eu"},
+		"a flow idle on tcp":      {"--tcp", "--name", "x", "--group", "eu", "--flow-idle-timeout", "30s"},
+		"a zero flow idle":        {"--tcp-udp", "--name", "x", "--group", "eu", "--flow-idle-timeout", "0s"},
+		"two types":               {"--tcp", "--udp", "--name", "x", "--group", "eu"},
+		"a hostname on tcp":       {"--tcp", "--name", "x", "--group", "eu", "--hostname", "a.example.com"},
+		"maintenance on tcp":      {"--tcp", "--name", "x", "--group", "eu", "--maintenance"},
+		"a header match on tcp":   {"--tcp", "--name", "x", "--group", "eu", "--match-header", "X-Env=a"},
+		"a timeout on udp":        {"--udp", "--name", "x", "--group", "eu", "--upstream-idle-timeout", "1m"},
+		"a message on udp":        {"--udp", "--name", "x", "--group", "eu", "--maintenance-message", "back soon"},
+		"a port on http":          {"--http", "--name", "x", "--group", "eu", "--hostname", "a.example.com", "--port", "80"},
+		"a name the API refuses":  {"--http", "--name", "Not_A_Name", "--group", "eu", "--hostname", "a.example.com"},
+		"a port above 65535":      {"--udp", "--name", "x", "--group", "eu", "--port", "70000"},
+		"an unknown transport":    {"--tcp", "--name", "x", "--group", "eu", "--transport", "carrier-pigeon"},
+		"an unknown TLS mode":     {"--http", "--name", "x", "--group", "eu", "--hostname", "a.example.com", "--tls-mode", "self"},
 	} {
 		if code, _, errOut := runWith(env, "", append([]string{"create", "route"}, args...)...); code != cli.ExitUsage {
 			t.Errorf("%s: exit %d %q", name, code, errOut)

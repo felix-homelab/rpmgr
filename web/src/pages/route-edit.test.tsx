@@ -10,7 +10,8 @@ import { ViolationsSchema } from "@/gen/buf/validate/validate_pb";
 import { CertificateService, CertificateSource } from "@/gen/rpmgr/v1/certificate_pb";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
-import { HealthCheckType, Port80Mode, RouteSchema, RouteService, RouteState, TLSMode, type Route, type UpdateRouteRequest } from "@/gen/rpmgr/v1/route_pb";
+import { ConnectAuthMode, HealthCheckType, ListenerMode, Port80Mode, RouteSchema, RouteService, RouteState, TLSMode, type Route,
+  type UpdateRouteRequest } from "@/gen/rpmgr/v1/route_pb";
 import { ApplyState, StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
@@ -34,6 +35,8 @@ const routes: Record<string, Route> = {
     healthCheck: { type: HealthCheckType.HTTP, port: 8081, httpPath: "/healthz?deep=1", expectedStatusMin: 200, expectedStatusMax: 204,
       intervalSeconds: 30, timeoutSeconds: 5, unhealthyThreshold: 4, healthyThreshold: 1 } }),
   tcp: create(RouteSchema, { ...common, spec: { case: "tcp", value: { port: 25432, idleTimeoutSeconds: 600 } } }),
+  tcpConnect: create(RouteSchema, { ...common, spec: { case: "tcp", value: { port: 20001, idleTimeoutSeconds: 600, listenerMode: ListenerMode.HTTP_CONNECT,
+    connect: { authorities: ["bastion", "ssh.internal"], authMode: ConnectAuthMode.NONE } } } }),
   udp: create(RouteSchema, { ...common, spec: { case: "udp", value: { port: 53, flowIdleTimeoutSeconds: 30 } },
     healthCheck: { type: HealthCheckType.TCP, port: 53 } }),
   tcpUdp: create(RouteSchema, { ...common, spec: { case: "tcpUdp", value: { port: 5353, idleTimeoutSeconds: 600, flowIdleTimeoutSeconds: 30 } } }),
@@ -126,6 +129,43 @@ describe("RouteEdit", () => {
     const spec = updates[0]!.route?.spec;
     expect(spec?.case === "tcpUdp" && [spec.value.port, spec.value.idleTimeoutSeconds, spec.value.flowIdleTimeoutSeconds]).toEqual([5354, 600, undefined]);
     expect(updates[0]!.updateMask?.paths).toEqual(expect.arrayContaining(["tcp_udp.port", "tcp_udp.flow_idle_timeout_seconds"]));
+  });
+
+  it("edits a CONNECT route's names and mode, warns of passwords in the clear, and shows the server's warning", async () => {
+    const updates = edit(routes.tcpConnect!, (req) => ({ route: req.route, revision: { dbEpoch: "e", seq: 9n },
+      applyStatus: { state: ApplyState.APPLIED, agentsTotal: 1, agentsApplied: 1 }, warnings: ["passwords cross the network in the clear"] }));
+    const names = await screen.findByLabelText("CONNECT names");
+    expect((names as HTMLTextAreaElement).value).toBe("bastion\nssh.internal");
+    expect(screen.queryByLabelText("Listener hostname (HTTPS proxy)")).toBeNull();
+    // The listener mode is set when the route is created: read-only, with its hint.
+    const listener = screen.getByLabelText("Listener") as HTMLInputElement;
+    expect([listener.tagName, listener.readOnly, listener.value]).toEqual(["INPUT", true, "A CONNECT listener shared with other routes (HTTP proxy)"]);
+    expect(screen.getByText("Set when the route is created; it cannot change.")).toBeTruthy();
+    fireEvent.change(names, { target: { value: "jump\n bastion " } });
+    fireEvent.change(screen.getByLabelText("Proxy credentials"), { target: { value: String(ConnectAuthMode.PLAIN_BASIC) } });
+    expect(await screen.findByText(/anyone on the network between them and the gateway can read and use it/)).toBeTruthy();
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    const spec = updates[0]!.route?.spec;
+    expect(spec?.case === "tcp" && [spec.value.listenerMode, spec.value.connect?.authorities, spec.value.connect?.authMode]).toEqual(
+      [ListenerMode.HTTP_CONNECT, ["jump", "bastion"], ConnectAuthMode.PLAIN_BASIC]);
+    expect(updates[0]!.updateMask?.paths.filter((p) => p === "tcp.connect")).toHaveLength(1);
+    expect(await screen.findByText("Warning: passwords cross the network in the clear.")).toBeTruthy();
+  });
+
+  it("asks a TLS CONNECT listener for its hostname and certificate, and a CONNECT route for its names", async () => {
+    const updates = edit(routes.tcpConnect!);
+    fireEvent.change(await screen.findByLabelText("Proxy credentials"), { target: { value: String(ConnectAuthMode.TLS_BASIC) } });
+    const host = await screen.findByLabelText(/Listener hostname/);
+    expect(host.getAttribute("required")).not.toBeNull();
+    expect(screen.getByLabelText(/Listener certificate/)).toBeTruthy();
+    save();
+    expect(await screen.findByText("Choose the uploaded certificate the route uses.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Proxy credentials"), { target: { value: String(ConnectAuthMode.NONE) } });
+    fireEvent.change(screen.getByLabelText("CONNECT names"), { target: { value: "" } });
+    save();
+    await waitFor(() => expect(screen.getByLabelText("CONNECT names").getAttribute("aria-invalid")).toBe("true"));
+    expect(updates).toEqual([]);
   });
 
   it("adds a health check to a route without one, sending the check whole under one mask path", async () => {
