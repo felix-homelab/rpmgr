@@ -19,6 +19,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/acme/acmetest"
 	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/domains"
+	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
@@ -118,7 +119,8 @@ func TestACME_ConnectListenerHostname(t *testing.T) {
 	served := func(gw string) []string {
 		var names []string
 		if err := store.ReadTx(c.Sys, c.DB, func(tx *ent.Tx, _ store.Revision) error {
-			rs, err := certs.Gateway(c.Sys, tx, snapshot.Agent{Identity: pki.Identity{Org: c.Org, Kind: pki.KindGateway, ID: gw}})
+			rs, err := certs.Gateway(c.Sys, tx, snapshot.Agent{Identity: pki.Identity{Org: c.Org, Kind: pki.KindGateway, ID: gw},
+				Capabilities: gateway.Capabilities})
 			for _, r := range rs {
 				if r.GetId() == first.ID {
 					names = append(names, r.GetGatewayCertificate().GetHostnames()...)

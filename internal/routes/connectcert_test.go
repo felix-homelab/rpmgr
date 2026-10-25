@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -54,7 +55,7 @@ func TestCompile_ConnectListenerCertificate(t *testing.T) {
 		}
 		certsOf := func(gw string) map[string][]string {
 			out := map[string][]string{}
-			for _, r := range f.compile(t, pki.KindGateway, gw) {
+			for _, r := range f.compileAs(t, pki.KindGateway, gw, gateway.Capabilities...) {
 				if g := r.GetGatewayCertificate(); g != nil {
 					out[r.GetId()] = g.GetHostnames()
 				}
