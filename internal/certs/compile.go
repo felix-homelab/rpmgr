@@ -104,7 +104,6 @@ func Gateway(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Reso
 			return nil, err
 		}
 	}
-	}
 	for _, l := range listeners {
 		c, err := ListenerCertificate(ctx, tx.Certificate, l)
 		if err != nil {
