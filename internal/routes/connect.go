@@ -19,7 +19,7 @@ import (
 
 // The errors of CONNECT listeners (docs/03-connections.md, "HTTP CONNECT routes", D130).
 var (
-	ErrConnectModeMismatch = errors.New("routes: the port is a CONNECT listener with another authentication mode, hostname or certificate")
+	ErrConnectModeMismatch = errors.New("routes: the port is a CONNECT listener with another authentication mode or hostname")
 	ErrAuthorityTaken      = errors.New("routes: the authority is a route's of the CONNECT listener already")
 	ErrAuthority           = errors.New("routes: a CONNECT authority is a host name of letters, digits, dots, dashes and underscores")
 )
@@ -122,16 +122,11 @@ func SetAuthorities(ctx context.Context, tx *ent.Tx, r *ent.Route, listenerID st
 func findListener(ctx context.Context, tx *ent.Tx, r *ent.Route, want Listener, port int) (*ent.ConnectListener, error) {
 	if port == 0 {
 		l, err := tx.ConnectListener.Query().Where(connectlistener.GatewayGroupID(r.GatewayGroupID), connectlistener.AuthModeEQ(want.Mode),
-			connectlistener.Hostname(want.Hostname)).Order(ent.Asc(connectlistener.FieldID)).All(ctx)
-		if err != nil {
-			return nil, err
+			connectlistener.Hostname(want.Hostname)).Order(ent.Asc(connectlistener.FieldID)).First(ctx)
+		if ent.IsNotFound(err) {
+			return nil, nil
 		}
-		for _, x := range l {
-			if same(x, want) {
-				return x, nil
-			}
-		}
-		return nil, nil
+		return l, err
 	}
 	a, err := tx.PortAllocation.Query().Where(portallocation.GatewayGroupID(r.GatewayGroupID), portallocation.ProtocolEQ(portallocation.ProtocolTCP),
 		portallocation.Port(port)).Only(ctx)
@@ -147,16 +142,10 @@ func findListener(ctx context.Context, tx *ent.Tx, r *ent.Route, want Listener, 
 		return nil, holder(ctx, tx, r.GatewayGroupID, portallocation.ProtocolTCP, port)
 	case err != nil:
 		return nil, err
-	case !same(l, want):
+	case l.AuthMode != want.Mode || l.Hostname != want.Hostname: // not the certificate, which a route may replace
 		return nil, ErrConnectModeMismatch
 	}
 	return l, nil
-}
-
-// same reports whether a listener is the one want asks for: its mode and hostname, not its
-// certificate, which a route may replace.
-func same(l *ent.ConnectListener, want Listener) bool {
-	return l.AuthMode == want.Mode && l.Hostname == want.Hostname
 }
 
 // LeaveListener takes tcp route routeID off its CONNECT listener, in tx: its authorities go, and a

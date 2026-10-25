@@ -41,24 +41,19 @@ const noUsersWarning = "the route's CONNECT listener asks for proxy credentials,
 
 // connectWarnings are the warnings of a route as it is now, in tx.
 func connectWarnings(ctx context.Context, tx *ent.Tx, r *rpmgrv1.Route) ([]string, error) {
-	c := r.GetTcp().GetConnect()
-	if r.GetTcp().GetListenerMode() != rpmgrv1.ListenerMode_LISTENER_MODE_HTTP_CONNECT {
+	var out []string
+	switch r.GetTcp().GetConnect().GetAuthMode() {
+	case rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_PLAIN_BASIC:
+		out = append(out, plainBasicWarning)
+	case rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_TLS_BASIC:
+	default:
 		return nil, nil
 	}
-	var out []string
-	if c.GetAuthMode() == rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_PLAIN_BASIC {
-		out = append(out, plainBasicWarning)
+	users, err := tx.PolicyRule.Query().Where(policyrule.PolicyIDIn(r.GetPolicyIds()...), policyrule.KindEQ(policyrule.KindBasicAuth)).Exist(ctx)
+	if err != nil || users {
+		return out, err
 	}
-	if c.GetAuthMode() == rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_PLAIN_BASIC || c.GetAuthMode() == rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_TLS_BASIC {
-		n, err := tx.PolicyRule.Query().Where(policyrule.PolicyIDIn(r.GetPolicyIds()...), policyrule.KindEQ(policyrule.KindBasicAuth)).Count(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if n == 0 {
-			out = append(out, noUsersWarning)
-		}
-	}
-	return out, nil
+	return append(out, noUsersWarning), nil
 }
 
 // checkConnect checks what the request's rules cannot of a tcp route's listener mode and CONNECT
@@ -160,31 +155,20 @@ func updateConnectRoute(ctx context.Context, tx *ent.Tx, row *ent.Route, was, ne
 		Exec(ctx); err != nil {
 		return err
 	}
-	if was.GetPort() == next.GetPort() && proto.Equal(was.GetConnect(), next.GetConnect()) {
+	port := next.GetPort()
+	if port == was.GetPort() && proto.Equal(was.GetConnect(), next.GetConnect()) {
 		return nil
 	}
-	if next.GetPort() == was.GetPort() && !connectModeChanged(was.GetConnect(), next.GetConnect()) {
-		// The same listener: its authorities and certificate change in place.
-		t, err := tx.RouteTCP.Query().Where(routetcp.RouteID(row.ID)).WithListener().Only(ctx)
-		if err != nil {
+	if port != was.GetPort() || connectModeChanged(was.GetConnect(), next.GetConnect()) {
+		if err := routes.LeaveListener(ctx, tx, row.ID); err != nil {
 			return err
 		}
-		want, err := listenerOf(ctx, tx, row.OrgID, next.GetConnect())
-		if err != nil {
-			return err
+		if port == was.GetPort() {
+			port = 0
 		}
-		if err := routes.SetListenerCertificate(ctx, tx, t.Edges.Listener, want.CertificateID); err != nil {
-			return err
-		}
-		return routes.SetAuthorities(ctx, tx, row, t.Edges.Listener.ID, next.GetConnect().GetAuthorities())
 	}
-	if err := routes.LeaveListener(ctx, tx, row.ID); err != nil {
-		return err
-	}
-	port := next.GetPort()
-	if port == was.GetPort() {
-		port = 0
-	}
+	// On the same port, mode and hostname, the route stays on its listener, and its authorities and
+	// the listener's certificate change in place.
 	return joinListener(ctx, tx, row, next, port)
 }
 
