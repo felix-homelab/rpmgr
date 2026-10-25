@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -42,17 +43,29 @@ func (_u *RouteTCPUpdate) SetNillablePortAllocationID(v *string) *RouteTCPUpdate
 	return _u
 }
 
-// SetListenerMode sets the "listener_mode" field.
-func (_u *RouteTCPUpdate) SetListenerMode(v routetcp.ListenerMode) *RouteTCPUpdate {
-	_u.mutation.SetListenerMode(v)
+// ClearPortAllocationID clears the value of the "port_allocation_id" field.
+func (_u *RouteTCPUpdate) ClearPortAllocationID() *RouteTCPUpdate {
+	_u.mutation.ClearPortAllocationID()
 	return _u
 }
 
-// SetNillableListenerMode sets the "listener_mode" field if the given value is not nil.
-func (_u *RouteTCPUpdate) SetNillableListenerMode(v *routetcp.ListenerMode) *RouteTCPUpdate {
+// SetConnectListenerID sets the "connect_listener_id" field.
+func (_u *RouteTCPUpdate) SetConnectListenerID(v string) *RouteTCPUpdate {
+	_u.mutation.SetConnectListenerID(v)
+	return _u
+}
+
+// SetNillableConnectListenerID sets the "connect_listener_id" field if the given value is not nil.
+func (_u *RouteTCPUpdate) SetNillableConnectListenerID(v *string) *RouteTCPUpdate {
 	if v != nil {
-		_u.SetListenerMode(*v)
+		_u.SetConnectListenerID(*v)
 	}
+	return _u
+}
+
+// ClearConnectListenerID clears the value of the "connect_listener_id" field.
+func (_u *RouteTCPUpdate) ClearConnectListenerID() *RouteTCPUpdate {
+	_u.mutation.ClearConnectListenerID()
 	return _u
 }
 
@@ -83,9 +96,36 @@ func (_u *RouteTCPUpdate) SetPortID(id string) *RouteTCPUpdate {
 	return _u
 }
 
+// SetNillablePortID sets the "port" edge to the PortAllocation entity by ID if the given value is not nil.
+func (_u *RouteTCPUpdate) SetNillablePortID(id *string) *RouteTCPUpdate {
+	if id != nil {
+		_u = _u.SetPortID(*id)
+	}
+	return _u
+}
+
 // SetPort sets the "port" edge to the PortAllocation entity.
 func (_u *RouteTCPUpdate) SetPort(v *PortAllocation) *RouteTCPUpdate {
 	return _u.SetPortID(v.ID)
+}
+
+// SetListenerID sets the "listener" edge to the ConnectListener entity by ID.
+func (_u *RouteTCPUpdate) SetListenerID(id string) *RouteTCPUpdate {
+	_u.mutation.SetListenerID(id)
+	return _u
+}
+
+// SetNillableListenerID sets the "listener" edge to the ConnectListener entity by ID if the given value is not nil.
+func (_u *RouteTCPUpdate) SetNillableListenerID(id *string) *RouteTCPUpdate {
+	if id != nil {
+		_u = _u.SetListenerID(*id)
+	}
+	return _u
+}
+
+// SetListener sets the "listener" edge to the ConnectListener entity.
+func (_u *RouteTCPUpdate) SetListener(v *ConnectListener) *RouteTCPUpdate {
+	return _u.SetListenerID(v.ID)
 }
 
 // Mutation returns the RouteTCPMutation object of the builder.
@@ -96,6 +136,12 @@ func (_u *RouteTCPUpdate) Mutation() *RouteTCPMutation {
 // ClearPort clears the "port" edge to the PortAllocation entity.
 func (_u *RouteTCPUpdate) ClearPort() *RouteTCPUpdate {
 	_u.mutation.ClearPort()
+	return _u
+}
+
+// ClearListener clears the "listener" edge to the ConnectListener entity.
+func (_u *RouteTCPUpdate) ClearListener() *RouteTCPUpdate {
+	_u.mutation.ClearListener()
 	return _u
 }
 
@@ -128,16 +174,6 @@ func (_u *RouteTCPUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *RouteTCPUpdate) check() error {
-	if v, ok := _u.mutation.PortAllocationID(); ok {
-		if err := routetcp.PortAllocationIDValidator(v); err != nil {
-			return &ValidationError{Name: "port_allocation_id", err: fmt.Errorf(`ent: validator failed for field "RouteTCP.port_allocation_id": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.ListenerMode(); ok {
-		if err := routetcp.ListenerModeValidator(v); err != nil {
-			return &ValidationError{Name: "listener_mode", err: fmt.Errorf(`ent: validator failed for field "RouteTCP.listener_mode": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.IdleTimeoutSeconds(); ok {
 		if err := routetcp.IdleTimeoutSecondsValidator(v); err != nil {
 			return &ValidationError{Name: "idle_timeout_seconds", err: fmt.Errorf(`ent: validator failed for field "RouteTCP.idle_timeout_seconds": %w`, err)}
@@ -145,9 +181,6 @@ func (_u *RouteTCPUpdate) check() error {
 	}
 	if _u.mutation.RouteCleared() && len(_u.mutation.RouteIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "RouteTCP.route"`)
-	}
-	if _u.mutation.PortCleared() && len(_u.mutation.PortIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "RouteTCP.port"`)
 	}
 	return nil
 }
@@ -163,9 +196,6 @@ func (_u *RouteTCPUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 				ps[i](selector)
 			}
 		}
-	}
-	if value, ok := _u.mutation.ListenerMode(); ok {
-		_spec.SetField(routetcp.FieldListenerMode, field.TypeEnum, value)
 	}
 	if value, ok := _u.mutation.IdleTimeoutSeconds(); ok {
 		_spec.SetField(routetcp.FieldIdleTimeoutSeconds, field.TypeInt, value)
@@ -195,6 +225,35 @@ func (_u *RouteTCPUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(portallocation.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ListenerCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetcp.ListenerTable,
+			Columns: []string{routetcp.ListenerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(connectlistener.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ListenerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetcp.ListenerTable,
+			Columns: []string{routetcp.ListenerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(connectlistener.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {
@@ -236,17 +295,29 @@ func (_u *RouteTCPUpdateOne) SetNillablePortAllocationID(v *string) *RouteTCPUpd
 	return _u
 }
 
-// SetListenerMode sets the "listener_mode" field.
-func (_u *RouteTCPUpdateOne) SetListenerMode(v routetcp.ListenerMode) *RouteTCPUpdateOne {
-	_u.mutation.SetListenerMode(v)
+// ClearPortAllocationID clears the value of the "port_allocation_id" field.
+func (_u *RouteTCPUpdateOne) ClearPortAllocationID() *RouteTCPUpdateOne {
+	_u.mutation.ClearPortAllocationID()
 	return _u
 }
 
-// SetNillableListenerMode sets the "listener_mode" field if the given value is not nil.
-func (_u *RouteTCPUpdateOne) SetNillableListenerMode(v *routetcp.ListenerMode) *RouteTCPUpdateOne {
+// SetConnectListenerID sets the "connect_listener_id" field.
+func (_u *RouteTCPUpdateOne) SetConnectListenerID(v string) *RouteTCPUpdateOne {
+	_u.mutation.SetConnectListenerID(v)
+	return _u
+}
+
+// SetNillableConnectListenerID sets the "connect_listener_id" field if the given value is not nil.
+func (_u *RouteTCPUpdateOne) SetNillableConnectListenerID(v *string) *RouteTCPUpdateOne {
 	if v != nil {
-		_u.SetListenerMode(*v)
+		_u.SetConnectListenerID(*v)
 	}
+	return _u
+}
+
+// ClearConnectListenerID clears the value of the "connect_listener_id" field.
+func (_u *RouteTCPUpdateOne) ClearConnectListenerID() *RouteTCPUpdateOne {
+	_u.mutation.ClearConnectListenerID()
 	return _u
 }
 
@@ -277,9 +348,36 @@ func (_u *RouteTCPUpdateOne) SetPortID(id string) *RouteTCPUpdateOne {
 	return _u
 }
 
+// SetNillablePortID sets the "port" edge to the PortAllocation entity by ID if the given value is not nil.
+func (_u *RouteTCPUpdateOne) SetNillablePortID(id *string) *RouteTCPUpdateOne {
+	if id != nil {
+		_u = _u.SetPortID(*id)
+	}
+	return _u
+}
+
 // SetPort sets the "port" edge to the PortAllocation entity.
 func (_u *RouteTCPUpdateOne) SetPort(v *PortAllocation) *RouteTCPUpdateOne {
 	return _u.SetPortID(v.ID)
+}
+
+// SetListenerID sets the "listener" edge to the ConnectListener entity by ID.
+func (_u *RouteTCPUpdateOne) SetListenerID(id string) *RouteTCPUpdateOne {
+	_u.mutation.SetListenerID(id)
+	return _u
+}
+
+// SetNillableListenerID sets the "listener" edge to the ConnectListener entity by ID if the given value is not nil.
+func (_u *RouteTCPUpdateOne) SetNillableListenerID(id *string) *RouteTCPUpdateOne {
+	if id != nil {
+		_u = _u.SetListenerID(*id)
+	}
+	return _u
+}
+
+// SetListener sets the "listener" edge to the ConnectListener entity.
+func (_u *RouteTCPUpdateOne) SetListener(v *ConnectListener) *RouteTCPUpdateOne {
+	return _u.SetListenerID(v.ID)
 }
 
 // Mutation returns the RouteTCPMutation object of the builder.
@@ -290,6 +388,12 @@ func (_u *RouteTCPUpdateOne) Mutation() *RouteTCPMutation {
 // ClearPort clears the "port" edge to the PortAllocation entity.
 func (_u *RouteTCPUpdateOne) ClearPort() *RouteTCPUpdateOne {
 	_u.mutation.ClearPort()
+	return _u
+}
+
+// ClearListener clears the "listener" edge to the ConnectListener entity.
+func (_u *RouteTCPUpdateOne) ClearListener() *RouteTCPUpdateOne {
+	_u.mutation.ClearListener()
 	return _u
 }
 
@@ -335,16 +439,6 @@ func (_u *RouteTCPUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *RouteTCPUpdateOne) check() error {
-	if v, ok := _u.mutation.PortAllocationID(); ok {
-		if err := routetcp.PortAllocationIDValidator(v); err != nil {
-			return &ValidationError{Name: "port_allocation_id", err: fmt.Errorf(`ent: validator failed for field "RouteTCP.port_allocation_id": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.ListenerMode(); ok {
-		if err := routetcp.ListenerModeValidator(v); err != nil {
-			return &ValidationError{Name: "listener_mode", err: fmt.Errorf(`ent: validator failed for field "RouteTCP.listener_mode": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.IdleTimeoutSeconds(); ok {
 		if err := routetcp.IdleTimeoutSecondsValidator(v); err != nil {
 			return &ValidationError{Name: "idle_timeout_seconds", err: fmt.Errorf(`ent: validator failed for field "RouteTCP.idle_timeout_seconds": %w`, err)}
@@ -352,9 +446,6 @@ func (_u *RouteTCPUpdateOne) check() error {
 	}
 	if _u.mutation.RouteCleared() && len(_u.mutation.RouteIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "RouteTCP.route"`)
-	}
-	if _u.mutation.PortCleared() && len(_u.mutation.PortIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "RouteTCP.port"`)
 	}
 	return nil
 }
@@ -388,9 +479,6 @@ func (_u *RouteTCPUpdateOne) sqlSave(ctx context.Context) (_node *RouteTCP, err 
 			}
 		}
 	}
-	if value, ok := _u.mutation.ListenerMode(); ok {
-		_spec.SetField(routetcp.FieldListenerMode, field.TypeEnum, value)
-	}
 	if value, ok := _u.mutation.IdleTimeoutSeconds(); ok {
 		_spec.SetField(routetcp.FieldIdleTimeoutSeconds, field.TypeInt, value)
 	}
@@ -419,6 +507,35 @@ func (_u *RouteTCPUpdateOne) sqlSave(ctx context.Context) (_node *RouteTCP, err 
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(portallocation.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ListenerCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetcp.ListenerTable,
+			Columns: []string{routetcp.ListenerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(connectlistener.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ListenerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   routetcp.ListenerTable,
+			Columns: []string{routetcp.ListenerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(connectlistener.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

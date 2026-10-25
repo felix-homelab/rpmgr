@@ -22,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/password"
+	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -395,6 +396,31 @@ func storeRules(ctx context.Context, tx *ent.Tx, policy *ent.AccessPolicy, rules
 		return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
 			"apisvc: rule %d: %d routes that are not http routes apply the policy, and no client could pass %s there", i+1, n, what)), reason)
 	}
+	// basicOnly is httpOnly for basic auth, which a CONNECT route of a basic mode takes too.
+	basicOnly := func(i int) error {
+		ids, err := tx.RoutePolicy.Query().Where(routepolicy.PolicyID(policy.ID)).Select(routepolicy.FieldRouteID).Strings(ctx)
+		if err != nil {
+			return err
+		}
+		others, err := tx.Route.Query().Where(route.IDIn(ids...), route.TypeNEQ(route.TypeHTTP)).All(ctx)
+		if err != nil {
+			return err
+		}
+		n := 0
+		for _, rt := range others {
+			if ok, err := routes.BasicAuthAllowed(ctx, tx, rt); err != nil {
+				return err
+			} else if !ok {
+				n++
+			}
+		}
+		if n == 0 {
+			return nil
+		}
+		return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"apisvc: rule %d: %d routes that are not http routes apply the policy, and no client could pass basic auth there", i+1, n)),
+			ReasonBasicAuthNotHTTP)
+	}
 	rateLimits := 0
 	for i, r := range rules {
 		params := &rpmgrv1.PolicyRuleParams{}
@@ -418,7 +444,7 @@ func storeRules(ctx context.Context, tx *ent.Tx, policy *ent.AccessPolicy, rules
 			params.Params = &rpmgrv1.PolicyRuleParams_RequireHeader{RequireHeader: rh}
 		case r.GetBasicAuth() != nil:
 			kind = policyrule.KindBasicAuth
-			if err := httpOnly(i, "basic auth", ReasonBasicAuthNotHTTP); err != nil {
+			if err := basicOnly(i); err != nil {
 				return err
 			}
 			ba := &rpmgrv1.BasicAuthParams{}

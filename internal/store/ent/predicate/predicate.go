@@ -51,6 +51,12 @@ type ConfigRevision func(*sql.Selector)
 // ConfigSeq is the predicate function for configseq builders.
 type ConfigSeq func(*sql.Selector)
 
+// ConnectAuthority is the predicate function for connectauthority builders.
+type ConnectAuthority func(*sql.Selector)
+
+// ConnectListener is the predicate function for connectlistener builders.
+type ConnectListener func(*sql.Selector)
+
 // Connector is the predicate function for connector builders.
 type Connector func(*sql.Selector)
 

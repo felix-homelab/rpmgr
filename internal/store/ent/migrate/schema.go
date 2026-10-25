@@ -403,6 +403,115 @@ var (
 		Columns:    ConfigSeqColumns,
 		PrimaryKey: []*schema.Column{ConfigSeqColumns[0]},
 	}
+	// ConnectAuthoritiesColumns holds the columns for the "connect_authorities" table.
+	ConnectAuthoritiesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "authority", Type: field.TypeString, Size: 253},
+		{Name: "connect_listener_id", Type: field.TypeString},
+		{Name: "route_id", Type: field.TypeString},
+	}
+	// ConnectAuthoritiesTable holds the schema information for the "connect_authorities" table.
+	ConnectAuthoritiesTable = &schema.Table{
+		Name:       "connect_authorities",
+		Columns:    ConnectAuthoritiesColumns,
+		PrimaryKey: []*schema.Column{ConnectAuthoritiesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "connect_authorities_connect_listeners_listener",
+				Columns:    []*schema.Column{ConnectAuthoritiesColumns[3]},
+				RefColumns: []*schema.Column{ConnectListenersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "connect_authorities_routes_route",
+				Columns:    []*schema.Column{ConnectAuthoritiesColumns[4]},
+				RefColumns: []*schema.Column{RoutesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "connectauthority_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{ConnectAuthoritiesColumns[1], ConnectAuthoritiesColumns[0]},
+			},
+			{
+				Name:    "connectauthority_connect_listener_id_authority",
+				Unique:  true,
+				Columns: []*schema.Column{ConnectAuthoritiesColumns[3], ConnectAuthoritiesColumns[2]},
+			},
+			{
+				Name:    "connectauthority_route_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConnectAuthoritiesColumns[4]},
+			},
+		},
+	}
+	// ConnectListenersColumns holds the columns for the "connect_listeners" table.
+	ConnectListenersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "gateway_group_id", Type: field.TypeString},
+		{Name: "auth_mode", Type: field.TypeEnum, Enums: []string{"none", "tls_basic", "plain_basic"}},
+		{Name: "hostname", Type: field.TypeString, Size: 253, Default: ""},
+		{Name: "port_allocation_id", Type: field.TypeString},
+		{Name: "certificate_id", Type: field.TypeString, Nullable: true},
+		{Name: "domain_id", Type: field.TypeString, Nullable: true},
+	}
+	// ConnectListenersTable holds the schema information for the "connect_listeners" table.
+	ConnectListenersTable = &schema.Table{
+		Name:       "connect_listeners",
+		Columns:    ConnectListenersColumns,
+		PrimaryKey: []*schema.Column{ConnectListenersColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "connect_listeners_port_allocations_port",
+				Columns:    []*schema.Column{ConnectListenersColumns[5]},
+				RefColumns: []*schema.Column{PortAllocationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "connect_listeners_certificates_certificate",
+				Columns:    []*schema.Column{ConnectListenersColumns[6]},
+				RefColumns: []*schema.Column{CertificatesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "connect_listeners_domains_domain",
+				Columns:    []*schema.Column{ConnectListenersColumns[7]},
+				RefColumns: []*schema.Column{DomainsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "connectlistener_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{ConnectListenersColumns[1], ConnectListenersColumns[0]},
+			},
+			{
+				Name:    "connectlistener_port_allocation_id",
+				Unique:  true,
+				Columns: []*schema.Column{ConnectListenersColumns[5]},
+			},
+			{
+				Name:    "connectlistener_gateway_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConnectListenersColumns[2]},
+			},
+			{
+				Name:    "connectlistener_certificate_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConnectListenersColumns[6]},
+			},
+			{
+				Name:    "connectlistener_domain_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConnectListenersColumns[7]},
+			},
+		},
+	}
 	// ConnectorsColumns holds the columns for the "connectors" table.
 	ConnectorsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -1539,7 +1648,8 @@ var (
 		{Name: "listener_mode", Type: field.TypeEnum, Enums: []string{"plain", "http_connect"}, Default: "plain"},
 		{Name: "idle_timeout_seconds", Type: field.TypeInt, Default: 3600},
 		{Name: "route_id", Type: field.TypeString},
-		{Name: "port_allocation_id", Type: field.TypeString},
+		{Name: "port_allocation_id", Type: field.TypeString, Nullable: true},
+		{Name: "connect_listener_id", Type: field.TypeString, Nullable: true},
 	}
 	// RouteTCPTable holds the schema information for the "route_tcp" table.
 	RouteTCPTable = &schema.Table{
@@ -1557,7 +1667,13 @@ var (
 				Symbol:     "route_tcp_port_allocations_port",
 				Columns:    []*schema.Column{RouteTCPColumns[5]},
 				RefColumns: []*schema.Column{PortAllocationsColumns[0]},
-				OnDelete:   schema.NoAction,
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "route_tcp_connect_listeners_listener",
+				Columns:    []*schema.Column{RouteTCPColumns[6]},
+				RefColumns: []*schema.Column{ConnectListenersColumns[0]},
+				OnDelete:   schema.SetNull,
 			},
 		},
 		Indexes: []*schema.Index{
@@ -1575,6 +1691,11 @@ var (
 				Name:    "routetcp_port_allocation_id",
 				Unique:  true,
 				Columns: []*schema.Column{RouteTCPColumns[5]},
+			},
+			{
+				Name:    "routetcp_connect_listener_id",
+				Unique:  false,
+				Columns: []*schema.Column{RouteTCPColumns[6]},
 			},
 		},
 	}
@@ -1926,6 +2047,8 @@ var (
 		CompiledSnapshotsTable,
 		ConfigRevisionsTable,
 		ConfigSeqTable,
+		ConnectAuthoritiesTable,
+		ConnectListenersTable,
 		ConnectorsTable,
 		DataSessionsTable,
 		DomainsTable,
@@ -2015,6 +2138,17 @@ func init() {
 	}
 	ConfigSeqTable.Annotation = &entsql.Annotation{
 		Table: "config_seq",
+	}
+	ConnectAuthoritiesTable.ForeignKeys[0].RefTable = ConnectListenersTable
+	ConnectAuthoritiesTable.ForeignKeys[1].RefTable = RoutesTable
+	ConnectAuthoritiesTable.Annotation = &entsql.Annotation{
+		Table: "connect_authorities",
+	}
+	ConnectListenersTable.ForeignKeys[0].RefTable = PortAllocationsTable
+	ConnectListenersTable.ForeignKeys[1].RefTable = CertificatesTable
+	ConnectListenersTable.ForeignKeys[2].RefTable = DomainsTable
+	ConnectListenersTable.Annotation = &entsql.Annotation{
+		Table: "connect_listeners",
 	}
 	DataSessionsTable.Annotation = &entsql.Annotation{
 		Table: "data_sessions",
@@ -2114,6 +2248,7 @@ func init() {
 	}
 	RouteTCPTable.ForeignKeys[0].RefTable = RoutesTable
 	RouteTCPTable.ForeignKeys[1].RefTable = PortAllocationsTable
+	RouteTCPTable.ForeignKeys[2].RefTable = ConnectListenersTable
 	RouteTCPTable.Annotation = &entsql.Annotation{
 		Table: "route_tcp",
 	}

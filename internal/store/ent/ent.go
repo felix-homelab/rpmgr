@@ -27,6 +27,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectauthority"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -146,6 +148,8 @@ func checkColumn(t, c string) error {
 			compiledsnapshot.Table:   compiledsnapshot.ValidColumn,
 			configrevision.Table:     configrevision.ValidColumn,
 			configseq.Table:          configseq.ValidColumn,
+			connectauthority.Table:   connectauthority.ValidColumn,
+			connectlistener.Table:    connectlistener.ValidColumn,
 			connector.Table:          connector.ValidColumn,
 			datasession.Table:        datasession.ValidColumn,
 			domain.Table:             domain.ValidColumn,

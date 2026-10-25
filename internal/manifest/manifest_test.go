@@ -253,3 +253,21 @@ func TestKeyNotString(t *testing.T) {
 		t.Fatalf("read back: %v\n%s", err, out.String())
 	}
 }
+
+// TestConnectRoute: a tcp route in http_connect mode reads back with its listener mode, its
+// authorities and its CONNECT listener's mode, hostname and certificate.
+func TestConnectRoute(t *testing.T) {
+	r := &rpmgrv1.Route{Name: "vpn", GatewayGroupId: "gwg_1", Enabled: true, Spec: &rpmgrv1.Route_Tcp{Tcp: &rpmgrv1.TCPRouteSpec{Port: 20001,
+		ListenerMode: rpmgrv1.ListenerMode_LISTENER_MODE_HTTP_CONNECT, Connect: &rpmgrv1.ConnectSpec{Authorities: []string{"bastion", "ssh.internal"},
+			AuthMode: rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_TLS_BASIC, Hostname: "proxy.example.com", CertificateId: "crt_1"}}}}
+	text, back := roundTrip(t, r)
+	for _, want := range []string{"    listenerMode: LISTENER_MODE_HTTP_CONNECT\n", "      authMode: CONNECT_AUTH_MODE_TLS_BASIC\n",
+		"      authorities:\n        - bastion\n        - ssh.internal\n"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the manifest lacks %q:\n%s", want, text)
+		}
+	}
+	if !proto.Equal(back, r) {
+		t.Fatalf("read back:\n%v\nwant\n%v", back, r)
+	}
+}

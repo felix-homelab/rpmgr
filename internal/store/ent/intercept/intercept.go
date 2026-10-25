@@ -23,6 +23,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectauthority"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -529,6 +531,60 @@ func (f TraverseConfigSeq) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.ConfigSeqQuery", q)
+}
+
+// The ConnectAuthorityFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ConnectAuthorityFunc func(context.Context, *ent.ConnectAuthorityQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ConnectAuthorityFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ConnectAuthorityQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ConnectAuthorityQuery", q)
+}
+
+// The TraverseConnectAuthority type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseConnectAuthority func(context.Context, *ent.ConnectAuthorityQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseConnectAuthority) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseConnectAuthority) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ConnectAuthorityQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ConnectAuthorityQuery", q)
+}
+
+// The ConnectListenerFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ConnectListenerFunc func(context.Context, *ent.ConnectListenerQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ConnectListenerFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ConnectListenerQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ConnectListenerQuery", q)
+}
+
+// The TraverseConnectListener type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseConnectListener func(context.Context, *ent.ConnectListenerQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseConnectListener) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseConnectListener) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ConnectListenerQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ConnectListenerQuery", q)
 }
 
 // The ConnectorFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1752,6 +1808,10 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ConfigRevisionQuery, predicate.ConfigRevision, configrevision.OrderOption]{typ: ent.TypeConfigRevision, tq: q}, nil
 	case *ent.ConfigSeqQuery:
 		return &query[*ent.ConfigSeqQuery, predicate.ConfigSeq, configseq.OrderOption]{typ: ent.TypeConfigSeq, tq: q}, nil
+	case *ent.ConnectAuthorityQuery:
+		return &query[*ent.ConnectAuthorityQuery, predicate.ConnectAuthority, connectauthority.OrderOption]{typ: ent.TypeConnectAuthority, tq: q}, nil
+	case *ent.ConnectListenerQuery:
+		return &query[*ent.ConnectListenerQuery, predicate.ConnectListener, connectlistener.OrderOption]{typ: ent.TypeConnectListener, tq: q}, nil
 	case *ent.ConnectorQuery:
 		return &query[*ent.ConnectorQuery, predicate.Connector, connector.OrderOption]{typ: ent.TypeConnector, tq: q}, nil
 	case *ent.DataSessionQuery:
