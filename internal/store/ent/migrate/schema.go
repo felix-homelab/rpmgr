@@ -671,6 +671,38 @@ var (
 			},
 		},
 	}
+	// EventsColumns holds the columns for the "events" table.
+	EventsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "type", Type: field.TypeString},
+		{Name: "ts", Type: field.TypeTime},
+		{Name: "actor_type", Type: field.TypeEnum, Enums: []string{"user", "agent", "system", "anonymous"}},
+		{Name: "actor_id", Type: field.TypeString, Default: ""},
+		{Name: "subject_type", Type: field.TypeString, Default: ""},
+		{Name: "subject_id", Type: field.TypeString, Default: ""},
+		{Name: "subject_name", Type: field.TypeString, Default: ""},
+		{Name: "summary", Type: field.TypeString, Default: ""},
+		{Name: "changed", Type: field.TypeJSON, Nullable: true},
+	}
+	// EventsTable holds the schema information for the "events" table.
+	EventsTable = &schema.Table{
+		Name:       "events",
+		Columns:    EventsColumns,
+		PrimaryKey: []*schema.Column{EventsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "event_org_id_id",
+				Unique:  false,
+				Columns: []*schema.Column{EventsColumns[1], EventsColumns[0]},
+			},
+			{
+				Name:    "event_ts",
+				Unique:  false,
+				Columns: []*schema.Column{EventsColumns[3]},
+			},
+		},
+	}
 	// GatewaysColumns holds the columns for the "gateways" table.
 	GatewaysColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -2059,6 +2091,7 @@ var (
 		DataSessionsTable,
 		DomainsTable,
 		EnrollmentTokensTable,
+		EventsTable,
 		GatewaysTable,
 		GatewayGroupsTable,
 		GatewayPagesTable,
@@ -2165,6 +2198,9 @@ func init() {
 	EnrollmentTokensTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	EnrollmentTokensTable.ForeignKeys[1].RefTable = GatewaysTable
 	EnrollmentTokensTable.ForeignKeys[2].RefTable = ConnectorsTable
+	EventsTable.Annotation = &entsql.Annotation{
+		Table: "events",
+	}
 	GatewaysTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	GatewayPagesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	GatewayPagesTable.Annotation = &entsql.Annotation{

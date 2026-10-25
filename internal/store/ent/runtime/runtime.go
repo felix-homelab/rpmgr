@@ -27,6 +27,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/event"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
@@ -1311,6 +1312,66 @@ func init() {
 	// enrollmenttoken.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	enrollmenttoken.IDValidator = func() func(string) error {
 		validators := enrollmenttokenDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	event.Policy = privacy.NewPolicies(schema.Event{})
+	event.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := event.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	eventHooks := schema.Event{}.Hooks()
+
+	event.Hooks[1] = eventHooks[0]
+	eventInters := schema.Event{}.Interceptors()
+	event.Interceptors[0] = eventInters[0]
+	eventFields := schema.Event{}.Fields()
+	_ = eventFields
+	// eventDescType is the schema descriptor for type field.
+	eventDescType := eventFields[2].Descriptor()
+	// event.TypeValidator is a validator for the "type" field. It is called by the builders before save.
+	event.TypeValidator = eventDescType.Validators[0].(func(string) error)
+	// eventDescActorID is the schema descriptor for actor_id field.
+	eventDescActorID := eventFields[5].Descriptor()
+	// event.DefaultActorID holds the default value on creation for the actor_id field.
+	event.DefaultActorID = eventDescActorID.Default.(string)
+	// eventDescSubjectType is the schema descriptor for subject_type field.
+	eventDescSubjectType := eventFields[6].Descriptor()
+	// event.DefaultSubjectType holds the default value on creation for the subject_type field.
+	event.DefaultSubjectType = eventDescSubjectType.Default.(string)
+	// eventDescSubjectID is the schema descriptor for subject_id field.
+	eventDescSubjectID := eventFields[7].Descriptor()
+	// event.DefaultSubjectID holds the default value on creation for the subject_id field.
+	event.DefaultSubjectID = eventDescSubjectID.Default.(string)
+	// eventDescSubjectName is the schema descriptor for subject_name field.
+	eventDescSubjectName := eventFields[8].Descriptor()
+	// event.DefaultSubjectName holds the default value on creation for the subject_name field.
+	event.DefaultSubjectName = eventDescSubjectName.Default.(string)
+	// eventDescSummary is the schema descriptor for summary field.
+	eventDescSummary := eventFields[9].Descriptor()
+	// event.DefaultSummary holds the default value on creation for the summary field.
+	event.DefaultSummary = eventDescSummary.Default.(string)
+	// eventDescID is the schema descriptor for id field.
+	eventDescID := eventFields[0].Descriptor()
+	// event.DefaultID holds the default value on creation for the id field.
+	event.DefaultID = eventDescID.Default.(func() string)
+	// event.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	event.IDValidator = func() func(string) error {
+		validators := eventDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

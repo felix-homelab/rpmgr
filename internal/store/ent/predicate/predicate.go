@@ -69,6 +69,9 @@ type Domain func(*sql.Selector)
 // EnrollmentToken is the predicate function for enrollmenttoken builders.
 type EnrollmentToken func(*sql.Selector)
 
+// Event is the predicate function for event builders.
+type Event func(*sql.Selector)
+
 // Gateway is the predicate function for gateway builders.
 type Gateway func(*sql.Selector)
 

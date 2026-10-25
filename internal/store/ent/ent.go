@@ -33,6 +33,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/event"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
@@ -154,6 +155,7 @@ func checkColumn(t, c string) error {
 			datasession.Table:        datasession.ValidColumn,
 			domain.Table:             domain.ValidColumn,
 			enrollmenttoken.Table:    enrollmenttoken.ValidColumn,
+			event.Table:              event.ValidColumn,
 			gateway.Table:            gateway.ValidColumn,
 			gatewaygroup.Table:       gatewaygroup.ValidColumn,
 			gatewaypage.Table:        gatewaypage.ValidColumn,

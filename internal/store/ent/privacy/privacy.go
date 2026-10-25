@@ -615,6 +615,30 @@ func (f EnrollmentTokenMutationRuleFunc) EvalMutation(ctx context.Context, m ent
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.EnrollmentTokenMutation", m)
 }
 
+// The EventQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type EventQueryRuleFunc func(context.Context, *ent.EventQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f EventQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.EventQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.EventQuery", q)
+}
+
+// The EventMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type EventMutationRuleFunc func(context.Context, *ent.EventMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f EventMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.EventMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.EventMutation", m)
+}
+
 // The GatewayQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type GatewayQueryRuleFunc func(context.Context, *ent.GatewayQuery) error
@@ -1652,6 +1676,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.EnrollmentTokenQuery:
 		return q.Filter(), nil
+	case *ent.EventQuery:
+		return q.Filter(), nil
 	case *ent.GatewayQuery:
 		return q.Filter(), nil
 	case *ent.GatewayGroupQuery:
@@ -1780,6 +1806,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.DomainMutation:
 		return m.Filter(), nil
 	case *ent.EnrollmentTokenMutation:
+		return m.Filter(), nil
+	case *ent.EventMutation:
 		return m.Filter(), nil
 	case *ent.GatewayMutation:
 		return m.Filter(), nil

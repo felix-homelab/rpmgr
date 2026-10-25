@@ -56,6 +56,8 @@ type Tx struct {
 	Domain *DomainClient
 	// EnrollmentToken is the client for interacting with the EnrollmentToken builders.
 	EnrollmentToken *EnrollmentTokenClient
+	// Event is the client for interacting with the Event builders.
+	Event *EventClient
 	// Gateway is the client for interacting with the Gateway builders.
 	Gateway *GatewayClient
 	// GatewayGroup is the client for interacting with the GatewayGroup builders.
@@ -288,6 +290,7 @@ func (tx *Tx) init() {
 	tx.DataSession = NewDataSessionClient(tx.config)
 	tx.Domain = NewDomainClient(tx.config)
 	tx.EnrollmentToken = NewEnrollmentTokenClient(tx.config)
+	tx.Event = NewEventClient(tx.config)
 	tx.Gateway = NewGatewayClient(tx.config)
 	tx.GatewayGroup = NewGatewayGroupClient(tx.config)
 	tx.GatewayPage = NewGatewayPageClient(tx.config)
