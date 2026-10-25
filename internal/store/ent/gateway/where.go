@@ -125,6 +125,11 @@ func DecommissionedAt(v time.Time) predicate.Gateway {
 	return predicate.Gateway(sql.FieldEQ(FieldDecommissionedAt, v))
 }
 
+// WssHostname applies equality check predicate on the "wss_hostname" field. It's identical to WssHostnameEQ.
+func WssHostname(v string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldEQ(FieldWssHostname, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.Gateway {
 	return predicate.Gateway(sql.FieldEQ(FieldOrgID, v))
@@ -733,6 +738,81 @@ func DecommissionedAtIsNil() predicate.Gateway {
 // DecommissionedAtNotNil applies the NotNil predicate on the "decommissioned_at" field.
 func DecommissionedAtNotNil() predicate.Gateway {
 	return predicate.Gateway(sql.FieldNotNull(FieldDecommissionedAt))
+}
+
+// WssHostnameEQ applies the EQ predicate on the "wss_hostname" field.
+func WssHostnameEQ(v string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldEQ(FieldWssHostname, v))
+}
+
+// WssHostnameNEQ applies the NEQ predicate on the "wss_hostname" field.
+func WssHostnameNEQ(v string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldNEQ(FieldWssHostname, v))
+}
+
+// WssHostnameIn applies the In predicate on the "wss_hostname" field.
+func WssHostnameIn(vs ...string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldIn(FieldWssHostname, vs...))
+}
+
+// WssHostnameNotIn applies the NotIn predicate on the "wss_hostname" field.
+func WssHostnameNotIn(vs ...string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldNotIn(FieldWssHostname, vs...))
+}
+
+// WssHostnameGT applies the GT predicate on the "wss_hostname" field.
+func WssHostnameGT(v string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldGT(FieldWssHostname, v))
+}
+
+// WssHostnameGTE applies the GTE predicate on the "wss_hostname" field.
+func WssHostnameGTE(v string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldGTE(FieldWssHostname, v))
+}
+
+// WssHostnameLT applies the LT predicate on the "wss_hostname" field.
+func WssHostnameLT(v string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldLT(FieldWssHostname, v))
+}
+
+// WssHostnameLTE applies the LTE predicate on the "wss_hostname" field.
+func WssHostnameLTE(v string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldLTE(FieldWssHostname, v))
+}
+
+// WssHostnameContains applies the Contains predicate on the "wss_hostname" field.
+func WssHostnameContains(v string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldContains(FieldWssHostname, v))
+}
+
+// WssHostnameHasPrefix applies the HasPrefix predicate on the "wss_hostname" field.
+func WssHostnameHasPrefix(v string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldHasPrefix(FieldWssHostname, v))
+}
+
+// WssHostnameHasSuffix applies the HasSuffix predicate on the "wss_hostname" field.
+func WssHostnameHasSuffix(v string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldHasSuffix(FieldWssHostname, v))
+}
+
+// WssHostnameIsNil applies the IsNil predicate on the "wss_hostname" field.
+func WssHostnameIsNil() predicate.Gateway {
+	return predicate.Gateway(sql.FieldIsNull(FieldWssHostname))
+}
+
+// WssHostnameNotNil applies the NotNil predicate on the "wss_hostname" field.
+func WssHostnameNotNil() predicate.Gateway {
+	return predicate.Gateway(sql.FieldNotNull(FieldWssHostname))
+}
+
+// WssHostnameEqualFold applies the EqualFold predicate on the "wss_hostname" field.
+func WssHostnameEqualFold(v string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldEqualFold(FieldWssHostname, v))
+}
+
+// WssHostnameContainsFold applies the ContainsFold predicate on the "wss_hostname" field.
+func WssHostnameContainsFold(v string) predicate.Gateway {
+	return predicate.Gateway(sql.FieldContainsFold(FieldWssHostname, v))
 }
 
 // HasGroup applies the HasEdge predicate on the "group" edge.

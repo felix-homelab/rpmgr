@@ -131,7 +131,7 @@ func (f *routeFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.Var(&f.authorities, "authority", "tcp --http-connect: a host name clients ask for with CONNECT; repeat for more")
 	fs.StringVar(&f.connectAuth, "connect-auth", "", "tcp --http-connect: none, tls-basic, or plain-basic (passwords in the clear)")
 	fs.StringVar(&f.connectHost, "connect-hostname", "", "tcp --http-connect --connect-auth tls-basic: the listener's hostname")
-	fs.StringVar(&f.connectCert, "connect-certificate", "", "tcp --http-connect --connect-auth tls-basic: the uploaded certificate's ID")
+	fs.StringVar(&f.connectCert, "connect-certificate", "", "tcp --http-connect --connect-auth tls-basic: an uploaded certificate's ID; without it, one that covers the hostname, else ACME's")
 	fs.DurationVar(&f.idleTimeout, "idle-timeout", 0, "tcp, tcp-udp: close a connection idle this long; udp: forget a flow idle this long")
 	fs.DurationVar(&f.flowIdleTimeout, "flow-idle-timeout", 0, "tcp-udp: forget a UDP flow idle this long")
 	fs.UintVar(&f.maxConnections, "max-connections", 0, "the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit")

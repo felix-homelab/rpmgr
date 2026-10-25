@@ -199,10 +199,12 @@ other routes (HTTP proxy)**, the **CONNECT names**, one per line, and **Proxy cr
 - **Authentication mode**, the same for every route of a listener:
   - `none` (the default): plain CONNECT, IP and rate-limit rules only.
   - `tls-basic`: the listener speaks TLS, an HTTPS proxy, with the listener's hostname under a
-    verified domain and an uploaded certificate that covers it (`--connect-hostname`,
-    `--connect-certificate`), and asks for the users of a basic-auth access policy. Naming a
-    renewed certificate on one route of the listener replaces it for all its routes and keeps the
-    port.
+    verified domain (`--connect-hostname`), and asks for the users of a basic-auth access policy.
+    Its certificate is the uploaded one you name with `--connect-certificate`; without it, an
+    uploaded certificate that covers the hostname, or else one that rpmgr obtains and renews from
+    the ACME CA, as for http routes. Until there is one, the route shows its gateways waiting for
+    the certificate. Naming a renewed certificate on one route of the listener replaces it for all
+    its routes and keeps the port.
   - `plain-basic`: plain CONNECT that asks for a basic-auth user. **The password crosses the
     network in the clear**: anyone on the path between client and gateway can read and use it.
     The command line, the API and the web UI warn every time. Use it only for clients that cannot

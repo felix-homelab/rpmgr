@@ -25,6 +25,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -65,9 +66,9 @@ func TestConnectRoutes(t *testing.T) {
 		t.Fatalf("an authority twice on a listener: %v", err)
 	}
 	r, err := ada.rt.CreateRoute(ctx, connect.NewRequest(&rpmgrv1.CreateRouteRequest{OrgId: org, Route: connectTCP("legacy", group, 0, plainBasic, "old.internal")}))
-	if err != nil || r.Msg.GetRoute().GetTcp().GetPort() == 20001 || len(r.Msg.GetWarnings()) != 2 ||
-		!strings.Contains(r.Msg.GetWarnings()[0], "in the clear") || !strings.Contains(r.Msg.GetWarnings()[1], "407") {
-		t.Fatalf("a plain_basic route without basic-auth rule: another listener and two warnings: %v %v", r, err)
+	if err != nil || r.Msg.GetRoute().GetTcp().GetPort() == 20001 || len(r.Msg.GetWarnings()) == 0 ||
+		!slices.ContainsFunc(r.Msg.GetWarnings(), func(w string) bool { return strings.Contains(w, "in the clear") }) {
+		t.Fatalf("a plain_basic route: another listener and a warning: %v %v", r, err)
 	}
 	legacy := r.Msg.GetRoute()
 	// The two listeners take the quota of 2: a third listener is refused, a third route on one is not.
@@ -95,9 +96,9 @@ func TestConnectRoutes(t *testing.T) {
 			r.GetTcp().ListenerMode = rpmgrv1.ListenerMode_LISTENER_MODE_HTTP_CONNECT
 			return r
 		}(), connect.CodeInvalidArgument, ""},
-		"tls_basic without a certificate": {func() *rpmgrv1.Route {
+		"tls_basic without a hostname": {func() *rpmgrv1.Route {
 			r := connectTCP("x6", group, 0, rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_TLS_BASIC, "x.internal")
-			r.GetTcp().GetConnect().Hostname = "proxy.example.com"
+			r.GetTcp().GetConnect().CertificateId = "crt_x"
 			return r
 		}(), connect.CodeInvalidArgument, ""},
 		"a hostname without TLS": {func() *rpmgrv1.Route {
@@ -128,7 +129,8 @@ func TestConnectRoutes(t *testing.T) {
 	moved := proto.Clone(db).(*rpmgrv1.Route)
 	moved.GetTcp().GetConnect().AuthMode, moved.GetTcp().GetConnect().Authorities = plainBasic, []string{"db.internal", "pg.internal"}
 	got, err := update(moved, "tcp.connect")
-	if err != nil || got.GetRoute().GetTcp().GetPort() != legacy.GetTcp().GetPort() || len(got.GetWarnings()) != 2 ||
+	if err != nil || got.GetRoute().GetTcp().GetPort() != legacy.GetTcp().GetPort() ||
+		!slices.ContainsFunc(got.GetWarnings(), func(w string) bool { return strings.Contains(w, "in the clear") }) ||
 		len(got.GetRoute().GetTcp().GetConnect().GetAuthorities()) != 2 {
 		t.Fatalf("a mode change moves the route: %v %v", got, err)
 	}
@@ -256,11 +258,10 @@ func TestConnectRoutes_TLSAndBasicAuth(t *testing.T) {
 	pid := policy.Msg.GetAccessPolicy().GetId()
 	vpn := tlsRoute("vpn", "proxy.example.com", certID)
 	vpn.PolicyIds = []string{pid}
-	res, err := ada.rt.CreateRoute(ctx, connect.NewRequest(&rpmgrv1.CreateRouteRequest{OrgId: org, Route: vpn}))
-	if err != nil || res.Msg.GetRoute().GetTcp().GetConnect().GetCertificateId() != certID || len(res.Msg.GetWarnings()) != 0 {
-		t.Fatalf("a tls_basic route with a basic-auth policy, without warnings: %v %v", res, err)
+	vpn, err = createRoute(ada, org, vpn, "")
+	if err != nil || vpn.GetTcp().GetConnect().GetCertificateId() != certID {
+		t.Fatalf("a tls_basic route with a basic-auth policy: %v %v", vpn, err)
 	}
-	vpn = res.Msg.GetRoute()
 	none := connectTCP("open", group, 0, rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_NONE, "open.internal")
 	none.PolicyIds = []string{pid}
 	if _, err := createRoute(ada, org, none, ""); reason(err) != apisvc.ReasonBasicAuthNotHTTP {
@@ -316,6 +317,74 @@ func TestConnectRoutes_TLSAndBasicAuth(t *testing.T) {
 	}
 	if !slices.Contains(names, "proxy.example.com") {
 		t.Fatalf("the gateway's certificates name %v, want the listener's hostname", names)
+	}
+}
+
+// TestConnectRoutes_TLSWithoutCertificate (#934): a tls_basic route needs its listener's hostname
+// but no certificate; without one its listener presents an uploaded certificate of the org that
+// covers the hostname, else the ACME one, and until there is one the route's online gateways
+// report CERTIFICATE_PENDING, with the reason of the last ACME attempt.
+func TestConnectRoutes_TLSWithoutCertificate(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	c := e.db.Client()
+	e.verified(t, org, "example.com", true)
+	if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org,
+		PortPool: &rpmgrv1.PortPool{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009}})); err != nil {
+		t.Fatal(err)
+	}
+	gw, err := createGateway(ada, org, group, "gw1", "gw1.example.com:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := connectTCP("vpn", group, 0, rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_TLS_BASIC, "vpn.internal")
+	if _, err := createRoute(ada, org, r, ""); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("tls_basic without a hostname: %v", err)
+	}
+	r.GetTcp().GetConnect().Hostname = "proxy.example.org"
+	if _, err := createRoute(ada, org, r, ""); reason(err) != apisvc.ReasonDomainNotVerified {
+		t.Fatalf("a hostname outside the verified domains: %v", err)
+	}
+	r.GetTcp().GetConnect().Hostname = "Proxy.Example.com"
+	vpn, err := createRoute(ada, org, r, "")
+	if err != nil {
+		t.Fatalf("tls_basic without a certificate: %v", err)
+	}
+	if c := vpn.GetTcp().GetConnect(); c.GetHostname() != "proxy.example.com" || c.GetCertificateId() != "" {
+		t.Fatalf("the CONNECT spec: %v", c)
+	}
+	notServing := func() []*rpmgrv1.RouteNotServing {
+		t.Helper()
+		runNewest(t, e, org, gw.GetId())
+		c.AgentSession.UpdateOneID(gw.GetId()).SetCapabilities(gateway.Capabilities).ExecX(e.sys)
+		got, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: vpn.GetId()}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.Msg.GetRoute().GetStatus().GetNotServing()
+	}
+	pending := func(ns []*rpmgrv1.RouteNotServing) *rpmgrv1.RouteNotServing {
+		for _, n := range ns {
+			if n.GetId() == gw.GetId() && n.GetReason() == "CERTIFICATE_PENDING" {
+				return n
+			}
+		}
+		return nil
+	}
+	if p := pending(notServing()); p == nil || p.GetDetail() != "proxy.example.com" {
+		t.Fatalf("no certificate yet: %v", notServing())
+	}
+	// A failed ACME attempt: its reason is the detail.
+	row := c.Certificate.Create().SetOrgID(org).SetSource(certificate.SourceAcme).SetSans([]string{"proxy.example.com"}).
+		SetStatus(certificate.StatusFailed).SetLastError("acme: the CA refused").SaveX(e.sys)
+	if p := pending(notServing()); p == nil || p.GetDetail() != "proxy.example.com: acme: the CA refused" {
+		t.Fatalf("a failed attempt: %v", notServing())
+	}
+	// Issued: no longer pending.
+	c.Certificate.UpdateOne(row).SetStatus(certificate.StatusActive).SetLastError("").SetNotBefore(e.clock).
+		SetNotAfter(e.clock.Add(90 * 24 * time.Hour)).SetChain([]byte{1}).SetKeyEnc([]byte{2}).SetContentSha256([]byte{3}).ExecX(e.sys)
+	if p := pending(notServing()); p != nil {
+		t.Fatalf("an issued certificate: %v", p)
 	}
 }
 

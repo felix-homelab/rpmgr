@@ -57,7 +57,8 @@ func connectWarnings(ctx context.Context, tx *ent.Tx, r *rpmgrv1.Route) ([]strin
 }
 
 // checkConnect checks what the request's rules cannot of a tcp route's listener mode and CONNECT
-// spec: a spec exactly with http_connect, and a hostname and certificate exactly with tls_basic.
+// spec: a spec exactly with http_connect, a hostname exactly with tls_basic, and a certificate
+// only with tls_basic.
 func checkConnect(t *rpmgrv1.TCPRouteSpec) error {
 	invalid := func(format string, args ...any) error {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: "+format, args...))
@@ -71,8 +72,8 @@ func checkConnect(t *rpmgrv1.TCPRouteSpec) error {
 		return nil
 	case c == nil:
 		return invalid("LISTENER_MODE_HTTP_CONNECT needs a CONNECT spec with authorities")
-	case c.GetAuthMode() == rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_TLS_BASIC && (c.GetHostname() == "" || c.GetCertificateId() == ""):
-		return invalid("CONNECT_AUTH_MODE_TLS_BASIC needs the listener's hostname and an uploaded certificate that covers it")
+	case c.GetAuthMode() == rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_TLS_BASIC && c.GetHostname() == "":
+		return invalid("CONNECT_AUTH_MODE_TLS_BASIC needs the listener's hostname")
 	case c.GetAuthMode() != rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_TLS_BASIC && (c.GetHostname() != "" || c.GetCertificateId() != ""):
 		return invalid("a CONNECT hostname and certificate go with CONNECT_AUTH_MODE_TLS_BASIC only")
 	}
@@ -85,7 +86,9 @@ func checkConnect(t *rpmgrv1.TCPRouteSpec) error {
 }
 
 // listenerOf is the CONNECT listener a route's spec asks for, with its TLS hostname checked
-// against the org's verified domains and its certificate against the hostname.
+// against the org's verified domains and its certificate, if it names one, against the hostname;
+// without one the listener presents an uploaded certificate that covers the hostname, else one
+// from ACME (certs.Own).
 func listenerOf(ctx context.Context, tx *ent.Tx, org string, c *rpmgrv1.ConnectSpec) (routes.Listener, error) {
 	l := routes.Listener{Mode: map[rpmgrv1.ConnectAuthMode]connectlistener.AuthMode{
 		rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_UNSPECIFIED: connectlistener.AuthModeNone,
@@ -102,6 +105,10 @@ func listenerOf(ctx context.Context, tx *ent.Tx, org string, c *rpmgrv1.ConnectS
 	d, err := domains.Covering(ctx, tx, org, name)
 	if err != nil {
 		return l, err
+	}
+	l.Hostname = name
+	if c.GetCertificateId() == "" {
+		return l, nil
 	}
 	crt, err := tx.Certificate.Get(ctx, c.GetCertificateId())
 	if err != nil {

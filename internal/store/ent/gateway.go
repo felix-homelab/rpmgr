@@ -45,6 +45,8 @@ type Gateway struct {
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// DecommissionedAt holds the value of the "decommissioned_at" field.
 	DecommissionedAt *time.Time `json:"decommissioned_at,omitempty"`
+	// WssHostname holds the value of the "wss_hostname" field.
+	WssHostname *string `json:"wss_hostname,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GatewayQuery when eager-loading is set.
 	Edges        GatewayEdges `json:"edges"`
@@ -82,7 +84,7 @@ func (*Gateway) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case gateway.FieldVersion, gateway.FieldSlot:
 			values[i] = new(sql.NullInt64)
-		case gateway.FieldID, gateway.FieldOrgID, gateway.FieldGatewayGroupID, gateway.FieldName, gateway.FieldSpiffeID, gateway.FieldPubkeySha256, gateway.FieldDesiredVersion:
+		case gateway.FieldID, gateway.FieldOrgID, gateway.FieldGatewayGroupID, gateway.FieldName, gateway.FieldSpiffeID, gateway.FieldPubkeySha256, gateway.FieldDesiredVersion, gateway.FieldWssHostname:
 			values[i] = new(sql.NullString)
 		case gateway.FieldCreatedAt, gateway.FieldDecommissionedAt:
 			values[i] = new(sql.NullTime)
@@ -188,6 +190,13 @@ func (_m *Gateway) assignValues(columns []string, values []any) error {
 				_m.DecommissionedAt = new(time.Time)
 				*_m.DecommissionedAt = value.Time
 			}
+		case gateway.FieldWssHostname:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field wss_hostname", values[i])
+			} else if value.Valid {
+				_m.WssHostname = new(string)
+				*_m.WssHostname = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -268,6 +277,11 @@ func (_m *Gateway) String() string {
 	if v := _m.DecommissionedAt; v != nil {
 		builder.WriteString("decommissioned_at=")
 		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.WssHostname; v != nil {
+		builder.WriteString("wss_hostname=")
+		builder.WriteString(*v)
 	}
 	builder.WriteByte(')')
 	return builder.String()

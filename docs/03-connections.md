@@ -1076,12 +1076,12 @@ through it. Gateways announce the capability `tcp.http-connect`.
   an update must name the mode of a route whose mode is not `none`. A listener closes when its
   last route goes.
 - **TLS listener.** The listener's hostname lies under a verified domain of the org, which cannot
-  be removed while it does; its certificate is an uploaded one of the org that covers the
-  hostname, with the TLS versions of http routes ([04](04-security.md#controller-certificates)).
-  The certificate is not part of the listener's identity: a route that names another covering
-  certificate sets it for every route of the listener, so a certificate is replaced without
-  moving the port. Only gateways with `tcp.http-connect` get the certificate. ACME for listener
-  hostnames is not built yet.
+  be removed while it does. Its certificate is the uploaded one the route names, or, naming none,
+  an uploaded one of the org that covers the hostname, else one the ACME job obtains and renews
+  for the hostname, as for http routes, with its challenges answered by the gateways of the
+  listener's group ([04](04-security.md#controller-certificates)); the TLS versions are those of
+  http routes. Until the listener has a certificate, the route status names its gateways
+  `CERTIFICATE_PENDING`.
 - **Refusals.** A peer that no route of the listener admits by its IP rules is dropped before its
   TLS handshake and its request. A request whose method is not `CONNECT`, compared with case, is
   **405**. In the mode `none`, an authority no route of the listener names and one whose IP rules

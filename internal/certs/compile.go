@@ -22,7 +22,8 @@ import (
 )
 
 // Gateway compiles a gateway's certificates: for every enabled http route of its gateway group,
-// the certificate its tls_mode names, with the route hostnames that certificate covers. In
+// the certificate its tls_mode names, with the route hostnames that certificate covers; and for the
+// gateway's WSS hostname and its group's TLS CONNECT listeners' hostnames their own (Own). In
 // certificate mode that is the route's uploaded certificate, which the composite foreign key keeps
 // in the route's org; in acme mode the org's active ACME certificates. Expired certificates stay in
 // the snapshot, which depends only on the configuration; the gateway passes them over. A disabled
@@ -90,24 +91,35 @@ func Gateway(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Reso
 			}
 		}
 	}
-	// The TLS CONNECT listeners of the group present their uploaded certificate for their hostname
-	// while a route that is enabled is on them (docs/03-connections.md, "HTTP CONNECT routes"). A
-	// gateway without the capability gets no route of theirs and so no key either.
+	// The TLS CONNECT listeners of the group present the certificate they name, else their own
+	// (Own), for their hostname while a route that is enabled is on them (docs/03-connections.md,
+	// "HTTP CONNECT routes"). A gateway without the capability gets no route of theirs and so no
+	// key either.
 	var listeners []*ent.ConnectListener
 	if a.Has(agentproto.CapTCPHTTPConnect) {
 		listeners, err = tx.ConnectListener.Query().Where(connectlistener.GatewayGroupID(gw.GatewayGroupID),
-			connectlistener.AuthModeEQ(connectlistener.AuthModeTLSBasic), connectlistener.HasCertificateWith(certificate.StatusEQ(certificate.StatusActive)),
-			connectlistener.HasRoutesWith(routetcp.HasRouteWith(route.Enabled(true)))).WithCertificate().All(ctx)
+			connectlistener.AuthModeEQ(connectlistener.AuthModeTLSBasic),
+			connectlistener.HasRoutesWith(routetcp.HasRouteWith(route.Enabled(true)))).WithCertificate().Order(ent.Asc(connectlistener.FieldID)).All(ctx)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, l := range listeners {
-		c := l.Edges.Certificate
-		if !slices.Contains(hostnames[c.ID], l.Hostname) {
+		c, err := ListenerCertificate(ctx, tx.Certificate, l)
+		if err != nil {
+			return nil, err
+		}
+		if c != nil && !slices.Contains(hostnames[c.ID], l.Hostname) {
 			served[c.ID] = c
 			hostnames[c.ID] = append(hostnames[c.ID], l.Hostname)
 		}
+	}
+	// The gateway's own WSS hostname, which no route of the group has (routes.SetWSSHostname).
+	if c, err := wssCertificate(ctx, tx, gw); err != nil {
+		return nil, err
+	} else if c != nil && !slices.Contains(hostnames[c.ID], *gw.WssHostname) {
+		served[c.ID] = c
+		hostnames[c.ID] = append(hostnames[c.ID], *gw.WssHostname)
 	}
 	ids := make([]string, 0, len(served))
 	for id := range served {
@@ -126,4 +138,59 @@ func Gateway(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Reso
 			ContentSha256: c.ContentSha256, Hostnames: hosts, NotAfter: timestamppb.New(*c.NotAfter)}}})
 	}
 	return out, nil
+}
+
+// UploadedCovering returns the active uploaded certificate of org that covers name and is valid
+// the longest, or nil.
+func UploadedCovering(ctx context.Context, cc *ent.CertificateClient, org, name string) (*ent.Certificate, error) {
+	rows, err := cc.Query().Where(certificate.OrgID(org), certificate.SourceEQ(certificate.SourceUploaded),
+		certificate.StatusEQ(certificate.StatusActive)).Order(ent.Asc(certificate.FieldID)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var best *ent.Certificate
+	for _, c := range rows {
+		if c.NotAfter == nil || !slices.ContainsFunc(c.Sans, func(san string) bool { return Covers(san, name) }) {
+			continue
+		}
+		if best == nil || c.NotAfter.After(*best.NotAfter) {
+			best = c
+		}
+	}
+	return best, nil
+}
+
+// wssCertificate returns the certificate of a gateway's WSS hostname (Own), or nil.
+func wssCertificate(ctx context.Context, tx *ent.Tx, gw *ent.Gateway) (*ent.Certificate, error) {
+	if gw.WssHostname == nil {
+		return nil, nil
+	}
+	return Own(ctx, tx.Certificate, gw.OrgID, *gw.WssHostname)
+}
+
+// Own returns the certificate of a name that org owns outside its routes, such as a WSS or a
+// CONNECT listener's hostname: an uploaded certificate of org that covers it, else its active ACME
+// certificate, or nil.
+func Own(ctx context.Context, cc *ent.CertificateClient, org, name string) (*ent.Certificate, error) {
+	c, err := UploadedCovering(ctx, cc, org, name)
+	if err != nil || c != nil {
+		return c, err
+	}
+	c, err = ACMEOf(ctx, cc, org, name)
+	if err != nil || c == nil || c.Status != certificate.StatusActive {
+		return nil, err
+	}
+	return c, nil
+}
+
+// ListenerCertificate returns the certificate a TLS CONNECT listener presents: the active one it
+// names, loaded with WithCertificate, else, naming none, its own (Own); or nil.
+func ListenerCertificate(ctx context.Context, cc *ent.CertificateClient, l *ent.ConnectListener) (*ent.Certificate, error) {
+	if l.CertificateID == nil {
+		return Own(ctx, cc, l.OrgID, l.Hostname)
+	}
+	if c := l.Edges.Certificate; c != nil && c.Status == certificate.StatusActive {
+		return c, nil
+	}
+	return nil, nil
 }
