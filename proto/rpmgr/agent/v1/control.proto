@@ -24,6 +24,10 @@ service Control {
   rpc FetchResource(FetchResourceRequest) returns (FetchResourceResponse);
   // Leave revokes the caller's own identity (R37); `rpmgr leave` then wipes it from the host.
   rpc Leave(LeaveRequest) returns (LeaveResponse);
+  // Attach carries an imperative operation the controller opened with Open, on the connection of
+  // the agent's control session: the agent's first frame presents the operation's single-use
+  // ticket (docs/03-connections.md, "Control session").
+  rpc Attach(stream AttachFrame) returns (stream AttachFrame);
 }
 
 // AgentMessage is what an agent sends on its control session.
@@ -45,7 +49,8 @@ message AgentMessage {
 
 // ControllerMessage is what the controller sends on a control session.
 message ControllerMessage {
-  // Open (imperative operations) comes with live logs in Phase 2.
+  // An early draft gave Open this number and name; both stay reserved, as buf breaking refuses
+  // to give either back, so that no agent reads them as something else (VB-22).
   reserved 3;
   reserved "open";
 
@@ -66,7 +71,86 @@ message ControllerMessage {
     // Connectors with the capability "probe.target": read the certificate a target presents,
     // answered with OpResult.
     ProbeTarget probe_target = 8;
+    // Agents with the capability of the operation's kind: start an imperative operation, carried
+    // by an Attach stream; a refusal is an OpResult with an error.
+    Open open_operation = 9;
   }
+}
+
+// Open starts an imperative operation (docs/03-connections.md, "Control session").
+message Open {
+  // The operation.
+  string op_id = 1;
+  // What it does.
+  OperationKind kind = 2;
+  // The single-use ticket the agent presents in its first Attach frame; 32 random bytes.
+  bytes ticket = 3;
+  // The operation ends at this time at the latest.
+  google.protobuf.Timestamp deadline = 4;
+  // The parameters of its kind.
+  oneof params {
+    // OPERATION_KIND_LOGS.
+    LogParams logs = 5;
+  }
+}
+
+// OperationKind is what an imperative operation does.
+enum OperationKind {
+  // Not set; refused.
+  OPERATION_KIND_UNSPECIFIED = 0;
+  // Live logs: the agent streams its redacted log lines (capability "logs.stream").
+  OPERATION_KIND_LOGS = 1;
+}
+
+// LogParams are the parameters of a live-log operation.
+message LogParams {
+  // The lowest level streamed: "debug", "info", "warn" or "error"; "" is "info".
+  string level = 1;
+  // Only lines whose text contains it; "" for all.
+  string filter = 2;
+  // Raise the agent's log level to debug for the operation's life (D140).
+  bool raise_to_debug = 3;
+}
+
+// AttachFrame is one frame of an Attach stream.
+message AttachFrame {
+  // The frame.
+  oneof frame {
+    // Agent, first frame: the operation and its ticket.
+    AttachHello hello = 1;
+    // Agent: a log line of an OPERATION_KIND_LOGS operation.
+    LogLine log = 2;
+    // Either side: the operation ends, with why.
+    AttachEnd end = 3;
+  }
+}
+
+// AttachHello opens an Attach stream.
+message AttachHello {
+  // The operation of the Open.
+  string op_id = 1;
+  // The ticket of the Open.
+  bytes ticket = 2;
+}
+
+// LogLine is one line of an agent's live log.
+message LogLine {
+  // When it was logged.
+  google.protobuf.Timestamp time = 1;
+  // Its level: "debug", "info", "warn" or "error".
+  string level = 2;
+  // The line, redacted on the agent.
+  string text = 3;
+  // How many lines the agent dropped before this one, as the viewer read too slowly.
+  uint32 dropped_before = 4;
+  // The line was cut at the limit of docs/03.
+  bool truncated = 5;
+}
+
+// AttachEnd ends an operation.
+message AttachEnd {
+  // Why, for people; "" when it simply ended.
+  string reason = 1;
 }
 
 // Hello opens a session.
@@ -157,6 +241,8 @@ enum NotReadyReason {
   NOT_READY_REASON_ENVIRONMENT = 4;
   // The connector's local policy file does not parse, or others may write it: nothing is allowed.
   NOT_READY_REASON_POLICY_INVALID = 5;
+  // Phase 2: every target the local policy allows failed its health check.
+  NOT_READY_REASON_TARGETS_UNHEALTHY = 6;
 }
 
 // Status reports readiness and counters.

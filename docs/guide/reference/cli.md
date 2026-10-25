@@ -765,6 +765,14 @@ rpmgr create route [flags]
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--group string` |  | the gateway group, by name or ID |
+| `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
+| `--health-healthy uint` |  | passed checks in a row that make it healthy again; 0 is the default |
+| `--health-interval duration` |  | how often each target is checked; 0 is the default |
+| `--health-path string` |  | http check: the path to GET, / if empty |
+| `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
+| `--health-status string` |  | http check: the passing statuses, as 200-399; empty for the default |
+| `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
+| `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
@@ -773,6 +781,7 @@ rpmgr create route [flags]
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
+| `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
 | `--max-connections uint` |  | the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
@@ -790,6 +799,8 @@ rpmgr create route [flags]
 | `--tls-passthrough` |  | a TLS route the gateway passes through by its SNI |
 | `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
 | `--udp` |  | a udp route on a public port |
+| `--upstream-header-timeout duration` |  | http: how long to wait for the upstream's response headers before 504; 0 is the gateway's |
+| `--upstream-idle-timeout duration` |  | http: how long an unused connection to the upstream is kept; 0 is the gateway's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
 
@@ -1031,6 +1042,14 @@ rpmgr update route [flags] <id or name>
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--force` |  | update without checking that the route is unchanged since this command read it |
+| `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
+| `--health-healthy uint` |  | passed checks in a row that make it healthy again; 0 is the default |
+| `--health-interval duration` |  | how often each target is checked; 0 is the default |
+| `--health-path string` |  | http check: the path to GET, / if empty |
+| `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
+| `--health-status string` |  | http check: the passing statuses, as 200-399; empty for the default |
+| `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
+| `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
@@ -1038,6 +1057,7 @@ rpmgr update route [flags] <id or name>
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
+| `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
 | `--max-connections uint` |  | the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
@@ -1051,6 +1071,8 @@ rpmgr update route [flags] <id or name>
 | `--set-response-header value` |  | http: a header Name=value set towards the client; repeat for more |
 | `--tls-mode string` |  | http: acme or certificate |
 | `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
+| `--upstream-header-timeout duration` |  | http: how long to wait for the upstream's response headers before 504; 0 is the gateway's |
+| `--upstream-idle-timeout duration` |  | http: how long an unused connection to the upstream is kept; 0 is the gateway's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
 
@@ -1447,6 +1469,14 @@ rpmgr preview route [flags]
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--group string` |  | the gateway group, by name or ID |
+| `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
+| `--health-healthy uint` |  | passed checks in a row that make it healthy again; 0 is the default |
+| `--health-interval duration` |  | how often each target is checked; 0 is the default |
+| `--health-path string` |  | http check: the path to GET, / if empty |
+| `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
+| `--health-status string` |  | http check: the passing statuses, as 200-399; empty for the default |
+| `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
+| `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
@@ -1455,6 +1485,7 @@ rpmgr preview route [flags]
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
+| `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
 | `--max-connections uint` |  | the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
@@ -1473,6 +1504,8 @@ rpmgr preview route [flags]
 | `--tls-passthrough` |  | a TLS route the gateway passes through by its SNI |
 | `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
 | `--udp` |  | a udp route on a public port |
+| `--upstream-header-timeout duration` |  | http: how long to wait for the upstream's response headers before 504; 0 is the gateway's |
+| `--upstream-idle-timeout duration` |  | http: how long an unused connection to the upstream is kept; 0 is the gateway's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
 

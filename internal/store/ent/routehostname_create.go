@@ -65,6 +65,20 @@ func (_c *RouteHostnameCreate) SetNillablePathPrefix(v *string) *RouteHostnameCr
 	return _c
 }
 
+// SetMatchKey sets the "match_key" field.
+func (_c *RouteHostnameCreate) SetMatchKey(v string) *RouteHostnameCreate {
+	_c.mutation.SetMatchKey(v)
+	return _c
+}
+
+// SetNillableMatchKey sets the "match_key" field if the given value is not nil.
+func (_c *RouteHostnameCreate) SetNillableMatchKey(v *string) *RouteHostnameCreate {
+	if v != nil {
+		_c.SetMatchKey(*v)
+	}
+	return _c
+}
+
 // SetDomainID sets the "domain_id" field.
 func (_c *RouteHostnameCreate) SetDomainID(v string) *RouteHostnameCreate {
 	_c.mutation.SetDomainID(v)
@@ -122,6 +136,10 @@ func (_c *RouteHostnameCreate) defaults() error {
 		v := routehostname.DefaultPathPrefix
 		_c.mutation.SetPathPrefix(v)
 	}
+	if _, ok := _c.mutation.MatchKey(); !ok {
+		v := routehostname.DefaultMatchKey
+		_c.mutation.SetMatchKey(v)
+	}
 	return nil
 }
 
@@ -169,6 +187,9 @@ func (_c *RouteHostnameCreate) check() error {
 	}
 	if _, ok := _c.mutation.PathPrefix(); !ok {
 		return &ValidationError{Name: "path_prefix", err: errors.New(`ent: missing required field "RouteHostname.path_prefix"`)}
+	}
+	if _, ok := _c.mutation.MatchKey(); !ok {
+		return &ValidationError{Name: "match_key", err: errors.New(`ent: missing required field "RouteHostname.match_key"`)}
 	}
 	if _, ok := _c.mutation.DomainID(); !ok {
 		return &ValidationError{Name: "domain_id", err: errors.New(`ent: missing required field "RouteHostname.domain_id"`)}
@@ -229,6 +250,10 @@ func (_c *RouteHostnameCreate) createSpec() (*RouteHostname, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.PathPrefix(); ok {
 		_spec.SetField(routehostname.FieldPathPrefix, field.TypeString, value)
 		_node.PathPrefix = value
+	}
+	if value, ok := _c.mutation.MatchKey(); ok {
+		_spec.SetField(routehostname.FieldMatchKey, field.TypeString, value)
+		_node.MatchKey = value
 	}
 	if nodes := _c.mutation.RouteIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
