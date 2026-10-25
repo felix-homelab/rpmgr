@@ -108,6 +108,7 @@ func TestCrossTenantLeaks(t *testing.T) {
 	routeA := db.Client().Route.Create().SetOrgID(orgA).SetName("web-a").SetType("tls_passthrough").SetGatewayGroupID(groupA.ID).SaveX(sys)
 	targetA := db.Client().RouteTarget.Create().SetOrgID(orgA).SetRouteID(routeA.ID).SetConnectorID(connectorA.ID).SetKind("address").
 		SetHost("10.0.0.5").SetPort(5432).SaveX(sys)
+	db.Client().HealthCheck.Create().SetOrgID(orgA).SetRouteID(routeA.ID).SetType("http").SetHTTPPath("/leak-a").ExecX(sys)
 	policyA := db.Client().AccessPolicy.Create().SetOrgID(orgA).SetName("office-a").SaveX(sys)
 	certA := db.Client().Certificate.Create().SetOrgID(orgA).SetSource("acme").SetSans([]string{"shop.org-a.example"}).SetStatus("failed").
 		SetLastError("leak").SaveX(sys)
@@ -122,7 +123,7 @@ func TestCrossTenantLeaks(t *testing.T) {
 		"port_pool_id": poolA.ID, "port_quota_id": quotaA.ID, "connector_id": connectorA.ID, "domain_id": domainA.ID, "route_id": routeA.ID, "route_target_id": targetA.ID, "target_id": targetA.ID, "enrollment_token_id": tokenA.ID,
 		"access_policy_id": policyA.ID, "certificate_id": certA.ID, "ca_bundle_id": bundleA.ID, "release_id": releaseA.ID, "rollout_id": rolloutA.ID,
 	}
-	secrets := []string{orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, quotaA.ID, connectorA.ID, domainA.ID, "org-a.example", routeA.ID, "web-a", targetA.ID, "10.0.0.5", tokenA.ID, policyA.ID, "office-a", certA.ID, "shop.org-a.example", bundleA.ID, "internal-a", releaseA.ID, rolloutA.ID, ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
+	secrets := []string{orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, quotaA.ID, connectorA.ID, domainA.ID, "org-a.example", routeA.ID, "web-a", "/leak-a", targetA.ID, "10.0.0.5", tokenA.ID, policyA.ID, "office-a", certA.ID, "shop.org-a.example", bundleA.ID, "internal-a", releaseA.ID, rolloutA.ID, ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
 		invitation.Msg.GetUrl()[strings.Index(invitation.Msg.GetUrl(), "#")+1:]}
 	before := orgRows(t, db, orgA)
 

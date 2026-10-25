@@ -1018,9 +1018,13 @@ type RouteHealth struct {
 	// Why not, when not ready.
 	Reason v1.NotReadyReason `protobuf:"varint,3,opt,name=reason,proto3,enum=rpmgr.agent.v1.NotReadyReason" json:"reason,omitempty"`
 	// Details for the operator, for example the target a local policy blocks.
-	Detail        string `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Detail string `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
+	// Phase 2, when ready: the priorities of the route's targets on this connector that have a
+	// healthy target, sorted. Empty, every priority does: a connector without health.active, or a
+	// route without a health check (docs/03-connections.md, "Target health").
+	ReadyPriorities []uint32 `protobuf:"varint,5,rep,packed,name=ready_priorities,json=readyPriorities,proto3" json:"ready_priorities,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *RouteHealth) Reset() {
@@ -1079,6 +1083,13 @@ func (x *RouteHealth) GetDetail() string {
 		return x.Detail
 	}
 	return ""
+}
+
+func (x *RouteHealth) GetReadyPriorities() []uint32 {
+	if x != nil {
+		return x.ReadyPriorities
+	}
+	return nil
 }
 
 // OpenRequest asks the gateway to open a stream on the TCP transport, where the connector cannot.
@@ -1319,12 +1330,13 @@ const file_rpmgr_tunnel_v1_tunnel_proto_rawDesc = "" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\"W\n" +
 	"\x05Drain\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\x126\n" +
-	"\bdeadline\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline\"\x8e\x01\n" +
+	"\bdeadline\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline\"\xb9\x01\n" +
 	"\vRouteHealth\x12\x19\n" +
 	"\broute_id\x18\x01 \x01(\tR\arouteId\x12\x14\n" +
 	"\x05ready\x18\x02 \x01(\bR\x05ready\x126\n" +
 	"\x06reason\x18\x03 \x01(\x0e2\x1e.rpmgr.agent.v1.NotReadyReasonR\x06reason\x12\x16\n" +
-	"\x06detail\x18\x04 \x01(\tR\x06detail\"\x93\x01\n" +
+	"\x06detail\x18\x04 \x01(\tR\x06detail\x12)\n" +
+	"\x10ready_priorities\x18\x05 \x03(\rR\x0freadyPriorities\"\x93\x01\n" +
 	"\vOpenRequest\x12\x17\n" +
 	"\aopen_id\x18\x01 \x01(\x04R\x06openId\x12/\n" +
 	"\x04kind\x18\x02 \x01(\x0e2\x1b.rpmgr.tunnel.v1.StreamKindR\x04kind\x12\x19\n" +

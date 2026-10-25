@@ -311,9 +311,15 @@ later.
   the names, issuer, expiry and key fingerprint before the key is pinned. Probing takes
   `routes.write`.
 - **The exceptions to the ban** of `InsecureSkipVerify` serve these two modes alone:
-  `UpstreamTLS.config` of `internal/gateway/upstreamtls.go`
-  ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)) and the connector's `readCertificate`
-  of `internal/connector/probe.go` ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)).
+  `Settings.Config` of `internal/upstreamtls/upstreamtls.go`
+  ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)), the one place that builds a target's
+  TLS settings, which the gateway uses for the route's traffic and the connector for the target's
+  HTTPS health check, so both check the certificate alike (ADR-0017 names its first home,
+  `UpstreamTLS.config` of `internal/gateway/upstreamtls.go`; it moved so that the connector-only
+  build, which links no gateway code, shares it, D119; the depguard rule `upstream-tls` of
+  `.golangci.yml` lets only the gateway and the connector import the package), and the connector's
+  `readCertificate` of `internal/connector/probe.go`
+  ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)).
   `tools/bannedapi` allows them in those functions of the rpmgr module and nowhere else, a module
   nested in the repository included. golangci skips forbidigo's findings in `upstreamtls.go` and
   gosec's G402 finding in `probe.go` (forbidigo does not see the field there); in both files
@@ -678,6 +684,12 @@ capabilities, so a gateway of an earlier release never serves a route without th
   from every client request on every http route, also when the name is spelt with `_` for `-`,
   which CGI-style servers read alike, so that only the gateway sets them
   ([03](03-connections.md#http-routes), [D135](14-open-decisions.md#engineering)).
+- **Per-client rate limits** count each client address, or IPv6 /64, in bounded tables on each
+  gateway ([03](03-connections.md#access-policies)). A UDP source address can be forged at will, so
+  udp flows count in tables of their own: a flood of forged sources never fills the table that
+  limits real clients of http and tcp routes. When a table is full, a new address passes rather
+  than being refused, so that a flood never locks real clients out; the route's own limits still
+  bound what passes ([D137](14-open-decisions.md#engineering)).
 - **Require-header values** are shared secrets of at least 32 characters, such as a CDN's origin
   header. The controller keeps only their SHA-256, which the gateways receive; a value is
   write-only and never read back. Plain, unsalted SHA-256 suffices only because a value is

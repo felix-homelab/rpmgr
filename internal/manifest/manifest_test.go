@@ -53,7 +53,8 @@ func stored() *rpmgrv1.Route {
 			Address:          &rpmgrv1.RouteTarget_HostPort{HostPort: &rpmgrv1.HostPort{Host: "192.168.10.20", Port: 5000}},
 			UpstreamProtocol: rpmgrv1.UpstreamProtocol_UPSTREAM_PROTOCOL_HTTPS,
 			Tls:              &rpmgrv1.UpstreamTLSSettings{ServerName: "nas.internal", CaBundleId: "cab_1"}}},
-		Etag: "7", Status: &rpmgrv1.RouteStatus{State: rpmgrv1.RouteState_ROUTE_STATE_READY}, CreateTime: timestamppb.Now(), UpdateTime: timestamppb.Now(),
+		HealthCheck: &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP, HttpPath: "/healthz", IntervalSeconds: 30},
+		Etag:        "7", Status: &rpmgrv1.RouteStatus{State: rpmgrv1.RouteState_ROUTE_STATE_READY, HealthNotChecked: []string{"rtt_1"}}, CreateTime: timestamppb.Now(), UpdateTime: timestamppb.Now(),
 		UpdateUserId: "usr_1"}
 }
 
@@ -87,7 +88,8 @@ func TestRoute(t *testing.T) {
 	for _, want := range []string{"kind: Route\nmetadata:\n  name: nas-web\n  labels:\n    site: home\nspec:\n", "  gatewayGroup: eu\n",
 		"  policies:\n    - auth\n    - office\n", "    - connector: nas\n", "        caBundle: internal\n", "    tlsMode: TLS_MODE_CERTIFICATE\n",
 		"    certificateId: crt_1\n", "        port: 5000\n", "    maintenance: true\n", "    maintenanceMessage: |-\n      Back at 18:00.\n      Sorry.\n",
-		"    headerMatches:\n      - exact: beta\n        name: X-Env\n      - name: X-Tenant\n        present: true\n"} {
+		"    headerMatches:\n      - exact: beta\n        name: X-Env\n      - name: X-Tenant\n        present: true\n",
+		"  healthCheck:\n    httpPath: /healthz\n    intervalSeconds: 30\n    type: HEALTH_CHECK_TYPE_HTTP\n"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the manifest lacks %q:\n%s", want, text)
 		}

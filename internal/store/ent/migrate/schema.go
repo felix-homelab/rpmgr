@@ -681,6 +681,47 @@ var (
 			},
 		},
 	}
+	// HealthChecksColumns holds the columns for the "health_checks" table.
+	HealthChecksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"tcp", "http"}},
+		{Name: "port", Type: field.TypeInt, Default: 0},
+		{Name: "http_path", Type: field.TypeString, Size: 1024, Default: ""},
+		{Name: "expected_status_min", Type: field.TypeInt, Default: 0},
+		{Name: "expected_status_max", Type: field.TypeInt, Default: 0},
+		{Name: "interval_seconds", Type: field.TypeInt, Default: 0},
+		{Name: "timeout_seconds", Type: field.TypeInt, Default: 0},
+		{Name: "unhealthy_threshold", Type: field.TypeInt, Default: 0},
+		{Name: "healthy_threshold", Type: field.TypeInt, Default: 0},
+		{Name: "route_id", Type: field.TypeString},
+	}
+	// HealthChecksTable holds the schema information for the "health_checks" table.
+	HealthChecksTable = &schema.Table{
+		Name:       "health_checks",
+		Columns:    HealthChecksColumns,
+		PrimaryKey: []*schema.Column{HealthChecksColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "health_checks_routes_route",
+				Columns:    []*schema.Column{HealthChecksColumns[11]},
+				RefColumns: []*schema.Column{RoutesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "healthcheck_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{HealthChecksColumns[1], HealthChecksColumns[0]},
+			},
+			{
+				Name:    "healthcheck_route_id",
+				Unique:  true,
+				Columns: []*schema.Column{HealthChecksColumns[11]},
+			},
+		},
+	}
 	// InstanceColumns holds the columns for the "instance" table.
 	InstanceColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -1855,6 +1896,7 @@ var (
 		GatewaysTable,
 		GatewayGroupsTable,
 		GatewayPagesTable,
+		HealthChecksTable,
 		InstanceTable,
 		InstanceSecretsTable,
 		InstanceSettingsTable,
@@ -1949,6 +1991,10 @@ func init() {
 	GatewayPagesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	GatewayPagesTable.Annotation = &entsql.Annotation{
 		Table: "gateway_pages",
+	}
+	HealthChecksTable.ForeignKeys[0].RefTable = RoutesTable
+	HealthChecksTable.Annotation = &entsql.Annotation{
+		Table: "health_checks",
 	}
 	InstanceTable.Annotation = &entsql.Annotation{
 		Table: "instance",

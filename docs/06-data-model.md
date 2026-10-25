@@ -230,7 +230,7 @@ flowchart LR
 |---|---|
 | `agent_sessions` | agent_id, session_epoch, controller_node, remote_addr, agent_version, capabilities, connected_at, last_seen_at, disconnected_at, last_goodbye (one row per agent; each new session raises `session_epoch` in the statement that records it, so two replicas never hand out the same epoch; the end of a session that no newer one replaced sets `disconnected_at`, and how `last_seen_at` is kept is in [03](03-connections.md#timeouts-keepalive-and-backoff); `last_goodbye` is the reason of the `Goodbye` that last refused the agent a session, `upgrade_required` below `min_agent_version`, recorded with the version it came with, and empty again once a session is accepted) |
 | `agent_state` | agent_id, boot_id, clock_offset_ms; the snapshot applied last (applied_db_epoch, applied_seq, applied_hash, last_ack_at), sent last (pushed_db_epoch, pushed_seq, pushed_hash, pushed_at) and rejected last (rejected_db_epoch, rejected_seq, rejected_hash, last_rejection: the structured errors). The apply status is derived from it ([03](03-connections.md#configuration-reconciliation)) |
-| `resource_status` | agent_id, resource_id, reason, detail, since: one row per resource an agent reports not ready, so a resource without one is ready or not reported yet. The limits are in [03](03-connections.md#configuration-reconciliation) |
+| `resource_status` | agent_id, resource_id, reason, detail, since: one row per resource an agent reports not ready, so a resource without one is ready or not reported yet; a connector's rows also name the targets its health checks find unhealthy. The limits are in [03](03-connections.md#configuration-reconciliation) |
 | `data_sessions` | gateway_id, connector_id, transport (`quic`, `h2`; `wss` in Phase 2), rtt_ms (0 where the transport does not measure it), established_at (first reported), reported_at: one row per gateway, connector and transport, replaced by each report of the gateway ([03](03-connections.md#configuration-reconciliation)) |
 | `route_traffic_hourly`, `route_traffic_daily` | org_id, route_id, bucket, bytes_in, bytes_out, connections, errors | One row per route and hour or day; `bucket` is its start in UTC. No foreign key to the route: retention removes a deleted route's rows |
 | `traffic_baselines` | org_id, gateway_id, route_id, boot_id, bytes_in, bytes_out, connections, errors, reported_at | A gateway's last reported route counters, which the next report's increase is taken over |
@@ -259,9 +259,13 @@ The terms of the table:
   applied are read, at most 1 000. If more are there, a change not read counts as the oldest one
   read, so an agent that far behind shows the route `pending` or `error`.
 - **Ready target:** its connector is enabled, online, has every capability the route needs, and
-  reports the route ready (no `resource_status` row). A target that is not ready shows its reason:
-  `OFFLINE`, `DISABLED`, `CAPABILITY_MISSING`, or the connector's own, such as
-  `BLOCKED_BY_LOCAL_POLICY`.
+  reports the route ready (no `resource_status` row). With a health check, the connector also
+  reports each target its checks find unhealthy, under the target's ID, so a target with such a
+  row is not ready either. A target that is not ready shows its reason: `OFFLINE`, `DISABLED`,
+  `CAPABILITY_MISSING`, or the connector's own, such as `BLOCKED_BY_LOCAL_POLICY` or
+  `TARGETS_UNHEALTHY` with the check's last failure. The targets whose connector lacks
+  `health.active` count as healthy and are listed as "health not checked"
+  ([D133](14-open-decisions.md#engineering)).
 - **Serving gateway:** online, with every capability the route needs, reporting the route ready,
   and with a data session to the connector of a ready target. A gateway that does not serve shows
   `OFFLINE`, `CAPABILITY_MISSING`, its own reason, or `NO_DATA_SESSION`.

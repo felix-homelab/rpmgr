@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package gateway
+
+import (
+	"net/netip"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+// The client tables of rate_limit rules on a gateway (docs/03-connections.md, "Timeouts,
+// keepalive and backoff"; D137). A table holds at most clientKeys client addresses, and all tables
+// of a gateway together at most clientBudget. When a table or the budget is full, the addresses
+// whose bucket is full again are dropped, at most once a second; a new address that still finds no
+// room passes unlimited by the rule, and is not counted, while the route's total and its connection
+// limit still apply, so a flood of forged addresses never locks real clients out nor makes the
+// gateway forget the clients it limits. Every minute the addresses idle long enough to be full
+// again are dropped and the map is made anew, as a Go map never gives back the memory of deleted
+// keys. Variables for tests.
+var (
+	clientKeys   = 65_536
+	clientBudget = 262_144
+)
+
+const (
+	clientFullSweep = time.Second
+	clientIdleSweep = time.Minute
+)
+
+// clientTable counts the clients of one rate_limit rule, for every route whose policies carry it,
+// udp routes apart from the others.
+type clientTable struct {
+	perSecond, burst float64
+	now              func() time.Time
+	start            time.Time     // the times of the buckets count from here, monotonically
+	budget           *atomic.Int64 // the client entries of every table of the gateway
+
+	mu        sync.Mutex
+	clients   map[netip.Prefix]clientBucket
+	lastSweep time.Time
+}
+
+// clientBucket is a client's tokens when it last came, in nanoseconds since the table's start:
+// 16 bytes.
+type clientBucket struct {
+	tokens float64
+	last   int64
+}
+
+func newClientTable(c ClientRate, now func() time.Time, budget *atomic.Int64) *clientTable {
+	if now == nil {
+		now = time.Now
+	}
+	at := now()
+	return &clientTable{perSecond: float64(max(c.PerSecond, 1)), burst: float64(max(c.Burst, 1)), now: now, start: at,
+		budget: budget, clients: map[netip.Prefix]clientBucket{}, lastSweep: at}
+}
+
+// clientKey is a client's key: its IPv4 address, or its IPv6 /64, so that a host cannot escape by
+// using many addresses of its own prefix. An address that is not IP, which no listener gives, is
+// the zero Prefix.
+func clientKey(ip netip.Addr) netip.Prefix {
+	ip = ip.Unmap().WithZone("")
+	if !ip.IsValid() {
+		return netip.Prefix{}
+	}
+	if ip.Is6() {
+		p, _ := ip.Prefix(64)
+		return p
+	}
+	return netip.PrefixFrom(ip, 32)
+}
+
+// refilled is the bucket's tokens at now; a clock that stepped back refills nothing.
+func (t *clientTable) refilled(b clientBucket, now int64) float64 {
+	return min(t.burst, b.tokens+float64(max(now-b.last, 0))/float64(time.Second)*t.perSecond)
+}
+
+// take takes one token of a client's bucket. When there is none, wait is how long until there is;
+// a new client the table or the gateway has no room for passes without a bucket (D137).
+func (t *clientTable) take(key netip.Prefix) (ok bool, wait time.Duration) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	at := t.now()
+	now := at.Sub(t.start).Nanoseconds()
+	full := len(t.clients) >= clientKeys || t.budget.Load() >= int64(clientBudget)
+	if since := at.Sub(t.lastSweep); since >= clientIdleSweep || since < 0 || full && since >= clientFullSweep {
+		t.sweep(at, now)
+	}
+	b, known := t.clients[key]
+	if !known {
+		if len(t.clients) >= clientKeys || t.budget.Load() >= int64(clientBudget) {
+			return true, 0
+		}
+		t.budget.Add(1)
+		b = clientBucket{tokens: t.burst, last: now}
+	}
+	b.tokens = t.refilled(b, now)
+	b.last = now
+	if b.tokens < 1 {
+		t.clients[key] = b
+		return false, time.Duration((1 - b.tokens) / t.perSecond * float64(time.Second))
+	}
+	b.tokens--
+	t.clients[key] = b
+	return true, 0
+}
+
+// refund gives back the token take took, when another limit refused the request.
+func (t *clientTable) refund(key netip.Prefix) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if b, ok := t.clients[key]; ok {
+		b.tokens = min(t.burst, b.tokens+1)
+		t.clients[key] = b
+	}
+}
+
+// sweep makes the map anew without the clients whose bucket is full again: forgetting them
+// changes nothing.
+func (t *clientTable) sweep(at time.Time, now int64) {
+	t.lastSweep = at
+	kept := make(map[netip.Prefix]clientBucket, len(t.clients)/2)
+	for k, b := range t.clients {
+		if t.refilled(b, now) < t.burst {
+			kept[k] = b
+		}
+	}
+	t.budget.Add(int64(len(kept) - len(t.clients)))
+	t.clients = kept
+}
+
+// drop gives the table's entries back to the budget, when no route uses it any more.
+func (t *clientTable) drop() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.budget.Add(-int64(len(t.clients)))
+	t.clients = map[netip.Prefix]clientBucket{}
+}
+
+// size is the number of clients the table holds.
+func (t *clientTable) size() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.clients)
+}

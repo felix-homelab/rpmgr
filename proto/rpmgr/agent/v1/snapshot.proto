@@ -146,6 +146,20 @@ message GatewayTCPRoute {
   // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
   // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 5;
+  // This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
+  // route reaches only gateways with the capability route.limits when it sets one.
+  RouteLimits limits = 6;
+}
+
+// RouteLimits are a gateway's share of a route's limits: the route's own, divided among the enabled
+// gateways of its group (docs/03-connections.md, "Route limits"). 0 is no limit.
+message RouteLimits {
+  // Open connections, UDP flows, or HTTP requests in flight, upgraded ones included.
+  uint32 max_connections = 1;
+  // New connections, new flows or HTTP requests per second.
+  uint32 requests_per_second = 2;
+  // Bytes per second in each direction.
+  uint64 bandwidth_bytes_per_second = 3;
 }
 
 // RouteConnector is a connector that serves a route at one priority of its enabled targets of the
@@ -174,6 +188,21 @@ message RouteAccess {
   // values, checked before basic auth; the gateway removes the header before the request goes
   // upstream. A gateway gets these only with the capability http.require-header.
   repeated rpmgr.v1.RequireHeaderParams require_header = 3;
+  // Every route type: each client may stay within each of these rates (docs/03-connections.md,
+  // "Access policies"); the route reaches only gateways with the capability route.limits when it
+  // has one.
+  repeated RateLimitRule rate_limits = 4;
+}
+
+// RateLimitRule is a rate_limit rule of an access policy as gateways enforce it: per client, an
+// IPv4 address or an IPv6 /64, on each gateway alone.
+message RateLimitRule {
+  // The policy the rule belongs to.
+  string policy_id = 1;
+  // HTTP requests, new connections or new flows per second.
+  uint32 per_second = 2;
+  // How many may come at once.
+  uint32 burst = 3;
 }
 
 // BasicAuthRule is a basic_auth rule of an access policy as gateways check it.
@@ -211,6 +240,9 @@ message GatewayTCPUDPRoute {
   // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
   // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 6;
+  // This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
+  // route reaches only gateways with the capability route.limits when it sets one.
+  RouteLimits limits = 7;
 }
 
 // GatewayUDPRoute is a udp route as a gateway serves it.
@@ -227,6 +259,9 @@ message GatewayUDPRoute {
   // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
   // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 5;
+  // This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
+  // route reaches only gateways with the capability route.limits when it sets one.
+  RouteLimits limits = 6;
 }
 
 // GatewayHTTPRoute is an http route as a gateway serves it on port 443: a request whose host and
@@ -276,6 +311,9 @@ message GatewayHTTPRoute {
   // route with the smaller ID wins a tie (docs/03-connections.md, "HTTP routes"). Only a gateway
   // announcing the capability http.header-match gets a route that has them.
   repeated HTTPHeaderMatch header_matches = 17;
+  // This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
+  // route reaches only gateways with the capability route.limits when it sets one.
+  RouteLimits limits = 20;
 }
 
 // HTTPHeaderMatch is a request header an http route matches on.
@@ -376,6 +414,9 @@ message GatewayPassthroughRoute {
   // opens a stream at the lowest priority that has a ready session, on an entry chosen by weight
   // (D90). A gateway that does not know the field treats every connector alike.
   repeated RouteConnector ranked_connectors = 4;
+  // This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
+  // route reaches only gateways with the capability route.limits when it sets one.
+  RouteLimits limits = 5;
 }
 
 // TransportPolicy is how a route chooses its data-session transport (docs/03-connections.md,
@@ -400,6 +441,36 @@ message ConnectorRoute {
   repeated Target targets = 2;
   // The effective transport policy: the route's, else the connector's, else the instance default.
   TransportPolicy transport = 3;
+  // Phase 2: the route's health check, which the connector runs against each of its targets of the
+  // route (docs/03-connections.md, "Target health"); unset, every target counts as healthy.
+  HealthCheck health_check = 4;
+}
+
+// HealthCheck is a route's active health check as connectors run it. A value of 0 takes the
+// default of docs/03-connections.md, "Timeouts, keepalive and backoff".
+message HealthCheck {
+  // "tcp": the dial succeeds; "http": a GET of path answers with a status from status_min to
+  // status_max.
+  string type = 1;
+  // The port to check instead of the target's; 0 is the target's. A udp route's tcp check names
+  // one.
+  uint32 port = 2;
+  // http: the path, starting with "/".
+  string path = 3;
+  // http: the Host header, the route's first hostname.
+  string host = 4;
+  // http: the range of passing statuses; 0 is 200 to 399.
+  uint32 status_min = 5;
+  uint32 status_max = 6;
+  // How often, and how long one check may take, in milliseconds.
+  uint32 interval_ms = 7;
+  uint32 timeout_ms = 8;
+  // Failed checks in a row that make a target unhealthy, and passed ones that make it healthy.
+  uint32 unhealthy_threshold = 9;
+  uint32 healthy_threshold = 10;
+  // http: the check speaks TLS, verified by each target's tls settings, as the gateway verifies the
+  // route's traffic.
+  bool https = 11;
 }
 
 // ConnectorGateway is a gateway that a connector keeps data sessions to (docs/03-connections.md,
@@ -430,6 +501,9 @@ message Target {
   uint32 weight = 6;
   // Lower first; higher priorities are failovers.
   uint32 priority = 7;
+  // Phase 2, an https health check: how the target's certificate is checked, as the gateway checks
+  // the route's traffic to it.
+  UpstreamTLS tls = 8;
 }
 
 // ResourceReference points to content fetched with Control.FetchResource.
