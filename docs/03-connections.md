@@ -1047,10 +1047,12 @@ through it. Gateways announce the capability `tcp.http-connect`.
   hostname, in the group, or a new listener is opened on a random free port. Changing a route's
   mode moves it to a listener of the new mode, so its port changes, as preview shows. A listener
   closes when its last route goes.
-- **TLS listener.** The listener's hostname lies under a verified domain of the org; its
-  certificate is an uploaded one of the org that covers the hostname, with the TLS versions of
-  http routes ([04](04-security.md#controller-certificates)). ACME for listener hostnames is not
-  built yet.
+- **TLS listener.** The listener's hostname lies under a verified domain of the org. Its
+  certificate is the uploaded one the route names, or, naming none, an uploaded one of the org that
+  covers the hostname, else one the ACME job obtains and renews for the hostname, as for http
+  routes, with its challenges answered by the gateways of the listener's group
+  ([04](04-security.md#controller-certificates)); the TLS versions are those of http routes. Until
+  the listener has a certificate, the route status names its gateways `CERTIFICATE_PENDING`.
 - **Refusals.** A peer that no route of the listener admits by its IP rules is dropped before its
   TLS handshake and its request. A request whose method is not `CONNECT`, compared with case, is
   **405**. In the mode `none`, an authority no route of the listener names and one whose IP rules

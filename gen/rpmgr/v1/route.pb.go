@@ -878,8 +878,8 @@ type RouteNotServing struct {
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// OFFLINE (no control session), DISABLED (the connector or gateway), NO_DATA_SESSION (with the
 	// connector of a ready target), CAPABILITY_MISSING (its release lacks a capability the route
-	// needs, so its snapshot leaves the route out), or the agent's own reason, as in
-	// NotReadyResource.
+	// needs, so its snapshot leaves the route out), CERTIFICATE_PENDING (a gateway: the route's TLS
+	// CONNECT listener has no certificate yet), or the agent's own reason, as in NotReadyResource.
 	Reason string `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
 	// The agent's details; with CAPABILITY_MISSING, the capabilities it lacks.
 	Detail        string `protobuf:"bytes,3,opt,name=detail,proto3" json:"detail,omitempty"`
@@ -1182,7 +1182,8 @@ type ConnectSpec struct {
 	AuthMode ConnectAuthMode `protobuf:"varint,2,opt,name=auth_mode,json=authMode,proto3,enum=rpmgr.v1.ConnectAuthMode" json:"auth_mode,omitempty"`
 	// With TLS_BASIC: the listener's name, under a verified domain of the org.
 	Hostname string `protobuf:"bytes,3,opt,name=hostname,proto3" json:"hostname,omitempty"`
-	// With TLS_BASIC: an uploaded certificate of the org that covers the hostname.
+	// With TLS_BASIC: an uploaded certificate of the org that covers the hostname; empty, an uploaded
+	// one that covers it, else one the controller obtains with ACME.
 	CertificateId string `protobuf:"bytes,4,opt,name=certificate_id,json=certificateId,proto3" json:"certificate_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

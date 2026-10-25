@@ -170,7 +170,7 @@ message ConnectSpec {                  // Phase 2 (D130)
   repeated string authorities = 1;     // host names, unique on the listener
   ConnectAuthMode auth_mode = 2;       // NONE (default), TLS_BASIC, PLAIN_BASIC (password in clear)
   string hostname = 3;                 // TLS_BASIC: the listener's name, under a verified domain
-  string certificate_id = 4;           // TLS_BASIC: an uploaded certificate that covers hostname
+  string certificate_id = 4;           // TLS_BASIC: an uploaded certificate that covers hostname; empty: ACME
 }
 
 message RouteLimits {                  // Phase 2; 0 = no limit

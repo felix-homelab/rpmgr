@@ -303,6 +303,7 @@
     "DISABLED": "disabled",
     "NO_DATA_SESSION": "no data session to the connector",
     "CAPABILITY_MISSING": "its rpmgr release cannot carry out a feature the route uses; upgrade it",
+    "CERTIFICATE_PENDING": "waiting for the certificate of the CONNECT listener's hostname",
     "ownPort": "{{target}} is one of rpmgr's own ports, which the all-in-one's connector never dials, whatever its policy allows. Point the target at the service itself."
   },
   "apply": {

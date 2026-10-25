@@ -762,7 +762,7 @@ rpmgr create route [flags]
 | `--authority value` |  | tcp --http-connect: a host name clients ask for with CONNECT; repeat for more |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
 | `--connect-auth string` |  | tcp --http-connect: none, tls-basic, or plain-basic (passwords in the clear) |
-| `--connect-certificate string` |  | tcp --http-connect --connect-auth tls-basic: the uploaded certificate's ID |
+| `--connect-certificate string` |  | tcp --http-connect --connect-auth tls-basic: an uploaded certificate's ID; without it, one that covers the hostname, else ACME's |
 | `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
@@ -1030,7 +1030,7 @@ rpmgr update route [flags] <id or name>
 | `--authority value` |  | tcp --http-connect: a host name clients ask for with CONNECT; repeat for more |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
 | `--connect-auth string` |  | tcp --http-connect: none, tls-basic, or plain-basic (passwords in the clear) |
-| `--connect-certificate string` |  | tcp --http-connect --connect-auth tls-basic: the uploaded certificate's ID |
+| `--connect-certificate string` |  | tcp --http-connect --connect-auth tls-basic: an uploaded certificate's ID; without it, one that covers the hostname, else ACME's |
 | `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
@@ -1448,7 +1448,7 @@ rpmgr preview route [flags]
 | `--authority value` |  | tcp --http-connect: a host name clients ask for with CONNECT; repeat for more |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
 | `--connect-auth string` |  | tcp --http-connect: none, tls-basic, or plain-basic (passwords in the clear) |
-| `--connect-certificate string` |  | tcp --http-connect --connect-auth tls-basic: the uploaded certificate's ID |
+| `--connect-certificate string` |  | tcp --http-connect --connect-auth tls-basic: an uploaded certificate's ID; without it, one that covers the hostname, else ACME's |
 | `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |

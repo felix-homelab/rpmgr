@@ -265,7 +265,9 @@ The terms of the table:
   `BLOCKED_BY_LOCAL_POLICY`.
 - **Serving gateway:** online, with every capability the route needs, reporting the route ready,
   and with a data session to the connector of a ready target. A gateway that does not serve shows
-  `OFFLINE`, `CAPABILITY_MISSING`, its own reason, or `NO_DATA_SESSION`.
+  `OFFLINE`, `CAPABILITY_MISSING`, `CERTIFICATE_PENDING` (the route's TLS CONNECT listener has no
+  certificate yet; the detail names the hostname and the last ACME error), its own reason, or
+  `NO_DATA_SESSION`.
 - **Capabilities the route needs:** those of the gated features it uses, read from the agent's
   current control session; an agent that lacks one does not get the route in its snapshot, and
   `CAPABILITY_MISSING` names what it lacks
