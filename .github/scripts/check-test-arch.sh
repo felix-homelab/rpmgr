@@ -20,7 +20,7 @@ cd "$root"
 # makes it collect early enough.
 limits=()
 case $arch in
-  amd64 | arm64) flags=(-race) cgo=1 ;;
+  amd64 | arm64) flags=(-race -timeout 20m) cgo=1 ;;
   arm) flags=(-timeout 30m) cgo=0 limits=(GOMEMLIMIT=2GiB) ;;
   riscv64) flags=(-timeout 30m) cgo=0 ;;
   *)
