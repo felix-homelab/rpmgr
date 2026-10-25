@@ -34,7 +34,7 @@ import (
 // Capabilities are what this connector version implements (docs/03-connections.md, "Versioning
 // and capabilities").
 var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapProxyProtoV1,
-	agentproto.CapProxyProtoV2, agentproto.CapProbeTarget}
+	agentproto.CapProxyProtoV2, agentproto.CapProbeTarget, agentproto.CapHealthActive}
 
 // RunOptions configure Run.
 type RunOptions struct {
@@ -112,6 +112,11 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	targets = NewTargets(TargetsOptions{Policy: watcher.Current, Logger: o.Logger, UDPMetrics: udpMetrics, Metrics: metrics,
+		OnTargetHealth: func(s []*agentv1.ResourceStatus) {
+			if ctl != nil {
+				ctl.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{Readiness: s}}})
+			}
+		},
 		OnHealth: func(h *tunnelv1.RouteHealth) {
 			sessions.SetReady(h)
 			if ctl != nil { // a change before the control plane exists goes out with its first session
@@ -119,6 +124,7 @@ func Run(ctx context.Context, o RunOptions) error {
 					Readiness: []*agentv1.ResourceStatus{{ResourceId: h.GetRouteId(), Reason: h.GetReason(), Detail: h.GetDetail()}}}}})
 			}
 		}})
+	defer targets.Close() // the health checks
 	// The UDP socket of QUIC sessions; all-in-one's connector has none, so it opens no port
 	// (ADR-0019): it reaches its own gateway in memory and other gateways of its group over h2.
 	var tr *quic.Transport

@@ -56,6 +56,10 @@ type Tx struct {
 	Gateway *GatewayClient
 	// GatewayGroup is the client for interacting with the GatewayGroup builders.
 	GatewayGroup *GatewayGroupClient
+	// GatewayPage is the client for interacting with the GatewayPage builders.
+	GatewayPage *GatewayPageClient
+	// HealthCheck is the client for interacting with the HealthCheck builders.
+	HealthCheck *HealthCheckClient
 	// Instance is the client for interacting with the Instance builders.
 	Instance *InstanceClient
 	// InstanceSecret is the client for interacting with the InstanceSecret builders.
@@ -278,6 +282,8 @@ func (tx *Tx) init() {
 	tx.EnrollmentToken = NewEnrollmentTokenClient(tx.config)
 	tx.Gateway = NewGatewayClient(tx.config)
 	tx.GatewayGroup = NewGatewayGroupClient(tx.config)
+	tx.GatewayPage = NewGatewayPageClient(tx.config)
+	tx.HealthCheck = NewHealthCheckClient(tx.config)
 	tx.Instance = NewInstanceClient(tx.config)
 	tx.InstanceSecret = NewInstanceSecretClient(tx.config)
 	tx.InstanceSetting = NewInstanceSettingClient(tx.config)

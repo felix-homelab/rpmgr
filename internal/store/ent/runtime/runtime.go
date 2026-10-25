@@ -27,6 +27,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -1379,6 +1381,190 @@ func init() {
 	// gatewaygroup.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	gatewaygroup.IDValidator = func() func(string) error {
 		validators := gatewaygroupDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	gatewaypageMixin := schema.GatewayPage{}.Mixin()
+	gatewaypage.Policy = privacy.NewPolicies(gatewaypageMixin[0], schema.GatewayPage{})
+	gatewaypage.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := gatewaypage.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	gatewaypageMixinHooks0 := gatewaypageMixin[0].Hooks()
+
+	gatewaypage.Hooks[1] = gatewaypageMixinHooks0[0]
+	gatewaypageMixinInters0 := gatewaypageMixin[0].Interceptors()
+	gatewaypage.Interceptors[0] = gatewaypageMixinInters0[0]
+	gatewaypageMixinFields0 := gatewaypageMixin[0].Fields()
+	_ = gatewaypageMixinFields0
+	gatewaypageFields := schema.GatewayPage{}.Fields()
+	_ = gatewaypageFields
+	// gatewaypageDescOrgID is the schema descriptor for org_id field.
+	gatewaypageDescOrgID := gatewaypageMixinFields0[0].Descriptor()
+	// gatewaypage.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	gatewaypage.OrgIDValidator = gatewaypageDescOrgID.Validators[0].(func(string) error)
+	// gatewaypageDescGatewayGroupID is the schema descriptor for gateway_group_id field.
+	gatewaypageDescGatewayGroupID := gatewaypageFields[1].Descriptor()
+	// gatewaypage.GatewayGroupIDValidator is a validator for the "gateway_group_id" field. It is called by the builders before save.
+	gatewaypage.GatewayGroupIDValidator = gatewaypageDescGatewayGroupID.Validators[0].(func(string) error)
+	// gatewaypageDescHTML is the schema descriptor for html field.
+	gatewaypageDescHTML := gatewaypageFields[3].Descriptor()
+	// gatewaypage.HTMLValidator is a validator for the "html" field. It is called by the builders before save.
+	gatewaypage.HTMLValidator = func() func(string) error {
+		validators := gatewaypageDescHTML.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(html string) error {
+			for _, fn := range fns {
+				if err := fn(html); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// gatewaypageDescContentSha256 is the schema descriptor for content_sha256 field.
+	gatewaypageDescContentSha256 := gatewaypageFields[4].Descriptor()
+	// gatewaypage.ContentSha256Validator is a validator for the "content_sha256" field. It is called by the builders before save.
+	gatewaypage.ContentSha256Validator = func() func([]byte) error {
+		validators := gatewaypageDescContentSha256.Validators
+		fns := [...]func([]byte) error{
+			validators[0].(func([]byte) error),
+			validators[1].(func([]byte) error),
+		}
+		return func(content_sha256 []byte) error {
+			for _, fn := range fns {
+				if err := fn(content_sha256); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// gatewaypageDescUpdatedAt is the schema descriptor for updated_at field.
+	gatewaypageDescUpdatedAt := gatewaypageFields[5].Descriptor()
+	// gatewaypage.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	gatewaypage.DefaultUpdatedAt = gatewaypageDescUpdatedAt.Default.(func() time.Time)
+	// gatewaypage.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	gatewaypage.UpdateDefaultUpdatedAt = gatewaypageDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// gatewaypageDescID is the schema descriptor for id field.
+	gatewaypageDescID := gatewaypageFields[0].Descriptor()
+	// gatewaypage.DefaultID holds the default value on creation for the id field.
+	gatewaypage.DefaultID = gatewaypageDescID.Default.(func() string)
+	// gatewaypage.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	gatewaypage.IDValidator = func() func(string) error {
+		validators := gatewaypageDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	healthcheckMixin := schema.HealthCheck{}.Mixin()
+	healthcheck.Policy = privacy.NewPolicies(healthcheckMixin[0], schema.HealthCheck{})
+	healthcheck.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := healthcheck.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	healthcheckMixinHooks0 := healthcheckMixin[0].Hooks()
+
+	healthcheck.Hooks[1] = healthcheckMixinHooks0[0]
+	healthcheckMixinInters0 := healthcheckMixin[0].Interceptors()
+	healthcheck.Interceptors[0] = healthcheckMixinInters0[0]
+	healthcheckMixinFields0 := healthcheckMixin[0].Fields()
+	_ = healthcheckMixinFields0
+	healthcheckFields := schema.HealthCheck{}.Fields()
+	_ = healthcheckFields
+	// healthcheckDescOrgID is the schema descriptor for org_id field.
+	healthcheckDescOrgID := healthcheckMixinFields0[0].Descriptor()
+	// healthcheck.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	healthcheck.OrgIDValidator = healthcheckDescOrgID.Validators[0].(func(string) error)
+	// healthcheckDescRouteID is the schema descriptor for route_id field.
+	healthcheckDescRouteID := healthcheckFields[1].Descriptor()
+	// healthcheck.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
+	healthcheck.RouteIDValidator = healthcheckDescRouteID.Validators[0].(func(string) error)
+	// healthcheckDescPort is the schema descriptor for port field.
+	healthcheckDescPort := healthcheckFields[3].Descriptor()
+	// healthcheck.DefaultPort holds the default value on creation for the port field.
+	healthcheck.DefaultPort = healthcheckDescPort.Default.(int)
+	// healthcheck.PortValidator is a validator for the "port" field. It is called by the builders before save.
+	healthcheck.PortValidator = healthcheckDescPort.Validators[0].(func(int) error)
+	// healthcheckDescHTTPPath is the schema descriptor for http_path field.
+	healthcheckDescHTTPPath := healthcheckFields[4].Descriptor()
+	// healthcheck.DefaultHTTPPath holds the default value on creation for the http_path field.
+	healthcheck.DefaultHTTPPath = healthcheckDescHTTPPath.Default.(string)
+	// healthcheck.HTTPPathValidator is a validator for the "http_path" field. It is called by the builders before save.
+	healthcheck.HTTPPathValidator = healthcheckDescHTTPPath.Validators[0].(func(string) error)
+	// healthcheckDescExpectedStatusMin is the schema descriptor for expected_status_min field.
+	healthcheckDescExpectedStatusMin := healthcheckFields[5].Descriptor()
+	// healthcheck.DefaultExpectedStatusMin holds the default value on creation for the expected_status_min field.
+	healthcheck.DefaultExpectedStatusMin = healthcheckDescExpectedStatusMin.Default.(int)
+	// healthcheck.ExpectedStatusMinValidator is a validator for the "expected_status_min" field. It is called by the builders before save.
+	healthcheck.ExpectedStatusMinValidator = healthcheckDescExpectedStatusMin.Validators[0].(func(int) error)
+	// healthcheckDescExpectedStatusMax is the schema descriptor for expected_status_max field.
+	healthcheckDescExpectedStatusMax := healthcheckFields[6].Descriptor()
+	// healthcheck.DefaultExpectedStatusMax holds the default value on creation for the expected_status_max field.
+	healthcheck.DefaultExpectedStatusMax = healthcheckDescExpectedStatusMax.Default.(int)
+	// healthcheck.ExpectedStatusMaxValidator is a validator for the "expected_status_max" field. It is called by the builders before save.
+	healthcheck.ExpectedStatusMaxValidator = healthcheckDescExpectedStatusMax.Validators[0].(func(int) error)
+	// healthcheckDescIntervalSeconds is the schema descriptor for interval_seconds field.
+	healthcheckDescIntervalSeconds := healthcheckFields[7].Descriptor()
+	// healthcheck.DefaultIntervalSeconds holds the default value on creation for the interval_seconds field.
+	healthcheck.DefaultIntervalSeconds = healthcheckDescIntervalSeconds.Default.(int)
+	// healthcheck.IntervalSecondsValidator is a validator for the "interval_seconds" field. It is called by the builders before save.
+	healthcheck.IntervalSecondsValidator = healthcheckDescIntervalSeconds.Validators[0].(func(int) error)
+	// healthcheckDescTimeoutSeconds is the schema descriptor for timeout_seconds field.
+	healthcheckDescTimeoutSeconds := healthcheckFields[8].Descriptor()
+	// healthcheck.DefaultTimeoutSeconds holds the default value on creation for the timeout_seconds field.
+	healthcheck.DefaultTimeoutSeconds = healthcheckDescTimeoutSeconds.Default.(int)
+	// healthcheck.TimeoutSecondsValidator is a validator for the "timeout_seconds" field. It is called by the builders before save.
+	healthcheck.TimeoutSecondsValidator = healthcheckDescTimeoutSeconds.Validators[0].(func(int) error)
+	// healthcheckDescUnhealthyThreshold is the schema descriptor for unhealthy_threshold field.
+	healthcheckDescUnhealthyThreshold := healthcheckFields[9].Descriptor()
+	// healthcheck.DefaultUnhealthyThreshold holds the default value on creation for the unhealthy_threshold field.
+	healthcheck.DefaultUnhealthyThreshold = healthcheckDescUnhealthyThreshold.Default.(int)
+	// healthcheck.UnhealthyThresholdValidator is a validator for the "unhealthy_threshold" field. It is called by the builders before save.
+	healthcheck.UnhealthyThresholdValidator = healthcheckDescUnhealthyThreshold.Validators[0].(func(int) error)
+	// healthcheckDescHealthyThreshold is the schema descriptor for healthy_threshold field.
+	healthcheckDescHealthyThreshold := healthcheckFields[10].Descriptor()
+	// healthcheck.DefaultHealthyThreshold holds the default value on creation for the healthy_threshold field.
+	healthcheck.DefaultHealthyThreshold = healthcheckDescHealthyThreshold.Default.(int)
+	// healthcheck.HealthyThresholdValidator is a validator for the "healthy_threshold" field. It is called by the builders before save.
+	healthcheck.HealthyThresholdValidator = healthcheckDescHealthyThreshold.Validators[0].(func(int) error)
+	// healthcheckDescID is the schema descriptor for id field.
+	healthcheckDescID := healthcheckFields[0].Descriptor()
+	// healthcheck.DefaultID holds the default value on creation for the id field.
+	healthcheck.DefaultID = healthcheckDescID.Default.(func() string)
+	// healthcheck.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	healthcheck.IDValidator = func() func(string) error {
+		validators := healthcheckDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

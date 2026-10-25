@@ -40,7 +40,8 @@ const tunnelHandshake = 10 * time.Second
 
 // Capabilities are what this gateway version implements (docs/03-connections.md, "Versioning and
 // capabilities").
-var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2}
+var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapRouteLimits, agentproto.CapHTTPRequireHeader,
+	agentproto.CapPagesCustom}
 
 // RunOptions configure Run.
 type RunOptions struct {
@@ -183,18 +184,20 @@ func Run(ctx context.Context, o RunOptions) error {
 	defer udpRoutes.Close()
 	certificates := NewCertificates(CertificatesOptions{Dir: filepath.Join(cfg.StateDir, ResourcesDir), Fetch: ctl.Fetch,
 		OnChange: report.change, Now: o.Now, Logger: o.Logger})
+	pages := NewPages(PagesOptions{Fetch: ctl.Fetch, OnChange: report.change, OnLogDropped: metrics.PageLogDropped, Now: o.Now,
+		Logger: o.Logger})
 	def, err := DefaultTLS()
 	if err != nil {
 		return err
 	}
 	httpRoutes := NewHTTPRoutes(HTTPOptions{Sessions: sessions, Certificates: certificates, Default: &def.Certificates[0],
 		Revision: applier.Revision, Fallback80: o.Port80Fallback, FallbackNames: o.ControllerNames, Challenges: challenges.HTTP01,
-		Logger: o.Logger})
+		Pages: pages, Logger: o.Logger})
 	defer httpRoutes.Close()
 	if o.RoutePorts != nil {
 		o.RoutePorts(func(port uint16) bool { return routes.Bound(port) || udpRoutes.Bound(port) })
 	}
-	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Sessions: sessions,
+	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Pages: pages, Sessions: sessions,
 		DrainPeriod: o.DrainPeriod})
 
 	tunnelTLS := pki.ServerConfig(ctl.Certificate(), id.Roots, pki.Expect{TrustDomain: id.TrustDomain,
@@ -313,6 +316,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		}()
 	}
 	background.Go(func() { certificates.Run(run) })
+	background.Go(func() { pages.Run(run) })
 	background.Go(func() {
 		report.run(run, ReportEvery, ctl.Send, func() *agentv1.Status {
 			return &agentv1.Status{DataSessions: sessions.Report(), Counters: metrics.Counters(), Readiness: applier.Readiness(),

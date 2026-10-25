@@ -47,8 +47,47 @@ that allows only its own style. It is sent with `Cache-Control: no-store`, so a 
 once the service is back. The hostname appears as escaped text, as the visitor asked for it, never
 the one a route sends upstream.
 
-Pages of your own per gateway group are planned for Phase 2
-([05](../../05-features.md#http-features)).
+A gateway group may replace them with its own ([Your own pages](#your-own-pages)).
+
+### Your own pages
+
+A gateway group may replace each of the three pages with its own HTML: **not found** (404),
+**unavailable** (502, 503 and 504) and **maintenance**. The group's gateways then show your page to
+browsers instead of the built-in one; clients that do not ask for HTML still get text.
+
+- A page is one complete HTML document in UTF-8, within the size limit of
+  [03](../../03-connections.md#timeouts-keepalive-and-backoff). It runs no script and loads
+  nothing from elsewhere: the gateways send it with a `Content-Security-Policy` that allows only
+  styles in the page and images written into it as `data:` URLs. Put everything into the file.
+- The gateway fills in these placeholders, each as escaped text, so a visitor's hostname or a
+  maintenance message can never add markup to your page:
+
+  | Placeholder | Becomes |
+  |---|---|
+  | `{{hostname}}` | The name the visitor asked for |
+  | `{{status}}` | The status code, such as `503` |
+  | `{{message}}` | The route's maintenance message; on the maintenance page only |
+  | `{{request_id}}` | A random ID that the gateway also writes to its log, so that a visitor's report finds the request |
+
+  Any other `{{…}}` stays as it is. The values are escaped for HTML text and for attribute values
+  in quotes only: put a placeholder into an element's text or a quoted attribute, never into an
+  unquoted attribute, a `<style>` element or a URL.
+- Only the organisation that owns the group may set its pages, with the role Owner or Admin; a
+  shared group's pages are the Instance Admin's. Each change is in the
+  [audit log](../operations/audit-log.md).
+- A gateway serves its built-in page until it has fetched your page from the controller, and a
+  gateway of an earlier release always serves the built-in pages
+  ([Upgrades](../install/upgrades.md)).
+
+With the web UI, use the **Pages** card on the group's page under **Gateways**
+([Gateways](../web-ui/gateways.md#pages)), whose **Preview** shows a page as visitors will see it. With the command line:
+
+```sh
+rpmgr upload gateway-page --group default --kind maintenance maintenance.html
+rpmgr remove gateway-page --group default --kind maintenance
+```
+
+`--kind` is `not-found`, `unavailable` or `maintenance`.
 
 ### Names no route serves
 

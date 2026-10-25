@@ -266,10 +266,13 @@ flowchart LR
 ```
 ┌ Route: postgres (tcp)                      [Enabled ●━]  [Edit]  [YAML]  [⋯ Delete]   ┐
 │ Desired: enabled · gateway group eu · eu.example.net:25432   Observed: ▲ unavailable   │
+│          TCP health check, every 10 s                                                  │
 ├ Targets & health ─────────────────────────────────────────────────────────────────────┤
 │ Connector   Address          Weight  Health       Status                                │
-│ db-host-1   10.0.0.5:5432    100     tcp / 10 s   ▲ not_ready: blocked by local policy  │
+│ db-host-1   10.0.0.5:5432    100     —            ▲ not_ready: blocked by local policy  │
 │             Run on db-host-1:  sudo rpmgr policy allow-target 10.0.0.5:5432   [Copy]    │
+│ db-host-2   10.0.0.6:5432    100     ▲ unhealthy  ▲ its health checks fail              │
+│             Last check: dial tcp 10.0.0.6:5432: connect: connection refused             │
 ├ Apply status (revision 1040) ─────────────────────────────────────────────────────────┤
 │ gw-eu-1 ✓ applied    gw-eu-2 ✓ applied    db-host-1 ✓ applied (target not_ready)      │
 ├ Traffic (24 h) ──────────────────────────── Policies ──────────────────────────────────┤
@@ -439,8 +442,11 @@ flowchart LR
     removed, so that the pools alone limit the org.
 - **Pages** (Phase 2, [D132](14-open-decisions.md#engineering)) on a group's page, for the group's
   owner org: the not-found, unavailable and maintenance pages, each "built in" or "own" with a
-  preview in a sandboxed frame without script, an upload of its HTML, the placeholders it may use,
-  and a reset to the built-in page after a confirmation.
+  preview, an upload of its HTML, the placeholders it may use, and a reset to the built-in page
+  after a confirmation; the upload refuses a file above the size limit before it sends it. The
+  preview, of an own or a built-in page, is a frame with an empty `sandbox` that loads the
+  controller's rendering of the page ([D136](14-open-decisions.md#engineering)): its own styles
+  apply and its placeholders show sample values, as visitors will see it, and it runs no script.
 
 ### Domains and certificates
 

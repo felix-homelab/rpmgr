@@ -4,6 +4,7 @@ package routes_test
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"slices"
 	"strings"
@@ -16,7 +17,9 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/domains"
+	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/settings"
@@ -25,8 +28,10 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
@@ -711,6 +716,52 @@ func TestCompile_Access(t *testing.T) {
 	})
 }
 
+// TestCompile_RequireHeader: an http route carries the require_header rules of its policies, the
+// value hashes and the header's name; a tcp route with one denies everyone; a gateway that does
+// not announce http.require-header gets neither route, one that does gets both (D113).
+func TestCompile_RequireHeader(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		sum := sha256.Sum256([]byte("origin-secret-a-0123456789abcdefghijkl"))
+		params, err := proto.Marshal(&rpmgrv1.PolicyRuleParams{Params: &rpmgrv1.PolicyRuleParams_RequireHeader{
+			RequireHeader: &rpmgrv1.RequireHeaderParams{Name: "X-Origin-Token", ValueSha256: [][]byte{sum[:]}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cdn := c.AccessPolicy.Create().SetOrgID(f.orgA).SetName("cdn").SaveX(f.sys)
+		c.PolicyRule.Create().SetOrgID(f.orgA).SetPolicyID(cdn.ID).SetPosition(0).SetKind(policyrule.KindRequireHeader).
+			SetParams(params).ExecX(f.sys)
+		f.verifiedExample(t)
+		web := f.httpRoute(t, "web", true, true, nil, "app.example.com")
+		other := f.httpRoute(t, "other", true, true, nil, "other.example.com")
+		c.RoutePolicy.Create().SetOrgID(f.orgA).SetRouteID(web).SetPolicyID(cdn.ID).SetPosition(0).ExecX(f.sys)
+		c.RoutePolicy.Create().SetOrgID(f.orgA).SetRouteID(f.r1).SetPolicyID(cdn.ID).SetPosition(0).ExecX(f.sys)
+		without := slices.DeleteFunc(slices.Clone(gateway.Capabilities), func(c string) bool { return c == agentproto.CapHTTPRequireHeader })
+		old := ids(f.compileAs(t, pki.KindGateway, f.gateway, without...))
+		if slices.Contains(old, web) || slices.Contains(old, f.r1) || !slices.Contains(old, other) {
+			t.Fatalf("a gateway without the capability got %v; web %s, tcp %s, other %s", old, web, f.r1, other)
+		}
+		var wa, ta *agentv1.RouteAccess
+		for _, r := range f.compileAs(t, pki.KindGateway, f.gateway, gateway.Capabilities...) {
+			switch r.GetId() {
+			case web:
+				wa = r.GetGatewayHttpRoute().GetAccess()
+			case f.r1:
+				ta = r.GetGatewayTcpRoute().GetAccess()
+			}
+		}
+		if rh := wa.GetRequireHeader(); len(rh) != 1 || rh[0].GetName() != "X-Origin-Token" || len(rh[0].GetValueSha256()) != 1 ||
+			!bytes.Equal(rh[0].GetValueSha256()[0], sum[:]) {
+			t.Fatalf("the http route's require_header rules %v", rh)
+		}
+		if len(ta.GetRequireHeader()) != 0 || len(ta.GetIpRules()) != 1 || ta.GetIpRules()[0].GetAllow() ||
+			!slices.Equal(ta.GetIpRules()[0].GetCidrs(), []string{"0.0.0.0/0", "::/0"}) {
+			t.Fatalf("the tcp route's access %v, want everyone denied", ta)
+		}
+	})
+}
+
 func TestCompile_Passthrough(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		f := newFleet(t, db)
@@ -882,6 +933,67 @@ func TestCompile_TCPUDP(t *testing.T) {
 		for _, r := range f.compile(t, pki.KindGateway, f.gateway) {
 			if r.GetGatewayTcpUdpRoute() != nil {
 				t.Fatalf("a tcp_udp route no connector serves: %v", r)
+			}
+		}
+	})
+}
+
+// TestCompile_HealthCheck (D133): a connector route carries its route's health check, with the
+// interval and timeout that take effect, in milliseconds; an http check of an http route asks for
+// the route's host header override, else its first hostname that is not a wildcard, none if all
+// are, and of an https route over TLS, with each target's own TLS settings; a route without a
+// check carries none.
+func TestCompile_HealthCheck(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		f.verifiedExample(t)
+		c.HealthCheck.Create().SetOrgID(f.orgA).SetRouteID(f.r1).SetType("tcp").SetPort(8081).SetIntervalSeconds(5).SetTimeoutSeconds(2).
+			SetUnhealthyThreshold(4).SetHealthyThreshold(1).ExecX(f.sys)
+		web := f.httpRoute(t, "web", true, true, nil, "*.web.example.com", "app.example.com/api")
+		webTarget := c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(web).SetConnectorID(f.c1).SetKind("address").SetHost("10.0.0.7").
+			SetPort(8443).SetUpstreamProtocol(routetarget.UpstreamProtocolHTTPS).SetTLSServerName("app.internal").SaveX(f.sys).ID
+		c.HealthCheck.Create().SetOrgID(f.orgA).SetRouteID(web).SetType("http").SetHTTPPath("/healthz").SetExpectedStatusMin(200).
+			SetExpectedStatusMax(204).ExecX(f.sys)
+		got := map[string]*agentv1.ConnectorRoute{}
+		for _, r := range routesOf(f.compile(t, pki.KindConnector, f.c1)) {
+			got[r.GetId()] = r.GetConnectorRoute()
+		}
+		want := &agentv1.HealthCheck{Type: "tcp", Port: 8081, IntervalMs: 5000, TimeoutMs: 2000, UnhealthyThreshold: 4, HealthyThreshold: 1}
+		if !proto.Equal(got[f.r1].GetHealthCheck(), want) {
+			t.Errorf("tcp check %v, want %v", got[f.r1].GetHealthCheck(), want)
+		}
+		want = &agentv1.HealthCheck{Type: "http", Path: "/healthz", StatusMin: 200, StatusMax: 204, Host: "app.example.com", Https: true,
+			IntervalMs: 10000, TimeoutMs: 5000}
+		if !proto.Equal(got[web].GetHealthCheck(), want) {
+			t.Errorf("https check %v, want %v", got[web].GetHealthCheck(), want)
+		}
+		if ts := got[web].GetTargets(); len(ts) != 1 || ts[0].GetId() != webTarget || ts[0].GetTls().GetServerName() != "app.internal" {
+			t.Errorf("https check targets %v", ts)
+		}
+		if got[f.rOther].GetHealthCheck() != nil {
+			t.Errorf("a route without a check: %v", got[f.rOther].GetHealthCheck())
+		}
+
+		// The host header override, unless it is preserve; a short interval keeps the default timeout
+		// below it.
+		c.RouteHTTP.Update().Where(routehttp.RouteID(web)).SetHostHeader("backend.internal:8080").ExecX(f.sys)
+		c.HealthCheck.Update().Where(healthcheck.RouteID(web)).SetIntervalSeconds(3).ExecX(f.sys)
+		for _, r := range routesOf(f.compile(t, pki.KindConnector, f.c1)) {
+			if hc := r.GetConnectorRoute().GetHealthCheck(); r.GetId() == web && (hc.GetHost() != "backend.internal:8080" ||
+				hc.GetIntervalMs() != 3000 || hc.GetTimeoutMs() != 2000) {
+				t.Errorf("an overridden host: %v", hc)
+			}
+		}
+		c.RouteHTTP.Update().Where(routehttp.RouteID(web)).SetHostHeader("preserve").ExecX(f.sys)
+
+		// Only a wildcard: no host; an http upstream: no TLS.
+		c.RouteHostname.Delete().Where(routehostname.Hostname("app.example.com")).ExecX(f.sys)
+		c.RouteTarget.UpdateOneID(webTarget).SetUpstreamProtocol(routetarget.UpstreamProtocolHTTP).SetTLSServerName("").ExecX(f.sys)
+		for _, r := range routesOf(f.compile(t, pki.KindConnector, f.c1)) {
+			if hc := r.GetConnectorRoute().GetHealthCheck(); r.GetId() == web && (hc.GetHost() != "" || hc.GetHttps() ||
+				r.GetConnectorRoute().GetTargets()[0].GetTls() != nil) {
+				t.Errorf("http check %v, targets %v", hc, r.GetConnectorRoute().GetTargets())
 			}
 		}
 	})

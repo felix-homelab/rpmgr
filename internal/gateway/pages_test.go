@@ -8,6 +8,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -465,4 +466,81 @@ func TestPages_MaintenanceWithheldBody(t *testing.T) {
 	if _, err := br.ReadByte(); !errors.Is(err, io.EOF) {
 		t.Errorf("%v, want the gateway to close", err)
 	}
+}
+
+// TestPages_CustomThroughRoutes: a group's own pages replace the built-in ones wherever the gateway
+// makes a page: a path no route serves, HEAD, a name no route serves on port 443 and on port 80, the
+// 502 of a refused upstream and a route in maintenance, each with the custom-page CSP and escaped
+// values; clients that do not ask for HTML still get text.
+func TestPages_CustomThroughRoutes(t *testing.T) {
+	items := map[string]string{
+		"gwp_1": "<p>nf {{status}} {{hostname}}</p>",
+		"gwp_2": "<p>down {{status}}</p>",
+		"gwp_3": "<p>maint {{status}} {{message}}</p>",
+	}
+	pages := gateway.NewPages(gateway.PagesOptions{Fetch: func(_ context.Context, id string, _ []byte) ([]byte, error) { return []byte(items[id]), nil }})
+	var refs []gateway.PageRef
+	for id, kind := range map[string]string{"gwp_1": "not-found", "gwp_2": "unavailable", "gwp_3": "maintenance"} {
+		sum := sha256.Sum256([]byte(items[id]))
+		refs = append(refs, gateway.PageRef{ID: id, Kind: kind, ContentSHA256: sum[:]})
+	}
+	if st := pages.Apply(context.Background(), refs); len(st) != 0 {
+		t.Fatal(st)
+	}
+	closed, _ := net.Listen("tcp", "127.0.0.1:0")
+	refused := closed.Addr().String()
+	_ = closed.Close()
+	p := newPlaneWith(t, refused, "none", "rt_web", "rt_maint")
+	certs, pool := routeCert(t, "app.example.com", "*.example.com")
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Sessions: p.sessions, Certificates: certs, Pages: pages})
+	t.Cleanup(h.Close)
+	h.Apply([]gateway.HTTPRoute{
+		{ID: "rt_web", Upstream: "http", Hosts: []gateway.HTTPHost{{Hostname: "app.example.com", PathPrefix: "/app"}}},
+		{ID: "rt_maint", Upstream: "http", Maintenance: true, MaintenanceMessage: `<b>"back"</b> {{status}}`,
+			Hosts: []gateway.HTTPHost{{Hostname: "maint.example.com"}}},
+	})
+	e := &httpEnv{routes: h, addr: httpFront(t, h), pool: pool}
+	custom := func(name string, r reply, status int, body string) {
+		t.Helper()
+		if r.status != status || r.body != body || !strings.HasPrefix(r.header.Get("Content-Security-Policy"), "default-src 'none'; style-src 'unsafe-inline'; img-src data:") ||
+			r.header.Get("Cache-Control") != "no-store" || r.header.Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("%s: %d %q %v", name, r.status, r.body, r.header)
+		}
+	}
+	c := e.client(false)
+	custom("a path no route serves", get(t, c, "https://app.example.com/other", browser), http.StatusNotFound, "<p>nf 404 app.example.com</p>")
+	if r := get(t, c, "https://app.example.com/other", nil); r.status != http.StatusNotFound || strings.Contains(r.body, "<p>") {
+		t.Errorf("not a browser: %d %q", r.status, r.body)
+	}
+	custom("a refused upstream", get(t, e.client(true), "https://app.example.com/app/x", browser), http.StatusBadGateway, "<p>down 502</p>")
+	custom("maintenance", get(t, c, "https://maint.example.com/", browser), http.StatusServiceUnavailable,
+		"<p>maint 503 &lt;b&gt;&#34;back&#34;&lt;/b&gt; {{status}}</p>")
+	req, _ := http.NewRequest(http.MethodHead, "https://app.example.com/other", nil)
+	req.Header = browser.Clone()
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound || !strings.HasPrefix(resp.Header.Get("Content-Security-Policy"), "default-src 'none'; style-src 'unsafe-inline'") {
+		t.Errorf("HEAD: %d %v", resp.StatusCode, resp.Header)
+	}
+
+	// Port 80: a name no route serves.
+	addr80 := e.serve80(t)
+	c80 := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, network, addr80)
+	}}}
+	custom("port 80", get(t, c80, "http://nothing.example.com/", browser), http.StatusNotFound, "<p>nf 404 nothing.example.com</p>")
+
+	// Port 443: a name no route serves, on a connection of its own.
+	addr := serve(t, &gateway.Router{TrustDomain: td, GatewayID: "gw_01", Routes: servesOf{h}, HTTP: h.Serve, HTTPTLS: h.TLSConfig(),
+		Unrouted: h.ServeUnrouted, UnroutedTLS: h.UnroutedTLSConfig()})
+	tc, err := tls.Dial("tcp", addr, &tls.Config{ServerName: "foo.example.com", RootCAs: pool, MinVersion: tls.VersionTLS13})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tc.Close() })
+	custom("an unrouted name", roundTrip(t, tc, "foo.example.com"), http.StatusNotFound, "<p>nf 404 foo.example.com</p>")
 }

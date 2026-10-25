@@ -90,7 +90,7 @@ rpmgr <command>
 | [`rpmgr trust`](#rpmgr-trust) | Trust something without a proof |
 | [`rpmgr upload`](#rpmgr-upload) | Upload a file to the controller |
 | [`rpmgr renew`](#rpmgr-renew) | Renew a certificate now |
-| [`rpmgr remove`](#rpmgr-remove) | Remove a member from the org, or a user's second factor |
+| [`rpmgr remove`](#rpmgr-remove) | Remove a member from the org, a user's second factor, or a gateway group's own page |
 | [`rpmgr advance`](#rpmgr-advance) | Move a rollout to its next stage |
 | [`rpmgr pause`](#rpmgr-pause) | Pause a rollout |
 | [`rpmgr resume`](#rpmgr-resume) | Let a paused rollout run again |
@@ -743,7 +743,7 @@ rpmgr create <command>
 | [`rpmgr create gateway-token`](#rpmgr-create-gateway-token) | Make the token that enrolls a gateway; it is shown once |
 | [`rpmgr create domain`](#rpmgr-create-domain) | Create a domain |
 | [`rpmgr create ca-bundle`](#rpmgr-create-ca-bundle) | Create a ca bundle |
-| [`rpmgr create access-policy`](#rpmgr-create-access-policy) | Create an access policy of IP rules, where a deny wins, and basic auth |
+| [`rpmgr create access-policy`](#rpmgr-create-access-policy) | Create an access policy of IP rules, where a deny wins, basic auth and required headers |
 | [`rpmgr create invitation`](#rpmgr-create-invitation) | Invite someone to the org and print the one-time link; as Admin or Owner it takes a step-up |
 | [`rpmgr create token`](#rpmgr-create-token) | Personal API tokens are made in the web UI |
 | [`rpmgr create reset-link`](#rpmgr-create-reset-link) | Print a one-time link that sets a member's password, for one who forgot it; takes a step-up |
@@ -764,6 +764,14 @@ rpmgr create route [flags]
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--group string` |  | the gateway group, by name or ID |
+| `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
+| `--health-healthy uint` |  | passed checks in a row that make it healthy again; 0 is the default |
+| `--health-interval duration` |  | how often each target is checked; 0 is the default |
+| `--health-path string` |  | http check: the path to GET, / if empty |
+| `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
+| `--health-status string` |  | http check: the passing statuses, as 200-399; empty for the default |
+| `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
+| `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
@@ -929,7 +937,7 @@ rpmgr create ca-bundle [flags]
 
 ## rpmgr create access-policy
 
-Create an access policy of IP rules, where a deny wins, and basic auth.
+Create an access policy of IP rules, where a deny wins, basic auth and required headers.
 
 ```text
 rpmgr create access-policy [flags]
@@ -938,10 +946,11 @@ rpmgr create access-policy [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--description string` |  | a description for people |
+| `--header-values-file string` |  | a file of header:value lines, up to 4 per header, for the require-header rules; each value random, such as from openssl rand -base64 32; the others are asked for |
 | `--name string` |  | the policy's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--passwords-file string` |  | a file of user:password lines for the basic-auth users; the others are asked for |
-| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,… or basic-auth:\<user>,…; repeat for more; a deny wins over every allow |
+| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,…, basic-auth:\<user>,… or require-header:\<header>; repeat for more; a deny wins over every allow |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr create invitation
@@ -1026,6 +1035,14 @@ rpmgr update route [flags] <id or name>
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--force` |  | update without checking that the route is unchanged since this command read it |
+| `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
+| `--health-healthy uint` |  | passed checks in a row that make it healthy again; 0 is the default |
+| `--health-interval duration` |  | how often each target is checked; 0 is the default |
+| `--health-path string` |  | http check: the path to GET, / if empty |
+| `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
+| `--health-status string` |  | http check: the passing statuses, as 200-399; empty for the default |
+| `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
+| `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
@@ -1167,10 +1184,11 @@ rpmgr update access-policy [flags] <id or name>
 |---|---|---|
 | `--description string` |  | a description for people |
 | `--force` |  | update without checking that the policy is unchanged since this command read it |
+| `--header-values-file string` |  | a file of header:value lines, up to 4 per header, for the require-header rules; each value random, such as from openssl rand -base64 32; the others are asked for |
 | `--name string` |  | the policy's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--passwords-file string` |  | a file of user:password lines for the basic-auth users; the others are asked for |
-| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,… or basic-auth:\<user>,…; repeat for more; a deny wins over every allow |
+| `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,…, basic-auth:\<user>,… or require-header:\<header>; repeat for more; a deny wins over every allow |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr update member
@@ -1438,6 +1456,14 @@ rpmgr preview route [flags]
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--group string` |  | the gateway group, by name or ID |
+| `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
+| `--health-healthy uint` |  | passed checks in a row that make it healthy again; 0 is the default |
+| `--health-interval duration` |  | how often each target is checked; 0 is the default |
+| `--health-path string` |  | http check: the path to GET, / if empty |
+| `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
+| `--health-status string` |  | http check: the passing statuses, as 200-399; empty for the default |
+| `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
+| `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
@@ -1535,8 +1561,23 @@ rpmgr upload <command>
 
 | Command | What it does |
 |---|---|
+| [`rpmgr upload gateway-page`](#rpmgr-upload-gateway-page) | Replace a gateway group's not-found, unavailable or maintenance page with your own HTML |
 | [`rpmgr upload certificate`](#rpmgr-upload-certificate) | Upload a certificate chain and its key for http routes |
 | [`rpmgr upload release`](#rpmgr-upload-release) | Upload a release's signed manifest and signing-key statement (Instance Admin) |
+
+## rpmgr upload gateway-page
+
+Replace a gateway group's not-found, unavailable or maintenance page with your own HTML.
+
+```text
+rpmgr upload gateway-page [flags] <file>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--group string` |  | the gateway group, by name or ID |
+| `--kind string` |  | the page: not-found, unavailable or maintenance |
+| `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr upload certificate
 
@@ -1585,7 +1626,7 @@ rpmgr renew certificate <id>
 
 ## rpmgr remove
 
-Remove a member from the org, or a user's second factor.
+Remove a member from the org, a user's second factor, or a gateway group's own page.
 
 ```text
 rpmgr remove <command>
@@ -1593,8 +1634,23 @@ rpmgr remove <command>
 
 | Command | What it does |
 |---|---|
+| [`rpmgr remove gateway-page`](#rpmgr-remove-gateway-page) | Go back to the built-in page of a gateway group |
 | [`rpmgr remove member`](#rpmgr-remove-member) | End a membership; the user's tokens lose their access to the org |
 | [`rpmgr remove second-factor`](#rpmgr-remove-second-factor) | Remove a user's authenticator and recovery codes, for one who lost both, and end their sessions; takes a step-up |
+
+## rpmgr remove gateway-page
+
+Go back to the built-in page of a gateway group.
+
+```text
+rpmgr remove gateway-page [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--group string` |  | the gateway group, by name or ID |
+| `--kind string` |  | the page: not-found, unavailable or maintenance |
+| `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr remove member
 

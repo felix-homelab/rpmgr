@@ -195,6 +195,10 @@ message RouteHealth {
   rpmgr.agent.v1.NotReadyReason reason = 3;
   // Details for the operator, for example the target a local policy blocks.
   string detail = 4;
+  // Phase 2, when ready: the priorities of the route's targets on this connector that have a
+  // healthy target, sorted. Empty, every priority does: a connector without health.active, or a
+  // route without a health check (docs/03-connections.md, "Target health").
+  repeated uint32 ready_priorities = 5;
 }
 
 // OpenRequest asks the gateway to open a stream on the TCP transport, where the connector cannot.

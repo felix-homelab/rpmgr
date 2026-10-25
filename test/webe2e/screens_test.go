@@ -52,6 +52,12 @@ import (
 // SCREENS_PASSWORD. A phrase, so that no secret scanner takes it for a key.
 const screensPassword = "correct horse battery staple"
 
+// screensMaintenancePage is the default group's own maintenance page.
+const screensMaintenancePage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Back soon</title>
+<style>body{font-family:system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#0f172a;color:#e2e8f0}
+main{max-width:32rem;padding:2rem;text-align:center}h1{font-size:2rem;margin:0 0 1rem}p{color:#94a3b8}</style></head>
+<body><main><h1>Example Lab is back soon</h1><p>{{message}}</p><p>{{hostname}} · {{status}} · {{request_id}}</p></main></body></html>`
+
 // TestScreens takes the screenshots of the user guide (docs/guide/images/README.md): it runs an
 // all-in-one with two more connectors in this process, seeds it through the public API with made-up
 // data (example.com names, documentation addresses of RFC 5737), and runs web/screens in the
@@ -264,6 +270,8 @@ func (s *seeder) seed(firstUserLink string) {
 		call(s, "port pool", ada.gw.CreatePortPool, &rpmgrv1.CreatePortPoolRequest{OrgId: org, RequestId: uuid.NewString(),
 			PortPool: &rpmgrv1.PortPool{GatewayGroupId: def.GetId(), Protocol: p, PortFrom: 30000, PortTo: 30099}})
 	}
+	call(s, "maintenance page", ada.gw.SetGatewayPage, &rpmgrv1.SetGatewayPageRequest{GatewayPage: &rpmgrv1.GatewayPage{
+		GatewayGroupId: def.GetId(), Kind: rpmgrv1.GatewayPageKind_GATEWAY_PAGE_KIND_MAINTENANCE, Html: screensMaintenancePage}})
 	call(s, "port quota", ada.gw.SetPortQuota, &rpmgrv1.SetPortQuotaRequest{OrgId: org, GatewayGroupId: def.GetId(),
 		Protocol: rpmgrv1.PortProtocol_PORT_PROTOCOL_TCP, MaxPorts: 20})
 
@@ -293,6 +301,11 @@ func (s *seeder) seed(firstUserLink string) {
 		AccessPolicy: &rpmgrv1.AccessPolicy{Name: "staff-login", Description: "A password for the staff", Rules: []*rpmgrv1.AccessRule{
 			{Rule: &rpmgrv1.AccessRule_BasicAuth{BasicAuth: &rpmgrv1.BasicAuthRule{Users: []*rpmgrv1.BasicAuthCredential{
 				{Name: "staff", Password: screensPassword}, {Name: "guest", Password: screensPassword}}}}},
+		}}})
+	call(s, "policy cdn-only", ada.pol.CreateAccessPolicy, &rpmgrv1.CreateAccessPolicyRequest{OrgId: org, RequestId: uuid.NewString(),
+		AccessPolicy: &rpmgrv1.AccessPolicy{Name: "cdn-only", Description: "Requests through the CDN only", Rules: []*rpmgrv1.AccessRule{
+			{Rule: &rpmgrv1.AccessRule_RequireHeader{RequireHeader: &rpmgrv1.RequireHeaderRule{Name: "X-Origin-Token",
+				Values: []string{"cdn-origin-token-0123456789abcdefghijkl"}}}},
 		}}})
 
 	// Connectors: two hosts of the home network, enrolled and running beside the all-in-one, and
@@ -430,7 +443,9 @@ func (s *seeder) routes(c *clients, org, group, certID, bundleID, officeID strin
 		route   *rpmgrv1.Route
 		targets []target
 	}{
-		{&rpmgrv1.Route{Name: "wiki", Description: "The lab's wiki", Spec: http("wiki.example.com")},
+		// The wiki's health check finds its documentation address unreachable within seconds.
+		{&rpmgrv1.Route{Name: "wiki", Description: "The lab's wiki", Spec: http("wiki.example.com"), HealthCheck: &rpmgrv1.HealthCheck{
+			Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP, HttpPath: "/healthz", IntervalSeconds: 5, UnhealthyThreshold: 1}},
 			[]target{httpTarget("nas-01", "192.0.2.10", 8080), failover}},
 		{&rpmgrv1.Route{Name: "grafana", Description: "Dashboards", Spec: http("grafana.example.com"), PolicyIds: []string{officeID}},
 			[]target{httpTarget("db-host-1", "192.0.2.20", 3000)}},

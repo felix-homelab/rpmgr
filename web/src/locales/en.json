@@ -267,6 +267,7 @@
       "connector": "Connector",
       "address": "Address",
       "weight": "Weight",
+      "health": "Health",
       "state": "Status"
     },
     "noTargets": "The route has no targets.",
@@ -291,7 +292,20 @@
     "deleteAsk": "Delete the route {{name}} with its hostnames, targets and port? This cannot be undone.",
     "deleteConfirm": "Delete it",
     "deletedTitle": "Route {{name}} deleted",
-    "deletedNote": "Its gateways stop serving it once they apply the change."
+    "deletedNote": "Its gateways stop serving it once they apply the change.",
+    "health": {
+      "title": "Health check",
+      "none": "no health check",
+      "tcp": "TCP health check",
+      "http": "HTTP health check of {{path}}",
+      "every": "every {{interval}} s",
+      "healthy": "healthy",
+      "unhealthy": "unhealthy",
+      "notChecked": "not checked",
+      "notCheckedNote": "Its connector's rpmgr release runs no health checks, so the target counts as healthy. Upgrade the connector.",
+      "lastFailure": "Last check: {{detail}}",
+      "unknown": "—"
+    }
   },
   "notServing": {
     "BLOCKED_BY_LOCAL_POLICY": "blocked by the connector's local policy",
@@ -303,6 +317,7 @@
     "DISABLED": "disabled",
     "NO_DATA_SESSION": "no data session to the connector",
     "CAPABILITY_MISSING": "its rpmgr release cannot carry out a feature the route uses; upgrade it",
+    "TARGETS_UNHEALTHY": "its health checks fail",
     "ownPort": "{{target}} is one of rpmgr's own ports, which the all-in-one's connector never dials, whatever its policy allows. Point the target at the service itself."
   },
   "apply": {
@@ -345,14 +360,25 @@
       "idleTimeout": "Idle timeout (seconds)",
       "flowIdleTimeout": "Flow idle timeout (seconds)",
       "tcpIdleTimeout": "TCP idle timeout (seconds)",
-      "udpFlowIdleTimeout": "UDP flow idle timeout (seconds)"
+      "udpFlowIdleTimeout": "UDP flow idle timeout (seconds)",
+      "healthCheck": "Health check",
+      "healthPort": "Port to check",
+      "healthPath": "Path to request",
+      "healthStatus": "Passing statuses",
+      "healthInterval": "Check interval (seconds)",
+      "healthTimeout": "Check timeout (seconds)",
+      "healthUnhealthy": "Failed checks before unhealthy",
+      "healthHealthy": "Passed checks before healthy again"
     },
     "hints": {
       "lines": "One per line.",
       "labels": "One per line, as key=value.",
       "headers": "One per line, as Name: value. An empty value removes the header.",
       "optionalNumber": "Empty for the default.",
-      "certificate": "The org's uploaded certificates that cover every hostname. Upload one under Domains & certificates."
+      "certificate": "The org's uploaded certificates that cover every hostname. Upload one under Domains & certificates.",
+      "healthPort": "Empty for each target's own port. A UDP route needs one; a route with a Unix socket target cannot have one.",
+      "healthPath": "Starts with /, may have a query. Empty for /.",
+      "healthStatus": "As 200-399. Empty for any success or redirect."
     },
     "certificate": {
       "choose": "Choose a certificate",
@@ -392,8 +418,14 @@
       "maintenance": {
         "off": "Off: serve the route",
         "on": "On: show the maintenance page"
+      },
+      "healthCheck": {
+        "none": "None",
+        "tcp": "TCP: the target accepts the connection",
+        "http": "HTTP: a GET answers with a passing status"
       }
     },
+    "statusRange": "Write the passing statuses as two three-digit codes, such as 200-399.",
     "tristate": {
       "default": "Default",
       "true": "On",
@@ -636,6 +668,26 @@
     "tokenIntro": "A token that enrolls {{name}} and nothing else, valid for 1 hour. Making it needs you to confirm it is you.",
     "decommissionWarning": "Decommissioning {{name}} revokes its identity and ends its sessions for good; its tunnel endpoints stop serving."
   },
+  "gwPages": {
+    "title": "Pages",
+    "intro": "The pages the group's gateways show browsers: built in, or your own complete HTML of at most 64 KiB. Your page runs no script and loads nothing from elsewhere; put styles and images (as data: URLs) into the page itself.",
+    "kinds": {
+      "notFound": "Not found (404)",
+      "unavailable": "Unavailable (502, 503, 504)",
+      "maintenance": "Maintenance"
+    },
+    "placeholders": "Placeholders, filled in as text:",
+    "own": "Own",
+    "builtIn": "Built in",
+    "preview": "Preview",
+    "hide": "Hide the preview",
+    "previewOf": "Preview of the page {{page}}",
+    "upload": "Upload HTML…",
+    "tooLarge": "The file has {{size}} bytes; a page has at most 65536.",
+    "resetAsk": "Reset…",
+    "ask": "Go back to the built-in page {{page}}?",
+    "reset": "Use the built-in page"
+  },
   "pools": {
     "title": "Port pools",
     "none": "The group has no port pool: TCP and UDP routes have no public ports.",
@@ -738,7 +790,7 @@
   },
   "policies": {
     "title": "Access policies",
-    "intro": "Who may reach a route: by address, or with a password on HTTP routes.",
+    "intro": "Who may reach a route: by address, or on HTTP routes with a password or a header that only your CDN or clients know.",
     "add": "New access policy",
     "addTitle": "New access policy",
     "editTitle": "Edit access policy",
@@ -747,7 +799,8 @@
     "summary": {
       "allow": "allow {{cidrs}}",
       "deny": "deny {{cidrs}}",
-      "basicAuth": "basic auth: {{users}}"
+      "basicAuth": "basic auth: {{users}}",
+      "requireHeader": "requires header {{header}}"
     },
     "usedBy": "used by {{routes}}",
     "unused": "used by no route",
@@ -759,7 +812,8 @@
     "kinds": {
       "ipAllow": "Allow addresses",
       "ipDeny": "Deny addresses",
-      "basicAuth": "Basic auth (HTTP routes)"
+      "basicAuth": "Basic auth (HTTP routes)",
+      "requireHeader": "Require a header (HTTP routes)"
     },
     "removeRule": "Remove the rule",
     "addRule": "Add a rule",
@@ -767,7 +821,14 @@
     "user": "User",
     "keep": "unchanged",
     "removeUser": "Remove the user",
-    "addUser": "Add a user"
+    "addUser": "Add a user",
+    "header": "Header",
+    "value": "Value",
+    "keepValues": "unchanged",
+    "addValue": "Add a value",
+    "removeValue": "Remove the value",
+    "generateValue": "Generate a value",
+    "valueHint": "A random value of at least 32 characters: use Generate a value. Up to four values, so that one can be rotated. Copy a value to your CDN or client before you save: it is never shown again."
   },
   "routePolicies": {
     "title": "Access policies",

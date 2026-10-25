@@ -33,6 +33,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -149,6 +151,8 @@ func checkColumn(t, c string) error {
 			enrollmenttoken.Table:    enrollmenttoken.ValidColumn,
 			gateway.Table:            gateway.ValidColumn,
 			gatewaygroup.Table:       gatewaygroup.ValidColumn,
+			gatewaypage.Table:        gatewaypage.ValidColumn,
+			healthcheck.Table:        healthcheck.ValidColumn,
 			instance.Table:           instance.ValidColumn,
 			instancesecret.Table:     instancesecret.ValidColumn,
 			instancesetting.Table:    instancesetting.ValidColumn,

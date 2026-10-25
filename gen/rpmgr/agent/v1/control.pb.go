@@ -46,6 +46,8 @@ const (
 	NotReadyReason_NOT_READY_REASON_ENVIRONMENT NotReadyReason = 4
 	// The connector's local policy file does not parse, or others may write it: nothing is allowed.
 	NotReadyReason_NOT_READY_REASON_POLICY_INVALID NotReadyReason = 5
+	// Phase 2: every target the local policy allows failed its health check.
+	NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY NotReadyReason = 6
 )
 
 // Enum value maps for NotReadyReason.
@@ -57,6 +59,7 @@ var (
 		3: "NOT_READY_REASON_TRANSPORT_UNAVAILABLE",
 		4: "NOT_READY_REASON_ENVIRONMENT",
 		5: "NOT_READY_REASON_POLICY_INVALID",
+		6: "NOT_READY_REASON_TARGETS_UNHEALTHY",
 	}
 	NotReadyReason_value = map[string]int32{
 		"NOT_READY_REASON_UNSPECIFIED":             0,
@@ -65,6 +68,7 @@ var (
 		"NOT_READY_REASON_TRANSPORT_UNAVAILABLE":   3,
 		"NOT_READY_REASON_ENVIRONMENT":             4,
 		"NOT_READY_REASON_POLICY_INVALID":          5,
+		"NOT_READY_REASON_TARGETS_UNHEALTHY":       6,
 	}
 )
 
@@ -2344,14 +2348,15 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\x15FetchResourceResponse\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\fR\acontent\"\x0e\n" +
 	"\fLeaveRequest\"\x0f\n" +
-	"\rLeaveResponse*\xf5\x01\n" +
+	"\rLeaveResponse*\x9d\x02\n" +
 	"\x0eNotReadyReason\x12 \n" +
 	"\x1cNOT_READY_REASON_UNSPECIFIED\x10\x00\x12,\n" +
 	"(NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY\x10\x01\x12 \n" +
 	"\x1cNOT_READY_REASON_PORT_IN_USE\x10\x02\x12*\n" +
 	"&NOT_READY_REASON_TRANSPORT_UNAVAILABLE\x10\x03\x12 \n" +
 	"\x1cNOT_READY_REASON_ENVIRONMENT\x10\x04\x12#\n" +
-	"\x1fNOT_READY_REASON_POLICY_INVALID\x10\x05*\xb2\x01\n" +
+	"\x1fNOT_READY_REASON_POLICY_INVALID\x10\x05\x12&\n" +
+	"\"NOT_READY_REASON_TARGETS_UNHEALTHY\x10\x06*\xb2\x01\n" +
 	"\vUpdatePhase\x12\x1c\n" +
 	"\x18UPDATE_PHASE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16UPDATE_PHASE_AVAILABLE\x10\x01\x12\x19\n" +

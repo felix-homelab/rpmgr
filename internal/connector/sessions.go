@@ -118,7 +118,9 @@ type Sessions struct {
 
 	mu       sync.Mutex
 	gateways map[string]*gatewayState
-	ready    map[string]bool
+	// ready are the routes ready on this host, each with its ready priorities: nil for all of them,
+	// as without a health check (D133).
+	ready map[string][]uint32
 }
 
 type gatewayState struct {
@@ -147,11 +149,11 @@ type session struct {
 	send      func(*tunnelv1.SessionMessage) error
 	requests  *tunnel.OpenRequester
 	streams   atomic.Int64
-	pingSeq   atomic.Uint64   // the last Ping sent
-	pingAt    atomic.Int64    // when, in Unix nanoseconds
-	srtt      atomic.Int64    // the smoothed round-trip time from Ping and Pong, 0 before the first
-	announced map[string]bool // routes reported ready on it; under Sessions.mu
-	retired   bool            // under Sessions.mu
+	pingSeq   atomic.Uint64     // the last Ping sent
+	pingAt    atomic.Int64      // when, in Unix nanoseconds
+	srtt      atomic.Int64      // the smoothed round-trip time from Ping and Pong, 0 before the first
+	announced map[string]string // routes reported ready on it, with their priorities (prioKey); under Sessions.mu
+	retired   bool              // under Sessions.mu
 }
 
 // outgoing is a message to send after Sessions.mu is released.
@@ -176,7 +178,7 @@ func New(o Options) *Sessions {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Sessions{o: o, ctx: ctx, cancel: cancel, choose: newChooser(o.Now), gateways: map[string]*gatewayState{},
-		ready: map[string]bool{}}
+		ready: map[string][]uint32{}}
 	o.Metrics.watch(s)
 	return s
 }
@@ -292,9 +294,9 @@ func (m *Sessions) retire(s *session) []outgoing {
 	delete(s.l.sessions, s)
 	var out []outgoing
 	for _, r := range slices.Sorted(maps.Keys(s.announced)) {
-		out = append(out, outgoing{s, health(r, false)})
+		out = append(out, outgoing{s, health(r, false, nil)})
 	}
-	s.announced = map[string]bool{}
+	s.announced = map[string]string{}
 	m.wg.Go(func() {
 		grace := time.After(retireGrace)
 		for {
@@ -316,8 +318,17 @@ func (m *Sessions) retire(s *session) []outgoing {
 	return out
 }
 
-func health(route string, ready bool) *tunnelv1.SessionMessage {
-	return &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_RouteHealth{RouteHealth: &tunnelv1.RouteHealth{RouteId: route, Ready: ready}}}
+func health(route string, ready bool, prios []uint32) *tunnelv1.SessionMessage {
+	return &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_RouteHealth{RouteHealth: &tunnelv1.RouteHealth{RouteId: route, Ready: ready,
+		ReadyPriorities: prios}}}
+}
+
+// prioKey tells ready priorities apart: "" for all of them.
+func prioKey(prios []uint32) string {
+	if len(prios) == 0 {
+		return ""
+	}
+	return fmt.Sprint(prios)
 }
 
 // serves reports whether the gateway of s serves route by the applied snapshot, or did until less
@@ -333,11 +344,11 @@ func (m *Sessions) serves(s *session, route string) bool {
 }
 
 // wanted are the routes s should announce: the ready routes of its link's policy. Under m.mu.
-func (m *Sessions) wanted(s *session) map[string]bool {
-	out := map[string]bool{}
+func (m *Sessions) wanted(s *session) map[string]string {
+	out := map[string]string{}
 	for r, p := range s.l.gs.g.Routes {
-		if p == s.l.policy && m.ready[r] {
-			out[r] = true
+		if prios, ok := m.ready[r]; ok && p == s.l.policy {
+			out[r] = prioKey(prios)
 		}
 	}
 	return out
@@ -351,13 +362,13 @@ func (m *Sessions) announce(s *session) []outgoing {
 	want := m.wanted(s)
 	var out []outgoing
 	for _, r := range slices.Sorted(maps.Keys(want)) {
-		if !s.announced[r] {
-			out = append(out, outgoing{s, health(r, true)})
+		if a, ok := s.announced[r]; !ok || a != want[r] {
+			out = append(out, outgoing{s, health(r, true, m.ready[r])})
 		}
 	}
 	for _, r := range slices.Sorted(maps.Keys(s.announced)) {
-		if !want[r] {
-			out = append(out, outgoing{s, health(r, false)})
+		if _, ok := want[r]; !ok {
+			out = append(out, outgoing{s, health(r, false, nil)})
 		}
 	}
 	s.announced = want
@@ -372,11 +383,16 @@ func (m *Sessions) flush(out []outgoing) {
 	}
 }
 
-// SetReady records whether a route is ready on this host and tells the sessions that carry it.
-// Only Ready is used: why a route is not ready goes to the controller, not to gateways.
+// SetReady records whether a route is ready on this host, and at which priorities, and tells the
+// sessions that carry it. Only Ready and ReadyPriorities are used: why a route is not ready goes to
+// the controller, not to gateways.
 func (m *Sessions) SetReady(h *tunnelv1.RouteHealth) {
 	m.mu.Lock()
-	m.ready[h.GetRouteId()] = h.GetReady()
+	if h.GetReady() {
+		m.ready[h.GetRouteId()] = slices.Clone(h.GetReadyPriorities())
+	} else {
+		delete(m.ready, h.GetRouteId())
+	}
 	var out []outgoing
 	for _, gs := range m.gateways {
 		if p, ok := gs.g.Routes[h.GetRouteId()]; ok && gs.links[p] != nil {
@@ -599,7 +615,7 @@ var errDrained = errors.New("connector: the gateway is draining")
 // run serves an established session until it ends, the gateway drains it, or ctx ends, which
 // retires it.
 func (m *Sessions) run(ctx context.Context, l *link, ts tunnel.Session, tr string) error {
-	s := &session{l: l, transport: tr, s: ts, announced: map[string]bool{}}
+	s := &session{l: l, transport: tr, s: ts, announced: map[string]string{}}
 	drained := make(chan struct{})
 	done := make(chan error, 1)
 	m.wg.Go(func() { done <- m.serve(ctx, s, drained) })
@@ -876,7 +892,18 @@ func (m *Sessions) serve(ctx context.Context, s *session, drained chan struct{})
 	m.mu.Lock()
 	want := m.wanted(s)
 	m.mu.Unlock()
-	sent := fitReady(hello, slices.Sorted(maps.Keys(want)))
+	// The hello names only routes ready at every priority; RouteHealth after the welcome names the
+	// others with their priorities, as a gateway takes a route of the hello as ready at all.
+	var all []string
+	for _, r := range slices.Sorted(maps.Keys(want)) {
+		if want[r] == "" {
+			all = append(all, r)
+		}
+	}
+	sent := map[string]string{}
+	for r := range fitReady(hello, all) {
+		sent[r] = ""
+	}
 	if err := s.send(&tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Hello{Hello: hello}}); err != nil {
 		return err
 	}

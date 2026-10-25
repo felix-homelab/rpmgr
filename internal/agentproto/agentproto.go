@@ -28,12 +28,34 @@ const (
 	CapProbeTarget        = "probe.target"        // reads the certificate a target presents (ProbeTarget)
 )
 
+// The capability strings of Phase 2 route features, each a gate that keeps a route that uses the
+// feature from agents without it (docs/03-connections.md, "Versioning and capabilities").
+const (
+	// CapRouteLimits: the gateway enforces a route's connection, rate and bandwidth limits and the
+	// per-client rate_limit rule of access policies.
+	CapRouteLimits = "route.limits"
+)
+
 // The capability strings of Phase 2 that are not route features, each checked where its feature
 // is used (docs/03-connections.md, "Versioning and capabilities").
 const (
 	// CapOTA: the agent stages the release its snapshot offers for the root updater and reports
 	// the update state in Status; an agent without it is never offered a release.
 	CapOTA = "ota"
+	// CapPagesCustom: the gateway serves the custom pages of its group, which its snapshot names;
+	// a gateway without it gets none and serves the built-in pages.
+	CapPagesCustom = "pages.custom"
+	// CapHealthActive: the connector runs the routes' active health checks against its targets
+	// and reports the priorities with a healthy target; one without it counts every target as
+	// healthy (D133).
+	CapHealthActive = "health.active"
+)
+
+// The capability strings of Phase 2 route features: the compiler leaves a route that uses one out
+// of the snapshot of an agent without it (docs/03-connections.md, "Versioning and capabilities").
+const (
+	// CapHTTPRequireHeader: the gateway enforces the require_header rules of access policies.
+	CapHTTPRequireHeader = "http.require-header"
 )
 
 // Phase1 lists every capability of Phase 1 agents.

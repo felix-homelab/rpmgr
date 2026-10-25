@@ -12,6 +12,25 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Routes: active health checks. A route may have one TCP or HTTP check, which each connector runs
+  against its own targets of the route, on their port or another one; new connections pass over a
+  target that fails it, gateways pass over a connector whose targets of a priority are all
+  unhealthy, and a route whose targets are all unhealthy is unavailable. Checks obey the connector's
+  local policy. The route's status lists the unhealthy targets with the last failure, and the
+  targets of connectors of earlier releases, which run no checks, as health not checked. Set in the
+  **Health check** fields of the route form, with `rpmgr create route` and `rpmgr update route`
+  (`--health-check` and the other `--health-*` flags), in the route's manifest, or as the route's
+  `health_check`; the route's page shows each target's health with the last failure. (#629, #630,
+  #631, #633)
+
+- Gateways: a gateway group may replace its not-found, unavailable and maintenance pages with its
+  own HTML, with the placeholders `{{hostname}}`, `{{status}}`, `{{message}}` and
+  `{{request_id}}` filled in as escaped text. The pages run no script and load nothing from
+  elsewhere. Set by the group's owner org in the **Pages** card of the group's page, which also
+  previews each page exactly as visitors will see it, with sample values, with
+  `rpmgr upload gateway-page` and `rpmgr remove gateway-page`, or `GatewayService.SetGatewayPage`;
+  gateways of earlier releases keep the built-in pages. (#626, #627, #914)
+
 - Updates: **Check now** on Settings → Updates, `rpmgr check release` and
   `ReleaseService.CheckReleases` check for new releases at once instead of at the next daily
   check, for an Instance Admin, audited. The page and `ListReleases` show when the last check ended
@@ -30,6 +49,15 @@ Changes to the design documents are not recorded here: see the git history and t
   `ReleaseService.UpgradeAgents` (`rpmgr upgrade connector|gateway <agent>…`) updates single agents.
   Connectors and gateways report whether they take over-the-air updates (`over_the_air`). (#892,
   #893, #894, #895, #896)
+
+- Access policies: a **require-header** rule admits on HTTP routes only requests that carry a
+  header with one of up to four values, such as the origin header a CDN adds, so that clients that
+  go around the CDN get 403. The controller keeps only the values' SHA-256 and never shows a value
+  again; gateways compare in constant time and remove the header before the request goes
+  upstream. In the web UI's **Access policies** page, with a value generator, in `rpmgr create
+  access-policy --rule require-header:<header> --header-values-file <file>`, and in manifests.
+  Gateways of earlier releases do not serve a route that applies such a rule until they are
+  upgraded. (#620, #621)
 
 ## [0.2.0] - 2026-10-24
 

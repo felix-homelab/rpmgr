@@ -261,6 +261,30 @@ func (f GatewayGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GatewayGroupMutation", m)
 }
 
+// The GatewayPageFunc type is an adapter to allow the use of ordinary
+// function as GatewayPage mutator.
+type GatewayPageFunc func(context.Context, *ent.GatewayPageMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GatewayPageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.GatewayPageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GatewayPageMutation", m)
+}
+
+// The HealthCheckFunc type is an adapter to allow the use of ordinary
+// function as HealthCheck mutator.
+type HealthCheckFunc func(context.Context, *ent.HealthCheckMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f HealthCheckFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.HealthCheckMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.HealthCheckMutation", m)
+}
+
 // The InstanceFunc type is an adapter to allow the use of ordinary
 // function as Instance mutator.
 type InstanceFunc func(context.Context, *ent.InstanceMutation) (ent.Value, error)

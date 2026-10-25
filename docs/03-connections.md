@@ -852,11 +852,16 @@ sequenceDiagram
   ([04](04-security.md#route-edge-rules)). The gateway fills in placeholders, each escaped as HTML
   text: `{{hostname}}` (the name the client asked for), `{{status}}` (the status code),
   `{{message}}` (the route's maintenance message, on the maintenance page only) and
-  `{{request_id}}` (a random ID the gateway also writes to its log line for the request); any other
-  `{{…}}` stays as it is. A custom page goes out with
-  `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:` and
-  `Cache-Control: no-store`, so it runs no script and loads nothing from elsewhere, and only to
-  clients whose `Accept` names `text/html`, like the built-in pages. Gateways fetch the pages by
+  `{{request_id}}` (a random ID the gateway also writes to its log line for the request, at level
+  info, only for a page that shows it and at most at the rate of
+  [Timeouts, keepalive and backoff](#timeouts-keepalive-and-backoff), the lines over it dropped and
+  counted, [D136](14-open-decisions.md#engineering)); any other `{{…}}` stays as it is, and a filled-in value is
+  never searched for placeholders again. A custom page goes out with
+  `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:;
+  frame-ancestors 'none'; base-uri 'none'; form-action 'none'` and `Cache-Control: no-store`, so it
+  runs no script and loads nothing from elsewhere, and only to clients whose `Accept` names
+  `text/html`, like the built-in pages. A gateway refuses a fetched page that does not match its
+  hash, is larger than the limit or is not UTF-8, and keeps the built-in page for its kind. Gateways fetch the pages by
   their SHA-256 like certificates ([Configuration reconciliation](#configuration-reconciliation));
   until a page is fetched, for a kind the group did not replace, and on a gateway without the
   capability `pages.custom`, the built-in page is served.
@@ -916,22 +921,34 @@ It checks them in this order: IP rules, rate limits, require-header rules, then 
   ([HTTP CONNECT routes](#http-connect-routes-phase-2)).
 - **Rate limits** (Phase 2, [D131](14-open-decisions.md#engineering)). A `rate_limit` rule allows
   each client address a rate with a burst: HTTP requests on an http route, new connections on a
-  `tcp`, `tls_passthrough` or CONNECT route, new flows on a `udp` route. Over it, an HTTP request
-  is **429** with `Retry-After`, a connection is reset before any stream opens, and a datagram
-  opens no flow and is counted (`reason="rate_limit"`). Each `rate_limit` rule of a route applies,
-  so the strictest one decides. A client is an IPv4 address or an IPv6 /64, found as for IP rules;
-  each gateway counts on its own, and the rule is not divided among them, as a client mostly stays
-  with one gateway. The key table of a route on a gateway has a fixed size
-  ([Timeouts, keepalive and backoff](#timeouts-keepalive-and-backoff)); when it is full, new
-  addresses are refused, rather than the gateway forgetting addresses that it is limiting
-  ([04](04-security.md#human-authentication-and-sessions)). The route's own total rate is a limit
-  of the route, not of a policy ([Route limits](#route-limits-phase-2)).
+  `tcp`, `tls_passthrough` or CONNECT route, new flows on a `udp` route. Over it, an HTTP request is
+  **429** with `Retry-After`, a connection is reset before any stream opens, and a datagram opens no
+  flow and is counted (`reason="rate_limit"`). Each `rate_limit` rule of a route applies, so the
+  strictest one decides. A client is an IPv4 address or an IPv6 /64, found as for IP rules; each
+  gateway counts on its own, for all the routes that apply the policy together, udp flows apart, and
+  the rule is not divided among the gateways, as a client mostly stays with one gateway. The client
+  tables of a gateway have a fixed size ([Timeouts, keepalive and
+  backoff](#timeouts-keepalive-and-backoff)); when they are full, a new address passes unlimited by
+  the rule, while the route's total and its connection limit still apply, rather than the gateway
+  refusing every new client or forgetting the clients it limits
+  ([D137](14-open-decisions.md#engineering)). New UDP flows count in a table of their own, as UDP
+  sources can be forged ([04](04-security.md#route-edge-rules)). The route's own total rate is a
+  limit of the route, not of a policy ([Route limits](#route-limits-phase-2)).
 - **Require-header rules** (Phase 2, [04](04-security.md#route-edge-rules)). A `require_header`
   rule names a header and up to 4 accepted values, so that a value can be rotated; the gateway
   holds only their SHA-256 and compares in constant time. A request without the header, or with a
-  value none matches, is **403**. The gateway removes the header before the request goes upstream,
-  so the backend never sees the shared secret. Such a rule on another route type denies everyone,
-  and the API refuses it there.
+  value none matches, is **403**; a request that repeats the header passes if one of its values
+  matches, and each rule of the route must pass. The gateway removes the header before the request
+  goes upstream, so the backend never sees the shared secret, and on gateways that enforce the rule
+  a tightened rule ends the requests and upgraded connections admitted with a value it dropped
+  (gateways of an earlier release: [10](10-operations.md#upgrades-and-version-skew)). A policy
+  requires a header once. The header cannot be one HTTP uses for the connection or its framing, a
+  forwarding header of the gateway, `Host`, `Authorization`, `Cookie`, the trace context
+  (`Traceparent`, `Tracestate`, `Baggage`), which the gateway reads before it checks access, or an
+  `Rpmgr-` header; the gateways refuse a snapshot that requires one. Such a rule on another
+  route type denies everyone, and the API refuses it there. A gateway without the capability
+  `http.require-header` does not get a route with such a rule
+  ([Versioning and capabilities](#versioning-and-capabilities)).
 - **OIDC sign-in** (Phase 2, built with P2-M10, [04](04-security.md#route-edge-rules)). An `oidc`
   rule admits users that a route identity provider signs in and whose claims the rule accepts
   (e-mail addresses, e-mail domains, groups). A request without a valid session cookie
@@ -962,25 +979,40 @@ the capability `route.limits`:
   enforces its share. A gateway that is enabled but down keeps its share, so the route then gets
   less than its limit until the gateway returns or is disabled. 0 means no limit.
 - A slot of a connection or request is released when it ends, however it ends, panics and
-  cancellations included. The per-client `rate_limit` rule of a policy comes on top
+  cancellations included. A gateway keeps counting the connections of a removed route while they
+  drain, so the route, added back meanwhile, never admits more than its limit. The per-client `rate_limit` rule of a policy comes on top
   ([Access policies](#access-policies)).
 
 ### Target health (Phase 2)
 
 - **Active checks** ([D133](14-open-decisions.md#engineering)). A route has at most one health
   check, which each connector runs against each of its own targets of the route: `tcp` (the dial
-  succeeds) or `http` (a `GET` of a path, with the route's `Host`, that answers with a status in
-  the expected range, 200–399 unless set). A check may name another port than the target's. It
-  dials like traffic: the connector-local policy applies, and a target it blocks is unhealthy
-  without being dialled; an `https` target is verified with the target's own TLS settings; no
-  redirect is followed and at most a capped part of the body is read. A `udp` route allows only a
-  `tcp` check on a port it names. A target becomes unhealthy after the unhealthy threshold of
-  failed checks in a row and healthy again after the healthy threshold of passed ones.
-- **What gateways see.** The connector skips unhealthy targets when it picks one for a stream and
-  reports, per route, the priorities that still have a healthy target (`RouteHealth`). A gateway
-  passes over a connector whose priority has none and, for http routes, moves new requests back to
-  a better priority once it is healthy again. When no target of a route is healthy on any
-  connector, the gateway answers as when no connector is ready (**503**, reset, drop) and the
+  succeeds) or `http` (a `GET` of a path that answers with a status in the expected range, 200–399
+  unless set, sent with the route's host header override as `Host`, else its first hostname that is
+  not a wildcard, else the target's address, or `localhost` for a socket target). A check may name
+  another port than the target's, except on a route with a socket target. It dials like traffic: the
+  connector-local policy applies, and a target it blocks, by address, by the address a name resolves
+  to, or by the port the check names, is never dialled and counts as blocked by the policy
+  (`not_ready(blocked_by_local_policy)` with the policy's detail), not as unhealthy; an `https`
+  target is verified with the target's own TLS settings; no redirect is followed and at most a
+  capped part of the body is read. A target that expects a PROXY header gets a `LOCAL` one when the
+  check dials its own port. A `udp` route allows only a `tcp` check on a port it names; a
+  `tls_passthrough` route, whose targets expect TLS, and a route with an `h2c` target, which speaks
+  no HTTP/1.1, only a `tcp` check. A target counts as healthy until checked; it becomes unhealthy
+  after the unhealthy threshold of failed checks in a row and healthy again after the healthy
+  threshold of passed ones, so a target whose results alternate keeps its state. A changed route or
+  check starts its targets healthy again. The changes of the targets' health in one round of checks
+  also go to the controller in one `Status`, each target's ID as the resource, for the route's
+  status ([06](06-data-model.md#desired-vs-observed-state)).
+- **What gateways see.** The connector skips unhealthy targets when it picks one for a stream or a
+  UDP flow, unless every one is unhealthy, and reports, per route, the priorities that still have a
+  healthy target (`RouteHealth.ready_priorities`); a route whose every allowed target is unhealthy
+  is not ready, `not_ready(targets_unhealthy)`. A `SessionHello` names only the routes ready at
+  every priority; the others follow as `RouteHealth` with their priorities. A gateway passes over a
+  connector whose priority has none and, for http routes, moves new requests back to a better
+  priority once it is healthy again. An entry the controller did not rank names no priority in its
+  streams, so its connector's readiness alone counts there. When no target of a route is healthy on
+  any connector, the gateway answers as when no connector is ready (**503**, reset, drop) and the
   route's status is `unavailable`.
 - **Connectors of an earlier release** do not run checks: they report every priority as ready, so
   their targets count as healthy, and the route's status notes "health not checked" for them. The
@@ -1385,10 +1417,11 @@ sequenceDiagram
 | Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |
 | Per-route HTTP timeouts (Phase 2) | upstream response header 1 s to 1 h; upstream idle 1 s to 1 h; 0 = the HTTP server row above | [R] Slow reports and long polls fit; a pooled connection outliving a backend's keep-alive is avoided ([HTTP routes](#http-routes)) |
-| Active health check (Phase 2) | interval 10 s by default, at least 2 s; timeout 5 s by default, below the interval; unhealthy after 3 failures in a row, healthy after 2 passes; an HTTP check reads at most 64 KiB of the body | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
+| Active health check (Phase 2) | interval 10 s by default, from 2 s to 1 h; timeout 5 s by default, or 1 s below a shorter interval, below the interval and at most 1 min; unhealthy after 3 failures in a row, healthy after 2 passes, each threshold from 1 to 10; an HTTP check reads at most 16 KiB of status line and header and 64 KiB of the body; a connector runs at most 64 checks at once, over all its routes, the others waiting their turn | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
 | Passive health (Phase 2) | 3 refused or timed-out stream opens in a row; back-off 10 s, doubling to 60 s; one half-open try after it | [R] A target that refuses is passed over at once and tried again soon |
-| Per-client rate limit (Phase 2) | at most 65 536 client addresses per route on each gateway; an address unused for 10 min is dropped | [R] A flood of addresses cannot exhaust a gateway's memory ([Access policies](#access-policies)) |
-| Custom page (Phase 2) | at most 64 KiB of HTML per page | [R] A page loads fast and fits a snapshot item fetch ([HTTP routes](#http-routes)) |
+| Route limits (Phase 2) | an HTTP request over the connection limit gets **503** with `Retry-After: 1`, one over a request rate **429** with `Retry-After` the seconds until it may come again, at least 1; the route's total rate allows a second's worth of requests at once; a bandwidth bucket holds 100 ms of the rate, at least 64 KiB, the largest UDP payload, and a connection moves at most 100 ms of the rate, at least 512 bytes, at a time | [R] A client tries again soon, as a slot frees when a request ends; a datagram always fits the bucket, and a connection under a low limit moves on in small steps rather than stalling ([Route limits](#route-limits-phase-2)) |
+| Per-client rate limit (Phase 2) | at most 4 rate_limit rules a route on a gateway; each rule has a table for udp flows and one for the rest, which every route whose policies carry the rule shares, each of at most 65 536 client addresses, and all tables of a gateway together hold at most 262 144, about 28 MiB; when a table or the gateway is full, the addresses whose bucket is full again are dropped, at most once a second, and a new address that still finds no room passes uncounted (D137); every minute the idle addresses are dropped and each table is made anew, which gives its memory back | [R] A flood of addresses costs a gateway at most about 28 MiB, whatever the number of routes and rules, never locks real clients out and never makes it forget the clients it limits ([Access policies](#access-policies)) |
+| Custom page (Phase 2) | at most 64 KiB of HTML per page; the log lines of its `{{request_id}}` at most 20 per second per gateway, with a burst of 20, the rest dropped and counted; a link to the web UI's preview of a page works for 5 min | [R] A page loads fast and fits a snapshot item fetch; a flood of requests cannot flood the log ([HTTP routes](#http-routes), [D136](14-open-decisions.md#engineering)) |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |
 | Snapshot item fetch | 10 s per `FetchResource`; a failed fetch is retried after 1 s, doubling up to 1 min, and its resource is `not_ready(environment)` until then | A controller outage delays a new certificate without a retry storm |
 | Target certificate probe | the connector's dial and TLS handshake together 10 s; at most 4 at once per connector, another is refused at once; `ProbeTargetCertificate` waits at most 15 s for the connector's answer | [R] A silent target or connector answers within the time a user waits for a button; a user who may change routes cannot make a connector open many dials at once |

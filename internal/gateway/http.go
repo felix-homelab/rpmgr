@@ -41,6 +41,7 @@ const (
 	httpIdle              = 120 * time.Second // a keep-alive connection without a request
 	httpRetryAfter        = 5                 // seconds, in a 503 without a ready connector
 	maintenanceRetryAfter = 300               // seconds, in the 503 of a route in maintenance
+	limitRetryAfter       = 1                 // seconds, in the 503 of a route over its connection limit
 )
 
 var (
@@ -91,10 +92,15 @@ type HTTPRoute struct {
 	Access Access
 	// BasicAuth are the basic_auth rules a request the IP rules allow must pass, in order.
 	BasicAuth []BasicAuthRule
+	// RequireHeader are the require_header rules a request the IP rules allow must pass, before
+	// basic auth; their headers never go upstream.
+	RequireHeader []RequireHeaderRule
 	// Maintenance answers every request the access rules admit with the maintenance page, which
 	// shows MaintenanceMessage, and opens no stream.
 	Maintenance        bool
 	MaintenanceMessage string
+	// Limit is the route's limit state; nil limits nothing.
+	Limit *RouteLimit
 }
 
 // HTTPHeader is a header name, canonical, and its value; "" removes the header.
@@ -131,7 +137,9 @@ type HTTPOptions struct {
 	// no route serves get the gateway's 404 page.
 	Fallback80    http.Handler
 	FallbackNames []string
-	Logger        *slog.Logger
+	// Pages are the custom pages of the gateway's group; nil serves the built-in pages.
+	Pages  *Pages
+	Logger *slog.Logger
 }
 
 // HTTPRoutes serves the http routes (docs/03-connections.md, "HTTP routes"): it terminates TLS
@@ -173,10 +181,11 @@ type routeTransport struct {
 	proxy *httputil.ReverseProxy
 	tls   map[string]upstreamTLS // by route target ID
 
-	mu       sync.Mutex
-	access   Access // the route's access rules in force, which enforce sets
-	active   map[*activeRequest]struct{}
-	upstream *upstreamConns // the route's TLS connections to its targets, of every transport
+	mu            sync.Mutex
+	access        Access              // the route's IP rules in force, which enforce sets
+	requireHeader []RequireHeaderRule // and its require_header rules
+	active        map[*activeRequest]struct{}
+	upstream      *upstreamConns // the route's TLS connections to its targets, of every transport
 
 	best      func() (uint32, bool)     // the route's best priority with a ready session (Sessions.BestPriority)
 	entry     func(string, uint32) bool // whether a connector at a priority is still an entry of the route
@@ -399,20 +408,26 @@ func (u *upstreamConns) track(target string, checked UpstreamTLS, c net.Conn) (n
 // activeRequest is a request being proxied, which a tightened access policy cancels.
 type activeRequest struct {
 	client netip.Addr
+	header http.Header // the client's request header, which the proxy never changes
 	cancel context.CancelFunc
 }
 
-// enforce cancels the requests, upgraded connections included, whose clients the route's new
-// access rules no longer allow.
-func (rt *routeTransport) enforce(a Access) {
+// enforce cancels the requests, upgraded connections included, that the route's new access rules
+// no longer allow: by their client's address, or by the headers the require_header rules ask for.
+func (rt *routeTransport) enforce(r *HTTPRoute) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	rt.access = a
+	rt.access, rt.requireHeader = r.Access, r.RequireHeader
 	for ar := range rt.active {
-		if !a.Allows(ar.client) {
+		if !rt.allows(ar) {
 			ar.cancel()
 		}
 	}
+}
+
+// allows reports whether the rules in force admit a request; rt.mu is held.
+func (rt *routeTransport) allows(ar *activeRequest) bool {
+	return rt.access.Allows(ar.client) && requireHeaderPasses(rt.requireHeader, ar.header)
 }
 
 // idle reports whether no request runs on the transport.
@@ -515,7 +530,7 @@ func (h *HTTPRoutes) serve80(w http.ResponseWriter, r *http.Request) {
 			h.o.Fallback80.ServeHTTP(w, r)
 			return
 		}
-		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+		h.o.Pages.writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 		return
 	}
 	switch rt.route.Load().Port80 {
@@ -627,7 +642,7 @@ func (h *HTTPRoutes) serveUnrouted(w http.ResponseWriter, r *http.Request) {
 		if r.ContentLength != 0 {
 			closeUnread(w, r)
 		}
-		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+		h.o.Pages.writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 	}
 }
 
@@ -672,11 +687,11 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 				h.replaced[r.ID] = append(h.replaced[r.ID], rt)
 			}
 			rt = h.newTransport(r)
-		} else if old := rt.route.Swap(&r); !old.Access.Same(r.Access) {
-			rt.enforce(r.Access)
+		} else if old := rt.route.Swap(&r); !old.Access.Same(r.Access) || !sameRequireHeader(old.RequireHeader, r.RequireHeader) {
+			rt.enforce(&r)
 		}
 		h.replaced[r.ID] = slices.DeleteFunc(h.replaced[r.ID], func(old *routeTransport) bool {
-			old.enforce(r.Access)
+			old.enforce(&r)
 			return old.idle()
 		})
 		next[r.ID] = rt
@@ -729,14 +744,17 @@ func (h *HTTPRoutes) upstreamOf(route string) *upstreamConns {
 
 // newTransport returns the proxy of a route; its transport dials tunnel streams to the route.
 func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
-	rt := &routeTransport{access: r.Access, active: map[*activeRequest]struct{}{}, upstream: h.upstreamOf(r.ID),
+	rt := &routeTransport{access: r.Access, requireHeader: r.RequireHeader, active: map[*activeRequest]struct{}{}, upstream: h.upstreamOf(r.ID),
 		pooled: map[net.Conn]*pooledConn{}, best: func() (uint32, bool) { return h.o.Sessions.BestPriority(r.ID) },
 		entry: func(con string, p uint32) bool { return h.o.Sessions.HasEntry(r.ID, con, p) }}
 	rt.route.Store(&r)
 	rt.tr = &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			c, err := h.dial(ctx, r.ID)
-			return rt.pool(c, c, err)
+			if err != nil {
+				return nil, err
+			}
+			return rt.pool(rt.route.Load().Limit.UpstreamConn(c), c, nil)
 		},
 		ResponseHeaderTimeout: httpUpstreamHeader,
 		MaxIdleConnsPerHost:   64,
@@ -776,6 +794,9 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 			otel.GetTextMapPropagator().Inject(pr.Out.Context(), propagation.HeaderCarrier(pr.Out.Header))
 			if len(route.BasicAuth) > 0 {
 				pr.Out.Header.Del("Authorization") // the gateway's credentials, not the upstream's
+			}
+			for _, rh := range route.RequireHeader {
+				pr.Out.Header.Del(rh.Name) // a shared secret between the client and the gateway
 			}
 			apply(pr.Out.Header, route.RequestHeaders)
 		},
@@ -950,7 +971,7 @@ func (h *HTTPRoutes) dialTLS(ctx context.Context, rt *routeTransport) (net.Conn,
 		_ = c.Close()
 		return nil, nil, fmt.Errorf("route %s: %w", route, err)
 	}
-	tc := tls.Client(tracked, u.cfg)
+	tc := tls.Client(rt.route.Load().Limit.UpstreamConn(tracked), u.cfg)
 	if err := tc.HandshakeContext(ctx); err != nil {
 		_ = tc.Close()
 		return nil, nil, fmt.Errorf("route %s: TLS to target %s: %w", route, target, err)
@@ -990,7 +1011,7 @@ func (h *HTTPRoutes) proxyError(w http.ResponseWriter, r *http.Request, err erro
 		http.Error(w, http.StatusText(status), status)
 		return
 	}
-	writePage(w, r, status, pageUnavailable, http.StatusText(status))
+	h.o.Pages.writePage(w, r, status, pageUnavailable, http.StatusText(status))
 }
 
 // ServeHTTP routes a request by its host and the longest matching path prefix.
@@ -1011,7 +1032,7 @@ func (h *HTTPRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			misdirected(w, r)
 			return
 		}
-		writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
+		h.o.Pages.writePage(w, r, http.StatusNotFound, pageNotFound, noRouteText)
 		return
 	}
 	if age := rt.route.Load().HSTS; age > 0 && r.TLS != nil {
@@ -1094,8 +1115,17 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 		span.End()
 	}()
 	client := clientOf(r, route.TrustedProxies)
-	if !route.Access.Allows(client) {
+	if !route.Access.Allows(client) || !requireHeaderPasses(route.RequireHeader, r.Header) {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+	// The rates come before basic auth, so that a flood never reaches its password checks.
+	if ok, wait, _ := route.Limit.Admit(client, false); !ok {
+		if r.ContentLength != 0 {
+			closeUnread(w, r)
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(retryAfter(wait)))
+		http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
 		return
 	}
 	if len(route.BasicAuth) > 0 {
@@ -1120,12 +1150,12 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 	}
 	ctx, cancel := context.WithCancel(withPageRequest(r.Context(), r))
 	defer cancel()
-	ar := &activeRequest{client: client, cancel: cancel}
+	ar := &activeRequest{client: client, header: r.Header, cancel: cancel}
 	rt.mu.Lock()
 	rt.active[ar] = struct{}{}
 	// The rules may have changed while the request was checked, basic auth taking a while; under
 	// rt.mu, either enforce sees the request, or this check sees the rules it set (#523).
-	allowed := rt.access.Allows(client)
+	allowed := rt.allows(ar)
 	rt.mu.Unlock()
 	defer func() {
 		rt.mu.Lock()
@@ -1142,7 +1172,7 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 			closeUnread(w, r) // nothing reads the body
 		}
 		w.Header().Set("Retry-After", strconv.Itoa(maintenanceRetryAfter))
-		writeMaintenance(w, r, route.MaintenanceMessage)
+		h.o.Pages.writeMaintenance(w, r, route.MaintenanceMessage)
 		return
 	}
 	if !route.WebSocket && r.Header.Get("Upgrade") != "" {
@@ -1156,6 +1186,18 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, route.MaxBody)
 	}
+	// A request in flight, an upgraded one until it ends, holds one of the route's connection slots,
+	// released however the request ends.
+	release, ok := route.Limit.Acquire()
+	if !ok {
+		if r.ContentLength != 0 {
+			closeUnread(w, r)
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(limitRetryAfter))
+		h.o.Pages.writePage(w, r, http.StatusServiceUnavailable, pageUnavailable, http.StatusText(http.StatusServiceUnavailable))
+		return
+	}
+	defer release()
 	rt.proxy.ServeHTTP(w, r)
 }
 
