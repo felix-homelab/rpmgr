@@ -104,6 +104,10 @@ type HTTPRoute struct {
 	// HeaderMatches are the request headers a request must carry for the route, canonical and
 	// sorted (docs/03-connections.md, "HTTP routes").
 	HeaderMatches []headermatch.Match
+	// UpstreamHeaderTimeout bounds the wait for the upstream's response headers, after which the
+	// request gets 504, and UpstreamIdleTimeout how long a pooled upstream connection may stay
+	// unused; 0 keeps the gateway's (docs/03-connections.md, "Timeouts, keepalive and backoff").
+	UpstreamHeaderTimeout, UpstreamIdleTimeout time.Duration
 	// Limit is the route's limit state; nil limits nothing.
 	Limit *RouteLimit
 }
@@ -702,7 +706,9 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 	t := &httpTable{byHost: map[string][]httpEntry{}}
 	for _, r := range routes {
 		rt := h.transports[r.ID]
-		if rt == nil || rt.route.Load().Upstream != r.Upstream || !reflect.DeepEqual(rt.route.Load().TLS, r.TLS) {
+		if rt == nil || rt.route.Load().Upstream != r.Upstream || !reflect.DeepEqual(rt.route.Load().TLS, r.TLS) ||
+			rt.route.Load().UpstreamHeaderTimeout != r.UpstreamHeaderTimeout || rt.route.Load().UpstreamIdleTimeout != r.UpstreamIdleTimeout {
+			// A transport's settings cannot change while it is in use, so new timeouts get a new one.
 			if rt != nil {
 				// Its requests finish on the old transport, unless h.upstream ends them, under the
 				// route's rules of this and every later snapshot (#523).
@@ -714,7 +720,13 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		}
 		h.replaced[r.ID] = slices.DeleteFunc(h.replaced[r.ID], func(old *routeTransport) bool {
 			old.enforce(&r)
-			return old.idle()
+			if !old.idle() {
+				return false
+			}
+			// The connections its last requests gave back to its pool would stay open until its
+			// idle timeout.
+			old.closeIdle()
+			return true
 		})
 		next[r.ID] = rt
 		h.upstreamOf(r.ID).set(r.TLS)
@@ -738,8 +750,11 @@ func (h *HTTPRoutes) Apply(routes []HTTPRoute) {
 		}
 	}
 	h.transports = next
-	for id := range h.replaced {
+	for id, olds := range h.replaced {
 		if next[id] == nil {
+			for _, old := range olds {
+				old.closeIdle() // its requests finish; nothing takes its pooled connections
+			}
 			delete(h.replaced, id) // a removed route's requests finish
 		}
 	}
@@ -779,9 +794,9 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 			}
 			return rt.pool(rt.route.Load().Limit.UpstreamConn(c), c, nil)
 		},
-		ResponseHeaderTimeout: httpUpstreamHeader,
+		ResponseHeaderTimeout: cmp.Or(r.UpstreamHeaderTimeout, httpUpstreamHeader),
 		MaxIdleConnsPerHost:   64,
-		IdleConnTimeout:       httpIdle,
+		IdleConnTimeout:       cmp.Or(r.UpstreamIdleTimeout, httpIdle),
 	}
 	target := &url.URL{Scheme: "http", Host: r.ID + ".route.invalid"}
 	switch r.Upstream {

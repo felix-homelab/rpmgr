@@ -1055,8 +1055,15 @@ type HTTPRouteSpec struct {
 	// fewer, and the route created first wins a tie. A route of a group with the same hostname,
 	// path prefix and set of matches as another is refused.
 	HeaderMatches []*HeaderMatch `protobuf:"bytes,14,rep,name=header_matches,json=headerMatches,proto3" json:"header_matches,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// How long its gateways wait for the upstream's response headers before the request gets 504,
+	// 1 to 3600 seconds; 0 keeps the gateway's (docs/03-connections.md, "Timeouts, keepalive and
+	// backoff", D94).
+	UpstreamResponseHeaderTimeoutSeconds uint32 `protobuf:"varint,15,opt,name=upstream_response_header_timeout_seconds,json=upstreamResponseHeaderTimeoutSeconds,proto3" json:"upstream_response_header_timeout_seconds,omitempty"`
+	// How long a pooled keep-alive connection to the upstream may stay unused, 1 to 3600 seconds;
+	// 0 keeps the gateway's.
+	UpstreamIdleTimeoutSeconds uint32 `protobuf:"varint,16,opt,name=upstream_idle_timeout_seconds,json=upstreamIdleTimeoutSeconds,proto3" json:"upstream_idle_timeout_seconds,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *HTTPRouteSpec) Reset() {
@@ -1185,6 +1192,20 @@ func (x *HTTPRouteSpec) GetHeaderMatches() []*HeaderMatch {
 		return x.HeaderMatches
 	}
 	return nil
+}
+
+func (x *HTTPRouteSpec) GetUpstreamResponseHeaderTimeoutSeconds() uint32 {
+	if x != nil {
+		return x.UpstreamResponseHeaderTimeoutSeconds
+	}
+	return 0
+}
+
+func (x *HTTPRouteSpec) GetUpstreamIdleTimeoutSeconds() uint32 {
+	if x != nil {
+		return x.UpstreamIdleTimeoutSeconds
+	}
+	return 0
 }
 
 // HeaderMatch is a request header an http route matches on: its name, with an exact value or
@@ -3347,7 +3368,7 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x0fRouteNotServing\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x16\n" +
-	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xff\a\n" +
+	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xae\t\n" +
 	"\rHTTPRouteSpec\x123\n" +
 	"\thostnames\x18\x01 \x03(\tB\x15\xbaH\x12\x92\x01\x0f\b\x01\x10d\x18\x01\"\ar\x05\x10\x01\x18\xff\x01R\thostnames\x127\n" +
 	"\vpath_prefix\x18\x02 \x01(\tB\x16\xbaH\x13r\x11\x18\x80\b2\f^(/[^\\s]*)?$R\n" +
@@ -3366,7 +3387,9 @@ const file_rpmgr_v1_route_proto_rawDesc = "" +
 	"\x0emax_body_bytes\x18\v \x01(\x04R\fmaxBodyBytes\x12 \n" +
 	"\vmaintenance\x18\f \x01(\bR\vmaintenance\x12\\\n" +
 	"\x13maintenance_message\x18\r \x01(\tB+\xbaH(r&\x18\xf4\x032!^[^\\x00-\\x09\\x0B-\\x1F\\x7F-\\x9F]*$R\x12maintenanceMessage\x12F\n" +
-	"\x0eheader_matches\x18\x0e \x03(\v2\x15.rpmgr.v1.HeaderMatchB\b\xbaH\x05\x92\x01\x02\x10\bR\rheaderMatches\x1aD\n" +
+	"\x0eheader_matches\x18\x0e \x03(\v2\x15.rpmgr.v1.HeaderMatchB\b\xbaH\x05\x92\x01\x02\x10\bR\rheaderMatches\x12`\n" +
+	"(upstream_response_header_timeout_seconds\x18\x0f \x01(\rB\b\xbaH\x05*\x03\x18\x90\x1cR$upstreamResponseHeaderTimeoutSeconds\x12K\n" +
+	"\x1dupstream_idle_timeout_seconds\x18\x10 \x01(\rB\b\xbaH\x05*\x03\x18\x90\x1cR\x1aupstreamIdleTimeoutSeconds\x1aD\n" +
 	"\x16RequestHeadersSetEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aE\n" +

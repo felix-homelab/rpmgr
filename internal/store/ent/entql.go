@@ -1014,23 +1014,25 @@ var schemaGraph = func() *sqlgraph.Schema {
 		},
 		Type: "RouteHTTP",
 		Fields: map[string]*sqlgraph.FieldSpec{
-			routehttp.FieldOrgID:              {Type: field.TypeString, Column: routehttp.FieldOrgID},
-			routehttp.FieldRouteID:            {Type: field.TypeString, Column: routehttp.FieldRouteID},
-			routehttp.FieldPathPrefix:         {Type: field.TypeString, Column: routehttp.FieldPathPrefix},
-			routehttp.FieldHeaderMatches:      {Type: field.TypeJSON, Column: routehttp.FieldHeaderMatches},
-			routehttp.FieldMatchKey:           {Type: field.TypeString, Column: routehttp.FieldMatchKey},
-			routehttp.FieldTLSMode:            {Type: field.TypeEnum, Column: routehttp.FieldTLSMode},
-			routehttp.FieldCertificateID:      {Type: field.TypeString, Column: routehttp.FieldCertificateID},
-			routehttp.FieldPort80:             {Type: field.TypeEnum, Column: routehttp.FieldPort80},
-			routehttp.FieldHstsMaxAgeSeconds:  {Type: field.TypeInt, Column: routehttp.FieldHstsMaxAgeSeconds},
-			routehttp.FieldHostHeader:         {Type: field.TypeString, Column: routehttp.FieldHostHeader},
-			routehttp.FieldRequestHeadersSet:  {Type: field.TypeJSON, Column: routehttp.FieldRequestHeadersSet},
-			routehttp.FieldResponseHeadersSet: {Type: field.TypeJSON, Column: routehttp.FieldResponseHeadersSet},
-			routehttp.FieldWebsocket:          {Type: field.TypeBool, Column: routehttp.FieldWebsocket},
-			routehttp.FieldMaxBodyBytes:       {Type: field.TypeInt64, Column: routehttp.FieldMaxBodyBytes},
-			routehttp.FieldDNSProxied:         {Type: field.TypeBool, Column: routehttp.FieldDNSProxied},
-			routehttp.FieldMaintenance:        {Type: field.TypeBool, Column: routehttp.FieldMaintenance},
-			routehttp.FieldMaintenanceMessage: {Type: field.TypeString, Column: routehttp.FieldMaintenanceMessage},
+			routehttp.FieldOrgID:                                {Type: field.TypeString, Column: routehttp.FieldOrgID},
+			routehttp.FieldRouteID:                              {Type: field.TypeString, Column: routehttp.FieldRouteID},
+			routehttp.FieldPathPrefix:                           {Type: field.TypeString, Column: routehttp.FieldPathPrefix},
+			routehttp.FieldHeaderMatches:                        {Type: field.TypeJSON, Column: routehttp.FieldHeaderMatches},
+			routehttp.FieldMatchKey:                             {Type: field.TypeString, Column: routehttp.FieldMatchKey},
+			routehttp.FieldTLSMode:                              {Type: field.TypeEnum, Column: routehttp.FieldTLSMode},
+			routehttp.FieldCertificateID:                        {Type: field.TypeString, Column: routehttp.FieldCertificateID},
+			routehttp.FieldPort80:                               {Type: field.TypeEnum, Column: routehttp.FieldPort80},
+			routehttp.FieldHstsMaxAgeSeconds:                    {Type: field.TypeInt, Column: routehttp.FieldHstsMaxAgeSeconds},
+			routehttp.FieldHostHeader:                           {Type: field.TypeString, Column: routehttp.FieldHostHeader},
+			routehttp.FieldRequestHeadersSet:                    {Type: field.TypeJSON, Column: routehttp.FieldRequestHeadersSet},
+			routehttp.FieldResponseHeadersSet:                   {Type: field.TypeJSON, Column: routehttp.FieldResponseHeadersSet},
+			routehttp.FieldWebsocket:                            {Type: field.TypeBool, Column: routehttp.FieldWebsocket},
+			routehttp.FieldMaxBodyBytes:                         {Type: field.TypeInt64, Column: routehttp.FieldMaxBodyBytes},
+			routehttp.FieldDNSProxied:                           {Type: field.TypeBool, Column: routehttp.FieldDNSProxied},
+			routehttp.FieldMaintenance:                          {Type: field.TypeBool, Column: routehttp.FieldMaintenance},
+			routehttp.FieldMaintenanceMessage:                   {Type: field.TypeString, Column: routehttp.FieldMaintenanceMessage},
+			routehttp.FieldUpstreamResponseHeaderTimeoutSeconds: {Type: field.TypeInt, Column: routehttp.FieldUpstreamResponseHeaderTimeoutSeconds},
+			routehttp.FieldUpstreamIdleTimeoutSeconds:           {Type: field.TypeInt, Column: routehttp.FieldUpstreamIdleTimeoutSeconds},
 		},
 	}
 	graph.Nodes[46] = &sqlgraph.Node{
@@ -5575,6 +5577,16 @@ func (f *RouteHTTPFilter) WhereMaintenance(p entql.BoolP) {
 // WhereMaintenanceMessage applies the entql string predicate on the maintenance_message field.
 func (f *RouteHTTPFilter) WhereMaintenanceMessage(p entql.StringP) {
 	f.Where(p.Field(routehttp.FieldMaintenanceMessage))
+}
+
+// WhereUpstreamResponseHeaderTimeoutSeconds applies the entql int predicate on the upstream_response_header_timeout_seconds field.
+func (f *RouteHTTPFilter) WhereUpstreamResponseHeaderTimeoutSeconds(p entql.IntP) {
+	f.Where(p.Field(routehttp.FieldUpstreamResponseHeaderTimeoutSeconds))
+}
+
+// WhereUpstreamIdleTimeoutSeconds applies the entql int predicate on the upstream_idle_timeout_seconds field.
+func (f *RouteHTTPFilter) WhereUpstreamIdleTimeoutSeconds(p entql.IntP) {
+	f.Where(p.Field(routehttp.FieldUpstreamIdleTimeoutSeconds))
 }
 
 // WhereHasRoute applies a predicate to check if query has an edge route.

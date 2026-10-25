@@ -333,6 +333,13 @@ message HTTPRouteSpec {
   // fewer, and the route created first wins a tie. A route of a group with the same hostname,
   // path prefix and set of matches as another is refused.
   repeated HeaderMatch header_matches = 14 [(buf.validate.field).repeated.max_items = 8];
+  // How long its gateways wait for the upstream's response headers before the request gets 504,
+  // 1 to 3600 seconds; 0 keeps the gateway's (docs/03-connections.md, "Timeouts, keepalive and
+  // backoff", D94).
+  uint32 upstream_response_header_timeout_seconds = 15 [(buf.validate.field).uint32.lte = 3600];
+  // How long a pooled keep-alive connection to the upstream may stay unused, 1 to 3600 seconds;
+  // 0 keeps the gateway's.
+  uint32 upstream_idle_timeout_seconds = 16 [(buf.validate.field).uint32.lte = 3600];
 }
 
 // HeaderMatch is a request header an http route matches on: its name, with an exact value or

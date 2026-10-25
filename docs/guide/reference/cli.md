@@ -796,6 +796,8 @@ rpmgr create route [flags]
 | `--tls-passthrough` |  | a TLS route the gateway passes through by its SNI |
 | `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
 | `--udp` |  | a udp route on a public port |
+| `--upstream-header-timeout duration` |  | http: how long to wait for the upstream's response headers before 504; 0 is the gateway's |
+| `--upstream-idle-timeout duration` |  | http: how long an unused connection to the upstream is kept; 0 is the gateway's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
 
@@ -1063,6 +1065,8 @@ rpmgr update route [flags] <id or name>
 | `--set-response-header value` |  | http: a header Name=value set towards the client; repeat for more |
 | `--tls-mode string` |  | http: acme or certificate |
 | `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
+| `--upstream-header-timeout duration` |  | http: how long to wait for the upstream's response headers before 504; 0 is the gateway's |
+| `--upstream-idle-timeout duration` |  | http: how long an unused connection to the upstream is kept; 0 is the gateway's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
 
@@ -1491,6 +1495,8 @@ rpmgr preview route [flags]
 | `--tls-passthrough` |  | a TLS route the gateway passes through by its SNI |
 | `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
 | `--udp` |  | a udp route on a public port |
+| `--upstream-header-timeout duration` |  | http: how long to wait for the upstream's response headers before 504; 0 is the gateway's |
+| `--upstream-idle-timeout duration` |  | http: how long an unused connection to the upstream is kept; 0 is the gateway's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
 

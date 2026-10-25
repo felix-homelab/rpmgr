@@ -1356,6 +1356,8 @@ var (
 		{Name: "dns_proxied", Type: field.TypeBool, Default: false},
 		{Name: "maintenance", Type: field.TypeBool, Default: false},
 		{Name: "maintenance_message", Type: field.TypeString, Size: 2000, Default: ""},
+		{Name: "upstream_response_header_timeout_seconds", Type: field.TypeInt, Default: 0},
+		{Name: "upstream_idle_timeout_seconds", Type: field.TypeInt, Default: 0},
 		{Name: "route_id", Type: field.TypeString},
 		{Name: "certificate_id", Type: field.TypeString, Nullable: true},
 	}
@@ -1367,13 +1369,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "route_http_routes_route",
-				Columns:    []*schema.Column{RouteHTTPColumns[16]},
+				Columns:    []*schema.Column{RouteHTTPColumns[18]},
 				RefColumns: []*schema.Column{RoutesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "route_http_certificates_certificate",
-				Columns:    []*schema.Column{RouteHTTPColumns[17]},
+				Columns:    []*schema.Column{RouteHTTPColumns[19]},
 				RefColumns: []*schema.Column{CertificatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1387,12 +1389,12 @@ var (
 			{
 				Name:    "routehttp_route_id",
 				Unique:  true,
-				Columns: []*schema.Column{RouteHTTPColumns[16]},
+				Columns: []*schema.Column{RouteHTTPColumns[18]},
 			},
 			{
 				Name:    "routehttp_certificate_id",
 				Unique:  false,
-				Columns: []*schema.Column{RouteHTTPColumns[17]},
+				Columns: []*schema.Column{RouteHTTPColumns[19]},
 			},
 		},
 	}
