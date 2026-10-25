@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { clone } from "@bufbuild/protobuf";
+import { clone, create } from "@bufbuild/protobuf";
 import { DataTransport } from "@/gen/rpmgr/v1/connector_pb";
-import { ConnectAuthMode, ListenerMode, Port80Mode, RouteSchema, TLSMode, type Route, type TCPRouteSpec } from "@/gen/rpmgr/v1/route_pb";
+import { ConnectAuthMode, HealthCheckSchema, HealthCheckType, ListenerMode, Port80Mode, RouteSchema, TLSMode, type HealthCheck, type Route,
+  type TCPRouteSpec } from "@/gen/rpmgr/v1/route_pb";
 
 // A field of the route form: its form key, the route path the API's update mask names
 // (internal/apisvc routeFields), how it is edited, and how it reads from and writes to a route.
@@ -12,6 +13,9 @@ export interface RouteField {
   kind: "text" | "longtext" | "lines" | "pairs" | "number" | "optionalNumber" | "select" | "tristate" | "certificate";
   options?: [string, string][]; // value and i18n key, for select
   format?: PairFormat; // how a line reads, for pairs
+  hint?: string; // the key of its hint under routeForm.hints, instead of its kind's or format's
+  errorPath?: string; // the path the request's rules name for it, when several fields share path
+  problem?: (v: string) => Problem | undefined; // what is wrong with its value that the rules do not say clearly
   required?: (values: RouteValues) => boolean; // whether the form needs a value; see needsValue
   shown?: (values: RouteValues) => boolean; // whether the form shows it; always if not set
   warning?: (values: RouteValues) => string | undefined; // the i18n key of a warning that stays shown
@@ -163,9 +167,82 @@ const byType: Record<string, RouteField[]> = {
     get: (s) => s.hostnames.join("\n"), set: (s, v) => (s.hostnames = lines(v)) })],
 };
 
-// routeFields are the fields the form shows for a route of its type.
+// The health check (docs/03-connections.md, "Target health"): a field per part, all under the
+// update mask's health_check, so that a change of any sends the check whole. The kind comes first,
+// as it creates or removes the check the others write to; a part the kind has not, such as an
+// HTTP path of a TCP check, is cleared rather than sent hidden.
+const kindOf = (v: RouteValues) => v.healthCheck ?? "none";
+const checked = (v: RouteValues) => kindOf(v) !== "none";
+const httpChecked = (v: RouteValues) => kindOf(v) === String(HealthCheckType.HTTP);
+const isHTTP = (c: HealthCheck) => c.type === HealthCheckType.HTTP;
+const count = (n: number) => (n === 0 ? "" : String(n));
+const statusRange = /^(\d{3})-(\d{3})$/;
+
+function check(key: string, part: string, field: Omit<RouteField, "key" | "path" | "get" | "set"> & {
+  get: (c: HealthCheck) => string;
+  set: (c: HealthCheck, v: string) => void;
+}): RouteField {
+  return {
+    shown: checked, ...field, key, path: "health_check", errorPath: `health_check.${part}`,
+    get: (r) => (r.healthCheck ? field.get(r.healthCheck) : ""),
+    set: (r, v) => {
+      if (r.healthCheck) {
+        field.set(r.healthCheck, v);
+      }
+    },
+  };
+}
+
+const health: RouteField[] = [
+  { key: "healthCheck", path: "health_check", errorPath: "health_check.type", kind: "select",
+    options: [["none", "none"], [String(HealthCheckType.TCP), "tcp"], [String(HealthCheckType.HTTP), "http"]],
+    get: (r) => (r.healthCheck ? String(r.healthCheck.type) : "none"),
+    set: (r, v) => {
+      if (v === "none") {
+        r.healthCheck = undefined;
+      } else if (r.healthCheck) {
+        r.healthCheck.type = Number(v);
+      } else {
+        r.healthCheck = create(HealthCheckSchema, { type: Number(v) });
+      }
+    } },
+  check("healthPort", "port", { kind: "optionalNumber", hint: "healthPort", get: (c) => count(c.port), set: (c, v) => (c.port = optional(v) ?? 0) }),
+  check("healthPath", "http_path", { kind: "text", hint: "healthPath", shown: httpChecked, get: (c) => c.httpPath,
+    set: (c, v) => (c.httpPath = isHTTP(c) ? v.trim() : "") }),
+  check("healthStatus", "expected_status_min", { kind: "text", hint: "healthStatus", shown: httpChecked,
+    problem: (v) => (v.trim() === "" || statusRange.test(v.trim()) ? undefined : { text: "statusRange" }),
+    get: (c) => (c.expectedStatusMin === 0 ? "" : `${c.expectedStatusMin}-${c.expectedStatusMax}`),
+    set: (c, v) => {
+      const m = statusRange.exec(v.trim());
+      [c.expectedStatusMin, c.expectedStatusMax] = isHTTP(c) && m ? [Number(m[1]), Number(m[2])] : [0, 0];
+    } }),
+  check("healthInterval", "interval_seconds", { kind: "optionalNumber", get: (c) => count(c.intervalSeconds),
+    set: (c, v) => (c.intervalSeconds = optional(v) ?? 0) }),
+  check("healthTimeout", "timeout_seconds", { kind: "optionalNumber", get: (c) => count(c.timeoutSeconds),
+    set: (c, v) => (c.timeoutSeconds = optional(v) ?? 0) }),
+  check("healthUnhealthy", "unhealthy_threshold", { kind: "optionalNumber", get: (c) => count(c.unhealthyThreshold),
+    set: (c, v) => (c.unhealthyThreshold = optional(v) ?? 0) }),
+  check("healthHealthy", "healthy_threshold", { kind: "optionalNumber", get: (c) => count(c.healthyThreshold),
+    set: (c, v) => (c.healthyThreshold = optional(v) ?? 0) }),
+];
+
+// routeFields are the fields the form shows for a route of its type, its health check last.
 export function routeFields(r: Route): RouteField[] {
-  return [...common, ...(byType[r.spec.case ?? ""] ?? [])];
+  return [...common, ...(byType[r.spec.case ?? ""] ?? []), ...health];
+}
+
+// maskOf is the update mask of the form's fields, each path once.
+export function maskOf(r: Route): string[] {
+  return [...new Set(routeFields(r).map((f) => f.path))];
+}
+
+// fieldAt is the form field a path of the request's rules names, such as
+// route.health_check.interval_seconds: the field of that part, else the field of the path.
+export function fieldAt(r: Route, path: string): string | undefined {
+  const p = path.replace(/^route\./, "");
+  const fields = routeFields(r);
+  return (fields.find((f) => f.errorPath !== undefined && (p === f.errorPath || p.startsWith(`${f.errorPath}.`))) ??
+    fields.find((f) => p === f.path || p.startsWith(`${f.path}[`) || p.startsWith(`${f.path}.`)))?.key;
 }
 
 export type RouteValues = Record<string, string>;
@@ -229,7 +306,7 @@ export function lineProblem(v: string, f: PairFormat): Problem | undefined {
 
 // fieldProblems are the problems of the fields the form shows that the request's rules do not
 // state clearly: a whole number where one is needed, no certificate where the route needs an
-// uploaded one, and a line of pairs not in its format.
+// uploaded one, a line of pairs not in its format, and what a field's own check finds.
 export function fieldProblems(r: Route, values: RouteValues): Record<string, Problem> {
   const out: Record<string, Problem> = {};
   for (const f of routeFields(r)) {
@@ -240,7 +317,7 @@ export function fieldProblems(r: Route, values: RouteValues): Record<string, Pro
     if (f.kind === "certificate" && v === "" && (f.required?.(values) ?? false)) {
       out[f.key] = { text: "certificate.needed" };
     }
-    const bad = f.format && lineProblem(values[f.key] ?? "", f.format);
+    const bad = (f.format && lineProblem(values[f.key] ?? "", f.format)) || (f.problem && (f.shown?.(values) ?? true) && f.problem(v));
     if (bad) {
       out[f.key] = bad;
     }

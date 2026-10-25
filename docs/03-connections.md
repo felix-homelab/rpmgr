@@ -987,18 +987,32 @@ the capability `route.limits`:
 
 - **Active checks** ([D133](14-open-decisions.md#engineering)). A route has at most one health
   check, which each connector runs against each of its own targets of the route: `tcp` (the dial
-  succeeds) or `http` (a `GET` of a path, with the route's `Host`, that answers with a status in
-  the expected range, 200–399 unless set). A check may name another port than the target's. It
-  dials like traffic: the connector-local policy applies, and a target it blocks is unhealthy
-  without being dialled; an `https` target is verified with the target's own TLS settings; no
-  redirect is followed and at most a capped part of the body is read. A `udp` route allows only a
-  `tcp` check on a port it names. A target becomes unhealthy after the unhealthy threshold of
-  failed checks in a row and healthy again after the healthy threshold of passed ones.
-- **What gateways see.** The connector skips unhealthy targets when it picks one for a stream and
-  reports, per route, the priorities that still have a healthy target (`RouteHealth`). A gateway
-  passes over a connector whose priority has none and, for http routes, moves new requests back to
-  a better priority once it is healthy again. When no target of a route is healthy on any
-  connector, the gateway answers as when no connector is ready (**503**, reset, drop) and the
+  succeeds) or `http` (a `GET` of a path that answers with a status in the expected range, 200–399
+  unless set, sent with the route's host header override as `Host`, else its first hostname that is
+  not a wildcard, else the target's address, or `localhost` for a socket target). A check may name
+  another port than the target's, except on a route with a socket target. It dials like traffic: the
+  connector-local policy applies, and a target it blocks, by address, by the address a name resolves
+  to, or by the port the check names, is never dialled and counts as blocked by the policy
+  (`not_ready(blocked_by_local_policy)` with the policy's detail), not as unhealthy; an `https`
+  target is verified with the target's own TLS settings; no redirect is followed and at most a
+  capped part of the body is read. A target that expects a PROXY header gets a `LOCAL` one when the
+  check dials its own port. A `udp` route allows only a `tcp` check on a port it names; a
+  `tls_passthrough` route, whose targets expect TLS, and a route with an `h2c` target, which speaks
+  no HTTP/1.1, only a `tcp` check. A target counts as healthy until checked; it becomes unhealthy
+  after the unhealthy threshold of failed checks in a row and healthy again after the healthy
+  threshold of passed ones, so a target whose results alternate keeps its state. A changed route or
+  check starts its targets healthy again. The changes of the targets' health in one round of checks
+  also go to the controller in one `Status`, each target's ID as the resource, for the route's
+  status ([06](06-data-model.md#desired-vs-observed-state)).
+- **What gateways see.** The connector skips unhealthy targets when it picks one for a stream or a
+  UDP flow, unless every one is unhealthy, and reports, per route, the priorities that still have a
+  healthy target (`RouteHealth.ready_priorities`); a route whose every allowed target is unhealthy
+  is not ready, `not_ready(targets_unhealthy)`. A `SessionHello` names only the routes ready at
+  every priority; the others follow as `RouteHealth` with their priorities. A gateway passes over a
+  connector whose priority has none and, for http routes, moves new requests back to a better
+  priority once it is healthy again. An entry the controller did not rank names no priority in its
+  streams, so its connector's readiness alone counts there. When no target of a route is healthy on
+  any connector, the gateway answers as when no connector is ready (**503**, reset, drop) and the
   route's status is `unavailable`.
 - **Connectors of an earlier release** do not run checks: they report every priority as ready, so
   their targets count as healthy, and the route's status notes "health not checked" for them. The
@@ -1035,12 +1049,16 @@ through it. Gateways announce the capability `tcp.http-connect`.
   `tls_basic` the listener hostname, are the listener's; else the write is refused
   (`CONNECT_MODE_MISMATCH`). Without a port, the route joins the org's listener of that mode, and
   hostname, in the group, or a new listener is opened on a random free port. Changing a route's
-  mode moves it to a listener of the new mode, so its port changes, as preview shows. A listener
-  closes when its last route goes.
-- **TLS listener.** The listener's hostname lies under a verified domain of the org; its
-  certificate is an uploaded one of the org that covers the hostname, with the TLS versions of
-  http routes ([04](04-security.md#controller-certificates)). ACME for listener hostnames is not
-  built yet.
+  mode or hostname moves it to a listener of the new mode, so its port changes, as preview shows;
+  an update must name the mode of a route whose mode is not `none`. A listener closes when its
+  last route goes.
+- **TLS listener.** The listener's hostname lies under a verified domain of the org, which cannot
+  be removed while it does; its certificate is an uploaded one of the org that covers the
+  hostname, with the TLS versions of http routes ([04](04-security.md#controller-certificates)).
+  The certificate is not part of the listener's identity: a route that names another covering
+  certificate sets it for every route of the listener, so a certificate is replaced without
+  moving the port. Only gateways with `tcp.http-connect` get the certificate. ACME for listener
+  hostnames is not built yet.
 - **Refusals.** A peer that no route of the listener admits by its IP rules is dropped before its
   TLS handshake and its request. A request whose method is not `CONNECT`, compared with case, is
   **405**. In the mode `none`, an authority no route of the listener names and one whose IP rules
@@ -1418,7 +1436,7 @@ sequenceDiagram
 | Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |
 | Per-route HTTP timeouts (Phase 2) | upstream response header 1 s to 1 h; upstream idle 1 s to 1 h; 0 = the HTTP server row above | [R] Slow reports and long polls fit; a pooled connection outliving a backend's keep-alive is avoided ([HTTP routes](#http-routes)) |
-| Active health check (Phase 2) | interval 10 s by default, at least 2 s; timeout 5 s by default, below the interval; unhealthy after 3 failures in a row, healthy after 2 passes; an HTTP check reads at most 64 KiB of the body | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
+| Active health check (Phase 2) | interval 10 s by default, from 2 s to 1 h; timeout 5 s by default, or 1 s below a shorter interval, below the interval and at most 1 min; unhealthy after 3 failures in a row, healthy after 2 passes, each threshold from 1 to 10; an HTTP check reads at most 16 KiB of status line and header and 64 KiB of the body; a connector runs at most 64 checks at once, over all its routes, the others waiting their turn | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
 | Passive health (Phase 2) | 3 refused or timed-out stream opens in a row; back-off 10 s, doubling to 60 s; one half-open try after it | [R] A target that refuses is passed over at once and tried again soon |
 | Route limits (Phase 2) | an HTTP request over the connection limit gets **503** with `Retry-After: 1`, one over a request rate **429** with `Retry-After` the seconds until it may come again, at least 1; the route's total rate allows a second's worth of requests at once; a bandwidth bucket holds 100 ms of the rate, at least 64 KiB, the largest UDP payload, and a connection moves at most 100 ms of the rate, at least 512 bytes, at a time | [R] A client tries again soon, as a slot frees when a request ends; a datagram always fits the bucket, and a connection under a low limit moves on in small steps rather than stalling ([Route limits](#route-limits-phase-2)) |
 | Per-client rate limit (Phase 2) | at most 4 rate_limit rules a route on a gateway; each rule has a table for udp flows and one for the rest, which every route whose policies carry the rule shares, each of at most 65 536 client addresses, and all tables of a gateway together hold at most 262 144, about 28 MiB; when a table or the gateway is full, the addresses whose bucket is full again are dropped, at most once a second, and a new address that still finds no room passes uncounted (D137); every minute the idle addresses are dropped and each table is made anew, which gives its memory back | [R] A flood of addresses costs a gateway at most about 28 MiB, whatever the number of routes and rules, never locks real clients out and never makes it forget the clients it limits ([Access policies](#access-policies)) |

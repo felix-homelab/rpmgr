@@ -34,7 +34,7 @@ export function FormField<V extends RouteValues>({ field, form, editing = false 
   const warning = field.warning?.(values);
   const error = form.formState.errors[field.key]?.message as string | undefined;
   // A kind without a hint has no key, and t() would show the key itself.
-  const hintKey = fixed ? "routeForm.hints.fixed" : `routeForm.hints.${field.format?.kind ?? field.kind}`;
+  const hintKey = `routeForm.hints.${fixed ? "fixed" : field.hint ?? field.format?.kind ?? field.kind}`;
   const hint = i18n.exists(hintKey) ? t(hintKey) : "";
   const described = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(" ") || undefined;
   const aria = { id, required, "aria-invalid": error ? true : undefined, "aria-describedby": described };

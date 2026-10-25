@@ -759,20 +759,23 @@ rpmgr create route [flags]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--authority value` |  | tcp --http-connect: a host name clients ask for with CONNECT; repeat for more |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
-| `--connect-auth string` |  | tcp --http-connect: none, tls-basic, or plain-basic (passwords in the clear) |
-| `--connect-certificate string` |  | tcp --http-connect --connect-auth tls-basic: the uploaded certificate's ID |
-| `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--group string` |  | the gateway group, by name or ID |
+| `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
+| `--health-healthy uint` |  | passed checks in a row that make it healthy again; 0 is the default |
+| `--health-interval duration` |  | how often each target is checked; 0 is the default |
+| `--health-path string` |  | http check: the path to GET, / if empty |
+| `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
+| `--health-status string` |  | http check: the passing statuses, as 200-399; empty for the default |
+| `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
+| `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
 | `--http` |  | an http route: TLS ends at the gateway |
-| `--http-connect` |  | tcp: share a CONNECT listener with other routes of the org; set only on create |
 | `--idle-timeout duration` |  | tcp, tcp-udp: close a connection idle this long; udp: forget a flow idle this long |
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
@@ -1027,19 +1030,22 @@ rpmgr update route [flags] <id or name>
 
 | Flag | Default | Description |
 |---|---|---|
-| `--authority value` |  | tcp --http-connect: a host name clients ask for with CONNECT; repeat for more |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
-| `--connect-auth string` |  | tcp --http-connect: none, tls-basic, or plain-basic (passwords in the clear) |
-| `--connect-certificate string` |  | tcp --http-connect --connect-auth tls-basic: the uploaded certificate's ID |
-| `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--force` |  | update without checking that the route is unchanged since this command read it |
+| `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
+| `--health-healthy uint` |  | passed checks in a row that make it healthy again; 0 is the default |
+| `--health-interval duration` |  | how often each target is checked; 0 is the default |
+| `--health-path string` |  | http check: the path to GET, / if empty |
+| `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
+| `--health-status string` |  | http check: the passing statuses, as 200-399; empty for the default |
+| `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
+| `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
-| `--http-connect` |  | tcp: share a CONNECT listener with other routes of the org; set only on create |
 | `--idle-timeout duration` |  | tcp, tcp-udp: close a connection idle this long; udp: forget a flow idle this long |
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
@@ -1445,20 +1451,23 @@ rpmgr preview route [flags]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--authority value` |  | tcp --http-connect: a host name clients ask for with CONNECT; repeat for more |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
-| `--connect-auth string` |  | tcp --http-connect: none, tls-basic, or plain-basic (passwords in the clear) |
-| `--connect-certificate string` |  | tcp --http-connect --connect-auth tls-basic: the uploaded certificate's ID |
-| `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--group string` |  | the gateway group, by name or ID |
+| `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
+| `--health-healthy uint` |  | passed checks in a row that make it healthy again; 0 is the default |
+| `--health-interval duration` |  | how often each target is checked; 0 is the default |
+| `--health-path string` |  | http check: the path to GET, / if empty |
+| `--health-port uint` |  | the port to check instead of each target's; required on udp routes |
+| `--health-status string` |  | http check: the passing statuses, as 200-399; empty for the default |
+| `--health-timeout duration` |  | how long one check may take, below the interval; 0 is the default |
+| `--health-unhealthy uint` |  | failed checks in a row that make a target unhealthy; 0 is the default |
 | `--host-header string` |  | http: the Host header towards the upstream; empty keeps the client's |
 | `--hostname value` |  | a hostname of an http or tls-passthrough route; repeat for more |
 | `--hsts duration` |  | http: the Strict-Transport-Security max-age; 0 sends none |
 | `--http` |  | an http route: TLS ends at the gateway |
-| `--http-connect` |  | tcp: share a CONNECT listener with other routes of the org; set only on create |
 | `--idle-timeout duration` |  | tcp, tcp-udp: close a connection idle this long; udp: forget a flow idle this long |
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |

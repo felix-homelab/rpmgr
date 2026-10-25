@@ -457,6 +457,7 @@ var (
 		{Name: "hostname", Type: field.TypeString, Size: 253, Default: ""},
 		{Name: "port_allocation_id", Type: field.TypeString},
 		{Name: "certificate_id", Type: field.TypeString, Nullable: true},
+		{Name: "domain_id", Type: field.TypeString, Nullable: true},
 	}
 	// ConnectListenersTable holds the schema information for the "connect_listeners" table.
 	ConnectListenersTable = &schema.Table{
@@ -474,6 +475,12 @@ var (
 				Symbol:     "connect_listeners_certificates_certificate",
 				Columns:    []*schema.Column{ConnectListenersColumns[6]},
 				RefColumns: []*schema.Column{CertificatesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "connect_listeners_domains_domain",
+				Columns:    []*schema.Column{ConnectListenersColumns[7]},
+				RefColumns: []*schema.Column{DomainsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 		},
@@ -497,6 +504,11 @@ var (
 				Name:    "connectlistener_certificate_id",
 				Unique:  false,
 				Columns: []*schema.Column{ConnectListenersColumns[6]},
+			},
+			{
+				Name:    "connectlistener_domain_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConnectListenersColumns[7]},
 			},
 		},
 	}
@@ -775,6 +787,47 @@ var (
 				Name:    "gatewaypage_gateway_group_id_kind",
 				Unique:  true,
 				Columns: []*schema.Column{GatewayPagesColumns[7], GatewayPagesColumns[2]},
+			},
+		},
+	}
+	// HealthChecksColumns holds the columns for the "health_checks" table.
+	HealthChecksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"tcp", "http"}},
+		{Name: "port", Type: field.TypeInt, Default: 0},
+		{Name: "http_path", Type: field.TypeString, Size: 1024, Default: ""},
+		{Name: "expected_status_min", Type: field.TypeInt, Default: 0},
+		{Name: "expected_status_max", Type: field.TypeInt, Default: 0},
+		{Name: "interval_seconds", Type: field.TypeInt, Default: 0},
+		{Name: "timeout_seconds", Type: field.TypeInt, Default: 0},
+		{Name: "unhealthy_threshold", Type: field.TypeInt, Default: 0},
+		{Name: "healthy_threshold", Type: field.TypeInt, Default: 0},
+		{Name: "route_id", Type: field.TypeString},
+	}
+	// HealthChecksTable holds the schema information for the "health_checks" table.
+	HealthChecksTable = &schema.Table{
+		Name:       "health_checks",
+		Columns:    HealthChecksColumns,
+		PrimaryKey: []*schema.Column{HealthChecksColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "health_checks_routes_route",
+				Columns:    []*schema.Column{HealthChecksColumns[11]},
+				RefColumns: []*schema.Column{RoutesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "healthcheck_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{HealthChecksColumns[1], HealthChecksColumns[0]},
+			},
+			{
+				Name:    "healthcheck_route_id",
+				Unique:  true,
+				Columns: []*schema.Column{HealthChecksColumns[11]},
 			},
 		},
 	}
@@ -1964,6 +2017,7 @@ var (
 		GatewaysTable,
 		GatewayGroupsTable,
 		GatewayPagesTable,
+		HealthChecksTable,
 		InstanceTable,
 		InstanceSecretsTable,
 		InstanceSettingsTable,
@@ -2052,6 +2106,7 @@ func init() {
 	}
 	ConnectListenersTable.ForeignKeys[0].RefTable = PortAllocationsTable
 	ConnectListenersTable.ForeignKeys[1].RefTable = CertificatesTable
+	ConnectListenersTable.ForeignKeys[2].RefTable = DomainsTable
 	ConnectListenersTable.Annotation = &entsql.Annotation{
 		Table: "connect_listeners",
 	}
@@ -2068,6 +2123,10 @@ func init() {
 	GatewayPagesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	GatewayPagesTable.Annotation = &entsql.Annotation{
 		Table: "gateway_pages",
+	}
+	HealthChecksTable.ForeignKeys[0].RefTable = RoutesTable
+	HealthChecksTable.Annotation = &entsql.Annotation{
+		Table: "health_checks",
 	}
 	InstanceTable.Annotation = &entsql.Annotation{
 		Table: "instance",

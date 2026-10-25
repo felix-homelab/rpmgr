@@ -23,7 +23,7 @@ import {
 import { SettingsService } from "@/gen/rpmgr/v1/settings_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
-import { fieldProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
+import { fieldAt, fieldProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
 import { FieldGrid, FormField } from "@/route-form/form-field";
 import { PreviewPanel } from "@/route-form/preview";
 import { routeTypes, useAgentNames, useGroupNames } from "@/routes-data";
@@ -91,10 +91,7 @@ function NewRouteForm({ type }: { type: RouteType }) {
   const fields = routeFields(base);
   const routeOf = (v: NewValues) => create(RouteSchema, { ...routeWith(base, v), gatewayGroupId: v.group });
   const request = (v: NewValues) => create(CreateRouteRequestSchema, { orgId: org?.orgId ?? "", route: routeOf(v), requestId });
-  const fieldOf: FieldOf<NewValues> = (path) => {
-    const p = path.replace(/^route\./, "");
-    return p === "gateway_group_id" ? "group" : fields.find((f) => p === f.path || p.startsWith(`${f.path}[`) || p.startsWith(`${f.path}.`))?.key;
-  };
+  const fieldOf: FieldOf<NewValues> = (path) => (path.replace(/^route\./, "") === "gateway_group_id" ? "group" : fieldAt(base, path));
   const checks = protoResolver(CreateRouteRequestSchema, request, fieldOf);
   const resolver: Resolver<NewValues> = (values, ctx, opts) => {
     const bad = Object.entries(fieldProblems(base, values));

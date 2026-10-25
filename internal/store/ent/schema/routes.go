@@ -198,8 +198,8 @@ func (ConnectListener) Annotations() []schema.Annotation {
 	return []schema.Annotation{entsql.Annotation{Table: "connect_listeners"}}
 }
 
-// Fields of a CONNECT listener: hostname and certificate_id, an uploaded certificate that covers
-// it, belong to the mode tls_basic only.
+// Fields of a CONNECT listener: hostname, the verified domain it lies under, and certificate_id, a
+// certificate that covers it, belong to the mode tls_basic only.
 func (ConnectListener) Fields() []ent.Field {
 	return []ent.Field{
 		idField("cl"),
@@ -207,6 +207,7 @@ func (ConnectListener) Fields() []ent.Field {
 		field.String("port_allocation_id").NotEmpty().Unique().Immutable(),
 		field.Enum("auth_mode").Values("none", "tls_basic", "plain_basic").Immutable(),
 		field.String("hostname").MaxLen(253).Default("").Immutable(),
+		field.String("domain_id").Optional().Nillable().Immutable(),
 		field.String("certificate_id").Optional().Nillable(),
 	}
 }
@@ -216,13 +217,15 @@ func (ConnectListener) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("port", PortAllocation.Type).Field("port_allocation_id").Unique().Required().Immutable(),
 		edge.To("certificate", Certificate.Type).Field("certificate_id").Unique(),
+		edge.To("domain", Domain.Type).Field("domain_id").Unique().Immutable(),
 		edge.From("routes", RouteTCP.Type).Ref("listener"),
 	}
 }
 
 // Indexes: one listener per port allocation; a group's listeners, and a certificate's.
 func (ConnectListener) Indexes() []ent.Index {
-	return []ent.Index{index.Fields("port_allocation_id").Unique(), index.Fields("gateway_group_id"), index.Fields("certificate_id")}
+	return []ent.Index{index.Fields("port_allocation_id").Unique(), index.Fields("gateway_group_id"), index.Fields("certificate_id"),
+		index.Fields("domain_id")}
 }
 
 // ConnectAuthority is a host name that chooses a route on its CONNECT listener; it is unique on
@@ -527,4 +530,45 @@ func (RoutePolicy) Edges() []ent.Edge {
 func (RoutePolicy) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("route_id", "policy_id").Unique(), index.Fields("route_id", "position").Unique(),
 		index.Fields("policy_id")}
+}
+
+// HealthCheck is a route's active health check (docs/06-data-model.md, "Routing"; D133): at most
+// one per route, which each connector runs against each of its targets of the route. A value of 0
+// takes the default of docs/03-connections.md, "Timeouts, keepalive and backoff".
+type HealthCheck struct{ ent.Schema }
+
+// Mixin makes it org-owned.
+func (HealthCheck) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (HealthCheck) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "health_checks"}}
+}
+
+// Fields of a health check: port 0 is the target's; http_path and the status range are for http
+// checks.
+func (HealthCheck) Fields() []ent.Field {
+	return []ent.Field{
+		idField("hck"),
+		field.String("route_id").NotEmpty().Unique().Immutable(),
+		field.Enum("type").Values("tcp", "http"),
+		field.Int("port").Range(0, 65535).Default(0),
+		field.String("http_path").MaxLen(1024).Default(""),
+		field.Int("expected_status_min").Range(0, 599).Default(0),
+		field.Int("expected_status_max").Range(0, 599).Default(0),
+		field.Int("interval_seconds").NonNegative().Default(0),
+		field.Int("timeout_seconds").NonNegative().Default(0),
+		field.Int("unhealthy_threshold").NonNegative().Default(0),
+		field.Int("healthy_threshold").NonNegative().Default(0),
+	}
+}
+
+// Edges of a health check.
+func (HealthCheck) Edges() []ent.Edge {
+	return []ent.Edge{edge.To("route", Route.Type).Field("route_id").Unique().Required().Immutable()}
+}
+
+// Indexes of a health check: one per route.
+func (HealthCheck) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("route_id").Unique()}
 }

@@ -20,6 +20,17 @@ Changes to the design documents are not recorded here: see the git history and t
   warning while basic auth in the clear is chosen. Gateways of earlier releases do not serve such
   routes. (#634, #635)
 
+- Routes: active health checks. A route may have one TCP or HTTP check, which each connector runs
+  against its own targets of the route, on their port or another one; new connections pass over a
+  target that fails it, gateways pass over a connector whose targets of a priority are all
+  unhealthy, and a route whose targets are all unhealthy is unavailable. Checks obey the connector's
+  local policy. The route's status lists the unhealthy targets with the last failure, and the
+  targets of connectors of earlier releases, which run no checks, as health not checked. Set in the
+  **Health check** fields of the route form, with `rpmgr create route` and `rpmgr update route`
+  (`--health-check` and the other `--health-*` flags), in the route's manifest, or as the route's
+  `health_check`; the route's page shows each target's health with the last failure. (#629, #630,
+  #631, #633)
+
 - Gateways: a gateway group may replace its not-found, unavailable and maintenance pages with its
   own HTML, with the placeholders `{{hostname}}`, `{{status}}`, `{{message}}` and
   `{{request_id}}` filled in as escaped text. The pages run no script and load nothing from

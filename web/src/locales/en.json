@@ -267,6 +267,7 @@
       "connector": "Connector",
       "address": "Address",
       "weight": "Weight",
+      "health": "Health",
       "state": "Status"
     },
     "noTargets": "The route has no targets.",
@@ -291,7 +292,20 @@
     "deleteAsk": "Delete the route {{name}} with its hostnames, targets and port? This cannot be undone.",
     "deleteConfirm": "Delete it",
     "deletedTitle": "Route {{name}} deleted",
-    "deletedNote": "Its gateways stop serving it once they apply the change."
+    "deletedNote": "Its gateways stop serving it once they apply the change.",
+    "health": {
+      "title": "Health check",
+      "none": "no health check",
+      "tcp": "TCP health check",
+      "http": "HTTP health check of {{path}}",
+      "every": "every {{interval}} s",
+      "healthy": "healthy",
+      "unhealthy": "unhealthy",
+      "notChecked": "not checked",
+      "notCheckedNote": "Its connector's rpmgr release runs no health checks, so the target counts as healthy. Upgrade the connector.",
+      "lastFailure": "Last check: {{detail}}",
+      "unknown": "—"
+    }
   },
   "notServing": {
     "BLOCKED_BY_LOCAL_POLICY": "blocked by the connector's local policy",
@@ -303,6 +317,7 @@
     "DISABLED": "disabled",
     "NO_DATA_SESSION": "no data session to the connector",
     "CAPABILITY_MISSING": "its rpmgr release cannot carry out a feature the route uses; upgrade it",
+    "TARGETS_UNHEALTHY": "its health checks fail",
     "ownPort": "{{target}} is one of rpmgr's own ports, which the all-in-one's connector never dials, whatever its policy allows. Point the target at the service itself."
   },
   "apply": {
@@ -351,7 +366,15 @@
       "authorities": "CONNECT names",
       "connectAuth": "Proxy credentials",
       "connectHostname": "Listener hostname (HTTPS proxy)",
-      "connectCertificate": "Listener certificate"
+      "connectCertificate": "Listener certificate",
+      "healthCheck": "Health check",
+      "healthPort": "Port to check",
+      "healthPath": "Path to request",
+      "healthStatus": "Passing statuses",
+      "healthInterval": "Check interval (seconds)",
+      "healthTimeout": "Check timeout (seconds)",
+      "healthUnhealthy": "Failed checks before unhealthy",
+      "healthHealthy": "Passed checks before healthy again"
     },
     "hints": {
       "lines": "One per line.",
@@ -359,6 +382,9 @@
       "headers": "One per line, as Name: value. An empty value removes the header.",
       "optionalNumber": "Empty for the default.",
       "certificate": "The org's uploaded certificates that cover every hostname. Upload one under Domains & certificates.",
+      "healthPort": "Empty for each target's own port. A UDP route needs one; a route with a Unix socket target cannot have one.",
+      "healthPath": "Starts with /, may have a query. Empty for /.",
+      "healthStatus": "As 200-399. Empty for any success or redirect.",
       "fixed": "Set when the route is created; it cannot change."
     },
     "connect": {
@@ -411,8 +437,14 @@
         "none": "None: IP rules only",
         "tlsBasic": "Basic auth over TLS (HTTPS proxy)",
         "plainBasic": "Basic auth in the clear"
+      },
+      "healthCheck": {
+        "none": "None",
+        "tcp": "TCP: the target accepts the connection",
+        "http": "HTTP: a GET answers with a passing status"
       }
     },
+    "statusRange": "Write the passing statuses as two three-digit codes, such as 200-399.",
     "tristate": {
       "default": "Default",
       "true": "On",

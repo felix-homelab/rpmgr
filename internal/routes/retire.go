@@ -8,6 +8,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
@@ -28,6 +29,7 @@ func Delete(ctx context.Context, tx *ent.Tx, r *ent.Route) error {
 			return err
 		},
 		func() error { _, err := tx.RouteHTTP.Delete().Where(routehttp.RouteID(r.ID)).Exec(ctx); return err },
+		func() error { _, err := tx.HealthCheck.Delete().Where(healthcheck.RouteID(r.ID)).Exec(ctx); return err },
 		func() error { _, err := tx.RouteTCP.Delete().Where(routetcp.RouteID(r.ID)).Exec(ctx); return err },
 		func() error { _, err := tx.RouteUDP.Delete().Where(routeudp.RouteID(r.ID)).Exec(ctx); return err },
 		func() error { _, err := tx.RouteTarget.Delete().Where(routetarget.RouteID(r.ID)).Exec(ctx); return err },

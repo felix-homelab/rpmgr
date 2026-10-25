@@ -25,12 +25,16 @@ const (
 	FieldAuthMode = "auth_mode"
 	// FieldHostname holds the string denoting the hostname field in the database.
 	FieldHostname = "hostname"
+	// FieldDomainID holds the string denoting the domain_id field in the database.
+	FieldDomainID = "domain_id"
 	// FieldCertificateID holds the string denoting the certificate_id field in the database.
 	FieldCertificateID = "certificate_id"
 	// EdgePort holds the string denoting the port edge name in mutations.
 	EdgePort = "port"
 	// EdgeCertificate holds the string denoting the certificate edge name in mutations.
 	EdgeCertificate = "certificate"
+	// EdgeDomain holds the string denoting the domain edge name in mutations.
+	EdgeDomain = "domain"
 	// EdgeRoutes holds the string denoting the routes edge name in mutations.
 	EdgeRoutes = "routes"
 	// Table holds the table name of the connectlistener in the database.
@@ -49,6 +53,13 @@ const (
 	CertificateInverseTable = "certificates"
 	// CertificateColumn is the table column denoting the certificate relation/edge.
 	CertificateColumn = "certificate_id"
+	// DomainTable is the table that holds the domain relation/edge.
+	DomainTable = "connect_listeners"
+	// DomainInverseTable is the table name for the Domain entity.
+	// It exists in this package in order to avoid circular dependency with the "domain" package.
+	DomainInverseTable = "domains"
+	// DomainColumn is the table column denoting the domain relation/edge.
+	DomainColumn = "domain_id"
 	// RoutesTable is the table that holds the routes relation/edge.
 	RoutesTable = "route_tcp"
 	// RoutesInverseTable is the table name for the RouteTCP entity.
@@ -66,6 +77,7 @@ var Columns = []string{
 	FieldPortAllocationID,
 	FieldAuthMode,
 	FieldHostname,
+	FieldDomainID,
 	FieldCertificateID,
 }
 
@@ -161,6 +173,11 @@ func ByHostname(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldHostname, opts...).ToFunc()
 }
 
+// ByDomainID orders the results by the domain_id field.
+func ByDomainID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDomainID, opts...).ToFunc()
+}
+
 // ByCertificateID orders the results by the certificate_id field.
 func ByCertificateID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCertificateID, opts...).ToFunc()
@@ -177,6 +194,13 @@ func ByPortField(field string, opts ...sql.OrderTermOption) OrderOption {
 func ByCertificateField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newCertificateStep(), sql.OrderByField(field, opts...))
+	}
+}
+
+// ByDomainField orders the results by domain field.
+func ByDomainField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newDomainStep(), sql.OrderByField(field, opts...))
 	}
 }
 
@@ -205,6 +229,13 @@ func newCertificateStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(CertificateInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, false, CertificateTable, CertificateColumn),
+	)
+}
+func newDomainStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(DomainInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, DomainTable, DomainColumn),
 	)
 }
 func newRoutesStep() *sqlgraph.Step {

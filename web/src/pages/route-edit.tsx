@@ -19,7 +19,7 @@ import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { reasonOf } from "@/lib/errors";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
 import { Conflict, onTop } from "@/route-form/conflict";
-import { fieldProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
+import { fieldAt, fieldProblems, maskOf, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
 import { FieldGrid, FormField } from "@/route-form/form-field";
 import { PreviewPanel } from "@/route-form/preview";
 import { routeType, useAgentNames } from "@/routes-data";
@@ -48,7 +48,7 @@ export function RouteEdit() {
 export function updateRequest(base: Route, values: RouteValues) {
   return create(UpdateRouteRequestSchema, {
     route: routeWith(base, values),
-    updateMask: { paths: [...new Set(routeFields(base).map((f) => f.path))] },
+    updateMask: { paths: maskOf(base) },
     etag: base.etag,
   });
 }
@@ -62,10 +62,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
   const preview = useMutation(RouteService.method.previewRoute);
   const [previewed, setPreviewed] = useState<PreviewRouteResponse>();
   const fields = routeFields(base);
-  const fieldOf: FieldOf<RouteValues> = (path) => {
-    const p = path.replace(/^route\./, "");
-    return fields.find((f) => p === f.path || p.startsWith(`${f.path}[`) || p.startsWith(`${f.path}.`))?.key;
-  };
+  const fieldOf: FieldOf<RouteValues> = (path) => fieldAt(base, path);
   const checks = protoResolver(UpdateRouteRequestSchema, (v: RouteValues) => updateRequest(base, v), fieldOf);
   const resolver: Resolver<RouteValues> = (values, ctx, opts) => {
     const bad = Object.entries(fieldProblems(base, values));

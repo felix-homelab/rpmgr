@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 )
 
@@ -28,6 +29,8 @@ type ConnectListener struct {
 	AuthMode connectlistener.AuthMode `json:"auth_mode,omitempty"`
 	// Hostname holds the value of the "hostname" field.
 	Hostname string `json:"hostname,omitempty"`
+	// DomainID holds the value of the "domain_id" field.
+	DomainID *string `json:"domain_id,omitempty"`
 	// CertificateID holds the value of the "certificate_id" field.
 	CertificateID *string `json:"certificate_id,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -42,11 +45,13 @@ type ConnectListenerEdges struct {
 	Port *PortAllocation `json:"port,omitempty"`
 	// Certificate holds the value of the certificate edge.
 	Certificate *Certificate `json:"certificate,omitempty"`
+	// Domain holds the value of the domain edge.
+	Domain *Domain `json:"domain,omitempty"`
 	// Routes holds the value of the routes edge.
 	Routes []*RouteTCP `json:"routes,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 }
 
 // PortOrErr returns the Port value or an error if the edge
@@ -71,10 +76,21 @@ func (e ConnectListenerEdges) CertificateOrErr() (*Certificate, error) {
 	return nil, &NotLoadedError{edge: "certificate"}
 }
 
+// DomainOrErr returns the Domain value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ConnectListenerEdges) DomainOrErr() (*Domain, error) {
+	if e.Domain != nil {
+		return e.Domain, nil
+	} else if e.loadedTypes[2] {
+		return nil, &NotFoundError{label: domain.Label}
+	}
+	return nil, &NotLoadedError{edge: "domain"}
+}
+
 // RoutesOrErr returns the Routes value or an error if the edge
 // was not loaded in eager-loading.
 func (e ConnectListenerEdges) RoutesOrErr() ([]*RouteTCP, error) {
-	if e.loadedTypes[2] {
+	if e.loadedTypes[3] {
 		return e.Routes, nil
 	}
 	return nil, &NotLoadedError{edge: "routes"}
@@ -85,7 +101,7 @@ func (*ConnectListener) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case connectlistener.FieldID, connectlistener.FieldOrgID, connectlistener.FieldGatewayGroupID, connectlistener.FieldPortAllocationID, connectlistener.FieldAuthMode, connectlistener.FieldHostname, connectlistener.FieldCertificateID:
+		case connectlistener.FieldID, connectlistener.FieldOrgID, connectlistener.FieldGatewayGroupID, connectlistener.FieldPortAllocationID, connectlistener.FieldAuthMode, connectlistener.FieldHostname, connectlistener.FieldDomainID, connectlistener.FieldCertificateID:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -138,6 +154,13 @@ func (_m *ConnectListener) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Hostname = value.String
 			}
+		case connectlistener.FieldDomainID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field domain_id", values[i])
+			} else if value.Valid {
+				_m.DomainID = new(string)
+				*_m.DomainID = value.String
+			}
 		case connectlistener.FieldCertificateID:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field certificate_id", values[i])
@@ -166,6 +189,11 @@ func (_m *ConnectListener) QueryPort() *PortAllocationQuery {
 // QueryCertificate queries the "certificate" edge of the ConnectListener entity.
 func (_m *ConnectListener) QueryCertificate() *CertificateQuery {
 	return NewConnectListenerClient(_m.config).QueryCertificate(_m)
+}
+
+// QueryDomain queries the "domain" edge of the ConnectListener entity.
+func (_m *ConnectListener) QueryDomain() *DomainQuery {
+	return NewConnectListenerClient(_m.config).QueryDomain(_m)
 }
 
 // QueryRoutes queries the "routes" edge of the ConnectListener entity.
@@ -210,6 +238,11 @@ func (_m *ConnectListener) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("hostname=")
 	builder.WriteString(_m.Hostname)
+	builder.WriteString(", ")
+	if v := _m.DomainID; v != nil {
+		builder.WriteString("domain_id=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	if v := _m.CertificateID; v != nil {
 		builder.WriteString("certificate_id=")
