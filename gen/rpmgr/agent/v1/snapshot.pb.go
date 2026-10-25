@@ -146,12 +146,15 @@ type TransportPolicy int32
 const (
 	// Not set.
 	TransportPolicy_TRANSPORT_POLICY_UNSPECIFIED TransportPolicy = 0
-	// QUIC first, TLS + reverse HTTP/2 when UDP is blocked or QUIC loses the race.
+	// QUIC first, TLS + reverse HTTP/2 when UDP is blocked or QUIC loses the race, and WSS when TLS
+	// + reverse HTTP/2 failed in its handshake.
 	TransportPolicy_TRANSPORT_POLICY_AUTO TransportPolicy = 1
 	// QUIC only; never falls back.
 	TransportPolicy_TRANSPORT_POLICY_QUIC TransportPolicy = 2
 	// TLS + reverse HTTP/2 only; never falls back.
 	TransportPolicy_TRANSPORT_POLICY_H2 TransportPolicy = 3
+	// WSS only; never falls back. Only for connectors with the capability tunnel.wss.
+	TransportPolicy_TRANSPORT_POLICY_WSS TransportPolicy = 4
 )
 
 // Enum value maps for TransportPolicy.
@@ -161,12 +164,14 @@ var (
 		1: "TRANSPORT_POLICY_AUTO",
 		2: "TRANSPORT_POLICY_QUIC",
 		3: "TRANSPORT_POLICY_H2",
+		4: "TRANSPORT_POLICY_WSS",
 	}
 	TransportPolicy_value = map[string]int32{
 		"TRANSPORT_POLICY_UNSPECIFIED": 0,
 		"TRANSPORT_POLICY_AUTO":        1,
 		"TRANSPORT_POLICY_QUIC":        2,
 		"TRANSPORT_POLICY_H2":          3,
+		"TRANSPORT_POLICY_WSS":         4,
 	}
 )
 
@@ -2752,7 +2757,10 @@ type ConnectorGateway struct {
 	// The effective transports of the connector's routes on the gateway, sorted: the sessions to keep.
 	Transports []TransportPolicy `protobuf:"varint,2,rep,packed,name=transports,proto3,enum=rpmgr.agent.v1.TransportPolicy" json:"transports,omitempty"`
 	// The connector's routes on the gateway, sorted.
-	Routes        []string `protobuf:"bytes,3,rep,name=routes,proto3" json:"routes,omitempty"`
+	Routes []string `protobuf:"bytes,3,rep,name=routes,proto3" json:"routes,omitempty"`
+	// The gateway's WSS hostname, whose port 443 the WSS transport dials; empty when the gateway
+	// has none or the connector lacks the capability tunnel.wss.
+	WssHostname   string `protobuf:"bytes,4,opt,name=wss_hostname,json=wssHostname,proto3" json:"wss_hostname,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2806,6 +2814,13 @@ func (x *ConnectorGateway) GetRoutes() []string {
 		return x.Routes
 	}
 	return nil
+}
+
+func (x *ConnectorGateway) GetWssHostname() string {
+	if x != nil {
+		return x.WssHostname
+	}
+	return ""
 }
 
 // Target is one destination of a route on the connector's host.
@@ -3326,13 +3341,14 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\x13unhealthy_threshold\x18\t \x01(\rR\x12unhealthyThreshold\x12+\n" +
 	"\x11healthy_threshold\x18\n" +
 	" \x01(\rR\x10healthyThreshold\x12\x14\n" +
-	"\x05https\x18\v \x01(\bR\x05https\"\x96\x01\n" +
+	"\x05https\x18\v \x01(\bR\x05https\"\xb9\x01\n" +
 	"\x10ConnectorGateway\x12)\n" +
 	"\x10tunnel_endpoints\x18\x01 \x03(\tR\x0ftunnelEndpoints\x12?\n" +
 	"\n" +
 	"transports\x18\x02 \x03(\x0e2\x1f.rpmgr.agent.v1.TransportPolicyR\n" +
 	"transports\x12\x16\n" +
-	"\x06routes\x18\x03 \x03(\tR\x06routes\"\xe7\x01\n" +
+	"\x06routes\x18\x03 \x03(\tR\x06routes\x12!\n" +
+	"\fwss_hostname\x18\x04 \x01(\tR\vwssHostname\"\xe7\x01\n" +
 	"\x06Target\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
@@ -3362,12 +3378,13 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"!UPSTREAM_VERIFICATION_UNSPECIFIED\x10\x00\x12\"\n" +
 	"\x1eUPSTREAM_VERIFICATION_VERIFIED\x10\x01\x12$\n" +
 	" UPSTREAM_VERIFICATION_UNVERIFIED\x10\x02\x12$\n" +
-	" UPSTREAM_VERIFICATION_PINNED_KEY\x10\x03*\x82\x01\n" +
+	" UPSTREAM_VERIFICATION_PINNED_KEY\x10\x03*\x9c\x01\n" +
 	"\x0fTransportPolicy\x12 \n" +
 	"\x1cTRANSPORT_POLICY_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15TRANSPORT_POLICY_AUTO\x10\x01\x12\x19\n" +
 	"\x15TRANSPORT_POLICY_QUIC\x10\x02\x12\x17\n" +
-	"\x13TRANSPORT_POLICY_H2\x10\x03B;Z9github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1;agentv1b\x06proto3"
+	"\x13TRANSPORT_POLICY_H2\x10\x03\x12\x18\n" +
+	"\x14TRANSPORT_POLICY_WSS\x10\x04B;Z9github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1;agentv1b\x06proto3"
 
 var (
 	file_rpmgr_agent_v1_snapshot_proto_rawDescOnce sync.Once

@@ -546,10 +546,11 @@ sequenceDiagram
   sessions, and they close after their last stream has ended, at the latest after the route drain
   period: its routes were removed, not revoked.
 - A gateway admits at most **16 data sessions per connector identity**; it refuses one more before
-  its handshake, and the connector retries with backoff. [R] A connector needs at most ten at a
-  time: an `auto` link on QUIC (four sessions, or on TCP two connections re-probing QUIC with one),
-  a `quic` link (four) and an `h2` link (two) ([D123](14-open-decisions.md#engineering),
-  [D124](14-open-decisions.md#engineering)). The rest leaves room for sessions a transport switch
+  its handshake, and the connector retries with backoff. [R] A connector needs at most twelve at a
+  time: an `auto` link on QUIC (four sessions, or on TCP or WSS two connections re-probing QUIC
+  with one), a `quic` link (four), an `h2` link (two) and a `wss` link (two)
+  ([D123](14-open-decisions.md#engineering), [D124](14-open-decisions.md#engineering)). The rest
+  leaves room for sessions a transport switch
   retired, which close after their last stream: an `auto` link that moves from TCP to QUIC holds
   its two old connections next to its four new sessions for a while. A connector cannot exhaust a
   gateway by opening sessions without end.
@@ -1167,8 +1168,10 @@ must differ from public HTTP/3, which one listener cannot provide
 first session to complete its handshake wins, and the other attempt is cancelled. The winner is
 cached for 24 h per **(gateway, local source address)**, where the local source address is the one
 the kernel picks to reach that gateway; when it changes (a new network), the next connection starts
-a new race. While TCP is in use, QUIC is re-probed every 10 min, except while it is demoted after a
-blackhole; a successful probe moves the routes to QUIC. On QUIC the winning session, or the probe's,
+a new race. While TCP or WSS is in use, QUIC is re-probed every 10 min, except while it is demoted
+after a blackhole, when a race runs without QUIC and its winner is not cached. On WSS, TLS over TCP
+is re-probed after QUIC, so that one failed handshake holds the link on WSS for 10 min at most. A
+successful probe moves the routes to its transport. On QUIC the winning session, or the probe's,
 is the first of the link's four, and the connector dials the other three at once.
 
 #### Transport selection
@@ -1203,8 +1206,12 @@ Which transport a connector uses is a setting
 - Phase 2 adds `wss` as a fourth value and as the last step of `auto`
   ([D135](14-open-decisions.md#engineering)):
   - `auto` tries WSS only after TLS + reverse HTTP/2 to the gateway failed in the TLS handshake,
-    as an intercepting proxy makes it fail; `wss` pins it. WSS goes direct or through the
-    connector's `HTTPS_PROXY`.
+    as an intercepting proxy makes it fail, and not when the connection could not be opened; WSS
+    then wins the race and is cached like any winner. `wss` pins it. WSS goes direct or through
+    the connector's `HTTPS_PROXY`, as TLS + reverse HTTP/2 does, to port 443 of the WSS hostname;
+    the outer TLS 1.2 or 1.3 is verified against the system roots, where an intercepting proxy's
+    root is installed. The connector follows no redirect from the WSS hostname, so that whoever
+    ends the outer TLS cannot point its dialer elsewhere.
   - Each gateway that offers WSS has its own **WSS hostname**, so that the connector knows which
     gateway it reaches. It lies under a verified domain of the gateway group's owner org (the
     system org for a shared group), is no route hostname of the group, and has a certificate
@@ -1299,8 +1306,8 @@ credentials, and a value without a scheme is an `http://` one; `HTTPS_PROXY` win
 net/http, and loopback addresses are always dialled directly. The proxy resolves the gateway's
 name.
 
-[R] Over TCP, a connector keeps **2** connections per gateway and spreads streams across them, which
-limits head-of-line blocking from packet loss to half the streams
+[R] Over TCP, directly or inside WSS, a connector keeps **2** connections per gateway and spreads
+streams across them, which limits head-of-line blocking from packet loss to half the streams
 ([D124](14-open-decisions.md#engineering)).
 
 Over QUIC, a connector keeps **4** sessions per gateway

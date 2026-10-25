@@ -27,7 +27,8 @@ var (
 )
 
 // chooser decides the transport of a gateway's auto link: the winner of the last race from the
-// same local source address within 24 h, h2 while QUIC is demoted, and otherwise a new race.
+// same local source address within 24 h, and otherwise a new race, without QUIC while it is
+// demoted.
 type chooser struct {
 	now func() time.Time
 
@@ -54,11 +55,7 @@ func newChooser(now func() time.Time) *chooser {
 func (c *chooser) plan(gateway string, local netip.Addr) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := c.now()
-	if now.Before(c.demoted[gateway]) {
-		return TransportH2
-	}
-	if w, ok := c.winners[winnerKey{gateway, local}]; ok && now.Sub(w.at) < winnerTTL {
+	if w, ok := c.winners[winnerKey{gateway, local}]; ok && c.now().Sub(w.at) < winnerTTL {
 		return w.transport
 	}
 	return ""

@@ -166,3 +166,37 @@ func TestCompile_GatewayWSS(t *testing.T) {
 		}
 	})
 }
+
+// TestCompile_ConnectorGatewayWSS: a connector with the capability tunnel.wss learns a gateway's
+// WSS hostname with the gateway; one without it, or a gateway without a name, gives none.
+func TestCompile_ConnectorGatewayWSS(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		f.verifiedExample(t)
+		wss := func(caps ...string) string {
+			t.Helper()
+			for _, r := range f.compileAs(t, pki.KindConnector, f.c1, caps...) {
+				if g := r.GetConnectorGateway(); g != nil && r.GetId() == f.gateway {
+					return g.GetWssHostname()
+				}
+			}
+			t.Fatal("no gateway entry")
+			return ""
+		}
+		if got := wss(agentproto.CapTunnelWSS); got != "" {
+			t.Fatalf("without a name: %q", got)
+		}
+		if err := f.tx(t, func(tx *ent.Tx) error {
+			_, err := routes.SetWSSHostname(f.sys, tx, f.gateway, "tunnel.example.com")
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if got := wss(agentproto.CapTunnelWSS); got != "tunnel.example.com" {
+			t.Fatalf("with the capability: %q", got)
+		}
+		if got := wss(); got != "" {
+			t.Fatalf("a connector without tunnel.wss got %q", got)
+		}
+	})
+}
