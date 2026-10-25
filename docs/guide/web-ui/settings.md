@@ -88,11 +88,14 @@ GiB)**). Their ranges and defaults are in the design documents
 - **Check for releases once a day**: the controller fetches its own release, verified, into its
   mirror for agents ([Upgrades](../install/upgrades.md)).
 - **Release channel**: **Stable**, or **Pre-releases too**.
+- **Rollouts**: what **Roll out…** starts. **Easy** (the default) updates the agents you choose one
+  after another; **Advanced** runs staged rollouts. **Update** on a connector or gateway works in
+  both.
 - **Releases**: every release the controller verified, with its **Version**, **Channel**,
   **Source** (**release check**, **upload** or **import**), whether it is **Mirrored**, and whether
   it is **this controller**. **Upload release…** takes the four signed files of a release for an
-  air-gapped installation, after a step-up. **Roll out…** starts a staged rollout of a release that
-  is no newer than the controller. The release need not be mirrored yet: the controller fetches it
+  air-gapped installation, after a step-up. **Roll out…** starts a rollout of a release that is no
+  newer than the controller, easy or staged as **Rollouts** says. The release need not be mirrored yet: the controller fetches it
   and offers it to agents once the mirror holds it.
 - Under **Releases**, **Last checked …** says when the release check last ended and how: **ok**,
   **failed** with its error, or that the release check is off. **Check now** checks for releases
@@ -100,11 +103,18 @@ GiB)**). Their ranges and defaults are in the design documents
   releases…**, and the releases it finds appear without reloading the page. A check shortly after
   the last one is refused with the time to wait. A development build says it checks for no
   releases and has no **Check now**.
-- **Roll out…** opens two steps: **Test agents**, the agents that update first, grouped into
+- **Roll out…**, easy: one dialog lists the agents that can take the release, connectors first and
+  then gateways, with a search box and **Select all**, and those that cannot with the reason;
+  **Order** shows the queue with **Move up** and **Move down**; **Start: update … agents** starts it
+  after a step-up.
+- **Rollout**, easy: **Now**, the agent whose turn it is; **Next**, the queue to come; **Updated**,
+  **Failed** and **Skipped**, each with its reason, and the count of failures next to the state.
+  After failures in a row the rollout pauses and says why; **Resume** goes on with the next agent.
+- **Roll out…**, advanced, opens two steps: **Test agents**, the agents that update first, grouped into
   connectors and gateways with their version and whether they are online, with a search box and
   one online connector and one online gateway ticked; then the plan, which **Start the rollout**
   starts after a step-up.
-- **Rollout**: the running or paused rollout. Its **stages** show the test agents, the percentage
+- **Rollout**, staged: the running or paused rollout. Its **stages** show the test agents, the percentage
   and all agents, each done, current or to come, with its agents; a bar shows how many agents
   updated. **Continue to …** names the next stage and how many more agents it takes, once the
   agents of the current stage are done; **Choose another stage** offers other percentages or all
@@ -113,7 +123,11 @@ GiB)**). Their ranges and defaults are in the design documents
   each with its state and reason. A rollback or a stalled agent pauses the rollout and the page
   says which agent and why.
 
-![The test agents of a new rollout](../images/web/rollout-start.png)
+![The start dialog of an easy rollout](../images/web/rollout-easy-start.png)
+
+![An easy rollout](../images/web/rollout-easy.png)
+
+![The test agents of a new staged rollout](../images/web/rollout-start.png)
 
 ![A rollout at 25 %](../images/web/rollout.png)
 
