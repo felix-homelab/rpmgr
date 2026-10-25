@@ -78,7 +78,7 @@ func runConnector(ctx context.Context, env *cli.Env, path string) error {
 	if err := config.Load(path, &cfg); err != nil {
 		return err
 	}
-	logger, err := telemetry.NewLogger(env.Stderr, cfg.Log)
+	logger, live, err := telemetry.NewLiveLogger(env.Stderr, cfg.Log)
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func runConnector(ctx context.Context, env *cli.Env, path string) error {
 		return err
 	}
 	defer stop()
-	return connector.Run(ctx, connector.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger,
+	return connector.Run(ctx, connector.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger, LiveLog: live,
 		Now: Clock, Update: update.UpdaterInstalled()})
 }
 

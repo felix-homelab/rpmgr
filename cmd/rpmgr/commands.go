@@ -67,7 +67,7 @@ func runGateway(ctx context.Context, env *cli.Env, path string) error {
 	if err := config.Load(path, &cfg); err != nil {
 		return err
 	}
-	logger, err := telemetry.NewLogger(env.Stderr, cfg.Log)
+	logger, live, err := telemetry.NewLiveLogger(env.Stderr, cfg.Log)
 	if err != nil {
 		return err
 	}
@@ -76,7 +76,7 @@ func runGateway(ctx context.Context, env *cli.Env, path string) error {
 		return err
 	}
 	defer stop()
-	return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: version.Get().Version, Logger: logger, Now: agentcmd.Clock,
+	return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: version.Get().Version, Logger: logger, LiveLog: live, Now: agentcmd.Clock,
 		Update: update.UpdaterInstalled()})
 }
 
