@@ -296,6 +296,7 @@ func (s *seeder) seed(firstUserLink string) {
 		AccessPolicy: &rpmgrv1.AccessPolicy{Name: "office", Description: "Only the office network", Rules: []*rpmgrv1.AccessRule{
 			{Rule: &rpmgrv1.AccessRule_IpAllow{IpAllow: &rpmgrv1.IPRuleParams{Cidrs: []string{"198.51.100.0/24", "2001:db8:100::/48"}}}},
 			{Rule: &rpmgrv1.AccessRule_IpDeny{IpDeny: &rpmgrv1.IPRuleParams{Cidrs: []string{"198.51.100.66/32"}}}},
+			{Rule: &rpmgrv1.AccessRule_RateLimit{RateLimit: &rpmgrv1.RateLimitRule{PerSecond: 20, Burst: 50}}},
 		}}}).GetAccessPolicy()
 	call(s, "policy staff-login", ada.pol.CreateAccessPolicy, &rpmgrv1.CreateAccessPolicyRequest{OrgId: org, RequestId: uuid.NewString(),
 		AccessPolicy: &rpmgrv1.AccessPolicy{Name: "staff-login", Description: "A password for the staff", Rules: []*rpmgrv1.AccessRule{

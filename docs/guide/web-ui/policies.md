@@ -1,7 +1,8 @@
 # Access policies
 
-An access policy says who may reach a route: by client address, or on HTTP routes with a password
-or a required header. This page describes the web UI's **Access policies** page, where the organisation's
+An access policy says who may reach a route and how often: by client address, on HTTP routes with
+a password or a required header, and at a rate per client. This page describes the web UI's
+**Access policies** page, where the organisation's
 policies are made and changed; they are attached to routes on each route's page. Every member sees
 the page; creating, changing and removing policies needs the Owner, Admin or Operator role
 (`routes.write`). The how-to page is [Access policies](../access-policies.md).
@@ -12,7 +13,8 @@ the page; creating, changing and removing policies needs the Owner, Admin or Ope
 
 Each policy shows its name, its description, its rules, numbered, and the routes that use it, or
 `used by no route`. A rule reads as `allow …` or `deny …` with its addresses, `basic auth: …`
-with its users' names, or `requires header …` with the header's name.
+with its users' names, `requires header …` with the header's name, or `rate limit: … a second per
+client, … at once`.
 
 - **Export YAML** shows every policy as YAML ([The YAML view](README.md#the-yaml-view)).
 - **New access policy** opens the [form](#the-form) above the list.
@@ -38,6 +40,9 @@ After a change, the page follows it to the gateways
     value** adds another, up to four; **Remove the value** removes one; **Generate a value** fills
     the first empty value with a random one, or adds it. The form says how long a value must be,
     and to copy it before saving.
+  - **Rate limit per client** takes **Requests or new connections a second**, required, and **At
+    once (burst)**, which is a second's worth when empty. A note under them says what counts and
+    what a client over it gets ([Access policies](../access-policies.md#rate-limits)).
 - **Remove the rule** removes a rule; **Add a rule** adds one, an **Allow addresses** rule to start
   with.
 - **Create the policy** or **Save** saves the policy; **Cancel** closes the form.
