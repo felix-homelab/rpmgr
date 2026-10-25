@@ -41,6 +41,24 @@ func (m mapFlag) Set(v string) error {
 	return nil
 }
 
+// matchFlag is a header match that may be given more than once: Name=value for an exact value,
+// Name alone for presence. An empty value adds nothing, so the flag given once with an empty
+// value removes every match.
+type matchFlag []*rpmgrv1.HeaderMatch
+
+func (m *matchFlag) String() string { return "" }
+func (m *matchFlag) Set(v string) error {
+	if v == "" {
+		return nil
+	}
+	if name, value, ok := strings.Cut(v, "="); ok {
+		*m = append(*m, &rpmgrv1.HeaderMatch{Name: name, Match: &rpmgrv1.HeaderMatch_Exact{Exact: value}})
+	} else {
+		*m = append(*m, &rpmgrv1.HeaderMatch{Name: name, Match: &rpmgrv1.HeaderMatch_Present{Present: true}})
+	}
+	return nil
+}
+
 // routeFlags are the flags of `create route` and `update route`; each sets the fields of a route
 // its paths name (docs/07-api.md, "Resource design").
 type routeFlags struct {
@@ -55,6 +73,7 @@ type routeFlags struct {
 	websocket, maintenance                         bool
 	maintenanceMessage                             string
 	maxBody                                        uint64
+	matches                                        matchFlag
 	// The health check (docs/03-connections.md, "Target health").
 	healthCheck, healthPath, healthStatus string
 	healthPort, healthUnhealthy, healthOK uint
@@ -92,6 +111,7 @@ func (f *routeFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.StringVar(&f.host, "host-header", "", "http: the Host header towards the upstream; empty keeps the client's")
 	fs.Var(f.requestHeaders, "set-request-header", "http: a header Name=value set towards the upstream; repeat for more")
 	fs.Var(f.responseHeaders, "set-response-header", "http: a header Name=value set towards the client; repeat for more")
+	fs.Var(&f.matches, "match-header", "http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more")
 	fs.BoolVar(&f.websocket, "websocket", true, "http: whether WebSocket upgrades pass")
 	fs.Uint64Var(&f.maxBody, "max-body", 0, "http: the largest request body in bytes; 0 is no limit")
 	fs.BoolVar(&f.maintenance, "maintenance", false, "http: answer every request with the maintenance page, 503")
@@ -209,7 +229,7 @@ func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Rout
 	for flagName, types := range map[string]string{"hostname": "http tls_passthrough", "path-prefix": "http", "tls-mode": "http",
 		"certificate": "http", "port80": "http", "hsts": "http", "host-header": "http", "set-request-header": "http",
 		"set-response-header": "http", "websocket": "http", "max-body": "http", "maintenance": "http", "maintenance-message": "http",
-		"port": "tcp udp tcp_udp", "idle-timeout": "tcp udp tcp_udp", "flow-idle-timeout": "tcp_udp"} {
+		"match-header": "http", "port": "tcp udp tcp_udp", "idle-timeout": "tcp udp tcp_udp", "flow-idle-timeout": "tcp_udp"} {
 		if set[flagName] && !slices.Contains(strings.Fields(types), typ) {
 			return nil, nil, cli.Usagef("--%s is not for a %s route", flagName, typ)
 		}
@@ -263,6 +283,7 @@ func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Rout
 		do("max-body", "http.max_body_bytes", func() { h.MaxBodyBytes = f.maxBody })
 		do("maintenance", "http.maintenance", func() { h.Maintenance = f.maintenance })
 		do("maintenance-message", "http.maintenance_message", func() { h.MaintenanceMessage = f.maintenanceMessage })
+		do("match-header", "http.header_matches", func() { h.HeaderMatches = f.matches })
 	case "tls_passthrough":
 		t := r.GetTlsPassthrough()
 		if t == nil {

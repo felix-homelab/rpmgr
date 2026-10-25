@@ -269,6 +269,115 @@ func TestHTTPRoutes(t *testing.T) {
 	}
 }
 
+// TestHTTPRoutes_HeaderMatches (D135): routes share a hostname and prefix with different sets of
+// header matches, whatever the order and case of their names; the same set twice, more than 8,
+// an invalid name or value, Host and a header matched twice are refused; a change of the matches
+// is checked again; only a gateway announcing http.header-match gets a route with them.
+func TestHTTPRoutes_HeaderMatches(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	e.verified(t, org, "example.com", true)
+	exact := func(name, value string) *rpmgrv1.HeaderMatch {
+		return &rpmgrv1.HeaderMatch{Name: name, Match: &rpmgrv1.HeaderMatch_Exact{Exact: value}}
+	}
+	present := func(name string) *rpmgrv1.HeaderMatch {
+		return &rpmgrv1.HeaderMatch{Name: name, Match: &rpmgrv1.HeaderMatch_Present{Present: true}}
+	}
+	matching := func(name string, ms ...*rpmgrv1.HeaderMatch) *rpmgrv1.Route {
+		r := httpRoute(name, group, "app.example.com")
+		r.GetHttp().HeaderMatches = ms
+		return r
+	}
+	if _, err := createRoute(ada, org, matching("main"), ""); err != nil {
+		t.Fatal(err)
+	}
+	beta, err := createRoute(ada, org, matching("beta", exact("x-tenant", "a"), exact("X-Env", "beta")), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ms := beta.GetHttp().GetHeaderMatches(); len(ms) != 2 || ms[0].GetName() != "X-Env" || ms[1].GetName() != "X-Tenant" {
+		t.Fatalf("the matches come back canonical and sorted: %v", ms)
+	}
+	if _, err := createRoute(ada, org, matching("any-env", present("X-Env")), ""); err != nil {
+		t.Fatalf("presence of the same header: %v", err)
+	}
+	nine := matching("nine")
+	for i := range 9 {
+		nine.GetHttp().HeaderMatches = append(nine.GetHttp().HeaderMatches, present("X-"+strings.Repeat("a", i+1)))
+	}
+	for name, c := range map[string]struct {
+		rt   *rpmgrv1.Route
+		want connect.Code
+	}{
+		"the same set, other order and case": {matching("twin", exact("X-ENV", "beta"), exact("x-tenant", "a")), connect.CodeAlreadyExists},
+		"nine matches":                       {nine, connect.CodeInvalidArgument},
+		"a line break in a value":            {matching("crlf", exact("X-Env", "a\r\nX-Admin: 1")), connect.CodeInvalidArgument},
+		"an empty value":                     {matching("empty", exact("X-Env", "")), connect.CodeInvalidArgument},
+		"a bad name":                         {matching("bad", exact("X Env", "a")), connect.CodeInvalidArgument},
+		"Host":                               {matching("host", exact("host", "a.example.com")), connect.CodeInvalidArgument},
+		"an identity header":                 {matching("ident", present("Rpmgr-User-Email")), connect.CodeInvalidArgument},
+		"another identity header":            {matching("ident2", present("rpmgr_user_role")), connect.CodeInvalidArgument},
+		"Transfer-Encoding":                  {matching("te", exact("Transfer-Encoding", "chunked")), connect.CodeInvalidArgument},
+		"Content-Length":                     {matching("cl", exact("Content-Length", "0")), connect.CodeInvalidArgument},
+		"a value with a leading blank":       {matching("blank", exact("X-Env", " beta")), connect.CodeInvalidArgument},
+		"a header matched twice":             {matching("twice", exact("X-Env", "a"), present("x-env")), connect.CodeInvalidArgument},
+		"presence set to false":              {matching("false", &rpmgrv1.HeaderMatch{Name: "X-Env", Match: &rpmgrv1.HeaderMatch_Present{}}), connect.CodeInvalidArgument},
+	} {
+		if _, err := createRoute(ada, org, c.rt, ""); code(err) != c.want {
+			t.Errorf("%s: %v, want %v", name, err, c.want)
+		}
+	}
+	// Taking the matches off would make the route the twin of "main": refused, nothing changes.
+	upd := proto.Clone(beta).(*rpmgrv1.Route)
+	upd.GetHttp().HeaderMatches = nil
+	if _, err := ada.rt.UpdateRoute(ctx, connect.NewRequest(&rpmgrv1.UpdateRouteRequest{Route: upd, Etag: beta.GetEtag(),
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"http.header_matches"}}})); code(err) != connect.CodeAlreadyExists {
+		t.Fatalf("an update to the twin of another route: %v", err)
+	}
+	upd.GetHttp().HeaderMatches = []*rpmgrv1.HeaderMatch{exact("X-Env", "canary")}
+	got, err := ada.rt.UpdateRoute(ctx, connect.NewRequest(&rpmgrv1.UpdateRouteRequest{Route: upd, Etag: beta.GetEtag(),
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"http.header_matches"}}}))
+	if err != nil || len(got.Msg.GetRoute().GetHttp().GetHeaderMatches()) != 1 || got.Msg.GetRoute().GetHttp().GetHeaderMatches()[0].GetExact() != "canary" {
+		t.Fatalf("an update of the matches: %v %v", got, err)
+	}
+	keys := e.db.Client().RouteHostname.Query().Where(routehostname.Hostname("app.example.com")).Select(routehostname.FieldMatchKey).StringsX(e.sys)
+	if len(keys) != 3 || len(slices.Compact(slices.Sorted(slices.Values(keys)))) != 3 {
+		t.Fatalf("the hostnames' match keys: %q", keys)
+	}
+	// The gate (D113): a gateway without the capability never gets a route that matches headers.
+	gw, err := createGateway(ada, org, group, "gw1", "gw1.example.com:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := func(caps ...string) []string {
+		var ids []string
+		if err := store.ReadTx(e.sys, e.db, func(tx *ent.Tx, _ store.Revision) error {
+			a := snapshot.Agent{Identity: pki.Identity{TrustDomain: "rpmgr-teststor", Org: org, Kind: pki.KindGateway, ID: gw.GetId()}, Capabilities: caps}
+			for _, src := range routes.Sources() {
+				rs, err := src(e.sys, tx, a)
+				if err != nil {
+					return err
+				}
+				for _, r := range rs {
+					if r.GetGatewayHttpRoute() != nil {
+						ids = append(ids, r.GetId())
+					}
+				}
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return ids
+	}
+	if ids := compiled("tunnel.quic", "tunnel.h2"); len(ids) != 1 {
+		t.Errorf("a gateway without http.header-match gets %v, want only the route without matches", ids)
+	}
+	if ids := compiled(gateway.Capabilities...); len(ids) != 3 {
+		t.Errorf("a gateway with http.header-match gets %v, want all three", ids)
+	}
+}
+
 // TestRoutes_GatewayAcceptsThem: routes the API accepts, with every http setting, access
 // policies and a target each, an HTTPS one verified by a pin, compile into a snapshot the gateway
 // validates without an error.
@@ -286,6 +395,8 @@ func TestRoutes_GatewayAcceptsThem(t *testing.T) {
 	h.RequestHeadersSet = map[string]string{"x-env": "prod", "Authorization": "Bearer abc"}
 	h.ResponseHeadersSet = map[string]string{"cache-control": "no-store"}
 	h.Websocket, h.MaxBodyBytes = &off, 1<<20
+	h.HeaderMatches = []*rpmgrv1.HeaderMatch{{Name: "x-env", Match: &rpmgrv1.HeaderMatch_Exact{Exact: "beta"}},
+		{Name: "X-Tenant", Match: &rpmgrv1.HeaderMatch_Present{Present: true}}}
 	for _, p := range []*rpmgrv1.PortPool{{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009},
 		{GatewayGroupId: group, Protocol: udp, PortFrom: 30000, PortTo: 30009}} {
 		if _, err := ada.gw.CreatePortPool(context.Background(), connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org, PortPool: p})); err != nil {
@@ -326,7 +437,8 @@ func TestRoutes_GatewayAcceptsThem(t *testing.T) {
 	}
 	var snap *agentv1.Snapshot
 	if err := store.ReadTx(e.sys, e.db, func(tx *ent.Tx, _ store.Revision) error {
-		a := snapshot.Agent{Identity: pki.Identity{TrustDomain: "rpmgr-teststor", Org: org, Kind: pki.KindGateway, ID: gw.GetId()}}
+		a := snapshot.Agent{Identity: pki.Identity{TrustDomain: "rpmgr-teststor", Org: org, Kind: pki.KindGateway, ID: gw.GetId()},
+			Capabilities: gateway.Capabilities}
 		snap = &agentv1.Snapshot{}
 		for _, src := range routes.Sources() {
 			rs, err := src(e.sys, tx, a)
@@ -345,6 +457,10 @@ func TestRoutes_GatewayAcceptsThem(t *testing.T) {
 	for _, res := range snap.GetResources() {
 		if h := res.GetGatewayHttpRoute(); h.GetHostHeader() == "upstream.internal" && (len(h.GetAccess().GetBasicAuth()) != 1 || len(h.GetAccess().GetIpRules()) != 2) {
 			t.Fatalf("the access policies of the full route: %v", h.GetAccess())
+		}
+		if h := res.GetGatewayHttpRoute(); h.GetHostHeader() == "upstream.internal" && (len(h.GetHeaderMatches()) != 2 ||
+			h.GetHeaderMatches()[0].GetName() != "X-Env" || h.GetHeaderMatches()[0].GetValue() != "beta" || !h.GetHeaderMatches()[1].GetPresent()) {
+			t.Fatalf("the header matches of the full route: %v", h.GetHeaderMatches())
 		}
 		if r := res.GetGatewayTcpRoute(); r != nil && len(r.GetAccess().GetIpRules()) != 2 {
 			t.Fatalf("the access policy of the tcp route: %v", r.GetAccess())

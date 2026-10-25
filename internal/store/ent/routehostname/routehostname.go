@@ -27,6 +27,8 @@ const (
 	FieldHostname = "hostname"
 	// FieldPathPrefix holds the string denoting the path_prefix field in the database.
 	FieldPathPrefix = "path_prefix"
+	// FieldMatchKey holds the string denoting the match_key field in the database.
+	FieldMatchKey = "match_key"
 	// FieldDomainID holds the string denoting the domain_id field in the database.
 	FieldDomainID = "domain_id"
 	// EdgeRoute holds the string denoting the route edge name in mutations.
@@ -60,6 +62,7 @@ var Columns = []string{
 	FieldRouteType,
 	FieldHostname,
 	FieldPathPrefix,
+	FieldMatchKey,
 	FieldDomainID,
 }
 
@@ -92,6 +95,8 @@ var (
 	HostnameValidator func(string) error
 	// DefaultPathPrefix holds the default value on creation for the "path_prefix" field.
 	DefaultPathPrefix string
+	// DefaultMatchKey holds the default value on creation for the "match_key" field.
+	DefaultMatchKey string
 	// DomainIDValidator is a validator for the "domain_id" field. It is called by the builders before save.
 	DomainIDValidator func(string) error
 )
@@ -155,6 +160,11 @@ func ByHostname(opts ...sql.OrderTermOption) OrderOption {
 // ByPathPrefix orders the results by the path_prefix field.
 func ByPathPrefix(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPathPrefix, opts...).ToFunc()
+}
+
+// ByMatchKey orders the results by the match_key field.
+func ByMatchKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMatchKey, opts...).ToFunc()
 }
 
 // ByDomainID orders the results by the domain_id field.

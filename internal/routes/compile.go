@@ -18,6 +18,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/domains"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
@@ -341,9 +342,20 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 			HostHeader: hostHeader, RequestHeaders: headersOf(h.RequestHeadersSet), ResponseHeaders: headersOf(h.ResponseHeadersSet),
 			MaxBodyBytes: uint64(h.MaxBodyBytes), TrustedProxies: group.TrustedProxyCidrs, //nolint:gosec // G115: the schema keeps it non-negative
 			Port80: h.Port80.String(), HstsMaxAgeSeconds: uint32(h.HstsMaxAgeSeconds), Access: access, //nolint:gosec // G115: the schema keeps it non-negative
-			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, RankedConnectors: ranked}}})
+			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, RankedConnectors: ranked,
+			HeaderMatches: headerMatchesOf(h.HeaderMatches)}}})
 	}
 	return out, nil
+}
+
+// headerMatchesOf returns a route's header matches as the snapshot carries them, canonical and
+// sorted by name.
+func headerMatchesOf(ms []headermatch.Match) []*agentv1.HTTPHeaderMatch {
+	var out []*agentv1.HTTPHeaderMatch
+	for _, m := range headermatch.Canonical(ms) {
+		out = append(out, &agentv1.HTTPHeaderMatch{Name: m.Name, Value: m.Value, Present: m.Present})
+	}
+	return out
 }
 
 // headersOf returns a route's header settings sorted by canonical name; an empty value removes
