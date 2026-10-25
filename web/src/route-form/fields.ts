@@ -16,6 +16,7 @@ export interface RouteField {
   shown?: (values: RouteValues) => boolean; // whether the form shows it; always if not set
   warning?: (values: RouteValues) => string | undefined; // the i18n key of a warning that stays shown
   covers?: string; // certificate: the key of the field with the names it must cover; hostnames if not set
+  fixed?: boolean; // set when the route is created: the edit page shows it read-only
   get: (r: Route) => string;
   set: (r: Route, v: string) => void;
 }
@@ -123,7 +124,7 @@ function connectOf(s: TCPRouteSpec) {
   return s.connect;
 }
 const connectFields: RouteField[] = [
-  spec("tcp", { key: "listenerMode", path: "tcp.listener_mode", kind: "select",
+  spec("tcp", { key: "listenerMode", path: "tcp.listener_mode", kind: "select", fixed: true,
     options: [[String(ListenerMode.UNSPECIFIED), "plain"], [String(ListenerMode.HTTP_CONNECT), "httpConnect"]],
     get: (s) => String(s.listenerMode === ListenerMode.HTTP_CONNECT ? ListenerMode.HTTP_CONNECT : s.listenerMode),
     set: (s, v) => (s.listenerMode = Number(v)) }),

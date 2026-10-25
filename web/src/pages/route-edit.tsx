@@ -138,7 +138,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
             <Conflict base={base} mine={conflict.mine} theirs={conflict.theirs}
               onTop={() => onRestart(conflict.theirs, onTop(base, conflict.mine, conflict.theirs))} onDiscard={() => onRestart(conflict.theirs)} />
           )}
-          <FieldGrid>{fields.map((f) => <FormField key={f.key} field={f} form={form} />)}</FieldGrid>
+          <FieldGrid>{fields.map((f) => <FormField key={f.key} field={f} form={form} editing />)}</FieldGrid>
           {other.map((m) => <Alert key={m}>{m}</Alert>)}
           {previewed && <PreviewPanel preview={previewed} name={(id) => names.data?.get(id) || id} />}
           <div className="flex flex-wrap gap-2 border-t border-border pt-4">

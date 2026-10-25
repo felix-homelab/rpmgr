@@ -358,7 +358,8 @@
       "labels": "One per line, as key=value.",
       "headers": "One per line, as Name: value. An empty value removes the header.",
       "optionalNumber": "Empty for the default.",
-      "certificate": "The org's uploaded certificates that cover every hostname. Upload one under Domains & certificates."
+      "certificate": "The org's uploaded certificates that cover every hostname. Upload one under Domains & certificates.",
+      "fixed": "Set when the route is created; it cannot change."
     },
     "connect": {
       "plainBasic": "Clients send their proxy password in the clear: anyone on the network between them and the gateway can read and use it. Use basic auth over TLS unless the clients cannot speak to an HTTPS proxy."

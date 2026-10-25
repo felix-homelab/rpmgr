@@ -133,6 +133,10 @@ describe("RouteEdit", () => {
     const names = await screen.findByLabelText("CONNECT names");
     expect((names as HTMLTextAreaElement).value).toBe("bastion\nssh.internal");
     expect(screen.queryByLabelText("Listener hostname (HTTPS proxy)")).toBeNull();
+    // The listener mode is set when the route is created: read-only, with its hint.
+    const listener = screen.getByLabelText("Listener") as HTMLInputElement;
+    expect([listener.tagName, listener.readOnly, listener.value]).toEqual(["INPUT", true, "A CONNECT listener shared with other routes (HTTP proxy)"]);
+    expect(screen.getByText("Set when the route is created; it cannot change.")).toBeTruthy();
     fireEvent.change(names, { target: { value: "jump\n bastion " } });
     fireEvent.change(screen.getByLabelText("Proxy credentials"), { target: { value: String(ConnectAuthMode.PLAIN_BASIC) } });
     expect(await screen.findByText(/anyone on the network between them and the gateway can read and use it/)).toBeTruthy();
