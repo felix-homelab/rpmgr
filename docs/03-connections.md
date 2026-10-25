@@ -1127,8 +1127,9 @@ first session to complete its handshake wins, and the other attempt is cancelled
 cached for 24 h per **(gateway, local source address)**, where the local source address is the one
 the kernel picks to reach that gateway; when it changes (a new network), the next connection starts
 a new race. While TCP or WSS is in use, QUIC is re-probed every 10 min, except while it is demoted
-after a blackhole, when a race runs without QUIC and its winner is not cached; a successful probe
-moves the routes to QUIC. On QUIC the winning session, or the probe's,
+after a blackhole, when a race runs without QUIC and its winner is not cached. On WSS, TLS over TCP
+is re-probed after QUIC, so that one failed handshake holds the link on WSS for 10 min at most. A
+successful probe moves the routes to its transport. On QUIC the winning session, or the probe's,
 is the first of the link's four, and the connector dials the other three at once.
 
 #### Transport selection
@@ -1167,7 +1168,8 @@ Which transport a connector uses is a setting
     then wins the race and is cached like any winner. `wss` pins it. WSS goes direct or through
     the connector's `HTTPS_PROXY`, as TLS + reverse HTTP/2 does, to port 443 of the WSS hostname;
     the outer TLS 1.2 or 1.3 is verified against the system roots, where an intercepting proxy's
-    root is installed.
+    root is installed. The connector follows no redirect from the WSS hostname, so that whoever
+    ends the outer TLS cannot point its dialer elsewhere.
   - Each gateway that offers WSS has its own **WSS hostname**, so that the connector knows which
     gateway it reaches. It lies under a verified domain of the gateway group's owner org (the
     system org for a shared group), is no route hostname of the group, and has a certificate

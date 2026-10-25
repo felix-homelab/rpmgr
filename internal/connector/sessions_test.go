@@ -387,7 +387,7 @@ func TestGateway_PerGatewayTunnelEndpoints(t *testing.T) {
 	eventually(t, "not every gateway has its sessions", func() bool {
 		got := m.Count()
 		return g1.sessions.Load().Count()["quic"] == connector.QUICSessions && g2.sessions.Load().Count()["h2"] == 2 &&
-			g3.sessions.Load().Count()["h2"] == 2 && got[id1.ID+"/quic"] == connector.QUICSessions && got[id2.ID+"/h2"] == 2 &&
+			g3.sessions.Load().Count()["wss"] == 2 && got[id1.ID+"/quic"] == connector.QUICSessions && got[id2.ID+"/h2"] == 2 &&
 			got[id3.ID+"/wss"] == 2 && len(got) == 3
 	})
 	for _, g := range []*testGateway{g2, g3} {

@@ -650,13 +650,14 @@ func (m *Sessions) run(ctx context.Context, l *link, ts tunnel.Session, tr strin
 }
 
 // runAuto runs the auto link: the cached winner for the local source address, or a race, without
-// QUIC while it is demoted; while on h2 or WSS it re-probes QUIC, and a QUIC session that times
-// out demotes QUIC for an hour. A switch retires the old sessions, so their open connections
-// finish.
+// QUIC while it is demoted; while on h2 it re-probes QUIC, and while on WSS QUIC and then h2, so
+// that a path that once failed TLS over TCP holds the link on WSS for a re-probe interval only;
+// a QUIC session that times out demotes QUIC for an hour. A switch retires the old sessions, so
+// their open connections finish.
 func (m *Sessions) runAuto(ctx context.Context, l *link) {
 	gw := l.gw
 	b := agent.DataBackoff()
-	var handover tunnel.Session
+	var handover *probed
 	for ctx.Err() == nil {
 		m.mu.Lock()
 		ep := l.gs.g.Endpoints[0]
@@ -665,10 +666,9 @@ func (m *Sessions) runAuto(ctx context.Context, l *link) {
 		if err != nil {
 			local = netip.Addr{}
 		}
-		tr, first := m.choose.plan(gw, local), handover
-		handover = nil
-		if first != nil {
-			tr = TransportQUIC
+		tr, first := m.choose.plan(gw, local), tunnel.Session(nil)
+		if handover != nil {
+			tr, first, handover = handover.tr, handover.s, nil
 		} else if tr == "" {
 			quic := m.choose.mayProbe(gw)
 			s, won, err := m.race(ctx, l, quic)
@@ -691,7 +691,7 @@ func (m *Sessions) runAuto(ctx context.Context, l *link) {
 			tr, first = won, s
 		}
 		mctx, switchMode := context.WithCancel(ctx)
-		var probed atomic.Pointer[tunnel.Session]
+		var better atomic.Pointer[probed]
 		// The next connection from a new local source address starts a new race.
 		moved := func() bool {
 			if now, err := m.o.LocalAddr(ctx, ep); err != nil || now == local {
@@ -723,27 +723,31 @@ func (m *Sessions) runAuto(ctx context.Context, l *link) {
 		wg.Go(func() { m.runMode(mctx, l, tr, first, hooks) })
 		if tr == TransportH2 || tr == TransportWSS {
 			wg.Go(func() {
-				if s := m.reprobe(mctx, l); s != nil {
-					m.choose.won(gw, local, TransportQUIC)
-					probed.Store(&s)
+				if p := m.reprobe(mctx, l, tr == TransportWSS); p != nil {
+					m.choose.won(gw, local, p.tr)
+					better.Store(p)
 					switchMode()
 				}
 			})
 		}
 		wg.Wait()
 		switchMode()
-		if p := probed.Load(); p != nil {
-			handover = *p
-		}
+		handover = better.Load()
 	}
 	if handover != nil {
-		_ = handover.Close()
+		_ = handover.s.Close()
 	}
 }
 
-// reprobe tries QUIC every reprobeEvery while QUIC is not demoted, and returns the first session
-// that comes up, or nil when ctx ends.
-func (m *Sessions) reprobe(ctx context.Context, l *link) tunnel.Session {
+// probed is a session a re-probe established, and its transport.
+type probed struct {
+	s  tunnel.Session
+	tr string
+}
+
+// reprobe tries QUIC every reprobeEvery while QUIC is not demoted, and with h2 too TLS over TCP
+// after it, and returns the first session that comes up, or nil when ctx ends.
+func (m *Sessions) reprobe(ctx context.Context, l *link, h2 bool) *probed {
 	t := time.NewTicker(reprobeEvery)
 	defer t.Stop()
 	for {
@@ -752,15 +756,21 @@ func (m *Sessions) reprobe(ctx context.Context, l *link) tunnel.Session {
 			return nil
 		case <-t.C:
 		}
-		if !m.choose.mayProbe(l.gw) {
-			continue
+		var try []string
+		if m.choose.mayProbe(l.gw) {
+			try = append(try, TransportQUIC)
 		}
-		if s, err := m.dialTransport(ctx, l.gs, TransportQUIC); err == nil {
-			if ctx.Err() != nil {
-				_ = s.Close()
-				return nil
+		if h2 {
+			try = append(try, TransportH2)
+		}
+		for _, tr := range try {
+			if s, err := m.dialTransport(ctx, l.gs, tr); err == nil {
+				if ctx.Err() != nil {
+					_ = s.Close()
+					return nil
+				}
+				return &probed{s: s, tr: tr}
 			}
-			return s
 		}
 	}
 }

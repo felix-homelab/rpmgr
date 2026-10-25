@@ -86,11 +86,23 @@ var errNoWSSHostname = errors.New("connector: the gateway has no WSS hostname")
 func (m *Sessions) dialWSS(ctx context.Context, host string, cfg *tls.Config) (tunnel.Session, error) {
 	ctx, cancel := context.WithTimeout(ctx, dialTimeout)
 	defer cancel()
+	nc, err := m.upgradeWSS(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	return m.serveH2(ctx, nc, cfg)
+}
+
+// upgradeWSS opens the WebSocket of the WSS transport and returns it as a connection whose reads
+// take messages of at most tunnel.WSSMessageLimit bytes.
+func (m *Sessions) upgradeWSS(ctx context.Context, host string) (net.Conn, error) {
+	// No redirect is followed: whoever ends the outer TLS, such as a proxy, could send the
+	// connector's dialer anywhere. websocket.Dial chains its own check to this one.
 	hc := &http.Client{Transport: &http.Transport{
 		DialContext:       func(ctx context.Context, _, addr string) (net.Conn, error) { return m.dial(ctx, addr) },
 		TLSClientConfig:   &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: m.o.PublicRoots},
 		DisableKeepAlives: true,
-	}}
+	}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	ws, resp, err := websocket.Dial(ctx, "wss://"+net.JoinHostPort(host, "443")+tunnel.WSSPath, &websocket.DialOptions{HTTPClient: hc})
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
@@ -102,7 +114,7 @@ func (m *Sessions) dialWSS(ctx context.Context, host string, cfg *tls.Config) (t
 	// limit, so the limit is set after it.
 	nc := websocket.NetConn(context.Background(), ws, websocket.MessageBinary)
 	ws.SetReadLimit(tunnel.WSSMessageLimit)
-	return m.serveH2(ctx, nc, cfg)
+	return nc, nil
 }
 
 // dialMemory opens a connection to the in-process gateway and serves reverse HTTP/2 on it, after

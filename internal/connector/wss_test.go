@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"io"
 	"math/big"
 	"net"
@@ -23,6 +24,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
@@ -121,12 +124,19 @@ func (d *dialVia) dial(ctx context.Context, addr string) (net.Conn, error) {
 		d.dials = map[string]int{}
 	}
 	d.dials[addr]++
-	d.mu.Unlock()
 	if to, ok := d.hosts[addr]; ok {
 		addr = to
 	}
+	d.mu.Unlock()
 	var nd net.Dialer
 	return nd.DialContext(ctx, "tcp", addr)
+}
+
+// route sends the dials of addr to another address from now on.
+func (d *dialVia) route(addr, to string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.hosts[addr] = to
 }
 
 func (d *dialVia) count(addr string) int {
@@ -312,7 +322,7 @@ func TestWSS_AutoThroughInterceptingProxy(t *testing.T) {
 	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{ep}, WSSHostname: wssHost,
 		Routes: map[string]string{"rt_1": connector.TransportAuto}}})
 	eventually(t, "auto did not reach the gateway over WSS", func() bool {
-		return m.Count()[id.ID+"/wss"] == 2 && g.sessions.Load().Count()["h2"] == 2
+		return m.Count()[id.ID+"/wss"] == 2 && g.sessions.Load().Count()["wss"] == 2
 	})
 	if err := echo(t, g.sessions.Load(), "rt_1"); err != nil {
 		t.Fatalf("a stream over WSS: %v", err)
@@ -398,5 +408,110 @@ func TestApplier_WSS(t *testing.T) {
 	})
 	if g.tcpConns.Load() != 0 {
 		t.Fatal("the route on wss dialled the tunnel endpoint")
+	}
+}
+
+// fakeWSS serves handler on a TLS listener with a certificate of ca for wssHost, as a WSS
+// hostname's port 443 that is not a gateway's; it returns the address.
+func fakeWSS(t *testing.T, ca *publicCA, handler http.Handler) string {
+	t.Helper()
+	cert, err := ca.leaf(wssHost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second,
+		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}, NextProtos: []string{"http/1.1"}}}
+	go func() { _ = srv.ServeTLS(ln, "", "") }()
+	t.Cleanup(func() { _ = srv.Close() })
+	return ln.Addr().String()
+}
+
+// TestWSS_RedirectNotFollowed: the connector follows no redirect from the WSS hostname, so that
+// whoever ends the outer TLS cannot make its dialer connect elsewhere.
+func TestWSS_RedirectNotFollowed(t *testing.T) {
+	w := newWorld(t)
+	ca := newPublicCA(t, "public root")
+	for _, target := range []string{"https://inside.test/x", "http://inside.test/x", "wss://inside.test/x"} {
+		addr := fakeWSS(t, ca, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			http.Redirect(rw, r, target, http.StatusFound)
+		}))
+		via := &dialVia{hosts: map[string]string{wssHost + ":443": addr, "inside.test:443": addr, "inside.test:80": addr}}
+		m := connector.New(connector.Options{TLS: w.clientTLS, Dial: via.dial, PublicRoots: ca.pool})
+		cfg, _ := w.clientTLS(w.gatewayID().ID)
+		err := connector.DialWSS(t.Context(), m, wssHost, cfg)
+		m.Close()
+		if err == nil {
+			t.Fatalf("%s: a redirect completed the dial", target)
+		}
+		if n := via.count("inside.test:443") + via.count("inside.test:80"); n != 0 || via.count(wssHost+":443") != 1 {
+			t.Fatalf("%s: %d dials of the redirect's target, %d of the WSS hostname; want 0 and 1: %v", target, n,
+				via.count(wssHost+":443"), err)
+		}
+	}
+}
+
+// TestWSS_ConnectorMessageLimit: the connector reads a WebSocket message of 64 KiB, and refuses a
+// larger one.
+func TestWSS_ConnectorMessageLimit(t *testing.T) {
+	w := newWorld(t)
+	ca := newPublicCA(t, "public root")
+	for _, tc := range []struct {
+		size int
+		big  bool
+	}{{64 << 10, false}, {64<<10 + 1, true}} {
+		addr := fakeWSS(t, ca, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			ws, err := websocket.Accept(rw, r, nil)
+			if err != nil {
+				return
+			}
+			_ = ws.Write(r.Context(), websocket.MessageBinary, make([]byte, tc.size))
+			_ = ws.Close(websocket.StatusNormalClosure, "")
+		}))
+		via := &dialVia{hosts: map[string]string{wssHost + ":443": addr}}
+		m := connector.New(connector.Options{TLS: w.clientTLS, Dial: via.dial, PublicRoots: ca.pool})
+		nc, err := connector.UpgradeWSS(t.Context(), m, wssHost)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, err := io.Copy(io.Discard, nc)
+		_ = nc.Close()
+		m.Close()
+		if errors.Is(err, websocket.ErrMessageTooBig) != tc.big || (!tc.big && n != 65536) {
+			t.Fatalf("a message of %d bytes: %d read, %v", tc.size, n, err)
+		}
+	}
+}
+
+// TestWSS_ReprobeMovesToH2: auto on WSS, because TLS over TCP failed in its handshake, re-probes
+// TLS over TCP as well as QUIC, and moves to h2 once it works, so that one failed handshake does
+// not hold the link on WSS for the winner's lifetime.
+func TestWSS_ReprobeMovesToH2(t *testing.T) {
+	connector.SetTransportTimers(t, 300*time.Millisecond, 300*time.Millisecond, time.Hour)
+	w := newWorld(t)
+	id := w.gatewayID()
+	g := startGateway(t, w, id, w.leaf(t, w.is, w.inter, id))
+	ca := newPublicCA(t, "public root")
+	// Another gateway's certificate fails the connector's handshake, as an intercepting proxy does.
+	other := w.gatewayID()
+	impostor := startGateway(t, w, other, w.leaf(t, w.is, w.inter, other))
+	via := &dialVia{hosts: map[string]string{wssHost + ":443": g.serveWSS(t, ca), g.addr: impostor.addr}}
+	m := connector.New(connector.Options{TLS: w.clientTLS, Dial: via.dial, PublicRoots: ca.pool, Streams: echoStream,
+		LocalAddr: func(context.Context, string) (netip.Addr, error) { return netip.MustParseAddr("192.0.2.1"), nil }})
+	t.Cleanup(m.Close)
+	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, WSSHostname: wssHost,
+		Routes: map[string]string{"rt_1": connector.TransportAuto}}})
+	eventually(t, "auto did not move to WSS", func() bool { return m.Count()[id.ID+"/wss"] == 2 })
+	via.route(g.addr, g.addr)
+	eventually(t, "auto stayed on WSS once TLS over TCP worked", func() bool {
+		got := m.Count()
+		return got[id.ID+"/h2"] == 2 && g.sessions.Load().Count()["h2"] == 2
+	})
+	if err := echo(t, g.sessions.Load(), "rt_1"); err != nil {
+		t.Fatalf("a stream after the move: %v", err)
 	}
 }
