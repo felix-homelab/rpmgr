@@ -44,6 +44,10 @@ in the change description.
   holds anything of org A; afterwards every row of org A in every org-owned table is unchanged. An
   ID field the suite has no org A value for fails it, so each new kind of resource brings its
   fixture.
+- **S3-compatible storage.** The tests of the S3 client, the revocation-log sink and the audit
+  object-storage sink run against the SILO container, the maintained fork of MinIO, whose project
+  was archived and whose images were removed; the image is pinned by digest in CI. Other stores
+  are checked by VB-24 ([13](13-roadmap.md#verification-backlog)).
 - **Authorization-annotation completeness.** A test walks every registered RPC and fails if one
   lacks the `(rpmgr.v1.authz)` option; the server also refuses to start in that case
   ([04](04-security.md#one-enforcement-point-with-defence-in-depth)).
@@ -362,6 +366,17 @@ Regression tests for design-review findings:
 | `TestRouteOIDC_SecretNeverLeavesController` | A route identity provider's client secret appears in no snapshot, gateway memory dump, log line, API answer or audit entry; gateways verify assertions with public keys only ([04](04-security.md#oidc-sign-in-on-routes)) |
 | `TestRouteOIDC_AssertionBoundToBrowser` | An assertion is refused for another hostname, after its lifetime, with a bad signature, or in a browser whose state cookie does not match; a session whose claims a tightened rule no longer accepts is refused at once ([04](04-security.md#oidc-sign-in-on-routes)) |
 | `TestRouteOIDC_NoOpenRedirect` | The controller refuses with an error page, never a redirect, a sign-in naming a hostname that is not one of the route's, a route of another org, a disabled route or one without an `oidc` rule; it redirects only to `https://<route hostname>/.rpmgr/oidc`; its `redirect_uri` is the fixed callback whatever the request says; after sign-in the gateway redirects only to a path on the same hostname, and a return value with a scheme, an authority, a leading `//` or `/\`, in encoded forms too, goes to `/` ([04](04-security.md#oidc-sign-in-on-routes)) |
+| `TestLiveLogs_TicketSingleUseAndBound` | An `Attach` with a used, expired, unknown or another agent's ticket, or without an `Open`, is refused, and the operation fails at once; an operation ends at its deadline ([03](03-connections.md#control-session)) |
+| `TestLiveLogs_RedactedOnAgent` | Token prefixes with their random part, PEM blocks, `Authorization` and `Cookie` values and `password=` pairs in a log message's text never leave the agent, also at the raised `debug` level; a slow viewer loses lines and never blocks the agent ([04](04-security.md#secrets-at-rest-and-in-logs)) |
+| `TestLiveLogs_CrossOrgRefused` | A user of another org gets `NOT_FOUND` for an org's agent, a Viewer or Operator is refused, a shared-group gateway's log needs the Instance Admin, and through another controller replica the same holds ([04](04-security.md#roles)) |
+| `TestWebhook_EgressGuard` | A delivery never connects to a loopback, unspecified, link-local, metadata, multicast or own address, in IPv4-mapped form too, nor after a DNS answer changes between check and dial, nor through a redirect or an `http` URL; a private range only once listed, and a listed range never admits an always-denied address ([04](04-security.md#webhooks-and-the-egress-guard-phase-2)) |
+| `TestWebhook_SignatureAndReplayWindow` | Every delivery carries a valid `Rpmgr-Signature` over its timestamp and body; during a rotation both secrets sign and afterwards only the new one; a receiver using the documented check refuses a signature past the maximum age |
+| `TestWebhook_EventsScopedToOrg` | An org's endpoint receives only that org's events, an instance endpoint only instance events, and an event's envelope holds no resource body and no secret ([07](07-api.md#webhooks-phase-2)) |
+| `TestWebhook_SecretWriteOnly` | A webhook secret is returned only when made or rotated; no read, list, export, manifest, log line or audit entry holds it |
+| `TestAuditExport_StepUpAndOrgScoped` | An export without a step-up, or of another org's chain, is refused; the instance chain only for the Instance Admin; every export is audited ([04](04-security.md#audit-log)) |
+| `TestAuditExport_TamperDetectedOffline` | `rpmgr audit verify-export` finds an edited, removed or reordered entry, a forged checkpoint and a wrong CA pin, and flags the unanchored tail |
+| `TestAuditSink_BacklogNeverBlocksAppend` | With every sink down, appends commit at full speed; the backlog grows, the alert fires, and once a sink is back it ships every item from its cursor, also after a restart, without a gap |
+| `TestAuditSink_RewriteDetectedAgainstSink` | A chain rewritten in the database under a checkpoint an object-storage sink holds fails verification against the sink; the sink's objects cannot be overwritten (412) |
 
 ## Continuous integration
 
