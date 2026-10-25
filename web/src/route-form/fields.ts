@@ -67,7 +67,7 @@ function spec<C extends NonNullable<Spec["case"]>>(c: C, field: Omit<RouteField,
 const num = (v: string) => (/^\d+$/.test(v.trim()) ? Number(v.trim()) : Number.NaN);
 const optional = (v: string) => (v.trim() === "" ? undefined : num(v));
 const transports: [string, string][] = [
-  [String(DataTransport.UNSPECIFIED), "default"], [String(DataTransport.AUTO), "auto"], [String(DataTransport.QUIC), "quic"], [String(DataTransport.H2), "h2"],
+  [String(DataTransport.UNSPECIFIED), "default"], [String(DataTransport.AUTO), "auto"], [String(DataTransport.QUIC), "quic"], [String(DataTransport.H2), "h2"], [String(DataTransport.WSS), "wss"],
 ];
 
 const common: RouteField[] = [

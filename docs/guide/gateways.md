@@ -142,7 +142,8 @@ at a hostname of the gateway's own that has an ordinary public certificate, whic
 accepts like any website's
 ([Connector networking](connectors/network.md#transports-quic-tls-with-http2-and-wss)).
 
-Give a gateway its WSS hostname:
+Give a gateway its WSS hostname under **Gateways**: **Edit…** in its row, **WSS hostname**,
+**Save**. Or with the command line:
 
 ```sh
 rpmgr update gateway --wss-hostname tunnel-eu-1.example.com eu-1

@@ -91,8 +91,8 @@ for new connections at once; open connections finish on their session.
 ### With the web UI
 
 - **A connector**: open it under **Connectors**; in **Settings**, choose the **Transport**:
-  **The instance's default**, **QUIC, falling back to TLS and HTTP/2**, **QUIC only** or **TLS
-  and HTTP/2 only**, and select **Save**.
+  **The instance's default**, **QUIC, falling back to TLS and HTTP/2**, **QUIC only**, **TLS
+  and HTTP/2 only** or **WSS only**, and select **Save**.
 - **A route**: in the route's form, choose the **Transport**; **The connector's or the instance's
   default** leaves it to the connector ([HTTP routes](../routes/http.md)).
 - **The instance**: the Instance Admin sets **Default transport** under **Settings**, in **Agents

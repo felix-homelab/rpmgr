@@ -19,8 +19,9 @@ Changes to the design documents are not recorded here: see the git history and t
   the instance (`--transport wss`). The connector's own TLS runs inside the WebSocket, so the proxy
   sees which gateway it reaches but none of the traffic. Connectors and gateways of earlier
   releases do not use WSS; a route on `wss` is not ready on such a connector. Data sessions and
-  the `rpmgr_gateway_sessions` metric show the transport `wss`. The web UI follows. (#636, #637,
-  #638, #639)
+  the `rpmgr_gateway_sessions` metric show the transport `wss`; the web UI sets the WSS hostname
+  on the gateway's form and offers **WSS only** wherever it offers a transport. (#636, #637, #638,
+  #639)
 
 - Routes: active health checks. A route may have one TCP or HTTP check, which each connector runs
   against its own targets of the route, on their port or another one; new connections pass over a

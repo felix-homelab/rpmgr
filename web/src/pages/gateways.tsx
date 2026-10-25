@@ -186,7 +186,10 @@ export function GatewayGroupPage() {
                 <TR key={g.id}>
                   <TD className="font-medium">{g.name}</TD>
                   <TD>{g.slot}</TD>
-                  <TD className="font-mono text-xs">{g.tunnelEndpoints.join(", ")}</TD>
+                  <TD className="font-mono text-xs">
+                    {g.tunnelEndpoints.join(", ")}
+                    {g.wssHostname && <div className="text-muted-foreground">{t("gateways.gw.wssValue", { name: g.wssHostname })}</div>}
+                  </TD>
                   <TD><GatewayChip gateway={g} /></TD>
                   <TD>{g.status?.version}</TD>
                   <TD><UpdateState target={updates.get(g.id)} belowMinimum={g.status?.belowMinAgentVersion} goodbyeReason={g.status?.lastGoodbyeReason} /></TD>
