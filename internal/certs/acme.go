@@ -19,7 +19,12 @@ import (
 // ACMERow returns org's ACME certificate row for a hostname, or nil: ACME certificates have
 // exactly that one name.
 func ACMERow(ctx context.Context, tx *ent.Tx, org, name string) (*ent.Certificate, error) {
-	rows, err := tx.Certificate.Query().Where(certificate.OrgID(org), certificate.SourceEQ(certificate.SourceAcme)).All(ctx)
+	return ACMEOf(ctx, tx.Certificate, org, name)
+}
+
+// ACMEOf is ACMERow on any certificate client, in a transaction or not.
+func ACMEOf(ctx context.Context, cc *ent.CertificateClient, org, name string) (*ent.Certificate, error) {
+	rows, err := cc.Query().Where(certificate.OrgID(org), certificate.SourceEQ(certificate.SourceAcme)).All(ctx)
 	if err != nil {
 		return nil, err
 	}

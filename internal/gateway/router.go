@@ -41,6 +41,7 @@ const (
 	DecidePassthrough Decision = "passthrough" // the SNI of a TLS-passthrough route
 	DecideACME        Decision = "acme"        // ALPN acme-tls/1 for a name with a TLS-ALPN-01 challenge
 	DecideHTTP        Decision = "http"        // the SNI of an http route
+	DecideWSS         Decision = "wss"         // this gateway's WSS hostname
 	DecideDefault     Decision = "default"     // no SNI, or an unknown one
 	DecideNotTLS      Decision = "not-tls"     // not a TLS handshake
 	DecidePeekFailed  Decision = "peek-failed" // too slow, too large or malformed
@@ -74,6 +75,11 @@ type Router struct {
 	// HTTP takes the connections of http routes; HTTPTLS picks the certificate per name.
 	HTTP    func(*tls.Conn)
 	HTTPTLS *tls.Config
+	// WSSHostname, if set, returns this gateway's WSS hostname, "" for none; WSS takes its
+	// connections over TLS with WSSTLS, which presents the hostname's public certificate.
+	WSSHostname func() string
+	WSS         func(*tls.Conn)
+	WSSTLS      *tls.Config
 	// ACME, if set, returns the acme-tls/1 certificate of a pending TLS-ALPN-01 challenge for a
 	// name, or nil.
 	ACME func(sni string) *tls.Certificate
@@ -131,6 +137,11 @@ func (r *Router) Decide(ch *tlspeek.ClientHello) Decision {
 	if r.ACME != nil && slices.Contains(ch.ALPN, acmez.ACMETLS1Protocol) && r.ACME(sni) != nil {
 		return DecideACME // before the routes: a passthrough route's backend never sees the CA
 	}
+	if r.WSS != nil && r.WSSHostname != nil {
+		if name := r.WSSHostname(); name != "" && sni == name {
+			return DecideWSS // no route of the group has the name (routes.SetWSSHostname)
+		}
+	}
 	if r.Routes != nil {
 		if _, ok := r.Routes.Passthrough(sni); ok {
 			return DecidePassthrough
@@ -169,6 +180,8 @@ func (r *Router) Handle(c net.Conn) {
 		h(rc)
 	case DecideHTTP:
 		r.HTTP(tls.Server(rc, r.HTTPTLS))
+	case DecideWSS:
+		r.WSS(tls.Server(rc, r.WSSTLS))
 	case DecideACME:
 		// RFC 8737: a handshake with the challenge certificate is the answer; nothing follows.
 		cert := r.ACME(strings.ToLower(strings.TrimSuffix(ch.ServerName, ".")))

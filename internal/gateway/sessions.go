@@ -534,8 +534,11 @@ func (m *Sessions) Report() []*agentv1.DataSession {
 	out := make([]*agentv1.DataSession, 0, len(best))
 	for k, rtt := range best {
 		ds := &agentv1.DataSession{ConnectorId: k.connector, Transport: agentv1.Transport_TRANSPORT_H2}
-		if k.transport == "quic" {
+		switch k.transport {
+		case "quic":
 			ds.Transport = agentv1.Transport_TRANSPORT_QUIC
+		case "wss":
+			ds.Transport = agentv1.Transport_TRANSPORT_WSS
 		}
 		if rtt > 0 {
 			ds.Rtt = durationpb.New(rtt)

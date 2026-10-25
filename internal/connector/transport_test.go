@@ -55,8 +55,8 @@ func TestChooser(t *testing.T) {
 
 	c.Won("gw_1", a, connector.TransportQUIC)
 	c.Blackholed("gw_1")
-	if got := c.Plan("gw_1", a); got != connector.TransportH2 || c.MayProbe("gw_1") {
-		t.Fatalf("demoted: %q, probe %v", got, c.MayProbe("gw_1"))
+	if got := c.Plan("gw_1", a); got != "" || c.MayProbe("gw_1") {
+		t.Fatalf("demoted: %q, probe %v; want a race without QUIC", got, c.MayProbe("gw_1"))
 	}
 	if !c.MayProbe("gw_2") {
 		t.Fatal("another gateway is demoted too")

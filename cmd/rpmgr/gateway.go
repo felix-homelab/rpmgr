@@ -35,7 +35,9 @@ func infrastructureCommands() (create, update []*cli.Command, more map[string][]
 		{"gateway", []field{
 			{flag: "group", name: "gateway_group_id", usage: "its gateway group, by name or ID", ref: "gateway-group"},
 			{flag: "name", name: "name", usage: "the gateway's name, unique in the org", update: true},
-			{flag: "tunnel-endpoint", name: "tunnel_endpoints", usage: "a host:port at which connectors reach it", update: true}}},
+			{flag: "tunnel-endpoint", name: "tunnel_endpoints", usage: "a host:port at which connectors reach it", update: true},
+			{flag: "wss-hostname", name: "wss_hostname", usage: "its WSS hostname, at which connectors reach it through TLS-intercepting proxies; empty removes it",
+				update: true}}},
 		{"port-pool", []field{
 			{flag: "group", name: "gateway_group_id", usage: "its gateway group, by name or ID", ref: "gateway-group"},
 			{flag: "protocol", name: "protocol", usage: "tcp or udp"},

@@ -224,6 +224,10 @@ message Gateway {
   // Whether it is all-in-one's own gateway, which runs in the controller's process and cannot be
   // decommissioned; output only.
   bool built_in = 11;
+  // Its WSS hostname (Phase 2), where connectors reach it over WSS: a name under a verified domain
+  // of the group's owner org, no wildcard, no route hostname of the group nor covered by one, and
+  // no other gateway's; empty offers no WSS (docs/03-connections.md, "Transport selection").
+  string wss_hostname = 12 [(buf.validate.field).string.max_len = 253];
 }
 
 // GatewayStatus is what the controller last saw of a gateway.

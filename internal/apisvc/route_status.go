@@ -10,14 +10,17 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
+	"github.com/felix-homelab/rpmgr/internal/certs"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
@@ -25,8 +28,12 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 )
+
+// wssUnavailable is routes.WSSUnavailable, which newRouteStatuses's parameter routes hides.
+var wssUnavailable = routes.WSSUnavailable
 
 // statusWindow is how many of the org's newest revisions a route status reads to find the latest
 // change of each route. An agent further behind is pending or in error with every route it serves.
@@ -37,6 +44,11 @@ const (
 	notServingOffline       = "OFFLINE"
 	notServingDisabled      = "DISABLED"
 	notServingNoDataSession = "NO_DATA_SESSION"
+	// notServingTransportUnavailable is the connectors' own reason, which the controller gives a
+	// connector of a release without WSS for a route on wss.
+	notServingTransportUnavailable = "TRANSPORT_UNAVAILABLE"
+	// notServingCertificatePending: the route's TLS CONNECT listener has no certificate yet.
+	notServingCertificatePending = "CERTIFICATE_PENDING"
 )
 
 // routeStatuses derives the status of an org's routes from what their agents report
@@ -56,6 +68,12 @@ type routeStatuses struct {
 	missing map[[2]string][]string
 	// maintenance are the http routes in maintenance.
 	maintenance map[string]bool
+	// noWSS are the online connectors, by connector and route, that lack the capability tunnel.wss
+	// for a route whose effective transport on them is wss: their snapshot leaves it out.
+	noWSS map[[2]string]bool
+	// certPending are the routes on a TLS CONNECT listener without a certificate, with the
+	// listener's hostname and the last ACME error as detail.
+	certPending map[string]string
 	// checked are the routes with a health check, and caps the capabilities of each agent's
 	// session, which say whether a connector runs checks (D133).
 	checked map[string]bool
@@ -72,7 +90,8 @@ type routeStatuses struct {
 func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, routes []*ent.Route, now time.Time) (*routeStatuses, error) {
 	v := &routeStatuses{now: now, enabled: map[string]bool{}, online: map[string]bool{}, states: map[string]*ent.AgentState{},
 		notReady: map[[2]string]*ent.ResourceStatus{}, links: map[[2]string]bool{}, targets: map[string][]*ent.RouteTarget{},
-		changed: map[string]int64{}, maintenance: map[string]bool{}, missing: map[[2]string][]string{}, checked: map[string]bool{}}
+		changed: map[string]int64{}, maintenance: map[string]bool{}, missing: map[[2]string][]string{}, checked: map[string]bool{},
+		noWSS: map[[2]string]bool{}, certPending: map[string]string{}}
 	inst, err := c.Instance.Get(sys, 1)
 	if err != nil {
 		return nil, err
@@ -84,6 +103,10 @@ func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, route
 	cons, err := c.Connector.Query().Where(connector.OrgID(org), connector.DecommissionedAtIsNil()).All(ctx)
 	if err != nil {
 		return nil, err
+	}
+	byID := map[string]*ent.Connector{}
+	for _, x := range cons {
+		byID[x.ID] = x
 	}
 	var ids []string
 	for _, g := range v.gateways {
@@ -164,7 +187,54 @@ func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, route
 	if err := v.readMissing(ctx, c, routes, caps); err != nil {
 		return nil, err
 	}
+	defaults, _, err := settings.Instance(sys, c)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range routes {
+		for _, t := range v.targets[r.ID] {
+			if x := byID[t.ConnectorID]; x != nil && v.online[x.ID] && wssUnavailable(r, x, defaults, caps[x.ID]) {
+				v.noWSS[[2]string{x.ID, r.ID}] = true
+			}
+		}
+	}
+	if err := v.readCertificates(ctx, c, routeIDs); err != nil {
+		return nil, err
+	}
 	return v, v.readChanges(sys, c, org, max(floor, 0))
+}
+
+// readCertificates notes the routes on a TLS CONNECT listener that has no certificate to present:
+// none it names that is active, no uploaded one that covers its hostname, and no ACME one yet.
+func (v *routeStatuses) readCertificates(ctx context.Context, c *ent.Client, routeIDs []string) error {
+	rows, err := c.RouteTCP.Query().Where(routetcp.RouteIDIn(routeIDs...),
+		routetcp.HasListenerWith(connectlistener.AuthModeEQ(connectlistener.AuthModeTLSBasic))).
+		WithListener(func(q *ent.ConnectListenerQuery) { q.WithCertificate() }).All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, t := range rows {
+		l := t.Edges.Listener
+		crt, err := certs.ListenerCertificate(ctx, c.Certificate, l)
+		if err != nil || crt != nil {
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		detail := l.Hostname
+		if l.CertificateID == nil {
+			acme, err := certs.ACMEOf(ctx, c.Certificate, l.OrgID, l.Hostname)
+			if err != nil {
+				return err
+			}
+			if acme != nil && acme.LastError != "" {
+				detail += ": " + acme.LastError
+			}
+		}
+		v.certPending[t.RouteID] = detail
+	}
+	return nil
 }
 
 // readMissing notes the capabilities each online agent of a route lacks for it, from the
@@ -266,6 +336,10 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: t.ID, Reason: notServingDisabled})
 		case !v.online[t.ConnectorID]:
 			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: t.ID, Reason: notServingOffline})
+		case v.noWSS[[2]string{t.ConnectorID, r.ID}]:
+			// Its release cannot dial WSS, so its snapshot leaves the route out.
+			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: t.ID, Reason: notServingTransportUnavailable,
+				Detail: "wss"})
 		case v.missing[[2]string{t.ConnectorID, r.ID}] != nil:
 			out.NotServing = append(out.NotServing, capabilityMissing(t.ID, v.missing[[2]string{t.ConnectorID, r.ID}]))
 		case nr != nil:
@@ -306,6 +380,10 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 		case v.missing[[2]string{g.ID, r.ID}] != nil:
 			// Its snapshot leaves the route out, so it neither serves it nor reports it.
 			out.NotServing = append(out.NotServing, capabilityMissing(g.ID, v.missing[[2]string{g.ID, r.ID}]))
+		case v.certPending[r.ID] != "":
+			// Its listener completes no TLS handshake without a certificate.
+			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: g.ID, Reason: notServingCertificatePending,
+				Detail: v.certPending[r.ID]})
 		case nr != nil:
 			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: g.ID, Reason: notReadyReason(nr.Reason), Detail: nr.Detail})
 		case !v.linked(g.ID, ready):

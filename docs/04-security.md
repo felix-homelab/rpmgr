@@ -245,6 +245,14 @@ later.
   certificate with the error recorded. A wildcard hostname in `acme` mode is refused with that
   reason, as its certificate needs DNS-01 (Phase 2, R42). The ACME client honours `HTTPS_PROXY`,
   else `ALL_PROXY`, and `NO_PROXY` (R44, [D93](14-open-decisions.md#engineering)).
+- **ACME for CONNECT listeners** (Phase 2) [R]: the job treats the hostname of a TLS CONNECT
+  listener with an enabled route and no certificate of its own as it treats a WSS hostname
+  ([Route edge rules](#route-edge-rules)): an uploaded certificate of the listener's org that
+  covers the name serves it instead; otherwise the job obtains and renews one, with its challenges
+  answered by the gateways of the listener's group, which alone get it. A hostname that lies
+  under no verified domain of the org any more is not renewed: its row records the reason, and
+  the certificate it has serves until it expires. A listener that closes with its last route
+  takes its hostname out of the job ([03](03-connections.md#http-connect-routes-phase-2)).
 - **Failed ACME attempts** [R]: a hostname whose attempt failed, such as one whose DNS does not
   point at its gateways yet, must not use up the account's limits at the CA. Let's Encrypt allows
   5 failed authorizations per name and account an hour, and pauses a name after 1 152 failures in
@@ -730,10 +738,16 @@ capabilities, so a gateway of an earlier release never serves a route without th
   passwords are hashed as for route basic auth ([Secrets at rest and in
   logs](#secrets-at-rest-and-in-logs)).
 - **WSS hostnames** of gateways lie under a verified domain of the gateway group's owner org, the
-  system org for a shared group, so that no org can make a gateway present a name it does not
-  hold. The certificate, from ACME or an upload, is an ordinary public certificate; the data
+  system org for a shared group, so that no org can make a gateway present a name it does not hold;
+  a WSS hostname is no route hostname of the group, also not one a wildcard route hostname of the
+  group covers, and no other gateway's, and a route cannot take one, nor a wildcard covering one.
+  The certificate, from ACME or an upload, is an ordinary public certificate; the data
   session's identity is only the inner mutual TLS to `<gateway-id>.gateway.<td>`
-  ([03](03-connections.md#transport-selection)).
+  ([03](03-connections.md#transport-selection)). An uploaded certificate of the org that covers the
+  name serves it; otherwise the ACME job obtains and renews one, as for routes, with its challenges
+  answered by that gateway alone ([Controller certificates](#controller-certificates)). Once the
+  name lies under no verified domain of the org any more, the job renews nothing: the certificate's
+  row says why, and the certificate it has serves until it expires.
 
 ### OIDC sign-in on routes
 

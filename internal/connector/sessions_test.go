@@ -103,6 +103,7 @@ type testGateway struct {
 	id       pki.Identity
 	addr     string
 	server   *tls.Config
+	h2       *tls.Config // the data session's TLS over TCP and inside WSS
 	ctx      context.Context
 	sessions atomic.Pointer[gateway.Sessions]
 	// quicSessions, if set, serves the QUIC sessions, so that a test sees which transport carries
@@ -115,6 +116,8 @@ type testGateway struct {
 	tcpErrs      chan error  // failed TCP handshakes
 	quicConns    atomic.Int64
 	tcpEnded     atomic.Int64                       // TCP sessions the gateway served and removed
+	tcpConns     atomic.Int64                       // connections to the tunnel endpoint
+	wssConns     atomic.Int64                       // connections to the WSS listener
 	lastQUIC     atomic.Pointer[tunnel.QUICSession] // the last QUIC session accepted, for a gateway that misbehaves
 	// quicLimit, if set, refuses a QUIC session while quicLive sessions are served, as a gateway
 	// at its cap of sessions per connector does.
@@ -188,9 +191,9 @@ func startGatewayWith(t *testing.T, w *world, id pki.Identity, cert tls.Certific
 	} else {
 		g.serveQUIC(t, pc)
 	}
-	h2 := g.server.Clone()
-	h2.NextProtos = []string{tunnel.ALPNH2}
-	h2.GetConfigForClient = func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
+	g.h2 = g.server.Clone()
+	g.h2.NextProtos = []string{tunnel.ALPNH2}
+	g.h2.GetConfigForClient = func(hi *tls.ClientHelloInfo) (*tls.Config, error) {
 		g.serverName <- hi.ServerName
 		return nil, nil
 	}
@@ -200,24 +203,27 @@ func startGatewayWith(t *testing.T, w *world, id pki.Identity, cert tls.Certific
 			if err != nil {
 				return
 			}
-			go func() {
-				tc := tls.Server(c, h2)
-				if err := tc.HandshakeContext(g.ctx); err != nil {
-					g.tcpErrs <- err
-					_ = c.Close()
-					return
-				}
-				s, err := tunnel.NewH2Gateway(tc, tunnel.DefaultH2Windows())
-				if err != nil {
-					_ = tc.Close()
-					return
-				}
-				_ = g.sessions.Load().Serve(g.ctx, s, tc.ConnectionState().PeerCertificates[0])
-				g.tcpEnded.Add(1)
-			}()
+			g.tcpConns.Add(1)
+			go g.serveH2(tls.Server(c, g.h2))
 		}
 	}()
 	return g
+}
+
+// serveH2 serves a data session over TLS and reverse HTTP/2, over TCP or inside WSS.
+func (g *testGateway) serveH2(tc *tls.Conn) {
+	if err := tc.HandshakeContext(g.ctx); err != nil {
+		g.tcpErrs <- err
+		_ = tc.Close()
+		return
+	}
+	s, err := tunnel.NewH2Gateway(tc, tunnel.DefaultH2Windows())
+	if err != nil {
+		_ = tc.Close()
+		return
+	}
+	_ = g.sessions.Load().Serve(g.ctx, s, tc.ConnectionState().PeerCertificates[0])
+	g.tcpEnded.Add(1)
 }
 
 func (g *testGateway) track(c io.Closer) {
@@ -359,38 +365,49 @@ func echo(t *testing.T, s *gateway.Sessions, route string) error {
 }
 
 // TestGateway_PerGatewayTunnelEndpoints: the connector dials each gateway at that gateway's own
-// tunnel endpoint with ServerName <gateway-id>.gateway.<td> and holds a session to every gateway:
-// four QUIC sessions, or two TCP connections on h2.
+// tunnel endpoint, or for WSS at port 443 of its own WSS hostname, with ServerName
+// <gateway-id>.gateway.<td>, and holds a session to every gateway: four QUIC sessions, or two TCP
+// connections on h2 or on WSS.
 func TestGateway_PerGatewayTunnelEndpoints(t *testing.T) {
 	w := newWorld(t)
-	id1, id2 := w.gatewayID(), w.gatewayID()
+	id1, id2, id3 := w.gatewayID(), w.gatewayID(), w.gatewayID()
 	g1 := startGateway(t, w, id1, w.leaf(t, w.is, w.inter, id1))
 	g2 := startGateway(t, w, id2, w.leaf(t, w.is, w.inter, id2))
-	m := newConnector(t, w)
+	g3 := startGateway(t, w, id3, w.leaf(t, w.is, w.inter, id3))
+	ca := newPublicCA(t, "public root")
+	via := &dialVia{hosts: map[string]string{wssHost + ":443": g3.serveWSS(t, ca)}}
+	m := newConnectorOptions(t, w, func(o *connector.Options) { o.Dial, o.PublicRoots = via.dial, ca.pool })
 	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
 	m.Set([]connector.Gateway{
 		{ID: id1.ID, Endpoints: []string{g1.addr}, Routes: map[string]string{"rt_1": connector.TransportQUIC}},
 		{ID: id2.ID, Endpoints: []string{g2.addr}, Routes: map[string]string{"rt_1": connector.TransportH2}},
+		{ID: id3.ID, Endpoints: []string{g3.addr}, WSSHostname: wssHost, Routes: map[string]string{"rt_1": connector.TransportWSS}},
 	})
 	// The gateway counts a session before its SessionWelcome, the connector after it: wait for both.
 	eventually(t, "not every gateway has its sessions", func() bool {
 		got := m.Count()
 		return g1.sessions.Load().Count()["quic"] == connector.QUICSessions && g2.sessions.Load().Count()["h2"] == 2 &&
-			got[id1.ID+"/quic"] == connector.QUICSessions && got[id2.ID+"/h2"] == 2 && len(got) == 2
+			g3.sessions.Load().Count()["wss"] == 2 && got[id1.ID+"/quic"] == connector.QUICSessions && got[id2.ID+"/h2"] == 2 &&
+			got[id3.ID+"/wss"] == 2 && len(got) == 3
 	})
-	for range 2 {
-		if sni := <-g2.serverName; sni != id2.DNSName() {
-			t.Fatalf("ServerName %q, want %q", sni, id2.DNSName())
+	for _, g := range []*testGateway{g2, g3} {
+		for range 2 {
+			if sni := <-g.serverName; sni != g.id.DNSName() {
+				t.Fatalf("ServerName %q, want %q", sni, g.id.DNSName())
+			}
 		}
 	}
 	// gateway.QUICTLS completes a handshake only for its own name, so the QUIC session proves it.
-	for _, g := range []*testGateway{g1, g2} {
+	for _, g := range []*testGateway{g1, g2, g3} {
 		if err := echo(t, g.sessions.Load(), "rt_1"); err != nil {
 			t.Fatalf("a stream through %s: %v", g.id.ID, err)
 		}
 	}
-	if len(g1.serverName) != 0 || g2.quicConns.Load() != 0 {
+	if len(g1.serverName) != 0 || g2.quicConns.Load() != 0 || g3.quicConns.Load() != 0 || g3.tcpConns.Load() != 0 {
 		t.Fatal("a gateway was dialled with a transport its entry does not ask for")
+	}
+	if n := via.count(wssHost + ":443"); n != 2 || g3.wssConns.Load() != 2 {
+		t.Fatalf("%d dials of the WSS hostname, %d at the gateway; want 2", n, g3.wssConns.Load())
 	}
 }
 

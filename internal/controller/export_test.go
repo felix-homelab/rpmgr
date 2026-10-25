@@ -22,6 +22,14 @@ func SetRunTimers(t testing.TB, drain, reload time.Duration) {
 	t.Cleanup(func() { drainWait, webCertReload = oldDrain, oldReload })
 }
 
+// SetOperationTimers shortens the ticket validity and the deadline of imperative operations for
+// one test, which must not run in parallel with others.
+func SetOperationTimers(t testing.TB, ticket, deadline time.Duration) {
+	oldTicket, oldDeadline := ticketValid, operationDeadline
+	ticketValid, operationDeadline = ticket, deadline
+	t.Cleanup(func() { ticketValid, operationDeadline = oldTicket, oldDeadline })
+}
+
 // WebMaxStreams is how many requests one HTTP/2 connection to the web server may have open.
 const WebMaxStreams = webMaxStreams
 

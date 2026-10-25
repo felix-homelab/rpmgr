@@ -163,6 +163,20 @@ func (_c *GatewayCreate) SetNillableDecommissionedAt(v *time.Time) *GatewayCreat
 	return _c
 }
 
+// SetWssHostname sets the "wss_hostname" field.
+func (_c *GatewayCreate) SetWssHostname(v string) *GatewayCreate {
+	_c.mutation.SetWssHostname(v)
+	return _c
+}
+
+// SetNillableWssHostname sets the "wss_hostname" field if the given value is not nil.
+func (_c *GatewayCreate) SetNillableWssHostname(v *string) *GatewayCreate {
+	if v != nil {
+		_c.SetWssHostname(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *GatewayCreate) SetID(v string) *GatewayCreate {
 	_c.mutation.SetID(v)
@@ -403,6 +417,10 @@ func (_c *GatewayCreate) createSpec() (*Gateway, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DecommissionedAt(); ok {
 		_spec.SetField(gateway.FieldDecommissionedAt, field.TypeTime, value)
 		_node.DecommissionedAt = &value
+	}
+	if value, ok := _c.mutation.WssHostname(); ok {
+		_spec.SetField(gateway.FieldWssHostname, field.TypeString, value)
+		_node.WssHostname = &value
 	}
 	if nodes := _c.mutation.GroupIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

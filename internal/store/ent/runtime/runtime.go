@@ -21,6 +21,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectauthority"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -53,6 +55,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routelimit"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -896,6 +899,112 @@ func init() {
 	configseqDescID := configseqFields[0].Descriptor()
 	// configseq.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	configseq.IDValidator = configseqDescID.Validators[0].(func(int) error)
+	connectauthorityMixin := schema.ConnectAuthority{}.Mixin()
+	connectauthority.Policy = privacy.NewPolicies(connectauthorityMixin[0], schema.ConnectAuthority{})
+	connectauthority.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := connectauthority.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	connectauthorityMixinHooks0 := connectauthorityMixin[0].Hooks()
+
+	connectauthority.Hooks[1] = connectauthorityMixinHooks0[0]
+	connectauthorityMixinInters0 := connectauthorityMixin[0].Interceptors()
+	connectauthority.Interceptors[0] = connectauthorityMixinInters0[0]
+	connectauthorityMixinFields0 := connectauthorityMixin[0].Fields()
+	_ = connectauthorityMixinFields0
+	connectauthorityFields := schema.ConnectAuthority{}.Fields()
+	_ = connectauthorityFields
+	// connectauthorityDescOrgID is the schema descriptor for org_id field.
+	connectauthorityDescOrgID := connectauthorityMixinFields0[0].Descriptor()
+	// connectauthority.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	connectauthority.OrgIDValidator = connectauthorityDescOrgID.Validators[0].(func(string) error)
+	// connectauthorityDescConnectListenerID is the schema descriptor for connect_listener_id field.
+	connectauthorityDescConnectListenerID := connectauthorityFields[0].Descriptor()
+	// connectauthority.ConnectListenerIDValidator is a validator for the "connect_listener_id" field. It is called by the builders before save.
+	connectauthority.ConnectListenerIDValidator = connectauthorityDescConnectListenerID.Validators[0].(func(string) error)
+	// connectauthorityDescRouteID is the schema descriptor for route_id field.
+	connectauthorityDescRouteID := connectauthorityFields[1].Descriptor()
+	// connectauthority.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
+	connectauthority.RouteIDValidator = connectauthorityDescRouteID.Validators[0].(func(string) error)
+	// connectauthorityDescAuthority is the schema descriptor for authority field.
+	connectauthorityDescAuthority := connectauthorityFields[2].Descriptor()
+	// connectauthority.AuthorityValidator is a validator for the "authority" field. It is called by the builders before save.
+	connectauthority.AuthorityValidator = func() func(string) error {
+		validators := connectauthorityDescAuthority.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(authority string) error {
+			for _, fn := range fns {
+				if err := fn(authority); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	connectlistenerMixin := schema.ConnectListener{}.Mixin()
+	connectlistener.Policy = privacy.NewPolicies(connectlistenerMixin[0], schema.ConnectListener{})
+	connectlistener.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := connectlistener.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	connectlistenerMixinHooks0 := connectlistenerMixin[0].Hooks()
+
+	connectlistener.Hooks[1] = connectlistenerMixinHooks0[0]
+	connectlistenerMixinInters0 := connectlistenerMixin[0].Interceptors()
+	connectlistener.Interceptors[0] = connectlistenerMixinInters0[0]
+	connectlistenerMixinFields0 := connectlistenerMixin[0].Fields()
+	_ = connectlistenerMixinFields0
+	connectlistenerFields := schema.ConnectListener{}.Fields()
+	_ = connectlistenerFields
+	// connectlistenerDescOrgID is the schema descriptor for org_id field.
+	connectlistenerDescOrgID := connectlistenerMixinFields0[0].Descriptor()
+	// connectlistener.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	connectlistener.OrgIDValidator = connectlistenerDescOrgID.Validators[0].(func(string) error)
+	// connectlistenerDescGatewayGroupID is the schema descriptor for gateway_group_id field.
+	connectlistenerDescGatewayGroupID := connectlistenerFields[1].Descriptor()
+	// connectlistener.GatewayGroupIDValidator is a validator for the "gateway_group_id" field. It is called by the builders before save.
+	connectlistener.GatewayGroupIDValidator = connectlistenerDescGatewayGroupID.Validators[0].(func(string) error)
+	// connectlistenerDescPortAllocationID is the schema descriptor for port_allocation_id field.
+	connectlistenerDescPortAllocationID := connectlistenerFields[2].Descriptor()
+	// connectlistener.PortAllocationIDValidator is a validator for the "port_allocation_id" field. It is called by the builders before save.
+	connectlistener.PortAllocationIDValidator = connectlistenerDescPortAllocationID.Validators[0].(func(string) error)
+	// connectlistenerDescHostname is the schema descriptor for hostname field.
+	connectlistenerDescHostname := connectlistenerFields[4].Descriptor()
+	// connectlistener.DefaultHostname holds the default value on creation for the hostname field.
+	connectlistener.DefaultHostname = connectlistenerDescHostname.Default.(string)
+	// connectlistener.HostnameValidator is a validator for the "hostname" field. It is called by the builders before save.
+	connectlistener.HostnameValidator = connectlistenerDescHostname.Validators[0].(func(string) error)
+	// connectlistenerDescID is the schema descriptor for id field.
+	connectlistenerDescID := connectlistenerFields[0].Descriptor()
+	// connectlistener.DefaultID holds the default value on creation for the id field.
+	connectlistener.DefaultID = connectlistenerDescID.Default.(func() string)
+	// connectlistener.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	connectlistener.IDValidator = func() func(string) error {
+		validators := connectlistenerDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	connectorMixin := schema.Connector{}.Mixin()
 	connector.Policy = privacy.NewPolicies(connectorMixin[0], schema.Connector{})
 	connector.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -2853,6 +2962,51 @@ func init() {
 	routehostnameDescDomainID := routehostnameFields[6].Descriptor()
 	// routehostname.DomainIDValidator is a validator for the "domain_id" field. It is called by the builders before save.
 	routehostname.DomainIDValidator = routehostnameDescDomainID.Validators[0].(func(string) error)
+	routelimitMixin := schema.RouteLimit{}.Mixin()
+	routelimit.Policy = privacy.NewPolicies(routelimitMixin[0], schema.RouteLimit{})
+	routelimit.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := routelimit.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	routelimitMixinHooks0 := routelimitMixin[0].Hooks()
+
+	routelimit.Hooks[1] = routelimitMixinHooks0[0]
+	routelimitMixinInters0 := routelimitMixin[0].Interceptors()
+	routelimit.Interceptors[0] = routelimitMixinInters0[0]
+	routelimitMixinFields0 := routelimitMixin[0].Fields()
+	_ = routelimitMixinFields0
+	routelimitFields := schema.RouteLimit{}.Fields()
+	_ = routelimitFields
+	// routelimitDescOrgID is the schema descriptor for org_id field.
+	routelimitDescOrgID := routelimitMixinFields0[0].Descriptor()
+	// routelimit.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	routelimit.OrgIDValidator = routelimitDescOrgID.Validators[0].(func(string) error)
+	// routelimitDescRouteID is the schema descriptor for route_id field.
+	routelimitDescRouteID := routelimitFields[0].Descriptor()
+	// routelimit.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
+	routelimit.RouteIDValidator = routelimitDescRouteID.Validators[0].(func(string) error)
+	// routelimitDescMaxConnections is the schema descriptor for max_connections field.
+	routelimitDescMaxConnections := routelimitFields[1].Descriptor()
+	// routelimit.DefaultMaxConnections holds the default value on creation for the max_connections field.
+	routelimit.DefaultMaxConnections = routelimitDescMaxConnections.Default.(int64)
+	// routelimit.MaxConnectionsValidator is a validator for the "max_connections" field. It is called by the builders before save.
+	routelimit.MaxConnectionsValidator = routelimitDescMaxConnections.Validators[0].(func(int64) error)
+	// routelimitDescRequestsPerSec is the schema descriptor for requests_per_sec field.
+	routelimitDescRequestsPerSec := routelimitFields[2].Descriptor()
+	// routelimit.DefaultRequestsPerSec holds the default value on creation for the requests_per_sec field.
+	routelimit.DefaultRequestsPerSec = routelimitDescRequestsPerSec.Default.(int64)
+	// routelimit.RequestsPerSecValidator is a validator for the "requests_per_sec" field. It is called by the builders before save.
+	routelimit.RequestsPerSecValidator = routelimitDescRequestsPerSec.Validators[0].(func(int64) error)
+	// routelimitDescBandwidthBytesPerSec is the schema descriptor for bandwidth_bytes_per_sec field.
+	routelimitDescBandwidthBytesPerSec := routelimitFields[3].Descriptor()
+	// routelimit.DefaultBandwidthBytesPerSec holds the default value on creation for the bandwidth_bytes_per_sec field.
+	routelimit.DefaultBandwidthBytesPerSec = routelimitDescBandwidthBytesPerSec.Default.(int64)
+	// routelimit.BandwidthBytesPerSecValidator is a validator for the "bandwidth_bytes_per_sec" field. It is called by the builders before save.
+	routelimit.BandwidthBytesPerSecValidator = routelimitDescBandwidthBytesPerSec.Validators[0].(func(int64) error)
 	routepolicyMixin := schema.RoutePolicy{}.Mixin()
 	routepolicy.Policy = privacy.NewPolicies(routepolicyMixin[0], schema.RoutePolicy{})
 	routepolicy.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -2915,12 +3069,8 @@ func init() {
 	routetcpDescRouteID := routetcpFields[0].Descriptor()
 	// routetcp.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
 	routetcp.RouteIDValidator = routetcpDescRouteID.Validators[0].(func(string) error)
-	// routetcpDescPortAllocationID is the schema descriptor for port_allocation_id field.
-	routetcpDescPortAllocationID := routetcpFields[1].Descriptor()
-	// routetcp.PortAllocationIDValidator is a validator for the "port_allocation_id" field. It is called by the builders before save.
-	routetcp.PortAllocationIDValidator = routetcpDescPortAllocationID.Validators[0].(func(string) error)
 	// routetcpDescIdleTimeoutSeconds is the schema descriptor for idle_timeout_seconds field.
-	routetcpDescIdleTimeoutSeconds := routetcpFields[3].Descriptor()
+	routetcpDescIdleTimeoutSeconds := routetcpFields[4].Descriptor()
 	// routetcp.DefaultIdleTimeoutSeconds holds the default value on creation for the idle_timeout_seconds field.
 	routetcp.DefaultIdleTimeoutSeconds = routetcpDescIdleTimeoutSeconds.Default.(int)
 	// routetcp.IdleTimeoutSecondsValidator is a validator for the "idle_timeout_seconds" field. It is called by the builders before save.
