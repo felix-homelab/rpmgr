@@ -149,6 +149,7 @@ const (
 	TransportAuto Transport = "auto"
 	TransportQuic Transport = "quic"
 	TransportH2   Transport = "h2"
+	TransportWss  Transport = "wss"
 )
 
 func (t Transport) String() string {
@@ -158,7 +159,7 @@ func (t Transport) String() string {
 // TransportValidator is a validator for the "transport" field enum values. It is called by the builders before save.
 func TransportValidator(t Transport) error {
 	switch t {
-	case TransportAuto, TransportQuic, TransportH2:
+	case TransportAuto, TransportQuic, TransportH2, TransportWss:
 		return nil
 	default:
 		return fmt.Errorf("route: invalid enum value for transport field: %q", t)

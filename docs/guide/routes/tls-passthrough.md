@@ -74,7 +74,7 @@ Quote a wildcard hostname, as above, so that the shell does not expand it.
 |---|---|---|
 | Name, unique in the organisation | **Name** | `--name` |
 | Description, labels | **Description**, **Labels** | `--description`, `--label key=value` |
-| Data-session transport | **Transport** | `--transport auto\|quic\|h2` |
+| Data-session transport | **Transport** | `--transport auto\|quic\|h2\|wss` |
 | Hostnames, 1 to 100 | **Hostnames**, one per line | `--hostname`, repeated |
 | Access policies, IP rules only | **Access policies** card on the route's page | `--policy`, repeated |
 | Served or not | **Enabled** switch on the route's page | `rpmgr enable route`, `rpmgr disable route` |

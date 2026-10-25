@@ -793,7 +793,7 @@ rpmgr create route [flags]
 | `--tcp-udp` |  | a route on one public port number with both TCP and UDP |
 | `--tls-mode string` |  | http: acme or certificate |
 | `--tls-passthrough` |  | a TLS route the gateway passes through by its SNI |
-| `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
+| `--transport string` |  | the data-session transport: auto, quic, h2 or wss; empty is the connector's |
 | `--udp` |  | a udp route on a public port |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
@@ -873,6 +873,7 @@ rpmgr create gateway [flags]
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--tunnel-endpoint value` |  | a host:port at which connectors reach it; repeat for more |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
+| `--wss-hostname string` |  | its WSS hostname, at which connectors reach it through TLS-intercepting proxies; empty removes it |
 
 ## rpmgr create port-pool
 
@@ -1060,7 +1061,7 @@ rpmgr update route [flags] <id or name>
 | `--set-request-header value` |  | http: a header Name=value set towards the upstream; repeat for more |
 | `--set-response-header value` |  | http: a header Name=value set towards the client; repeat for more |
 | `--tls-mode string` |  | http: acme or certificate |
-| `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
+| `--transport string` |  | the data-session transport: auto, quic, h2 or wss; empty is the connector's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
 
@@ -1103,7 +1104,7 @@ rpmgr update connector [flags] <id or name>
 | `--label value` |  | a label key=value; repeat for more; the labels replace the old ones |
 | `--name string` |  | the connector's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
-| `--transport string` |  | the data-session transport: auto, quic or h2; empty is the instance's |
+| `--transport string` |  | the data-session transport: auto, quic, h2 or wss; empty is the instance's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr update gateway-group
@@ -1139,6 +1140,7 @@ rpmgr update gateway [flags] <id or name>
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--tunnel-endpoint value` |  | a host:port at which connectors reach it; repeat for more |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
+| `--wss-hostname string` |  | its WSS hostname, at which connectors reach it through TLS-intercepting proxies; empty removes it |
 
 ## rpmgr update port-pool
 
@@ -1486,7 +1488,7 @@ rpmgr preview route [flags]
 | `--tcp-udp` |  | a route on one public port number with both TCP and UDP |
 | `--tls-mode string` |  | http: acme or certificate |
 | `--tls-passthrough` |  | a TLS route the gateway passes through by its SNI |
-| `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
+| `--transport string` |  | the data-session transport: auto, quic, h2 or wss; empty is the connector's |
 | `--udp` |  | a udp route on a public port |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |

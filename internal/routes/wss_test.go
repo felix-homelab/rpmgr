@@ -8,10 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
+	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
@@ -197,6 +202,59 @@ func TestCompile_ConnectorGatewayWSS(t *testing.T) {
 		}
 		if got := wss(); got != "" {
 			t.Fatalf("a connector without tunnel.wss got %q", got)
+		}
+	})
+}
+
+// TestCompile_WSSTransport (#639): a route whose effective transport is wss, by its own setting,
+// its connector's or the instance default, reaches a connector with the capability tunnel.wss as
+// TRANSPORT_POLICY_WSS; a connector without it gets neither the route nor the route on its
+// gateways' entries, which it would refuse, and the route status says transport_unavailable.
+func TestCompile_WSSTransport(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		of := func(caps ...string) (route *agentv1.ConnectorRoute, onGateway bool) {
+			t.Helper()
+			for _, r := range f.compileAs(t, pki.KindConnector, f.c1, caps...) {
+				if r.GetId() == f.r1 {
+					route = r.GetConnectorRoute()
+				}
+				if g := r.GetConnectorGateway(); g != nil && slices.Contains(g.GetRoutes(), f.r1) {
+					onGateway = true
+				}
+			}
+			return route, onGateway
+		}
+		for _, step := range []struct {
+			name string
+			set  func()
+		}{
+			{"route", func() { c.Route.UpdateOneID(f.r1).SetTransport("wss").ExecX(f.sys) }},
+			{"connector", func() {
+				c.Route.UpdateOneID(f.r1).ClearTransport().ExecX(f.sys)
+				c.Connector.UpdateOneID(f.c1).SetTransport("wss").ExecX(f.sys)
+			}},
+			{"instance", func() {
+				c.Connector.UpdateOneID(f.c1).ClearTransport().ExecX(f.sys)
+				if _, err := settings.UpdateInstance(f.sys, db, &rpmgrv1.InstanceSettings{DefaultTransport: rpmgrv1.TransportPolicy_TRANSPORT_POLICY_WSS.Enum()},
+					&fieldmaskpb.FieldMask{Paths: []string{"default_transport"}}, 0); err != nil {
+					t.Fatal(err)
+				}
+			}},
+		} {
+			name := step.name
+			step.set()
+			if r, on := of(agentproto.CapTunnelWSS); r.GetTransport() != agentv1.TransportPolicy_TRANSPORT_POLICY_WSS || !on {
+				t.Errorf("%s on wss, a connector with tunnel.wss: %v, on its gateway %v", name, r, on)
+			}
+			if r, on := of(); r != nil || on {
+				t.Errorf("%s on wss, a connector without tunnel.wss got %v, on its gateway %v", name, r, on)
+			}
+		}
+		c.Route.UpdateOneID(f.r1).SetTransport("h2").ExecX(f.sys)
+		if r, on := of(); r.GetTransport() != agentv1.TransportPolicy_TRANSPORT_POLICY_H2 || !on {
+			t.Errorf("a route pinned to h2 over the wss default: %v, on its gateway %v", r, on)
 		}
 	})
 }

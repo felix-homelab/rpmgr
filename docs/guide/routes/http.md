@@ -113,7 +113,7 @@ type and its gateway group never change.
 | Name, unique in the organisation | **Name** | `--name` | required |
 | Description for people | **Description** | `--description` | empty |
 | Labels | **Labels**, `key=value` per line | `--label key=value`, repeated | none |
-| Data-session transport | **Transport** | `--transport auto\|quic\|h2` | the connector's |
+| Data-session transport | **Transport** | `--transport auto\|quic\|h2\|wss` | the connector's |
 | Hostnames, 1 to 100 | **Hostnames**, one per line | `--hostname`, repeated | required |
 | Path prefix | **Path prefix** | `--path-prefix` | every path |
 | Certificate source | **TLS certificate**: **From ACME** or **Uploaded** | `--tls-mode acme\|certificate` | ACME |

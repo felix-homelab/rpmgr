@@ -124,7 +124,7 @@ message Route {
   repeated RouteTarget targets = 20;
   repeated string policy_ids = 21;
   RouteLimits limits = 22;             // Phase 2: for the route as a whole, divided among gateways
-  DataTransport transport = 23;        // AUTO, QUIC, H2; UNSPECIFIED = the connector's (03)
+  DataTransport transport = 23;        // AUTO, QUIC, H2, WSS (Phase 2); UNSPECIFIED = the connector's (03)
   google.protobuf.Timestamp create_time = 24;  // output only
   google.protobuf.Timestamp update_time = 25;  // output only
   string update_user_id = 26;          // output only

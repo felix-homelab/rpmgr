@@ -80,7 +80,7 @@ func (f *routeFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.StringVar(&f.name, "name", "", "the route's name, unique in the org")
 	fs.StringVar(&f.description, "description", "", "a description for people")
 	fs.Var(f.labels, "label", "a label key=value; repeat for more")
-	fs.StringVar(&f.transport, "transport", "", "the data-session transport: auto, quic or h2; empty is the connector's")
+	fs.StringVar(&f.transport, "transport", "", "the data-session transport: auto, quic, h2 or wss; empty is the connector's")
 	fs.Var(&f.policies, "policy", "an access policy, by name or ID; repeat for more")
 	fs.BoolVar(&f.disabled, "disabled", false, "the route is not served")
 	fs.Var(&f.hostnames, "hostname", "a hostname of an http or tls-passthrough route; repeat for more")
@@ -180,7 +180,7 @@ func (f *routeFlags) healthCheckOf(set map[string]bool, cur *rpmgrv1.HealthCheck
 
 // enums are the command line's names of the API's enum values.
 var enums = map[string]map[string]int32{
-	"transport": {"": 0, "auto": 1, "quic": 2, "h2": 3},
+	"transport": {"": 0, "auto": 1, "quic": 2, "h2": 3, "wss": 4},
 	"tls-mode":  {"acme": 1, "certificate": 2},
 	"port80":    {"redirect": 1, "serve": 2, "off": 3},
 }

@@ -542,7 +542,8 @@ func (r *Routes) now() time.Time {
 
 // storeRouteTransports are the store's transport policies by the API's; unspecified is none.
 var storeRouteTransports = map[rpmgrv1.DataTransport]route.Transport{rpmgrv1.DataTransport_DATA_TRANSPORT_AUTO: route.TransportAuto,
-	rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC: route.TransportQuic, rpmgrv1.DataTransport_DATA_TRANSPORT_H2: route.TransportH2}
+	rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC: route.TransportQuic, rpmgrv1.DataTransport_DATA_TRANSPORT_H2: route.TransportH2,
+	rpmgrv1.DataTransport_DATA_TRANSPORT_WSS: route.TransportWss}
 
 // routeOf is a route as the API shows it, with its spec and hostnames.
 func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route, error) {

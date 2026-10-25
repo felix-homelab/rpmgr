@@ -137,7 +137,7 @@ The hostnames' DNS records must point at the group's gateways; rpmgr does not pu
 |---|---|---|---|
 | Name, unique in the organisation | **Name** | `--name` | required |
 | Description, labels | **Description**, **Labels** | `--description`, `--label key=value` | empty |
-| Data-session transport | **Transport** | `--transport auto\|quic\|h2` | the connector's |
+| Data-session transport | **Transport** | `--transport auto\|quic\|h2\|wss` | the connector's |
 | Public port | **Public port** | `--port` | `0`: a free port of the pools |
 | TCP: idle timeout of a connection | **Idle timeout (seconds)** | `--idle-timeout` | see below |
 | UDP: idle timeout of a flow | **Flow idle timeout (seconds)** | `--idle-timeout` | see below |

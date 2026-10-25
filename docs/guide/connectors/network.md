@@ -38,20 +38,28 @@ flowchart LR
 - A connector keeps a data session to **every** gateway of a group whose routes it serves, so that
   each gateway can reach it ([03](../../03-connections.md#multiple-gateways)).
 
-## Two transports: QUIC, and TLS with HTTP/2
+## Transports: QUIC, TLS with HTTP/2, and WSS
 
-A data session runs over one of two transports:
+A data session runs over one of three transports:
 
 | Transport | Web UI | Network | Good for |
 |---|---|---|---|
 | `quic` | **QUIC** | UDP 443 | The default first choice: no head-of-line blocking between connections, a fast handshake, and UDP routes as datagrams |
 | `h2` | **TLS and HTTP/2** | TCP 443, directly or through a proxy | Networks that block UDP or allow only a proxy; bulk transfers over long-distance paths |
+| `wss` | **WSS** | TCP 443 to the gateway's WSS hostname, directly or through a proxy | Networks whose proxy intercepts TLS: the connector's own TLS runs inside a WebSocket, which such a proxy lets through |
 
 The setting `auto` (**QUIC, falling back to TLS and HTTP/2**) tries both: the connector starts
 QUIC, and TCP a moment later or as soon as QUIC fails, and keeps whichever session is up first. It
 remembers the winner for each gateway and network, tries QUIC again from time to time while it uses
-TCP, and moves to TCP when UDP stops working in the middle of a session. The timings are in
+TCP, and moves to TCP when UDP stops working in the middle of a session. When TLS over TCP fails
+in its handshake, as a proxy that intercepts TLS makes it fail, and the gateway has a WSS hostname,
+`auto` moves to WSS, and from there tries QUIC and TCP again from time to time. The timings are in
 [03](../../03-connections.md#transports-and-fallback).
+
+WSS needs a **WSS hostname** on the gateway ([Gateways](../gateways.md#wss-hostnames)) and a
+connector of a release that knows WSS. Through an intercepting proxy, the proxy sees which gateway
+the connector reaches, as with TLS over TCP, but none of the traffic; the connector still checks
+the gateway against the root it pinned at enrollment.
 
 The connector uses TCP, `h2`, when:
 
@@ -74,7 +82,7 @@ The transport is set on three levels; the most specific one that is set applies:
    Instance Admin changed it.
 
 A connector keeps the sessions its routes need: on `auto` with one route pinned to `h2`, it keeps
-its QUIC session and a TCP session next to it. A **pinned** transport, `quic` or `h2`, never falls
+its QUIC session and a TCP session next to it. A **pinned** transport, `quic`, `h2` or `wss`, never falls
 back: if it cannot be established, the routes that need it are not ready on that connector, with
 the reason **no data session over the route's transport**
 ([Troubleshooting](../operations/troubleshooting.md#a-route-is-not-ready)). A change takes effect
@@ -96,6 +104,7 @@ for new connections at once; open connections finish on their session.
 rpmgr update connector --transport h2 nas           # pin a connector to TCP
 rpmgr update connector --transport '' nas           # back to the instance's default
 rpmgr update route --transport quic game-server     # pin one route
+rpmgr update connector --transport wss office-nas   # behind a proxy that intercepts TLS
 rpmgr update settings --instance --set default_transport=h2
 ```
 

@@ -477,7 +477,8 @@ func connectorTargets(ctx context.Context, tx *ent.Tx, a snapshot.Agent) (con *e
 
 // ConnectorRoutes compiles a connector's routes: for every enabled route with an enabled target on
 // it, its type, its targets and the effective transport. A disabled or decommissioned connector
-// gets none.
+// gets none, and one without the capability tunnel.wss no route whose effective transport is wss,
+// which it would refuse (wssUnavailable).
 func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.Resource, error) {
 	con, targets, inst, err := connectorTargets(ctx, tx, a)
 	if con == nil || err != nil {
@@ -487,6 +488,9 @@ func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agen
 	var ids []string
 	for _, t := range targets {
 		r := t.Edges.Route
+		if wssUnavailable(r, con, inst, a) {
+			continue
+		}
 		cr := byRoute[r.ID]
 		if cr == nil {
 			cr = &agentv1.ConnectorRoute{Type: string(r.Type), Transport: effective(r, con, inst)}
@@ -604,6 +608,9 @@ func ConnectorGateways(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*ag
 	byGroup := map[string]*need{}
 	for _, t := range targets {
 		r := t.Edges.Route
+		if wssUnavailable(r, con, inst, a) {
+			continue
+		}
 		n := byGroup[r.GatewayGroupID]
 		if n == nil {
 			n = &need{transports: map[agentv1.TransportPolicy]bool{}, routes: map[string]bool{}}
@@ -647,8 +654,22 @@ func effective(r *ent.Route, con *ent.Connector, inst *rpmgrv1.InstanceSettings)
 		return agentv1.TransportPolicy_TRANSPORT_POLICY_QUIC
 	case rpmgrv1.TransportPolicy_TRANSPORT_POLICY_H2:
 		return agentv1.TransportPolicy_TRANSPORT_POLICY_H2
+	case rpmgrv1.TransportPolicy_TRANSPORT_POLICY_WSS:
+		return agentv1.TransportPolicy_TRANSPORT_POLICY_WSS
 	}
 	return agentv1.TransportPolicy_TRANSPORT_POLICY_AUTO
+}
+
+// wssUnavailable reports whether route r's effective transport on connector con is wss while the
+// connector, a, lacks the capability tunnel.wss: it cannot serve the route, whose status says
+// transport_unavailable: wss for it (docs/03-connections.md, "Transport selection").
+func wssUnavailable(r *ent.Route, con *ent.Connector, inst *rpmgrv1.InstanceSettings, a snapshot.Agent) bool {
+	return effective(r, con, inst) == agentv1.TransportPolicy_TRANSPORT_POLICY_WSS && !a.Has(agentproto.CapTunnelWSS)
+}
+
+// WSSUnavailable is wssUnavailable for a connector whose capabilities are caps.
+func WSSUnavailable(r *ent.Route, con *ent.Connector, inst *rpmgrv1.InstanceSettings, caps []string) bool {
+	return wssUnavailable(r, con, inst, snapshot.Agent{Capabilities: caps})
 }
 
 func policyOf(s string) agentv1.TransportPolicy {
@@ -657,6 +678,8 @@ func policyOf(s string) agentv1.TransportPolicy {
 		return agentv1.TransportPolicy_TRANSPORT_POLICY_QUIC
 	case "h2":
 		return agentv1.TransportPolicy_TRANSPORT_POLICY_H2
+	case "wss":
+		return agentv1.TransportPolicy_TRANSPORT_POLICY_WSS
 	}
 	return agentv1.TransportPolicy_TRANSPORT_POLICY_AUTO
 }

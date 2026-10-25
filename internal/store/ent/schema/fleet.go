@@ -109,7 +109,7 @@ func (Connector) Fields() []ent.Field {
 		field.String("pubkey_sha256").NotEmpty(),
 		field.Bool("ephemeral").Default(false).Immutable(),
 		field.Bool("enabled").Default(true),
-		field.Enum("transport").Values("auto", "quic", "h2").Optional().Nillable(),
+		field.Enum("transport").Values("auto", "quic", "h2", "wss").Optional().Nillable(),
 		field.String("desired_version").Optional(),
 		// built_in marks all-in-one's own connector, as Gateway's built_in does; it comes from the
 		// enrollment token.

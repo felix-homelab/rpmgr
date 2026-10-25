@@ -66,12 +66,16 @@ service ConnectorService {
 enum DataTransport {
   // Not set: the instance default.
   DATA_TRANSPORT_UNSPECIFIED = 0;
-  // QUIC, falling back to TLS and HTTP/2 over TCP.
+  // QUIC, falling back to TLS and HTTP/2 over TCP, and then to WSS.
   DATA_TRANSPORT_AUTO = 1;
   // QUIC only.
   DATA_TRANSPORT_QUIC = 2;
   // TLS and HTTP/2 over TCP only.
   DATA_TRANSPORT_H2 = 3;
+  // WSS only (Phase 2): TLS and HTTP/2 inside a WebSocket to the gateway's WSS hostname, for
+  // networks whose proxies intercept TLS. Connectors without the capability tunnel.wss cannot
+  // serve a route on it.
+  DATA_TRANSPORT_WSS = 4;
 }
 
 // Connector is one enrolled connector.
@@ -147,7 +151,7 @@ message ConnectorStatus {
 message ConnectorDataSession {
   // The gateway.
   string gateway_id = 1;
-  // The transport: DATA_TRANSPORT_QUIC or DATA_TRANSPORT_H2.
+  // The transport: DATA_TRANSPORT_QUIC, DATA_TRANSPORT_H2 or DATA_TRANSPORT_WSS.
   DataTransport transport = 2;
   // The lowest smoothed round-trip time a session measures; not set where none does.
   google.protobuf.Duration rtt = 3;

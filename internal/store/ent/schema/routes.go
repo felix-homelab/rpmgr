@@ -128,7 +128,7 @@ func (Route) Fields() []ent.Field {
 		field.Enum("type").Values("http", "tcp", "udp", "tcp_udp", "tls_passthrough").Immutable(),
 		field.String("gateway_group_id").NotEmpty().Immutable(),
 		field.Bool("enabled").Default(true),
-		field.Enum("transport").Values("auto", "quic", "h2").Optional().Nillable(),
+		field.Enum("transport").Values("auto", "quic", "h2", "wss").Optional().Nillable(),
 		field.String("description").Default(""),
 		field.JSON("labels", map[string]string{}).Optional(),
 		field.Time("created_at").Immutable().Default(time.Now),
