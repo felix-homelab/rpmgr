@@ -54,6 +54,8 @@ const (
 	// and reports the priorities with a healthy target; one without it counts every target as
 	// healthy (D133).
 	CapHealthActive = "health.active"
+	// CapLogsStream: the agent runs live-log operations (Open of OPERATION_KIND_LOGS, Attach).
+	CapLogsStream = "logs.stream"
 )
 
 // The capability strings of Phase 2 route features: the compiler leaves a route that uses one out
