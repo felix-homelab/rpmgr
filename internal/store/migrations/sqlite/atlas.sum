@@ -1,4 +1,4 @@
-h1:sh0AwulBvFMZpyOORyebKwXgKD7GivQyazVDzeblwm8=
+h1:EPdYLxvgZ92buf0+3tnJ5o6KwbBJYr6YugBIyIIqgJ4=
 20261009220802_baseline.sql h1:P98oQ4RhN7c+aa0SgKZ9ZRM8/T6XYO+Yd4dzlDOBvr4=
 20261013061720_agent_names_active.sql h1:pSxlk4IT2yuwmcSmLQ4GrPs6B7VaQUX7L1NcrOHzvqg=
 20261014071548_target_tls_verification.sql h1:6F+dOuC0QwNWsAQhvW7rRkPRrB/RC/OgLAL0vWfs0oY=
@@ -9,4 +9,5 @@ h1:sh0AwulBvFMZpyOORyebKwXgKD7GivQyazVDzeblwm8=
 20261022174257_rollout_target_drain.sql h1:QywinfL/+DcA3pWEivx4xaIFkO4/3YX/80tkuvWRW+U=
 20261024141249_rollout_easy_queue.sql h1:K86lHMDM9giqEzc47rvgx3RqHYy7+wVZDsi+9jfbW0Y=
 20261024152011_gateway_pages.sql h1:B+C+hEWe2ovyjFMxVTY/8V5V+XimfPgTy5w+BWr5Q2o=
-20261024223009_connect_listeners.sql h1:/lAQuRR96TZIdtu3I+sSKI0UqYkn3Xh+I5dymI42B5A=
+20261024220249_gateway_wss_hostname.sql h1:YnJ+zeDMZIDDu0/Pvnz2HmBPG3kz7wFBTtL2//EWPgQ=
+20261024223009_connect_listeners.sql h1:HzxbEQg4I0qDEkJeXUcCFuPzZYI/ODl/4/3BDkg0GNg=

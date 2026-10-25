@@ -17733,6 +17733,7 @@ type GatewayMutation struct {
 	built_in               *bool
 	created_at             *time.Time
 	decommissioned_at      *time.Time
+	wss_hostname           *string
 	clearedFields          map[string]struct{}
 	group                  *string
 	clearedgroup           bool
@@ -18420,6 +18421,55 @@ func (m *GatewayMutation) ResetDecommissionedAt() {
 	delete(m.clearedFields, gateway.FieldDecommissionedAt)
 }
 
+// SetWssHostname sets the "wss_hostname" field.
+func (m *GatewayMutation) SetWssHostname(s string) {
+	m.wss_hostname = &s
+}
+
+// WssHostname returns the value of the "wss_hostname" field in the mutation.
+func (m *GatewayMutation) WssHostname() (r string, exists bool) {
+	v := m.wss_hostname
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWssHostname returns the old "wss_hostname" field's value of the Gateway entity.
+// If the Gateway object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayMutation) OldWssHostname(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWssHostname is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWssHostname requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWssHostname: %w", err)
+	}
+	return oldValue.WssHostname, nil
+}
+
+// ClearWssHostname clears the value of the "wss_hostname" field.
+func (m *GatewayMutation) ClearWssHostname() {
+	m.wss_hostname = nil
+	m.clearedFields[gateway.FieldWssHostname] = struct{}{}
+}
+
+// WssHostnameCleared returns if the "wss_hostname" field was cleared in this mutation.
+func (m *GatewayMutation) WssHostnameCleared() bool {
+	_, ok := m.clearedFields[gateway.FieldWssHostname]
+	return ok
+}
+
+// ResetWssHostname resets all changes to the "wss_hostname" field.
+func (m *GatewayMutation) ResetWssHostname() {
+	m.wss_hostname = nil
+	delete(m.clearedFields, gateway.FieldWssHostname)
+}
+
 // SetGroupID sets the "group" edge to the GatewayGroup entity by id.
 func (m *GatewayMutation) SetGroupID(id string) {
 	m.group = &id
@@ -18494,7 +18544,7 @@ func (m *GatewayMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GatewayMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.org_id != nil {
 		fields = append(fields, gateway.FieldOrgID)
 	}
@@ -18534,6 +18584,9 @@ func (m *GatewayMutation) Fields() []string {
 	if m.decommissioned_at != nil {
 		fields = append(fields, gateway.FieldDecommissionedAt)
 	}
+	if m.wss_hostname != nil {
+		fields = append(fields, gateway.FieldWssHostname)
+	}
 	return fields
 }
 
@@ -18568,6 +18621,8 @@ func (m *GatewayMutation) Field(name string) (ent.Value, bool) {
 		return m.CreatedAt()
 	case gateway.FieldDecommissionedAt:
 		return m.DecommissionedAt()
+	case gateway.FieldWssHostname:
+		return m.WssHostname()
 	}
 	return nil, false
 }
@@ -18603,6 +18658,8 @@ func (m *GatewayMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldCreatedAt(ctx)
 	case gateway.FieldDecommissionedAt:
 		return m.OldDecommissionedAt(ctx)
+	case gateway.FieldWssHostname:
+		return m.OldWssHostname(ctx)
 	}
 	return nil, fmt.Errorf("unknown Gateway field %s", name)
 }
@@ -18703,6 +18760,13 @@ func (m *GatewayMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetDecommissionedAt(v)
 		return nil
+	case gateway.FieldWssHostname:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWssHostname(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Gateway field %s", name)
 }
@@ -18772,6 +18836,9 @@ func (m *GatewayMutation) ClearedFields() []string {
 	if m.FieldCleared(gateway.FieldDecommissionedAt) {
 		fields = append(fields, gateway.FieldDecommissionedAt)
 	}
+	if m.FieldCleared(gateway.FieldWssHostname) {
+		fields = append(fields, gateway.FieldWssHostname)
+	}
 	return fields
 }
 
@@ -18797,6 +18864,9 @@ func (m *GatewayMutation) ClearField(name string) error {
 		return nil
 	case gateway.FieldDecommissionedAt:
 		m.ClearDecommissionedAt()
+		return nil
+	case gateway.FieldWssHostname:
+		m.ClearWssHostname()
 		return nil
 	}
 	return fmt.Errorf("unknown Gateway nullable field %s", name)
@@ -18844,6 +18914,9 @@ func (m *GatewayMutation) ResetField(name string) error {
 		return nil
 	case gateway.FieldDecommissionedAt:
 		m.ResetDecommissionedAt()
+		return nil
+	case gateway.FieldWssHostname:
+		m.ResetWssHostname()
 		return nil
 	}
 	return fmt.Errorf("unknown Gateway field %s", name)

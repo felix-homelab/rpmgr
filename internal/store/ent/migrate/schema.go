@@ -674,6 +674,7 @@ var (
 		{Name: "built_in", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "decommissioned_at", Type: field.TypeTime, Nullable: true},
+		{Name: "wss_hostname", Type: field.TypeString, Nullable: true},
 		{Name: "gateway_group_id", Type: field.TypeString},
 	}
 	// GatewaysTable holds the schema information for the "gateways" table.
@@ -684,7 +685,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "gateways_gateway_groups_group",
-				Columns:    []*schema.Column{GatewaysColumns[13]},
+				Columns:    []*schema.Column{GatewaysColumns[14]},
 				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -706,10 +707,15 @@ var (
 			{
 				Name:    "gateway_gateway_group_id_slot",
 				Unique:  true,
-				Columns: []*schema.Column{GatewaysColumns[13], GatewaysColumns[4]},
+				Columns: []*schema.Column{GatewaysColumns[14], GatewaysColumns[4]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "decommissioned_at IS NULL",
 				},
+			},
+			{
+				Name:    "gateway_wss_hostname",
+				Unique:  true,
+				Columns: []*schema.Column{GatewaysColumns[13]},
 			},
 		},
 	}

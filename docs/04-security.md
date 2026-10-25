@@ -311,9 +311,15 @@ later.
   the names, issuer, expiry and key fingerprint before the key is pinned. Probing takes
   `routes.write`.
 - **The exceptions to the ban** of `InsecureSkipVerify` serve these two modes alone:
-  `UpstreamTLS.config` of `internal/gateway/upstreamtls.go`
-  ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)) and the connector's `readCertificate`
-  of `internal/connector/probe.go` ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)).
+  `Settings.Config` of `internal/upstreamtls/upstreamtls.go`
+  ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)), the one place that builds a target's
+  TLS settings, which the gateway uses for the route's traffic and the connector for the target's
+  HTTPS health check, so both check the certificate alike (ADR-0017 names its first home,
+  `UpstreamTLS.config` of `internal/gateway/upstreamtls.go`; it moved so that the connector-only
+  build, which links no gateway code, shares it, D119; the depguard rule `upstream-tls` of
+  `.golangci.yml` lets only the gateway and the connector import the package), and the connector's
+  `readCertificate` of `internal/connector/probe.go`
+  ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)).
   `tools/bannedapi` allows them in those functions of the rpmgr module and nowhere else, a module
   nested in the repository included. golangci skips forbidigo's findings in `upstreamtls.go` and
   gosec's G402 finding in `probe.go` (forbidigo does not see the field there); in both files
@@ -716,10 +722,15 @@ capabilities, so a gateway of an earlier release never serves a route without th
   passwords are hashed as for route basic auth ([Secrets at rest and in
   logs](#secrets-at-rest-and-in-logs)).
 - **WSS hostnames** of gateways lie under a verified domain of the gateway group's owner org, the
-  system org for a shared group, so that no org can make a gateway present a name it does not
-  hold. The certificate, from ACME or an upload, is an ordinary public certificate; the data
+  system org for a shared group, so that no org can make a gateway present a name it does not hold;
+  a WSS hostname is no route hostname of the group and no other gateway's, and a route cannot take
+  one. The certificate, from ACME or an upload, is an ordinary public certificate; the data
   session's identity is only the inner mutual TLS to `<gateway-id>.gateway.<td>`
-  ([03](03-connections.md#transport-selection)).
+  ([03](03-connections.md#transport-selection)). An uploaded certificate of the org that covers the
+  name serves it; otherwise the ACME job obtains and renews one, as for routes, with its challenges
+  answered by that gateway alone ([Controller certificates](#controller-certificates)). Once the
+  name lies under no verified domain of the org any more, the job renews nothing: the certificate's
+  row says why, and the certificate it has serves until it expires.
 
 ### OIDC sign-in on routes
 
