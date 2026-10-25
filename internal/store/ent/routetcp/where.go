@@ -68,6 +68,11 @@ func PortAllocationID(v string) predicate.RouteTCP {
 	return predicate.RouteTCP(sql.FieldEQ(FieldPortAllocationID, v))
 }
 
+// ConnectListenerID applies equality check predicate on the "connect_listener_id" field. It's identical to ConnectListenerIDEQ.
+func ConnectListenerID(v string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldEQ(FieldConnectListenerID, v))
+}
+
 // IdleTimeoutSeconds applies equality check predicate on the "idle_timeout_seconds" field. It's identical to IdleTimeoutSecondsEQ.
 func IdleTimeoutSeconds(v int) predicate.RouteTCP {
 	return predicate.RouteTCP(sql.FieldEQ(FieldIdleTimeoutSeconds, v))
@@ -258,6 +263,16 @@ func PortAllocationIDHasSuffix(v string) predicate.RouteTCP {
 	return predicate.RouteTCP(sql.FieldHasSuffix(FieldPortAllocationID, v))
 }
 
+// PortAllocationIDIsNil applies the IsNil predicate on the "port_allocation_id" field.
+func PortAllocationIDIsNil() predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldIsNull(FieldPortAllocationID))
+}
+
+// PortAllocationIDNotNil applies the NotNil predicate on the "port_allocation_id" field.
+func PortAllocationIDNotNil() predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldNotNull(FieldPortAllocationID))
+}
+
 // PortAllocationIDEqualFold applies the EqualFold predicate on the "port_allocation_id" field.
 func PortAllocationIDEqualFold(v string) predicate.RouteTCP {
 	return predicate.RouteTCP(sql.FieldEqualFold(FieldPortAllocationID, v))
@@ -286,6 +301,81 @@ func ListenerModeIn(vs ...ListenerMode) predicate.RouteTCP {
 // ListenerModeNotIn applies the NotIn predicate on the "listener_mode" field.
 func ListenerModeNotIn(vs ...ListenerMode) predicate.RouteTCP {
 	return predicate.RouteTCP(sql.FieldNotIn(FieldListenerMode, vs...))
+}
+
+// ConnectListenerIDEQ applies the EQ predicate on the "connect_listener_id" field.
+func ConnectListenerIDEQ(v string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldEQ(FieldConnectListenerID, v))
+}
+
+// ConnectListenerIDNEQ applies the NEQ predicate on the "connect_listener_id" field.
+func ConnectListenerIDNEQ(v string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldNEQ(FieldConnectListenerID, v))
+}
+
+// ConnectListenerIDIn applies the In predicate on the "connect_listener_id" field.
+func ConnectListenerIDIn(vs ...string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldIn(FieldConnectListenerID, vs...))
+}
+
+// ConnectListenerIDNotIn applies the NotIn predicate on the "connect_listener_id" field.
+func ConnectListenerIDNotIn(vs ...string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldNotIn(FieldConnectListenerID, vs...))
+}
+
+// ConnectListenerIDGT applies the GT predicate on the "connect_listener_id" field.
+func ConnectListenerIDGT(v string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldGT(FieldConnectListenerID, v))
+}
+
+// ConnectListenerIDGTE applies the GTE predicate on the "connect_listener_id" field.
+func ConnectListenerIDGTE(v string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldGTE(FieldConnectListenerID, v))
+}
+
+// ConnectListenerIDLT applies the LT predicate on the "connect_listener_id" field.
+func ConnectListenerIDLT(v string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldLT(FieldConnectListenerID, v))
+}
+
+// ConnectListenerIDLTE applies the LTE predicate on the "connect_listener_id" field.
+func ConnectListenerIDLTE(v string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldLTE(FieldConnectListenerID, v))
+}
+
+// ConnectListenerIDContains applies the Contains predicate on the "connect_listener_id" field.
+func ConnectListenerIDContains(v string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldContains(FieldConnectListenerID, v))
+}
+
+// ConnectListenerIDHasPrefix applies the HasPrefix predicate on the "connect_listener_id" field.
+func ConnectListenerIDHasPrefix(v string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldHasPrefix(FieldConnectListenerID, v))
+}
+
+// ConnectListenerIDHasSuffix applies the HasSuffix predicate on the "connect_listener_id" field.
+func ConnectListenerIDHasSuffix(v string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldHasSuffix(FieldConnectListenerID, v))
+}
+
+// ConnectListenerIDIsNil applies the IsNil predicate on the "connect_listener_id" field.
+func ConnectListenerIDIsNil() predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldIsNull(FieldConnectListenerID))
+}
+
+// ConnectListenerIDNotNil applies the NotNil predicate on the "connect_listener_id" field.
+func ConnectListenerIDNotNil() predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldNotNull(FieldConnectListenerID))
+}
+
+// ConnectListenerIDEqualFold applies the EqualFold predicate on the "connect_listener_id" field.
+func ConnectListenerIDEqualFold(v string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldEqualFold(FieldConnectListenerID, v))
+}
+
+// ConnectListenerIDContainsFold applies the ContainsFold predicate on the "connect_listener_id" field.
+func ConnectListenerIDContainsFold(v string) predicate.RouteTCP {
+	return predicate.RouteTCP(sql.FieldContainsFold(FieldConnectListenerID, v))
 }
 
 // IdleTimeoutSecondsEQ applies the EQ predicate on the "idle_timeout_seconds" field.
@@ -366,6 +456,29 @@ func HasPort() predicate.RouteTCP {
 func HasPortWith(preds ...predicate.PortAllocation) predicate.RouteTCP {
 	return predicate.RouteTCP(func(s *sql.Selector) {
 		step := newPortStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasListener applies the HasEdge predicate on the "listener" edge.
+func HasListener() predicate.RouteTCP {
+	return predicate.RouteTCP(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, ListenerTable, ListenerColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasListenerWith applies the HasEdge predicate on the "listener" edge with a given conditions (other predicates).
+func HasListenerWith(preds ...predicate.ConnectListener) predicate.RouteTCP {
+	return predicate.RouteTCP(func(s *sql.Selector) {
+		step := newListenerStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

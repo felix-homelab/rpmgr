@@ -12,6 +12,8 @@ import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { Field } from "@/components/field";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
+import { UpdateButton } from "@/components/update-button";
+import { UpdateState } from "@/components/update-state";
 import { PolicyHint } from "@/components/policy-hint";
 import { Alert } from "@/components/public-page";
 import { Badge } from "@/components/ui/badge";
@@ -24,8 +26,9 @@ import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import { ConnectorSchema, ConnectorService, DataTransport, UpdateConnectorRequestSchema, type Connector } from "@/gen/rpmgr/v1/connector_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { when } from "@/lib/format";
-import { SessionChip } from "@/pages/connectors";
+import { SessionChip, updatableConnector } from "@/pages/connectors";
 import { useAgentNames, useRoutes } from "@/routes-data";
+import { useRolloutTargets } from "@/lib/updates";
 import { useOrg } from "@/session";
 
 const page = getRouteApi("/app/connectors/$connectorId");
@@ -50,6 +53,7 @@ export function ConnectorDetail() {
   const status = useQuery(ConnectorService.method.getConnectorStatus, { connectorId });
   const names = useAgentNames(org?.orgId);
   const routes = useRoutes(org?.orgId);
+  const updates = useRolloutTargets();
   const [write, setWrite] = useState<{ revision?: Revision; status?: ApplyStatus }>();
   const live = useLiveApplyStatus(org?.orgId ?? "", write?.revision, write?.status);
   const update = useMutation(ConnectorService.method.updateConnector);
@@ -87,7 +91,9 @@ export function ConnectorDetail() {
         </Link>
         <PageHeader title={t("connectors.detailTitle", { name: c.name })}
           description={<span className="flex flex-wrap items-center gap-2"><SessionChip connector={c} />{c.session?.version}
-            {c.builtIn && <Badge title={t("connectors.builtInHint")}>{t("connectors.builtIn")}</Badge>}</span>}
+            {c.builtIn && <Badge title={t("connectors.builtInHint")}>{t("connectors.builtIn")}</Badge>}
+            <UpdateState target={updates.get(c.id)} belowMinimum={c.session?.belowMinAgentVersion} goodbyeReason={c.session?.lastGoodbyeReason} />
+            <UpdateButton agent={updatableConnector(c)} target={updates.get(c.id)} /></span>}
           actions={<>
             <Switch checked={c.enabled} disabled={update.isPending} onClick={() => void toggle(c)}>{t("connectors.enabled")}</Switch>
             {org && <ManifestButton label={t("manifest.yaml")} title={t("manifest.of", { name: c.name })} orgId={org.orgId} ids={[c.id]} file={c.name} />}

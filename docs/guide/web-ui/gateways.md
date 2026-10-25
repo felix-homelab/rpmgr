@@ -48,6 +48,7 @@ The **Gateways** card lists the group's gateways by slot:
 | **Tunnel endpoints** | The `host:port` addresses where connectors reach this gateway, and below them `WSS:` and its WSS hostname if it has one ([Gateways](../gateways.md#wss-hostnames)) |
 | **State** | `not enrolled`, `connected` or `offline`; also `drained` for a drained gateway and `built in` for the all-in-one's own gateway |
 | **Version** | The rpmgr version the gateway runs |
+| **Update** | Its state in the running rollout, or that it is below the oldest version the controller accepts; for an Instance Admin also **Update to …**, or why it cannot be updated now ([Updates](../operations/updates.md#update-one-agent)) |
 | **Last seen** | When the controller last heard from it |
 | **Actions** | The buttons below |
 

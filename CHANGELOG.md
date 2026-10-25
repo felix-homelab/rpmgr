@@ -23,6 +23,25 @@ Changes to the design documents are not recorded here: see the git history and t
   on the gateway's form and offers **WSS only** wherever it offers a transport. (#636, #637, #638,
   #639)
 
+- Routes: tcp routes in `http_connect` mode share a CONNECT listener, one port of the organisation,
+  and clients pick a route by name through it as through an HTTP proxy, with no proxy credentials,
+  with basic auth over TLS, or with basic auth in the clear, which every write warns about. Set
+  with `rpmgr create route --tcp --http-connect --authority … --connect-auth …`, the API's
+  `TCPRouteSpec.listener_mode` and `connect`, manifests, and the web UI's route form, which keeps
+  warning while basic auth in the clear is chosen. A TLS listener presents the uploaded certificate
+  the route names, else one that covers its hostname, else one the ACME job obtains and renews.
+  Gateways of earlier releases do not serve such routes. (#634, #635, #934)
+
+- Routes: limits for a route as a whole, on every route type: open connections, flows or HTTP
+  requests in flight, requests or new connections a second, and bandwidth in each direction, set
+  with `rpmgr create route` and `rpmgr update route` (`--max-connections`,
+  `--requests-per-second`, `--bandwidth`) or the API. The gateways of the route's group share each
+  limit; over it, HTTP gets 503 or 429 with `Retry-After`, TCP is reset and UDP dropped, and
+  bandwidth slows data down. Access policies gain a per-client rate limit, on every route type:
+  each client address, or IPv6 /64, may make so many requests, new connections or new flows a
+  second, with a burst (`--rule rate-limit:<per second>[,<burst>]`, the web UI's policy form, or
+  the API). A gateway of an earlier release does not get a route with limits or such a rule.
+  (#622, #623, #624, #625, #917)
 - Routes: active health checks. A route may have one TCP or HTTP check, which each connector runs
   against its own targets of the route, on their port or another one; new connections pass over a
   target that fails it, gateways pass over a connector whose targets of a priority are all
@@ -49,13 +68,28 @@ Changes to the design documents are not recorded here: see the git history and t
   and shortly after the last one or while the release source limits requests, with the time to
   wait. (#890)
 
-- API and CLI: easy rollouts, which update the chosen connectors and gateways one after another
+- Updates: easy rollouts, which update the chosen connectors and gateways one after another
   without stages to approve. A failed agent is marked and skipped and the queue continues, and the
-  rollout pauses after a few failures in a row. `ReleaseService.CreateRollout` takes the mode and
-  the queue (`rpmgr create rollout --easy --agent …`), `ReleaseService.UpgradeAgents` (`rpmgr
-  upgrade connector|gateway <agent>…`) adds agents to the running easy rollout of the controller's
-  version or starts one, and the instance setting `rollout_mode` says which kind the web UI starts,
-  `easy` unless set. (#892, #893, #894, #895)
+  rollout pauses after a few failures in a row. **Roll out…** on Settings → Updates starts one by
+  default: tick the agents, order them, start; the rollout card shows the agent whose turn it is,
+  the queue and the failures. **Update to …** on each connector and gateway joins the running easy
+  rollout of the controller's version or starts one. **Rollouts** switches to the staged rollouts
+  of v0.2.0 (instance setting `rollout_mode`, `easy` unless set). `ReleaseService.CreateRollout`
+  takes the mode and the queue (`rpmgr create rollout --easy --agent …`), and
+  `ReleaseService.UpgradeAgents` (`rpmgr upgrade connector|gateway <agent>…`) updates single agents.
+  Connectors and gateways report whether they take over-the-air updates (`over_the_air`). (#892,
+  #893, #894, #895, #896)
+
+- Routes: an http route can match on request headers, an exact value or presence alone, so that
+  routes share a hostname and path prefix and a header such as `X-Env: beta` chooses between them;
+  the route with more matching headers wins, the one created first a tie. Set with
+  `rpmgr create route`/`update route --match-header`, the API's `header_matches` and manifests; the
+  web UI follows. Gateways of earlier releases never get such a route. (#617, #618)
+
+- Routes: an http route can set its own upstream response-header timeout, after which a request
+  gets 504, and its own idle timeout for unused connections to its targets; 0 keeps the gateway's.
+  Set with `--upstream-header-timeout` and `--upstream-idle-timeout`, the API and manifests; the
+  web UI follows. Gateways of earlier releases keep their own values. (#619)
 
 - Access policies: a **require-header** rule admits on HTTP routes only requests that carry a
   header with one of up to four values, such as the origin header a CDN adds, so that clients that
@@ -65,6 +99,13 @@ Changes to the design documents are not recorded here: see the git history and t
   access-policy --rule require-header:<header> --header-values-file <file>`, and in manifests.
   Gateways of earlier releases do not serve a route that applies such a rule until they are
   upgraded. (#620, #621)
+
+### Changed
+
+- Gateways: paths under `/.rpmgr/` on an http route's hostnames belong to the gateway and get its
+  404 page instead of going to the upstream, and every header and trailer a client sends whose name
+  starts with `Rpmgr-User-`, also spelt with `_`, is removed before a request goes upstream; both
+  are kept for the gateway's own endpoints and OIDC sign-in. (#617)
 
 ## [0.2.0] - 2026-10-24
 
