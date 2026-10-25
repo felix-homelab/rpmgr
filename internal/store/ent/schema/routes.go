@@ -528,3 +528,44 @@ func (RoutePolicy) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("route_id", "policy_id").Unique(), index.Fields("route_id", "position").Unique(),
 		index.Fields("policy_id")}
 }
+
+// HealthCheck is a route's active health check (docs/06-data-model.md, "Routing"; D133): at most
+// one per route, which each connector runs against each of its targets of the route. A value of 0
+// takes the default of docs/03-connections.md, "Timeouts, keepalive and backoff".
+type HealthCheck struct{ ent.Schema }
+
+// Mixin makes it org-owned.
+func (HealthCheck) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (HealthCheck) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "health_checks"}}
+}
+
+// Fields of a health check: port 0 is the target's; http_path and the status range are for http
+// checks.
+func (HealthCheck) Fields() []ent.Field {
+	return []ent.Field{
+		idField("hck"),
+		field.String("route_id").NotEmpty().Unique().Immutable(),
+		field.Enum("type").Values("tcp", "http"),
+		field.Int("port").Range(0, 65535).Default(0),
+		field.String("http_path").MaxLen(1024).Default(""),
+		field.Int("expected_status_min").Range(0, 599).Default(0),
+		field.Int("expected_status_max").Range(0, 599).Default(0),
+		field.Int("interval_seconds").NonNegative().Default(0),
+		field.Int("timeout_seconds").NonNegative().Default(0),
+		field.Int("unhealthy_threshold").NonNegative().Default(0),
+		field.Int("healthy_threshold").NonNegative().Default(0),
+	}
+}
+
+// Edges of a health check.
+func (HealthCheck) Edges() []ent.Edge {
+	return []ent.Edge{edge.To("route", Route.Type).Field("route_id").Unique().Required().Immutable()}
+}
+
+// Indexes of a health check: one per route.
+func (HealthCheck) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("route_id").Unique()}
+}

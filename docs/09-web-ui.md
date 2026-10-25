@@ -266,10 +266,13 @@ flowchart LR
 ```
 ┌ Route: postgres (tcp)                      [Enabled ●━]  [Edit]  [YAML]  [⋯ Delete]   ┐
 │ Desired: enabled · gateway group eu · eu.example.net:25432   Observed: ▲ unavailable   │
+│          TCP health check, every 10 s                                                  │
 ├ Targets & health ─────────────────────────────────────────────────────────────────────┤
 │ Connector   Address          Weight  Health       Status                                │
-│ db-host-1   10.0.0.5:5432    100     tcp / 10 s   ▲ not_ready: blocked by local policy  │
+│ db-host-1   10.0.0.5:5432    100     —            ▲ not_ready: blocked by local policy  │
 │             Run on db-host-1:  sudo rpmgr policy allow-target 10.0.0.5:5432   [Copy]    │
+│ db-host-2   10.0.0.6:5432    100     ▲ unhealthy  ▲ its health checks fail              │
+│             Last check: dial tcp 10.0.0.6:5432: connect: connection refused             │
 ├ Apply status (revision 1040) ─────────────────────────────────────────────────────────┤
 │ gw-eu-1 ✓ applied    gw-eu-2 ✓ applied    db-host-1 ✓ applied (target not_ready)      │
 ├ Traffic (24 h) ──────────────────────────── Policies ──────────────────────────────────┤

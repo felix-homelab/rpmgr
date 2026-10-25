@@ -310,3 +310,55 @@ func TestPreviewRoute(t *testing.T) {
 		t.Errorf("a change of nothing: %d %q", code, errOut)
 	}
 }
+
+// TestRouteHealthFlags (docs/16-cli.md): the --health-* flags set a route's health check, change
+// only the fields they name on an update, and --health-check none removes it; a check type, status
+// range or duration they cannot carry, none with other health flags, and health flags on a route
+// without a check and no --health-check are refused before anything is sent.
+func TestRouteHealthFlags(t *testing.T) {
+	a, env := routeEnv(t)
+	if code, _, errOut := runWith(env, "", "create", "route", "--http", "--name", "web", "--group", "eu", "--hostname", "web.example.com",
+		"--health-check", "http", "--health-path", "/healthz", "--health-status", "200-204", "--health-interval", "30s", "--health-timeout", "3s",
+		"--health-unhealthy", "4", "--health-healthy", "1"); code != cli.ExitOK ||
+		!proto.Equal(a.created.GetRoute().GetHealthCheck(), &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP,
+			HttpPath: "/healthz", ExpectedStatusMin: 200, ExpectedStatusMax: 204, IntervalSeconds: 30, TimeoutSeconds: 3, UnhealthyThreshold: 4,
+			HealthyThreshold: 1}) {
+		t.Fatalf("create: %d %q %v", code, errOut, a.created.GetRoute().GetHealthCheck())
+	}
+	calls := a.calls
+	if code, _, _ := runWith(env, "", "update", "route", "--health-port", "8081", "rt_1"); code != cli.ExitUsage {
+		t.Errorf("a health flag on a route without a check: exit %d", code)
+	}
+	a.route.HealthCheck = &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP, HttpPath: "/healthz", IntervalSeconds: 30}
+	for name, args := range map[string][]string{
+		"type udp":                {"--health-check", "udp"},
+		"a status without a dash": {"--health-status", "200"},
+		"a status not a number":   {"--health-status", "2xx-399"},
+		"an interval of 1.5 s":    {"--health-interval", "1500ms"},
+		"a negative timeout":      {"--health-timeout", "-5s"},
+		"none with a port":        {"--health-check", "none", "--health-port", "80"},
+	} {
+		if code, _, errOut := runWith(env, "", append(append([]string{"update", "route"}, args...), "rt_1")...); code != cli.ExitUsage {
+			t.Errorf("%s: exit %d %q", name, code, errOut)
+		}
+	}
+	if a.calls != calls {
+		t.Errorf("refused flags reached the API %d times", a.calls-calls)
+	}
+	if code, _, errOut := runWith(env, "", "update", "route", "--health-check", "tcp", "--health-path", "", "--health-port", "8081", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"health_check"}) ||
+		!proto.Equal(a.updated.GetRoute().GetHealthCheck(), &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_TCP, Port: 8081,
+			IntervalSeconds: 30}) {
+		t.Fatalf("a changed check: %d %q %v", code, errOut, a.updated)
+	}
+	// An empty status range goes back to the default.
+	a.route.HealthCheck = &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP, ExpectedStatusMin: 200, ExpectedStatusMax: 204}
+	if code, _, errOut := runWith(env, "", "update", "route", "--health-status", "", "rt_1"); code != cli.ExitOK ||
+		!proto.Equal(a.updated.GetRoute().GetHealthCheck(), &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP}) {
+		t.Fatalf("a cleared status range: %d %q %v", code, errOut, a.updated)
+	}
+	if code, _, errOut := runWith(env, "", "update", "route", "--health-check", "none", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"health_check"}) || a.updated.GetRoute().GetHealthCheck() != nil {
+		t.Fatalf("a removed check: %d %q %v", code, errOut, a.updated)
+	}
+}

@@ -687,6 +687,30 @@ func (f GatewayPageMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mut
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.GatewayPageMutation", m)
 }
 
+// The HealthCheckQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type HealthCheckQueryRuleFunc func(context.Context, *ent.HealthCheckQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f HealthCheckQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.HealthCheckQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.HealthCheckQuery", q)
+}
+
+// The HealthCheckMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type HealthCheckMutationRuleFunc func(context.Context, *ent.HealthCheckMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f HealthCheckMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.HealthCheckMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.HealthCheckMutation", m)
+}
+
 // The InstanceQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type InstanceQueryRuleFunc func(context.Context, *ent.InstanceQuery) error
@@ -1610,6 +1634,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.GatewayPageQuery:
 		return q.Filter(), nil
+	case *ent.HealthCheckQuery:
+		return q.Filter(), nil
 	case *ent.InstanceQuery:
 		return q.Filter(), nil
 	case *ent.InstanceSecretQuery:
@@ -1734,6 +1760,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.GatewayGroupMutation:
 		return m.Filter(), nil
 	case *ent.GatewayPageMutation:
+		return m.Filter(), nil
+	case *ent.HealthCheckMutation:
 		return m.Filter(), nil
 	case *ent.InstanceMutation:
 		return m.Filter(), nil
