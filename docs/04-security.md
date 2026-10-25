@@ -723,8 +723,9 @@ capabilities, so a gateway of an earlier release never serves a route without th
   logs](#secrets-at-rest-and-in-logs)).
 - **WSS hostnames** of gateways lie under a verified domain of the gateway group's owner org, the
   system org for a shared group, so that no org can make a gateway present a name it does not hold;
-  a WSS hostname is no route hostname of the group and no other gateway's, and a route cannot take
-  one. The certificate, from ACME or an upload, is an ordinary public certificate; the data
+  a WSS hostname is no route hostname of the group, also not one a wildcard route hostname of the
+  group covers, and no other gateway's, and a route cannot take one, nor a wildcard covering one.
+  The certificate, from ACME or an upload, is an ordinary public certificate; the data
   session's identity is only the inner mutual TLS to `<gateway-id>.gateway.<td>`
   ([03](03-connections.md#transport-selection)). An uploaded certificate of the org that covers the
   name serves it; otherwise the ACME job obtains and renews one, as for routes, with its challenges

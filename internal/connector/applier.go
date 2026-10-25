@@ -3,7 +3,6 @@
 package connector
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -149,13 +148,14 @@ const (
 // and a range of statuses; a udp route only a tcp check of a port it names, and a route with a
 // socket target none; an interval within its bounds and a timeout below it and its own bound.
 func validCheck(c *agentv1.HealthCheck, routeType string, targets []*agentv1.Target) error {
-	ms := func(v uint32) time.Duration { return time.Duration(v) * time.Millisecond }
-	interval, timeout := cmp.Or(ms(c.GetIntervalMs()), checkInterval), cmp.Or(ms(c.GetTimeoutMs()), checkTimeout)
+	interval, timeout := checkTimes(c)
 	switch {
 	case c.GetType() != "tcp" && c.GetType() != "http":
 		return fmt.Errorf("type %q", c.GetType())
 	case routeType == "udp" && (c.GetType() != "tcp" || c.GetPort() == 0):
 		return errors.New("a udp route has only a tcp check of a port it names")
+	case routeType == "tls_passthrough" && c.GetType() != "tcp":
+		return errors.New("a tls_passthrough route has only a tcp check")
 	case c.GetPort() > 65535:
 		return fmt.Errorf("port %d", c.GetPort())
 	case c.GetPort() != 0 && slices.ContainsFunc(targets, func(t *agentv1.Target) bool { return t.GetUnixPath() != "" }):
