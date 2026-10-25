@@ -81,9 +81,9 @@ type routeFlags struct {
 	healthCheck, healthPath, healthStatus string
 	healthPort, healthUnhealthy, healthOK uint
 	healthInterval, healthTimeout         time.Duration
-	force                                          bool
-	wait                                           time.Duration
-	output                                         string
+	force                                 bool
+	wait                                  time.Duration
+	output                                string
 }
 
 // flags registers the flags; create adds the type and the group, which do not change.
