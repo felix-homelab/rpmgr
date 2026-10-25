@@ -294,6 +294,7 @@ a Phase 3 sketch is a plan, not an open question.
 | Terraform provider | Stable `rpmgr.v1` | |
 | ~~Socket hand-off on gateway restart~~ | — | Moved to Phase 2, P2-M17 ([D127](14-open-decisions.md#project-and-process)) |
 | More DNS providers; per-gateway public addresses with health-aware DNS records; DNS for gateway tunnel and WSS hostnames; Authenticated Origin Pulls | DNS automation (P2) | [15](15-dns.md), D22, D25 |
+| OTLP audit sink | Audit sinks (P2) | Moved from Phase 2 ([D141](14-open-decisions.md#engineering)); syslog over TLS, webhook and object storage cover Phase 2 |
 | Active connections view | — | |
 | OTA for Windows and macOS connectors | Windows and macOS connectors (P2) | Needs a root-equivalent updater per platform (D29) |
 | Helm chart | OCI images | [00](00-vision-and-scope.md#non-goals) |
@@ -327,6 +328,9 @@ implemented, and the result recorded in the PR.
 | VB-19 | ACME against Let's Encrypt staging and a real Cloudflare zone: HTTP-01 and TLS-ALPN-01 answered by real gateways from the internet (multi-perspective validation), DNS-01 through the real Cloudflare API with propagation, the marker comment and TXT removal; run sheet in `spikes/s6/README.md` on the tag `spike/s6` (D46). D46 placed it before the first release that issues ACME certificates, and D50 split off the HTTP-01/TLS-ALPN-01 part for v0.1.0. By D98, v0.1.0 is released without it, and all of VB-19 runs in one session before the first release with DNS-01 (Phase 2): the HTTP-01/TLS-ALPN-01 part with the product itself, on a public host the maintainer provides, by the run sheet [`test/vb19/README.md`](../test/vb19/README.md), whose `rehearse.sh` runs it locally against Pebble; then the DNS-01 part by the run sheet of S6 | [04](04-security.md#controller-certificates), [05](05-features.md#tls-and-domains), [08](08-software-stack.md#networking), [S6](spikes/S6.md) |
 | VB-20 | The benchmark matrix on the reference testbed (D30), before v1.0.0; until then the [T] targets are measured on GitHub-hosted runners and the release regression check is reported only (D49) | [12](12-testing-and-quality.md#benchmarks), [03](03-connections.md#targets-t) |
 | VB-21 | The WSS transport through a real corporate TLS-intercepting proxy (Phase 2, slice 4.12): the data session completes, carries traffic, and the proxy sees only the outer TLS; CI runs the same cell with mitmproxy only | [03](03-connections.md#transport-selection), [12](12-testing-and-quality.md#security-testing) |
+| VB-22 | `buf breaking` in its FILE mode accepts `Open` on a new field number of `ControllerMessage` while 3 stays reserved, and refuses a reuse of 3 (Phase 2, slice 5.2) | [03](03-connections.md#control-session) |
+| VB-23 | The syslog sink against a real syslog server (rsyslog or syslog-ng) over TLS: RFC 5425 octet counting, the server's certificate checked, a reconnect without a gap (Phase 2, slice 5.20) | [04](04-security.md#audit-log) |
+| VB-24 | Conditional create (`If-None-Match: *`) and Object Lock in compliance mode on common S3-compatible stores (AWS S3, Cloudflare R2, Backblaze B2) and the SILO container CI uses: a second create refused with 412, a locked object neither overwritten nor deleted (Phase 2, slices 5.15, 5.16, 9.1) | [04](04-security.md#audit-log), [04](04-security.md#revocation-log) |
 
 ## Risks
 

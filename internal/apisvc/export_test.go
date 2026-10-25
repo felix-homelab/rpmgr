@@ -25,3 +25,6 @@ func SetProbeWait(t testing.TB, d time.Duration) {
 	probeWait = d
 	t.Cleanup(func() { probeWait = old })
 }
+
+// CapabilityMissingFor is the route status entry of an agent that lacks caps.
+var CapabilityMissingFor = capabilityMissing

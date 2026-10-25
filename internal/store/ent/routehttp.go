@@ -9,6 +9,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
@@ -26,7 +27,9 @@ type RouteHTTP struct {
 	// PathPrefix holds the value of the "path_prefix" field.
 	PathPrefix string `json:"path_prefix,omitempty"`
 	// HeaderMatches holds the value of the "header_matches" field.
-	HeaderMatches map[string]string `json:"header_matches,omitempty"`
+	HeaderMatches []headermatch.Match `json:"header_matches,omitempty"`
+	// MatchKey holds the value of the "match_key" field.
+	MatchKey string `json:"match_key,omitempty"`
 	// TLSMode holds the value of the "tls_mode" field.
 	TLSMode routehttp.TLSMode `json:"tls_mode,omitempty"`
 	// CertificateID holds the value of the "certificate_id" field.
@@ -51,6 +54,10 @@ type RouteHTTP struct {
 	Maintenance bool `json:"maintenance,omitempty"`
 	// MaintenanceMessage holds the value of the "maintenance_message" field.
 	MaintenanceMessage string `json:"maintenance_message,omitempty"`
+	// UpstreamResponseHeaderTimeoutSeconds holds the value of the "upstream_response_header_timeout_seconds" field.
+	UpstreamResponseHeaderTimeoutSeconds int `json:"upstream_response_header_timeout_seconds,omitempty"`
+	// UpstreamIdleTimeoutSeconds holds the value of the "upstream_idle_timeout_seconds" field.
+	UpstreamIdleTimeoutSeconds int `json:"upstream_idle_timeout_seconds,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the RouteHTTPQuery when eager-loading is set.
 	Edges        RouteHTTPEdges `json:"edges"`
@@ -99,9 +106,9 @@ func (*RouteHTTP) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case routehttp.FieldWebsocket, routehttp.FieldDNSProxied, routehttp.FieldMaintenance:
 			values[i] = new(sql.NullBool)
-		case routehttp.FieldID, routehttp.FieldHstsMaxAgeSeconds, routehttp.FieldMaxBodyBytes:
+		case routehttp.FieldID, routehttp.FieldHstsMaxAgeSeconds, routehttp.FieldMaxBodyBytes, routehttp.FieldUpstreamResponseHeaderTimeoutSeconds, routehttp.FieldUpstreamIdleTimeoutSeconds:
 			values[i] = new(sql.NullInt64)
-		case routehttp.FieldOrgID, routehttp.FieldRouteID, routehttp.FieldPathPrefix, routehttp.FieldTLSMode, routehttp.FieldCertificateID, routehttp.FieldPort80, routehttp.FieldHostHeader, routehttp.FieldMaintenanceMessage:
+		case routehttp.FieldOrgID, routehttp.FieldRouteID, routehttp.FieldPathPrefix, routehttp.FieldMatchKey, routehttp.FieldTLSMode, routehttp.FieldCertificateID, routehttp.FieldPort80, routehttp.FieldHostHeader, routehttp.FieldMaintenanceMessage:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -149,6 +156,12 @@ func (_m *RouteHTTP) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.HeaderMatches); err != nil {
 					return fmt.Errorf("unmarshal field header_matches: %w", err)
 				}
+			}
+		case routehttp.FieldMatchKey:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field match_key", values[i])
+			} else if value.Valid {
+				_m.MatchKey = value.String
 			}
 		case routehttp.FieldTLSMode:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -227,6 +240,18 @@ func (_m *RouteHTTP) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.MaintenanceMessage = value.String
 			}
+		case routehttp.FieldUpstreamResponseHeaderTimeoutSeconds:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field upstream_response_header_timeout_seconds", values[i])
+			} else if value.Valid {
+				_m.UpstreamResponseHeaderTimeoutSeconds = int(value.Int64)
+			}
+		case routehttp.FieldUpstreamIdleTimeoutSeconds:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field upstream_idle_timeout_seconds", values[i])
+			} else if value.Valid {
+				_m.UpstreamIdleTimeoutSeconds = int(value.Int64)
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -285,6 +310,9 @@ func (_m *RouteHTTP) String() string {
 	builder.WriteString("header_matches=")
 	builder.WriteString(fmt.Sprintf("%v", _m.HeaderMatches))
 	builder.WriteString(", ")
+	builder.WriteString("match_key=")
+	builder.WriteString(_m.MatchKey)
+	builder.WriteString(", ")
 	builder.WriteString("tls_mode=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TLSMode))
 	builder.WriteString(", ")
@@ -322,6 +350,12 @@ func (_m *RouteHTTP) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("maintenance_message=")
 	builder.WriteString(_m.MaintenanceMessage)
+	builder.WriteString(", ")
+	builder.WriteString("upstream_response_header_timeout_seconds=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UpstreamResponseHeaderTimeoutSeconds))
+	builder.WriteString(", ")
+	builder.WriteString("upstream_idle_timeout_seconds=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UpstreamIdleTimeoutSeconds))
 	builder.WriteByte(')')
 	return builder.String()
 }

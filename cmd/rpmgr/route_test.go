@@ -147,6 +147,8 @@ func TestCreateRoute(t *testing.T) {
 		"two types":              {"--tcp", "--udp", "--name", "x", "--group", "eu"},
 		"a hostname on tcp":      {"--tcp", "--name", "x", "--group", "eu", "--hostname", "a.example.com"},
 		"maintenance on tcp":     {"--tcp", "--name", "x", "--group", "eu", "--maintenance"},
+		"a header match on tcp":  {"--tcp", "--name", "x", "--group", "eu", "--match-header", "X-Env=a"},
+		"a timeout on udp":       {"--udp", "--name", "x", "--group", "eu", "--upstream-idle-timeout", "1m"},
 		"a message on udp":       {"--udp", "--name", "x", "--group", "eu", "--maintenance-message", "back soon"},
 		"a port on http":         {"--http", "--name", "x", "--group", "eu", "--hostname", "a.example.com", "--port", "80"},
 		"a name the API refuses": {"--http", "--name", "Not_A_Name", "--group", "eu", "--hostname", "a.example.com"},
@@ -236,6 +238,52 @@ func TestUpdateRoute(t *testing.T) {
 	}
 	a.route.PolicyIds, a.route.Labels = nil, nil
 	a.route.GetHttp().RequestHeadersSet = nil
+	// Header matches (D135): Name=value is an exact value, Name alone presence; empty removes them.
+	if code, _, errOut := runWith(env, "", "update", "route", "--match-header", "X-Env=beta", "--match-header", "X-Tenant", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"http.header_matches"}) ||
+		len(a.updated.GetRoute().GetHttp().GetHeaderMatches()) != 2 ||
+		a.updated.GetRoute().GetHttp().GetHeaderMatches()[0].GetExact() != "beta" || !a.updated.GetRoute().GetHttp().GetHeaderMatches()[1].GetPresent() {
+		t.Fatalf("header matches: %d %q %v", code, errOut, a.updated)
+	}
+	a.route.GetHttp().HeaderMatches = []*rpmgrv1.HeaderMatch{{Name: "X-Env", Match: &rpmgrv1.HeaderMatch_Exact{Exact: "beta"}}}
+	if code, _, errOut := runWith(env, "", "update", "route", "--match-header", "", "rt_1"); code != cli.ExitOK ||
+		len(a.updated.GetRoute().GetHttp().GetHeaderMatches()) != 0 || !slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"http.header_matches"}) {
+		t.Fatalf("header matches removed: %d %q %v", code, errOut, a.updated)
+	}
+	a.route.GetHttp().HeaderMatches = nil
+	// Per-route timeouts (D94): durations in whole seconds, each in the mask only when given.
+	if code, _, errOut := runWith(env, "", "update", "route", "--upstream-header-timeout", "5m", "--upstream-idle-timeout", "30s", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(slices.Sorted(slices.Values(a.updated.GetUpdateMask().GetPaths())),
+			[]string{"http.upstream_idle_timeout_seconds", "http.upstream_response_header_timeout_seconds"}) ||
+		a.updated.GetRoute().GetHttp().GetUpstreamResponseHeaderTimeoutSeconds() != 300 || a.updated.GetRoute().GetHttp().GetUpstreamIdleTimeoutSeconds() != 30 {
+		t.Fatalf("timeouts: %d %q %v", code, errOut, a.updated)
+	}
+	calls = a.calls
+	for name, d := range map[string]string{"above an hour": "61m", "negative": "-1s"} {
+		if code, _, errOut := runWith(env, "", "update", "route", "--upstream-header-timeout", d, "rt_1"); code != cli.ExitUsage {
+			t.Errorf("a timeout %s: exit %d %q", name, code, errOut)
+		}
+	}
+	if a.calls != calls {
+		t.Errorf("refused timeouts reached the API %d times", a.calls-calls)
+	}
+	calls = a.calls
+	nine := []string{"update", "route"}
+	for i := range 9 {
+		nine = append(nine, "--match-header", "X-"+strings.Repeat("a", i+1))
+	}
+	for name, args := range map[string][]string{
+		"nine matches":         append(nine, "rt_1"),
+		"an empty exact value": {"update", "route", "--match-header", "X-Env=", "rt_1"},
+		"a bad header name":    {"update", "route", "--match-header", "X Env=a", "rt_1"},
+	} {
+		if code, _, errOut := runWith(env, "", args...); code != cli.ExitUsage {
+			t.Errorf("%s: exit %d %q", name, code, errOut)
+		}
+	}
+	if a.calls != calls {
+		t.Errorf("refused header matches reached the API %d times", a.calls-calls)
+	}
 	// A route is named by its ID or its name.
 	if code, _, errOut := runWith(env, "", "update", "route", "--port80", "redirect", "web"); code != cli.ExitOK ||
 		a.updated.GetRoute().GetId() != "rt_1" || a.updated.GetRoute().GetHttp().GetPort80() != rpmgrv1.Port80Mode_PORT80_MODE_REDIRECT {
@@ -311,5 +359,57 @@ func TestRouteLimitFlags(t *testing.T) {
 	if code, _, _ := runWith(env, "", "create", "route", "--tcp", "--name", "x", "--group", "eu", "--max-connections", "1000001"); code != cli.ExitUsage ||
 		a.calls != calls {
 		t.Errorf("a limit above its bound: exit %d", code)
+	}
+}
+
+// TestRouteHealthFlags (docs/16-cli.md): the --health-* flags set a route's health check, change
+// only the fields they name on an update, and --health-check none removes it; a check type, status
+// range or duration they cannot carry, none with other health flags, and health flags on a route
+// without a check and no --health-check are refused before anything is sent.
+func TestRouteHealthFlags(t *testing.T) {
+	a, env := routeEnv(t)
+	if code, _, errOut := runWith(env, "", "create", "route", "--http", "--name", "web", "--group", "eu", "--hostname", "web.example.com",
+		"--health-check", "http", "--health-path", "/healthz", "--health-status", "200-204", "--health-interval", "30s", "--health-timeout", "3s",
+		"--health-unhealthy", "4", "--health-healthy", "1"); code != cli.ExitOK ||
+		!proto.Equal(a.created.GetRoute().GetHealthCheck(), &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP,
+			HttpPath: "/healthz", ExpectedStatusMin: 200, ExpectedStatusMax: 204, IntervalSeconds: 30, TimeoutSeconds: 3, UnhealthyThreshold: 4,
+			HealthyThreshold: 1}) {
+		t.Fatalf("create: %d %q %v", code, errOut, a.created.GetRoute().GetHealthCheck())
+	}
+	calls := a.calls
+	if code, _, _ := runWith(env, "", "update", "route", "--health-port", "8081", "rt_1"); code != cli.ExitUsage {
+		t.Errorf("a health flag on a route without a check: exit %d", code)
+	}
+	a.route.HealthCheck = &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP, HttpPath: "/healthz", IntervalSeconds: 30}
+	for name, args := range map[string][]string{
+		"type udp":                {"--health-check", "udp"},
+		"a status without a dash": {"--health-status", "200"},
+		"a status not a number":   {"--health-status", "2xx-399"},
+		"an interval of 1.5 s":    {"--health-interval", "1500ms"},
+		"a negative timeout":      {"--health-timeout", "-5s"},
+		"none with a port":        {"--health-check", "none", "--health-port", "80"},
+	} {
+		if code, _, errOut := runWith(env, "", append(append([]string{"update", "route"}, args...), "rt_1")...); code != cli.ExitUsage {
+			t.Errorf("%s: exit %d %q", name, code, errOut)
+		}
+	}
+	if a.calls != calls {
+		t.Errorf("refused flags reached the API %d times", a.calls-calls)
+	}
+	if code, _, errOut := runWith(env, "", "update", "route", "--health-check", "tcp", "--health-path", "", "--health-port", "8081", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"health_check"}) ||
+		!proto.Equal(a.updated.GetRoute().GetHealthCheck(), &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_TCP, Port: 8081,
+			IntervalSeconds: 30}) {
+		t.Fatalf("a changed check: %d %q %v", code, errOut, a.updated)
+	}
+	// An empty status range goes back to the default.
+	a.route.HealthCheck = &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP, ExpectedStatusMin: 200, ExpectedStatusMax: 204}
+	if code, _, errOut := runWith(env, "", "update", "route", "--health-status", "", "rt_1"); code != cli.ExitOK ||
+		!proto.Equal(a.updated.GetRoute().GetHealthCheck(), &rpmgrv1.HealthCheck{Type: rpmgrv1.HealthCheckType_HEALTH_CHECK_TYPE_HTTP}) {
+		t.Fatalf("a cleared status range: %d %q %v", code, errOut, a.updated)
+	}
+	if code, _, errOut := runWith(env, "", "update", "route", "--health-check", "none", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"health_check"}) || a.updated.GetRoute().GetHealthCheck() != nil {
+		t.Fatalf("a removed check: %d %q %v", code, errOut, a.updated)
 	}
 }
