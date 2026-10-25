@@ -82,8 +82,9 @@ function rollout(paused: boolean) {
 export type FakeRollout = "none" | "running" | "paused" | "easy" | "easy-paused";
 
 // fakeUpdates answers the page's release, release check, rollout and agent calls; rolloutState says
-// which rollout is there, and is read at every call.
-export async function fakeUpdates(page: Page, rolloutState: () => FakeRollout) {
+// which rollout is there, and is read at every call. With mode, the instance's settings are made
+// up too, with that kind of rollout, so that no test has to save them.
+export async function fakeUpdates(page: Page, rolloutState: () => FakeRollout, mode?: () => "easy" | "advanced") {
   const answer = (method: string, body: () => object) =>
     page.route(`**/rpmgr.v1.${method}`, (route) => route.fulfill({ json: body() }));
   await answer("ReleaseService/ListReleases", () => ({ releases, controllerVersion: "0.2.0", releaseCheck }));
@@ -95,4 +96,8 @@ export async function fakeUpdates(page: Page, rolloutState: () => FakeRollout) {
     ? easyTargets(rolloutState() === "easy-paused") : rolloutTargets(rolloutState() === "paused") }));
   await answer("ConnectorService/ListConnectors", () => ({ connectors }));
   await answer("GatewayService/ListGateways", () => ({ gateways }));
+  if (mode) {
+    await answer("SettingsService/GetInstanceSettings", () => ({ etag: "1", settings: { releaseCheck: true,
+      updateChannel: "UPDATE_CHANNEL_STABLE", rolloutMode: mode() === "easy" ? "ROLLOUT_MODE_EASY" : "ROLLOUT_MODE_ADVANCED" } }));
+  }
 }
