@@ -209,6 +209,14 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.goto("/routes/new");
   await expect(page.locator(".required-mark")).toHaveText(["Gateway group", "Name", "Hostnames", "HSTS max-age (seconds)", "Largest request body (bytes, 0 for no limit)"]);
   expect(await unmarked(page)).toEqual([]);
+  // A CONNECT route: its fields come with the mode, and basic auth in the clear stays warned of.
+  await page.getByRole("radio", { name: "TCP", exact: true }).check();
+  await page.getByLabel("Listener", { exact: true }).selectOption({ label: "A CONNECT listener shared with other routes (HTTP proxy)" });
+  await expect(page.getByLabel("CONNECT names")).toBeVisible();
+  await page.getByLabel("Proxy credentials").selectOption({ label: "Basic auth in the clear" });
+  await expect(page.getByText(/anyone on the network between them and the gateway can read and use it/)).toBeVisible();
+  await expectAccessible(page);
+  await page.goto("/routes/new");
   const top = async (label: string) => (await page.getByLabel(label, { exact: true }).boundingBox())!.y;
   expect(await top("Name")).toBe(await top("Gateway group"));
   await page.setViewportSize({ width: 390, height: desktop.height });

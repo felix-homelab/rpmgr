@@ -221,6 +221,8 @@ var enums = map[string]map[string]int32{
 	"transport": {"": 0, "auto": 1, "quic": 2, "h2": 3},
 	"tls-mode":  {"acme": 1, "certificate": 2},
 	"port80":    {"redirect": 1, "serve": 2, "off": 3},
+	"connect-auth": {"none": int32(rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_NONE), "tls-basic": int32(rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_TLS_BASIC),
+		"plain-basic": int32(rpmgrv1.ConnectAuthMode_CONNECT_AUTH_MODE_PLAIN_BASIC)},
 }
 
 // enumOf is the value of an enum flag.
@@ -247,13 +249,15 @@ func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Rout
 	for flagName, types := range map[string]string{"hostname": "http tls_passthrough", "path-prefix": "http", "tls-mode": "http",
 		"certificate": "http", "port80": "http", "hsts": "http", "host-header": "http", "set-request-header": "http",
 		"set-response-header": "http", "websocket": "http", "max-body": "http", "maintenance": "http", "maintenance-message": "http",
-		"match-header": "http", "upstream-header-timeout": "http", "upstream-idle-timeout": "http", "port": "tcp udp tcp_udp", "idle-timeout": "tcp udp tcp_udp", "flow-idle-timeout": "tcp_udp"} {
+		"match-header": "http", "upstream-header-timeout": "http", "upstream-idle-timeout": "http", "port": "tcp udp tcp_udp",
+		"http-connect": "tcp", "authority": "tcp", "connect-auth": "tcp", "connect-hostname": "tcp",
+		"connect-certificate": "tcp", "idle-timeout": "tcp udp tcp_udp", "flow-idle-timeout": "tcp_udp"} {
 		if set[flagName] && !slices.Contains(strings.Fields(types), typ) {
 			return nil, nil, cli.Usagef("--%s is not for a %s route", flagName, typ)
 		}
 	}
-	for _, flagName := range []string{"transport", "tls-mode", "port80"} {
-		v := map[string]string{"transport": f.transport, "tls-mode": f.tlsMode, "port80": f.port80}[flagName]
+	for _, flagName := range []string{"transport", "tls-mode", "port80", "connect-auth"} {
+		v := map[string]string{"transport": f.transport, "tls-mode": f.tlsMode, "port80": f.port80, "connect-auth": f.connectAuth}[flagName]
 		if _, err := enumOf(flagName, v); set[flagName] && err != nil {
 			return nil, nil, err
 		}
@@ -262,7 +266,9 @@ func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Rout
 	var paths []string
 	do := func(flagName, path string, assign func()) {
 		if set[flagName] {
-			paths = append(paths, path)
+			if !slices.Contains(paths, path) {
+				paths = append(paths, path)
+			}
 			assign()
 		}
 	}
@@ -332,6 +338,23 @@ func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Rout
 		}
 		do("port", "tcp.port", func() { t.Port = port })
 		do("idle-timeout", "tcp.idle_timeout_seconds", func() { t.IdleTimeoutSeconds = idle })
+		do("http-connect", "tcp.listener_mode", func() {
+			t.ListenerMode = map[bool]rpmgrv1.ListenerMode{true: rpmgrv1.ListenerMode_LISTENER_MODE_HTTP_CONNECT,
+				false: rpmgrv1.ListenerMode_LISTENER_MODE_PLAIN}[f.httpConnect]
+		})
+		spec := func() *rpmgrv1.ConnectSpec {
+			if t.Connect == nil {
+				t.Connect = &rpmgrv1.ConnectSpec{}
+			}
+			return t.Connect
+		}
+		do("authority", "tcp.connect", func() { spec().Authorities = f.authorities })
+		do("connect-auth", "tcp.connect", func() {
+			n, _ := enumOf("connect-auth", f.connectAuth)
+			spec().AuthMode = rpmgrv1.ConnectAuthMode(n)
+		})
+		do("connect-hostname", "tcp.connect", func() { spec().Hostname = f.connectHost })
+		do("connect-certificate", "tcp.connect", func() { spec().CertificateId = f.connectCert })
 	case "udp":
 		u := r.GetUdp()
 		if u == nil {
@@ -464,6 +487,9 @@ func routeCommands() (create, update, enable, disable, preview *cli.Command) {
 			if err != nil {
 				return apiError(err)
 			}
+			if err := warn(env, resp.Msg.ProtoReflect()); err != nil {
+				return err
+			}
 			info := notes(env, pf.output).Stdout
 			if _, err := fmt.Fprintf(info, "Gateways that would serve it: %s\nConnectors it would reach: %s\n",
 				listOrNone(resp.Msg.GetGatewayIds()), listOrNone(resp.Msg.GetConnectorIds())); err != nil {
@@ -590,5 +616,23 @@ func (s *apiSession) written(ctx context.Context, env *cli.Env, verb string, r *
 	if _, err := fmt.Fprintf(notes(env, output).Stdout, "%s route %s%s.\n", verb, r.GetId(), applied(resp)); err != nil {
 		return err
 	}
+	if err := warn(env, resp); err != nil {
+		return err
+	}
 	return s.print(ctx, env.Stdout, k, output, []protoreflect.Message{r.ProtoReflect()}, []string{r.GetId()}, false)
+}
+
+// warn writes the warnings of a route write or preview to standard error, such as that a CONNECT
+// listener takes passwords in the clear (D130).
+func warn(env *cli.Env, resp protoreflect.Message) error {
+	w, ok := resp.Interface().(interface{ GetWarnings() []string })
+	if !ok {
+		return nil
+	}
+	for _, msg := range w.GetWarnings() {
+		if _, err := fmt.Fprintf(env.Stderr, "Warning: %s.\n", msg); err != nil {
+			return err
+		}
+	}
+	return nil
 }
