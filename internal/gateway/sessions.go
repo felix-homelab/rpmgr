@@ -119,6 +119,7 @@ type Sessions struct {
 	capWarned   map[string]time.Time // when a connector at the cap was last warned about
 	draining    bool                 // the gateway stops
 	disabled    bool                 // the gateway is disabled (R22) until Enable
+	passive     map[entryKey]*entryHealth
 }
 
 // NewSessions returns the session manager.
@@ -129,7 +130,7 @@ func NewSessions(o SessionsOptions) *Sessions {
 	if o.Logger == nil {
 		o.Logger = slog.New(slog.DiscardHandler)
 	}
-	s := &Sessions{o: o, byConnector: map[string][]*dataSession{}, capWarned: map[string]time.Time{}}
+	s := &Sessions{o: o, byConnector: map[string][]*dataSession{}, capWarned: map[string]time.Time{}, passive: map[entryKey]*entryHealth{}}
 	o.Metrics.watch(s)
 	return s
 }
@@ -467,6 +468,7 @@ func (m *Sessions) Recheck() {
 			}
 		}
 	}
+	m.prunePassive()
 	m.mu.Unlock()
 	for _, d := range denied {
 		m.o.Logger.Info("closing the data session of a revoked connector", "connector", d.connector)
@@ -553,7 +555,8 @@ func (m *Sessions) Report() []*agentv1.DataSession {
 // connector's ready sessions.
 type rankedSessions struct {
 	RouteConnector
-	sessions []*dataSession
+	sessions   []*dataSession
+	lastResort bool // passive health passes over every entry; this one is tried anyway
 }
 
 // tier is a connector at one priority of its targets of a route.
@@ -566,12 +569,14 @@ type tier struct {
 type passedOver struct {
 	tiers    map[tier]bool
 	sessions map[*dataSession]bool
+	passive  bool // the entries passive health marks are passed over too (passable)
 }
 
 // candidates are the route's entries whose connector has a session ready for them, each with those
 // sessions, less the ones skip names: an entry whose priority the connector reports without a
 // healthy target is passed over, so new streams, and the requests of http routes, move to the
-// next priority and back once it is healthy again.
+// next priority and back once it is healthy again; with skip.passive, so is an entry passive
+// health marks.
 func (m *Sessions) candidates(route string, skip passedOver) []rankedSessions {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -590,6 +595,9 @@ func (m *Sessions) candidates(route string, skip passedOver) []rankedSessions {
 			out = append(out, r)
 		}
 	}
+	if skip.passive {
+		out = m.passable(route, out, m.o.Now())
+	}
 	return out
 }
 
@@ -599,7 +607,7 @@ func (m *Sessions) BestPriority(route string) (uint32, bool) {
 	if m == nil {
 		return 0, false
 	}
-	cands := m.candidates(route, passedOver{})
+	cands := m.candidates(route, passedOver{passive: true})
 	if len(cands) == 0 {
 		return 0, false
 	}
@@ -691,7 +699,8 @@ func (m *Sessions) Open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.
 }
 
 // open is Open passing over the entries and sessions skip names. A ranked entry's priority goes
-// into open, so that its connector dials only its targets of that priority (D90).
+// into open, so that its connector dials only its targets of that priority (D90). With
+// skip.passive, a marked entry past its back-off is opened by one stream at a time, its trial.
 func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip passedOver) (*trackedStream, error) {
 	m.mu.Lock()
 	draining := m.draining || m.disabled
@@ -702,8 +711,23 @@ func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip pas
 	cands := m.candidates(open.GetRouteId(), skip)
 	for len(cands) > 0 {
 		i, d := choose(cands, m.o.Now())
+		k := entryKey{open.GetRouteId(), cands[i].ID, cands[i].Priority}
+		trial := false
+		if skip.passive && !cands[i].lastResort {
+			m.mu.Lock()
+			t, ok := m.claim(k, m.o.Now())
+			m.mu.Unlock()
+			if !ok {
+				cands = slices.Delete(cands, i, i+1)
+				continue
+			}
+			trial = t
+		}
 		st, err := d.s.OpenStream(ctx)
 		if err != nil {
+			if trial {
+				m.passiveResult(k, true, false, false)
+			}
 			if cands[i].sessions = slices.DeleteFunc(cands[i].sessions, func(x *dataSession) bool { return x == d }); len(cands[i].sessions) == 0 {
 				cands = slices.Delete(cands, i, i+1)
 			}
@@ -715,11 +739,14 @@ func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip pas
 		if c := cands[i]; c.Ranked && open.GetKind() != tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW {
 			open.TargetPriority = &c.Priority
 		}
-		ts := &trackedStream{Stream: st, d: d, tier: cands[i].RouteConnector}
+		ts := &trackedStream{Stream: st, d: d, tier: cands[i].RouteConnector, trial: trial}
 		ts.last.Store(m.o.Now().UnixNano())
 		d.track(ts)
 		if err := tunnel.WriteMessage(ts, open); err != nil {
 			ts.Abort()
+			if trial {
+				m.passiveResult(k, true, false, false)
+			}
 			return nil, err
 		}
 		ts.open, ts.in, ts.out = m.o.Metrics.stream(open.GetRouteId(), d.s.Transport())
@@ -731,8 +758,9 @@ func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip pas
 // OpenStream opens a stream for open's route and reads its StreamResult within 10 s. On DRAINING
 // or OVERLOADED it tries another session; on UPSTREAM_REFUSED or UPSTREAM_TIMEOUT another entry,
 // of the same priority first, then of the next, which may be the same connector at a worse
-// priority; at most openAttempts streams in all (docs/03-connections.md, "Framing", D90). It
-// returns the stream only with NO_ERROR, otherwise the last result code.
+// priority; at most openAttempts streams in all (docs/03-connections.md, "Framing", D90). Its
+// results are the passive health of the entries it tries ("Target health"). It returns the stream
+// only with NO_ERROR, otherwise the last result code.
 func (m *Sessions) OpenStream(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.Stream, tunnelv1.ResultCode, error) {
 	st, res, err := m.OpenStreamResult(ctx, open)
 	return st, res.GetCode(), err
@@ -763,7 +791,7 @@ const openAttempts = 4
 
 func (m *Sessions) openStreamResult(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.Stream, *tunnelv1.StreamResult, error) {
 	var last *tunnelv1.StreamResult
-	skip := passedOver{tiers: map[tier]bool{}, sessions: map[*dataSession]bool{}}
+	skip := passedOver{tiers: map[tier]bool{}, sessions: map[*dataSession]bool{}, passive: true}
 	for attempt := range openAttempts {
 		st, err := m.open(ctx, open, skip)
 		if attempt > 0 && errors.Is(err, ErrNoSession) {
@@ -773,6 +801,10 @@ func (m *Sessions) openStreamResult(ctx context.Context, open *tunnelv1.StreamOp
 			return nil, nil, err
 		}
 		res, err := readResult(ctx, st)
+		code := res.GetCode()
+		refused := code == tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED || code == tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_TIMEOUT
+		m.passiveResult(entryKey{open.GetRouteId(), st.d.connector, st.tier.Priority}, st.trial,
+			code == tunnelv1.ResultCode_RESULT_CODE_NO_ERROR && err == nil, refused)
 		if err != nil {
 			st.Abort()
 			return nil, nil, err
@@ -930,6 +962,7 @@ type trackedStream struct {
 	tunnel.Stream
 	d       *dataSession
 	tier    RouteConnector // the entry it was opened for
+	trial   bool           // the half-open trial of a marked entry
 	last    atomic.Int64   // Unix nanoseconds of the open or the latest byte, for the load
 	once    sync.Once
 	open    prometheus.Gauge   // nil without metrics

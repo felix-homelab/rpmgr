@@ -262,15 +262,30 @@ serves the route at that priority, the connection closes as soon as it has no re
 An HTTP/1.1 upstream moves at the next request, an HTTP/2 upstream once it has no request in
 progress.
 
+### Passing over failing targets
+
+Each gateway also learns from the connections it opens. When a connector's targets at one priority
+refuse or time out several new connections in a row, the gateway passes over that connector at
+that priority for a while, so new connections go straight to the next one instead of waiting for
+the failure each time. After the pause one connection tries it again: if it gets through, the
+connector at that priority is used again; if not, the pause grows, up to a limit
+([03](../../03-connections.md#target-health-phase-2)).
+
+- Only refused and timed-out connections count. An HTTP error status, such as 500 or 503, from the
+  service is its answer and never counts.
+- When every connector of the route is passed over, the gateway still tries one rather than
+  refusing the connection.
+- Each gateway decides alone: one gateway may still try a connector that another passes over.
+- UDP flows are not counted and not moved ([Limits](#limits)).
+
 ### Limits
 
-- **Without a health check**, rpmgr knows whether a connector is ready, not whether a target works.
-  A target that is down while its connector stays ready is still tried first, and every new
-  connection waits for its dial to fail or time out before the next one is tried
+- **Without a health check**, rpmgr knows whether a connector is ready, not whether a target
+  works. A target that is down is still tried until it has refused or timed out
+  several connections in a row ([Passing over failing targets](#passing-over-failing-targets)),
+  and each of those waits for its dial to fail or time out before the next one is tried
   ([03](../../03-connections.md#timeouts-keepalive-and-backoff)). Meanwhile the fallback's HTTP
-  connections stay alive, and move back only when idle or when a better priority returns. Give the
-  route a [health check](#health-checks); passive health checks, which pass over a failing target
-  without one, are planned for Phase 2 ([05](../../05-features.md#targets-and-load-balancing)).
+  connections stay alive, and move back only when idle or when a better priority returns.
 - **UDP flows are not retried.** A UDP flow sends its first datagrams before it knows whether the
   target answers, so it is never moved to another connector.
 - **Release candidates.** A gateway or connector of a release candidate (v0.1.0-rc.1 to rc.7)

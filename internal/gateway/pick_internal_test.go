@@ -137,9 +137,9 @@ func TestChoose(t *testing.T) {
 	}
 	flowing := &dataSession{}
 	cands := []rankedSessions{
-		{RouteConnector{ID: "failover", Priority: 5, Weight: 1}, []*dataSession{{}}},
-		{RouteConnector{ID: "blocked", Weight: 1000}, []*dataSession{stuck(), stuck()}},
-		{RouteConnector{ID: "flowing", Weight: 1}, []*dataSession{flowing}},
+		{RouteConnector: RouteConnector{ID: "failover", Priority: 5, Weight: 1}, sessions: []*dataSession{{}}},
+		{RouteConnector: RouteConnector{ID: "blocked", Weight: 1000}, sessions: []*dataSession{stuck(), stuck()}},
+		{RouteConnector: RouteConnector{ID: "flowing", Weight: 1}, sessions: []*dataSession{flowing}},
 	}
 	for range 50 {
 		if _, d := choose(cands, now); d != flowing {
