@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"maps"
+	"net/http"
 	"slices"
 	"testing"
 	"time"
@@ -49,9 +50,14 @@ func SetHTTPTimers(t testing.TB, readHeader, upstreamHeader time.Duration) {
 	t.Cleanup(func() { httpReadHeader, httpUpstreamHeader = oldRead, oldUp })
 }
 
-// RouteFor returns the ID of the http route that serves host and path, or "".
-func RouteFor(h *HTTPRoutes, host, path string) string {
-	if rt := h.routeFor(host, path); rt != nil {
+// RouteFor returns the ID of the http route that serves host and path, with the request headers
+// header if given, or "".
+func RouteFor(h *HTTPRoutes, host, path string, header ...http.Header) string {
+	var hdr http.Header
+	if len(header) > 0 {
+		hdr = header[0]
+	}
+	if rt := h.routeFor(host, path, hdr); rt != nil {
 		return rt.route.Load().ID
 	}
 	return ""

@@ -567,6 +567,13 @@ affect agents take effect through reconciliation and show apply status like any 
   route before the feature was added lets its requests in flight and upgraded connections, such as
   WebSockets, finish as for any removed route, so a connection admitted without a require-header
   value stays open on such a gateway until it ends or the gateway is upgraded.
+- A route with header matches is a special case: on a gateway without `http.header-match`, its
+  requests reach the route of the same hostname and path prefix without matches, if there is one,
+  which the gated route's status says.
+- **Controller replicas during a rolling upgrade to v0.3.0** (HA): the release stores a route's
+  header matches in a new form. A replica of the previous release that reads a route with header
+  matches fails on it, so its snapshots and API answers that need the route fail closed until it
+  is upgraded too; upgrade all replicas before setting header matches.
 - Before the first release, one change of meaning shipped without a capability: access policies'
   deny rules win ([D85](14-open-decisions.md#engineering)). A gateway of a release candidate
   (v0.1.0-rc.1 to rc.6) applies the first matching rule to the same snapshot, so a deny placed
