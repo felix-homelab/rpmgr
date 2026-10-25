@@ -1,0 +1,63 @@
+{
+  "tcp": {
+    "dial_errors": null,
+    "failing_seconds": [
+      "10:24:34: ok 352 refused 0 reset 0 timeout 0 eof 9 other 0 backlog 0"
+    ],
+    "max": "612.562448ms",
+    "p50": "20.912124ms",
+    "p99": "196.363977ms",
+    "seconds": 91,
+    "total": {
+      "OK": 37961,
+      "Refused": 0,
+      "Reset": 0,
+      "Timeout": 0,
+      "EOF": 9,
+      "Other": 0,
+      "Backlog": 0,
+      "Gens": {
+        "1": 8799,
+        "2": 22273,
+        "3": 6889
+      }
+    }
+  },
+  "udp": {
+    "long_recv": 22441,
+    "long_sent": 22441,
+    "lost_by_second": {},
+    "replies_by_gen": {
+      "1": 13293,
+      "2": 17969
+    },
+    "short_recv": 8821,
+    "short_sent": 8821
+  }
+}
+10:23:22.153 start          load     
+10:23:22.171 session        c1       quic gen 1
+10:23:22.171 session        c0       quic gen 1
+10:23:40.690 drain          c0       quic gen 1
+10:23:40.692 drain          c1       quic gen 1
+10:23:40.999 rehomed        c0       tcp gen 2 after 309 ms, 1 attempts
+10:23:41.005 rehomed        c1       tcp gen 2 after 312 ms, 1 attempts
+10:24:00.703 long_end       long7    gen 1 after 361 pings: eof
+10:24:00.704 long_end       long2    gen 1 after 361 pings: eof
+10:24:00.706 long_end       long3    gen 1 after 361 pings: eof
+10:24:00.707 long_end       long9    gen 1 after 363 pings: eof
+10:24:00.707 session_end    c1       quic gen 1: drain_end (Application error 0x0 (remote): drain over)
+10:24:00.708 session_end    c0       quic gen 1: drain_end (Application error 0x0 (remote): drain over)
+10:24:00.758 long_end       long0    gen 1 after 362 pings: eof
+10:24:00.759 long_end       long4    gen 1 after 363 pings: eof
+10:24:00.759 long_end       long6    gen 1 after 362 pings: eof
+10:24:00.760 long_end       long5    gen 1 after 362 pings: eof
+10:24:00.760 long_end       long8    gen 1 after 363 pings: eof
+10:24:00.761 long_end       long1    gen 1 after 363 pings: eof
+10:24:34.945 drain          c1       tcp gen 2
+10:24:34.946 drain          c0       tcp gen 2
+10:24:35.251 rehomed        c1       tcp gen 3 after 305 ms, 1 attempts
+10:24:35.420 rehomed        c0       tcp gen 3 after 473 ms, 1 attempts
+10:24:52.153 stop           load     
+10:24:54.947 session_end    c1       tcp gen 2: drain_end (EOF)
+10:24:54.947 session_end    c0       tcp gen 2: drain_end (EOF)

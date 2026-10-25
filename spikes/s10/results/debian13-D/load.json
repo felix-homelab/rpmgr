@@ -1,0 +1,3685 @@
+{
+  "events": [
+    {
+      "t": 1792924034981,
+      "kind": "start",
+      "who": "load"
+    },
+    {
+      "t": 1792924034993,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792924034994,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792924034994,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792924034996,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792924050758,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 1: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924050760,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 1: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924050766,
+      "kind": "drain",
+      "who": "c2",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792924050766,
+      "kind": "drain",
+      "who": "c1",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792924050776,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924050780,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924050802,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 1: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924050804,
+      "kind": "long_end",
+      "who": "long4",
+      "detail": "gen 1 after 152 pings: eof"
+    },
+    {
+      "t": 1792924050804,
+      "kind": "long_end",
+      "who": "long15",
+      "detail": "gen 1 after 152 pings: eof"
+    },
+    {
+      "t": 1792924050804,
+      "kind": "long_end",
+      "who": "long18",
+      "detail": "gen 1 after 152 pings: reset"
+    },
+    {
+      "t": 1792924050832,
+      "kind": "long_end",
+      "who": "long14",
+      "detail": "gen 1 after 152 pings: eof"
+    },
+    {
+      "t": 1792924050865,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924050888,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924050897,
+      "kind": "rehomed",
+      "who": "c1",
+      "detail": "quic gen 2 after 131 ms, 1 attempts"
+    },
+    {
+      "t": 1792924050909,
+      "kind": "long_end",
+      "who": "long3",
+      "detail": "gen 1 after 153 pings: eof"
+    },
+    {
+      "t": 1792924050913,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924050929,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924050933,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924050937,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924050955,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924050994,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924050999,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051008,
+      "kind": "rehomed",
+      "who": "c2",
+      "detail": "quic gen 2 after 242 ms, 1 attempts"
+    },
+    {
+      "t": 1792924051012,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051013,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051027,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051033,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051041,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051060,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051104,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051107,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051110,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051116,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 1: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051116,
+      "kind": "long_end",
+      "who": "long7",
+      "detail": "gen 1 after 155 pings: eof"
+    },
+    {
+      "t": 1792924051125,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051150,
+      "kind": "dial_error",
+      "who": "c3",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924051165,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051168,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051177,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051179,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051183,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051195,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924051196,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051199,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051230,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051240,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051244,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051274,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051300,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051319,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051324,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051326,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051366,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051392,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051426,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924051438,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051453,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051496,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051530,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924051535,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051548,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051559,
+      "kind": "dial_error",
+      "who": "c0",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924051615,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051622,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051655,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051667,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051700,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051806,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051903,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051926,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924051974,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924051982,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924052005,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924052052,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924052205,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924052221,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924052247,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924052338,
+      "kind": "dial_error",
+      "who": "c3",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924052445,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924052464,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924052547,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924052547,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924052566,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924052696,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924052700,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924052702,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924052712,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924052718,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924052755,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924052821,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924052846,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924052853,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924052872,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924052876,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924052886,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924052899,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924052918,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924052935,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924052997,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053034,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053036,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924053042,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053058,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053092,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053137,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053144,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053150,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053208,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053222,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053231,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053239,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053242,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924053262,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053298,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053305,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053316,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053322,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053340,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053366,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053375,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053378,
+      "kind": "dial_error",
+      "who": "c3",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924053408,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053415,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053455,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053479,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053491,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053491,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924053543,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053580,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053606,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053625,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053713,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924053749,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053828,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924053864,
+      "kind": "dial_error",
+      "who": "c0",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924054078,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924054253,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054401,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054416,
+      "kind": "dial_error",
+      "who": "c3",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924054454,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924054462,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054500,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054505,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924054542,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054568,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924054584,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924054607,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054611,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924054623,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054626,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054639,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924054641,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924054649,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924054659,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054674,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054675,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054747,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924054759,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924054765,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924054796,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054799,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924054806,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924054807,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054901,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054948,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924054961,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924054993,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055005,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055021,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055052,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055057,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055061,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055094,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055107,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055114,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055130,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055141,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055157,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055165,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055174,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055190,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055199,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055215,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055267,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055272,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055313,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055325,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055361,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055370,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055434,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055461,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055482,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055487,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055520,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055528,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055553,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055554,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055599,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924055603,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055756,
+      "kind": "long_end",
+      "who": "long12",
+      "detail": "gen 1 after 151 pings: timeout"
+    },
+    {
+      "t": 1792924055757,
+      "kind": "long_end",
+      "who": "long8",
+      "detail": "gen 1 after 151 pings: timeout"
+    },
+    {
+      "t": 1792924055768,
+      "kind": "long_end",
+      "who": "long11",
+      "detail": "gen 1 after 152 pings: timeout"
+    },
+    {
+      "t": 1792924055772,
+      "kind": "long_end",
+      "who": "long1",
+      "detail": "gen 1 after 152 pings: timeout"
+    },
+    {
+      "t": 1792924055772,
+      "kind": "long_end",
+      "who": "long19",
+      "detail": "gen 1 after 151 pings: timeout"
+    },
+    {
+      "t": 1792924055804,
+      "kind": "long_end",
+      "who": "long6",
+      "detail": "gen 1 after 152 pings: timeout"
+    },
+    {
+      "t": 1792924055814,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924055831,
+      "kind": "long_end",
+      "who": "long16",
+      "detail": "gen 1 after 152 pings: timeout"
+    },
+    {
+      "t": 1792924055832,
+      "kind": "long_end",
+      "who": "long10",
+      "detail": "gen 1 after 152 pings: timeout"
+    },
+    {
+      "t": 1792924055832,
+      "kind": "long_end",
+      "who": "long2",
+      "detail": "gen 1 after 152 pings: timeout"
+    },
+    {
+      "t": 1792924055832,
+      "kind": "long_end",
+      "who": "long17",
+      "detail": "gen 1 after 152 pings: timeout"
+    },
+    {
+      "t": 1792924055832,
+      "kind": "long_end",
+      "who": "long5",
+      "detail": "gen 1 after 152 pings: timeout"
+    },
+    {
+      "t": 1792924055832,
+      "kind": "long_end",
+      "who": "long9",
+      "detail": "gen 1 after 152 pings: timeout"
+    },
+    {
+      "t": 1792924055839,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055839,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924055840,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924055859,
+      "kind": "long_end",
+      "who": "long13",
+      "detail": "gen 1 after 152 pings: timeout"
+    },
+    {
+      "t": 1792924055860,
+      "kind": "long_end",
+      "who": "long0",
+      "detail": "gen 1 after 152 pings: timeout"
+    },
+    {
+      "t": 1792924055888,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056035,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056051,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056074,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056085,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056101,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056114,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056126,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056142,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056168,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056180,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056232,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056232,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056239,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056264,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056265,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056266,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924056307,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056325,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056333,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056348,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056373,
+      "kind": "dial_error",
+      "who": "c3",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924056506,
+      "kind": "dial_error",
+      "who": "c0",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924056608,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056647,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056661,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056680,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056686,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056697,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056711,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056719,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056736,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056752,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056769,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056804,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056850,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056896,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924056917,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924056977,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057008,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057017,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057163,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057171,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057241,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057252,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057279,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057345,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057356,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057411,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057443,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057543,
+      "kind": "dial_error",
+      "who": "c0",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924057552,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057600,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057616,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057617,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057618,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057625,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057680,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057746,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057754,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057821,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057836,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057842,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057859,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924057894,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057944,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057944,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057950,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057966,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924057972,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924057981,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924058027,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924058064,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924058065,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924058066,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924058073,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924058163,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924058178,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924058190,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924058199,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924058224,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924058224,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924058231,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924058261,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924058305,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924058341,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924058354,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924058400,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924058429,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924058442,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924058478,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924058551,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924058604,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924058636,
+      "kind": "dial_error",
+      "who": "c0",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924058685,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924058733,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924058764,
+      "kind": "dial_error",
+      "who": "c3",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924058778,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924058810,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924058880,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059071,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059285,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924059520,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059546,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924059560,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059621,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924059652,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059655,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059682,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924059695,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059716,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924059728,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924059741,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059744,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924059779,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924059785,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924059797,
+      "kind": "dial_error",
+      "who": "c3",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924059799,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059803,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924059813,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924059820,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059822,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059892,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059919,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924059931,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059938,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059956,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924059960,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924059966,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924059989,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924060031,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924060041,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924060052,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924060063,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924060069,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924060085,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924060088,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924060160,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924060200,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924060276,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924060412,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924060420,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924060803,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924060922,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924060928,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924060943,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924060958,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924060995,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924061041,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924061110,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924061151,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924061196,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924061212,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924061277,
+      "kind": "dial_error",
+      "who": "c0",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924061295,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924061306,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924061321,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924061362,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924061420,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924061566,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924061576,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924061639,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924061661,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924061670,
+      "kind": "dial_error",
+      "who": "c3",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924061705,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924061826,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924061854,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924061863,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924062060,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924062069,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924062104,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924062152,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924062227,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924062294,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924062391,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924062393,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924062400,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924062512,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924062524,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924062555,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924062562,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924062580,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924062647,
+      "kind": "dial_error",
+      "who": "c0",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924062678,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924062689,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924062758,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924062765,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924062841,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924062854,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924062886,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924062914,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924062929,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924062955,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924062968,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924063036,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924063071,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924063163,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924063171,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924063179,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924063551,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924063659,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924063661,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924063672,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924063824,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924063832,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924063837,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924063842,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924063882,
+      "kind": "dial_error",
+      "who": "c0",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924063917,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924064117,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924064159,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924064298,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924064374,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924064438,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924064585,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924064591,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924064619,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924064647,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924064653,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924064681,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924064686,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924064790,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924064816,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924064824,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924064855,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924064879,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924064897,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924064916,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924064928,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924064940,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924064961,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924064984,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924065020,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924065209,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924065251,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924065278,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924065323,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924065390,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924065446,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924065457,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924065463,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924065481,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924065485,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924065501,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924065522,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924065549,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924065553,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924065589,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924065608,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924065616,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924065631,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924065689,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924065735,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924065741,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924065743,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924065789,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924065798,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924065819,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924065853,
+      "kind": "dial_error",
+      "who": "c0",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924065934,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066028,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924066133,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066143,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924066144,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924066171,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066174,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066176,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066183,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924066209,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924066235,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066248,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924066264,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066470,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924066647,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924066782,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924066816,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066826,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924066840,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066861,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066899,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924066905,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066927,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924066940,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924066954,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066960,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066967,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924066992,
+      "kind": "dial_error",
+      "who": "c3",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924067005,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924067017,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924067032,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924067043,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924067045,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924067049,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924067055,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924067108,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924067119,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924067172,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924067296,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924067303,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924067365,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924067375,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924067379,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924067415,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924067434,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924067452,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924067459,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924067495,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924067547,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924067588,
+      "kind": "dial_error",
+      "who": "c0",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924067655,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924067721,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924067759,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924067817,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924067855,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924067999,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924068115,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924068126,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924068147,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924068155,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924068212,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924068368,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924068383,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924068408,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924068477,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924068548,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924068549,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924068560,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924068584,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924068604,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924068631,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924068676,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924068712,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924068747,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924068787,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924068791,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924068814,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924068831,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924068839,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924068848,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924068857,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924068892,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924068898,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924069056,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924069099,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924069109,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924069124,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924069126,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924069131,
+      "kind": "dial_error",
+      "who": "c1",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924069134,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924069166,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924069209,
+      "kind": "dial_error",
+      "who": "c2",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924069484,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924069493,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924069592,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924069605,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924069661,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924069687,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924069904,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924069912,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924069939,
+      "kind": "dial_error",
+      "who": "c3",
+      "detail": "no GEN: received a stateless reset"
+    },
+    {
+      "t": 1792924069968,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924070039,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924070042,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924070063,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924070143,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924070146,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924070184,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924070275,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924070354,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924070582,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924070693,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924070706,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924070735,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924070761,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924070770,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 2: stateless_reset (received a stateless reset)"
+    },
+    {
+      "t": 1792924070789,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924070821,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924070948,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924070977,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 2"
+    },
+    {
+      "t": 1792924084981,
+      "kind": "stop",
+      "who": "load"
+    }
+  ],
+  "started": 1792924034981,
+  "tcp": {
+    "dial_errors": null,
+    "failing_seconds": [
+      "10:27:30: ok 365 refused 0 reset 1 timeout 96 eof 7 other 0 backlog 0",
+      "10:27:31: ok 25 refused 0 reset 0 timeout 463 eof 10 other 0 backlog 0",
+      "10:27:32: ok 15 refused 0 reset 0 timeout 449 eof 30 other 0 backlog 0",
+      "10:27:33: ok 6 refused 0 reset 0 timeout 449 eof 39 other 0 backlog 0",
+      "10:27:34: ok 9 refused 0 reset 0 timeout 390 eof 98 other 0 backlog 0",
+      "10:27:35: ok 18 refused 0 reset 0 timeout 336 eof 146 other 0 backlog 0",
+      "10:27:36: ok 19 refused 0 reset 0 timeout 321 eof 159 other 0 backlog 0",
+      "10:27:37: ok 20 refused 0 reset 0 timeout 320 eof 151 other 0 backlog 0",
+      "10:27:38: ok 17 refused 0 reset 0 timeout 331 eof 152 other 0 backlog 0",
+      "10:27:39: ok 12 refused 0 reset 0 timeout 312 eof 175 other 0 backlog 0",
+      "10:27:40: ok 8 refused 0 reset 0 timeout 194 eof 94 other 0 backlog 200",
+      "10:27:41: ok 6 refused 0 reset 0 timeout 318 eof 156 other 0 backlog 0",
+      "10:27:42: ok 8 refused 0 reset 0 timeout 326 eof 152 other 0 backlog 0",
+      "10:27:43: ok 7 refused 0 reset 0 timeout 325 eof 163 other 0 backlog 0",
+      "10:27:44: ok 5 refused 0 reset 0 timeout 313 eof 176 other 0 backlog 0",
+      "10:27:45: ok 12 refused 0 reset 0 timeout 302 eof 185 other 0 backlog 0",
+      "10:27:46: ok 7 refused 0 reset 0 timeout 323 eof 166 other 0 backlog 0",
+      "10:27:47: ok 12 refused 0 reset 0 timeout 319 eof 166 other 0 backlog 0",
+      "10:27:48: ok 11 refused 0 reset 0 timeout 321 eof 168 other 0 backlog 0",
+      "10:27:49: ok 4 refused 0 reset 0 timeout 332 eof 157 other 0 backlog 0",
+      "10:27:50: ok 19 refused 0 reset 0 timeout 305 eof 169 other 0 backlog 0",
+      "10:27:51: ok 25 refused 0 reset 0 timeout 265 eof 202 other 0 backlog 0",
+      "10:27:52: ok 29 refused 0 reset 0 timeout 253 eof 185 other 0 backlog 0",
+      "10:27:53: ok 23 refused 0 reset 0 timeout 248 eof 206 other 0 backlog 0",
+      "10:27:54: ok 26 refused 0 reset 0 timeout 265 eof 185 other 0 backlog 0",
+      "10:27:55: ok 32 refused 0 reset 0 timeout 279 eof 184 other 0 backlog 0",
+      "10:27:56: ok 41 refused 0 reset 0 timeout 220 eof 215 other 0 backlog 0",
+      "10:27:57: ok 29 refused 0 reset 0 timeout 204 eof 248 other 0 backlog 0",
+      "10:27:58: ok 30 refused 0 reset 0 timeout 212 eof 251 other 0 backlog 0",
+      "10:27:59: ok 32 refused 0 reset 0 timeout 188 eof 272 other 0 backlog 0",
+      "10:28:00: ok 25 refused 0 reset 0 timeout 143 eof 315 other 0 backlog 0",
+      "10:28:01: ok 41 refused 0 reset 0 timeout 181 eof 257 other 0 backlog 0",
+      "10:28:02: ok 27 refused 0 reset 0 timeout 157 eof 303 other 0 backlog 0",
+      "10:28:03: ok 41 refused 0 reset 0 timeout 138 eof 292 other 0 backlog 0",
+      "10:28:04: ok 42 refused 0 reset 0 timeout 118 eof 314 other 0 backlog 0"
+    ],
+    "max": "43.539588ms",
+    "p50": "4.161637ms",
+    "p99": "25.36165ms",
+    "seconds": 50,
+    "total": {
+      "OK": 8276,
+      "Refused": 0,
+      "Reset": 1,
+      "Timeout": 9716,
+      "EOF": 6148,
+      "Other": 0,
+      "Backlog": 200,
+      "Gens": {
+        "1": 7589,
+        "2": 687
+      }
+    }
+  },
+  "udp": {
+    "long_recv": 24989,
+    "long_sent": 24990,
+    "lost_by_second": {
+      "1792924050": 1
+    },
+    "replies_by_gen": {
+      "1": 9294,
+      "2": 20543
+    },
+    "short_recv": 4848,
+    "short_sent": 4848
+  }
+}

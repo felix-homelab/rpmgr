@@ -1,0 +1,194 @@
+{
+  "events": [
+    {
+      "t": 1792923802153,
+      "kind": "start",
+      "who": "load"
+    },
+    {
+      "t": 1792923802171,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792923802171,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792923820690,
+      "kind": "drain",
+      "who": "c0",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792923820692,
+      "kind": "drain",
+      "who": "c1",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792923820999,
+      "kind": "rehomed",
+      "who": "c0",
+      "detail": "tcp gen 2 after 309 ms, 1 attempts"
+    },
+    {
+      "t": 1792923821005,
+      "kind": "rehomed",
+      "who": "c1",
+      "detail": "tcp gen 2 after 312 ms, 1 attempts"
+    },
+    {
+      "t": 1792923840703,
+      "kind": "long_end",
+      "who": "long7",
+      "detail": "gen 1 after 361 pings: eof"
+    },
+    {
+      "t": 1792923840704,
+      "kind": "long_end",
+      "who": "long2",
+      "detail": "gen 1 after 361 pings: eof"
+    },
+    {
+      "t": 1792923840706,
+      "kind": "long_end",
+      "who": "long3",
+      "detail": "gen 1 after 361 pings: eof"
+    },
+    {
+      "t": 1792923840707,
+      "kind": "long_end",
+      "who": "long9",
+      "detail": "gen 1 after 363 pings: eof"
+    },
+    {
+      "t": 1792923840707,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 1: drain_end (Application error 0x0 (remote): drain over)"
+    },
+    {
+      "t": 1792923840708,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 1: drain_end (Application error 0x0 (remote): drain over)"
+    },
+    {
+      "t": 1792923840758,
+      "kind": "long_end",
+      "who": "long0",
+      "detail": "gen 1 after 362 pings: eof"
+    },
+    {
+      "t": 1792923840759,
+      "kind": "long_end",
+      "who": "long4",
+      "detail": "gen 1 after 363 pings: eof"
+    },
+    {
+      "t": 1792923840759,
+      "kind": "long_end",
+      "who": "long6",
+      "detail": "gen 1 after 362 pings: eof"
+    },
+    {
+      "t": 1792923840760,
+      "kind": "long_end",
+      "who": "long5",
+      "detail": "gen 1 after 362 pings: eof"
+    },
+    {
+      "t": 1792923840760,
+      "kind": "long_end",
+      "who": "long8",
+      "detail": "gen 1 after 363 pings: eof"
+    },
+    {
+      "t": 1792923840761,
+      "kind": "long_end",
+      "who": "long1",
+      "detail": "gen 1 after 363 pings: eof"
+    },
+    {
+      "t": 1792923874945,
+      "kind": "drain",
+      "who": "c1",
+      "detail": "tcp gen 2"
+    },
+    {
+      "t": 1792923874946,
+      "kind": "drain",
+      "who": "c0",
+      "detail": "tcp gen 2"
+    },
+    {
+      "t": 1792923875251,
+      "kind": "rehomed",
+      "who": "c1",
+      "detail": "tcp gen 3 after 305 ms, 1 attempts"
+    },
+    {
+      "t": 1792923875420,
+      "kind": "rehomed",
+      "who": "c0",
+      "detail": "tcp gen 3 after 473 ms, 1 attempts"
+    },
+    {
+      "t": 1792923892153,
+      "kind": "stop",
+      "who": "load"
+    },
+    {
+      "t": 1792923894947,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "tcp gen 2: drain_end (EOF)"
+    },
+    {
+      "t": 1792923894947,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "tcp gen 2: drain_end (EOF)"
+    }
+  ],
+  "started": 1792923802153,
+  "tcp": {
+    "dial_errors": null,
+    "failing_seconds": [
+      "10:24:34: ok 352 refused 0 reset 0 timeout 0 eof 9 other 0 backlog 0"
+    ],
+    "max": "612.562448ms",
+    "p50": "20.912124ms",
+    "p99": "196.363977ms",
+    "seconds": 91,
+    "total": {
+      "OK": 37961,
+      "Refused": 0,
+      "Reset": 0,
+      "Timeout": 0,
+      "EOF": 9,
+      "Other": 0,
+      "Backlog": 0,
+      "Gens": {
+        "1": 8799,
+        "2": 22273,
+        "3": 6889
+      }
+    }
+  },
+  "udp": {
+    "long_recv": 22441,
+    "long_sent": 22441,
+    "lost_by_second": {},
+    "replies_by_gen": {
+      "1": 13293,
+      "2": 17969
+    },
+    "short_recv": 8821,
+    "short_sent": 8821
+  }
+}

@@ -1,0 +1,3 @@
+Oct 25 10:06:44.481007 c5c0a40b7660 systemd[1]: Starting s10.service - s10 model gateway (spike S10)...
+Oct 25 10:06:44.521441 c5c0a40b7660 s10[86]: s10[gen 1 pid 86] 10:06:44.521155 serving tcp :9000 udp :9001 quic :9002
+Oct 25 10:06:44.521562 c5c0a40b7660 systemd[1]: Started s10.service - s10 model gateway (spike S10).

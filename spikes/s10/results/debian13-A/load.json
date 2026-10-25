@@ -1,0 +1,421 @@
+{
+  "events": [
+    {
+      "t": 1792922870063,
+      "kind": "start",
+      "who": "load"
+    },
+    {
+      "t": 1792922870073,
+      "kind": "session",
+      "who": "c0",
+      "detail": "gen 1"
+    },
+    {
+      "t": 1792922870074,
+      "kind": "session",
+      "who": "c3",
+      "detail": "gen 1"
+    },
+    {
+      "t": 1792922870074,
+      "kind": "session",
+      "who": "c2",
+      "detail": "gen 1"
+    },
+    {
+      "t": 1792922870074,
+      "kind": "session",
+      "who": "c1",
+      "detail": "gen 1"
+    },
+    {
+      "t": 1792922874560,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 496ms = 135.3 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792922876812,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 748ms = 89.7 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792922878510,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 446ms = 150.4 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792922880551,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 488ms = 137.6 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792922882557,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 494ms = 135.9 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792922885711,
+      "kind": "drain",
+      "who": "c1",
+      "detail": "gen 1"
+    },
+    {
+      "t": 1792922885712,
+      "kind": "drain",
+      "who": "c3",
+      "detail": "gen 1"
+    },
+    {
+      "t": 1792922885712,
+      "kind": "drain",
+      "who": "c2",
+      "detail": "gen 1"
+    },
+    {
+      "t": 1792922885712,
+      "kind": "drain",
+      "who": "c0",
+      "detail": "gen 1"
+    },
+    {
+      "t": 1792922885724,
+      "kind": "rehomed",
+      "who": "c0",
+      "detail": "gen 2 after 12 ms, 1 attempts"
+    },
+    {
+      "t": 1792922885724,
+      "kind": "rehomed",
+      "who": "c2",
+      "detail": "gen 2 after 12 ms, 1 attempts"
+    },
+    {
+      "t": 1792922885724,
+      "kind": "rehomed",
+      "who": "c3",
+      "detail": "gen 2 after 12 ms, 1 attempts"
+    },
+    {
+      "t": 1792922885724,
+      "kind": "rehomed",
+      "who": "c1",
+      "detail": "gen 2 after 13 ms, 1 attempts"
+    },
+    {
+      "t": 1792922888017,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 953ms = 70.4 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922889636,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 1.072s = 62.6 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922890923,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 859ms = 78.2 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922892786,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 1.222s = 54.9 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922894308,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 1.244s = 53.9 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922895828,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 1.264s = 53.1 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922897263,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 1.199s = 56.0 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922898531,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 968ms = 69.3 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922899813,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 749ms = 89.6 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922901631,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 1.067s = 62.9 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922903147,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 1.083s = 62.0 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922905715,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "gen 1: drain_end (Application error 0x0 (remote): drain over)"
+    },
+    {
+      "t": 1792922905715,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "gen 1: drain_end (Application error 0x0 (remote): drain over)"
+    },
+    {
+      "t": 1792922905715,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "gen 1: drain_end (Application error 0x0 (remote): drain over)"
+    },
+    {
+      "t": 1792922905715,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "gen 1: drain_end (Application error 0x0 (remote): drain over)"
+    },
+    {
+      "t": 1792922905747,
+      "kind": "long_end",
+      "who": "long16",
+      "detail": "gen 1 after 346 pings: eof"
+    },
+    {
+      "t": 1792922905752,
+      "kind": "long_end",
+      "who": "long0",
+      "detail": "gen 1 after 346 pings: eof"
+    },
+    {
+      "t": 1792922905755,
+      "kind": "long_end",
+      "who": "long4",
+      "detail": "gen 1 after 345 pings: eof"
+    },
+    {
+      "t": 1792922905770,
+      "kind": "long_end",
+      "who": "long8",
+      "detail": "gen 1 after 346 pings: eof"
+    },
+    {
+      "t": 1792922905770,
+      "kind": "long_end",
+      "who": "long11",
+      "detail": "gen 1 after 345 pings: eof"
+    },
+    {
+      "t": 1792922905770,
+      "kind": "long_end",
+      "who": "long15",
+      "detail": "gen 1 after 345 pings: eof"
+    },
+    {
+      "t": 1792922905770,
+      "kind": "long_end",
+      "who": "long14",
+      "detail": "gen 1 after 345 pings: eof"
+    },
+    {
+      "t": 1792922905770,
+      "kind": "long_end",
+      "who": "long5",
+      "detail": "gen 1 after 345 pings: eof"
+    },
+    {
+      "t": 1792922905770,
+      "kind": "long_end",
+      "who": "long9",
+      "detail": "gen 1 after 345 pings: eof"
+    },
+    {
+      "t": 1792922905770,
+      "kind": "long_end",
+      "who": "long2",
+      "detail": "gen 1 after 345 pings: eof"
+    },
+    {
+      "t": 1792922905771,
+      "kind": "long_end",
+      "who": "long6",
+      "detail": "gen 1 after 346 pings: eof"
+    },
+    {
+      "t": 1792922905771,
+      "kind": "long_end",
+      "who": "long1",
+      "detail": "gen 1 after 346 pings: eof"
+    },
+    {
+      "t": 1792922905772,
+      "kind": "long_end",
+      "who": "long18",
+      "detail": "gen 1 after 346 pings: eof"
+    },
+    {
+      "t": 1792922905772,
+      "kind": "long_end",
+      "who": "long17",
+      "detail": "gen 1 after 346 pings: eof"
+    },
+    {
+      "t": 1792922905774,
+      "kind": "long_end",
+      "who": "long10",
+      "detail": "gen 1 after 346 pings: eof"
+    },
+    {
+      "t": 1792922905780,
+      "kind": "long_end",
+      "who": "long12",
+      "detail": "gen 1 after 346 pings: eof"
+    },
+    {
+      "t": 1792922905796,
+      "kind": "long_end",
+      "who": "long19",
+      "detail": "gen 1 after 346 pings: eof"
+    },
+    {
+      "t": 1792922905803,
+      "kind": "long_end",
+      "who": "long3",
+      "detail": "gen 1 after 346 pings: eof"
+    },
+    {
+      "t": 1792922905804,
+      "kind": "long_end",
+      "who": "long13",
+      "detail": "gen 1 after 346 pings: eof"
+    },
+    {
+      "t": 1792922905804,
+      "kind": "long_end",
+      "who": "long7",
+      "detail": "gen 1 after 346 pings: eof"
+    },
+    {
+      "t": 1792922910717,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 653ms = 102.8 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922912757,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 693ms = 96.8 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922914581,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 517ms = 129.9 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922916766,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 702ms = 95.6 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922918810,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 747ms = 89.9 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922920711,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 647ms = 103.7 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922922954,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 891ms = 75.4 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922924859,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 795ms = 84.4 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922926584,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 520ms = 128.9 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922928585,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 521ms = 128.7 MB/s, served by gen 2"
+    },
+    {
+      "t": 1792922945064,
+      "kind": "stop",
+      "who": "load"
+    }
+  ],
+  "started": 1792922870063,
+  "tcp": {
+    "dial_errors": null,
+    "failing_seconds": null,
+    "max": "271.57363ms",
+    "p50": "3.70676ms",
+    "p99": "15.968852ms",
+    "seconds": 76,
+    "total": {
+      "OK": 37180,
+      "Refused": 0,
+      "Reset": 0,
+      "Timeout": 0,
+      "EOF": 0,
+      "Other": 0,
+      "Backlog": 0,
+      "Gens": {
+        "1": 7647,
+        "2": 29533
+      }
+    }
+  },
+  "udp": {
+    "long_recv": 37367,
+    "long_sent": 37370,
+    "lost_by_second": {
+      "1792922905": 3
+    },
+    "replies_by_gen": {
+      "1": 19160,
+      "2": 25530
+    },
+    "short_recv": 7323,
+    "short_sent": 7323
+  }
+}

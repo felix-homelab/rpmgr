@@ -1,0 +1,52 @@
+{
+  "tcp": {
+    "dial_errors": null,
+    "failing_seconds": null,
+    "max": "10.79141ms",
+    "p50": "3.290334ms",
+    "p99": "6.780495ms",
+    "seconds": 41,
+    "total": {
+      "OK": 1999,
+      "Refused": 0,
+      "Reset": 0,
+      "Timeout": 0,
+      "EOF": 0,
+      "Other": 0,
+      "Backlog": 0,
+      "Gens": {
+        "1": 1999
+      }
+    }
+  },
+  "udp": {
+    "long_recv": 1999,
+    "long_sent": 1999,
+    "lost_by_second": {},
+    "replies_by_gen": {
+      "1": 5847
+    },
+    "short_recv": 3848,
+    "short_sent": 3848
+  }
+}
+10:10:03.681 start          load     
+10:10:03.693 session        c0       gen 1
+10:10:08.033 bulk           c0       67108864 bytes in 352ms = 190.6 MB/s, served by gen 1
+10:10:10.121 bulk           c0       67108864 bytes in 440ms = 152.6 MB/s, served by gen 1
+10:10:12.031 bulk           c0       67108864 bytes in 350ms = 191.7 MB/s, served by gen 1
+10:10:14.257 bulk           c0       67108864 bytes in 575ms = 116.6 MB/s, served by gen 1
+10:10:16.056 bulk           c0       67108864 bytes in 374ms = 179.4 MB/s, served by gen 1
+10:10:18.050 bulk           c0       67108864 bytes in 367ms = 182.8 MB/s, served by gen 1
+10:10:20.084 bulk           c0       67108864 bytes in 403ms = 166.5 MB/s, served by gen 1
+10:10:22.126 bulk           c0       67108864 bytes in 444ms = 151.1 MB/s, served by gen 1
+10:10:24.090 bulk           c0       67108864 bytes in 409ms = 164.1 MB/s, served by gen 1
+10:10:26.074 bulk           c0       67108864 bytes in 393ms = 170.9 MB/s, served by gen 1
+10:10:28.070 bulk           c0       67108864 bytes in 389ms = 172.6 MB/s, served by gen 1
+10:10:30.005 bulk           c0       67108864 bytes in 323ms = 207.7 MB/s, served by gen 1
+10:10:32.057 bulk           c0       67108864 bytes in 375ms = 179.0 MB/s, served by gen 1
+10:10:34.026 bulk           c0       67108864 bytes in 345ms = 194.7 MB/s, served by gen 1
+10:10:36.044 bulk           c0       67108864 bytes in 363ms = 185.0 MB/s, served by gen 1
+10:10:38.032 bulk           c0       67108864 bytes in 351ms = 191.1 MB/s, served by gen 1
+10:10:43.682 stop           load     
+10:10:43.723 long_ok        long0    gen 1, 392 pings

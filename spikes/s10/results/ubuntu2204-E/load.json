@@ -1,0 +1,153 @@
+{
+  "events": [
+    {
+      "t": 1792923003681,
+      "kind": "start",
+      "who": "load"
+    },
+    {
+      "t": 1792923003693,
+      "kind": "session",
+      "who": "c0",
+      "detail": "gen 1"
+    },
+    {
+      "t": 1792923008033,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 352ms = 190.6 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923010121,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 440ms = 152.6 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923012031,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 350ms = 191.7 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923014257,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 575ms = 116.6 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923016056,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 374ms = 179.4 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923018050,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 367ms = 182.8 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923020084,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 403ms = 166.5 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923022126,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 444ms = 151.1 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923024090,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 409ms = 164.1 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923026074,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 393ms = 170.9 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923028070,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 389ms = 172.6 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923030005,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 323ms = 207.7 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923032057,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 375ms = 179.0 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923034026,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 345ms = 194.7 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923036044,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 363ms = 185.0 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923038032,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 351ms = 191.1 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923043682,
+      "kind": "stop",
+      "who": "load"
+    },
+    {
+      "t": 1792923043723,
+      "kind": "long_ok",
+      "who": "long0",
+      "detail": "gen 1, 392 pings"
+    }
+  ],
+  "started": 1792923003681,
+  "tcp": {
+    "dial_errors": null,
+    "failing_seconds": null,
+    "max": "10.79141ms",
+    "p50": "3.290334ms",
+    "p99": "6.780495ms",
+    "seconds": 41,
+    "total": {
+      "OK": 1999,
+      "Refused": 0,
+      "Reset": 0,
+      "Timeout": 0,
+      "EOF": 0,
+      "Other": 0,
+      "Backlog": 0,
+      "Gens": {
+        "1": 1999
+      }
+    }
+  },
+  "udp": {
+    "long_recv": 1999,
+    "long_sent": 1999,
+    "lost_by_second": {},
+    "replies_by_gen": {
+      "1": 5847
+    },
+    "short_recv": 3848,
+    "short_sent": 3848
+  }
+}

@@ -1,0 +1,12 @@
+Oct 25 10:18:38.647541 e986812c53e1 systemd[1]: Starting s10 model gateway (spike S10)...
+Oct 25 10:18:38.689095 e986812c53e1 s10[45]: s10[gen 1 pid 45] 10:18:38.689002 serving tcp :9000 tunnel :9003 udp :9001 quic :9002 (mode pause)
+Oct 25 10:18:38.690239 e986812c53e1 systemd[1]: Started s10 model gateway (spike S10).
+Oct 25 10:18:58.104655 e986812c53e1 systemd[1]: Reloading s10 model gateway (spike S10)...
+Oct 25 10:18:58.136510 e986812c53e1 s10[830]: s10[gen 2 pid 830] 10:18:58.136247 serving tcp :9000 tunnel :9003 udp :9001 quic :9002 (mode pause)
+Oct 25 10:18:58.137030 e986812c53e1 systemd[1]: s10.service: Supervising process 830 which is not our child. We'll most likely not notice when it exits.
+Oct 25 10:18:58.142840 e986812c53e1 s10[45]: s10[gen 1 pid 45] 10:18:58.139629 hand-off to pid 830 ready after 9.98894ms; draining for 20s
+Oct 25 10:18:58.178293 e986812c53e1 s10[824]: hand-off ok: old pid 45, new pid 830, gen 2, took 9.98894ms
+Oct 25 10:18:58.179892 e986812c53e1 systemd[1]: Reloaded s10 model gateway (spike S10).
+Oct 25 10:19:18.141847 e986812c53e1 s10[45]: s10[gen 1 pid 45] 10:19:18.141672 drain over: cutting 20 visitor connections and 4 sessions; relayed 0+0 datagrams, dropped 0+0; served 21163 udp datagrams
+Oct 25 10:19:18.147769 e986812c53e1 s10[830]: s10[gen 2 pid 830] 10:19:18.147252 from the old process: DONE
+Oct 25 10:19:18.147769 e986812c53e1 s10[830]: s10[gen 2 pid 830] 10:19:18.147295 the old process is done: reading the UDP sockets now

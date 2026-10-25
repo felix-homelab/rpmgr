@@ -1,0 +1,12 @@
+6.18.33.2-microsoft-standard-WSL2
+SO_REUSEPORT, 200 connections queued over two listeners, one closed: served 106, reset 94, other 0
+SO_REUSEPORT, 200 connections queued over two listeners, one closed: served 95, reset 105, other 0
+SO_REUSEPORT, 200 connections queued over two listeners, one closed: served 96, reset 104, other 0
+shared listening socket, 200 connections queued, the old process closed its copy: served 200 by the new process, reset 0, other 0
+shared listening socket, 200 connections queued, the old process closed its copy: served 200 by the new process, reset 0, other 0
+shared listening socket, 200 connections queued, the old process closed its copy: served 200 by the new process, reset 0, other 0
+second writer while the old process holds the lock: refused
+new process: lock after 10.127ms, migration 2.004s, controller writing after 2.015s (window without the migration 12ms); rows kept 613 of 613
+second writer while the old process holds the lock: refused
+s10: injected migration failure
+new process failed (exit status 1); old process took the database back after 2ms: 631 rows of 631 written kept, writes again: true; window 1.021s

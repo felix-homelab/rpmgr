@@ -1,0 +1,1 @@
+killed main pid 86; now: 2210 1 active running 

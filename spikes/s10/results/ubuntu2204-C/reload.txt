@@ -1,0 +1,21 @@
+1792923928.216730208 reload binary-group-writable
+Job for s10.service failed.
+See "systemctl status s10.service" and "journalctl -xeu s10.service" for details.
+exit 1
+1792923928.830436327 reload binary-group-writable returned
+1792923934.985286972 reload unexpected-descriptor
+exit 0
+1792923935.571918907 reload unexpected-descriptor returned
+1792923961.330176325 reload wrong-descriptor
+Job for s10.service failed.
+See "systemctl status s10.service" and "journalctl -xeu s10.service" for details.
+exit 1
+1792923962.318028511 reload wrong-descriptor returned
+1792923968.034575717 reload never-ready
+Job for s10.service failed.
+See "systemctl status s10.service" and "journalctl -xeu s10.service" for details.
+exit 1
+1792923978.787459319 reload never-ready returned
+1792923988.813683829 reload good
+exit 0
+1792923989.561344850 reload good returned

@@ -1,0 +1,14 @@
+Oct 25 10:07:47.111447 735fddb2b13b systemd[1]: Starting s10.service - s10 model gateway (spike S10)...
+Oct 25 10:07:47.145575 735fddb2b13b s10[86]: 2026/10/25 10:07:47 connection doesn't allow setting of receive buffer size. Not a *net.UDPConn?. See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+Oct 25 10:07:47.146356 735fddb2b13b s10[86]: s10[gen 1 pid 86] 10:07:47.145869 serving tcp :9000 udp :9001 quic :9002
+Oct 25 10:07:47.151908 735fddb2b13b systemd[1]: Started s10.service - s10 model gateway (spike S10).
+Oct 25 10:08:05.658356 735fddb2b13b systemd[1]: Reloading s10.service - s10 model gateway (spike S10)...
+Oct 25 10:08:05.699892 735fddb2b13b s10[811]: 2026/10/25 10:08:05 connection doesn't allow setting of receive buffer size. Not a *net.UDPConn?. See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+Oct 25 10:08:05.700523 735fddb2b13b s10[811]: s10[gen 2 pid 811] 10:08:05.700130 serving tcp :9000 udp :9001 quic :9002
+Oct 25 10:08:05.701001 735fddb2b13b systemd[1]: s10.service: Supervising process 811 which is not our child. We'll most likely not notice when it exits.
+Oct 25 10:08:05.710801 735fddb2b13b s10[86]: s10[gen 1 pid 86] 10:08:05.710385 hand-off to pid 811 ready after 11.681542ms; draining for 20s
+Oct 25 10:08:05.740873 735fddb2b13b s10[803]: hand-off ok: old pid 86, new pid 811, gen 2, took 11.681542ms
+Oct 25 10:08:05.743682 735fddb2b13b systemd[1]: Reloaded s10.service - s10 model gateway (spike S10).
+Oct 25 10:08:25.711141 735fddb2b13b s10[86]: s10[gen 1 pid 86] 10:08:25.710789 drain over: cutting 20 visitor connections and 4 sessions; relayed 554990+1912 datagrams, dropped 0+0
+Oct 25 10:08:25.719037 735fddb2b13b s10[811]: s10[gen 2 pid 811] 10:08:25.718908 from the old process: DONE
+Oct 25 10:08:25.719037 735fddb2b13b s10[811]: s10[gen 2 pid 811] 10:08:25.719018 the old process is done: reading the UDP sockets now

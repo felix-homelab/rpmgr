@@ -1,0 +1,2 @@
+systemd 257 (257.13-1~deb13u1)
+6.18.33.2-microsoft-standard-WSL2

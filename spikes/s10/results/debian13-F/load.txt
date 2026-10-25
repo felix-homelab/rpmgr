@@ -1,0 +1,91 @@
+{
+  "tcp": {
+    "dial_errors": null,
+    "failing_seconds": null,
+    "max": "652.049545ms",
+    "p50": "8.35783ms",
+    "p99": "116.2034ms",
+    "seconds": 76,
+    "total": {
+      "OK": 34419,
+      "Refused": 0,
+      "Reset": 0,
+      "Timeout": 0,
+      "EOF": 0,
+      "Other": 0,
+      "Backlog": 0,
+      "Gens": {
+        "1": 7534,
+        "2": 26885
+      }
+    }
+  },
+  "udp": {
+    "long_recv": 37454,
+    "long_sent": 37454,
+    "lost_by_second": {},
+    "replies_by_gen": {
+      "1": 21240,
+      "2": 23556
+    },
+    "short_recv": 7342,
+    "short_sent": 7342
+  }
+}
+10:16:39.710 start          load     
+10:16:39.722 session        c0       quic gen 1
+10:16:39.722 session        c2       quic gen 1
+10:16:39.722 session        c1       quic gen 1
+10:16:39.722 session        c3       quic gen 1
+10:16:44.127 bulk           c0       67108864 bytes in 417ms = 160.9 MB/s, served by gen 1
+10:16:46.199 bulk           c0       67108864 bytes in 489ms = 137.3 MB/s, served by gen 1
+10:16:49.141 bulk           c0       67108864 bytes in 1.43s = 46.9 MB/s, served by gen 1
+10:16:50.551 bulk           c0       67108864 bytes in 840ms = 79.8 MB/s, served by gen 1
+10:16:52.569 bulk           c0       67108864 bytes in 858ms = 78.2 MB/s, served by gen 1
+10:16:55.467 drain          c0       quic gen 1
+10:16:55.467 drain          c1       quic gen 1
+10:16:55.467 drain          c2       quic gen 1
+10:16:55.467 drain          c3       quic gen 1
+10:16:55.781 rehomed        c2       tcp gen 2 after 314 ms, 1 attempts
+10:16:55.782 rehomed        c1       tcp gen 2 after 314 ms, 1 attempts
+10:16:55.797 rehomed        c0       tcp gen 2 after 330 ms, 1 attempts
+10:17:00.467 redial_error   c3       context deadline exceeded
+10:17:05.525 redial_error   c3       context deadline exceeded
+10:17:10.579 redial_error   c3       context deadline exceeded
+10:17:15.465 session_end    c3       quic gen 1: drain_end (Application error 0x0 (remote): drain over)
+10:17:15.465 session_end    c0       quic gen 1: drain_end (Application error 0x0 (remote): drain over)
+10:17:15.465 session_end    c2       quic gen 1: drain_end (Application error 0x0 (remote): drain over)
+10:17:15.466 session_end    c1       quic gen 1: drain_end (Application error 0x0 (remote): drain over)
+10:17:15.487 long_end       long5    gen 1 after 332 pings: eof
+10:17:15.488 long_end       long9    gen 1 after 331 pings: eof
+10:17:15.493 long_end       long12   gen 1 after 333 pings: eof
+10:17:15.495 long_end       long2    gen 1 after 332 pings: eof
+10:17:15.496 long_end       long1    gen 1 after 330 pings: eof
+10:17:15.503 long_end       long7    gen 1 after 331 pings: eof
+10:17:15.504 long_end       long19   gen 1 after 332 pings: eof
+10:17:15.506 long_end       long4    gen 1 after 331 pings: eof
+10:17:15.506 long_end       long13   gen 1 after 333 pings: eof
+10:17:15.511 long_end       long17   gen 1 after 329 pings: eof
+10:17:15.511 long_end       long14   gen 1 after 330 pings: eof
+10:17:15.514 long_end       long10   gen 1 after 331 pings: eof
+10:17:15.515 long_end       long8    gen 1 after 332 pings: eof
+10:17:15.515 long_end       long15   gen 1 after 331 pings: eof
+10:17:15.515 long_end       long6    gen 1 after 331 pings: eof
+10:17:15.515 long_end       long3    gen 1 after 332 pings: eof
+10:17:15.516 long_end       long0    gen 1 after 332 pings: eof
+10:17:15.516 long_end       long16   gen 1 after 331 pings: eof
+10:17:15.516 long_end       long18   gen 1 after 330 pings: eof
+10:17:15.531 long_end       long11   gen 1 after 330 pings: eof
+10:17:15.630 redial_error   c3       context deadline exceeded
+10:17:15.701 rehomed        c3       quic gen 2 after 20234 ms, 5 attempts
+10:17:19.710 bulk_error     c0       Application error 0x0 (remote): drain over
+10:17:21.711 bulk_error     c0       Application error 0x0 (remote): drain over
+10:17:23.710 bulk_error     c0       Application error 0x0 (remote): drain over
+10:17:25.711 bulk_error     c0       Application error 0x0 (remote): drain over
+10:17:27.710 bulk_error     c0       Application error 0x0 (remote): drain over
+10:17:29.711 bulk_error     c0       Application error 0x0 (remote): drain over
+10:17:31.710 bulk_error     c0       Application error 0x0 (remote): drain over
+10:17:33.710 bulk_error     c0       Application error 0x0 (remote): drain over
+10:17:35.710 bulk_error     c0       Application error 0x0 (remote): drain over
+10:17:37.711 bulk_error     c0       Application error 0x0 (remote): drain over
+10:17:54.710 stop           load     

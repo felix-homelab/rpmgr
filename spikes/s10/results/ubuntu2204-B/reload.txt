@@ -1,0 +1,6 @@
+1792923724.841218760 reload first
+exit 0
+1792923725.385315378 reload first returned
+1792923733.404983772 reload second
+exit 0
+1792923734.095132616 reload second returned

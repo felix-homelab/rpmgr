@@ -1,0 +1,69 @@
+{
+  "tcp": {
+    "dial_errors": null,
+    "failing_seconds": [
+      "10:22:14: ok 481 refused 0 reset 0 timeout 0 eof 2 other 0 backlog 0"
+    ],
+    "max": "515.509165ms",
+    "p50": "10.689612ms",
+    "p99": "259.243966ms",
+    "seconds": 61,
+    "total": {
+      "OK": 24758,
+      "Refused": 0,
+      "Reset": 0,
+      "Timeout": 0,
+      "EOF": 2,
+      "Other": 0,
+      "Backlog": 0,
+      "Gens": {
+        "1": 7699,
+        "2": 4298,
+        "3": 12761
+      }
+    }
+  },
+  "udp": {
+    "long_recv": 29739,
+    "long_sent": 29749,
+    "lost_by_second": {
+      "1792923754": 11
+    },
+    "replies_by_gen": {
+      "1": 14356,
+      "2": 11872,
+      "3": 9296
+    },
+    "short_recv": 5785,
+    "short_sent": 5786
+  }
+}
+10:21:49.800 start          load     
+10:21:49.819 session        c0       quic gen 1
+10:22:05.327 drain          c0       quic gen 1
+10:22:05.632 rehomed        c0       tcp gen 2 after 304 ms, 1 attempts
+10:22:14.028 session_end    c0       quic gen 1: drain_end (Application error 0x0 (remote): drain over)
+10:22:14.031 long_end       long14   gen 1 after 237 pings: eof
+10:22:14.031 long_end       long16   gen 1 after 237 pings: eof
+10:22:14.031 long_end       long8    gen 1 after 237 pings: eof
+10:22:14.032 long_end       long17   gen 1 after 237 pings: eof
+10:22:14.032 long_end       long9    gen 1 after 237 pings: eof
+10:22:14.032 long_end       long4    gen 1 after 237 pings: eof
+10:22:14.045 long_end       long0    gen 1 after 237 pings: eof
+10:22:14.045 long_end       long5    gen 1 after 237 pings: eof
+10:22:14.053 long_end       long7    gen 1 after 237 pings: eof
+10:22:14.053 long_end       long15   gen 1 after 237 pings: eof
+10:22:14.053 long_end       long19   gen 1 after 237 pings: eof
+10:22:14.055 long_end       long11   gen 1 after 237 pings: eof
+10:22:14.055 long_end       long12   gen 1 after 237 pings: eof
+10:22:14.058 drain          c0       tcp gen 2
+10:22:14.080 long_end       long2    gen 1 after 238 pings: eof
+10:22:14.084 long_end       long10   gen 1 after 238 pings: eof
+10:22:14.084 long_end       long1    gen 1 after 238 pings: eof
+10:22:14.098 long_end       long3    gen 1 after 238 pings: eof
+10:22:14.103 long_end       long13   gen 1 after 238 pings: eof
+10:22:14.118 long_end       long6    gen 1 after 238 pings: eof
+10:22:14.121 long_end       long18   gen 1 after 238 pings: eof
+10:22:14.362 rehomed        c0       tcp gen 3 after 303 ms, 1 attempts
+10:22:34.064 session_end    c0       tcp gen 2: drain_end (EOF)
+10:22:49.801 stop           load     

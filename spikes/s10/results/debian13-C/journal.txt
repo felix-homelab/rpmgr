@@ -1,0 +1,43 @@
+Oct 25 10:23:17.209912 f9d7ca8a6da5 systemd[1]: Starting s10.service - s10 model gateway (spike S10)...
+Oct 25 10:23:17.331559 f9d7ca8a6da5 systemd[1]: Started s10.service - s10 model gateway (spike S10).
+Oct 25 10:23:17.335349 f9d7ca8a6da5 s10[87]: s10[gen 1 pid 87] 10:23:17.331010 serving tcp :9000 tunnel :9003 udp :9001 quic :9002 (mode pause)
+Oct 25 10:23:33.443412 f9d7ca8a6da5 systemd[1]: Reloading s10.service - s10 model gateway (spike S10)...
+Oct 25 10:23:33.494656 f9d7ca8a6da5 s10[87]: s10[gen 1 pid 87] 10:23:33.494552 hand-off failed: hand-off refused: /usr/local/bin/s10 is writable by its group or others (-rwxrwxr-x)
+Oct 25 10:23:33.545792 f9d7ca8a6da5 s10[632]: hand-off failed: old pid 87, new pid 0, gen 1, took 306.735µs hand-off refused: /usr/local/bin/s10 is writable by its group or others (-rwxrwxr-x)
+Oct 25 10:23:33.545792 f9d7ca8a6da5 s10[632]: s10: hand-off failed
+Oct 25 10:23:33.556198 f9d7ca8a6da5 systemd[1]: s10.service: Control process exited, code=exited, status=1/FAILURE
+Oct 25 10:23:33.556253 f9d7ca8a6da5 systemd[1]: Reload failed for s10.service - s10 model gateway (spike S10).
+Oct 25 10:23:40.628440 f9d7ca8a6da5 systemd[1]: Reloading s10.service - s10 model gateway (spike S10)...
+Oct 25 10:23:40.681402 f9d7ca8a6da5 s10[933]: s10[gen 2 pid 933] 10:23:40.681231 closed unexpected inherited descriptors [7]
+Oct 25 10:23:40.690817 f9d7ca8a6da5 s10[933]: s10[gen 2 pid 933] 10:23:40.684058 serving tcp :9000 tunnel :9003 udp :9001 quic :9002 (mode pause)
+Oct 25 10:23:40.685680 f9d7ca8a6da5 systemd[1]: s10.service: Supervising process 933 which is not our child. We'll most likely not notice when it exits.
+Oct 25 10:23:40.691156 f9d7ca8a6da5 s10[87]: s10[gen 1 pid 87] 10:23:40.690387 hand-off to pid 933 ready after 18.995406ms; draining for 20s
+Oct 25 10:23:40.716798 f9d7ca8a6da5 s10[924]: hand-off ok: old pid 87, new pid 933, gen 2, took 18.995406ms
+Oct 25 10:23:40.724594 f9d7ca8a6da5 systemd[1]: Reloaded s10.service - s10 model gateway (spike S10).
+Oct 25 10:24:00.691660 f9d7ca8a6da5 s10[87]: s10[gen 1 pid 87] 10:24:00.691041 drain over: cutting 10 visitor connections and 2 sessions; relayed 0+0 datagrams, dropped 0+0; served 13292 udp datagrams
+Oct 25 10:24:00.695718 f9d7ca8a6da5 s10[933]: s10[gen 2 pid 933] 10:24:00.695306 from the old process: DONE
+Oct 25 10:24:00.695718 f9d7ca8a6da5 s10[933]: s10[gen 2 pid 933] 10:24:00.695441 the old process is done: reading the UDP sockets now
+Oct 25 10:24:07.278266 f9d7ca8a6da5 systemd[1]: Reloading s10.service - s10 model gateway (spike S10)...
+Oct 25 10:24:07.387609 f9d7ca8a6da5 s10[1914]: s10[gen 3 pid 1914] 10:24:07.387428 hand-off refused by the new process: visitor-tcp: bound to port 33257, the configuration names 9000
+Oct 25 10:24:07.387609 f9d7ca8a6da5 s10[1914]: s10: visitor-tcp: bound to port 33257, the configuration names 9000
+Oct 25 10:24:07.398513 f9d7ca8a6da5 s10[933]: s10[gen 2 pid 933] 10:24:07.397788 hand-off failed: the new process ended before it was ready ("")
+Oct 25 10:24:07.414929 f9d7ca8a6da5 s10[1902]: hand-off failed: old pid 933, new pid 0, gen 2, took 39.612484ms the new process ended before it was ready ("")
+Oct 25 10:24:07.414929 f9d7ca8a6da5 s10[1902]: s10: hand-off failed
+Oct 25 10:24:07.420514 f9d7ca8a6da5 systemd[1]: s10.service: Control process exited, code=exited, status=1/FAILURE
+Oct 25 10:24:07.422989 f9d7ca8a6da5 systemd[1]: Reload failed for s10.service - s10 model gateway (spike S10).
+Oct 25 10:24:13.763761 f9d7ca8a6da5 systemd[1]: Reloading s10.service - s10 model gateway (spike S10)...
+Oct 25 10:24:13.926343 f9d7ca8a6da5 s10[2168]: s10[gen 3 pid 2168] 10:24:13.926016 injected: never ready
+Oct 25 10:24:23.956174 f9d7ca8a6da5 s10[933]: s10[gen 2 pid 933] 10:24:23.955671 hand-off failed: the new process was not ready within the readiness window
+Oct 25 10:24:23.975458 f9d7ca8a6da5 s10[2160]: hand-off failed: old pid 933, new pid 0, gen 2, took 10.067341418s the new process was not ready within the readiness window
+Oct 25 10:24:23.975458 f9d7ca8a6da5 s10[2160]: s10: hand-off failed
+Oct 25 10:24:23.990055 f9d7ca8a6da5 systemd[1]: s10.service: Control process exited, code=exited, status=1/FAILURE
+Oct 25 10:24:23.998073 f9d7ca8a6da5 systemd[1]: Reload failed for s10.service - s10 model gateway (spike S10).
+Oct 25 10:24:34.877199 f9d7ca8a6da5 systemd[1]: Reloading s10.service - s10 model gateway (spike S10)...
+Oct 25 10:24:34.944869 f9d7ca8a6da5 s10[2914]: s10[gen 3 pid 2914] 10:24:34.941858 serving tcp :9000 tunnel :9003 udp :9001 quic :9002 (mode pause)
+Oct 25 10:24:34.943012 f9d7ca8a6da5 systemd[1]: s10.service: Supervising process 2914 which is not our child. We'll most likely not notice when it exits.
+Oct 25 10:24:34.952009 f9d7ca8a6da5 s10[933]: s10[gen 2 pid 933] 10:24:34.945594 hand-off to pid 2914 ready after 30.458184ms; draining for 20s
+Oct 25 10:24:34.964702 f9d7ca8a6da5 s10[2907]: hand-off ok: old pid 933, new pid 2914, gen 3, took 30.458184ms
+Oct 25 10:24:34.987249 f9d7ca8a6da5 systemd[1]: Reloaded s10.service - s10 model gateway (spike S10).
+Oct 25 10:24:54.947307 f9d7ca8a6da5 s10[933]: s10[gen 2 pid 933] 10:24:54.946941 drain over: cutting 0 visitor connections and 2 sessions; relayed 0+0 datagrams, dropped 0+0; served 17969 udp datagrams
+Oct 25 10:24:54.948077 f9d7ca8a6da5 s10[2914]: s10[gen 3 pid 2914] 10:24:54.947589 from the old process: DONE
+Oct 25 10:24:54.948077 f9d7ca8a6da5 s10[2914]: s10[gen 3 pid 2914] 10:24:54.947654 the old process is done: reading the UDP sockets now

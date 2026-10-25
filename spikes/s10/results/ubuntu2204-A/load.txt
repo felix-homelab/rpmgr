@@ -1,0 +1,98 @@
+{
+  "tcp": {
+    "dial_errors": null,
+    "failing_seconds": null,
+    "max": "131.030671ms",
+    "p50": "6.939891ms",
+    "p99": "45.556317ms",
+    "seconds": 76,
+    "total": {
+      "OK": 34788,
+      "Refused": 0,
+      "Reset": 0,
+      "Timeout": 0,
+      "EOF": 0,
+      "Other": 0,
+      "Backlog": 0,
+      "Gens": {
+        "1": 6869,
+        "2": 27919
+      }
+    }
+  },
+  "udp": {
+    "long_recv": 37472,
+    "long_sent": 37472,
+    "lost_by_second": {},
+    "replies_by_gen": {
+      "1": 19437,
+      "2": 25381
+    },
+    "short_recv": 7346,
+    "short_sent": 7346
+  }
+}
+10:11:14.738 start          load     
+10:11:14.759 session        c3       gen 1
+10:11:14.759 session        c2       gen 1
+10:11:14.765 session        c0       gen 1
+10:11:14.765 session        c1       gen 1
+10:11:20.743 bulk           c0       67108864 bytes in 2.004s = 33.5 MB/s, served by gen 1
+10:11:22.438 bulk           c0       67108864 bytes in 1.694s = 39.6 MB/s, served by gen 1
+10:11:24.201 bulk           c0       67108864 bytes in 1.462s = 45.9 MB/s, served by gen 1
+10:11:26.074 bulk           c0       67108864 bytes in 1.335s = 50.3 MB/s, served by gen 1
+10:11:28.276 bulk           c0       67108864 bytes in 1.533s = 43.8 MB/s, served by gen 1
+10:11:30.682 drain          c2       gen 1
+10:11:30.682 drain          c0       gen 1
+10:11:30.683 drain          c3       gen 1
+10:11:30.687 drain          c1       gen 1
+10:11:30.703 rehomed        c3       gen 2 after 20 ms, 1 attempts
+10:11:30.703 rehomed        c0       gen 2 after 21 ms, 1 attempts
+10:11:30.707 rehomed        c2       gen 2 after 24 ms, 1 attempts
+10:11:30.726 rehomed        c1       gen 2 after 39 ms, 1 attempts
+10:11:35.932 bulk           c0       67108864 bytes in 4.189s = 16.0 MB/s, served by gen 2
+10:11:40.707 bulk           c0       67108864 bytes in 7.469s = 9.0 MB/s, served by gen 2
+10:11:44.055 bulk           c0       67108864 bytes in 9.316s = 7.2 MB/s, served by gen 2
+10:11:46.040 bulk           c0       67108864 bytes in 9.801s = 6.8 MB/s, served by gen 2
+10:11:47.365 bulk           c0       67108864 bytes in 9.626s = 7.0 MB/s, served by gen 2
+10:11:48.124 bulk           c0       67108864 bytes in 8.885s = 7.6 MB/s, served by gen 2
+10:11:48.615 bulk           c0       67108864 bytes in 7.874s = 8.5 MB/s, served by gen 2
+10:11:49.158 bulk           c0       67108864 bytes in 6.915s = 9.7 MB/s, served by gen 2
+10:11:49.581 bulk           c0       67108864 bytes in 5.842s = 11.5 MB/s, served by gen 2
+10:11:49.935 bulk           c0       67108864 bytes in 4.696s = 14.3 MB/s, served by gen 2
+10:11:50.139 bulk           c0       67108864 bytes in 3.401s = 19.7 MB/s, served by gen 2
+10:11:50.683 long_end       long19   gen 1 after 337 pings: eof
+10:11:50.685 session_end    c3       gen 1: drain_end (Application error 0x0 (remote): drain over)
+10:11:50.685 session_end    c2       gen 1: drain_end (Application error 0x0 (remote): drain over)
+10:11:50.685 session_end    c1       gen 1: drain_end (Application error 0x0 (remote): drain over)
+10:11:50.685 session_end    c0       gen 1: drain_end (Application error 0x0 (remote): drain over)
+10:11:50.686 long_end       long6    gen 1 after 335 pings: eof
+10:11:50.729 long_end       long0    gen 1 after 336 pings: eof
+10:11:50.729 long_end       long14   gen 1 after 335 pings: eof
+10:11:50.729 long_end       long11   gen 1 after 336 pings: eof
+10:11:50.729 long_end       long10   gen 1 after 336 pings: eof
+10:11:50.743 long_end       long17   gen 1 after 336 pings: eof
+10:11:50.753 long_end       long9    gen 1 after 335 pings: eof
+10:11:50.754 long_end       long3    gen 1 after 338 pings: eof
+10:11:50.762 long_end       long5    gen 1 after 338 pings: eof
+10:11:50.766 long_end       long18   gen 1 after 335 pings: eof
+10:11:50.775 long_end       long13   gen 1 after 336 pings: eof
+10:11:50.775 long_end       long1    gen 1 after 336 pings: eof
+10:11:50.775 long_end       long15   gen 1 after 338 pings: eof
+10:11:50.776 long_end       long4    gen 1 after 336 pings: eof
+10:11:50.776 long_end       long2    gen 1 after 337 pings: eof
+10:11:50.776 long_end       long7    gen 1 after 337 pings: eof
+10:11:50.777 long_end       long8    gen 1 after 337 pings: eof
+10:11:50.781 long_end       long16   gen 1 after 338 pings: eof
+10:11:50.781 long_end       long12   gen 1 after 337 pings: eof
+10:11:55.353 bulk           c0       67108864 bytes in 615ms = 109.2 MB/s, served by gen 2
+10:11:57.244 bulk           c0       67108864 bytes in 506ms = 132.7 MB/s, served by gen 2
+10:11:59.246 bulk           c0       67108864 bytes in 508ms = 132.2 MB/s, served by gen 2
+10:12:01.269 bulk           c0       67108864 bytes in 531ms = 126.4 MB/s, served by gen 2
+10:12:03.304 bulk           c0       67108864 bytes in 566ms = 118.6 MB/s, served by gen 2
+10:12:05.225 bulk           c0       67108864 bytes in 486ms = 138.0 MB/s, served by gen 2
+10:12:07.384 bulk           c0       67108864 bytes in 646ms = 103.9 MB/s, served by gen 2
+10:12:11.470 bulk           c0       67108864 bytes in 2.731s = 24.6 MB/s, served by gen 2
+10:12:14.043 bulk           c0       67108864 bytes in 3.303s = 20.3 MB/s, served by gen 2
+10:12:15.048 bulk           c0       67108864 bytes in 2.31s = 29.1 MB/s, served by gen 2
+10:12:29.739 stop           load     

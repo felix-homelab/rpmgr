@@ -1,0 +1,377 @@
+{
+  "events": [
+    {
+      "t": 1792923522511,
+      "kind": "start",
+      "who": "load"
+    },
+    {
+      "t": 1792923522527,
+      "kind": "session",
+      "who": "c3",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792923522527,
+      "kind": "session",
+      "who": "c0",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792923522528,
+      "kind": "session",
+      "who": "c2",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792923522528,
+      "kind": "session",
+      "who": "c1",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792923527084,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 572ms = 117.3 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923529019,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 508ms = 132.1 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923530924,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 412ms = 162.9 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923532899,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 387ms = 173.2 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923535198,
+      "kind": "bulk",
+      "who": "c0",
+      "detail": "67108864 bytes in 687ms = 97.7 MB/s, served by gen 1"
+    },
+    {
+      "t": 1792923538139,
+      "kind": "drain",
+      "who": "c3",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792923538139,
+      "kind": "drain",
+      "who": "c1",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792923538142,
+      "kind": "drain",
+      "who": "c2",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792923538143,
+      "kind": "drain",
+      "who": "c0",
+      "detail": "quic gen 1"
+    },
+    {
+      "t": 1792923538447,
+      "kind": "rehomed",
+      "who": "c1",
+      "detail": "tcp gen 2 after 307 ms, 1 attempts"
+    },
+    {
+      "t": 1792923538459,
+      "kind": "rehomed",
+      "who": "c2",
+      "detail": "tcp gen 2 after 316 ms, 1 attempts"
+    },
+    {
+      "t": 1792923538459,
+      "kind": "rehomed",
+      "who": "c0",
+      "detail": "tcp gen 2 after 316 ms, 1 attempts"
+    },
+    {
+      "t": 1792923543140,
+      "kind": "redial_error",
+      "who": "c3",
+      "detail": "context deadline exceeded"
+    },
+    {
+      "t": 1792923548198,
+      "kind": "redial_error",
+      "who": "c3",
+      "detail": "context deadline exceeded"
+    },
+    {
+      "t": 1792923553248,
+      "kind": "redial_error",
+      "who": "c3",
+      "detail": "context deadline exceeded"
+    },
+    {
+      "t": 1792923558145,
+      "kind": "session_end",
+      "who": "c0",
+      "detail": "quic gen 1: drain_end (Application error 0x0 (remote): drain over)"
+    },
+    {
+      "t": 1792923558146,
+      "kind": "session_end",
+      "who": "c1",
+      "detail": "quic gen 1: drain_end (Application error 0x0 (remote): drain over)"
+    },
+    {
+      "t": 1792923558146,
+      "kind": "session_end",
+      "who": "c3",
+      "detail": "quic gen 1: drain_end (Application error 0x0 (remote): drain over)"
+    },
+    {
+      "t": 1792923558146,
+      "kind": "session_end",
+      "who": "c2",
+      "detail": "quic gen 1: drain_end (Application error 0x0 (remote): drain over)"
+    },
+    {
+      "t": 1792923558191,
+      "kind": "long_end",
+      "who": "long6",
+      "detail": "gen 1 after 344 pings: eof"
+    },
+    {
+      "t": 1792923558191,
+      "kind": "long_end",
+      "who": "long8",
+      "detail": "gen 1 after 343 pings: eof"
+    },
+    {
+      "t": 1792923558192,
+      "kind": "long_end",
+      "who": "long18",
+      "detail": "gen 1 after 343 pings: eof"
+    },
+    {
+      "t": 1792923558192,
+      "kind": "long_end",
+      "who": "long19",
+      "detail": "gen 1 after 342 pings: eof"
+    },
+    {
+      "t": 1792923558207,
+      "kind": "long_end",
+      "who": "long13",
+      "detail": "gen 1 after 342 pings: eof"
+    },
+    {
+      "t": 1792923558207,
+      "kind": "long_end",
+      "who": "long5",
+      "detail": "gen 1 after 343 pings: eof"
+    },
+    {
+      "t": 1792923558207,
+      "kind": "long_end",
+      "who": "long14",
+      "detail": "gen 1 after 342 pings: eof"
+    },
+    {
+      "t": 1792923558213,
+      "kind": "long_end",
+      "who": "long1",
+      "detail": "gen 1 after 344 pings: eof"
+    },
+    {
+      "t": 1792923558214,
+      "kind": "long_end",
+      "who": "long17",
+      "detail": "gen 1 after 342 pings: eof"
+    },
+    {
+      "t": 1792923558215,
+      "kind": "long_end",
+      "who": "long2",
+      "detail": "gen 1 after 344 pings: eof"
+    },
+    {
+      "t": 1792923558215,
+      "kind": "long_end",
+      "who": "long12",
+      "detail": "gen 1 after 343 pings: eof"
+    },
+    {
+      "t": 1792923558221,
+      "kind": "long_end",
+      "who": "long10",
+      "detail": "gen 1 after 344 pings: eof"
+    },
+    {
+      "t": 1792923558222,
+      "kind": "long_end",
+      "who": "long9",
+      "detail": "gen 1 after 343 pings: eof"
+    },
+    {
+      "t": 1792923558224,
+      "kind": "long_end",
+      "who": "long4",
+      "detail": "gen 1 after 343 pings: eof"
+    },
+    {
+      "t": 1792923558234,
+      "kind": "long_end",
+      "who": "long16",
+      "detail": "gen 1 after 344 pings: eof"
+    },
+    {
+      "t": 1792923558234,
+      "kind": "long_end",
+      "who": "long3",
+      "detail": "gen 1 after 343 pings: eof"
+    },
+    {
+      "t": 1792923558234,
+      "kind": "long_end",
+      "who": "long11",
+      "detail": "gen 1 after 343 pings: eof"
+    },
+    {
+      "t": 1792923558234,
+      "kind": "long_end",
+      "who": "long15",
+      "detail": "gen 1 after 344 pings: eof"
+    },
+    {
+      "t": 1792923558234,
+      "kind": "long_end",
+      "who": "long0",
+      "detail": "gen 1 after 344 pings: eof"
+    },
+    {
+      "t": 1792923558235,
+      "kind": "long_end",
+      "who": "long7",
+      "detail": "gen 1 after 344 pings: eof"
+    },
+    {
+      "t": 1792923558300,
+      "kind": "redial_error",
+      "who": "c3",
+      "detail": "context deadline exceeded"
+    },
+    {
+      "t": 1792923558369,
+      "kind": "rehomed",
+      "who": "c3",
+      "detail": "quic gen 2 after 20230 ms, 5 attempts"
+    },
+    {
+      "t": 1792923562511,
+      "kind": "bulk_error",
+      "who": "c0",
+      "detail": "Application error 0x0 (remote): drain over"
+    },
+    {
+      "t": 1792923564512,
+      "kind": "bulk_error",
+      "who": "c0",
+      "detail": "Application error 0x0 (remote): drain over"
+    },
+    {
+      "t": 1792923566511,
+      "kind": "bulk_error",
+      "who": "c0",
+      "detail": "Application error 0x0 (remote): drain over"
+    },
+    {
+      "t": 1792923568511,
+      "kind": "bulk_error",
+      "who": "c0",
+      "detail": "Application error 0x0 (remote): drain over"
+    },
+    {
+      "t": 1792923570511,
+      "kind": "bulk_error",
+      "who": "c0",
+      "detail": "Application error 0x0 (remote): drain over"
+    },
+    {
+      "t": 1792923572511,
+      "kind": "bulk_error",
+      "who": "c0",
+      "detail": "Application error 0x0 (remote): drain over"
+    },
+    {
+      "t": 1792923574511,
+      "kind": "bulk_error",
+      "who": "c0",
+      "detail": "Application error 0x0 (remote): drain over"
+    },
+    {
+      "t": 1792923576511,
+      "kind": "bulk_error",
+      "who": "c0",
+      "detail": "Application error 0x0 (remote): drain over"
+    },
+    {
+      "t": 1792923578512,
+      "kind": "bulk_error",
+      "who": "c0",
+      "detail": "Application error 0x0 (remote): drain over"
+    },
+    {
+      "t": 1792923580512,
+      "kind": "bulk_error",
+      "who": "c0",
+      "detail": "Application error 0x0 (remote): drain over"
+    },
+    {
+      "t": 1792923597511,
+      "kind": "stop",
+      "who": "load"
+    }
+  ],
+  "started": 1792923522511,
+  "tcp": {
+    "dial_errors": null,
+    "failing_seconds": null,
+    "max": "565.380471ms",
+    "p50": "8.918356ms",
+    "p99": "61.360366ms",
+    "seconds": 76,
+    "total": {
+      "OK": 35895,
+      "Refused": 0,
+      "Reset": 0,
+      "Timeout": 0,
+      "EOF": 0,
+      "Other": 0,
+      "Backlog": 0,
+      "Gens": {
+        "1": 7639,
+        "2": 28256
+      }
+    }
+  },
+  "udp": {
+    "long_recv": 37452,
+    "long_sent": 37452,
+    "lost_by_second": {},
+    "replies_by_gen": {
+      "1": 21164,
+      "2": 23629
+    },
+    "short_recv": 7341,
+    "short_sent": 7341
+  }
+}

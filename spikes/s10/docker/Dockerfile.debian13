@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# A systemd host for spike S10 (README.md): the model gateway runs as a Type=notify service and
+# hands its sockets over on `systemctl reload`.
+FROM mirror.gcr.io/library/debian@sha256:4c25275446ca371766b8b093c696782eabce06263fccacb8d5d813b3dc44b308
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates dbus passwd systemd systemd-sysv util-linux procps iproute2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --no-create-home --shell /usr/sbin/nologin s10
+
+COPY s10 /usr/local/bin/s10
+COPY s10.service /etc/systemd/system/s10.service
+RUN chown root:root /usr/local/bin/s10 && chmod 0755 /usr/local/bin/s10 && systemctl enable s10.service
+
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

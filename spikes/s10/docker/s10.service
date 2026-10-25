@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+# The model gateway of spike S10, with the unit settings ADR-0022 proposes.
+[Unit]
+Description=s10 model gateway (spike S10)
+After=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=all
+User=s10
+Group=s10
+ExecStart=/usr/local/bin/s10 serve -drain 20s -ready-window 10s -tls /var/lib/s10/tls -reset-key /var/lib/s10/reset.key
+ExecReload=/usr/local/bin/s10 handoff -run /run/s10
+RuntimeDirectory=s10
+StateDirectory=s10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadOnlyPaths=/usr/local/bin
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target
