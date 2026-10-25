@@ -22,8 +22,9 @@ import (
 // accessOf compiles who may use a route (docs/03-connections.md, "Access policies"): the IP rules
 // and, for an http route, the basic_auth and require_header rules of its access policies, in the
 // order of the policies and of each policy's rules, which the gateway does not depend on: a deny
-// rule wins (D85). A basic_auth or require_header rule on another route type, which the API does
-// not create, denies everyone: no client could pass it. Kinds of later phases are compiled with
+// rule wins (D85); and the rate_limit rules, on every route type (D131). A basic_auth or
+// require_header rule on another route type, which the API does not create, denies everyone: no
+// client could pass it. Kinds of later phases are compiled with
 // them; until then the API does not create them.
 func accessOf(ctx context.Context, tx *ent.Tx, routeID string, http bool) (*agentv1.RouteAccess, error) {
 	rps, err := tx.RoutePolicy.Query().Where(routepolicy.RouteID(routeID)).Order(ent.Asc(routepolicy.FieldPosition)).All(ctx)
@@ -33,7 +34,8 @@ func accessOf(ctx context.Context, tx *ent.Tx, routeID string, http bool) (*agen
 	access := &agentv1.RouteAccess{}
 	for _, rp := range rps {
 		rules, err := tx.PolicyRule.Query().Where(policyrule.PolicyID(rp.PolicyID),
-			policyrule.KindIn(policyrule.KindIPAllow, policyrule.KindIPDeny, policyrule.KindBasicAuth, policyrule.KindRequireHeader)).
+			policyrule.KindIn(policyrule.KindIPAllow, policyrule.KindIPDeny, policyrule.KindBasicAuth, policyrule.KindRequireHeader,
+				policyrule.KindRateLimit)).
 			Order(ent.Asc(policyrule.FieldPosition)).All(ctx)
 		if err != nil {
 			return nil, err
@@ -50,6 +52,9 @@ func accessOf(ctx context.Context, tx *ent.Tx, routeID string, http bool) (*agen
 					CredentialVersion: r.ID + "." + hex.EncodeToString(sum[:8]), Users: params.GetBasicAuth().GetUsers()})
 			case err == nil && r.Kind == policyrule.KindRequireHeader && params.GetRequireHeader() != nil:
 				access.RequireHeader = append(access.RequireHeader, params.GetRequireHeader())
+			case err == nil && r.Kind == policyrule.KindRateLimit && params.GetRateLimit() != nil:
+				access.RateLimits = append(access.RateLimits, &agentv1.RateLimitRule{PolicyId: rp.PolicyID,
+					PerSecond: params.GetRateLimit().GetPerSecond(), Burst: params.GetRateLimit().GetBurst()})
 			case err == nil && (r.Kind == policyrule.KindIPAllow || r.Kind == policyrule.KindIPDeny) && params.GetIp() != nil:
 				access.IpRules = append(access.IpRules, &agentv1.IPRule{Allow: r.Kind == policyrule.KindIPAllow, Cidrs: params.GetIp().GetCidrs()})
 			default:

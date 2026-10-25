@@ -11,9 +11,11 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -95,6 +97,70 @@ func TestCompile_Limits(t *testing.T) {
 		for typ, id := range byType {
 			if !slices.Contains(ids(rs), id) || limitsOf(rs)[id] != nil {
 				t.Errorf("the %s route without limits: %v", typ, limitsOf(rs)[id])
+			}
+		}
+	})
+}
+
+// accessesOf returns the access rules of each gateway route of resources, by route ID.
+func accessesOf(rs []*agentv1.Resource) map[string]*agentv1.RouteAccess {
+	out := map[string]*agentv1.RouteAccess{}
+	for _, r := range rs {
+		switch {
+		case r.GetGatewayTcpRoute() != nil:
+			out[r.GetId()] = r.GetGatewayTcpRoute().GetAccess()
+		case r.GetGatewayUdpRoute() != nil:
+			out[r.GetId()] = r.GetGatewayUdpRoute().GetAccess()
+		case r.GetGatewayTcpUdpRoute() != nil:
+			out[r.GetId()] = r.GetGatewayTcpUdpRoute().GetAccess()
+		case r.GetGatewayPassthroughRoute() != nil:
+			out[r.GetId()] = r.GetGatewayPassthroughRoute().GetAccess()
+		case r.GetGatewayHttpRoute() != nil:
+			out[r.GetId()] = r.GetGatewayHttpRoute().GetAccess()
+		}
+	}
+	return out
+}
+
+// TestCompile_RateLimitRule (#917): a policy's rate_limit rule reaches every route type that
+// applies it, with its policy; a changed rule reaches the gateways with the next snapshot; and a
+// gateway without route.limits never gets a route whose policies carry the rule.
+func TestCompile_RateLimitRule(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		byType := f.everyType(t)
+		c := db.Client()
+		params := func(perSecond, burst uint32) []byte {
+			b, err := proto.Marshal(&rpmgrv1.PolicyRuleParams{Params: &rpmgrv1.PolicyRuleParams_RateLimit{
+				RateLimit: &rpmgrv1.RateLimitRule{PerSecond: perSecond, Burst: burst}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return b
+		}
+		pol := c.AccessPolicy.Create().SetOrgID(f.orgA).SetName("polite").SaveX(f.sys)
+		rule := c.PolicyRule.Create().SetOrgID(f.orgA).SetPolicyID(pol.ID).SetPosition(0).SetKind(policyrule.KindRateLimit).
+			SetParams(params(20, 50)).SaveX(f.sys)
+		for _, id := range byType {
+			c.RoutePolicy.Create().SetOrgID(f.orgA).SetRouteID(id).SetPolicyID(pol.ID).SetPosition(0).ExecX(f.sys)
+		}
+		check := func(want *agentv1.RateLimitRule) {
+			t.Helper()
+			got := accessesOf(f.compileAs(t, pki.KindGateway, f.gateway, agentproto.CapRouteLimits))
+			for typ, id := range byType {
+				if rls := got[id].GetRateLimits(); len(rls) != 1 || !proto.Equal(rls[0], want) || len(got[id].GetIpRules()) != 0 {
+					t.Fatalf("the %s route: %v, want %v", typ, got[id], want)
+				}
+			}
+		}
+		check(&agentv1.RateLimitRule{PolicyId: pol.ID, PerSecond: 20, Burst: 50})
+		c.PolicyRule.UpdateOne(rule).SetParams(params(5, 5)).ExecX(f.sys)
+		check(&agentv1.RateLimitRule{PolicyId: pol.ID, PerSecond: 5, Burst: 5})
+
+		rs := f.compileAs(t, pki.KindGateway, f.gateway)
+		for typ, id := range byType {
+			if slices.Contains(ids(rs), id) {
+				t.Errorf("a gateway without route.limits got the %s route with a rate-limit rule", typ)
 			}
 		}
 	})

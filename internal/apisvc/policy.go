@@ -395,6 +395,7 @@ func storeRules(ctx context.Context, tx *ent.Tx, policy *ent.AccessPolicy, rules
 		return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
 			"apisvc: rule %d: %d routes that are not http routes apply the policy, and no client could pass %s there", i+1, n, what)), reason)
 	}
+	rateLimits := 0
 	for i, r := range rules {
 		params := &rpmgrv1.PolicyRuleParams{}
 		var kind policyrule.Kind
@@ -431,6 +432,15 @@ func storeRules(ctx context.Context, tx *ent.Tx, policy *ent.AccessPolicy, rules
 				ba.Users = append(ba.Users, &rpmgrv1.BasicAuthUser{Name: u.GetName(), PasswordHash: h})
 			}
 			params.Params = &rpmgrv1.PolicyRuleParams_BasicAuth{BasicAuth: ba}
+		case r.GetRateLimit() != nil:
+			// On every route type (D131): gateways count new connections and flows as requests. One
+			// rule a policy, as each new client takes an entry in a gateway's table of every rule
+			// (D137).
+			if rateLimits++; rateLimits > 1 {
+				return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: rule %d: a policy has at most one rate_limit rule", i+1))
+			}
+			kind = policyrule.KindRateLimit
+			params.Params = &rpmgrv1.PolicyRuleParams_RateLimit{RateLimit: r.GetRateLimit()}
 		default:
 			kind = policyrule.KindIPDeny
 			if r.GetIpAllow() != nil {
@@ -480,6 +490,8 @@ func policyOf(ctx context.Context, c *ent.Client, row *ent.AccessPolicy) (*rpmgr
 		case policyrule.KindRequireHeader:
 			out.Rules = append(out.Rules, &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_RequireHeader{
 				RequireHeader: &rpmgrv1.RequireHeaderRule{Name: params.GetRequireHeader().GetName()}}})
+		case policyrule.KindRateLimit:
+			out.Rules = append(out.Rules, &rpmgrv1.AccessRule{Rule: &rpmgrv1.AccessRule_RateLimit{RateLimit: params.GetRateLimit()}})
 		}
 	}
 	if out.RouteIds, err = c.RoutePolicy.Query().Where(routepolicy.PolicyID(row.ID)).Order(ent.Asc(routepolicy.FieldRouteID)).
