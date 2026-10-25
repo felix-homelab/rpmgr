@@ -45,14 +45,15 @@ The **Gateways** card lists the group's gateways by slot:
 |---|---|
 | **Name** | The gateway's name |
 | **Slot** | Its number within the group |
-| **Tunnel endpoints** | The `host:port` addresses where connectors reach this gateway |
+| **Tunnel endpoints** | The `host:port` addresses where connectors reach this gateway, and below them `WSS:` and its WSS hostname if it has one ([Gateways](../gateways.md#wss-hostnames)) |
 | **State** | `not enrolled`, `connected` or `offline`; also `drained` for a drained gateway and `built in` for the all-in-one's own gateway |
 | **Version** | The rpmgr version the gateway runs |
 | **Update** | Its state in the running rollout, or that it is below the oldest version the controller accepts; for an Instance Admin also **Update to …**, or why it cannot be updated now ([Updates](../operations/updates.md#update-one-agent)) |
 | **Last seen** | When the controller last heard from it |
 | **Actions** | The buttons below |
 
-- **Edit…** opens a form for the gateway's **Name** and **Tunnel endpoints**; **Save** saves them.
+- **Edit…** opens a form for the gateway's **Name**, **Tunnel endpoints** and **WSS hostname**
+  (empty offers no WSS); **Save** saves them, or says why the controller refuses the name.
 - **Drain** stops the gateway taking new public connections and ends the open ones after the
   gateway's drain period ([03](../../03-connections.md#multiple-gateways)). **Resume** lets a
   drained gateway take connections again. The overview does not expect a drained gateway to be
@@ -64,8 +65,9 @@ The **Gateways** card lists the group's gateways by slot:
 - **Decommission…** says that decommissioning revokes the gateway's identity and ends its sessions
   for good, and that its tunnel endpoints stop serving; **Decommission …** with its name does it.
 
-**Add a gateway** opens **New gateway**: its **Name** and its **Tunnel endpoints**, one
-`host:port` per line, the gateway's own address rather than the group's. **Add the gateway** adds
+**Add a gateway** opens **New gateway**: its **Name**, its **Tunnel endpoints**, one
+`host:port` per line, the gateway's own address rather than the group's, and optionally its **WSS
+hostname**. **Add the gateway** adds
 it; the controller refuses a gateway beyond the group's limit and says so
 ([Gateways](../gateways.md)). After each change the card follows it to the agents
 ([apply status](README.md#after-a-change-the-apply-status)).

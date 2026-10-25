@@ -149,6 +149,9 @@ message Route {
     max_items: 20
     unique: true
   }];
+  // Its limits, for the route as a whole: each enabled gateway of its group enforces its share
+  // (docs/03-connections.md, "Route limits"). Not set is no limit.
+  RouteLimits limits = 22;
   // Its transport policy; the connector's if not set (docs/03-connections.md, "Transport
   // selection").
   DataTransport transport = 23 [(buf.validate.field).enum.defined_only = true];
@@ -252,8 +255,8 @@ message RouteNotServing {
   string id = 1;
   // OFFLINE (no control session), DISABLED (the connector or gateway), NO_DATA_SESSION (with the
   // connector of a ready target), CAPABILITY_MISSING (its release lacks a capability the route
-  // needs, so its snapshot leaves the route out), or the agent's own reason, as in
-  // NotReadyResource.
+  // needs, so its snapshot leaves the route out), CERTIFICATE_PENDING (a gateway: the route's TLS
+  // CONNECT listener has no certificate yet), or the agent's own reason, as in NotReadyResource.
   string reason = 2;
   // The agent's details; with CAPABILITY_MISSING, the capabilities it lacks.
   string detail = 3;
@@ -333,6 +336,13 @@ message HTTPRouteSpec {
   // fewer, and the route created first wins a tie. A route of a group with the same hostname,
   // path prefix and set of matches as another is refused.
   repeated HeaderMatch header_matches = 14 [(buf.validate.field).repeated.max_items = 8];
+  // How long its gateways wait for the upstream's response headers before the request gets 504,
+  // 1 to 3600 seconds; 0 keeps the gateway's (docs/03-connections.md, "Timeouts, keepalive and
+  // backoff", D94).
+  uint32 upstream_response_header_timeout_seconds = 15 [(buf.validate.field).uint32.lte = 3600];
+  // How long a pooled keep-alive connection to the upstream may stay unused, 1 to 3600 seconds;
+  // 0 keeps the gateway's.
+  uint32 upstream_idle_timeout_seconds = 16 [(buf.validate.field).uint32.lte = 3600];
 }
 
 // HeaderMatch is a request header an http route matches on: its name, with an exact value or
@@ -363,10 +373,63 @@ message HeaderMatch {
 
 // TCPRouteSpec is a tcp route: a public port of the gateway group, from its TCP port pools.
 message TCPRouteSpec {
-  // The port; 0 on create is a random free port of the pools. Within the org's quota.
+  // The port; 0 on create is a random free port of the pools. Within the org's quota. In
+  // http_connect mode the port of the route's CONNECT listener: a listener of the org with the
+  // route's mode, or a free port, which becomes one; 0 joins the org's listener of the mode in
+  // the group, or opens one.
   uint32 port = 1 [(buf.validate.field).uint32.lte = 65535];
   // A connection without traffic for this long is closed; 0 never; 3600 if not set.
   optional uint32 idle_timeout_seconds = 2 [(buf.validate.field).uint32.lte = 604800];
+  // PLAIN (not set) or HTTP_CONNECT: the route shares a CONNECT listener with other routes of the
+  // org (docs/03-connections.md, "HTTP CONNECT routes"). It cannot change; create the route anew.
+  ListenerMode listener_mode = 3 [(buf.validate.field).enum.defined_only = true];
+  // With HTTP_CONNECT: the authorities and the listener's authentication mode.
+  ConnectSpec connect = 4;
+}
+
+// ListenerMode is how a tcp route listens.
+enum ListenerMode {
+  // Not set: plain.
+  LISTENER_MODE_UNSPECIFIED = 0;
+  // Its own port.
+  LISTENER_MODE_PLAIN = 1;
+  // A CONNECT listener shared with other routes of the org (D104, D130).
+  LISTENER_MODE_HTTP_CONNECT = 2;
+}
+
+// ConnectSpec is a tcp route's place on a CONNECT listener (D130).
+message ConnectSpec {
+  // The host names a client asks for with CONNECT <host>:<port>, the port ignored; unique on the
+  // listener, compared in lower case.
+  repeated string authorities = 1 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 100
+    items: {
+      string: {
+        min_len: 1
+        max_len: 253
+      }
+    }
+  }];
+  // How the listener checks proxy credentials; every route of a listener has its mode.
+  ConnectAuthMode auth_mode = 2 [(buf.validate.field).enum.defined_only = true];
+  // With TLS_BASIC: the listener's name, under a verified domain of the org.
+  string hostname = 3 [(buf.validate.field).string.max_len = 253];
+  // With TLS_BASIC: an uploaded certificate of the org that covers the hostname; empty, an uploaded
+  // one that covers it, else one the controller obtains with ACME.
+  string certificate_id = 4;
+}
+
+// ConnectAuthMode is how a CONNECT listener checks proxy credentials.
+enum ConnectAuthMode {
+  // Not set: none.
+  CONNECT_AUTH_MODE_UNSPECIFIED = 0;
+  // Plain CONNECT; IP and rate-limit rules only.
+  CONNECT_AUTH_MODE_NONE = 1;
+  // A TLS listener (an HTTPS proxy) with basic auth.
+  CONNECT_AUTH_MODE_TLS_BASIC = 2;
+  // Plain CONNECT with basic auth: the password crosses the network in the clear.
+  CONNECT_AUTH_MODE_PLAIN_BASIC = 3;
 }
 
 // UDPRouteSpec is a udp route: a public port of the gateway group, from its UDP port pools.
@@ -437,6 +500,17 @@ enum ProxyProtocol {
   PROXY_PROTOCOL_V1 = 2;
   // Version 2, binary.
   PROXY_PROTOCOL_V2 = 3;
+}
+
+// RouteLimits are a route's limits, divided among the enabled gateways of its group, rounded up
+// and at least 1 each; 0 is no limit (docs/03-connections.md, "Route limits").
+message RouteLimits {
+  // Open connections, UDP flows, or HTTP requests in flight, upgraded ones included.
+  uint32 max_connections = 1 [(buf.validate.field).uint32.lte = 1000000];
+  // HTTP requests, new connections or new flows per second.
+  uint32 requests_per_second = 2 [(buf.validate.field).uint32.lte = 1000000];
+  // Bytes per second in each direction.
+  uint64 bandwidth_bytes_per_second = 3 [(buf.validate.field).uint64.lte = 100000000000];
 }
 
 // RouteTarget is where a route's streams go: a connector of the org and an address it dials.
@@ -581,6 +655,9 @@ message CreateRouteResponse {
   // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
   // final or the wait is over (docs/07-api.md, "Writes and apply status").
   ApplyStatus apply_status = 3;
+  // What the caller should know of the route as saved or previewed, such as that its CONNECT
+  // listener sends passwords in the clear.
+  repeated string warnings = 4;
 }
 
 // GetRouteRequest names a route.
@@ -635,6 +712,9 @@ message UpdateRouteResponse {
   // The apply status of the revision; with the request header Rpmgr-Wait-Applied, once it is
   // final or the wait is over (docs/07-api.md, "Writes and apply status").
   ApplyStatus apply_status = 3;
+  // What the caller should know of the route as saved or previewed, such as that its CONNECT
+  // listener sends passwords in the clear.
+  repeated string warnings = 4;
 }
 
 // DeleteRouteRequest names a route.
@@ -752,4 +832,7 @@ message PreviewRouteResponse {
   repeated string connector_ids = 3;
   // What a gateway would refuse in its snapshot with the route; empty if nothing.
   repeated ApplyError problems = 4;
+  // What the caller should know of the route as saved or previewed, such as that its CONNECT
+  // listener sends passwords in the clear.
+  repeated string warnings = 5;
 }

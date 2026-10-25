@@ -149,6 +149,14 @@ func TestAccessPolicies(t *testing.T) {
 		t.Fatalf("create with a prompt: %d %q %v", code, errOut, asked)
 	}
 
+	// A rate limit with and without a burst; the burst is a second's worth when not given.
+	if code, _, errOut := run("create", "access-policy", "--name", "polite", "--rule", "rate-limit:20,50", "--rule", "rate-limit:5"); code != cli.ExitOK ||
+		len(a.created.GetAccessPolicy().GetRules()) != 2 ||
+		!proto.Equal(a.created.GetAccessPolicy().GetRules()[0].GetRateLimit(), &rpmgrv1.RateLimitRule{PerSecond: 20, Burst: 50}) ||
+		!proto.Equal(a.created.GetAccessPolicy().GetRules()[1].GetRateLimit(), &rpmgrv1.RateLimitRule{PerSecond: 5, Burst: 5}) {
+		t.Fatalf("rate limits: %d %q %v", code, errOut, a.created)
+	}
+
 	for name, args := range map[string][]string{
 		"no name":             {"--rule", "allow:10.0.0.0/8"},
 		"no colon":            {"--name", "x", "--rule", "allow"},
@@ -159,6 +167,9 @@ func TestAccessPolicies(t *testing.T) {
 		"bad passwords file":  {"--name", "x", "--rule", "basic-auth:alice", "--passwords-file", file("bad", "alice\n", 0o600)},
 		"invalid name":        {"--name", "Not A Name", "--rule", "allow:10.0.0.0/8"},
 		"unexpected argument": {"--name", "x", "ap_1"},
+		"rate not a number":   {"--name", "x", "--rule", "rate-limit:fast"},
+		"rate, burst, more":   {"--name", "x", "--rule", "rate-limit:1,2,3"},
+		"negative rate":       {"--name", "x", "--rule", "rate-limit:-5"},
 	} {
 		answers["dave"] = ""
 		a.created = nil

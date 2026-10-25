@@ -184,6 +184,26 @@ func (_u *GatewayUpdate) ClearDecommissionedAt() *GatewayUpdate {
 	return _u
 }
 
+// SetWssHostname sets the "wss_hostname" field.
+func (_u *GatewayUpdate) SetWssHostname(v string) *GatewayUpdate {
+	_u.mutation.SetWssHostname(v)
+	return _u
+}
+
+// SetNillableWssHostname sets the "wss_hostname" field if the given value is not nil.
+func (_u *GatewayUpdate) SetNillableWssHostname(v *string) *GatewayUpdate {
+	if v != nil {
+		_u.SetWssHostname(*v)
+	}
+	return _u
+}
+
+// ClearWssHostname clears the value of the "wss_hostname" field.
+func (_u *GatewayUpdate) ClearWssHostname() *GatewayUpdate {
+	_u.mutation.ClearWssHostname()
+	return _u
+}
+
 // Mutation returns the GatewayMutation object of the builder.
 func (_u *GatewayUpdate) Mutation() *GatewayMutation {
 	return _u.mutation
@@ -297,6 +317,12 @@ func (_u *GatewayUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DecommissionedAtCleared() {
 		_spec.ClearField(gateway.FieldDecommissionedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WssHostname(); ok {
+		_spec.SetField(gateway.FieldWssHostname, field.TypeString, value)
+	}
+	if _u.mutation.WssHostnameCleared() {
+		_spec.ClearField(gateway.FieldWssHostname, field.TypeString)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -473,6 +499,26 @@ func (_u *GatewayUpdateOne) ClearDecommissionedAt() *GatewayUpdateOne {
 	return _u
 }
 
+// SetWssHostname sets the "wss_hostname" field.
+func (_u *GatewayUpdateOne) SetWssHostname(v string) *GatewayUpdateOne {
+	_u.mutation.SetWssHostname(v)
+	return _u
+}
+
+// SetNillableWssHostname sets the "wss_hostname" field if the given value is not nil.
+func (_u *GatewayUpdateOne) SetNillableWssHostname(v *string) *GatewayUpdateOne {
+	if v != nil {
+		_u.SetWssHostname(*v)
+	}
+	return _u
+}
+
+// ClearWssHostname clears the value of the "wss_hostname" field.
+func (_u *GatewayUpdateOne) ClearWssHostname() *GatewayUpdateOne {
+	_u.mutation.ClearWssHostname()
+	return _u
+}
+
 // Mutation returns the GatewayMutation object of the builder.
 func (_u *GatewayUpdateOne) Mutation() *GatewayMutation {
 	return _u.mutation
@@ -616,6 +662,12 @@ func (_u *GatewayUpdateOne) sqlSave(ctx context.Context) (_node *Gateway, err er
 	}
 	if _u.mutation.DecommissionedAtCleared() {
 		_spec.ClearField(gateway.FieldDecommissionedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WssHostname(); ok {
+		_spec.SetField(gateway.FieldWssHostname, field.TypeString, value)
+	}
+	if _u.mutation.WssHostnameCleared() {
+		_spec.ClearField(gateway.FieldWssHostname, field.TypeString)
 	}
 	_node = &Gateway{config: _u.config}
 	_spec.Assign = _node.assignValues

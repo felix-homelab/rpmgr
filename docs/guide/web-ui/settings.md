@@ -43,7 +43,7 @@ Shown to the Instance Admin only, in sections:
 
 | Section | Settings |
 |---|---|
-| **Agents and transport** | **Default transport**: **QUIC, falling back to TLS and HTTP/2**, **QUIC only** or **TLS and HTTP/2 only** ([Connector networking](../connectors/network.md)) |
+| **Agents and transport** | **Default transport**: **QUIC, falling back to TLS and HTTP/2**, **QUIC only**, **TLS and HTTP/2 only** or **WSS only** ([Connector networking](../connectors/network.md)) |
 | **Web UI and controller endpoints** | **Further public URLs of the web UI**, one URL per line, each accepted as the browser's origin; **Controller endpoints for agents**, one URL per line, tried in order, empty for the public URL |
 | **Traffic statistics** | **Keep hourly statistics (days)** and **Keep daily statistics (days)** |
 | **ACME certificates** | **ACME directory URL** and **ACME account e-mail address** ([Domains and certificates](../domains-and-certificates.md)) |

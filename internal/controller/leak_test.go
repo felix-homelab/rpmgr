@@ -112,6 +112,15 @@ func TestCrossTenantLeaks(t *testing.T) {
 	policyA := db.Client().AccessPolicy.Create().SetOrgID(orgA).SetName("office-a").SaveX(sys)
 	certA := db.Client().Certificate.Create().SetOrgID(orgA).SetSource("acme").SetSans([]string{"shop.org-a.example"}).SetStatus("failed").
 		SetLastError("leak").SaveX(sys)
+	// A CONNECT listener of org A on its uploaded certificate, and a route on it.
+	uploadedA := db.Client().Certificate.Create().SetOrgID(orgA).SetSource("uploaded").SetSans([]string{"proxy.org-a.example"}).SaveX(sys)
+	portA := db.Client().PortAllocation.Create().SetOrgID(orgA).SetGatewayGroupID(groupA.ID).SetProtocol("tcp").SetPort(20001).SaveX(sys)
+	listenerA := db.Client().ConnectListener.Create().SetOrgID(orgA).SetGatewayGroupID(groupA.ID).SetPortAllocationID(portA.ID).
+		SetAuthMode("tls_basic").SetHostname("proxy.org-a.example").SetDomainID(domainA.ID).SetCertificateID(uploadedA.ID).SaveX(sys)
+	proxyA := db.Client().Route.Create().SetOrgID(orgA).SetName("proxy-a").SetType("tcp").SetGatewayGroupID(groupA.ID).SaveX(sys)
+	db.Client().RouteTCP.Create().SetOrgID(orgA).SetRouteID(proxyA.ID).SetListenerMode("http_connect").SetConnectListenerID(listenerA.ID).SaveX(sys)
+	db.Client().ConnectAuthority.Create().SetOrgID(orgA).SetConnectListenerID(listenerA.ID).SetRouteID(proxyA.ID).SetAuthority("db.org-a.internal").
+		SaveX(sys)
 	bundleA := db.Client().CABundle.Create().SetOrgID(orgA).SetName("internal-a").SetPem([]byte("leak")).SaveX(sys)
 	// A release and a rollout belong to the instance: Ada, its Instance Admin, made them.
 	releaseA := db.Client().Release.Create().SetVersion("1.4.2").SetChannel("stable").SetManifestSeq(1).SetManifest([]byte("leak")).
@@ -123,7 +132,7 @@ func TestCrossTenantLeaks(t *testing.T) {
 		"port_pool_id": poolA.ID, "port_quota_id": quotaA.ID, "connector_id": connectorA.ID, "domain_id": domainA.ID, "route_id": routeA.ID, "route_target_id": targetA.ID, "target_id": targetA.ID, "enrollment_token_id": tokenA.ID,
 		"access_policy_id": policyA.ID, "certificate_id": certA.ID, "ca_bundle_id": bundleA.ID, "release_id": releaseA.ID, "rollout_id": rolloutA.ID,
 	}
-	secrets := []string{orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, quotaA.ID, connectorA.ID, domainA.ID, "org-a.example", routeA.ID, "web-a", "/leak-a", targetA.ID, "10.0.0.5", tokenA.ID, policyA.ID, "office-a", certA.ID, "shop.org-a.example", bundleA.ID, "internal-a", releaseA.ID, rolloutA.ID, ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
+	secrets := []string{orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, quotaA.ID, connectorA.ID, domainA.ID, "org-a.example", routeA.ID, "web-a", "/leak-a", targetA.ID, "10.0.0.5", tokenA.ID, policyA.ID, "office-a", certA.ID, "shop.org-a.example", uploadedA.ID, portA.ID, listenerA.ID, proxyA.ID, "proxy-a", "db.org-a.internal", bundleA.ID, "internal-a", releaseA.ID, rolloutA.ID, ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
 		invitation.Msg.GetUrl()[strings.Index(invitation.Msg.GetUrl(), "#")+1:]}
 	before := orgRows(t, db, orgA)
 

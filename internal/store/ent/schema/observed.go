@@ -179,7 +179,7 @@ func (DataSession) Fields() []ent.Field {
 		idField("dss"),
 		field.String("gateway_id").NotEmpty().Immutable(),
 		field.String("connector_id").NotEmpty().Immutable(),
-		field.Enum("transport").Values("quic", "h2").Immutable(),
+		field.Enum("transport").Values("quic", "h2", "wss").Immutable(),
 		field.Int64("rtt_ms").NonNegative().Default(0),
 		field.Time("established_at").Immutable(),
 		field.Time("reported_at"),

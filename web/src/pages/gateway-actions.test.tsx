@@ -18,7 +18,7 @@ afterEach(cleanup);
 const applied = { revision: { dbEpoch: "e", seq: 21n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 1, agentsApplied: 1 } };
 const token = "rpmgr_enr_fakefakefake0123456789_9x8y7z"; // not token-shaped, so the secrets scan passes it
 
-function page(full = false, builtIn = false) {
+function page(full = false, builtIn = false, wss = false) {
   const creates: CreateGatewayRequest[] = [];
   const updates: UpdateGatewayRequest[] = [];
   const decommissions: DecommissionGatewayRequest[] = [];
@@ -35,7 +35,8 @@ function page(full = false, builtIn = false) {
     router.service(GatewayService, {
       listGatewayGroups: () => ({ gatewayGroups: [{ id: "ggr_eu", name: "eu" }] }),
       listGateways: () => ({ gateways: [
-        { id: "gtw_1", gatewayGroupId: "ggr_eu", name: "gw-eu-1", slot: 1, enabled: true, etag: "5", tunnelEndpoints: ["198.51.100.1:443"], status: { enrolled: true, connected: true } },
+        { id: "gtw_1", gatewayGroupId: "ggr_eu", name: "gw-eu-1", slot: 1, enabled: true, etag: "5", tunnelEndpoints: ["198.51.100.1:443"], status: { enrolled: true, connected: true },
+          wssHostname: wss ? "tunnel-eu-1.example.com" : "" },
         { id: "gtw_2", gatewayGroupId: "ggr_eu", name: "gw-eu-2", slot: 2, enabled: false, etag: "6", status: { enrolled: false } },
         ...(builtIn ? [{ id: "gtw_local", gatewayGroupId: "ggr_eu", name: "local", slot: 3, enabled: true, etag: "2", builtIn: true,
           tunnelEndpoints: ["panel.example.com:443"], status: { enrolled: false } }] : []),
@@ -47,7 +48,13 @@ function page(full = false, builtIn = false) {
         }
         return { gateway: req.gateway, ...applied };
       },
-      updateGateway: (req) => (updates.push(req), { gateway: req.gateway, ...applied }),
+      updateGateway: (req) => {
+        updates.push(req);
+        if (req.gateway?.wssHostname === "taken.example.com") {
+          throw new ConnectError("routes: the WSS hostname is another gateway's", Code.AlreadyExists);
+        }
+        return { gateway: req.gateway, ...applied };
+      },
       decommissionGateway: (req) => (decommissions.push(req), applied),
     });
     router.service(EnrollmentService, {
@@ -92,6 +99,22 @@ describe("gateway actions", () => {
     fireEvent.change(form.getByLabelText("Name"), { target: { value: "gw-eu-5" } });
     fireEvent.click(form.getByRole("button", { name: "Add the gateway" }));
     expect((await form.findByRole("alert")).textContent).toBe("apisvc: a gateway group has at most 4 gateways");
+  });
+
+  it("sets a gateway's WSS hostname, shows it, and says why a name is refused", async () => {
+    const { updates } = page(false, false, true);
+    expect(await (await row("gw-eu-1")).findByText("WSS: tunnel-eu-1.example.com")).toBeTruthy();
+    fireEvent.click((await row("gw-eu-2")).getByRole("button", { name: "Edit…" }));
+    const form = within(await screen.findByRole("form", { name: "Edit gateway" }));
+    fireEvent.change(form.getByLabelText("WSS hostname"), { target: { value: " taken.example.com " } });
+    fireEvent.click(form.getByRole("button", { name: "Save" }));
+    expect((await form.findByRole("alert")).textContent).toBe("routes: the WSS hostname is another gateway's");
+    fireEvent.change(form.getByLabelText("WSS hostname"), { target: { value: "tunnel-eu-2.example.com" } });
+    fireEvent.click(form.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updates).toHaveLength(2));
+    const u = updates[1]!;
+    expect([u.gateway?.id, u.gateway?.wssHostname, u.updateMask?.paths, u.etag]).toEqual(
+      ["gtw_2", "tunnel-eu-2.example.com", ["name", "tunnel_endpoints", "enabled", "wss_hostname"], "6"]);
   });
 
   it("drains a gateway and resumes a drained one", async () => {

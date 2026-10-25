@@ -12,6 +12,41 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Gateways: passive health. A gateway passes over a connector at a priority whose targets refused
+  or timed out several new connections in a row, for a back-off that grows with each failed try,
+  then tries it again with one connection; a success brings it back. HTTP error statuses never count,
+  and when every connector is passed over the gateway still tries one. Each gateway decides alone.
+  (#632)
+- Connectors: data sessions over WSS, for networks whose proxy intercepts TLS. A gateway gets a
+  WSS hostname of its own (`rpmgr update gateway --wss-hostname`, the API's
+  `Gateway.wss_hostname`) with a certificate from an upload or ACME; connectors on `auto` move to
+  WSS when TLS to the gateway fails in its handshake, and `wss` pins it on a route, a connector or
+  the instance (`--transport wss`). The connector's own TLS runs inside the WebSocket, so the proxy
+  sees which gateway it reaches but none of the traffic. Connectors and gateways of earlier
+  releases do not use WSS; a route on `wss` is not ready on such a connector. Data sessions and
+  the `rpmgr_gateway_sessions` metric show the transport `wss`; the web UI sets the WSS hostname
+  on the gateway's form and offers **WSS only** wherever it offers a transport. (#636, #637, #638,
+  #639)
+
+- Routes: tcp routes in `http_connect` mode share a CONNECT listener, one port of the organisation,
+  and clients pick a route by name through it as through an HTTP proxy, with no proxy credentials,
+  with basic auth over TLS, or with basic auth in the clear, which every write warns about. Set
+  with `rpmgr create route --tcp --http-connect --authority … --connect-auth …`, the API's
+  `TCPRouteSpec.listener_mode` and `connect`, manifests, and the web UI's route form, which keeps
+  warning while basic auth in the clear is chosen. A TLS listener presents the uploaded certificate
+  the route names, else one that covers its hostname, else one the ACME job obtains and renews.
+  Gateways of earlier releases do not serve such routes. (#634, #635, #934)
+
+- Routes: limits for a route as a whole, on every route type: open connections, flows or HTTP
+  requests in flight, requests or new connections a second, and bandwidth in each direction, set
+  with `rpmgr create route` and `rpmgr update route` (`--max-connections`,
+  `--requests-per-second`, `--bandwidth`) or the API. The gateways of the route's group share each
+  limit; over it, HTTP gets 503 or 429 with `Retry-After`, TCP is reset and UDP dropped, and
+  bandwidth slows data down. Access policies gain a per-client rate limit, on every route type:
+  each client address, or IPv6 /64, may make so many requests, new connections or new flows a
+  second, with a burst (`--rule rate-limit:<per second>[,<burst>]`, the web UI's policy form, or
+  the API). A gateway of an earlier release does not get a route with limits or such a rule.
+  (#622, #623, #624, #625, #917)
 - Routes: active health checks. A route may have one TCP or HTTP check, which each connector runs
   against its own targets of the route, on their port or another one; new connections pass over a
   target that fails it, gateways pass over a connector whose targets of a priority are all
@@ -55,6 +90,11 @@ Changes to the design documents are not recorded here: see the git history and t
   the route with more matching headers wins, the one created first a tie. Set with
   `rpmgr create route`/`update route --match-header`, the API's `header_matches` and manifests; the
   web UI follows. Gateways of earlier releases never get such a route. (#617, #618)
+
+- Routes: an http route can set its own upstream response-header timeout, after which a request
+  gets 504, and its own idle timeout for unused connections to its targets; 0 keeps the gateway's.
+  Set with `--upstream-header-timeout` and `--upstream-idle-timeout`, the API and manifests; the
+  web UI follows. Gateways of earlier releases keep their own values. (#619)
 
 - Access policies: a **require-header** rule admits on HTTP routes only requests that carry a
   header with one of up to four values, such as the origin header a CDN adds, so that clients that

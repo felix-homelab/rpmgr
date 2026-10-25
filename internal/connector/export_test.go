@@ -4,6 +4,7 @@ package connector
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"net/netip"
 	"testing"
@@ -81,3 +82,17 @@ func (t *Targets) Dialled(route, target string, gen uint64) { t.dialled(route, t
 
 // QUICSessions is how many QUIC sessions a link keeps per gateway (D123).
 const QUICSessions = quicSessions
+
+// DialWSS is dialWSS, for tests of the WSS dial alone; it closes the session it opens.
+func DialWSS(ctx context.Context, m *Sessions, host string, cfg *tls.Config) error {
+	s, err := m.dialWSS(ctx, host, cfg)
+	if s != nil {
+		_ = s.Close()
+	}
+	return err
+}
+
+// UpgradeWSS is upgradeWSS.
+func UpgradeWSS(ctx context.Context, m *Sessions, host string) (net.Conn, error) {
+	return m.upgradeWSS(ctx, host)
+}

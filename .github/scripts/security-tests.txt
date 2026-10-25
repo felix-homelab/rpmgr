@@ -37,7 +37,7 @@ TestPrivateUDP_GatewaySeesCiphertextOnly	p2	-	-	private services
 TestFlowControl_StalledStreamsDoNotFreezeSession	done	4.5	#75
 TestFlowControl_PausedClientNotResetWithoutPressure	done	4.5	#75
 TestH2_AdmissionUnderBudget	done	4.5	#75	h3-share clause in P3 (HTTP/3 ingress)
-TestGateway_PerGatewayTunnelEndpoints	done	4.10	#80	WSS clause in P2
+TestGateway_PerGatewayTunnelEndpoints	done	4.10	#80	WSS clause done in P2 4.10 (#638, internal/connector)
 TestOpenRequest_Semantics	done	4.4	#74
 TestH2_ConnectorFINKeepsClientDirection	done	4.3	#73
 TestH2_ResetReturnsConnectionWindow	done	4.3	#73
@@ -84,7 +84,7 @@ TestRateLimit_ClientAddressNotSpoofable	done	3.8	#623	route edge rules (D131)
 TestPages_CustomPageCannotRunScript	done	3.11	#626	custom pages (D132)
 TestHealthCheck_ObeysLocalPolicy	done	4.1	#629	internal/connector
 TestHTTPConnect_OnlyOwnAuthorities	done	4.6	#634	CONNECT routes (D130); internal/gateway
-TestWSS_InterceptorSeesOnlyInnerTLS	pending	4.9	#637	WSS transport
+TestWSS_InterceptorSeesOnlyInnerTLS	done	4.9	#637	WSS transport
 TestRouteOIDC_SecretNeverLeavesController	pending	10.12	#718	route OIDC (P2-M10)
 TestRouteOIDC_AssertionBoundToBrowser	pending	10.12	#718	route OIDC (P2-M10, D134)
 TestRouteOIDC_NoOpenRedirect	pending	10.12	#718	route OIDC (P2-M10)

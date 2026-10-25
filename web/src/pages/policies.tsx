@@ -25,16 +25,19 @@ import { largestPage, listAll } from "@/lib/list-all";
 import { useAgentNames, useRoutes } from "@/routes-data";
 import { useOrg } from "@/session";
 
-type Kind = "ipAllow" | "ipDeny" | "basicAuth" | "requireHeader";
+type Kind = "ipAllow" | "ipDeny" | "basicAuth" | "requireHeader" | "rateLimit";
 
 // A rule as the form edits it; a basic-auth user's empty password keeps the one the policy has,
-// and a required header without values keeps the values the policy has for it.
+// and a required header without values keeps the values the policy has for it. A rate limit's
+// numbers stay text until saved, so that the form checks them before sending.
 interface RuleDraft {
   kind: Kind;
   cidrs: string[];
   users: { name: string; password: string }[];
   header: string;
   values: string[];
+  perSecond?: string;
+  burst?: string;
 }
 
 const emptyRule: RuleDraft = { kind: "ipAllow", cidrs: [], users: [], header: "", values: [""] };
@@ -51,6 +54,8 @@ function draftOf(r: AccessRule): RuleDraft {
       return { ...emptyRule, kind: "basicAuth", users: r.rule.value.users.map((u) => ({ name: u.name, password: "" })) };
     case "requireHeader":
       return { ...emptyRule, kind: "requireHeader", header: r.rule.value.name };
+    case "rateLimit":
+      return { ...emptyRule, kind: "rateLimit", perSecond: String(r.rule.value.perSecond), burst: String(r.rule.value.burst) };
     default:
       return emptyRule;
   }
@@ -62,6 +67,12 @@ function ruleOf(d: RuleDraft): AccessRule {
       return create(AccessRuleSchema, { rule: { case: "basicAuth", value: { users: d.users.map((u) => ({ name: u.name.trim(), password: u.password })) } } });
     case "requireHeader":
       return create(AccessRuleSchema, { rule: { case: "requireHeader", value: { name: d.header.trim(), values: d.values.filter((v) => v !== "") } } });
+    case "rateLimit": {
+      // An empty burst is a second's worth of requests.
+      const perSecond = Number(d.perSecond?.trim() || 0);
+      const burst = d.burst?.trim() ? Number(d.burst.trim()) : perSecond;
+      return create(AccessRuleSchema, { rule: { case: "rateLimit", value: { perSecond, burst } } });
+    }
     default:
       return create(AccessRuleSchema, { rule: { case: d.kind, value: { cidrs: trimmed(d.cidrs) } } });
   }
@@ -129,6 +140,7 @@ function summary(t: TFunction, r: AccessRule): string {
     case "ipDeny": return t("policies.summary.deny", { cidrs: r.rule.value.cidrs.join(", ") });
     case "basicAuth": return t("policies.summary.basicAuth", { users: r.rule.value.users.map((u) => u.name).join(", ") });
     case "requireHeader": return t("policies.summary.requireHeader", { header: r.rule.value.name });
+    case "rateLimit": return t("policies.summary.rateLimit", { perSecond: r.rule.value.perSecond, burst: r.rule.value.burst });
     default: return "";
   }
 }
@@ -191,6 +203,18 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
   async function save(e: FormEvent) {
     e.preventDefault();
     setError("");
+    // Whole numbers within the API's bounds, and one rate limit a policy, before anything is sent.
+    const whole = (v: string | undefined, empty: boolean) =>
+      (empty && !v?.trim()) || (/^\d+$/.test(v?.trim() ?? "") && Number(v) >= 1 && Number(v) <= 10000);
+    const limits = rules.filter((r) => r.kind === "rateLimit");
+    if (limits.length > 1) {
+      setError(t("policies.oneRateLimit"));
+      return;
+    }
+    if (limits.some((r) => !whole(r.perSecond, false) || !whole(r.burst, true))) {
+      setError(t("policies.rateLimitBounds"));
+      return;
+    }
     const next = policy ? clone(AccessPolicySchema, policy) : create(AccessPolicySchema);
     Object.assign(next, { name: name.trim(), description, rules: rules.map(ruleOf) });
     try {
@@ -219,7 +243,7 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
             <div className="flex flex-wrap items-center gap-2">
               <span aria-hidden="true" className="grid size-6 place-items-center rounded-full bg-muted text-xs font-medium text-muted-foreground">{i + 1}</span>
               <Select aria-label={t("policies.kind")} className="w-56" value={r.kind} onChange={(e) => setRule(i, { kind: e.target.value as Kind })}>
-                {(["ipAllow", "ipDeny", "basicAuth", "requireHeader"] as Kind[]).map((k) => <option key={k} value={k}>{t(`policies.kinds.${k}`)}</option>)}
+                {(["ipAllow", "ipDeny", "basicAuth", "requireHeader", "rateLimit"] as Kind[]).map((k) => <option key={k} value={k}>{t(`policies.kinds.${k}`)}</option>)}
               </Select>
               <span className="ml-auto flex flex-wrap gap-1">
                 <Button size="sm" variant="ghost" onClick={() => setRules(rules.filter((_, j) => j !== i))}>{t("policies.removeRule")}</Button>
@@ -243,6 +267,14 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
               </div>
             ) : r.kind === "requireHeader" ? (
               <HeaderRule rule={r} keep={storedHeaders.has(r.header.trim().toLowerCase())} onChange={(x) => setRule(i, x)} />
+            ) : r.kind === "rateLimit" ? (
+              <div className="grid gap-2">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label={t("policies.perSecond")} required inputMode="numeric" value={r.perSecond ?? ""} onChange={(e) => setRule(i, { perSecond: e.target.value })} />
+                  <Field label={t("policies.burst")} inputMode="numeric" placeholder={r.perSecond?.trim() || ""} value={r.burst ?? ""} onChange={(e) => setRule(i, { burst: e.target.value })} />
+                </div>
+                <p className="text-xs text-muted-foreground">{t("policies.rateLimitHelp")}</p>
+              </div>
             ) : (
               <LinesField label={t("policies.cidrs")} required value={r.cidrs} onChange={(cidrs) => setRule(i, { cidrs })} />
             )}

@@ -17,7 +17,9 @@ import (
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
@@ -194,7 +196,20 @@ func groupOf(r *ent.GatewayGroup) *rpmgrv1.GatewayGroup {
 }
 
 // gatewayFields are the fields of a gateway a client may change.
-var gatewayFields = []string{"name", "tunnel_endpoints", "enabled"}
+var gatewayFields = []string{"name", "tunnel_endpoints", "enabled", "wss_hostname"}
+
+// gatewayError gives the WSS hostname rules' errors their API codes.
+func gatewayError(err error) error {
+	switch {
+	case errors.Is(err, domains.ErrNotOwned):
+		return withReason(connect.NewError(connect.CodeFailedPrecondition, err), ReasonDomainNotVerified)
+	case errors.Is(err, routes.ErrWSSHostnameTaken):
+		return connect.NewError(connect.CodeAlreadyExists, err)
+	case errors.Is(err, domains.ErrInvalid):
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return storeError(err)
+}
 
 // checkEndpoints refuses a gateway without tunnel endpoints or with one the store would refuse,
 // before the store assigns a slot.
@@ -229,13 +244,18 @@ func (g *Gateways) CreateGateway(ctx context.Context, req *connect.Request[rpmgr
 			if err != nil {
 				return nil, err
 			}
+			if in.GetWssHostname() != "" {
+				if row, err = routes.SetWSSHostname(ctx, tx, row.ID, in.GetWssHostname()); err != nil {
+					return nil, err
+				}
+			}
 			return []string{row.ID}, nil
 		})
 		if errors.Is(err, schema.ErrGroupFull) {
 			return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 		}
 		if err != nil {
-			return nil, storeError(err)
+			return nil, gatewayError(err)
 		}
 		return &rpmgrv1.CreateGatewayResponse{Gateway: g.gatewayOf(ctx, row), Revision: revisionOf(rev)}, nil
 	})
@@ -319,10 +339,15 @@ func (g *Gateways) UpdateGateway(ctx context.Context, req *connect.Request[rpmgr
 		if err != nil {
 			return nil, err
 		}
+		if next.GetWssHostname() != g.gatewayOf(ctx, cur).GetWssHostname() {
+			if row, err = routes.SetWSSHostname(ctx, tx, cur.ID, next.GetWssHostname()); err != nil {
+				return nil, err
+			}
+		}
 		return []string{row.ID}, nil
 	})
 	if err != nil {
-		return nil, storeError(err)
+		return nil, gatewayError(err)
 	}
 	return connect.NewResponse(&rpmgrv1.UpdateGatewayResponse{Gateway: g.gatewayOf(ctx, row), Revision: revisionOf(rev)}), nil
 }
@@ -386,6 +411,9 @@ func (g *Gateways) gatewayOf(ctx context.Context, r *ent.Gateway) *rpmgrv1.Gatew
 	out := &rpmgrv1.Gateway{Id: r.ID, GatewayGroupId: r.GatewayGroupID, Name: r.Name, Slot: int32(r.Slot), //nolint:gosec // G115: 1 to 4
 		TunnelEndpoints: r.TunnelEndpoints, Enabled: r.Enabled, CreateTime: timestamppb.New(r.CreatedAt), Etag: etagOf(r.Version),
 		Status: &rpmgrv1.GatewayStatus{Enrolled: r.SpiffeID != ""}, BuiltIn: r.BuiltIn}
+	if r.WssHostname != nil {
+		out.WssHostname = *r.WssHostname
+	}
 	if r.DecommissionedAt != nil {
 		out.DecommissionTime = timestamppb.New(*r.DecommissionedAt)
 	}

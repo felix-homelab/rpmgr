@@ -39,7 +39,7 @@ const smtpField = (key: string, field: "server" | "from" | "username", required?
 
 export const settingFields: SettingField[] = [
   { key: "transport", section: "agents", mask: "default_transport", kind: "select",
-    options: [[TransportPolicy.AUTO, "auto"], [TransportPolicy.QUIC, "quic"], [TransportPolicy.H2, "h2"]],
+    options: [[TransportPolicy.AUTO, "auto"], [TransportPolicy.QUIC, "quic"], [TransportPolicy.H2, "h2"], [TransportPolicy.WSS, "wss"]],
     get: (s) => String(s.defaultTransport ?? TransportPolicy.AUTO), set: (s, v) => (s.defaultTransport = Number(v)) },
   { key: "leafLifetime", section: "pki", mask: "leaf_certificate_lifetime", kind: "days", get: (s) => days(s.leafCertificateLifetime), set: (s, v) => (s.leafCertificateLifetime = toDays(v)) },
   { key: "grace", section: "pki", mask: "expired_certificate_grace", kind: "days", get: (s) => days(s.expiredCertificateGrace), set: (s, v) => (s.expiredCertificateGrace = toDays(v)) },
