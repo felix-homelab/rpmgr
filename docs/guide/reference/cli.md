@@ -759,6 +759,7 @@ rpmgr create route [flags]
 
 | Flag | Default | Description |
 |---|---|---|
+| `--bandwidth uint` |  | the route's bytes a second in each direction, shared by the group's gateways; 0 is no limit |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
@@ -780,13 +781,16 @@ rpmgr create route [flags]
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
+| `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
+| `--max-connections uint` |  | the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--path-prefix string` |  | http: the path prefix it serves |
 | `--policy value` |  | an access policy, by name or ID; repeat for more |
 | `--port uint` |  | tcp, udp, tcp-udp: the public port; 0 on create picks a free one |
 | `--port80 string` |  | http: what port 80 does: redirect, serve or off |
+| `--requests-per-second uint` |  | the route's requests, new connections or new flows a second, shared by the group's gateways; 0 is no limit |
 | `--set-request-header value` |  | http: a header Name=value set towards the upstream; repeat for more |
 | `--set-response-header value` |  | http: a header Name=value set towards the client; repeat for more |
 | `--tcp` |  | a tcp route on a public port |
@@ -795,6 +799,8 @@ rpmgr create route [flags]
 | `--tls-passthrough` |  | a TLS route the gateway passes through by its SNI |
 | `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
 | `--udp` |  | a udp route on a public port |
+| `--upstream-header-timeout duration` |  | http: how long to wait for the upstream's response headers before 504; 0 is the gateway's |
+| `--upstream-idle-timeout duration` |  | http: how long an unused connection to the upstream is kept; 0 is the gateway's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
 
@@ -1030,6 +1036,7 @@ rpmgr update route [flags] <id or name>
 
 | Flag | Default | Description |
 |---|---|---|
+| `--bandwidth uint` |  | the route's bytes a second in each direction, shared by the group's gateways; 0 is no limit |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
@@ -1050,17 +1057,22 @@ rpmgr update route [flags] <id or name>
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
+| `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
+| `--max-connections uint` |  | the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--path-prefix string` |  | http: the path prefix it serves |
 | `--policy value` |  | an access policy, by name or ID; repeat for more |
 | `--port uint` |  | tcp, udp, tcp-udp: the public port; 0 on create picks a free one |
 | `--port80 string` |  | http: what port 80 does: redirect, serve or off |
+| `--requests-per-second uint` |  | the route's requests, new connections or new flows a second, shared by the group's gateways; 0 is no limit |
 | `--set-request-header value` |  | http: a header Name=value set towards the upstream; repeat for more |
 | `--set-response-header value` |  | http: a header Name=value set towards the client; repeat for more |
 | `--tls-mode string` |  | http: acme or certificate |
 | `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
+| `--upstream-header-timeout duration` |  | http: how long to wait for the upstream's response headers before 504; 0 is the gateway's |
+| `--upstream-idle-timeout duration` |  | http: how long an unused connection to the upstream is kept; 0 is the gateway's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
 
@@ -1451,6 +1463,7 @@ rpmgr preview route [flags]
 
 | Flag | Default | Description |
 |---|---|---|
+| `--bandwidth uint` |  | the route's bytes a second in each direction, shared by the group's gateways; 0 is no limit |
 | `--certificate string` |  | http: the uploaded certificate's ID, with --tls-mode certificate |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
@@ -1472,13 +1485,16 @@ rpmgr preview route [flags]
 | `--label value` |  | a label key=value; repeat for more |
 | `--maintenance` |  | http: answer every request with the maintenance page, 503 |
 | `--maintenance-message string` |  | http: plain text the maintenance page shows, at most 500 characters |
+| `--match-header value` |  | http: serve only requests with this header, Name=value for an exact value or Name for any; repeat for more |
 | `--max-body uint` |  | http: the largest request body in bytes; 0 is no limit |
+| `--max-connections uint` |  | the route's open connections, flows or requests in flight, shared by the group's gateways; 0 is no limit |
 | `--name string` |  | the route's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--path-prefix string` |  | http: the path prefix it serves |
 | `--policy value` |  | an access policy, by name or ID; repeat for more |
 | `--port uint` |  | tcp, udp, tcp-udp: the public port; 0 on create picks a free one |
 | `--port80 string` |  | http: what port 80 does: redirect, serve or off |
+| `--requests-per-second uint` |  | the route's requests, new connections or new flows a second, shared by the group's gateways; 0 is no limit |
 | `--route string` |  | the ID of a route whose change to preview, rather than a new route |
 | `--set-request-header value` |  | http: a header Name=value set towards the upstream; repeat for more |
 | `--set-response-header value` |  | http: a header Name=value set towards the client; repeat for more |
@@ -1488,6 +1504,8 @@ rpmgr preview route [flags]
 | `--tls-passthrough` |  | a TLS route the gateway passes through by its SNI |
 | `--transport string` |  | the data-session transport: auto, quic or h2; empty is the connector's |
 | `--udp` |  | a udp route on a public port |
+| `--upstream-header-timeout duration` |  | http: how long to wait for the upstream's response headers before 504; 0 is the gateway's |
+| `--upstream-idle-timeout duration` |  | http: how long an unused connection to the upstream is kept; 0 is the gateway's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--websocket` | `true` | http: whether WebSocket upgrades pass |
 

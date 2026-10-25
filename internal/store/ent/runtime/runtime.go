@@ -55,6 +55,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routelimit"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -2848,42 +2849,58 @@ func init() {
 	routehttpDescPathPrefix := routehttpFields[1].Descriptor()
 	// routehttp.DefaultPathPrefix holds the default value on creation for the path_prefix field.
 	routehttp.DefaultPathPrefix = routehttpDescPathPrefix.Default.(string)
+	// routehttpDescMatchKey is the schema descriptor for match_key field.
+	routehttpDescMatchKey := routehttpFields[3].Descriptor()
+	// routehttp.DefaultMatchKey holds the default value on creation for the match_key field.
+	routehttp.DefaultMatchKey = routehttpDescMatchKey.Default.(string)
 	// routehttpDescHstsMaxAgeSeconds is the schema descriptor for hsts_max_age_seconds field.
-	routehttpDescHstsMaxAgeSeconds := routehttpFields[6].Descriptor()
+	routehttpDescHstsMaxAgeSeconds := routehttpFields[7].Descriptor()
 	// routehttp.DefaultHstsMaxAgeSeconds holds the default value on creation for the hsts_max_age_seconds field.
 	routehttp.DefaultHstsMaxAgeSeconds = routehttpDescHstsMaxAgeSeconds.Default.(int)
 	// routehttp.HstsMaxAgeSecondsValidator is a validator for the "hsts_max_age_seconds" field. It is called by the builders before save.
 	routehttp.HstsMaxAgeSecondsValidator = routehttpDescHstsMaxAgeSeconds.Validators[0].(func(int) error)
 	// routehttpDescHostHeader is the schema descriptor for host_header field.
-	routehttpDescHostHeader := routehttpFields[7].Descriptor()
+	routehttpDescHostHeader := routehttpFields[8].Descriptor()
 	// routehttp.DefaultHostHeader holds the default value on creation for the host_header field.
 	routehttp.DefaultHostHeader = routehttpDescHostHeader.Default.(string)
 	// routehttp.HostHeaderValidator is a validator for the "host_header" field. It is called by the builders before save.
 	routehttp.HostHeaderValidator = routehttpDescHostHeader.Validators[0].(func(string) error)
 	// routehttpDescWebsocket is the schema descriptor for websocket field.
-	routehttpDescWebsocket := routehttpFields[10].Descriptor()
+	routehttpDescWebsocket := routehttpFields[11].Descriptor()
 	// routehttp.DefaultWebsocket holds the default value on creation for the websocket field.
 	routehttp.DefaultWebsocket = routehttpDescWebsocket.Default.(bool)
 	// routehttpDescMaxBodyBytes is the schema descriptor for max_body_bytes field.
-	routehttpDescMaxBodyBytes := routehttpFields[11].Descriptor()
+	routehttpDescMaxBodyBytes := routehttpFields[12].Descriptor()
 	// routehttp.DefaultMaxBodyBytes holds the default value on creation for the max_body_bytes field.
 	routehttp.DefaultMaxBodyBytes = routehttpDescMaxBodyBytes.Default.(int64)
 	// routehttp.MaxBodyBytesValidator is a validator for the "max_body_bytes" field. It is called by the builders before save.
 	routehttp.MaxBodyBytesValidator = routehttpDescMaxBodyBytes.Validators[0].(func(int64) error)
 	// routehttpDescDNSProxied is the schema descriptor for dns_proxied field.
-	routehttpDescDNSProxied := routehttpFields[12].Descriptor()
+	routehttpDescDNSProxied := routehttpFields[13].Descriptor()
 	// routehttp.DefaultDNSProxied holds the default value on creation for the dns_proxied field.
 	routehttp.DefaultDNSProxied = routehttpDescDNSProxied.Default.(bool)
 	// routehttpDescMaintenance is the schema descriptor for maintenance field.
-	routehttpDescMaintenance := routehttpFields[13].Descriptor()
+	routehttpDescMaintenance := routehttpFields[14].Descriptor()
 	// routehttp.DefaultMaintenance holds the default value on creation for the maintenance field.
 	routehttp.DefaultMaintenance = routehttpDescMaintenance.Default.(bool)
 	// routehttpDescMaintenanceMessage is the schema descriptor for maintenance_message field.
-	routehttpDescMaintenanceMessage := routehttpFields[14].Descriptor()
+	routehttpDescMaintenanceMessage := routehttpFields[15].Descriptor()
 	// routehttp.DefaultMaintenanceMessage holds the default value on creation for the maintenance_message field.
 	routehttp.DefaultMaintenanceMessage = routehttpDescMaintenanceMessage.Default.(string)
 	// routehttp.MaintenanceMessageValidator is a validator for the "maintenance_message" field. It is called by the builders before save.
 	routehttp.MaintenanceMessageValidator = routehttpDescMaintenanceMessage.Validators[0].(func(string) error)
+	// routehttpDescUpstreamResponseHeaderTimeoutSeconds is the schema descriptor for upstream_response_header_timeout_seconds field.
+	routehttpDescUpstreamResponseHeaderTimeoutSeconds := routehttpFields[16].Descriptor()
+	// routehttp.DefaultUpstreamResponseHeaderTimeoutSeconds holds the default value on creation for the upstream_response_header_timeout_seconds field.
+	routehttp.DefaultUpstreamResponseHeaderTimeoutSeconds = routehttpDescUpstreamResponseHeaderTimeoutSeconds.Default.(int)
+	// routehttp.UpstreamResponseHeaderTimeoutSecondsValidator is a validator for the "upstream_response_header_timeout_seconds" field. It is called by the builders before save.
+	routehttp.UpstreamResponseHeaderTimeoutSecondsValidator = routehttpDescUpstreamResponseHeaderTimeoutSeconds.Validators[0].(func(int) error)
+	// routehttpDescUpstreamIdleTimeoutSeconds is the schema descriptor for upstream_idle_timeout_seconds field.
+	routehttpDescUpstreamIdleTimeoutSeconds := routehttpFields[17].Descriptor()
+	// routehttp.DefaultUpstreamIdleTimeoutSeconds holds the default value on creation for the upstream_idle_timeout_seconds field.
+	routehttp.DefaultUpstreamIdleTimeoutSeconds = routehttpDescUpstreamIdleTimeoutSeconds.Default.(int)
+	// routehttp.UpstreamIdleTimeoutSecondsValidator is a validator for the "upstream_idle_timeout_seconds" field. It is called by the builders before save.
+	routehttp.UpstreamIdleTimeoutSecondsValidator = routehttpDescUpstreamIdleTimeoutSeconds.Validators[0].(func(int) error)
 	routehostnameMixin := schema.RouteHostname{}.Mixin()
 	routehostname.Policy = privacy.NewPolicies(routehostnameMixin[0], schema.RouteHostname{})
 	routehostname.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -2937,10 +2954,59 @@ func init() {
 	routehostnameDescPathPrefix := routehostnameFields[4].Descriptor()
 	// routehostname.DefaultPathPrefix holds the default value on creation for the path_prefix field.
 	routehostname.DefaultPathPrefix = routehostnameDescPathPrefix.Default.(string)
+	// routehostnameDescMatchKey is the schema descriptor for match_key field.
+	routehostnameDescMatchKey := routehostnameFields[5].Descriptor()
+	// routehostname.DefaultMatchKey holds the default value on creation for the match_key field.
+	routehostname.DefaultMatchKey = routehostnameDescMatchKey.Default.(string)
 	// routehostnameDescDomainID is the schema descriptor for domain_id field.
-	routehostnameDescDomainID := routehostnameFields[5].Descriptor()
+	routehostnameDescDomainID := routehostnameFields[6].Descriptor()
 	// routehostname.DomainIDValidator is a validator for the "domain_id" field. It is called by the builders before save.
 	routehostname.DomainIDValidator = routehostnameDescDomainID.Validators[0].(func(string) error)
+	routelimitMixin := schema.RouteLimit{}.Mixin()
+	routelimit.Policy = privacy.NewPolicies(routelimitMixin[0], schema.RouteLimit{})
+	routelimit.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := routelimit.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	routelimitMixinHooks0 := routelimitMixin[0].Hooks()
+
+	routelimit.Hooks[1] = routelimitMixinHooks0[0]
+	routelimitMixinInters0 := routelimitMixin[0].Interceptors()
+	routelimit.Interceptors[0] = routelimitMixinInters0[0]
+	routelimitMixinFields0 := routelimitMixin[0].Fields()
+	_ = routelimitMixinFields0
+	routelimitFields := schema.RouteLimit{}.Fields()
+	_ = routelimitFields
+	// routelimitDescOrgID is the schema descriptor for org_id field.
+	routelimitDescOrgID := routelimitMixinFields0[0].Descriptor()
+	// routelimit.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	routelimit.OrgIDValidator = routelimitDescOrgID.Validators[0].(func(string) error)
+	// routelimitDescRouteID is the schema descriptor for route_id field.
+	routelimitDescRouteID := routelimitFields[0].Descriptor()
+	// routelimit.RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
+	routelimit.RouteIDValidator = routelimitDescRouteID.Validators[0].(func(string) error)
+	// routelimitDescMaxConnections is the schema descriptor for max_connections field.
+	routelimitDescMaxConnections := routelimitFields[1].Descriptor()
+	// routelimit.DefaultMaxConnections holds the default value on creation for the max_connections field.
+	routelimit.DefaultMaxConnections = routelimitDescMaxConnections.Default.(int64)
+	// routelimit.MaxConnectionsValidator is a validator for the "max_connections" field. It is called by the builders before save.
+	routelimit.MaxConnectionsValidator = routelimitDescMaxConnections.Validators[0].(func(int64) error)
+	// routelimitDescRequestsPerSec is the schema descriptor for requests_per_sec field.
+	routelimitDescRequestsPerSec := routelimitFields[2].Descriptor()
+	// routelimit.DefaultRequestsPerSec holds the default value on creation for the requests_per_sec field.
+	routelimit.DefaultRequestsPerSec = routelimitDescRequestsPerSec.Default.(int64)
+	// routelimit.RequestsPerSecValidator is a validator for the "requests_per_sec" field. It is called by the builders before save.
+	routelimit.RequestsPerSecValidator = routelimitDescRequestsPerSec.Validators[0].(func(int64) error)
+	// routelimitDescBandwidthBytesPerSec is the schema descriptor for bandwidth_bytes_per_sec field.
+	routelimitDescBandwidthBytesPerSec := routelimitFields[3].Descriptor()
+	// routelimit.DefaultBandwidthBytesPerSec holds the default value on creation for the bandwidth_bytes_per_sec field.
+	routelimit.DefaultBandwidthBytesPerSec = routelimitDescBandwidthBytesPerSec.Default.(int64)
+	// routelimit.BandwidthBytesPerSecValidator is a validator for the "bandwidth_bytes_per_sec" field. It is called by the builders before save.
+	routelimit.BandwidthBytesPerSecValidator = routelimitDescBandwidthBytesPerSec.Validators[0].(func(int64) error)
 	routepolicyMixin := schema.RoutePolicy{}.Mixin()
 	routepolicy.Policy = privacy.NewPolicies(routepolicyMixin[0], schema.RoutePolicy{})
 	routepolicy.Hooks[0] = func(next ent.Mutator) ent.Mutator {

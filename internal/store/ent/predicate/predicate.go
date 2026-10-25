@@ -153,6 +153,9 @@ type RouteHTTP func(*sql.Selector)
 // RouteHostname is the predicate function for routehostname builders.
 type RouteHostname func(*sql.Selector)
 
+// RouteLimit is the predicate function for routelimit builders.
+type RouteLimit func(*sql.Selector)
+
 // RoutePolicy is the predicate function for routepolicy builders.
 type RoutePolicy func(*sql.Selector)
 

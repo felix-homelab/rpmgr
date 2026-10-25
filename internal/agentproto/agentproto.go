@@ -28,9 +28,12 @@ const (
 	CapProbeTarget        = "probe.target"        // reads the certificate a target presents (ProbeTarget)
 )
 
-// The capability strings of Phase 2 route features, each a gate that keeps a route that uses the
-// feature from agents without it (docs/03-connections.md, "Versioning and capabilities").
+// The capability strings of Phase 2's gated route features: the compiler leaves a route that uses
+// one out of the snapshot of every agent of the feature's kind that does not announce it
+// (docs/03-connections.md, "Versioning and capabilities", D113).
 const (
+	// CapHTTPHeaderMatch: a gateway matches http routes on request headers.
+	CapHTTPHeaderMatch = "http.header-match"
 	// CapRouteLimits: the gateway enforces a route's connection, rate and bandwidth limits and the
 	// per-client rate_limit rule of access policies.
 	CapRouteLimits = "route.limits"
@@ -51,6 +54,8 @@ const (
 	// and reports the priorities with a healthy target; one without it counts every target as
 	// healthy (D133).
 	CapHealthActive = "health.active"
+	// CapLogsStream: the agent runs live-log operations (Open of OPERATION_KIND_LOGS, Attach).
+	CapLogsStream = "logs.stream"
 )
 
 // The capability strings of Phase 2 route features: the compiler leaves a route that uses one out

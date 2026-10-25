@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
 import { Status } from "@/components/status";
+import { UpdateButton, type UpdatableAgent } from "@/components/update-button";
 import { UpdateState } from "@/components/update-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,12 @@ export function validateConnectorsSearch(s: Record<string, unknown>): Connectors
 // session is up.
 export function connectorState(c: Connector): ConnectorState {
   return !c.enabled ? "disabled" : c.session?.connected ? "connected" : "offline";
+}
+
+// updatableConnector is what the Update button needs of a connector.
+export function updatableConnector(c: Connector): UpdatableAgent {
+  return { id: c.id, version: c.session?.version ?? "", online: !!c.session?.connected, builtIn: c.builtIn, enrolled: true,
+    overTheAir: !!c.session?.overTheAir };
 }
 
 // SessionChip says whether a connector is disabled or its control session is up, with an icon and
@@ -122,7 +129,12 @@ export function Connectors() {
                 </TD>
                 <TD><SessionChip connector={c} /></TD>
                 <TD>{c.session?.version}</TD>
-                <TD><UpdateState target={updates.get(c.id)} belowMinimum={c.session?.belowMinAgentVersion} goodbyeReason={c.session?.lastGoodbyeReason} /></TD>
+                <TD>
+                  <span className="grid justify-items-start gap-1">
+                    <UpdateState target={updates.get(c.id)} belowMinimum={c.session?.belowMinAgentVersion} goodbyeReason={c.session?.lastGoodbyeReason} />
+                    <UpdateButton agent={updatableConnector(c)} target={updates.get(c.id)} />
+                  </span>
+                </TD>
                 <TD>{when(c.session?.lastSeenTime)}</TD>
                 <TD className="text-muted-foreground">{Object.entries(c.labels).map(([k, v]) => `${k}=${v}`).join(", ")}</TD>
               </TR>

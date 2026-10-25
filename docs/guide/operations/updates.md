@@ -1,23 +1,32 @@
 # Updates
 
-rpmgr updates **connectors and gateways** itself, in a staged rollout you approve. Controllers and
-all-in-ones are upgraded by hand ([Upgrades](../install/upgrades.md)). This page shows how to run a
-rollout and what it tells you. The rules behind it are in
+rpmgr updates **connectors and gateways** itself, in a rollout you start. Controllers and
+all-in-ones are upgraded by hand ([Upgrades](../install/upgrades.md)). A rollout is **easy**, the
+agents you choose one after another, or **staged**, test agents first and then stages you approve.
+This page shows how to run both and what they tell you. The rules behind them are in
 [04](../../04-security.md#over-the-air-updates),
-[10](../../10-operations.md#upgrades-and-version-skew) and
-[D121](../../14-open-decisions.md#engineering).
+[10](../../10-operations.md#upgrades-and-version-skew),
+[D121](../../14-open-decisions.md#engineering) and [D129](../../14-open-decisions.md#engineering).
 
 ## What a rollout does
 
 - **The target is the controller's version**, or an older release you uploaded on purpose. No agent
   runs ahead of its controller.
-- **Three stages:** the test agents you choose (the canary agents), then a percentage of the
+- **Easy or staged.** **Settings → Updates → Rollouts** says which kind **Roll out…** starts:
+  **Easy** unless you change it. **Update** on a connector or gateway always joins or starts an
+  easy rollout.
+- **An easy rollout** takes the agents you chose one at a time, in your order. An agent that rolls
+  back, refuses the release or stalls is marked and skipped, and the next one takes its turn; after
+  a few failures in a row the rollout pauses, so that a broken release stops early
+  ([04](../../04-security.md#easy-rollouts)).
+- **A staged rollout has three stages:** the test agents you choose (the canary agents), then a percentage of the
   others, 25 % unless you choose another, then all agents. You continue every stage yourself; the
   other agents wait until you do. An agent's place in the percentages is fixed by its ID, so a
   later stage includes every agent of an earlier one.
 - **Gateways go one at a time per group.** Each drains first, so that its connectors move to the
   other gateways, and is enabled again after the update.
-- **A rollback or a silent agent pauses the rollout.** You then resume it, or cancel it. Agents
+- **In a staged rollout, a rollback or a silent agent pauses the rollout.** You then resume it, or
+  cancel it. Agents
   that are offline, or whose policy says `auto_update: notify` or `off`, are listed and skipped;
   they never block a stage.
 - Only one rollout runs or is paused at a time.
@@ -42,7 +51,44 @@ and the controller keeps the releases it had. The release check must be on (**Ch
 once a day**). A check shortly after the last one, or while the release source limits requests,
 is refused with the time to wait ([03](../../03-connections.md#timeouts-keepalive-and-backoff)).
 
-## Run a rollout
+## Run an easy rollout
+
+1. Open **Settings → Updates**, where **Rollouts** says **Easy**, and choose **Roll out…** on a
+   release.
+2. Tick the agents that get the release; **Select all** ticks every agent the search shows. The
+   ones that cannot take it are listed below with the reason: built in, not enrolled, never
+   connected, no over-the-air updater on its host, or already on the release.
+3. **Order** shows the queue: connectors first, then gateways, each by name. **Move up** and
+   **Move down** change it. An agent that is offline when its turn comes is skipped.
+
+   ![The start dialog of an easy rollout, four agents queued](../images/web/rollout-easy-start.png)
+
+4. Choose **Start: update … agents** and confirm your identity.
+5. Watch the rollout: **Now** is the agent whose turn it is, with its step; **Next** the queue to
+   come; **Updated**, **Failed** and **Skipped** the agents done, each with its reason. A count
+   next to the state says how many failed.
+
+   ![An easy rollout, one agent failed and the queue going on](../images/web/rollout-easy.png)
+
+6. After a few failures in a row the rollout is **paused** and says why. Find out what goes wrong
+   on those hosts, then **Resume** to go on with the next agent, or **Cancel**. Agents already
+   updated keep the release.
+
+   ![An easy rollout paused after failures in a row](../images/web/rollout-easy-paused.png)
+
+## Update one agent
+
+As an Instance Admin, each connector and gateway has **Update to …** with the controller's version,
+in the list (for gateways, on their group's page) and on a connector's page. After a step-up it adds
+the agent to the end of the easy rollout of that version, or starts one with it alone; the button
+then says the agent's place in the queue. Next to a disabled button you see why: up to date, built
+in, no over-the-air updater, offline, already in the queue, or another rollout running.
+
+![The connectors list with Update buttons](../images/web/connectors-update.png)
+
+## Run a staged rollout
+
+With **Rollouts** set to **Advanced**:
 
 1. Open **Settings → Updates**. **Releases** lists what the controller verified, with its channel,
    where it came from and whether the mirror holds it. Every release that is no newer than the
