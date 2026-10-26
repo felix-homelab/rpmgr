@@ -4,7 +4,7 @@ import { create } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConnectorSchema, ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import { LogService, type StreamLogsRequest } from "@/gen/rpmgr/v1/log_pb";
@@ -13,7 +13,10 @@ import { StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const db = create(ConnectorSchema, { id: "con_db", name: "db-host-1", enabled: true, transport: DataTransport.AUTO, session: { connected: true } });
 const local = create(ConnectorSchema, { id: "con_local", name: "local", enabled: true, builtIn: true, session: { connected: true } });
@@ -86,6 +89,29 @@ describe("LiveLog", () => {
     expect(await screen.findByRole("button", { name: "Continue" })).toBeTruthy();
     expect(screen.queryByText("The live log ended at its time limit. Continue opens a new one.")).toBeNull();
     expect(log.textContent).toContain("msg=ready");
+  });
+
+  it("shows markup in a line as text", async () => {
+    page("/connectors/con_db", "owner", async function* () {
+      yield { line: { time: at, level: "info", text: "msg=<script>alert(1)</script><img src=x onerror=alert(2)>" } };
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Start" }));
+    const log = await screen.findByRole("log", { name: "Live log lines" });
+    await waitFor(() => expect(log.textContent).toContain("<script>alert(1)</script>"));
+    expect(log.querySelector("script, img")).toBeNull();
+  });
+
+  it("ends its stream when the page goes away", async () => {
+    page("/connectors/con_db", "owner", async function* () {
+      yield { line: { time: at, level: "info", text: "msg=ready" } };
+      await new Promise(() => {}); // the agent stays quiet
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Start" }));
+    const log = await screen.findByRole("log", { name: "Live log lines" });
+    await waitFor(() => expect(log.textContent).toContain("msg=ready"));
+    const abort = vi.spyOn(AbortController.prototype, "abort");
+    cleanup();
+    expect(abort).toHaveBeenCalled();
   });
 
   it("is not shown to an Operator or a Viewer, and explains the built-in connector", async () => {
