@@ -31,12 +31,14 @@ const (
 	ClockSkew            = "clock_skew"
 	CheckpointsBehind    = "audit_checkpoints_behind"
 	RevocationLogOnHost  = "revocation_log_on_host"
+	WebhookFailing       = "webhook_failing"
 	offlineFor           = 5 * time.Minute
 	routeNoReadyFor      = 2 * time.Minute
 	AgentCertWithin      = 48 * time.Hour
 	PublicCertWithin     = 14 * 24 * time.Hour
 	ClockSkewOver        = 30 * time.Second
 	CheckpointsBehindFor = time.Hour
+	WebhookFailingFor    = time.Hour
 )
 
 // For is how long a kind's condition must hold before its alert fires; the conditions with a
@@ -53,6 +55,7 @@ var titles = map[string]string{
 	ClockSkew:           "Clock skew",
 	CheckpointsBehind:   "Audit checkpoints behind",
 	RevocationLogOnHost: "Revocation log not yet off-host",
+	WebhookFailing:      "Webhook endpoint failing",
 }
 
 // Observation is a condition that holds now for one subject. Since is when it began, where the

@@ -48,6 +48,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/migrations"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
+	"github.com/felix-homelab/rpmgr/internal/webhook"
 	"github.com/felix-homelab/rpmgr/internal/websession"
 	"github.com/felix-homelab/rpmgr/internal/webui"
 )
@@ -458,6 +459,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	job(RollupJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}), "traffic rollup job")
 	job(EventsJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}), "events job")
 	job(AlertJob(AlertOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger, RevocationLog: shipper.Status}), "alert job")
+	job(WebhookJob(WebhookOptions{DB: db, Leases: leases, Sealer: sealer, Sender: &webhook.Sender{Proxy: proxy, Now: o.Now}, Now: o.Now,
+		Logger: o.Logger, Own: ownAddresses()}), "webhook job")
 	job(RolloutJob(RolloutOptions{DB: db, Now: o.Now, Logger: o.Logger}), "rollout job")
 	bg.Go(func() { ReloadCA(jobs, caOpts) })
 	bg.Go(func() { shipper.Run(jobs) })
