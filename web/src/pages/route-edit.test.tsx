@@ -31,9 +31,12 @@ const routes: Record<string, Route> = {
   http: create(RouteSchema, { ...common, spec: { case: "http", value: {
     hostnames: ["wiki.example.com", "w.example.com"], pathPrefix: "/docs", tlsMode: TLSMode.TLS_MODE_CERTIFICATE, certificateId: "crt_1",
     port80: Port80Mode.SERVE, hstsMaxAgeSeconds: 3600, hostHeader: "internal", requestHeadersSet: { "X-A": "1" },
-    responseHeadersSet: { "X-B": "a: b" }, websocket: false, maxBodyBytes: 1024n, maintenance: true, maintenanceMessage: "Back at 18:00.\nSorry." } },
+    responseHeadersSet: { "X-B": "a: b" }, websocket: false, maxBodyBytes: 1024n, maintenance: true, maintenanceMessage: "Back at 18:00.\nSorry.",
+    headerMatches: [{ name: "X-Env", match: { case: "exact", value: "beta" } }, { name: "X-Tenant", match: { case: "present", value: true } }],
+    upstreamResponseHeaderTimeoutSeconds: 300, upstreamIdleTimeoutSeconds: 30 } },
     healthCheck: { type: HealthCheckType.HTTP, port: 8081, httpPath: "/healthz?deep=1", expectedStatusMin: 200, expectedStatusMax: 204,
-      intervalSeconds: 30, timeoutSeconds: 5, unhealthyThreshold: 4, healthyThreshold: 1 } }),
+      intervalSeconds: 30, timeoutSeconds: 5, unhealthyThreshold: 4, healthyThreshold: 1 },
+    limits: { maxConnections: 200, requestsPerSecond: 50, bandwidthBytesPerSecond: 10_485_760n } }),
   tcp: create(RouteSchema, { ...common, spec: { case: "tcp", value: { port: 25432, idleTimeoutSeconds: 600 } } }),
   tcpConnect: create(RouteSchema, { ...common, spec: { case: "tcp", value: { port: 20001, idleTimeoutSeconds: 600, listenerMode: ListenerMode.HTTP_CONNECT,
     connect: { authorities: ["bastion", "ssh.internal"], authMode: ConnectAuthMode.NONE } } } }),
@@ -129,6 +132,114 @@ describe("RouteEdit", () => {
     const spec = updates[0]!.route?.spec;
     expect(spec?.case === "tcpUdp" && [spec.value.port, spec.value.idleTimeoutSeconds, spec.value.flowIdleTimeoutSeconds]).toEqual([5354, 600, undefined]);
     expect(updates[0]!.updateMask?.paths).toEqual(expect.arrayContaining(["tcp_udp.port", "tcp_udp.flow_idle_timeout_seconds"]));
+  });
+
+  it("edits an http route's header matches and its own upstream timeouts", async () => {
+    const updates = edit(routes.http!);
+    const matches = await screen.findByLabelText("Serve only requests with these headers");
+    expect((matches as HTMLTextAreaElement).value).toBe("X-Env: beta\nX-Tenant");
+    expect((screen.getByLabelText("Wait for the target's response headers (seconds)") as HTMLInputElement).value).toBe("300");
+    fireEvent.change(matches, { target: { value: "x-canary: 1\n\n  X-Region  " } });
+    fireEvent.change(screen.getByLabelText("Wait for the target's response headers (seconds)"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Keep an unused connection to the target (seconds)"), { target: { value: "3600" } });
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    const spec = updates[0]!.route?.spec;
+    expect(spec?.case === "http" && [spec.value.headerMatches.map((m) => [m.name, m.match.case, m.match.value]),
+      spec.value.upstreamResponseHeaderTimeoutSeconds, spec.value.upstreamIdleTimeoutSeconds]).toEqual(
+      [[["x-canary", "exact", "1"], ["X-Region", "present", true]], 0, 3600]);
+    expect(updates[0]!.updateMask?.paths).toEqual(expect.arrayContaining(["http.header_matches",
+      "http.upstream_response_header_timeout_seconds", "http.upstream_idle_timeout_seconds"]));
+  });
+
+  it.each([
+    ["a match without a value", "Serve only requests with these headers", "X-Env:", "Line 1: give X-Env a value after the colon, or write the name alone to match any value."],
+    ["a match with a bad name", "Serve only requests with these headers", "X Env: a", "Line 1: “X Env” is not a header name. A name has letters, digits and the characters !#$%&'*+-.^_`|~ only."],
+    ["a header matched twice", "Serve only requests with these headers", "X-Env: a\nx-env", "Line 2: x-env is on line 1 already."],
+    ["nine matches", "Serve only requests with these headers", Array.from({ length: 9 }, (_, i) => `X-H${i}`).join("\n"), "A route matches at most 8 headers."],
+    ["a timeout that is no whole number", "Wait for the target's response headers (seconds)", "1.5", "Enter a whole number."],
+    ["a timeout above an hour", "Keep an unused connection to the target (seconds)", "3601", /less than or equal to 3600/],
+  ])("refuses %s before sending", async (_, label, value, message) => {
+    const updates = edit(routes.http!);
+    const field = await screen.findByLabelText(label);
+    fireEvent.change(field, { target: { value } });
+    save();
+    await waitFor(() => expect(field.getAttribute("aria-invalid")).toBe("true"));
+    expect(screen.getByText(message)).toBeTruthy();
+    expect(updates).toEqual([]);
+  });
+
+  it("shows what the server refuses in header matches", async () => {
+    edit(routes.http!, () => {
+      throw new ConnectError("headermatch: invalid header matches: header Host cannot be matched", Code.InvalidArgument);
+    });
+    fireEvent.change(await screen.findByLabelText("Serve only requests with these headers"), { target: { value: "Host: a.example.com" } });
+    save();
+    expect(await screen.findByText("headermatch: invalid header matches: header Host cannot be matched")).toBeTruthy();
+  });
+
+  it("edits a route's limits, clearing one, and sends the three under one mask path", async () => {
+    const updates = edit(routes.http!);
+    const conns = await screen.findByLabelText("Most connections, flows or requests at once");
+    expect([(conns as HTMLInputElement).value, (screen.getByLabelText("Most requests, connections or flows a second") as HTMLInputElement).value,
+      (screen.getByLabelText("Most bytes a second, each way") as HTMLInputElement).value]).toEqual(["200", "50", "10485760"]);
+    fireEvent.change(conns, { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Most requests, connections or flows a second"), { target: { value: "1000000" } });
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]!.route?.limits).toMatchObject({ maxConnections: 0, requestsPerSecond: 1_000_000, bandwidthBytesPerSecond: 10_485_760n });
+    expect(updates[0]!.updateMask?.paths.filter((p) => p === "limits")).toHaveLength(1);
+  });
+
+  it("removes a route's limits when every field is empty, and adds them to a route without any", async () => {
+    const updates = edit(routes.http!);
+    for (const label of ["Most connections, flows or requests at once", "Most requests, connections or flows a second", "Most bytes a second, each way"]) {
+      fireEvent.change(await screen.findByLabelText(label), { target: { value: " " } });
+    }
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]!.route?.limits).toBeUndefined();
+    expect(updates[0]!.updateMask?.paths).toContain("limits");
+    cleanup();
+    const added = edit(routes.tcp!);
+    expect((await screen.findByLabelText<HTMLInputElement>("Most bytes a second, each way")).value).toBe("");
+    fireEvent.change(screen.getByLabelText("Most bytes a second, each way"), { target: { value: "1024" } }); // the smallest
+    save();
+    await waitFor(() => expect(added).toHaveLength(1));
+    expect(added[0]!.route?.limits).toMatchObject({ maxConnections: 0, requestsPerSecond: 0, bandwidthBytesPerSecond: 1024n });
+  });
+
+  it.each([
+    ["a bandwidth below the smallest", "Most bytes a second, each way", "1023", "A bandwidth limit is at least 1024 bytes a second; leave it empty for none."],
+    ["a bandwidth that is no whole number", "Most bytes a second, each way", "1e6", "Enter a whole number."],
+    ["a bandwidth above the largest", "Most bytes a second, each way", "100000000001", /less than or equal to 100000000000/],
+    ["a negative connection limit", "Most connections, flows or requests at once", "-1", "Enter a whole number."],
+    ["a connection limit above the largest", "Most connections, flows or requests at once", "1000001", /less than or equal to 1000000/],
+    ["a request rate above the largest", "Most requests, connections or flows a second", "1000001", /less than or equal to 1000000/],
+  ])("refuses %s before sending", async (_, label, value, message) => {
+    const updates = edit(routes.http!);
+    const field = await screen.findByLabelText(label);
+    fireEvent.change(field, { target: { value } });
+    save();
+    await waitFor(() => expect(field.getAttribute("aria-invalid")).toBe("true"));
+    expect(screen.getByText(message)).toBeTruthy();
+    expect(updates).toEqual([]);
+  });
+
+  it("shows a violation of one limit on that limit's field", async () => {
+    edit(routes.http!, () => {
+      const el = (name: string, n: number, t: FieldDescriptorProto_Type) => ({ fieldName: name, fieldNumber: n, fieldType: t });
+      const v = create(ViolationsSchema, { violations: [
+        { field: { elements: [el("route", 1, FieldDescriptorProto_Type.MESSAGE), el("limits", 22, FieldDescriptorProto_Type.MESSAGE),
+          el("requests_per_second", 2, FieldDescriptorProto_Type.UINT32)] }, message: "value must be less than or equal to 1000000" },
+      ] });
+      throw new ConnectError("invalid", Code.InvalidArgument, undefined, [{ desc: ViolationsSchema, value: v }]);
+    });
+    await screen.findByLabelText("Name");
+    save();
+    const rate = screen.getByLabelText("Most requests, connections or flows a second");
+    await waitFor(() => expect(rate.getAttribute("aria-invalid")).toBe("true"));
+    expect(screen.getByLabelText("Most connections, flows or requests at once").getAttribute("aria-invalid")).toBeNull();
   });
 
   it("edits a CONNECT route's names and mode, warns of passwords in the clear, and shows the server's warning", async () => {
