@@ -1501,8 +1501,7 @@ sequenceDiagram
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Hand-off drain (Phase 2) | 10 min; the boot-file setting `handoff.drain` takes 0 to 24 h; at the end the old process cuts what is still open and exits ([D146](14-open-decisions.md#engineering)) | [R] Long-lived SSH, database, WebSocket and CONNECT connections survive almost every update; an old process costs only memory |
 | Hand-off readiness window (Phase 2) | 60 s from the exec until the new process reports ready, else the old one kills it and keeps serving | [R] Shorter than the updater's readiness window, so the updater sees the hand-off's outcome inside its own |
-| Hand-off session wait (Phase 2) | a new public connection in the new process waits up to 5 s for a session of its route before 503 or a reset | [R] Connectors redial at once on `Drain{handoff}`; the wait covers their reconnect, so no visitor sees the switch [V VB-08] |
-| Hand-off relay (Phase 2) | datagrams passed between the processes during the drain are queued up to 1 024 per socket; beyond that they are dropped and counted | [R] UDP may lose datagrams; a full queue never blocks the old process [V VB-08] |
+| Hand-off session wait (Phase 2) | a new public connection in the new process waits up to 5 s for a session of its route before 503 or a reset | [R] Connectors redial at once on `Drain{handoff}`; the wait covers their reconnect, so no visitor sees the switch [F S10: connectors moved within 0.04 s over QUIC and 0.5 s over TCP, and no new visitor connection was refused or reset] |
 | Session liveness | each controller node marks its live sessions seen every 60 s; a session not seen for 3 min is not live | An agent shows as connected while its control session is live; a node that stops without recording its sessions' ends leaves them to age, and ends them when it starts again |
 | Data-session report | every 60 s, and 1 s after a change | A gateway's `Status` listing its connectors' data sessions, for their status in the API, its route counters, for the traffic rollups, and the resources that are not ready |
 | Revocation, tightened access policy, stricter TLS settings of an HTTPS target | immediate; a target's TLS settings that change, unless to unverified ones of the same connector, end the connections earlier ones checked | Security beats continuity |
@@ -1654,9 +1653,9 @@ sequenceDiagram
   N->>C: control session (supersedes the old one's)
   C-->>N: snapshot (or the stored last-known-good one)
   N->>O: ready
-  O->>O: stop accepting, keep open connections
   O->>K: Drain{reason: handoff}
   K->>N: new data sessions at once
+  O->>O: stop accepting once N has every connector, keep open connections
   N->>N: main process of the unit (MAINPID)
   O->>O: open connections end, or are cut at the hand-off drain
 ```
@@ -1672,17 +1671,29 @@ sequenceDiagram
    binds what its configuration needs and was not handed, such as the port of a route added in
    between, and leaves the sockets it took unread until it is ready. Both processes now hold the
    same sockets, so a connection waiting to be accepted is taken by whichever accepts next and
-   none is lost.
+   none is lost: 200 of 200 queued connections were served after the old process closed its copy,
+   where two `SO_REUSEPORT` sockets reset about half of them [F S10,
+   `spikes/s10/results/host-experiments.txt`].
 3. **Ready.** The new process starts from the stored last-known-good snapshot, opens its control
-   session, which supersedes the old process's (expected during a hand-off), applies the snapshot
-   it receives and reports ready over the pipe. A process that is not ready within the hand-off
-   readiness window is killed by the old one, which keeps serving as before; the hand-off is
-   reported as failed.
-4. **Switch.** The old process stops accepting, hands its admin listener over, and sends its data
-   sessions `Drain{reason: handoff}`. Connectors open new sessions to the same endpoint at once,
-   without backoff, and keep the draining ones for their open streams. Until a route has a session
-   in the new process, a new public connection waits up to the session wait for one before it gets
-   503 or is reset. The new process tells systemd it is the unit's main process.
+   session, which supersedes the old process's, applies the snapshot it receives and reports ready
+   over the pipe. The old process takes the `Goodbye{superseded}` this causes without ending and
+   opens no further control session, so the two never supersede each other in turn; an agent
+   redials after any `Goodbye` today [F rpmgr `internal/agent/control.go:161`, `:238-245`]. It
+   opens one again if the hand-off fails. The controller records the old session's end only for
+   its own session epoch, so the gateway shows connected throughout [F rpmgr
+   `internal/controller/liveness.go:17-23`, `TestSessionLiveness`]. A process that is not ready
+   within the hand-off readiness window is killed by the old one, which keeps serving as before;
+   the hand-off is reported as failed.
+4. **Switch.** The old process hands its admin listener over and sends its data sessions
+   `Drain{reason: handoff}`. Connectors open new sessions to the same endpoint at once, without
+   backoff, and keep the draining ones for their open streams. The old process keeps accepting
+   public connections until the new one has sessions of every connector the old one had, at the
+   latest until it exits; only then does it stop accepting and the new process start
+   ([S10](spikes/S10.md), the fallback of S-4). Until a route has a session in the new process, a
+   new public connection there waits up to the session wait for one before it gets 503 or is
+   reset. The new process tells systemd it is the unit's main process; systemd keeps the unit
+   active and restarts it when that process fails, although it did not start it itself [F S10,
+   systemd 249 and 257].
 5. **Drain.** The old process serves its open connections until they end or the **hand-off drain**
    cuts them ([D146](14-open-decisions.md#engineering)), then exits. A revocation, a tightened
    access policy or a removed route that the new process applies meanwhile cuts the old process's
@@ -1690,20 +1701,24 @@ sequenceDiagram
    while a predecessor still drains ends that predecessor's drain early, so at most one old process
    runs.
 
-**UDP and QUIC.** Datagrams on a shared socket go to whichever process reads, so only one reads at
-a time [V VB-08].
+**UDP and QUIC.** A datagram on a shared socket goes to whichever process reads it, and a QUIC
+packet of the old process's session that the new process reads is answered with a stateless reset
+that ends the session [F S10: every old session ended so when both read]. So only the old process
+reads the UDP sockets until it exits ([S10](spikes/S10.md), the fallback of
+[ADR-0022](adr/0022-socket-hand-off-by-re-exec.md)):
 
-- [T] Every QUIC connection ID the gateway issues carries a byte naming the process generation.
-  While the old process drains it alone reads the agent's UDP socket and passes Initial packets
-  and packets of the new generation to the new process over a local socket pair; the new process
-  writes to the shared socket directly and reads it itself once the old one exits. Packets of an
-  old session never reach the new process, so no stateless reset ends it.
-- [T] `udp` routes do the same per flow: the old process keeps its flows and passes datagrams of new
-  flows to the new process.
-- If the study (17.2) shows the relay does not meet its rule, the fallback of
-  [ADR-0022](adr/0022-socket-hand-off-by-re-exec.md) applies: the new process reads UDP only once
-  the old one has exited, connectors on `auto` use TCP meanwhile, and `udp` flows still open then
-  start again in the new process.
+- **QUIC.** The old process accepts no new QUIC session after the switch and keeps its open ones
+  for the drain. The new process starts its QUIC listener once the old one has exited. Connectors
+  on `auto` open their new sessions over TCP meanwhile, within the happy-eyeballs head start
+  [F S10: 0.3 s], and come back to QUIC at the next re-probe. A connector whose transport is
+  pinned to `quic` reaches the new process only after the old one has exited, up to the hand-off
+  drain, so the old process keeps accepting public connections until then (step 4) and cuts those
+  still open when it exits.
+- **`udp` routes.** The old process keeps serving every flow, new ones included, until it exits;
+  a flow still open then starts again in the new process, and the datagrams in flight at that
+  moment may be lost [F S10: at most 11 of about 36 000].
+- The gateway reads its QUIC socket with quic-go's batched reads and segmentation offload as
+  before; nothing filters datagrams between the processes.
 
 **All-in-one.** The built-in gateway and connector hand off as above; the controller cannot run
 twice on one SQLite file. After step 2 the old process ends its control sessions with
