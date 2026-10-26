@@ -44,6 +44,10 @@ in the change description.
   holds anything of org A; afterwards every row of org A in every org-owned table is unchanged. An
   ID field the suite has no org A value for fails it, so each new kind of resource brings its
   fixture.
+- **S3-compatible storage.** The tests of the S3 client, the revocation-log sink and the audit
+  object-storage sink run against the SILO container, the maintained fork of MinIO, whose project
+  was archived and whose images were removed; the image is pinned by digest in CI. Other stores
+  are checked by VB-24 ([13](13-roadmap.md#verification-backlog)).
 - **Authorization-annotation completeness.** A test walks every registered RPC and fails if one
   lacks the `(rpmgr.v1.authz)` option; the server also refuses to start in that case
   ([04](04-security.md#one-enforcement-point-with-defence-in-depth)).
@@ -88,6 +92,9 @@ controller database restarts, and clock jumps, while a load generator checks int
   spikes. A connection held through one gateway and one connector must survive each of them.
 - **Hard events:** gateway and connector kills, and loss and reordering bursts. These may reset the
   connections through the process they hit. Afterwards every route answers again.
+- **Hand-off events** (Phase 2): restarts with socket hand-off of a gateway and a connector, which
+  count as soft events, and a kill of the new process during one, after which the old process must
+  still serve.
 
 **Where the cells run.** The in-process integration tests live in `internal/itest`, the container
 tests in `test/e2e` (Docker Compose, `tc netem`, IPv4 and IPv6). The browser tests of the web UI
@@ -158,6 +165,12 @@ test, in the order of [10](10-operations.md#upgrades-and-version-skew), under li
     come back changed.
   - A connection held through the other gateway survives the controller and gateway upgrades. Only
     a connector's restart may break the connections held through it.
+- **With the hand-off** (Phase 2, from a release that has it; slice 17.8): an all-in-one and a
+  gateway group with one gateway are upgraded under the same load by a restart with socket hand-off
+  ([03](03-connections.md#restarts-with-socket-hand-off-phase-2)). No new connection may be refused
+  or fail on either transport, a `udp` route keeps answering, and connections held across the
+  hand-off end only at the hand-off drain. A chaos step kills the new process during the hand-off;
+  the old one must serve on.
 - **Afterwards:**
   - the database has no pending migration and keeps every route;
   - every agent runs the new version and has applied the configuration of the controller's epoch;
@@ -357,11 +370,24 @@ Regression tests for design-review findings:
 | `TestRateLimit_ClientAddressNotSpoofable` | A per-client rate limit keys on the TCP peer, or on the forwarded address only from a trusted proxy, so a client cannot escape it with its own `X-Forwarded-For`; a full key table refuses new addresses and keeps limiting the ones it holds ([03](03-connections.md#access-policies)) |
 | `TestPages_CustomPageCannotRunScript` | A custom page is served with a CSP that forbids script and every load from elsewhere; a hostile hostname, maintenance message or placeholder text is escaped, never markup; an oversized page is refused; the built-in page serves until a custom one is fetched ([03](03-connections.md#http-routes)) |
 | `TestHealthCheck_ObeysLocalPolicy` | A health check of a target the connector-local policy blocks never dials it and marks it unhealthy; an HTTP check follows no redirect, reads at most the capped body, and verifies an https target as traffic does ([03](03-connections.md#target-health-phase-2)) |
-| `TestHTTPConnect_OnlyOwnAuthorities` | A CONNECT listener routes only to the authorities of its own org's routes; another org's authority, an unknown one and a non-CONNECT request are refused alike; a `tls_basic` listener refuses plain CONNECT; `Proxy-Authorization` never reaches a target ([03](03-connections.md#http-connect-routes-phase-2)) |
-| `TestWSS_InterceptorSeesOnlyInnerTLS` | Through a TLS-intercepting proxy, the data session's inner TLS 1.3 with mutual authentication completes only against the pinned root; the proxy's view holds no plaintext of the session; a wrong path is 404 and an upgrade without the inner handshake is closed ([03](03-connections.md#transport-selection)) |
+| `TestHTTPConnect_OnlyOwnAuthorities` | A CONNECT listener routes only to the authorities of its own org's routes; another org's authority and an unknown one are refused alike, and a non-CONNECT request too; a `tls_basic` listener refuses plain CONNECT; `Proxy-Authorization` never reaches a target ([03](03-connections.md#http-connect-routes-phase-2)) |
+| `TestWSS_InterceptorSeesOnlyInnerTLS` | Through a TLS-intercepting proxy, the data session's inner TLS 1.3 with mutual authentication completes only against the pinned root; the proxy's view, the WebSocket frames unmasked, holds the inner ClientHello but none of the session's contents; a wrong path is 404 and an upgrade without the inner handshake is closed ([03](03-connections.md#transport-selection)) |
 | `TestRouteOIDC_SecretNeverLeavesController` | A route identity provider's client secret appears in no snapshot, gateway memory dump, log line, API answer or audit entry; gateways verify assertions with public keys only ([04](04-security.md#oidc-sign-in-on-routes)) |
 | `TestRouteOIDC_AssertionBoundToBrowser` | An assertion is refused for another hostname, after its lifetime, with a bad signature, or in a browser whose state cookie does not match; a session whose claims a tightened rule no longer accepts is refused at once ([04](04-security.md#oidc-sign-in-on-routes)) |
 | `TestRouteOIDC_NoOpenRedirect` | The controller refuses with an error page, never a redirect, a sign-in naming a hostname that is not one of the route's, a route of another org, a disabled route or one without an `oidc` rule; it redirects only to `https://<route hostname>/.rpmgr/oidc`; its `redirect_uri` is the fixed callback whatever the request says; after sign-in the gateway redirects only to a path on the same hostname, and a return value with a scheme, an authority, a leading `//` or `/\`, in encoded forms too, goes to `/` ([04](04-security.md#oidc-sign-in-on-routes)) |
+| `TestLiveLogs_TicketSingleUseAndBound` | An `Attach` with a used, expired, unknown or another agent's ticket, or without an `Open`, is refused, and the operation fails at once; an operation ends at its deadline ([03](03-connections.md#control-session)) |
+| `TestLiveLogs_RedactedOnAgent` | Token prefixes with their random part, PEM blocks, `Authorization` and `Cookie` values and `password=` pairs in a log message's text never leave the agent, also at the raised `debug` level; a slow viewer loses lines and never blocks the agent ([04](04-security.md#secrets-at-rest-and-in-logs)) |
+| `TestLiveLogs_CrossOrgRefused` | A user of another org gets `NOT_FOUND` for an org's agent, a Viewer or Operator is refused, a shared-group gateway's log needs the Instance Admin, and through another controller replica the same holds ([04](04-security.md#roles)) |
+| `TestWebhook_EgressGuard` | A delivery never connects to a loopback, unspecified, link-local, metadata, multicast or own address, in IPv4-mapped form too, nor after a DNS answer changes between check and dial, nor through a redirect or an `http` URL; a private range only once listed, and a listed range never admits an always-denied address ([04](04-security.md#webhooks-and-the-egress-guard-phase-2)) |
+| `TestWebhook_SignatureAndReplayWindow` | Every delivery carries a valid `Rpmgr-Signature` over its timestamp and body; during a rotation both secrets sign and afterwards only the new one; a receiver using the documented check refuses a signature past the maximum age |
+| `TestWebhook_EventsScopedToOrg` | An org's endpoint receives only that org's events, an instance endpoint only instance events, and an event's envelope holds no resource body and no secret ([07](07-api.md#webhooks-phase-2)) |
+| `TestWebhook_SecretWriteOnly` | A webhook secret is returned only when made or rotated; no read, list, export, manifest, log line or audit entry holds it |
+| `TestAuditExport_StepUpAndOrgScoped` | An export without a step-up, or of another org's chain, is refused; the instance chain only for the Instance Admin; every export is audited ([04](04-security.md#audit-log)) |
+| `TestAuditExport_TamperDetectedOffline` | `rpmgr audit verify-export` finds an edited, removed or reordered entry, a forged checkpoint and a wrong CA pin, and flags the unanchored tail |
+| `TestAuditSink_BacklogNeverBlocksAppend` | With every sink down, appends commit at full speed; the backlog grows, the alert fires, and once a sink is back it ships every item from its cursor, also after a restart, without a gap |
+| `TestAuditSink_RewriteDetectedAgainstSink` | A chain rewritten in the database under a checkpoint an object-storage sink holds fails verification against the sink; the sink's objects cannot be overwritten (412) |
+| `TestHandoff_OnlyVerifiedBinaryGetsSockets` | A restart with socket hand-off starts only the installed binary: one owned by another user, writable by its group or others, in a directory others may write, or replaced by a symlink is refused and the old process serves on; no listening socket is ever reachable by another local process during the hand-off, and a trigger cannot name a binary or a descriptor ([04](04-security.md#socket-hand-off-phase-2), slice 17.3) |
+| `TestHandoff_UnexpectedDescriptorsRefused` | The new process of a hand-off serves only the descriptors its manifest names and its boot file expects: an extra inherited descriptor, a socket of another type, address or state, and a manifest entry without its descriptor are closed or refused and logged, and nothing is served on them ([04](04-security.md#socket-hand-off-phase-2), slice 17.3) |
 
 ## Continuous integration
 

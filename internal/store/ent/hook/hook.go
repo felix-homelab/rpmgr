@@ -189,6 +189,30 @@ func (f ConfigSeqFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConfigSeqMutation", m)
 }
 
+// The ConnectAuthorityFunc type is an adapter to allow the use of ordinary
+// function as ConnectAuthority mutator.
+type ConnectAuthorityFunc func(context.Context, *ent.ConnectAuthorityMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ConnectAuthorityFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ConnectAuthorityMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConnectAuthorityMutation", m)
+}
+
+// The ConnectListenerFunc type is an adapter to allow the use of ordinary
+// function as ConnectListener mutator.
+type ConnectListenerFunc func(context.Context, *ent.ConnectListenerMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ConnectListenerFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ConnectListenerMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConnectListenerMutation", m)
+}
+
 // The ConnectorFunc type is an adapter to allow the use of ordinary
 // function as Connector mutator.
 type ConnectorFunc func(context.Context, *ent.ConnectorMutation) (ent.Value, error)
@@ -271,6 +295,18 @@ func (f GatewayPageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GatewayPageMutation", m)
+}
+
+// The HealthCheckFunc type is an adapter to allow the use of ordinary
+// function as HealthCheck mutator.
+type HealthCheckFunc func(context.Context, *ent.HealthCheckMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f HealthCheckFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.HealthCheckMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.HealthCheckMutation", m)
 }
 
 // The InstanceFunc type is an adapter to allow the use of ordinary
@@ -559,6 +595,18 @@ func (f RouteHostnameFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteHostnameMutation", m)
+}
+
+// The RouteLimitFunc type is an adapter to allow the use of ordinary
+// function as RouteLimit mutator.
+type RouteLimitFunc func(context.Context, *ent.RouteLimitMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RouteLimitFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RouteLimitMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteLimitMutation", m)
 }
 
 // The RoutePolicyFunc type is an adapter to allow the use of ordinary

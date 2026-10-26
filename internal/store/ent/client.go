@@ -30,6 +30,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectauthority"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -37,6 +39,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -61,6 +64,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routelimit"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -111,6 +115,10 @@ type Client struct {
 	ConfigRevision *ConfigRevisionClient
 	// ConfigSeq is the client for interacting with the ConfigSeq builders.
 	ConfigSeq *ConfigSeqClient
+	// ConnectAuthority is the client for interacting with the ConnectAuthority builders.
+	ConnectAuthority *ConnectAuthorityClient
+	// ConnectListener is the client for interacting with the ConnectListener builders.
+	ConnectListener *ConnectListenerClient
 	// Connector is the client for interacting with the Connector builders.
 	Connector *ConnectorClient
 	// DataSession is the client for interacting with the DataSession builders.
@@ -125,6 +133,8 @@ type Client struct {
 	GatewayGroup *GatewayGroupClient
 	// GatewayPage is the client for interacting with the GatewayPage builders.
 	GatewayPage *GatewayPageClient
+	// HealthCheck is the client for interacting with the HealthCheck builders.
+	HealthCheck *HealthCheckClient
 	// Instance is the client for interacting with the Instance builders.
 	Instance *InstanceClient
 	// InstanceSecret is the client for interacting with the InstanceSecret builders.
@@ -173,6 +183,8 @@ type Client struct {
 	RouteHTTP *RouteHTTPClient
 	// RouteHostname is the client for interacting with the RouteHostname builders.
 	RouteHostname *RouteHostnameClient
+	// RouteLimit is the client for interacting with the RouteLimit builders.
+	RouteLimit *RouteLimitClient
 	// RoutePolicy is the client for interacting with the RoutePolicy builders.
 	RoutePolicy *RoutePolicyClient
 	// RouteTCP is the client for interacting with the RouteTCP builders.
@@ -221,6 +233,8 @@ func (c *Client) init() {
 	c.CompiledSnapshot = NewCompiledSnapshotClient(c.config)
 	c.ConfigRevision = NewConfigRevisionClient(c.config)
 	c.ConfigSeq = NewConfigSeqClient(c.config)
+	c.ConnectAuthority = NewConnectAuthorityClient(c.config)
+	c.ConnectListener = NewConnectListenerClient(c.config)
 	c.Connector = NewConnectorClient(c.config)
 	c.DataSession = NewDataSessionClient(c.config)
 	c.Domain = NewDomainClient(c.config)
@@ -228,6 +242,7 @@ func (c *Client) init() {
 	c.Gateway = NewGatewayClient(c.config)
 	c.GatewayGroup = NewGatewayGroupClient(c.config)
 	c.GatewayPage = NewGatewayPageClient(c.config)
+	c.HealthCheck = NewHealthCheckClient(c.config)
 	c.Instance = NewInstanceClient(c.config)
 	c.InstanceSecret = NewInstanceSecretClient(c.config)
 	c.InstanceSetting = NewInstanceSettingClient(c.config)
@@ -252,6 +267,7 @@ func (c *Client) init() {
 	c.Route = NewRouteClient(c.config)
 	c.RouteHTTP = NewRouteHTTPClient(c.config)
 	c.RouteHostname = NewRouteHostnameClient(c.config)
+	c.RouteLimit = NewRouteLimitClient(c.config)
 	c.RoutePolicy = NewRoutePolicyClient(c.config)
 	c.RouteTCP = NewRouteTCPClient(c.config)
 	c.RouteTarget = NewRouteTargetClient(c.config)
@@ -370,6 +386,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		CompiledSnapshot:   NewCompiledSnapshotClient(cfg),
 		ConfigRevision:     NewConfigRevisionClient(cfg),
 		ConfigSeq:          NewConfigSeqClient(cfg),
+		ConnectAuthority:   NewConnectAuthorityClient(cfg),
+		ConnectListener:    NewConnectListenerClient(cfg),
 		Connector:          NewConnectorClient(cfg),
 		DataSession:        NewDataSessionClient(cfg),
 		Domain:             NewDomainClient(cfg),
@@ -377,6 +395,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Gateway:            NewGatewayClient(cfg),
 		GatewayGroup:       NewGatewayGroupClient(cfg),
 		GatewayPage:        NewGatewayPageClient(cfg),
+		HealthCheck:        NewHealthCheckClient(cfg),
 		Instance:           NewInstanceClient(cfg),
 		InstanceSecret:     NewInstanceSecretClient(cfg),
 		InstanceSetting:    NewInstanceSettingClient(cfg),
@@ -401,6 +420,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Route:              NewRouteClient(cfg),
 		RouteHTTP:          NewRouteHTTPClient(cfg),
 		RouteHostname:      NewRouteHostnameClient(cfg),
+		RouteLimit:         NewRouteLimitClient(cfg),
 		RoutePolicy:        NewRoutePolicyClient(cfg),
 		RouteTCP:           NewRouteTCPClient(cfg),
 		RouteTarget:        NewRouteTargetClient(cfg),
@@ -446,6 +466,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		CompiledSnapshot:   NewCompiledSnapshotClient(cfg),
 		ConfigRevision:     NewConfigRevisionClient(cfg),
 		ConfigSeq:          NewConfigSeqClient(cfg),
+		ConnectAuthority:   NewConnectAuthorityClient(cfg),
+		ConnectListener:    NewConnectListenerClient(cfg),
 		Connector:          NewConnectorClient(cfg),
 		DataSession:        NewDataSessionClient(cfg),
 		Domain:             NewDomainClient(cfg),
@@ -453,6 +475,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Gateway:            NewGatewayClient(cfg),
 		GatewayGroup:       NewGatewayGroupClient(cfg),
 		GatewayPage:        NewGatewayPageClient(cfg),
+		HealthCheck:        NewHealthCheckClient(cfg),
 		Instance:           NewInstanceClient(cfg),
 		InstanceSecret:     NewInstanceSecretClient(cfg),
 		InstanceSetting:    NewInstanceSettingClient(cfg),
@@ -477,6 +500,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Route:              NewRouteClient(cfg),
 		RouteHTTP:          NewRouteHTTPClient(cfg),
 		RouteHostname:      NewRouteHostnameClient(cfg),
+		RouteLimit:         NewRouteLimitClient(cfg),
 		RoutePolicy:        NewRoutePolicyClient(cfg),
 		RouteTCP:           NewRouteTCPClient(cfg),
 		RouteTarget:        NewRouteTargetClient(cfg),
@@ -520,15 +544,16 @@ func (c *Client) Use(hooks ...Hook) {
 		c.ACMEStorage, c.APIRequest, c.APIToken, c.AccessPolicy, c.AgentSession,
 		c.AgentState, c.AuditCheckpoint, c.AuditEntry, c.AuditHead, c.CABundle,
 		c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq,
-		c.Connector, c.DataSession, c.Domain, c.EnrollmentToken, c.Gateway,
-		c.GatewayGroup, c.GatewayPage, c.Instance, c.InstanceSecret, c.InstanceSetting,
-		c.Invitation, c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
+		c.ConnectAuthority, c.ConnectListener, c.Connector, c.DataSession, c.Domain,
+		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.GatewayPage, c.HealthCheck,
+		c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
+		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
 		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
 		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
-		c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
-		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential,
-		c.TrafficBaseline, c.User,
+		c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
+		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
+		c.TOTPCredential, c.TrafficBaseline, c.User,
 	} {
 		n.Use(hooks...)
 	}
@@ -541,15 +566,16 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.ACMEStorage, c.APIRequest, c.APIToken, c.AccessPolicy, c.AgentSession,
 		c.AgentState, c.AuditCheckpoint, c.AuditEntry, c.AuditHead, c.CABundle,
 		c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq,
-		c.Connector, c.DataSession, c.Domain, c.EnrollmentToken, c.Gateway,
-		c.GatewayGroup, c.GatewayPage, c.Instance, c.InstanceSecret, c.InstanceSetting,
-		c.Invitation, c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
+		c.ConnectAuthority, c.ConnectListener, c.Connector, c.DataSession, c.Domain,
+		c.EnrollmentToken, c.Gateway, c.GatewayGroup, c.GatewayPage, c.HealthCheck,
+		c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
+		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
 		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
 		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
-		c.RouteHostname, c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
-		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential,
-		c.TrafficBaseline, c.User,
+		c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
+		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
+		c.TOTPCredential, c.TrafficBaseline, c.User,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -588,6 +614,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ConfigRevision.mutate(ctx, m)
 	case *ConfigSeqMutation:
 		return c.ConfigSeq.mutate(ctx, m)
+	case *ConnectAuthorityMutation:
+		return c.ConnectAuthority.mutate(ctx, m)
+	case *ConnectListenerMutation:
+		return c.ConnectListener.mutate(ctx, m)
 	case *ConnectorMutation:
 		return c.Connector.mutate(ctx, m)
 	case *DataSessionMutation:
@@ -602,6 +632,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.GatewayGroup.mutate(ctx, m)
 	case *GatewayPageMutation:
 		return c.GatewayPage.mutate(ctx, m)
+	case *HealthCheckMutation:
+		return c.HealthCheck.mutate(ctx, m)
 	case *InstanceMutation:
 		return c.Instance.mutate(ctx, m)
 	case *InstanceSecretMutation:
@@ -650,6 +682,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.RouteHTTP.mutate(ctx, m)
 	case *RouteHostnameMutation:
 		return c.RouteHostname.mutate(ctx, m)
+	case *RouteLimitMutation:
+		return c.RouteLimit.mutate(ctx, m)
 	case *RoutePolicyMutation:
 		return c.RoutePolicy.mutate(ctx, m)
 	case *RouteTCPMutation:
@@ -2700,6 +2734,372 @@ func (c *ConfigSeqClient) mutate(ctx context.Context, m *ConfigSeqMutation) (Val
 	}
 }
 
+// ConnectAuthorityClient is a client for the ConnectAuthority schema.
+type ConnectAuthorityClient struct {
+	config
+}
+
+// NewConnectAuthorityClient returns a client for the ConnectAuthority from the given config.
+func NewConnectAuthorityClient(c config) *ConnectAuthorityClient {
+	return &ConnectAuthorityClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `connectauthority.Hooks(f(g(h())))`.
+func (c *ConnectAuthorityClient) Use(hooks ...Hook) {
+	c.hooks.ConnectAuthority = append(c.hooks.ConnectAuthority, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `connectauthority.Intercept(f(g(h())))`.
+func (c *ConnectAuthorityClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ConnectAuthority = append(c.inters.ConnectAuthority, interceptors...)
+}
+
+// Create returns a builder for creating a ConnectAuthority entity.
+func (c *ConnectAuthorityClient) Create() *ConnectAuthorityCreate {
+	mutation := newConnectAuthorityMutation(c.config, OpCreate)
+	return &ConnectAuthorityCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ConnectAuthority entities.
+func (c *ConnectAuthorityClient) CreateBulk(builders ...*ConnectAuthorityCreate) *ConnectAuthorityCreateBulk {
+	return &ConnectAuthorityCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ConnectAuthorityClient) MapCreateBulk(slice any, setFunc func(*ConnectAuthorityCreate, int)) *ConnectAuthorityCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ConnectAuthorityCreateBulk{err: fmt.Errorf("calling to ConnectAuthorityClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ConnectAuthorityCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ConnectAuthorityCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ConnectAuthority.
+func (c *ConnectAuthorityClient) Update() *ConnectAuthorityUpdate {
+	mutation := newConnectAuthorityMutation(c.config, OpUpdate)
+	return &ConnectAuthorityUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ConnectAuthorityClient) UpdateOne(_m *ConnectAuthority) *ConnectAuthorityUpdateOne {
+	mutation := newConnectAuthorityMutation(c.config, OpUpdateOne, withConnectAuthority(_m))
+	return &ConnectAuthorityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ConnectAuthorityClient) UpdateOneID(id int) *ConnectAuthorityUpdateOne {
+	mutation := newConnectAuthorityMutation(c.config, OpUpdateOne, withConnectAuthorityID(id))
+	return &ConnectAuthorityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ConnectAuthority.
+func (c *ConnectAuthorityClient) Delete() *ConnectAuthorityDelete {
+	mutation := newConnectAuthorityMutation(c.config, OpDelete)
+	return &ConnectAuthorityDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ConnectAuthorityClient) DeleteOne(_m *ConnectAuthority) *ConnectAuthorityDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ConnectAuthorityClient) DeleteOneID(id int) *ConnectAuthorityDeleteOne {
+	builder := c.Delete().Where(connectauthority.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ConnectAuthorityDeleteOne{builder}
+}
+
+// Query returns a query builder for ConnectAuthority.
+func (c *ConnectAuthorityClient) Query() *ConnectAuthorityQuery {
+	return &ConnectAuthorityQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeConnectAuthority},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ConnectAuthority entity by its id.
+func (c *ConnectAuthorityClient) Get(ctx context.Context, id int) (*ConnectAuthority, error) {
+	return c.Query().Where(connectauthority.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ConnectAuthorityClient) GetX(ctx context.Context, id int) *ConnectAuthority {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryListener queries the listener edge of a ConnectAuthority.
+func (c *ConnectAuthorityClient) QueryListener(_m *ConnectAuthority) *ConnectListenerQuery {
+	query := (&ConnectListenerClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(connectauthority.Table, connectauthority.FieldID, id),
+			sqlgraph.To(connectlistener.Table, connectlistener.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, connectauthority.ListenerTable, connectauthority.ListenerColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryRoute queries the route edge of a ConnectAuthority.
+func (c *ConnectAuthorityClient) QueryRoute(_m *ConnectAuthority) *RouteQuery {
+	query := (&RouteClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(connectauthority.Table, connectauthority.FieldID, id),
+			sqlgraph.To(route.Table, route.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, connectauthority.RouteTable, connectauthority.RouteColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ConnectAuthorityClient) Hooks() []Hook {
+	hooks := c.hooks.ConnectAuthority
+	return append(hooks[:len(hooks):len(hooks)], connectauthority.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *ConnectAuthorityClient) Interceptors() []Interceptor {
+	inters := c.inters.ConnectAuthority
+	return append(inters[:len(inters):len(inters)], connectauthority.Interceptors[:]...)
+}
+
+func (c *ConnectAuthorityClient) mutate(ctx context.Context, m *ConnectAuthorityMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ConnectAuthorityCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ConnectAuthorityUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ConnectAuthorityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ConnectAuthorityDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ConnectAuthority mutation op: %q", m.Op())
+	}
+}
+
+// ConnectListenerClient is a client for the ConnectListener schema.
+type ConnectListenerClient struct {
+	config
+}
+
+// NewConnectListenerClient returns a client for the ConnectListener from the given config.
+func NewConnectListenerClient(c config) *ConnectListenerClient {
+	return &ConnectListenerClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `connectlistener.Hooks(f(g(h())))`.
+func (c *ConnectListenerClient) Use(hooks ...Hook) {
+	c.hooks.ConnectListener = append(c.hooks.ConnectListener, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `connectlistener.Intercept(f(g(h())))`.
+func (c *ConnectListenerClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ConnectListener = append(c.inters.ConnectListener, interceptors...)
+}
+
+// Create returns a builder for creating a ConnectListener entity.
+func (c *ConnectListenerClient) Create() *ConnectListenerCreate {
+	mutation := newConnectListenerMutation(c.config, OpCreate)
+	return &ConnectListenerCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ConnectListener entities.
+func (c *ConnectListenerClient) CreateBulk(builders ...*ConnectListenerCreate) *ConnectListenerCreateBulk {
+	return &ConnectListenerCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ConnectListenerClient) MapCreateBulk(slice any, setFunc func(*ConnectListenerCreate, int)) *ConnectListenerCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ConnectListenerCreateBulk{err: fmt.Errorf("calling to ConnectListenerClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ConnectListenerCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ConnectListenerCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ConnectListener.
+func (c *ConnectListenerClient) Update() *ConnectListenerUpdate {
+	mutation := newConnectListenerMutation(c.config, OpUpdate)
+	return &ConnectListenerUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ConnectListenerClient) UpdateOne(_m *ConnectListener) *ConnectListenerUpdateOne {
+	mutation := newConnectListenerMutation(c.config, OpUpdateOne, withConnectListener(_m))
+	return &ConnectListenerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ConnectListenerClient) UpdateOneID(id string) *ConnectListenerUpdateOne {
+	mutation := newConnectListenerMutation(c.config, OpUpdateOne, withConnectListenerID(id))
+	return &ConnectListenerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ConnectListener.
+func (c *ConnectListenerClient) Delete() *ConnectListenerDelete {
+	mutation := newConnectListenerMutation(c.config, OpDelete)
+	return &ConnectListenerDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ConnectListenerClient) DeleteOne(_m *ConnectListener) *ConnectListenerDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ConnectListenerClient) DeleteOneID(id string) *ConnectListenerDeleteOne {
+	builder := c.Delete().Where(connectlistener.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ConnectListenerDeleteOne{builder}
+}
+
+// Query returns a query builder for ConnectListener.
+func (c *ConnectListenerClient) Query() *ConnectListenerQuery {
+	return &ConnectListenerQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeConnectListener},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ConnectListener entity by its id.
+func (c *ConnectListenerClient) Get(ctx context.Context, id string) (*ConnectListener, error) {
+	return c.Query().Where(connectlistener.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ConnectListenerClient) GetX(ctx context.Context, id string) *ConnectListener {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryPort queries the port edge of a ConnectListener.
+func (c *ConnectListenerClient) QueryPort(_m *ConnectListener) *PortAllocationQuery {
+	query := (&PortAllocationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(connectlistener.Table, connectlistener.FieldID, id),
+			sqlgraph.To(portallocation.Table, portallocation.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, connectlistener.PortTable, connectlistener.PortColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryCertificate queries the certificate edge of a ConnectListener.
+func (c *ConnectListenerClient) QueryCertificate(_m *ConnectListener) *CertificateQuery {
+	query := (&CertificateClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(connectlistener.Table, connectlistener.FieldID, id),
+			sqlgraph.To(certificate.Table, certificate.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, connectlistener.CertificateTable, connectlistener.CertificateColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryDomain queries the domain edge of a ConnectListener.
+func (c *ConnectListenerClient) QueryDomain(_m *ConnectListener) *DomainQuery {
+	query := (&DomainClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(connectlistener.Table, connectlistener.FieldID, id),
+			sqlgraph.To(domain.Table, domain.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, connectlistener.DomainTable, connectlistener.DomainColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryRoutes queries the routes edge of a ConnectListener.
+func (c *ConnectListenerClient) QueryRoutes(_m *ConnectListener) *RouteTCPQuery {
+	query := (&RouteTCPClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(connectlistener.Table, connectlistener.FieldID, id),
+			sqlgraph.To(routetcp.Table, routetcp.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, connectlistener.RoutesTable, connectlistener.RoutesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ConnectListenerClient) Hooks() []Hook {
+	hooks := c.hooks.ConnectListener
+	return append(hooks[:len(hooks):len(hooks)], connectlistener.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *ConnectListenerClient) Interceptors() []Interceptor {
+	inters := c.inters.ConnectListener
+	return append(inters[:len(inters):len(inters)], connectlistener.Interceptors[:]...)
+}
+
+func (c *ConnectListenerClient) mutate(ctx context.Context, m *ConnectListenerMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ConnectListenerCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ConnectListenerUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ConnectListenerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ConnectListenerDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ConnectListener mutation op: %q", m.Op())
+	}
+}
+
 // ConnectorClient is a client for the Connector schema.
 type ConnectorClient struct {
 	config
@@ -3722,6 +4122,157 @@ func (c *GatewayPageClient) mutate(ctx context.Context, m *GatewayPageMutation) 
 		return (&GatewayPageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown GatewayPage mutation op: %q", m.Op())
+	}
+}
+
+// HealthCheckClient is a client for the HealthCheck schema.
+type HealthCheckClient struct {
+	config
+}
+
+// NewHealthCheckClient returns a client for the HealthCheck from the given config.
+func NewHealthCheckClient(c config) *HealthCheckClient {
+	return &HealthCheckClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `healthcheck.Hooks(f(g(h())))`.
+func (c *HealthCheckClient) Use(hooks ...Hook) {
+	c.hooks.HealthCheck = append(c.hooks.HealthCheck, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `healthcheck.Intercept(f(g(h())))`.
+func (c *HealthCheckClient) Intercept(interceptors ...Interceptor) {
+	c.inters.HealthCheck = append(c.inters.HealthCheck, interceptors...)
+}
+
+// Create returns a builder for creating a HealthCheck entity.
+func (c *HealthCheckClient) Create() *HealthCheckCreate {
+	mutation := newHealthCheckMutation(c.config, OpCreate)
+	return &HealthCheckCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of HealthCheck entities.
+func (c *HealthCheckClient) CreateBulk(builders ...*HealthCheckCreate) *HealthCheckCreateBulk {
+	return &HealthCheckCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *HealthCheckClient) MapCreateBulk(slice any, setFunc func(*HealthCheckCreate, int)) *HealthCheckCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &HealthCheckCreateBulk{err: fmt.Errorf("calling to HealthCheckClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*HealthCheckCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &HealthCheckCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for HealthCheck.
+func (c *HealthCheckClient) Update() *HealthCheckUpdate {
+	mutation := newHealthCheckMutation(c.config, OpUpdate)
+	return &HealthCheckUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *HealthCheckClient) UpdateOne(_m *HealthCheck) *HealthCheckUpdateOne {
+	mutation := newHealthCheckMutation(c.config, OpUpdateOne, withHealthCheck(_m))
+	return &HealthCheckUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *HealthCheckClient) UpdateOneID(id string) *HealthCheckUpdateOne {
+	mutation := newHealthCheckMutation(c.config, OpUpdateOne, withHealthCheckID(id))
+	return &HealthCheckUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for HealthCheck.
+func (c *HealthCheckClient) Delete() *HealthCheckDelete {
+	mutation := newHealthCheckMutation(c.config, OpDelete)
+	return &HealthCheckDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *HealthCheckClient) DeleteOne(_m *HealthCheck) *HealthCheckDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *HealthCheckClient) DeleteOneID(id string) *HealthCheckDeleteOne {
+	builder := c.Delete().Where(healthcheck.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &HealthCheckDeleteOne{builder}
+}
+
+// Query returns a query builder for HealthCheck.
+func (c *HealthCheckClient) Query() *HealthCheckQuery {
+	return &HealthCheckQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeHealthCheck},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a HealthCheck entity by its id.
+func (c *HealthCheckClient) Get(ctx context.Context, id string) (*HealthCheck, error) {
+	return c.Query().Where(healthcheck.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *HealthCheckClient) GetX(ctx context.Context, id string) *HealthCheck {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRoute queries the route edge of a HealthCheck.
+func (c *HealthCheckClient) QueryRoute(_m *HealthCheck) *RouteQuery {
+	query := (&RouteClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(healthcheck.Table, healthcheck.FieldID, id),
+			sqlgraph.To(route.Table, route.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, healthcheck.RouteTable, healthcheck.RouteColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *HealthCheckClient) Hooks() []Hook {
+	hooks := c.hooks.HealthCheck
+	return append(hooks[:len(hooks):len(hooks)], healthcheck.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *HealthCheckClient) Interceptors() []Interceptor {
+	inters := c.inters.HealthCheck
+	return append(inters[:len(inters):len(inters)], healthcheck.Interceptors[:]...)
+}
+
+func (c *HealthCheckClient) mutate(ctx context.Context, m *HealthCheckMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&HealthCheckCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&HealthCheckUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&HealthCheckUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&HealthCheckDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown HealthCheck mutation op: %q", m.Op())
 	}
 }
 
@@ -7203,6 +7754,157 @@ func (c *RouteHostnameClient) mutate(ctx context.Context, m *RouteHostnameMutati
 	}
 }
 
+// RouteLimitClient is a client for the RouteLimit schema.
+type RouteLimitClient struct {
+	config
+}
+
+// NewRouteLimitClient returns a client for the RouteLimit from the given config.
+func NewRouteLimitClient(c config) *RouteLimitClient {
+	return &RouteLimitClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `routelimit.Hooks(f(g(h())))`.
+func (c *RouteLimitClient) Use(hooks ...Hook) {
+	c.hooks.RouteLimit = append(c.hooks.RouteLimit, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `routelimit.Intercept(f(g(h())))`.
+func (c *RouteLimitClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RouteLimit = append(c.inters.RouteLimit, interceptors...)
+}
+
+// Create returns a builder for creating a RouteLimit entity.
+func (c *RouteLimitClient) Create() *RouteLimitCreate {
+	mutation := newRouteLimitMutation(c.config, OpCreate)
+	return &RouteLimitCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RouteLimit entities.
+func (c *RouteLimitClient) CreateBulk(builders ...*RouteLimitCreate) *RouteLimitCreateBulk {
+	return &RouteLimitCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RouteLimitClient) MapCreateBulk(slice any, setFunc func(*RouteLimitCreate, int)) *RouteLimitCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RouteLimitCreateBulk{err: fmt.Errorf("calling to RouteLimitClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RouteLimitCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RouteLimitCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RouteLimit.
+func (c *RouteLimitClient) Update() *RouteLimitUpdate {
+	mutation := newRouteLimitMutation(c.config, OpUpdate)
+	return &RouteLimitUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RouteLimitClient) UpdateOne(_m *RouteLimit) *RouteLimitUpdateOne {
+	mutation := newRouteLimitMutation(c.config, OpUpdateOne, withRouteLimit(_m))
+	return &RouteLimitUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RouteLimitClient) UpdateOneID(id int) *RouteLimitUpdateOne {
+	mutation := newRouteLimitMutation(c.config, OpUpdateOne, withRouteLimitID(id))
+	return &RouteLimitUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RouteLimit.
+func (c *RouteLimitClient) Delete() *RouteLimitDelete {
+	mutation := newRouteLimitMutation(c.config, OpDelete)
+	return &RouteLimitDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RouteLimitClient) DeleteOne(_m *RouteLimit) *RouteLimitDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RouteLimitClient) DeleteOneID(id int) *RouteLimitDeleteOne {
+	builder := c.Delete().Where(routelimit.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RouteLimitDeleteOne{builder}
+}
+
+// Query returns a query builder for RouteLimit.
+func (c *RouteLimitClient) Query() *RouteLimitQuery {
+	return &RouteLimitQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRouteLimit},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RouteLimit entity by its id.
+func (c *RouteLimitClient) Get(ctx context.Context, id int) (*RouteLimit, error) {
+	return c.Query().Where(routelimit.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RouteLimitClient) GetX(ctx context.Context, id int) *RouteLimit {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRoute queries the route edge of a RouteLimit.
+func (c *RouteLimitClient) QueryRoute(_m *RouteLimit) *RouteQuery {
+	query := (&RouteClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routelimit.Table, routelimit.FieldID, id),
+			sqlgraph.To(route.Table, route.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routelimit.RouteTable, routelimit.RouteColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RouteLimitClient) Hooks() []Hook {
+	hooks := c.hooks.RouteLimit
+	return append(hooks[:len(hooks):len(hooks)], routelimit.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RouteLimitClient) Interceptors() []Interceptor {
+	inters := c.inters.RouteLimit
+	return append(inters[:len(inters):len(inters)], routelimit.Interceptors[:]...)
+}
+
+func (c *RouteLimitClient) mutate(ctx context.Context, m *RouteLimitMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RouteLimitCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RouteLimitUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RouteLimitUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RouteLimitDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RouteLimit mutation op: %q", m.Op())
+	}
+}
+
 // RoutePolicyClient is a client for the RoutePolicy schema.
 type RoutePolicyClient struct {
 	config
@@ -7503,6 +8205,22 @@ func (c *RouteTCPClient) QueryPort(_m *RouteTCP) *PortAllocationQuery {
 			sqlgraph.From(routetcp.Table, routetcp.FieldID, id),
 			sqlgraph.To(portallocation.Table, portallocation.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, false, routetcp.PortTable, routetcp.PortColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryListener queries the listener edge of a RouteTCP.
+func (c *RouteTCPClient) QueryListener(_m *RouteTCP) *ConnectListenerQuery {
+	query := (&ConnectListenerClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(routetcp.Table, routetcp.FieldID, id),
+			sqlgraph.To(connectlistener.Table, connectlistener.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, routetcp.ListenerTable, routetcp.ListenerColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -8884,26 +9602,28 @@ type (
 	hooks struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
 		AuditCheckpoint, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
-		CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, DataSession, Domain,
-		EnrollmentToken, Gateway, GatewayGroup, GatewayPage, Instance, InstanceSecret,
-		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
-		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
-		RecoveryCode, Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,
-		RolloutTarget, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,
-		RouteTarget, RouteTrafficDaily, RouteTrafficHourly, RouteUDP, SecretMeta,
-		Session, TOTPCredential, TrafficBaseline, User []ent.Hook
+		CompiledSnapshot, ConfigRevision, ConfigSeq, ConnectAuthority, ConnectListener,
+		Connector, DataSession, Domain, EnrollmentToken, Gateway, GatewayGroup,
+		GatewayPage, HealthCheck, Instance, InstanceSecret, InstanceSetting,
+		Invitation, IssuedCertificate, Lease, Membership, Org, OrgSetting,
+		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode,
+		Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,
+		RolloutTarget, Route, RouteHTTP, RouteHostname, RouteLimit, RoutePolicy,
+		RouteTCP, RouteTarget, RouteTrafficDaily, RouteTrafficHourly, RouteUDP,
+		SecretMeta, Session, TOTPCredential, TrafficBaseline, User []ent.Hook
 	}
 	inters struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
 		AuditCheckpoint, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
-		CompiledSnapshot, ConfigRevision, ConfigSeq, Connector, DataSession, Domain,
-		EnrollmentToken, Gateway, GatewayGroup, GatewayPage, Instance, InstanceSecret,
-		InstanceSetting, Invitation, IssuedCertificate, Lease, Membership, Org,
-		OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota,
-		RecoveryCode, Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,
-		RolloutTarget, Route, RouteHTTP, RouteHostname, RoutePolicy, RouteTCP,
-		RouteTarget, RouteTrafficDaily, RouteTrafficHourly, RouteUDP, SecretMeta,
-		Session, TOTPCredential, TrafficBaseline, User []ent.Interceptor
+		CompiledSnapshot, ConfigRevision, ConfigSeq, ConnectAuthority, ConnectListener,
+		Connector, DataSession, Domain, EnrollmentToken, Gateway, GatewayGroup,
+		GatewayPage, HealthCheck, Instance, InstanceSecret, InstanceSetting,
+		Invitation, IssuedCertificate, Lease, Membership, Org, OrgSetting,
+		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode,
+		Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,
+		RolloutTarget, Route, RouteHTTP, RouteHostname, RouteLimit, RoutePolicy,
+		RouteTCP, RouteTarget, RouteTrafficDaily, RouteTrafficHourly, RouteUDP,
+		SecretMeta, Session, TOTPCredential, TrafficBaseline, User []ent.Interceptor
 	}
 )
 

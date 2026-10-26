@@ -88,6 +88,8 @@ message AccessRule {
     BasicAuthRule basic_auth = 3;
     // On an http route, lets pass only requests that carry a header with one of the values.
     RequireHeaderRule require_header = 4;
+    // On every route type, limits each client's requests, new connections or new flows.
+    RateLimitRule rate_limit = 5;
   }
 }
 
@@ -116,6 +118,22 @@ message RequireHeaderRule {
       }
     }
   ];
+}
+
+// RateLimitRule is a rate_limit rule (docs/03-connections.md, "Access policies"): each client, an
+// IPv4 address or an IPv6 /64, may make per_second requests, new connections or new flows a
+// second, burst of them at once, on each gateway.
+message RateLimitRule {
+  // Requests, new connections or new flows a second.
+  uint32 per_second = 1 [(buf.validate.field).uint32 = {
+    gte: 1
+    lte: 10000
+  }];
+  // How many may come at once.
+  uint32 burst = 2 [(buf.validate.field).uint32 = {
+    gte: 1
+    lte: 10000
+  }];
 }
 
 // BasicAuthRule is a basic_auth rule as the API takes and shows it.
@@ -244,6 +262,8 @@ message PolicyRuleParams {
     BasicAuthParams basic_auth = 2;
     // require_header: the header and its accepted values.
     RequireHeaderParams require_header = 3;
+    // rate_limit: the rate and burst per client.
+    RateLimitRule rate_limit = 4;
   }
 }
 

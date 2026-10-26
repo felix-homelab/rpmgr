@@ -10,7 +10,8 @@ import { ViolationsSchema } from "@/gen/buf/validate/validate_pb";
 import { CertificateService, CertificateSource } from "@/gen/rpmgr/v1/certificate_pb";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
-import { Port80Mode, RouteSchema, RouteService, RouteState, TLSMode, type Route, type UpdateRouteRequest } from "@/gen/rpmgr/v1/route_pb";
+import { ConnectAuthMode, HealthCheckType, ListenerMode, Port80Mode, RouteSchema, RouteService, RouteState, TLSMode, type Route,
+  type UpdateRouteRequest } from "@/gen/rpmgr/v1/route_pb";
 import { ApplyState, StatusService } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
@@ -32,9 +33,14 @@ const routes: Record<string, Route> = {
     port80: Port80Mode.SERVE, hstsMaxAgeSeconds: 3600, hostHeader: "internal", requestHeadersSet: { "X-A": "1" },
     responseHeadersSet: { "X-B": "a: b" }, websocket: false, maxBodyBytes: 1024n, maintenance: true, maintenanceMessage: "Back at 18:00.\nSorry.",
     headerMatches: [{ name: "X-Env", match: { case: "exact", value: "beta" } }, { name: "X-Tenant", match: { case: "present", value: true } }],
-    upstreamResponseHeaderTimeoutSeconds: 300, upstreamIdleTimeoutSeconds: 30 } } }),
+    upstreamResponseHeaderTimeoutSeconds: 300, upstreamIdleTimeoutSeconds: 30 } },
+    healthCheck: { type: HealthCheckType.HTTP, port: 8081, httpPath: "/healthz?deep=1", expectedStatusMin: 200, expectedStatusMax: 204,
+      intervalSeconds: 30, timeoutSeconds: 5, unhealthyThreshold: 4, healthyThreshold: 1 } }),
   tcp: create(RouteSchema, { ...common, spec: { case: "tcp", value: { port: 25432, idleTimeoutSeconds: 600 } } }),
-  udp: create(RouteSchema, { ...common, spec: { case: "udp", value: { port: 53, flowIdleTimeoutSeconds: 30 } } }),
+  tcpConnect: create(RouteSchema, { ...common, spec: { case: "tcp", value: { port: 20001, idleTimeoutSeconds: 600, listenerMode: ListenerMode.HTTP_CONNECT,
+    connect: { authorities: ["bastion", "ssh.internal"], authMode: ConnectAuthMode.NONE } } } }),
+  udp: create(RouteSchema, { ...common, spec: { case: "udp", value: { port: 53, flowIdleTimeoutSeconds: 30 } },
+    healthCheck: { type: HealthCheckType.TCP, port: 53 } }),
   tcpUdp: create(RouteSchema, { ...common, spec: { case: "tcpUdp", value: { port: 5353, idleTimeoutSeconds: 600, flowIdleTimeoutSeconds: 30 } } }),
   tlsPassthrough: create(RouteSchema, { ...common, spec: { case: "tlsPassthrough", value: { hostnames: ["db.example.com"] } } }),
 };
@@ -169,6 +175,108 @@ describe("RouteEdit", () => {
     fireEvent.change(await screen.findByLabelText("Serve only requests with these headers"), { target: { value: "Host: a.example.com" } });
     save();
     expect(await screen.findByText("headermatch: invalid header matches: header Host cannot be matched")).toBeTruthy();
+  });
+
+  it("edits a CONNECT route's names and mode, warns of passwords in the clear, and shows the server's warning", async () => {
+    const updates = edit(routes.tcpConnect!, (req) => ({ route: req.route, revision: { dbEpoch: "e", seq: 9n },
+      applyStatus: { state: ApplyState.APPLIED, agentsTotal: 1, agentsApplied: 1 }, warnings: ["passwords cross the network in the clear"] }));
+    const names = await screen.findByLabelText("CONNECT names");
+    expect((names as HTMLTextAreaElement).value).toBe("bastion\nssh.internal");
+    expect(screen.queryByLabelText("Listener hostname (HTTPS proxy)")).toBeNull();
+    // The listener mode is set when the route is created: read-only, with its hint.
+    const listener = screen.getByLabelText("Listener") as HTMLInputElement;
+    expect([listener.tagName, listener.readOnly, listener.value]).toEqual(["INPUT", true, "A CONNECT listener shared with other routes (HTTP proxy)"]);
+    expect(screen.getByText("Set when the route is created; it cannot change.")).toBeTruthy();
+    fireEvent.change(names, { target: { value: "jump\n bastion " } });
+    fireEvent.change(screen.getByLabelText("Proxy credentials"), { target: { value: String(ConnectAuthMode.PLAIN_BASIC) } });
+    expect(await screen.findByText(/anyone on the network between them and the gateway can read and use it/)).toBeTruthy();
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    const spec = updates[0]!.route?.spec;
+    expect(spec?.case === "tcp" && [spec.value.listenerMode, spec.value.connect?.authorities, spec.value.connect?.authMode]).toEqual(
+      [ListenerMode.HTTP_CONNECT, ["jump", "bastion"], ConnectAuthMode.PLAIN_BASIC]);
+    expect(updates[0]!.updateMask?.paths.filter((p) => p === "tcp.connect")).toHaveLength(1);
+    expect(await screen.findByText("Warning: passwords cross the network in the clear.")).toBeTruthy();
+  });
+
+  it("asks a TLS CONNECT listener for its hostname and certificate, and a CONNECT route for its names", async () => {
+    const updates = edit(routes.tcpConnect!);
+    fireEvent.change(await screen.findByLabelText("Proxy credentials"), { target: { value: String(ConnectAuthMode.TLS_BASIC) } });
+    const host = await screen.findByLabelText(/Listener hostname/);
+    expect(host.getAttribute("required")).not.toBeNull();
+    expect(screen.getByLabelText(/Listener certificate/)).toBeTruthy();
+    save();
+    expect(await screen.findByText("Choose the uploaded certificate the route uses.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Proxy credentials"), { target: { value: String(ConnectAuthMode.NONE) } });
+    fireEvent.change(screen.getByLabelText("CONNECT names"), { target: { value: "" } });
+    save();
+    await waitFor(() => expect(screen.getByLabelText("CONNECT names").getAttribute("aria-invalid")).toBe("true"));
+    expect(updates).toEqual([]);
+  });
+
+  it("adds a health check to a route without one, sending the check whole under one mask path", async () => {
+    const updates = edit(routes.tcp!);
+    const kind = await screen.findByLabelText<HTMLSelectElement>("Health check");
+    expect(kind.value).toBe("none");
+    expect(screen.queryByLabelText("Check interval (seconds)")).toBeNull();
+    fireEvent.change(kind, { target: { value: String(HealthCheckType.TCP) } });
+    expect(screen.queryByLabelText("Path to request")).toBeNull(); // HTTP only
+    fireEvent.change(screen.getByLabelText("Check interval (seconds)"), { target: { value: "5" } });
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]!.route?.healthCheck).toMatchObject({ type: HealthCheckType.TCP, intervalSeconds: 5, timeoutSeconds: 0, port: 0 });
+    expect(updates[0]!.updateMask?.paths.filter((p) => p === "health_check")).toHaveLength(1);
+  });
+
+  it("turns an HTTP check into a TCP one, dropping its path and statuses, and removes a check", async () => {
+    const updates = edit(routes.http!);
+    const kind = await screen.findByLabelText<HTMLSelectElement>("Health check");
+    expect([kind.value, (screen.getByLabelText("Path to request") as HTMLInputElement).value,
+      (screen.getByLabelText("Passing statuses") as HTMLInputElement).value]).toEqual([String(HealthCheckType.HTTP), "/healthz?deep=1", "200-204"]);
+    fireEvent.change(kind, { target: { value: String(HealthCheckType.TCP) } });
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]!.route?.healthCheck).toMatchObject({ type: HealthCheckType.TCP, port: 8081, httpPath: "", expectedStatusMin: 0,
+      expectedStatusMax: 0, intervalSeconds: 30, timeoutSeconds: 5, unhealthyThreshold: 4, healthyThreshold: 1 });
+    cleanup();
+    const removed = edit(routes.udp!);
+    fireEvent.change(await screen.findByLabelText("Health check"), { target: { value: "none" } });
+    save();
+    await waitFor(() => expect(removed).toHaveLength(1));
+    expect(removed[0]!.route?.healthCheck).toBeUndefined();
+    expect(removed[0]!.updateMask?.paths).toContain("health_check");
+  });
+
+  it.each([["a status range without a dash", "200"], ["letters", "2xx-3xx"]])("refuses %s as passing statuses before sending", async (_, bad) => {
+    const updates = edit(routes.http!);
+    fireEvent.change(await screen.findByLabelText("Passing statuses"), { target: { value: bad } });
+    save();
+    expect(await screen.findByText("Write the passing statuses as two three-digit codes, such as 200-399.")).toBeTruthy();
+    expect(updates).toEqual([]);
+  });
+
+  it("clears the passing statuses back to the default with an empty field", async () => {
+    const updates = edit(routes.http!);
+    fireEvent.change(await screen.findByLabelText("Passing statuses"), { target: { value: "" } });
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]!.route?.healthCheck).toMatchObject({ expectedStatusMin: 0, expectedStatusMax: 0, httpPath: "/healthz?deep=1" });
+  });
+
+  it("shows a violation of a part of the health check on that part's field", async () => {
+    edit(routes.http!, () => {
+      const el = (name: string, n: number, t: FieldDescriptorProto_Type) => ({ fieldName: name, fieldNumber: n, fieldType: t });
+      const v = create(ViolationsSchema, { violations: [
+        { field: { elements: [el("route", 1, FieldDescriptorProto_Type.MESSAGE), el("health_check", 27, FieldDescriptorProto_Type.MESSAGE),
+          el("interval_seconds", 6, FieldDescriptorProto_Type.UINT32)] }, message: "value must be less than or equal to 3600" },
+      ] });
+      throw new ConnectError("invalid", Code.InvalidArgument, undefined, [{ desc: ViolationsSchema, value: v }]);
+    });
+    await screen.findByLabelText("Name");
+    save();
+    const interval = screen.getByLabelText("Check interval (seconds)");
+    await waitFor(() => expect(interval.getAttribute("aria-invalid")).toBe("true"));
+    expect(screen.getByLabelText("Health check").getAttribute("aria-invalid")).toBeNull();
   });
 
   it("checks the API's rules before sending", async () => {

@@ -27,6 +27,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/compiledsnapshot"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configseq"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectauthority"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -34,6 +36,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instance"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesetting"
@@ -58,6 +61,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routelimit"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -144,6 +148,8 @@ func checkColumn(t, c string) error {
 			compiledsnapshot.Table:   compiledsnapshot.ValidColumn,
 			configrevision.Table:     configrevision.ValidColumn,
 			configseq.Table:          configseq.ValidColumn,
+			connectauthority.Table:   connectauthority.ValidColumn,
+			connectlistener.Table:    connectlistener.ValidColumn,
 			connector.Table:          connector.ValidColumn,
 			datasession.Table:        datasession.ValidColumn,
 			domain.Table:             domain.ValidColumn,
@@ -151,6 +157,7 @@ func checkColumn(t, c string) error {
 			gateway.Table:            gateway.ValidColumn,
 			gatewaygroup.Table:       gatewaygroup.ValidColumn,
 			gatewaypage.Table:        gatewaypage.ValidColumn,
+			healthcheck.Table:        healthcheck.ValidColumn,
 			instance.Table:           instance.ValidColumn,
 			instancesecret.Table:     instancesecret.ValidColumn,
 			instancesetting.Table:    instancesetting.ValidColumn,
@@ -175,6 +182,7 @@ func checkColumn(t, c string) error {
 			route.Table:              route.ValidColumn,
 			routehttp.Table:          routehttp.ValidColumn,
 			routehostname.Table:      routehostname.ValidColumn,
+			routelimit.Table:         routelimit.ValidColumn,
 			routepolicy.Table:        routepolicy.ValidColumn,
 			routetcp.Table:           routetcp.ValidColumn,
 			routetarget.Table:        routetarget.ValidColumn,

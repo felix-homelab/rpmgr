@@ -615,3 +615,58 @@ func TestApplier_RouteTimeouts(t *testing.T) {
 		t.Errorf("the gateway's: %v %v", header, idle)
 	}
 }
+
+// TestApplier_Limits: every route of a snapshot gets its limit state, also one without limits,
+// which keeps it across snapshots while the limits change, and loses it when it leaves.
+func TestApplier_Limits(t *testing.T) {
+	a, _ := gateway.NewApplier()
+	limited := tcpResource("rt_1", 5432, "con_1")
+	limited.GetGatewayTcpRoute().Limits = &agentv1.RouteLimits{MaxConnections: 1}
+	a.Apply(t.Context(), gatewaySnapshot(1, limited, udpResource("rt_2", 53, "con_1")), agent.Changes{})
+	lim := gateway.LimitOf(a, "rt_1")
+	if _, ok := lim.Acquire(); !ok {
+		t.Fatal("the first connection was refused")
+	}
+	if _, ok := lim.Acquire(); ok {
+		t.Fatal("the limit of the snapshot was not set")
+	}
+	if gateway.LimitOf(a, "rt_2") == nil {
+		t.Fatal("a route without limits has no state")
+	}
+	limited.GetGatewayTcpRoute().Limits = &agentv1.RouteLimits{MaxConnections: 2}
+	a.Apply(t.Context(), gatewaySnapshot(2, limited), agent.Changes{})
+	if gateway.LimitOf(a, "rt_1") != lim || lim.Open() != 1 {
+		t.Fatal("a changed limit made a new state")
+	}
+	if _, ok := lim.Acquire(); !ok {
+		t.Fatal("the raised limit was not set")
+	}
+	if gateway.LimitOf(a, "rt_2") != nil {
+		t.Fatal("a removed route kept its state")
+	}
+}
+
+// TestApplier_WSS: a snapshot's WSS hostname reaches the router, and goes with the next snapshot
+// that has none; a name that is not normalised is refused.
+func TestApplier_WSS(t *testing.T) {
+	a, _ := gateway.NewApplier()
+	var name gateway.WSSHostname
+	a.Bind(gateway.Served{WSS: &name})
+	res := func(host string) *agentv1.Resource {
+		return &agentv1.Resource{Id: "gw_1.wss", Kind: &agentv1.Resource_GatewayWss{GatewayWss: &agentv1.GatewayWSS{Hostname: host}}}
+	}
+	if errs := a.Validate(gatewaySnapshot(1, res("Tunnel.Example.com"))); len(errs) != 1 {
+		t.Fatalf("a name that is not normalised: %v", errs)
+	}
+	if errs := a.Validate(gatewaySnapshot(1, res("tunnel.example.com"))); len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	a.Apply(t.Context(), gatewaySnapshot(1, res("tunnel.example.com")), agent.Changes{})
+	if name.Get() != "tunnel.example.com" {
+		t.Fatalf("applied %q", name.Get())
+	}
+	a.Apply(t.Context(), gatewaySnapshot(2), agent.Changes{})
+	if name.Get() != "" {
+		t.Fatalf("removed: %q", name.Get())
+	}
+}

@@ -35,7 +35,7 @@ func connectorCommands() (update, decommission, revoke *cli.Command) {
 			ufs = fs
 			fs.StringVar(&name, "name", "", "the connector's name, unique in the org")
 			fs.Var(labels, "label", "a label key=value; repeat for more; the labels replace the old ones")
-			fs.StringVar(&transport, "transport", "", "the data-session transport: auto, quic or h2; empty is the instance's")
+			fs.StringVar(&transport, "transport", "", "the data-session transport: auto, quic, h2 or wss; empty is the instance's")
 			fs.BoolVar(&force, "force", false, "update without checking that the connector is unchanged since this command read it")
 			fs.DurationVar(&wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
 			outputFlag(fs, &output)

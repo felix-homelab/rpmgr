@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
+import { UpdateButton } from "@/components/update-button";
 import { UpdateState } from "@/components/update-state";
 import { GatewayGroupSchema, GatewayService, type Gateway, type GatewayGroup } from "@/gen/rpmgr/v1/gateway_pb";
 import { Reason, reasonOf } from "@/lib/errors";
@@ -186,10 +187,19 @@ export function GatewayGroupPage() {
                 <TR key={g.id}>
                   <TD className="font-medium">{g.name}</TD>
                   <TD>{g.slot}</TD>
-                  <TD className="font-mono text-xs">{g.tunnelEndpoints.join(", ")}</TD>
+                  <TD className="font-mono text-xs">
+                    {g.tunnelEndpoints.join(", ")}
+                    {g.wssHostname && <div className="text-muted-foreground">{t("gateways.gw.wssValue", { name: g.wssHostname })}</div>}
+                  </TD>
                   <TD><GatewayChip gateway={g} /></TD>
                   <TD>{g.status?.version}</TD>
-                  <TD><UpdateState target={updates.get(g.id)} belowMinimum={g.status?.belowMinAgentVersion} goodbyeReason={g.status?.lastGoodbyeReason} /></TD>
+                  <TD>
+                    <span className="grid justify-items-start gap-1">
+                      <UpdateState target={updates.get(g.id)} belowMinimum={g.status?.belowMinAgentVersion} goodbyeReason={g.status?.lastGoodbyeReason} />
+                      <UpdateButton target={updates.get(g.id)} agent={{ id: g.id, version: g.status?.version ?? "", online: !!g.status?.connected,
+                        builtIn: g.builtIn, enrolled: !!g.status?.enrolled, overTheAir: !!g.status?.overTheAir }} />
+                    </span>
+                  </TD>
                   <TD>{when(g.status?.lastSeenTime)}</TD>
                   <TD><GatewayActions orgId={org.orgId} gateway={g} onEdit={() => setEditing(g.id)} onDone={(w) => void done(w)} /></TD>
                 </TR>

@@ -51,6 +51,12 @@ type ConfigRevision func(*sql.Selector)
 // ConfigSeq is the predicate function for configseq builders.
 type ConfigSeq func(*sql.Selector)
 
+// ConnectAuthority is the predicate function for connectauthority builders.
+type ConnectAuthority func(*sql.Selector)
+
+// ConnectListener is the predicate function for connectlistener builders.
+type ConnectListener func(*sql.Selector)
+
 // Connector is the predicate function for connector builders.
 type Connector func(*sql.Selector)
 
@@ -71,6 +77,9 @@ type GatewayGroup func(*sql.Selector)
 
 // GatewayPage is the predicate function for gatewaypage builders.
 type GatewayPage func(*sql.Selector)
+
+// HealthCheck is the predicate function for healthcheck builders.
+type HealthCheck func(*sql.Selector)
 
 // Instance is the predicate function for instance builders.
 type Instance func(*sql.Selector)
@@ -143,6 +152,9 @@ type RouteHTTP func(*sql.Selector)
 
 // RouteHostname is the predicate function for routehostname builders.
 type RouteHostname func(*sql.Selector)
+
+// RouteLimit is the predicate function for routelimit builders.
+type RouteLimit func(*sql.Selector)
 
 // RoutePolicy is the predicate function for routepolicy builders.
 type RoutePolicy func(*sql.Selector)

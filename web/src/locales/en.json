@@ -267,6 +267,7 @@
       "connector": "Connector",
       "address": "Address",
       "weight": "Weight",
+      "health": "Health",
       "state": "Status"
     },
     "noTargets": "The route has no targets.",
@@ -291,7 +292,20 @@
     "deleteAsk": "Delete the route {{name}} with its hostnames, targets and port? This cannot be undone.",
     "deleteConfirm": "Delete it",
     "deletedTitle": "Route {{name}} deleted",
-    "deletedNote": "Its gateways stop serving it once they apply the change."
+    "deletedNote": "Its gateways stop serving it once they apply the change.",
+    "health": {
+      "title": "Health check",
+      "none": "no health check",
+      "tcp": "TCP health check",
+      "http": "HTTP health check of {{path}}",
+      "every": "every {{interval}} s",
+      "healthy": "healthy",
+      "unhealthy": "unhealthy",
+      "notChecked": "not checked",
+      "notCheckedNote": "Its connector's rpmgr release runs no health checks, so the target counts as healthy. Upgrade the connector.",
+      "lastFailure": "Last check: {{detail}}",
+      "unknown": "—"
+    }
   },
   "notServing": {
     "BLOCKED_BY_LOCAL_POLICY": "blocked by the connector's local policy",
@@ -303,6 +317,8 @@
     "DISABLED": "disabled",
     "NO_DATA_SESSION": "no data session to the connector",
     "CAPABILITY_MISSING": "its rpmgr release cannot carry out a feature the route uses; upgrade it",
+    "CERTIFICATE_PENDING": "waiting for the certificate of the CONNECT listener's hostname",
+    "TARGETS_UNHEALTHY": "its health checks fail",
     "ownPort": "{{target}} is one of rpmgr's own ports, which the all-in-one's connector never dials, whatever its policy allows. Point the target at the service itself."
   },
   "apply": {
@@ -322,6 +338,7 @@
     "title": "Edit route {{name}} ({{type}})",
     "save": "Save",
     "back": "Back to the route",
+    "warning": "Warning: {{message}}.",
     "number": "Enter a whole number.",
     "fields": {
       "name": "Name",
@@ -348,7 +365,20 @@
       "udpFlowIdleTimeout": "UDP flow idle timeout (seconds)",
       "headerMatches": "Serve only requests with these headers",
       "upstreamHeaderTimeout": "Wait for the target's response headers (seconds)",
-      "upstreamIdleTimeout": "Keep an unused connection to the target (seconds)"
+      "upstreamIdleTimeout": "Keep an unused connection to the target (seconds)",
+      "listenerMode": "Listener",
+      "authorities": "CONNECT names",
+      "connectAuth": "Proxy credentials",
+      "connectHostname": "Listener hostname (HTTPS proxy)",
+      "connectCertificate": "Listener certificate",
+      "healthCheck": "Health check",
+      "healthPort": "Port to check",
+      "healthPath": "Path to request",
+      "healthStatus": "Passing statuses",
+      "healthInterval": "Check interval (seconds)",
+      "healthTimeout": "Check timeout (seconds)",
+      "healthUnhealthy": "Failed checks before unhealthy",
+      "healthHealthy": "Passed checks before healthy again"
     },
     "hints": {
       "lines": "One per line.",
@@ -356,7 +386,14 @@
       "headers": "One per line, as Name: value. An empty value removes the header.",
       "matches": "One per line, at most 8: Name: value for that exact value, or Name alone for any value. Where routes share a hostname and path, the one with more matching headers wins.",
       "optionalNumber": "Empty for the default.",
-      "certificate": "The org's uploaded certificates that cover every hostname. Upload one under Domains & certificates."
+      "certificate": "The org's uploaded certificates that cover every hostname. Upload one under Domains & certificates.",
+      "healthPort": "Empty for each target's own port. A UDP route needs one; a route with a Unix socket target cannot have one.",
+      "healthPath": "Starts with /, may have a query. Empty for /.",
+      "healthStatus": "As 200-399. Empty for any success or redirect.",
+      "fixed": "Set when the route is created; it cannot change."
+    },
+    "connect": {
+      "plainBasic": "Clients send their proxy password in the clear: anyone on the network between them and the gateway can read and use it. Use basic auth over TLS unless the clients cannot speak to an HTTPS proxy."
     },
     "certificate": {
       "choose": "Choose a certificate",
@@ -387,7 +424,8 @@
         "default": "The connector's or the instance's default",
         "auto": "QUIC, falling back to TLS and HTTP/2",
         "quic": "QUIC only",
-        "h2": "TLS and HTTP/2 only"
+        "h2": "TLS and HTTP/2 only",
+        "wss": "WSS only"
       },
       "tlsMode": {
         "acme": "From ACME",
@@ -401,8 +439,23 @@
       "maintenance": {
         "off": "Off: serve the route",
         "on": "On: show the maintenance page"
+      },
+      "listenerMode": {
+        "plain": "Its own public port",
+        "httpConnect": "A CONNECT listener shared with other routes (HTTP proxy)"
+      },
+      "connectAuth": {
+        "none": "None: IP rules only",
+        "tlsBasic": "Basic auth over TLS (HTTPS proxy)",
+        "plainBasic": "Basic auth in the clear"
+      },
+      "healthCheck": {
+        "none": "None",
+        "tcp": "TCP: the target accepts the connection",
+        "http": "HTTP: a GET answers with a passing status"
       }
     },
+    "statusRange": "Write the passing statuses as two three-digit codes, such as 200-399.",
     "tristate": {
       "default": "Default",
       "true": "On",
@@ -530,13 +583,15 @@
       "UNSPECIFIED": "unknown",
       "AUTO": "auto",
       "QUIC": "QUIC",
-      "H2": "TLS and HTTP/2"
+      "H2": "TLS and HTTP/2",
+      "WSS": "WSS"
     },
     "transportSetting": {
       "UNSPECIFIED": "The instance's default",
       "AUTO": "QUIC, falling back to TLS and HTTP/2",
       "QUIC": "QUIC only",
-      "H2": "TLS and HTTP/2 only"
+      "H2": "TLS and HTTP/2 only",
+      "WSS": "WSS only"
     },
     "routes": "Routes",
     "noRoutes": "No route has a target on this connector.",
@@ -625,6 +680,8 @@
       "name": "Name",
       "slot": "Slot",
       "endpoints": "Tunnel endpoints",
+      "wss": "WSS hostname",
+      "wssValue": "WSS: {{name}}",
       "state": "State",
       "version": "Version",
       "update": "Update",
@@ -638,6 +695,7 @@
     "addButton": "Add a gateway",
     "add": "Add the gateway",
     "endpointsHint": "One host:port per line: where connectors reach this gateway, its own address, not the group's.",
+    "wssHint": "Optional. A name of this gateway's own under a verified domain, for connectors behind a proxy that intercepts TLS; point its DNS at this gateway. Empty offers no WSS.",
     "drain": "Drain",
     "resume": "Resume",
     "drainHint": "Stops new public connections, and ends the open ones after the gateway's drain period.",
@@ -767,7 +825,7 @@
   },
   "policies": {
     "title": "Access policies",
-    "intro": "Who may reach a route: by address, or on HTTP routes with a password or a header that only your CDN or clients know.",
+    "intro": "Who may reach a route and how often: by address, on HTTP routes with a password or a header that only your CDN or clients know, and at a rate per client.",
     "add": "New access policy",
     "addTitle": "New access policy",
     "editTitle": "Edit access policy",
@@ -777,6 +835,7 @@
       "allow": "allow {{cidrs}}",
       "deny": "deny {{cidrs}}",
       "basicAuth": "basic auth: {{users}}",
+      "rateLimit": "rate limit: {{perSecond}} a second per client, {{burst}} at once",
       "requireHeader": "requires header {{header}}"
     },
     "usedBy": "used by {{routes}}",
@@ -790,6 +849,7 @@
       "ipAllow": "Allow addresses",
       "ipDeny": "Deny addresses",
       "basicAuth": "Basic auth (HTTP routes)",
+      "rateLimit": "Rate limit per client",
       "requireHeader": "Require a header (HTTP routes)"
     },
     "removeRule": "Remove the rule",
@@ -799,6 +859,11 @@
     "keep": "unchanged",
     "removeUser": "Remove the user",
     "addUser": "Add a user",
+    "perSecond": "Requests or new connections a second",
+    "burst": "At once (burst)",
+    "oneRateLimit": "A policy has at most one rate limit.",
+    "rateLimitBounds": "A rate limit takes whole numbers from 1 to 10000, a second and at once; an empty burst is a second's worth.",
+    "rateLimitHelp": "Each client address, or IPv6 /64, on each gateway: HTTP requests, new connections or new UDP flows. Over it, HTTP gets 429, TCP is reset and UDP dropped. An empty burst is one second's worth.",
     "header": "Header",
     "value": "Value",
     "keepValues": "unchanged",
@@ -969,7 +1034,8 @@
       "transport": {
         "auto": "QUIC, falling back to TLS and HTTP/2",
         "quic": "QUIC only",
-        "h2": "TLS and HTTP/2 only"
+        "h2": "TLS and HTTP/2 only",
+        "wss": "WSS only"
       },
       "passwordHash": {
         "default": "Default",
@@ -1267,6 +1333,24 @@
       "failed": "Failed",
       "skipped": "Skipped",
       "nobody": "—"
+    },
+    "button": {
+      "label": "Update to {{version}}",
+      "labelNone": "Update",
+      "why": {
+        "builtIn": "Built in: updates with the controller.",
+        "notEnrolled": "Not enrolled yet.",
+        "neverConnected": "Never connected.",
+        "noUpdater": "No over-the-air updater on its host.",
+        "noRelease": "The controller has not recorded its own release.",
+        "upToDate": "Up to date.",
+        "staged": "A staged rollout runs; let it end first.",
+        "otherRelease": "A rollout of {{version}} runs; let it end first.",
+        "queued": "Number {{position}} in the queue.",
+        "skipped": "Skipped: {{reason}}",
+        "failed": "Failed in this rollout: {{reason}}",
+        "offline": "Offline."
+      }
     }
   },
   "users": {

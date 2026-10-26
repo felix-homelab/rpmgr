@@ -7,6 +7,7 @@ package connector
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -33,6 +34,7 @@ const (
 	TransportAuto = "auto"
 	TransportQUIC = "quic"
 	TransportH2   = "h2"
+	TransportWSS  = "wss"
 )
 
 // transportMemory is the one link to an in-process gateway: h2 over in-memory connections, which
@@ -64,8 +66,10 @@ type Gateway struct {
 	// Endpoints are the gateway's own tunnel endpoints, host:port, tried in order.
 	Endpoints []string
 	// Routes maps each of the connector's routes on the gateway to its effective transport policy:
-	// TransportAuto, TransportQUIC or TransportH2.
+	// TransportAuto, TransportQUIC, TransportH2 or TransportWSS.
 	Routes map[string]string
+	// WSSHostname is the gateway's WSS hostname, "" without one.
+	WSSHostname string
 }
 
 // Options configure Sessions.
@@ -81,8 +85,11 @@ type Options struct {
 	// QUIC is the UDP transport for QUIC sessions; nil leaves QUIC unavailable.
 	QUIC   *quic.Transport
 	Budget *tunnel.Budget
-	// Dial opens a TCP connection to a gateway; nil dials directly.
+	// Dial opens a TCP connection to a gateway, or to its WSS hostname; nil dials directly.
 	Dial func(ctx context.Context, addr string) (net.Conn, error)
+	// PublicRoots verify the certificate of a gateway's WSS hostname, or of a proxy that
+	// intercepts TLS; nil uses the system roots.
+	PublicRoots *x509.CertPool
 	// LocalAddr returns the local source address towards an endpoint, the key of the transport
 	// cache; nil asks the kernel.
 	LocalAddr func(ctx context.Context, endpoint string) (netip.Addr, error)
@@ -105,8 +112,9 @@ type InProcess struct {
 
 // Sessions keeps the connector's data sessions (docs/03-connections.md, "Data session",
 // "Transport selection"). Per gateway it runs a link for each transport policy its routes need:
-// a pinned link holds four QUIC sessions or two TCP connections and never falls back; the auto link
-// races QUIC against TCP and keeps the winner's sessions; an in-process gateway gets one link in
+// a pinned link holds four QUIC sessions or two TCP connections, over TLS or WSS, and never falls
+// back; the auto link races QUIC against TCP, tries WSS when TLS over TCP failed in its handshake,
+// and keeps the winner's sessions; an in-process gateway gets one link in
 // memory for all its routes. Each session announces exactly the ready routes of its link's policy,
 // so the gateway opens a route's streams only on sessions of the route's transport.
 type Sessions struct {
@@ -118,7 +126,9 @@ type Sessions struct {
 
 	mu       sync.Mutex
 	gateways map[string]*gatewayState
-	ready    map[string]bool
+	// ready are the routes ready on this host, each with its ready priorities: nil for all of them,
+	// as without a health check (D133).
+	ready map[string][]uint32
 }
 
 type gatewayState struct {
@@ -147,11 +157,11 @@ type session struct {
 	send      func(*tunnelv1.SessionMessage) error
 	requests  *tunnel.OpenRequester
 	streams   atomic.Int64
-	pingSeq   atomic.Uint64   // the last Ping sent
-	pingAt    atomic.Int64    // when, in Unix nanoseconds
-	srtt      atomic.Int64    // the smoothed round-trip time from Ping and Pong, 0 before the first
-	announced map[string]bool // routes reported ready on it; under Sessions.mu
-	retired   bool            // under Sessions.mu
+	pingSeq   atomic.Uint64     // the last Ping sent
+	pingAt    atomic.Int64      // when, in Unix nanoseconds
+	srtt      atomic.Int64      // the smoothed round-trip time from Ping and Pong, 0 before the first
+	announced map[string]string // routes reported ready on it, with their priorities (prioKey); under Sessions.mu
+	retired   bool              // under Sessions.mu
 }
 
 // outgoing is a message to send after Sessions.mu is released.
@@ -176,7 +186,7 @@ func New(o Options) *Sessions {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Sessions{o: o, ctx: ctx, cancel: cancel, choose: newChooser(o.Now), gateways: map[string]*gatewayState{},
-		ready: map[string]bool{}}
+		ready: map[string][]uint32{}}
 	o.Metrics.watch(s)
 	return s
 }
@@ -192,8 +202,8 @@ func policies(g Gateway) map[string]bool {
 
 // Set makes the gateway entries those of the applied snapshot. Links that are still needed keep
 // their sessions and are told which routes they now carry; new links start; a link no longer
-// needed, or every link of a gateway whose endpoints changed, retires its sessions, which close
-// after their last stream has ended.
+// needed, or every link of a gateway whose endpoints or WSS hostname changed, retires its
+// sessions, which close after their last stream has ended.
 func (m *Sessions) Set(gws []Gateway) {
 	m.mu.Lock()
 	var out []outgoing
@@ -210,7 +220,7 @@ func (m *Sessions) Set(gws []Gateway) {
 	}
 	for id, gs := range m.gateways {
 		g, ok := want[id]
-		if ok && slices.Equal(g.Endpoints, gs.g.Endpoints) {
+		if ok && slices.Equal(g.Endpoints, gs.g.Endpoints) && g.WSSHostname == gs.g.WSSHostname {
 			delete(want, id)
 			now := m.o.Now()
 			for r := range gs.g.Routes {
@@ -265,7 +275,7 @@ func (m *Sessions) startLink(gs *gatewayState, policy string) {
 	gs.links[policy] = l
 	m.wg.Go(func() {
 		switch policy {
-		case TransportQUIC, TransportH2, transportMemory:
+		case TransportQUIC, TransportH2, TransportWSS, transportMemory:
 			m.runMode(ctx, l, policy, nil, nil)
 		default:
 			m.runAuto(ctx, l)
@@ -292,9 +302,9 @@ func (m *Sessions) retire(s *session) []outgoing {
 	delete(s.l.sessions, s)
 	var out []outgoing
 	for _, r := range slices.Sorted(maps.Keys(s.announced)) {
-		out = append(out, outgoing{s, health(r, false)})
+		out = append(out, outgoing{s, health(r, false, nil)})
 	}
-	s.announced = map[string]bool{}
+	s.announced = map[string]string{}
 	m.wg.Go(func() {
 		grace := time.After(retireGrace)
 		for {
@@ -316,8 +326,17 @@ func (m *Sessions) retire(s *session) []outgoing {
 	return out
 }
 
-func health(route string, ready bool) *tunnelv1.SessionMessage {
-	return &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_RouteHealth{RouteHealth: &tunnelv1.RouteHealth{RouteId: route, Ready: ready}}}
+func health(route string, ready bool, prios []uint32) *tunnelv1.SessionMessage {
+	return &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_RouteHealth{RouteHealth: &tunnelv1.RouteHealth{RouteId: route, Ready: ready,
+		ReadyPriorities: prios}}}
+}
+
+// prioKey tells ready priorities apart: "" for all of them.
+func prioKey(prios []uint32) string {
+	if len(prios) == 0 {
+		return ""
+	}
+	return fmt.Sprint(prios)
 }
 
 // serves reports whether the gateway of s serves route by the applied snapshot, or did until less
@@ -333,11 +352,11 @@ func (m *Sessions) serves(s *session, route string) bool {
 }
 
 // wanted are the routes s should announce: the ready routes of its link's policy. Under m.mu.
-func (m *Sessions) wanted(s *session) map[string]bool {
-	out := map[string]bool{}
+func (m *Sessions) wanted(s *session) map[string]string {
+	out := map[string]string{}
 	for r, p := range s.l.gs.g.Routes {
-		if p == s.l.policy && m.ready[r] {
-			out[r] = true
+		if prios, ok := m.ready[r]; ok && p == s.l.policy {
+			out[r] = prioKey(prios)
 		}
 	}
 	return out
@@ -351,13 +370,13 @@ func (m *Sessions) announce(s *session) []outgoing {
 	want := m.wanted(s)
 	var out []outgoing
 	for _, r := range slices.Sorted(maps.Keys(want)) {
-		if !s.announced[r] {
-			out = append(out, outgoing{s, health(r, true)})
+		if a, ok := s.announced[r]; !ok || a != want[r] {
+			out = append(out, outgoing{s, health(r, true, m.ready[r])})
 		}
 	}
 	for _, r := range slices.Sorted(maps.Keys(s.announced)) {
-		if !want[r] {
-			out = append(out, outgoing{s, health(r, false)})
+		if _, ok := want[r]; !ok {
+			out = append(out, outgoing{s, health(r, false, nil)})
 		}
 	}
 	s.announced = want
@@ -372,11 +391,16 @@ func (m *Sessions) flush(out []outgoing) {
 	}
 }
 
-// SetReady records whether a route is ready on this host and tells the sessions that carry it.
-// Only Ready is used: why a route is not ready goes to the controller, not to gateways.
+// SetReady records whether a route is ready on this host, and at which priorities, and tells the
+// sessions that carry it. Only Ready and ReadyPriorities are used: why a route is not ready goes to
+// the controller, not to gateways.
 func (m *Sessions) SetReady(h *tunnelv1.RouteHealth) {
 	m.mu.Lock()
-	m.ready[h.GetRouteId()] = h.GetReady()
+	if h.GetReady() {
+		m.ready[h.GetRouteId()] = slices.Clone(h.GetReadyPriorities())
+	} else {
+		delete(m.ready, h.GetRouteId())
+	}
 	var out []outgoing
 	for _, gs := range m.gateways {
 		if p, ok := gs.g.Routes[h.GetRouteId()]; ok && gs.links[p] != nil {
@@ -464,8 +488,8 @@ func (m *Sessions) Count() map[string]int {
 }
 
 // Status returns the routes whose pinned transport, or whose in-memory link to an in-process
-// gateway, cannot be established: not_ready(transport_unavailable) with the transport (quic, h2 or
-// memory) as detail, when no gateway of the route has a session of that transport and a dial of it
+// gateway, cannot be established: not_ready(transport_unavailable) with the transport (quic, h2,
+// wss or memory) as detail, when no gateway of the route has a session of that transport and a dial of it
 // failed. A pin never falls back.
 func (m *Sessions) Status() []*agentv1.ResourceStatus {
 	m.mu.Lock()
@@ -521,13 +545,13 @@ type modeHooks struct {
 	live atomic.Int32
 }
 
-// sessionsOf is how many sessions a link keeps on transport tr: four for QUIC, two for h2 and one
-// in memory.
+// sessionsOf is how many sessions a link keeps on transport tr: four for QUIC, two for h2 and WSS,
+// and one in memory.
 func sessionsOf(tr string) int {
 	switch tr {
 	case TransportQUIC:
 		return quicSessions
-	case TransportH2:
+	case TransportH2, TransportWSS:
 		return h2Sessions
 	}
 	return 1
@@ -569,7 +593,11 @@ func (m *Sessions) slot(ctx context.Context, l *link, tr string, first tunnel.Se
 			if hooks != nil {
 				hooks.live.Add(1)
 			}
-			err = m.run(ctx, l, ts, ts.Transport())
+			label := ts.Transport()
+			if tr == TransportWSS {
+				label = TransportWSS // reverse HTTP/2 inside the WebSocket
+			}
+			err = m.run(ctx, l, ts, label)
 			if hooks != nil {
 				hooks.live.Add(-1)
 			}
@@ -599,7 +627,7 @@ var errDrained = errors.New("connector: the gateway is draining")
 // run serves an established session until it ends, the gateway drains it, or ctx ends, which
 // retires it.
 func (m *Sessions) run(ctx context.Context, l *link, ts tunnel.Session, tr string) error {
-	s := &session{l: l, transport: tr, s: ts, announced: map[string]bool{}}
+	s := &session{l: l, transport: tr, s: ts, announced: map[string]string{}}
 	drained := make(chan struct{})
 	done := make(chan error, 1)
 	m.wg.Go(func() { done <- m.serve(ctx, s, drained) })
@@ -621,13 +649,15 @@ func (m *Sessions) run(ctx context.Context, l *link, ts tunnel.Session, tr strin
 	}
 }
 
-// runAuto runs the auto link: the cached winner for the local source address, h2 while QUIC is
-// demoted, or a race; while on h2 it re-probes QUIC, and a QUIC session that times out demotes
-// QUIC for an hour. A switch retires the old sessions, so their open connections finish.
+// runAuto runs the auto link: the cached winner for the local source address, or a race, without
+// QUIC while it is demoted; while on h2 it re-probes QUIC, and while on WSS QUIC and then h2, so
+// that a path that once failed TLS over TCP holds the link on WSS for a re-probe interval only;
+// a QUIC session that times out demotes QUIC for an hour. A switch retires the old sessions, so
+// their open connections finish.
 func (m *Sessions) runAuto(ctx context.Context, l *link) {
 	gw := l.gw
 	b := agent.DataBackoff()
-	var handover tunnel.Session
+	var handover *probed
 	for ctx.Err() == nil {
 		m.mu.Lock()
 		ep := l.gs.g.Endpoints[0]
@@ -636,12 +666,12 @@ func (m *Sessions) runAuto(ctx context.Context, l *link) {
 		if err != nil {
 			local = netip.Addr{}
 		}
-		tr, first := m.choose.plan(gw, local), handover
-		handover = nil
-		if first != nil {
-			tr = TransportQUIC
+		tr, first := m.choose.plan(gw, local), tunnel.Session(nil)
+		if handover != nil {
+			tr, first, handover = handover.tr, handover.s, nil
 		} else if tr == "" {
-			s, won, err := m.race(ctx, l)
+			quic := m.choose.mayProbe(gw)
+			s, won, err := m.race(ctx, l, quic)
 			if err != nil {
 				m.mu.Lock()
 				l.failed = err
@@ -653,11 +683,15 @@ func (m *Sessions) runAuto(ctx context.Context, l *link) {
 				}
 				continue
 			}
-			m.choose.won(gw, local, won)
+			// Without QUIC in the race the winner is not cached, so that QUIC races again once its
+			// demotion ends.
+			if quic {
+				m.choose.won(gw, local, won)
+			}
 			tr, first = won, s
 		}
 		mctx, switchMode := context.WithCancel(ctx)
-		var probed atomic.Pointer[tunnel.Session]
+		var better atomic.Pointer[probed]
 		// The next connection from a new local source address starts a new race.
 		moved := func() bool {
 			if now, err := m.o.LocalAddr(ctx, ep); err != nil || now == local {
@@ -687,29 +721,33 @@ func (m *Sessions) runAuto(ctx context.Context, l *link) {
 		var wg sync.WaitGroup
 		hooks = &modeHooks{ended: ended, moved: moved}
 		wg.Go(func() { m.runMode(mctx, l, tr, first, hooks) })
-		if tr == TransportH2 {
+		if tr == TransportH2 || tr == TransportWSS {
 			wg.Go(func() {
-				if s := m.reprobe(mctx, l); s != nil {
-					m.choose.won(gw, local, TransportQUIC)
-					probed.Store(&s)
+				if p := m.reprobe(mctx, l, tr == TransportWSS); p != nil {
+					m.choose.won(gw, local, p.tr)
+					better.Store(p)
 					switchMode()
 				}
 			})
 		}
 		wg.Wait()
 		switchMode()
-		if p := probed.Load(); p != nil {
-			handover = *p
-		}
+		handover = better.Load()
 	}
 	if handover != nil {
-		_ = handover.Close()
+		_ = handover.s.Close()
 	}
 }
 
-// reprobe tries QUIC every reprobeEvery while QUIC is not demoted, and returns the first session
-// that comes up, or nil when ctx ends.
-func (m *Sessions) reprobe(ctx context.Context, l *link) tunnel.Session {
+// probed is a session a re-probe established, and its transport.
+type probed struct {
+	s  tunnel.Session
+	tr string
+}
+
+// reprobe tries QUIC every reprobeEvery while QUIC is not demoted, and with h2 too TLS over TCP
+// after it, and returns the first session that comes up, or nil when ctx ends.
+func (m *Sessions) reprobe(ctx context.Context, l *link, h2 bool) *probed {
 	t := time.NewTicker(reprobeEvery)
 	defer t.Stop()
 	for {
@@ -718,22 +756,30 @@ func (m *Sessions) reprobe(ctx context.Context, l *link) tunnel.Session {
 			return nil
 		case <-t.C:
 		}
-		if !m.choose.mayProbe(l.gw) {
-			continue
+		var try []string
+		if m.choose.mayProbe(l.gw) {
+			try = append(try, TransportQUIC)
 		}
-		if s, err := m.dialTransport(ctx, l.gs, TransportQUIC); err == nil {
-			if ctx.Err() != nil {
-				_ = s.Close()
-				return nil
+		if h2 {
+			try = append(try, TransportH2)
+		}
+		for _, tr := range try {
+			if s, err := m.dialTransport(ctx, l.gs, tr); err == nil {
+				if ctx.Err() != nil {
+					_ = s.Close()
+					return nil
+				}
+				return &probed{s: s, tr: tr}
 			}
-			return s
 		}
 	}
 }
 
-// race dials QUIC, and TCP raceDelay later or as soon as QUIC fails; the first session wins and
-// the other dial is cancelled, or its session closed.
-func (m *Sessions) race(ctx context.Context, l *link) (tunnel.Session, string, error) {
+// race dials QUIC, unless quic is false, and TCP raceDelay later or as soon as QUIC fails; the
+// first session wins and the other dial is cancelled, or its session closed. When both fail and
+// TLS over TCP failed in its handshake, as a proxy that intercepts TLS makes it fail, WSS is the
+// last step.
+func (m *Sessions) race(ctx context.Context, l *link, quic bool) (tunnel.Session, string, error) {
 	type result struct {
 		s   tunnel.Session
 		tr  string
@@ -748,16 +794,21 @@ func (m *Sessions) race(ctx context.Context, l *link) (tunnel.Session, string, e
 			results <- result{s, tr, err}
 		}()
 	}
-	dial(TransportQUIC)
 	timer := time.NewTimer(raceDelay)
 	defer timer.Stop()
-	pending, tcp := 1, false
+	pending, tcp := 0, false
 	startTCP := func() {
 		if !tcp {
 			tcp = true
 			pending++
 			dial(TransportH2)
 		}
+	}
+	if quic {
+		pending++
+		dial(TransportQUIC)
+	} else {
+		startTCP()
 	}
 	var errs []error
 	for pending > 0 {
@@ -780,7 +831,19 @@ func (m *Sessions) race(ctx context.Context, l *link) (tunnel.Session, string, e
 			startTCP()
 		}
 	}
-	return nil, "", errors.Join(errs...)
+	err := errors.Join(errs...)
+	m.mu.Lock()
+	wss := l.gs.g.WSSHostname != ""
+	m.mu.Unlock()
+	var hs *handshakeError
+	if !wss || !errors.As(err, &hs) || ctx.Err() != nil {
+		return nil, "", err
+	}
+	s, werr := m.dialTransport(ctx, l.gs, TransportWSS)
+	if werr != nil {
+		return nil, "", errors.Join(err, werr)
+	}
+	return s, TransportWSS, nil
 }
 
 // dialTransport opens a session of transport tr to the gateway, trying its endpoints in order.
@@ -796,6 +859,16 @@ func (m *Sessions) dialTransport(ctx context.Context, gs *gatewayState, tr strin
 		s, err := m.dialMemory(ctx, cfg)
 		if err != nil {
 			return nil, fmt.Errorf("in process: %w", err)
+		}
+		return s, nil
+	}
+	if tr == TransportWSS {
+		if g.WSSHostname == "" {
+			return nil, errNoWSSHostname
+		}
+		s, err := m.dialWSS(ctx, g.WSSHostname, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("wss %s: %w", g.WSSHostname, err)
 		}
 		return s, nil
 	}
@@ -876,7 +949,18 @@ func (m *Sessions) serve(ctx context.Context, s *session, drained chan struct{})
 	m.mu.Lock()
 	want := m.wanted(s)
 	m.mu.Unlock()
-	sent := fitReady(hello, slices.Sorted(maps.Keys(want)))
+	// The hello names only routes ready at every priority; RouteHealth after the welcome names the
+	// others with their priorities, as a gateway takes a route of the hello as ready at all.
+	var all []string
+	for _, r := range slices.Sorted(maps.Keys(want)) {
+		if want[r] == "" {
+			all = append(all, r)
+		}
+	}
+	sent := map[string]string{}
+	for r := range fitReady(hello, all) {
+		sent[r] = ""
+	}
 	if err := s.send(&tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Hello{Hello: hello}}); err != nil {
 		return err
 	}

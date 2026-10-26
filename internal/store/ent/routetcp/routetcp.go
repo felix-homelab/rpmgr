@@ -23,12 +23,16 @@ const (
 	FieldPortAllocationID = "port_allocation_id"
 	// FieldListenerMode holds the string denoting the listener_mode field in the database.
 	FieldListenerMode = "listener_mode"
+	// FieldConnectListenerID holds the string denoting the connect_listener_id field in the database.
+	FieldConnectListenerID = "connect_listener_id"
 	// FieldIdleTimeoutSeconds holds the string denoting the idle_timeout_seconds field in the database.
 	FieldIdleTimeoutSeconds = "idle_timeout_seconds"
 	// EdgeRoute holds the string denoting the route edge name in mutations.
 	EdgeRoute = "route"
 	// EdgePort holds the string denoting the port edge name in mutations.
 	EdgePort = "port"
+	// EdgeListener holds the string denoting the listener edge name in mutations.
+	EdgeListener = "listener"
 	// Table holds the table name of the routetcp in the database.
 	Table = "route_tcp"
 	// RouteTable is the table that holds the route relation/edge.
@@ -45,6 +49,13 @@ const (
 	PortInverseTable = "port_allocations"
 	// PortColumn is the table column denoting the port relation/edge.
 	PortColumn = "port_allocation_id"
+	// ListenerTable is the table that holds the listener relation/edge.
+	ListenerTable = "route_tcp"
+	// ListenerInverseTable is the table name for the ConnectListener entity.
+	// It exists in this package in order to avoid circular dependency with the "connectlistener" package.
+	ListenerInverseTable = "connect_listeners"
+	// ListenerColumn is the table column denoting the listener relation/edge.
+	ListenerColumn = "connect_listener_id"
 )
 
 // Columns holds all SQL columns for routetcp fields.
@@ -54,6 +65,7 @@ var Columns = []string{
 	FieldRouteID,
 	FieldPortAllocationID,
 	FieldListenerMode,
+	FieldConnectListenerID,
 	FieldIdleTimeoutSeconds,
 }
 
@@ -80,8 +92,6 @@ var (
 	OrgIDValidator func(string) error
 	// RouteIDValidator is a validator for the "route_id" field. It is called by the builders before save.
 	RouteIDValidator func(string) error
-	// PortAllocationIDValidator is a validator for the "port_allocation_id" field. It is called by the builders before save.
-	PortAllocationIDValidator func(string) error
 	// DefaultIdleTimeoutSeconds holds the default value on creation for the "idle_timeout_seconds" field.
 	DefaultIdleTimeoutSeconds int
 	// IdleTimeoutSecondsValidator is a validator for the "idle_timeout_seconds" field. It is called by the builders before save.
@@ -142,6 +152,11 @@ func ByListenerMode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldListenerMode, opts...).ToFunc()
 }
 
+// ByConnectListenerID orders the results by the connect_listener_id field.
+func ByConnectListenerID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldConnectListenerID, opts...).ToFunc()
+}
+
 // ByIdleTimeoutSeconds orders the results by the idle_timeout_seconds field.
 func ByIdleTimeoutSeconds(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIdleTimeoutSeconds, opts...).ToFunc()
@@ -160,6 +175,13 @@ func ByPortField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newPortStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByListenerField orders the results by listener field.
+func ByListenerField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newListenerStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newRouteStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -172,5 +194,12 @@ func newPortStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(PortInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, false, PortTable, PortColumn),
+	)
+}
+func newListenerStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ListenerInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, ListenerTable, ListenerColumn),
 	)
 }

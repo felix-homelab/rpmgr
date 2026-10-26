@@ -8,10 +8,12 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portallocation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routelimit"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routepolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -28,26 +30,35 @@ func Delete(ctx context.Context, tx *ent.Tx, r *ent.Route) error {
 			return err
 		},
 		func() error { _, err := tx.RouteHTTP.Delete().Where(routehttp.RouteID(r.ID)).Exec(ctx); return err },
+		func() error { _, err := tx.HealthCheck.Delete().Where(healthcheck.RouteID(r.ID)).Exec(ctx); return err },
 		func() error { _, err := tx.RouteTCP.Delete().Where(routetcp.RouteID(r.ID)).Exec(ctx); return err },
 		func() error { _, err := tx.RouteUDP.Delete().Where(routeudp.RouteID(r.ID)).Exec(ctx); return err },
 		func() error { _, err := tx.RouteTarget.Delete().Where(routetarget.RouteID(r.ID)).Exec(ctx); return err },
 		func() error { _, err := tx.RoutePolicy.Delete().Where(routepolicy.RouteID(r.ID)).Exec(ctx); return err },
+		func() error { _, err := tx.RouteLimit.Delete().Where(routelimit.RouteID(r.ID)).Exec(ctx); return err },
 		func() error {
 			_, err := tx.PortAllocation.Delete().Where(portallocation.RouteID(r.ID)).Exec(ctx)
 			return err
 		},
 	}
-	// The spec rows refer to their allocations, which are deleted after them.
+	// The spec rows refer to their allocations, which are deleted after them; a route in
+	// http_connect mode leaves its CONNECT listener, which closes with its last route.
+	if err := LeaveListener(ctx, tx, r.ID); err != nil {
+		return err
+	}
 	var ports []string
-	tcp, err := tx.RouteTCP.Query().Where(routetcp.RouteID(r.ID)).Select(routetcp.FieldPortAllocationID).Strings(ctx)
+	tcp, err := tx.RouteTCP.Query().Where(routetcp.RouteID(r.ID), routetcp.PortAllocationIDNotNil()).All(ctx)
 	if err != nil {
 		return err
+	}
+	for _, t := range tcp {
+		ports = append(ports, *t.PortAllocationID)
 	}
 	udp, err := tx.RouteUDP.Query().Where(routeudp.RouteID(r.ID)).Select(routeudp.FieldPortAllocationID).Strings(ctx)
 	if err != nil {
 		return err
 	}
-	ports = append(append(ports, tcp...), udp...)
+	ports = append(ports, udp...)
 	for _, step := range steps {
 		if err := step(); err != nil {
 			return err

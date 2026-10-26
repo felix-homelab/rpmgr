@@ -245,6 +245,14 @@ later.
   certificate with the error recorded. A wildcard hostname in `acme` mode is refused with that
   reason, as its certificate needs DNS-01 (Phase 2, R42). The ACME client honours `HTTPS_PROXY`,
   else `ALL_PROXY`, and `NO_PROXY` (R44, [D93](14-open-decisions.md#engineering)).
+- **ACME for CONNECT listeners** (Phase 2) [R]: the job treats the hostname of a TLS CONNECT
+  listener with an enabled route and no certificate of its own as it treats a WSS hostname
+  ([Route edge rules](#route-edge-rules)): an uploaded certificate of the listener's org that
+  covers the name serves it instead; otherwise the job obtains and renews one, with its challenges
+  answered by the gateways of the listener's group, which alone get it. A hostname that lies
+  under no verified domain of the org any more is not renewed: its row records the reason, and
+  the certificate it has serves until it expires. A listener that closes with its last route
+  takes its hostname out of the job ([03](03-connections.md#http-connect-routes-phase-2)).
 - **Failed ACME attempts** [R]: a hostname whose attempt failed, such as one whose DNS does not
   point at its gateways yet, must not use up the account's limits at the CA. Let's Encrypt allows
   5 failed authorizations per name and account an hour, and pauses a name after 1 152 failures in
@@ -311,9 +319,15 @@ later.
   the names, issuer, expiry and key fingerprint before the key is pinned. Probing takes
   `routes.write`.
 - **The exceptions to the ban** of `InsecureSkipVerify` serve these two modes alone:
-  `UpstreamTLS.config` of `internal/gateway/upstreamtls.go`
-  ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)) and the connector's `readCertificate`
-  of `internal/connector/probe.go` ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)).
+  `Settings.Config` of `internal/upstreamtls/upstreamtls.go`
+  ([ADR-0017](adr/0017-upstream-tls-verification-modes.md)), the one place that builds a target's
+  TLS settings, which the gateway uses for the route's traffic and the connector for the target's
+  HTTPS health check, so both check the certificate alike (ADR-0017 names its first home,
+  `UpstreamTLS.config` of `internal/gateway/upstreamtls.go`; it moved so that the connector-only
+  build, which links no gateway code, shares it, D119; the depguard rule `upstream-tls` of
+  `.golangci.yml` lets only the gateway and the connector import the package), and the connector's
+  `readCertificate` of `internal/connector/probe.go`
+  ([ADR-0018](adr/0018-pin-the-key-a-target-presents.md)).
   `tools/bannedapi` allows them in those functions of the rpmgr module and nowhere else, a module
   nested in the repository included. golangci skips forbidigo's findings in `upstreamtls.go` and
   gosec's G402 finding in `probe.go` (forbidigo does not see the field there); in both files
@@ -535,9 +549,16 @@ their own account this way. Further rules:
 | DNS providers, managed zones and their gates, DNS names; adopt, release, approve plans; view foreign records (Phase 2) | ✓ | ✓ | | |
 | Members (Admins cannot change Owners) (`members.write`) | ✓ | ✓ | | |
 | Service accounts and their tokens (Phase 2) | ✓ | ✓ | | |
-| Audit log read and export (`audit.read`) | ✓ | ✓ | | |
+| Audit log read and export; an export also takes a step-up (`audit.read`) | ✓ | ✓ | | |
+| Live logs of the org's connectors and gateways (`agents.logs`, Phase 2) | ✓ | ✓ | | |
+| Webhook endpoints, their secrets and deliveries (`webhooks.write`, Phase 2) | ✓ | ✓ | | |
 | SSO, MFA policy, org settings (`org.write`) | ✓ | | | |
 | `connector.shell` (Phase 3) | explicit per-user grant, plus host opt-in, plus step-up | | | |
+
+[R] **Live logs** (Phase 2): logs of a gateway of a group shared with other orgs are for the
+Instance Admin only, as they show other orgs' traffic. A host cannot refuse live logs in Phase 2.
+Opening a log, and raising its level, is audited as `agent.logs_open` with the level and filter
+([D140](14-open-decisions.md#engineering)).
 
 [R] `connectors.write` reaches routes: decommissioning a connector deletes each route left with no
 target, with its hostnames, ports and policy links, so a token with that scope and without
@@ -678,6 +699,12 @@ capabilities, so a gateway of an earlier release never serves a route without th
   from every client request on every http route, also when the name is spelt with `_` for `-`,
   which CGI-style servers read alike, so that only the gateway sets them
   ([03](03-connections.md#http-routes), [D135](14-open-decisions.md#engineering)).
+- **Per-client rate limits** count each client address, or IPv6 /64, in bounded tables on each
+  gateway ([03](03-connections.md#access-policies)). A UDP source address can be forged at will, so
+  udp flows count in tables of their own: a flood of forged sources never fills the table that
+  limits real clients of http and tcp routes. When a table is full, a new address passes rather
+  than being refused, so that a flood never locks real clients out; the route's own limits still
+  bound what passes ([D137](14-open-decisions.md#engineering)).
 - **Require-header values** are shared secrets of at least 32 characters, such as a CDN's origin
   header. The controller keeps only their SHA-256, which the gateways receive; a value is
   write-only and never read back. Plain, unsalted SHA-256 suffices only because a value is
@@ -711,10 +738,16 @@ capabilities, so a gateway of an earlier release never serves a route without th
   passwords are hashed as for route basic auth ([Secrets at rest and in
   logs](#secrets-at-rest-and-in-logs)).
 - **WSS hostnames** of gateways lie under a verified domain of the gateway group's owner org, the
-  system org for a shared group, so that no org can make a gateway present a name it does not
-  hold. The certificate, from ACME or an upload, is an ordinary public certificate; the data
+  system org for a shared group, so that no org can make a gateway present a name it does not hold;
+  a WSS hostname is no route hostname of the group, also not one a wildcard route hostname of the
+  group covers, and no other gateway's, and a route cannot take one, nor a wildcard covering one.
+  The certificate, from ACME or an upload, is an ordinary public certificate; the data
   session's identity is only the inner mutual TLS to `<gateway-id>.gateway.<td>`
-  ([03](03-connections.md#transport-selection)).
+  ([03](03-connections.md#transport-selection)). An uploaded certificate of the org that covers the
+  name serves it; otherwise the ACME job obtains and renews one, as for routes, with its challenges
+  answered by that gateway alone ([Controller certificates](#controller-certificates)). Once the
+  name lies under no verified domain of the org any more, the job renews nothing: the certificate's
+  row says why, and the certificate it has serves until it expires.
 
 ### OIDC sign-in on routes
 
@@ -900,7 +933,7 @@ Rules:
 | Session, API, enrollment tokens | SHA-256 hash (tokens are 256-bit random, so a fast hash is sufficient) |
 | Route basic-auth credentials | argon2id hash; gateways receive the hash, never the password. Because browsers send basic-auth credentials with **every** request, a gateway verifies with argon2id once and then caches `HMAC-SHA256(gateway-local random key, policy_id ‖ credential_version ‖ len(user) ‖ user ‖ password)` together with the matched user, for 5 minutes in a bounded LRU. The policy ID and credential version keep an entry from being reused on another route, org or credential; the length prefix prevents ambiguous user/password splits; entries for a policy are flushed as soon as a snapshot changes that policy, so tightened policies apply immediately; failed attempts are rate-limited per client IP **before** hashing, and hashing has a per-gateway concurrency cap. This keeps argon2id from becoming a CPU/memory amplifier for unauthenticated clients. [R] The cache holds 10 000 entries; a client address gets 20 verifications at once, refilled at 10 per minute; a gateway runs 2 at once; a request without credentials is refused without one; a gateway verifies only hashes within m ≤ 256 MiB, t ≤ 10, p ≤ 16. The same holds for the proxy passwords of CONNECT listeners (Phase 2) |
 | Require-header values (Phase 2) | SHA-256; write-only, at least 32 characters, compared in constant time on the gateway ([Route edge rules](#route-edge-rules)) |
-| CA, intermediate, config-signing and audit keys; ACME account key; TLS private keys of public certificates; TOTP seeds; OIDC client secrets; DNS-provider tokens (one per `dns_providers` row, per org); SMTP and webhook secrets | **Envelope encryption**: a random data key per secret encrypts it with AES-256-GCM (AAD = table, column, row ID); the data key is wrapped by the KEK with AES-256-GCM (AAD = the same plus the KEK version). Rotating the KEK re-wraps only data keys, never the secrets. The KEK version is derived from the key itself (the first 8 bytes of a SHA-256 over it), so it needs no configuration |
+| CA, intermediate, config-signing and audit keys; ACME account key; TLS private keys of public certificates; TOTP seeds; OIDC client secrets; DNS-provider tokens (one per `dns_providers` row, per org); SMTP, webhook and audit-sink secrets (an S3 secret key, a syslog client key) | **Envelope encryption**: a random data key per secret encrypts it with AES-256-GCM (AAD = table, column, row ID); the data key is wrapped by the KEK with AES-256-GCM (AAD = the same plus the KEK version). Rotating the KEK re-wraps only data keys, never the secrets. The KEK version is derived from the key itself (the first 8 bytes of a SHA-256 over it), so it needs no configuration |
 | Agent private keys, WireGuard private keys | **Never stored centrally**. Generated on the agent; only public keys reach the controller |
 
 **KEK sources**, in order of preference:
@@ -939,6 +972,13 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
   v1.36.12: only `types/descriptorpb`, `internal/genid` and `reflect/protoreflect/source_gen.go`
   name it] (VB-04).
 - **Whole requests are never logged.** Access logs omit query strings and authentication headers.
+- [R] **Live logs** (Phase 2) leave the agent only after the logger's redaction and a second pass
+  over the text of each message and attribute, as a message may quote what a field annotation
+  never saw ([D145](14-open-decisions.md#engineering), E7). The pass replaces with `[REDACTED]`: an
+  `rpmgr_` token prefix and its random part; PEM blocks; the values of `Authorization`,
+  `Proxy-Authorization`, `Cookie` and `Set-Cookie`; the values of `password=`, `passwd=`, `secret=`
+  and `token=` pairs; and strings shaped like a JWT. A raised level changes what is logged, never what
+  is redacted.
 - No secret appears in argv, in the environment of long-running processes, or in unit files.
 
 ## Supply chain and updates
@@ -1178,14 +1218,18 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    cross-filesystem rename), fsyncs and re-hashes it, keeps the previous binary as `.prev`, renames
    `.rpmgr.new` over the binary at the path recorded in `/var/lib/rpmgr-update/install.json`
    (`/usr/local/bin/rpmgr` for script installs), and restarts each role service `install.json`
-   lists.
+   lists. From Phase 2 a role whose running process has the hand-off is restarted by one
+   ([Socket hand-off](#socket-hand-off-phase-2)): the old process keeps serving until the new one
+   is ready, so a lone gateway refuses no visitor connection during an update.
 6. The updater polls each role's admin `/readyz`, which reports ready only when the control session
    is established and a snapshot is applied, and counts a role as ready only while systemd has it
    active. If a role is not ready within the readiness window, or its service fails or restarts in
    a loop before then, the updater **rolls back** to `.prev`, restarts the roles again, and records
-   the version as failed. Before the rename it records the install as pending in its own
-   directory, so that a run that a crash or a reboot interrupts is finished by the next one: the
-   updater also runs once at boot, checks the roles and rolls back if one is not ready.
+   the version as failed. A hand-off whose new process is not ready leaves the old process
+   serving, so the rollback only puts `.prev` back and restarts nothing. Before the rename it
+   records the install as pending in its own directory, so that a run that a crash or a reboot
+   interrupts is finished by the next one: the updater also runs once at boot, checks the roles
+   and rolls back if one is not ready.
    A run that finds no staged manifest (the agent writes it last), as at boot or while the agent
    is still staging, does nothing else and reports nothing.
 7. The updater writes the outcome to `/run/rpmgr-update/status.json` (root-owned, readable by the
@@ -1320,6 +1364,70 @@ a few connectors and gateways are updated at once and watched while they are.
   should verify the release (GitHub release + `gh attestation verify`) before running it. After
   installation, updates are protected by the compiled-in keys.
 
+### Socket hand-off (Phase 2)
+
+A restart with hand-off passes a role's listening sockets, which may sit on privileged ports, from
+the running process to a new one ([03](03-connections.md#restarts-with-socket-hand-off-phase-2),
+[ADR-0022](adr/0022-socket-hand-off-by-re-exec.md)). Only the installed binary may receive them:
+
+- **Who triggers it.** `SIGUSR2` to the role's main process, which only root and the service user
+  may send; `rpmgr handoff <role>`, `systemctl reload`, the install scripts and the root updater all
+  send it. A trigger never names a binary or a descriptor.
+- **Which binary.** The old process starts only the binary at the path of `install.json`, or the
+  path it was started from, and only if it is a regular file owned by root that neither its group
+  nor others may write, in directories that follow the same rule, so the service user cannot put a
+  binary of its own there. It passes the descriptors by inheritance to that child alone; no socket
+  or file is opened for another process to collect them. Anything else refuses the hand-off.
+- **Which descriptors.** The new process accepts only the descriptors the manifest on its status
+  pipe names, checks each one's socket type, listening state and local address against its own boot
+  file, and closes, and logs, any other it inherited. It never serves a socket its configuration
+  does not name.
+- **What the old process keeps.** It keeps its identity and serves its open connections until the
+  hand-off drain ends them; the new process uses the identity on disk, as on a restart. The old
+  process's control session was superseded, so it learns of no change itself: when the new process
+  applies a deny list or a snapshot that revokes, tightens an access policy or removes a route, it
+  tells the old one over the status pipe, which then cuts its open connections at once, as
+  security beats continuity ([03](03-connections.md#timeouts-keepalive-and-backoff)).
+- **Containers** restart without a hand-off: the process is the container's first process
+  ([D149](14-open-decisions.md#engineering)).
+
+## Webhooks and the egress guard (Phase 2)
+
+- **Who.** An org's endpoints are managed by its Owners and Admins (`webhooks.write`); instance
+  endpoints, which receive instance events, by the Instance Admin
+  ([07](07-api.md#webhooks-phase-2)). An org's endpoint receives only that org's events.
+- **Envelope.** [R] An event is a thin envelope: its ID, type, time, org, the IDs of its actor and
+  subject, a short summary and the names of the fields that changed. It never carries a resource,
+  a secret or anything of another org ([D144](14-open-decisions.md#engineering)).
+- **Signing.** `Rpmgr-Signature: t=<unix>,v1=<HMAC-SHA256(secret, t.body)>`. A secret is
+  `rpmgr_whs_` and 256 random bits, shown once when it is made or rotated, stored under the KEK and
+  never read back. After a rotation the old secret signs too, as a second `v1=` value, for the
+  period in [03](03-connections.md#timeouts-keepalive-and-backoff), so receivers switch without a
+  gap. **Receivers reject signatures older than 5 minutes.** Timestamps are used because receivers
+  are third-party HTTP endpoints without mutual TLS; rpmgr-internal authentication never uses them.
+- **Delivery.** HTTPS only, the receiver's certificate verified against the system roots; a
+  redirect is never followed; at least once, each request naming its event in `Rpmgr-Event-Id` so
+  a receiver drops duplicates. An endpoint without a successful delivery for the period in 03 is
+  disabled, with an event, an e-mail to the org's Owners and Admins and a notice in the UI; only a
+  person enables it again ([D143](14-open-decisions.md#engineering)).
+- **Egress guard** ([D138](14-open-decisions.md#engineering)). The controller dials every receiver
+  through one guard, which checks each address the name resolves to at the moment it dials, so a
+  name that changes its answer (DNS rebinding) gains nothing:
+  - **Always denied:** loopback, unspecified, link-local (`169.254.0.0/16`, `fe80::/10`), the cloud
+    metadata addresses (`169.254.169.254`, `fd00:ec2::254`, `100.100.100.200`), multicast and
+    broadcast, the controller's own listening addresses, and the IPv4-mapped and IPv4-compatible
+    forms of each.
+  - **Private ranges** (RFC 1918, `fc00::/7`, `100.64.0.0/10` and every other non-global unicast
+    range) are denied unless the Instance Admin lists the range in the instance setting
+    `webhook_private_ranges`. A refused delivery names the range, which the UI offers to list. A
+    listed range never admits an always-denied address.
+  - **Instance endpoints and audit sinks**, which only the Instance Admin sets, may reach private
+    ranges and loopback; link-local, metadata, multicast and broadcast addresses stay denied
+    ([D145](14-open-decisions.md#engineering), E5).
+  - **Through a proxy** (`HTTPS_PROXY`), the controller resolves and checks the receiver itself
+    and asks the proxy to connect to the checked address, with the receiver's name for TLS and
+    `Host`.
+
 ## Audit log
 
 - Every state-changing request and every security event (logins, failed logins, step-ups, token
@@ -1370,8 +1478,9 @@ a few connectors and gateways are updated at once and watched while they are.
   and lock its chain, at the flood's pace. A metric counts them instead
   ([10](10-operations.md#metrics)).
 - Signed **checkpoints** (chain head + count, signed with the audit-checkpoint key) are shipped to an
-  external sink (syslog, OTLP, webhook, or object storage with retention lock). The external copy
-  is what makes tampering evident: anyone with database write access could recompute a chain.
+  external sink (Phase 2: syslog over TLS, a webhook, or object storage with Object Lock; OTLP in
+  Phase 3, [D141](14-open-decisions.md#engineering)). The external copy is what makes tampering
+  evident: anyone with database write access could recompute a chain.
 - [R] A checkpoint's signature covers a version label, the chain's name, the seq, the head's hash
   and the time; the schedule is in the timeout table of
   [03](03-connections.md#timeouts-keepalive-and-backoff). A chain verifies from its genesis, or,
@@ -1385,8 +1494,36 @@ a few connectors and gateways are updated at once and watched while they are.
   alone. Until an external sink is configured (Phase 2, optional, [14](14-open-decisions.md) D11),
   an attacker with write access to the controller host can rewrite both, so tamper evidence is
   limited to attackers who reach only the database.
-- **Webhook signatures** (Phase 2, [07](07-api.md#webhooks-phase-2)): receivers reject signatures
-  older than **5 minutes**.
+- [R] **External sinks** (Phase 2, [D141](14-open-decisions.md#engineering)) are instance-level and
+  set by the Instance Admin. Each sink always receives every chain's checkpoints and, if chosen,
+  the entries too. Each keeps its own cursor per chain, advanced only after the sink acknowledged a
+  batch, so shipping is at least once and a sink that was down catches up from its cursor. An
+  append never waits for a sink. A sink has a backlog metric and an alert
+  ([10](10-operations.md#suggested-alerts)); the schedule is in
+  [03](03-connections.md#timeouts-keepalive-and-backoff).
+  - **Syslog**: RFC 5425 framing over TLS only, never UDP or plain TCP; the server is verified
+    against the sink's CA bundle. Each message is an RFC 5424 record holding the checkpoint or entry
+    as JSON (VB-23).
+  - **Webhook**: delivered and signed as a webhook ([Webhooks and the egress
+    guard](#webhooks-and-the-egress-guard-phase-2)), with the event type `audit.checkpoint` or
+    `audit.entry`.
+  - **Object storage** (S3-compatible, the client of the revocation log): each checkpoint or batch
+    is an object written with `If-None-Match: *` into a bucket with Object Lock in compliance
+    mode, so not even the sink's own credentials can rewrite or delete it before the lock ends; a
+    bucket without Object Lock, or a store without conditional create, is refused when the sink is
+    saved (VB-24). Verification can read the sink back and finds a chain rewritten under a
+    checkpoint it holds.
+- [R] **Export** (Phase 2, `ExportAudit`): an org's chain, for `audit.read` with a step-up, or the
+  instance chain for the Instance Admin with a step-up; audited as `audit.export`. The export is
+  JSON Lines: a header line (format version, chain, first and last seq, the signers' certificates),
+  then each entry with every stored field as in its canonical form plus `prev_hash` and `hash`,
+  with each checkpoint in its place. It ends at the newest checkpoint; entries after it are listed
+  as an unanchored tail, flagged so, which a later export anchors. `rpmgr audit verify-export
+  --ca-pin <sha256>` verifies an export offline against the CA root pin alone: links, hashes,
+  checkpoint signatures and their keys' certificates, and that nothing was removed, reordered or
+  edited.
+- **Webhook signatures** (Phase 2) and their maximum age are under
+  [Webhooks and the egress guard](#webhooks-and-the-egress-guard-phase-2).
 - Only the audit package writes the audit tables: the store refuses every create, update and delete
   through Ent. On PostgreSQL, the application role has no `UPDATE`/`DELETE` permission on the audit
   table.

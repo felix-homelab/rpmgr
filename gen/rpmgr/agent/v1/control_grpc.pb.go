@@ -29,6 +29,7 @@ const (
 	Control_Renew_FullMethodName         = "/rpmgr.agent.v1.Control/Renew"
 	Control_FetchResource_FullMethodName = "/rpmgr.agent.v1.Control/FetchResource"
 	Control_Leave_FullMethodName         = "/rpmgr.agent.v1.Control/Leave"
+	Control_Attach_FullMethodName        = "/rpmgr.agent.v1.Control/Attach"
 )
 
 // ControlClient is the client API for Control service.
@@ -46,6 +47,10 @@ type ControlClient interface {
 	FetchResource(ctx context.Context, in *FetchResourceRequest, opts ...grpc.CallOption) (*FetchResourceResponse, error)
 	// Leave revokes the caller's own identity (R37); `rpmgr leave` then wipes it from the host.
 	Leave(ctx context.Context, in *LeaveRequest, opts ...grpc.CallOption) (*LeaveResponse, error)
+	// Attach carries an imperative operation the controller opened with Open, on the connection of
+	// the agent's control session: the agent's first frame presents the operation's single-use
+	// ticket (docs/03-connections.md, "Control session").
+	Attach(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AttachFrame, AttachFrame], error)
 }
 
 type controlClient struct {
@@ -99,6 +104,19 @@ func (c *controlClient) Leave(ctx context.Context, in *LeaveRequest, opts ...grp
 	return out, nil
 }
 
+func (c *controlClient) Attach(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AttachFrame, AttachFrame], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Control_ServiceDesc.Streams[1], Control_Attach_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[AttachFrame, AttachFrame]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Control_AttachClient = grpc.BidiStreamingClient[AttachFrame, AttachFrame]
+
 // ControlServer is the server API for Control service.
 // All implementations must embed UnimplementedControlServer
 // for forward compatibility.
@@ -114,6 +132,10 @@ type ControlServer interface {
 	FetchResource(context.Context, *FetchResourceRequest) (*FetchResourceResponse, error)
 	// Leave revokes the caller's own identity (R37); `rpmgr leave` then wipes it from the host.
 	Leave(context.Context, *LeaveRequest) (*LeaveResponse, error)
+	// Attach carries an imperative operation the controller opened with Open, on the connection of
+	// the agent's control session: the agent's first frame presents the operation's single-use
+	// ticket (docs/03-connections.md, "Control session").
+	Attach(grpc.BidiStreamingServer[AttachFrame, AttachFrame]) error
 	mustEmbedUnimplementedControlServer()
 }
 
@@ -135,6 +157,9 @@ func (UnimplementedControlServer) FetchResource(context.Context, *FetchResourceR
 }
 func (UnimplementedControlServer) Leave(context.Context, *LeaveRequest) (*LeaveResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Leave not implemented")
+}
+func (UnimplementedControlServer) Attach(grpc.BidiStreamingServer[AttachFrame, AttachFrame]) error {
+	return status.Error(codes.Unimplemented, "method Attach not implemented")
 }
 func (UnimplementedControlServer) mustEmbedUnimplementedControlServer() {}
 func (UnimplementedControlServer) testEmbeddedByValue()                 {}
@@ -218,6 +243,13 @@ func _Control_Leave_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Control_Attach_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ControlServer).Attach(&grpc.GenericServerStream[AttachFrame, AttachFrame]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Control_AttachServer = grpc.BidiStreamingServer[AttachFrame, AttachFrame]
+
 // Control_ServiceDesc is the grpc.ServiceDesc for Control service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -242,6 +274,12 @@ var Control_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Session",
 			Handler:       _Control_Session_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "Attach",
+			Handler:       _Control_Attach_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

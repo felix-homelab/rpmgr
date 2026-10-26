@@ -40,8 +40,8 @@ const tunnelHandshake = 10 * time.Second
 
 // Capabilities are what this gateway version implements (docs/03-connections.md, "Versioning and
 // capabilities").
-var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapHTTPHeaderMatch, agentproto.CapHTTPRequireHeader,
-	agentproto.CapPagesCustom}
+var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapHTTPHeaderMatch, agentproto.CapRouteLimits,
+	agentproto.CapHTTPRequireHeader, agentproto.CapPagesCustom, agentproto.CapTCPHTTPConnect, agentproto.CapTunnelWSS}
 
 // RunOptions configure Run.
 type RunOptions struct {
@@ -49,6 +49,10 @@ type RunOptions struct {
 	Version string
 	Now     func() time.Time
 	Logger  *slog.Logger
+	// LiveLog, if set, is Logger's live log: the agent then runs live-log operations from it
+	// (docs/03-connections.md, "Control session"). The built-in agents of an all-in-one have
+	// none, as their log is the controller's.
+	LiveLog *telemetry.LiveLog
 	// DrainPeriod is how long a stopping gateway keeps its streams; 0 is DrainPeriod.
 	DrainPeriod time.Duration
 	// Listening, if set, is called once every listener is up.
@@ -116,7 +120,7 @@ func Run(ctx context.Context, o RunOptions) error {
 			Policy: func() *policy.Policy { p, _ := policy.Load(policy.DefaultPath); return p }}
 	}
 	ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
-		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, Dial: o.Dial, OnAcmeChallenge: challenges.Apply,
+		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, LiveLog: o.LiveLog, Dial: o.Dial, OnAcmeChallenge: challenges.Apply,
 		Update: update,
 		OnDenyList: func() {
 			if sessions != nil {
@@ -167,8 +171,6 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	routes := NewTCPRoutes(TCPOptions{Host: host, Sessions: sessions, Revision: applier.Revision, OnChange: report.change, Logger: o.Logger})
-	defer routes.Close()
 	pass := NewPassthrough(sessions, applier.Revision, o.Logger)
 	defer pass.Close()
 	udpHost, _, err := net.SplitHostPort(cfg.Listen.UDP)
@@ -190,6 +192,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
+	routes := NewTCPRoutes(TCPOptions{Host: host, Sessions: sessions, Revision: applier.Revision, OnChange: report.change,
+		Certificates: certificates, Default: &def.Certificates[0], Logger: o.Logger})
+	defer routes.Close()
 	httpRoutes := NewHTTPRoutes(HTTPOptions{Sessions: sessions, Certificates: certificates, Default: &def.Certificates[0],
 		Revision: applier.Revision, Fallback80: o.Port80Fallback, FallbackNames: o.ControllerNames, Challenges: challenges.HTTP01,
 		Pages: pages, Logger: o.Logger})
@@ -197,8 +202,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	if o.RoutePorts != nil {
 		o.RoutePorts(func(port uint16) bool { return routes.Bound(port) || udpRoutes.Bound(port) })
 	}
-	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Pages: pages, Sessions: sessions,
-		DrainPeriod: o.DrainPeriod})
+	wss := &WSSHostname{}
+	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Pages: pages, WSS: wss,
+		Sessions: sessions, DrainPeriod: o.DrainPeriod})
 
 	tunnelTLS := pki.ServerConfig(ctl.Certificate(), id.Roots, pki.Expect{TrustDomain: id.TrustDomain,
 		Kinds: []pki.Kind{pki.KindConnector}, Denied: ctl.DenyList().Denied}, o.Now)
@@ -211,14 +217,23 @@ func Run(ctx context.Context, o RunOptions) error {
 	budget := tunnel.NewBudget(tunnel.DefaultWindowBudget)
 	run, stop := context.WithCancel(context.Background()) // outlives ctx by the drain period
 	defer stop()
+	// The WSS hostname's public certificate is one of the route certificates; the upgrade speaks
+	// HTTP/1.1 only.
+	wssTLS := httpRoutes.TLSConfig().Clone()
+	wssTLS.NextProtos = []string{"http/1.1"}
+	var serveTunnel func(*tls.Conn)
 	router := &Router{ACME: challenges.ALPN, TrustDomain: id.TrustDomain, GatewayID: id.AgentID, TunnelTLS: h2TLS, DefaultTLS: def, Logger: o.Logger,
 		Controller: toController, ControllerNames: controllerNames, Routes: NewRouteTable(pass, httpRoutes),
 		HTTP: httpRoutes.Serve, HTTPTLS: httpRoutes.TLSConfig(), Unrouted: httpRoutes.ServeUnrouted, UnroutedTLS: httpRoutes.UnroutedTLSConfig(),
+		WSSHostname: wss.Get, WSSTLS: wssTLS, WSS: func(c *tls.Conn) { ServeWSS(c, h2TLS, serveTunnel) },
 		Tunnel: func(c *tls.Conn) {
 			defer func() { _ = c.Close() }()
-			over := "TCP" // or memory: all-in-one's connector (ServeTunnels)
-			if c.RemoteAddr().Network() == "memory" {
+			over := "TCP" // or memory: all-in-one's connector (ServeTunnels), or WSS
+			switch c.RemoteAddr().Network() {
+			case "memory":
 				over = "memory"
+			case "wss":
+				over = "WSS"
 			}
 			hctx, cancel := context.WithTimeout(run, tunnelHandshake)
 			err := c.HandshakeContext(hctx)
@@ -240,6 +255,7 @@ func Run(ctx context.Context, o RunOptions) error {
 				o.Logger.Debug("data session over "+over+" ended", "error", err)
 			}
 		}}
+	serveTunnel = router.Tunnel
 
 	resetKey, err := tunnel.LoadResetKey(filepath.Join(cfg.StateDir, ResetKeyFile))
 	if err != nil {

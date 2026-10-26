@@ -4,14 +4,20 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
+	"time"
+
+	"golang.org/x/net/http/httpguts"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
+	"github.com/felix-homelab/rpmgr/internal/dnsname"
 )
 
 // Applier runs a connector's snapshots (docs/03-connections.md, "Configuration reconciliation"):
@@ -35,6 +41,8 @@ func transportOf(p agentv1.TransportPolicy) (string, bool) {
 		return TransportQUIC, true
 	case agentv1.TransportPolicy_TRANSPORT_POLICY_H2:
 		return TransportH2, true
+	case agentv1.TransportPolicy_TRANSPORT_POLICY_WSS:
+		return TransportWSS, true
 	}
 	return "", false
 }
@@ -43,7 +51,8 @@ func transportOf(p agentv1.TransportPolicy) (string, bool) {
 // known transport and targets that are an address and port or an absolute socket path with a
 // known PROXY protocol version; a udp or tcp_udp route's targets are addresses, a udp route's
 // without a PROXY header (a tcp_udp route's header goes on its TCP connections only); a gateway
-// needs host:port endpoints and names only routes of the snapshot.
+// needs host:port endpoints, a normalised WSS hostname if any, and names only routes of the
+// snapshot.
 func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 	var errs []*agentv1.SnapshotError
 	bad := func(id, format string, args ...any) {
@@ -91,6 +100,14 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 				if udp && t.GetUnixPath() != "" {
 					bad(id, "target %s: a udp target is an address, not a socket path", t.GetId())
 				}
+				if hc := r.GetHealthCheck(); hc.GetHttps() && t.GetTls() == nil {
+					bad(id, "target %s: an https health check without the target's TLS settings", t.GetId())
+				}
+			}
+			if hc := r.GetHealthCheck(); hc != nil {
+				if err := validCheck(hc, r.GetType(), r.GetTargets()); err != nil {
+					bad(id, "health check: %v", err)
+				}
 			}
 		case res.GetConnectorGateway() != nil:
 			g := res.GetConnectorGateway()
@@ -101,6 +118,11 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 				host, port, err := net.SplitHostPort(ep)
 				if n, perr := strconv.Atoi(port); err != nil || perr != nil || host == "" || n < 1 || n > 65535 {
 					bad(id, "tunnel endpoint %q is not host:port", ep)
+				}
+			}
+			if h := g.GetWssHostname(); h != "" {
+				if n, err := dnsname.Normalize(h, false); err != nil || n != h {
+					bad(id, "WSS hostname %q is not a normalised DNS name", h)
 				}
 			}
 			for _, r := range g.GetRoutes() {
@@ -115,6 +137,44 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 	return errs
 }
 
+// The bounds of a health check (docs/03-connections.md, "Timeouts, keepalive and backoff").
+const (
+	minCheckInterval = 2 * time.Second
+	maxCheckInterval = time.Hour
+	maxCheckTimeout  = time.Minute
+)
+
+// validCheck checks a route's health check: tcp, or http with a path and Host a request can carry
+// and a range of statuses; a udp route only a tcp check of a port it names, and a route with a
+// socket target none; an interval within its bounds and a timeout below it and its own bound.
+func validCheck(c *agentv1.HealthCheck, routeType string, targets []*agentv1.Target) error {
+	interval, timeout := checkTimes(c)
+	switch {
+	case c.GetType() != "tcp" && c.GetType() != "http":
+		return fmt.Errorf("type %q", c.GetType())
+	case routeType == "udp" && (c.GetType() != "tcp" || c.GetPort() == 0):
+		return errors.New("a udp route has only a tcp check of a port it names")
+	case routeType == "tls_passthrough" && c.GetType() != "tcp":
+		return errors.New("a tls_passthrough route has only a tcp check")
+	case c.GetPort() > 65535:
+		return fmt.Errorf("port %d", c.GetPort())
+	case c.GetPort() != 0 && slices.ContainsFunc(targets, func(t *agentv1.Target) bool { return t.GetUnixPath() != "" }):
+		return errors.New("a check port with a socket target, which has no port")
+	case interval < minCheckInterval || interval > maxCheckInterval || timeout >= interval || timeout > maxCheckTimeout:
+		return fmt.Errorf("an interval of %v and a timeout of %v", interval, timeout)
+	case c.GetType() == "tcp":
+		return nil
+	case c.GetPath() != "" && (!strings.HasPrefix(c.GetPath(), "/") || strings.ContainsAny(c.GetPath(), " \r\n\t")):
+		return fmt.Errorf("path %q", c.GetPath())
+	case c.GetHost() != "" && !httpguts.ValidHostHeader(c.GetHost()):
+		return fmt.Errorf("host %q", c.GetHost())
+	case (c.GetStatusMin() == 0) != (c.GetStatusMax() == 0) || c.GetStatusMin() > c.GetStatusMax() || c.GetStatusMax() > 599 ||
+		c.GetStatusMin() != 0 && c.GetStatusMin() < 100:
+		return fmt.Errorf("statuses %d to %d", c.GetStatusMin(), c.GetStatusMax())
+	}
+	return nil
+}
+
 // Apply implements agent.Applier: the targets first, so that each route's readiness is known
 // before a data session announces it, then the gateways.
 func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Changes) []*agentv1.ResourceStatus {
@@ -127,14 +187,16 @@ func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Chang
 			route := Route{ID: res.GetId(), UDP: r.GetType() == "udp", Both: r.GetType() == "tcp_udp"}
 			for _, t := range r.GetTargets() {
 				route.Targets = append(route.Targets, Target{ID: t.GetId(), Host: t.GetHost(), Port: uint16(t.GetPort()), //nolint:gosec // G115: Validate bounds the port
-					UnixPath: t.GetUnixPath(), ProxyProtocol: t.GetProxyProtocol(), Weight: t.GetWeight(), Priority: t.GetPriority()})
+					UnixPath: t.GetUnixPath(), ProxyProtocol: t.GetProxyProtocol(), Weight: t.GetWeight(), Priority: t.GetPriority(),
+					TLS: tlsOf(t.GetTls())})
 			}
+			route.Check = healthCheckOf(r.GetHealthCheck())
 			routes = append(routes, route)
 		}
 	}
 	for _, res := range snap.GetResources() {
 		if g := res.GetConnectorGateway(); g != nil {
-			gw := Gateway{ID: res.GetId(), Endpoints: g.GetTunnelEndpoints(), Routes: map[string]string{}}
+			gw := Gateway{ID: res.GetId(), Endpoints: g.GetTunnelEndpoints(), Routes: map[string]string{}, WSSHostname: g.GetWssHostname()}
 			for _, r := range g.GetRoutes() {
 				gw.Routes[r] = transport[r]
 			}

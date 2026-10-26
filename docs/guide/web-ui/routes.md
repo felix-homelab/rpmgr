@@ -63,7 +63,7 @@ Every route has these fields:
 | **Name** | The route's name: lowercase letters, digits and dashes |
 | **Description** | Free text for people |
 | **Labels** | One per line, as `key=value` |
-| **Transport** | How its connectors reach the gateways: **The connector's or the instance's default**, **QUIC, falling back to TLS and HTTP/2**, **QUIC only**, or **TLS and HTTP/2 only** ([Connector networking](../connectors/network.md)) |
+| **Transport** | How its connectors reach the gateways: **The connector's or the instance's default**, **QUIC, falling back to TLS and HTTP/2**, **QUIC only**, **TLS and HTTP/2 only**, or **WSS only** ([Connector networking](../connectors/network.md)) |
 
 An **HTTP** route adds ([HTTP routes](../routes/http.md)):
 
@@ -92,7 +92,12 @@ label as key=value.`; a header name is the same whatever its case. It also says 
 header matches than a route may have, and refuses a timeout above the API's bound. What the server
 refuses, such as a match on `Host`, shows below the fields.
 
-A **TCP** route adds **Public port** and **Idle timeout (seconds)**; a **UDP** route **Public
+A **TCP** route adds **Listener**, **Public port** and **Idle timeout (seconds)**; with **A CONNECT
+listener shared with other routes (HTTP proxy)** also **CONNECT names**, one per line, and **Proxy
+credentials**: **None: IP rules only**, **Basic auth over TLS (HTTPS proxy)**, which asks for
+**Listener hostname (HTTPS proxy)** and **Listener certificate**, or **Basic auth in the clear**,
+which the form warns about as long as it is chosen, as the server does after the save
+([CONNECT routes](../routes/tcp-and-udp.md#connect-routes)); a **UDP** route **Public
 port** and **Flow idle timeout (seconds)**; a **TCP and UDP** route **Public port**, **TCP idle
 timeout (seconds)** and **UDP flow idle timeout (seconds)**
 ([TCP and UDP routes](../routes/tcp-and-udp.md)). A public port of 0, the default, takes a random
@@ -102,6 +107,20 @@ within the organisation's port quota. An empty timeout keeps the API's default, 
 
 A **TLS passthrough** route adds **Hostnames** only
 ([TLS passthrough](../routes/tls-passthrough.md)).
+
+Every route ends with its **Health check** ([Health checks](../routes/targets.md#health-checks)):
+
+| Field | Takes |
+|---|---|
+| **Health check** | **None**, the default, **TCP: the target accepts the connection**, or **HTTP: a GET answers with a passing status**. The fields below appear with a check |
+| **Port to check** | Another port of each target's host to check; empty for the target's own. A UDP route needs one; a route with a Unix socket target cannot have one |
+| **Path to request** | HTTP only: the path, starting with `/`, with a query if needed; empty for `/` |
+| **Passing statuses** | HTTP only: the statuses that pass, as `200-399`; empty for any success or redirect. Anything else is refused before the route is sent: `Write the passing statuses as two three-digit codes, such as 200-399.` |
+| **Check interval (seconds)**, **Check timeout (seconds)** | How often each target is checked and how long one check may take; empty for the defaults |
+| **Failed checks before unhealthy**, **Passed checks before healthy again** | How many checks in a row change a target's health; empty for the defaults |
+
+The bounds of these values are in [03](../../03-connections.md#timeouts-keepalive-and-backoff). A
+TLS passthrough route, and a route with an h2c target, take a TCP check only.
 
 ### Preview
 
@@ -145,6 +164,8 @@ The first card sets what you configured next to what the agents report:
 
 - **Configured**: `enabled` or `disabled`, `in maintenance`, the gateway group and the route's
   address. A route in maintenance also shows `The maintenance page says: …` with its message.
+  Below, the health check: `no health check`, `TCP health check` or `HTTP health check of …`,
+  with `every … s` when its interval is set.
 - **Observed**: the route's state and how many of the group's gateways serve it, such as
   `served by 1 of 1 gateways`.
 
@@ -167,7 +188,8 @@ The **Targets** card lists the route's targets:
 | **Connector** | The connector that reaches the target |
 | **Address** | Host and port, or the socket path; an HTTPS target that the gateway does not verify has the badge `unverified` |
 | **Weight** | Its share of new connections among the targets of the same priority |
-| **Status** | `ready`, `disabled`, or why it does not serve, such as `blocked by the connector's local policy`; a target whose connector reaches the gateways only over TLS and HTTP/2 adds `served over TLS and HTTP/2, the fallback for QUIC` |
+| **Health** | With a health check: `healthy`, or `unhealthy` with `Last check: …` and why the last check failed; `not checked` when its connector's release runs no checks, so the target counts as healthy until the connector is upgraded. `—` without a check, for a disabled target, and while the target does not serve for another reason, which **Status** names |
+| **Status** | `ready`, `disabled`, or why it does not serve, such as `blocked by the connector's local policy` or `its health checks fail`; a target whose connector reaches the gateways only over TLS and HTTP/2 adds `served over TLS and HTTP/2, the fallback for QUIC` |
 
 **A target blocked by a local policy** shows the command that allows it, to run on the
 connector's host, with **Copy**: `sudo rpmgr policy allow-target …` for a target nothing allows,

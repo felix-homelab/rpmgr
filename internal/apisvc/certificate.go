@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"connectrpc.com/connect"
@@ -20,7 +21,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 )
 
 // Renewer renews ACME certificates on demand: acme.Manager.
@@ -212,6 +215,14 @@ func certificateOf(ctx context.Context, c *ent.Client, row *ent.Certificate) (*r
 			Select(routehttp.FieldRouteID).Strings(ctx); err != nil {
 			return nil, err
 		}
+		// The routes on a TLS CONNECT listener that presents it.
+		connect, err := c.RouteTCP.Query().Where(routetcp.HasListenerWith(connectlistener.CertificateID(row.ID))).
+			Order(ent.Asc(routetcp.FieldRouteID)).Select(routetcp.FieldRouteID).Strings(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out.RouteIds = append(out.RouteIds, connect...)
+		slices.Sort(out.RouteIds)
 	}
 	return out, nil
 }

@@ -12,7 +12,9 @@ import (
 	"math"
 	"net/netip"
 	"net/textproto"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -138,6 +140,46 @@ func accessOf(res *agentv1.Resource) *agentv1.RouteAccess {
 // (docs/03-connections.md, "Timeouts, keepalive and backoff").
 const maxRouteTimeout = 3600
 
+// authorityHostRe is a CONNECT authority as the snapshot holds it: a lower-case host name.
+var authorityHostRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9._-]{0,251}[a-z0-9])?$`)
+
+// connectAuthOf is a CONNECT listener's mode, "" for a value this release does not know.
+func connectAuthOf(a agentv1.ConnectAuth) ConnectMode {
+	return map[agentv1.ConnectAuth]ConnectMode{agentv1.ConnectAuth_CONNECT_AUTH_UNSPECIFIED: ConnectNone, agentv1.ConnectAuth_CONNECT_AUTH_NONE: ConnectNone,
+		agentv1.ConnectAuth_CONNECT_AUTH_TLS_BASIC: ConnectTLSBasic, agentv1.ConnectAuth_CONNECT_AUTH_PLAIN_BASIC: ConnectPlainBasic}[a]
+}
+
+// basicConnect reports whether a CONNECT route's listener checks basic auth.
+func basicConnect(hc *agentv1.HTTPConnect) bool {
+	m := connectAuthOf(hc.GetAuth())
+	return hc != nil && (m == ConnectTLSBasic || m == ConnectPlainBasic)
+}
+
+// limitsOf returns the limits of a gateway route resource, and whether res is one.
+func limitsOf(res *agentv1.Resource) (*agentv1.RouteLimits, bool) {
+	switch {
+	case res.GetGatewayTcpRoute() != nil:
+		return res.GetGatewayTcpRoute().GetLimits(), true
+	case res.GetGatewayUdpRoute() != nil:
+		return res.GetGatewayUdpRoute().GetLimits(), true
+	case res.GetGatewayTcpUdpRoute() != nil:
+		return res.GetGatewayTcpUdpRoute().GetLimits(), true
+	case res.GetGatewayPassthroughRoute() != nil:
+		return res.GetGatewayPassthroughRoute().GetLimits(), true
+	case res.GetGatewayHttpRoute() != nil:
+		return res.GetGatewayHttpRoute().GetLimits(), true
+	}
+	return nil, false
+}
+
+// maxClientRate bounds a rate_limit rule's rate and burst well above what the API allows, so that
+// no snapshot makes a client's bucket refill in no time.
+const maxClientRate = 1_000_000
+
+// maxClientRules bounds the rate_limit rules of a route, as each new client takes an entry in the
+// table of every one (docs/03-connections.md, "Timeouts, keepalive and backoff").
+const maxClientRules = 4
+
 // ReservedHeaders are the headers a route cannot set: the gateway's forwarding headers and those
 // of the connection itself.
 var ReservedHeaders = []string{"Connection", "Content-Length", "Forwarded", "Host", "Keep-Alive", "Proxy-Connection", "Te",
@@ -149,6 +191,7 @@ var ReservedHeaders = []string{"Connection", "Content-Length", "Forwarded", "Hos
 type Applier struct {
 	served   Served
 	assign   *assignment
+	limits   Limits
 	revision atomic.Pointer[agentv1.Revision]
 }
 
@@ -167,6 +210,7 @@ type Served struct {
 	HTTP         *HTTPRoutes
 	Certificates *Certificates
 	Pages        *Pages
+	WSS          *WSSHostname
 	Sessions     *Sessions
 	// DrainPeriod is how long a disabled gateway keeps its streams; 0 is DrainPeriod.
 	DrainPeriod time.Duration
@@ -217,6 +261,48 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			ports[proto][p] = id
 		}
 	}
+	// CONNECT listeners: the first route of each port, and the routes of each authority on it.
+	listeners, authorities := map[uint32]*agentv1.GatewayTCPRoute{}, map[string]string{}
+	connectRoute := func(id string, r *agentv1.GatewayTCPRoute) {
+		hc := r.GetHttpConnect()
+		if first, ok := listeners[r.GetPort()]; ok {
+			if f := first.GetHttpConnect(); connectAuthOf(f.GetAuth()) != connectAuthOf(hc.GetAuth()) || f.GetHostname() != hc.GetHostname() {
+				bad(id, "CONNECT port %d with another mode or hostname than the other routes of the port", r.GetPort())
+			} else if f.GetOrgId() != hc.GetOrgId() {
+				bad(id, "CONNECT port %d of another org than the other routes of the port", r.GetPort())
+			}
+		} else {
+			port(id, "TCP", r.GetPort())
+			listeners[r.GetPort()] = r
+		}
+		switch mode := connectAuthOf(hc.GetAuth()); {
+		case mode == "":
+			bad(id, "CONNECT authentication mode %v", hc.GetAuth())
+		case mode == ConnectTLSBasic:
+			if n, err := domains.Normalize(hc.GetHostname(), false); err != nil || n != hc.GetHostname() {
+				bad(id, "the CONNECT listener's hostname %q is not normalised", hc.GetHostname())
+			}
+		case hc.GetHostname() != "":
+			bad(id, "a CONNECT hostname without TLS")
+		}
+		if len(hc.GetAuthorities()) == 0 {
+			bad(id, "a CONNECT route without authorities")
+		}
+		if hc.GetOrgId() == "" {
+			bad(id, "a CONNECT route without an org")
+		}
+		for _, a := range hc.GetAuthorities() {
+			key := strconv.Itoa(int(r.GetPort())) + " " + a
+			switch {
+			case !authorityHostRe.MatchString(a):
+				bad(id, "CONNECT authority %q is not a lower-case host name", a)
+			case authorities[key] != "":
+				bad(id, "CONNECT authority %s is also a route of %s", a, authorities[key])
+			default:
+				authorities[key] = id
+			}
+		}
+	}
 	hostnames := map[string]string{} // passthrough hostnames, and http ones with their path prefix
 	hostname := func(id, h string) bool {
 		if n, err := domains.Normalize(h, true); err != nil || n != h {
@@ -231,9 +317,18 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 		if _, err := AccessOf(accessOf(res)); err != nil {
 			bad(id, "access rules: %v", err)
 		}
+		if n := len(accessOf(res).GetRateLimits()); n > maxClientRules {
+			bad(id, "%d rate_limit rules, more than %d", n, maxClientRules)
+		}
+		for _, rl := range accessOf(res).GetRateLimits() {
+			if rl.GetPerSecond() == 0 || rl.GetPerSecond() > maxClientRate || rl.GetBurst() > maxClientRate {
+				bad(id, "rate_limit rule of policy %s: %d a second, %d at once, beyond 1 to %d", rl.GetPolicyId(), rl.GetPerSecond(),
+					rl.GetBurst(), maxClientRate)
+			}
+		}
 		if ba := accessOf(res).GetBasicAuth(); len(ba) > 0 {
-			if res.GetGatewayHttpRoute() == nil {
-				bad(id, "basic auth on a route that is not http")
+			if res.GetGatewayHttpRoute() == nil && !basicConnect(res.GetGatewayTcpRoute().GetHttpConnect()) {
+				bad(id, "basic auth on a route that is not http or a CONNECT route in a basic mode")
 			}
 			if _, err := basicAuthOf(ba); err != nil {
 				bad(id, "basic auth: %v", err)
@@ -248,6 +343,8 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			}
 		}
 		switch {
+		case res.GetGatewayTcpRoute().GetHttpConnect() != nil:
+			connectRoute(id, res.GetGatewayTcpRoute())
 		case res.GetGatewayTcpRoute() != nil:
 			port(id, "TCP", res.GetGatewayTcpRoute().GetPort())
 		case res.GetGatewayUdpRoute() != nil:
@@ -365,6 +462,10 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 			if v := c.GetValue(); v == "" || len(v) > 64 || strings.Trim(v, "abcdefghijklmnopqrstuvwxyz234567") != "" {
 				bad(id, "a challenge value that is not lower-case base32")
 			}
+		case res.GetGatewayWss() != nil:
+			if n, err := domains.Normalize(res.GetGatewayWss().GetHostname(), false); err != nil || n != res.GetGatewayWss().GetHostname() {
+				bad(id, "WSS hostname %q is not normalised", res.GetGatewayWss().GetHostname())
+			}
 		case res.GetGatewayDrain() != nil:
 		case res.GetGatewayPage() != nil:
 			p := res.GetGatewayPage()
@@ -422,25 +523,37 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		pages       []PageRef
 		tokens      = map[string]DomainToken{}
 		disabled    bool
+		wss         string
 	)
 	for _, res := range snap.GetResources() {
 		access, _ := AccessOf(accessOf(res)) // Validate refused any that does not parse
+		// Every route keeps its limit state, also without limits, so that a limit set later counts
+		// the connections already open.
+		var limit *RouteLimit
+		if l, ok := limitsOf(res); ok {
+			limit = a.limits.Set(res.GetId(), routeLimitsOf(l, accessOf(res).GetRateLimits()))
+		}
 		switch {
 		case res.GetGatewayTcpRoute() != nil:
 			r := res.GetGatewayTcpRoute()
-			tcp = append(tcp, TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
-				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access})
+			tr := TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
+				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access, Limit: limit}
+			if hc := r.GetHttpConnect(); hc != nil {
+				tr.Connect = &Connect{Org: hc.GetOrgId(), Authorities: hc.GetAuthorities(), Mode: connectAuthOf(hc.GetAuth()), Hostname: hc.GetHostname()}
+				tr.Connect.BasicAuth, _ = basicAuthOf(r.GetAccess().GetBasicAuth()) // Validate refused any that does not parse
+			}
+			tcp = append(tcp, tr)
 		case res.GetGatewayUdpRoute() != nil:
 			r := res.GetGatewayUdpRoute()
 			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
-				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access})
+				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access, Limit: limit})
 		case res.GetGatewayTcpUdpRoute() != nil:
 			// A tcp route and a udp route with the route's ID, on one port number.
 			r := res.GetGatewayTcpUdpRoute()
 			tcp = append(tcp, TCPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
-				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access})
+				IdleTimeout: time.Duration(r.GetIdleTimeoutSeconds()) * time.Second, Access: access, Limit: limit})
 			udp = append(udp, UDPRoute{ID: res.GetId(), Port: uint16(r.GetPort()), //nolint:gosec // G115: Validate bounds the port
-				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access})
+				FlowIdle: time.Duration(r.GetFlowIdleTimeoutSeconds()) * time.Second, Access: access, Limit: limit})
 		case res.GetGatewayHttpRoute() != nil:
 			r := res.GetGatewayHttpRoute()
 			hr := HTTPRoute{ID: res.GetId(), Upstream: r.GetUpstreamProtocol(), WebSocket: r.GetWebsocket(),
@@ -448,7 +561,8 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 				Port80: r.GetPort80(), HSTS: int(r.GetHstsMaxAgeSeconds()), Access: access, Maintenance: r.GetMaintenance(),
 				MaintenanceMessage: r.GetMaintenanceMessage(), HeaderMatches: headermatch.Canonical(headerMatchesOf(r)),
 				UpstreamHeaderTimeout: time.Duration(r.GetUpstreamResponseHeaderTimeoutSeconds()) * time.Second,
-				UpstreamIdleTimeout:   time.Duration(r.GetUpstreamIdleTimeoutSeconds()) * time.Second}
+				UpstreamIdleTimeout:   time.Duration(r.GetUpstreamIdleTimeoutSeconds()) * time.Second,
+				Limit:                 limit}
 			hr.BasicAuth, _ = basicAuthOf(r.GetAccess().GetBasicAuth())             // Validate refused any that does not parse
 			hr.RequireHeader, _ = requireHeaderOf(r.GetAccess().GetRequireHeader()) // and these too
 			for _, h := range r.GetRequestHeaders() {
@@ -492,12 +606,15 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			c := res.GetGatewayDomainChallenge()
 			tokens[res.GetId()] = DomainToken{FQDN: c.GetFqdn(), Value: c.GetValue()}
 			continue
+		case res.GetGatewayWss() != nil:
+			wss = res.GetGatewayWss().GetHostname()
+			continue // serves no route of its own
 		case res.GetGatewayDrain() != nil:
 			disabled = true
 			continue
 		case res.GetGatewayPassthroughRoute() != nil:
 			p := res.GetGatewayPassthroughRoute()
-			passthrough = append(passthrough, PassthroughRoute{ID: res.GetId(), Hostnames: p.GetHostnames(), Access: access})
+			passthrough = append(passthrough, PassthroughRoute{ID: res.GetId(), Hostnames: p.GetHostnames(), Access: access, Limit: limit})
 		}
 		connectors, ranked := connectorsOf(res)
 		next.routes[res.GetId()] = rankOf(connectors, ranked)
@@ -532,6 +649,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		keep[id] = true
 	}
 	s.Sessions.metrics().retain(keep)
+	a.limits.Retain(keep)
 	var status []*agentv1.ResourceStatus
 	if s.TCP != nil {
 		status = append(status, s.TCP.Apply(tcp)...)
@@ -547,6 +665,9 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 	}
 	if s.Pages != nil {
 		status = append(status, s.Pages.Apply(ctx, pages)...)
+	}
+	if s.WSS != nil {
+		s.WSS.Set(wss)
 	}
 	if s.HTTP != nil {
 		s.HTTP.Apply(httpRoutes)

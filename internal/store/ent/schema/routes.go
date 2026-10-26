@@ -130,7 +130,7 @@ func (Route) Fields() []ent.Field {
 		field.Enum("type").Values("http", "tcp", "udp", "tcp_udp", "tls_passthrough").Immutable(),
 		field.String("gateway_group_id").NotEmpty().Immutable(),
 		field.Bool("enabled").Default(true),
-		field.Enum("transport").Values("auto", "quic", "h2").Optional().Nillable(),
+		field.Enum("transport").Values("auto", "quic", "h2", "wss").Optional().Nillable(),
 		field.String("description").Default(""),
 		field.JSON("labels", map[string]string{}).Optional(),
 		field.Time("created_at").Immutable().Default(time.Now),
@@ -161,11 +161,14 @@ func (RouteTCP) Annotations() []schema.Annotation {
 }
 
 // Fields of a tcp route. idle_timeout closes a connection without traffic for that long; 0 never.
+// A route in plain mode has a port allocation of its own; one in http_connect mode has none and
+// is on a CONNECT listener instead (docs/03-connections.md, "HTTP CONNECT routes", D130).
 func (RouteTCP) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("route_id").NotEmpty().Unique().Immutable(),
-		field.String("port_allocation_id").NotEmpty().Unique(),
-		field.Enum("listener_mode").Values("plain", "http_connect").Default("plain"),
+		field.String("port_allocation_id").Optional().Nillable().Unique(),
+		field.Enum("listener_mode").Values("plain", "http_connect").Default("plain").Immutable(),
+		field.String("connect_listener_id").Optional().Nillable(),
 		field.Int("idle_timeout_seconds").NonNegative().Default(3600),
 	}
 }
@@ -174,14 +177,91 @@ func (RouteTCP) Fields() []ent.Field {
 func (RouteTCP) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("route", Route.Type).Field("route_id").Unique().Required().Immutable(),
-		edge.To("port", PortAllocation.Type).Field("port_allocation_id").Unique().Required(),
+		edge.To("port", PortAllocation.Type).Field("port_allocation_id").Unique(),
+		edge.To("listener", ConnectListener.Type).Field("connect_listener_id").Unique(),
 	}
 }
 
-// Indexes: one row per route and one route per port allocation. The fields' Unique alone does not
-// make the migration generator emit an index.
+// Indexes: one row per route and one route per port allocation, and the routes of a CONNECT
+// listener. The fields' Unique alone does not make the migration generator emit an index.
 func (RouteTCP) Indexes() []ent.Index {
-	return []ent.Index{index.Fields("route_id").Unique(), index.Fields("port_allocation_id").Unique()}
+	return []ent.Index{index.Fields("route_id").Unique(), index.Fields("port_allocation_id").Unique(), index.Fields("connect_listener_id")}
+}
+
+// ConnectListener is a CONNECT listener: one TCP port of one org in a gateway group, which its
+// tcp routes in http_connect mode share, with their authentication mode (D130).
+type ConnectListener struct{ ent.Schema }
+
+// Mixin makes CONNECT listeners org-owned.
+func (ConnectListener) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (ConnectListener) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "connect_listeners"}}
+}
+
+// Fields of a CONNECT listener: hostname, the verified domain it lies under, and certificate_id, a
+// certificate that covers it, belong to the mode tls_basic only.
+func (ConnectListener) Fields() []ent.Field {
+	return []ent.Field{
+		idField("cl"),
+		field.String("gateway_group_id").NotEmpty().Immutable(),
+		field.String("port_allocation_id").NotEmpty().Unique().Immutable(),
+		field.Enum("auth_mode").Values("none", "tls_basic", "plain_basic").Immutable(),
+		field.String("hostname").MaxLen(253).Default("").Immutable(),
+		field.String("domain_id").Optional().Nillable().Immutable(),
+		field.String("certificate_id").Optional().Nillable(),
+	}
+}
+
+// Edges of a CONNECT listener: its port and its certificate, of the same org.
+func (ConnectListener) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("port", PortAllocation.Type).Field("port_allocation_id").Unique().Required().Immutable(),
+		edge.To("certificate", Certificate.Type).Field("certificate_id").Unique(),
+		edge.To("domain", Domain.Type).Field("domain_id").Unique().Immutable(),
+		edge.From("routes", RouteTCP.Type).Ref("listener"),
+	}
+}
+
+// Indexes: one listener per port allocation; a group's listeners, and a certificate's.
+func (ConnectListener) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("port_allocation_id").Unique(), index.Fields("gateway_group_id"), index.Fields("certificate_id"),
+		index.Fields("domain_id")}
+}
+
+// ConnectAuthority is a host name that chooses a route on its CONNECT listener; it is unique on
+// the listener.
+type ConnectAuthority struct{ ent.Schema }
+
+// Mixin makes CONNECT authorities org-owned.
+func (ConnectAuthority) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (ConnectAuthority) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "connect_authorities"}}
+}
+
+// Fields of a CONNECT authority: a lower-case host name.
+func (ConnectAuthority) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("connect_listener_id").NotEmpty().Immutable(),
+		field.String("route_id").NotEmpty().Immutable(),
+		field.String("authority").NotEmpty().MaxLen(253).Immutable(),
+	}
+}
+
+// Edges of a CONNECT authority: its listener and its route, of the same org.
+func (ConnectAuthority) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("listener", ConnectListener.Type).Field("connect_listener_id").Unique().Required().Immutable(),
+		edge.To("route", Route.Type).Field("route_id").Unique().Required().Immutable(),
+	}
+}
+
+// Indexes: an authority once per listener; a route's authorities.
+func (ConnectAuthority) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("connect_listener_id", "authority").Unique(), index.Fields("route_id")}
 }
 
 // RouteUDP is the UDP part of a udp or tcp_udp route, one row per route.
@@ -460,4 +540,45 @@ func (RoutePolicy) Edges() []ent.Edge {
 func (RoutePolicy) Indexes() []ent.Index {
 	return []ent.Index{index.Fields("route_id", "policy_id").Unique(), index.Fields("route_id", "position").Unique(),
 		index.Fields("policy_id")}
+}
+
+// HealthCheck is a route's active health check (docs/06-data-model.md, "Routing"; D133): at most
+// one per route, which each connector runs against each of its targets of the route. A value of 0
+// takes the default of docs/03-connections.md, "Timeouts, keepalive and backoff".
+type HealthCheck struct{ ent.Schema }
+
+// Mixin makes it org-owned.
+func (HealthCheck) Mixin() []ent.Mixin { return []ent.Mixin{OrgMixin{}} }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (HealthCheck) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "health_checks"}}
+}
+
+// Fields of a health check: port 0 is the target's; http_path and the status range are for http
+// checks.
+func (HealthCheck) Fields() []ent.Field {
+	return []ent.Field{
+		idField("hck"),
+		field.String("route_id").NotEmpty().Unique().Immutable(),
+		field.Enum("type").Values("tcp", "http"),
+		field.Int("port").Range(0, 65535).Default(0),
+		field.String("http_path").MaxLen(1024).Default(""),
+		field.Int("expected_status_min").Range(0, 599).Default(0),
+		field.Int("expected_status_max").Range(0, 599).Default(0),
+		field.Int("interval_seconds").NonNegative().Default(0),
+		field.Int("timeout_seconds").NonNegative().Default(0),
+		field.Int("unhealthy_threshold").NonNegative().Default(0),
+		field.Int("healthy_threshold").NonNegative().Default(0),
+	}
+}
+
+// Edges of a health check.
+func (HealthCheck) Edges() []ent.Edge {
+	return []ent.Edge{edge.To("route", Route.Type).Field("route_id").Unique().Required().Immutable()}
+}
+
+// Indexes of a health check: one per route.
+func (HealthCheck) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("route_id").Unique()}
 }

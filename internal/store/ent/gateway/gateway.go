@@ -41,6 +41,8 @@ const (
 	FieldCreatedAt = "created_at"
 	// FieldDecommissionedAt holds the string denoting the decommissioned_at field in the database.
 	FieldDecommissionedAt = "decommissioned_at"
+	// FieldWssHostname holds the string denoting the wss_hostname field in the database.
+	FieldWssHostname = "wss_hostname"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
 	EdgeGroup = "group"
 	// Table holds the table name of the gateway in the database.
@@ -70,6 +72,7 @@ var Columns = []string{
 	FieldBuiltIn,
 	FieldCreatedAt,
 	FieldDecommissionedAt,
+	FieldWssHostname,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -183,6 +186,11 @@ func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByDecommissionedAt orders the results by the decommissioned_at field.
 func ByDecommissionedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDecommissionedAt, opts...).ToFunc()
+}
+
+// ByWssHostname orders the results by the wss_hostname field.
+func ByWssHostname(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWssHostname, opts...).ToFunc()
 }
 
 // ByGroupField orders the results by group field.

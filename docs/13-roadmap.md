@@ -169,8 +169,9 @@ Everything a team needs to run rpmgr in production.
 - Live logs; webhooks; audit export and external audit sinks.
 - Staged, signed over-the-air updates with rollback, for Linux script installs; update channels
   (`stable`, `prerelease`).
-- Socket hand-off: gateways and all-in-ones restart, for an upgrade too, without refusing a
-  visitor connection ([D127](14-open-decisions.md#project-and-process)).
+- Socket hand-off: gateways, all-in-ones and Linux connectors restart, for an upgrade too, without
+  refusing a visitor connection ([D127](14-open-decisions.md#project-and-process),
+  [D147](14-open-decisions.md#engineering)).
 - Optional connector-only build (D21).
 - Windows service and macOS launchd connectors, installed from the release download; no OTA for
   them before Phase 3 (D29, D99).
@@ -208,7 +209,8 @@ P2-M03 to P2-M05 ([D127](14-open-decisions.md#project-and-process)):
 14. importers;
 15. Windows and macOS connectors;
 16. the exit criteria;
-17. socket hand-off: gateways and all-in-ones restart without refusing a visitor connection.
+17. socket hand-off: gateways, all-in-ones and Linux connectors restart without refusing a visitor
+    connection.
 
 Each finished group of milestones is a minor release ([D100](14-open-decisions.md#project-and-process)),
 with a release milestone that holds its release issue:
@@ -294,6 +296,7 @@ a Phase 3 sketch is a plan, not an open question.
 | Terraform provider | Stable `rpmgr.v1` | |
 | ~~Socket hand-off on gateway restart~~ | — | Moved to Phase 2, P2-M17 ([D127](14-open-decisions.md#project-and-process)) |
 | More DNS providers; per-gateway public addresses with health-aware DNS records; DNS for gateway tunnel and WSS hostnames; Authenticated Origin Pulls | DNS automation (P2) | [15](15-dns.md), D22, D25 |
+| OTLP audit sink | Audit sinks (P2) | Moved from Phase 2 ([D141](14-open-decisions.md#engineering)); syslog over TLS, webhook and object storage cover Phase 2 |
 | Active connections view | — | |
 | OTA for Windows and macOS connectors | Windows and macOS connectors (P2) | Needs a root-equivalent updater per platform (D29) |
 | Helm chart | OCI images | [00](00-vision-and-scope.md#non-goals) |
@@ -313,7 +316,7 @@ implemented, and the result recorded in the PR.
 | VB-05 | ~~Tooling for cosign signatures, SLSA provenance and SBOM generation in the release pipeline~~ **Partly resolved** (2026-10-09, workflow `release`): syft 1.54.1 writes the SPDX JSON SBOM from the source tree, with the Go modules of `go.mod` and the npm packages of the web UI's lockfile that are not development dependencies, checked locally; `actions/attest-build-provenance` 4.2.2 records SLSA provenance and cosign (`sigstore/cosign-installer` 4.1.2) signs keylessly with the workflow's identity. Both need GitHub's OIDC token and are checked on the first release tag | [04](04-security.md#release-signing), [ADR-0013](adr/0013-signed-ota.md) |
 | VB-06 | ~~connect-query maturity with TanStack Query; fallback: thin hand-written hooks over generated clients~~ **Resolved** (2026-10-09): connect-query 2.3.1 calls the method descriptors that protoc-gen-es 2.16 generates, through TanStack Query 5.104, with typed requests and responses; the UI skeleton's overview uses it and is tested with Connect's router transport. The fallback is not needed | [08](08-software-stack.md#frontend), [ADR-0014](adr/0014-vite-react-spa.md) |
 | VB-07 | ~~CodeMirror 6 under the strict CSP (style nonces)~~ **Resolved** (2026-10-09): CodeMirror 6 (`@codemirror/view` 6.43.14) writes its styles into style elements and gives them the nonce set with `EditorView.cspNonce`. The UI reads the page's nonce from its `csp-nonce` meta element. Under the controller's CSP in Chromium (Playwright 1.63), the YAML view's styles apply with no CSP violation; without the nonce, the same browser test fails because they are blocked | [09](09-web-ui.md), [ADR-0014](adr/0014-vite-react-spa.md) |
-| VB-08 | Listening-socket hand-off across restarts of a gateway and of an all-in-one, between two processes on Linux (TCP straightforward; UDP/QUIC harder); Phase 2, verified by P2-M17's study slice ([D127](14-open-decisions.md#project-and-process)) | [05](05-features.md#operations) |
+| VB-08 | Listening-socket hand-off across restarts of a gateway and of an all-in-one, between two processes on Linux (TCP straightforward; UDP/QUIC harder); Phase 2, verified by P2-M17's study slice 17.2 under the rules S-1 to S-7 of [ADR-0022](adr/0022-socket-hand-off-by-re-exec.md#verification) ([D127](14-open-decisions.md#project-and-process), [D150](14-open-decisions.md#engineering)) | [05](05-features.md#operations) |
 | VB-09 | Cloudflare rate-limit scope: whether account-owned tokens have their own budget, and how a 429 caused by rpmgr affects the same user's dashboard and other tokens | [15](15-dns.md#batches-failures-and-the-rate-budget) |
 | VB-10 | Cloudflare record comments and batches: the marker round-trips unchanged; a batch patch can change the comment alone; which operation a failed batch reports; listing by comment | [15](15-dns.md#ownership-ledger) |
 | VB-11 | Cloudflare proxy: a proxied CNAME to a name in another Cloudflare account (error 1014 or not); proxied wildcards on all plans; request-size and timeout limits that affect routes; whether ACME HTTP-01 reaches the origin through the proxy | [15](15-dns.md#proxied-http-routes) |
@@ -327,6 +330,9 @@ implemented, and the result recorded in the PR.
 | VB-19 | ACME against Let's Encrypt staging and a real Cloudflare zone: HTTP-01 and TLS-ALPN-01 answered by real gateways from the internet (multi-perspective validation), DNS-01 through the real Cloudflare API with propagation, the marker comment and TXT removal; run sheet in `spikes/s6/README.md` on the tag `spike/s6` (D46). D46 placed it before the first release that issues ACME certificates, and D50 split off the HTTP-01/TLS-ALPN-01 part for v0.1.0. By D98, v0.1.0 is released without it, and all of VB-19 runs in one session before the first release with DNS-01 (Phase 2): the HTTP-01/TLS-ALPN-01 part with the product itself, on a public host the maintainer provides, by the run sheet [`test/vb19/README.md`](../test/vb19/README.md), whose `rehearse.sh` runs it locally against Pebble; then the DNS-01 part by the run sheet of S6 | [04](04-security.md#controller-certificates), [05](05-features.md#tls-and-domains), [08](08-software-stack.md#networking), [S6](spikes/S6.md) |
 | VB-20 | The benchmark matrix on the reference testbed (D30), before v1.0.0; until then the [T] targets are measured on GitHub-hosted runners and the release regression check is reported only (D49) | [12](12-testing-and-quality.md#benchmarks), [03](03-connections.md#targets-t) |
 | VB-21 | The WSS transport through a real corporate TLS-intercepting proxy (Phase 2, slice 4.12): the data session completes, carries traffic, and the proxy sees only the outer TLS; CI runs the same cell with mitmproxy only | [03](03-connections.md#transport-selection), [12](12-testing-and-quality.md#security-testing) |
+| VB-22 | ~~`buf breaking` in its FILE mode accepts `Open` on a new field number of `ControllerMessage` while 3 stays reserved, and refuses a reuse of 3 (Phase 2, slice 5.2)~~ **Resolved** (2026-10-25, slice 5.2): with buf v1.73.0 a new field `open_operation = 9` passes; dropping the reserved name `open` fails ("Previously present reserved name"), and so does reusing 3 ("reserved range [3] is missing values") [F buf v1.73.0 `buf breaking --against .git#ref=origin/main`, run 2026-10-25]; so the name `open` stays reserved too | [03](03-connections.md#control-session) |
+| VB-23 | The syslog sink against a real syslog server (rsyslog or syslog-ng) over TLS: RFC 5425 octet counting, the server's certificate checked, a reconnect without a gap (Phase 2, slice 5.20) | [04](04-security.md#audit-log) |
+| VB-24 | Conditional create (`If-None-Match: *`) and Object Lock in compliance mode on common S3-compatible stores (AWS S3, Cloudflare R2, Backblaze B2) and the SILO container CI uses: a second create refused with 412, a locked object neither overwritten nor deleted (Phase 2, slices 5.15, 5.16, 9.1) | [04](04-security.md#audit-log), [04](04-security.md#revocation-log) |
 
 ## Risks
 

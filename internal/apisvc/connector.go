@@ -150,7 +150,8 @@ func (c *Connectors) now() time.Time {
 
 // storeTransports are the store's transport policies by the API's; unspecified clears it.
 var storeTransports = map[rpmgrv1.DataTransport]connector.Transport{rpmgrv1.DataTransport_DATA_TRANSPORT_AUTO: connector.TransportAuto,
-	rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC: connector.TransportQuic, rpmgrv1.DataTransport_DATA_TRANSPORT_H2: connector.TransportH2}
+	rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC: connector.TransportQuic, rpmgrv1.DataTransport_DATA_TRANSPORT_H2: connector.TransportH2,
+	rpmgrv1.DataTransport_DATA_TRANSPORT_WSS: connector.TransportWss}
 
 // ListConnectors implements ConnectorService.
 func (c *Connectors) ListConnectors(ctx context.Context, req *connect.Request[rpmgrv1.ListConnectorsRequest]) (
@@ -233,8 +234,11 @@ func (c *Connectors) GetConnectorStatus(ctx context.Context, req *connect.Reques
 	for _, d := range ds {
 		cd := &rpmgrv1.ConnectorDataSession{GatewayId: d.GatewayID, Transport: rpmgrv1.DataTransport_DATA_TRANSPORT_H2,
 			EstablishTime: timestamppb.New(d.EstablishedAt), ReportTime: timestamppb.New(d.ReportedAt)}
-		if d.Transport == datasession.TransportQuic {
+		switch d.Transport {
+		case datasession.TransportQuic:
 			cd.Transport = rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC
+		case datasession.TransportWss:
+			cd.Transport = rpmgrv1.DataTransport_DATA_TRANSPORT_WSS
 		}
 		if d.RttMs > 0 {
 			cd.Rtt = durationpb.New(time.Duration(d.RttMs) * time.Millisecond)
@@ -293,7 +297,8 @@ func connectorOf(r *ent.Connector, s *ent.AgentSession, now time.Time) *rpmgrv1.
 		Session: agentSessionOf(s, now), CreateTime: timestamppb.New(r.CreatedAt), Etag: etagOf(r.Version), BuiltIn: r.BuiltIn}
 	if r.Transport != nil {
 		out.Transport = map[connector.Transport]rpmgrv1.DataTransport{connector.TransportAuto: rpmgrv1.DataTransport_DATA_TRANSPORT_AUTO,
-			connector.TransportQuic: rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC, connector.TransportH2: rpmgrv1.DataTransport_DATA_TRANSPORT_H2}[*r.Transport]
+			connector.TransportQuic: rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC, connector.TransportH2: rpmgrv1.DataTransport_DATA_TRANSPORT_H2,
+			connector.TransportWss: rpmgrv1.DataTransport_DATA_TRANSPORT_WSS}[*r.Transport]
 	}
 	if r.DecommissionedAt != nil {
 		out.DecommissionTime = timestamppb.New(*r.DecommissionedAt)

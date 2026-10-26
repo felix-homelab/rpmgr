@@ -47,20 +47,20 @@ flowchart LR
   GW --> GW1[Gateway groups] & GW2[Gateways] & GW3[Port pools]
   DC --> DC1[Domains & verification] & DC2[Certificates & ACME status] & DC3[DNS providers & zones] & DC4[DNS names]
   ORG --> ORG1[Members & roles] & ORG2[Invitations] & ORG3[API tokens] & ORG4[Service accounts] & ORG5[SSO & MFA policy] & ORG6[Webhooks - Phase 2]
-  SET --> SET1[Org settings] & SET2[Instance settings - Instance Admin] & SET4[PKI - Instance Admin] & SET5[Updates - Instance Admin] & SET3[Account]
+  SET --> SET1[Org settings] & SET2[Instance settings - Instance Admin] & SET4[PKI - Instance Admin] & SET5[Updates - Instance Admin] & SET6[Audit sinks and webhooks - Instance Admin, Phase 2] & SET3[Account]
   P3 --> P3a[Virtual networks] & P3b[Functions] & P3c[Shell - gated]
 ```
 
 | Area | Contents | Minimum role to view / change ([04](04-security.md#roles)) |
 |---|---|---|
-| **Overview** | Health of agents, sessions and certificates; routes not `ready`; pending, rejected or timed-out applies; expiring certificates and tokens; unverified domains; DNS conflicts, held DNS zones and expiring DNS-provider tokens; agents below `min_agent_version`; a traffic summary | Viewer |
+| **Overview** | The alerts that fire (Phase 2, [10](10-operations.md#suggested-alerts)); health of agents, sessions and certificates; routes not `ready`; pending, rejected or timed-out applies; expiring certificates and tokens; unverified domains; DNS conflicts, held DNS zones and expiring DNS-provider tokens; agents below `min_agent_version`; a traffic summary | Viewer |
 | **Routes** | List; create wizard per type (`http`, `tls_passthrough`, `tcp`, `udp`, `tcp_udp`); detail with targets, health checks, traffic, access policies, transport override (advanced), per-agent apply status, YAML, change history | Viewer / Operator |
 | **Private services** | Services, visitor grants, relay vs P2P state per grant | Viewer / Operator |
-| **Connectors** | List with status, version, transport, RTT, last seen; enroll dialog; detail with data and control sessions, served routes, local-policy status, transport override (`auto`, `quic`, `h2` or the instance default), live logs, version and staged upgrade | Viewer / Admin to enroll or revoke (Operator if the org allows it) |
-| **Gateways** | Gateway groups (region, public hostnames for route traffic, DNS target for managed DNS records, port pools), gateways (own tunnel endpoints — address/port and, for WSS, the gateway's own hostname — status, version, sessions, listeners), drain action. Connectors dial each gateway at its own tunnel endpoints; group-level DNS or anycast names are for public traffic only ([03](03-connections.md#establishment)) | Viewer / Admin |
+| **Connectors** | List with status, version, transport, RTT, last seen; enroll dialog; detail with data and control sessions, served routes, local-policy status, transport override (`auto`, `quic`, `h2`, `wss` or the instance default), live logs, version and staged upgrade | Viewer / Admin to enroll or revoke (Operator if the org allows it) |
+| **Gateways** | Gateway groups (region, public hostnames for route traffic, DNS target for managed DNS records, port pools), gateways (own tunnel endpoints — address/port and, for WSS, the gateway's own hostname — status, version, sessions, listeners, live logs (Phase 2)), drain action. Connectors dial each gateway at its own tunnel endpoints; group-level DNS or anycast names are for public traffic only ([03](03-connections.md#establishment)) | Viewer / Admin |
 | **Domains & certificates** | Domain claims with the verification flow (TXT record or HTTP token, a "check now" button, status), certificates with source (ACME/uploaded), SANs, expiry, last ACME error. Phase 2: DNS providers (connect, rotate token, status, token expiry), managed zones (import, gates, plan approval, records, conflicts, adopt and release) and DNS names ([15](15-dns.md)) | Viewer / Admin; foreign records of a zone: Admin |
 | **Access policies** | IP allow/deny lists, basic auth, OIDC forward-auth, rate limits; where each policy is used | Viewer / Operator |
-| **Audit log** | Searchable by actor, action, target and time; entry detail with the redacted diff; chain-verification status; export (step-up) | Admin |
+| **Audit log** | Searchable by actor, action, target and time; entry detail with the redacted diff; chain-verification status; export with proofs (step-up), and how to verify it offline with `rpmgr audit verify-export` (Phase 2) | Admin |
 | **Organisation** | Members and roles; invitations as copyable one-time links, also e-mailed when SMTP is configured; API tokens (personal tokens in Phase 1, service accounts and their tokens in Phase 2: list, create with mandatory expiry, revoke); SSO and MFA policy; Phase 2: webhooks (endpoints and delivery log) | Admin; SSO and MFA policy are Owner-only |
 | **Settings** | **Org settings**, and **instance settings** for the Instance Admin. Both are runtime settings stored in the database and editable here, with validation, a description and the default for each field. Boot settings (listen addresses, database DSN, KEK source) are shown read-only with the file they come from ([10](10-operations.md#configuration)). Instance settings include the default data-session transport ([03](03-connections.md#transport-selection)). Two instance-level pages: **PKI** (CA and intermediate status, intermediate rotation with step-up, leaf-certificate lifetime and grace period, password-hash profile, [04](04-security.md#pki-and-identity)) and **Updates** (release check, on by default; update channel; manifest upload for air-gapped installs; staged rollouts in Phase 2, [04](04-security.md#over-the-air-updates)). | Owner (org settings) / Instance Admin (instance settings, PKI, Updates) |
 | **Account** | Profile, password, MFA (TOTP, passkeys, recovery codes), active sessions with revoke, personal API tokens, theme and language | Any user |
@@ -266,10 +266,13 @@ flowchart LR
 ```
 ┌ Route: postgres (tcp)                      [Enabled ●━]  [Edit]  [YAML]  [⋯ Delete]   ┐
 │ Desired: enabled · gateway group eu · eu.example.net:25432   Observed: ▲ unavailable   │
+│          TCP health check, every 10 s                                                  │
 ├ Targets & health ─────────────────────────────────────────────────────────────────────┤
 │ Connector   Address          Weight  Health       Status                                │
-│ db-host-1   10.0.0.5:5432    100     tcp / 10 s   ▲ not_ready: blocked by local policy  │
+│ db-host-1   10.0.0.5:5432    100     —            ▲ not_ready: blocked by local policy  │
 │             Run on db-host-1:  sudo rpmgr policy allow-target 10.0.0.5:5432   [Copy]    │
+│ db-host-2   10.0.0.6:5432    100     ▲ unhealthy  ▲ its health checks fail              │
+│             Last check: dial tcp 10.0.0.6:5432: connect: connection refused             │
 ├ Apply status (revision 1040) ─────────────────────────────────────────────────────────┤
 │ gw-eu-1 ✓ applied    gw-eu-2 ✓ applied    db-host-1 ✓ applied (target not_ready)      │
 ├ Traffic (24 h) ──────────────────────────── Policies ──────────────────────────────────┤
@@ -697,6 +700,30 @@ flowchart LR
   - **Waiting entries:** the alert "not yet off-host", with how many entries have waited since
     when, once an entry has waited more than 5 minutes.
   - **Otherwise:** nothing.
+
+### Live logs, webhooks and audit sinks (Phase 2)
+
+- **Live logs** on a connector's and a gateway's page, for `agents.logs`
+  ([04](04-security.md#roles)); hidden without it. Text only, in a monospace panel: a level and a
+  text filter, **Raise to debug** (audited; lasts until the panel closes or the operation ends,
+  [D140](14-open-decisions.md#engineering)), **Pause** (the panel stops scrolling, lines keep
+  arriving), and a marker where the agent dropped or cut lines. When the operation ends at its
+  deadline, the panel says so and offers **Continue**, which opens a new one. An offline agent, or
+  one whose release has no live logs, shows why instead.
+- **Organisation → Webhooks**: the endpoints with their URL, event types, state (enabled,
+  disabled by a person, **disabled: failing** with since when) and last delivery; create and edit
+  in a form; **Rotate secret** and creation show the secret once, with **Copy**
+  ([04](04-security.md#webhooks-and-the-egress-guard-phase-2)); **Send test event**; the
+  deliveries of an endpoint with their attempts, status codes, errors and next retry. A URL the
+  egress guard refuses for a private range names the range and, for an Instance Admin, offers to
+  list it.
+- **Settings → Audit sinks and webhooks** (Instance Admin): the audit sinks, each with its kind,
+  whether entries go along, its last success, last error and backlog, secrets write-only; the
+  instance webhooks as above; and the private ranges webhook receivers may use.
+- **Org settings**: alert e-mails on or off and the alert types the org gets
+  ([D139](14-open-decisions.md#engineering)).
+- **Audit log**: **Export** asks for a step-up and downloads the chain as JSON Lines; the dialog
+  shows the `rpmgr audit verify-export` command with the CA pin to verify it offline.
 
 ### Enroll connector dialog
 

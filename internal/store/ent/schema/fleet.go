@@ -54,6 +54,10 @@ func (Gateway) Fields() []ent.Field {
 		field.Bool("built_in").Default(false),
 		field.Time("created_at").Immutable().Default(time.Now),
 		field.Time("decommissioned_at").Optional().Nillable(),
+		// wss_hostname is the public name connectors reach this gateway's WSS transport at, under a
+		// verified domain of the gateway's org, with a certificate from ACME or an upload
+		// (docs/03-connections.md, "Transport selection"); unset offers no WSS.
+		field.String("wss_hostname").Optional().Nillable(),
 	}
 }
 
@@ -72,6 +76,8 @@ func (Gateway) Indexes() []ent.Index {
 			Annotations(entsql.IndexWhere("decommissioned_at IS NULL")),
 		index.Fields("gateway_group_id", "slot").Unique().
 			Annotations(entsql.IndexWhere("decommissioned_at IS NULL")),
+		// A WSS hostname names one gateway of the instance.
+		index.Fields("wss_hostname").Unique(),
 	}
 }
 
@@ -103,7 +109,7 @@ func (Connector) Fields() []ent.Field {
 		field.String("pubkey_sha256").NotEmpty(),
 		field.Bool("ephemeral").Default(false).Immutable(),
 		field.Bool("enabled").Default(true),
-		field.Enum("transport").Values("auto", "quic", "h2").Optional().Nillable(),
+		field.Enum("transport").Values("auto", "quic", "h2", "wss").Optional().Nillable(),
 		field.String("desired_version").Optional(),
 		// built_in marks all-in-one's own connector, as Gateway's built_in does; it comes from the
 		// enrollment token.

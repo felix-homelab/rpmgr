@@ -19,7 +19,7 @@ import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { reasonOf } from "@/lib/errors";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
 import { Conflict, onTop } from "@/route-form/conflict";
-import { fieldProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
+import { fieldAt, fieldProblems, maskOf, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
 import { FieldGrid, FormField } from "@/route-form/form-field";
 import { PreviewPanel } from "@/route-form/preview";
 import { routeType, useAgentNames } from "@/routes-data";
@@ -48,7 +48,7 @@ export function RouteEdit() {
 export function updateRequest(base: Route, values: RouteValues) {
   return create(UpdateRouteRequestSchema, {
     route: routeWith(base, values),
-    updateMask: { paths: routeFields(base).map((f) => f.path) },
+    updateMask: { paths: maskOf(base) },
     etag: base.etag,
   });
 }
@@ -62,10 +62,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
   const preview = useMutation(RouteService.method.previewRoute);
   const [previewed, setPreviewed] = useState<PreviewRouteResponse>();
   const fields = routeFields(base);
-  const fieldOf: FieldOf<RouteValues> = (path) => {
-    const p = path.replace(/^route\./, "");
-    return fields.find((f) => p === f.path || p.startsWith(`${f.path}[`) || p.startsWith(`${f.path}.`))?.key;
-  };
+  const fieldOf: FieldOf<RouteValues> = (path) => fieldAt(base, path);
   const checks = protoResolver(UpdateRouteRequestSchema, (v: RouteValues) => updateRequest(base, v), fieldOf);
   const resolver: Resolver<RouteValues> = (values, ctx, opts) => {
     const bad = Object.entries(fieldProblems(base, values));
@@ -77,7 +74,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
   const form = useForm<RouteValues>({ defaultValues: initial ?? valuesOf(base), resolver });
   const transport = useTransport();
   const [conflict, setConflict] = useState<{ theirs: Route; mine: RouteValues }>();
-  const [write, setWrite] = useState<{ revision?: Revision; status?: ApplyStatus }>();
+  const [write, setWrite] = useState<{ revision?: Revision; status?: ApplyStatus; warnings?: string[] }>();
   const [other, setOther] = useState<string[]>([]);
   const live = useLiveApplyStatus(org?.orgId ?? "", write?.revision, write?.status);
 
@@ -97,7 +94,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
     setOther([]);
     try {
       const res = await update.mutateAsync(updateRequest(base, values));
-      setWrite({ revision: res.revision, status: res.applyStatus });
+      setWrite({ revision: res.revision, status: res.applyStatus, warnings: res.warnings });
       await queryClient.invalidateQueries();
     } catch (err) {
       const e = ConnectError.from(err);
@@ -126,6 +123,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
       </div>
       {live ? (
         <>
+          {write?.warnings?.map((m) => <Alert key={m}>{t("routeForm.warning", { message: m })}</Alert>)}
           <ApplyStatusView status={live} revision={write?.revision} name={(id) => names.data?.get(id) || id} />
           <Button asChild className="justify-self-start">
             <Link to="/routes/$routeId" params={{ routeId: base.id }}>{t("routeForm.back")}</Link>
@@ -137,7 +135,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
             <Conflict base={base} mine={conflict.mine} theirs={conflict.theirs}
               onTop={() => onRestart(conflict.theirs, onTop(base, conflict.mine, conflict.theirs))} onDiscard={() => onRestart(conflict.theirs)} />
           )}
-          <FieldGrid>{fields.map((f) => <FormField key={f.key} field={f} form={form} />)}</FieldGrid>
+          <FieldGrid>{fields.map((f) => <FormField key={f.key} field={f} form={form} editing />)}</FieldGrid>
           {other.map((m) => <Alert key={m}>{m}</Alert>)}
           {previewed && <PreviewPanel preview={previewed} name={(id) => names.data?.get(id) || id} />}
           <div className="flex flex-wrap gap-2 border-t border-border pt-4">

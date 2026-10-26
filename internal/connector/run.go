@@ -34,7 +34,7 @@ import (
 // Capabilities are what this connector version implements (docs/03-connections.md, "Versioning
 // and capabilities").
 var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapProxyProtoV1,
-	agentproto.CapProxyProtoV2, agentproto.CapProbeTarget}
+	agentproto.CapProxyProtoV2, agentproto.CapProbeTarget, agentproto.CapHealthActive, agentproto.CapTunnelWSS}
 
 // RunOptions configure Run.
 type RunOptions struct {
@@ -43,6 +43,10 @@ type RunOptions struct {
 	Getenv  func(string) string // os.Getenv; for the proxy variables
 	Now     func() time.Time
 	Logger  *slog.Logger
+	// LiveLog, if set, is Logger's live log: the agent then runs live-log operations from it
+	// (docs/03-connections.md, "Control session"). The built-in agents of an all-in-one have
+	// none, as their log is the controller's.
+	LiveLog *telemetry.LiveLog
 	// Listening, if set, is called once the connector runs.
 	Listening func()
 	// ControlDial connects the control plane to a controller endpoint; nil dials TCP.
@@ -112,6 +116,11 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	targets = NewTargets(TargetsOptions{Policy: watcher.Current, Logger: o.Logger, UDPMetrics: udpMetrics, Metrics: metrics,
+		OnTargetHealth: func(s []*agentv1.ResourceStatus) {
+			if ctl != nil {
+				ctl.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{Readiness: s}}})
+			}
+		},
 		OnHealth: func(h *tunnelv1.RouteHealth) {
 			sessions.SetReady(h)
 			if ctl != nil { // a change before the control plane exists goes out with its first session
@@ -119,6 +128,7 @@ func Run(ctx context.Context, o RunOptions) error {
 					Readiness: []*agentv1.ResourceStatus{{ResourceId: h.GetRouteId(), Reason: h.GetReason(), Detail: h.GetDetail()}}}}})
 			}
 		}})
+	defer targets.Close() // the health checks
 	// The UDP socket of QUIC sessions; all-in-one's connector has none, so it opens no port
 	// (ADR-0019): it reaches its own gateway in memory and other gateways of its group over h2.
 	var tr *quic.Transport
@@ -149,7 +159,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		update = &agent.UpdateOptions{Dir: filepath.Join(cfg.StateDir, "update"), Policy: watcher.Current, Variant: version.Variant}
 	}
 	ctl, err = agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
-		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, Update: update,
+		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, LiveLog: o.LiveLog, Update: update,
 		Dial: o.ControlDial, Fallback: sessions.ControlConn, OnProbeTarget: targets.Probe,
 		SessionStatus: func() *agentv1.Status {
 			return &agentv1.Status{Readiness: applier.Readiness(), ReadinessComplete: true}

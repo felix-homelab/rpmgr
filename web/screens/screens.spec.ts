@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { fakeUpdates } from "../e2e/rollout-fakes";
+import { fakeUpdates, type FakeRollout } from "../e2e/rollout-fakes";
 
 // The screenshots of the user guide, one PNG per page in SCREENS_OUT (docs/guide/images/web),
 // taken against the instance that test/webe2e's TestScreens seeded: the org "Example Lab" with its
@@ -121,6 +121,11 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await page.getByRole("button", { name: "Close" }).click();
   await page.getByRole("link", { name: "wiki", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Route wiki (HTTP)", level: 1 })).toBeVisible();
+  // The health check's first round marks the unreachable target unhealthy.
+  await expect(async () => {
+    await page.reload();
+    await expect(page.getByText("unhealthy", { exact: true })).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 60_000 });
   await page.waitForTimeout(1200);
   await shot(page, "route-detail", true);
   const wiki = page.url().split("/routes/")[1]!;
@@ -137,6 +142,16 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await page.getByLabel("Hostnames").fill("photos.example.com");
   await page.waitForTimeout(800);
   await shot(page, "route-new", true);
+
+  // A new CONNECT route: a tcp route on a CONNECT listener, with its names and proxy credentials.
+  await page.goto("/routes/new");
+  await page.getByRole("radio", { name: "TCP", exact: true }).check();
+  await page.getByLabel("Name", { exact: true }).fill("bastion");
+  await page.getByLabel("Listener", { exact: true }).selectOption({ label: "A CONNECT listener shared with other routes (HTTP proxy)" });
+  await page.getByLabel("CONNECT names").fill("bastion.internal\njump");
+  await page.getByLabel("Proxy credentials").selectOption({ label: "Basic auth in the clear" });
+  await page.waitForTimeout(800);
+  await shot(page, "route-new-connect", true);
 
   // A save that meets a newer version shows the conflict.
   await page.goto(`/routes/${wiki}/edit`);
@@ -248,13 +263,16 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await shot(page, "mobile-menu");
 });
 
-// The rollout pictures: the start dialog's two steps and a rollout in progress, running and paused.
-// The instance has no signed release to roll out, so fakeUpdates answers the release, rollout and
-// agent calls with a made-up fleet of Example Lab. The check- shots, in dark and at a phone's
-// width, are taken only when named, to look at the layout; the guide does not show them.
+// The rollout pictures: an easy rollout's start dialog and card, running and paused, the Update
+// buttons of the connectors list, then, in the advanced mode, the staged rollout's two steps and
+// card. The instance has no signed release to roll out, so fakeUpdates answers the release,
+// rollout and agent calls with a made-up fleet of Example Lab. The check- shots, in dark and at a
+// phone's width, are taken only when named, to look at the layout; the guide does not show them.
 test("screenshots of a rollout", async ({ page }) => {
-  let state: "none" | "running" | "paused" = "none";
-  await fakeUpdates(page, () => state);
+  test.setTimeout(180_000);
+  let state: FakeRollout = "none";
+  let mode: "easy" | "advanced" = "easy";
+  await fakeUpdates(page, () => state, () => mode);
   await signIn(page, "ada@example.com");
   await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
   for (const [suffix, width, scheme] of [["", 1440, "light"], ["-dark", 1440, "dark"], ["-narrow", 400, "light"], ["-narrow-dark", 400, "dark"]] as const) {
@@ -266,6 +284,30 @@ test("screenshots of a rollout", async ({ page }) => {
     const releasesCard = page.getByRole("region", { name: "Releases" });
     await expect(releasesCard.getByRole("status")).toHaveText(/^Last checked/);
     await part(page, releasesCard, named("release-check"), !!suffix);
+    await page.getByRole("button", { name: "Roll out…" }).first().click();
+    const easy = page.getByRole("dialog", { name: "Roll out 0.2.0" });
+    for (const name of ["db-host-1", "cam-01", "nas-01", "gw-eu-1"]) {
+      await easy.getByRole("checkbox", { name: new RegExp(`^${name}`) }).check();
+    }
+    await part(page, easy, named("rollout-easy-start"), !!suffix);
+    await page.keyboard.press("Escape");
+    for (const s of ["easy", "easy-paused"] as const) {
+      state = s;
+      await page.reload();
+      const card = page.getByRole("region", { name: "Rollout" });
+      await expect(card.getByText("Now", { exact: true })).toBeVisible();
+      await part(page, card, named(s === "easy" ? "rollout-easy" : "rollout-easy-paused"), !!suffix);
+    }
+    mode = "easy";
+    state = "easy";
+    await page.goto("/connectors");
+    const list = page.getByRole("table");
+    await expect(list.getByRole("button", { name: "Update to 0.2.0" }).first()).toBeVisible();
+    await part(page, list, named("connectors-update"), !!suffix);
+    state = "none";
+    mode = "advanced";
+    await page.goto("/settings/updates");
+    await expect(page.getByLabel("Rollouts").locator("option:checked")).toHaveText("Advanced: test agents, then stages you approve");
     await page.getByRole("button", { name: "Roll out…" }).first().click();
     const dialog = page.getByRole("dialog", { name: "Roll out 0.2.0" });
     await expect(dialog.getByRole("checkbox", { name: /^gw-eu-1/ })).toBeChecked();
@@ -281,6 +323,8 @@ test("screenshots of a rollout", async ({ page }) => {
       await expect(card.getByRole("list", { name: "Stages" })).toBeVisible();
       await part(page, card, named(s === "running" ? "rollout" : "rollout-paused"), !!suffix);
     }
+    mode = "easy";
+    state = "none";
   }
 });
 

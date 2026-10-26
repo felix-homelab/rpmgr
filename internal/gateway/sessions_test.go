@@ -144,6 +144,18 @@ func (c *connector) health(t *testing.T, route string, ready bool) {
 	}
 }
 
+// healthAt reports a route ready at the priorities with a healthy target, and waits until the
+// gateway has read it.
+func (c *connector) healthAt(t *testing.T, route string, prios ...uint32) {
+	t.Helper()
+	c.send(t, &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_RouteHealth{RouteHealth: &tunnelv1.RouteHealth{RouteId: route, Ready: true,
+		ReadyPriorities: prios}}})
+	c.send(t, &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Ping{Ping: &tunnelv1.Ping{Seq: 98}}})
+	if msg := <-c.msgs; msg.GetPong().GetSeq() != 98 {
+		t.Fatalf("got %v, want Pong{98}", msg)
+	}
+}
+
 // serveErr waits for Serve to return.
 func (c *connector) serveErr(t *testing.T) error {
 	t.Helper()
@@ -866,9 +878,22 @@ func TestSessions_Fallback(t *testing.T) {
 		}
 		return st, code
 	}
+	// rank sets the route's entries, after the snapshot without them made the gateway forget what
+	// passive health learnt of them, so each step starts afresh.
+	rank := func(entries ...gateway.RouteConnector) {
+		a.mu.Lock()
+		a.ranked["r1"] = nil
+		a.mu.Unlock()
+		m.Recheck()
+		a.mu.Lock()
+		a.ranked["r1"] = entries
+		a.mu.Unlock()
+	}
 
-	// Priority 0's connector refuses on both its sessions: each stream tries it once, then priority 5.
+	// Priority 0's connector refuses on both its sessions: each stream tries it once, then priority
+	// 5, until passive health passes over it after its third refusal in a row.
 	for _, code := range []tunnelv1.ResultCode{tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED, tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_TIMEOUT} {
+		rank(gateway.RouteConnector{ID: cid("fb_1"), Weight: 1}, gateway.RouteConnector{ID: cid("fb_2"), Priority: 5, Weight: 1})
 		c1a.answer.Store(int32(code))
 		c1b.answer.Store(int32(code))
 		for range 5 {
@@ -878,15 +903,14 @@ func TestSessions_Fallback(t *testing.T) {
 			}
 			_ = st.Close()
 		}
-		if n1, n2 := drain(c1a, c1b), drain(c2); n1 != 5 || n2 != 5 {
-			t.Fatalf("%s: %d attempts on fb_1 and %d on fb_2, want 5 each", code, n1, n2)
+		if n1, n2 := drain(c1a, c1b), drain(c2); n1 != 3 || n2 != 5 {
+			t.Fatalf("%s: %d attempts on fb_1 and %d on fb_2, want 3 and 5", code, n1, n2)
 		}
 	}
 
 	// Five connectors of one priority that all refuse: four attempts, then the code.
-	a.mu.Lock()
-	a.ranked["r1"] = []gateway.RouteConnector{{ID: cid("fb_1")}, {ID: cid("fb_2")}, {ID: cid("fb_3")}, {ID: cid("fb_4")}, {ID: cid("fb_5")}}
-	a.mu.Unlock()
+	rank(gateway.RouteConnector{ID: cid("fb_1")}, gateway.RouteConnector{ID: cid("fb_2")}, gateway.RouteConnector{ID: cid("fb_3")},
+		gateway.RouteConnector{ID: cid("fb_4")}, gateway.RouteConnector{ID: cid("fb_5")})
 	for _, c := range []*connector{c1a, c1b, c2, c3, c4, c5} {
 		c.answer.Store(int32(tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED))
 	}
@@ -899,10 +923,8 @@ func TestSessions_Fallback(t *testing.T) {
 
 	// One connector at priorities 0 and 5, another at 0: a refusal at fb_1's priority 0 goes to
 	// fb_2's priority 0 before fb_1's priority 5, and each stream names its entry's priority.
-	a.mu.Lock()
-	a.ranked["r1"] = []gateway.RouteConnector{{ID: cid("fb_1"), Weight: 1, Ranked: true}, {ID: cid("fb_1"), Priority: 5, Weight: 1, Ranked: true},
-		{ID: cid("fb_2"), Weight: 1, Ranked: true}}
-	a.mu.Unlock()
+	rank(gateway.RouteConnector{ID: cid("fb_1"), Weight: 1, Ranked: true}, gateway.RouteConnector{ID: cid("fb_1"), Priority: 5, Weight: 1, Ranked: true},
+		gateway.RouteConnector{ID: cid("fb_2"), Weight: 1, Ranked: true})
 	c2.answer.Store(int32(tunnelv1.ResultCode_RESULT_CODE_NO_ERROR))
 	priorities := func(cs ...*connector) []uint32 {
 		var out []uint32
@@ -932,9 +954,7 @@ func TestSessions_Fallback(t *testing.T) {
 		t.Fatalf("priorities named to fb_1 %v and fb_2 %v, want fb_1 at 0 only and fb_2 at 0 ten times", p1, p2)
 	}
 	// Without fb_2, fb_1's priority 5 is the next entry.
-	a.mu.Lock()
-	a.ranked["r1"] = a.ranked["r1"][:2]
-	a.mu.Unlock()
+	rank(gateway.RouteConnector{ID: cid("fb_1"), Weight: 1, Ranked: true}, gateway.RouteConnector{ID: cid("fb_1"), Priority: 5, Weight: 1, Ranked: true})
 	if st, got := open(); st != nil || got != tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED {
 		t.Fatalf("%v %s, want UPSTREAM_REFUSED", st, got)
 	}
@@ -944,9 +964,7 @@ func TestSessions_Fallback(t *testing.T) {
 
 	// The route's only entry refuses: no other attempt, not even on its connector's other session;
 	// an unranked entry names no priority.
-	a.mu.Lock()
-	a.ranked["r1"] = []gateway.RouteConnector{{ID: cid("fb_1"), Weight: 1}}
-	a.mu.Unlock()
+	rank(gateway.RouteConnector{ID: cid("fb_1"), Weight: 1})
 	if st, got := open(); st != nil || got != tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED {
 		t.Fatalf("%v %s, want UPSTREAM_REFUSED", st, got)
 	}
@@ -988,5 +1006,80 @@ func TestSessions_UDPFlowNamesNoPriority(t *testing.T) {
 			t.Fatal("no stream reached the connector")
 		}
 		_ = st.Close()
+	}
+}
+
+// TestSessions_HealthyPriorities (D133): a connector that names its route's priorities with a
+// healthy target gets streams only for those of its ranked entries: the route fails over to the
+// next priority and back once the better one is healthy again, which BestPriority, the http routes'
+// failback, follows; a connector that names none, as one without health.active, is ready at every
+// priority; an unranked entry's stream tries every priority, so readiness alone counts; a route
+// with no healthy target anywhere has no session.
+func TestSessions_HealthyPriorities(t *testing.T) {
+	con := cid("hp_1")
+	a := &assignment{known: map[string]bool{con: true}, ranked: map[string][]gateway.RouteConnector{
+		"r1": {{ID: con, Weight: 1, Ranked: true}, {ID: con, Priority: 5, Weight: 1, Ranked: true}}}}
+	m := newSessions(a, nil)
+	c := start(t, m, connectorID("hp_1"), hello("r1"))
+	priority := func() uint32 {
+		t.Helper()
+		st, code, err := m.OpenStream(context.Background(), &tunnelv1.StreamOpen{RouteId: "r1"})
+		if err != nil || code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+			t.Fatalf("%s %v", code, err)
+		}
+		_ = st.Close()
+		select {
+		case o := <-c.opens:
+			return o.GetTargetPriority()
+		case <-time.After(5 * time.Second):
+			t.Fatal("no stream reached the connector")
+		}
+		return 0
+	}
+	best := func(want uint32) {
+		t.Helper()
+		if p, ok := m.BestPriority("r1"); !ok || p != want {
+			t.Fatalf("BestPriority %d %t, want %d", p, ok, want)
+		}
+	}
+	// The hello says ready, naming no priorities: every priority, the best first.
+	if p := priority(); p != 0 {
+		t.Fatalf("a connector without priorities: stream at %d, want 0", p)
+	}
+	best(0)
+	c.healthAt(t, "r1", 5)
+	for range 5 {
+		if p := priority(); p != 5 {
+			t.Fatalf("priority 0 without a healthy target: stream at %d, want 5", p)
+		}
+	}
+	best(5)
+	c.healthAt(t, "r1", 0, 5)
+	if p := priority(); p != 0 {
+		t.Fatalf("priority 0 healthy again: stream at %d, want 0", p)
+	}
+	best(0)
+
+	// An unranked entry: the stream names no priority and the connector picks among the healthy.
+	a.mu.Lock()
+	a.ranked["r1"] = []gateway.RouteConnector{{ID: con, Weight: 1}}
+	a.mu.Unlock()
+	c.healthAt(t, "r1", 5)
+	if st, code, err := m.OpenStream(context.Background(), &tunnelv1.StreamOpen{RouteId: "r1"}); err != nil || code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+		t.Fatalf("an unranked entry: %s %v", code, err)
+	} else {
+		_ = st.Close()
+		if o := <-c.opens; o.TargetPriority != nil {
+			t.Fatalf("an unranked entry's stream names priority %d", o.GetTargetPriority())
+		}
+	}
+
+	// No healthy target anywhere: the connector reports the route not ready, and no session serves.
+	c.health(t, "r1", false)
+	if _, _, err := m.OpenStream(context.Background(), &tunnelv1.StreamOpen{RouteId: "r1"}); !errors.Is(err, gateway.ErrNoSession) {
+		t.Fatalf("no healthy target: %v, want ErrNoSession", err)
+	}
+	if _, ok := m.BestPriority("r1"); ok {
+		t.Fatal("a best priority without a healthy target")
 	}
 }

@@ -12,6 +12,52 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Gateways: passive health. A gateway passes over a connector at a priority whose targets refused
+  or timed out several new connections in a row, for a back-off that grows with each failed try,
+  then tries it again with one connection; a success brings it back. HTTP error statuses never count,
+  and when every connector is passed over the gateway still tries one. Each gateway decides alone.
+  (#632)
+- Connectors: data sessions over WSS, for networks whose proxy intercepts TLS. A gateway gets a
+  WSS hostname of its own (`rpmgr update gateway --wss-hostname`, the API's
+  `Gateway.wss_hostname`) with a certificate from an upload or ACME; connectors on `auto` move to
+  WSS when TLS to the gateway fails in its handshake, and `wss` pins it on a route, a connector or
+  the instance (`--transport wss`). The connector's own TLS runs inside the WebSocket, so the proxy
+  sees which gateway it reaches but none of the traffic. Connectors and gateways of earlier
+  releases do not use WSS; a route on `wss` is not ready on such a connector. Data sessions and
+  the `rpmgr_gateway_sessions` metric show the transport `wss`; the web UI sets the WSS hostname
+  on the gateway's form and offers **WSS only** wherever it offers a transport. (#636, #637, #638,
+  #639)
+
+- Routes: tcp routes in `http_connect` mode share a CONNECT listener, one port of the organisation,
+  and clients pick a route by name through it as through an HTTP proxy, with no proxy credentials,
+  with basic auth over TLS, or with basic auth in the clear, which every write warns about. Set
+  with `rpmgr create route --tcp --http-connect --authority … --connect-auth …`, the API's
+  `TCPRouteSpec.listener_mode` and `connect`, manifests, and the web UI's route form, which keeps
+  warning while basic auth in the clear is chosen. A TLS listener presents the uploaded certificate
+  the route names, else one that covers its hostname, else one the ACME job obtains and renews.
+  Gateways of earlier releases do not serve such routes. (#634, #635, #934)
+
+- Routes: limits for a route as a whole, on every route type: open connections, flows or HTTP
+  requests in flight, requests or new connections a second, and bandwidth in each direction, set
+  with `rpmgr create route` and `rpmgr update route` (`--max-connections`,
+  `--requests-per-second`, `--bandwidth`) or the API. The gateways of the route's group share each
+  limit; over it, HTTP gets 503 or 429 with `Retry-After`, TCP is reset and UDP dropped, and
+  bandwidth slows data down. Access policies gain a per-client rate limit, on every route type:
+  each client address, or IPv6 /64, may make so many requests, new connections or new flows a
+  second, with a burst (`--rule rate-limit:<per second>[,<burst>]`, the web UI's policy form, or
+  the API). A gateway of an earlier release does not get a route with limits or such a rule.
+  (#622, #623, #624, #625, #917)
+- Routes: active health checks. A route may have one TCP or HTTP check, which each connector runs
+  against its own targets of the route, on their port or another one; new connections pass over a
+  target that fails it, gateways pass over a connector whose targets of a priority are all
+  unhealthy, and a route whose targets are all unhealthy is unavailable. Checks obey the connector's
+  local policy. The route's status lists the unhealthy targets with the last failure, and the
+  targets of connectors of earlier releases, which run no checks, as health not checked. Set in the
+  **Health check** fields of the route form, with `rpmgr create route` and `rpmgr update route`
+  (`--health-check` and the other `--health-*` flags), in the route's manifest, or as the route's
+  `health_check`; the route's page shows each target's health with the last failure. (#629, #630,
+  #631, #633)
+
 - Gateways: a gateway group may replace its not-found, unavailable and maintenance pages with its
   own HTML, with the placeholders `{{hostname}}`, `{{status}}`, `{{message}}` and
   `{{request_id}}` filled in as escaped text. The pages run no script and load nothing from
@@ -27,13 +73,17 @@ Changes to the design documents are not recorded here: see the git history and t
   and shortly after the last one or while the release source limits requests, with the time to
   wait. (#890)
 
-- API and CLI: easy rollouts, which update the chosen connectors and gateways one after another
+- Updates: easy rollouts, which update the chosen connectors and gateways one after another
   without stages to approve. A failed agent is marked and skipped and the queue continues, and the
-  rollout pauses after a few failures in a row. `ReleaseService.CreateRollout` takes the mode and
-  the queue (`rpmgr create rollout --easy --agent …`), `ReleaseService.UpgradeAgents` (`rpmgr
-  upgrade connector|gateway <agent>…`) adds agents to the running easy rollout of the controller's
-  version or starts one, and the instance setting `rollout_mode` says which kind the web UI starts,
-  `easy` unless set. (#892, #893, #894, #895)
+  rollout pauses after a few failures in a row. **Roll out…** on Settings → Updates starts one by
+  default: tick the agents, order them, start; the rollout card shows the agent whose turn it is,
+  the queue and the failures. **Update to …** on each connector and gateway joins the running easy
+  rollout of the controller's version or starts one. **Rollouts** switches to the staged rollouts
+  of v0.2.0 (instance setting `rollout_mode`, `easy` unless set). `ReleaseService.CreateRollout`
+  takes the mode and the queue (`rpmgr create rollout --easy --agent …`), and
+  `ReleaseService.UpgradeAgents` (`rpmgr upgrade connector|gateway <agent>…`) updates single agents.
+  Connectors and gateways report whether they take over-the-air updates (`over_the_air`). (#892,
+  #893, #894, #895, #896)
 
 - Routes: an http route can match on request headers, an exact value or presence alone, so that
   routes share a hostname and path prefix and a header such as `X-Env: beta` chooses between them;

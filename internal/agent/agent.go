@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"slices"
@@ -20,6 +21,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
+	"github.com/felix-homelab/rpmgr/internal/telemetry"
 )
 
 // ControlOptions configure an agent's control plane.
@@ -47,6 +49,14 @@ type ControlOptions struct {
 	// runs apart from the control session, and its result or error goes back in the OpResult.
 	// Without it every probe is refused.
 	OnProbeTarget func(context.Context, *agentv1.ProbeTarget) ([]byte, error)
+	// OnOperation, if set, runs an imperative operation the controller opened, until ctx ends
+	// (its deadline, or the controller ending it), sending its frames with send; its error ends
+	// the operation with that reason. Operations it does not run it refuses with
+	// ErrUnsupportedOperation. Without it every operation is refused.
+	OnOperation func(ctx context.Context, open *agentv1.Open, send func(*agentv1.AttachFrame) error) error
+	// LiveLog, if set, is the role's log with live-log subscriptions: the agent announces
+	// logs.stream and runs live-log operations from it.
+	LiveLog *telemetry.LiveLog
 	// SessionStatus, if set, returns the Status the agent sends at the start of each session, so
 	// that what changed while there was none is not lost: a connector's complete readiness, a
 	// gateway's data sessions.
@@ -83,6 +93,9 @@ func NewControl(o ControlOptions) (*Control, error) {
 	}
 	c := &Control{o: o, id: id}
 	caps := o.Capabilities
+	if o.LiveLog != nil {
+		caps = append(slices.Clone(caps), agentproto.CapLogsStream)
+	}
 	var onOffer func(*agentv1.ReleaseOffer)
 	if o.Update != nil {
 		now := o.Now
@@ -127,6 +140,10 @@ func NewControl(o ControlOptions) (*Control, error) {
 		OnMessage: func(m *agentv1.ControllerMessage) {
 			if p := m.GetProbeTarget(); p != nil {
 				go c.probe(p) // a dial must not hold up the control session
+				return
+			}
+			if op := m.GetOpenOperation(); op != nil {
+				go c.operate(op)
 				return
 			}
 			if ch := m.GetAcmeChallenge(); ch != nil {
@@ -177,6 +194,76 @@ func (c *Control) probe(p *agentv1.ProbeTarget) {
 	}
 	c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_OpResult{OpResult: r}})
 }
+
+// ErrUnsupportedOperation is an operation an agent does not run.
+var ErrUnsupportedOperation = errors.New("agent: this agent does not run the operation")
+
+// operate runs an imperative operation (docs/03-connections.md, "Control session"): it attaches
+// on the control session's connection with the operation's ticket and runs OnOperation until the
+// deadline, the controller ending it or the stream breaking. An operation the role does not run,
+// or one it cannot attach, is refused with an OpResult.
+func (c *Control) operate(open *agentv1.Open) {
+	refuse := func(err error) {
+		c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_OpResult{OpResult: &agentv1.OpResult{OpId: open.GetOpId(),
+			Error: err.Error()}}})
+	}
+	run := c.o.OnOperation
+	if open.GetKind() == agentv1.OperationKind_OPERATION_KIND_LOGS && c.o.LiveLog != nil {
+		run = func(ctx context.Context, open *agentv1.Open, send func(*agentv1.AttachFrame) error) error {
+			return serveLogs(ctx, c.o.LiveLog, open.GetLogs(), send)
+		}
+	}
+	if run == nil {
+		refuse(ErrUnsupportedOperation)
+		return
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), open.GetDeadline().AsTime())
+	defer cancel()
+	st, err := c.client.Attach(ctx)
+	if err == nil {
+		err = st.Send(&agentv1.AttachFrame{Frame: &agentv1.AttachFrame_Hello{Hello: &agentv1.AttachHello{OpId: open.GetOpId(),
+			Ticket: open.GetTicket()}}})
+	}
+	if err != nil {
+		refuse(fmt.Errorf("agent: cannot attach the operation: %w", err))
+		return
+	}
+	// The controller's AttachEnd, or the end of the stream, ends the operation.
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		defer cancel()
+		for {
+			f, err := st.Recv()
+			if err != nil || f.GetEnd() != nil {
+				return
+			}
+		}
+	}()
+	var mu sync.Mutex
+	send := func(f *agentv1.AttachFrame) error {
+		mu.Lock()
+		defer mu.Unlock()
+		return st.Send(f)
+	}
+	err = run(ctx, open, send)
+	reason := ""
+	if err != nil && ctx.Err() == nil {
+		reason = err.Error()
+	}
+	_ = send(&agentv1.AttachFrame{Frame: &agentv1.AttachFrame_End{End: &agentv1.AttachEnd{Reason: reason}}})
+	_ = st.CloseSend()
+	// Cancelling the stream at once could reset it before the controller read the last frames:
+	// wait until the controller ends it, a short while at most.
+	select {
+	case <-finished:
+	case <-time.After(attachLinger):
+	}
+}
+
+// attachLinger is how long an agent waits for the controller to end an Attach stream after its
+// own end.
+const attachLinger = 5 * time.Second
 
 // Run runs the control plane until ctx ends: it loads the stored deny-list and the last-known-good
 // snapshot, so the role runs before any controller answers, then keeps the control session,

@@ -198,7 +198,8 @@ message ControllerMessage {
     Signed snapshot = 2;            // a Snapshot: revision, agent, controller endpoints, resources,
                                     // release offer (ota)
     Drain drain = 4;                // reconnect elsewhere before the deadline
-    Goodbye goodbye = 5;            // superseded, revoked, upgrade_required, shutdown, overloaded
+    Goodbye goodbye = 5;            // superseded, revoked, upgrade_required, shutdown, overloaded,
+                                    // restart (Phase 2: an all-in-one's controller hands over)
     Signed deny_list = 6;           // a DenyList; applied unconditionally, never shrinks early
     AcmeChallenge acme_challenge = 7; // gateways: add | remove, acknowledged with OpResult
     ProbeTarget probe_target = 8;   // connectors: read a target's certificate, OpResult has it
@@ -220,11 +221,35 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   hash is the SHA-256 of its payload. A snapshot names the agent it was compiled for; an agent
   refuses one for another identity. The signing key's certificate must chain to the pinned root
   with the config-signing URI; `key_id` names the key ([04](04-security.md#ca-hierarchy)).
-- **Imperative operations** (Phase 2: live logs and diagnostics; Phase 3: the shell; the field
-  number of `Open` is reserved): the controller sends
-  `Open{op_id, kind, ticket, deadline}`; the agent opens an `Attach` stream on the **same HTTP/2
-  connection** presenting the single-use ticket. No new TCP or TLS handshake. Every operation has a
-  deadline; unanswered operations fail with `DEADLINE_EXCEEDED` instead of blocking forever.
+- **Imperative operations** (Phase 2: live logs; Phase 3: the shell): the controller sends
+  `Open{op_id, kind, ticket, deadline, params}`; the agent opens an `Attach` stream on the **same
+  HTTP/2 connection** presenting the single-use ticket. No new TCP or TLS handshake. Every operation
+  has a deadline; unanswered operations fail with `DEADLINE_EXCEEDED` instead of blocking forever.
+  "Diagnostics" are the existing `ProbeTarget` and live logs; there is no other diagnostic
+  operation.
+  - `Open` is the field `open_operation = 9` of `ControllerMessage`; the number 3 and the name
+    `open`, which an early draft gave it, stay reserved, as `buf breaking` refuses to give either
+    back (VB-22, resolved). Agents that run operations announce the capability `logs.stream`; the
+    agent refuses an operation it does not run with an `OpResult` error, and attaches on the
+    connection of its control session, which the controller accepts only from the agent the ticket
+    was made for.
+  - [R] The **ticket** is 256 random bits, kept only as a hash in memory on the replica that holds
+    the agent's control session, bound to the agent and the operation, single use and valid for the
+    time in the timeout table. An `Attach` with an unknown, used, expired or another agent's
+    ticket, or without an `Open`, is refused, and the operation fails at once rather than at its
+    deadline ([D145](14-open-decisions.md#engineering), E13). With more than one replica, the
+    replica that serves the user forwards to the one holding the session
+    ([10](10-operations.md#high-availability)).
+  - [R] **Live logs** (`kind = logs`): the agent tees its log records, after the logger's
+    redaction and a text pass over each message ([04](04-security.md#secrets-at-rest-and-in-logs)),
+    into a bounded buffer per operation; a slow viewer loses the oldest lines, marked with how many
+    were dropped, and never slows the agent. `params` name a minimum level and a text filter, which
+    matches the redacted line, so it cannot search for a secret; a viewer may raise the level to
+    `debug` for the operation's life ([D140](14-open-decisions.md#engineering)): the operation
+    then gets the agent's debug records, while the agent's own log keeps its configured level.
+    Limits are in the timeout table. The built-in connector and gateway of an all-in-one run no
+    live logs: their log is the controller's, which holds every org's activity, and the host's
+    journal shows it.
 - **Large items** (certificate chains, function bundles) are referenced by content hash inside the
   snapshot and fetched with `FetchResource`, so snapshots stay small and unchanged resources are not
   re-sent. An agent can fetch only an item that one of its own snapshots names with that hash, among
@@ -526,10 +551,11 @@ sequenceDiagram
   sessions, and they close after their last stream has ended, at the latest after the route drain
   period: its routes were removed, not revoked.
 - A gateway admits at most **16 data sessions per connector identity**; it refuses one more before
-  its handshake, and the connector retries with backoff. [R] A connector needs at most ten at a
-  time: an `auto` link on QUIC (four sessions, or on TCP two connections re-probing QUIC with one),
-  a `quic` link (four) and an `h2` link (two) ([D123](14-open-decisions.md#engineering),
-  [D124](14-open-decisions.md#engineering)). The rest leaves room for sessions a transport switch
+  its handshake, and the connector retries with backoff. [R] A connector needs at most twelve at a
+  time: an `auto` link on QUIC (four sessions, or on TCP or WSS two connections re-probing QUIC
+  with one), a `quic` link (four), an `h2` link (two) and a `wss` link (two)
+  ([D123](14-open-decisions.md#engineering), [D124](14-open-decisions.md#engineering)). The rest
+  leaves room for sessions a transport switch
   retired, which close after their last stream: an `auto` link that moves from TCP to QUIC holds
   its two old connections next to its four new sessions for a while. A connector cannot exhaust a
   gateway by opening sessions without end.
@@ -921,16 +947,19 @@ It checks them in this order: IP rules, rate limits, require-header rules, then 
   ([HTTP CONNECT routes](#http-connect-routes-phase-2)).
 - **Rate limits** (Phase 2, [D131](14-open-decisions.md#engineering)). A `rate_limit` rule allows
   each client address a rate with a burst: HTTP requests on an http route, new connections on a
-  `tcp`, `tls_passthrough` or CONNECT route, new flows on a `udp` route. Over it, an HTTP request
-  is **429** with `Retry-After`, a connection is reset before any stream opens, and a datagram
-  opens no flow and is counted (`reason="rate_limit"`). Each `rate_limit` rule of a route applies,
-  so the strictest one decides. A client is an IPv4 address or an IPv6 /64, found as for IP rules;
-  each gateway counts on its own, and the rule is not divided among them, as a client mostly stays
-  with one gateway. The key table of a route on a gateway has a fixed size
-  ([Timeouts, keepalive and backoff](#timeouts-keepalive-and-backoff)); when it is full, new
-  addresses are refused, rather than the gateway forgetting addresses that it is limiting
-  ([04](04-security.md#human-authentication-and-sessions)). The route's own total rate is a limit
-  of the route, not of a policy ([Route limits](#route-limits-phase-2)).
+  `tcp`, `tls_passthrough` or CONNECT route, new flows on a `udp` route. Over it, an HTTP request is
+  **429** with `Retry-After`, a connection is reset before any stream opens, and a datagram opens no
+  flow and is counted (`reason="rate_limit"`). Each `rate_limit` rule of a route applies, so the
+  strictest one decides. A client is an IPv4 address or an IPv6 /64, found as for IP rules; each
+  gateway counts on its own, for all the routes that apply the policy together, udp flows apart, and
+  the rule is not divided among the gateways, as a client mostly stays with one gateway. The client
+  tables of a gateway have a fixed size ([Timeouts, keepalive and
+  backoff](#timeouts-keepalive-and-backoff)); when they are full, a new address passes unlimited by
+  the rule, while the route's total and its connection limit still apply, rather than the gateway
+  refusing every new client or forgetting the clients it limits
+  ([D137](14-open-decisions.md#engineering)). New UDP flows count in a table of their own, as UDP
+  sources can be forged ([04](04-security.md#route-edge-rules)). The route's own total rate is a
+  limit of the route, not of a policy ([Route limits](#route-limits-phase-2)).
 - **Require-header rules** (Phase 2, [04](04-security.md#route-edge-rules)). A `require_header`
   rule names a header and up to 4 accepted values, so that a value can be rotated; the gateway
   holds only their SHA-256 and compares in constant time. A request without the header, or with a
@@ -971,40 +1000,62 @@ the capability `route.limits`:
 | Request rate | HTTP requests, new connections or new flows per second, for the route as a whole | HTTP **429** with `Retry-After`; reset; datagram dropped (`reason="limit"`) |
 | Bandwidth | bytes per second, in each direction separately with the same value | data waits, without loss on TCP; UDP datagrams over it are dropped (`reason="limit"`) |
 
-- **Divided among gateways.** A route's limit applies to the gateway group: the compiler divides
-  it by the number of the group's enabled gateways, rounded up and at least 1, and each gateway
-  enforces its share. A gateway that is enabled but down keeps its share, so the route then gets
-  less than its limit until the gateway returns or is disabled. 0 means no limit.
+- **Divided among gateways.** A route's limit applies to the gateway group: the compiler divides it
+  by the number of the group's enabled gateways that enforce limits, rounded up and at least 1, and
+  each gateway enforces its share; a gateway of an earlier release does not get the route. A gateway
+  that is enabled but down keeps its share, so the route then gets less than its limit until the
+  gateway returns or is disabled. 0 means no limit. A route allows at most 1 000 000 connections,
+  1 000 000 requests a second and 100 GB (10¹¹ bytes) a second, and a bandwidth of at least 1 KiB a
+  second, so that data never waits long between steps.
 - A slot of a connection or request is released when it ends, however it ends, panics and
-  cancellations included. The per-client `rate_limit` rule of a policy comes on top
-  ([Access policies](#access-policies)).
+  cancellations included. A gateway keeps counting the connections of a removed route while they
+  drain, so the route, added back meanwhile, never admits more than its limit. The per-client
+  `rate_limit` rule of a policy comes on top ([Access policies](#access-policies)).
 
 ### Target health (Phase 2)
 
 - **Active checks** ([D133](14-open-decisions.md#engineering)). A route has at most one health
   check, which each connector runs against each of its own targets of the route: `tcp` (the dial
-  succeeds) or `http` (a `GET` of a path, with the route's `Host`, that answers with a status in
-  the expected range, 200–399 unless set). A check may name another port than the target's. It
-  dials like traffic: the connector-local policy applies, and a target it blocks is unhealthy
-  without being dialled; an `https` target is verified with the target's own TLS settings; no
-  redirect is followed and at most a capped part of the body is read. A `udp` route allows only a
-  `tcp` check on a port it names. A target becomes unhealthy after the unhealthy threshold of
-  failed checks in a row and healthy again after the healthy threshold of passed ones.
-- **What gateways see.** The connector skips unhealthy targets when it picks one for a stream and
-  reports, per route, the priorities that still have a healthy target (`RouteHealth`). A gateway
-  passes over a connector whose priority has none and, for http routes, moves new requests back to
-  a better priority once it is healthy again. When no target of a route is healthy on any
-  connector, the gateway answers as when no connector is ready (**503**, reset, drop) and the
+  succeeds) or `http` (a `GET` of a path that answers with a status in the expected range, 200–399
+  unless set, sent with the route's host header override as `Host`, else its first hostname that is
+  not a wildcard, else the target's address, or `localhost` for a socket target). A check may name
+  another port than the target's, except on a route with a socket target. It dials like traffic: the
+  connector-local policy applies, and a target it blocks, by address, by the address a name resolves
+  to, or by the port the check names, is never dialled and counts as blocked by the policy
+  (`not_ready(blocked_by_local_policy)` with the policy's detail), not as unhealthy; an `https`
+  target is verified with the target's own TLS settings; no redirect is followed and at most a
+  capped part of the body is read. A target that expects a PROXY header gets a `LOCAL` one when the
+  check dials its own port. A `udp` route allows only a `tcp` check on a port it names; a
+  `tls_passthrough` route, whose targets expect TLS, and a route with an `h2c` target, which speaks
+  no HTTP/1.1, only a `tcp` check. A target counts as healthy until checked; it becomes unhealthy
+  after the unhealthy threshold of failed checks in a row and healthy again after the healthy
+  threshold of passed ones, so a target whose results alternate keeps its state. A changed route or
+  check starts its targets healthy again. The changes of the targets' health in one round of checks
+  also go to the controller in one `Status`, each target's ID as the resource, for the route's
+  status ([06](06-data-model.md#desired-vs-observed-state)).
+- **What gateways see.** The connector skips unhealthy targets when it picks one for a stream or a
+  UDP flow, unless every one is unhealthy, and reports, per route, the priorities that still have a
+  healthy target (`RouteHealth.ready_priorities`); a route whose every allowed target is unhealthy
+  is not ready, `not_ready(targets_unhealthy)`. A `SessionHello` names only the routes ready at
+  every priority; the others follow as `RouteHealth` with their priorities. A gateway passes over a
+  connector whose priority has none and, for http routes, moves new requests back to a better
+  priority once it is healthy again. An entry the controller did not rank names no priority in its
+  streams, so its connector's readiness alone counts there. When no target of a route is healthy on
+  any connector, the gateway answers as when no connector is ready (**503**, reset, drop) and the
   route's status is `unavailable`.
 - **Connectors of an earlier release** do not run checks: they report every priority as ready, so
   their targets count as healthy, and the route's status notes "health not checked" for them. The
   route is not left out of their snapshot (no gate, D133). Connectors that run checks announce the
   capability `health.active`.
 - **Passive health.** Each gateway also marks a (connector, priority) entry of a route as failing
-  after 3 refused or timed-out stream opens in a row, never for an HTTP 5xx: the entry is passed
-  over for a back-off that starts at 10 s and doubles to at most 60 s, after which one stream tries
-  it again (half-open); a success restores it. When every entry is marked, the gateway still tries
-  the last one rather than refusing. Each gateway decides alone.
+  after 3 refused or timed-out stream opens in a row (`UPSTREAM_REFUSED`, `UPSTREAM_TIMEOUT`), never
+  for an HTTP 5xx or another result, such as `OVERLOADED`: the entry is passed over for a back-off
+  that starts at 10 s and doubles to at most 60 s, after which one stream tries it again (half-open)
+  while the others still pass over it; a success restores it, a failure starts the next back-off.
+  When every entry is marked, the gateway still tries the one whose back-off ends first rather than
+  refusing. Only streams whose result the gateway waits for count, TCP streams and HTTP requests; a
+  UDP flow sends before its result and is neither counted nor passed over. Each gateway decides
+  alone, and forgets an entry its snapshot no longer has.
 
 ### HTTP CONNECT routes (Phase 2)
 
@@ -1031,16 +1082,35 @@ through it. Gateways announce the capability `tcp.http-connect`.
   `tls_basic` the listener hostname, are the listener's; else the write is refused
   (`CONNECT_MODE_MISMATCH`). Without a port, the route joins the org's listener of that mode, and
   hostname, in the group, or a new listener is opened on a random free port. Changing a route's
-  mode moves it to a listener of the new mode, so its port changes, as preview shows. A listener
-  closes when its last route goes.
-- **TLS listener.** The listener's hostname lies under a verified domain of the org; its
-  certificate comes from ACME or an upload, as for http routes, with the same TLS versions
-  ([04](04-security.md#controller-certificates)).
-- **Refusals.** A request that is not `CONNECT` is **405**; an authority no route of the listener
-  names is **403**, with no hint whether it exists elsewhere; missing or wrong credentials in a
-  basic mode are **407** with `Proxy-Authenticate: Basic`. `Proxy-Authorization` is never passed
-  on. Over a limit or a rule, the answer is the one of [Route limits](#route-limits-phase-2) and
+  mode or hostname moves it to a listener of the new mode, so its port changes, as preview shows;
+  an update must name the mode of a route whose mode is not `none`. A listener closes when its
+  last route goes.
+- **TLS listener.** The listener's hostname lies under a verified domain of the org, which cannot
+  be removed while it does. Its certificate is the uploaded one the route names, or, naming none,
+  an uploaded one of the org that covers the hostname, else one the ACME job obtains and renews
+  for the hostname, as for http routes, with its challenges answered by the gateways of the
+  listener's group ([04](04-security.md#controller-certificates)); the TLS versions are those of
+  http routes. Until the listener has a certificate, the route status names its gateways
+  `CERTIFICATE_PENDING`.
+- **Refusals.** A peer that no route of the listener admits by its IP rules is dropped before its
+  TLS handshake and its request. A request whose method is not `CONNECT`, compared with case, is
+  **405**. In the mode `none`, an authority no route of the listener names and one whose IP rules
+  refuse the client are both **403**, with no hint whether it exists elsewhere. In a basic mode the
+  credentials come first: missing or wrong ones are **407** with `Proxy-Authenticate: Basic`, for
+  an unknown authority too, after the same verification as a wrong password, and only a client
+  with the right ones meets the route's IP rules (**403**); too many verifications from an
+  address are **429** with `Retry-After`. `Proxy-Authorization` is never passed on. Over a limit
+  or a rule, the answer is the one of [Route limits](#route-limits-phase-2) and
   [Access policies](#access-policies) for HTTP, sent before the tunnel opens.
+- **One request, then the tunnel.** The head, with the TLS handshake of a TLS listener, must
+  arrive within the HTTP server's header timeout and fit in 16 KiB and 100 fields, else the
+  connection closes. Its lines end in CRLF, none is folded, and a field value holds no control
+  character. A request target not in authority form (`host:port`), an HTTP version other than 1.0
+  or 1.1, a body (`Content-Length` or `Transfer-Encoding`), or a `Host` other than the authority
+  is **400**: nothing behind the head is read as a second request. Bytes the client sends along
+  with the head, before the answer, become the tunnel's first bytes. The gateway answers **200**
+  only once a stream to a connector is open, and **503** with `Retry-After` when none is ready or
+  when the listener's routes changed while the request was read.
 
 ### Port 443 multiplexing
 
@@ -1107,8 +1177,10 @@ must differ from public HTTP/3, which one listener cannot provide
 first session to complete its handshake wins, and the other attempt is cancelled. The winner is
 cached for 24 h per **(gateway, local source address)**, where the local source address is the one
 the kernel picks to reach that gateway; when it changes (a new network), the next connection starts
-a new race. While TCP is in use, QUIC is re-probed every 10 min, except while it is demoted after a
-blackhole; a successful probe moves the routes to QUIC. On QUIC the winning session, or the probe's,
+a new race. While TCP or WSS is in use, QUIC is re-probed every 10 min, except while it is demoted
+after a blackhole, when a race runs without QUIC and its winner is not cached. On WSS, TLS over TCP
+is re-probed after QUIC, so that one failed handshake holds the link on WSS for 10 min at most. A
+successful probe moves the routes to its transport. On QUIC the winning session, or the probe's,
 is the first of the link's four, and the connector dials the other three at once.
 
 #### Transport selection
@@ -1143,17 +1215,23 @@ Which transport a connector uses is a setting
 - Phase 2 adds `wss` as a fourth value and as the last step of `auto`
   ([D135](14-open-decisions.md#engineering)):
   - `auto` tries WSS only after TLS + reverse HTTP/2 to the gateway failed in the TLS handshake,
-    as an intercepting proxy makes it fail; `wss` pins it. WSS goes direct or through the
-    connector's `HTTPS_PROXY`.
+    as an intercepting proxy makes it fail, and not when the connection could not be opened; WSS
+    then wins the race and is cached like any winner. `wss` pins it. WSS goes direct or through
+    the connector's `HTTPS_PROXY`, as TLS + reverse HTTP/2 does, to port 443 of the WSS hostname;
+    the outer TLS 1.2 or 1.3 is verified against the system roots, where an intercepting proxy's
+    root is installed. The connector follows no redirect from the WSS hostname, so that whoever
+    ends the outer TLS cannot point its dialer elsewhere.
   - Each gateway that offers WSS has its own **WSS hostname**, so that the connector knows which
     gateway it reaches. It lies under a verified domain of the gateway group's owner org (the
     system org for a shared group), is no route hostname of the group, and has a certificate
     from ACME or an upload that covers it ([04](04-security.md#route-edge-rules)).
-  - The proxy sees only the outer TLS to that public hostname; inside the upgraded connection
+  - The proxy ends only the outer TLS to that public hostname; inside the upgraded connection
     the connector runs TLS 1.3 with mutual authentication to `<gateway-id>.gateway.<td>` and
-    checks the gateway's pinned root, so an intercepting proxy reads nothing. A request to the
-    WSS hostname for another path than `/.rpmgr/tunnel` is **404**, and an upgrade that does not
-    complete the inner handshake is closed.
+    checks the gateway's pinned root. An intercepting proxy sees the inner ClientHello, with
+    that name and the ALPN, as anyone on the path does for TLS over TCP, but none of the
+    session's contents, and cannot take the gateway's place. A request to the WSS hostname for
+    another path than `/.rpmgr/tunnel` is **404**, and an upgrade that does not complete the
+    inner handshake is closed.
   - A connector without the capability `tunnel.wss`, or a gateway without a WSS hostname, cannot
     serve a route pinned to `wss`: the route is `not_ready(transport_unavailable: wss)` there.
 - **The all-in-one's own connector** ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md),
@@ -1237,8 +1315,8 @@ credentials, and a value without a scheme is an `http://` one; `HTTPS_PROXY` win
 net/http, and loopback addresses are always dialled directly. The proxy resolves the gateway's
 name.
 
-[R] Over TCP, a connector keeps **2** connections per gateway and spreads streams across them, which
-limits head-of-line blocking from packet loss to half the streams
+[R] Over TCP, directly or inside WSS, a connector keeps **2** connections per gateway and spreads
+streams across them, which limits head-of-line blocking from packet loss to half the streams
 ([D124](14-open-decisions.md#engineering)).
 
 Over QUIC, a connector keeps **4** sessions per gateway
@@ -1312,7 +1390,9 @@ and 2 when it was closed before both directions ended. Phase 1 gives the whole w
   [V VB-18].
 - **Planned gateway restart**: the gateway sends `Drain{deadline}` on the session control stream, stops accepting new
   public connections (or lets the load balancer/DNS move them), and keeps existing streams until the
-  gateway drain deadline. Connectors reconnect to the restarted gateway when it is back.
+  gateway drain deadline. Connectors reconnect to the restarted gateway when it is back. From
+  Phase 2 a restart with **socket hand-off** keeps a lone gateway's listeners open instead
+  ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2)).
 - **Disabled gateway** ("drain" in the CLI and web UI): its snapshot has no routes and carries a
   drain mark, and connectors leave the gateway out of theirs. The gateway sends `Drain{deadline}`
   for the gateway drain period, admits no new data session or stream, and keeps open streams,
@@ -1377,6 +1457,7 @@ sequenceDiagram
 | Item | Value | Rationale |
 |---|---|---|
 | QUIC handshake idle | 5 s | Fast fallback to TCP |
+| WSS transport (Phase 2) | the HTTP request of the upgrade 10 s; the inner TLS handshake 10 s, as over TLS + reverse HTTP/2; a WebSocket message at most 64 KiB; no WebSocket pings, the inner session's own PINGs keep it alive | [R] An upgrade that never begins the inner session holds a gateway for seconds only, and a peer cannot make it buffer large messages ([Transport selection](#transport-selection)) |
 | QUIC idle / keepalive | 30 s / 10 s | See [QUIC parameters](#quic-parameters) |
 | Data-session liveness | transport-level: QUIC keepalive and idle timeout, HTTP/2 PING frames (not flow-controlled) | A flow-controlled application message can be stuck behind an exhausted window, so it must not decide liveness |
 | Application `Ping` (session control stream) | every 15 s, padded to ≥ 64 bytes; measures RTT only, never takes a session out of service by itself | Padding makes a restarted gateway answer with a stateless reset (see below) |
@@ -1399,9 +1480,10 @@ sequenceDiagram
 | Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |
 | Per-route HTTP timeouts (Phase 2) | upstream response header 1 s to 1 h; upstream idle 1 s to 1 h; 0 = the HTTP server row above | [R] Slow reports and long polls fit; a pooled connection outliving a backend's keep-alive is avoided ([HTTP routes](#http-routes)) |
-| Active health check (Phase 2) | interval 10 s by default, at least 2 s; timeout 5 s by default, below the interval; unhealthy after 3 failures in a row, healthy after 2 passes; an HTTP check reads at most 64 KiB of the body | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
+| Active health check (Phase 2) | interval 10 s by default, from 2 s to 1 h; timeout 5 s by default, or 1 s below a shorter interval, below the interval and at most 1 min; unhealthy after 3 failures in a row, healthy after 2 passes, each threshold from 1 to 10; an HTTP check reads at most 16 KiB of status line and header and 64 KiB of the body; a connector runs at most 64 checks at once, over all its routes, the others waiting their turn | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
 | Passive health (Phase 2) | 3 refused or timed-out stream opens in a row; back-off 10 s, doubling to 60 s; one half-open try after it | [R] A target that refuses is passed over at once and tried again soon |
-| Per-client rate limit (Phase 2) | at most 65 536 client addresses per route on each gateway; an address unused for 10 min is dropped | [R] A flood of addresses cannot exhaust a gateway's memory ([Access policies](#access-policies)) |
+| Route limits (Phase 2) | an HTTP request over the connection limit gets **503** with `Retry-After: 1`, one over a request rate **429** with `Retry-After` the seconds until it may come again, at least 1; the route's total rate allows a second's worth of requests at once; a bandwidth bucket holds 100 ms of the rate, at least 64 KiB, the largest UDP payload, and a connection moves at most 100 ms of the rate, at least 512 bytes, at a time | [R] A client tries again soon, as a slot frees when a request ends; a datagram always fits the bucket, and a connection under a low limit moves on in small steps rather than stalling ([Route limits](#route-limits-phase-2)) |
+| Per-client rate limit (Phase 2) | a rule allows 1 to 10 000 requests, new connections or new flows a second, and a burst of 1 to 10 000, at most one rule a policy; at most 4 rate_limit rules a route on a gateway; each rule has a table for udp flows and one for the rest, which every route whose policies carry the rule shares, each of at most 65 536 client addresses, and all tables of a gateway together hold at most 262 144, about 28 MiB; when a table or the gateway is full, the addresses whose bucket is full again are dropped, at most once a second, and a new address that still finds no room passes uncounted (D137); every minute the idle addresses are dropped and each table is made anew, which gives its memory back | [R] A flood of addresses costs a gateway at most about 28 MiB, whatever the number of routes and rules, never locks real clients out and never makes it forget the clients it limits ([Access policies](#access-policies)) |
 | Custom page (Phase 2) | at most 64 KiB of HTML per page; the log lines of its `{{request_id}}` at most 20 per second per gateway, with a burst of 20, the rest dropped and counted; a link to the web UI's preview of a page works for 5 min | [R] A page loads fast and fits a snapshot item fetch; a flood of requests cannot flood the log ([HTTP routes](#http-routes), [D136](14-open-decisions.md#engineering)) |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |
 | Snapshot item fetch | 10 s per `FetchResource`; a failed fetch is retried after 1 s, doubling up to 1 min, and its resource is `not_ready(environment)` until then | A controller outage delays a new certificate without a retry storm |
@@ -1417,6 +1499,10 @@ sequenceDiagram
 | Route drain | 30 s | Finish in-flight requests |
 | Route port in use | a `tcp` or `udp` route port the gateway cannot bind (`not_ready(port_in_use)`) is tried again every 5 s | [R] A port another process frees is taken within seconds, without a new revision |
 | Gateway drain | 60 s | Time for connectors to re-home |
+| Hand-off drain (Phase 2) | 10 min; the boot-file setting `handoff.drain` takes 0 to 24 h; at the end the old process cuts what is still open and exits ([D146](14-open-decisions.md#engineering)) | [R] Long-lived SSH, database, WebSocket and CONNECT connections survive almost every update; an old process costs only memory |
+| Hand-off readiness window (Phase 2) | 60 s from the exec until the new process reports ready, else the old one kills it and keeps serving | [R] Shorter than the updater's readiness window, so the updater sees the hand-off's outcome inside its own |
+| Hand-off session wait (Phase 2) | a new public connection in the new process waits up to 5 s for a session of its route before 503 or a reset | [R] Connectors redial at once on `Drain{handoff}`; the wait covers their reconnect, so no visitor sees the switch [V VB-08] |
+| Hand-off relay (Phase 2) | datagrams passed between the processes during the drain are queued up to 1 024 per socket; beyond that they are dropped and counted | [R] UDP may lose datagrams; a full queue never blocks the old process [V VB-08] |
 | Session liveness | each controller node marks its live sessions seen every 60 s; a session not seen for 3 min is not live | An agent shows as connected while its control session is live; a node that stops without recording its sessions' ends leaves them to age, and ends them when it starts again |
 | Data-session report | every 60 s, and 1 s after a change | A gateway's `Status` listing its connectors' data sessions, for their status in the API, its route counters, for the traffic rollups, and the resources that are not ready |
 | Revocation, tightened access policy, stricter TLS settings of an HTTPS target | immediate; a target's TLS settings that change, unless to unverified ones of the same connector, end the connections earlier ones checked | Security beats continuity |
@@ -1431,7 +1517,10 @@ sequenceDiagram
 | OTA download (Phase 2) | an artifact of at most 256 MiB, downloaded only with its size plus 64 MiB free on the staging filesystem; the whole download 10 min, a read that stalls 60 s; a failed download is retried after 1 min, doubling up to 1 h; an offer the local policy declined or only announced is checked against the policy again every 1 min | [R] A slow mirror or a full disk never leaves a half-written staging area, whose manifest is written last ([04](04-security.md#over-the-air-updates)) |
 | OTA updater (Phase 2) | a staged file of at most the manifest's size and 256 MiB, checked before and while copying; each role's `/readyz` polled every 2 s for up to 5 min after the restart; a role service that fails, or restarts 3 times, within that window rolls back at once | A compromised agent cannot fill the disk or hang the updater; a broken release is undone within minutes ([04](04-security.md#over-the-air-updates)) |
 | Rollout (Phase 2) | checked every 30 s (singleton job); an agent offered the target that reports neither the new version nor a failure within 30 min counts as stalled and pauses a staged rollout; an easy rollout marks it and moves on, and pauses after 3 failures in a row (rolled back, refused or stalled); a gateway is offered its update only after its drain ends | [R] A stage moves on as soon as its agents report; a silent agent stops the rollout instead of hiding, and a broken release stops an easy rollout after a few agents ([D129](14-open-decisions.md#engineering)) ([04](04-security.md#over-the-air-updates)) |
-| Webhook delivery (Phase 2) | 5 s timeout per attempt; retries with backoff | A slow receiver must not hold controller resources ([07](07-api.md#webhooks-phase-2)) |
+| Webhook delivery (Phase 2) | 5 s per attempt; a request body (the event envelope) of at most 64 KiB, and at most 64 KiB of the answer read; retries after 10 s, doubling to 1 h, given up 24 h after the event; at most 4 deliveries at once per endpoint; an endpoint without a successful delivery for 3 days is disabled ([D143](14-open-decisions.md#engineering)); after a secret rotation the old secret also signs for 24 h | [R] A slow or dead receiver holds neither controller resources nor the other endpoints' deliveries, and a receiver that is down for a weekend still gets its events ([07](07-api.md#webhooks-phase-2)) |
+| Events and alerts (Phase 2) | events kept 7 days; deliveries kept 30 days, at most 1 000 per endpoint; alerts evaluated every 30 s (singleton job), each with the duration of its condition ([10](10-operations.md#suggested-alerts)); an alert e-mail when an alert fires and when it resolves | [R] Long enough to retry every delivery and to read why one failed; an alert neither flaps nor is missed by a restart ([D142](14-open-decisions.md#engineering)) |
+| Live logs (Phase 2) | ticket valid 30 s, single use; an operation ends after 30 min, and a viewer may open a new one; at most 2 operations per user and 4 per agent; at most 200 lines per second per operation, a buffer of 256 lines on the agent, a line cut at 8 KiB with a marker; a raised level lasts until the operation ends | [R] A forgotten log view ends by itself and no viewer can load an agent ([D140](14-open-decisions.md#engineering)) |
+| Audit sinks (Phase 2) | each sink shipped every 10 s, at most 500 items per batch; after a failure, retried after 10 s, doubling to 5 min; the backlog alert fires when the oldest unshipped item has waited 15 min | [R] A sink outage never delays an append, and its backlog drains within minutes once it is back ([04](04-security.md#audit-log)) |
 | `request_id` deduplication of `Create` calls | 24 h; IDs past it are deleted every hour | Retries of a lost response stay idempotent ([07](07-api.md#resource-design)) |
 | Public API request | at most 4 MiB per message, also once decompressed; a larger one is refused with `resource_exhausted` before it is handled | [R] No request holds more of the controller's memory than the largest legitimate one, an uploaded certificate bundle, needs |
 | Enrollment token, certificates | see [04-security.md](04-security.md#pki-and-identity) | — |
@@ -1508,6 +1597,7 @@ used, not by the route compiler:
 | `logs.stream` | Gateway, connector | Live logs (`Open` and `Attach`) |
 | `ota` | Gateway, connector | Over-the-air updates: the agent takes a release offer in its snapshot, stages it for the root updater and reports the update state and the updater's outcome in `Status`; an agent without it is never offered a release. Announced only on a Linux host with the root updater installed ([04](04-security.md#over-the-air-updates)) |
 | `relay.v1` | Gateway, connector | Relayed private services |
+| `session.handoff` | Gateway | A connector's new process names its old one in `SessionHello.handoff_from`, and the gateway drains the old process's sessions instead of closing them; a gateway without it closes them as on a restart ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2)) |
 
 - Protobuf rules: fields are only added; unknown fields are ignored; an unknown `StreamOpen.kind`
   is answered with `PROTOCOL`.
@@ -1523,6 +1613,8 @@ used, not by the route compiler:
 | **Database down** | Controller serves reads from memory where possible, rejects writes, keeps sessions. New control sessions are refused as unavailable, because each needs a session epoch from the database; agents retry with backoff. |
 | **Gateway crashes** | New user connections for its routes go to the other gateways in the group. Public connections in flight on the crashed gateway are lost. With a persisted `StatelessResetKey` and padded session pings, connectors notice the restart within one ping interval (15 s) instead of after the idle timeout. |
 | **Gateway planned restart** | `Drain`, connectors re-home, in-flight connections get the gateway drain period. |
+| **Gateway or all-in-one restart with hand-off** (Phase 2) | The new process takes the listening sockets over before the old one stops accepting; no new visitor connection is refused, open ones get the hand-off drain; an all-in-one's API and web UI answer 503 for the seconds the controller moves ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2)). |
+| **Connector restart with hand-off** (Phase 2, Linux) | The new process opens its sessions before the old one stops taking streams; open streams get the hand-off drain ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2)). |
 | **Connector restarts** | Its sessions close; routes with no other ready connector return 503 (HTTP) or refuse (TCP). It restarts from the persisted last-known-good snapshot, reconnects, and reports a new `boot_id`. A killed process closes no session: a gateway closes the sessions of the earlier `boot_id` when the first session with the new one arrives, so that they neither take streams nor fill the connector's session cap. |
 | **Bad configuration** | Rejected at compile time by the controller, or `Rejected` by the agent; last-known-good keeps running; the UI shows the reasons. No outage. |
 | **Certificate expiring** | Renewed at 50 % of lifetime over the control session. If the agent was offline past expiry, it re-authenticates within the grace period using the same key, otherwise it must re-enroll ([04](04-security.md#enrollment)). |
@@ -1530,6 +1622,105 @@ used, not by the route compiler:
 | **UDP blocked** | With `auto`, happy eyeballs selects TCP within 300 ms plus the TCP and TLS handshake. If UDP is blackholed mid-session, the QUIC idle timeout fires, the connector moves to TCP, and QUIC is not retried for 1 h. With `quic` pinned, the routes that need QUIC are `not_ready(transport_unavailable: quic)` instead ([Transport selection](#transport-selection)). |
 | **Two controller replicas** | Revisions come from the database; one session per agent via `session_epoch` ([Revisions and ordering](#revisions-and-ordering)). |
 | **Connector local policy blocks a target** | Streams go to the route's other targets that the policy allows; with none, the route is `not_ready(blocked_by_local_policy: 10.0.0.5:5432)` on that connector. The UI shows the exact command to allow it on the host. |
+
+### Restarts with socket hand-off (Phase 2)
+
+A gateway, an all-in-one and, on Linux, a connector restart without refusing a visitor connection
+when the restart is a **hand-off** ([D127](14-open-decisions.md#project-and-process),
+[ADR-0022](adr/0022-socket-hand-off-by-re-exec.md)). The old process takes part, so the first
+restart that keeps traffic up starts from a release that has the hand-off; a restart from an
+earlier release, a plain `systemctl restart` and a container restart drain and stop as before
+([D149](14-open-decisions.md#engineering)). The values are in [Timeouts, keepalive and
+backoff](#timeouts-keepalive-and-backoff).
+
+**Trigger.** `systemctl reload` of the gateway or all-in-one unit, `rpmgr handoff <role>`, the
+install scripts' `--upgrade --restart` and the root updater
+([10](10-operations.md#hardened-systemd-units), [D148](14-open-decisions.md#engineering)). Each
+sends `SIGUSR2` to the role's main process, which only root and the service user may signal, and
+waits for the outcome. One hand-off runs at a time; a trigger during one is refused with "hand-off
+in progress".
+
+**Sequence** ([D150](14-open-decisions.md#engineering)):
+
+```mermaid
+sequenceDiagram
+  participant O as old process
+  participant N as new process
+  participant C as controller
+  participant K as connectors
+  O->>O: check the installed binary
+  O->>N: exec with the listening sockets and a status pipe
+  N->>N: check each socket against the manifest and the boot file
+  N->>C: control session (supersedes the old one's)
+  C-->>N: snapshot (or the stored last-known-good one)
+  N->>O: ready
+  O->>O: stop accepting, keep open connections
+  O->>K: Drain{reason: handoff}
+  K->>N: new data sessions at once
+  N->>N: main process of the unit (MAINPID)
+  O->>O: open connections end, or are cut at the hand-off drain
+```
+
+1. **Exec.** The old process checks the installed binary (the path of `install.json`, or the one
+   it was started from: a regular file owned by root that neither its group nor others may write,
+   in directories with the same rule) and starts it as its child, passing every listening socket,
+   a manifest naming each one (role, protocol, local address and what it serves) and a status
+   pipe. Anything else refuses the hand-off, which then needs a plain restart
+   ([04](04-security.md#socket-hand-off-phase-2)).
+2. **Adopt.** The new process checks each descriptor against the manifest and its own boot file
+   (socket type, listening state, local address) and closes, and logs, any it does not expect. It
+   binds what its configuration needs and was not handed, such as the port of a route added in
+   between, and leaves the sockets it took unread until it is ready. Both processes now hold the
+   same sockets, so a connection waiting to be accepted is taken by whichever accepts next and
+   none is lost.
+3. **Ready.** The new process starts from the stored last-known-good snapshot, opens its control
+   session, which supersedes the old process's (expected during a hand-off), applies the snapshot
+   it receives and reports ready over the pipe. A process that is not ready within the hand-off
+   readiness window is killed by the old one, which keeps serving as before; the hand-off is
+   reported as failed.
+4. **Switch.** The old process stops accepting, hands its admin listener over, and sends its data
+   sessions `Drain{reason: handoff}`. Connectors open new sessions to the same endpoint at once,
+   without backoff, and keep the draining ones for their open streams. Until a route has a session
+   in the new process, a new public connection waits up to the session wait for one before it gets
+   503 or is reset. The new process tells systemd it is the unit's main process.
+5. **Drain.** The old process serves its open connections until they end or the **hand-off drain**
+   cuts them ([D146](14-open-decisions.md#engineering)), then exits. A revocation, a tightened
+   access policy or a removed route that the new process applies meanwhile cuts the old process's
+   open connections at once ([04](04-security.md#socket-hand-off-phase-2)). A hand-off started
+   while a predecessor still drains ends that predecessor's drain early, so at most one old process
+   runs.
+
+**UDP and QUIC.** Datagrams on a shared socket go to whichever process reads, so only one reads at
+a time [V VB-08].
+
+- [T] Every QUIC connection ID the gateway issues carries a byte naming the process generation.
+  While the old process drains it alone reads the agent's UDP socket and passes Initial packets
+  and packets of the new generation to the new process over a local socket pair; the new process
+  writes to the shared socket directly and reads it itself once the old one exits. Packets of an
+  old session never reach the new process, so no stateless reset ends it.
+- [T] `udp` routes do the same per flow: the old process keeps its flows and passes datagrams of new
+  flows to the new process.
+- If the study (17.2) shows the relay does not meet its rule, the fallback of
+  [ADR-0022](adr/0022-socket-hand-off-by-re-exec.md) applies: the new process reads UDP only once
+  the old one has exited, connectors on `auto` use TCP meanwhile, and `udp` flows still open then
+  start again in the new process.
+
+**All-in-one.** The built-in gateway and connector hand off as above; the controller cannot run
+twice on one SQLite file. After step 2 the old process ends its control sessions with
+`Goodbye{restart}`, answers the API and the web UI with 503 and `Retry-After`, and closes the
+database; the new process opens it, migrates it and starts the controller, and its built-in agents
+connect in memory. If the migration or the start fails, the new process exits and the old one opens
+the database again and resumes its controller work; it never stopped serving visitors. The database
+is locked against a second writer throughout.
+
+**Connector** ([D147](14-open-decisions.md#engineering)). A connector has no listening socket; its
+hand-off is the sequence without the sockets. The new process opens its control session and its
+data sessions, and its `SessionHello` names the old process's `boot_id` as `handoff_from`, so that
+gateways mark the old process's sessions draining instead of closing them as a restart's
+([Failure modes](#failure-modes)). The old process takes no new stream and keeps its open ones for
+the hand-off drain. Gateways announce the capability `session.handoff`; an older gateway closes the
+old sessions as on a restart, which ends their streams. Windows and macOS connectors restart
+without a hand-off.
 
 ## Performance budget
 
