@@ -81,11 +81,16 @@ An **HTTP** route adds ([HTTP routes](../routes/http.md)):
 | **Largest request body (bytes, 0 for no limit)** | The largest request body the gateway lets through |
 | **Maintenance** | **Off: serve the route** or **On: show the maintenance page** ([D88](../../14-open-decisions.md#engineering)) |
 | **Maintenance message (plain text, at most 500 characters)** | The text the maintenance page shows |
+| **Serve only requests with these headers** | Header matches, one per line: `Name: value` for that exact value, or `Name` alone for any value. Where routes share a hostname and path prefix, the one with more matching headers wins ([Header matches](../routes/http.md#header-matches)). Empty matches every request |
+| **Wait for the target's response headers (seconds)**, **Keep an unused connection to the target (seconds)** | The route's own upstream timeouts; empty keeps the gateway's ([Timeouts](../routes/http.md#timeouts)) |
 
-Before it sends a route, the form checks each line of **Labels**, **Request headers to set** and
-**Response headers to set**. It names the first line without `=` or `:`, with a label key or header
-name the API refuses, or with a key or name an earlier line has, such as `Line 2: write a label as
-key=value.`; a header name is the same whatever its case.
+Before it sends a route, the form checks each line of **Labels**, **Request headers to set**,
+**Response headers to set** and **Serve only requests with these headers**. It names the first line
+without `=` or `:`, with a label key or header name the API refuses, with a header match whose
+colon has no value after it, or with a key or name an earlier line has, such as `Line 2: write a
+label as key=value.`; a header name is the same whatever its case. It also says when there are more
+header matches than a route may have, and refuses a timeout above the API's bound. What the server
+refuses, such as a match on `Host`, shows below the fields.
 
 A **TCP** route adds **Listener**, **Public port** and **Idle timeout (seconds)**; with **A CONNECT
 listener shared with other routes (HTTP proxy)** also **CONNECT names**, one per line, and **Proxy
@@ -102,6 +107,17 @@ within the organisation's port quota. An empty timeout keeps the API's default, 
 
 A **TLS passthrough** route adds **Hostnames** only
 ([TLS passthrough](../routes/tls-passthrough.md)).
+
+Every route then has its limits ([Route limits](../routes/limits.md)), each empty for no limit:
+
+| Field | Takes |
+|---|---|
+| **Most connections, flows or requests at once** | Open connections, UDP flows and HTTP requests in flight |
+| **Most requests, connections or flows a second** | HTTP requests, new connections and new UDP flows a second |
+| **Most bytes a second, each way** | The bandwidth in each direction. A value below the smallest the API takes ([03](../../03-connections.md#route-limits-phase-2)) is refused before the route is sent, with the smallest in the message |
+
+Each limit is the route's in all; the enabled gateways of its group share it. A value above the
+API's bound is refused on its field, as is anything that is not a whole number.
 
 Every route ends with its **Health check** ([Health checks](../routes/targets.md#health-checks)):
 

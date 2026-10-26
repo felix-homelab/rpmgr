@@ -140,6 +140,8 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await expect(page.getByRole("heading", { name: "New route", level: 1 })).toBeVisible();
   await page.getByLabel("Name", { exact: true }).fill("photos");
   await page.getByLabel("Hostnames").fill("photos.example.com");
+  await page.getByLabel("Serve only requests with these headers").fill("X-Env: beta");
+  await page.getByLabel("Most connections, flows or requests at once").fill("200");
   await page.waitForTimeout(800);
   await shot(page, "route-new", true);
 

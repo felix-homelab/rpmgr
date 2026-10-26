@@ -363,6 +363,9 @@
       "flowIdleTimeout": "Flow idle timeout (seconds)",
       "tcpIdleTimeout": "TCP idle timeout (seconds)",
       "udpFlowIdleTimeout": "UDP flow idle timeout (seconds)",
+      "headerMatches": "Serve only requests with these headers",
+      "upstreamHeaderTimeout": "Wait for the target's response headers (seconds)",
+      "upstreamIdleTimeout": "Keep an unused connection to the target (seconds)",
       "listenerMode": "Listener",
       "authorities": "CONNECT names",
       "connectAuth": "Proxy credentials",
@@ -375,18 +378,23 @@
       "healthInterval": "Check interval (seconds)",
       "healthTimeout": "Check timeout (seconds)",
       "healthUnhealthy": "Failed checks before unhealthy",
-      "healthHealthy": "Passed checks before healthy again"
+      "healthHealthy": "Passed checks before healthy again",
+      "maxConnections": "Most connections, flows or requests at once",
+      "requestsPerSecond": "Most requests, connections or flows a second",
+      "bandwidth": "Most bytes a second, each way"
     },
     "hints": {
       "lines": "One per line.",
       "labels": "One per line, as key=value.",
       "headers": "One per line, as Name: value. An empty value removes the header.",
+      "matches": "One per line, at most 8: Name: value for that exact value, or Name alone for any value. Where routes share a hostname and path, the one with more matching headers wins.",
       "optionalNumber": "Empty for the default.",
       "certificate": "The org's uploaded certificates that cover every hostname. Upload one under Domains & certificates.",
       "healthPort": "Empty for each target's own port. A UDP route needs one; a route with a Unix socket target cannot have one.",
       "healthPath": "Starts with /, may have a query. Empty for /.",
       "healthStatus": "As 200-399. Empty for any success or redirect.",
-      "fixed": "Set when the route is created; it cannot change."
+      "fixed": "Set when the route is created; it cannot change.",
+      "limit": "Empty for no limit. The group's enabled gateways share it."
     },
     "connect": {
       "plainBasic": "Clients send their proxy password in the clear: anyone on the network between them and the gateway can read and use it. Use basic auth over TLS unless the clients cannot speak to an HTTPS proxy."
@@ -407,6 +415,11 @@
       "headers": {
         "separator": "Line {{line}}: write a header as Name: value.",
         "name": "Line {{line}}: “{{name}}” is not a header name. A name has letters, digits and the characters !#$%&'*+-.^_`|~ only."
+      },
+      "matches": {
+        "name": "Line {{line}}: “{{name}}” is not a header name. A name has letters, digits and the characters !#$%&'*+-.^_`|~ only.",
+        "value": "Line {{line}}: give {{name}} a value after the colon, or write the name alone to match any value.",
+        "max": "A route matches at most {{max}} headers."
       },
       "twice": "Line {{line}}: {{name}} is on line {{first}} already."
     },
@@ -446,6 +459,7 @@
         "http": "HTTP: a GET answers with a passing status"
       }
     },
+    "bandwidthMin": "A bandwidth limit is at least {{min}} bytes a second; leave it empty for none.",
     "statusRange": "Write the passing statuses as two three-digit codes, such as 200-399.",
     "tristate": {
       "default": "Default",

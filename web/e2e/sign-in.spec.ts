@@ -209,6 +209,19 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.goto("/routes/new");
   await expect(page.locator(".required-mark")).toHaveText(["Gateway group", "Name", "Hostnames", "HSTS max-age (seconds)", "Largest request body (bytes, 0 for no limit)"]);
   expect(await unmarked(page)).toEqual([]);
+  // Header matches and the route's own timeouts: a line not in its format is refused in the form,
+  // on its field, before anything is sent, and the form with its errors stays accessible.
+  await page.getByLabel("Serve only requests with these headers").fill("X-Env: beta\nX Env: a");
+  await page.getByLabel("Wait for the target's response headers (seconds)").fill("300");
+  await page.getByRole("button", { name: "Create the route" }).click();
+  await expect(page.getByText("Line 2: “X Env” is not a header name.", { exact: false })).toBeVisible();
+  await expect(page.getByLabel("Serve only requests with these headers")).toHaveAttribute("aria-invalid", "true");
+  // A route's limits: empty is none, and a bandwidth below the smallest is refused on its field.
+  await page.getByLabel("Most bytes a second, each way").fill("512");
+  await page.getByRole("button", { name: "Create the route" }).click();
+  await expect(page.getByText("A bandwidth limit is at least 1024 bytes a second; leave it empty for none.")).toBeVisible();
+  await expect(page.getByLabel("Most bytes a second, each way")).toHaveAttribute("aria-invalid", "true");
+  await expectAccessible(page);
   // A CONNECT route: its fields come with the mode, and basic auth in the clear stays warned of.
   await page.getByRole("radio", { name: "TCP", exact: true }).check();
   await page.getByLabel("Listener", { exact: true }).selectOption({ label: "A CONNECT listener shared with other routes (HTTP proxy)" });
