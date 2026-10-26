@@ -89,3 +89,22 @@ func TestLogs(t *testing.T) {
 		t.Errorf("an offline gateway: %d %q", code, errOut)
 	}
 }
+
+// TestPrintable: a line from an agent cannot reach the terminal as a control sequence: ESC (CSI
+// and OSC 52, which writes the clipboard), the C1 CSI as a character and as a lone byte, NUL, CR
+// and DEL are escaped; tabs and other text stay.
+func TestPrintable(t *testing.T) {
+	for in, want := range map[string]string{
+		"msg=ready\tcount=2":          "msg=ready\tcount=2",
+		"\x1b[2J\x1b[Hcleared":        `\x1b[2J\x1b[Hcleared`,
+		"\x1b]52;c;cm0gLXJmIH4K\x07":  `\x1b]52;c;cm0gLXJmIH4K\x07`,
+		"c1 \u009b31m red":            `c1 \u009b31m red`,
+		"lone \x9b byte":              `lone \x9b byte`,
+		"nul\x00 cr\r del\x7f":        `nul\x00 cr\x0d del\x7f`,
+		"ünïcode ✓ and a line\nbreak": `ünïcode ✓ and a line\x0abreak`,
+	} {
+		if got := printable(in); got != want {
+			t.Errorf("printable(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

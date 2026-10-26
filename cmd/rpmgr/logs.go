@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
@@ -75,7 +76,7 @@ func streamLogs(kind string) *cli.Command {
 					cut = " …(cut)"
 				}
 				if _, err := fmt.Fprintf(env.Stdout, "%s %-5s %s%s\n", l.GetTime().AsTime().UTC().Format(time.RFC3339Nano),
-					strings.ToUpper(l.GetLevel()), l.GetText(), cut); err != nil {
+					printable(strings.ToUpper(l.GetLevel())), printable(l.GetText()), cut); err != nil {
 					return err
 				}
 			}
@@ -89,4 +90,28 @@ func streamLogs(kind string) *cli.Command {
 			return err
 		},
 	}
+}
+
+// printable is text from an agent made safe for a terminal: control characters, C0 but the tab,
+// DEL and C1, and bytes that are not UTF-8 are written as Go escapes, so a line cannot move the
+// cursor, retitle the window or write the clipboard (OSC 52).
+func printable(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		r, n := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == utf8.RuneError && n == 1:
+			fmt.Fprintf(&b, `\x%02x`, s[i])
+		case r == '\t':
+			b.WriteRune(r)
+		case r < 0x20, r == 0x7f:
+			fmt.Fprintf(&b, `\x%02x`, r)
+		case r >= 0x80 && r <= 0x9f:
+			fmt.Fprintf(&b, `\u%04x`, r)
+		default:
+			b.WriteString(s[i : i+n])
+		}
+		i += n
+	}
+	return b.String()
 }
