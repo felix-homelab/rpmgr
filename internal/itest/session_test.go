@@ -219,3 +219,56 @@ func TestControlSession_TurnedAwayHonoursRetryAfter(t *testing.T) {
 		t.Errorf("reconnected after %v, before the minimum retry_after of 1 s", d)
 	}
 }
+
+// TestControlSession_HandoffDoesNotRedial: during a restart with socket hand-off the old process
+// takes the Goodbye{superseded} that the new process's session causes and opens no further control
+// session, so the two never supersede each other in turn; after a failed hand-off it redials at
+// once, and without a hand-off a superseded agent redials as before (spike S10, S-5).
+func TestControlSession_HandoffDoesNotRedial(t *testing.T) {
+	superseded := func(c *agent.Client) int {
+		_, g, _ := c.Stats()
+		return g[agentv1.GoodbyeReason_GOODBYE_REASON_SUPERSEDED]
+	}
+	for _, tc := range []struct {
+		name     string
+		handoff  bool
+		tookOver bool
+	}{
+		{"the new process takes over", true, true},
+		{"the hand-off fails", true, false},
+		{"no hand-off", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctl := itest.StartController(t, itest.Options{})
+			id := ctl.EnrollConnector(t, filepath.Join(t.TempDir(), "identity"))
+			old, _, _ := run(t, agent.ClientOptions{Identity: id, Endpoints: []string{ctl.URL}, Version: "0.3.0", BootID: "old"})
+			waitFor(t, "the old process's session", func() bool { return welcomes(old) == 1 })
+			end := func(bool) {}
+			if tc.handoff {
+				end = old.BeginHandoff()
+			}
+			niu, _, stopNew := run(t, agent.ClientOptions{Identity: id, Endpoints: []string{ctl.URL}, Version: "0.3.0", BootID: "new"})
+			waitFor(t, "the new process's session", func() bool { return welcomes(niu) >= 1 })
+			waitFor(t, "the old process superseded", func() bool { return superseded(old) >= 1 })
+			if !tc.handoff {
+				waitFor(t, "the old process to redial", func() bool { return welcomes(old) >= 2 })
+				return
+			}
+			time.Sleep(500 * time.Millisecond) // many backoffs of fast()
+			if welcomes(old) != 1 || superseded(niu) != 0 {
+				t.Fatalf("during the hand-off: old welcomed %d times, new superseded %d times", welcomes(old), superseded(niu))
+			}
+			if tc.tookOver {
+				end(true)
+				time.Sleep(500 * time.Millisecond)
+				if welcomes(old) != 1 || !slices.Contains(ctl.Sessions.Connected(), id.AgentID) || superseded(niu) != 0 {
+					t.Errorf("after the hand-off: old welcomed %d times, new superseded %d times", welcomes(old), superseded(niu))
+				}
+				return
+			}
+			_, _ = stopNew() // the old process killed the new one
+			end(false)
+			waitFor(t, "the old process to redial after the failed hand-off", func() bool { return welcomes(old) == 2 })
+		})
+	}
+}

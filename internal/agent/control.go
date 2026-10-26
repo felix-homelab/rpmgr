@@ -96,6 +96,66 @@ type Client struct {
 	conn   *grpc.ClientConn
 	creds  *stateCreds
 	end    context.CancelFunc
+	// a restart with socket hand-off (docs/03, "Restarts with socket hand-off")
+	handoff     handoffState
+	handoffDone chan struct{} // closed when the hand-off ends
+}
+
+type handoffState int
+
+const (
+	noHandoff handoffState = iota
+	handingOff
+	handedOff // the new process took over: no further control session
+)
+
+// BeginHandoff marks a restart with socket hand-off: the new process's control session supersedes
+// this one, and a Goodbye{superseded} then ends this process's session without a redial, so that
+// the two never supersede each other in turn. end(true), once the new process took over, keeps
+// this client from opening another control session; end(false), after a failed hand-off, redials
+// at once (spike S10, S-5).
+func (c *Client) BeginHandoff() (end func(tookOver bool)) {
+	done := make(chan struct{})
+	c.mu.Lock()
+	c.handoff, c.handoffDone = handingOff, done
+	c.mu.Unlock()
+	var once sync.Once
+	return func(tookOver bool) {
+		once.Do(func() {
+			c.mu.Lock()
+			c.handoff = noHandoff
+			if tookOver {
+				c.handoff = handedOff
+			}
+			c.mu.Unlock()
+			close(done)
+		})
+	}
+}
+
+// afterHandoff decides, once a session ended, whether a hand-off keeps this client from
+// redialling: it waits for a hand-off in progress to end when the new process superseded this
+// session, and reports stop once the new process took over, and redial at once after a failed one.
+func (c *Client) afterHandoff(ctx context.Context, reason agentv1.GoodbyeReason) (stop, now bool) {
+	c.mu.Lock()
+	state, done := c.handoff, c.handoffDone
+	c.mu.Unlock()
+	if state == handingOff && reason == agentv1.GoodbyeReason_GOODBYE_REASON_SUPERSEDED {
+		c.o.Logger.Info("superseded by the new process of a hand-off; waiting for its outcome")
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return true, false
+		}
+		c.mu.Lock()
+		state = c.handoff
+		c.mu.Unlock()
+		if state != handedOff {
+			c.o.Logger.Info("the hand-off failed; opening the control session again")
+			return false, true
+		}
+	}
+	return state == handedOff, false
 }
 
 // NewClient returns the control-session client.
@@ -154,6 +214,12 @@ func (c *Client) Run(ctx context.Context) error {
 		}
 		if err != nil {
 			c.o.Logger.Warn("control session ended", "endpoint", ep, "error", err)
+		}
+		if stop, now := c.afterHandoff(ctx, out.reason); stop {
+			<-ctx.Done() // the old process serves its open connections, without a control session
+			return nil
+		} else if now {
+			continue
 		}
 		if out.drained && next%len(endpoints) != 0 {
 			continue // move at once; the deadline is short

@@ -33,9 +33,10 @@ func (s Systemd) Restart(ctx context.Context, unit string) error {
 	return nil
 }
 
-// State reads the unit's ActiveState and NRestarts, the restarts systemd made by Restart=.
+// State reads the unit's ActiveState, NRestarts, the restarts systemd made by Restart=, and
+// MainPID.
 func (s Systemd) State(ctx context.Context, unit string) (Unit, error) {
-	out, err := exec.CommandContext(ctx, s.cmd(), "show", "--property=ActiveState,NRestarts", unit).Output() //nolint:gosec // G204: a fixed unit name
+	out, err := exec.CommandContext(ctx, s.cmd(), "show", "--property=ActiveState,NRestarts,MainPID", unit).Output() //nolint:gosec // G204: a fixed unit name
 	if err != nil {
 		return Unit{}, fmt.Errorf("systemctl show %s: %w", unit, err)
 	}
@@ -51,6 +52,10 @@ func (s Systemd) State(ctx context.Context, unit string) (Unit, error) {
 		case "NRestarts":
 			if n, err := strconv.Atoi(v); err == nil {
 				u.Restarts = n
+			}
+		case "MainPID":
+			if n, err := strconv.Atoi(v); err == nil {
+				u.MainPID = n
 			}
 		}
 	}

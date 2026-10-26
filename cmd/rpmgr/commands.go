@@ -40,6 +40,7 @@ func commands() *cli.Command {
 			loginCommand(promptAPIToken),
 			logoutCommand(),
 			agentcmd.Leave(),
+			agentcmd.Handoff(),
 			agentcmd.Status(),
 			agentcmd.Diag(),
 			agentcmd.Policy(),

@@ -577,13 +577,13 @@ func TestApply_PlantedLinks(t *testing.T) {
 func TestSystemd_State(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "systemctl")
-	mustWrite(t, script, "#!/bin/sh\nif [ \"$1\" = show ]; then printf 'ActiveState=activating\\nNRestarts=4\\n'; fi\n", 0o755)
+	mustWrite(t, script, "#!/bin/sh\nif [ \"$1\" = show ]; then printf 'ActiveState=activating\\nNRestarts=4\\nMainPID=812\\n'; fi\n", 0o755)
 	s := update.Systemd{Systemctl: script}
 	if err := s.Restart(context.Background(), "rpmgr-connector.service"); err != nil {
 		t.Fatal(err)
 	}
 	u, err := s.State(context.Background(), "rpmgr-connector.service")
-	if err != nil || u != (update.Unit{Active: "activating", Restarts: 4}) {
+	if err != nil || u != (update.Unit{Active: "activating", Restarts: 4, MainPID: 812}) {
 		t.Fatalf("State = %+v, %v", u, err)
 	}
 	mustWrite(t, script, "#!/bin/sh\necho 'Job failed' >&2\nexit 1\n", 0o755)

@@ -79,10 +79,10 @@ var (
 // Render returns the unit of a role: controller, gateway, connector or all-in-one.
 func Render(role string, o Options) ([]byte, error) {
 	data := struct {
-		Role, Bin, Credential string
-		BindLow, Reload       bool
-		Writable              []string
-	}{Role: role, Bin: o.Bin, Credential: o.Credential}
+		Role, Bin, Credential    string
+		BindLow, Reload, Handoff bool
+		Writable                 []string
+	}{Role: role, Bin: o.Bin, Credential: o.Credential, Handoff: role != "controller"}
 	switch role {
 	case "controller", "gateway":
 		data.BindLow = true // ports 443 and 80

@@ -68,6 +68,8 @@ type Unit struct {
 	Active string
 	// Restarts is its NRestarts, how often systemd restarted it by Restart=.
 	Restarts int
+	// MainPID is its main process, 0 when none runs.
+	MainPID int
 }
 
 // Services restarts the role services and reports their state; Systemd is the real one.
