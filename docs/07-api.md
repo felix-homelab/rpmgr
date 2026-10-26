@@ -405,7 +405,10 @@ spec:
 - **Envelope** ([D144](14-open-decisions.md#engineering)): `POST` of
   `{"id", "type", "time", "org_id", "actor": {"type", "id"}, "subject": {"type", "id", "name"},
   "summary", "changed": [field names]}`; no resource body. Fetch the resource through the API for
-  more.
+  more. An alert event's subject is what the alert is about (an agent, a route, a certificate, or
+  `instance` for an instance alert), its actor the system, and its summary begins with the alert's
+  kind and a colon, such as `agent_offline: Agent offline fires, gw1`
+  ([10](10-operations.md#suggested-alerts)).
 - **Headers:** `Rpmgr-Event-Id` (the event's ID, the same on every retry: delivery is at least
   once), `Rpmgr-Event-Type`, and `Rpmgr-Signature: t=<unix>,v1=<HMAC-SHA256(secret, t.body)>`, with
   a second `v1=` value while a rotated secret still signs. Receivers reject signatures older than

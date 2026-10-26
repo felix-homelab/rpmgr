@@ -12,6 +12,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/alert"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apitoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
@@ -289,6 +290,33 @@ func (f TraverseAgentState) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.AgentStateQuery", q)
+}
+
+// The AlertFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AlertFunc func(context.Context, *ent.AlertQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AlertFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AlertQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AlertQuery", q)
+}
+
+// The TraverseAlert type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAlert func(context.Context, *ent.AlertQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAlert) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAlert) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AlertQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AlertQuery", q)
 }
 
 // The AuditCheckpointFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1818,6 +1846,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AgentSessionQuery, predicate.AgentSession, agentsession.OrderOption]{typ: ent.TypeAgentSession, tq: q}, nil
 	case *ent.AgentStateQuery:
 		return &query[*ent.AgentStateQuery, predicate.AgentState, agentstate.OrderOption]{typ: ent.TypeAgentState, tq: q}, nil
+	case *ent.AlertQuery:
+		return &query[*ent.AlertQuery, predicate.Alert, alert.OrderOption]{typ: ent.TypeAlert, tq: q}, nil
 	case *ent.AuditCheckpointQuery:
 		return &query[*ent.AuditCheckpointQuery, predicate.AuditCheckpoint, auditcheckpoint.OrderOption]{typ: ent.TypeAuditCheckpoint, tq: q}, nil
 	case *ent.AuditEntryQuery:

@@ -10,6 +10,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/alert"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apitoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
@@ -463,6 +464,58 @@ func init() {
 	agentstateDescID := agentstateFields[0].Descriptor()
 	// agentstate.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	agentstate.IDValidator = agentstateDescID.Validators[0].(func(string) error)
+	alert.Policy = privacy.NewPolicies(schema.Alert{})
+	alert.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := alert.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	alertHooks := schema.Alert{}.Hooks()
+
+	alert.Hooks[1] = alertHooks[0]
+	alertInters := schema.Alert{}.Interceptors()
+	alert.Interceptors[0] = alertInters[0]
+	alertFields := schema.Alert{}.Fields()
+	_ = alertFields
+	// alertDescKind is the schema descriptor for kind field.
+	alertDescKind := alertFields[2].Descriptor()
+	// alert.KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	alert.KindValidator = alertDescKind.Validators[0].(func(string) error)
+	// alertDescSubjectType is the schema descriptor for subject_type field.
+	alertDescSubjectType := alertFields[3].Descriptor()
+	// alert.SubjectTypeValidator is a validator for the "subject_type" field. It is called by the builders before save.
+	alert.SubjectTypeValidator = alertDescSubjectType.Validators[0].(func(string) error)
+	// alertDescSubjectID is the schema descriptor for subject_id field.
+	alertDescSubjectID := alertFields[4].Descriptor()
+	// alert.SubjectIDValidator is a validator for the "subject_id" field. It is called by the builders before save.
+	alert.SubjectIDValidator = alertDescSubjectID.Validators[0].(func(string) error)
+	// alertDescSubjectName is the schema descriptor for subject_name field.
+	alertDescSubjectName := alertFields[5].Descriptor()
+	// alert.DefaultSubjectName holds the default value on creation for the subject_name field.
+	alert.DefaultSubjectName = alertDescSubjectName.Default.(string)
+	// alertDescID is the schema descriptor for id field.
+	alertDescID := alertFields[0].Descriptor()
+	// alert.DefaultID holds the default value on creation for the id field.
+	alert.DefaultID = alertDescID.Default.(func() string)
+	// alert.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	alert.IDValidator = func() func(string) error {
+		validators := alertDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	auditcheckpoint.Policy = privacy.NewPolicies(schema.AuditCheckpoint{})
 	auditcheckpoint.Hooks[0] = func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {

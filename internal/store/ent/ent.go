@@ -16,6 +16,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/alert"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apitoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
@@ -140,6 +141,7 @@ func checkColumn(t, c string) error {
 			accesspolicy.Table:       accesspolicy.ValidColumn,
 			agentsession.Table:       agentsession.ValidColumn,
 			agentstate.Table:         agentstate.ValidColumn,
+			alert.Table:              alert.ValidColumn,
 			auditcheckpoint.Table:    auditcheckpoint.ValidColumn,
 			auditentry.Table:         auditentry.ValidColumn,
 			audithead.Table:          audithead.ValidColumn,

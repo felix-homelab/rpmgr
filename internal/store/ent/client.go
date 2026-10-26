@@ -19,6 +19,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/alert"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apitoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
@@ -98,6 +99,8 @@ type Client struct {
 	AgentSession *AgentSessionClient
 	// AgentState is the client for interacting with the AgentState builders.
 	AgentState *AgentStateClient
+	// Alert is the client for interacting with the Alert builders.
+	Alert *AlertClient
 	// AuditCheckpoint is the client for interacting with the AuditCheckpoint builders.
 	AuditCheckpoint *AuditCheckpointClient
 	// AuditEntry is the client for interacting with the AuditEntry builders.
@@ -227,6 +230,7 @@ func (c *Client) init() {
 	c.AccessPolicy = NewAccessPolicyClient(c.config)
 	c.AgentSession = NewAgentSessionClient(c.config)
 	c.AgentState = NewAgentStateClient(c.config)
+	c.Alert = NewAlertClient(c.config)
 	c.AuditCheckpoint = NewAuditCheckpointClient(c.config)
 	c.AuditEntry = NewAuditEntryClient(c.config)
 	c.AuditHead = NewAuditHeadClient(c.config)
@@ -381,6 +385,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AccessPolicy:       NewAccessPolicyClient(cfg),
 		AgentSession:       NewAgentSessionClient(cfg),
 		AgentState:         NewAgentStateClient(cfg),
+		Alert:              NewAlertClient(cfg),
 		AuditCheckpoint:    NewAuditCheckpointClient(cfg),
 		AuditEntry:         NewAuditEntryClient(cfg),
 		AuditHead:          NewAuditHeadClient(cfg),
@@ -462,6 +467,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AccessPolicy:       NewAccessPolicyClient(cfg),
 		AgentSession:       NewAgentSessionClient(cfg),
 		AgentState:         NewAgentStateClient(cfg),
+		Alert:              NewAlertClient(cfg),
 		AuditCheckpoint:    NewAuditCheckpointClient(cfg),
 		AuditEntry:         NewAuditEntryClient(cfg),
 		AuditHead:          NewAuditHeadClient(cfg),
@@ -548,10 +554,10 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.ACMEStorage, c.APIRequest, c.APIToken, c.AccessPolicy, c.AgentSession,
-		c.AgentState, c.AuditCheckpoint, c.AuditEntry, c.AuditHead, c.CABundle,
-		c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq,
-		c.ConnectAuthority, c.ConnectListener, c.Connector, c.DataSession, c.Domain,
-		c.EnrollmentToken, c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage,
+		c.AgentState, c.Alert, c.AuditCheckpoint, c.AuditEntry, c.AuditHead,
+		c.CABundle, c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision,
+		c.ConfigSeq, c.ConnectAuthority, c.ConnectListener, c.Connector, c.DataSession,
+		c.Domain, c.EnrollmentToken, c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage,
 		c.HealthCheck, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
 		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
@@ -570,10 +576,10 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.ACMEStorage, c.APIRequest, c.APIToken, c.AccessPolicy, c.AgentSession,
-		c.AgentState, c.AuditCheckpoint, c.AuditEntry, c.AuditHead, c.CABundle,
-		c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq,
-		c.ConnectAuthority, c.ConnectListener, c.Connector, c.DataSession, c.Domain,
-		c.EnrollmentToken, c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage,
+		c.AgentState, c.Alert, c.AuditCheckpoint, c.AuditEntry, c.AuditHead,
+		c.CABundle, c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision,
+		c.ConfigSeq, c.ConnectAuthority, c.ConnectListener, c.Connector, c.DataSession,
+		c.Domain, c.EnrollmentToken, c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage,
 		c.HealthCheck, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
 		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
@@ -602,6 +608,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AgentSession.mutate(ctx, m)
 	case *AgentStateMutation:
 		return c.AgentState.mutate(ctx, m)
+	case *AlertMutation:
+		return c.Alert.mutate(ctx, m)
 	case *AuditCheckpointMutation:
 		return c.AuditCheckpoint.mutate(ctx, m)
 	case *AuditEntryMutation:
@@ -1526,6 +1534,141 @@ func (c *AgentStateClient) mutate(ctx context.Context, m *AgentStateMutation) (V
 		return (&AgentStateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AgentState mutation op: %q", m.Op())
+	}
+}
+
+// AlertClient is a client for the Alert schema.
+type AlertClient struct {
+	config
+}
+
+// NewAlertClient returns a client for the Alert from the given config.
+func NewAlertClient(c config) *AlertClient {
+	return &AlertClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `alert.Hooks(f(g(h())))`.
+func (c *AlertClient) Use(hooks ...Hook) {
+	c.hooks.Alert = append(c.hooks.Alert, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `alert.Intercept(f(g(h())))`.
+func (c *AlertClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Alert = append(c.inters.Alert, interceptors...)
+}
+
+// Create returns a builder for creating a Alert entity.
+func (c *AlertClient) Create() *AlertCreate {
+	mutation := newAlertMutation(c.config, OpCreate)
+	return &AlertCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Alert entities.
+func (c *AlertClient) CreateBulk(builders ...*AlertCreate) *AlertCreateBulk {
+	return &AlertCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AlertClient) MapCreateBulk(slice any, setFunc func(*AlertCreate, int)) *AlertCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AlertCreateBulk{err: fmt.Errorf("calling to AlertClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AlertCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AlertCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Alert.
+func (c *AlertClient) Update() *AlertUpdate {
+	mutation := newAlertMutation(c.config, OpUpdate)
+	return &AlertUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AlertClient) UpdateOne(_m *Alert) *AlertUpdateOne {
+	mutation := newAlertMutation(c.config, OpUpdateOne, withAlert(_m))
+	return &AlertUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AlertClient) UpdateOneID(id string) *AlertUpdateOne {
+	mutation := newAlertMutation(c.config, OpUpdateOne, withAlertID(id))
+	return &AlertUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Alert.
+func (c *AlertClient) Delete() *AlertDelete {
+	mutation := newAlertMutation(c.config, OpDelete)
+	return &AlertDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AlertClient) DeleteOne(_m *Alert) *AlertDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AlertClient) DeleteOneID(id string) *AlertDeleteOne {
+	builder := c.Delete().Where(alert.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AlertDeleteOne{builder}
+}
+
+// Query returns a query builder for Alert.
+func (c *AlertClient) Query() *AlertQuery {
+	return &AlertQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAlert},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Alert entity by its id.
+func (c *AlertClient) Get(ctx context.Context, id string) (*Alert, error) {
+	return c.Query().Where(alert.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AlertClient) GetX(ctx context.Context, id string) *Alert {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AlertClient) Hooks() []Hook {
+	hooks := c.hooks.Alert
+	return append(hooks[:len(hooks):len(hooks)], alert.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *AlertClient) Interceptors() []Interceptor {
+	inters := c.inters.Alert
+	return append(inters[:len(inters):len(inters)], alert.Interceptors[:]...)
+}
+
+func (c *AlertClient) mutate(ctx context.Context, m *AlertMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AlertCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AlertUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AlertUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AlertDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Alert mutation op: %q", m.Op())
 	}
 }
 
@@ -9744,7 +9887,7 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 type (
 	hooks struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
-		AuditCheckpoint, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
+		Alert, AuditCheckpoint, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
 		CompiledSnapshot, ConfigRevision, ConfigSeq, ConnectAuthority, ConnectListener,
 		Connector, DataSession, Domain, EnrollmentToken, Event, Gateway, GatewayGroup,
 		GatewayPage, HealthCheck, Instance, InstanceSecret, InstanceSetting,
@@ -9757,7 +9900,7 @@ type (
 	}
 	inters struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
-		AuditCheckpoint, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
+		Alert, AuditCheckpoint, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
 		CompiledSnapshot, ConfigRevision, ConfigSeq, ConnectAuthority, ConnectListener,
 		Connector, DataSession, Domain, EnrollmentToken, Event, Gateway, GatewayGroup,
 		GatewayPage, HealthCheck, Instance, InstanceSecret, InstanceSetting,

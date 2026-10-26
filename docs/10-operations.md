@@ -912,6 +912,17 @@ alert, when SMTP is configured; an org chooses the alert types it gets and can t
 ([D139](14-open-decisions.md#engineering), [07](07-api.md#webhooks-phase-2)). The Overview shows
 the alerts that fire.
 
+[R] Each alert the controller evaluates has a kind, the name `alert_types` chooses and an alert
+event's summary begins with: `agent_offline`, `config_not_applied`, `agent_certificate_expiring`,
+`public_certificate_expiring`, `route_no_ready_connector`, `clock_skew`,
+`audit_checkpoints_behind` and `revocation_log_on_host`, and, with their slices,
+`webhook_failing`, `audit_sink_backlog` and the DNS alerts. An agent counts once it has connected,
+while it is enabled and not ephemeral; agent offline counts from its disconnection, configuration
+not applied and clock skew only while it is online, and certificate renewal failing looks at its
+newest unrevoked certificate. Public certificate expiring covers ACME certificates; a route in
+maintenance has no "no ready connector" alert. Revocation log not yet off-host is the status of
+the replica that evaluates the alerts.
+
 ## Hardening checklist
 
 - [ ] Controller UI on HTTPS with a valid certificate; HSTS on.

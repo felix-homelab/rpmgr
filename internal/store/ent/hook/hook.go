@@ -81,6 +81,18 @@ func (f AgentStateFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AgentStateMutation", m)
 }
 
+// The AlertFunc type is an adapter to allow the use of ordinary
+// function as Alert mutator.
+type AlertFunc func(context.Context, *ent.AlertMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AlertFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AlertMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AlertMutation", m)
+}
+
 // The AuditCheckpointFunc type is an adapter to allow the use of ordinary
 // function as AuditCheckpoint mutator.
 type AuditCheckpointFunc func(context.Context, *ent.AuditCheckpointMutation) (ent.Value, error)
