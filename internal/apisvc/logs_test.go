@@ -30,6 +30,7 @@ type fakeLogs struct {
 	mu     sync.Mutex
 	lines  map[string][]string // by agent
 	ends   map[string]error    // how the agent ends its stream after its lines, by agent
+	onOpen func()              // runs as an operation opens, if set
 	params []*agentv1.LogParams
 	closed []string // the reasons streams were closed with
 }
@@ -42,6 +43,9 @@ func (f *fakeLogs) OpenLogs(_ context.Context, agentID string, p *agentv1.LogPar
 		return nil, apisvc.ErrLogsUnavailable
 	}
 	f.params = append(f.params, p)
+	if f.onOpen != nil {
+		f.onOpen()
+	}
 	return &fakeStream{f: f, lines: slices.Clone(lines), end: f.ends[agentID], done: make(chan struct{})}, nil
 }
 
@@ -369,4 +373,33 @@ func TestStreamLogs_AccessRechecked(t *testing.T) {
 		t.Errorf("a revoked token's stream ended with %v", code)
 	}
 	waitUntil(t, "the operations to end", func() bool { return len(e.agents.reasons()) == 3 })
+}
+
+// TestStreamLogs_AuditFailsClosed: a live log whose agent.logs_open entry cannot be written is not
+// streamed: the open fails, no line reaches the viewer, and the operation on the agent ends.
+func TestStreamLogs_AuditFailsClosed(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	con := e.addConnector(t, org, "nas", nil).ID
+	e.agents.lines = map[string][]string{con: {"a line nobody may read unaudited"}}
+	e.agents.onOpen = func() {
+		if _, err := e.db.Writer.ExecContext(context.Background(),
+			"CREATE TRIGGER no_audit BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END"); err != nil {
+			t.Error(err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	st, err := ada.logs.StreamLogs(ctx, connect.NewRequest(&rpmgrv1.StreamLogsRequest{AgentId: con}))
+	if err == nil {
+		for st.Receive() {
+			if l := st.Msg().GetLine(); l != nil {
+				t.Fatalf("a line without its audit entry: %v", l)
+			}
+		}
+		err = st.Err()
+	}
+	if connect.CodeOf(err) != connect.CodeInternal {
+		t.Errorf("an open whose audit failed: %v", err)
+	}
+	waitUntil(t, "the operation to end", func() bool { return len(e.agents.reasons()) == 1 })
 }
