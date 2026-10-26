@@ -378,7 +378,10 @@
       "healthInterval": "Check interval (seconds)",
       "healthTimeout": "Check timeout (seconds)",
       "healthUnhealthy": "Failed checks before unhealthy",
-      "healthHealthy": "Passed checks before healthy again"
+      "healthHealthy": "Passed checks before healthy again",
+      "maxConnections": "Most connections, flows or requests at once",
+      "requestsPerSecond": "Most requests, connections or flows a second",
+      "bandwidth": "Most bytes a second, each way"
     },
     "hints": {
       "lines": "One per line.",
@@ -390,7 +393,8 @@
       "healthPort": "Empty for each target's own port. A UDP route needs one; a route with a Unix socket target cannot have one.",
       "healthPath": "Starts with /, may have a query. Empty for /.",
       "healthStatus": "As 200-399. Empty for any success or redirect.",
-      "fixed": "Set when the route is created; it cannot change."
+      "fixed": "Set when the route is created; it cannot change.",
+      "limit": "Empty for no limit. The group's enabled gateways share it."
     },
     "connect": {
       "plainBasic": "Clients send their proxy password in the clear: anyone on the network between them and the gateway can read and use it. Use basic auth over TLS unless the clients cannot speak to an HTTPS proxy."
@@ -455,6 +459,7 @@
         "http": "HTTP: a GET answers with a passing status"
       }
     },
+    "bandwidthMin": "A bandwidth limit is at least {{min}} bytes a second; leave it empty for none.",
     "statusRange": "Write the passing statuses as two three-digit codes, such as 200-399.",
     "tristate": {
       "default": "Default",

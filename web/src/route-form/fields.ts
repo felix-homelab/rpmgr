@@ -2,8 +2,8 @@
 
 import { clone, create } from "@bufbuild/protobuf";
 import { DataTransport } from "@/gen/rpmgr/v1/connector_pb";
-import { ConnectAuthMode, HeaderMatchSchema, HealthCheckSchema, HealthCheckType, ListenerMode, Port80Mode, RouteSchema, TLSMode,
-  type HeaderMatch, type HealthCheck, type Route, type TCPRouteSpec } from "@/gen/rpmgr/v1/route_pb";
+import { ConnectAuthMode, HeaderMatchSchema, HealthCheckSchema, HealthCheckType, ListenerMode, Port80Mode, RouteLimitsSchema, RouteSchema,
+  TLSMode, type HeaderMatch, type HealthCheck, type Route, type RouteLimits, type TCPRouteSpec } from "@/gen/rpmgr/v1/route_pb";
 
 // A field of the route form: its form key, the route path the API's update mask names
 // (internal/apisvc routeFields), how it is edited, and how it reads from and writes to a route.
@@ -251,9 +251,43 @@ const health: RouteField[] = [
     set: (c, v) => (c.healthyThreshold = optional(v) ?? 0) }),
 ];
 
-// routeFields are the fields the form shows for a route of its type, its health check last.
+// The route's limits (docs/03-connections.md, "Route limits"): a field per limit, all under the
+// update mask's limits, so that a change of any sends them whole. Empty is no limit, and a route
+// without any has no limits at all.
+const minBandwidth = 1024; // internal/apisvc MinBandwidth
+const noLimits = (l: RouteLimits) => l.maxConnections === 0 && l.requestsPerSecond === 0 && l.bandwidthBytesPerSecond === 0n;
+
+function limit(key: string, part: string, field: Pick<RouteField, "problem"> & {
+  get: (l: RouteLimits) => string;
+  set: (l: RouteLimits, v: string) => void;
+}): RouteField {
+  return {
+    ...field, key, path: "limits", errorPath: `limits.${part}`, kind: "optionalNumber", hint: "limit",
+    get: (r) => (r.limits ? field.get(r.limits) : ""),
+    set: (r, v) => {
+      r.limits ??= create(RouteLimitsSchema);
+      field.set(r.limits, v);
+      if (noLimits(r.limits)) {
+        r.limits = undefined;
+      }
+    },
+  };
+}
+
+const limits: RouteField[] = [
+  limit("maxConnections", "max_connections", { get: (l) => count(l.maxConnections), set: (l, v) => (l.maxConnections = optional(v) ?? 0) }),
+  limit("requestsPerSecond", "requests_per_second", { get: (l) => count(l.requestsPerSecond),
+    set: (l, v) => (l.requestsPerSecond = optional(v) ?? 0) }),
+  limit("bandwidth", "bandwidth_bytes_per_second", {
+    problem: (v) => (/^\d+$/.test(v) && BigInt(v) > 0n && BigInt(v) < minBandwidth ? { text: "bandwidthMin", values: { min: minBandwidth } } : undefined),
+    get: (l) => (l.bandwidthBytesPerSecond === 0n ? "" : String(l.bandwidthBytesPerSecond)),
+    set: (l, v) => (l.bandwidthBytesPerSecond = /^\d+$/.test(v.trim()) ? BigInt(v.trim()) : 0n) }),
+];
+
+// routeFields are the fields the form shows for a route of its type, then its limits and its
+// health check.
 export function routeFields(r: Route): RouteField[] {
-  return [...common, ...(byType[r.spec.case ?? ""] ?? []), ...health];
+  return [...common, ...(byType[r.spec.case ?? ""] ?? []), ...limits, ...health];
 }
 
 // maskOf is the update mask of the form's fields, each path once.

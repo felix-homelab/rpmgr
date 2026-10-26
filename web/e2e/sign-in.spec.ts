@@ -216,6 +216,12 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.getByRole("button", { name: "Create the route" }).click();
   await expect(page.getByText("Line 2: “X Env” is not a header name.", { exact: false })).toBeVisible();
   await expect(page.getByLabel("Serve only requests with these headers")).toHaveAttribute("aria-invalid", "true");
+  // A route's limits: empty is none, and a bandwidth below the smallest is refused on its field.
+  await page.getByLabel("Most bytes a second, each way").fill("512");
+  await page.getByRole("button", { name: "Create the route" }).click();
+  await expect(page.getByText("A bandwidth limit is at least 1024 bytes a second; leave it empty for none.")).toBeVisible();
+  await expect(page.getByLabel("Most bytes a second, each way")).toHaveAttribute("aria-invalid", "true");
+  await expectAccessible(page);
   // A CONNECT route: its fields come with the mode, and basic auth in the clear stays warned of.
   await page.getByRole("radio", { name: "TCP", exact: true }).check();
   await page.getByLabel("Listener", { exact: true }).selectOption({ label: "A CONNECT listener shared with other routes (HTTP proxy)" });

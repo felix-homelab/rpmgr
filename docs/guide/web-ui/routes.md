@@ -108,6 +108,17 @@ within the organisation's port quota. An empty timeout keeps the API's default, 
 A **TLS passthrough** route adds **Hostnames** only
 ([TLS passthrough](../routes/tls-passthrough.md)).
 
+Every route then has its limits ([Route limits](../routes/limits.md)), each empty for no limit:
+
+| Field | Takes |
+|---|---|
+| **Most connections, flows or requests at once** | Open connections, UDP flows and HTTP requests in flight |
+| **Most requests, connections or flows a second** | HTTP requests, new connections and new UDP flows a second |
+| **Most bytes a second, each way** | The bandwidth in each direction. A value below the smallest the API takes ([03](../../03-connections.md#route-limits-phase-2)) is refused before the route is sent, with the smallest in the message |
+
+Each limit is the route's in all; the enabled gateways of its group share it. A value above the
+API's bound is refused on its field, as is anything that is not a whole number.
+
 Every route ends with its **Health check** ([Health checks](../routes/targets.md#health-checks)):
 
 | Field | Takes |

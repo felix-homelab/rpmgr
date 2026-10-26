@@ -363,7 +363,9 @@ flowchart LR
     - **Timeouts** (http): upstream response header and upstream idle, in seconds, empty for the
       gateway's.
     - **Limits** (every type): connections, request rate and bandwidth for the route as a whole,
-      with a hint that the group's enabled gateways share them.
+      each empty for no limit, with a hint that the group's enabled gateways share them; all
+      three go under one update mask path. The form refuses a bandwidth below the API's smallest
+      before sending, and shows a bound the API refuses on the field it names.
     - **Health check** (every type): TCP or HTTP, port, path, expected status, interval, timeout
       and thresholds; route detail shows each target's health, and "health not checked" for a
       connector that runs no checks.
