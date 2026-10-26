@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/pki"
@@ -261,4 +263,65 @@ func TestDenyList_ConcurrentRefreshes(t *testing.T) {
 			t.Fatalf("round %d: a certificate revoked a moment ago passed", i)
 		}
 	}
+}
+
+// TestRevoke_EndsOperations: revoking an agent ends its open operations at once, not at their
+// deadline: the live log's reader learns that the agent's session ended as revoked, and so does
+// the agent.
+func TestRevoke_EndsOperations(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := startRevokeEnv(t, db)
+		cert, a := e.agentCert(t)
+		h := hello("0.1.0")
+		h.Capabilities = append(h.Capabilities, agentproto.CapLogsStream)
+		st := e.open(t, testCtx(t), cert, h)
+		welcomed(t, st)
+		ended := make(chan string, 1)
+		go func() {
+			var m *agentv1.Open
+			for m == nil {
+				msg, err := st.Recv()
+				if err != nil {
+					return
+				}
+				m = msg.GetOpenOperation()
+			}
+			att := e.attach(t, testCtx(t), cert, m.GetOpId(), m.GetTicket())
+			if err := att.Send(&agentv1.AttachFrame{Frame: &agentv1.AttachFrame_Log{Log: &agentv1.LogLine{Text: "before"}}}); err != nil {
+				return
+			}
+			for {
+				f, err := att.Recv()
+				if err != nil {
+					return
+				}
+				if end := f.GetEnd(); end != nil {
+					ended <- end.GetReason()
+					return
+				}
+			}
+		}()
+		op, err := e.sessions.Open(testCtx(t), a.ID, agentv1.OperationKind_OPERATION_KIND_LOGS, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f, err := op.Recv(); err != nil || f.GetLog().GetText() != "before" {
+			t.Fatalf("the first line: %v %v", f, err)
+		}
+		if err := e.r.RevokeCertificate(e.sys, pki.SerialHex(cert.Leaf.SerialNumber), "key lost", admin); err != nil {
+			t.Fatal(err)
+		}
+		start := time.Now()
+		if _, err := op.Recv(); err == nil || !strings.Contains(err.Error(), "session ended: revoked") || time.Since(start) > 5*time.Second {
+			t.Fatalf("the operation of a revoked agent: %v after %v", err, time.Since(start))
+		}
+		select {
+		case r := <-ended:
+			if !strings.Contains(r, "revoked") {
+				t.Errorf("the agent learned %q", r)
+			}
+		case <-time.After(5 * time.Second):
+			t.Error("the agent did not learn that the operation ended")
+		}
+	})
 }

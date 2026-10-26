@@ -225,6 +225,8 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   `Open{op_id, kind, ticket, deadline, params}`; the agent opens an `Attach` stream on the **same
   HTTP/2 connection** presenting the single-use ticket. No new TCP or TLS handshake. Every operation
   has a deadline; unanswered operations fail with `DEADLINE_EXCEEDED` instead of blocking forever.
+  An operation also ends with the control session it was opened on: when the agent is revoked,
+  superseded or disconnected, the controller ends its operations at once with that reason.
   "Diagnostics" are the existing `ProbeTarget` and live logs; there is no other diagnostic
   operation.
   - `Open` is the field `open_operation = 9` of `ControllerMessage`; the number 3 and the name

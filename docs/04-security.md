@@ -187,11 +187,12 @@ later.
 - Short lifetimes bound the damage when a deny-list cannot be pushed (controller down).
 - **Revoking** a certificate (by serial) or an identity (every certificate of it, also one issued
   later; no new certificate is issued and none renewed) is committed with an audit record. The
-  controller then ends the control sessions of the agents it covers with `Goodbye{revoked}`, sends
-  the new list to every other session, and refuses the certificates at its TLS layer. Each replica
-  reloads the list at every revision check ([03](03-connections.md#timeouts-keepalive-and-backoff)),
-  so a revocation committed by another replica or an admin command is enforced too. Phase 1 always
-  sends the full set.
+  controller then ends the control sessions of the agents it covers with `Goodbye{revoked}`, and
+  with them their imperative operations, such as live logs
+  ([03](03-connections.md#control-session)), sends the new list to every other session, and refuses
+  the certificates at its TLS layer. Each replica reloads the list at every revision check
+  ([03](03-connections.md#timeouts-keepalive-and-backoff)), so a revocation committed by another
+  replica or an admin command is enforced too. Phase 1 always sends the full set.
 - Every revocation is also appended to the **revocation log** outside the database, so a restore
   from an older backup cannot resurrect revoked credentials ([Audit log](#audit-log)).
 - [R] **No OCSP and no CRL**: every relying party already receives the deny-list; OCSP would

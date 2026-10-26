@@ -52,22 +52,31 @@ type pendingOp struct {
 	attached chan *Operation // the Attach that presented the ticket, handed over once
 	failed   chan error      // an Attach that failed the checks
 	gone     chan struct{}   // closed when Open no longer waits
+	sess     *session        // the control session it was opened on, whose end ends it
 }
 
 // Operation is an imperative operation its agent attached (docs/03-connections.md, "Control
 // session"). Recv reads the agent's frames; Close ends it. It also ends at its deadline, when the
-// agent ends it or the agent's stream breaks.
+// agent's control session ends, as when the agent is revoked, when the agent ends it or the
+// agent's stream breaks.
 type Operation struct {
 	st   attachStream
 	done chan struct{}
 	once sync.Once
+	why  string // the reason Close gave; read only once done is closed
 }
 
-// Recv returns the agent's next frame; io.EOF once the agent ended the operation.
+// Recv returns the agent's next frame; io.EOF once the agent ended the operation, and once the
+// controller ended it, an error with Close's reason.
 func (o *Operation) Recv() (*agentv1.AttachFrame, error) {
 	f, err := o.st.Recv()
 	if err != nil {
-		return nil, err
+		select {
+		case <-o.done:
+			return nil, o.ended(err)
+		default:
+			return nil, err
+		}
 	}
 	if f.GetEnd() != nil {
 		if r := f.GetEnd().GetReason(); r != "" {
@@ -78,9 +87,18 @@ func (o *Operation) Recv() (*agentv1.AttachFrame, error) {
 	return f, nil
 }
 
+// ended is the error of a Recv after Close, which err, the stream's, does not explain.
+func (o *Operation) ended(err error) error {
+	if o.why == "" {
+		return err
+	}
+	return fmt.Errorf("controller: the operation ended: %s", o.why)
+}
+
 // Close ends the operation: the agent gets an AttachEnd with reason, and the stream closes.
 func (o *Operation) Close(reason string) {
 	o.once.Do(func() {
+		o.why = reason
 		_ = o.st.Send(&agentv1.AttachFrame{Frame: &agentv1.AttachFrame_End{End: &agentv1.AttachEnd{Reason: reason}}})
 		close(o.done)
 	})
@@ -112,6 +130,7 @@ func (s *Sessions) Open(ctx context.Context, agentID string, kind agentv1.Operat
 	s.mu.Lock()
 	sess := s.active[agentID]
 	capable := sess != nil && slices.Contains(sess.caps, need)
+	p.sess = sess
 	if capable {
 		if s.ops == nil {
 			s.ops = map[string]*op{}
@@ -223,6 +242,8 @@ func (s *Sessions) Attach(st attachStream) error {
 	case <-st.Context().Done():
 	case <-p.gone:
 		o.Close("the operation was given up")
+	case <-p.sess.done:
+		o.Close(p.sess.endReason())
 	case <-deadline.C:
 		o.Close("the operation reached its deadline")
 	}
