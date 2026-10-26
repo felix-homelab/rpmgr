@@ -39,7 +39,7 @@ type LogOpener interface {
 }
 
 // LogStream is an open live-log operation: Recv returns the agent's frames, io.EOF when the agent
-// ended it; Close ends it.
+// ended it and ErrLogsDeadline when its deadline did; Close ends it.
 type LogStream interface {
 	Recv() (*agentv1.AttachFrame, error)
 	Close(reason string)
@@ -48,6 +48,10 @@ type LogStream interface {
 // ErrLogsUnavailable is an agent that has no control session here, or whose release runs no live
 // logs, or that refused the operation.
 var ErrLogsUnavailable = errors.New("apisvc: the agent is offline or runs no live logs")
+
+// ErrLogsDeadline is a live log that reached its deadline: the stream ends without an error, and
+// the viewer may open a new one.
+var ErrLogsDeadline = errors.New("apisvc: the live log reached its deadline")
 
 // Logs implements rpmgrv1connect.LogServiceHandler (docs/07-api.md, "Services").
 type Logs struct {
@@ -150,7 +154,7 @@ func (l *Logs) StreamLogs(ctx context.Context, req *connect.Request[rpmgrv1.Stre
 		case fr = <-frames:
 		}
 		switch {
-		case errors.Is(fr.err, io.EOF), ctx.Err() != nil:
+		case errors.Is(fr.err, io.EOF), errors.Is(fr.err, ErrLogsDeadline), ctx.Err() != nil:
 			return nil
 		case fr.err != nil:
 			return connect.NewError(connect.CodeUnavailable, fmt.Errorf("apisvc: the live log ended: %w", fr.err))

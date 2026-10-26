@@ -35,6 +35,13 @@ var (
 // ErrOperationRefused is an operation the agent refused, or whose Attach failed its checks.
 var ErrOperationRefused = errors.New("controller: the agent did not take the operation")
 
+// ErrOperationDeadline is an operation that ended at its deadline, as it is meant to: its reader
+// may open a new one.
+var ErrOperationDeadline = errors.New("controller: the operation reached its deadline")
+
+// deadlineReason is the reason the agent gets in its AttachEnd at the deadline.
+const deadlineReason = "the operation reached its deadline"
+
 // capabilityOf is the capability an agent announces for each kind of operation.
 var capabilityOf = map[agentv1.OperationKind]string{agentv1.OperationKind_OPERATION_KIND_LOGS: agentproto.CapLogsStream}
 
@@ -64,10 +71,14 @@ type Operation struct {
 	done chan struct{}
 	once sync.Once
 	why  string // the reason Close gave; read only once done is closed
+	// deadline is the operation's end, on the clock now reads.
+	deadline time.Time
+	now      func() time.Time
 }
 
-// Recv returns the agent's next frame; io.EOF once the agent ended the operation, and once the
-// controller ended it, an error with Close's reason.
+// Recv returns the agent's next frame; io.EOF once the agent ended the operation,
+// ErrOperationDeadline once the deadline ended it, whichever side noticed first, and once the
+// controller ended it otherwise, an error with Close's reason.
 func (o *Operation) Recv() (*agentv1.AttachFrame, error) {
 	f, err := o.st.Recv()
 	if err != nil {
@@ -75,8 +86,11 @@ func (o *Operation) Recv() (*agentv1.AttachFrame, error) {
 		case <-o.done:
 			return nil, o.ended(err)
 		default:
-			return nil, err
 		}
+		if !o.now().Before(o.deadline) {
+			return nil, ErrOperationDeadline
+		}
+		return nil, err
 	}
 	if f.GetEnd() != nil {
 		if r := f.GetEnd().GetReason(); r != "" {
@@ -89,8 +103,11 @@ func (o *Operation) Recv() (*agentv1.AttachFrame, error) {
 
 // ended is the error of a Recv after Close, which err, the stream's, does not explain.
 func (o *Operation) ended(err error) error {
-	if o.why == "" {
+	switch o.why {
+	case "":
 		return err
+	case deadlineReason:
+		return ErrOperationDeadline
 	}
 	return fmt.Errorf("controller: the operation ended: %s", o.why)
 }
@@ -233,7 +250,7 @@ func (s *Sessions) Attach(st attachStream) error {
 	case subtle.ConstantTimeCompare(sum[:], p.ticket[:]) != 1:
 		return refuse("a wrong ticket")
 	}
-	o := &Operation{st: st, done: make(chan struct{})}
+	o := &Operation{st: st, done: make(chan struct{}), deadline: p.deadline, now: s.now}
 	p.attached <- o
 	deadline := time.NewTimer(time.Until(p.deadline))
 	defer deadline.Stop()
@@ -245,7 +262,7 @@ func (s *Sessions) Attach(st attachStream) error {
 	case <-p.sess.done:
 		o.Close(p.sess.endReason())
 	case <-deadline.C:
-		o.Close("the operation reached its deadline")
+		o.Close(deadlineReason)
 	}
 	return nil
 }

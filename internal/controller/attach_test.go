@@ -268,3 +268,43 @@ func TestOpenLogs_Unavailable(t *testing.T) {
 		}
 	})
 }
+
+// TestOpenLogs_Deadline: a live log that reaches its deadline ends as such, not as a broken
+// stream, both when the controller ends it and when the agent's side of the stream goes first:
+// LogService then ends the viewer's stream without an error.
+func TestOpenLogs_Deadline(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		controller.SetOperationTimers(t, 300*time.Millisecond, 500*time.Millisecond)
+		e := startSessions(t, db, "0.1.0", 0)
+		cert, a := e.agentCert(t)
+		h := hello("0.1.0")
+		h.Capabilities = append(h.Capabilities, agentproto.CapLogsStream)
+		st := e.open(t, testCtx(t), cert, h)
+		recv(t, st)
+		for _, agentFirst := range []bool{false, true} {
+			go func() {
+				m := recv(t, st).GetOpenOperation()
+				ctx := testCtx(t)
+				if agentFirst { // the agent's stream ends at the deadline, before the controller's timer
+					c, cancel := context.WithDeadline(ctx, m.GetDeadline().AsTime())
+					defer cancel()
+					ctx = c
+				}
+				att := e.attach(t, ctx, cert, m.GetOpId(), m.GetTicket())
+				for {
+					if _, err := att.Recv(); err != nil {
+						return
+					}
+				}
+			}()
+			op, err := e.sessions.OpenLogs(testCtx(t), a.ID, &agentv1.LogParams{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := op.Recv(); !errors.Is(err, apisvc.ErrLogsDeadline) {
+				t.Errorf("a live log at its deadline (agent first %v): %v", agentFirst, err)
+			}
+			op.Close("")
+		}
+	})
+}

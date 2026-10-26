@@ -5,6 +5,7 @@ package apisvc_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"slices"
 	"strings"
@@ -270,16 +271,18 @@ func TestStreamLogs_Heartbeat(t *testing.T) {
 	}
 }
 
-// TestStreamLogs_Ends: a stream ends without an error when the agent ends the operation, as at its
-// deadline, and with UNAVAILABLE when the operation breaks off, as when the agent goes offline or
+// TestStreamLogs_Ends: a stream ends without an error when the agent ends the operation or the
+// operation reaches its deadline, and with UNAVAILABLE when the operation breaks off, as when the agent goes offline or
 // is revoked; a cut line and the lines dropped before one reach the viewer; an agent_id that names
 // no connector or gateway is INVALID_ARGUMENT.
 func TestStreamLogs_Ends(t *testing.T) {
 	e, ada, org, _ := gatewayEnv(t)
 	done := e.addConnector(t, org, "done", nil).ID
 	cut := e.addConnector(t, org, "cut", nil).ID
-	e.agents.lines = map[string][]string{done: {"a long line…"}, cut: {"before the cut"}}
-	e.agents.ends = map[string]error{done: io.EOF, cut: errors.New("controller: the agent ended the operation: revoked")}
+	late := e.addConnector(t, org, "late", nil).ID
+	e.agents.lines = map[string][]string{done: {"a long line…"}, cut: {"before the cut"}, late: {"until the deadline"}}
+	e.agents.ends = map[string]error{done: io.EOF, cut: errors.New("controller: the operation ended: the agent's control session ended: revoked"),
+		late: fmt.Errorf("%w: controller: the operation reached its deadline", apisvc.ErrLogsDeadline)}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	read := func(agent string) ([]*rpmgrv1.LogLine, error) {
@@ -298,12 +301,16 @@ func TestStreamLogs_Ends(t *testing.T) {
 	if got, err := read(done); err != nil || len(got) != 1 || !got[0].GetTruncated() || got[0].GetDroppedBefore() != 2 {
 		t.Errorf("a stream the agent ended: %v %v", got, err)
 	}
-	if got, err := read(cut); connect.CodeOf(err) != connect.CodeUnavailable || len(got) != 1 || got[0].GetTruncated() {
+	if got, err := read(late); err != nil || len(got) != 1 {
+		t.Errorf("a stream at its deadline: %v %v", got, err)
+	}
+	if got, err := read(cut); connect.CodeOf(err) != connect.CodeUnavailable || !strings.Contains(err.Error(), "revoked") || len(got) != 1 ||
+		got[0].GetTruncated() {
 		t.Errorf("a stream that broke off: %v %v", got, err)
 	}
 	// An org's own ID passes the interceptor as its org, but names no agent.
 	if _, err := read(org); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("an org ID as the agent: %v", err)
 	}
-	waitUntil(t, "both streams to be closed", func() bool { return len(e.agents.reasons()) == 2 })
+	waitUntil(t, "the streams to be closed", func() bool { return len(e.agents.reasons()) == 3 })
 }
