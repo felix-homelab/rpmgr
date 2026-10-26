@@ -33,6 +33,11 @@ const (
 // way takes it for idle and closes it.
 var logHeartbeat = 15 * time.Second
 
+// logRecheck is how often a stream admits its caller again, so that a member who lost the role,
+// or a session or token that was revoked, stops receiving lines (docs/03-connections.md,
+// "Timeouts, keepalive and backoff").
+var logRecheck = 15 * time.Second
+
 // LogOpener opens live-log operations on agents, normally the controller's Sessions.
 type LogOpener interface {
 	OpenLogs(ctx context.Context, agentID string, p *agentv1.LogParams) (LogStream, error)
@@ -141,11 +146,18 @@ func (l *Logs) StreamLogs(ctx context.Context, req *connect.Request[rpmgrv1.Stre
 	}()
 	beat := time.NewTicker(logHeartbeat)
 	defer beat.Stop()
+	check := time.NewTicker(logRecheck)
+	defer check.Stop()
 	for {
 		var fr frame
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-check.C:
+			if err := api.Recheck(ctx); err != nil {
+				return lostAccess(err)
+			}
+			continue
 		case <-beat.C:
 			if err := st.Send(&rpmgrv1.StreamLogsResponse{}); err != nil {
 				return nil
@@ -159,16 +171,28 @@ func (l *Logs) StreamLogs(ctx context.Context, req *connect.Request[rpmgrv1.Stre
 		case fr.err != nil:
 			return connect.NewError(connect.CodeUnavailable, fmt.Errorf("apisvc: the live log ended: %w", fr.err))
 		}
-		l := fr.f.GetLog()
-		if l == nil {
+		line := fr.f.GetLog()
+		if line == nil {
 			continue
 		}
-		if err := st.Send(&rpmgrv1.StreamLogsResponse{Line: &rpmgrv1.LogLine{Time: l.GetTime(), Level: l.GetLevel(), Text: l.GetText(),
-			DroppedBefore: l.GetDroppedBefore(), Truncated: l.GetTruncated()}}); err != nil {
+		if err := st.Send(&rpmgrv1.StreamLogsResponse{Line: &rpmgrv1.LogLine{Time: line.GetTime(), Level: line.GetLevel(),
+			Text: line.GetText(), DroppedBefore: line.GetDroppedBefore(), Truncated: line.GetTruncated()}}); err != nil {
 			return nil // the client went away
 		}
 		beat.Reset(logHeartbeat)
 	}
+}
+
+// lostAccess is the error that ends a stream whose caller no longer passes the check of a new
+// request: PERMISSION_DENIED for a caller without the permission, also for a member who left the
+// org, whom a new request would tell NOT_FOUND; otherwise the check's own error, such as
+// UNAUTHENTICATED for credentials that are no longer valid.
+func lostAccess(err error) error {
+	switch connect.CodeOf(err) {
+	case connect.CodePermissionDenied, connect.CodeNotFound:
+		return connect.NewError(connect.CodePermissionDenied, errors.New("apisvc: the caller may no longer read this agent's log"))
+	}
+	return err
 }
 
 // orgOf is the org of the connector or gateway, read in the caller's scope.

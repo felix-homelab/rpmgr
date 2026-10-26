@@ -86,13 +86,19 @@ func (i interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) con
 			return err
 		}
 		rec := i.s.newRecord(md, conn.RequestHeader(), conn.Peer(), msg)
-		ctx, err := i.s.admit(context.WithValue(ctx, peerKey{}, conn.Peer().Addr), md, conn.RequestHeader(), msg, rec)
+		base := context.WithValue(ctx, peerKey{}, conn.Peer().Addr)
+		ctx, err := i.s.admit(base, md, conn.RequestHeader(), msg, rec)
 		if err != nil {
 			rec.finish(ctx, err)
 			rec.tell(nil, err)
 			return err
 		}
 		rec.tell(conn.ResponseHeader(), nil)
+		header := conn.RequestHeader().Clone()
+		ctx = context.WithValue(ctx, recheckKey{}, func() error {
+			_, err := i.s.admit(base, md, header, msg, nil)
+			return err
+		})
 		err = i.s.sanitize(md, next(rec.hook(ctx), &replay{StreamingHandlerConn: conn, first: msg}))
 		rec.finish(ctx, err)
 		rec.tell(nil, err)
@@ -261,6 +267,20 @@ func (s *Server) inReview(ctx context.Context, md protoreflect.MethodDescriptor,
 	if review {
 		return withInfo(connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("api: read-only until the restore review is confirmed")), ReasonRestoreReview, nil)
+	}
+	return nil
+}
+
+type recheckKey struct{}
+
+// Recheck admits the caller of a server stream again as if the stream were a new request: its
+// credentials must still be valid, and its membership, role and scopes must still grant the
+// method's permission on the stream's resource (docs/04-security.md, "Roles"). A stream that runs
+// long calls it now and then and ends with its error. Outside a server stream it has nothing to
+// check.
+func Recheck(ctx context.Context) error {
+	if f, ok := ctx.Value(recheckKey{}).(func() error); ok {
+		return f()
 	}
 	return nil
 }

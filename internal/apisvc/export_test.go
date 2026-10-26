@@ -36,3 +36,11 @@ func SetLogHeartbeat(t testing.TB, d time.Duration) {
 	logHeartbeat = d
 	t.Cleanup(func() { logHeartbeat = old })
 }
+
+// SetLogRecheck shortens how often live-log streams admit their caller again, for one test, which
+// must not run in parallel with others.
+func SetLogRecheck(t testing.TB, d time.Duration) {
+	old := logRecheck
+	logRecheck = d
+	t.Cleanup(func() { logRecheck = old })
+}

@@ -330,7 +330,9 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
   at its limit ([03](03-connections.md#timeouts-keepalive-and-backoff)) `RESOURCE_EXHAUSTED`.
   Cancelling the stream ends the operation on the agent. At the operation's deadline the stream
   ends without an error, and the client may open a new one; an operation that breaks off, as when
-  the agent is revoked or goes offline, ends it with `UNAVAILABLE` and the reason. `raise_to_debug`
+  the agent is revoked or goes offline, ends it with `UNAVAILABLE` and the reason; a caller who
+  loses the permission or whose credentials end while it runs loses it with `PERMISSION_DENIED` or
+  `UNAUTHENTICATED` ([04](04-security.md#roles)). `raise_to_debug`
   raises the agent's level for the operation's life ([D140](14-open-decisions.md#engineering)).
 - Server streams work over HTTP/1.1 and HTTP/2 with the Connect protocol, so no WebSocket is needed
   except for the Phase 3 terminal.

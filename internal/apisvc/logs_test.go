@@ -19,6 +19,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -313,4 +314,59 @@ func TestStreamLogs_Ends(t *testing.T) {
 		t.Errorf("an org ID as the agent: %v", err)
 	}
 	waitUntil(t, "the streams to be closed", func() bool { return len(e.agents.reasons()) == 3 })
+}
+
+// TestStreamLogs_AccessRechecked: a stream admits its caller again while it runs: an Admin
+// demoted to Viewer, or removed from the org, loses the stream with PERMISSION_DENIED, and a token
+// that is revoked with UNAUTHENTICATED; each time the operation on the agent ends.
+func TestStreamLogs_AccessRechecked(t *testing.T) {
+	apisvc.SetLogRecheck(t, 50*time.Millisecond)
+	e, ada, org, _ := gatewayEnv(t)
+	con := e.addConnector(t, org, "nas", nil).ID
+	e.agents.lines = map[string][]string{con: nil}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := ada.stepUp(pw, ""); err != nil { // inviting an Admin takes a step-up
+		t.Fatal(err)
+	}
+	// follow streams the connector's log as b and returns the code it ends with; change runs once
+	// the stream is open.
+	follow := func(b *browser, change func()) connect.Code {
+		st, err := b.logs.StreamLogs(ctx, connect.NewRequest(&rpmgrv1.StreamLogsRequest{AgentId: con}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		change()
+		for st.Receive() {
+		}
+		return connect.CodeOf(st.Err())
+	}
+	demoted, demotedID := e.join(t, ada, org, "demoted@example.com", "admin")
+	if code := follow(demoted, func() {
+		e.db.Client().Membership.Update().Where(membership.UserID(demotedID), membership.OrgID(org)).SetRole("viewer").ExecX(e.sys)
+	}); code != connect.CodePermissionDenied {
+		t.Errorf("a demoted Admin's stream ended with %v", code)
+	}
+	removed, removedID := e.join(t, ada, org, "removed@example.com", "admin")
+	if code := follow(removed, func() {
+		e.db.Client().Membership.Delete().Where(membership.UserID(removedID), membership.OrgID(org)).ExecX(e.sys)
+	}); code != connect.CodePermissionDenied {
+		t.Errorf("a removed Admin's stream ended with %v", code)
+	}
+	pat, err := ada.token.CreateAPIToken(ctx, connect.NewRequest(&rpmgrv1.CreateAPITokenRequest{OrgId: org, Name: "logs",
+		Scopes: []string{"agents.logs"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bot := e.browser()
+	bot.bearer = pat.Msg.GetToken()
+	if code := follow(bot, func() {
+		if _, err := ada.token.RevokeAPIToken(ctx, connect.NewRequest(&rpmgrv1.RevokeAPITokenRequest{OrgId: org,
+			TokenId: pat.Msg.GetApiToken().GetId()})); err != nil {
+			t.Fatal(err)
+		}
+	}); code != connect.CodeUnauthenticated {
+		t.Errorf("a revoked token's stream ended with %v", code)
+	}
+	waitUntil(t, "the operations to end", func() bool { return len(e.agents.reasons()) == 3 })
 }
