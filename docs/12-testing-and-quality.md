@@ -114,21 +114,28 @@ cross-product. [R] As built (`TestMatrix`, `E2E_FULL=1` in the nightly run):
   and UDP blackholed mid-session, which needs a connector without `h2` links: its window budget
   leaves no room for an `auto` link's fallback to TLS next to an `h2` link.
 - **`apply_status`:** checked by the in-process tests, which have the API.
+- **A TLS-intercepting proxy** (`TestWSS_InterceptingProxy`): a third connector, which trusts the
+  proxy's root, reaches nothing but mitmproxy; UDP and direct TCP to the gateways are blocked.
+  Routes on `auto` and `wss` carry 1 MiB each way intact through both gateways, and the proxy's
+  addon finds none of the plaintext in the WebSocket messages it relays; a route pinned to `h2` is
+  never served. With the controller intercepted too, the connector takes a new route through a
+  data session; without the proxy's root it refuses the outer TLS and serves nothing.
+  [VB-21](13-roadmap.md#verification-backlog) runs the same cell against a real corporate proxy.
 
 Cells that need a controlled clock (certificate expiry and grace re-authentication, clock skew) run
 in-process with real traffic and a fake clock. Clock jumps in chaos tests use the clock-offset hook
 of the `rpmgrtest` build: the roles add the duration in the file that `RPMGR_TEST_CLOCK_FILE` names
 to their clock. Before the public API exists, end-to-end tests seed their configuration with the
-`rpmgrtest` seeding command
-([D60](14-open-decisions.md#security-defaults)): `rpmgr testseed` creates gateways with their
-enrollment tokens, connector tokens, and tcp, udp, tcp_udp, http and tls_passthrough routes (http
-routes with verified domains, uploaded certificates and HTTP, h2c or verified HTTPS upstreams),
-sets a route's IP access rules, changes routes and revokes identities, writing next to the running
-controller through configuration transactions. The per-PR subset runs every Phase 1 route type, the
-local-policy block and reload, a tightened access policy, mixed transports on one connector and UDP
-blackholed mid-session; NAT rebinding is not covered yet. `check-go.sh` vets the `rpmgrtest` build
-and runs the tests of its packages, golangci-lint lints it, and a test of the release build checks
-that no test-only command exists there.
+`rpmgrtest` seeding command ([D60](14-open-decisions.md#security-defaults)): `rpmgr testseed`
+creates gateways with their enrollment tokens and sets their WSS hostnames, creates connector
+tokens, and tcp, udp, tcp_udp, http and tls_passthrough routes (http routes with verified domains,
+uploaded certificates and HTTP, h2c or verified HTTPS upstreams), sets a route's IP access rules,
+changes routes and revokes identities, writing next to the running controller through configuration
+transactions. The per-PR subset runs every Phase 1 route type, the local-policy block and reload, a
+tightened access policy, mixed transports on one connector, UDP blackholed mid-session and WSS
+through a TLS-intercepting proxy; NAT rebinding is not covered yet. `check-go.sh` vets the
+`rpmgrtest` build and runs the tests of its packages, golangci-lint lints it, and a test of the
+release build checks that no test-only command exists there.
 
 ### Upgrade test
 

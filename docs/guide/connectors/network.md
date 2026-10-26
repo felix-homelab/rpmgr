@@ -151,10 +151,14 @@ Environment="NO_PROXY=gw1.example.com"
 sudo systemctl restart rpmgr-connector.service
 ```
 
-A TLS-intercepting proxy, which presents certificates of its own, breaks the sessions, because the
-connector accepts only rpmgr's own certificates. Exempt the gateways and the controller from
-interception. A transport through such proxies is planned for Phase 2
-([05](../../05-features.md#fleet-management)).
+A TLS-intercepting proxy presents certificates of its own, which the connector refuses for its
+gateways and its controller: there it accepts only rpmgr's own certificates. Exempt them from
+interception, or give the gateways WSS hostnames ([Gateways](../gateways.md#wss-hostnames)) and
+install the proxy's root on the connector host, where the system's roots are, as the proxy needs
+for any website. On `auto` the connector then moves to WSS by itself
+([above](#transports-quic-tls-with-http2-and-wss)), and it carries its control session through a
+data session when the proxy intercepts the controller too
+([below](#when-the-controller-is-out-of-reach)).
 
 ## When the controller is out of reach
 
