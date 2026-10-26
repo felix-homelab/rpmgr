@@ -701,7 +701,8 @@ flowchart LR
 
 ### Live logs, webhooks and audit sinks (Phase 2)
 
-- **Live logs** on a connector's and a gateway's page, for `agents.logs`
+- **Live logs** in a **Live log** card on a connector's page, and from **Live log…** in the row of
+  a gateway on its group's page, in a dialog; for `agents.logs`
   ([04](04-security.md#roles)); hidden without it. Text only, in a monospace panel: a level and a
   text filter, **Raise to debug** (audited; lasts until the panel closes or the operation ends,
   [D140](14-open-decisions.md#engineering)), **Pause** (the panel stops scrolling, lines keep

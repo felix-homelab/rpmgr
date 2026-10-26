@@ -308,6 +308,36 @@
       "unknown": "—"
     }
   },
+  "liveLog": {
+    "title": "Live log",
+    "of": "Live log of {{name}}",
+    "open": "Live log…",
+    "panel": "Live log lines",
+    "level": "Level",
+    "levels": {
+      "debug": "Debug and above",
+      "info": "Info and above",
+      "warn": "Warnings and errors",
+      "error": "Errors only"
+    },
+    "filter": "Only lines containing",
+    "debug": "Raise to debug while open (audited)",
+    "start": "Start",
+    "continue": "Continue",
+    "stop": "Stop",
+    "pause": "Pause",
+    "resume": "Resume scrolling",
+    "hint": "Lines are redacted on the agent before they leave its host; the filter matches the redacted text.",
+    "waiting": "Waiting for the first line…",
+    "empty": "Start to follow the log.",
+    "dropped_one": "… 1 line dropped: the agent logged faster than lines could be sent",
+    "dropped_other": "… {{count}} lines dropped: the agent logged faster than lines could be sent",
+    "cut": "…(cut)",
+    "deadline": "The live log ended at its time limit. Continue opens a new one.",
+    "unavailable": "The agent is offline, or its rpmgr release has no live logs.",
+    "limit": "Too many live logs are open, for you or for this agent. Close one and try again.",
+    "builtIn": "The built-in connector of an all-in-one has no live log here: its log is the controller's, which the host's journal shows."
+  },
   "notServing": {
     "BLOCKED_BY_LOCAL_POLICY": "blocked by the connector's local policy",
     "POLICY_INVALID": "the connector's local policy does not load",

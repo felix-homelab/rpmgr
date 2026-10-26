@@ -185,8 +185,14 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await enroll.getByRole("button", { name: "Close" }).click();
   await page.getByRole("link", { name: "nas-01", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Connector nas-01", level: 1 })).toBeVisible();
-  await page.waitForTimeout(1000);
+  // Its live log, raised to debug, shows what the connector does now.
+  await page.getByLabel("Raise to debug while open (audited)").check();
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByRole("log", { name: "Live log lines" })).toContainText("DEBUG", { timeout: 30_000 });
+  await page.waitForTimeout(3000);
+  await page.getByRole("button", { name: "Pause" }).click();
   await shot(page, "connector-detail", true);
+  await page.getByRole("button", { name: "Stop" }).click();
 
   // Gateways.
   await open(page, "Gateways", "Gateway groups");

@@ -96,6 +96,7 @@ rpmgr <command>
 | [`rpmgr resume`](#rpmgr-resume) | Let a paused rollout run again |
 | [`rpmgr cancel`](#rpmgr-cancel) | End a rollout for good |
 | [`rpmgr upgrade`](#rpmgr-upgrade) | Update agents to the controller's version |
+| [`rpmgr logs`](#rpmgr-logs) | Follow the live log of a connector or gateway |
 
 ## rpmgr controller
 
@@ -1841,3 +1842,44 @@ rpmgr upgrade gateway [flags] <gateway>…
 | Flag | Default | Description |
 |---|---|---|
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+
+## rpmgr logs
+
+Follow the live log of a connector or gateway.
+
+```text
+rpmgr logs <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr logs connector`](#rpmgr-logs-connector) | Follow a connector's live log, redacted on the connector, until interrupted (Owner or Admin) |
+| [`rpmgr logs gateway`](#rpmgr-logs-gateway) | Follow a gateway's live log, redacted on the gateway, until interrupted (Owner or Admin) |
+
+## rpmgr logs connector
+
+Follow a connector's live log, redacted on the connector, until interrupted (Owner or Admin).
+
+```text
+rpmgr logs connector [flags] <connector>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--debug` |  | raise the connector's level to debug while the log is followed; audited |
+| `--filter string` |  | show only lines that contain this text |
+| `--level string` | `info` | the lowest level shown: debug, info, warn or error |
+
+## rpmgr logs gateway
+
+Follow a gateway's live log, redacted on the gateway, until interrupted (Owner or Admin).
+
+```text
+rpmgr logs gateway [flags] <gateway>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--debug` |  | raise the gateway's level to debug while the log is followed; audited |
+| `--filter string` |  | show only lines that contain this text |
+| `--level string` | `info` | the lowest level shown: debug, info, warn or error |
