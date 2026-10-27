@@ -1163,7 +1163,9 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    ([03](03-connections.md#versioning-and-capabilities)), and in an easy rollout only to the agent
    whose turn it is: gateways and connectors on Linux that
    run on their own on a host with the root updater installed (its directory
-   `/var/lib/rpmgr-update/` exists), never all-in-one's, whose roles share the controller's
+   `/var/lib/rpmgr-update/` exists and the unit `rpmgr-update.path` is enabled, so that a host the
+   v0.1.0 install script or `rpmgr setup --no-unit` left without the units is never offered a
+   release nothing would install), never all-in-one's, whose roles share the controller's
    binary, nor one in the container image, which has no updater. The offer
    names the version, the controller's public URL (the `public_url` of [10](10-operations.md),
    which `/install.sh` and enrollment use), its manifest's `seq` and its files under `/dl/` with

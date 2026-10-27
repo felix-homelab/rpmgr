@@ -233,17 +233,27 @@ func (u *Updater) verify(meta map[string][]byte, in Install, channel string, st 
 // (docs/10-operations.md, "Filesystem layout").
 const StateDir = "/var/lib/rpmgr-update"
 
-// UpdaterInstalled reports whether the root updater is installed on this host: a Linux host with the
-// updater's directory, which rpmgr setup and the install scripts create. An agent elsewhere, such
-// as in the container image, stages nothing and announces no capability ota, so that a rollout
-// skips it instead of waiting for an updater that never runs. The service user cannot read the
-// directory, but it can tell that it is there.
-func UpdaterInstalled() bool { return runtime.GOOS == "linux" && installedAt(StateDir) }
+// PathEnabled is the link by which systemd starts rpmgr-update.path at boot: systemctl enable
+// writes it into this directory wherever the unit file is, and the service user can read it.
+const PathEnabled = "/etc/systemd/system/multi-user.target.wants/rpmgr-update.path"
 
-// installedAt reports whether dir is a directory.
-func installedAt(dir string) bool {
+// UpdaterInstalled reports whether the root updater is installed on this host: a Linux host with the
+// updater's directory and its unit rpmgr-update.path enabled, as rpmgr setup and the install
+// scripts leave it. An agent elsewhere, such as in the container image, or on a host whose updater
+// has no units, as the v0.1.0 install script and rpmgr setup --no-unit leave it, stages nothing and
+// announces no capability ota, so that a rollout skips it instead of waiting for an updater that
+// never runs. The service user cannot read the directory, but it can tell that it is there.
+func UpdaterInstalled() bool { return runtime.GOOS == "linux" && installedAt(StateDir, PathEnabled) }
+
+// installedAt reports whether dir is a directory and enabled, the link that enables the updater's
+// path unit, leads to a regular file.
+func installedAt(dir, enabled string) bool {
 	st, err := os.Stat(dir)
-	return err == nil && st.IsDir()
+	if err != nil || !st.IsDir() {
+		return false
+	}
+	unit, err := os.Stat(enabled)
+	return err == nil && unit.Mode().IsRegular()
 }
 
 // ReadInstall reads the installation record of the updater's directory as the updater trusts it:
