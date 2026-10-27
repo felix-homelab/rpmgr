@@ -195,7 +195,7 @@ export function GatewayGroupPage() {
                   <TD><GatewayChip gateway={g} /></TD>
                   <TD>{g.status?.version}</TD>
                   <TD>
-                    <span className="grid justify-items-start gap-1">
+                    <span className="flex flex-wrap items-center gap-2">
                       <UpdateState target={updates.get(g.id)} belowMinimum={g.status?.belowMinAgentVersion} goodbyeReason={g.status?.lastGoodbyeReason} />
                       <UpdateButton target={updates.get(g.id)} agent={{ id: g.id, version: g.status?.version ?? "", online: !!g.status?.connected,
                         builtIn: g.builtIn, enrolled: !!g.status?.enrolled, overTheAir: !!g.status?.overTheAir }} />
