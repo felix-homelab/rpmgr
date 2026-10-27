@@ -106,6 +106,40 @@ func TestSessions_Timeouts(t *testing.T) {
 	}
 }
 
+// TestSessions_Check: Check finds a live session like Lookup but never moves its idle expiry on, so
+// a session that is only checked ends at its idle expiry; tokens of another kind, malformed or
+// unknown name no session.
+func TestSessions_Check(t *testing.T) {
+	e := newEnv(t)
+	tok, sess, err := e.s.Create(e.ada, []string{"pwd"}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.clock = e.clock.Add(7 * time.Hour)
+	got, err := e.s.Check(tok)
+	if err != nil {
+		t.Fatalf("a live session: %v", err)
+	}
+	if !got.LastSeenAt.Equal(sess.LastSeenAt) || !got.IdleExpiresAt.Equal(sess.IdleExpiresAt) {
+		t.Fatalf("Check moved the session on: last seen %v, idle until %v", got.LastSeenAt, got.IdleExpiresAt)
+	}
+	stored := e.db.Client().Session.GetX(e.sys, sess.ID)
+	if !stored.LastSeenAt.Equal(sess.LastSeenAt) || !stored.IdleExpiresAt.Equal(sess.IdleExpiresAt) {
+		t.Fatalf("Check wrote the session: last seen %v, idle until %v", stored.LastSeenAt, stored.IdleExpiresAt)
+	}
+	e.clock = sess.IdleExpiresAt
+	if _, err := e.s.Check(tok); !errors.Is(err, websession.ErrNoSession) {
+		t.Fatalf("at the idle expiry: %v", err)
+	}
+	enr, _ := token.New(token.Enrollment)
+	unknown, _ := token.New(token.Session)
+	for _, bad := range []string{"", "rpmgr_ses_x", enr, unknown} {
+		if _, err := e.s.Check(bad); !errors.Is(err, websession.ErrNoSession) {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+}
+
 // TestSessions_Revoke: a user ends one of their own sessions, not another user's; all others end
 // at once, as a password change does; each revocation is in the revocation log; only live
 // sessions are listed.

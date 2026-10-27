@@ -116,6 +116,15 @@ connected). Below, one row per data session: the **Gateway** it goes to, its **T
 `TLS and HTTP/2` or `WSS`), the **Round trip** time and **Since** when it is up
 ([Connector networking](../connectors/network.md)).
 
+### Live log
+
+For an Owner or Admin, the **Live log** card follows the connector's log: choose the **Level**,
+optionally **Only lines containing** and **Raise to debug while open**, then **Start**. Lines appear
+in the panel as the connector writes them, redacted on the connector; **Pause** stops the panel
+scrolling while lines keep arriving, **Stop** ends the log. When the log ends by itself, the panel
+says so and **Continue** opens a new one ([Live logs](../connectors/status-and-diagnostics.md#live-logs)).
+The built-in connector of an all-in-one has none: the card says that its log is the controller's.
+
 ### Routes
 
 The **Routes** card lists every route with a target on this connector, each a link to its page.

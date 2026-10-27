@@ -47,6 +47,13 @@ Changes to the design documents are not recorded here: see the git history and t
   second, with a burst (`--rule rate-limit:<per second>[,<burst>]`, the web UI's policy form, or
   the API). A gateway of an earlier release does not get a route with limits or such a rule.
   (#622, #623, #624, #625, #628, #917)
+
+- Connectors and gateways: live logs. An Owner or Admin follows an agent's log as it is written, in
+  the **Live log** card of a connector's page, from **Live log…** in a gateway's row, with
+  `rpmgr logs connector|gateway`, or with `LogService.StreamLogs`. Lines are redacted on the agent
+  before they leave its host, filtered by level and text, and may be raised to debug while open;
+  opening a log is audited. Built-in agents of an all-in-one have none. (#642, #643, #644, #645)
+
 - Routes: active health checks. A route may have one TCP or HTTP check, which each connector runs
   against its own targets of the route, on their port or another one; new connections pass over a
   target that fails it, gateways pass over a connector whose targets of a priority are all
@@ -111,6 +118,16 @@ Changes to the design documents are not recorded here: see the git history and t
   404 page instead of going to the upstream, and every header and trailer a client sends whose name
   starts with `Rpmgr-User-`, also spelt with `_`, is removed before a request goes upstream; both
   are kept for the gateway's own endpoints and OIDC sign-in. (#617)
+
+### Fixed
+
+- Updates: a connector or gateway whose host has the updater's directory but not its enabled
+  units, as the v0.1.0 install script and `rpmgr setup --no-unit` leave it, no longer announces
+  over-the-air updates. It was offered a release it staged and nothing installed, until the
+  rollout counted it as stalled; it is now listed as having no over-the-air updater, and the
+  install script's `--upgrade --restart` installs the units and restarts the agent. The install
+  script enables the updater before it starts the role, so that a new agent announces
+  over-the-air updates from its first start. (#965)
 
 ## [0.2.0] - 2026-10-24
 
