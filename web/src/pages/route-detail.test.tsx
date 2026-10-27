@@ -211,9 +211,10 @@ describe("RouteDetail", () => {
     expect(screen.queryByText(/the fallback for QUIC/)).toBeNull();
   });
 
-  it("gives UDP routes the MTU hint", async () => {
+  it("shows UDP routes without a hint about datagram sizes", async () => {
     detail({ ...postgres, spec: { case: "udp", value: { port: 53 } } });
-    expect(await screen.findByText(/^UDP datagrams travel as QUIC datagrams/)).toBeTruthy();
+    await screen.findByRole("heading", { name: "Route postgres (UDP)" });
+    expect(screen.queryByText(/QUIC datagrams/)).toBeNull();
   });
 
   it("says when the route does not exist", async () => {
