@@ -44,7 +44,7 @@ pages. [Preview and apply](../routes/preview-and-apply.md) explains each state.
    form below shows that type's fields; changing the type starts the form anew.
 2. Choose the **Gateway group**. The group the organisation's settings preselect is chosen for you
    ([Settings](settings.md#organisation-settings)).
-3. Fill in the fields of the type (see the table below).
+3. Fill in the fields of the type, in their sections ([The fields](#the-fields)).
 4. Optionally press **Preview** to check the route without saving it ([Preview](#preview)).
 5. Press **Create the route**. **Cancel** returns to the list.
 
@@ -56,33 +56,61 @@ network error, creates one route only.
 
 ### The fields
 
-Every route has these fields:
+The form groups the fields of the type into sections, each under its title, in this order. A
+section the type has no field for is left out:
+
+| Section | Route types |
+|---|---|
+| **General** | Every type |
+| **Hostnames & matching** | HTTP, TLS passthrough, UDP, TCP and UDP |
+| **TLS** | HTTP |
+| **Requests & headers** | HTTP |
+| **Upstream** | Every type |
+| **Health check** | Every type |
+| **CONNECT listener** | TCP |
+| **Maintenance** | HTTP |
+
+The list of sections beside the form, above it on a phone, jumps to a section when you choose it.
+Every field stays on the page, so the browser's find (`Ctrl F`) finds each one. A section with a
+field that the form or the controller refuses is marked in the list in red, with an icon; a
+**Create the route**, **Save** or **Preview** that fails puts the cursor in the first such field.
+**Preview**, **Create the route** or **Save**, and **Cancel** stay at the foot of the form.
+
+**General**, on every route:
 
 | Field | Takes |
 |---|---|
+| **Gateway group** | New routes only: the group that serves the route |
 | **Name** | The route's name: lowercase letters, digits and dashes |
 | **Description** | Free text for people |
 | **Labels** | One per line, as `key=value` |
-| **Transport** | How its connectors reach the gateways: **The connector's or the instance's default**, **QUIC, falling back to TLS and HTTP/2**, **QUIC only**, **TLS and HTTP/2 only**, or **WSS only** ([Connector networking](../connectors/network.md)) |
 
-An **HTTP** route adds ([HTTP routes](../routes/http.md)):
+**Hostnames & matching** says where clients reach the route ([HTTP routes](../routes/http.md)):
 
 | Field | Takes |
 |---|---|
-| **Hostnames** | One per line. Each must be a verified domain of the organisation, or a name below one claimed with **Also every name below it**, which also allows a `*.` name ([Domains & certificates](domains.md)). A `*.` name needs **Uploaded**: ACME issues no certificate for it |
-| **Path prefix** | Serve only paths below it; empty for all |
+| **Hostnames** | HTTP and TLS passthrough: one per line. Each must be a verified domain of the organisation, or a name below one claimed with **Also every name below it**, which also allows a `*.` name ([Domains & certificates](domains.md)). A `*.` name needs **Uploaded**: ACME issues no certificate for it |
+| **Path prefix** | HTTP: serve only paths below it; empty for all |
+| **Serve only requests with these headers** | HTTP: header matches, one per line: `Name: value` for that exact value, or `Name` alone for any value. Where routes share a hostname and path prefix, the one with more matching headers wins ([Header matches](../routes/http.md#header-matches)). Empty matches every request |
+| **Public port** | UDP, and TCP and UDP: the gateway group's port the route takes |
+
+**TLS**, on HTTP routes:
+
+| Field | Takes |
+|---|---|
 | **TLS certificate** | **From ACME**, the default, or **Uploaded** |
 | **Uploaded certificate** | Shown and required with **Uploaded**: one of the organisation's uploaded certificates that cover every hostname, by its names, ID and expiry ([Domains & certificates](domains.md#certificates)). With none, it says `No uploaded certificate covers these hostnames`. A certificate chosen before stays chosen, marked `(does not cover every hostname)` once it does not |
 | **Port 80** | **Redirect to HTTPS**, the default, **Serve the route**, or **Closed** |
 | **HSTS max-age (seconds)** | The `Strict-Transport-Security` lifetime the route sends; 0 sends none |
+
+**Requests & headers**, on HTTP routes:
+
+| Field | Takes |
+|---|---|
 | **Host header to the target** | The `Host` header the target gets; empty or `preserve` passes the client's on |
 | **Request headers to set**, **Response headers to set** | Headers set towards the target and towards the client, one per line, as `Name: value` |
 | **WebSocket** | Whether WebSocket upgrades pass: **Default** (they do), **On** or **Off** |
 | **Largest request body (bytes, 0 for no limit)** | The largest request body the gateway lets through |
-| **Maintenance** | **Off: serve the route** or **On: show the maintenance page** ([D88](../../14-open-decisions.md#engineering)) |
-| **Maintenance message (plain text, at most 500 characters)** | The text the maintenance page shows |
-| **Serve only requests with these headers** | Header matches, one per line: `Name: value` for that exact value, or `Name` alone for any value. Where routes share a hostname and path prefix, the one with more matching headers wins ([Header matches](../routes/http.md#header-matches)). Empty matches every request |
-| **Wait for the target's response headers (seconds)**, **Keep an unused connection to the target (seconds)** | The route's own upstream timeouts; empty keeps the gateway's ([Timeouts](../routes/http.md#timeouts)) |
 
 Before it sends a route, the form checks each line of **Labels**, **Request headers to set**,
 **Response headers to set** and **Serve only requests with these headers**. It names the first line
@@ -90,36 +118,28 @@ without `=` or `:`, with a label key or header name the API refuses, with a head
 colon has no value after it, or with a key or name an earlier line has, such as `Line 2: write a
 label as key=value.`; a header name is the same whatever its case. It also says when there are more
 header matches than a route may have, and refuses a timeout above the API's bound. What the server
-refuses, such as a match on `Host`, shows below the fields.
+refuses, such as a match on `Host`, shows at its field or below the fields.
 
-A **TCP** route adds **Listener**, **Public port** and **Idle timeout (seconds)**; with **A CONNECT
-listener shared with other routes (HTTP proxy)** also **CONNECT names**, one per line, and **Proxy
-credentials**: **None: IP rules only**, **Basic auth over TLS (HTTPS proxy)**, which asks for
-**Listener hostname (HTTPS proxy)** and **Listener certificate**, or **Basic auth in the clear**,
-which the form warns about as long as it is chosen, as the server does after the save
-([CONNECT routes](../routes/tcp-and-udp.md#connect-routes)); a **UDP** route **Public
-port** and **Flow idle timeout (seconds)**; a **TCP and UDP** route **Public port**, **TCP idle
-timeout (seconds)** and **UDP flow idle timeout (seconds)**
-([TCP and UDP routes](../routes/tcp-and-udp.md)). A public port of 0, the default, takes a random
-free port from the gateway group's port pools, free for both protocols on a TCP and UDP route,
-within the organisation's port quota. An empty timeout keeps the API's default, which the
-[route.proto](../../../proto/rpmgr/v1/route.proto) reference states.
-
-A **TLS passthrough** route adds **Hostnames** only
-([TLS passthrough](../routes/tls-passthrough.md)).
-
-Every route then has its limits ([Route limits](../routes/limits.md)), each empty for no limit:
+**Upstream**, on every route: how the route reaches its targets, its timeouts and its limits.
 
 | Field | Takes |
 |---|---|
-| **Most connections, flows or requests at once** | Open connections, UDP flows and HTTP requests in flight |
-| **Most requests, connections or flows a second** | HTTP requests, new connections and new UDP flows a second |
-| **Most bytes a second, each way** | The bandwidth in each direction. A value below the smallest the API takes ([03](../../03-connections.md#route-limits-phase-2)) is refused before the route is sent, with the smallest in the message |
+| **Transport** | How its connectors reach the gateways: **The connector's or the instance's default**, **QUIC, falling back to TLS and HTTP/2**, **QUIC only**, **TLS and HTTP/2 only**, or **WSS only** ([Connector networking](../connectors/network.md)) |
+| **Wait for the target's response headers (seconds)**, **Keep an unused connection to the target (seconds)** | HTTP: the route's own upstream timeouts; empty keeps the gateway's ([Timeouts](../routes/http.md#timeouts)) |
+| **Idle timeout (seconds)** | TCP |
+| **Flow idle timeout (seconds)** | UDP |
+| **TCP idle timeout (seconds)**, **UDP flow idle timeout (seconds)** | TCP and UDP |
+| **Most connections, flows or requests at once** | Open connections, UDP flows and HTTP requests in flight; empty for no limit |
+| **Most requests, connections or flows a second** | HTTP requests, new connections and new UDP flows a second; empty for no limit |
+| **Most bytes a second, each way** | The bandwidth in each direction; empty for no limit. A value below the smallest the API takes ([03](../../03-connections.md#route-limits-phase-2)) is refused before the route is sent, with the smallest in the message |
 
-Each limit is the route's in all; the enabled gateways of its group share it. A value above the
-API's bound is refused on its field, as is anything that is not a whole number.
+An empty idle timeout keeps the API's default, which the
+[route.proto](../../../proto/rpmgr/v1/route.proto) reference states
+([TCP and UDP routes](../routes/tcp-and-udp.md)). Each limit is the route's in all; the enabled
+gateways of its group share it ([Route limits](../routes/limits.md)). A value above the API's bound
+is refused on its field, as is anything that is not a whole number.
 
-Every route ends with its **Health check** ([Health checks](../routes/targets.md#health-checks)):
+**Health check**, on every route ([Health checks](../routes/targets.md#health-checks)):
 
 | Field | Takes |
 |---|---|
@@ -132,6 +152,24 @@ Every route ends with its **Health check** ([Health checks](../routes/targets.md
 
 The bounds of these values are in [03](../../03-connections.md#timeouts-keepalive-and-backoff). A
 TLS passthrough route, and a route with an h2c target, take a TCP check only.
+
+**CONNECT listener**, on TCP routes ([CONNECT routes](../routes/tcp-and-udp.md#connect-routes)):
+**Listener** and **Public port**; with **A CONNECT listener shared with other routes (HTTP
+proxy)** also **CONNECT names**, one per line, and **Proxy credentials**: **None: IP rules only**,
+**Basic auth over TLS (HTTPS proxy)**, which asks for **Listener hostname (HTTPS proxy)** and
+**Listener certificate**, or **Basic auth in the clear**, which the form warns about as long as it
+is chosen, as the server does after the save.
+
+A public port of 0, the default, takes a random free port from the gateway group's port pools,
+free for both protocols on a TCP and UDP route, within the organisation's port quota.
+
+**Maintenance**, on HTTP routes
+([Maintenance and error pages](../routes/maintenance-and-pages.md)):
+
+| Field | Takes |
+|---|---|
+| **Maintenance** | **Off: serve the route** or **On: show the maintenance page** ([D88](../../14-open-decisions.md#engineering)) |
+| **Maintenance message (plain text, at most 500 characters)** | The text the maintenance page shows |
 
 ### Preview
 
@@ -260,8 +298,9 @@ card says once two policies apply ([D85](../../14-open-decisions.md#engineering)
 
 ## Edit a route
 
-**Edit** opens **Edit route …**, with the fields of the route's type as in the
-[new-route form](#the-fields), filled in. The type and the gateway group cannot change.
+**Edit** opens **Edit route …**, with the fields of the route's type in the same sections, and
+the same list of sections, as the [new-route form](#the-fields), filled in. The type and the
+gateway group cannot change.
 
 ![The edit form of the route "wiki"](../images/web/route-edit.png)
 

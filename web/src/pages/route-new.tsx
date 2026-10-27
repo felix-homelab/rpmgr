@@ -23,9 +23,9 @@ import {
 import { SettingsService } from "@/gen/rpmgr/v1/settings_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
-import { fieldAt, fieldProblems, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
-import { FieldGrid, FormField } from "@/route-form/form-field";
+import { fieldAt, fieldProblems, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
 import { PreviewPanel } from "@/route-form/preview";
+import { FormSections, routeSections, SectionList, useFirstError } from "@/route-form/sections";
 import { routeTypes, useAgentNames, useGroupNames } from "@/routes-data";
 import { useOrg } from "@/session";
 
@@ -88,7 +88,7 @@ function NewRouteForm({ type }: { type: RouteType }) {
   const preview = useMutation(RouteService.method.previewRoute);
   const [requestId] = useState(() => crypto.randomUUID()); // one creation, however often it is retried
   const base = template(type);
-  const fields = routeFields(base);
+  const sections = routeSections(base);
   const routeOf = (v: NewValues) => create(RouteSchema, { ...routeWith(base, v), gatewayGroupId: v.group });
   const request = (v: NewValues) => create(CreateRouteRequestSchema, { orgId: org?.orgId ?? "", route: routeOf(v), requestId });
   const fieldOf: FieldOf<NewValues> = (path) => (path.replace(/^route\./, "") === "gateway_group_id" ? "group" : fieldAt(base, path));
@@ -103,7 +103,8 @@ function NewRouteForm({ type }: { type: RouteType }) {
     }
     return checks(values, ctx, opts);
   };
-  const form = useForm<NewValues>({ defaultValues: { ...valuesOf(base), group: "" }, resolver });
+  const form = useForm<NewValues>({ defaultValues: { ...valuesOf(base), group: "" }, resolver, shouldFocusError: false });
+  const [formRef, jump] = useFirstError();
   // The org's default gateway group is preselected once it and the groups are read, unless a group
   // was chosen first; a default that names no group of the org is ignored. It is preselected once,
   // so the form never takes back a choice.
@@ -126,6 +127,9 @@ function NewRouteForm({ type }: { type: RouteType }) {
       const { fields: bad, other } = serverFieldErrors(err, CreateRouteRequestSchema, fieldOf);
       bad.forEach(([f, message]) => form.setError(f, { type: "server", message }));
       setOther(other.length > 0 || bad.length > 0 ? other : [e.rawMessage]);
+      if (bad.length > 0) {
+        jump();
+      }
     } else {
       setOther([e.code === Code.FailedPrecondition || e.code === Code.ResourceExhausted ? e.rawMessage : t("link.failed", { message: e.rawMessage })]);
     }
@@ -163,25 +167,27 @@ function NewRouteForm({ type }: { type: RouteType }) {
   }
   const groupError = form.formState.errors.group?.message;
   return (
-    <form onSubmit={form.handleSubmit(save)} className="grid gap-4" noValidate>
-      <FieldGrid>
-        <div className="grid gap-1.5">
-          <label htmlFor="route-group" className={labelClass(true)}>{t("routes.group")}</label>
-          <Select id="route-group" required aria-invalid={groupError ? true : undefined} {...form.register("group")}>
-            <option value="">{t("routeNew.chooseGroup")}</option>
-            {[...(groups.data ?? new Map<string, string>())].map(([id, n]) => <option key={id} value={id}>{n}</option>)}
-          </Select>
-          {groupError && <p role="alert" className="text-sm text-destructive">{groupError}</p>}
+    <div className="grid gap-6 border-t border-border pt-5 lg:grid-cols-[13rem_minmax(0,1fr)]">
+      <SectionList route={base} sections={sections} form={form} />
+      <form ref={formRef} onSubmit={form.handleSubmit(save, jump)} className="grid min-w-0 gap-4" noValidate>
+        <FormSections sections={sections} form={form} general={(
+          <div className="grid gap-1.5">
+            <label htmlFor="route-group" className={labelClass(true)}>{t("routes.group")}</label>
+            <Select id="route-group" required aria-invalid={groupError ? true : undefined} {...form.register("group")}>
+              <option value="">{t("routeNew.chooseGroup")}</option>
+              {[...(groups.data ?? new Map<string, string>())].map(([id, n]) => <option key={id} value={id}>{n}</option>)}
+            </Select>
+            {groupError && <p role="alert" className="text-sm text-destructive">{groupError}</p>}
+          </div>
+        )} />
+        {other.map((m) => <Alert key={m}>{m}</Alert>)}
+        {previewed && <PreviewPanel preview={previewed} name={name} />}
+        <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+          <Button type="submit" disabled={createRoute.isPending}>{t("routeNew.create")}</Button>
+          <Button variant="outline" disabled={preview.isPending} onClick={() => void form.handleSubmit(check, jump)()}>{t("preview.button")}</Button>
+          <Button asChild variant="outline"><Link to="/routes" search={{}}>{t("stepUp.cancel")}</Link></Button>
         </div>
-        {fields.map((f) => <FormField key={f.key} field={f} form={form} />)}
-      </FieldGrid>
-      {other.map((m) => <Alert key={m}>{m}</Alert>)}
-      {previewed && <PreviewPanel preview={previewed} name={name} />}
-      <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-        <Button type="submit" disabled={createRoute.isPending}>{t("routeNew.create")}</Button>
-        <Button variant="outline" disabled={preview.isPending} onClick={() => void form.handleSubmit(check)()}>{t("preview.button")}</Button>
-        <Button asChild variant="outline"><Link to="/routes" search={{}}>{t("stepUp.cancel")}</Link></Button>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 }

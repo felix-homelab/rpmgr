@@ -19,9 +19,9 @@ import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { reasonOf } from "@/lib/errors";
 import { protoResolver, serverFieldErrors, type FieldOf } from "@/lib/proto-form";
 import { Conflict, onTop } from "@/route-form/conflict";
-import { fieldAt, fieldProblems, maskOf, routeFields, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
-import { FieldGrid, FormField } from "@/route-form/form-field";
+import { fieldAt, fieldProblems, maskOf, routeWith, valuesOf, type RouteValues } from "@/route-form/fields";
 import { PreviewPanel } from "@/route-form/preview";
+import { FormSections, routeSections, SectionList, useFirstError } from "@/route-form/sections";
 import { routeType, useAgentNames } from "@/routes-data";
 import { useOrg } from "@/session";
 
@@ -61,7 +61,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
   const update = useMutation(RouteService.method.updateRoute);
   const preview = useMutation(RouteService.method.previewRoute);
   const [previewed, setPreviewed] = useState<PreviewRouteResponse>();
-  const fields = routeFields(base);
+  const sections = routeSections(base);
   const fieldOf: FieldOf<RouteValues> = (path) => fieldAt(base, path);
   const checks = protoResolver(UpdateRouteRequestSchema, (v: RouteValues) => updateRequest(base, v), fieldOf);
   const resolver: Resolver<RouteValues> = (values, ctx, opts) => {
@@ -71,7 +71,8 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
     }
     return checks(values, ctx, opts);
   };
-  const form = useForm<RouteValues>({ defaultValues: initial ?? valuesOf(base), resolver });
+  const form = useForm<RouteValues>({ defaultValues: initial ?? valuesOf(base), resolver, shouldFocusError: false });
+  const [formRef, jump] = useFirstError();
   const transport = useTransport();
   const [conflict, setConflict] = useState<{ theirs: Route; mine: RouteValues }>();
   const [write, setWrite] = useState<{ revision?: Revision; status?: ApplyStatus; warnings?: string[] }>();
@@ -102,6 +103,9 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
         const { fields: bad, other } = serverFieldErrors(err, UpdateRouteRequestSchema, fieldOf);
         bad.forEach(([f, message]) => form.setError(f, { type: "server", message }));
         setOther(other.length > 0 || bad.length > 0 ? other : [e.rawMessage]);
+        if (bad.length > 0) {
+          jump();
+        }
       } else if (e.code === Code.FailedPrecondition && reasonOf(err) === "ETAG_MISMATCH") {
         const now = await createClient(RouteService, transport).getRoute({ routeId: base.id });
         if (now.route) {
@@ -130,20 +134,23 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
           </Button>
         </>
       ) : (
-        <form onSubmit={form.handleSubmit(save)} className="grid gap-4 rounded-xl border border-border bg-card p-5 shadow-xs" noValidate>
-          {conflict && (
-            <Conflict base={base} mine={conflict.mine} theirs={conflict.theirs}
-              onTop={() => onRestart(conflict.theirs, onTop(base, conflict.mine, conflict.theirs))} onDiscard={() => onRestart(conflict.theirs)} />
-          )}
-          <FieldGrid>{fields.map((f) => <FormField key={f.key} field={f} form={form} editing />)}</FieldGrid>
-          {other.map((m) => <Alert key={m}>{m}</Alert>)}
-          {previewed && <PreviewPanel preview={previewed} name={(id) => names.data?.get(id) || id} />}
-          <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-            <Button type="submit" disabled={update.isPending}>{t("routeForm.save")}</Button>
-            <Button variant="outline" disabled={preview.isPending} onClick={() => void form.handleSubmit(check)()}>{t("preview.button")}</Button>
-            <Button asChild variant="outline"><Link to="/routes/$routeId" params={{ routeId: base.id }}>{t("stepUp.cancel")}</Link></Button>
-          </div>
-        </form>
+        <div className="grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
+          <SectionList route={base} sections={sections} form={form} />
+          <form ref={formRef} onSubmit={form.handleSubmit(save, jump)} className="grid min-w-0 gap-4 rounded-xl border border-border bg-card p-5 shadow-xs" noValidate>
+            {conflict && (
+              <Conflict base={base} mine={conflict.mine} theirs={conflict.theirs}
+                onTop={() => onRestart(conflict.theirs, onTop(base, conflict.mine, conflict.theirs))} onDiscard={() => onRestart(conflict.theirs)} />
+            )}
+            <FormSections sections={sections} form={form} editing />
+            {other.map((m) => <Alert key={m}>{m}</Alert>)}
+            {previewed && <PreviewPanel preview={previewed} name={(id) => names.data?.get(id) || id} />}
+            <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+              <Button type="submit" disabled={update.isPending}>{t("routeForm.save")}</Button>
+              <Button variant="outline" disabled={preview.isPending} onClick={() => void form.handleSubmit(check, jump)()}>{t("preview.button")}</Button>
+              <Button asChild variant="outline"><Link to="/routes/$routeId" params={{ routeId: base.id }}>{t("stepUp.cancel")}</Link></Button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );

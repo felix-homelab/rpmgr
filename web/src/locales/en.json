@@ -371,6 +371,18 @@
     "back": "Back to the route",
     "warning": "Warning: {{message}}.",
     "number": "Enter a whole number.",
+    "sections": {
+      "list": "Sections of the form",
+      "invalid": "(has an error)",
+      "general": "General",
+      "matching": "Hostnames & matching",
+      "tls": "TLS",
+      "requests": "Requests & headers",
+      "upstream": "Upstream",
+      "health": "Health check",
+      "connect": "CONNECT listener",
+      "maintenance": "Maintenance"
+    },
     "fields": {
       "name": "Name",
       "description": "Description",
