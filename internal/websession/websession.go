@@ -79,6 +79,16 @@ func (s *Sessions) Create(userID string, amr []string, ip, userAgent string) (st
 // Lookup returns the live session of a token and moves its idle expiry on, never past the
 // absolute one.
 func (s *Sessions) Lookup(tok string) (*ent.Session, error) {
+	return s.lookup(tok, true)
+}
+
+// Check returns the live session of a token like Lookup but leaves its idle expiry alone: the
+// check of a request the user did not make now, such as a live log's recheck, is no activity.
+func (s *Sessions) Check(tok string) (*ent.Session, error) {
+	return s.lookup(tok, false)
+}
+
+func (s *Sessions) lookup(tok string, touch bool) (*ent.Session, error) {
 	if k, err := token.Parse(tok); err != nil || k != token.Session {
 		return nil, ErrNoSession
 	}
@@ -93,7 +103,7 @@ func (s *Sessions) Lookup(tok string) (*ent.Session, error) {
 	if !live(sess, now) {
 		return nil, ErrNoSession
 	}
-	if now.Sub(sess.LastSeenAt) >= touchEvery {
+	if touch && now.Sub(sess.LastSeenAt) >= touchEvery {
 		idle := now.Add(IdleTimeout)
 		if idle.After(sess.AbsoluteExpiresAt) {
 			idle = sess.AbsoluteExpiresAt

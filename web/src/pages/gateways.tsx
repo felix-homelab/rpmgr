@@ -12,6 +12,7 @@ import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { EmptyState } from "@/components/empty-state";
 import { Field } from "@/components/field";
 import { LinesField, trimmed } from "@/components/lines-field";
+import { canStreamLogs, LiveLogButton } from "@/components/live-log";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
@@ -201,7 +202,12 @@ export function GatewayGroupPage() {
                     </span>
                   </TD>
                   <TD>{when(g.status?.lastSeenTime)}</TD>
-                  <TD><GatewayActions orgId={org.orgId} gateway={g} onEdit={() => setEditing(g.id)} onDone={(w) => void done(w)} /></TD>
+                  <TD>
+                    <span className="flex flex-wrap gap-2">
+                      <GatewayActions orgId={org.orgId} gateway={g} onEdit={() => setEditing(g.id)} onDone={(w) => void done(w)} />
+                      {canStreamLogs(org.role) && !g.builtIn && <LiveLogButton agentId={g.id} name={g.name} />}
+                    </span>
+                  </TD>
                 </TR>
               ))}
             </tbody>

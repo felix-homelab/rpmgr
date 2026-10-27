@@ -355,13 +355,17 @@ flowchart LR
     hostname the form has, by its names, ID and expiry; the form stores its ID. The choice shows
     only while the route uses an uploaded certificate. A certificate chosen before stays offered,
     marked if it does not cover the hostnames, so the form never changes it unasked.
-  - **Phase 2 sections** ([03](03-connections.md#http-routes)), each folded until used:
-    - **Header matches** (http): up to eight rows of a header name with "equals" and a value, or
-      "is present"; a hint explains that more matches win and that the route created first wins
-      a tie, which preview reports.
-    - **Timeouts** (http): upstream response header and upstream idle, empty for the gateway's.
+  - **Phase 2 fields** ([03](03-connections.md#http-routes)), after the others:
+    - **Header matches** (http): one per line, `Name: value` for an exact value or `Name` alone
+      for presence; a hint explains that more matches win. The form checks each line, the
+      number of lines and repeated names before sending; what the server refuses shows below the
+      fields.
+    - **Timeouts** (http): upstream response header and upstream idle, in seconds, empty for the
+      gateway's.
     - **Limits** (every type): connections, request rate and bandwidth for the route as a whole,
-      with a hint that the group's enabled gateways share them.
+      each empty for no limit, with a hint that the group's enabled gateways share them; all
+      three go under one update mask path. The form refuses a bandwidth below the API's smallest
+      before sending, and shows a bound the API refuses on the field it names.
     - **Health check** (every type): TCP or HTTP, port, path, expected status, interval, timeout
       and thresholds; route detail shows each target's health, and "health not checked" for a
       connector that runs no checks.
@@ -701,7 +705,8 @@ flowchart LR
 
 ### Live logs, webhooks and audit sinks (Phase 2)
 
-- **Live logs** on a connector's and a gateway's page, for `agents.logs`
+- **Live logs** in a **Live log** card on a connector's page, and from **Live log…** in the row of
+  a gateway on its group's page, in a dialog; for `agents.logs`
   ([04](04-security.md#roles)); hidden without it. Text only, in a monospace panel: a level and a
   text filter, **Raise to debug** (audited; lasts until the panel closes or the operation ends,
   [D140](14-open-decisions.md#engineering)), **Pause** (the panel stops scrolling, lines keep
