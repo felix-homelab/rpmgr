@@ -130,7 +130,7 @@ export function Connectors() {
                 <TD><SessionChip connector={c} /></TD>
                 <TD>{c.session?.version}</TD>
                 <TD>
-                  <span className="grid justify-items-start gap-1">
+                  <span className="flex flex-wrap items-center gap-2">
                     <UpdateState target={updates.get(c.id)} belowMinimum={c.session?.belowMinAgentVersion} goodbyeReason={c.session?.lastGoodbyeReason} />
                     <UpdateButton agent={updatableConnector(c)} target={updates.get(c.id)} />
                   </span>
