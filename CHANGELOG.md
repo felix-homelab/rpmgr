@@ -119,6 +119,16 @@ Changes to the design documents are not recorded here: see the git history and t
   starts with `Rpmgr-User-`, also spelt with `_`, is removed before a request goes upstream; both
   are kept for the gateway's own endpoints and OIDC sign-in. (#617)
 
+### Fixed
+
+- Updates: a connector or gateway whose host has the updater's directory but not its enabled
+  units, as the v0.1.0 install script and `rpmgr setup --no-unit` leave it, no longer announces
+  over-the-air updates. It was offered a release it staged and nothing installed, until the
+  rollout counted it as stalled; it is now listed as having no over-the-air updater, and the
+  install script's `--upgrade --restart` installs the units and restarts the agent. The install
+  script enables the updater before it starts the role, so that a new agent announces
+  over-the-air updates from its first start. (#965)
+
 ## [0.2.0] - 2026-10-24
 
 ### Added

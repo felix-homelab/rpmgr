@@ -207,6 +207,11 @@ one that other users may write; fix its owner or mode first
   the previous binary is back. The rollout is paused; read the agent's log, then resume or cancel.
 - **An agent is stalled.** It reported nothing for long enough that the rollout stopped waiting.
   Check that it is connected and that its updater runs, then resume.
+- **An agent has no over-the-air updater.** Its host has no root updater, or the updater's units
+  are not enabled, as on a host installed with v0.1.0 and upgraded by replacing the binary. Run
+  the install script with `--upgrade --restart` on that host once: it installs and enables the
+  updater, and the restarted agent then announces over-the-air updates
+  ([Upgrades](../install/upgrades.md)).
 - **The rollout's agents stay pending.** The mirror does not hold the release yet: the controller
   could not fetch it from the release source. Import the release on the controller host, or cancel
   the rollout.
