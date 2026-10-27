@@ -273,7 +273,7 @@ func queueOf(agents map[string]rolloutAgent, ids []string) ([]store.RolloutAgent
 				ReasonNotUpgradable)
 		case !a.ota:
 			return nil, withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
-				"apisvc: agent %s has not announced over-the-air updates: it runs without the root updater or with its units not enabled (install.sh --upgrade installs them), in the container image, or has never connected", id)),
+				"apisvc: agent %s has not announced over-the-air updates: it runs without the root updater or with its units not enabled (install.sh --upgrade --restart installs them and restarts the agent), in the container image, or has never connected", id)),
 				ReasonNotUpgradable)
 		}
 		out = append(out, store.RolloutAgent{ID: id, Kind: a.kind, VersionBefore: a.version})

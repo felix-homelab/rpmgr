@@ -209,7 +209,8 @@ one that other users may write; fix its owner or mode first
   Check that it is connected and that its updater runs, then resume.
 - **An agent has no over-the-air updater.** Its host has no root updater, or the updater's units
   are not enabled, as on a host installed with v0.1.0 and upgraded by replacing the binary. Run
-  the install script with `--upgrade` on that host once; it installs and enables the updater
+  the install script with `--upgrade --restart` on that host once: it installs and enables the
+  updater, and the restarted agent then announces over-the-air updates
   ([Upgrades](../install/upgrades.md)).
 - **The rollout's agents stay pending.** The mirror does not hold the release yet: the controller
   could not fetch it from the release source. Import the release on the controller host, or cancel
