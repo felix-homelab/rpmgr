@@ -118,6 +118,11 @@ Changes to the design documents are not recorded here: see the git history and t
   404 page instead of going to the upstream, and every header and trailer a client sends whose name
   starts with `Rpmgr-User-`, also spelt with `_`, is removed before a request goes upstream; both
   are kept for the gateway's own endpoints and OIDC sign-in. (#617)
+- Web UI: the new-route and edit forms group their fields into titled sections, such as
+  **Hostnames & matching**, **TLS**, **Upstream** and, for routes on a port, **Listener**, with a
+  list beside the form, above it on a phone, that jumps to each section and marks one holding a
+  field with an error. A failed save or
+  preview puts the cursor in the first field with an error. Every field stays on the page. (#969)
 
 ### Fixed
 
