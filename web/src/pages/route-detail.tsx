@@ -234,9 +234,14 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
   const { t } = useTranslation();
   const problem = r.status?.notServing.find((n) => n.id === target.id);
   const status = useQuery(ConnectorService.method.getConnectorStatus, { connectorId: target.connectorId });
+  const own = useQuery(ConnectorService.method.getConnector, { connectorId: target.connectorId });
   const transports = new Set(status.data?.status?.dataSessions.map((s) => s.transport));
   const address = target.address.case === "hostPort" ? `${target.address.value.host}:${target.address.value.port}` : target.address.value ?? "";
-  const fallback = transports.has(DataTransport.H2) && !transports.has(DataTransport.QUIC) && r.transport !== DataTransport.H2;
+  // Only a served target on auto falls back: a pin never does, and one pinned to QUIC without it
+  // does not serve (docs/03-connections.md, "Transport selection").
+  const pinned = (p?: DataTransport) => p === DataTransport.H2 || p === DataTransport.QUIC;
+  const fallback = !problem && target.enabled && transports.has(DataTransport.H2) && !transports.has(DataTransport.QUIC) &&
+    !pinned(r.transport) && !pinned(own.data?.connector?.transport);
   const [asking, setAsking] = useState(false);
   return (
     <TR>
