@@ -221,6 +221,11 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.getByRole("button", { name: "Create the route" }).click();
   await expect(page.getByText("A bandwidth limit is at least 1024 bytes a second; leave it empty for none.")).toBeVisible();
   await expect(page.getByLabel("Most bytes a second, each way")).toHaveAttribute("aria-invalid", "true");
+  // The section list marks both sections, and the failed save moved to the first field with an
+  // error on the page (D153).
+  const sectionList = page.getByRole("navigation", { name: "Sections of the form" });
+  await expect(sectionList.getByRole("link", { name: /\(has an error\)$/ })).toHaveText(["Hostnames & matching (has an error)", "Upstream (has an error)"]);
+  await expect(page.getByLabel("Serve only requests with these headers")).toBeFocused();
   await expectAccessible(page);
   // A CONNECT route: its fields come with the mode, and basic auth in the clear stays warned of.
   await page.getByRole("radio", { name: "TCP", exact: true }).check();
@@ -234,7 +239,17 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   expect(await top("Name")).toBe(await top("Gateway group"));
   await page.setViewportSize({ width: 390, height: desktop.height });
   expect(await top("Name")).toBeGreaterThan(await top("Gateway group"));
+  // On a phone the section list stands above the form, and nothing scrolls sideways.
+  expect((await sectionList.boundingBox())!.y).toBeLessThan(await top("Gateway group"));
+  expect(await sideways(page, "main"), "route form, 390 px wide").toEqual([]);
+  await expectAccessible(page);
   await page.setViewportSize(desktop);
+  // Each link of the list jumps to its section's heading.
+  await expect(sectionList.getByRole("link")).toHaveText(["General", "Hostnames & matching", "TLS", "Requests & headers", "Upstream", "Health check", "Maintenance"]);
+  await sectionList.getByRole("link", { name: "Maintenance" }).click();
+  await expect(page).toHaveURL(/\/routes\/new#route-section-maintenance$/);
+  await expect(page.getByRole("heading", { name: "Maintenance", level: 2 })).toBeInViewport();
+  await expect(page.getByRole("heading", { name: "New route", level: 1 })).not.toBeInViewport();
   // A health check's parts appear with its kind: an HTTP check has a path and passing statuses,
   // a TCP check neither; none of them is required (D133).
   await page.goto("/routes/new");

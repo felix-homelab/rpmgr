@@ -39,8 +39,8 @@ rpmgr update route --requests-per-second 0 db
 
 ### With the web UI
 
-The route form, on **New route** and on a route's **Edit**, has a field for each limit below the
-fields of the route's type: **Most connections, flows or requests at once**, **Most requests,
+The route form, on **New route** and on a route's **Edit**, has a field for each limit in its
+**Upstream** section: **Most connections, flows or requests at once**, **Most requests,
 connections or flows a second** and **Most bytes a second, each way**. Empty is no limit; clear a
 field and save to remove that limit ([Routes](../web-ui/routes.md#the-fields)).
 
