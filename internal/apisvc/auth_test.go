@@ -58,6 +58,7 @@ type env struct {
 	txt      fakeVerifier // the TXT proofs DomainService finds
 	renew    renewals     // the renewals CertificateService starts
 	probe    fakeProber   // what RouteService's probes find
+	agents   fakeLogs     // the live logs LogService opens
 	sealer   *secret.Sealer
 	pki      *apisvc.Pki
 	rel      *apisvc.Releases
@@ -158,6 +159,12 @@ func newEnv(t *testing.T) *env {
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_status_proto.Services().ByName("StatusService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewStatusServiceHandler(&apisvc.Status{DB: db, Sys: sys, Now: now, Every: 20 * time.Millisecond}, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_log_proto.Services().ByName("LogService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewLogServiceHandler(&apisvc.Logs{DB: db, Opener: &e.agents}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -279,6 +286,7 @@ type browser struct {
 	pki    rpmgrv1connect.PkiServiceClient
 	man    rpmgrv1connect.ManifestServiceClient
 	rel    rpmgrv1connect.ReleaseServiceClient
+	logs   rpmgrv1connect.LogServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -292,6 +300,7 @@ func (e *env) browser() *browser {
 	b.con = rpmgrv1connect.NewConnectorServiceClient(&http.Client{Transport: b}, e.url)
 	b.dom = rpmgrv1connect.NewDomainServiceClient(&http.Client{Transport: b}, e.url)
 	b.rt = rpmgrv1connect.NewRouteServiceClient(&http.Client{Transport: b}, e.url)
+	b.logs = rpmgrv1connect.NewLogServiceClient(&http.Client{Transport: b}, e.url)
 	b.st = rpmgrv1connect.NewStatusServiceClient(&http.Client{Transport: b}, e.url)
 	b.pol = rpmgrv1connect.NewPolicyServiceClient(&http.Client{Transport: b}, e.url)
 	b.crt = rpmgrv1connect.NewCertificateServiceClient(&http.Client{Transport: b}, e.url)

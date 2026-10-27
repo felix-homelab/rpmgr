@@ -36,6 +36,8 @@ const (
 	PermAuditRead = "audit.read"
 	// PermOrgWrite: SSO, the MFA policy and the org's settings.
 	PermOrgWrite = "org.write"
+	// PermAgentsLogs: the live logs of the org's connectors and gateways (Phase 2).
+	PermAgentsLogs = "agents.logs"
 )
 
 // grants lists the roles that hold each org permission.
@@ -47,6 +49,7 @@ var grants = map[string][]string{
 	PermMembersWrite:        {RoleOwner, RoleAdmin},
 	PermAuditRead:           {RoleOwner, RoleAdmin},
 	PermOrgWrite:            {RoleOwner},
+	PermAgentsLogs:          {RoleOwner, RoleAdmin},
 }
 
 // OrgPermission reports whether p is a permission that org roles grant.
