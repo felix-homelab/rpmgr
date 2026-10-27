@@ -54,6 +54,7 @@ func apiCommands() []*cli.Command {
 	add(recoveryCommands())
 	add(settingsCommands())
 	add(rolloutCommands())
+	add(logsCommands())
 	out := []*cli.Command{getCommand(), listCommand(), deleteCommand()}
 	for _, v := range []struct{ verb, summary string }{
 		{"create", "create a resource of the public API"}, {"update", "change a resource of the public API"},
@@ -64,6 +65,7 @@ func apiCommands() []*cli.Command {
 		{"renew", "renew a certificate now"}, {"remove", "remove a member from the org, a user's second factor, or a gateway group's own page"},
 		{"advance", "move a rollout to its next stage"}, {"pause", "pause a rollout"}, {"resume", "let a paused rollout run again"},
 		{"cancel", "end a rollout for good"}, {"upgrade", "update agents to the controller's version"},
+		{"logs", "follow the live log of a connector or gateway"},
 	} {
 		out = append(out, group(v.verb, v.summary, verbs[v.verb]...))
 	}

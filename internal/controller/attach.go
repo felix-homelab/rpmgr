@@ -35,6 +35,13 @@ var (
 // ErrOperationRefused is an operation the agent refused, or whose Attach failed its checks.
 var ErrOperationRefused = errors.New("controller: the agent did not take the operation")
 
+// ErrOperationDeadline is an operation that ended at its deadline, as it is meant to: its reader
+// may open a new one.
+var ErrOperationDeadline = errors.New("controller: the operation reached its deadline")
+
+// deadlineReason is the reason the agent gets in its AttachEnd at the deadline.
+const deadlineReason = "the operation reached its deadline"
+
 // capabilityOf is the capability an agent announces for each kind of operation.
 var capabilityOf = map[agentv1.OperationKind]string{agentv1.OperationKind_OPERATION_KIND_LOGS: agentproto.CapLogsStream}
 
@@ -52,21 +59,37 @@ type pendingOp struct {
 	attached chan *Operation // the Attach that presented the ticket, handed over once
 	failed   chan error      // an Attach that failed the checks
 	gone     chan struct{}   // closed when Open no longer waits
+	sess     *session        // the control session it was opened on, whose end ends it
 }
 
 // Operation is an imperative operation its agent attached (docs/03-connections.md, "Control
 // session"). Recv reads the agent's frames; Close ends it. It also ends at its deadline, when the
-// agent ends it or the agent's stream breaks.
+// agent's control session ends, as when the agent is revoked, when the agent ends it or the
+// agent's stream breaks.
 type Operation struct {
 	st   attachStream
 	done chan struct{}
 	once sync.Once
+	why  string // the reason Close gave; read only once done is closed
+	// deadline is the operation's end, on the clock now reads.
+	deadline time.Time
+	now      func() time.Time
 }
 
-// Recv returns the agent's next frame; io.EOF once the agent ended the operation.
+// Recv returns the agent's next frame; io.EOF once the agent ended the operation,
+// ErrOperationDeadline once the deadline ended it, whichever side noticed first, and once the
+// controller ended it otherwise, an error with Close's reason.
 func (o *Operation) Recv() (*agentv1.AttachFrame, error) {
 	f, err := o.st.Recv()
 	if err != nil {
+		select {
+		case <-o.done:
+			return nil, o.ended(err)
+		default:
+		}
+		if !o.now().Before(o.deadline) {
+			return nil, ErrOperationDeadline
+		}
 		return nil, err
 	}
 	if f.GetEnd() != nil {
@@ -78,9 +101,21 @@ func (o *Operation) Recv() (*agentv1.AttachFrame, error) {
 	return f, nil
 }
 
+// ended is the error of a Recv after Close, which err, the stream's, does not explain.
+func (o *Operation) ended(err error) error {
+	switch o.why {
+	case "":
+		return err
+	case deadlineReason:
+		return ErrOperationDeadline
+	}
+	return fmt.Errorf("controller: the operation ended: %s", o.why)
+}
+
 // Close ends the operation: the agent gets an AttachEnd with reason, and the stream closes.
 func (o *Operation) Close(reason string) {
 	o.once.Do(func() {
+		o.why = reason
 		_ = o.st.Send(&agentv1.AttachFrame{Frame: &agentv1.AttachFrame_End{End: &agentv1.AttachEnd{Reason: reason}}})
 		close(o.done)
 	})
@@ -112,6 +147,7 @@ func (s *Sessions) Open(ctx context.Context, agentID string, kind agentv1.Operat
 	s.mu.Lock()
 	sess := s.active[agentID]
 	capable := sess != nil && slices.Contains(sess.caps, need)
+	p.sess = sess
 	if capable {
 		if s.ops == nil {
 			s.ops = map[string]*op{}
@@ -214,7 +250,7 @@ func (s *Sessions) Attach(st attachStream) error {
 	case subtle.ConstantTimeCompare(sum[:], p.ticket[:]) != 1:
 		return refuse("a wrong ticket")
 	}
-	o := &Operation{st: st, done: make(chan struct{})}
+	o := &Operation{st: st, done: make(chan struct{}), deadline: p.deadline, now: s.now}
 	p.attached <- o
 	deadline := time.NewTimer(time.Until(p.deadline))
 	defer deadline.Stop()
@@ -223,8 +259,10 @@ func (s *Sessions) Attach(st attachStream) error {
 	case <-st.Context().Done():
 	case <-p.gone:
 		o.Close("the operation was given up")
+	case <-p.sess.done:
+		o.Close(p.sess.endReason())
 	case <-deadline.C:
-		o.Close("the operation reached its deadline")
+		o.Close(deadlineReason)
 	}
 	return nil
 }
