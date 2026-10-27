@@ -20,6 +20,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -402,4 +403,40 @@ func TestStreamLogs_AuditFailsClosed(t *testing.T) {
 		t.Errorf("an open whose audit failed: %v", err)
 	}
 	waitUntil(t, "the operation to end", func() bool { return len(e.agents.reasons()) == 1 })
+}
+
+// TestStreamLogs_RecheckIsNoActivity: the recheck of an open live log does not keep an idle web
+// session alive: the session's idle expiry stays where the user's last request left it, and once
+// it passes, the stream ends with UNAUTHENTICATED at the next recheck.
+func TestStreamLogs_RecheckIsNoActivity(t *testing.T) {
+	apisvc.SetLogRecheck(t, 50*time.Millisecond)
+	e, ada, org, _ := gatewayEnv(t)
+	con := e.addConnector(t, org, "nas", nil).ID
+	e.agents.lines = map[string][]string{con: nil}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := ada.stepUp(pw, ""); err != nil { // inviting an Admin takes a step-up
+		t.Fatal(err)
+	}
+	viewer, id := e.join(t, ada, org, "idle@example.com", "admin")
+	st, err := viewer.logs.StreamLogs(ctx, connect.NewRequest(&rpmgrv1.StreamLogsRequest{AgentId: con}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The session was last used long enough ago that a request would move its idle expiry on, and
+	// it has a short while left.
+	sess := e.db.Client().Session.Query().Where(session.UserID(id)).OnlyX(e.sys)
+	seen, idle := e.clock.Add(-10*time.Minute), e.clock.Add(time.Minute)
+	e.db.Client().Session.UpdateOneID(sess.ID).SetLastSeenAt(seen).SetIdleExpiresAt(idle).ExecX(e.sys)
+	time.Sleep(300 * time.Millisecond) // several rechecks
+	if got := e.db.Client().Session.GetX(e.sys, sess.ID); !got.LastSeenAt.Equal(seen) || !got.IdleExpiresAt.Equal(idle) {
+		t.Fatalf("a recheck moved the session on: last seen %v, idle until %v", got.LastSeenAt, got.IdleExpiresAt)
+	}
+	// The idle expiry passes.
+	e.db.Client().Session.UpdateOneID(sess.ID).SetIdleExpiresAt(e.clock).ExecX(e.sys)
+	for st.Receive() {
+	}
+	if code := connect.CodeOf(st.Err()); code != connect.CodeUnauthenticated {
+		t.Errorf("the stream of an expired session ended with %v", code)
+	}
 }

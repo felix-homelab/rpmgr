@@ -95,8 +95,9 @@ func (i interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) con
 		}
 		rec.tell(conn.ResponseHeader(), nil)
 		header := conn.RequestHeader().Clone()
+		again := context.WithValue(base, recheckingKey{}, true)
 		ctx = context.WithValue(ctx, recheckKey{}, func() error {
-			_, err := i.s.admit(base, md, header, msg, nil)
+			_, err := i.s.admit(again, md, header, msg, nil)
 			return err
 		})
 		err = i.s.sanitize(md, next(rec.hook(ctx), &replay{StreamingHandlerConn: conn, first: msg}))
@@ -276,13 +277,23 @@ type recheckKey struct{}
 // Recheck admits the caller of a server stream again as if the stream were a new request: its
 // credentials must still be valid, and its membership, role and scopes must still grant the
 // method's permission on the stream's resource (docs/04-security.md, "Roles"). A stream that runs
-// long calls it now and then and ends with its error. Outside a server stream it has nothing to
+// long calls it now and then and ends with its error. A recheck is not the user's activity: it
+// does not move a session's idle expiry (Rechecking). Outside a server stream it has nothing to
 // check.
 func Recheck(ctx context.Context) error {
 	if f, ok := ctx.Value(recheckKey{}).(func() error); ok {
 		return f()
 	}
 	return nil
+}
+
+type recheckingKey struct{}
+
+// Rechecking reports whether ctx is that of a Recheck, which an Authenticator answers without
+// counting it as the user's activity: it does not move a session's idle expiry.
+func Rechecking(ctx context.Context) bool {
+	v, _ := ctx.Value(recheckingKey{}).(bool)
+	return v
 }
 
 // RequireStepUp is the interceptor's step-up check, for a method that needs a step-up only for

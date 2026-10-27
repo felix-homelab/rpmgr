@@ -563,6 +563,8 @@ Opening a log, and raising its level, is audited as `agent.logs_open` with the l
 one long request, admits its viewer again while it runs: a session or token that is no longer
 valid ends it with `UNAUTHENTICATED`, and a viewer who lost `agents.logs` or left the org with
 `PERMISSION_DENIED`, within the interval of [03](03-connections.md#timeouts-keepalive-and-backoff).
+The recheck is not the user's activity: it does not move a session's idle expiry, so a live log
+left open in a forgotten tab ends when its session's idle timeout passes.
 
 [R] `connectors.write` reaches routes: decommissioning a connector deletes each route left with no
 target, with its hostnames, ports and policy links, so a token with that scope and without
