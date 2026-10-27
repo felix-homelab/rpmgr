@@ -342,7 +342,7 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expectAccessible(page);
   for (const width of [size.width, 390]) {
     await page.setViewportSize({ width, height: size.height });
-    expect(await sideways(page), `live log, ${width} px wide`).toEqual([]);
+    expect(await sideways(page, "main"), `live log, ${width} px wide`).toEqual([]);
   }
   await page.setViewportSize(size);
   await page.unroute("**/rpmgr.v1.ConnectorService/GetConnector");
