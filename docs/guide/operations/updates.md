@@ -205,13 +205,72 @@ one that other users may write; fix its owner or mode first
   ([Choose what a host takes](#choose-what-a-host-takes)).
 - **An agent rolled back.** Its updater installed the release, the role did not become ready, and
   the previous binary is back. The rollout is paused; read the agent's log, then resume or cancel.
-- **An agent is stalled.** It reported nothing for long enough that the rollout stopped waiting.
-  Check that it is connected and that its updater runs, then resume.
+- **An agent stays staged, or is stalled.** It downloaded the release, but nothing installed it,
+  or it reported nothing for long enough that the rollout stopped waiting. Check that it is
+  connected and that its host's updater runs
+  ([Repair the updater on a host](#repair-the-updater-on-a-host)), then resume.
 - **An agent has no over-the-air updater.** Its host has no root updater, or the updater's units
   are not enabled, as on a host installed with v0.1.0 and upgraded by replacing the binary. Run
   the install script with `--upgrade --restart` on that host once: it installs and enables the
   updater, and the restarted agent then announces over-the-air updates
-  ([Upgrades](../install/upgrades.md)).
+  ([Upgrades](../install/upgrades.md)). To repair it by hand, see
+  [Repair the updater on a host](#repair-the-updater-on-a-host).
 - **The rollout's agents stay pending.** The mirror does not hold the release yet: the controller
   could not fetch it from the release source. Import the release on the controller host, or cancel
   the rollout.
+
+## Repair the updater on a host
+
+Over-the-air updates need the root updater on the agent's host: its directory
+`/var/lib/rpmgr-update/` with `install.json` and `state.json`, and the units
+`rpmgr-update.path`, which starts it when the agent has staged a release, and
+`rpmgr-update.service`, which installs it. The install scripts and `rpmgr setup` set all of it up.
+An agent announces over-the-air updates only when `rpmgr-update.path` is enabled, and it checks
+that when it starts.
+
+1. Look at the updater, as root on the host:
+
+   ```sh
+   systemctl is-enabled rpmgr-update.path rpmgr-update.service
+   sudo ls -l /var/lib/rpmgr-update/ /var/lib/rpmgr/update/
+   cat /run/rpmgr-update/status.json
+   journalctl -u rpmgr-update.service -n 40 --no-pager
+   ```
+
+   | What you see | What it means |
+   |---|---|
+   | `not-found` for both units | The updater was never installed on this host. |
+   | `disabled` for `rpmgr-update.path` | Nothing starts the updater when a release is staged. |
+   | A release in `/var/lib/rpmgr/update/` and no `status.json` | The agent staged it and the updater never ran. |
+   | `status.json` says `refused` or `rolled_back` | The updater ran; its `reason` says why. |
+
+2. Install and enable the updater. The quickest way is the install script with
+   `--upgrade --restart` ([Upgrades](../install/upgrades.md)). By hand, as root:
+
+   ```sh
+   sudo rpmgr updater install
+   sudo systemctl daemon-reload
+   sudo systemctl enable rpmgr-update.service
+   sudo systemctl enable --now rpmgr-update.path
+   ```
+
+   `rpmgr updater install` keeps what the host has recorded, such as its roles, and only writes
+   the units; enabling them is a step of its own.
+3. If a release is already staged, install it now. The path unit reacts only to a release staged
+   after it was enabled:
+
+   ```sh
+   sudo systemctl start rpmgr-update.service
+   cat /run/rpmgr-update/status.json
+   ```
+
+   `updated` with the new version means the release runs.
+4. Restart the role, `rpmgr-connector` or `rpmgr-gateway`, so that its agent notices the updater
+   and announces over-the-air updates again:
+
+   ```sh
+   sudo systemctl restart rpmgr-connector
+   ```
+
+   The agent's row no longer says "No over-the-air updater". If a rollout paused on this agent,
+   resume it.
