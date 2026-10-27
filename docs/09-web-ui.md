@@ -321,7 +321,9 @@ flowchart LR
   ([D84](14-open-decisions.md#engineering)). The value is shell-quoted, for example a socket path
   with a space.
 - **A target whose connector reaches the gateways only over TLS and HTTP/2** is marked as served
-  over the fallback for QUIC. A route pinned to HTTP/2 is not marked.
+  over the fallback for QUIC, but only while it serves and neither its route nor its connector
+  pins a transport: a pin to HTTP/2 is a choice, and a pin to QUIC never falls back, so such a
+  target does not serve and shows why ([03](03-connections.md#transport-selection)).
 - **Gateways that do not serve the route, and agents that rejected it,** are listed with their
   reasons.
 - UDP and "TCP and UDP" routes show the MTU hint of [03](03-connections.md#udp-routes).
