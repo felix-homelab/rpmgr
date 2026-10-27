@@ -62,12 +62,12 @@ section the type has no field for is left out:
 | Section | Route types |
 |---|---|
 | **General** | Every type |
-| **Hostnames & matching** | HTTP, TLS passthrough, UDP, TCP and UDP |
+| **Hostnames & matching** | HTTP, TLS passthrough |
 | **TLS** | HTTP |
 | **Requests & headers** | HTTP |
 | **Upstream** | Every type |
 | **Health check** | Every type |
-| **CONNECT listener** | TCP |
+| **Listener** | TCP, UDP, TCP and UDP |
 | **Maintenance** | HTTP |
 
 The list of sections beside the form, above it on a phone, jumps to a section when you choose it.
@@ -92,7 +92,6 @@ field that the form or the controller refuses is marked in the list in red, with
 | **Hostnames** | HTTP and TLS passthrough: one per line. Each must be a verified domain of the organisation, or a name below one claimed with **Also every name below it**, which also allows a `*.` name ([Domains & certificates](domains.md)). A `*.` name needs **Uploaded**: ACME issues no certificate for it |
 | **Path prefix** | HTTP: serve only paths below it; empty for all |
 | **Serve only requests with these headers** | HTTP: header matches, one per line: `Name: value` for that exact value, or `Name` alone for any value. Where routes share a hostname and path prefix, the one with more matching headers wins ([Header matches](../routes/http.md#header-matches)). Empty matches every request |
-| **Public port** | UDP, and TCP and UDP: the gateway group's port the route takes |
 
 **TLS**, on HTTP routes:
 
@@ -153,15 +152,17 @@ is refused on its field, as is anything that is not a whole number.
 The bounds of these values are in [03](../../03-connections.md#timeouts-keepalive-and-backoff). A
 TLS passthrough route, and a route with an h2c target, take a TCP check only.
 
-**CONNECT listener**, on TCP routes ([CONNECT routes](../routes/tcp-and-udp.md#connect-routes)):
-**Listener** and **Public port**; with **A CONNECT listener shared with other routes (HTTP
-proxy)** also **CONNECT names**, one per line, and **Proxy credentials**: **None: IP rules only**,
-**Basic auth over TLS (HTTPS proxy)**, which asks for **Listener hostname (HTTPS proxy)** and
-**Listener certificate**, or **Basic auth in the clear**, which the form warns about as long as it
-is chosen, as the server does after the save.
+**Listener**, on TCP, UDP, and TCP and UDP routes: what the gateway listens on
+([TCP and UDP routes](../routes/tcp-and-udp.md)). Every such route has **Public port**, the
+gateway group's port it takes. A port of 0, the default, takes a random free port from the group's
+port pools, free for both protocols on a TCP and UDP route, within the organisation's port quota.
 
-A public port of 0, the default, takes a random free port from the gateway group's port pools,
-free for both protocols on a TCP and UDP route, within the organisation's port quota.
+A TCP route also has **Listener**: **Its own public port** or **A CONNECT listener shared with other
+routes (HTTP proxy)** ([CONNECT routes](../routes/tcp-and-udp.md#connect-routes)). The second adds
+**CONNECT names**, one per line, and **Proxy credentials**: **None: IP rules only**, **Basic auth
+over TLS (HTTPS proxy)**, which asks for **Listener hostname (HTTPS proxy)** and **Listener
+certificate**, or **Basic auth in the clear**, which the form warns about as long as it is chosen,
+as the server does after the save.
 
 **Maintenance**, on HTTP routes
 ([Maintenance and error pages](../routes/maintenance-and-pages.md)):

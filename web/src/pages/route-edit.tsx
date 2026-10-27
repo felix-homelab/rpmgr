@@ -135,7 +135,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
         </>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
-          <SectionList route={base} sections={sections} form={form} />
+          <SectionList sections={sections} form={form} />
           <form ref={formRef} onSubmit={form.handleSubmit(save, jump)} className="grid min-w-0 gap-4 rounded-xl border border-border bg-card p-5 shadow-xs" noValidate>
             {conflict && (
               <Conflict base={base} mine={conflict.mine} theirs={conflict.theirs}

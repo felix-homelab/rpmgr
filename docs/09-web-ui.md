@@ -418,23 +418,24 @@ flowchart LR
 
 The form that creates a route and the one that edits it group their fields into titled sections on
 one page, with a section list beside them that jumps to each section
-([D151](14-open-decisions.md#engineering)).
+([D153](14-open-decisions.md#engineering)).
 
 - **Sections,** in this order; a section with no field for the route's type is left out:
 
   | Section | Fields | Types |
   |---|---|---|
   | General | the gateway group (new routes), name, description, labels | every type |
-  | Hostnames & matching | hostnames, path prefix, header matches; the public port of a UDP or "TCP and UDP" route | HTTP, TLS passthrough, UDP, TCP and UDP |
+  | Hostnames & matching | hostnames, path prefix, header matches | HTTP, TLS passthrough |
   | TLS | TLS certificate, uploaded certificate, port 80, HSTS | HTTP |
   | Requests & headers | host header, request and response headers, WebSocket, largest request body | HTTP |
   | Upstream | transport, upstream response header and idle timeouts, idle and flow idle timeouts, limits | every type |
   | Health check | the health check and its parts | every type |
-  | CONNECT listener | listener, CONNECT names, proxy credentials, listener hostname and certificate, public port | TCP |
+  | Listener | listener mode, public port; for a CONNECT route also CONNECT names, proxy credentials, listener hostname and certificate | TCP, UDP, TCP and UDP |
   | Maintenance | maintenance, maintenance message | HTTP |
 
-  - A TCP route's listener chooses whether it is a CONNECT listener, so a plain TCP route has the
-    section too, with its listener and public port.
+  - Listener holds what the gateway listens on for a route on a port: a TCP route's listener mode,
+    and its public port, as for UDP and "TCP and UDP" routes. A CONNECT route, a TCP route in
+    `http_connect` mode, adds its CONNECT fields there.
   - A field shown only in some cases, such as the uploaded certificate, appears in its section
     while the case holds.
 - **Nothing is hidden or collapsed,** so the browser's find reaches every field. Tabs and
@@ -444,7 +445,31 @@ one page, with a section list beside them that jumps to each section
 - **The section list** is a navigation landmark of links, one per section, each to its heading,
   so the keyboard reaches and follows them like any link. From 1024 px it stands beside the form
   and stays in view while the form scrolls; on narrower screens it sits above the form, its links
-  wrapping across the width, so nothing scrolls sideways.
+  wrapping across the width, so nothing scrolls sideways:
+
+  ```
+  ┌ Edit route bastion (TCP), 390 px ──────────┐
+  │ General · Upstream · Health check ·        │
+  │ Listener                                   │
+  │ ┌────────────────────────────────────────┐ │
+  │ │ General                                │ │
+  │ │ Name *                                 │ │
+  │ │ [bastion                           ]   │ │
+  │ │ …                                      │ │
+  │ ├────────────────────────────────────────┤ │
+  │ │ Listener                               │ │
+  │ │ Listener                               │ │
+  │ │ [A CONNECT listener shared …       ]   │ │
+  │ │ Public port *                          │ │
+  │ │ [0                                 ]   │ │
+  │ │ CONNECT names *                        │ │
+  │ │ [bastion.internal                  ]   │ │
+  │ │ …                                      │ │
+  │ ├────────────────────────────────────────┤ │
+  │ │ [Save]  [Preview]  [Cancel]            │ │
+  │ └────────────────────────────────────────┘ │
+  └────────────────────────────────────────────┘
+  ```
 - **Errors:** a section that holds a field with an error is marked in the list with an icon, in
   the colour of errors, and screen readers hear "has an error" with its name. A save or preview
   that fails moves the focus to the first field with an error, in the order of the page, whether

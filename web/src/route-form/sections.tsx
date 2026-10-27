@@ -10,8 +10,8 @@ import { FieldGrid, FormField } from "@/route-form/form-field";
 import { cn } from "@/lib/utils";
 
 // The route form's sections, in the page's order, each with the keys of its fields in their order
-// (docs/09-web-ui.md, "Route form"). group is the gateway group of a new route. A UDP or "TCP and
-// UDP" route has no CONNECT listener, so its port stands with the hostnames, as how it is reached.
+// (docs/09-web-ui.md, "Route form"). group is the gateway group of a new route. Listener holds a
+// route's public port, a TCP route's listener mode and, in http_connect mode, its CONNECT fields.
 const order = [
   ["general", ["group", "name", "description", "labels"]],
   ["matching", ["hostnames", "pathPrefix", "headerMatches"]],
@@ -20,7 +20,7 @@ const order = [
   ["upstream", ["transport", "upstreamHeaderTimeout", "upstreamIdleTimeout", "idleTimeout", "flowIdleTimeout", "tcpIdleTimeout",
     "udpFlowIdleTimeout", "maxConnections", "requestsPerSecond", "bandwidth"]],
   ["health", ["healthCheck", "healthPort", "healthPath", "healthStatus", "healthInterval", "healthTimeout", "healthUnhealthy", "healthHealthy"]],
-  ["connect", ["listenerMode", "authorities", "connectAuth", "connectHostname", "connectCertificate", "port"]],
+  ["listener", ["listenerMode", "port", "authorities", "connectAuth", "connectHostname", "connectCertificate"]],
   ["maintenance", ["maintenance", "maintenanceMessage"]],
 ] as const satisfies readonly (readonly [string, readonly string[]])[];
 
@@ -29,9 +29,9 @@ export const sectionIds: SectionId[] = order.map(([id]) => id);
 const placed = new Map<string, SectionId>(order.flatMap(([id, keys]) => keys.map((k) => [k, id] as const)));
 const rank = new Map<string, number>(order.flatMap(([, keys]) => keys.map((k, i) => [k, i] as const)));
 
-// sectionOf is the section of a field of route r by its key; undefined for a key no section has.
-export function sectionOf(r: Route, key: string): SectionId | undefined {
-  return key === "port" && r.spec.case !== "tcp" ? "matching" : placed.get(key);
+// sectionOf is the section of a field by its key; undefined for a key no section has.
+export function sectionOf(key: string): SectionId | undefined {
+  return placed.get(key);
 }
 
 // anchor is the ID of a section's element, which the section list links to.
@@ -49,18 +49,18 @@ export function routeSections(r: Route): RouteSection[] {
   const fields = routeFields(r);
   const at = (key: string) => rank.get(key) ?? -1;
   return sectionIds
-    .map((id) => ({ id, fields: fields.filter((f) => (sectionOf(r, f.key) ?? "general") === id).sort((a, b) => at(a.key) - at(b.key)) }))
+    .map((id) => ({ id, fields: fields.filter((f) => (sectionOf(f.key) ?? "general") === id).sort((a, b) => at(a.key) - at(b.key)) }))
     .filter((s) => s.fields.length > 0);
 }
 
 // SectionList links to each section of the form; it stands beside the form from 1024 px and above
 // it on narrower screens. A section that holds a field with an error is marked, with an icon and in
 // the colour of errors, and its link says so to screen readers.
-export function SectionList<V extends FieldValues>({ route, sections, form, className }: {
-  route: Route; sections: RouteSection[]; form: UseFormReturn<V>; className?: string;
+export function SectionList<V extends FieldValues>({ sections, form, className }: {
+  sections: RouteSection[]; form: UseFormReturn<V>; className?: string;
 }) {
   const { t } = useTranslation();
-  const invalid = new Set(Object.keys(form.formState.errors).map((k) => sectionOf(route, k) ?? "general"));
+  const invalid = new Set(Object.keys(form.formState.errors).map((k) => sectionOf(k) ?? "general"));
   return (
     <nav aria-label={t("routeForm.sections.list")} className={cn("lg:sticky lg:top-24 lg:self-start", className)}>
       <ul className="flex flex-wrap gap-x-1 gap-y-1 text-sm lg:grid lg:gap-0.5">

@@ -41,10 +41,10 @@ const want: Record<string, Record<string, string[]>> = {
   },
   tlsPassthrough: { general: [], matching: ["hostnames"], upstream: [], health: [] },
   tcp: { general: [], upstream: ["transport", "idleTimeout", "maxConnections", "requestsPerSecond", "bandwidth"], health: [],
-    connect: ["listenerMode", "authorities", "connectAuth", "connectHostname", "connectCertificate", "port"] },
-  udp: { general: [], matching: ["port"], upstream: ["transport", "flowIdleTimeout", "maxConnections", "requestsPerSecond", "bandwidth"], health: [] },
-  tcpUdp: { general: [], matching: ["port"], upstream: ["transport", "tcpIdleTimeout", "udpFlowIdleTimeout", "maxConnections", "requestsPerSecond", "bandwidth"],
-    health: [] },
+    listener: ["listenerMode", "port", "authorities", "connectAuth", "connectHostname", "connectCertificate"] },
+  udp: { general: [], upstream: ["transport", "flowIdleTimeout", "maxConnections", "requestsPerSecond", "bandwidth"], health: [], listener: ["port"] },
+  tcpUdp: { general: [], upstream: ["transport", "tcpIdleTimeout", "udpFlowIdleTimeout", "maxConnections", "requestsPerSecond", "bandwidth"],
+    health: [], listener: ["port"] },
 };
 
 describe("routeSections", () => {
@@ -59,16 +59,15 @@ describe("routeSections", () => {
   it.each(Object.keys(routes))("places every field of a %s route in exactly one section the order names", (type) => {
     const r = routes[type]!;
     const fields = routeFields(r).map((f) => f.key);
-    expect(fields.filter((k) => sectionOf(r, k) === undefined)).toEqual([]);
+    expect(fields.filter((k) => sectionOf(k) === undefined)).toEqual([]);
     expect(routeSections(r).flatMap((s) => s.fields.map((f) => f.key)).sort()).toEqual([...fields].sort());
   });
 
   it("knows no section of a key no field has, and puts a new route's gateway group in General", () => {
-    expect(sectionOf(routes.http!, "nothing")).toBeUndefined();
-    expect(sectionOf(routes.http!, "group")).toBe("general");
-    // The port stands with the CONNECT listener on a TCP route, and with the hostnames otherwise.
-    expect(sectionOf(routes.tcp!, "port")).toBe("connect");
-    expect(sectionOf(routes.udp!, "port")).toBe("matching");
+    expect(sectionOf("nothing")).toBeUndefined();
+    expect(sectionOf("group")).toBe("general");
+    // Every route on a port has it in Listener, whether or not the route can be a CONNECT listener.
+    expect(sectionOf("port")).toBe("listener");
   });
 
   it("gives every section a distinct anchor", () => {
@@ -96,9 +95,10 @@ describe("the route form's sections", () => {
   it.each([
     ["HTTP", routes.http!, ["General", "Hostnames & matching", "TLS", "Requests & headers", "Upstream", "Health check", "Maintenance"]],
     ["TLS passthrough", routes.tlsPassthrough!, ["General", "Hostnames & matching", "Upstream", "Health check"]],
-    ["TCP", routes.tcp!, ["General", "Upstream", "Health check", "CONNECT listener"]],
-    ["CONNECT", routes.connect!, ["General", "Upstream", "Health check", "CONNECT listener"]],
-    ["UDP", routes.udp!, ["General", "Hostnames & matching", "Upstream", "Health check"]],
+    ["TCP", routes.tcp!, ["General", "Upstream", "Health check", "Listener"]],
+    ["CONNECT", routes.connect!, ["General", "Upstream", "Health check", "Listener"]],
+    ["UDP", routes.udp!, ["General", "Upstream", "Health check", "Listener"]],
+    ["TCP and UDP", routes.tcpUdp!, ["General", "Upstream", "Health check", "Listener"]],
   ])("shows a %s route's sections, each linked from the list to its heading", async (_, route, titles) => {
     edit(route);
     await screen.findByLabelText("Name");
@@ -112,11 +112,11 @@ describe("the route form's sections", () => {
     expect(marked()).toEqual([]);
   });
 
-  it("shows a CONNECT route's listener fields in its section, and a plain TCP route's listener and port only", async () => {
+  it("shows a CONNECT route's listener fields in Listener, a plain TCP route's mode and port, and a UDP route's port only", async () => {
     edit(routes.connect!);
     await screen.findByLabelText("Name");
     const section = (title: string) => screen.getByRole("heading", { name: title }).closest("section")!;
-    const connect = within(section("CONNECT listener"));
+    const connect = within(section("Listener"));
     for (const label of ["Listener", "CONNECT names", "Proxy credentials", "Listener hostname (HTTPS proxy)", "Listener certificate", "Public port"]) {
       expect(connect.getByLabelText(label, { exact: true })).toBeTruthy();
     }
@@ -124,8 +124,13 @@ describe("the route form's sections", () => {
     cleanup();
     edit(routes.tcp!);
     await screen.findByLabelText("Name");
-    const controls = section("CONNECT listener").querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select, textarea");
-    expect([...controls].map((c) => c.labels?.[0]?.textContent)).toEqual(["Listener", "Public port"]);
+    const labels = () => [...section("Listener").querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select, textarea")]
+      .map((c) => c.labels?.[0]?.textContent);
+    expect(labels()).toEqual(["Listener", "Public port"]);
+    cleanup();
+    edit(routes.udp!);
+    await screen.findByLabelText("Name");
+    expect(labels()).toEqual(["Public port"]);
   });
 
   it("marks the sections with errors and moves the focus to the first such field in the page's order", async () => {

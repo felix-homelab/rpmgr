@@ -222,7 +222,7 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expect(page.getByText("A bandwidth limit is at least 1024 bytes a second; leave it empty for none.")).toBeVisible();
   await expect(page.getByLabel("Most bytes a second, each way")).toHaveAttribute("aria-invalid", "true");
   // The section list marks both sections, and the failed save moved to the first field with an
-  // error on the page (D151).
+  // error on the page (D153).
   const sectionList = page.getByRole("navigation", { name: "Sections of the form" });
   await expect(sectionList.getByRole("link", { name: /\(has an error\)$/ })).toHaveText(["Hostnames & matching (has an error)", "Upstream (has an error)"]);
   await expect(page.getByLabel("Serve only requests with these headers")).toBeFocused();

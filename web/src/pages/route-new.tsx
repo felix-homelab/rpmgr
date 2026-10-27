@@ -168,7 +168,7 @@ function NewRouteForm({ type }: { type: RouteType }) {
   const groupError = form.formState.errors.group?.message;
   return (
     <div className="grid gap-6 border-t border-border pt-5 lg:grid-cols-[13rem_minmax(0,1fr)]">
-      <SectionList route={base} sections={sections} form={form} />
+      <SectionList sections={sections} form={form} />
       <form ref={formRef} onSubmit={form.handleSubmit(save, jump)} className="grid min-w-0 gap-4" noValidate>
         <FormSections sections={sections} form={form} general={(
           <div className="grid gap-1.5">

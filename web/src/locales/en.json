@@ -380,7 +380,7 @@
       "requests": "Requests & headers",
       "upstream": "Upstream",
       "health": "Health check",
-      "connect": "CONNECT listener",
+      "listener": "Listener",
       "maintenance": "Maintenance"
     },
     "fields": {
