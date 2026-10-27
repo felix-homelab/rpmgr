@@ -7,15 +7,24 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
@@ -115,4 +124,92 @@ func TestTestseed(t *testing.T) {
 	if code == cli.ExitOK {
 		t.Fatal("revoking a controller")
 	}
+}
+
+// TestTestseed_GatewayWSS: gateway-wss gives gateways their WSS hostnames under a verified domain,
+// uploading the certificate that covers them once; it refuses a missing or second hostname, an
+// unknown gateway and a hostname another gateway has.
+func TestTestseed_GatewayWSS(t *testing.T) {
+	dir := t.TempDir()
+	boot, db := filepath.Join(dir, "controller.yaml"), filepath.Join(dir, "lib", "controller.db")
+	if err := os.MkdirAll(filepath.Dir(db), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(boot, []byte("version: 1\npublic_url: https://panel.example.com\ndatabase: {dsn: "+db+"}\nkek: {source: file, path: "+
+		filepath.Join(dir, "kek")+"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.Init(context.Background(), controller.InitOptions{ConfigPath: boot, Getenv: func(string) string { return "" }}); err != nil {
+		t.Fatal(err)
+	}
+	seed(t, boot, "gateway", "--group", "eu", "--name", "gw1", "--endpoint", "gw1.test:443")
+	seed(t, boot, "gateway", "--group", "eu", "--name", "gw2", "--endpoint", "gw2.test:443")
+	crt, key := wssCertificate(t, dir, "wss1.example.test", "wss2.example.test")
+	seed(t, boot, "gateway-wss", "--name", "gw1", "--hostname", "wss1.example.test", "--cert-file", crt, "--key-file", key)
+	seed(t, boot, "gateway-wss", "--name", "gw2", "--hostname", "wss2.example.test")
+
+	st, err := store.OpenSQLite(context.Background(), db, store.SQLiteOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	sys := storetest.SystemCtx(t)
+	c := st.Client()
+	for gw, want := range map[string]string{"gw1": "wss1.example.test", "gw2": "wss2.example.test"} {
+		if g := c.Gateway.Query().Where(gateway.Name(gw)).OnlyX(sys); g.WssHostname == nil || *g.WssHostname != want {
+			t.Fatalf("%s: WSS hostname %v, want %s", gw, g.WssHostname, want)
+		}
+	}
+	if d := c.Domain.Query().Where(domain.Fqdn("example.test")).OnlyX(sys); d.Status != domain.StatusVerified {
+		t.Fatalf("domain %+v", d)
+	}
+	if n := c.Certificate.Query().CountX(sys); n != 1 {
+		t.Fatalf("%d certificates, want the one uploaded", n)
+	}
+
+	for _, args := range [][]string{
+		{"--name", "gw1"},
+		{"--name", "gw1", "--hostname", "a.example.test", "--hostname", "b.example.test"},
+		{"--name", "gw9", "--hostname", "wss9.example.test"},
+		{"--name", "gw2", "--hostname", "wss1.example.test"},
+		{"--name", "gw2", "--hostname", "wss2.example.test", "--cert-file", filepath.Join(dir, "missing.pem")},
+	} {
+		var errOut bytes.Buffer
+		code := cli.Main(context.Background(), commands(), append([]string{"testseed", "gateway-wss", "--config", boot}, args...),
+			&cli.Env{Stdout: &bytes.Buffer{}, Stderr: &errOut, Getenv: func(string) string { return "" }})
+		if code == cli.ExitOK {
+			t.Errorf("gateway-wss %v succeeded", args)
+		}
+	}
+	if g := c.Gateway.Query().Where(gateway.Name("gw2")).OnlyX(sys); *g.WssHostname != "wss2.example.test" {
+		t.Fatalf("a refused change kept gw2's WSS hostname as %s", *g.WssHostname)
+	}
+}
+
+// wssCertificate writes a self-signed certificate for names and its key, and returns their paths.
+func wssCertificate(t *testing.T, dir string, names ...string) (string, string) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: names[0]}, DNSNames: names,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kb, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crt, kf := filepath.Join(dir, "wss.crt"), filepath.Join(dir, "wss.key")
+	if err := os.WriteFile(crt, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(kf, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: kb}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return crt, kf
 }
