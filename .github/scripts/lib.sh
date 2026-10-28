@@ -25,6 +25,41 @@ repo_root() {
   git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel
 }
 
+# Sharding of test packages across parallel CI jobs. A shard is "<i>/<n>" (1 <= i <= n); an empty
+# one means all packages. The packages are dealt out round-robin from a sorted list, so the split
+# is deterministic and the shards together cover every package exactly once. The packages that
+# match SHARD_HEAVY are dealt first, so that the slowest of them does not share a shard with the
+# next ones (internal/controller alone runs for nearly 10 minutes with -race on a CI runner).
+SHARD_HEAVY='/internal/controller$'
+
+# shard_valid <shard> succeeds for an empty or well-formed shard.
+shard_valid() {
+  [[ -z $1 ]] && return 0
+  [[ $1 =~ ^([1-9][0-9]*)/([1-9][0-9]*)$ ]] && ((BASH_REMATCH[1] <= BASH_REMATCH[2]))
+}
+
+# shard_select <shard> filters the sorted lines on standard input down to the shard's own.
+shard_select() {
+  if [[ -z $1 ]]; then
+    cat
+  else
+    awk -v i="${1%/*}" -v n="${1#*/}" -v heavy="$SHARD_HEAVY" '
+      $0 ~ heavy { h[nh++] = $0; next }
+      { o[no++] = $0 }
+      END {
+        k = 0
+        for (x = 0; x < nh; x++) { if (k++ % n == i - 1) print h[x] }
+        for (x = 0; x < no; x++) { if (k++ % n == i - 1) print o[x] }
+      }'
+  fi
+}
+
+# shard_first <shard> succeeds when there is no sharding or this is the first shard, which runs the
+# checks that are not tests (formatting, vet, lint of migrations), so they run once.
+shard_first() {
+  [[ -z $1 || $1 == 1/* ]]
+}
+
 # The Playwright image of the browser checks, by digest; PLAYWRIGHT_VERSION is its playwright-core,
 # which @playwright/test in web/package.json must equal.
 export PLAYWRIGHT_IMAGE='mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27'

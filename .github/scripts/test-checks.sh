@@ -345,6 +345,19 @@ expect fail "one commit only" "$dir/changed-areas.sh" HEAD
 [[ $("$dir/changed-areas.sh" --none | tr '\n' ' ') == "go=false web=false checks=false ops=false md=false " ]] && passed=$((passed + 1)) ||
   { echo "FAIL: changed areas --none"; failed=$((failed + 1)); }
 
+# --- Test shards ----------------------------------------------------------------------------
+# The shards of a list together hold every line once, in the same split on every call.
+(
+  source "$dir/lib.sh"
+  list=$(printf 'p%s\n' 1 2 3 4 5 6 7)
+  joined=$( (for i in 1 2 3; do shard_select "$i/3" <<<"$list"; done) | sort)
+  [[ $joined == "$list" ]] && [[ $(shard_select 2/3 <<<"$list" | tr '\n' ' ') == "p2 p5 " ]] &&
+    [[ $(shard_select "" <<<"$list") == "$list" ]] && shard_valid 3/3 && shard_valid "" &&
+    [[ $(printf 'a\nb/internal/controller\nc\nd\n' | shard_select 1/3 | tr '\n' ' ') == "b/internal/controller d " ]] &&
+    [[ $(printf 'a\nb/internal/controller\nc\nd\n' | shard_select 2/3 | tr '\n' ' ') == "a " ]] &&
+    ! shard_valid 4/3 && ! shard_valid 0/3 && ! shard_valid x
+) && passed=$((passed + 1)) || { echo "FAIL: test shards"; failed=$((failed + 1)); }
+
 # --- SPDX headers --------------------------------------------------------------------------
 s="$dir/check-spdx.sh"
 r=$(new_repo)
@@ -422,6 +435,15 @@ EOF
   printf 'package p\n\nimport "testing"\n\nfunc TestFails(t *testing.T) { t.Fatal("boom") }\n' >"$r/p/fail_test.go"
   git -C "$r" add -A
   expect fail "failing test" "$g" "$r"
+  # Shards: p sorts before tools/bannedapi, so shard 1 of 2 has the failing test and shard 2 of 2
+  # does not; every shard checks only its own packages.
+  expect fail "failing test in its own shard" env GO_TEST_SHARD=1/2 "$g" "$r"
+  expect pass "shard without the failing test" env GO_TEST_SHARD=2/2 "$g" "$r"
+  expect pass "shard with no packages" env GO_TEST_SHARD=9/9 "$g" "$r"
+  expect fail "failing test with cached results" env GO_TEST_CACHE=1 "$g" "$r"
+  expect fail "shard number above the count" env GO_TEST_SHARD=4/3 "$g" "$r"
+  expect fail "shard number zero" env GO_TEST_SHARD=0/3 "$g" "$r"
+  expect fail "malformed shard" env GO_TEST_SHARD=one "$g" "$r"
   git -C "$r" rm -q -f p/fail_test.go
   cat >"$r/p/crash_test.go" <<'EOF'
 package p

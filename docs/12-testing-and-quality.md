@@ -458,6 +458,22 @@ the reference testbed ([Benchmarks](#benchmarks)).
 
   The tests of the checks run only when a PR changes something besides documents and sources. A
   push to `main` runs `lint`, `docs` and `secrets`.
+- **Speed.** The jobs `go` and `store` each run as three parallel shards (`go (1/3)` …
+  `store (3/3)`) of the test packages, split deterministically by `check-go.sh` and
+  `check-store.sh` (`GO_TEST_SHARD=<i>/<n>`); the first shard also runs the checks that are not
+  tests. Each shard fails on its own failures. None of these jobs is a required check, so
+  the shard names changed nothing in the `main` ruleset. In pull requests and merge groups go test
+  reuses cached results (`GO_TEST_CACHE=1`, no `-count=1`), and the build cache and the test
+  results are kept between runs. The tests read only files and environment variables inside the
+  module, which the go command tracks, so a cached pass equals a new one; everything outside the
+  module is covered by the nightly run, which caches no results, as does a push to `main`. The
+  nightly run also fills the cache that pull requests start from.
+- **Merge queue.** `ci` and `pr-rules` also run on `merge_group`, so the required checks `lint`,
+  `docs`, `secrets` and `pr-rules` report on the commit of a queue group. A group runs the stages
+  its changes need, from the group's base and head commits (`changed-areas.sh`). `pr-rules` checks
+  nothing in the queue, because a group's commit is not a pull request; its rules were checked
+  when the pull request entered. In the proto job the breaking-change override is read from the
+  last pull request of the group.
 
 **Implemented so far.** CI covers the repository itself and, from Phase 1 on, the Go code. Each
 check is a script in `.github/scripts/` that runs the same way on a developer machine (the
