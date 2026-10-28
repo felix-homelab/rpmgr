@@ -303,6 +303,9 @@ func Run(ctx context.Context, o RunOptions) error {
 			}
 		}}
 	defer qs.close()
+	if err := qs.register(); err != nil {
+		return err
+	}
 	udpAddr := "none (until the old process exits)"
 	if !adopted {
 		if err := qs.open(run); err != nil {
@@ -316,11 +319,11 @@ func Run(ctx context.Context, o RunOptions) error {
 	freed := func() {
 		go func() {
 			udpRoutes.Rebind()
-			switch err := qs.openWhenFree(run); {
-			case err == nil:
+			err := qs.openUntilBound(run, func(err error) {
+				o.Logger.Error("cannot listen for data sessions over QUIC after the hand-off; connectors use TCP, and it tries again", "udp", udp, "error", err)
+			})
+			if err == nil {
 				o.Logger.Info("listening for data sessions over QUIC", "udp", qs.localAddr())
-			case run.Err() == nil:
-				o.Logger.Error("cannot listen for data sessions over QUIC after the hand-off; connectors use TCP", "udp", udp, "error", err)
 			}
 		}()
 	}

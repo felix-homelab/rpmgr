@@ -861,6 +861,7 @@ gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection))
 | `rpmgr_controller_control_sessions` | gauge | controller | 1 | Connected agents |
 | `rpmgr_acme_cert_expiry_timestamp_seconds{hostname}` | gauge | controller | 1 | Public certificates |
 | `rpmgr_quic_gso_enabled`, `rpmgr_quic_udp_buffer_warning` | gauge | gateway, connector | 1 | Host tuning status, read from the QUIC socket at each scrape: 1 if quic-go sends with GSO; 1 if its receive or send buffer is below the 7 MiB quic-go asks for ([03](03-connections.md#host-tuning-applied-by-the-installer)) |
+| `rpmgr_gateway_quic_bound` | gauge | gateway | 1 | 1 while the gateway listens for data sessions over QUIC; 0 while it does not, as in a process a hand-off started whose UDP port is still held. Suggested alert: 0 for more than 5 min |
 | `rpmgr_audit_checkpoint_age_seconds` | gauge | controller | 1 | Age of the oldest audit entry no checkpoint covers yet, 0 when every entry is covered ([04](04-security.md#audit-log)); with the external sink (Phase 2), no checkpoint that reached the sink |
 | `rpmgr_revocation_log_sink` | gauge | controller | 1 | 1 if a sink keeps the revocation log off the host, 0 for a single node without one ([Backup and restore](#backup-and-restore)) |
 | `rpmgr_revocation_log_unshipped` | gauge | controller | 1 | Revocation log entries the sink does not hold yet |

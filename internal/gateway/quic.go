@@ -22,7 +22,12 @@ import (
 var (
 	quicBindEvery = 100 * time.Millisecond
 	quicBindFor   = 5 * time.Second
+	// quicRetryEvery is how often it keeps trying after the window, until bound or stopped.
+	quicRetryEvery = 30 * time.Second
 )
+
+// errStopped is open after stopAccepting: a process that is draining binds nothing new.
+var errStopped = errors.New("gateway: the QUIC listener stopped before it opened")
 
 // quicSide is the gateway's QUIC listener for data sessions and the UDP socket under it. After a
 // hand-off only the old process reads that socket until it exits, so the new process opens it
@@ -41,7 +46,9 @@ type quicSide struct {
 	tr     *quic.Transport
 	ln     *tunnel.QUICListener
 	closed bool
-	wg     sync.WaitGroup
+	// stopped: stopAccepting ran, so the listener never opens (a process that switched).
+	stopped bool
+	wg      sync.WaitGroup
 }
 
 // open binds the UDP socket, starts the listener and accepts sessions until stopAccepting or
@@ -51,6 +58,9 @@ func (q *quicSide) open(ctx context.Context) error {
 	defer q.mu.Unlock()
 	if q.closed {
 		return net.ErrClosed
+	}
+	if q.stopped {
+		return errStopped
 	}
 	if q.ln != nil {
 		return nil
@@ -90,7 +100,7 @@ func (q *quicSide) openWhenFree(ctx context.Context) error {
 	deadline := time.Now().Add(quicBindFor)
 	for {
 		err := q.open(ctx)
-		if err == nil || !errors.Is(err, syscall.EADDRINUSE) || !time.Now().Add(quicBindEvery).Before(deadline) {
+		if err == nil || errors.Is(err, errStopped) || !errors.Is(err, syscall.EADDRINUSE) || !time.Now().Add(quicBindEvery).Before(deadline) {
 			return err
 		}
 		select {
@@ -99,6 +109,35 @@ func (q *quicSide) openWhenFree(ctx context.Context) error {
 		case <-time.After(quicBindEvery):
 		}
 	}
+}
+
+// openUntilBound is openWhenFree, then again every quicRetryEvery, calling failed with each
+// failure, until the listener is open, stopAccepting or close ran, or ctx ends.
+func (q *quicSide) openUntilBound(ctx context.Context, failed func(error)) error {
+	for {
+		err := q.openWhenFree(ctx)
+		if err == nil || errors.Is(err, errStopped) || errors.Is(err, net.ErrClosed) || ctx.Err() != nil {
+			return err
+		}
+		failed(err)
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(quicRetryEvery):
+		}
+	}
+}
+
+// register adds the gauge rpmgr_gateway_quic_bound: 1 while the QUIC listener is open.
+func (q *quicSide) register() error {
+	return q.reg.Register(prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "rpmgr_gateway_quic_bound",
+		Help: "1 if the gateway listens for data sessions over QUIC, 0 while it does not, as after a hand-off whose UDP port is still held."},
+		func() float64 {
+			if q.bound() {
+				return 1
+			}
+			return 0
+		}))
 }
 
 // localAddr returns the bound address, "" while the socket is not open.
@@ -123,6 +162,7 @@ func (q *quicSide) bound() bool {
 // so that a connector on auto takes TCP within the head start.
 func (q *quicSide) stopAccepting() {
 	q.mu.Lock()
+	q.stopped = true
 	ln := q.ln
 	q.mu.Unlock()
 	if ln != nil {

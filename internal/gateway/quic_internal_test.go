@@ -179,3 +179,75 @@ func TestQUICSide_OpenWhenFree(t *testing.T) {
 		t.Fatalf("ctx ended: %v", err)
 	}
 }
+
+// TestQUICSide_StoppedNeverOpens: a middle generation that switched binds no QUIC port after the
+// first old process exits, so the third generation can.
+func TestQUICSide_StoppedNeverOpens(t *testing.T) {
+	var served atomic.Int32
+	q, _ := newQUICSide(t, "127.0.0.1:0", &served)
+	q.stopAccepting() // before it ever opened
+	if err := q.open(context.Background()); !errors.Is(err, errStopped) {
+		t.Fatalf("open after stopAccepting: %v", err)
+	}
+	if err := q.openWhenFree(context.Background()); !errors.Is(err, errStopped) {
+		t.Fatalf("openWhenFree after stopAccepting: %v", err)
+	}
+	if err := q.openUntilBound(context.Background(), func(error) { t.Error("retried a stopped listener") }); !errors.Is(err, errStopped) {
+		t.Fatalf("openUntilBound after stopAccepting: %v", err)
+	}
+	if q.bound() {
+		t.Fatal("bound after stopAccepting")
+	}
+}
+
+// TestQUICSide_KeepsTrying: after the bind window the gateway keeps trying slowly until the port
+// frees, reports each failure, and the gauge follows the listener.
+func TestQUICSide_KeepsTrying(t *testing.T) {
+	oldEvery, oldFor, oldRetry := quicBindEvery, quicBindFor, quicRetryEvery
+	t.Cleanup(func() { quicBindEvery, quicBindFor, quicRetryEvery = oldEvery, oldFor, oldRetry })
+	quicBindEvery, quicBindFor, quicRetryEvery = 5*time.Millisecond, 30*time.Millisecond, 50*time.Millisecond
+	held, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = held.Close() })
+	var served atomic.Int32
+	q, _ := newQUICSide(t, held.LocalAddr().String(), &served)
+	reg := prometheus.NewRegistry()
+	q.reg = reg
+	if err := q.register(); err != nil {
+		t.Fatal(err)
+	}
+	gauge := func() float64 {
+		mfs, err := reg.Gather()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, mf := range mfs {
+			if mf.GetName() == "rpmgr_gateway_quic_bound" {
+				return mf.GetMetric()[0].GetGauge().GetValue()
+			}
+		}
+		t.Fatal("no rpmgr_gateway_quic_bound")
+		return -1
+	}
+	if gauge() != 0 {
+		t.Fatal("gauge 1 before open")
+	}
+	var fails atomic.Int32
+	done := make(chan error, 1)
+	go func() { done <- q.openUntilBound(context.Background(), func(error) { fails.Add(1) }) }()
+	for i := 0; fails.Load() < 2 && i < 300; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if fails.Load() < 2 || gauge() != 0 {
+		t.Fatalf("%d failures reported, gauge %v", fails.Load(), gauge())
+	}
+	_ = held.Close()
+	if err := <-done; err != nil {
+		t.Fatalf("not bound after the port freed: %v", err)
+	}
+	if gauge() != 1 {
+		t.Fatal("gauge 0 while bound")
+	}
+}

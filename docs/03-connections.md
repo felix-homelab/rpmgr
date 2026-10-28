@@ -1746,7 +1746,8 @@ reads the UDP sockets until it exits ([S10](spikes/S10.md), the fallback of
 - **QUIC.** The old process accepts no new QUIC session after the switch and keeps its open ones
   for the drain. The new process starts its QUIC listener and its `udp` routes once the old one
   has exited; it tries the QUIC port every 100 ms for up to the **QUIC bind window** and, if the
-  port stays held, logs an error and serves data sessions over TCP only. Connectors
+  port stays held, logs an error, serves data sessions over TCP only and tries again at the
+  **QUIC bind retry** interval. A process that has itself switched binds no QUIC port. Connectors
   on `auto` open their new sessions over TCP meanwhile, within the happy-eyeballs head start
   [F S10: 0.3 s], and come back to QUIC at the next re-probe. A connector whose transport is
   pinned to `quic` reaches the new process only after the old one has exited, up to the hand-off
