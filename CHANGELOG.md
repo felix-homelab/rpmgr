@@ -126,6 +126,10 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Fixed
 
+- Web UI: a form no longer shows only "the request is not valid" when the API refuses a value. The
+  policy, gateway group, gateway, API token and organisation forms check the name before they send
+  it and show what is wrong beside the field, such as the rule for a resource name (1 to 63
+  lowercase letters, digits and hyphens); every form names the field the API found wrong. (#987)
 - Updates: a connector or gateway whose host has the updater's directory but not its enabled
   units, as the v0.1.0 install script and `rpmgr setup --no-unit` leave it, no longer announces
   over-the-air updates. It was offered a release it staged and nothing installed, until the
