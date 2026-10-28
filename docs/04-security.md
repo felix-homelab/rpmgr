@@ -1413,9 +1413,11 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
   period in [03](03-connections.md#timeouts-keepalive-and-backoff), so receivers switch without a
   gap. **Receivers reject signatures older than 5 minutes.** Timestamps are used because receivers
   are third-party HTTP endpoints without mutual TLS; rpmgr-internal authentication never uses them.
-- **Delivery.** HTTPS only, the receiver's certificate verified against the system roots; a
-  redirect is never followed; at least once, each request naming its event in `Rpmgr-Event-Id` so
-  a receiver drops duplicates. An endpoint without a successful delivery for the period in 03 is
+  The HMAC is keyed with the secret as it is shown, its `rpmgr_whs_` prefix included.
+- **Delivery.** HTTPS only, the receiver's certificate verified against the system roots, with
+  TLS 1.3 or 1.2, as for other third-party servers; a URL with credentials in it is not delivered
+  to; a redirect is never followed; at least once, each request naming its event in
+  `Rpmgr-Event-Id` so a receiver drops duplicates. An endpoint without a successful delivery for the period in 03 is
   disabled, with an event, an e-mail to the org's Owners and Admins and a notice in the UI; only a
   person enables it again ([D143](14-open-decisions.md#engineering)).
 - **Egress guard** ([D138](14-open-decisions.md#engineering)). The controller dials every receiver
@@ -1423,18 +1425,20 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
   name that changes its answer (DNS rebinding) gains nothing:
   - **Always denied:** loopback, unspecified, link-local (`169.254.0.0/16`, `fe80::/10`), the cloud
     metadata addresses (`169.254.169.254`, `fd00:ec2::254`, `100.100.100.200`), multicast and
-    broadcast, the controller's own listening addresses, and the IPv4-mapped and IPv4-compatible
-    forms of each.
+    broadcast, the controller's own addresses (every address of its host's interfaces), and the
+    IPv4-mapped, IPv4-compatible, NAT64 and 6to4 forms of each.
   - **Private ranges** (RFC 1918, `fc00::/7`, `100.64.0.0/10` and every other non-global unicast
     range) are denied unless the Instance Admin lists the range in the instance setting
-    `webhook_private_ranges`. A refused delivery names the range, which the UI offers to list. A
+    `webhook_private_ranges`. A refused delivery names the range, which the UI offers to list, but
+    never the address the name resolved to, so a webhook does not map the controller's network. A
     listed range never admits an always-denied address.
   - **Instance endpoints and audit sinks**, which only the Instance Admin sets, may reach private
     ranges and loopback; link-local, metadata, multicast and broadcast addresses stay denied
     ([D145](14-open-decisions.md#engineering), E5).
-  - **Through a proxy** (`HTTPS_PROXY`), the controller resolves and checks the receiver itself
-    and asks the proxy to connect to the checked address, with the receiver's name for TLS and
-    `Host`.
+  - **Through a proxy** (`HTTPS_PROXY`, an `http://` or `https://` proxy; `NO_PROXY` applies), the
+    controller resolves and checks the receiver itself and asks the proxy to connect to the checked
+    address, with the receiver's name for TLS and `Host`. A SOCKS proxy is not used for webhooks:
+    such a delivery fails and says so.
 
 ## Audit log
 
