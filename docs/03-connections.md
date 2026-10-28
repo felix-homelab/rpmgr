@@ -1679,7 +1679,7 @@ sequenceDiagram
    none is lost: 200 of 200 queued connections were served after the old process closed its copy,
    where two `SO_REUSEPORT` sockets reset about half of them [F S10,
    `spikes/s10/results/host-experiments.txt`].
-   **Gateway** (slice 17.10, in steps): the gateway hands over its TCP listeners: port 443, port 80,
+   **Gateway** (slice 17.10): the gateway hands over its TCP listeners: port 443, port 80,
    the admin listener and the port of each tcp and CONNECT route that is bound, named `tcp`,
    `http`, `admin` and `route-<port>`. The new process matches a configured address to a handed
    socket by the address the old process bound (`listen.tcp: ":443"` is `[::]:443`), and binds what
@@ -1721,10 +1721,20 @@ sequenceDiagram
    while a predecessor still drains ends that predecessor's drain early, so at most one old process
    runs: the new process tells it over the pipe once its own hand-off took over. **Gateway:** a
    revocation reaches the old process as a message of the new one, which then reads the
-   deny-list again and closes the data sessions of the revoked identity. A tightened access
-   policy or a removed route that the new process applies does not yet cut the old process's
-   public connections; they end or are cut at the hand-off drain (slice 17.10, to follow).
-   Metrics and log lines carry no generation label yet.
+   deny-list again and closes the data sessions of the revoked identity. For each route the new
+   process removes, or whose access rules change, it sends the old one a message naming the
+   route, and the old process ends that route's open connections as a gateway that applied the
+   change would: tcp, CONNECT and passthrough connections, the requests of http routes (WebSockets
+   included) and UDP flows. Access rules are the IP rules, the basic-auth policy with its
+   credential version and users, and the `require_header` rules; a route whose kind changes counts
+   as changed. The old process cannot tell which connections the new rules still allow, so it
+   cuts all of the route's, whether the change tightens the rules or not; a client the new rules
+   allow connects again. Rate limits end no connection. Changes that come before the new process is
+   ready are sent once it is. The new process waits the session wait for a new
+   public connection of a route that has no session yet, for as long as the old process runs.
+   **Generation.** Every log line and every metric only the gateway registers carry the process's generation, 1 after
+   a plain start and one more after each hand-off ([10](10-operations.md#metrics)); the old
+   process keeps its own.
 
 **UDP and QUIC.** A datagram on a shared socket goes to whichever process reads it, and a QUIC
 packet of the old process's session that the new process reads is answered with a stateless reset

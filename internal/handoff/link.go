@@ -31,9 +31,9 @@ func NewLink(inherited *Handoff, getenv func(string) string, begin func()) *Link
 	return &Link{Inherited: inherited, getenv: getenv, begin: begin}
 }
 
-// Generation is this process's generation: 1 after a plain start.
+// Generation is this process's generation: 1 after a plain start, also without a Link.
 func (l *Link) Generation() uint64 {
-	if l.Inherited != nil {
+	if l != nil && l.Inherited != nil {
 		return l.Inherited.Manifest.Generation
 	}
 	return 1

@@ -133,6 +133,7 @@ var (
 const (
 	MsgSession   = msgSession
 	MsgRevoked   = msgRevoked
+	MsgCut       = msgCut
 	MsgSuccessor = msgSuccessor
 )
 
@@ -142,3 +143,19 @@ func SetDenyPoll(t testing.TB, d time.Duration) {
 	denyPollEvery = d
 	t.Cleanup(func() { denyPollEvery = old })
 }
+
+// SetSessionWait shortens the session wait of the new process of a hand-off, for one test.
+func SetSessionWait(t testing.TB, d time.Duration) {
+	old := sessionWait
+	sessionWait = d
+	t.Cleanup(func() { sessionWait = old })
+}
+
+// Cuts is the carrier of the routes the new process changed to the old one.
+type Cuts struct{ c cuts }
+
+func (c *Cuts) Send(routeID string)                        { c.c.send(routeID) }
+func (c *Cuts) Attach(send func(typ, reason string) error) { c.c.attach(send) }
+
+// WithGeneration is the generation label of a gateway's registry.
+var WithGeneration = withGeneration

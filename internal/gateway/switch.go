@@ -18,6 +18,9 @@ const (
 	msgRevoked = "revoked"
 	// msgSuccessor: the new process hands off itself, which ends this drain early.
 	msgSuccessor = "successor"
+	// msgCut: the new process removed the route in the reason or changed its access rules; the old
+	// one resets that route's connections.
+	msgCut = "cut"
 )
 
 // movedEvery is how often the new process reports its sessions, and the old one checks them.
@@ -29,7 +32,7 @@ const movedEvery = 100 * time.Millisecond
 // or ctx ended: the old process then stops accepting. A revocation the new process reports closes
 // the sessions of the revoked identity at once. The returned channel is closed when the new
 // process hands off itself, which ends the drain early.
-func followNew(ctx context.Context, recv func() (typ, reason string, err error), exited <-chan struct{}, sessions *Sessions, deadline time.Time, reload func(), log *slog.Logger) (ended <-chan struct{}) {
+func followNew(ctx context.Context, recv func() (typ, reason string, err error), exited <-chan struct{}, sessions *Sessions, deadline time.Time, reload func(), cut func(routeID string), log *slog.Logger) (ended <-chan struct{}) {
 	had := sessions.Connectors()
 	every := denyPollEvery
 	sessions.DrainHandoff(deadline)
@@ -53,6 +56,8 @@ func followNew(ctx context.Context, recv func() (typ, reason string, err error),
 				mu.Unlock()
 			case msgRevoked:
 				reload()
+			case msgCut:
+				cut(reason)
 			case msgSuccessor:
 				log.Info("the new process hands off itself; ending the drain")
 				close(end)
@@ -133,4 +138,34 @@ func reportSessions(ctx context.Context, send func(typ, reason string) error, se
 		case <-t.C:
 		}
 	}
+}
+
+// cuts carries the routes the new process removed or changed to the old one: those from before the
+// pipe is ready wait for it.
+type cuts struct {
+	mu   sync.Mutex
+	to   func(typ, reason string) error // the pipe to the old process, once set
+	held []string
+}
+
+// send tells the old process to cut the route's connections, or keeps the route until attach.
+func (c *cuts) send(routeID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.to == nil {
+		c.held = append(c.held, routeID)
+		return
+	}
+	_ = c.to(msgCut, routeID)
+}
+
+// attach sets how to send to the old process and sends what was held.
+func (c *cuts) attach(send func(typ, reason string) error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.to = send
+	for _, id := range c.held {
+		_ = send(msgCut, id)
+	}
+	c.held = nil
 }
