@@ -185,8 +185,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	if reg == nil {
 		reg = telemetry.NewRegistry()
 	}
-	reg = withGeneration(reg, generation)
-	metrics, err := NewMetrics(reg)
+	// Only the gateway's own series: those other roles register too share one registry in an
+	// all-in-one and need one label set.
+	metrics, err := NewMetrics(withGeneration(reg, generation))
 	if err != nil {
 		return err
 	}
@@ -514,7 +515,7 @@ func closed(c <-chan struct{}) bool {
 }
 
 // withGeneration adds the process generation as a constant label to every metric registered
-// through reg; an all-in-one's role label is another name, so both stay.
+// through reg, which is the gateway's own metrics; an all-in-one's role label is another name, so both stay.
 func withGeneration(reg telemetry.Registry, generation string) telemetry.Registry {
 	return telemetry.WithLabels(reg, prometheus.Labels{"generation": generation})
 }

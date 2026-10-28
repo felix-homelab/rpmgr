@@ -1732,7 +1732,7 @@ sequenceDiagram
    allow connects again. Rate limits end no connection. Changes that come before the new process is
    ready are sent once it is. The new process waits the session wait for a new
    public connection of a route that has no session yet, for as long as the old process runs.
-   **Generation.** Every log line and every gateway metric carries the process's generation, 1 after
+   **Generation.** Every log line and every metric only the gateway registers carry the process's generation, 1 after
    a plain start and one more after each hand-off ([10](10-operations.md#metrics)); the old
    process keeps its own.
 

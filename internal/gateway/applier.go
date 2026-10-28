@@ -711,7 +711,9 @@ func ruleOf(res *agentv1.Resource) routeRules {
 	return routeRules{kind: fmt.Sprintf("%T", res.GetKind()), access: a}
 }
 
-func (r routeRules) same(o routeRules) bool { return r.kind == o.kind && proto.Equal(r.access, o.access) }
+func (r routeRules) same(o routeRules) bool {
+	return r.kind == o.kind && proto.Equal(r.access, o.access)
+}
 
 // headerMatchesOf returns an http route's header matches.
 func headerMatchesOf(r *agentv1.GatewayHTTPRoute) []headermatch.Match {
