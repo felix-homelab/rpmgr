@@ -57,7 +57,7 @@ jobs:
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         run: .github/scripts/check-dco.sh "$BASE_SHA" "$HEAD_SHA"
       - name: Labels, read now rather than from the event
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
