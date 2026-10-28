@@ -42,6 +42,7 @@ func main() {
 	h2 := fs.Bool("h2", false, "http: speak HTTP/2")
 	expect := fs.String("expect", "", "http: text the body must contain; tls: the common name of the backend's certificate")
 	size := fs.Int("bytes", 1<<20, "check: bytes to send")
+	fill := fs.String("fill", "", "check: send this text repeated instead of random bytes")
 	duration := fs.Duration("duration", 5*time.Second, "hold: how long to hold the connection; gone: how long to wait")
 	every := fs.Duration("every", 200*time.Millisecond, "hold: how often to send a ping")
 	addrs := fs.String("addrs", "", "load: the routes' addresses, comma-separated")
@@ -52,7 +53,7 @@ func main() {
 	case "serve":
 		err = serveAll(*listen, *udpAddr, *httpAddr, *tlsAddr, *certFile, *keyFile)
 	case "check":
-		err = check(*addr, *size)
+		err = check(*addr, *size, *fill)
 	case "hold":
 		err = hold(*addr, *duration, *every)
 	case "gone":
@@ -106,8 +107,9 @@ func serve(addr string) error {
 	}
 }
 
-// check sends size random bytes, half-closes and expects the same bytes back and then the end.
-func check(addr string, size int) error {
+// check sends size random bytes, or fill repeated, half-closes and expects the same bytes back and
+// then the end.
+func check(addr string, size int, fill string) error {
 	c, err := net.DialTimeout("tcp", addr, 10*time.Second) //nolint:gosec // G704: the route under test
 	if err != nil {
 		return err
@@ -115,7 +117,11 @@ func check(addr string, size int) error {
 	defer func() { _ = c.Close() }()
 	_ = c.SetDeadline(time.Now().Add(60 * time.Second))
 	up := make([]byte, size)
-	_, _ = rand.Read(up)
+	if fill == "" {
+		_, _ = rand.Read(up)
+	} else {
+		copy(up, bytes.Repeat([]byte(fill), size/len(fill)+1))
+	}
 	errc := make(chan error, 1)
 	go func() {
 		_, err := c.Write(up)

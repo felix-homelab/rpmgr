@@ -345,6 +345,28 @@ expect fail "one commit only" "$dir/changed-areas.sh" HEAD
 [[ $("$dir/changed-areas.sh" --none | tr '\n' ' ') == "go=false web=false checks=false ops=false md=false " ]] && passed=$((passed + 1)) ||
   { echo "FAIL: changed areas --none"; failed=$((failed + 1)); }
 
+# --- Test shards ----------------------------------------------------------------------------
+# The shards of a list together hold every line once, in the same split on every call.
+(
+  source "$dir/lib.sh"
+  list=$(printf 'p%s\n' 1 2 3 4 5 6 7)
+  joined=$( (for i in 1 2 3; do shard_select "$i/3" <<<"$list"; done) | sort)
+  [[ $joined == "$list" ]] && [[ $(shard_select 2/3 <<<"$list" | tr '\n' ' ') == "p2 p5 " ]] &&
+    [[ $(shard_select "" <<<"$list") == "$list" ]] && shard_valid 3/3 && shard_valid "" &&
+    [[ $(printf 'a\nb/internal/controller\nc\nd\n' | shard_select 1/3 | tr '\n' ' ') == "b/internal/controller " ]] &&
+    [[ $(printf 'a\nb/internal/controller\nc\nd\n' | shard_select 2/3 | tr '\n' ' ') == "a d " ]] &&
+    [[ $(printf 'a\nb/internal/controller\nc\nd\n' | shard_select 3/3 | tr '\n' ' ') == "c " ]] &&
+    [[ $(printf 'a\nb/internal/controller#1/2\nb/internal/controller#2/2\nc\nd\ne\n' | shard_select 1/4 | tr '\n' ' ') == "b/internal/controller#1/2 " ]] &&
+    [[ $(printf 'a\nb/internal/controller#1/2\nb/internal/controller#2/2\nc\nd\ne\n' | shard_select 2/4 | tr '\n' ' ') == "b/internal/controller#2/2 " ]] &&
+    [[ $(printf 'a\nb/internal/controller#1/2\nb/internal/controller#2/2\nc\nd\ne\n' | shard_select 3/4 | tr '\n' ' ') == "a d " ]] &&
+    [[ $(printf 'a\nb/internal/controller#1/2\nb/internal/controller#2/2\nc\nd\ne\n' | shard_select 4/4 | tr '\n' ' ') == "c e " ]] &&
+    [[ $(printf 'a\nb/internal/controller#1/2\nb/internal/controller#2/2\nc\n' | shard_select 2/2 | tr '\n' ' ') == "b/internal/controller#2/2 c " ]] &&
+    [[ $(printf 't%s\n' 1 2 3 4 5 | split_names 1 2 | tr '\n' ' ') == "t1 t3 t5 " ]] &&
+    [[ $(printf 't%s\n' 1 2 3 4 5 | split_names 2 2 | tr '\n' ' ') == "t2 t4 " ]] &&
+    [[ $(printf 't%s\n' 1 2 3 4 5 7 | split_names 3 3 | tr '\n' ' ') == "t3 t7 " ]] &&
+    ! shard_valid 4/3 && ! shard_valid 0/3 && ! shard_valid x
+) && passed=$((passed + 1)) || { echo "FAIL: test shards"; failed=$((failed + 1)); }
+
 # --- SPDX headers --------------------------------------------------------------------------
 s="$dir/check-spdx.sh"
 r=$(new_repo)
@@ -422,7 +444,48 @@ EOF
   printf 'package p\n\nimport "testing"\n\nfunc TestFails(t *testing.T) { t.Fatal("boom") }\n' >"$r/p/fail_test.go"
   git -C "$r" add -A
   expect fail "failing test" "$g" "$r"
+  # Shards: p sorts before tools/bannedapi, so shard 1 of 2 has the failing test and shard 2 of 2
+  # does not; every shard checks only its own packages.
+  expect fail "failing test in its own shard" env GO_TEST_SHARD=1/2 "$g" "$r"
+  expect pass "shard without the failing test" env GO_TEST_SHARD=2/2 "$g" "$r"
+  expect pass "shard with no packages" env GO_TEST_SHARD=9/9 "$g" "$r"
+  expect fail "failing test with cached results" env GO_TEST_CACHE=1 "$g" "$r"
+  expect fail "shard number above the count" env GO_TEST_SHARD=4/3 "$g" "$r"
+  expect fail "shard number zero" env GO_TEST_SHARD=0/3 "$g" "$r"
+  expect fail "malformed shard" env GO_TEST_SHARD=one "$g" "$r"
+  # The checks that are not tests and the tests run apart (GO_CHECKS).
+  expect pass "checks only, with a failing test" env GO_CHECKS=only "$g" "$r"
+  expect fail "tests only, with a failing test" env GO_CHECKS=skip "$g" "$r"
+  expect fail "unknown GO_CHECKS value" env GO_CHECKS=both "$g" "$r"
   git -C "$r" rm -q -f p/fail_test.go
+  printf 'package p\n\nfunc  Bad( ) {}\n' >"$r/p/bad.go" && git -C "$r" add -A
+  expect pass "tests only, with unformatted code" env GO_CHECKS=skip "$g" "$r"
+  expect fail "checks only, with unformatted code" env GO_CHECKS=only "$g" "$r"
+  git -C "$r" rm -q -f p/bad.go
+  # internal/controller is split by test name over the first two shards (every second test, sorted):
+  # shard 1 of 2 runs TestC1 and TestC3 with its subtests, shard 2 of 2 runs TestC2.
+  mkdir -p "$r/internal/controller"
+  cat >"$r/internal/controller/c_test.go" <<'EOF'
+package controller
+
+import "testing"
+
+func TestC1(t *testing.T) {}
+
+func TestC2(t *testing.T) { t.Fatal("boom") }
+
+func TestC3(t *testing.T) {
+	t.Run("sub", func(t *testing.T) {})
+}
+EOF
+  git -C "$r" add -A
+  expect pass "controller part without the failing test" env GO_TEST_SHARD=1/2 "$g" "$r"
+  expect fail "controller part with the failing test" env GO_TEST_SHARD=2/2 "$g" "$r"
+  expect fail "controller failing test, all shards in one" "$g" "$r"
+  printf 'package controller\n\nimport "testing"\n\nfunc TestC1(t *testing.T) {}\n\nfunc TestC2(t *testing.T) {}\n\nfunc TestC3(t *testing.T) {\n\tt.Run("sub", func(t *testing.T) { t.Fatal("boom") })\n}\n' >"$r/internal/controller/c_test.go"
+  expect fail "failing subtest runs in its part" env GO_TEST_SHARD=1/2 "$g" "$r"
+  expect pass "shard without the failing subtest" env GO_TEST_SHARD=2/2 "$g" "$r"
+  git -C "$r" rm -q -f internal/controller/c_test.go
   cat >"$r/p/crash_test.go" <<'EOF'
 package p
 
@@ -446,6 +509,9 @@ EOF
   expect pass "vet only, on every platform" "$dir/check-build.sh" "$r" vet
   expect fail "an unknown build mode" "$dir/check-build.sh" "$r" fast
   expect pass "tests on this machine's architecture" "$dir/check-test-arch.sh" "$(go env GOARCH)" "$r"
+  if [[ $(go env GOARCH) == arm64 ]]; then # the tests run natively only there
+    expect pass "arm64 tests without the race detector, cached" env GO_TEST_CACHE=1 "$dir/check-test-arch.sh" arm64 "$r"
+  fi
   expect fail "unknown architecture" "$dir/check-test-arch.sh" mips "$r"
   # Without cgo the go command drops a file that imports "C"; code that needs it no longer builds.
   printf 'package p\n\n// #include <stdlib.h>\nimport "C"\n\n// One comes from C.\nfunc One() int { return int(C.int(1)) }\n' >"$r/p/cgo.go"
