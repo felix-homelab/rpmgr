@@ -211,7 +211,8 @@ RestartSec=2s
   `Type=notify` with `NotifyAccess=all`, so that the new process of a hand-off can tell systemd it
   is the main one, and `RuntimeDirectory=rpmgr/<role>` holds the outcome of the last hand-off: one
   directory per role, as systemd removes a unit's runtime directory when the unit stops.
-  - **Gateway and all-in-one:** `ExecReload=<bin> handoff <role>`, so that `systemctl reload`
+  - **Gateway and all-in-one** (from slice 17.10; until then the units keep `ExecReload` sending
+    `SIGHUP`): `ExecReload=<bin> handoff <role>`, so that `systemctl reload`
     restarts with a hand-off and fails, with the reason, if the new process does not become
     ready; the old one then keeps serving. `systemctl restart` stays the restart without one.
   - **All-in-one policy reload:** `rpmgr policy …` signals the running all-in-one with `SIGHUP`

@@ -42,6 +42,9 @@ func startHandoffs(ctx context.Context, env *cli.Env, role string) (stop func())
 		return func() {}
 	}
 	log := slog.New(slog.NewTextHandler(env.Stderr, nil)).With("role", role)
+	// READY=1 goes out before the role has bound its listeners, so systemd counts the unit as
+	// started early and a failing start does not fail systemctl start. A stop-gap until slice 17.10
+	// moves the notification to each role's ready point.
 	if err := handoff.Notify(env.Getenv); err != nil {
 		log.Warn("telling systemd the role runs", "error", err)
 	}
