@@ -393,7 +393,12 @@ spec:
 
 - **Events.** [R] Every change an org's audit log records as a success is an event of the same
   type as its audit action, such as `route.update` or `token.revoke`, written in the change's
-  transaction ([06](06-data-model.md#observability-phase-2)). Status changes add `route.status`
+  transaction ([06](06-data-model.md#observability-phase-2)). An API method's entry is typed
+  `<resource>.<verb>` from the method's name, so `RouteService.UpdateRoute` is `route.update` and
+  `CreateRouteTarget` is `route_target.create`; a method that is a verb alone takes its service's
+  name, as `auth.logout`. An update's event names the fields of its update mask. Signing in and
+  out, a step-up, asking for a reset link and the use of a token or a system scope change nothing
+  and are no events. Status changes add `route.status`
   (a route's state changed), `agent.connect`, `agent.disconnect`, `apply.reject`, `alert.fire` and
   `alert.resolve` ([10](10-operations.md#suggested-alerts)), `webhook.disable`, and with DNS
   automation `dns.conflict`, `dns.zone_held`, `dns.sync_failing` and `dns.token_expiring`.
@@ -404,7 +409,10 @@ spec:
 - **Envelope** ([D144](14-open-decisions.md#engineering)): `POST` of
   `{"id", "type", "time", "org_id", "actor": {"type", "id"}, "subject": {"type", "id", "name"},
   "summary", "changed": [field names]}`; no resource body. Fetch the resource through the API for
-  more.
+  more. An alert event's subject is what the alert is about (an agent, a route, a certificate, or
+  `instance` for an instance alert), its actor the system, and its summary begins with the alert's
+  kind and a colon, such as `agent_offline: Agent offline fires, gw1`
+  ([10](10-operations.md#suggested-alerts)).
 - **Headers:** `Rpmgr-Event-Id` (the event's ID, the same on every retry: delivery is at least
   once), `Rpmgr-Event-Type`, and `Rpmgr-Signature: t=<unix>,v1=<HMAC-SHA256(secret, t.body)>`, with
   a second `v1=` value while a rotated secret still signs. Receivers reject signatures older than
