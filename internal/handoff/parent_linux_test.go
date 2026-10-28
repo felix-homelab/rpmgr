@@ -277,3 +277,89 @@ func mkdir(t *testing.T, p string, mode os.FileMode) string {
 	chmod(t, p, mode)
 	return p
 }
+
+// replaced makes the binary at bin a new file by rename, as the updater and the install script do,
+// and returns the path the running image then reads in /proc/self/exe.
+func replaced(t *testing.T, bin string) string {
+	t.Helper()
+	b, err := os.ReadFile(bin) //nolint:gosec // G304: the test's copy
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := bin + ".new"
+	if err := os.WriteFile(next, b, 0o755); err != nil { //nolint:gosec // G306: an executable
+		t.Fatal(err)
+	}
+	if err := os.Rename(next, bin); err != nil {
+		t.Fatal(err)
+	}
+	return bin + deletedSuffix
+}
+
+func TestStart_ReplacedBinaryHandsOffFromTheInstalledPath(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		installed bool // cfg.Installed names the path; else the suffix is stripped
+	}{{"the path without the suffix", false}, {"the installed path", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, bin, rule := installed(t)
+			exe := replaced(t, bin)
+			l, f := listener(t)
+			cfg, _ := config(t, "", rule, "ready", addrsEnv+"="+l.Addr().String())
+			cfg.exe = func() (string, error) { return exe, nil }
+			if tc.installed {
+				cfg.Installed = bin
+				cfg.exe = func() (string, error) { return "/gone/rpmgr" + deletedSuffix, nil }
+			}
+			c, err := Start(context.Background(), cfg, []Socket{{Name: "https", File: f}})
+			if err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			if got := greeting(t, l.Addr()); got != "gen 2" {
+				t.Errorf("greeting %q", got)
+			}
+			<-c.Exited()
+		})
+	}
+}
+
+func TestStart_ReplacedBinaryNotInstalledIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T, dir, bin string, rule *binaryRule) (exe, installed string)
+	}{
+		{"nothing at the path", func(t *testing.T, _, bin string, _ *binaryRule) (string, string) {
+			if err := os.Remove(bin); err != nil {
+				t.Fatal(err)
+			}
+			return bin + deletedSuffix, ""
+		}},
+		{"an installed path that is missing", func(_ *testing.T, _, bin string, _ *binaryRule) (string, string) {
+			return "/gone/rpmgr" + deletedSuffix, bin + ".missing"
+		}},
+		{"a writable installed binary", func(t *testing.T, _, bin string, _ *binaryRule) (string, string) {
+			chmod(t, bin, 0o777)
+			return "/gone/rpmgr" + deletedSuffix, bin
+		}},
+		{"an installed binary of another owner", func(_ *testing.T, _, bin string, rule *binaryRule) (string, string) {
+			rule.uid++
+			return bin + deletedSuffix, bin
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, bin, rule := installed(t)
+			exe, inst := tc.setup(t, dir, bin, rule)
+			l, f := listener(t)
+			cfg, res := config(t, "", rule, "ready", addrsEnv+"="+l.Addr().String())
+			cfg.exe, cfg.Installed = func() (string, error) { return exe, nil }, inst
+			c, err := Start(context.Background(), cfg, []Socket{{Name: "https", File: f}})
+			if c != nil || !errors.Is(err, ErrRefused) {
+				t.Fatalf("Start = %v, %v; want ErrRefused", c, err)
+			}
+			if _, err := os.Stat(res); err == nil {
+				t.Error("a binary was started")
+			}
+			stillServes(t, l)
+		})
+	}
+}

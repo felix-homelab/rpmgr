@@ -24,8 +24,12 @@ func (s Systemd) cmd() string {
 	return "systemctl"
 }
 
-// Restart runs systemctl restart, which waits until the unit has started.
+// Restart runs systemctl restart, which waits until the unit has started. It reloads systemd
+// first, so that a unit or drop-in file changed since, such as one a rollback removed, applies.
 func (s Systemd) Restart(ctx context.Context, unit string) error {
+	if out, err := exec.CommandContext(ctx, s.cmd(), "daemon-reload").CombinedOutput(); err != nil { //nolint:gosec // G204: a fixed argument
+		return fmt.Errorf("systemctl daemon-reload: %w: %s", err, strings.TrimSpace(string(out)))
+	}
 	out, err := exec.CommandContext(ctx, s.cmd(), "restart", unit).CombinedOutput() //nolint:gosec // G204: a fixed unit name
 	if err != nil {
 		return fmt.Errorf("systemctl restart %s: %w: %s", unit, err, strings.TrimSpace(string(out)))

@@ -148,3 +148,65 @@ func TestReadOutcome_Hostile(t *testing.T) {
 		t.Errorf("outcome file mode: %v, %v", fi, err)
 	}
 }
+
+// TestTrigger_CancelledMidHandoff: a context cancelled while a hand-off runs ends it, and the
+// outcome says it failed, so that `rpmgr handoff` does not wait for the timeout.
+func TestTrigger_CancelledMidHandoff(t *testing.T) {
+	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	running := make(chan struct{})
+	stop := (&Trigger{Dir: dir, Handoff: func(ctx context.Context) (*Child, error) {
+		close(running)
+		<-ctx.Done()
+		return nil, fmt.Errorf("%w: %w", ErrNotReady, ctx.Err())
+	}}).Start(ctx)
+	defer stop()
+	signalSelf(t)
+	<-running
+	waitOutcome(t, dir, func(o Outcome) bool { return o.State == StateRunning })
+	cancel()
+	o := waitOutcome(t, dir, func(o Outcome) bool { return o.State != StateRunning })
+	if o.State != StateFailed || !strings.Contains(o.Reason, "canceled") || o.OldPID != os.Getpid() {
+		t.Errorf("outcome %+v; want failed, canceled", o)
+	}
+}
+
+// TestCapable: only the process that announced itself takes the hand-off signal.
+func TestCapable(t *testing.T) {
+	dir := t.TempDir()
+	pid := os.Getpid()
+	if Capable(dir, pid) {
+		t.Error("a process that announced nothing is capable")
+	}
+	stop := (&Trigger{Dir: dir}).Start(context.Background())
+	defer stop()
+	if !Capable(dir, pid) {
+		t.Error("the process that started its trigger is not capable")
+	}
+	for name, body := range map[string]string{
+		"another process":  fmt.Sprint(pid + 1),
+		"not a number":     "gateway",
+		"empty":            "",
+		"padded":           " " + fmt.Sprint(pid),
+		"zero":             "0",
+		"too long":         strings.Repeat("1", 100),
+		"a negative value": "-1",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, CapableFile), []byte(body), 0o644); err != nil { //nolint:gosec // G306: a test file
+			t.Fatal(err)
+		}
+		if Capable(dir, pid) {
+			t.Errorf("%s: %q is capable", name, body)
+		}
+	}
+	if err := os.Remove(filepath.Join(dir, CapableFile)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(os.Args[0], filepath.Join(dir, CapableFile)); err != nil {
+		t.Fatal(err)
+	}
+	if Capable(dir, pid) {
+		t.Error("a link is capable")
+	}
+}

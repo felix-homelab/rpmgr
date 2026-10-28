@@ -304,6 +304,10 @@ func TestPlan_AllInOne(t *testing.T) {
 	if err != nil || !strings.Contains(string(unit), "ExecStart="+h.Paths.Bin+" all-in-one") || strings.Contains(string(unit), "LoadCredentialEncrypted") {
 		t.Errorf("unit %q %v", unit, err)
 	}
+	if d, err := os.ReadFile(filepath.Join(h.Paths.Units, "rpmgr-all-in-one.service.d", "handoff.conf")); err != nil ||
+		!strings.Contains(string(d), "\nType=notify\nNotifyAccess=all\n") || strings.Contains(string(unit), "Type=notify") {
+		t.Errorf("hand-off drop-in %q %v; want Type=notify there and not in the unit", d, err)
+	}
 	if !slices.EqualFunc(f.commands, append(updaterCommands(), []string{"systemctl", "daemon-reload"},
 		[]string{"systemctl", "enable", "--now", "rpmgr-all-in-one"}), slices.Equal) ||
 		!slices.Equal(f.ready, []string{"127.0.0.1:17381"}) {
@@ -369,6 +373,9 @@ func TestPlan_ControllerUnit(t *testing.T) {
 	if err != nil || !strings.Contains(string(unit), "\nLoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek\n") ||
 		strings.Contains(string(unit), "ReadWritePaths=") {
 		t.Errorf("unit %q %v", unit, err)
+	}
+	if _, err := os.Stat(filepath.Join(h.Paths.Units, "rpmgr-controller.service.d")); err == nil {
+		t.Error("the controller got a hand-off drop-in")
 	}
 }
 

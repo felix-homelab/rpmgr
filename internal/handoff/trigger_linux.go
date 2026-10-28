@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -29,6 +30,9 @@ func (t *Trigger) Start(ctx context.Context) (stop func()) {
 	}
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGUSR2)
+	if err := os.WriteFile(filepath.Join(t.Dir, CapableFile), []byte(strconv.Itoa(os.Getpid())), 0o644); err != nil { //nolint:gosec // G306: read by root's rpmgr handoff
+		log.Warn("hand-off: announcing that this process takes SIGUSR2", "error", err)
+	}
 	done := make(chan struct{})
 	var busy atomic.Bool
 	go func() {
@@ -119,6 +123,26 @@ func ReadOutcome(dir string) (Outcome, error) {
 	}
 	o.State, o.Reason = trim(o.State), trim(o.Reason)
 	return o, nil
+}
+
+// Capable reports whether process pid announced in dir that it takes SIGUSR2 as a hand-off. A
+// process of a release without the hand-off, one that has not started its trigger yet and one of
+// another PID are not.
+func Capable(dir string, pid int) bool {
+	f, err := os.OpenFile(filepath.Join(dir, CapableFile), os.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0) //nolint:gosec // G304: the role's runtime directory
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	b, err := io.ReadAll(io.LimitReader(f, 32))
+	if err != nil {
+		return false
+	}
+	n, err := strconv.Atoi(string(b))
+	return err == nil && n == pid && pid > 0
 }
 
 // Signal asks the role's main process to hand off.

@@ -42,13 +42,16 @@ func startHandoffs(ctx context.Context, env *cli.Env, role string) (stop func())
 		return func() {}
 	}
 	log := slog.New(slog.NewTextHandler(env.Stderr, nil)).With("role", role)
+	// The trigger first, so that `rpmgr handoff` finds the process capable as soon as systemd
+	// counts the unit as started.
+	stop = (&handoff.Trigger{Dir: filepath.Join(RunDir, role), Logger: log}).Start(ctx)
 	// READY=1 goes out before the role has bound its listeners, so systemd counts the unit as
 	// started early and a failing start does not fail systemctl start. A stop-gap until slice 17.10
 	// moves the notification to each role's ready point.
 	if err := handoff.Notify(env.Getenv); err != nil {
 		log.Warn("telling systemd the role runs", "error", err)
 	}
-	return (&handoff.Trigger{Dir: filepath.Join(RunDir, role), Logger: log}).Start(ctx)
+	return stop
 }
 
 // Handoff is `rpmgr handoff <role>`.
@@ -76,6 +79,11 @@ func runHandoff(ctx context.Context, env *cli.Env, role string, poll, wait time.
 		return fmt.Errorf("rpmgr-%s.service does not run", role)
 	}
 	dir := filepath.Join(RunDir, role)
+	if !handoff.Capable(dir, pid) {
+		// An older release ends on SIGUSR2; one that is still starting has no trigger yet.
+		return fmt.Errorf("refused: process %d of rpmgr-%s does not take hand-offs: it is a release without them "+
+			"or has not finished starting; `systemctl restart rpmgr-%s` restarts it without one", pid, role, role)
+	}
 	before, err := handoff.ReadOutcome(dir)
 	if err == nil && before.State == handoff.StateRunning && before.OldPID == pid {
 		return errors.New("refused: a hand-off is in progress")
@@ -83,6 +91,7 @@ func runHandoff(ctx context.Context, env *cli.Env, role string, poll, wait time.
 	if err := handoff.Signal(pid); err != nil {
 		return fmt.Errorf("signalling process %d: %w", pid, err)
 	}
+	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
 	t := time.NewTicker(poll)
@@ -90,6 +99,9 @@ func runHandoff(ctx context.Context, env *cli.Env, role string, poll, wait time.
 	for {
 		select {
 		case <-ctx.Done():
+			if parent.Err() != nil {
+				return fmt.Errorf("stopped while waiting for the outcome from process %d: %w", pid, parent.Err())
+			}
 			return fmt.Errorf("no outcome from process %d within %v; see journalctl -u rpmgr-%s", pid, wait, role)
 		case <-t.C:
 		}

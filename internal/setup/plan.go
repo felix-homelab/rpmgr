@@ -577,6 +577,16 @@ func (p *Plan) unitSteps() {
 		if err := writeMode(path, unit, 0o644); err != nil {
 			return err
 		}
+		if dropIn, err := units.RenderDropIn(role); err == nil { // the roles that restart with hand-off
+			dir := filepath.Join(h.Paths.Units, name+".service.d")
+			if err := mkdirMode(dir, 0o755); err != nil {
+				return err
+			}
+			r.created(filepath.Join(dir, units.DropIn))
+			if err := writeMode(filepath.Join(dir, units.DropIn), dropIn, 0o644); err != nil {
+				return err
+			}
+		}
 		if err := h.Run(ctx, "systemctl", "daemon-reload"); err != nil {
 			return err
 		}

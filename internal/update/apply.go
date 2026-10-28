@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/release"
+	"github.com/felix-homelab/rpmgr/internal/units"
 )
 
 // The readiness window after a restart (docs/03-connections.md, "Timeouts, keepalive and
@@ -96,6 +97,8 @@ type Applier struct {
 	// Interval, Window and MaxRestarts default to the values of 03.
 	Interval, Window time.Duration
 	MaxRestarts      int
+	// Units is the directory of the role units; empty means /etc/systemd/system.
+	Units string
 	// Clock is for the status file's time; nil means time.Now.
 	Clock func() time.Time
 
@@ -358,12 +361,33 @@ func (a *Applier) rollback(ctx context.Context, p *pending) error {
 	}
 	_ = syncDir(dir) // the binary is back; a sync error changes nothing about it
 	var errs []error
+	if !units.HasHandoff(p.Previous) {
+		// The release put back never sends READY=1: its units must not be Type=notify (D155).
+		errs = append(errs, a.removeDropIns(p.Roles)...)
+	}
 	for _, role := range p.Roles {
 		if err := a.Services.Restart(ctx, unitOf(role)); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// removeDropIns removes the hand-off drop-in of each role, which the restart that follows reads
+// (Systemd.Restart reloads systemd first). One that is not there is no error.
+func (a *Applier) removeDropIns(roles []string) []error {
+	dir := a.Units
+	if dir == "" {
+		dir = "/etc/systemd/system"
+	}
+	var errs []error
+	for _, role := range roles {
+		f := filepath.Join(dir, unitOf(role)+".d", units.DropIn)
+		if err := os.Remove(f); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, fmt.Errorf("update: rolling back: %w", err))
+		}
+	}
+	return errs
 }
 
 // restartAndWait restarts each role and waits until all are active and ready, within the

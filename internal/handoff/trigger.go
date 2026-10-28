@@ -43,5 +43,10 @@ const (
 // OutcomeFile is the outcome's name in the runtime directory.
 const OutcomeFile = "handoff.json"
 
+// CapableFile is the name, in the runtime directory, of the file in which a process that takes
+// SIGUSR2 as a hand-off names itself. A release without the hand-off writes none, and SIGUSR2
+// would end it, so `rpmgr handoff` signals only the process the file names (Capable).
+const CapableFile = "handoff.pid"
+
 // maxOutcome bounds the outcome file `rpmgr handoff` reads.
 const maxOutcome = 64 << 10

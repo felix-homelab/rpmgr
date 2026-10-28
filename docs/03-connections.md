@@ -1638,7 +1638,9 @@ install scripts' `--upgrade --restart` and the root updater
 ([10](10-operations.md#hardened-systemd-units), [D148](14-open-decisions.md#engineering)). Each
 sends `SIGUSR2` to the role's main process, which only root and the service user may signal, and
 waits for the outcome. One hand-off runs at a time; a trigger during one is refused with "hand-off
-in progress".
+in progress". `rpmgr handoff` signals only a process that announced in its runtime directory
+(`handoff.pid`) that it takes `SIGUSR2`; a release without the hand-off ends on that signal, so
+the command refuses it and names `systemctl restart`.
 
 **Sequence** ([D150](14-open-decisions.md#engineering)):
 
