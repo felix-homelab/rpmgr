@@ -1,0 +1,8 @@
+{
+  "name": "rpmgr-realclients",
+  "private": true,
+  "description": "playwright-core for firefox.sh, at the version of the Playwright image in .github/scripts/lib.sh",
+  "dependencies": {
+    "playwright-core": "1.63.0"
+  }
+}

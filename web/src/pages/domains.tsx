@@ -17,6 +17,7 @@ import { Status, type Look } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
+import { apiError, serverProblems, type Problems } from "@/lib/api-error";
 import { DomainMethod, DomainSchema, DomainService, DomainStatus, type Domain } from "@/gen/rpmgr/v1/domain_pb";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
@@ -85,8 +86,10 @@ function ClaimForm({ orgId, onDone }: { orgId: string; onDone: () => void }) {
   const [requestId] = useState(() => crypto.randomUUID());
   const [form, setForm] = useState({ fqdn: "", wildcard: false, method: String(DomainMethod.DNS_TXT) });
   const [error, setError] = useState("");
+  const [problems, setProblems] = useState<Problems>({});
   async function save(e: FormEvent) {
     e.preventDefault();
+    setProblems({});
     try {
       await claim.mutateAsync({ orgId, requestId, domain: create(DomainSchema, {
         fqdn: form.fqdn.trim().toLowerCase().replace(/\.$/, ""), wildcard: form.wildcard, method: Number(form.method),
@@ -95,12 +98,13 @@ function ClaimForm({ orgId, onDone }: { orgId: string; onDone: () => void }) {
       onDone();
     } catch (err) {
       const e = ConnectError.from(err);
-      setError(e.code === Code.AlreadyExists || e.code === Code.InvalidArgument || e.code === Code.FailedPrecondition ? e.rawMessage : t("link.failed", { message: e.rawMessage }));
+      setProblems(serverProblems(t, err));
+      setError(e.code === Code.InvalidArgument ? apiError(t, err, ["fqdn"]) : e.code === Code.AlreadyExists || e.code === Code.FailedPrecondition ? e.rawMessage : t("link.failed", { message: e.rawMessage }));
     }
   }
   return (
     <form onSubmit={save} aria-label={t("domains.claimTitle")} className={panel} noValidate>
-      <Field label={t("domains.fqdn")} className="max-w-md" required value={form.fqdn} onChange={(e) => setForm({ ...form, fqdn: e.target.value })} />
+      <Field label={t("domains.fqdn")} className="max-w-md" required error={problems.fqdn} value={form.fqdn} onChange={(e) => setForm({ ...form, fqdn: e.target.value })} />
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" className="size-4 accent-primary" checked={form.wildcard} onChange={(e) => setForm({ ...form, wildcard: e.target.checked })} />
         {t("domains.wildcard")}
@@ -141,7 +145,7 @@ function DomainRow({ domain: d, instanceAdmin }: { domain: Domain; instanceAdmin
       await queryClient.invalidateQueries();
     } catch (err) {
       if (reasonOf(err) !== Reason.stepUpRequired) {
-        setError(ConnectError.from(err).rawMessage);
+        setError(apiError(t, err));
       }
     }
   }

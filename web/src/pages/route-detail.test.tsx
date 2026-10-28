@@ -54,6 +54,7 @@ function detail(r: object, transports: Record<string, DataTransport[]> = {}, tra
     router.service(ConnectorService, {
       listConnectors: () => ({ connectors: [{ id: "con_db", name: "db-host-1" }, { id: "con_app", name: "app-host" }] }),
       getConnectorStatus: (req) => ({ status: { dataSessions: (transports[req.connectorId] ?? []).map((transport) => ({ transport })) } }),
+      getConnector: (req) => ({ connector: { id: req.connectorId, name: req.connectorId, transport: connectorPins[req.connectorId] ?? DataTransport.UNSPECIFIED } }),
     });
     router.service(MetricsService, {
       getRouteTraffic: (req) => (traffic.push(req), {
@@ -79,7 +80,13 @@ function detail(r: object, transports: Record<string, DataTransport[]> = {}, tra
 const stats = (section: ReturnType<typeof within>) =>
   section.getAllByRole("term").map((dt: HTMLElement) => [dt.textContent, dt.nextElementSibling?.textContent]);
 
+// connectorPins is each connector's own transport setting, as getConnector returns it.
+let connectorPins: Record<string, DataTransport> = {};
+
 describe("RouteDetail", () => {
+  afterEach(() => {
+    connectorPins = {};
+  });
   it("shows the desired settings next to the observed state, and the gateways and agents that do not serve", async () => {
     detail(postgres);
     expect(await screen.findByRole("heading", { name: "Route postgres (TCP)" })).toBeTruthy();
@@ -181,9 +188,33 @@ describe("RouteDetail", () => {
     expect(screen.queryByText(/the fallback for QUIC/)).toBeNull();
   });
 
-  it("gives UDP routes the MTU hint", async () => {
+  it("marks no fallback where a pin chose the transport or the target does not serve", async () => {
+    const rows = async () => {
+      await screen.findByRole("heading", { name: "Route postgres (TCP)" });
+      await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(3));
+    };
+    // The route pinned to QUIC: never served over HTTP/2.
+    detail({ ...postgres, transport: DataTransport.QUIC }, { con_app: [DataTransport.H2] });
+    await rows();
+    expect(screen.queryByText(/the fallback for QUIC/)).toBeNull();
+    cleanup();
+    // The connector pinned to HTTP/2: chosen, not a fallback.
+    connectorPins = { con_app: DataTransport.H2 };
+    detail(postgres, { con_app: [DataTransport.H2] });
+    await rows();
+    expect(screen.queryByText(/the fallback for QUIC/)).toBeNull();
+    cleanup();
+    // A target that does not serve, here blocked by the local policy, is served over nothing.
+    connectorPins = {};
+    detail(postgres, { con_db: [DataTransport.H2] });
+    await rows();
+    expect(screen.queryByText(/the fallback for QUIC/)).toBeNull();
+  });
+
+  it("shows UDP routes without a hint about datagram sizes", async () => {
     detail({ ...postgres, spec: { case: "udp", value: { port: 53 } } });
-    expect(await screen.findByText(/^UDP datagrams travel as QUIC datagrams/)).toBeTruthy();
+    await screen.findByRole("heading", { name: "Route postgres (UDP)" });
+    expect(screen.queryByText(/QUIC datagrams/)).toBeNull();
   });
 
   it("says when the route does not exist", async () => {

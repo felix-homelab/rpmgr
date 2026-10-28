@@ -50,7 +50,7 @@ var (
 )
 
 // nodes are the containers with a /var/lib/rpmgr directory.
-var nodes = []string{"ctl", "gw1", "gw2", "con1", "con2", "svc", "client"}
+var nodes = []string{"ctl", "gw1", "gw2", "con1", "con2", "con3", "proxy", "svc", "client"}
 
 // connectorPolicy is the connectors' local policy: the service's ports, except 7009, which the
 // local-policy cell allows by a reload.
@@ -143,7 +143,7 @@ func seed(verb string, args ...string) (string, error) {
 }
 
 func writeFile(node, name, data string) error {
-	return os.WriteFile(filepath.Join(run, node, name), []byte(data), 0o600)
+	return os.WriteFile(filepath.Join(run, node, name), []byte(data), 0o600) //nolint:gosec // G703: the test's own run directory
 }
 
 func setUp() error {
@@ -340,7 +340,7 @@ func issue(cn string, names ...string) (string, string, error) {
 
 // dumpLogs prints every role's log, for a failed run.
 func dumpLogs() {
-	for _, node := range []string{"ctl", "gw1", "gw2", "con1", "con2"} {
+	for _, node := range []string{"ctl", "gw1", "gw2", "con1", "con2", "con3", "proxy"} {
 		logs, _ := filepath.Glob(filepath.Join(run, node, "*.log"))
 		for _, l := range logs {
 			b, _ := os.ReadFile(l) //nolint:gosec // G304: the test's own run directory

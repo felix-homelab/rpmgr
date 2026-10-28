@@ -5,6 +5,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Field } from "@/components/field";
 import { LinesField, trimmed } from "@/components/lines-field";
@@ -13,8 +14,9 @@ import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
 import { AgentRole, EnrollmentService } from "@/gen/rpmgr/v1/enrollment_pb";
-import { GatewaySchema, GatewayService, type Gateway } from "@/gen/rpmgr/v1/gateway_pb";
+import { CreateGatewayRequestSchema, GatewaySchema, GatewayService, type Gateway } from "@/gen/rpmgr/v1/gateway_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
+import { apiError, checkRequest, serverProblems, type Problems } from "@/lib/api-error";
 import { Reason, reasonOf } from "@/lib/errors";
 import { useStepUp } from "@/step-up";
 
@@ -23,9 +25,12 @@ export type Written = { revision?: Revision; status?: ApplyStatus };
 // The fields of a gateway the API changes (internal/apisvc gatewayFields).
 const gatewayMask = ["name", "tunnel_endpoints", "enabled", "wss_hostname"];
 
-function message(err: unknown, fallback: (m: string) => string): string {
+function message(t: TFunction, err: unknown, fallback: (m: string) => string, shown: string[] = []): string {
   const e = ConnectError.from(err);
-  return e.code === Code.InvalidArgument || e.code === Code.FailedPrecondition || e.code === Code.AlreadyExists ? e.rawMessage : fallback(e.rawMessage);
+  if (e.code === Code.InvalidArgument) {
+    return apiError(t, err, shown);
+  }
+  return e.code === Code.FailedPrecondition || e.code === Code.AlreadyExists ? e.rawMessage : fallback(e.rawMessage);
 }
 
 // GatewayForm adds a gateway to a group, or with gateway changes its name, tunnel endpoints and WSS
@@ -42,13 +47,21 @@ export function GatewayForm({ orgId, groupId, gateway, onDone, onCancel }: {
   const [endpoints, setEndpoints] = useState(gateway?.tunnelEndpoints ?? []);
   const [wss, setWSS] = useState(gateway?.wssHostname ?? "");
   const [error, setError] = useState("");
+  const [problems, setProblems] = useState<Problems>({});
   async function save(e: FormEvent) {
     e.preventDefault();
     setError("");
+    setProblems({});
     const next = gateway ? clone(GatewaySchema, gateway) : create(GatewaySchema, { gatewayGroupId: groupId, enabled: true });
     next.name = name.trim();
     next.tunnelEndpoints = trimmed(endpoints);
     next.wssHostname = wss.trim();
+    // The name is checked with the API's rules before anything is sent.
+    const bad = checkRequest(t, CreateGatewayRequestSchema, { orgId, gateway: { name: next.name }, requestId }, ["name"]);
+    if (bad.name) {
+      setProblems(bad);
+      return;
+    }
     try {
       if (gateway) {
         const res = await update.mutateAsync({ gateway: next, updateMask: { paths: gatewayMask }, etag: gateway.etag });
@@ -58,12 +71,13 @@ export function GatewayForm({ orgId, groupId, gateway, onDone, onCancel }: {
         onDone({ revision: res.revision, status: res.applyStatus });
       }
     } catch (err) {
-      setError(message(err, (m) => t("link.failed", { message: m })));
+      setProblems(serverProblems(t, err));
+      setError(message(t, err, (m) => t("link.failed", { message: m }), ["name"]));
     }
   }
   return (
     <form onSubmit={save} aria-label={t(gateway ? "gwActions.editTitle" : "gwActions.addTitle")} className="grid max-w-xl gap-4 rounded-lg border border-border bg-muted/40 p-4" noValidate>
-      <Field label={t("routeForm.fields.name")} required value={name} onChange={(e) => setName(e.target.value)} />
+      <Field label={t("routeForm.fields.name")} required hint={t("violations.nameHint")} error={problems.name} value={name} onChange={(e) => setName(e.target.value)} />
       <LinesField label={t("gateways.gw.endpoints")} hint={t("gwActions.endpointsHint")} required value={endpoints} onChange={setEndpoints} />
       <Field label={t("gateways.gw.wss")} hint={t("gwActions.wssHint")} value={wss} onChange={(e) => setWSS(e.target.value)} />
       {error && <Alert>{error}</Alert>}
@@ -92,7 +106,7 @@ export function GatewayActions({ orgId, gateway: g, onEdit, onDone }: { orgId: s
       const res = await update.mutateAsync({ gateway: { ...clone(GatewaySchema, g), enabled }, updateMask: { paths: ["enabled"] }, etag: g.etag });
       onDone({ revision: res.revision, status: res.applyStatus });
     } catch (err) {
-      setError(message(err, (m) => t("link.failed", { message: m })));
+      setError(message(t, err, (m) => t("link.failed", { message: m })));
     }
   }
   async function retire() {
@@ -101,7 +115,7 @@ export function GatewayActions({ orgId, gateway: g, onEdit, onDone }: { orgId: s
       onDone({ revision: res.revision, status: res.applyStatus });
       await queryClient.invalidateQueries();
     } catch (err) {
-      setError(message(err, (m) => t("link.failed", { message: m })));
+      setError(message(t, err, (m) => t("link.failed", { message: m })));
     }
   }
   return (
@@ -148,7 +162,7 @@ function GatewayToken({ orgId, gateway: g, onClose }: { orgId: string; gateway: 
       setResult({ token: tok.token, command: cmd.command });
     } catch (err) {
       if (reasonOf(err) !== Reason.stepUpRequired) {
-        setError(message(err, (m) => t("link.failed", { message: m })));
+        setError(message(t, err, (m) => t("link.failed", { message: m })));
       }
     }
   }

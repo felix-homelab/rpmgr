@@ -17,6 +17,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"image/png"
+	"io"
 	"log/slog"
 	"math/big"
 	"net"
@@ -44,6 +45,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/totp"
 	"github.com/felix-homelab/rpmgr/internal/version"
 )
@@ -379,11 +381,35 @@ listen: {admin: "127.0.0.1:%d"}
 	if err := config.Load(boot, &cfg); err != nil {
 		t.Fatal(err)
 	}
+	// Its log is only for the live log the screenshots show.
+	logger, live, err := telemetry.NewLiveLogger(io.Discard, telemetry.LogConfig{Level: "warn"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan error, 1)
 	go func() {
-		done <- connector.Run(s.ctx, connector.RunOptions{Config: cfg, Version: "0.1.0", Getenv: func(string) string { return "" }, Logger: s.quiet})
+		done <- connector.Run(s.ctx, connector.RunOptions{Config: cfg, Version: "0.1.0", Getenv: func(string) string { return "" }, Logger: logger,
+			LiveLog: live})
 	}()
 	t.Cleanup(func() { <-done })
+	// A few made-up lines, so that the live log the screenshots show has something to show.
+	go func() {
+		lines := []func(){
+			func() { logger.Debug("dialing a target", "route", "wiki", "target", "192.0.2.10:8080") },
+			func() {
+				logger.Info("health check failed", "route", "wiki", "target", "192.0.2.10:8080", "error", "i/o timeout")
+			},
+			func() { logger.Debug("stream opened", "gateway", "gw-eu-1", "transport", "quic") },
+		}
+		for i := 0; ; i++ {
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-time.After(700 * time.Millisecond):
+				lines[i%len(lines)]()
+			}
+		}
+	}()
 	s.waitFor("connector "+host+" to connect", func() bool {
 		got, err := c.con.GetConnector(s.ctx, connect.NewRequest(&rpmgrv1.GetConnectorRequest{ConnectorId: id.AgentID}))
 		return err == nil && got.Msg.GetConnector().GetSession().GetConnected()

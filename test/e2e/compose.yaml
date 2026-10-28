@@ -2,9 +2,11 @@
 #
 # The end-to-end topology (docs/12-testing-and-quality.md, "Where the cells run"): a controller,
 # two gateways of one group, two connectors that reach the echo service on a private network,
-# and a client, on a public network with IPv4 and IPv6. The test starts and stops the rpmgr
-# processes inside the containers, as the user running the test; each container's /var/lib/rpmgr
-# is its directory under $E2E_RUN. Ports are unprivileged: the controller and the gateways use 8443.
+# and a client, on a public network with IPv4 and IPv6; for the WSS cell a third connector, whose
+# only way out is a TLS-intercepting proxy on an office network that leads nowhere else. The test
+# starts and stops the rpmgr processes inside the containers, as the user running the test; each
+# container's /var/lib/rpmgr is its directory under $E2E_RUN. Ports are unprivileged: the
+# controller and the gateways use 8443, and the WSS cell redirects the gateways' port 443 there.
 name: rpmgr-e2e
 
 x-node: &node
@@ -29,6 +31,11 @@ networks:
     ipam:
       config:
         - subnet: 172.31.0.0/24
+  office:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
 
 services:
   ctl:
@@ -42,13 +49,13 @@ services:
     hostname: gw1
     volumes: ["${E2E_RUN:?}/gw1:/var/lib/rpmgr"]
     networks:
-      public: {ipv4_address: 172.30.0.11, ipv6_address: "fd00:30::11"}
+      public: {ipv4_address: 172.30.0.11, ipv6_address: "fd00:30::11", aliases: [wss1.e2e.test]}
   gw2:
     <<: *node
     hostname: gw2
     volumes: ["${E2E_RUN:?}/gw2:/var/lib/rpmgr"]
     networks:
-      public: {ipv4_address: 172.30.0.12, ipv6_address: "fd00:30::12"}
+      public: {ipv4_address: 172.30.0.12, ipv6_address: "fd00:30::12", aliases: [wss2.e2e.test]}
   con1:
     <<: *node
     hostname: con1
@@ -63,6 +70,28 @@ services:
     networks:
       public: {ipv4_address: 172.30.0.22, ipv6_address: "fd00:30::22"}
       private: {ipv4_address: 172.31.0.22}
+  con3:
+    <<: *node
+    hostname: con3
+    environment:
+      SSL_CERT_FILE: /var/lib/rpmgr/web-ca.pem
+      RPMGR_TEST_CLOCK_FILE: /var/lib/rpmgr/clock-offset
+      HTTPS_PROXY: http://proxy:8080
+    volumes: ["${E2E_RUN:?}/con3:/var/lib/rpmgr"]
+    networks:
+      office: {ipv4_address: 172.29.0.23}
+      private: {ipv4_address: 172.31.0.23}
+  # mitmproxy, which the WSS cell starts with the root it generates.
+  proxy:
+    image: rpmgr-e2e-proxy:local
+    build: ./proxy
+    init: true
+    user: "${E2E_UID:?}:${E2E_GID:?}"
+    entrypoint: ["sleep", "infinity"]
+    volumes: ["${E2E_RUN:?}/proxy:/var/lib/rpmgr"]
+    networks:
+      office: {ipv4_address: 172.29.0.8}
+      public: {ipv4_address: 172.30.0.8, ipv6_address: "fd00:30::8"}
   svc:
     <<: *node
     hostname: svc

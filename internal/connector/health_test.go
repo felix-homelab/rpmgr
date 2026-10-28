@@ -275,8 +275,13 @@ func TestHealthCheck_ReportsPerRound(t *testing.T) {
 	pol := allowLoopback(t, a.Port, b.Port)
 	tg := connector.NewTargets(connector.TargetsOptions{Policy: func() *policy.Policy { return pol },
 		OnTargetHealth: func(s []*agentv1.ResourceStatus) {
-			reports <- s
-			<-release
+			// Once released, the test reads no more reports: a round that runs before the snapshot
+			// replaced the checks must not block the checker, which Close then waits for.
+			select {
+			case reports <- s:
+				<-release
+			case <-release:
+			}
 		}})
 	t.Cleanup(tg.Close)
 	check := &connector.HealthCheck{HTTP: true, Path: "/", StatusMin: 200, StatusMax: 399, Interval: 20 * time.Millisecond, Timeout: time.Second,

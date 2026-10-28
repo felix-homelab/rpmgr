@@ -48,6 +48,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/migrations"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
+	"github.com/felix-homelab/rpmgr/internal/webhook"
 	"github.com/felix-homelab/rpmgr/internal/websession"
 	"github.com/felix-homelab/rpmgr/internal/webui"
 )
@@ -320,6 +321,12 @@ func Run(ctx context.Context, o RunOptions) error {
 		}); err != nil {
 		return err
 	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_log_proto.Services().ByName("LogService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewLogServiceHandler(&apisvc.Logs{DB: db, Opener: sessions}, opts...)
+		}); err != nil {
+		return err
+	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_route_proto.Services().ByName("RouteService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewRouteServiceHandler(&apisvc.Routes{DB: db, API: apiServer, Sys: sys, Prober: sessions, Now: o.Now}, opts...)
@@ -456,6 +463,10 @@ func Run(ctx context.Context, o RunOptions) error {
 	job(CheckpointJob(cpOpts), "audit checkpoint job")
 	job(RetentionJob(cpOpts), "audit retention job")
 	job(RollupJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}), "traffic rollup job")
+	job(EventsJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}), "events job")
+	job(AlertJob(AlertOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger, RevocationLog: shipper.Status}), "alert job")
+	job(WebhookJob(WebhookOptions{DB: db, Leases: leases, Sealer: sealer, Sender: &webhook.Sender{Proxy: proxy, Now: o.Now}, Now: o.Now,
+		Logger: o.Logger, Own: ownAddresses()}), "webhook job")
 	job(RolloutJob(RolloutOptions{DB: db, Now: o.Now, Logger: o.Logger}), "rollout job")
 	bg.Go(func() { ReloadCA(jobs, caOpts) })
 	bg.Go(func() { shipper.Run(jobs) })

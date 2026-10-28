@@ -26,6 +26,8 @@ type Tx struct {
 	AgentSession *AgentSessionClient
 	// AgentState is the client for interacting with the AgentState builders.
 	AgentState *AgentStateClient
+	// Alert is the client for interacting with the Alert builders.
+	Alert *AlertClient
 	// AuditCheckpoint is the client for interacting with the AuditCheckpoint builders.
 	AuditCheckpoint *AuditCheckpointClient
 	// AuditEntry is the client for interacting with the AuditEntry builders.
@@ -56,6 +58,8 @@ type Tx struct {
 	Domain *DomainClient
 	// EnrollmentToken is the client for interacting with the EnrollmentToken builders.
 	EnrollmentToken *EnrollmentTokenClient
+	// Event is the client for interacting with the Event builders.
+	Event *EventClient
 	// Gateway is the client for interacting with the Gateway builders.
 	Gateway *GatewayClient
 	// GatewayGroup is the client for interacting with the GatewayGroup builders.
@@ -136,6 +140,10 @@ type Tx struct {
 	TrafficBaseline *TrafficBaselineClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
+	// Webhook is the client for interacting with the Webhook builders.
+	Webhook *WebhookClient
+	// WebhookDelivery is the client for interacting with the WebhookDelivery builders.
+	WebhookDelivery *WebhookDeliveryClient
 
 	// lazily loaded.
 	client     *Client
@@ -273,6 +281,7 @@ func (tx *Tx) init() {
 	tx.AccessPolicy = NewAccessPolicyClient(tx.config)
 	tx.AgentSession = NewAgentSessionClient(tx.config)
 	tx.AgentState = NewAgentStateClient(tx.config)
+	tx.Alert = NewAlertClient(tx.config)
 	tx.AuditCheckpoint = NewAuditCheckpointClient(tx.config)
 	tx.AuditEntry = NewAuditEntryClient(tx.config)
 	tx.AuditHead = NewAuditHeadClient(tx.config)
@@ -288,6 +297,7 @@ func (tx *Tx) init() {
 	tx.DataSession = NewDataSessionClient(tx.config)
 	tx.Domain = NewDomainClient(tx.config)
 	tx.EnrollmentToken = NewEnrollmentTokenClient(tx.config)
+	tx.Event = NewEventClient(tx.config)
 	tx.Gateway = NewGatewayClient(tx.config)
 	tx.GatewayGroup = NewGatewayGroupClient(tx.config)
 	tx.GatewayPage = NewGatewayPageClient(tx.config)
@@ -328,6 +338,8 @@ func (tx *Tx) init() {
 	tx.TOTPCredential = NewTOTPCredentialClient(tx.config)
 	tx.TrafficBaseline = NewTrafficBaselineClient(tx.config)
 	tx.User = NewUserClient(tx.config)
+	tx.Webhook = NewWebhookClient(tx.config)
+	tx.WebhookDelivery = NewWebhookDeliveryClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

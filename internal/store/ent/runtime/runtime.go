@@ -10,6 +10,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/alert"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apitoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
@@ -27,6 +28,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/event"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
@@ -68,6 +70,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhook"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookdelivery"
 
 	"entgo.io/ent"
 	"entgo.io/ent/privacy"
@@ -462,6 +466,58 @@ func init() {
 	agentstateDescID := agentstateFields[0].Descriptor()
 	// agentstate.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	agentstate.IDValidator = agentstateDescID.Validators[0].(func(string) error)
+	alert.Policy = privacy.NewPolicies(schema.Alert{})
+	alert.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := alert.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	alertHooks := schema.Alert{}.Hooks()
+
+	alert.Hooks[1] = alertHooks[0]
+	alertInters := schema.Alert{}.Interceptors()
+	alert.Interceptors[0] = alertInters[0]
+	alertFields := schema.Alert{}.Fields()
+	_ = alertFields
+	// alertDescKind is the schema descriptor for kind field.
+	alertDescKind := alertFields[2].Descriptor()
+	// alert.KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	alert.KindValidator = alertDescKind.Validators[0].(func(string) error)
+	// alertDescSubjectType is the schema descriptor for subject_type field.
+	alertDescSubjectType := alertFields[3].Descriptor()
+	// alert.SubjectTypeValidator is a validator for the "subject_type" field. It is called by the builders before save.
+	alert.SubjectTypeValidator = alertDescSubjectType.Validators[0].(func(string) error)
+	// alertDescSubjectID is the schema descriptor for subject_id field.
+	alertDescSubjectID := alertFields[4].Descriptor()
+	// alert.SubjectIDValidator is a validator for the "subject_id" field. It is called by the builders before save.
+	alert.SubjectIDValidator = alertDescSubjectID.Validators[0].(func(string) error)
+	// alertDescSubjectName is the schema descriptor for subject_name field.
+	alertDescSubjectName := alertFields[5].Descriptor()
+	// alert.DefaultSubjectName holds the default value on creation for the subject_name field.
+	alert.DefaultSubjectName = alertDescSubjectName.Default.(string)
+	// alertDescID is the schema descriptor for id field.
+	alertDescID := alertFields[0].Descriptor()
+	// alert.DefaultID holds the default value on creation for the id field.
+	alert.DefaultID = alertDescID.Default.(func() string)
+	// alert.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	alert.IDValidator = func() func(string) error {
+		validators := alertDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	auditcheckpoint.Policy = privacy.NewPolicies(schema.AuditCheckpoint{})
 	auditcheckpoint.Hooks[0] = func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
@@ -1311,6 +1367,66 @@ func init() {
 	// enrollmenttoken.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	enrollmenttoken.IDValidator = func() func(string) error {
 		validators := enrollmenttokenDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	event.Policy = privacy.NewPolicies(schema.Event{})
+	event.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := event.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	eventHooks := schema.Event{}.Hooks()
+
+	event.Hooks[1] = eventHooks[0]
+	eventInters := schema.Event{}.Interceptors()
+	event.Interceptors[0] = eventInters[0]
+	eventFields := schema.Event{}.Fields()
+	_ = eventFields
+	// eventDescType is the schema descriptor for type field.
+	eventDescType := eventFields[2].Descriptor()
+	// event.TypeValidator is a validator for the "type" field. It is called by the builders before save.
+	event.TypeValidator = eventDescType.Validators[0].(func(string) error)
+	// eventDescActorID is the schema descriptor for actor_id field.
+	eventDescActorID := eventFields[5].Descriptor()
+	// event.DefaultActorID holds the default value on creation for the actor_id field.
+	event.DefaultActorID = eventDescActorID.Default.(string)
+	// eventDescSubjectType is the schema descriptor for subject_type field.
+	eventDescSubjectType := eventFields[6].Descriptor()
+	// event.DefaultSubjectType holds the default value on creation for the subject_type field.
+	event.DefaultSubjectType = eventDescSubjectType.Default.(string)
+	// eventDescSubjectID is the schema descriptor for subject_id field.
+	eventDescSubjectID := eventFields[7].Descriptor()
+	// event.DefaultSubjectID holds the default value on creation for the subject_id field.
+	event.DefaultSubjectID = eventDescSubjectID.Default.(string)
+	// eventDescSubjectName is the schema descriptor for subject_name field.
+	eventDescSubjectName := eventFields[8].Descriptor()
+	// event.DefaultSubjectName holds the default value on creation for the subject_name field.
+	event.DefaultSubjectName = eventDescSubjectName.Default.(string)
+	// eventDescSummary is the schema descriptor for summary field.
+	eventDescSummary := eventFields[9].Descriptor()
+	// event.DefaultSummary holds the default value on creation for the summary field.
+	event.DefaultSummary = eventDescSummary.Default.(string)
+	// eventDescID is the schema descriptor for id field.
+	eventDescID := eventFields[0].Descriptor()
+	// event.DefaultID holds the default value on creation for the id field.
+	event.DefaultID = eventDescID.Default.(func() string)
+	// event.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	event.IDValidator = func() func(string) error {
+		validators := eventDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),
@@ -3611,6 +3727,128 @@ func init() {
 	// user.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	user.IDValidator = func() func(string) error {
 		validators := userDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	webhook.Policy = privacy.NewPolicies(schema.Webhook{})
+	webhook.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := webhook.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	webhookHooks := schema.Webhook{}.Hooks()
+
+	webhook.Hooks[1] = webhookHooks[0]
+	webhookInters := schema.Webhook{}.Interceptors()
+	webhook.Interceptors[0] = webhookInters[0]
+	webhookFields := schema.Webhook{}.Fields()
+	_ = webhookFields
+	// webhookDescURL is the schema descriptor for url field.
+	webhookDescURL := webhookFields[2].Descriptor()
+	// webhook.URLValidator is a validator for the "url" field. It is called by the builders before save.
+	webhook.URLValidator = webhookDescURL.Validators[0].(func(string) error)
+	// webhookDescSecretEnc is the schema descriptor for secret_enc field.
+	webhookDescSecretEnc := webhookFields[3].Descriptor()
+	// webhook.SecretEncValidator is a validator for the "secret_enc" field. It is called by the builders before save.
+	webhook.SecretEncValidator = webhookDescSecretEnc.Validators[0].(func([]byte) error)
+	// webhookDescEnabled is the schema descriptor for enabled field.
+	webhookDescEnabled := webhookFields[7].Descriptor()
+	// webhook.DefaultEnabled holds the default value on creation for the enabled field.
+	webhook.DefaultEnabled = webhookDescEnabled.Default.(bool)
+	// webhookDescEnabledAt is the schema descriptor for enabled_at field.
+	webhookDescEnabledAt := webhookFields[9].Descriptor()
+	// webhook.DefaultEnabledAt holds the default value on creation for the enabled_at field.
+	webhook.DefaultEnabledAt = webhookDescEnabledAt.Default.(func() time.Time)
+	// webhookDescCreatedAt is the schema descriptor for created_at field.
+	webhookDescCreatedAt := webhookFields[12].Descriptor()
+	// webhook.DefaultCreatedAt holds the default value on creation for the created_at field.
+	webhook.DefaultCreatedAt = webhookDescCreatedAt.Default.(func() time.Time)
+	// webhookDescVersion is the schema descriptor for version field.
+	webhookDescVersion := webhookFields[13].Descriptor()
+	// webhook.DefaultVersion holds the default value on creation for the version field.
+	webhook.DefaultVersion = webhookDescVersion.Default.(int64)
+	// webhook.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	webhook.VersionValidator = webhookDescVersion.Validators[0].(func(int64) error)
+	// webhookDescID is the schema descriptor for id field.
+	webhookDescID := webhookFields[0].Descriptor()
+	// webhook.DefaultID holds the default value on creation for the id field.
+	webhook.DefaultID = webhookDescID.Default.(func() string)
+	// webhook.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	webhook.IDValidator = func() func(string) error {
+		validators := webhookDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	webhookdelivery.Policy = privacy.NewPolicies(schema.WebhookDelivery{})
+	webhookdelivery.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := webhookdelivery.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	webhookdeliveryHooks := schema.WebhookDelivery{}.Hooks()
+
+	webhookdelivery.Hooks[1] = webhookdeliveryHooks[0]
+	webhookdeliveryInters := schema.WebhookDelivery{}.Interceptors()
+	webhookdelivery.Interceptors[0] = webhookdeliveryInters[0]
+	webhookdeliveryFields := schema.WebhookDelivery{}.Fields()
+	_ = webhookdeliveryFields
+	// webhookdeliveryDescWebhookID is the schema descriptor for webhook_id field.
+	webhookdeliveryDescWebhookID := webhookdeliveryFields[1].Descriptor()
+	// webhookdelivery.WebhookIDValidator is a validator for the "webhook_id" field. It is called by the builders before save.
+	webhookdelivery.WebhookIDValidator = webhookdeliveryDescWebhookID.Validators[0].(func(string) error)
+	// webhookdeliveryDescEventID is the schema descriptor for event_id field.
+	webhookdeliveryDescEventID := webhookdeliveryFields[3].Descriptor()
+	// webhookdelivery.EventIDValidator is a validator for the "event_id" field. It is called by the builders before save.
+	webhookdelivery.EventIDValidator = webhookdeliveryDescEventID.Validators[0].(func(string) error)
+	// webhookdeliveryDescEventType is the schema descriptor for event_type field.
+	webhookdeliveryDescEventType := webhookdeliveryFields[4].Descriptor()
+	// webhookdelivery.DefaultEventType holds the default value on creation for the event_type field.
+	webhookdelivery.DefaultEventType = webhookdeliveryDescEventType.Default.(string)
+	// webhookdeliveryDescAttempt is the schema descriptor for attempt field.
+	webhookdeliveryDescAttempt := webhookdeliveryFields[5].Descriptor()
+	// webhookdelivery.AttemptValidator is a validator for the "attempt" field. It is called by the builders before save.
+	webhookdelivery.AttemptValidator = webhookdeliveryDescAttempt.Validators[0].(func(int) error)
+	// webhookdeliveryDescStatusCode is the schema descriptor for status_code field.
+	webhookdeliveryDescStatusCode := webhookdeliveryFields[6].Descriptor()
+	// webhookdelivery.DefaultStatusCode holds the default value on creation for the status_code field.
+	webhookdelivery.DefaultStatusCode = webhookdeliveryDescStatusCode.Default.(int)
+	// webhookdeliveryDescError is the schema descriptor for error field.
+	webhookdeliveryDescError := webhookdeliveryFields[7].Descriptor()
+	// webhookdelivery.DefaultError holds the default value on creation for the error field.
+	webhookdelivery.DefaultError = webhookdeliveryDescError.Default.(string)
+	// webhookdeliveryDescID is the schema descriptor for id field.
+	webhookdeliveryDescID := webhookdeliveryFields[0].Descriptor()
+	// webhookdelivery.DefaultID holds the default value on creation for the id field.
+	webhookdelivery.DefaultID = webhookdeliveryDescID.Default.(func() string)
+	// webhookdelivery.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	webhookdelivery.IDValidator = func() func(string) error {
+		validators := webhookdeliveryDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),
