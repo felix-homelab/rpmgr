@@ -11,20 +11,28 @@ export const labelClass = (required?: boolean) => cn("text-sm font-medium", requ
 export interface FieldProps extends ComponentProps<"input"> {
   label: string;
   hint?: string;
+  // error is what is wrong with the value, from the form's check or the API's answer.
+  error?: string;
 }
 
-// Field is a labelled input with an optional hint that screen readers announce with it.
-export function Field({ label, hint, ...props }: FieldProps) {
+// Field is a labelled input with an optional hint, and the error of its value, that screen readers
+// announce with it.
+export function Field({ label, hint, error, ...props }: FieldProps) {
   const id = useId();
   return (
     <div className="grid gap-1.5">
       <label htmlFor={id} className={labelClass(props.required)}>
         {label}
       </label>
-      <Input id={id} aria-describedby={hint ? `${id}-hint` : undefined} {...props} />
+      <Input id={id} aria-invalid={error ? true : undefined} aria-describedby={[hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(" ") || undefined} {...props} />
       {hint && (
         <p id={`${id}-hint`} className="text-xs text-muted-foreground">
           {hint}
+        </p>
+      )}
+      {error && (
+        <p id={`${id}-error`} className="text-xs text-destructive">
+          {error}
         </p>
       )}
     </div>

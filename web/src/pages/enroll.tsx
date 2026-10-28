@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Select, Textarea } from "@/components/ui/input";
 import { AgentRole, EnrollmentService } from "@/gen/rpmgr/v1/enrollment_pb";
 import { StatusService } from "@/gen/rpmgr/v1/status_pb";
+import { apiError } from "@/lib/api-error";
 import { Reason, reasonOf } from "@/lib/errors";
 import { useGroupNames } from "@/routes-data";
 import { useStepUp } from "@/step-up";
@@ -71,7 +72,7 @@ export function EnrollDialog({ orgId, known, onClose }: { orgId: string; known: 
     } catch (err) {
       const e = ConnectError.from(err);
       if (reasonOf(err) !== Reason.stepUpRequired) {
-        setError(e.code === Code.InvalidArgument || e.code === Code.PermissionDenied ? e.rawMessage : t("link.failed", { message: e.rawMessage }));
+        setError(e.code === Code.InvalidArgument ? apiError(t, err) : e.code === Code.PermissionDenied ? e.rawMessage : t("link.failed", { message: e.rawMessage }));
       }
     }
   }

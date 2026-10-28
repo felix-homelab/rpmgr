@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { create } from "@bufbuild/protobuf";
+import { FieldDescriptorProto_Type } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { ViolationsSchema } from "@/gen/buf/validate/validate_pb";
 import { ConnectorService } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import {
@@ -30,7 +33,7 @@ const admins = { id: "pol_2", name: "admins", etag: "1", rules: [{ rule: { case:
 
 const cdn = { id: "pol_3", name: "cdn", etag: "2", routeIds: [], rules: [{ rule: { case: "requireHeader" as const, value: { name: "X-Origin-Token" } } }] };
 
-function page(policies: object[] = [office, admins]) {
+function page(policies: object[] = [office, admins], createFails?: ConnectError) {
   const calls = { create: [] as CreateAccessPolicyRequest[], update: [] as UpdateAccessPolicyRequest[], remove: [] as DeleteAccessPolicyRequest[] };
   show("/policies", auth({ getSession: () => ({ userId: "usr_ada", memberships: [{ orgId: "org_1", role: "owner" }] }) }), (router) => {
     router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
@@ -40,7 +43,13 @@ function page(policies: object[] = [office, admins]) {
     router.service(RouteService, { listRoutes: () => ({ routes: [{ id: "rte_1", name: "wiki" }] }) });
     router.service(PolicyService, {
       listAccessPolicies: () => ({ accessPolicies: policies }),
-      createAccessPolicy: (req) => (calls.create.push(req), { accessPolicy: req.accessPolicy, ...applied }),
+      createAccessPolicy: (req) => {
+        calls.create.push(req);
+        if (createFails) {
+          throw createFails;
+        }
+        return { accessPolicy: req.accessPolicy, ...applied };
+      },
       updateAccessPolicy: (req) => (calls.update.push(req), { accessPolicy: req.accessPolicy, ...applied }),
       deleteAccessPolicy: (req) => {
         calls.remove.push(req);
@@ -223,6 +232,49 @@ describe("Policies", () => {
     await waitFor(() => expect(calls.update).toHaveLength(1));
     const r = calls.update[0]!.accessPolicy?.rules[0]?.rule;
     expect(r?.case === "requireHeader" && [r.value.name, r.value.values]).toEqual(["x-origin-token", []]);
+  });
+
+  it.each([
+    ["a capital letter", "Lab"],
+    ["an underscore", "lab_1"],
+    ["a leading hyphen", "-lab"],
+    ["64 characters", "a".repeat(64)],
+  ])("shows the naming rule on the name, and sends nothing, for %s", async (_, name) => {
+    const calls = page();
+    fireEvent.click(await screen.findByRole("button", { name: "New access policy" }));
+    const form = within(await screen.findByRole("form", { name: "New access policy" }));
+    fireEvent.change(form.getByLabelText("Name"), { target: { value: name } });
+    fireEvent.click(form.getByRole("button", { name: "Create the policy" }));
+    const rule = "use 1 to 63 lowercase letters, digits and hyphens, starting and ending with a letter or digit";
+    expect(await form.findByText(rule)).toBeTruthy();
+    expect(form.getByLabelText("Name").getAttribute("aria-invalid")).toBe("true");
+    expect(form.queryByRole("alert")).toBeNull();
+    expect(calls.create).toEqual([]);
+  });
+
+  it("shows a violation the API reports on the field it is about", async () => {
+    const field = (n: string, i: number, type: FieldDescriptorProto_Type) => ({ fieldName: n, fieldNumber: i, fieldType: type });
+    const violations = create(ViolationsSchema, { violations: [{
+      field: { elements: [field("access_policy", 2, FieldDescriptorProto_Type.MESSAGE), field("name", 1, FieldDescriptorProto_Type.STRING)] },
+      ruleId: "string.pattern", message: "value does not match regex pattern `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`",
+    }] });
+    const calls = page([office], new ConnectError("api: the request is not valid", Code.InvalidArgument, undefined, [{ desc: ViolationsSchema, value: violations }]));
+    fireEvent.click(await screen.findByRole("button", { name: "New access policy" }));
+    const form = within(await screen.findByRole("form", { name: "New access policy" }));
+    fireEvent.change(form.getByLabelText("Name"), { target: { value: "lab" } });
+    fireEvent.click(form.getByRole("button", { name: "Create the policy" }));
+    expect(await form.findByText(/^use 1 to 63 lowercase letters/)).toBeTruthy();
+    expect(calls.create).toHaveLength(1);
+    expect(form.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the generic message for an invalid request without violations", async () => {
+    page([office], new ConnectError("api: the request is not valid", Code.InvalidArgument));
+    fireEvent.click(await screen.findByRole("button", { name: "New access policy" }));
+    const form = within(await screen.findByRole("form", { name: "New access policy" }));
+    fireEvent.change(form.getByLabelText("Name"), { target: { value: "lab" } });
+    fireEvent.click(form.getByRole("button", { name: "Create the policy" }));
+    expect((await form.findByRole("alert")).textContent).toBe("api: the request is not valid");
   });
 
   it("shows why a policy in use is not removed", async () => {

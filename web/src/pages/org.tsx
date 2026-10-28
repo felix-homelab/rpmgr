@@ -5,6 +5,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Field } from "@/components/field";
 import { Command } from "@/components/one-time-token";
@@ -16,7 +17,8 @@ import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
-import { OrgService, type Member, type SuspendedAPIToken } from "@/gen/rpmgr/v1/org_pb";
+import { OrgService, UpdateOrgRequestSchema, type Member, type SuspendedAPIToken } from "@/gen/rpmgr/v1/org_pb";
+import { apiError, checkRequest, serverProblems, type Problems } from "@/lib/api-error";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
 import { useOrg } from "@/session";
@@ -25,12 +27,15 @@ import { useStepUp } from "@/step-up";
 const roles = ["owner", "admin", "operator", "viewer"] as const;
 
 // failure is what a member change's error says to the user; nothing for a cancelled step-up.
-function failure(err: unknown, t: (k: string, o?: Record<string, string>) => string): string {
+function failure(err: unknown, t: TFunction, shown: string[] = []): string {
   if (reasonOf(err) === Reason.stepUpRequired) {
     return "";
   }
   const e = ConnectError.from(err);
-  return [Code.InvalidArgument, Code.FailedPrecondition, Code.PermissionDenied].includes(e.code) ? e.rawMessage : t("link.failed", { message: e.rawMessage });
+  if (e.code === Code.InvalidArgument) {
+    return apiError(t, err, shown);
+  }
+  return [Code.FailedPrecondition, Code.PermissionDenied].includes(e.code) ? e.rawMessage : t("link.failed", { message: e.rawMessage });
 }
 
 // OrgPage is the organisation (docs/09-web-ui.md, "Information architecture"): its name, its members
@@ -148,20 +153,29 @@ function OrgName({ orgId, name: was }: { orgId: string; name: string }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(was);
   const [message, setMessage] = useState<{ tone: "info" | "error"; text: string }>();
+  const [problems, setProblems] = useState<Problems>({});
   async function save(e: FormEvent) {
     e.preventDefault();
+    setProblems({});
+    const bad = checkRequest(t, UpdateOrgRequestSchema, { orgId, name: name.trim() }, ["name"]);
+    if (bad.name) {
+      setProblems(bad);
+      return;
+    }
     try {
       await update.mutateAsync({ orgId, name: name.trim() });
       setMessage({ tone: "info", text: t("account.saved") });
       await queryClient.invalidateQueries();
     } catch (err) {
-      setMessage({ tone: "error", text: failure(err, t) });
+      setProblems(serverProblems(t, err));
+      const text = failure(err, t, ["name"]);
+      setMessage(text ? { tone: "error", text } : undefined);
     }
   }
   return (
     <Card title={t("org.nameTitle")}>
       <form onSubmit={save} aria-label={t("org.nameTitle")} className="flex flex-wrap items-end gap-2" noValidate>
-        <div className="w-72"><Field label={t("org.name")} required value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="w-72"><Field label={t("org.name")} required error={problems.name} value={name} onChange={(e) => setName(e.target.value)} /></div>
         <Button type="submit" variant="outline" disabled={update.isPending || name.trim() === was}>{t("routeForm.save")}</Button>
         {message && <div className="w-full"><Alert tone={message.tone}>{message.text}</Alert></div>}
       </form>

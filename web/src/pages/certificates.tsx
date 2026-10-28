@@ -2,7 +2,7 @@
 
 import { clone, create } from "@bufbuild/protobuf";
 import { timestampDate } from "@bufbuild/protobuf/wkt";
-import { ConnectError, createClient } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import { useMutation, useTransport } from "@connectrpc/connect-query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileBadge, FileKey, Plus, Upload } from "lucide-react";
@@ -21,6 +21,7 @@ import { Card } from "@/components/ui/card";
 import {
   CABundleSchema, CertificateService, CertificateSource, CertificateStatus, type CABundle, type Certificate,
 } from "@/gen/rpmgr/v1/certificate_pb";
+import { apiError, serverProblems, type Problems } from "@/lib/api-error";
 import { when } from "@/lib/format";
 import { largestPage, listAll } from "@/lib/list-all";
 import { useRoutes } from "@/routes-data";
@@ -100,7 +101,7 @@ function UploadForm({ orgId, onDone }: { orgId: string; onDone: () => void }) {
       await queryClient.invalidateQueries();
       onDone();
     } catch (err) {
-      setError(ConnectError.from(err).rawMessage);
+      setError(apiError(t, err));
     }
   }
   return (
@@ -137,7 +138,7 @@ function CertificateRow({ cert: c, routeName }: { cert: Certificate; routeName: 
       }
       await queryClient.invalidateQueries();
     } catch (err) {
-      setMessage({ tone: "error", text: ConnectError.from(err).rawMessage });
+      setMessage({ tone: "error", text: apiError(t, err) });
     }
   }
   return (
@@ -213,9 +214,11 @@ function BundleForm({ orgId, bundle, onDone }: { orgId: string; bundle?: CABundl
   const [name, setName] = useState(bundle?.name ?? "");
   const [pem, setPem] = useState(bundle?.pem ?? "");
   const [error, setError] = useState("");
+  const [problems, setProblems] = useState<Problems>({});
   async function save(e: FormEvent) {
     e.preventDefault();
     setError("");
+    setProblems({});
     try {
       if (bundle) {
         const next = clone(CABundleSchema, bundle);
@@ -227,12 +230,13 @@ function BundleForm({ orgId, bundle, onDone }: { orgId: string; bundle?: CABundl
       await queryClient.invalidateQueries();
       onDone();
     } catch (err) {
-      setError(ConnectError.from(err).rawMessage);
+      setProblems(serverProblems(t, err));
+      setError(apiError(t, err, ["name"]));
     }
   }
   return (
     <form onSubmit={save} aria-label={t(bundle ? "bundles.editTitle" : "bundles.addTitle")} className={panel} noValidate>
-      <Field label={t("routeForm.fields.name")} className="max-w-md" required value={name} onChange={(e) => setName(e.target.value)} />
+      <Field label={t("routeForm.fields.name")} className="max-w-md" required error={problems.name} value={name} onChange={(e) => setName(e.target.value)} />
       <PemField label={t("bundles.pem")} required value={pem} onChange={setPem} />
       {error && <Alert>{error}</Alert>}
       <div className="flex gap-2">
@@ -266,7 +270,7 @@ function BundleRow({ bundle: b, onEdit }: { bundle: CABundle; onEdit: () => void
             <>
               <span>{t("bundles.ask", { name: b.name })}</span>
               <Button size="sm" variant="destructive"
-                onClick={() => void remove.mutateAsync({ caBundleId: b.id, etag: b.etag }).then(() => queryClient.invalidateQueries(), (err: unknown) => setError(ConnectError.from(err).rawMessage))}>
+                onClick={() => void remove.mutateAsync({ caBundleId: b.id, etag: b.etag }).then(() => queryClient.invalidateQueries(), (err: unknown) => setError(apiError(t, err)))}>
                 {t("targetForm.remove")}
               </Button>
               <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
