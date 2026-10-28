@@ -30,10 +30,6 @@ type Config struct {
 	// Stdout and Stderr default to this process's.
 	Stdout, Stderr io.Writer
 
-	// Installed is the path install.json records, which a replaced binary is started from; empty
-	// when the caller cannot read it (the service user cannot), then the running binary's own path.
-	Installed string
-
 	exe    func() (string, error) // tests: os.Executable
 	bin    string                 // tests: their copy of the binary; else the one this process runs
 	rule   *binaryRule            // tests: their own files instead of root's

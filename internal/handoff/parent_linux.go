@@ -108,9 +108,8 @@ const deletedSuffix = " (deleted)"
 
 // binary returns the binary to start, as given and as checked. It is this process's own, at its
 // path; after an update or install replaced the file, the running image reads "<path> (deleted)",
-// and the path to start is the installed one: cfg.Installed when set, else this path without the
-// suffix. Either one must exist and pass the rule like any other binary, so that a file somebody
-// else put there is refused.
+// and the path to start is the installed one, this path without the suffix. It must exist and pass the rule like any other binary, so that a file somebody else put
+// there is refused. (install.json, 0700 for the updater, is not readable by the service user.)
 func (cfg Config) binary(rule binaryRule) (bin, path string, err error) {
 	bin = cfg.bin
 	if bin == "" {
@@ -122,19 +121,11 @@ func (cfg Config) binary(rule binaryRule) (bin, path string, err error) {
 			return "", "", fmt.Errorf("%w: %w", ErrRefused, err)
 		}
 		if stripped, ok := strings.CutSuffix(bin, deletedSuffix); ok {
-			var errs []error
-			for _, c := range []string{cfg.Installed, stripped} {
-				if c == "" {
-					continue
-				}
-				p, cerr := rule.check(c)
-				if cerr == nil {
-					return c, p, nil
-				}
-				errs = append(errs, cerr)
+			p, cerr := rule.check(stripped)
+			if cerr != nil {
+				return "", "", fmt.Errorf("%w: the binary was replaced and the installed one fails the check: %w", ErrRefused, cerr)
 			}
-			return "", "", fmt.Errorf("%w: the binary was replaced and the installed one fails the check: %w",
-				ErrRefused, errors.Join(errs...))
+			return stripped, p, nil
 		}
 	}
 	path, err = rule.check(bin)

@@ -20,6 +20,9 @@ import (
 func installed(t *testing.T) (dir, bin string, rule *binaryRule) {
 	t.Helper()
 	dir, bin = install(t)
+	if err := os.Chmod(dir, 0o755); err != nil { //nolint:gosec // G302: a directory, as root's
+		t.Fatal(err)
+	}
 	return dir, bin, &binaryRule{uid: uint32(os.Getuid()), stop: dir} //nolint:gosec // G115: a uid
 }
 
@@ -297,61 +300,47 @@ func replaced(t *testing.T, bin string) string {
 }
 
 func TestStart_ReplacedBinaryHandsOffFromTheInstalledPath(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		installed bool // cfg.Installed names the path; else the suffix is stripped
-	}{{"the path without the suffix", false}, {"the installed path", true}} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, bin, rule := installed(t)
-			exe := replaced(t, bin)
-			l, f := listener(t)
-			cfg, _ := config(t, "", rule, "ready", addrsEnv+"="+l.Addr().String())
-			cfg.exe = func() (string, error) { return exe, nil }
-			if tc.installed {
-				cfg.Installed = bin
-				cfg.exe = func() (string, error) { return "/gone/rpmgr" + deletedSuffix, nil }
-			}
-			c, err := Start(context.Background(), cfg, []Socket{{Name: "https", File: f}})
-			if err != nil {
-				t.Fatalf("Start: %v", err)
-			}
-			if got := greeting(t, l.Addr()); got != "gen 2" {
-				t.Errorf("greeting %q", got)
-			}
-			<-c.Exited()
-		})
+	_, bin, rule := installed(t)
+	exe := replaced(t, bin)
+	l, f := listener(t)
+	cfg, _ := config(t, "", rule, "ready", addrsEnv+"="+l.Addr().String())
+	cfg.exe = func() (string, error) { return exe, nil }
+	c, err := Start(context.Background(), cfg, []Socket{{Name: "https", File: f}})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
 	}
+	if got := greeting(t, l.Addr()); got != "gen 2" {
+		t.Errorf("greeting %q", got)
+	}
+	<-c.Exited()
 }
 
 func TestStart_ReplacedBinaryNotInstalledIsRefused(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		setup func(t *testing.T, dir, bin string, rule *binaryRule) (exe, installed string)
+		setup func(t *testing.T, dir, bin string, rule *binaryRule) string // the exe path
 	}{
-		{"nothing at the path", func(t *testing.T, _, bin string, _ *binaryRule) (string, string) {
+		{"nothing at the path", func(t *testing.T, _, bin string, _ *binaryRule) string {
 			if err := os.Remove(bin); err != nil {
 				t.Fatal(err)
 			}
-			return bin + deletedSuffix, ""
+			return bin + deletedSuffix
 		}},
-		{"an installed path that is missing", func(_ *testing.T, _, bin string, _ *binaryRule) (string, string) {
-			return "/gone/rpmgr" + deletedSuffix, bin + ".missing"
-		}},
-		{"a writable installed binary", func(t *testing.T, _, bin string, _ *binaryRule) (string, string) {
+		{"a writable installed binary", func(t *testing.T, _, bin string, _ *binaryRule) string {
 			chmod(t, bin, 0o777)
-			return "/gone/rpmgr" + deletedSuffix, bin
+			return bin + deletedSuffix
 		}},
-		{"an installed binary of another owner", func(_ *testing.T, _, bin string, rule *binaryRule) (string, string) {
+		{"an installed binary of another owner", func(_ *testing.T, _, bin string, rule *binaryRule) string {
 			rule.uid++
-			return bin + deletedSuffix, bin
+			return bin + deletedSuffix
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, bin, rule := installed(t)
-			exe, inst := tc.setup(t, dir, bin, rule)
+			exe := tc.setup(t, dir, bin, rule)
 			l, f := listener(t)
 			cfg, res := config(t, "", rule, "ready", addrsEnv+"="+l.Addr().String())
-			cfg.exe, cfg.Installed = func() (string, error) { return exe, nil }, inst
+			cfg.exe = func() (string, error) { return exe, nil }
 			c, err := Start(context.Background(), cfg, []Socket{{Name: "https", File: f}})
 			if c != nil || !errors.Is(err, ErrRefused) {
 				t.Fatalf("Start = %v, %v; want ErrRefused", c, err)

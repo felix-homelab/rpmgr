@@ -1379,8 +1379,8 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
   binary of its own there. It passes the descriptors by inheritance to that child alone; no socket
   or file is opened for another process to collect them. Anything else refuses the hand-off. After
   an update or an install replaced the file, Linux names the running image `<path> (deleted)`: the
-  old process then starts the path `install.json` records, or the same path without the suffix,
-  and only if that passes the same check.
+  old process then starts the same path without the suffix, and only if that passes the same
+  check.
 - **Which descriptors.** The new process accepts only the descriptors the manifest on its status
   pipe names, checks each one's socket type, listening state and local address against its own boot
   file, and closes, and logs, any other it inherited. It never serves a socket its configuration
