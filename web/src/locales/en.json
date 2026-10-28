@@ -305,6 +305,8 @@
       "every": "every {{interval}} s",
       "healthy": "healthy",
       "unhealthy": "unhealthy",
+      "undecided": "unknown",
+      "undecidedNote": "Its first health check has not finished. It gets traffic once it passed, or while no other target of its priority is healthy.",
       "notChecked": "not checked",
       "notCheckedNote": "Its connector's rpmgr release runs no health checks, so the target counts as healthy. Upgrade the connector.",
       "lastFailure": "Last check: {{detail}}",
@@ -353,6 +355,7 @@
     "CAPABILITY_MISSING": "its rpmgr release cannot carry out a feature the route uses; upgrade it",
     "CERTIFICATE_PENDING": "waiting for the certificate of the CONNECT listener's hostname",
     "TARGETS_UNHEALTHY": "its health checks fail",
+    "TARGET_UNKNOWN": "its health check has not decided yet",
     "ownPort": "{{target}} is one of rpmgr's own ports, which the all-in-one's connector never dials, whatever its policy allows. Point the target at the service itself."
   },
   "apply": {

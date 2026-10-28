@@ -1029,14 +1029,27 @@ the capability `route.limits`:
   capped part of the body is read. A target that expects a PROXY header gets a `LOCAL` one when the
   check dials its own port. A `udp` route allows only a `tcp` check on a port it names; a
   `tls_passthrough` route, whose targets expect TLS, and a route with an `h2c` target, which speaks
-  no HTTP/1.1, only a `tcp` check. A target counts as healthy until checked; it becomes unhealthy
-  after the unhealthy threshold of failed checks in a row and healthy again after the healthy
-  threshold of passed ones, so a target whose results alternate keeps its state. A changed route or
-  check starts its targets healthy again. The changes of the targets' health in one round of checks
-  also go to the controller in one `Status`, each target's ID as the resource, for the route's
-  status ([06](06-data-model.md#desired-vs-observed-state)).
+  no HTTP/1.1, only a `tcp` check. A target is **unknown** until a check decides: its first pass
+  makes it healthy, and the unhealthy threshold of failed checks in a row makes it unhealthy. A
+  healthy target becomes unhealthy after the unhealthy threshold of failed checks in a row and an
+  unhealthy one healthy again after the healthy threshold of passed ones, so a target whose results
+  alternate keeps its state. The changes of the targets' health in one round of checks also go to
+  the controller in one `Status`, each target's ID as the resource, for the route's status
+  ([06](06-data-model.md#desired-vs-observed-state)); a target that is unknown is reported with
+  `TARGET_UNKNOWN`, so that its route's status shows it ([D156](14-open-decisions.md#engineering)).
+- **A change of the route keeps the state** ([D156](14-open-decisions.md#engineering)). A snapshot
+  that changes a route does not reset what the checks found:
+  - A target with the same ID and address keeps its state and its counts when the check is the
+    same, whatever else changed, such as its weight, its priority or other fields of the route.
+  - A changed check keeps each target's state, but counts anew; its first round runs at once, not
+    after one interval, and the state changes only as the new check's results make it.
+  - A target that is new, or whose address changed, starts unknown, and so does a target removed
+    and added again. Its first check runs at once.
+  - A route that is removed, or has no check any more, forgets its states.
 - **What gateways see.** The connector skips unhealthy targets when it picks one for a stream or a
-  UDP flow, unless every one is unhealthy, and reports, per route, the priorities that still have a
+  UDP flow, unless every one is unhealthy, and an unknown target while another target of its
+  priority is healthy; when none of a priority is healthy, an unknown one gets its traffic like any
+  other, so that a route whose targets are all unknown still serves. It reports, per route, the priorities that still have a
   healthy target (`RouteHealth.ready_priorities`); a route whose every allowed target is unhealthy
   is not ready, `not_ready(targets_unhealthy)`. A `SessionHello` names only the routes ready at
   every priority; the others follow as `RouteHealth` with their priorities. A gateway passes over a
