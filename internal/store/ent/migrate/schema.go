@@ -177,6 +177,37 @@ var (
 			},
 		},
 	}
+	// AlertsColumns holds the columns for the "alerts" table.
+	AlertsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "subject_type", Type: field.TypeString},
+		{Name: "subject_id", Type: field.TypeString},
+		{Name: "subject_name", Type: field.TypeString, Default: ""},
+		{Name: "state", Type: field.TypeEnum, Enums: []string{"pending", "firing", "resolved"}},
+		{Name: "since", Type: field.TypeTime},
+		{Name: "fired_at", Type: field.TypeTime, Nullable: true},
+		{Name: "resolved_at", Type: field.TypeTime, Nullable: true},
+	}
+	// AlertsTable holds the schema information for the "alerts" table.
+	AlertsTable = &schema.Table{
+		Name:       "alerts",
+		Columns:    AlertsColumns,
+		PrimaryKey: []*schema.Column{AlertsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "alert_state",
+				Unique:  false,
+				Columns: []*schema.Column{AlertsColumns[6]},
+			},
+			{
+				Name:    "alert_org_id_state",
+				Unique:  false,
+				Columns: []*schema.Column{AlertsColumns[1], AlertsColumns[6]},
+			},
+		},
+	}
 	// AuditCheckpointsColumns holds the columns for the "audit_checkpoints" table.
 	AuditCheckpointsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -668,6 +699,38 @@ var (
 				Name:    "enrollmenttoken_org_id_id",
 				Unique:  true,
 				Columns: []*schema.Column{EnrollmentTokensColumns[1], EnrollmentTokensColumns[0]},
+			},
+		},
+	}
+	// EventsColumns holds the columns for the "events" table.
+	EventsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "type", Type: field.TypeString},
+		{Name: "ts", Type: field.TypeTime},
+		{Name: "actor_type", Type: field.TypeEnum, Enums: []string{"user", "agent", "system", "anonymous"}},
+		{Name: "actor_id", Type: field.TypeString, Default: ""},
+		{Name: "subject_type", Type: field.TypeString, Default: ""},
+		{Name: "subject_id", Type: field.TypeString, Default: ""},
+		{Name: "subject_name", Type: field.TypeString, Default: ""},
+		{Name: "summary", Type: field.TypeString, Default: ""},
+		{Name: "changed", Type: field.TypeJSON, Nullable: true},
+	}
+	// EventsTable holds the schema information for the "events" table.
+	EventsTable = &schema.Table{
+		Name:       "events",
+		Columns:    EventsColumns,
+		PrimaryKey: []*schema.Column{EventsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "event_org_id_id",
+				Unique:  false,
+				Columns: []*schema.Column{EventsColumns[1], EventsColumns[0]},
+			},
+			{
+				Name:    "event_ts",
+				Unique:  false,
+				Columns: []*schema.Column{EventsColumns[3]},
 			},
 		},
 	}
@@ -2044,6 +2107,7 @@ var (
 		AccessPoliciesTable,
 		AgentSessionsTable,
 		AgentStateTable,
+		AlertsTable,
 		AuditCheckpointsTable,
 		AuditLogTable,
 		AuditHeadsTable,
@@ -2059,6 +2123,7 @@ var (
 		DataSessionsTable,
 		DomainsTable,
 		EnrollmentTokensTable,
+		EventsTable,
 		GatewaysTable,
 		GatewayGroupsTable,
 		GatewayPagesTable,
@@ -2121,6 +2186,9 @@ func init() {
 	AgentStateTable.Annotation = &entsql.Annotation{
 		Table: "agent_state",
 	}
+	AlertsTable.Annotation = &entsql.Annotation{
+		Table: "alerts",
+	}
 	AuditCheckpointsTable.Annotation = &entsql.Annotation{
 		Table: "audit_checkpoints",
 	}
@@ -2165,6 +2233,9 @@ func init() {
 	EnrollmentTokensTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	EnrollmentTokensTable.ForeignKeys[1].RefTable = GatewaysTable
 	EnrollmentTokensTable.ForeignKeys[2].RefTable = ConnectorsTable
+	EventsTable.Annotation = &entsql.Annotation{
+		Table: "events",
+	}
 	GatewaysTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	GatewayPagesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	GatewayPagesTable.Annotation = &entsql.Annotation{

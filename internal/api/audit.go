@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"sync/atomic"
 
@@ -15,6 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/audit"
@@ -56,6 +58,12 @@ func (s *Server) newRecord(md protoreflect.MethodDescriptor, header http.Header,
 		if fds, err := fieldPath(md.Input(), a.GetResourceField()); err == nil {
 			e.TargetType = strings.TrimSuffix(strings.Split(a.GetResourceField(), ".")[0], "_id")
 			e.TargetID = fieldValue(msg.ProtoReflect(), fds)
+		}
+	}
+	// An update names its changed fields in its mask, which the change's event carries.
+	if fd := md.Input().Fields().ByName("update_mask"); fd != nil && fd.Message() != nil && fd.Message().FullName() == "google.protobuf.FieldMask" {
+		if m, ok := msg.ProtoReflect().Get(fd).Message().Interface().(*fieldmaskpb.FieldMask); ok {
+			e.Changed = slices.Clone(m.GetPaths())
 		}
 	}
 	if fd := md.Input().Fields().ByName("request_id"); fd != nil && fd.Kind() == protoreflect.StringKind && !fd.IsList() {
