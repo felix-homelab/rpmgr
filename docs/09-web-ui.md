@@ -172,7 +172,8 @@ flowchart LR
 - **Targets** shows how many are ready, and how many a connector's local policy blocks.
 - **Status** shows the observed state, with an icon and text, and how many agents rejected the
   route.
-- **"Create a route"** opens a form: the type, the gateway group, and the fields of that type.
+- **"Create a route"** opens a form: the type, the gateway group, and the fields of that type, in
+  the sections of the [route form](#route-form).
   - **Types:** HTTP, TCP, UDP, "TCP and UDP" ([D83](14-open-decisions.md#engineering)) and TLS
     passthrough. A "TCP and UDP" route has one public port and both idle timeouts, TCP and UDP.
   - **Defaults:** HTTP routes start with ACME certificates and a redirect on port 80. Routes on a
@@ -320,10 +321,11 @@ flowchart LR
   ([D84](14-open-decisions.md#engineering)). The value is shell-quoted, for example a socket path
   with a space.
 - **A target whose connector reaches the gateways only over TLS and HTTP/2** is marked as served
-  over the fallback for QUIC. A route pinned to HTTP/2 is not marked.
+  over the fallback for QUIC, but only while it serves and neither its route nor its connector
+  pins a transport: a pin to HTTP/2 is a choice, and a pin to QUIC never falls back, so such a
+  target does not serve and shows why ([03](03-connections.md#transport-selection)).
 - **Gateways that do not serve the route, and agents that rejected it,** are listed with their
   reasons.
-- UDP and "TCP and UDP" routes show the MTU hint of [03](03-connections.md#udp-routes).
 - **Traffic:** the bytes in and out of the last 24 hours per hour, or of the last 30 days per day,
   with their totals, connections and errors ([Charts](#charts)).
 - **Access policies:** the policies the route applies. They are attached from the org's policies
@@ -341,7 +343,8 @@ flowchart LR
   maintenance and takes it out, as the "Enabled" switch does, with the mask `http.maintenance`. The
   configured settings then say "in maintenance" and show the message the maintenance page shows. The
   form has both, the setting and the message.
-- **"Edit"** opens the route's form, with the fields the API lets a route of its type change.
+- **"Edit"** opens the route's form, with the fields the API lets a route of its type change, in
+  the sections of the [route form](#route-form).
   - **Full resource (U1):** the form starts from the route as read and sends it whole, with its
     fields set from the form, the update mask of those fields and the etag. A field the form does
     not show keeps what the server sent, so a save loses nothing.
@@ -355,7 +358,8 @@ flowchart LR
     hostname the form has, by its names, ID and expiry; the form stores its ID. The choice shows
     only while the route uses an uploaded certificate. A certificate chosen before stays offered,
     marked if it does not cover the hostnames, so the form never changes it unasked.
-  - **Phase 2 fields** ([03](03-connections.md#http-routes)), after the others:
+  - **Phase 2 fields** ([03](03-connections.md#http-routes)), each in its section of the
+    [route form](#route-form):
     - **Header matches** (http): one per line, `Name: value` for an exact value or `Name` alone
       for presence; a hint explains that more matches win. The form checks each line, the
       number of lines and repeated names before sending; what the server refuses shows below the
@@ -386,6 +390,94 @@ flowchart LR
     is not deleted; the page says so and shows the route as it is now.
   - **After the deletion,** the page says the route is deleted and follows the revision's apply
     status live (U2), with the link back to all routes.
+
+### Route form
+
+```
+┌ Edit route wiki (HTTP) ─────────────────────────────────────────────────────────────────┐
+│ ‹ wiki                                                                                  │
+│ ┌ Sections ────────────┐ ┌────────────────────────────────────────────────────────────┐ │
+│ │ General              │ │ General                                                    │ │
+│ │ Hostnames & matching │ │ Name *  [wiki            ]  Description [the wiki      ]   │ │
+│ │ ⚠ TLS                │ │ Labels  [team=ops        ]                                 │ │
+│ │ Requests & headers   │ ├────────────────────────────────────────────────────────────┤ │
+│ │ Upstream             │ │ Hostnames & matching                                       │ │
+│ │ Health check         │ │ Hostnames * [wiki.example.com]  Path prefix [/docs     ]   │ │
+│ │ Maintenance          │ │ Serve only requests with these headers [X-Env: beta   ]    │ │
+│ └──────────────────────┘ ├────────────────────────────────────────────────────────────┤ │
+│                          │ TLS                                                        │ │
+│                          │ TLS certificate         Uploaded certificate *             │ │
+│                          │ [Uploaded           ▾]  [Choose a certificate      ▾]      │ │
+│                          │                         Choose the uploaded certificate…   │ │
+│                          ├────────────────────────────────────────────────────────────┤ │
+│                          │ …                                                          │ │
+│                          ├────────────────────────────────────────────────────────────┤ │
+│                          │ [Save]  [Preview]  [Cancel]                                │ │
+│                          └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+The form that creates a route and the one that edits it group their fields into titled sections on
+one page, with a section list beside them that jumps to each section
+([D153](14-open-decisions.md#engineering)).
+
+- **Sections,** in this order; a section with no field for the route's type is left out:
+
+  | Section | Fields | Types |
+  |---|---|---|
+  | General | the gateway group (new routes), name, description, labels | every type |
+  | Hostnames & matching | hostnames, path prefix, header matches | HTTP, TLS passthrough |
+  | TLS | TLS certificate, uploaded certificate, port 80, HSTS | HTTP |
+  | Requests & headers | host header, request and response headers, WebSocket, largest request body | HTTP |
+  | Upstream | transport, upstream response header and idle timeouts, idle and flow idle timeouts, limits | every type |
+  | Health check | the health check and its parts | every type |
+  | Listener | listener mode, public port; for a CONNECT route also CONNECT names, proxy credentials, listener hostname and certificate | TCP, UDP, TCP and UDP |
+  | Maintenance | maintenance, maintenance message | HTTP |
+
+  - Listener holds what the gateway listens on for a route on a port: a TCP route's listener mode,
+    and its public port, as for UDP and "TCP and UDP" routes. A CONNECT route, a TCP route in
+    `http_connect` mode, adds its CONNECT fields there.
+  - A field shown only in some cases, such as the uploaded certificate, appears in its section
+    while the case holds.
+- **Nothing is hidden or collapsed,** so the browser's find reaches every field. Tabs and
+  collapsible sections were considered and not chosen.
+- **Each section** has a heading, so screen readers can move from section to section. On wide
+  screens its fields stand in two columns, as in [Layout and navigation](#layout-and-navigation).
+- **The section list** is a navigation landmark of links, one per section, each to its heading,
+  so the keyboard reaches and follows them like any link. From 1024 px it stands beside the form
+  and stays in view while the form scrolls; on narrower screens it sits above the form, its links
+  wrapping across the width, so nothing scrolls sideways:
+
+  ```
+  ┌ Edit route bastion (TCP), 390 px ──────────┐
+  │ General · Upstream · Health check ·        │
+  │ Listener                                   │
+  │ ┌────────────────────────────────────────┐ │
+  │ │ General                                │ │
+  │ │ Name *                                 │ │
+  │ │ [bastion                           ]   │ │
+  │ │ …                                      │ │
+  │ ├────────────────────────────────────────┤ │
+  │ │ Listener                               │ │
+  │ │ Listener                               │ │
+  │ │ [A CONNECT listener shared …       ]   │ │
+  │ │ Public port *                          │ │
+  │ │ [0                                 ]   │ │
+  │ │ CONNECT names *                        │ │
+  │ │ [bastion.internal                  ]   │ │
+  │ │ …                                      │ │
+  │ ├────────────────────────────────────────┤ │
+  │ │ [Save]  [Preview]  [Cancel]            │ │
+  │ └────────────────────────────────────────┘ │
+  └────────────────────────────────────────────┘
+  ```
+- **Errors:** a section that holds a field with an error is marked in the list with an icon, in
+  the colour of errors, and screen readers hear "has an error" with its name. A save or preview
+  that fails moves the focus to the first field with an error, in the order of the page, whether
+  the form's own checks or the server found it.
+- **The form's controls,** Save (or "Create the route"), Preview and Cancel, stay at the end of
+  the form, after the last section, with the conflict panel at its start and the preview and the
+  messages the form cannot place above the controls.
 
 ### Connectors
 
@@ -948,6 +1040,10 @@ In Phase 1 the UI works in the user's first org. The org switcher comes with the
   on any CSP violation, and on anything in `localStorage` or `sessionStorage`.
 - A flow checks, in a window 2560 px wide, that each page it visits fills the width beside the
   sidebar, and that the route form stands in two columns there and in one on a phone.
+- Component tests check the [route form](#route-form)'s sections for each route type, that the
+  section list's links lead to them, its error marks, and that a failed save moves the focus to
+  the first field with an error. A flow checks the form and its section list with axe, and that
+  nothing in them scrolls sideways at 390 px.
 - Flows check that every required control has the red asterisk, drawn with an empty alternative
   text, and that no other control has one; component tests check the same for each form, including
   the fields required only in some cases.

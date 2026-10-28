@@ -118,6 +118,21 @@ Changes to the design documents are not recorded here: see the git history and t
   404 page instead of going to the upstream, and every header and trailer a client sends whose name
   starts with `Rpmgr-User-`, also spelt with `_`, is removed before a request goes upstream; both
   are kept for the gateway's own endpoints and OIDC sign-in. (#617)
+- Web UI: the new-route and edit forms group their fields into titled sections, such as
+  **Hostnames & matching**, **TLS**, **Upstream** and, for routes on a port, **Listener**, with a
+  list beside the form, above it on a phone, that jumps to each section and marks one holding a
+  field with an error. A failed save or
+  preview puts the cursor in the first field with an error. Every field stays on the page. (#969)
+
+### Fixed
+
+- Updates: a connector or gateway whose host has the updater's directory but not its enabled
+  units, as the v0.1.0 install script and `rpmgr setup --no-unit` leave it, no longer announces
+  over-the-air updates. It was offered a release it staged and nothing installed, until the
+  rollout counted it as stalled; it is now listed as having no over-the-air updater, and the
+  install script's `--upgrade --restart` installs the units and restarts the agent. The install
+  script enables the updater before it starts the role, so that a new agent announces
+  over-the-air updates from its first start. (#965)
 
 ## [0.2.0] - 2026-10-24
 

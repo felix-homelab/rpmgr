@@ -393,9 +393,15 @@ func TestHTTPRoutes_ReplacedTransportClosesIdle(t *testing.T) {
 			if r := <-done; r.status != http.StatusOK {
 				t.Fatalf("the request on the replaced transport: %d %q", r.status, r.body)
 			}
-			e.routes.Apply([]gateway.HTTPRoute{route})
+			// The request leaves the old transport only once the gateway's handler returns, which may
+			// be just after the client read the reply: a snapshot in between finds the transport
+			// busy and keeps it, so later snapshots, as the gateway gets them, close it.
 			deadline := time.Now().Add(5 * time.Second)
-			for closed.Load() < opened.Load() && time.Now().Before(deadline) {
+			for {
+				e.routes.Apply([]gateway.HTTPRoute{route})
+				if closed.Load() >= opened.Load() || time.Now().After(deadline) {
+					break
+				}
 				time.Sleep(20 * time.Millisecond)
 			}
 			if n := opened.Load() - closed.Load(); n != 0 {

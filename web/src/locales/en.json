@@ -262,7 +262,6 @@
     "gateways": "served by {{serving}} of {{total}} gateways",
     "noHostname": "The gateway group has no public hostname, so only the port is shown.",
     "setHostname": "Set the names clients reach it by",
-    "mtu": "UDP datagrams travel as QUIC datagrams up to about 1240 bytes, or 1412 bytes once path-MTU discovery has run. Larger ones go over the flow's stream: delivered reliably, but one late packet holds up those after it.",
     "targets": "Targets",
     "columns": {
       "connector": "Connector",
@@ -371,6 +370,18 @@
     "back": "Back to the route",
     "warning": "Warning: {{message}}.",
     "number": "Enter a whole number.",
+    "sections": {
+      "list": "Sections of the form",
+      "invalid": "(has an error)",
+      "general": "General",
+      "matching": "Hostnames & matching",
+      "tls": "TLS",
+      "requests": "Requests & headers",
+      "upstream": "Upstream",
+      "health": "Health check",
+      "listener": "Listener",
+      "maintenance": "Maintenance"
+    },
     "fields": {
       "name": "Name",
       "description": "Description",
