@@ -103,6 +103,92 @@ func TestHandoffCommand(t *testing.T) {
 			t.Errorf("without an outcome: %v", err)
 		}
 	})
+	t.Run("older process", func(t *testing.T) {
+		// A process that never announced SIGUSR2 handling, as one of a release without the
+		// hand-off, or a stale file of another process: refused, and no signal sent.
+		for name, body := range map[string]*string{"no marker": nil, "another process": ptr(fmt.Sprint(pid + 1))} {
+			_ = os.Remove(filepath.Join(dir, handoff.CapableFile))
+			if body != nil {
+				if err := os.WriteFile(filepath.Join(dir, handoff.CapableFile), []byte(*body), 0o644); err != nil { //nolint:gosec // G306: a test file
+					t.Fatal(err)
+				}
+			}
+			n := calls.Load()
+			_, err := cmd(time.Second)
+			if err == nil || !strings.Contains(err.Error(), "does not take hand-offs") {
+				t.Errorf("%s: %v", name, err)
+			}
+			time.Sleep(50 * time.Millisecond)
+			if calls.Load() != n {
+				t.Errorf("%s: signalled the process", name)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(dir, handoff.CapableFile), []byte(fmt.Sprint(pid)), 0o644); err != nil { //nolint:gosec // G306: a test file
+			t.Fatal(err)
+		}
+	})
+	t.Run("stale outcome of another process", func(t *testing.T) {
+		// The last outcome is of a process that has been replaced since: neither "in progress"
+		// nor the answer to this hand-off, which the command waits for.
+		start(t, func(context.Context) (*handoff.Child, error) { return &handoff.Child{Pid: 78, Generation: 3}, nil })
+		for _, o := range []handoff.Outcome{
+			{ID: 1, State: handoff.StateRunning, OldPID: pid + 1},
+			{ID: 2, State: handoff.StateFailed, Reason: "stale", OldPID: pid + 1},
+		} {
+			if err := handoff.WriteOutcome(dir, o); err != nil {
+				t.Fatal(err)
+			}
+			out, err := cmd(10 * time.Second)
+			if err != nil || !strings.Contains(out, "process 78 (generation 3)") {
+				t.Errorf("after %+v: %q, %v", o, out, err)
+			}
+		}
+	})
+	t.Run("timeout", func(t *testing.T) {
+		// The signal is taken but the hand-off never ends.
+		hung := func(t *testing.T) {
+			// Its own trigger, ended with the subtest: the hand-off hangs until then.
+			ctx, cancel := context.WithCancel(context.Background())
+			stop := (&handoff.Trigger{Dir: dir, Handoff: func(ctx context.Context) (*handoff.Child, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}}).Start(ctx)
+			t.Cleanup(func() {
+				cancel()
+				stop()
+				time.Sleep(100 * time.Millisecond) // the outcome of the ended hand-off
+			})
+		}
+		hung(t)
+		began := time.Now()
+		_, err := cmd(200 * time.Millisecond)
+		if err == nil || !strings.Contains(err.Error(), "no outcome") || time.Since(began) > 5*time.Second {
+			t.Errorf("a hand-off that does not end: %v after %v", err, time.Since(began))
+		}
+	})
+	t.Run("cancelled", func(t *testing.T) {
+		hung := func(t *testing.T) {
+			// Its own trigger, ended with the subtest: the hand-off hangs until then.
+			ctx, cancel := context.WithCancel(context.Background())
+			stop := (&handoff.Trigger{Dir: dir, Handoff: func(ctx context.Context) (*handoff.Child, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}}).Start(ctx)
+			t.Cleanup(func() {
+				cancel()
+				stop()
+				time.Sleep(100 * time.Millisecond) // the outcome of the ended hand-off
+			})
+		}
+		hung(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		time.AfterFunc(100*time.Millisecond, cancel)
+		began := time.Now()
+		err := runHandoff(ctx, &cli.Env{Stdout: io.Discard, Stderr: io.Discard, Getenv: os.Getenv}, "gateway", 10*time.Millisecond, time.Minute)
+		if !errors.Is(err, context.Canceled) || time.Since(began) > 5*time.Second {
+			t.Errorf("a cancelled command: %v after %v", err, time.Since(began))
+		}
+	})
 	t.Run("not running", func(t *testing.T) {
 		mainPID = func(context.Context, string) (int, error) { return 0, nil }
 		if _, err := cmd(time.Second); err == nil || !strings.Contains(err.Error(), "does not run") {
@@ -122,3 +208,5 @@ func TestHandoffCommand(t *testing.T) {
 		}
 	})
 }
+
+func ptr[T any](v T) *T { return &v }

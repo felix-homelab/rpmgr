@@ -9,9 +9,9 @@ Wants=network-online.target
 
 [Service]
 {{- if .Handoff}}
-# Restarts with socket hand-off: the new process tells systemd it is the main one.
-Type=notify
-NotifyAccess=all
+# Restarts with socket hand-off: the outcome of the last one. The notify type is in the drop-in
+# handoff.conf (`rpmgr systemd-unit {{.Role}} --drop-in`), which a rollback to a release without
+# the hand-off removes.
 RuntimeDirectory=rpmgr/{{.Role}}
 {{- end}}
 User=rpmgr

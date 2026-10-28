@@ -140,6 +140,7 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 | `/var/lib/rpmgr-update/` | root, 0700 | Updater state, out of the service user's reach: version floor and highest manifest `seq` in `state.json` (`{"seq": 87, "floor": "1.4.2"}`, initialised at install time from the running version and its release `seq`), `install.json` (`{"method": "script", "path": "/usr/local/bin/rpmgr", "variant": "full", "roles": ["connector"]}`, written by `rpmgr setup` and both install scripts through `rpmgr updater install`, [Hardened systemd units](#hardened-systemd-units); the single `role` that v0.1.0 wrote is read as a list of one), `pending.json` while an install's outcome is not known yet, and `staging/`, where the updater copies and verifies the files. **A host keeps its variant** ([D119](14-open-decisions.md#engineering)): both install scripts take the one `install.json` records, else the one the installed binary reports with `rpmgr version --verbose`, `full` for a binary that reports none (0.1.0); an explicit other `--variant` is refused, and the global script's `--upgrade` refuses to guess when it cannot tell. `RPMGR_INSTALL_BIN` and `RPMGR_INSTALL_STATE` move the binary and this directory for the scripts' tests only |
 | `/run/rpmgr-update/status.json` | root, 0644 | The updater's last outcome (`updated`, `rolled_back`, `rollback_failed`, `refused`), which the agent reports ([04](04-security.md#over-the-air-updates)) |
 | `/run/rpmgr/<role>/handoff.json` | rpmgr, 0644 | The outcome of the role's last restart with socket hand-off (`running`, `ok`, `failed`, `refused`, with the reason and both process IDs), which `rpmgr handoff` waits for; read without following a link and only as a small regular file ([03](03-connections.md#restarts-with-socket-hand-off-phase-2)) |
+| `/run/rpmgr/<role>/handoff.pid` | rpmgr, 0644 | The process ID of the role's process once it takes `SIGUSR2` as a hand-off; `rpmgr handoff` signals no other process ([03](03-connections.md#restarts-with-socket-hand-off-phase-2)) |
 | `/var/lib/rpmgr/dl/<version>/` (controller) | rpmgr, 0750; files 0640 | The release mirror, served under `/dl/`: the controller's own version, the targets of its rollouts and its previous version, verified release files only; `dl/.own.json` records the own and the previous version ([04](04-security.md#over-the-air-updates)) |
 | `/var/lib/rpmgr/audit-checkpoints.log` (controller) | rpmgr, 0640 | Signed audit checkpoints, appended locally and included in every backup; the external sink (Phase 2) is what makes tampering evident ([04](04-security.md#audit-log)) |
 | `/var/lib/rpmgr/revocations.log` (controller) | rpmgr, 0640 | This replica's durable, fsync'd **revocation log**: every revocation and credential supersession is appended here first, then shipped asynchronously to the shared readable sink ([Backup and restore](#backup-and-restore)) |
@@ -207,14 +208,27 @@ RestartSec=2s
   ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
 - **Restarts with socket hand-off** (Phase 2;
   [03](03-connections.md#restarts-with-socket-hand-off-phase-2),
-  [D148](14-open-decisions.md#engineering)): the gateway, all-in-one and connector units are
-  `Type=notify` with `NotifyAccess=all`, so that the new process of a hand-off can tell systemd it
-  is the main one, and `RuntimeDirectory=rpmgr/<role>` holds the outcome of the last hand-off: one
-  directory per role, as systemd removes a unit's runtime directory when the unit stops.
-  - **Gateway and all-in-one** (from slice 17.10; until then the units keep `ExecReload` sending
-    `SIGHUP`): `ExecReload=<bin> handoff <role>`, so that `systemctl reload`
-    restarts with a hand-off and fails, with the reason, if the new process does not become
-    ready; the old one then keeps serving. `systemctl restart` stays the restart without one.
+  [D148](14-open-decisions.md#engineering)): the gateway, all-in-one and connector units have
+  `RuntimeDirectory=rpmgr/<role>`, which holds the outcome of the last hand-off: one directory per
+  role, as systemd removes a unit's runtime directory when the unit stops.
+  - **`Type=notify` is in a drop-in** ([D155](14-open-decisions.md#engineering)): the unit keeps the
+    default service type, and `rpmgr-<role>.service.d/handoff.conf` (`rpmgr systemd-unit <role>
+    --drop-in` prints it) sets `Type=notify` and `NotifyAccess=all`, so that the new process of a
+    hand-off can tell systemd it is the main one. `rpmgr setup` writes it with the unit when the
+    installed release has the hand-off (v0.3.0 on). A binary of an older release never sends
+    `READY=1`, so under `Type=notify` its start would hang: the updater removes the drop-ins of
+    the roles, runs `systemctl daemon-reload` and restarts them when it rolls back to a release
+    without the hand-off. Writing the drop-in on an update to a release with it comes with slice
+    17.6 and 17.7.
+  - **`rpmgr handoff`** signals only a process that announced in `/run/rpmgr/<role>/handoff.pid`
+    that it takes `SIGUSR2`; for an older process it refuses and names `systemctl restart`.
+    After an update the running image is `<path> (deleted)`: the old process starts the installed
+    path, not that one ([04](04-security.md#socket-hand-off-phase-2)).
+  - **Gateway and all-in-one** (`systemctl reload` from slice 17.6,
+    [D155](14-open-decisions.md#engineering); until then the units keep `ExecReload` sending
+    `SIGHUP`, and `rpmgr handoff <role>` does the hand-off): `ExecReload=<bin> handoff <role>`, so
+    that `systemctl reload` restarts with a hand-off and fails, with the reason, if the new process
+    does not become ready; the old one then keeps serving. `systemctl restart` stays the restart without one.
   - **All-in-one policy reload:** `rpmgr policy …` signals the running all-in-one with `SIGHUP`
     itself (`systemctl kill --kill-whom=main --signal=SIGHUP`), since its reload is now the
     hand-off.

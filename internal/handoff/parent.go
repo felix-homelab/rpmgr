@@ -30,9 +30,10 @@ type Config struct {
 	// Stdout and Stderr default to this process's.
 	Stdout, Stderr io.Writer
 
-	bin    string        // tests: their copy of the binary; else the one this process runs
-	rule   *binaryRule   // tests: their own files instead of root's
-	window time.Duration // tests: a shorter readiness window
+	exe    func() (string, error) // tests: os.Executable
+	bin    string                 // tests: their copy of the binary; else the one this process runs
+	rule   *binaryRule            // tests: their own files instead of root's
+	window time.Duration          // tests: a shorter readiness window
 }
 
 // Child is a new process that reported ready and was told to take over.

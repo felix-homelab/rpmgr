@@ -7,12 +7,15 @@ package units
 import (
 	"bytes"
 	_ "embed"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path"
 	"regexp"
 	"strings"
 	"text/template"
+
+	"golang.org/x/mod/semver"
 
 	"github.com/felix-homelab/rpmgr/internal/config"
 )
@@ -39,6 +42,39 @@ func RenderUpdater(bin string) ([]byte, error) {
 		return nil, err
 	}
 	return b.Bytes(), nil
+}
+
+// HandoffSince is the first release whose gateway, all-in-one and connector restart with socket
+// hand-off and tell systemd when they are ready (Type=notify).
+const HandoffSince = "0.3.0"
+
+// DropIn is the name of the drop-in that makes a role's unit Type=notify; it lives in
+// rpmgr-<role>.service.d next to the unit (D155).
+const DropIn = "handoff.conf"
+
+// HasHandoff reports whether a release, as `rpmgr version` names it, has the hand-off. A version
+// that is no semantic version does not: Type=notify under a binary that never sends READY=1 hangs
+// the start, while a plain unit under one that does only loses the early start.
+func HasHandoff(version string) bool {
+	v := "v" + strings.TrimPrefix(version, "v")
+	return semver.IsValid(v) && semver.Compare(v, "v"+HandoffSince+"-0") >= 0
+}
+
+// RenderDropIn returns the drop-in of a role that restarts with hand-off, which makes its unit
+// Type=notify with NotifyAccess=all, so that the new process of a hand-off can tell systemd it is
+// the main one. The unit itself keeps the default type, so that a release without the hand-off
+// starts under it; the drop-in goes where the unit does when the installed release has the
+// hand-off and away with a rollback to one without. The controller has none.
+func RenderDropIn(role string) ([]byte, error) {
+	switch role {
+	case "gateway", "all-in-one", "connector":
+		return []byte("# SPDX-License-Identifier: Apache-2.0\n# rpmgr-" + role + ".service.d/" + DropIn +
+			", written with the unit (docs/10-operations.md, \"Hardened systemd units\").\n" +
+			"[Service]\nType=notify\nNotifyAccess=all\n"), nil
+	case "controller":
+		return nil, errors.New("units: the controller restarts without a hand-off and has no drop-in")
+	}
+	return nil, fmt.Errorf("units: no role %q", role)
 }
 
 // Options vary a role's unit.

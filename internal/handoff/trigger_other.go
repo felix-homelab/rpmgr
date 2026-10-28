@@ -17,3 +17,6 @@ func ReadOutcome(string) (Outcome, error) { return Outcome{}, ErrUnsupported }
 
 // Signal is not supported here.
 func Signal(int) error { return ErrUnsupported }
+
+// Capable is false here.
+func Capable(string, int) bool { return false }

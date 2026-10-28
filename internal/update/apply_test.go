@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/release"
+	"github.com/felix-homelab/rpmgr/internal/units"
 	"github.com/felix-homelab/rpmgr/internal/update"
 )
 
@@ -93,6 +95,15 @@ func newInstalled(t *testing.T, o hostOpts, running string, roles []string, read
 		return ready(b)
 	}
 	return &installed{host: h, a: a, svc: svc, bin: bin}
+}
+
+// writeAll writes a file and the directories above it.
+func writeAll(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { //nolint:gosec // G301: under t.TempDir
+		t.Fatal(err)
+	}
+	mustWrite(t, path, body, 0o644)
 }
 
 // notReady is a readiness check that fails for the binary of version v.
@@ -248,6 +259,43 @@ func TestOTA_UpdaterHonoursPolicy(t *testing.T) {
 		i.leftovers()
 		if i.pendingLeft() {
 			t.Error("pending.json was left after a rollback")
+		}
+	})
+
+	t.Run("rolled back to a release without the hand-off: the drop-ins go (D155)", func(t *testing.T) {
+		for _, tc := range []struct {
+			previous string
+			removed  bool
+		}{{"0.2.0", true}, {"dev", true}, {"1.1.0", false}} {
+			i := newInstalled(t, hostOpts{}, tc.previous, []string{"gateway", "connector"}, notReady("1.2.0"))
+			i.a.Units = t.TempDir()
+			dropIn := func(role string) string {
+				return filepath.Join(i.a.Units, "rpmgr-"+role+".service.d", units.DropIn)
+			}
+			for _, role := range []string{"gateway", "connector"} {
+				writeAll(t, dropIn(role), "[Service]\nType=notify\n")
+			}
+			i.stage(rel{version: "1.2.0", seq: 6})
+			if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRolledBack) {
+				t.Fatalf("%s: Apply = %v; want rolled back", tc.previous, err)
+			}
+			for _, role := range []string{"gateway", "connector"} {
+				_, err := os.Stat(dropIn(role))
+				if gone := errors.Is(err, fs.ErrNotExist); gone != tc.removed {
+					t.Errorf("rolled back to %s: drop-in of %s removed = %v, want %v", tc.previous, role, gone, tc.removed)
+				}
+			}
+		}
+	})
+
+	t.Run("a drop-in that cannot be removed: the rollback failed", func(t *testing.T) {
+		i := newInstalled(t, hostOpts{}, "0.2.0", []string{"gateway"}, notReady("1.2.0"))
+		i.a.Units = t.TempDir()
+		// A non-empty directory in the drop-in's place: removing it fails.
+		writeAll(t, filepath.Join(i.a.Units, "rpmgr-gateway.service.d", units.DropIn, "x"), "")
+		i.stage(rel{version: "1.2.0", seq: 6})
+		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRollbackFailed) {
+			t.Fatalf("Apply = %v; want rollback failed", err)
 		}
 	})
 
@@ -585,6 +633,14 @@ func TestSystemd_State(t *testing.T) {
 	u, err := s.State(context.Background(), "rpmgr-connector.service")
 	if err != nil || u != (update.Unit{Active: "activating", Restarts: 4, MainPID: 812}) {
 		t.Fatalf("State = %+v, %v", u, err)
+	}
+	log := filepath.Join(dir, "calls")
+	mustWrite(t, script, "#!/bin/sh\necho \"$@\" >> "+log+"\n", 0o755)
+	if err := s.Restart(context.Background(), "rpmgr-connector.service"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(log); string(b) != "daemon-reload\nrestart rpmgr-connector.service\n" { //nolint:gosec // G304: under t.TempDir
+		t.Errorf("systemctl was called with %q; want a daemon-reload, then the restart", b)
 	}
 	mustWrite(t, script, "#!/bin/sh\necho 'Job failed' >&2\nexit 1\n", 0o755)
 	if err := s.Restart(context.Background(), "rpmgr-connector.service"); err == nil || !strings.Contains(err.Error(), "Job failed") {

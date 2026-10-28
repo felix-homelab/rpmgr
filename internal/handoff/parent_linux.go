@@ -45,14 +45,7 @@ func Start(ctx context.Context, cfg Config, sockets []Socket) (*Child, error) {
 	if err := m.validate(); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrRefused, err)
 	}
-	bin := cfg.bin
-	if bin == "" {
-		var err error
-		if bin, err = os.Executable(); err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrRefused, err)
-		}
-	}
-	path, err := rule.check(bin)
+	bin, path, err := cfg.binary(rule)
 	if err != nil {
 		return nil, err
 	}
@@ -107,6 +100,36 @@ func Start(ctx context.Context, cfg Config, sockets []Socket) (*Child, error) {
 		return nil, fmt.Errorf("%w: %w", ErrNotReady, err)
 	}
 	return c, nil
+}
+
+// deletedSuffix is what Linux appends to the path of a running binary that was replaced or removed
+// (/proc/self/exe), and so what os.Executable returns after an update.
+const deletedSuffix = " (deleted)"
+
+// binary returns the binary to start, as given and as checked. It is this process's own, at its
+// path; after an update or install replaced the file, the running image reads "<path> (deleted)",
+// and the path to start is the installed one, this path without the suffix. It must exist and pass the rule like any other binary, so that a file somebody else put
+// there is refused. (install.json, 0700 for the updater, is not readable by the service user.)
+func (cfg Config) binary(rule binaryRule) (bin, path string, err error) {
+	bin = cfg.bin
+	if bin == "" {
+		exe := cfg.exe
+		if exe == nil {
+			exe = os.Executable
+		}
+		if bin, err = exe(); err != nil {
+			return "", "", fmt.Errorf("%w: %w", ErrRefused, err)
+		}
+		if stripped, ok := strings.CutSuffix(bin, deletedSuffix); ok {
+			p, cerr := rule.check(stripped)
+			if cerr != nil {
+				return "", "", fmt.Errorf("%w: the binary was replaced and the installed one fails the check: %w", ErrRefused, cerr)
+			}
+			return stripped, p, nil
+		}
+	}
+	path, err = rule.check(bin)
+	return bin, path, err
 }
 
 // await sends the manifest and waits for the new process to report ready before the deadline,

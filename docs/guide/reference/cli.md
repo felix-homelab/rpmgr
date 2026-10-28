@@ -679,6 +679,7 @@ rpmgr systemd-unit [flags] controller | gateway | connector | all-in-one | updat
 |---|---|---|
 | `--bin string` |  | the installed binary (default /usr/local/bin/rpmgr; for update, the path install.json records) |
 | `--config string` |  | the controller's or all-in-one's boot file, for its KEK credential and revocation-log sink (default $RPMGR_CONFIG, else /etc/rpmgr/\<role>.yaml) |
+| `--drop-in` |  | print the drop-in handoff.conf (Type=notify) of a role that restarts with hand-off instead of its unit |
 
 ## rpmgr version
 

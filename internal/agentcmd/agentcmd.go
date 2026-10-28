@@ -149,11 +149,13 @@ func SystemdUnit(roles ...string) *cli.Command {
 		roles = []string{"controller", "gateway", "connector", "all-in-one", "update"}
 	}
 	var configPath, bin string
+	var dropIn bool
 	return &cli.Command{
 		Name:    "systemd-unit",
 		Summary: "print the hardened systemd unit of a role",
 		Args:    strings.Join(roles, " | "),
 		Flags: func(fs *flag.FlagSet) {
+			fs.BoolVar(&dropIn, "drop-in", false, "print the drop-in "+units.DropIn+" (Type=notify) of a role that restarts with hand-off instead of its unit")
 			fs.StringVar(&bin, "bin", "", "the installed binary (default /usr/local/bin/rpmgr; for update, the path install.json records)")
 			fs.StringVar(&configPath, "config", "", "the controller's or all-in-one's boot file, for its KEK credential and revocation-log sink (default $RPMGR_CONFIG, else /etc/rpmgr/<role>.yaml)")
 		},
@@ -163,6 +165,14 @@ func SystemdUnit(roles ...string) *cli.Command {
 			}
 			if !slices.Contains(roles, args[0]) {
 				return cli.Usagef("no role %q: %s", args[0], strings.Join(roles, ", "))
+			}
+			if dropIn {
+				b, err := units.RenderDropIn(args[0])
+				if err != nil {
+					return cli.Usagef("%v", err)
+				}
+				_, err = env.Stdout.Write(b)
+				return err
 			}
 			if args[0] == "update" {
 				if bin == "" {

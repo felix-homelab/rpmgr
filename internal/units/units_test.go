@@ -38,15 +38,15 @@ func TestRender(t *testing.T) {
 		credential string
 		want, not  []string
 	}{
-		{"gateway", "rpmgr-kek", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE", "Type=notify", "NotifyAccess=all", "RuntimeDirectory=rpmgr/gateway"},
-			[]string{cred, "ExecReload=/bin/kill -HUP $MAINPID"}},
-		{"connector", "rpmgr-kek", []string{"CapabilityBoundingSet=", "ExecReload=/bin/kill -HUP $MAINPID", "Type=notify", "NotifyAccess=all",
-			"RuntimeDirectory=rpmgr/connector"}, []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE"}},
+		{"gateway", "rpmgr-kek", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE", "RuntimeDirectory=rpmgr/gateway"},
+			[]string{cred, "ExecReload=/bin/kill -HUP $MAINPID", "Type=notify", "NotifyAccess=all"}},
+		{"connector", "rpmgr-kek", []string{"CapabilityBoundingSet=", "ExecReload=/bin/kill -HUP $MAINPID",
+			"RuntimeDirectory=rpmgr/connector"}, []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE", "Type=notify", "NotifyAccess=all"}},
 		{"controller", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE"},
 			[]string{"ExecReload=/bin/kill -HUP $MAINPID", "Type=notify", "NotifyAccess=all", "RuntimeDirectory=rpmgr/controller"}},
 		{"controller", "", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE"}, []string{cred}},
 		{"all-in-one", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE", "ExecReload=/bin/kill -HUP $MAINPID",
-			"Type=notify", "NotifyAccess=all", "RuntimeDirectory=rpmgr/all-in-one"}, nil},
+			"RuntimeDirectory=rpmgr/all-in-one"}, []string{"Type=notify", "NotifyAccess=all"}},
 	} {
 		got := lines(t, tc.role, units.Options{Bin: "/usr/local/bin/rpmgr", Credential: tc.credential})
 		want := append(append([]string{"ExecStart=/usr/local/bin/rpmgr " + tc.role + " --config /etc/rpmgr/" + tc.role + ".yaml"}, common...), tc.want...)
@@ -195,6 +195,41 @@ func TestRenderUpdater(t *testing.T) {
 	for _, bin := range []string{"", "rpmgr", "/usr/local/bin/rp mgr", "/usr/local/bin/%n", "/usr/local//bin/rpmgr", "/usr/local/bin/../rpmgr"} {
 		if _, err := units.RenderUpdater(bin); err == nil {
 			t.Errorf("RenderUpdater(%q) succeeded", bin)
+		}
+	}
+}
+
+// TestRenderDropIn: Type=notify is in a drop-in, for the roles that restart with a hand-off only.
+func TestRenderDropIn(t *testing.T) {
+	for _, role := range []string{"gateway", "all-in-one", "connector"} {
+		b, err := units.RenderDropIn(role)
+		if err != nil {
+			t.Fatalf("%s: %v", role, err)
+		}
+		got := lines(t, role, units.Options{Bin: "/usr/local/bin/rpmgr"})
+		if got["Type=notify"] {
+			t.Errorf("%s: the unit itself is Type=notify", role)
+		}
+		for _, l := range []string{"[Service]", "Type=notify", "NotifyAccess=all"} {
+			if !strings.Contains("\n"+string(b), "\n"+l+"\n") {
+				t.Errorf("%s: no %q in %q", role, l, b)
+			}
+		}
+	}
+	for _, role := range []string{"controller", "update", ""} {
+		if b, err := units.RenderDropIn(role); err == nil {
+			t.Errorf("%q: drop-in %q", role, b)
+		}
+	}
+}
+
+func TestHasHandoff(t *testing.T) {
+	for v, want := range map[string]bool{
+		"0.3.0": true, "v0.3.0": true, "0.3.0-rc.1": true, "0.3.1": true, "1.0.0": true,
+		"0.2.0": false, "0.2.9": false, "0.1.0": false, "": false, "dev": false,
+	} {
+		if got := units.HasHandoff(v); got != want {
+			t.Errorf("HasHandoff(%q) = %v, want %v", v, got, want)
 		}
 	}
 }
