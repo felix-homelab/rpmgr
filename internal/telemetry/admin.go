@@ -94,10 +94,16 @@ func CheckAdminAddr(addr string) error {
 
 // ServeAdmin serves AdminHandler on addr until ctx ends.
 func ServeAdmin(ctx context.Context, addr string, reg prometheus.Gatherer, ready func(context.Context) error) error {
+	return ServeAdminOn(ctx, addr, func(addr string) (net.Listener, error) { return net.Listen("tcp", addr) }, reg, ready)
+}
+
+// ServeAdminOn is ServeAdmin with the listener from listen, which a process that a socket hand-off
+// started uses to take the admin listener of the old process.
+func ServeAdminOn(ctx context.Context, addr string, listen func(addr string) (net.Listener, error), reg prometheus.Gatherer, ready func(context.Context) error) error {
 	if err := CheckAdminAddr(addr); err != nil {
 		return err
 	}
-	ln, err := net.Listen("tcp", addr)
+	ln, err := listen(addr)
 	if err != nil {
 		return err
 	}

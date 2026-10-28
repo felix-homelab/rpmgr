@@ -220,6 +220,13 @@ RestartSec=2s
     the roles, runs `systemctl daemon-reload` and restarts them when it rolls back to a release
     without the hand-off. Writing the drop-in on an update to a release with it comes with slice
     17.6 and 17.7.
+  - **`READY=1` comes at the role's ready point**, not at start: the gateway sends it once its
+    listeners are up, and a gateway that a hand-off started once it holds its route ports (it
+    applied its first snapshot) and the old process switched. A gateway that cannot bind its
+    listeners, or whose hand-off fails, ends and `systemctl start` fails. All-in-one and
+    connector still send it at once, until their slices.
+    Until slice 17.4 (#882) hands the QUIC socket over, a gateway that serves QUIC refuses a
+    hand-off ("restart with `systemctl restart`"): a new process would serve no QUIC data sessions.
   - **`rpmgr handoff`** signals only a process that announced in `/run/rpmgr/<role>/handoff.pid`
     that it takes `SIGUSR2`; for an older process it refuses and names `systemctl restart`.
     After an update the running image is `<path> (deleted)`: the old process starts the installed

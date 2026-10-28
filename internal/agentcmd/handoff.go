@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/cli"
@@ -34,24 +35,42 @@ var mainPID = func(ctx context.Context, role string) (int, error) {
 	return u.MainPID, err
 }
 
-// startHandoffs makes a role that restarts with socket hand-off ready for systemd (Type=notify)
-// and starts taking SIGUSR2. The roles adopt sockets from 17.10 on; until then a hand-off is
-// refused and the role keeps running.
-func startHandoffs(ctx context.Context, env *cli.Env, role string) (stop func()) {
+// readyRoles are the roles that report their own readiness and adopt the sockets of a hand-off
+// (handoff.LinkFrom): the gateway. The others are ready for systemd (Type=notify) and take
+// SIGUSR2 as soon as they run, and refuse a hand-off, until their slices of 17.10 to 17.9 land.
+var readyRoles = []string{"gateway"}
+
+// startHandoffs prepares a role for socket hand-off: it takes the hand-off that started this
+// process, if any, and returns a context that carries the role's handoff.Link. The Link starts
+// taking SIGUSR2 and tells systemd (Type=notify) where the role is ready: at once for a role not in
+// readyRoles, else when the role calls Link.Ready. finish is called with the role's result. A hand-off
+// that is refused, or not for this role, is an error: the process exits and the old one serves on.
+func startHandoffs(ctx context.Context, env *cli.Env, role string) (_ context.Context, finish func(error), err error) {
 	if !slices.Contains(handoffRoles, role) {
-		return func() {}
+		return ctx, func(error) {}, nil
 	}
 	log := slog.New(slog.NewTextHandler(env.Stderr, nil)).With("role", role)
-	// The trigger first, so that `rpmgr handoff` finds the process capable as soon as systemd
-	// counts the unit as started.
-	stop = (&handoff.Trigger{Dir: filepath.Join(RunDir, role), Logger: log}).Start(ctx)
-	// READY=1 goes out before the role has bound its listeners, so systemd counts the unit as
-	// started early and a failing start does not fail systemctl start. A stop-gap until slice 17.10
-	// moves the notification to each role's ready point.
-	if err := handoff.Notify(env.Getenv); err != nil {
-		log.Warn("telling systemd the role runs", "error", err)
+	var inherited *handoff.Handoff
+	if slices.Contains(readyRoles, role) {
+		if inherited, err = handoff.Inherited(env.Getenv); err != nil {
+			return ctx, nil, err
+		}
 	}
-	return stop
+	trigger := &handoff.Trigger{Dir: filepath.Join(RunDir, role), Logger: log}
+	var stop atomic.Pointer[func()]
+	link := handoff.NewLink(inherited, env.Getenv, func() { f := trigger.Start(ctx); stop.Store(&f) })
+	trigger.Handoff = link.Handoff
+	if !slices.Contains(readyRoles, role) {
+		if err := link.Ready(); err != nil {
+			log.Warn("telling systemd the role runs", "error", err)
+		}
+	}
+	return handoff.WithLink(ctx, link), func(err error) {
+		link.Finish(err)
+		if f := stop.Load(); f != nil {
+			(*f)()
+		}
+	}, nil
 }
 
 // Handoff is `rpmgr handoff <role>`.

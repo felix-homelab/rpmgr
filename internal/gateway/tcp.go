@@ -60,6 +60,9 @@ type TCPOptions struct {
 	Certificates *Certificates
 	Default      *tls.Certificate
 	Logger       *slog.Logger
+	// Listen opens a route's TCP listener on addr (host:port); nil is net.Listen. A gateway that
+	// a hand-off started takes the ports the old process handed over here.
+	Listen func(port uint16, addr string) (net.Listener, error)
 }
 
 // TCPRoutes serves the gateway's tcp routes on their public ports (docs/03-connections.md, "One
@@ -177,7 +180,11 @@ func (t *TCPRoutes) Apply(routes []TCPRoute) []*agentv1.ResourceStatus {
 }
 
 func (t *TCPRoutes) listen(port uint16) (net.Listener, error) {
-	return net.Listen("tcp", net.JoinHostPort(t.o.Host, strconv.Itoa(int(port))))
+	addr := net.JoinHostPort(t.o.Host, strconv.Itoa(int(port)))
+	if t.o.Listen != nil {
+		return t.o.Listen(port, addr)
+	}
+	return net.Listen("tcp", addr)
 }
 
 // notBound records the routes of a port that could not be bound. Under t.mu.

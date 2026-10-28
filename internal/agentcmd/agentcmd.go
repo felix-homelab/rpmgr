@@ -47,8 +47,13 @@ func Role(name, summary string, run func(ctx context.Context, env *cli.Env, conf
 	}
 	if run != nil {
 		c.Run = func(ctx context.Context, env *cli.Env, _ []string) error {
-			defer startHandoffs(ctx, env, name)()
-			return run(ctx, env, config.Path(path, name, env.Getenv))
+			ctx, finish, err := startHandoffs(ctx, env, name)
+			if err != nil {
+				return err
+			}
+			err = run(ctx, env, config.Path(path, name, env.Getenv))
+			finish(err)
+			return err
 		}
 	}
 	return c
