@@ -527,3 +527,25 @@ func (c *idleConn) Close() error {
 	c.timer.Stop()
 	return c.Conn.Close()
 }
+
+// CutRoute resets the open connections that reach the route; the old process of a hand-off does so
+// when the new one removed the route or changed its access rules (docs/03-connections.md,
+// "Restarts with socket hand-off", step 5). A CONNECT tunnel counts for the route it reached; one
+// still reading its CONNECT is left to its own check.
+func (t *TCPRoutes) CutRoute(id string) {
+	t.mu.Lock()
+	ports := make([]*portListener, 0, len(t.ports))
+	for _, pl := range t.ports {
+		ports = append(ports, pl)
+	}
+	t.mu.Unlock()
+	for _, pl := range ports {
+		pl.mu.Lock()
+		for c, cid := range pl.conns {
+			if cid == id {
+				abort(c)
+			}
+		}
+		pl.mu.Unlock()
+	}
+}

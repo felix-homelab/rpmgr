@@ -833,7 +833,10 @@ ID); there are never per-connection or per-client-IP labels. An all-in-one serve
 all three roles on its one listener, and adds a `role` label (`gateway` or `connector`) to every
 series its gateway and its connector register: every metric of the table whose role is gateway,
 connector or agent, the Go runtime and process collectors excepted, which it registers once. The
-controller's series have no `role` label. The connector's in-memory data session to its own
+controller's series have no `role` label. A gateway adds a `generation` label to every series it
+registers, the Go runtime and process collectors excepted, and to every log line: `1` after a plain
+start and one more after each hand-off, so that the old and the new process of a hand-off stay
+apart ([03](03-connections.md#restarts-with-socket-hand-off-phase-2)). The connector's in-memory data session to its own
 gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection)).
 
 | Metric | Type | Role | Phase | Meaning |

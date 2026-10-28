@@ -193,6 +193,11 @@ type Applier struct {
 	assign   *assignment
 	limits   Limits
 	revision atomic.Pointer[agentv1.Revision]
+	// OnCut, if set, is called after a snapshot for each route it removed or gave other access
+	// rules; the new process of a hand-off tells the old one, which resets that route's
+	// connections (docs/03-connections.md, "Restarts with socket hand-off", step 5).
+	OnCut func(routeID string)
+	prev  map[string]Access // the access rules of the routes of the last snapshot
 }
 
 // NewApplier returns the gateway's applier and the Assignment for its Sessions; Bind connects
@@ -514,6 +519,7 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 // the data sessions of connectors no longer assigned are closed.
 func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Changes) []*agentv1.ResourceStatus {
 	next := &assigned{known: map[string]bool{}, routes: map[string][]RouteConnector{}}
+	rules := map[string]Access{}
 	var (
 		tcp         []TCPRoute
 		udp         []UDPRoute
@@ -618,6 +624,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		}
 		connectors, ranked := connectorsOf(res)
 		next.routes[res.GetId()] = rankOf(connectors, ranked)
+		rules[res.GetId()] = access
 		for _, c := range connectors {
 			next.known[c] = true
 		}
@@ -676,6 +683,14 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 	if s.Sessions != nil {
 		s.Sessions.Recheck()
 	}
+	if a.OnCut != nil {
+		for id, old := range a.prev {
+			if now, ok := rules[id]; !ok || !now.Same(old) {
+				a.OnCut(id)
+			}
+		}
+	}
+	a.prev = rules
 	return status
 }
 

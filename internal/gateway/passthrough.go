@@ -216,3 +216,12 @@ func (p *Passthrough) Close() {
 		}
 	}
 }
+
+// CutRoute resets the open connections of the route (see TCPRoutes.CutRoute).
+func (p *Passthrough) CutRoute(id string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for c := range p.conns[id] {
+		abort(c)
+	}
+}

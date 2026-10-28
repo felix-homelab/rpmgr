@@ -103,8 +103,12 @@ type SessionsOptions struct {
 	OnChange func()
 	// Metrics, if set, records the sessions and the routes' streams.
 	Metrics *Metrics
-	Now     func() time.Time
-	Logger  *slog.Logger
+	// AwaitSession, if set and true, makes a new connection of a route without a session wait up to
+	// the session wait for one: the new process of a hand-off sets it until the old one is gone
+	// (docs/03-connections.md, "Restarts with socket hand-off", step 4).
+	AwaitSession func() bool
+	Now          func() time.Time
+	Logger       *slog.Logger
 }
 
 // Sessions holds the gateway's data sessions from connectors (docs/03-connections.md, "Data
@@ -755,6 +759,34 @@ func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip pas
 	return nil, ErrNoSession
 }
 
+// sessionWait is how long a new connection waits for a session of its route in the new process of a
+// hand-off (docs/03-connections.md, "Timeouts"); a test shortens it.
+var sessionWait = 5 * time.Second
+
+// sessionPoll is how often the wait looks for a session.
+const sessionPoll = 25 * time.Millisecond
+
+// awaitOpen is open, repeated until a session of the route is there, the session wait passed or
+// ctx ended; it returns ErrNoSession then.
+func (m *Sessions) awaitOpen(ctx context.Context, open *tunnelv1.StreamOpen, skip passedOver) (*trackedStream, error) {
+	end := time.NewTimer(sessionWait)
+	defer end.Stop()
+	t := time.NewTicker(sessionPoll)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-end.C:
+			return nil, ErrNoSession
+		case <-t.C:
+		}
+		if st, err := m.open(ctx, open, skip); !errors.Is(err, ErrNoSession) {
+			return st, err
+		}
+	}
+}
+
 // OpenStream opens a stream for open's route and reads its StreamResult within 10 s. On DRAINING
 // or OVERLOADED it tries another session; on UPSTREAM_REFUSED or UPSTREAM_TIMEOUT another entry,
 // of the same priority first, then of the next, which may be the same connector at a worse
@@ -794,6 +826,9 @@ func (m *Sessions) openStreamResult(ctx context.Context, open *tunnelv1.StreamOp
 	skip := passedOver{tiers: map[tier]bool{}, sessions: map[*dataSession]bool{}, passive: true}
 	for attempt := range openAttempts {
 		st, err := m.open(ctx, open, skip)
+		if attempt == 0 && errors.Is(err, ErrNoSession) && m.o.AwaitSession != nil && m.o.AwaitSession() {
+			st, err = m.awaitOpen(ctx, open, skip)
+		}
 		if attempt > 0 && errors.Is(err, ErrNoSession) {
 			return nil, last, nil // no other session to try
 		}

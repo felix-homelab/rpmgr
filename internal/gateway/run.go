@@ -11,10 +11,12 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/quic-go/quic-go"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
@@ -108,14 +110,20 @@ func Run(ctx context.Context, o RunOptions) error {
 	if o.DrainPeriod == 0 {
 		o.DrainPeriod = DrainPeriod
 	}
+	// Every log line and metric names the process generation: 1 after a plain start, one more
+	// after each hand-off, so that the old and the new process of a hand-off stay apart.
+	generation := strconv.FormatUint(o.Handoff.Generation(), 10)
+	o.Logger = o.Logger.With("generation", generation)
 	if o.Tunnels != nil {
 		defer func() { _ = o.Tunnels.Close() }()
 	}
+	var oldAlive atomic.Bool // the old process of the hand-off that started this one runs
 	cfg := o.Config
 	held := &listeners{link: o.Handoff, log: o.Logger}
 	adopted := o.Handoff != nil && o.Handoff.Inherited != nil
 	if adopted {
 		held.take = o.Handoff.Inherited.Listener
+		oldAlive.Store(true)
 	}
 	if cfg.Controller.Passthrough.Address != "" && o.Controller != nil {
 		return errors.New("gateway: controller.passthrough and an in-process controller exclude each other")
@@ -123,6 +131,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	applier, assign := NewApplier()
 	var sessions *Sessions
 	var toOld atomic.Pointer[handoff.Pipe] // set in a process a hand-off started, once it is ready
+	var toOldCuts cuts                     // the routes this process changed, for the old one
+	applier.OnCut = toOldCuts.send
 	challenges, report := NewChallenges(), newReporter()
 	var update *agent.UpdateOptions
 	if o.Update {
@@ -175,12 +185,14 @@ func Run(ctx context.Context, o RunOptions) error {
 	if reg == nil {
 		reg = telemetry.NewRegistry()
 	}
+	reg = telemetry.WithLabels(reg, prometheus.Labels{"generation": generation})
 	metrics, err := NewMetrics(reg)
 	if err != nil {
 		return err
 	}
 	sessions = NewSessions(SessionsOptions{TrustDomain: id.TrustDomain, GatewayID: id.AgentID, Assignment: assign,
 		Denied: ctl.DenyList().Denied, Capabilities: Capabilities, Now: o.Now, Logger: o.Logger, Metrics: metrics,
+		AwaitSession:  oldAlive.Load,
 		OnOpenRequest: NewControlStreams(carried).Decide, OnChange: report.change})
 	host, _, err := net.SplitHostPort(cfg.Listen.TCP)
 	if err != nil {
@@ -414,6 +426,17 @@ func Run(ctx context.Context, o RunOptions) error {
 			if adopted {
 				pipe := o.Handoff.Inherited.Pipe()
 				toOld.Store(pipe)
+				toOldCuts.attach(pipe.Send)
+				// The old process runs until it closes its end of the pipe; until then a new
+				// connection of a route without a session waits for one.
+				go func() {
+					for {
+						if _, _, err := pipe.Recv(); err != nil {
+							oldAlive.Store(false)
+							return
+						}
+					}
+				}()
 				_ = pipe.Send(msgRevoked, "") // a revocation between this process's start and now
 				reportSessions(run, pipe.Send, sessions, o.Logger)
 			}
@@ -441,7 +464,13 @@ func Run(ctx context.Context, o RunOptions) error {
 			}
 			sessions.Recheck()
 		}
-		successor = followNew(ctx, child.Pipe.Recv, child.Exited(), sessions, deadline, reload, o.Logger)
+		cut := func(id string) {
+			o.Logger.Info("cutting the connections of a route the new process changed", "route", id)
+			routes.CutRoute(id)
+			pass.CutRoute(id)
+			httpRoutes.CutRoute(id)
+		}
+		successor = followNew(ctx, child.Pipe.Recv, child.Exited(), sessions, deadline, reload, cut, o.Logger)
 		o.Logger.Info("stopping accepting: the new process took over", "generation", held.link.Generation())
 	}
 	// Drain: no new public connections or data sessions; the open streams get the drain period,

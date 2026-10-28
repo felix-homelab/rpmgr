@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -38,9 +40,14 @@ type followed struct {
 
 func follow(t *testing.T, ctx context.Context, p *fakePipe, exited <-chan struct{}, m *gateway.Sessions, deadline time.Time, reload func()) *followed {
 	t.Helper()
+	return followCut(t, ctx, p, exited, m, deadline, reload, func(string) {})
+}
+
+func followCut(t *testing.T, ctx context.Context, p *fakePipe, exited <-chan struct{}, m *gateway.Sessions, deadline time.Time, reload func(), cut func(string)) *followed {
+	t.Helper()
 	f := &followed{done: make(chan struct{})}
 	go func() {
-		f.ended = gateway.FollowNew(ctx, p.recv, exited, m, deadline, reload, quietLog())
+		f.ended = gateway.FollowNew(ctx, p.recv, exited, m, deadline, reload, cut, quietLog())
 		close(f.done)
 	}()
 	return f
@@ -228,4 +235,25 @@ func TestFollowNew_PipeClosedPollsDenyList(t *testing.T) {
 	if reloads.Load() != n {
 		t.Fatal("the deny-list is still polled after the drain deadline")
 	}
+}
+
+// TestFollowNew_Cut: a cut message of the new process resets the connections of its route in the
+// old one, one per message.
+func TestFollowNew_Cut(t *testing.T) {
+	m, _, _ := twoConnectors(t)
+	p := newFakePipe()
+	var mu sync.Mutex
+	var got []string
+	followCut(t, context.Background(), p, nil, m, time.Now().Add(time.Minute), func() {}, func(id string) {
+		mu.Lock()
+		got = append(got, id)
+		mu.Unlock()
+	})
+	p.c <- pipeMsg{gateway.MsgCut, "r1"}
+	p.c <- pipeMsg{gateway.MsgCut, "r2"}
+	eventually(t, "the cuts did not arrive", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Equal(got, []string{"r1", "r2"})
+	})
 }

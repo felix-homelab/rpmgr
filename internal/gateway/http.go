@@ -1400,3 +1400,21 @@ func (c *streamConn) SetDeadline(time.Time) error      { return errors.ErrUnsupp
 func (c *streamConn) SetReadDeadline(time.Time) error  { return errors.ErrUnsupported }
 func (c *streamConn) SetWriteDeadline(time.Time) error { return errors.ErrUnsupported }
 func (c *streamConn) CloseWrite() error                { return c.Stream.CloseWrite() }
+
+// CutRoute cancels the requests of the route, upgraded connections included (see
+// TCPRoutes.CutRoute).
+func (h *HTTPRoutes) CutRoute(id string) {
+	h.mu.Lock()
+	rts := append([]*routeTransport{h.transports[id]}, h.replaced[id]...)
+	h.mu.Unlock()
+	for _, rt := range rts {
+		if rt == nil {
+			continue
+		}
+		rt.mu.Lock()
+		for ar := range rt.active {
+			ar.cancel()
+		}
+		rt.mu.Unlock()
+	}
+}
