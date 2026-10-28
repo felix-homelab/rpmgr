@@ -5,10 +5,17 @@
 # Until v1.0.0 (D64) a pull request runs only the stages its changes need, PostgreSQL 18 only and
 # the cross-platform builds as vet only; a push to main runs only the stages that always run; the
 # nightly run calls this workflow with full set to run everything.
+# A merge queue group (merge_group) runs like a pull request: stages from the files the group
+# changes, so the required checks report on the group's commit.
+# Go test results are cached between runs of pull requests and merge groups only (GO_TEST_CACHE):
+# the tests read only files and environment variables inside the module, which the go command
+# tracks, so a cached pass equals a new one. Everything external is re-run by the nightly run and
+# by pushes to main, which never cache (-count=1).
 name: ci
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
   workflow_call:
@@ -20,6 +27,10 @@ on:
 
 permissions:
   contents: read
+
+# Pull requests and merge groups let go test reuse cached results; see the header.
+env:
+  GO_TEST_CACHE: ${{ !inputs.full && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && '1' || '' }}
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -47,11 +58,15 @@ jobs:
           FULL: ${{ inputs.full }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          GROUP_BASE: ${{ github.event.merge_group.base_sha }}
+          GROUP_HEAD: ${{ github.event.merge_group.head_sha }}
         run: |
           if [[ $FULL == true ]]; then
             args=(--all)
           elif [[ $EVENT == pull_request ]]; then
             args=("$BASE" "$HEAD")
+          elif [[ $EVENT == merge_group ]]; then
+            args=("$GROUP_BASE" "$GROUP_HEAD")
           else
             args=(--none)
           fi
@@ -87,11 +102,14 @@ jobs:
           REQUIRE_GO: "1"
         run: .github/scripts/test-checks.sh
 
-  go:
+  # The checks that are not tests: formatting, go.mod, vet, banned settings. They run apart from the
+  # test shards, in parallel with them.
+  go-checks:
     needs: changes
     if: ${{ needs.changes.outputs.go == 'true' }}
+    name: go (checks)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -99,7 +117,49 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Format, tidy, vet, banned settings, race tests
+      - name: Format, tidy, vet, banned settings
+        env:
+          GO_CHECKS: only
+        run: .github/scripts/check-go.sh
+
+  # The race tests in four parallel shards: internal/controller, the slowest package, split by test
+  # name over shards 1 and 2, the other packages over shards 3 and 4. None of the checks named go,
+  # go (1/4) ... is a required check.
+  go:
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' }}
+    name: go (${{ matrix.shard }}/4)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # The build cache and the test results, kept between runs; the nightly run on main fills what
+      # pull requests start from. Each run saves its own entry (run_id), and the next run restores
+      # the newest one.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-go-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-shard${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: |
+            go-go-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-shard${{ matrix.shard }}-
+            go-go-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
+      - name: Race tests of the shard
+        env:
+          GO_CHECKS: skip
+          GO_TEST_SHARD: ${{ matrix.shard }}/4
         run: .github/scripts/check-go.sh
 
   go-lint:
@@ -152,12 +212,22 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # A merge group's branch is named gh-readonly-queue/<base>/pr-<number>-<sha>, after the last
+      # pull request in it; only that one's override counts there.
       - name: Breaking-change override (D56)
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
+          if [[ -z $PR && $REF_NAME =~ /pr-([0-9]+)- ]]; then
+            PR=${BASH_REMATCH[1]}
+          fi
+          if [[ -z $PR ]]; then
+            echo "no pull request number in '$REF_NAME'"
+            exit 0
+          fi
           labels=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq '[.labels[].name] | join(" ")')
           title=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json title --jq .title)
           if [[ " $labels " == *" breaking "* && $title =~ ^[a-z]+(\([a-z-]+\))?!: ]]; then
@@ -166,10 +236,16 @@ jobs:
       - name: buf lint, breaking, generated code
         run: .github/scripts/check-buf.sh
 
+  # The database tests in three parallel shards of the packages; shard 1 also lints the migrations.
   store:
     needs: changes
     if: ${{ needs.changes.outputs.go == 'true' }}
+    name: store (${{ matrix.shard }}/3)
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     # Full runs test on two PostgreSQL versions, one after the other, each package with up to
     # 20 minutes (check-store.sh).
     timeout-minutes: ${{ inputs.full && 60 || 30 }}
@@ -193,12 +269,27 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - id: go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
+      # The build cache and the test results, kept between runs; the nightly run on main fills what
+      # pull requests start from. Each run saves its own entry (run_id), and the next run restores
+      # the newest one.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-store-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-shard${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: |
+            go-store-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-shard${{ matrix.shard }}-
+            go-store-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
       - name: Store tests on PostgreSQL 18, and 16 in full runs; migrations linted
         env:
           STORE_SKIP_SQLITE: "1" # the go job runs the same tests on SQLite
+          GO_TEST_SHARD: ${{ matrix.shard }}/3
           RPMGR_TEST_PG_URLS: >-
             ${{ inputs.full && 'postgres://rpmgr:rpmgr@127.0.0.1:5416/postgres?sslmode=disable' || '' }}
             postgres://rpmgr:rpmgr@127.0.0.1:5418/postgres?sslmode=disable
@@ -255,16 +346,31 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.go == 'true' }}
     runs-on: ubuntu-24.04-arm
-    # arm64 with the race detector, then armv7: 13 to 20 minutes on the hosted runner.
+    # arm64, then armv7. Full runs keep the race detector on arm64: 13 to 20 minutes on the hosted
+    # runner. Pull requests and merge groups run without it (check-test-arch.sh).
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - id: go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Tests on arm64, with the race detector
+          cache: false
+      # The build cache and the test results, kept between runs; the nightly run on main fills what
+      # pull requests start from. Each run saves its own entry (run_id), and the next run restores
+      # the newest one.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-go-arm64-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            go-go-arm64-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-
+            go-go-arm64-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
+      - name: Tests on arm64; with the race detector in full runs
         if: ${{ !cancelled() }}
         run: .github/scripts/check-test-arch.sh arm64
       - name: Tests on armv7, natively on the same host

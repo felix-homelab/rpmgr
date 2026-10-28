@@ -458,6 +458,28 @@ the reference testbed ([Benchmarks](#benchmarks)).
 
   The tests of the checks run only when a PR changes something besides documents and sources. A
   push to `main` runs `lint`, `docs` and `secrets`.
+- **Speed.** The job `go` runs the race tests as four parallel shards (`go (1/4)` … `go (4/4)`)
+  and `store` as three (`store (1/3)` … `store (3/3)`); `check-go.sh` and `check-store.sh` split
+  the test packages deterministically (`GO_TEST_SHARD=<i>/<n>`). `internal/controller`, the
+  slowest package, runs alone: in `go` its tests are split by name into two halves (every second
+  test of the sorted list, subtests with their parent) for shards 1 and 2, and the script checks
+  that the halves together hold every test; the other packages share shards 3 and 4. The checks
+  that are not tests (formatting, `go.mod`, vet, the banned settings) run in their own job,
+  `go (checks)` (`GO_CHECKS=only`), in parallel; the shards set `GO_CHECKS=skip`. Each shard fails
+  on its own failures. None of these jobs is a required check, so the names changed nothing in
+  the `main` ruleset. In pull requests and merge groups go test reuses cached results
+  (`GO_TEST_CACHE=1`, no `-count=1`), and the build cache and the test results are kept between
+  runs. The tests read only files and environment variables inside the module, which the go
+  command tracks, so a cached pass equals a new one; everything outside the module is covered by
+  the nightly run, which caches no results, as does a push to `main`. The nightly run also fills
+  the cache that pull requests start from. The aim is no Go job above about 8 minutes on a typical
+  pull request.
+- **Merge queue.** `ci` and `pr-rules` also run on `merge_group`, so the required checks `lint`,
+  `docs`, `secrets` and `pr-rules` report on the commit of a queue group. A group runs the stages
+  its changes need, from the group's base and head commits (`changed-areas.sh`). `pr-rules` checks
+  nothing in the queue, because a group's commit is not a pull request; its rules were checked
+  when the pull request entered. In the proto job the breaking-change override is read from the
+  last pull request of the group.
 
 **Implemented so far.** CI covers the repository itself and, from Phase 1 on, the Go code. Each
 check is a script in `.github/scripts/` that runs the same way on a developer machine (the
@@ -476,7 +498,7 @@ Docker-based ones need Docker), and `test-checks.sh` tests the checks with valid
 | `ci` / `build (linux)`, `build (windows and macos)` | `go vet` of every package, tests included, with `CGO_ENABLED=0` for linux/{amd64,arm64,armv7,riscv64}, windows/amd64 and darwin/{amd64,arm64}; vet type-checks what a build compiles, so only link errors wait for full runs, which also `go build` | `check-build.sh` |
 | `ci` / `ops` | When `ops` is set: the units of `rpmgr systemd-unit` verified with `systemd-analyze verify` on Debian 13 and Ubuntu 22.04, the controllers' with a revocation-log sink, and the controller's `/install.sh` run in a container of each supported distribution, under a stub `systemctl`, from a test release (images by digest, through `mirror.gcr.io`), whose stub binary hands `rpmgr updater` to a real build, so that the updater's record, state and units are the real ones; the script run on a host that v0.1.0 set up, which must turn its single role into a list, raise its state and never lower a newer one (`TestInstall_UpdaterState`); the script run again on Debian 13 under a stub `sysctl`, which must keep the UDP buffers and BBR in `60-rpmgr.conf` and never lower a larger buffer (`TestInstall_Again`); the command the controller shows, run by a user with `sudo` in a terminal who types the token at the prompt, under classic sudo (Debian 13) and sudo-rs (Ubuntu 26.04), which must end with the token received (`TestInstall_TypedToken`); the global install script likewise against a fake of GitHub, with curl and with wget, including a changed binary or manifest, an architecture without a build and no OpenSSL 3; and the root updater on a real systemd host in a container, with `/var` on a tmpfs: an install across filesystems, the service user's permissions, a replayed old manifest and a hostile staging directory (`TestOTA`, `test/ota`) | `check-units.sh`, `check-install.sh`, `check-ota.sh` |
 | `ci` / `web` | When `web` is set, the web UI with the Node version of `web/.nvmrc`: `npm ci` from the lockfile without install scripts; `npm audit`, failing on any advisory of a dependency that reaches the browser and on high or critical ones of the build and test tools; ESLint with the bans of [09](09-web-ui.md#frontend-architecture); the TypeScript type check; the Vitest unit tests; the Vite build, failing on any warning; the Go tests of `internal/webui` on that build, which check its page against the CSP. Then the browser tests: the Playwright flows of `web/e2e` in the Playwright image, against an all-in-one that `test/webe2e` runs with that build; every page they visit is checked with axe, and a CSP violation or anything in browser storage fails them | `check-web.sh`, `check-web-e2e.sh` |
-| `ci` / `go-arm64` | Every test natively on a GitHub-hosted arm64 runner, with the race detector, and again for armv7 on the same host | `check-test-arch.sh` |
+| `ci` / `go-arm64` | Every test natively on a GitHub-hosted arm64 runner, and again for armv7 on the same host; with the race detector and without cached results in full runs only, because the amd64 shards cover data races and this job checks what depends on the architecture | `check-test-arch.sh` |
 | `nightly` / `ci`, `govulncheck`, `fuzz`, `riscv64`, `real-clients` | every `ci` stage in full; govulncheck against the latest vulnerability database; every fuzz target for 10 minutes; every test for riscv64 under QEMU user-mode emulation, with 30 minutes per package instead of 10; Go, curl, headless Chromium and Firefox (images by digest) against the gateway's port 443 router, each reaching two http routes, a TLS-passthrough route and the controller's UI name, and no page for an unknown name. A failure opens the issue "Nightly run failed", or comments on the open one. Also started by hand | `check-govulncheck.sh`, `check-fuzz.sh`, `check-test-arch.sh`, `check-real-clients.sh` |
 | `scorecard` / `analysis` | OpenSSF Scorecard, weekly and on every push to `main`; results in the code-scanning alerts and the public Scorecard API | — |
 | `bench` / `bench` | The benchmark suite on an x86-64 and an arm64 runner, started by hand with a profile ([Benchmarks](#benchmarks), D49); the measurements and the summary as artifacts, the summary also in the job summary | `run-bench.sh` |
