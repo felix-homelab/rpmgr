@@ -26,11 +26,13 @@ repo_root() {
 }
 
 # Sharding of test packages across parallel CI jobs. A shard is "<i>/<n>" (1 <= i <= n); an empty
-# one means all packages. The packages are dealt out round-robin from a sorted list, so the split
-# is deterministic and the shards together cover every package exactly once. The packages that
-# match SHARD_HEAVY are dealt first, so that the slowest of them does not share a shard with the
-# next ones (internal/controller alone runs for nearly 10 minutes with -race on a CI runner).
-SHARD_HEAVY='/internal/controller$'
+# one means all packages. The lines are dealt out round-robin from a sorted list, so the split is
+# deterministic and the shards together cover every line exactly once. The lines that match
+# SHARD_HEAVY go first, one to each of the first shards, and the other lines share the remaining
+# shards, so that the slowest package does not run next to others (internal/controller alone runs
+# for nearly 10 minutes with -race on a CI runner; check-go.sh splits it into two lines by test
+# name, "<package>#<k>/<m>"). With no more shards than heavy lines, everything is dealt round-robin.
+SHARD_HEAVY='/internal/controller(#[0-9]+/[0-9]+)?$'
 
 # shard_valid <shard> succeeds for an empty or well-formed shard.
 shard_valid() {
@@ -47,11 +49,18 @@ shard_select() {
       $0 ~ heavy { h[nh++] = $0; next }
       { o[no++] = $0 }
       END {
-        k = 0
-        for (x = 0; x < nh; x++) { if (k++ % n == i - 1) print h[x] }
-        for (x = 0; x < no; x++) { if (k++ % n == i - 1) print o[x] }
+        for (x = 0; x < nh; x++) { if (x % n == i - 1) print h[x] }
+        base = nh < n ? nh : 0
+        width = n - base
+        for (x = 0; x < no; x++) { if (base + x % width == i - 1) print o[x] }
       }'
   fi
+}
+
+# split_names <k> <m> reads sorted test names on standard input and prints the k-th of m parts:
+# every m-th name, from the k-th. The m parts together hold every name once.
+split_names() {
+  awk -v k="$1" -v m="$2" 'NR % m == k % m'
 }
 
 # shard_first <shard> succeeds when there is no sharding or this is the first shard, which runs the
