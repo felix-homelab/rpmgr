@@ -140,6 +140,10 @@ type Tx struct {
 	TrafficBaseline *TrafficBaselineClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
+	// Webhook is the client for interacting with the Webhook builders.
+	Webhook *WebhookClient
+	// WebhookDelivery is the client for interacting with the WebhookDelivery builders.
+	WebhookDelivery *WebhookDeliveryClient
 
 	// lazily loaded.
 	client     *Client
@@ -334,6 +338,8 @@ func (tx *Tx) init() {
 	tx.TOTPCredential = NewTOTPCredentialClient(tx.config)
 	tx.TrafficBaseline = NewTrafficBaselineClient(tx.config)
 	tx.User = NewUserClient(tx.config)
+	tx.Webhook = NewWebhookClient(tx.config)
+	tx.WebhookDelivery = NewWebhookDeliveryClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

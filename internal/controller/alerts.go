@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	"log/slog"
+	"net/url"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/alerts"
@@ -21,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
+	ewebhook "github.com/felix-homelab/rpmgr/internal/store/ent/webhook"
 )
 
 // AlertOptions configure the alert job.
@@ -182,6 +184,20 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 		for _, r := range rs {
 			add(org, alerts.RouteNoReadyTarget, "route", r.ID, r.Name, time.Time{})
 		}
+	}
+
+	// Webhook endpoints without a success for an hour while deliveries failed; an instance
+	// endpoint's is an instance alert.
+	hooks, err := c.Webhook.Query().Where(ewebhook.Enabled(true), ewebhook.FailingSinceLTE(now.Add(-alerts.WebhookFailingFor))).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, h := range hooks {
+		name := h.URL
+		if u, err := url.Parse(h.URL); err == nil {
+			name = u.Hostname() // the URL's path may hold the receiver's token
+		}
+		add(deref(h.OrgID), alerts.WebhookFailing, "webhook", h.ID, name, *h.FailingSince)
 	}
 
 	// The instance's alerts.

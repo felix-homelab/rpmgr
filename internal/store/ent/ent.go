@@ -75,6 +75,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhook"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookdelivery"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -198,6 +200,8 @@ func checkColumn(t, c string) error {
 			totpcredential.Table:     totpcredential.ValidColumn,
 			trafficbaseline.Table:    trafficbaseline.ValidColumn,
 			user.Table:               user.ValidColumn,
+			webhook.Table:            webhook.ValidColumn,
+			webhookdelivery.Table:    webhookdelivery.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

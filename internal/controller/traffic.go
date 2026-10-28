@@ -203,8 +203,8 @@ func RollupJob(o RollupOptions) lease.Job {
 // EventsEvery is how often the events job removes events past their retention.
 const EventsEvery = time.Hour
 
-// EventsJob is the singleton job that keeps events for events.Keep (docs/06-data-model.md,
-// "Observability (Phase 2)").
+// EventsJob is the singleton job that keeps events for events.Keep and webhook deliveries for
+// their retention (docs/06-data-model.md, "Observability (Phase 2)").
 func EventsJob(o RollupOptions) lease.Job {
 	return lease.Job{Name: "events", Reason: "keep the events for their retention", Every: EventsEvery,
 		Run: func(ctx context.Context, l lease.Lease) error {
@@ -212,8 +212,10 @@ func EventsJob(o RollupOptions) lease.Job {
 				if err := o.Leases.Fence(ctx, tx, l); err != nil {
 					return err
 				}
-				_, err := events.Purge(ctx, tx, o.Now().UTC().Add(-events.Keep))
-				return err
+				if _, err := events.Purge(ctx, tx, o.Now().UTC().Add(-events.Keep)); err != nil {
+					return err
+				}
+				return PurgeDeliveries(ctx, tx, o.Now().UTC())
 			})
 		}}
 }

@@ -93,7 +93,7 @@ TestLiveLogs_RedactedOnAgent	done	5.3	#643	internal/agent; the text pass in inte
 TestLiveLogs_CrossOrgRefused	done	5.4	#644	internal/apisvc; shared-group clause (a shared group's gateway needs the Instance Admin) in 11.2 (#725), as shared groups do not exist yet; cross-replica clause in 9.4 (#704)
 TestWebhook_EgressGuard	done	5.8	#648	webhooks (D138); allow-list clause in 5.19 (#935)
 TestWebhook_SignatureAndReplayWindow	done	5.8	#648	webhooks; rotation clause in 5.10 (#650)
-TestWebhook_EventsScopedToOrg	pending	5.9	#649	webhooks (D144)
+TestWebhook_EventsScopedToOrg	done	5.9	#649	webhooks (D144)
 TestWebhook_SecretWriteOnly	pending	5.10	#650	webhooks
 TestAuditExport_StepUpAndOrgScoped	pending	5.12	#652	audit export
 TestAuditExport_TamperDetectedOffline	pending	5.13	#653	audit export
