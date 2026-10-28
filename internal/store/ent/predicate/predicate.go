@@ -24,6 +24,9 @@ type AgentSession func(*sql.Selector)
 // AgentState is the predicate function for agentstate builders.
 type AgentState func(*sql.Selector)
 
+// Alert is the predicate function for alert builders.
+type Alert func(*sql.Selector)
+
 // AuditCheckpoint is the predicate function for auditcheckpoint builders.
 type AuditCheckpoint func(*sql.Selector)
 
@@ -68,6 +71,9 @@ type Domain func(*sql.Selector)
 
 // EnrollmentToken is the predicate function for enrollmenttoken builders.
 type EnrollmentToken func(*sql.Selector)
+
+// Event is the predicate function for event builders.
+type Event func(*sql.Selector)
 
 // Gateway is the predicate function for gateway builders.
 type Gateway func(*sql.Selector)

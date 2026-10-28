@@ -462,6 +462,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	job(CheckpointJob(cpOpts), "audit checkpoint job")
 	job(RetentionJob(cpOpts), "audit retention job")
 	job(RollupJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}), "traffic rollup job")
+	job(EventsJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}), "events job")
+	job(AlertJob(AlertOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger, RevocationLog: shipper.Status}), "alert job")
 	job(RolloutJob(RolloutOptions{DB: db, Now: o.Now, Logger: o.Logger}), "rollout job")
 	bg.Go(func() { ReloadCA(jobs, caOpts) })
 	bg.Go(func() { shipper.Run(jobs) })
