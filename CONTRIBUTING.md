@@ -112,8 +112,9 @@ branch fails CI, because `tmp/` branches are never merged.
     metadata checks.
   - CI runs the rest. A defect it finds is fixed by a further commit on the pushed branch, which
     stays a commit of its own and builds, instead of a new branch.
-  - Pull requests are faster than the nightly run: go test reuses cached results, and the Go and
-    database tests run in three parallel shards. The nightly run caches nothing and so re-runs
+  - Pull requests are faster than the nightly run: go test reuses cached results, the Go tests
+    run in four parallel shards and the database tests in three, and the arm64 tests run without
+    the race detector. The nightly run caches nothing and so re-runs
     everything the go command cannot track
     ([12](docs/12-testing-and-quality.md#continuous-integration)).
 

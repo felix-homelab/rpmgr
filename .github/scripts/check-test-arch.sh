@@ -4,9 +4,13 @@
 # Runs every Go test for one Linux architecture (docs/12-testing-and-quality.md, "Continuous
 # integration"): natively on a machine of that architecture, or under QEMU user-mode emulation
 # when the kernel has a binfmt handler for it. The race detector runs where Go supports it
-# (amd64, arm64); it needs cgo for its runtime only.
+# (amd64, arm64, see below); it needs cgo for its runtime only.
 #
-# GO_TEST_CACHE=1 lets go test reuse cached results (no -count=1); see check-go.sh.
+# GO_TEST_CACHE=1 lets go test reuse cached results (no -count=1); see check-go.sh. Pull and merge
+# group runs set it, and then arm64 runs without the race detector: the amd64 shards of the go job
+# cover data races, which do not depend on the architecture, and this run checks what does (word
+# size, alignment, atomics, assembly, byte order) in the same build as the release, CGO_ENABLED=0.
+# Nightly and full runs leave it unset and keep -race and -count=1.
 #
 # Usage: check-test-arch.sh <amd64|arm64|arm|riscv64> [<repository root>]
 set -euo pipefail
@@ -22,7 +26,14 @@ cd "$root"
 # makes it collect early enough.
 limits=()
 case $arch in
-  amd64 | arm64) flags=(-race -timeout 20m) cgo=1 ;;
+  amd64) flags=(-race -timeout 20m) cgo=1 ;;
+  arm64)
+    if [[ ${GO_TEST_CACHE-} == 1 ]]; then
+      flags=(-timeout 20m) cgo=0
+    else
+      flags=(-race -timeout 20m) cgo=1
+    fi
+    ;;
   arm) flags=(-timeout 30m) cgo=0 limits=(GOMEMLIMIT=2GiB) ;;
   riscv64) flags=(-timeout 30m) cgo=0 ;;
   *)
