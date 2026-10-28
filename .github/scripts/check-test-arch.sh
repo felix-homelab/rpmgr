@@ -6,6 +6,8 @@
 # when the kernel has a binfmt handler for it. The race detector runs where Go supports it
 # (amd64, arm64); it needs cgo for its runtime only.
 #
+# GO_TEST_CACHE=1 lets go test reuse cached results (no -count=1); see check-go.sh.
+#
 # Usage: check-test-arch.sh <amd64|arm64|arm|riscv64> [<repository root>]
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -28,11 +30,15 @@ case $arch in
     finish
     ;;
 esac
+count=(-count=1)
+if [[ ${GO_TEST_CACHE-} == 1 ]]; then
+  count=()
+fi
 echo "go test linux/$arch ${flags[*]}"
 # Tests listen on ports from internal/testutil/freeport, below the kernel's ephemeral range; a
 # runner whose range reaches lower would take them for outgoing connections.
 echo "ephemeral ports: $(cat /proc/sys/net/ipv4/ip_local_port_range 2>/dev/null || echo unknown)"
-if ! env GOOS=linux GOARCH="$arch" GOARM=7 CGO_ENABLED="$cgo" "${limits[@]}" go test "${flags[@]}" -count=1 ./...; then
+if ! env GOOS=linux GOARCH="$arch" GOARM=7 CGO_ENABLED="$cgo" "${limits[@]}" go test "${flags[@]}" "${count[@]}" ./...; then
   fail "tests failed on linux/$arch"
 fi
 finish
