@@ -1682,9 +1682,9 @@ sequenceDiagram
    `http`, `admin` and `route-<port>`. The new process matches a configured address to a handed
    socket by the address the old process bound (`listen.tcp: ":443"` is `[::]:443`), and binds what
    is not handed. A socket nothing needs is closed and logged once the first snapshot is applied.
-   The UDP socket of the QUIC listener is not handed until slice 17.4: a new process serves
-   data sessions over TCP only, and the old one keeps QUIC. Until the switch and drain of slice
-   17.10 the old process also serves on after a hand-off; stop it by hand.
+   The UDP socket of the QUIC listener is not handed until slice 17.4, so until then a gateway that
+   serves QUIC refuses a hand-off. Until the switch and drain of slice 17.10 the old process would
+   also serve on after one.
 3. **Ready.** The new process starts from the stored last-known-good snapshot, opens its control
    session, which supersedes the old process's, applies the snapshot it receives and reports ready
    over the pipe. The old process takes the `Goodbye{superseded}` this causes without ending and

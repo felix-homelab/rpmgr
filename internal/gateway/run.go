@@ -294,6 +294,7 @@ func Run(ctx context.Context, o RunOptions) error {
 			return err
 		}
 		udpAddr = pc.LocalAddr().String()
+		held.quic = true
 	}
 	closeQUIC := func() {
 		if qln != nil {
@@ -381,9 +382,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		o.Listening()
 	}
 	if o.Handoff != nil {
+		var rest func() []handoff.Entry
+		if adopted {
+			rest = o.Handoff.Inherited.Rest
+		}
 		o.Handoff.Serve(held.start)
 		background.Go(func() {
-			if err := held.ready(run, o.Handoff, ctl.Ready); err != nil {
+			if err := held.ready(run, o.Handoff, rest, ctl.Ready); err != nil {
 				errs <- err
 			}
 		})

@@ -27,6 +27,8 @@ type listeners struct {
 	// plain start.
 	take func(netip.AddrPort) (net.Listener, bool, error)
 	log  *slog.Logger
+	// quic is set while the gateway serves a QUIC listener.
+	quic bool
 
 	mu   sync.Mutex
 	open []heldListener
@@ -119,8 +121,17 @@ func closeSockets(s []handoff.Socket) {
 	}
 }
 
+// quicHandoff says the UDP socket of the QUIC listener is handed over too. It is not until slice
+// 17.4: a new process would serve no data session over QUIC while the old one still accepts, so a
+// gateway with a QUIC listener refuses a hand-off. 17.4 removes the variable.
+var quicHandoff = false
+
 // start hands the listeners over to a new process (handoff.Link.Serve).
 func (l *listeners) start(ctx context.Context) (*handoff.Child, error) {
+	if l.quic && !quicHandoff {
+		return nil, fmt.Errorf("%w: this gateway serves QUIC data sessions, whose UDP socket is not handed over "+
+			"yet (slice 17.4, #882); restart it with `systemctl restart`", handoff.ErrRefused)
+	}
 	socks, err := l.sockets()
 	if err != nil {
 		return nil, err
@@ -140,8 +151,8 @@ const readyEvery = 100 * time.Millisecond
 // first snapshot applied, so that it holds the route ports the snapshot needs: the old process
 // stops sending it new connections only once it is told it can take over. What the old process
 // handed over and the snapshot did not need is closed and logged. It returns nil if ctx ends first.
-func (l *listeners) ready(ctx context.Context, link *handoff.Link, controlReady func(context.Context) error) error {
-	if link.Inherited != nil {
+func (l *listeners) ready(ctx context.Context, link *handoff.Link, rest func() []handoff.Entry, controlReady func(context.Context) error) error {
+	if rest != nil {
 		t := time.NewTicker(readyEvery)
 		defer t.Stop()
 		for controlReady(ctx) != nil {
@@ -151,7 +162,7 @@ func (l *listeners) ready(ctx context.Context, link *handoff.Link, controlReady 
 			case <-t.C:
 			}
 		}
-		for _, e := range link.Inherited.Rest() {
+		for _, e := range rest() {
 			l.log.Warn("closed a handed-over socket nothing needs", "name", e.Name, "net", e.Net, "addr", e.Addr.String())
 		}
 	}

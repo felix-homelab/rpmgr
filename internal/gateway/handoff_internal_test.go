@@ -163,7 +163,7 @@ func TestListeners_Ready(t *testing.T) {
 	}, func() { begun++ })
 	l := &listeners{log: quiet(), link: link}
 	for range 2 {
-		if err := l.ready(context.Background(), link, nil); err != nil {
+		if err := l.ready(context.Background(), link, nil, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -188,7 +188,7 @@ func TestListeners_ReadyFails(t *testing.T) {
 		return ""
 	}, func() { t.Error("the trigger began after a failed notification") })
 	l := &listeners{log: quiet(), link: link}
-	if err := l.ready(context.Background(), link, nil); err == nil || !strings.Contains(err.Error(), "hand-off") {
+	if err := l.ready(context.Background(), link, nil, nil); err == nil || !strings.Contains(err.Error(), "hand-off") {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -225,5 +225,51 @@ func TestTCPRoutes_ListenHook(t *testing.T) {
 	defer mu.Unlock()
 	if want := net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port))); len(addrs) < 2 || addrs[0] != want {
 		t.Errorf("addresses %v, want %s first", addrs, want)
+	}
+}
+
+// TestListeners_StartRefusedWithQUIC: while the QUIC socket cannot be handed over, a gateway that
+// serves QUIC refuses the hand-off before it starts anything, and keeps serving.
+func TestListeners_StartRefusedWithQUIC(t *testing.T) {
+	l := &listeners{log: quiet(), quic: true, link: handoff.NewLink(nil, func(string) string { return "" }, nil)}
+	ln, err := l.listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	_, err = l.start(context.Background())
+	if !errors.Is(err, handoff.ErrRefused) || !strings.Contains(err.Error(), "17.4") {
+		t.Fatalf("got %v, want a refusal naming 17.4", err)
+	}
+	if c, err := net.Dial("tcp", ln.Addr().String()); err != nil {
+		t.Errorf("the gateway stopped serving: %v", err)
+	} else {
+		_ = c.Close()
+	}
+	// Without the gate the TCP path is reached (and refused by the binary rule of the test).
+	quicHandoff = true
+	t.Cleanup(func() { quicHandoff = false })
+	if _, err := l.start(context.Background()); err == nil || strings.Contains(err.Error(), "17.4") {
+		t.Fatalf("gate still closed: %v", err)
+	}
+}
+
+// TestListeners_ReadyWaitsForControlPlane: a process a hand-off started whose control plane never
+// gets ready does not report ready, so the old process kills it at the readiness window and serves
+// on; and it closes nothing it was handed.
+func TestListeners_ReadyWaitsForControlPlane(t *testing.T) {
+	begun := false
+	link := handoff.NewLink(nil, func(string) string { return "" }, func() { begun = true })
+	l := &listeners{log: quiet(), link: link}
+	rested := false
+	ctx, cancel := context.WithTimeout(context.Background(), 350*time.Millisecond)
+	defer cancel()
+	var polls int
+	err := l.ready(ctx, link, func() []handoff.Entry { rested = true; return nil }, func(context.Context) error {
+		polls++
+		return errors.New("no control session")
+	})
+	if err != nil || begun || rested || polls < 2 {
+		t.Fatalf("err %v, begun %v, rested %v, polls %d", err, begun, rested, polls)
 	}
 }
