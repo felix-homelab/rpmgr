@@ -225,8 +225,8 @@ RestartSec=2s
     applied its first snapshot) and the old process switched. A gateway that cannot bind its
     listeners, or whose hand-off fails, ends and `systemctl start` fails. All-in-one and
     connector still send it at once, until their slices.
-    Until slice 17.4 (#882) hands the QUIC socket over, a gateway that serves QUIC refuses a
-    hand-off ("restart with `systemctl restart`"): a new process would serve no QUIC data sessions.
+    A gateway that serves QUIC hands off too: the new process opens its QUIC listener and its `udp`
+    routes once the old one has exited ([03](03-connections.md#restarts-with-socket-hand-off-phase-2)).
   - **`rpmgr handoff`** signals only a process that announced in `/run/rpmgr/<role>/handoff.pid`
     that it takes `SIGUSR2`; for an older process it refuses and names `systemctl restart`.
     After an update the running image is `<path> (deleted)`: the old process starts the installed

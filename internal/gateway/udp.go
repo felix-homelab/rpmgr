@@ -174,10 +174,25 @@ func (u *UDPRoutes) notBound(r UDPRoute, err error) {
 	u.o.Logger.Warn("cannot listen on a route's udp port", "route", r.ID, "port", r.Port, "error", err)
 }
 
+// Rebind tries the pending ports now. A process a hand-off started calls it once the old process
+// exited and freed its sockets, instead of waiting for the next retry.
+func (u *UDPRoutes) Rebind() {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.retry != nil {
+		u.retry.Stop()
+	}
+	u.rebindLocked()
+}
+
 // rebind tries the pending ports again.
 func (u *UDPRoutes) rebind() {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	u.rebindLocked()
+}
+
+func (u *UDPRoutes) rebindLocked() {
 	u.retry = nil
 	if u.closed {
 		return
