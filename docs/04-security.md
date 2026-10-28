@@ -187,11 +187,12 @@ later.
 - Short lifetimes bound the damage when a deny-list cannot be pushed (controller down).
 - **Revoking** a certificate (by serial) or an identity (every certificate of it, also one issued
   later; no new certificate is issued and none renewed) is committed with an audit record. The
-  controller then ends the control sessions of the agents it covers with `Goodbye{revoked}`, sends
-  the new list to every other session, and refuses the certificates at its TLS layer. Each replica
-  reloads the list at every revision check ([03](03-connections.md#timeouts-keepalive-and-backoff)),
-  so a revocation committed by another replica or an admin command is enforced too. Phase 1 always
-  sends the full set.
+  controller then ends the control sessions of the agents it covers with `Goodbye{revoked}`, and
+  with them their imperative operations, such as live logs
+  ([03](03-connections.md#control-session)), sends the new list to every other session, and refuses
+  the certificates at its TLS layer. Each replica reloads the list at every revision check
+  ([03](03-connections.md#timeouts-keepalive-and-backoff)), so a revocation committed by another
+  replica or an admin command is enforced too. Phase 1 always sends the full set.
 - Every revocation is also appended to the **revocation log** outside the database, so a restore
   from an older backup cannot resurrect revoked credentials ([Audit log](#audit-log)).
 - [R] **No OCSP and no CRL**: every relying party already receives the deny-list; OCSP would
@@ -558,7 +559,12 @@ their own account this way. Further rules:
 [R] **Live logs** (Phase 2): logs of a gateway of a group shared with other orgs are for the
 Instance Admin only, as they show other orgs' traffic. A host cannot refuse live logs in Phase 2.
 Opening a log, and raising its level, is audited as `agent.logs_open` with the level and filter
-([D140](14-open-decisions.md#engineering)).
+([D140](14-open-decisions.md#engineering)). As permissions are evaluated per request, a live log,
+one long request, admits its viewer again while it runs: a session or token that is no longer
+valid ends it with `UNAUTHENTICATED`, and a viewer who lost `agents.logs` or left the org with
+`PERMISSION_DENIED`, within the interval of [03](03-connections.md#timeouts-keepalive-and-backoff).
+The recheck is not the user's activity: it does not move a session's idle expiry, so a live log
+left open in a forgotten tab ends when its session's idle timeout passes.
 
 [R] `connectors.write` reaches routes: decommissioning a connector deletes each route left with no
 target, with its hostnames, ports and policy links, so a token with that scope and without
@@ -1163,7 +1169,9 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    ([03](03-connections.md#versioning-and-capabilities)), and in an easy rollout only to the agent
    whose turn it is: gateways and connectors on Linux that
    run on their own on a host with the root updater installed (its directory
-   `/var/lib/rpmgr-update/` exists), never all-in-one's, whose roles share the controller's
+   `/var/lib/rpmgr-update/` exists and the unit `rpmgr-update.path` is enabled, so that a host the
+   v0.1.0 install script or `rpmgr setup --no-unit` left without the units is never offered a
+   release nothing would install), never all-in-one's, whose roles share the controller's
    binary, nor one in the container image, which has no updater. The offer
    names the version, the controller's public URL (the `public_url` of [10](10-operations.md),
    which `/install.sh` and enrollment use), its manifest's `seq` and its files under `/dl/` with
@@ -1408,9 +1416,11 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
   period in [03](03-connections.md#timeouts-keepalive-and-backoff), so receivers switch without a
   gap. **Receivers reject signatures older than 5 minutes.** Timestamps are used because receivers
   are third-party HTTP endpoints without mutual TLS; rpmgr-internal authentication never uses them.
-- **Delivery.** HTTPS only, the receiver's certificate verified against the system roots; a
-  redirect is never followed; at least once, each request naming its event in `Rpmgr-Event-Id` so
-  a receiver drops duplicates. An endpoint without a successful delivery for the period in 03 is
+  The HMAC is keyed with the secret as it is shown, its `rpmgr_whs_` prefix included.
+- **Delivery.** HTTPS only, the receiver's certificate verified against the system roots, with
+  TLS 1.3 or 1.2, as for other third-party servers; a URL with credentials in it is not delivered
+  to; a redirect is never followed; at least once, each request naming its event in
+  `Rpmgr-Event-Id` so a receiver drops duplicates. An endpoint without a successful delivery for the period in 03 is
   disabled, with an event, an e-mail to the org's Owners and Admins and a notice in the UI; only a
   person enables it again ([D143](14-open-decisions.md#engineering)).
 - **Egress guard** ([D138](14-open-decisions.md#engineering)). The controller dials every receiver
@@ -1418,18 +1428,20 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
   name that changes its answer (DNS rebinding) gains nothing:
   - **Always denied:** loopback, unspecified, link-local (`169.254.0.0/16`, `fe80::/10`), the cloud
     metadata addresses (`169.254.169.254`, `fd00:ec2::254`, `100.100.100.200`), multicast and
-    broadcast, the controller's own listening addresses, and the IPv4-mapped and IPv4-compatible
-    forms of each.
+    broadcast, the controller's own addresses (every address of its host's interfaces), and the
+    IPv4-mapped, IPv4-compatible, NAT64 and 6to4 forms of each.
   - **Private ranges** (RFC 1918, `fc00::/7`, `100.64.0.0/10` and every other non-global unicast
     range) are denied unless the Instance Admin lists the range in the instance setting
-    `webhook_private_ranges`. A refused delivery names the range, which the UI offers to list. A
+    `webhook_private_ranges`. A refused delivery names the range, which the UI offers to list, but
+    never the address the name resolved to, so a webhook does not map the controller's network. A
     listed range never admits an always-denied address.
   - **Instance endpoints and audit sinks**, which only the Instance Admin sets, may reach private
     ranges and loopback; link-local, metadata, multicast and broadcast addresses stay denied
     ([D145](14-open-decisions.md#engineering), E5).
-  - **Through a proxy** (`HTTPS_PROXY`), the controller resolves and checks the receiver itself
-    and asks the proxy to connect to the checked address, with the receiver's name for TLS and
-    `Host`.
+  - **Through a proxy** (`HTTPS_PROXY`, an `http://` or `https://` proxy; `NO_PROXY` applies), the
+    controller resolves and checks the receiver itself and asks the proxy to connect to the checked
+    address, with the receiver's name for TLS and `Host`. A SOCKS proxy is not used for webhooks:
+    such a delivery fails and says so.
 
 ## Audit log
 

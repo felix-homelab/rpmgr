@@ -140,6 +140,8 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await expect(page.getByRole("heading", { name: "New route", level: 1 })).toBeVisible();
   await page.getByLabel("Name", { exact: true }).fill("photos");
   await page.getByLabel("Hostnames").fill("photos.example.com");
+  await page.getByLabel("Serve only requests with these headers").fill("X-Env: beta");
+  await page.getByLabel("Most connections, flows or requests at once").fill("200");
   await page.waitForTimeout(800);
   await shot(page, "route-new", true);
 
@@ -185,8 +187,14 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await enroll.getByRole("button", { name: "Close" }).click();
   await page.getByRole("link", { name: "nas-01", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Connector nas-01", level: 1 })).toBeVisible();
-  await page.waitForTimeout(1000);
+  // Its live log, raised to debug, shows what the connector does now.
+  await page.getByLabel("Raise to debug while open (audited)").check();
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByRole("log", { name: "Live log lines" })).toContainText("DEBUG", { timeout: 30_000 });
+  await page.waitForTimeout(3000);
+  await page.getByRole("button", { name: "Pause" }).click();
   await shot(page, "connector-detail", true);
+  await page.getByRole("button", { name: "Stop" }).click();
 
   // Gateways.
   await open(page, "Gateways", "Gateway groups");

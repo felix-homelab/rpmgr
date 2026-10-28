@@ -100,6 +100,30 @@ func testseedCommand() *cli.Command {
 			}
 			return err
 		}),
+		verb("gateway-wss", "set a gateway's WSS hostname, uploading its certificate", func(fs *flag.FlagSet) {
+			fs.StringVar(&name, "name", "", "gateway name")
+			fs.Var(&hostnames, "hostname", "the WSS hostname, its parent domain claimed and verified")
+			fs.StringVar(&certFile, "cert-file", "", "PEM certificate chain that covers it; empty uploads none")
+			fs.StringVar(&keyFile, "key-file", "", "PEM private key of that certificate")
+		}, func(s *testseed.Seeder, env *cli.Env) error {
+			if len(hostnames) != 1 {
+				return errors.New("--hostname: exactly one")
+			}
+			var crt, key []byte
+			if certFile != "" {
+				if err := withKEK(s, env); err != nil {
+					return err
+				}
+				var err error
+				if crt, err = os.ReadFile(certFile); err != nil { //nolint:gosec // G304: the test's own file
+					return err
+				}
+				if key, err = os.ReadFile(keyFile); err != nil { //nolint:gosec // G304: the test's own file
+					return err
+				}
+			}
+			return s.SetGatewayWSS(name, hostnames[0], crt, key)
+		}),
 		verb("connector-token", "print a token that enrolls connectors", func(fs *flag.FlagSet) {
 			fs.IntVar(&uses, "uses", 1, "how many connectors it enrolls")
 		}, func(s *testseed.Seeder, env *cli.Env) error {

@@ -26,6 +26,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/healthcheck"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
@@ -414,6 +415,27 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 		out.State = rpmgrv1.RouteState_ROUTE_STATE_READY
 	}
 	return out
+}
+
+// RoutesWithoutReadyTarget are the enabled routes of org with no ready target, as their status
+// counts them, for the alert "route has no ready connector" (docs/10-operations.md, "Suggested
+// alerts"). A route in maintenance is left out: a gateway answers for it on purpose.
+func RoutesWithoutReadyTarget(ctx context.Context, c *ent.Client, org string, now time.Time) ([]*ent.Route, error) {
+	rows, err := c.Route.Query().Where(route.OrgID(org), route.Enabled(true)).All(ctx)
+	if err != nil || len(rows) == 0 {
+		return nil, err
+	}
+	st, err := newRouteStatuses(ctx, ctx, c, org, rows, now)
+	if err != nil {
+		return nil, err
+	}
+	var out []*ent.Route
+	for _, r := range rows {
+		if s := st.of(r); s.TargetsReady == 0 && s.State != rpmgrv1.RouteState_ROUTE_STATE_MAINTENANCE {
+			out = append(out, r)
+		}
+	}
+	return out, nil
 }
 
 // capabilityMissing is the reason of an agent that lacks capabilities a route needs, with what

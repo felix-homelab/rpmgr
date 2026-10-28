@@ -13,11 +13,13 @@ import (
 	"time"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/event"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/resourcestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
@@ -234,5 +236,37 @@ func TestRollupJob(t *testing.T) {
 	}
 	if n := c.TrafficBaseline.Query().CountX(sys); n != 2 {
 		t.Fatalf("%d baselines left, want the 2 reported within 30 days", n)
+	}
+}
+
+// TestEventsJob (#646): the singleton job removes the events older than their retention, 7 days.
+func TestEventsJob(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	storetest.Init(t, db)
+	org := storetest.Org(t, db, "org-a")
+	sys := storetest.SystemCtx(t)
+	for range 2 {
+		if _, err := audit.Record(context.Background(), db, audit.Entry{OrgID: org, ActorType: audit.ActorSystem, ActorID: "test",
+			Action: "route.update", Result: audit.Success}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := db.Client()
+	first := c.Event.Query().Order(ent.Asc(event.FieldID)).FirstX(sys)
+	// The job's clock is 7 days and a moment after the first event.
+	now := first.Ts.Add(7*24*time.Hour + time.Microsecond)
+	leases := lease.New(db, "ctn_test", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		leases.Run(ctx, controller.EventsJob(controller.RollupOptions{DB: db, Leases: leases, Now: func() time.Time { return now }}),
+			func(err error) { t.Errorf("job: %v", err) })
+		close(done)
+	}()
+	waitUntil(t, func() bool { return c.Event.Query().CountX(sys) == 1 })
+	cancel()
+	<-done
+	if left := c.Event.Query().OnlyX(sys); left.ID == first.ID {
+		t.Fatal("the job removed the newer event")
 	}
 }

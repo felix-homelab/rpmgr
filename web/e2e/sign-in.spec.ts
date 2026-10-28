@@ -209,6 +209,24 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.goto("/routes/new");
   await expect(page.locator(".required-mark")).toHaveText(["Gateway group", "Name", "Hostnames", "HSTS max-age (seconds)", "Largest request body (bytes, 0 for no limit)"]);
   expect(await unmarked(page)).toEqual([]);
+  // Header matches and the route's own timeouts: a line not in its format is refused in the form,
+  // on its field, before anything is sent, and the form with its errors stays accessible.
+  await page.getByLabel("Serve only requests with these headers").fill("X-Env: beta\nX Env: a");
+  await page.getByLabel("Wait for the target's response headers (seconds)").fill("300");
+  await page.getByRole("button", { name: "Create the route" }).click();
+  await expect(page.getByText("Line 2: “X Env” is not a header name.", { exact: false })).toBeVisible();
+  await expect(page.getByLabel("Serve only requests with these headers")).toHaveAttribute("aria-invalid", "true");
+  // A route's limits: empty is none, and a bandwidth below the smallest is refused on its field.
+  await page.getByLabel("Most bytes a second, each way").fill("512");
+  await page.getByRole("button", { name: "Create the route" }).click();
+  await expect(page.getByText("A bandwidth limit is at least 1024 bytes a second; leave it empty for none.")).toBeVisible();
+  await expect(page.getByLabel("Most bytes a second, each way")).toHaveAttribute("aria-invalid", "true");
+  // The section list marks both sections, and the failed save moved to the first field with an
+  // error on the page (D153).
+  const sectionList = page.getByRole("navigation", { name: "Sections of the form" });
+  await expect(sectionList.getByRole("link", { name: /\(has an error\)$/ })).toHaveText(["Hostnames & matching (has an error)", "Upstream (has an error)"]);
+  await expect(page.getByLabel("Serve only requests with these headers")).toBeFocused();
+  await expectAccessible(page);
   // A CONNECT route: its fields come with the mode, and basic auth in the clear stays warned of.
   await page.getByRole("radio", { name: "TCP", exact: true }).check();
   await page.getByLabel("Listener", { exact: true }).selectOption({ label: "A CONNECT listener shared with other routes (HTTP proxy)" });
@@ -221,7 +239,17 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   expect(await top("Name")).toBe(await top("Gateway group"));
   await page.setViewportSize({ width: 390, height: desktop.height });
   expect(await top("Name")).toBeGreaterThan(await top("Gateway group"));
+  // On a phone the section list stands above the form, and nothing scrolls sideways.
+  expect((await sectionList.boundingBox())!.y).toBeLessThan(await top("Gateway group"));
+  expect(await sideways(page, "main"), "route form, 390 px wide").toEqual([]);
+  await expectAccessible(page);
   await page.setViewportSize(desktop);
+  // Each link of the list jumps to its section's heading.
+  await expect(sectionList.getByRole("link")).toHaveText(["General", "Hostnames & matching", "TLS", "Requests & headers", "Upstream", "Health check", "Maintenance"]);
+  await sectionList.getByRole("link", { name: "Maintenance" }).click();
+  await expect(page).toHaveURL(/\/routes\/new#route-section-maintenance$/);
+  await expect(page.getByRole("heading", { name: "Maintenance", level: 2 })).toBeInViewport();
+  await expect(page.getByRole("heading", { name: "New route", level: 1 })).not.toBeInViewport();
   // A health check's parts appear with its kind: an HTTP check has a path and passing statuses,
   // a TCP check neither; none of them is required (D133).
   await page.goto("/routes/new");
@@ -310,6 +338,32 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await page.setViewportSize(size);
   await enroll.getByRole("button", { name: "Close" }).click();
 
+  // A connector's live log, from made-up answers (the instance's own connector has none): the
+  // panel shows the redacted lines and the marker of dropped ones, is accessible, and does not
+  // scroll sideways on a phone.
+  const fake = { id: "con_01JA3B5C7D9E1F2G3H4J5K6M7N", name: "nas-01", enabled: true, session: { connected: true, version: "0.3.0" } };
+  await page.route("**/rpmgr.v1.ConnectorService/GetConnector", (route) => route.fulfill({ json: { connector: fake } }));
+  await page.route("**/rpmgr.v1.ConnectorService/GetConnectorStatus", (route) => route.fulfill({ json: { status: {} } }));
+  await page.route("**/rpmgr.v1.LogService/StreamLogs", (route) => route.fulfill({
+    contentType: "application/connect+json",
+    body: enveloped([{ line: { time: "2026-10-25T09:00:00Z", level: "info", text: "msg=\"route ready\" route=rte_1 token=[REDACTED]" } },
+      { line: { time: "2026-10-25T09:00:01Z", level: "warn", text: "msg=\"dial failed\" " + "x".repeat(300), droppedBefore: 12 } }]),
+  }));
+  await page.goto(`/connectors/${fake.id}`);
+  await page.getByRole("button", { name: "Start" }).click();
+  const liveLog = page.getByRole("log", { name: "Live log lines" });
+  await expect(liveLog).toContainText("12 lines dropped");
+  await expect(liveLog).toContainText("token=[REDACTED]");
+  await expectAccessible(page);
+  for (const width of [size.width, 390]) {
+    await page.setViewportSize({ width, height: size.height });
+    expect(await sideways(page, "main"), `live log, ${width} px wide`).toEqual([]);
+  }
+  await page.setViewportSize(size);
+  await page.unroute("**/rpmgr.v1.ConnectorService/GetConnector");
+  await page.unroute("**/rpmgr.v1.ConnectorService/GetConnectorStatus");
+  await page.unroute("**/rpmgr.v1.LogService/StreamLogs");
+
   // The audit log: the request of an opened entry, one line of JSON, wraps, so the page does not
   // scroll sideways, in a desktop window or on a phone (#563).
   await page.getByRole("link", { name: "Audit log" }).click();
@@ -354,3 +408,16 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);
   expect(violations).toEqual([]);
 });
+
+// enveloped is a Connect server stream of messages as JSON: each message, then the end of the
+// stream, with its 5-byte envelope (flags, big-endian length).
+function enveloped(messages: object[]): Buffer {
+  const frame = (flags: number, body: object) => {
+    const json = Buffer.from(JSON.stringify(body));
+    const head = Buffer.alloc(5);
+    head.writeUInt8(flags, 0);
+    head.writeUInt32BE(json.length, 1);
+    return Buffer.concat([head, json]);
+  };
+  return Buffer.concat([...messages.map((m) => frame(0, m)), frame(2, {})]);
+}

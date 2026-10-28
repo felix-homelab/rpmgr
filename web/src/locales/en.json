@@ -77,6 +77,10 @@
     "text": "The page you asked for does not exist, or its link is out of date.",
     "back": "Go to the overview"
   },
+  "violations": {
+    "name": "use 1 to 63 lowercase letters, digits and hyphens, starting and ending with a letter or digit",
+    "nameHint": "1 to 63 lowercase letters, digits and hyphens, starting and ending with a letter or digit."
+  },
   "link": {
     "incomplete": "This link is incomplete. Open the whole link you were given, or ask for a new one.",
     "failed": "That did not work: {{message}}"
@@ -198,6 +202,7 @@
       "infrastructure_write": "gateways, gateway groups, port pools, domains and certificates",
       "members_write": "members and invitations",
       "audit_read": "read and export the audit log",
+      "agents_logs": "stream the live logs of connectors and gateways",
       "org_write": "SSO, the MFA policy and the org's settings",
       "instance_admin": "the instance: CA, KEK, system gateways and instance settings"
     }
@@ -261,7 +266,6 @@
     "gateways": "served by {{serving}} of {{total}} gateways",
     "noHostname": "The gateway group has no public hostname, so only the port is shown.",
     "setHostname": "Set the names clients reach it by",
-    "mtu": "UDP datagrams travel as QUIC datagrams up to about 1240 bytes, or 1412 bytes once path-MTU discovery has run. Larger ones go over the flow's stream: delivered reliably, but one late packet holds up those after it.",
     "targets": "Targets",
     "columns": {
       "connector": "Connector",
@@ -307,6 +311,36 @@
       "unknown": "—"
     }
   },
+  "liveLog": {
+    "title": "Live log",
+    "of": "Live log of {{name}}",
+    "open": "Live log…",
+    "panel": "Live log lines",
+    "level": "Level",
+    "levels": {
+      "debug": "Debug and above",
+      "info": "Info and above",
+      "warn": "Warnings and errors",
+      "error": "Errors only"
+    },
+    "filter": "Only lines containing",
+    "debug": "Raise to debug while open (audited)",
+    "start": "Start",
+    "continue": "Continue",
+    "stop": "Stop",
+    "pause": "Pause",
+    "resume": "Resume scrolling",
+    "hint": "Lines are redacted on the agent before they leave its host; the filter matches the redacted text.",
+    "waiting": "Waiting for the first line…",
+    "empty": "Start to follow the log.",
+    "dropped_one": "… 1 line dropped: the agent logged faster than lines could be sent",
+    "dropped_other": "… {{count}} lines dropped: the agent logged faster than lines could be sent",
+    "cut": "…(cut)",
+    "deadline": "The live log ended at its time limit. Continue opens a new one.",
+    "unavailable": "The agent is offline, or its rpmgr release has no live logs.",
+    "limit": "Too many live logs are open, for you or for this agent. Close one and try again.",
+    "builtIn": "The built-in connector of an all-in-one has no live log here: its log is the controller's, which the host's journal shows."
+  },
   "notServing": {
     "BLOCKED_BY_LOCAL_POLICY": "blocked by the connector's local policy",
     "POLICY_INVALID": "the connector's local policy does not load",
@@ -340,6 +374,18 @@
     "back": "Back to the route",
     "warning": "Warning: {{message}}.",
     "number": "Enter a whole number.",
+    "sections": {
+      "list": "Sections of the form",
+      "invalid": "(has an error)",
+      "general": "General",
+      "matching": "Hostnames & matching",
+      "tls": "TLS",
+      "requests": "Requests & headers",
+      "upstream": "Upstream",
+      "health": "Health check",
+      "listener": "Listener",
+      "maintenance": "Maintenance"
+    },
     "fields": {
       "name": "Name",
       "description": "Description",
@@ -363,6 +409,9 @@
       "flowIdleTimeout": "Flow idle timeout (seconds)",
       "tcpIdleTimeout": "TCP idle timeout (seconds)",
       "udpFlowIdleTimeout": "UDP flow idle timeout (seconds)",
+      "headerMatches": "Serve only requests with these headers",
+      "upstreamHeaderTimeout": "Wait for the target's response headers (seconds)",
+      "upstreamIdleTimeout": "Keep an unused connection to the target (seconds)",
       "listenerMode": "Listener",
       "authorities": "CONNECT names",
       "connectAuth": "Proxy credentials",
@@ -375,18 +424,23 @@
       "healthInterval": "Check interval (seconds)",
       "healthTimeout": "Check timeout (seconds)",
       "healthUnhealthy": "Failed checks before unhealthy",
-      "healthHealthy": "Passed checks before healthy again"
+      "healthHealthy": "Passed checks before healthy again",
+      "maxConnections": "Most connections, flows or requests at once",
+      "requestsPerSecond": "Most requests, connections or flows a second",
+      "bandwidth": "Most bytes a second, each way"
     },
     "hints": {
       "lines": "One per line.",
       "labels": "One per line, as key=value.",
       "headers": "One per line, as Name: value. An empty value removes the header.",
+      "matches": "One per line, at most 8: Name: value for that exact value, or Name alone for any value. Where routes share a hostname and path, the one with more matching headers wins.",
       "optionalNumber": "Empty for the default.",
       "certificate": "The org's uploaded certificates that cover every hostname. Upload one under Domains & certificates.",
       "healthPort": "Empty for each target's own port. A UDP route needs one; a route with a Unix socket target cannot have one.",
       "healthPath": "Starts with /, may have a query. Empty for /.",
       "healthStatus": "As 200-399. Empty for any success or redirect.",
-      "fixed": "Set when the route is created; it cannot change."
+      "fixed": "Set when the route is created; it cannot change.",
+      "limit": "Empty for no limit. The group's enabled gateways share it."
     },
     "connect": {
       "plainBasic": "Clients send their proxy password in the clear: anyone on the network between them and the gateway can read and use it. Use basic auth over TLS unless the clients cannot speak to an HTTPS proxy."
@@ -407,6 +461,11 @@
       "headers": {
         "separator": "Line {{line}}: write a header as Name: value.",
         "name": "Line {{line}}: “{{name}}” is not a header name. A name has letters, digits and the characters !#$%&'*+-.^_`|~ only."
+      },
+      "matches": {
+        "name": "Line {{line}}: “{{name}}” is not a header name. A name has letters, digits and the characters !#$%&'*+-.^_`|~ only.",
+        "value": "Line {{line}}: give {{name}} a value after the colon, or write the name alone to match any value.",
+        "max": "A route matches at most {{max}} headers."
       },
       "twice": "Line {{line}}: {{name}} is on line {{first}} already."
     },
@@ -446,6 +505,7 @@
         "http": "HTTP: a GET answers with a passing status"
       }
     },
+    "bandwidthMin": "A bandwidth limit is at least {{min}} bytes a second; leave it empty for none.",
     "statusRange": "Write the passing statuses as two three-digit codes, such as 200-399.",
     "tristate": {
       "default": "Default",

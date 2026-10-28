@@ -10,6 +10,7 @@ import (
 	"time"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/events"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/settings"
@@ -195,6 +196,26 @@ func RollupJob(o RollupOptions) lease.Job {
 				}
 				_, err := tx.TrafficBaseline.Delete().Where(trafficbaseline.ReportedAtLT(hourly)).Exec(ctx)
 				return err
+			})
+		}}
+}
+
+// EventsEvery is how often the events job removes events past their retention.
+const EventsEvery = time.Hour
+
+// EventsJob is the singleton job that keeps events for events.Keep and webhook deliveries for
+// their retention (docs/06-data-model.md, "Observability (Phase 2)").
+func EventsJob(o RollupOptions) lease.Job {
+	return lease.Job{Name: "events", Reason: "keep the events for their retention", Every: EventsEvery,
+		Run: func(ctx context.Context, l lease.Lease) error {
+			return store.WriteTx(ctx, o.DB, func(tx *ent.Tx) error {
+				if err := o.Leases.Fence(ctx, tx, l); err != nil {
+					return err
+				}
+				if _, err := events.Purge(ctx, tx, o.Now().UTC().Add(-events.Keep)); err != nil {
+					return err
+				}
+				return PurgeDeliveries(ctx, tx, o.Now().UTC())
 			})
 		}}
 }

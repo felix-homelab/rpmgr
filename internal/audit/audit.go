@@ -24,6 +24,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/felix-homelab/rpmgr/internal/authz"
+	"github.com/felix-homelab/rpmgr/internal/events"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -83,6 +84,11 @@ type Entry struct {
 	Result       Result
 	Diff         string // the redacted before/after
 	Reason       string
+
+	// The event of a success (internal/events) also names the target and the changed fields;
+	// neither is part of the entry or its hash.
+	TargetName string
+	Changed    []string
 }
 
 // Chain returns the chain the entry belongs to: its org ID, or InstanceChain.
@@ -125,7 +131,8 @@ func (e *ChainError) Error() string {
 func (e *ChainError) Unwrap() error { return ErrBroken }
 
 // Append appends e to its chain inside tx, the transaction of the change it records, so the change
-// and its entry commit or roll back together. It increments the chain's head with a row lock
+// and its entry commit or roll back together, and so does the change's event, for a success
+// (internal/events). It increments the chain's head with a row lock
 // first, which serialises concurrent appends to one chain.
 //
 // An org scope may append to its own org's chain and to the instance chain, which records
@@ -187,6 +194,9 @@ func (r *Request) fill(e Entry) Entry {
 	fill(&e.UserAgent, b.UserAgent)
 	fill(&e.RequestID, b.RequestID)
 	fill(&e.Diff, b.Diff)
+	if e.Changed == nil {
+		e.Changed = b.Changed
+	}
 	if e.ActorType == b.ActorType && e.ActorID == b.ActorID && e.CredentialID == "" && e.AuthMethod == "" {
 		e.CredentialID, e.AuthMethod = b.CredentialID, b.AuthMethod
 	}
@@ -227,6 +237,13 @@ func appendEntry(ctx context.Context, tx *ent.Tx, e Entry) (Entry, error) {
 		string(e.Result), e.Diff, e.Reason)
 	if err != nil {
 		return Entry{}, fmt.Errorf("audit: append to %s: %w", chain, err)
+	}
+	// The change's event, in the same transaction (docs/07-api.md, "Webhooks (Phase 2)").
+	if events.FromAudit(e.Action, string(e.Result)) {
+		if _, err := events.Add(ctx, tx, events.Event{OrgID: e.OrgID, Type: events.TypeOf(e.Action), ActorType: string(e.ActorType),
+			ActorID: e.ActorID, SubjectType: e.TargetType, SubjectID: e.TargetID, SubjectName: e.TargetName, Changed: e.Changed}); err != nil {
+			return Entry{}, err
+		}
 	}
 	return e, nil
 }

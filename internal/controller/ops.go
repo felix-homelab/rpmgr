@@ -58,6 +58,32 @@ func (s *Sessions) ProbeTarget(ctx context.Context, connectorID string, p *agent
 	return r.GetCertificate(), nil
 }
 
+// OpenLogs implements apisvc.LogOpener: a live-log operation on a connector or gateway
+// (docs/03-connections.md, "Control session").
+func (s *Sessions) OpenLogs(ctx context.Context, agentID string, p *agentv1.LogParams) (apisvc.LogStream, error) {
+	op, err := s.Open(ctx, agentID, agentv1.OperationKind_OPERATION_KIND_LOGS, p)
+	switch {
+	case errors.Is(err, ErrNotConnected), errors.Is(err, errNoCapability):
+		return nil, apisvc.ErrLogsUnavailable
+	case errors.Is(err, ErrOperationRefused):
+		return nil, fmt.Errorf("%w: %w", apisvc.ErrLogsUnavailable, err)
+	case err != nil:
+		return nil, err
+	}
+	return logOperation{op}, nil
+}
+
+// logOperation is a live-log operation, whose end at its deadline LogService tells apart.
+type logOperation struct{ *Operation }
+
+func (o logOperation) Recv() (*agentv1.AttachFrame, error) {
+	f, err := o.Operation.Recv()
+	if errors.Is(err, ErrOperationDeadline) {
+		err = fmt.Errorf("%w: %w", apisvc.ErrLogsDeadline, err)
+	}
+	return f, err
+}
+
 // errNoCapability is an operation the agent's version does not support.
 var errNoCapability = errors.New("controller: the agent does not support the operation")
 

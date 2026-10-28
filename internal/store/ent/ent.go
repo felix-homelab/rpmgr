@@ -16,6 +16,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/alert"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apitoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
@@ -33,6 +34,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/event"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
@@ -73,6 +75,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhook"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookdelivery"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -139,6 +143,7 @@ func checkColumn(t, c string) error {
 			accesspolicy.Table:       accesspolicy.ValidColumn,
 			agentsession.Table:       agentsession.ValidColumn,
 			agentstate.Table:         agentstate.ValidColumn,
+			alert.Table:              alert.ValidColumn,
 			auditcheckpoint.Table:    auditcheckpoint.ValidColumn,
 			auditentry.Table:         auditentry.ValidColumn,
 			audithead.Table:          audithead.ValidColumn,
@@ -154,6 +159,7 @@ func checkColumn(t, c string) error {
 			datasession.Table:        datasession.ValidColumn,
 			domain.Table:             domain.ValidColumn,
 			enrollmenttoken.Table:    enrollmenttoken.ValidColumn,
+			event.Table:              event.ValidColumn,
 			gateway.Table:            gateway.ValidColumn,
 			gatewaygroup.Table:       gatewaygroup.ValidColumn,
 			gatewaypage.Table:        gatewaypage.ValidColumn,
@@ -194,6 +200,8 @@ func checkColumn(t, c string) error {
 			totpcredential.Table:     totpcredential.ValidColumn,
 			trafficbaseline.Table:    trafficbaseline.ValidColumn,
 			user.Table:               user.ValidColumn,
+			webhook.Table:            webhook.ValidColumn,
+			webhookdelivery.Table:    webhookdelivery.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

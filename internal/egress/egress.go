@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package egress guards the controller's outbound connections to destinations that users name,
-// such as the host of an HTTP domain proof (docs/04-security.md, "Route and hostname ownership"):
+// such as the host of an HTTP domain proof (docs/04-security.md, "Route and hostname ownership")
+// or a webhook receiver (Policy):
 // a dialer whose Control hook refuses every address that is not public, at the moment of the
 // connect, so that a name resolving to an internal address, also after a DNS rebinding, is never
 // reached.
@@ -20,10 +21,11 @@ import (
 var ErrRefused = errors.New("egress: the address is not public")
 
 // RefusedError names the refused address and why; its message keeps the address, so it is for
-// logs, not for users of another trust level.
+// logs, not for users of another trust level. Range is the range a Policy could list to admit it.
 type RefusedError struct {
 	Addr   netip.Addr
 	Reason string
+	Range  netip.Prefix
 }
 
 func (e *RefusedError) Error() string { return fmt.Sprintf("egress: %s is %s", e.Addr, e.Reason) }

@@ -9,8 +9,10 @@ import (
 	"time"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/egress"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
 )
 
@@ -68,4 +70,10 @@ func (s *Sessions) RecordUpdate(id pki.Identity, u *agentv1.UpdateState) { s.rec
 // RolloutUpdateState is rolloutUpdateState.
 func RolloutUpdateState(cur rollouttarget.State, u *agentv1.UpdateState, version string) (rollouttarget.State, string, bool) {
 	return rolloutUpdateState(cur, u, version)
+}
+
+// LoopbackWebhooks lets every endpoint of o's job reach loopback, where tests' receivers listen.
+func LoopbackWebhooks(o WebhookOptions) WebhookOptions {
+	o.policy = func(*ent.Webhook) egress.Policy { return egress.Policy{Internal: true} }
+	return o
 }

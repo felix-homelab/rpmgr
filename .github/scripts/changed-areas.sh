@@ -8,7 +8,9 @@
 # what they test. It prints go=, web=, checks=, ops= and md= (whether a Markdown file changed),
 # each true or false, for $GITHUB_OUTPUT.
 #
-# Usage: changed-areas.sh <base commit> <head commit>   the stages a pull request needs
+# Usage: changed-areas.sh <base commit> <head commit>   the stages a pull request needs, or a
+#                                                       merge queue group (the group's base_sha and
+#                                                       head_sha: the changes of every queued PR)
 #        changed-areas.sh --all                         every stage (the nightly run)
 #        changed-areas.sh --none                        only the stages that always run (main)
 set -euo pipefail

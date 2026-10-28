@@ -36,18 +36,19 @@ export async function expectAccessible(page: Page, exclude: string[] = []) {
   expect(r.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
 }
 
-// sideways lists what in the open dialog is wider than its box: the dialog itself, or a part of it
-// that scrolls, so that a user would have to scroll sideways to read it.
-export async function sideways(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    const dialog = document.querySelector("dialog[open]");
-    if (!dialog) {
-      return ["no open dialog"];
+// sideways lists what in the open dialog, or in the element root names, is wider than its box: the
+// element itself, or a part of it that scrolls, so that a user would have to scroll sideways to
+// read it.
+export async function sideways(page: Page, root = "dialog[open]"): Promise<string[]> {
+  return page.evaluate((root) => {
+    const box = document.querySelector(root);
+    if (!box) {
+      return [`no ${root}`];
     }
-    return [dialog, ...dialog.querySelectorAll("*")]
-      .filter((e) => e.scrollWidth > e.clientWidth + 1 && (e === dialog || getComputedStyle(e).overflowX !== "visible"))
+    return [box, ...box.querySelectorAll("*")]
+      .filter((e) => e.scrollWidth > e.clientWidth + 1 && (e === box || getComputedStyle(e).overflowX !== "visible"))
       .map((e) => `${e.tagName.toLowerCase()} ${e.getAttribute("aria-label") ?? ""}: ${e.scrollWidth} > ${e.clientWidth}`);
-  });
+  }, root);
 }
 
 // unfilled lists what leaves the window's width unused on a signed-in page wider than 1024 px: the
