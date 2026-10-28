@@ -470,3 +470,24 @@ func (u *UDPRoutes) run(p *udpPort, f *flow, r *UDPRoute) {
 		}
 	}
 }
+
+// CutRoute ends the flows of the route (see TCPRoutes.CutRoute).
+func (u *UDPRoutes) CutRoute(id string) {
+	u.mu.Lock()
+	ports := make([]*udpPort, 0, len(u.ports))
+	for _, p := range u.ports {
+		ports = append(ports, p)
+	}
+	u.mu.Unlock()
+	for _, p := range ports {
+		if p.route.Load().ID != id {
+			continue
+		}
+		p.mu.Lock()
+		for k, f := range p.flows {
+			f.close()
+			delete(p.flows, k)
+		}
+		p.mu.Unlock()
+	}
+}

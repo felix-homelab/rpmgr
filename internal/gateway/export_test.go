@@ -156,3 +156,6 @@ type Cuts struct{ c cuts }
 
 func (c *Cuts) Send(routeID string)                        { c.c.send(routeID) }
 func (c *Cuts) Attach(send func(typ, reason string) error) { c.c.attach(send) }
+
+// WithGeneration is the generation label of a gateway's registry.
+var WithGeneration = withGeneration

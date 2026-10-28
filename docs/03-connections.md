@@ -1722,12 +1722,15 @@ sequenceDiagram
    runs: the new process tells it over the pipe once its own hand-off took over. **Gateway:** a
    revocation reaches the old process as a message of the new one, which then reads the
    deny-list again and closes the data sessions of the revoked identity. For each route the new
-   process removes, or gives other access rules, it sends the old one a message naming the route,
-   and the old process resets that route's open connections: tcp, CONNECT and passthrough
-   connections, and the requests of http routes, WebSockets included. A change of access rules
-   cuts whether it tightens them or not, as the new process does not know the old one's
-   connections; a client that the new rules allow connects again. Changes that come before the
-   new process is ready are sent once it is. The new process waits the session wait for a new
+   process removes, or whose access rules change, it sends the old one a message naming the
+   route, and the old process ends that route's open connections as a gateway that applied the
+   change would: tcp, CONNECT and passthrough connections, the requests of http routes (WebSockets
+   included) and UDP flows. Access rules are the IP rules, the basic-auth policy with its
+   credential version and users, and the `require_header` rules; a route whose kind changes counts
+   as changed. The old process cannot tell which connections the new rules still allow, so it
+   cuts all of the route's, whether the change tightens the rules or not; a client the new rules
+   allow connects again. Rate limits end no connection. Changes that come before the new process is
+   ready are sent once it is. The new process waits the session wait for a new
    public connection of a route that has no session yet, for as long as the old process runs.
    **Generation.** Every log line and every gateway metric carries the process's generation, 1 after
    a plain start and one more after each hand-off ([10](10-operations.md#metrics)); the old

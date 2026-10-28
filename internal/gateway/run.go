@@ -185,7 +185,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	if reg == nil {
 		reg = telemetry.NewRegistry()
 	}
-	reg = telemetry.WithLabels(reg, prometheus.Labels{"generation": generation})
+	reg = withGeneration(reg, generation)
 	metrics, err := NewMetrics(reg)
 	if err != nil {
 		return err
@@ -467,6 +467,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		cut := func(id string) {
 			o.Logger.Info("cutting the connections of a route the new process changed", "route", id)
 			routes.CutRoute(id)
+			udpRoutes.CutRoute(id)
 			pass.CutRoute(id)
 			httpRoutes.CutRoute(id)
 		}
@@ -510,4 +511,10 @@ func closed(c <-chan struct{}) bool {
 	default:
 		return false
 	}
+}
+
+// withGeneration adds the process generation as a constant label to every metric registered
+// through reg; an all-in-one's role label is another name, so both stay.
+func withGeneration(reg telemetry.Registry, generation string) telemetry.Registry {
+	return telemetry.WithLabels(reg, prometheus.Labels{"generation": generation})
 }

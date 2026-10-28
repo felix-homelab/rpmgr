@@ -15,10 +15,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
+	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
+	"github.com/felix-homelab/rpmgr/internal/ids"
+	"github.com/felix-homelab/rpmgr/internal/telemetry"
 )
 
 // TestApplier_OnCut: a snapshot that removes a route or changes its access rules reports the route
@@ -245,5 +250,129 @@ func TestHTTPRoutes_CutRoute(t *testing.T) {
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
 		t.Fatal("a WebSocket of the cut route went on")
+	}
+}
+
+// TestApplier_OnCutRules: every change of what decides who may use a route is reported, and one
+// that decides nothing (a rate limit) is not.
+func TestApplier_OnCutRules(t *testing.T) {
+	port := freePort(t)
+	uport := freeUDPPort(t)
+	tcpWith := func(f func(*agentv1.RouteAccess)) *agentv1.Resource {
+		r := tcpResource("rt_1", uint32(port), cid("con_1"))
+		r.GetGatewayTcpRoute().Access = &agentv1.RouteAccess{}
+		f(r.GetGatewayTcpRoute().Access)
+		return r
+	}
+	udpWith := func(cidr string) *agentv1.Resource {
+		r := udpResource("rt_1", uint32(uport), cid("con_1"))
+		r.GetGatewayUdpRoute().Access = &agentv1.RouteAccess{IpRules: []*agentv1.IPRule{{Allow: true, Cidrs: []string{cidr}}}}
+		return r
+	}
+	basic := func(version string) func(*agentv1.RouteAccess) {
+		return func(a *agentv1.RouteAccess) {
+			a.BasicAuth = []*agentv1.BasicAuthRule{{PolicyId: "pol_1", CredentialVersion: version}}
+		}
+	}
+	header := func(sum byte) func(*agentv1.RouteAccess) {
+		return func(a *agentv1.RouteAccess) {
+			a.RequireHeader = []*rpmgrv1.RequireHeaderParams{{Name: "X-Key", ValueSha256: [][]byte{{sum}}}}
+		}
+	}
+	limit := func(n uint32) func(*agentv1.RouteAccess) {
+		return func(a *agentv1.RouteAccess) {
+			a.RateLimits = []*agentv1.RateLimitRule{{PolicyId: "pol_1", PerSecond: n, Burst: n}}
+		}
+	}
+	none := func(*agentv1.RouteAccess) {}
+	for _, tc := range []struct {
+		name       string
+		a, b       []*agentv1.Resource
+		wantCutOne bool
+	}{
+		{"require_header rotated", []*agentv1.Resource{tcpWith(header(1))}, []*agentv1.Resource{tcpWith(header(2))}, true},
+		{"require_header the same", []*agentv1.Resource{tcpWith(header(1))}, []*agentv1.Resource{tcpWith(header(1))}, false},
+		{"basic auth version bumped", []*agentv1.Resource{tcpWith(basic("v1"))}, []*agentv1.Resource{tcpWith(basic("v2"))}, true},
+		{"basic auth added", []*agentv1.Resource{tcpWith(none)}, []*agentv1.Resource{tcpWith(basic("v1"))}, true},
+		{"rate limit only", []*agentv1.Resource{tcpWith(limit(1))}, []*agentv1.Resource{tcpWith(limit(9))}, false},
+		{"udp rule tightened", []*agentv1.Resource{udpWith("0.0.0.0/0")}, []*agentv1.Resource{udpWith("10.0.0.0/8")}, true},
+		{"udp rule the same", []*agentv1.Resource{udpWith("10.0.0.0/8")}, []*agentv1.Resource{udpWith("10.0.0.0/8")}, false},
+		{"udp route removed", []*agentv1.Resource{udpWith("10.0.0.0/8")}, nil, true},
+		{"tcp route became udp", []*agentv1.Resource{tcpWith(none)}, []*agentv1.Resource{udpResource("rt_1", uint32(uport), cid("con_1"))}, true},
+	} {
+		a, _ := gateway.NewApplier()
+		var cut []string
+		a.OnCut = func(id string) { cut = append(cut, id) }
+		a.Apply(t.Context(), gatewaySnapshot(1, tc.a...), agent.Changes{})
+		a.Apply(t.Context(), gatewaySnapshot(2, tc.b...), agent.Changes{})
+		if got := len(cut) == 1 && cut[0] == "rt_1"; got != tc.wantCutOne || len(cut) > 1 {
+			t.Errorf("%s: cut %v, want cut %v", tc.name, cut, tc.wantCutOne)
+		}
+	}
+	// Removed in one snapshot and added again in the next: cut once, at the removal.
+	a, _ := gateway.NewApplier()
+	var cut []string
+	a.OnCut = func(id string) { cut = append(cut, id) }
+	r := tcpWith(none)
+	a.Apply(t.Context(), gatewaySnapshot(1, r), agent.Changes{})
+	a.Apply(t.Context(), gatewaySnapshot(2), agent.Changes{})
+	a.Apply(t.Context(), gatewaySnapshot(3, r), agent.Changes{})
+	if !slices.Equal(cut, []string{"rt_1"}) {
+		t.Fatalf("removed and added again: cut %v", cut)
+	}
+}
+
+// TestUDPRoutes_CutRoute: the old process ends the flows of the cut route and only those; an
+// unknown route ID changes nothing.
+func TestUDPRoutes_CutRoute(t *testing.T) {
+	route := ids.New("rt")
+	m := newSessions(&assignment{known: map[string]bool{cid("udp-cut"): true}, routes: map[string][]string{route: {cid("udp-cut")}}}, nil)
+	t.Cleanup(m.Close)
+	start(t, m, connectorID("udp-cut"), hello(route))
+	u, addr, _ := udpGateway(t, m, route, time.Minute)
+	c := client(t)
+	exchange(t, c, addr, []byte("flow"))
+	if u.Flows() != 1 {
+		t.Fatalf("%d flows", u.Flows())
+	}
+	u.CutRoute("rt_unknown")
+	u.CutRoute("")
+	if u.Flows() != 1 {
+		t.Fatalf("an unrelated cut left %d flows", u.Flows())
+	}
+	u.CutRoute(route)
+	if u.Flows() != 0 {
+		t.Fatalf("%d flows after the cut", u.Flows())
+	}
+	exchange(t, c, addr, []byte("again")) // the port still serves new flows
+}
+
+// TestWithGeneration: a gateway's metrics carry the generation next to an all-in-one's role label.
+func TestWithGeneration(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	withRole := telemetry.WithLabels(reg, prometheus.Labels{"role": "gateway"})
+	m, err := gateway.NewMetrics(gateway.WithGeneration(withRole, "3"))
+	if err != nil {
+		t.Fatalf("both labels on one registry: %v", err)
+	}
+	m.PageLogDropped()
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, mf := range mfs {
+		for _, mt := range mf.GetMetric() {
+			labels := map[string]string{}
+			for _, l := range mt.GetLabel() {
+				labels[l.GetName()] = l.GetValue()
+			}
+			if mf.GetName() == "rpmgr_gateway_page_log_lines_dropped_total" && labels["generation"] == "3" && labels["role"] == "gateway" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no gateway series with generation and role")
 	}
 }

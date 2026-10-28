@@ -197,7 +197,7 @@ type Applier struct {
 	// rules; the new process of a hand-off tells the old one, which resets that route's
 	// connections (docs/03-connections.md, "Restarts with socket hand-off", step 5).
 	OnCut func(routeID string)
-	prev  map[string]Access // the access rules of the routes of the last snapshot
+	prev  map[string]routeRules // what decides who may use each route of the last snapshot
 }
 
 // NewApplier returns the gateway's applier and the Assignment for its Sessions; Bind connects
@@ -519,7 +519,7 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 // the data sessions of connectors no longer assigned are closed.
 func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Changes) []*agentv1.ResourceStatus {
 	next := &assigned{known: map[string]bool{}, routes: map[string][]RouteConnector{}}
-	rules := map[string]Access{}
+	rules := map[string]routeRules{}
 	var (
 		tcp         []TCPRoute
 		udp         []UDPRoute
@@ -624,7 +624,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		}
 		connectors, ranked := connectorsOf(res)
 		next.routes[res.GetId()] = rankOf(connectors, ranked)
-		rules[res.GetId()] = access
+		rules[res.GetId()] = ruleOf(res)
 		for _, c := range connectors {
 			next.known[c] = true
 		}
@@ -685,7 +685,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 	}
 	if a.OnCut != nil {
 		for id, old := range a.prev {
-			if now, ok := rules[id]; !ok || !now.Same(old) {
+			if now, ok := rules[id]; !ok || !now.same(old) {
 				a.OnCut(id)
 			}
 		}
@@ -693,6 +693,25 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 	a.prev = rules
 	return status
 }
+
+// routeRules is everything of a route's snapshot entry that decides who may use it: its kind and
+// its access rules (IP rules, basic auth with its credential version, require_header) without the
+// rate limits, which end no connection.
+type routeRules struct {
+	kind   string
+	access *agentv1.RouteAccess
+}
+
+func ruleOf(res *agentv1.Resource) routeRules {
+	a := &agentv1.RouteAccess{}
+	if in := accessOf(res); in != nil {
+		a = proto.Clone(in).(*agentv1.RouteAccess)
+		a.RateLimits = nil
+	}
+	return routeRules{kind: fmt.Sprintf("%T", res.GetKind()), access: a}
+}
+
+func (r routeRules) same(o routeRules) bool { return r.kind == o.kind && proto.Equal(r.access, o.access) }
 
 // headerMatchesOf returns an http route's header matches.
 func headerMatchesOf(r *agentv1.GatewayHTTPRoute) []headermatch.Match {
