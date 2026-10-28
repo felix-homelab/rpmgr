@@ -328,8 +328,12 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
   `agents.logs`; a gateway of a shared group needs the Instance Admin. Another org's agent is
   `NOT_FOUND`, an offline agent or one without `logs.stream` `UNAVAILABLE`, and a caller or agent
   at its limit ([03](03-connections.md#timeouts-keepalive-and-backoff)) `RESOURCE_EXHAUSTED`.
-  Cancelling the stream ends the operation on the agent. `raise_to_debug` raises the agent's level
-  for the operation's life ([D140](14-open-decisions.md#engineering)).
+  Cancelling the stream ends the operation on the agent. At the operation's deadline the stream
+  ends without an error, and the client may open a new one; an operation that breaks off, as when
+  the agent is revoked or goes offline, ends it with `UNAVAILABLE` and the reason; a caller who
+  loses the permission or whose credentials end while it runs loses it with `PERMISSION_DENIED` or
+  `UNAUTHENTICATED` ([04](04-security.md#roles)). `raise_to_debug`
+  raises the agent's level for the operation's life ([D140](14-open-decisions.md#engineering)).
 - Server streams work over HTTP/1.1 and HTTP/2 with the Connect protocol, so no WebSocket is needed
   except for the Phase 3 terminal.
 
@@ -389,7 +393,12 @@ spec:
 
 - **Events.** [R] Every change an org's audit log records as a success is an event of the same
   type as its audit action, such as `route.update` or `token.revoke`, written in the change's
-  transaction ([06](06-data-model.md#observability-phase-2)). Status changes add `route.status`
+  transaction ([06](06-data-model.md#observability-phase-2)). An API method's entry is typed
+  `<resource>.<verb>` from the method's name, so `RouteService.UpdateRoute` is `route.update` and
+  `CreateRouteTarget` is `route_target.create`; a method that is a verb alone takes its service's
+  name, as `auth.logout`. An update's event names the fields of its update mask. Signing in and
+  out, a step-up, asking for a reset link and the use of a token or a system scope change nothing
+  and are no events. Status changes add `route.status`
   (a route's state changed), `agent.connect`, `agent.disconnect`, `apply.reject`, `alert.fire` and
   `alert.resolve` ([10](10-operations.md#suggested-alerts)), `webhook.disable`, and with DNS
   automation `dns.conflict`, `dns.zone_held`, `dns.sync_failing` and `dns.token_expiring`.
@@ -400,7 +409,10 @@ spec:
 - **Envelope** ([D144](14-open-decisions.md#engineering)): `POST` of
   `{"id", "type", "time", "org_id", "actor": {"type", "id"}, "subject": {"type", "id", "name"},
   "summary", "changed": [field names]}`; no resource body. Fetch the resource through the API for
-  more.
+  more. An alert event's subject is what the alert is about (an agent, a route, a certificate, or
+  `instance` for an instance alert), its actor the system, and its summary begins with the alert's
+  kind and a colon, such as `agent_offline: Agent offline fires, gw1`
+  ([10](10-operations.md#suggested-alerts)).
 - **Headers:** `Rpmgr-Event-Id` (the event's ID, the same on every retry: delivery is at least
   once), `Rpmgr-Event-Type`, and `Rpmgr-Signature: t=<unix>,v1=<HMAC-SHA256(secret, t.body)>`, with
   a second `v1=` value while a rotated secret still signs. Receivers reject signatures older than

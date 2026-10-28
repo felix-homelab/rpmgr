@@ -219,7 +219,11 @@ func (c *Control) operate(open *agentv1.Open) {
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), open.GetDeadline().AsTime())
 	defer cancel()
-	st, err := c.client.Attach(ctx)
+	// The stream outlives the deadline by the linger below, so that the controller reads the
+	// AttachEnd of an operation that ran out of time rather than a cancelled stream.
+	sctx, scancel := context.WithCancel(context.Background())
+	defer scancel()
+	st, err := c.client.Attach(sctx)
 	if err == nil {
 		err = st.Send(&agentv1.AttachFrame{Frame: &agentv1.AttachFrame_Hello{Hello: &agentv1.AttachHello{OpId: open.GetOpId(),
 			Ticket: open.GetTicket()}}})

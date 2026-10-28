@@ -25,6 +25,50 @@ repo_root() {
   git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel
 }
 
+# Sharding of test packages across parallel CI jobs. A shard is "<i>/<n>" (1 <= i <= n); an empty
+# one means all packages. The lines are dealt out round-robin from a sorted list, so the split is
+# deterministic and the shards together cover every line exactly once. The lines that match
+# SHARD_HEAVY go first, one to each of the first shards, and the other lines share the remaining
+# shards, so that the slowest package does not run next to others (internal/controller alone runs
+# for nearly 10 minutes with -race on a CI runner; check-go.sh splits it into two lines by test
+# name, "<package>#<k>/<m>"). With no more shards than heavy lines, everything is dealt round-robin.
+SHARD_HEAVY='/internal/controller(#[0-9]+/[0-9]+)?$'
+
+# shard_valid <shard> succeeds for an empty or well-formed shard.
+shard_valid() {
+  [[ -z $1 ]] && return 0
+  [[ $1 =~ ^([1-9][0-9]*)/([1-9][0-9]*)$ ]] && ((BASH_REMATCH[1] <= BASH_REMATCH[2]))
+}
+
+# shard_select <shard> filters the sorted lines on standard input down to the shard's own.
+shard_select() {
+  if [[ -z $1 ]]; then
+    cat
+  else
+    awk -v i="${1%/*}" -v n="${1#*/}" -v heavy="$SHARD_HEAVY" '
+      $0 ~ heavy { h[nh++] = $0; next }
+      { o[no++] = $0 }
+      END {
+        for (x = 0; x < nh; x++) { if (x % n == i - 1) print h[x] }
+        base = nh < n ? nh : 0
+        width = n - base
+        for (x = 0; x < no; x++) { if (base + x % width == i - 1) print o[x] }
+      }'
+  fi
+}
+
+# split_names <k> <m> reads sorted test names on standard input and prints the k-th of m parts:
+# every m-th name, from the k-th. The m parts together hold every name once.
+split_names() {
+  awk -v k="$1" -v m="$2" 'NR % m == k % m'
+}
+
+# shard_first <shard> succeeds when there is no sharding or this is the first shard, which runs the
+# checks that are not tests (formatting, vet, lint of migrations), so they run once.
+shard_first() {
+  [[ -z $1 || $1 == 1/* ]]
+}
+
 # The Playwright image of the browser checks, by digest; PLAYWRIGHT_VERSION is its playwright-core,
 # which @playwright/test in web/package.json must equal.
 export PLAYWRIGHT_IMAGE='mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27'

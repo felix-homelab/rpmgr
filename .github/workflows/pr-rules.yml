@@ -6,6 +6,7 @@ name: pr-rules
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened, labeled, unlabeled, ready_for_review]
+  merge_group:
 
 permissions:
   contents: read
@@ -23,12 +24,17 @@ jobs:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
+      # In the merge queue the pull request's rules were checked when it entered, and the group's
+      # commit is not a pull request: the required check reports success without checking.
+      - name: Merge queue
+        if: ${{ github.event_name == 'merge_group' }}
+        run: echo "the rules of a pull request are checked on the pull request, before it is queued"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: PR title
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
           TITLE: ${{ github.event.pull_request.title }}
           HEAD_REF: ${{ github.head_ref }}
@@ -39,18 +45,19 @@ jobs:
           fi
           .github/scripts/check-pr-title.sh "${bot[@]}" "$TITLE"
       - name: Branch names
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
           HEAD_REF: ${{ github.head_ref }}
           BASE_REF: ${{ github.base_ref }}
         run: .github/scripts/check-branch-name.sh "$HEAD_REF" "$BASE_REF"
       - name: Commit headers
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         run: .github/scripts/check-commits.sh "$BASE_SHA" "$HEAD_SHA"
       - name: DCO sign-off
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         run: .github/scripts/check-dco.sh "$BASE_SHA" "$HEAD_SHA"
       - name: Labels, read now rather than from the event
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
@@ -58,8 +65,8 @@ jobs:
           labels=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq '[.labels[].name] | join(" ")')
           echo "LABELS=$labels" >>"$GITHUB_ENV"
       - name: Changelog
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         run: .github/scripts/check-changelog.sh "$BASE_SHA" "$HEAD_SHA" "$LABELS"
       - name: Size of the change
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         run: .github/scripts/check-size.sh "$BASE_SHA" "$HEAD_SHA" "$LABELS"

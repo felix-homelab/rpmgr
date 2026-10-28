@@ -30,6 +30,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
+	ewebhook "github.com/felix-homelab/rpmgr/internal/store/ent/webhook"
 	"github.com/felix-homelab/rpmgr/internal/store/migrations"
 )
 
@@ -134,6 +135,8 @@ var sealedColumns = []sealedColumn{
 	{instancesecret.Table, instancesecret.FieldID, instancesecret.FieldValueEnc, true},
 	{totpcredential.Table, totpcredential.FieldID, totpcredential.FieldSeedEnc, true},
 	{apirequest.Table, apirequest.FieldID, apirequest.FieldResponseEnc, false},
+	{ewebhook.Table, ewebhook.FieldID, ewebhook.FieldSecretEnc, true},
+	{ewebhook.Table, ewebhook.FieldID, ewebhook.FieldPreviousSecretEnc, true},
 }
 
 // SealedRef names one sealed value.

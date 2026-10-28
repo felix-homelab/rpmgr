@@ -194,6 +194,31 @@ The Connectors list shows each connector's session as **connected**, **offline**
 its version and when it was last seen. A gateway group's page shows the same for its gateways, and
 **not enrolled** for a gateway that has not enrolled yet ([Gateways](../gateways.md)).
 
+## Live logs
+
+An Owner or Admin can follow a connector's or gateway's log as it is written, from the web UI or
+the command line, without access to its host:
+
+```sh
+rpmgr logs connector nas
+rpmgr logs gateway gw-eu-1 --level debug --filter route --debug
+```
+
+- **Redacted on the agent.** Tokens, keys, passwords, cookies and authorization values are
+  replaced with `[REDACTED]` before a line leaves the host. The filter matches that redacted text
+  ([04](../../04-security.md#secrets-at-rest-and-in-logs)).
+- **Level.** `--level` (**Level** in the web UI) shows that level and above. `--debug` (**Raise to
+  debug while open**) lets the agent's debug lines through while you follow it; the agent's own
+  log on its host keeps its level. Opening a log, and raising it, is in the audit log.
+- **Gaps.** When the agent logs faster than its lines can be sent, it drops lines and says how many
+  (`… 12 lines dropped`); a very long line is cut and marked `…(cut)`. Your viewing never slows the
+  agent.
+- **End.** A live log ends after a while by itself, and a person and an agent may have only a few
+  open at once ([03](../../03-connections.md#timeouts-keepalive-and-backoff)); open it again to go on.
+- **Not available** for an agent that is offline, one whose rpmgr release has no live logs, and the
+  built-in connector and gateway of an all-in-one, whose log is the controller's: read that one with
+  `journalctl -u rpmgr-all-in-one` on the host.
+
 ## With the command line and the API
 
 ```sh
@@ -208,4 +233,5 @@ con_01M4ZEK2EXFBJRKFW4JB7DQVZ6  nas   true     true       0.2.0
 `rpmgr get -o json connector nas` adds the control session's address and last contact. The API's
 `ConnectorService.GetConnectorStatus` returns all of it: the control session, the data sessions
 with their transport and round trip, and the routes the connector reports not ready, with reason,
-detail and since when ([API](../reference/api.md)).
+detail and since when ([API](../reference/api.md)). `LogService.StreamLogs` streams a live log
+([Live logs](#live-logs)).

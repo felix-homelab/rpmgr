@@ -12,6 +12,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentstate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/alert"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apitoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
@@ -29,6 +30,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/event"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
@@ -70,6 +72,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhook"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookdelivery"
 )
 
 // The Query interface represents an operation that queries a graph.
@@ -288,6 +292,33 @@ func (f TraverseAgentState) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.AgentStateQuery", q)
+}
+
+// The AlertFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AlertFunc func(context.Context, *ent.AlertQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AlertFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AlertQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AlertQuery", q)
+}
+
+// The TraverseAlert type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAlert func(context.Context, *ent.AlertQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAlert) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAlert) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AlertQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AlertQuery", q)
 }
 
 // The AuditCheckpointFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -693,6 +724,33 @@ func (f TraverseEnrollmentToken) Traverse(ctx context.Context, q ent.Query) erro
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.EnrollmentTokenQuery", q)
+}
+
+// The EventFunc type is an adapter to allow the use of ordinary function as a Querier.
+type EventFunc func(context.Context, *ent.EventQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f EventFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.EventQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.EventQuery", q)
+}
+
+// The TraverseEvent type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseEvent func(context.Context, *ent.EventQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseEvent) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseEvent) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.EventQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.EventQuery", q)
 }
 
 // The GatewayFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1775,6 +1833,60 @@ func (f TraverseUser) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.UserQuery", q)
 }
 
+// The WebhookFunc type is an adapter to allow the use of ordinary function as a Querier.
+type WebhookFunc func(context.Context, *ent.WebhookQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f WebhookFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.WebhookQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.WebhookQuery", q)
+}
+
+// The TraverseWebhook type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseWebhook func(context.Context, *ent.WebhookQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseWebhook) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseWebhook) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.WebhookQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.WebhookQuery", q)
+}
+
+// The WebhookDeliveryFunc type is an adapter to allow the use of ordinary function as a Querier.
+type WebhookDeliveryFunc func(context.Context, *ent.WebhookDeliveryQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f WebhookDeliveryFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.WebhookDeliveryQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.WebhookDeliveryQuery", q)
+}
+
+// The TraverseWebhookDelivery type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseWebhookDelivery func(context.Context, *ent.WebhookDeliveryQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseWebhookDelivery) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseWebhookDelivery) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.WebhookDeliveryQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.WebhookDeliveryQuery", q)
+}
+
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
@@ -1790,6 +1902,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AgentSessionQuery, predicate.AgentSession, agentsession.OrderOption]{typ: ent.TypeAgentSession, tq: q}, nil
 	case *ent.AgentStateQuery:
 		return &query[*ent.AgentStateQuery, predicate.AgentState, agentstate.OrderOption]{typ: ent.TypeAgentState, tq: q}, nil
+	case *ent.AlertQuery:
+		return &query[*ent.AlertQuery, predicate.Alert, alert.OrderOption]{typ: ent.TypeAlert, tq: q}, nil
 	case *ent.AuditCheckpointQuery:
 		return &query[*ent.AuditCheckpointQuery, predicate.AuditCheckpoint, auditcheckpoint.OrderOption]{typ: ent.TypeAuditCheckpoint, tq: q}, nil
 	case *ent.AuditEntryQuery:
@@ -1820,6 +1934,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.DomainQuery, predicate.Domain, domain.OrderOption]{typ: ent.TypeDomain, tq: q}, nil
 	case *ent.EnrollmentTokenQuery:
 		return &query[*ent.EnrollmentTokenQuery, predicate.EnrollmentToken, enrollmenttoken.OrderOption]{typ: ent.TypeEnrollmentToken, tq: q}, nil
+	case *ent.EventQuery:
+		return &query[*ent.EventQuery, predicate.Event, event.OrderOption]{typ: ent.TypeEvent, tq: q}, nil
 	case *ent.GatewayQuery:
 		return &query[*ent.GatewayQuery, predicate.Gateway, gateway.OrderOption]{typ: ent.TypeGateway, tq: q}, nil
 	case *ent.GatewayGroupQuery:
@@ -1900,6 +2016,10 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.TrafficBaselineQuery, predicate.TrafficBaseline, trafficbaseline.OrderOption]{typ: ent.TypeTrafficBaseline, tq: q}, nil
 	case *ent.UserQuery:
 		return &query[*ent.UserQuery, predicate.User, user.OrderOption]{typ: ent.TypeUser, tq: q}, nil
+	case *ent.WebhookQuery:
+		return &query[*ent.WebhookQuery, predicate.Webhook, webhook.OrderOption]{typ: ent.TypeWebhook, tq: q}, nil
+	case *ent.WebhookDeliveryQuery:
+		return &query[*ent.WebhookDeliveryQuery, predicate.WebhookDelivery, webhookdelivery.OrderOption]{typ: ent.TypeWebhookDelivery, tq: q}, nil
 	default:
 		return nil, fmt.Errorf("unknown query type %T", q)
 	}

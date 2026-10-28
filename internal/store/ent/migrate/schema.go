@@ -177,6 +177,37 @@ var (
 			},
 		},
 	}
+	// AlertsColumns holds the columns for the "alerts" table.
+	AlertsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "subject_type", Type: field.TypeString},
+		{Name: "subject_id", Type: field.TypeString},
+		{Name: "subject_name", Type: field.TypeString, Default: ""},
+		{Name: "state", Type: field.TypeEnum, Enums: []string{"pending", "firing", "resolved"}},
+		{Name: "since", Type: field.TypeTime},
+		{Name: "fired_at", Type: field.TypeTime, Nullable: true},
+		{Name: "resolved_at", Type: field.TypeTime, Nullable: true},
+	}
+	// AlertsTable holds the schema information for the "alerts" table.
+	AlertsTable = &schema.Table{
+		Name:       "alerts",
+		Columns:    AlertsColumns,
+		PrimaryKey: []*schema.Column{AlertsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "alert_state",
+				Unique:  false,
+				Columns: []*schema.Column{AlertsColumns[6]},
+			},
+			{
+				Name:    "alert_org_id_state",
+				Unique:  false,
+				Columns: []*schema.Column{AlertsColumns[1], AlertsColumns[6]},
+			},
+		},
+	}
 	// AuditCheckpointsColumns holds the columns for the "audit_checkpoints" table.
 	AuditCheckpointsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -668,6 +699,38 @@ var (
 				Name:    "enrollmenttoken_org_id_id",
 				Unique:  true,
 				Columns: []*schema.Column{EnrollmentTokensColumns[1], EnrollmentTokensColumns[0]},
+			},
+		},
+	}
+	// EventsColumns holds the columns for the "events" table.
+	EventsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "type", Type: field.TypeString},
+		{Name: "ts", Type: field.TypeTime},
+		{Name: "actor_type", Type: field.TypeEnum, Enums: []string{"user", "agent", "system", "anonymous"}},
+		{Name: "actor_id", Type: field.TypeString, Default: ""},
+		{Name: "subject_type", Type: field.TypeString, Default: ""},
+		{Name: "subject_id", Type: field.TypeString, Default: ""},
+		{Name: "subject_name", Type: field.TypeString, Default: ""},
+		{Name: "summary", Type: field.TypeString, Default: ""},
+		{Name: "changed", Type: field.TypeJSON, Nullable: true},
+	}
+	// EventsTable holds the schema information for the "events" table.
+	EventsTable = &schema.Table{
+		Name:       "events",
+		Columns:    EventsColumns,
+		PrimaryKey: []*schema.Column{EventsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "event_org_id_id",
+				Unique:  false,
+				Columns: []*schema.Column{EventsColumns[1], EventsColumns[0]},
+			},
+			{
+				Name:    "event_ts",
+				Unique:  false,
+				Columns: []*schema.Column{EventsColumns[3]},
 			},
 		},
 	}
@@ -2036,6 +2099,77 @@ var (
 			},
 		},
 	}
+	// WebhooksColumns holds the columns for the "webhooks" table.
+	WebhooksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "url", Type: field.TypeString},
+		{Name: "secret_enc", Type: field.TypeBytes},
+		{Name: "previous_secret_enc", Type: field.TypeBytes, Nullable: true},
+		{Name: "previous_until", Type: field.TypeTime, Nullable: true},
+		{Name: "event_types", Type: field.TypeJSON, Nullable: true},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "disabled_reason", Type: field.TypeEnum, Nullable: true, Enums: []string{"failing", "person"}},
+		{Name: "enabled_at", Type: field.TypeTime},
+		{Name: "last_success_at", Type: field.TypeTime, Nullable: true},
+		{Name: "failing_since", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+	}
+	// WebhooksTable holds the schema information for the "webhooks" table.
+	WebhooksTable = &schema.Table{
+		Name:       "webhooks",
+		Columns:    WebhooksColumns,
+		PrimaryKey: []*schema.Column{WebhooksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "webhook_org_id",
+				Unique:  false,
+				Columns: []*schema.Column{WebhooksColumns[1]},
+			},
+			{
+				Name:    "webhook_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{WebhooksColumns[7]},
+			},
+		},
+	}
+	// WebhookDeliveriesColumns holds the columns for the "webhook_deliveries" table.
+	WebhookDeliveriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "webhook_id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "event_id", Type: field.TypeString},
+		{Name: "event_type", Type: field.TypeString, Default: ""},
+		{Name: "attempt", Type: field.TypeInt},
+		{Name: "status_code", Type: field.TypeInt, Default: 0},
+		{Name: "error", Type: field.TypeString, Default: ""},
+		{Name: "sent_at", Type: field.TypeTime},
+		{Name: "next_attempt_at", Type: field.TypeTime, Nullable: true},
+	}
+	// WebhookDeliveriesTable holds the schema information for the "webhook_deliveries" table.
+	WebhookDeliveriesTable = &schema.Table{
+		Name:       "webhook_deliveries",
+		Columns:    WebhookDeliveriesColumns,
+		PrimaryKey: []*schema.Column{WebhookDeliveriesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "webhookdelivery_webhook_id_event_id_attempt",
+				Unique:  true,
+				Columns: []*schema.Column{WebhookDeliveriesColumns[1], WebhookDeliveriesColumns[3], WebhookDeliveriesColumns[5]},
+			},
+			{
+				Name:    "webhookdelivery_next_attempt_at",
+				Unique:  false,
+				Columns: []*schema.Column{WebhookDeliveriesColumns[9]},
+			},
+			{
+				Name:    "webhookdelivery_webhook_id_sent_at",
+				Unique:  false,
+				Columns: []*schema.Column{WebhookDeliveriesColumns[1], WebhookDeliveriesColumns[8]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AcmeStorageTable,
@@ -2044,6 +2178,7 @@ var (
 		AccessPoliciesTable,
 		AgentSessionsTable,
 		AgentStateTable,
+		AlertsTable,
 		AuditCheckpointsTable,
 		AuditLogTable,
 		AuditHeadsTable,
@@ -2059,6 +2194,7 @@ var (
 		DataSessionsTable,
 		DomainsTable,
 		EnrollmentTokensTable,
+		EventsTable,
 		GatewaysTable,
 		GatewayGroupsTable,
 		GatewayPagesTable,
@@ -2099,6 +2235,8 @@ var (
 		TotpCredentialsTable,
 		TrafficBaselinesTable,
 		UsersTable,
+		WebhooksTable,
+		WebhookDeliveriesTable,
 	}
 )
 
@@ -2120,6 +2258,9 @@ func init() {
 	}
 	AgentStateTable.Annotation = &entsql.Annotation{
 		Table: "agent_state",
+	}
+	AlertsTable.Annotation = &entsql.Annotation{
+		Table: "alerts",
 	}
 	AuditCheckpointsTable.Annotation = &entsql.Annotation{
 		Table: "audit_checkpoints",
@@ -2165,6 +2306,9 @@ func init() {
 	EnrollmentTokensTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	EnrollmentTokensTable.ForeignKeys[1].RefTable = GatewaysTable
 	EnrollmentTokensTable.ForeignKeys[2].RefTable = ConnectorsTable
+	EventsTable.Annotation = &entsql.Annotation{
+		Table: "events",
+	}
 	GatewaysTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	GatewayPagesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
 	GatewayPagesTable.Annotation = &entsql.Annotation{
@@ -2285,5 +2429,11 @@ func init() {
 	}
 	TrafficBaselinesTable.Annotation = &entsql.Annotation{
 		Table: "traffic_baselines",
+	}
+	WebhooksTable.Annotation = &entsql.Annotation{
+		Table: "webhooks",
+	}
+	WebhookDeliveriesTable.Annotation = &entsql.Annotation{
+		Table: "webhook_deliveries",
 	}
 }

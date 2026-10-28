@@ -19,8 +19,8 @@ var ErrDisabled = errors.New("websession: the user is disabled")
 
 // Authenticate finds the caller of an API request from its session cookie: nil without one, the
 // user with the roles of their memberships for a live session, and an error for any other cookie
-// (api.Authenticator).
-func (s *Sessions) Authenticate(_ context.Context, h http.Header) (*api.Caller, error) {
+// (api.Authenticator). A recheck (api.Rechecking) leaves the session's idle expiry alone.
+func (s *Sessions) Authenticate(ctx context.Context, h http.Header) (*api.Caller, error) {
 	c, err := (&http.Request{Header: h}).Cookie(CookieName)
 	if errors.Is(err, http.ErrNoCookie) {
 		return nil, nil
@@ -28,7 +28,11 @@ func (s *Sessions) Authenticate(_ context.Context, h http.Header) (*api.Caller, 
 	if err != nil {
 		return nil, err
 	}
-	sess, err := s.Lookup(c.Value)
+	lookup := s.Lookup
+	if api.Rechecking(ctx) {
+		lookup = s.Check
+	}
+	sess, err := lookup(c.Value)
 	if err != nil {
 		return nil, err
 	}

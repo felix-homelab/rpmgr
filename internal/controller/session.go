@@ -154,6 +154,8 @@ type session struct {
 	out    chan *agentv1.ControllerMessage
 	cancel context.CancelFunc
 	done   <-chan struct{} // closed when the session ends
+	// goodbye is the reason end gave, 0 for a session that ended otherwise.
+	goodbye atomic.Int32
 }
 
 // Session runs one control session: admission, Hello within HelloTimeout, the version check, a new
@@ -397,11 +399,21 @@ func (s *Sessions) remove(sess *session) {
 
 // end queues a Goodbye and ends the session.
 func (sess *session) end(reason agentv1.GoodbyeReason, retry time.Duration) {
+	sess.goodbye.CompareAndSwap(0, int32(reason))
 	select {
 	case sess.out <- goodbye(reason, retry):
 	default: // a full queue: the session ends without its Goodbye
 	}
 	sess.cancel()
+}
+
+// endReason says why the session ended, for the operations it ends with it.
+func (sess *session) endReason() string {
+	r := agentv1.GoodbyeReason(sess.goodbye.Load())
+	if r == agentv1.GoodbyeReason_GOODBYE_REASON_UNSPECIFIED {
+		return "the agent's control session ended"
+	}
+	return "the agent's control session ended: " + strings.ToLower(strings.TrimPrefix(r.String(), "GOODBYE_REASON_"))
 }
 
 // Send queues m for the agent's current session; ok is false if the agent has none, or if its

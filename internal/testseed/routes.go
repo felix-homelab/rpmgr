@@ -23,6 +23,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/policyrule"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portpool"
@@ -328,5 +329,34 @@ func (s *Seeder) SetAccess(routeName string, rules []IPRule) error {
 			}
 		}
 		return []string{rt.ID, p.ID}, nil
+	})
+}
+
+// SetGatewayWSS gives the gateway name its WSS hostname under a verified domain, as `rpmgr update
+// gateway --wss-hostname` would, after uploading the certificate that covers it, if CertPEM is set.
+func (s *Seeder) SetGatewayWSS(name, hostname string, certPEM, keyPEM []byte) error {
+	if len(certPEM) > 0 && s.sealer == nil {
+		return errors.New("testseed: a WSS hostname's certificate needs the controller's KEK")
+	}
+	return s.tx(func(tx *ent.Tx, org string) ([]string, error) {
+		gw, err := tx.Gateway.Query().Where(gateway.OrgID(org), gateway.Name(name)).Only(s.sys)
+		if err != nil {
+			return nil, fmt.Errorf("gateway %s: %w", name, err)
+		}
+		if err := s.verified(tx, org, []string{hostname}); err != nil {
+			return nil, err
+		}
+		ids := []string{gw.ID}
+		if len(certPEM) > 0 {
+			crt, err := certs.Upload(s.sys, tx, s.sealer, org, certPEM, keyPEM, time.Now())
+			if err != nil {
+				return nil, err
+			}
+			ids = append(ids, crt.ID)
+		}
+		if _, err := routes.SetWSSHostname(s.sys, tx, gw.ID, hostname); err != nil {
+			return nil, err
+		}
+		return ids, nil
 	})
 }
