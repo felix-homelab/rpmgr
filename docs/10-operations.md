@@ -471,7 +471,7 @@ listen:
   tunnel_udp: ""                            # optional separate UDP port for tunnels; empty = share 443
   http: ":80"
   admin: "127.0.0.1:7382"
-# handoff: { drain: 10m }                   # Phase 2, with 17.x: an old process's drain (03)
+# handoff: { drain: 10m }                   # Phase 2: how long an old process drains after a hand-off (03)
 log: { level: info, format: json }
 tracing: { otlp_endpoint: "", sample_ratio: 0.01 }
 ```

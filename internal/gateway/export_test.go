@@ -122,3 +122,16 @@ func AssignedRoutes(a Assignment) []string {
 	}
 	return slices.Sorted(maps.Keys(s.routes))
 }
+
+// FollowNew and ReportSessions are the two ends of the switch after a hand-off.
+var (
+	FollowNew      = followNew
+	ReportSessions = reportSessions
+)
+
+// The messages of the status pipe after the switch.
+const (
+	MsgSession   = msgSession
+	MsgRevoked   = msgRevoked
+	MsgSuccessor = msgSuccessor
+)

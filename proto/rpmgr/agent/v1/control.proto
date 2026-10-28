@@ -398,6 +398,9 @@ enum GoodbyeReason {
   GOODBYE_REASON_SHUTDOWN = 4;
   // Too many new sessions; retry after retry_after.
   GOODBYE_REASON_OVERLOADED = 5;
+  // The sender restarts with a socket hand-off and the new process is already serving: reconnect at
+  // once, without backoff (docs/03-connections.md, "Restarts with socket hand-off"; D155).
+  GOODBYE_REASON_RESTART = 6;
 }
 
 // ProbeTarget asks a connector for the certificate a target presents, for a key pin

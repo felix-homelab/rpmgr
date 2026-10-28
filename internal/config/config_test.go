@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/config"
 )
@@ -172,6 +173,10 @@ func TestRefused(t *testing.T) {
 		{"passthrough hostname with a port", "gateway", pt("10.0.0.5:443", "[ok.example.com, \"p.example.com:443\"]"), "hostnames[1]"},
 		{"passthrough hostname as an IP address", "gateway", pt("10.0.0.5:443", "[192.0.2.1]"), "hostnames[0]"},
 		{"passthrough wildcard hostname", "gateway", pt("10.0.0.5:443", "[\"*.example.com\"]"), "hostnames[0]"},
+		{"hand-off drain above 24 h", "gateway", agent + "handoff: {drain: 25h}\n", "handoff.drain"},
+		{"negative hand-off drain", "connector", agent + "handoff: {drain: -1s}\n", "handoff.drain"},
+		{"hand-off drain is no duration", "gateway", agent + "handoff: {drain: soon}\n", "cannot unmarshal"},
+		{"unknown hand-off key", "gateway", agent + "handoff: {wait: 1m}\n", "wait"},
 		{"passthrough on a connector", "connector", pt("10.0.0.5:443", ""), "only a gateway"},
 	}
 	for _, tc := range cases {
@@ -283,6 +288,24 @@ func TestKEKSourceFor(t *testing.T) {
 	for v, want := range map[int]string{0: config.KEKFile, 249: config.KEKFile, 250: config.KEKSystemdCredential, 257: config.KEKSystemdCredential} {
 		if got := config.KEKSourceFor(v); got != want {
 			t.Errorf("systemd %d: %s, want %s", v, got, want)
+		}
+	}
+}
+
+func TestHandoffDrain(t *testing.T) {
+	const agent = "version: 1\ncontroller: {endpoints: [https://panel.example.com]}\n"
+	for _, tc := range []struct {
+		yaml string
+		want time.Duration
+	}{
+		{agent, config.DefaultHandoffDrain},
+		{agent + "handoff: {drain: 90s}\n", 90 * time.Second},
+		{agent + "handoff: {drain: 0s}\n", 0},
+		{agent + "handoff: {drain: 24h}\n", config.MaxHandoffDrain},
+	} {
+		var g config.Gateway
+		if err := config.Parse([]byte(tc.yaml), &g); err != nil || g.Handoff.DrainPeriod() != tc.want {
+			t.Errorf("%q: %v, %v, want %v", tc.yaml, g.Handoff.DrainPeriod(), err, tc.want)
 		}
 	}
 }
