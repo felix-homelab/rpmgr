@@ -45,7 +45,9 @@ type Event struct {
 }
 
 // Add writes e in tx, the transaction of the change it reports, and returns it with its ID and
-// time. The IDs of one process's events sort in the order Add wrote them.
+// time. The IDs of one process's events sort in the order Add made them, which is not the order
+// their transactions commit in: a reader must not page through events by "ID after the last one
+// read", or it skips an event whose transaction committed late.
 func Add(ctx context.Context, tx *ent.Tx, e Event) (Event, error) {
 	if e.Type == "" {
 		return Event{}, fmt.Errorf("events: an event without a type")
@@ -102,11 +104,12 @@ func cut(s string, n int) string {
 func utf8Start(b byte) bool { return b&0xC0 != 0x80 }
 
 // notChanges are the audited actions that change no configuration and so are no events: signing
-// in and out, a step-up, asking for a reset link, and the use of a token or a system scope.
+// in and out, a step-up, asking for a reset link, the use of a token or a system scope, opening a
+// live log, and pruning the audit log.
 var notChanges = map[string]bool{
 	"rpmgr.v1.AuthService.Login": true, "rpmgr.v1.AuthService.StepUp": true, "rpmgr.v1.AuthService.Logout": true,
 	"rpmgr.v1.AuthService.RequestPasswordReset": true, "session.login": true, "token.use": true,
-	"system_scope.grant": true, "job.run": true,
+	"system_scope.grant": true, "job.run": true, "agent.logs_open": true, "audit.prune": true,
 }
 
 // FromAudit reports whether an audit entry of action with result is an event: every change its

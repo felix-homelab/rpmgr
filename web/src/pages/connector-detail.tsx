@@ -10,6 +10,7 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { Field } from "@/components/field";
+import { canStreamLogs, LiveLog } from "@/components/live-log";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
 import { UpdateButton } from "@/components/update-button";
@@ -126,6 +127,12 @@ export function ConnectorDetail() {
           </Table>
         )}
       </Card>
+
+      {canStreamLogs(org?.role) && (
+        <Card title={t("liveLog.title")}>
+          {c.builtIn ? <p className="text-sm text-muted-foreground">{t("liveLog.builtIn")}</p> : <LiveLog agentId={c.id} />}
+        </Card>
+      )}
 
       <Card title={t("connectors.routes")}>
         {served.length === 0 ? <p className="text-sm text-muted-foreground">{t("connectors.noRoutes")}</p> : (

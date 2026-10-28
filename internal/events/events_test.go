@@ -186,3 +186,27 @@ func TestTypeOf(t *testing.T) {
 		}
 	}
 }
+
+// TestFromAudit: a successful change is an event; a failure, and an audited action that changes no
+// configuration, such as signing in, opening a live log or pruning the audit log, is none.
+func TestFromAudit(t *testing.T) {
+	for _, c := range []struct {
+		action, result string
+		want           bool
+	}{
+		{"rpmgr.v1.RouteService.UpdateRoute", "success", true},
+		{"route.update", "success", true},
+		{"rpmgr.v1.RouteService.UpdateRoute", "failure", false},
+		{"rpmgr.v1.RouteService.UpdateRoute", "denied", false},
+		{"rpmgr.v1.AuthService.Login", "success", false},
+		{"rpmgr.v1.AuthService.Logout", "success", false},
+		{"token.use", "success", false},
+		{"agent.logs_open", "success", false},
+		{"audit.prune", "success", false},
+		{"job.run", "success", false},
+	} {
+		if got := events.FromAudit(c.action, c.result); got != c.want {
+			t.Errorf("FromAudit(%q, %q) = %v, want %v", c.action, c.result, got, c.want)
+		}
+	}
+}

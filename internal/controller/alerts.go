@@ -120,7 +120,15 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 	}
 	for _, st := range states {
 		a, ok := agents[st.ID]
-		if !ok || !online[st.ID] {
+		if !ok {
+			continue
+		}
+		// An offline agent's configuration and clock are not known now: its alerts of them neither
+		// resolve nor fire again when it is back, and none opens while it is away.
+		if !online[st.ID] {
+			for _, kind := range []string{alerts.ConfigNotApplied, alerts.ClockSkew} {
+				obs = append(obs, alerts.Observation{OrgID: a.org, Kind: kind, SubjectType: a.typ, SubjectID: st.ID, SubjectName: a.name, Unknown: true})
+			}
 			continue
 		}
 		if s := snapshot.ApplyStatus(st, now); s == snapshot.ApplyRejected || s == snapshot.ApplyTimedOut {

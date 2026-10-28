@@ -187,11 +187,12 @@ later.
 - Short lifetimes bound the damage when a deny-list cannot be pushed (controller down).
 - **Revoking** a certificate (by serial) or an identity (every certificate of it, also one issued
   later; no new certificate is issued and none renewed) is committed with an audit record. The
-  controller then ends the control sessions of the agents it covers with `Goodbye{revoked}`, sends
-  the new list to every other session, and refuses the certificates at its TLS layer. Each replica
-  reloads the list at every revision check ([03](03-connections.md#timeouts-keepalive-and-backoff)),
-  so a revocation committed by another replica or an admin command is enforced too. Phase 1 always
-  sends the full set.
+  controller then ends the control sessions of the agents it covers with `Goodbye{revoked}`, and
+  with them their imperative operations, such as live logs
+  ([03](03-connections.md#control-session)), sends the new list to every other session, and refuses
+  the certificates at its TLS layer. Each replica reloads the list at every revision check
+  ([03](03-connections.md#timeouts-keepalive-and-backoff)), so a revocation committed by another
+  replica or an admin command is enforced too. Phase 1 always sends the full set.
 - Every revocation is also appended to the **revocation log** outside the database, so a restore
   from an older backup cannot resurrect revoked credentials ([Audit log](#audit-log)).
 - [R] **No OCSP and no CRL**: every relying party already receives the deny-list; OCSP would
@@ -558,7 +559,12 @@ their own account this way. Further rules:
 [R] **Live logs** (Phase 2): logs of a gateway of a group shared with other orgs are for the
 Instance Admin only, as they show other orgs' traffic. A host cannot refuse live logs in Phase 2.
 Opening a log, and raising its level, is audited as `agent.logs_open` with the level and filter
-([D140](14-open-decisions.md#engineering)).
+([D140](14-open-decisions.md#engineering)). As permissions are evaluated per request, a live log,
+one long request, admits its viewer again while it runs: a session or token that is no longer
+valid ends it with `UNAUTHENTICATED`, and a viewer who lost `agents.logs` or left the org with
+`PERMISSION_DENIED`, within the interval of [03](03-connections.md#timeouts-keepalive-and-backoff).
+The recheck is not the user's activity: it does not move a session's idle expiry, so a live log
+left open in a forgotten tab ends when its session's idle timeout passes.
 
 [R] `connectors.write` reaches routes: decommissioning a connector deletes each route left with no
 target, with its hostnames, ports and policy links, so a token with that scope and without
@@ -1163,7 +1169,9 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    ([03](03-connections.md#versioning-and-capabilities)), and in an easy rollout only to the agent
    whose turn it is: gateways and connectors on Linux that
    run on their own on a host with the root updater installed (its directory
-   `/var/lib/rpmgr-update/` exists), never all-in-one's, whose roles share the controller's
+   `/var/lib/rpmgr-update/` exists and the unit `rpmgr-update.path` is enabled, so that a host the
+   v0.1.0 install script or `rpmgr setup --no-unit` left without the units is never offered a
+   release nothing would install), never all-in-one's, whose roles share the controller's
    binary, nor one in the container image, which has no updater. The offer
    names the version, the controller's public URL (the `public_url` of [10](10-operations.md),
    which `/install.sh` and enrollment use), its manifest's `seq` and its files under `/dl/` with

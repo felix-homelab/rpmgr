@@ -132,8 +132,8 @@ not available" (404) instead.
    gateways. The configured settings then say "in maintenance" and "The maintenance page says: …".
 4. To end maintenance, turn the switch off again.
 
-The **Edit** form has the setting as well: **Maintenance**, **On: show the maintenance page** or
-**Off: serve the route**.
+The **Edit** form has the setting as well, in its **Maintenance** section: **Maintenance**,
+**On: show the maintenance page** or **Off: serve the route**.
 
 **With the command line:**
 

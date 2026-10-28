@@ -40,13 +40,20 @@ Changes to the design documents are not recorded here: see the git history and t
 - Routes: limits for a route as a whole, on every route type: open connections, flows or HTTP
   requests in flight, requests or new connections a second, and bandwidth in each direction, set
   with `rpmgr create route` and `rpmgr update route` (`--max-connections`,
-  `--requests-per-second`, `--bandwidth`) or the API. The gateways of the route's group share each
-  limit; over it, HTTP gets 503 or 429 with `Retry-After`, TCP is reset and UDP dropped, and
-  bandwidth slows data down. Access policies gain a per-client rate limit, on every route type:
+  `--requests-per-second`, `--bandwidth`), the API or the web UI's route form. The gateways of the
+  route's group share each limit; over it, HTTP gets 503 or 429 with `Retry-After`, TCP is reset
+  and UDP dropped, and bandwidth slows data down. Access policies gain a per-client rate limit, on every route type:
   each client address, or IPv6 /64, may make so many requests, new connections or new flows a
   second, with a burst (`--rule rate-limit:<per second>[,<burst>]`, the web UI's policy form, or
   the API). A gateway of an earlier release does not get a route with limits or such a rule.
-  (#622, #623, #624, #625, #917)
+  (#622, #623, #624, #625, #628, #917)
+
+- Connectors and gateways: live logs. An Owner or Admin follows an agent's log as it is written, in
+  the **Live log** card of a connector's page, from **Live log…** in a gateway's row, with
+  `rpmgr logs connector|gateway`, or with `LogService.StreamLogs`. Lines are redacted on the agent
+  before they leave its host, filtered by level and text, and may be raised to debug while open;
+  opening a log is audited. Built-in agents of an all-in-one have none. (#642, #643, #644, #645)
+
 - Routes: active health checks. A route may have one TCP or HTTP check, which each connector runs
   against its own targets of the route, on their port or another one; new connections pass over a
   target that fails it, gateways pass over a connector whose targets of a priority are all
@@ -88,13 +95,13 @@ Changes to the design documents are not recorded here: see the git history and t
 - Routes: an http route can match on request headers, an exact value or presence alone, so that
   routes share a hostname and path prefix and a header such as `X-Env: beta` chooses between them;
   the route with more matching headers wins, the one created first a tie. Set with
-  `rpmgr create route`/`update route --match-header`, the API's `header_matches` and manifests; the
-  web UI follows. Gateways of earlier releases never get such a route. (#617, #618)
+  `rpmgr create route`/`update route --match-header`, the API's `header_matches`, manifests and the
+  web UI's route form. Gateways of earlier releases never get such a route. (#617, #618, #628)
 
 - Routes: an http route can set its own upstream response-header timeout, after which a request
   gets 504, and its own idle timeout for unused connections to its targets; 0 keeps the gateway's.
-  Set with `--upstream-header-timeout` and `--upstream-idle-timeout`, the API and manifests; the
-  web UI follows. Gateways of earlier releases keep their own values. (#619)
+  Set with `--upstream-header-timeout` and `--upstream-idle-timeout`, the API, manifests and the
+  web UI's route form. Gateways of earlier releases keep their own values. (#619, #628)
 
 - Access policies: a **require-header** rule admits on HTTP routes only requests that carry a
   header with one of up to four values, such as the origin header a CDN adds, so that clients that
@@ -111,6 +118,21 @@ Changes to the design documents are not recorded here: see the git history and t
   404 page instead of going to the upstream, and every header and trailer a client sends whose name
   starts with `Rpmgr-User-`, also spelt with `_`, is removed before a request goes upstream; both
   are kept for the gateway's own endpoints and OIDC sign-in. (#617)
+- Web UI: the new-route and edit forms group their fields into titled sections, such as
+  **Hostnames & matching**, **TLS**, **Upstream** and, for routes on a port, **Listener**, with a
+  list beside the form, above it on a phone, that jumps to each section and marks one holding a
+  field with an error. A failed save or
+  preview puts the cursor in the first field with an error. Every field stays on the page. (#969)
+
+### Fixed
+
+- Updates: a connector or gateway whose host has the updater's directory but not its enabled
+  units, as the v0.1.0 install script and `rpmgr setup --no-unit` leave it, no longer announces
+  over-the-air updates. It was offered a release it staged and nothing installed, until the
+  rollout counted it as stalled; it is now listed as having no over-the-air updater, and the
+  install script's `--upgrade --restart` installs the units and restarts the agent. The install
+  script enables the updater before it starts the role, so that a new agent announces
+  over-the-air updates from its first start. (#965)
 
 ## [0.2.0] - 2026-10-24
 
