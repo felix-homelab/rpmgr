@@ -142,7 +142,9 @@ func TestFollowNew_Messages(t *testing.T) {
 func TestFollowNew_PipeClosed(t *testing.T) {
 	m, _, _ := twoConnectors(t)
 	p := newFakePipe()
-	f := follow(t, context.Background(), p, nil, m, time.Now().Add(time.Minute), func() {})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f := follow(t, ctx, p, nil, m, time.Now().Add(time.Minute), func() {})
 	close(p.c)
 	if f.returned(t) {
 		t.Fatal("a closed pipe ended the wait; the new process exiting is Exited's business")
@@ -206,5 +208,24 @@ func TestReportSessions_BrokenPipe(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("the old process is gone, but reporting went on")
+	}
+}
+
+// TestFollowNew_PipeClosedPollsDenyList: after the pipe broke the old process reads the deny-list
+// itself, so a revocation written meanwhile still takes effect, until the drain deadline.
+func TestFollowNew_PipeClosedPollsDenyList(t *testing.T) {
+	gateway.SetDenyPoll(t, 20*time.Millisecond)
+	m, _, _ := twoConnectors(t)
+	p := newFakePipe()
+	var reloads atomic.Int32
+	f := follow(t, context.Background(), p, nil, m, time.Now().Add(400*time.Millisecond), func() { reloads.Add(1) })
+	close(p.c)
+	eventually(t, "the deny-list was not read after the pipe closed", func() bool { return reloads.Load() >= 3 })
+	f.returned(t)
+	time.Sleep(500 * time.Millisecond)
+	n := reloads.Load()
+	time.Sleep(150 * time.Millisecond)
+	if reloads.Load() != n {
+		t.Fatal("the deny-list is still polled after the drain deadline")
 	}
 }

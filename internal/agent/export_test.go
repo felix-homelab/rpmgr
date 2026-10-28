@@ -7,3 +7,9 @@ var AcceptRoots = acceptRoots
 
 // NewStager is exported for the tests of OTA staging.
 var NewStager = newStager
+
+// RestartDelay and RandomFraction are exported for the test of the redial after Goodbye{restart}.
+var (
+	RestartDelay   = restartDelay
+	RandomFraction = randomFraction
+)

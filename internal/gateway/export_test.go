@@ -135,3 +135,10 @@ const (
 	MsgRevoked   = msgRevoked
 	MsgSuccessor = msgSuccessor
 )
+
+// SetDenyPoll shortens how often an old process reads the deny-list without its pipe, for one test.
+func SetDenyPoll(t testing.TB, d time.Duration) {
+	old := denyPollEvery
+	denyPollEvery = d
+	t.Cleanup(func() { denyPollEvery = old })
+}

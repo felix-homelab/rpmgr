@@ -31,6 +31,7 @@ const movedEvery = 100 * time.Millisecond
 // process hands off itself, which ends the drain early.
 func followNew(ctx context.Context, recv func() (typ, reason string, err error), exited <-chan struct{}, sessions *Sessions, deadline time.Time, reload func(), log *slog.Logger) (ended <-chan struct{}) {
 	had := sessions.Connectors()
+	every := denyPollEvery
 	sessions.DrainHandoff(deadline)
 	var mu sync.Mutex
 	moved := map[string]bool{}
@@ -39,7 +40,11 @@ func followNew(ctx context.Context, recv func() (typ, reason string, err error),
 		for {
 			typ, reason, err := recv()
 			if err != nil {
-				return // the new process closed the pipe or exited; its own exit does not end this drain
+				// The new process closed the pipe or exited; its exit does not end this drain, but no
+				// revocation reaches this process any more: read the deny-list the new process
+				// writes (docs/03, "Revision and deny-list check") until the drain ends.
+				pollDenyList(ctx, every, deadline, reload)
+				return
 			}
 			switch typ {
 			case msgSession:
@@ -81,6 +86,28 @@ func followNew(ctx context.Context, recv func() (typ, reason string, err error),
 		}
 	}
 	return end
+}
+
+// denyPollEvery is how often an old process without a pipe reads the deny-list again; a test
+// shortens it.
+var denyPollEvery = time.Second
+
+// pollDenyList reads the deny-list again at once and then every given interval, until deadline or
+// ctx.
+func pollDenyList(ctx context.Context, every time.Duration, deadline time.Time, reload func()) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		reload()
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if !time.Now().Before(deadline) {
+				return
+			}
+		}
+	}
 }
 
 // reportSessions runs in the new process after it took over: it tells the old one which

@@ -428,18 +428,20 @@ func Run(ctx context.Context, o RunOptions) error {
 	case child = <-switched:
 	}
 	period := o.DrainPeriod
-	var successor <-chan struct{} // closed when a hand-off of the new process ends the drain early
+	deadline := time.Now().Add(period) // one deadline for the wait for the connectors and the drain
+	var successor <-chan struct{}      // closed when a hand-off of the new process ends the drain early
 	if child != nil {
 		// Switched: connectors move to the new process and this one keeps accepting until they
 		// have, then drains its open connections for the hand-off drain.
 		period = cfg.Handoff.DrainPeriod()
+		deadline = time.Now().Add(period)
 		reload := func() {
 			if err := ctl.DenyList().Load(); err != nil {
 				o.Logger.Warn("reading the deny-list after a hand-off", "error", err)
 			}
 			sessions.Recheck()
 		}
-		successor = followNew(ctx, child.Pipe.Recv, child.Exited(), sessions, o.Now().Add(period), reload, o.Logger)
+		successor = followNew(ctx, child.Pipe.Recv, child.Exited(), sessions, deadline, reload, o.Logger)
 		o.Logger.Info("stopping accepting: the new process took over", "generation", held.link.Generation())
 	}
 	// Drain: no new public connections or data sessions; the open streams get the drain period,
@@ -454,8 +456,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	closeQUIC()
 	routes.Drain()
 	httpRoutes.Drain()
-	sessions.Drain(o.Now().Add(period))
-	deadline := time.Now().Add(period)
+	sessions.Drain(o.Now().Add(time.Until(deadline)))
 	for result == nil && !closed(successor) && time.Now().Before(deadline) && (routes.Conns() > 0 || pass.Conns() > 0 || httpRoutes.Active() > 0 ||
 		sessions.Streams() > 0) {
 		select {
