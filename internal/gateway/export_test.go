@@ -122,3 +122,23 @@ func AssignedRoutes(a Assignment) []string {
 	}
 	return slices.Sorted(maps.Keys(s.routes))
 }
+
+// FollowNew and ReportSessions are the two ends of the switch after a hand-off.
+var (
+	FollowNew      = followNew
+	ReportSessions = reportSessions
+)
+
+// The messages of the status pipe after the switch.
+const (
+	MsgSession   = msgSession
+	MsgRevoked   = msgRevoked
+	MsgSuccessor = msgSuccessor
+)
+
+// SetDenyPoll shortens how often an old process reads the deny-list without its pipe, for one test.
+func SetDenyPoll(t testing.TB, d time.Duration) {
+	old := denyPollEvery
+	denyPollEvery = d
+	t.Cleanup(func() { denyPollEvery = old })
+}

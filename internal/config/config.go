@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 
@@ -223,6 +224,37 @@ type Agent struct {
 	StateDir    string  `yaml:"state_dir"`
 	Log         Log     `yaml:"log"`
 	Tracing     Tracing `yaml:"tracing"`
+	Handoff     Handoff `yaml:"handoff"`
+}
+
+// Handoff is the boot-file section of the restart with socket hand-off (docs/03-connections.md,
+// "Restarts with socket hand-off").
+type Handoff struct {
+	// Drain is how long an old process serves its open connections before it cuts them; nil is
+	// DefaultHandoffDrain, 0 cuts at once.
+	Drain *time.Duration `yaml:"drain"`
+}
+
+// DefaultHandoffDrain and MaxHandoffDrain are the default and the largest hand-off drain
+// (docs/03-connections.md, "Timeouts, keepalive and backoff"; D146).
+const (
+	DefaultHandoffDrain = 10 * time.Minute
+	MaxHandoffDrain     = 24 * time.Hour
+)
+
+// DrainPeriod returns the hand-off drain.
+func (h Handoff) DrainPeriod() time.Duration {
+	if h.Drain == nil {
+		return DefaultHandoffDrain
+	}
+	return *h.Drain
+}
+
+func (h Handoff) validate() error {
+	if d := h.DrainPeriod(); d < 0 || d > MaxHandoffDrain {
+		return fmt.Errorf("handoff.drain: %v is outside 0 to %v", d, MaxHandoffDrain)
+	}
+	return nil
 }
 
 func (a *Agent) defaults() {
@@ -231,7 +263,7 @@ func (a *Agent) defaults() {
 }
 
 func (a *Agent) validate() error {
-	errs := []error{checkVersion(a.Version), checkLog(a.Log), a.Tracing.Check(),
+	errs := []error{checkVersion(a.Version), checkLog(a.Log), a.Tracing.Check(), a.Handoff.validate(),
 		checkAbs("identity_dir", a.IdentityDir), checkAbs("state_dir", a.StateDir)}
 	if len(a.Controller.Endpoints) == 0 {
 		errs = append(errs, errors.New("controller.endpoints: at least one controller URL is needed"))

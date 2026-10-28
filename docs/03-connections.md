@@ -1685,8 +1685,7 @@ sequenceDiagram
    socket by the address the old process bound (`listen.tcp: ":443"` is `[::]:443`), and binds what
    is not handed. A socket nothing needs is closed and logged once the first snapshot is applied.
    The UDP socket of the QUIC listener is not handed until slice 17.4, so until then a gateway that
-   serves QUIC refuses a hand-off. Until the switch and drain of slice 17.10 the old process would
-   also serve on after one.
+   serves QUIC refuses a hand-off.
 3. **Ready.** The new process starts from the stored last-known-good snapshot, opens its control
    session, which supersedes the old process's, applies the snapshot it receives and reports ready
    over the pipe. The old process takes the `Goodbye{superseded}` this causes without ending and
@@ -1707,12 +1706,25 @@ sequenceDiagram
    reset. The new process tells systemd it is the unit's main process; systemd keeps the unit
    active and restarts it when that process fails, although it did not start it itself [F S10,
    systemd 249 and 257].
+   **Gateway** (slice 17.10): the new process tells the old one over the status pipe which
+   connectors have a data session with it; once it has one of each connector the old process had,
+   it stops accepting and closes its listeners. It sent its data sessions `Drain` with reason
+   `handoff` at the switch. It keeps no control session: the new process's session superseded it,
+   and it does not open another. The control `Goodbye` of a restart carries
+   `GOODBYE_REASON_RESTART`, on which an agent reconnects at once, without backoff
+   ([D155](14-open-decisions.md#engineering)); the old controller of an all-in-one sends it
+   (slice 17.5).
 5. **Drain.** The old process serves its open connections until they end or the **hand-off drain**
    cuts them ([D146](14-open-decisions.md#engineering)), then exits. A revocation, a tightened
    access policy or a removed route that the new process applies meanwhile cuts the old process's
    open connections at once ([04](04-security.md#socket-hand-off-phase-2)). A hand-off started
    while a predecessor still drains ends that predecessor's drain early, so at most one old process
-   runs.
+   runs: the new process tells it over the pipe once its own hand-off took over. **Gateway:** a
+   revocation reaches the old process as a message of the new one, which then reads the
+   deny-list again and closes the data sessions of the revoked identity. A tightened access
+   policy or a removed route that the new process applies does not yet cut the old process's
+   public connections; they end or are cut at the hand-off drain (slice 17.10, to follow).
+   Metrics and log lines carry no generation label yet.
 
 **UDP and QUIC.** A datagram on a shared socket goes to whichever process reads it, and a QUIC
 packet of the old process's session that the new process reads is answered with a stateless reset

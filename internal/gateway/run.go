@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -121,6 +122,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	applier, assign := NewApplier()
 	var sessions *Sessions
+	var toOld atomic.Pointer[handoff.Pipe] // set in a process a hand-off started, once it is ready
 	challenges, report := NewChallenges(), newReporter()
 	var update *agent.UpdateOptions
 	if o.Update {
@@ -135,6 +137,9 @@ func Run(ctx context.Context, o RunOptions) error {
 		OnDenyList: func() {
 			if sessions != nil {
 				sessions.Recheck()
+			}
+			if p := toOld.Load(); p != nil {
+				_ = p.Send(msgRevoked, "") // the old process of a hand-off cuts what the list revokes
 			}
 		},
 		SessionStatus: func() *agentv1.Status {
@@ -319,6 +324,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	errs := make(chan error, 4)
+	switched := make(chan *handoff.Child, 1)
 	// Run returns only once these have ended: the control plane writes the last-known-good snapshot
 	// and the deny-list into the state directory, and the certificates their files.
 	var background sync.WaitGroup
@@ -386,18 +392,57 @@ func Run(ctx context.Context, o RunOptions) error {
 		if adopted {
 			rest = o.Handoff.Inherited.Rest
 		}
-		o.Handoff.Serve(held.start)
+		o.Handoff.Serve(func(c context.Context) (*handoff.Child, error) {
+			end := ctl.BeginHandoff() // the new process's control session supersedes this one's
+			child, err := held.start(c)
+			end(err == nil)
+			if err != nil {
+				return nil, err
+			}
+			if adopted {
+				_ = o.Handoff.Inherited.Pipe().Send(msgSuccessor, "") // ends the predecessor's drain
+			}
+			o.Handoff.Serve(nil) // this process only drains now
+			switched <- child
+			return child, nil
+		})
 		background.Go(func() {
 			if err := held.ready(run, o.Handoff, rest, ctl.Ready); err != nil {
 				errs <- err
+				return
+			}
+			if adopted {
+				pipe := o.Handoff.Inherited.Pipe()
+				toOld.Store(pipe)
+				_ = pipe.Send(msgRevoked, "") // a revocation between this process's start and now
+				reportSessions(run, pipe.Send, sessions, o.Logger)
 			}
 		})
 	}
 
 	var result error
+	var child *handoff.Child
 	select {
 	case <-ctx.Done():
 	case result = <-errs:
+	case child = <-switched:
+	}
+	period := o.DrainPeriod
+	deadline := time.Now().Add(period) // one deadline for the wait for the connectors and the drain
+	var successor <-chan struct{}      // closed when a hand-off of the new process ends the drain early
+	if child != nil {
+		// Switched: connectors move to the new process and this one keeps accepting until they
+		// have, then drains its open connections for the hand-off drain.
+		period = cfg.Handoff.DrainPeriod()
+		deadline = time.Now().Add(period)
+		reload := func() {
+			if err := ctl.DenyList().Load(); err != nil {
+				o.Logger.Warn("reading the deny-list after a hand-off", "error", err)
+			}
+			sessions.Recheck()
+		}
+		successor = followNew(ctx, child.Pipe.Recv, child.Exited(), sessions, deadline, reload, o.Logger)
+		o.Logger.Info("stopping accepting: the new process took over", "generation", held.link.Generation())
 	}
 	// Drain: no new public connections or data sessions; the open streams get the drain period,
 	// and the gateway stops earlier once none is left.
@@ -411,9 +456,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	closeQUIC()
 	routes.Drain()
 	httpRoutes.Drain()
-	sessions.Drain(o.Now().Add(o.DrainPeriod))
-	deadline := time.Now().Add(o.DrainPeriod)
-	for result == nil && time.Now().Before(deadline) && (routes.Conns() > 0 || pass.Conns() > 0 || httpRoutes.Active() > 0 ||
+	sessions.Drain(o.Now().Add(time.Until(deadline)))
+	for result == nil && !closed(successor) && time.Now().Before(deadline) && (routes.Conns() > 0 || pass.Conns() > 0 || httpRoutes.Active() > 0 ||
 		sessions.Streams() > 0) {
 		select {
 		case <-time.After(100 * time.Millisecond):
@@ -427,4 +471,14 @@ func Run(ctx context.Context, o RunOptions) error {
 	stop()
 	background.Wait()
 	return result
+}
+
+// closed reports whether c is closed; a nil channel is not.
+func closed(c <-chan struct{}) bool {
+	select {
+	case <-c:
+		return true
+	default:
+		return false
+	}
 }

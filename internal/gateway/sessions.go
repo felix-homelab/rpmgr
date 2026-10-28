@@ -859,6 +859,29 @@ func (m *Sessions) Drain(deadline time.Time) {
 	m.drain(deadline, "gateway shutdown")
 }
 
+// DrainHandoff is Drain for a restart with socket hand-off: connectors move to the new process at
+// once, and the sessions close at deadline, the hand-off drain.
+func (m *Sessions) DrainHandoff(deadline time.Time) {
+	m.mu.Lock()
+	m.draining = true
+	m.mu.Unlock()
+	m.drain(deadline, "handoff")
+}
+
+// Connectors returns the connectors that have a data session, sorted.
+func (m *Sessions) Connectors() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []string
+	for c, ds := range m.byConnector {
+		if len(ds) > 0 {
+			out = append(out, c)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 // Disable drains the sessions as Drain does, for a disabled gateway (R22), with the deadline
 // period from now. Until Enable, no new session or stream is admitted. A session already drained
 // keeps its deadline.

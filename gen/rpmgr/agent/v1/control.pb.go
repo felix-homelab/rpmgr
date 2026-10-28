@@ -348,6 +348,9 @@ const (
 	GoodbyeReason_GOODBYE_REASON_SHUTDOWN GoodbyeReason = 4
 	// Too many new sessions; retry after retry_after.
 	GoodbyeReason_GOODBYE_REASON_OVERLOADED GoodbyeReason = 5
+	// The sender restarts with a socket hand-off and the new process is already serving: reconnect at
+	// once, without backoff (docs/03-connections.md, "Restarts with socket hand-off"; D155).
+	GoodbyeReason_GOODBYE_REASON_RESTART GoodbyeReason = 6
 )
 
 // Enum value maps for GoodbyeReason.
@@ -359,6 +362,7 @@ var (
 		3: "GOODBYE_REASON_UPGRADE_REQUIRED",
 		4: "GOODBYE_REASON_SHUTDOWN",
 		5: "GOODBYE_REASON_OVERLOADED",
+		6: "GOODBYE_REASON_RESTART",
 	}
 	GoodbyeReason_value = map[string]int32{
 		"GOODBYE_REASON_UNSPECIFIED":      0,
@@ -367,6 +371,7 @@ var (
 		"GOODBYE_REASON_UPGRADE_REQUIRED": 3,
 		"GOODBYE_REASON_SHUTDOWN":         4,
 		"GOODBYE_REASON_OVERLOADED":       5,
+		"GOODBYE_REASON_RESTART":          6,
 	}
 )
 
@@ -2933,14 +2938,15 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\x15TRANSPORT_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eTRANSPORT_QUIC\x10\x01\x12\x10\n" +
 	"\fTRANSPORT_H2\x10\x02\x12\x11\n" +
-	"\rTRANSPORT_WSS\x10\x03*\xcb\x01\n" +
+	"\rTRANSPORT_WSS\x10\x03*\xe7\x01\n" +
 	"\rGoodbyeReason\x12\x1e\n" +
 	"\x1aGOODBYE_REASON_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19GOODBYE_REASON_SUPERSEDED\x10\x01\x12\x1a\n" +
 	"\x16GOODBYE_REASON_REVOKED\x10\x02\x12#\n" +
 	"\x1fGOODBYE_REASON_UPGRADE_REQUIRED\x10\x03\x12\x1b\n" +
 	"\x17GOODBYE_REASON_SHUTDOWN\x10\x04\x12\x1d\n" +
-	"\x19GOODBYE_REASON_OVERLOADED\x10\x05*V\n" +
+	"\x19GOODBYE_REASON_OVERLOADED\x10\x05\x12\x1a\n" +
+	"\x16GOODBYE_REASON_RESTART\x10\x06*V\n" +
 	"\n" +
 	"AcmeAction\x12\x1b\n" +
 	"\x17ACME_ACTION_UNSPECIFIED\x10\x00\x12\x13\n" +

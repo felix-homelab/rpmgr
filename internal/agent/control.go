@@ -158,6 +158,15 @@ func (c *Client) afterHandoff(ctx context.Context, reason agentv1.GoodbyeReason)
 	return state == handedOff, false
 }
 
+// restartDelay is the wait before an agent redials after Goodbye{restart}: frac, a number in
+// [0, 1), of one second.
+func restartDelay(frac func() float64) time.Duration {
+	return time.Duration(frac() * float64(time.Second))
+}
+
+// BeginHandoff is Client.BeginHandoff of the control session.
+func (c *Control) BeginHandoff() (end func(tookOver bool)) { return c.client.BeginHandoff() }
+
 // NewClient returns the control-session client.
 func NewClient(o ClientOptions) *Client {
 	if o.Now == nil {
@@ -223,6 +232,14 @@ func (c *Client) Run(ctx context.Context) error {
 		}
 		if out.drained && next%len(endpoints) != 0 {
 			continue // move at once; the deadline is short
+		}
+		if out.reason == agentv1.GoodbyeReason_GOODBYE_REASON_RESTART {
+			// The controller restarts with a hand-off and already serves again: no backoff, only a
+			// short jitter so that the agents do not all dial in the same instant.
+			if !sleep(ctx, restartDelay(c.o.RenewJitter)) {
+				return nil
+			}
+			continue
 		}
 		if !sleep(ctx, c.o.Backoff.Next(out.retryAfter)) {
 			return nil
