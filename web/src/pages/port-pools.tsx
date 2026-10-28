@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { clone, create } from "@bufbuild/protobuf";
-import { ConnectError } from "@connectrpc/connect";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
@@ -12,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import { GatewayService, PortPoolSchema, PortProtocol, type PortPool, type PortQuota } from "@/gen/rpmgr/v1/gateway_pb";
+import { apiError } from "@/lib/api-error";
 
 const protocols = [PortProtocol.TCP, PortProtocol.UDP];
 
@@ -78,7 +78,7 @@ function PoolForm({ orgId, groupId, pool, onDone }: { orgId: string; groupId: st
       await queryClient.invalidateQueries();
       onDone();
     } catch (err) {
-      setError(ConnectError.from(err).rawMessage);
+      setError(apiError(t, err));
     }
   }
   return (
@@ -115,7 +115,7 @@ function PoolRow({ pool: p }: { pool: PortPool }) {
         <>
           {t("pools.ask", { name })}
           <Button size="sm" variant="destructive"
-            onClick={() => void remove.mutateAsync({ portPoolId: p.id, etag: p.etag }).then(() => queryClient.invalidateQueries(), (err: unknown) => setError(ConnectError.from(err).rawMessage))}>
+            onClick={() => void remove.mutateAsync({ portPoolId: p.id, etag: p.etag }).then(() => queryClient.invalidateQueries(), (err: unknown) => setError(apiError(t, err)))}>
             {t("targetForm.remove")}
           </Button>
           <Button size="sm" variant="outline" onClick={() => setMode("show")}>{t("stepUp.cancel")}</Button>
@@ -156,7 +156,7 @@ function QuotaRow({ orgId, groupId, protocol, quota }: { orgId: string; groupId:
       }
       await queryClient.invalidateQueries();
     } catch (err) {
-      setError(ConnectError.from(err).rawMessage);
+      setError(apiError(t, err));
     }
   }
   return (
