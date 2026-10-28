@@ -15,6 +15,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
+	"github.com/felix-homelab/rpmgr/internal/handoff"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/setup/serversetup"
@@ -78,7 +79,7 @@ func runGateway(ctx context.Context, env *cli.Env, path string) error {
 	}
 	defer stop()
 	return gateway.Run(ctx, gateway.RunOptions{Config: cfg, Version: version.Get().Version, Logger: logger, LiveLog: live, Now: agentcmd.Clock,
-		Update: update.UpdaterInstalled()})
+		Update: update.UpdaterInstalled(), Handoff: handoff.LinkFrom(ctx)})
 }
 
 // runController is `rpmgr controller`: it runs until SIGINT or SIGTERM, then drains.

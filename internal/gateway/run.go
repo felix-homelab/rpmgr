@@ -20,6 +20,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/handoff"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
@@ -86,6 +87,10 @@ type RunOptions struct {
 	// of the state directory, as the host's local policy file allows (OTA): a gateway on Linux
 	// that runs on its own, never all-in-one's.
 	Update bool
+	// Handoff, if set, is the gateway's link to socket hand-offs: Run adopts the TCP listeners
+	// the old process handed over, hands its own over on request, and reports ready through it
+	// (docs/03-connections.md, "Restarts with socket hand-off"). Only a gateway on its own has one.
+	Handoff *handoff.Link
 }
 
 // Run runs a gateway from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -106,6 +111,11 @@ func Run(ctx context.Context, o RunOptions) error {
 		defer func() { _ = o.Tunnels.Close() }()
 	}
 	cfg := o.Config
+	held := &listeners{link: o.Handoff, log: o.Logger}
+	adopted := o.Handoff != nil && o.Handoff.Inherited != nil
+	if adopted {
+		held.take = o.Handoff.Inherited.Listener
+	}
 	if cfg.Controller.Passthrough.Address != "" && o.Controller != nil {
 		return errors.New("gateway: controller.passthrough and an in-process controller exclude each other")
 	}
@@ -193,6 +203,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	routes := NewTCPRoutes(TCPOptions{Host: host, Sessions: sessions, Revision: applier.Revision, OnChange: report.change,
+		Listen:       func(port uint16, addr string) (net.Listener, error) { return held.listen(routeName(port), addr) },
 		Certificates: certificates, Default: &def.Certificates[0], Logger: o.Logger})
 	defer routes.Close()
 	httpRoutes := NewHTTPRoutes(HTTPOptions{Sessions: sessions, Certificates: certificates, Default: &def.Certificates[0],
@@ -265,28 +276,39 @@ func Run(ctx context.Context, o RunOptions) error {
 	if cfg.Listen.TunnelUDP != "" {
 		udp = cfg.Listen.TunnelUDP
 	}
-	pc, err := net.ListenPacket("udp", udp)
-	if err != nil {
-		return err
+	// The QUIC listener's UDP socket is not handed over yet (slice 17.4): a process a hand-off
+	// started leaves it, and so the data sessions over QUIC, to the old process and takes TCP.
+	var qln *tunnel.QUICListener
+	udpAddr := "none (handed-over process)"
+	if !adopted {
+		pc, err := net.ListenPacket("udp", udp)
+		if err != nil {
+			return err
+		}
+		tr := &quic.Transport{Conn: pc, StatelessResetKey: resetKey}
+		defer func() { _ = tr.Close(); _ = pc.Close() }() // a Transport does not close a conn it was given
+		if err := tunnel.RegisterHostMetrics(reg, pc); err != nil {
+			return err
+		}
+		if qln, err = tunnel.ListenQUIC(tr, QUICTLS(id.TrustDomain, id.AgentID, tunnelTLS), budget); err != nil {
+			return err
+		}
+		udpAddr = pc.LocalAddr().String()
 	}
-	tr := &quic.Transport{Conn: pc, StatelessResetKey: resetKey}
-	defer func() { _ = tr.Close(); _ = pc.Close() }() // a Transport does not close a conn it was given
-	if err := tunnel.RegisterHostMetrics(reg, pc); err != nil {
-		return err
+	closeQUIC := func() {
+		if qln != nil {
+			_ = qln.Close()
+		}
 	}
-	qln, err := tunnel.ListenQUIC(tr, QUICTLS(id.TrustDomain, id.AgentID, tunnelTLS), budget)
+	tcp, err := held.listen("tcp", cfg.Listen.TCP)
 	if err != nil {
-		return err
-	}
-	tcp, err := net.Listen("tcp", cfg.Listen.TCP)
-	if err != nil {
-		_ = qln.Close()
+		closeQUIC()
 		return err
 	}
 	var plain net.Listener // port 80
 	if cfg.Listen.HTTP != nil && *cfg.Listen.HTTP != "" {
-		if plain, err = net.Listen("tcp", *cfg.Listen.HTTP); err != nil {
-			_ = qln.Close()
+		if plain, err = held.listen("http", *cfg.Listen.HTTP); err != nil {
+			closeQUIC()
 			_ = tcp.Close()
 			return err
 		}
@@ -307,7 +329,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	var admin sync.WaitGroup
 	if o.Registry == nil {
 		admin.Go(func() {
-			if err := telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ctl.Ready); err != nil {
+			if err := telemetry.ServeAdminOn(run, cfg.Listen.Admin, func(addr string) (net.Listener, error) { return held.listen("admin", addr) }, reg, ctl.Ready); err != nil {
 				errs <- fmt.Errorf("gateway: admin listener: %w", err)
 			}
 		})
@@ -339,22 +361,32 @@ func Run(ctx context.Context, o RunOptions) error {
 				ReadinessComplete: true}
 		})
 	})
-	go func() {
-		for {
-			s, err := qln.Accept(run)
-			if err != nil {
-				return
-			}
-			go func() {
-				if err := sessions.Serve(run, s, s.PeerCertificate()); err != nil {
-					o.Logger.Debug("data session over QUIC ended", "error", err)
+	if qln != nil {
+		go func() {
+			for {
+				s, err := qln.Accept(run)
+				if err != nil {
+					return
 				}
-			}()
-		}
-	}()
-	o.Logger.Info("gateway running", "gateway", id.AgentID, "tcp", tcp.Addr().String(), "udp", pc.LocalAddr().String())
+				go func() {
+					if err := sessions.Serve(run, s, s.PeerCertificate()); err != nil {
+						o.Logger.Debug("data session over QUIC ended", "error", err)
+					}
+				}()
+			}
+		}()
+	}
+	o.Logger.Info("gateway running", "gateway", id.AgentID, "tcp", tcp.Addr().String(), "udp", udpAddr)
 	if o.Listening != nil {
 		o.Listening()
+	}
+	if o.Handoff != nil {
+		o.Handoff.Serve(held.start)
+		background.Go(func() {
+			if err := held.ready(run, o.Handoff, ctl.Ready); err != nil {
+				errs <- err
+			}
+		})
 	}
 
 	var result error
@@ -371,7 +403,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	if o.Tunnels != nil {
 		_ = o.Tunnels.Close() // no new data sessions in memory either; closing twice is harmless
 	}
-	_ = qln.Close()
+	closeQUIC()
 	routes.Drain()
 	httpRoutes.Drain()
 	sessions.Drain(o.Now().Add(o.DrainPeriod))
