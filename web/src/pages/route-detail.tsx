@@ -170,7 +170,6 @@ export function RouteDetail() {
           <Link to="/gateways/$groupId" params={{ groupId: r.gatewayGroupId }} className="underline">{t("route.setHostname")}</Link>
         </p>
       )}
-      {(r.spec.case === "udp" || r.spec.case === "tcpUdp") && <p className="text-sm text-muted-foreground">{t("route.mtu")}</p>}
 
       {gatewayProblems.length > 0 && (
         <Card title={t("route.gatewaysTitle")}>

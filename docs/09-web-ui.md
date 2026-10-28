@@ -326,7 +326,6 @@ flowchart LR
   target does not serve and shows why ([03](03-connections.md#transport-selection)).
 - **Gateways that do not serve the route, and agents that rejected it,** are listed with their
   reasons.
-- UDP and "TCP and UDP" routes show the MTU hint of [03](03-connections.md#udp-routes).
 - **Traffic:** the bytes in and out of the last 24 hours per hour, or of the last 30 days per day,
   with their totals, connections and errors ([Charts](#charts)).
 - **Access policies:** the policies the route applies. They are attached from the org's policies
