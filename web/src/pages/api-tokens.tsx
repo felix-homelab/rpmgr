@@ -9,7 +9,8 @@ import { Field, labelClass } from "@/components/field";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { TokenService, type APIToken } from "@/gen/rpmgr/v1/token_pb";
+import { apiError, checkRequest, serverProblems, type Problems } from "@/lib/api-error";
+import { CreateAPITokenRequestSchema, TokenService, type APIToken } from "@/gen/rpmgr/v1/token_pb";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
 import { serverMessage } from "@/lib/link-token";
@@ -68,14 +69,21 @@ function NewToken({ orgId, instanceAdmin, onDone, onCancel }: { orgId: string; i
   const [days, setDays] = useState("90");
   const [scopes, setScopes] = useState<string[]>(["org.read"]);
   const [error, setError] = useState("");
+  const [problems, setProblems] = useState<Problems>({});
   const all = instanceAdmin ? [...orgPermissions, instancePermission] : [...orgPermissions];
   const toggle = (p: string) => setScopes(scopes.includes(p) ? scopes.filter((s) => s !== p) : [...scopes, p]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    setProblems({});
     const n = Number(days);
     if (!Number.isInteger(n) || n < 1 || n > 365) {
       setError(t("tokens.days"));
+      return;
+    }
+    const bad = checkRequest(t, CreateAPITokenRequestSchema, { orgId, name }, ["name"]);
+    if (bad.name) {
+      setProblems(bad);
       return;
     }
     const requestId = crypto.randomUUID(); // the same for the retry after a step-up
@@ -86,14 +94,15 @@ function NewToken({ orgId, instanceAdmin, onDone, onCancel }: { orgId: string; i
     } catch (err) {
       const e = ConnectError.from(err);
       if (reasonOf(err) !== Reason.stepUpRequired) {
-        setError(e.code === Code.InvalidArgument || e.code === Code.PermissionDenied ? serverMessage(e.rawMessage) : t("link.failed", { message: e.rawMessage }));
+        setProblems(serverProblems(t, err));
+        setError(e.code === Code.InvalidArgument ? apiError(t, err, ["name"]) : e.code === Code.PermissionDenied ? serverMessage(e.rawMessage) : t("link.failed", { message: e.rawMessage }));
       }
     }
   }
 
   return (
     <form onSubmit={submit} className="grid gap-4 rounded-md border border-border p-3" noValidate>
-      <Field label={t("tokens.name")} required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
+      <Field label={t("tokens.name")} required maxLength={100} error={problems.name} value={name} onChange={(e) => setName(e.target.value)} />
       <Field label={t("tokens.validity")} hint={t("tokens.days")} type="number" min={1} max={365} required value={days}
         onChange={(e) => setDays(e.target.value)} />
       <fieldset className="grid gap-1.5">

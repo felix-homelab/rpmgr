@@ -23,7 +23,8 @@ import { Card } from "@/components/ui/card";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { UpdateButton } from "@/components/update-button";
 import { UpdateState } from "@/components/update-state";
-import { GatewayGroupSchema, GatewayService, type Gateway, type GatewayGroup } from "@/gen/rpmgr/v1/gateway_pb";
+import { CreateGatewayGroupRequestSchema, GatewayGroupSchema, GatewayService, type Gateway, type GatewayGroup } from "@/gen/rpmgr/v1/gateway_pb";
+import { apiError, checkRequest, serverProblems, type Problems } from "@/lib/api-error";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
 import { useRolloutTargets } from "@/lib/updates";
@@ -107,11 +108,19 @@ export function GroupForm({ orgId, group, onCancel }: { orgId: string; group?: G
     name: group?.name ?? "", region: group?.region ?? "", hostnames: group?.publicHostnames ?? [], cidrs: group?.trustedProxyCidrs ?? [],
   });
   const [message, setMessage] = useState<{ tone: "info" | "error"; text: string }>();
+  const [problems, setProblems] = useState<Problems>({});
   async function save(e: FormEvent) {
     e.preventDefault();
     setMessage(undefined);
+    setProblems({});
     const next = group ? clone(GatewayGroupSchema, group) : create(GatewayGroupSchema);
     Object.assign(next, { name: form.name.trim(), region: form.region.trim(), publicHostnames: trimmed(form.hostnames), trustedProxyCidrs: trimmed(form.cidrs) });
+    // The name is checked with the API's rules before anything is sent.
+    const bad = checkRequest(t, CreateGatewayGroupRequestSchema, { orgId, gatewayGroup: { name: next.name }, requestId }, ["name"]);
+    if (bad.name) {
+      setProblems(bad);
+      return;
+    }
     try {
       if (group) {
         await update.mutateAsync({ gatewayGroup: next, updateMask: { paths: groupMask }, etag: group.etag });
@@ -123,13 +132,15 @@ export function GroupForm({ orgId, group, onCancel }: { orgId: string; group?: G
       await queryClient.invalidateQueries();
     } catch (err) {
       const e = ConnectError.from(err);
-      setMessage({ tone: "error", text: reasonOf(err) === Reason.etagMismatch ? t("gateways.changed")
-        : e.code === Code.InvalidArgument || e.code === Code.AlreadyExists ? e.rawMessage : t("link.failed", { message: e.rawMessage }) });
+      setProblems(serverProblems(t, err));
+      const text = reasonOf(err) === Reason.etagMismatch ? t("gateways.changed")
+        : e.code === Code.InvalidArgument || e.code === Code.AlreadyExists ? apiError(t, err, ["name"]) : t("link.failed", { message: e.rawMessage });
+      setMessage(text ? { tone: "error", text } : undefined);
     }
   }
   return (
     <form onSubmit={save} aria-label={t(group ? "gateways.settings" : "gateways.newGroup")} className="grid max-w-xl gap-4" noValidate>
-      <Field label={t("routeForm.fields.name")} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      <Field label={t("routeForm.fields.name")} required hint={t("violations.nameHint")} error={problems.name} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
       <Field label={t("gateways.columns.region")} value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} />
       <LinesField label={t("gateways.columns.hostnames")} hint={t("gateways.hostnamesHint")} value={form.hostnames} onChange={(hostnames) => setForm({ ...form, hostnames })} />
       <LinesField label={t("gateways.cidrs")} hint={t("gateways.cidrsHint")} value={form.cidrs} onChange={(cidrs) => setForm({ ...form, cidrs })} />

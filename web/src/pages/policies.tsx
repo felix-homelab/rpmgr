@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { clone, create } from "@bufbuild/protobuf";
-import { ConnectError, createClient } from "@connectrpc/connect";
+import { createClient } from "@connectrpc/connect";
 import { useMutation, useTransport } from "@connectrpc/connect-query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
@@ -19,8 +19,9 @@ import { Row, RowList } from "@/components/row-list";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
-import { AccessPolicySchema, AccessRuleSchema, PolicyService, type AccessPolicy, type AccessRule } from "@/gen/rpmgr/v1/policy_pb";
+import { AccessPolicySchema, AccessRuleSchema, CreateAccessPolicyRequestSchema, PolicyService, type AccessPolicy, type AccessRule } from "@/gen/rpmgr/v1/policy_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
+import { apiError, checkRequest, serverProblems, type Problems } from "@/lib/api-error";
 import { largestPage, listAll } from "@/lib/list-all";
 import { useAgentNames, useRoutes } from "@/routes-data";
 import { useOrg } from "@/session";
@@ -167,7 +168,7 @@ function PolicyRow({ policy: p, routeName, onEdit, onDone }: {
               <span>{t("policies.ask", { name: p.name })}</span>
               <Button size="sm" variant="destructive" onClick={() => void remove.mutateAsync({ accessPolicyId: p.id, etag: p.etag }).then(
                 async (res) => (onDone({ revision: res.revision, status: res.applyStatus }), await queryClient.invalidateQueries()),
-                (err: unknown) => setError(ConnectError.from(err).rawMessage))}>{t("targetForm.remove")}</Button>
+                (err: unknown) => setError(apiError(t, err)))}>{t("targetForm.remove")}</Button>
               <Button size="sm" variant="outline" onClick={() => setAsking(false)}>{t("stepUp.cancel")}</Button>
             </>
           ) : (
@@ -194,6 +195,7 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
   const [description, setDescription] = useState(policy?.description ?? "");
   const [rules, setRules] = useState<RuleDraft[]>(policy?.rules.map(draftOf) ?? [emptyRule]);
   const [error, setError] = useState("");
+  const [problems, setProblems] = useState<Problems>({});
   // A user the stored policy already has keeps their password when it is left empty; a new one
   // needs one.
   const stored = new Set(policy?.rules.flatMap((r) => (r.rule.case === "basicAuth" ? r.rule.value.users.map((u) => u.name) : [])));
@@ -203,6 +205,7 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
   async function save(e: FormEvent) {
     e.preventDefault();
     setError("");
+    setProblems({});
     // Whole numbers within the API's bounds, and one rate limit a policy, before anything is sent.
     const whole = (v: string | undefined, empty: boolean) =>
       (empty && !v?.trim()) || (/^\d+$/.test(v?.trim() ?? "") && Number(v) >= 1 && Number(v) <= 10000);
@@ -217,6 +220,12 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
     }
     const next = policy ? clone(AccessPolicySchema, policy) : create(AccessPolicySchema);
     Object.assign(next, { name: name.trim(), description, rules: rules.map(ruleOf) });
+    // The name is checked with the API's rules before anything is sent.
+    const bad = checkRequest(t, CreateAccessPolicyRequestSchema, { orgId, accessPolicy: { name: next.name }, requestId }, ["name"]);
+    if (bad.name) {
+      setProblems(bad);
+      return;
+    }
     try {
       const res = policy
         ? await update.mutateAsync({ accessPolicy: next, updateMask: { paths: ["name", "description", "rules"] }, etag: policy.etag })
@@ -224,7 +233,8 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
       await queryClient.invalidateQueries();
       onDone({ revision: res.revision, status: res.applyStatus });
     } catch (err) {
-      setError(ConnectError.from(err).rawMessage);
+      setProblems(serverProblems(t, err));
+      setError(apiError(t, err, ["name"]));
     }
   }
   return (
@@ -232,7 +242,7 @@ function PolicyForm({ orgId, policy, onDone }: { orgId: string; policy?: AccessP
       className="grid gap-4 rounded-xl border border-border bg-card p-5 shadow-xs" noValidate>
       <h2 className="font-semibold">{t(policy ? "policies.editTitle" : "policies.addTitle")}</h2>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t("routeForm.fields.name")} required value={name} onChange={(e) => setName(e.target.value)} />
+        <Field label={t("routeForm.fields.name")} required hint={t("violations.nameHint")} error={problems.name} value={name} onChange={(e) => setName(e.target.value)} />
         <Field label={t("routeForm.fields.description")} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
       <fieldset className="grid gap-3">

@@ -77,6 +77,10 @@
     "text": "The page you asked for does not exist, or its link is out of date.",
     "back": "Go to the overview"
   },
+  "violations": {
+    "name": "use 1 to 63 lowercase letters, digits and hyphens, starting and ending with a letter or digit",
+    "nameHint": "1 to 63 lowercase letters, digits and hyphens, starting and ending with a letter or digit."
+  },
   "link": {
     "incomplete": "This link is incomplete. Open the whole link you were given, or ask for a new one.",
     "failed": "That did not work: {{message}}"
