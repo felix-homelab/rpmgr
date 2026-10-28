@@ -60,6 +60,7 @@ rpmgr <command>
 | [`rpmgr login`](#rpmgr-login) | Store a personal API token for the commands of the public API |
 | [`rpmgr logout`](#rpmgr-logout) | Remove the stored API token from this machine |
 | [`rpmgr leave`](#rpmgr-leave) | Revoke this agent's identity and remove it from the host |
+| [`rpmgr handoff`](#rpmgr-handoff) | Restart a running gateway, all-in-one or connector with socket hand-off |
 | [`rpmgr status`](#rpmgr-status) | Show the state of the agents on this host |
 | [`rpmgr diag`](#rpmgr-diag) | Diagnose this host |
 | [`rpmgr policy`](#rpmgr-policy) | Show or change the connector-local policy of this host |
@@ -272,6 +273,14 @@ rpmgr leave [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--config string` |  | the connector's, gateway's or all-in-one's boot file (default $RPMGR_CONFIG, else /etc/rpmgr/connector.yaml, else /etc/rpmgr/gateway.yaml, else /etc/rpmgr/all-in-one.yaml) |
+
+## rpmgr handoff
+
+Restart a running gateway, all-in-one or connector with socket hand-off.
+
+```text
+rpmgr handoff gateway|all-in-one|connector
+```
 
 ## rpmgr status
 

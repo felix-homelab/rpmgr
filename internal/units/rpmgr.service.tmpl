@@ -8,6 +8,12 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+{{- if .Handoff}}
+# Restarts with socket hand-off: the new process tells systemd it is the main one.
+Type=notify
+NotifyAccess=all
+RuntimeDirectory=rpmgr/{{.Role}}
+{{- end}}
 User=rpmgr
 Group=rpmgr
 ExecStart={{.Bin}} {{.Role}} --config /etc/rpmgr/{{.Role}}.yaml

@@ -38,12 +38,15 @@ func TestRender(t *testing.T) {
 		credential string
 		want, not  []string
 	}{
-		{"gateway", "rpmgr-kek", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE"}, []string{cred, "ExecReload=/bin/kill -HUP $MAINPID"}},
-		{"connector", "rpmgr-kek", []string{"CapabilityBoundingSet=", "ExecReload=/bin/kill -HUP $MAINPID"},
-			[]string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE"}},
-		{"controller", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE"}, []string{"ExecReload=/bin/kill -HUP $MAINPID"}},
+		{"gateway", "rpmgr-kek", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE", "Type=notify", "NotifyAccess=all", "RuntimeDirectory=rpmgr/gateway"},
+			[]string{cred, "ExecReload=/bin/kill -HUP $MAINPID"}},
+		{"connector", "rpmgr-kek", []string{"CapabilityBoundingSet=", "ExecReload=/bin/kill -HUP $MAINPID", "Type=notify", "NotifyAccess=all",
+			"RuntimeDirectory=rpmgr/connector"}, []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE"}},
+		{"controller", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE"},
+			[]string{"ExecReload=/bin/kill -HUP $MAINPID", "Type=notify", "NotifyAccess=all", "RuntimeDirectory=rpmgr/controller"}},
 		{"controller", "", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE"}, []string{cred}},
-		{"all-in-one", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE", "ExecReload=/bin/kill -HUP $MAINPID"}, nil},
+		{"all-in-one", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE", "ExecReload=/bin/kill -HUP $MAINPID",
+			"Type=notify", "NotifyAccess=all", "RuntimeDirectory=rpmgr/all-in-one"}, nil},
 	} {
 		got := lines(t, tc.role, units.Options{Bin: "/usr/local/bin/rpmgr", Credential: tc.credential})
 		want := append(append([]string{"ExecStart=/usr/local/bin/rpmgr " + tc.role + " --config /etc/rpmgr/" + tc.role + ".yaml"}, common...), tc.want...)

@@ -46,6 +46,7 @@ func commands() *cli.Command {
 			agentcmd.Setup("connector", nil, setup.Connector),
 			agentcmd.Enroll(),
 			agentcmd.Leave(),
+			agentcmd.Handoff(),
 			agentcmd.Status(),
 			agentcmd.Diag(),
 			agentcmd.Policy(),
