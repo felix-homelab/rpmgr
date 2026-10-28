@@ -2,8 +2,8 @@
 
 import { clone, create } from "@bufbuild/protobuf";
 import { DataTransport } from "@/gen/rpmgr/v1/connector_pb";
-import { ConnectAuthMode, HealthCheckSchema, HealthCheckType, ListenerMode, Port80Mode, RouteSchema, TLSMode, type HealthCheck, type Route,
-  type TCPRouteSpec } from "@/gen/rpmgr/v1/route_pb";
+import { ConnectAuthMode, HeaderMatchSchema, HealthCheckSchema, HealthCheckType, ListenerMode, Port80Mode, RouteLimitsSchema, RouteSchema,
+  TLSMode, type HeaderMatch, type HealthCheck, type Route, type RouteLimits, type TCPRouteSpec } from "@/gen/rpmgr/v1/route_pb";
 
 // A field of the route form: its form key, the route path the API's update mask names
 // (internal/apisvc routeFields), how it is edited, and how it reads from and writes to a route.
@@ -29,15 +29,20 @@ export interface RouteField {
 // name is what a label key may be (route.proto) or a header name (a token of RFC 9110, which the
 // server checks too); a header's name is the same whatever its case.
 export interface PairFormat {
-  kind: "labels" | "headers";
+  kind: "labels" | "headers" | "matches";
   sep: string;
   shown: string;
   name: RegExp;
   folds: boolean;
+  bare?: boolean; // a line of a name alone is allowed: a header match by presence
+  max?: number; // the most lines
 }
 
 const labelFormat: PairFormat = { kind: "labels", sep: "=", shown: "=", name: /^[a-z0-9]([a-z0-9._-]{0,61}[a-z0-9])?$/, folds: false };
 const headerFormat: PairFormat = { kind: "headers", sep: ":", shown: ": ", name: /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/, folds: true };
+// A header match is Name: value for an exact value, or Name alone for presence (docs/03-connections.md,
+// "HTTP routes"); a route has at most 8.
+const matchFormat: PairFormat = { ...headerFormat, kind: "matches", bare: true, max: 8 };
 
 type Spec = Route["spec"];
 type SpecOf<C extends NonNullable<Spec["case"]>> = Extract<Spec, { case: C }>["value"];
@@ -67,6 +72,17 @@ function spec<C extends NonNullable<Spec["case"]>>(c: C, field: Omit<RouteField,
     },
   };
 }
+
+// matchesOf reads the lines of header matches; showMatches writes them, one per line.
+const matchesOf = (v: string): HeaderMatch[] =>
+  lines(v).map((l) => {
+    const pair = split(l, matchFormat);
+    return create(HeaderMatchSchema, pair === undefined
+      ? { name: l, match: { case: "present", value: true } }
+      : { name: pair[0], match: { case: "exact", value: pair[1] } });
+  });
+const showMatches = (ms: HeaderMatch[]) =>
+  ms.map((m) => (m.match.case === "exact" ? `${m.name}${matchFormat.shown}${m.match.value}` : m.name)).join("\n");
 
 const num = (v: string) => (/^\d+$/.test(v.trim()) ? Number(v.trim()) : Number.NaN);
 const optional = (v: string) => (v.trim() === "" ? undefined : num(v));
@@ -111,6 +127,15 @@ const http: RouteField[] = [
     get: (s) => String(s.maintenance), set: (s, v) => (s.maintenance = v === "true") }),
   spec("http", { key: "maintenanceMessage", path: "http.maintenance_message", kind: "longtext", get: (s) => s.maintenanceMessage,
     set: (s, v) => (s.maintenanceMessage = v) }),
+  // Header matches and the route's own upstream timeouts (Phase 2); empty is none, or the gateway's.
+  spec("http", { key: "headerMatches", path: "http.header_matches", kind: "pairs", format: matchFormat,
+    get: (s) => showMatches(s.headerMatches), set: (s, v) => (s.headerMatches = matchesOf(v)) }),
+  spec("http", { key: "upstreamHeaderTimeout", path: "http.upstream_response_header_timeout_seconds", kind: "optionalNumber",
+    get: (s) => (s.upstreamResponseHeaderTimeoutSeconds === 0 ? "" : String(s.upstreamResponseHeaderTimeoutSeconds)),
+    set: (s, v) => (s.upstreamResponseHeaderTimeoutSeconds = optional(v) ?? 0) }),
+  spec("http", { key: "upstreamIdleTimeout", path: "http.upstream_idle_timeout_seconds", kind: "optionalNumber",
+    get: (s) => (s.upstreamIdleTimeoutSeconds === 0 ? "" : String(s.upstreamIdleTimeoutSeconds)),
+    set: (s, v) => (s.upstreamIdleTimeoutSeconds = optional(v) ?? 0) }),
 ];
 
 // A tcp route in http_connect mode shares a CONNECT listener; its CONNECT fields go with that mode
@@ -226,9 +251,43 @@ const health: RouteField[] = [
     set: (c, v) => (c.healthyThreshold = optional(v) ?? 0) }),
 ];
 
-// routeFields are the fields the form shows for a route of its type, its health check last.
+// The route's limits (docs/03-connections.md, "Route limits"): a field per limit, all under the
+// update mask's limits, so that a change of any sends them whole. Empty is no limit, and a route
+// without any has no limits at all.
+const minBandwidth = 1024; // internal/apisvc MinBandwidth
+const noLimits = (l: RouteLimits) => l.maxConnections === 0 && l.requestsPerSecond === 0 && l.bandwidthBytesPerSecond === 0n;
+
+function limit(key: string, part: string, field: Pick<RouteField, "problem"> & {
+  get: (l: RouteLimits) => string;
+  set: (l: RouteLimits, v: string) => void;
+}): RouteField {
+  return {
+    ...field, key, path: "limits", errorPath: `limits.${part}`, kind: "optionalNumber", hint: "limit",
+    get: (r) => (r.limits ? field.get(r.limits) : ""),
+    set: (r, v) => {
+      r.limits ??= create(RouteLimitsSchema);
+      field.set(r.limits, v);
+      if (noLimits(r.limits)) {
+        r.limits = undefined;
+      }
+    },
+  };
+}
+
+const limits: RouteField[] = [
+  limit("maxConnections", "max_connections", { get: (l) => count(l.maxConnections), set: (l, v) => (l.maxConnections = optional(v) ?? 0) }),
+  limit("requestsPerSecond", "requests_per_second", { get: (l) => count(l.requestsPerSecond),
+    set: (l, v) => (l.requestsPerSecond = optional(v) ?? 0) }),
+  limit("bandwidth", "bandwidth_bytes_per_second", {
+    problem: (v) => (/^\d+$/.test(v) && BigInt(v) > 0n && BigInt(v) < minBandwidth ? { text: "bandwidthMin", values: { min: minBandwidth } } : undefined),
+    get: (l) => (l.bandwidthBytesPerSecond === 0n ? "" : String(l.bandwidthBytesPerSecond)),
+    set: (l, v) => (l.bandwidthBytesPerSecond = /^\d+$/.test(v.trim()) ? BigInt(v.trim()) : 0n) }),
+];
+
+// routeFields are the fields the form shows for a route of its type, then its limits and its
+// health check.
 export function routeFields(r: Route): RouteField[] {
-  return [...common, ...(byType[r.spec.case ?? ""] ?? []), ...health];
+  return [...common, ...(byType[r.spec.case ?? ""] ?? []), ...limits, ...health];
 }
 
 // maskOf is the update mask of the form's fields, each path once.
@@ -282,16 +341,22 @@ export interface Problem {
 export function lineProblem(v: string, f: PairFormat): Problem | undefined {
   const seen = new Map<string, number>();
   const all = v.split("\n");
+  if (f.max !== undefined && lines(v).length > f.max) {
+    return { text: `lines.${f.kind}.max`, values: { max: f.max } };
+  }
   for (let i = 0; i < all.length; i++) {
     const text = all[i]!.trim();
     if (text === "") {
       continue;
     }
-    const line = i + 1, pair = split(text, f);
+    const line = i + 1, pair = split(text, f) ?? (f.bare ? [text, undefined] : undefined);
     if (pair === undefined) {
       return { text: `lines.${f.kind}.separator`, values: { line } };
     }
-    const [name] = pair;
+    const [name, value] = pair;
+    if (f.bare && value === "") {
+      return { text: `lines.${f.kind}.value`, values: { line, name } };
+    }
     if (!f.name.test(name)) {
       return { text: `lines.${f.kind}.name`, values: { line, name } };
     }

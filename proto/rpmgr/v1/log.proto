@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// LogService streams the live logs of an org's connectors and gateways (docs/07-api.md,
+// "Services").
+service LogService {
+  // StreamLogs streams a connector's or gateway's live log, redacted on the agent, until the
+  // client cancels or the operation's deadline (docs/03-connections.md, "Control session").
+  // Opening it is audited as agent.logs_open.
+  rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "agents.logs"
+      resource_field: "agent_id"
+    };
+  }
+}
+
+// StreamLogsRequest names the agent and what of its log to stream.
+message StreamLogsRequest {
+  // A connector (con_…) or gateway (gw_…) of the org.
+  string agent_id = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 64
+  }];
+  // The lowest level streamed: debug, info, warn or error; "" is info.
+  string level = 2 [(buf.validate.field).string = {
+    in: ["", "debug", "info", "warn", "error"]
+  }];
+  // Only lines whose redacted text contains it; "" for all.
+  string filter = 3 [(buf.validate.field).string.max_len = 200];
+  // Raise the agent's level to debug for this stream's life (D140); audited.
+  bool raise_to_debug = 4;
+}
+
+// StreamLogsResponse is one line of the log, or, without one, a heartbeat that keeps a quiet
+// stream from being taken for idle on the way.
+message StreamLogsResponse {
+  // The line; unset in a heartbeat.
+  LogLine line = 1;
+}
+
+// LogLine is a line of an agent's live log.
+message LogLine {
+  // When it was logged.
+  google.protobuf.Timestamp time = 1;
+  // debug, info, warn or error.
+  string level = 2;
+  // The line, redacted on the agent.
+  string text = 3;
+  // How many lines the agent dropped before this one, as the stream read too slowly.
+  uint32 dropped_before = 4;
+  // The line was cut at the limit of docs/03.
+  bool truncated = 5;
+}

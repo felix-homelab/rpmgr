@@ -50,7 +50,7 @@ The **Gateways** card lists the group's gateways by slot:
 | **Version** | The rpmgr version the gateway runs |
 | **Update** | Its state in the running rollout, or that it is below the oldest version the controller accepts; for an Instance Admin also **Update to …**, or why it cannot be updated now ([Updates](../operations/updates.md#update-one-agent)) |
 | **Last seen** | When the controller last heard from it |
-| **Actions** | The buttons below |
+| **Actions** | The buttons below, and for an Owner or Admin **Live log…**, which follows the gateway's log in a dialog as the connector page's **Live log** card does ([Connectors](connectors.md#live-log)); not for a built-in gateway |
 
 - **Edit…** opens a form for the gateway's **Name**, **Tunnel endpoints** and **WSS hostname**
   (empty offers no WSS); **Save** saves them, or says why the controller refuses the name.

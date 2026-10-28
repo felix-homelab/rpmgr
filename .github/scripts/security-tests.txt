@@ -13,7 +13,7 @@ TestTokenScopesBoundedByCreator	done	7.7	#112
 TestShellRequiresOwnershipGrantAndOptIn	p3	-	-	remote shell
 TestUnverifiedDomainRejected	done	8.5a	#119
 TestBadSnapshotKeepsLastKnownGood	done	3.11	#66	framework clause (internal/agent) and traffic clause (internal/itest, 4.13) done
-TestSecretsNeverLogged	done	9.6	#138	internal/itest; the integration and API service tests log through telemetrytest.Sink
+TestSecretsNeverLogged	done	9.6	#138	internal/itest; the integration and API service tests log through telemetrytest.Sink; the live-log clause (lines never in the controller's log) in TestLiveLogs_CrossOrgRefused (5.4)
 TestEnroll_BundleWithExtraRootRejected	done	3.8	#63
 TestH2_ConnectorInitiatedStreams	done	4.4	#74	DIAG clause (4.4) and CONTROL_PASSTHROUGH clause (5.13) done; RELAY_OUT clause in P2 (private services)
 TestTLS_WrongGatewayIDRejected	done	4.10	#80
@@ -90,7 +90,7 @@ TestRouteOIDC_AssertionBoundToBrowser	pending	10.12	#718	route OIDC (P2-M10, D13
 TestRouteOIDC_NoOpenRedirect	pending	10.12	#718	route OIDC (P2-M10)
 TestLiveLogs_TicketSingleUseAndBound	done	5.2	#642	internal/controller (D145 E13)
 TestLiveLogs_RedactedOnAgent	done	5.3	#643	internal/agent; the text pass in internal/telemetry (D145 E7)
-TestLiveLogs_CrossOrgRefused	pending	5.4	#644	live logs; cross-replica clause in 9.4 (#704)
+TestLiveLogs_CrossOrgRefused	done	5.4	#644	internal/apisvc; shared-group clause (a shared group's gateway needs the Instance Admin) in 11.2 (#725), as shared groups do not exist yet; cross-replica clause in 9.4 (#704)
 TestWebhook_EgressGuard	pending	5.8	#648	webhooks (D138); allow-list clause in 5.19 (#935)
 TestWebhook_SignatureAndReplayWindow	pending	5.8	#648	webhooks; rotation clause in 5.10 (#650)
 TestWebhook_EventsScopedToOrg	pending	5.9	#649	webhooks (D144)

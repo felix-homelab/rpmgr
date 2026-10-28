@@ -12,6 +12,7 @@ export const orgPermissions = [
   "members.write",
   "audit.read",
   "org.write",
+  "agents.logs",
 ] as const;
 
 export const instancePermission = "instance.admin";
