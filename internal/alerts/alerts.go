@@ -56,7 +56,9 @@ var titles = map[string]string{
 }
 
 // Observation is a condition that holds now for one subject. Since is when it began, where the
-// state tells (an agent's disconnection); zero means when the job first saw it.
+// state tells (an agent's disconnection); zero means when the job first saw it. Unknown says that
+// the job cannot tell now whether the condition holds, as for an offline agent's configuration: an
+// open alert of it keeps its state, neither firing nor resolving, and none is opened.
 type Observation struct {
 	OrgID       string // empty: an instance alert
 	Kind        string
@@ -64,6 +66,7 @@ type Observation struct {
 	SubjectID   string
 	SubjectName string
 	Since       time.Time
+	Unknown     bool
 }
 
 func (o Observation) key() string {
@@ -80,7 +83,8 @@ func keyOf(a *ent.Alert) string {
 
 // Apply moves the open alerts to what obs says at now, in tx, the job's fenced transaction. obs
 // must hold every condition of every kind that holds now: an open alert without an observation
-// resolves (a pending one never fired, so it goes without an event). It returns the
+// resolves (a pending one never fired, so it goes without an event), and one whose observation is
+// Unknown stays as it is. It returns the
 // events of the alerts that fired and resolved.
 func Apply(ctx context.Context, tx *ent.Tx, now time.Time, obs []Observation) ([]events.Event, error) {
 	open, err := tx.Alert.Query().Where(alert.StateIn(alert.StatePending, alert.StateFiring)).All(ctx)
@@ -99,6 +103,9 @@ func Apply(ctx context.Context, tx *ent.Tx, now time.Time, obs []Observation) ([
 			continue
 		}
 		seen[k] = true
+		if o.Unknown {
+			continue
+		}
 		a := byKey[k]
 		if a == nil {
 			since := o.Since

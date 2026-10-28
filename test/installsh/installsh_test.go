@@ -188,6 +188,11 @@ func TestInstall(t *testing.T) {
 					t.Errorf("no %q in:\n%s", want, text)
 				}
 			}
+			// The agent checks at its start whether the updater's path unit is enabled (#965).
+			if path, role := strings.Index(text, "systemctl enable --now rpmgr-update.path"),
+				strings.Index(text, "systemctl enable --now rpmgr-connector"); path < 0 || role < 0 || path > role {
+				t.Errorf("the connector starts before the updater's path unit is enabled:\n%s", text)
+			}
 			for _, never := range []string{"not-a-real-token-value", "token in env"} {
 				if strings.Contains(text, never) {
 					t.Errorf("the token reached argv or the environment:\n%s", text)

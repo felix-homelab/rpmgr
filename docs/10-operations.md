@@ -893,7 +893,7 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 | Audit checkpoints behind | `rpmgr_audit_checkpoint_age_seconds` > 1 h |
 | Audit sink backlog (Phase 2) | A sink's oldest unshipped item has waited longer than the period in [03](03-connections.md#timeouts-keepalive-and-backoff) |
 | Webhook endpoint failing (Phase 2) | An endpoint had no successful delivery for 1 h while deliveries were due; it is disabled after the period in 03 ([D143](14-open-decisions.md#engineering)) |
-| Revocation log not yet off-host | A revocation-log sink is configured and a controller replica has entries not yet shipped to it for > 5 min: `rpmgr_revocation_log_unshipped > 0` and `time() - rpmgr_revocation_log_oldest_unshipped_timestamp_seconds > 300` (without a sink, the UI shows a standing hardening warning instead) |
+| Revocation log not yet off-host | A revocation-log sink is configured and the controller replica that evaluates the alerts has entries not yet shipped to it for > 5 min: `rpmgr_revocation_log_unshipped > 0` and `time() - rpmgr_revocation_log_oldest_unshipped_timestamp_seconds > 300` (without a sink, the UI shows a standing hardening warning instead) |
 | DNS conflict | A name in a managed zone is `conflict` or `ambiguous` for > 15 min |
 | DNS zone held | A managed zone is `held` (after import, restore or the deletion guard) |
 | DNS sync failing | No successful pass of a managed zone for > 30 min, or the provider status is not `ok` |
@@ -918,7 +918,8 @@ event's summary begins with: `agent_offline`, `config_not_applied`, `agent_certi
 `audit_checkpoints_behind` and `revocation_log_on_host`, and, with their slices,
 `webhook_failing`, `audit_sink_backlog` and the DNS alerts. An agent counts once it has connected,
 while it is enabled and not ephemeral; agent offline counts from its disconnection, configuration
-not applied and clock skew only while it is online, and certificate renewal failing looks at its
+not applied and clock skew only while it is online, an alert of either keeping its state while the
+agent is offline, and certificate renewal failing looks at its
 newest unrevoked certificate. Public certificate expiring covers ACME certificates; a route in
 maintenance has no "no ready connector" alert. Revocation log not yet off-host is the status of
 the replica that evaluates the alerts.

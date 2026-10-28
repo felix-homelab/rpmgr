@@ -111,6 +111,47 @@ func TestApply_ResolvesOnce(t *testing.T) {
 	}
 }
 
+// TestApply_Unknown: a condition the job cannot tell now, as an offline agent's configuration,
+// leaves a firing alert firing and a pending one pending, with no event, opens none, and resolves
+// nothing; once known again, the alert goes on from its old state.
+func TestApply_Unknown(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		storetest.Init(t, db)
+		org := storetest.Org(t, db, "org-a")
+		cfg := alerts.Observation{OrgID: org, Kind: alerts.ConfigNotApplied, SubjectType: "connector", SubjectID: "con_1", SubjectName: "nas"}
+		route := alerts.Observation{OrgID: org, Kind: alerts.RouteNoReadyTarget, SubjectType: "route", SubjectID: "rte_1"}
+		unknown := func(o alerts.Observation) alerts.Observation { o.Unknown = true; return o }
+		if got := apply(t, db, t0, cfg, route); types(got) != "alert.fire" {
+			t.Fatalf("events %v, want the configuration alert to fire", types(got))
+		}
+		for i := 1; i <= 3; i++ {
+			if got := apply(t, db, t0.Add(time.Duration(i)*time.Minute), unknown(cfg), unknown(route)); len(got) != 0 {
+				t.Fatalf("an unknown condition wrote events: %v", types(got))
+			}
+		}
+		c, sys := db.Client(), storetest.SystemCtx(t)
+		if n := c.Alert.Query().Where(alert.StateEQ(alert.StateFiring)).CountX(sys); n != 1 {
+			t.Fatalf("%d firing alerts, want the configuration alert still firing", n)
+		}
+		if n := c.Alert.Query().Where(alert.StateEQ(alert.StatePending)).CountX(sys); n != 1 {
+			t.Fatalf("%d pending alerts, want the route alert still pending", n)
+		}
+		// Known again: the route alert counts from its first sighting and fires; the configuration
+		// alert does not fire twice.
+		if got := apply(t, db, t0.Add(4*time.Minute), cfg, route); types(got) != "alert.fire" || got[0].SubjectID != "rte_1" {
+			t.Fatalf("events %+v, want only the route alert to fire", got)
+		}
+		// An unknown condition opens no alert.
+		other := unknown(alerts.Observation{OrgID: org, Kind: alerts.ClockSkew, SubjectType: "gateway", SubjectID: "gwy_1"})
+		if got := apply(t, db, t0.Add(5*time.Minute), cfg, route, other); len(got) != 0 {
+			t.Fatalf("events %v", types(got))
+		}
+		if n := c.Alert.Query().Where(alert.SubjectID("gwy_1")).CountX(sys); n != 0 {
+			t.Fatal("an unknown condition opened an alert")
+		}
+	})
+}
+
 // TestApply_InstanceAndOrgs (#647): an instance alert has no org and only the system scope reads
 // it; an org reads only its own alerts and their events.
 func TestApply_InstanceAndOrgs(t *testing.T) {
