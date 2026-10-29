@@ -115,6 +115,11 @@ const (
 	// msgSwitch: the old process accepted the new one, which now tells systemd it is the main
 	// process (old → new).
 	msgSwitch = "switch"
+	// msgRelease: the new process asks the old one to let go of what only one may hold, such as
+	// the database, before it opens it (new → old).
+	msgRelease = "release"
+	// msgReleased: the old process let go (old → new); on a refusal it sends msgFailed.
+	msgReleased = "released"
 )
 
 // message is one line on the status pipe after the manifest. Roles add their own types, such as

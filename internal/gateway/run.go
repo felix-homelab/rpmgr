@@ -92,8 +92,12 @@ type RunOptions struct {
 	Update bool
 	// Handoff, if set, is the gateway's link to socket hand-offs: Run adopts the TCP listeners
 	// the old process handed over, hands its own over on request, and reports ready through it
-	// (docs/03-connections.md, "Restarts with socket hand-off"). Only a gateway on its own has one.
+	// (docs/03-connections.md, "Restarts with socket hand-off"). A gateway on its own has one, and
+	// an all-in-one's gateway, which shares it with the all-in-one.
 	Handoff *handoff.Link
+	// Hold, if set, is called at once with the function that opens a listener the gateway hands
+	// over too (adopting the handed-over one after a hand-off): the all-in-one's admin listener.
+	Hold func(listen func(name, addr string) (net.Listener, error))
 }
 
 // Run runs a gateway from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -124,6 +128,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	if adopted {
 		held.take = o.Handoff.Inherited.Listener
 		oldAlive.Store(true)
+	}
+	if o.Hold != nil {
+		o.Hold(held.listen)
 	}
 	if cfg.Controller.Passthrough.Address != "" && o.Controller != nil {
 		return errors.New("gateway: controller.passthrough and an in-process controller exclude each other")

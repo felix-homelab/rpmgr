@@ -90,13 +90,23 @@ func Start(ctx context.Context, cfg Config, sockets []Socket) (*Child, error) {
 	}
 	c := &Child{Pid: cmd.Process.Pid, Generation: m.Generation, Pipe: newPipe(conn), exited: make(chan struct{})}
 	go func() { c.err = cmd.Wait(); close(c.exited) }()
-	if err := c.await(ctx, conn, m, deadline); err != nil {
+	released := false
+	if err := c.await(ctx, conn, m, deadline, func(ctx context.Context) error {
+		released = true
+		if cfg.Release == nil {
+			return nil
+		}
+		return cfg.Release(ctx)
+	}); err != nil {
 		if ctx.Err() != nil {
 			err = ctx.Err()
 		}
 		_ = cmd.Process.Kill()
 		<-c.exited
 		_ = conn.Close()
+		if released && cfg.Resume != nil {
+			cfg.Resume() // the new process is gone: nothing else holds the resource
+		}
 		return nil, fmt.Errorf("%w: %w", ErrNotReady, err)
 	}
 	return c, nil
@@ -134,7 +144,7 @@ func (cfg Config) binary(rule binaryRule) (bin, path string, err error) {
 
 // await sends the manifest and waits for the new process to report ready before the deadline,
 // then sends it the switch.
-func (c *Child) await(ctx context.Context, conn net.Conn, m Manifest, deadline time.Time) error {
+func (c *Child) await(ctx context.Context, conn net.Conn, m Manifest, deadline time.Time, release func(context.Context) error) error {
 	_ = conn.SetDeadline(deadline)
 	stop := context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Now()) })
 	defer stop()
@@ -142,6 +152,16 @@ func (c *Child) await(ctx context.Context, conn net.Conn, m Manifest, deadline t
 		return c.why(fmt.Errorf("sending the manifest: %w", err))
 	}
 	typ, reason, err := c.Pipe.Recv()
+	if err == nil && typ == msgRelease {
+		if rerr := release(ctx); rerr != nil {
+			_ = c.Pipe.Send(msgFailed, rerr.Error())
+			return fmt.Errorf("releasing for the new process: %w", rerr)
+		}
+		if err := c.Pipe.Send(msgReleased, ""); err != nil {
+			return c.why(err)
+		}
+		typ, reason, err = c.Pipe.Recv()
+	}
 	switch {
 	case err != nil:
 		return c.why(err)

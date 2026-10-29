@@ -44,10 +44,9 @@ var notifyType = func(ctx context.Context, role string) (bool, error) {
 }
 
 // readyRoles are the roles that report their own readiness and adopt the sockets of a hand-off
-// (handoff.LinkFrom): the gateway and the connector. The others are ready for systemd
-// (Type=notify) and take SIGUSR2 as soon as they run, and refuse a hand-off, until their slices
-// of M17 land.
-var readyRoles = []string{"gateway", "connector"}
+// (handoff.LinkFrom): the gateway, the connector and the all-in-one, each ready for systemd
+// (Type=notify) at its own ready point.
+var readyRoles = []string{"gateway", "connector", "all-in-one"}
 
 // startHandoffs prepares a role for socket hand-off: it takes the hand-off that started this
 // process, if any, and returns a context that carries the role's handoff.Link. The Link starts

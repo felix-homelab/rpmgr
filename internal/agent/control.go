@@ -234,7 +234,8 @@ func (c *Client) Run(ctx context.Context) error {
 			continue // move at once; the deadline is short
 		}
 		if out.reason == agentv1.GoodbyeReason_GOODBYE_REASON_RESTART {
-			// The controller restarts with a hand-off and already serves again: no backoff, only a
+			// The controller restarts with a hand-off and the new process serves within seconds, once it has
+			// migrated: no backoff, because an agent that dials early only waits for it; only a
 			// short jitter so that the agents do not all dial in the same instant.
 			if !sleep(ctx, restartDelay(c.o.RenewJitter)) {
 				return nil

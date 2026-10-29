@@ -116,7 +116,8 @@ func runAllInOne(ctx context.Context, env *cli.Env, path string) error {
 		return err
 	}
 	defer stop()
-	return allinone.Run(ctx, allinone.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger})
+	return allinone.Run(ctx, allinone.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger,
+		Handoff: handoff.LinkFrom(ctx)})
 }
 
 // kekSourceHelp describes --kek-source of init; the default is config.KEKSourceFor's.

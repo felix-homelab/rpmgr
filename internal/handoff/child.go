@@ -67,6 +67,28 @@ func (h *Handoff) Rest() []Entry {
 	return rest
 }
 
+// Release asks the old process to let go of what only one process may hold, the all-in-one's
+// database, and waits, within the readiness window, until it did. The new process opens that
+// resource only after Release returned nil. An old process that refuses, or that ends, is an error,
+// upon which this process exits; the old one takes its resource up again.
+func (h *Handoff) Release() error {
+	if err := h.pipe.Send(msgRelease, ""); err != nil {
+		return fmt.Errorf("handoff: asking the old process to release: %w", err)
+	}
+	_ = h.conn.SetReadDeadline(h.started.Add(ReadinessWindow))
+	typ, reason, err := h.pipe.Recv()
+	_ = h.conn.SetReadDeadline(time.Time{})
+	switch {
+	case err != nil:
+		return fmt.Errorf("handoff: waiting for the old process to release: %w", err)
+	case typ == msgFailed:
+		return fmt.Errorf("handoff: the old process cannot release: %s", reason)
+	case typ != msgReleased:
+		return fmt.Errorf("handoff: the old process sent %q instead of released", trim(typ))
+	}
+	return nil
+}
+
 // Ready reports ready to the old process and waits, within the readiness window, until it hands
 // over; the new process then tells systemd it is the unit's main process. If the old process
 // ended without an answer, its successor takes over all the same. Any other failure returns an

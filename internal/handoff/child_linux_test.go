@@ -92,6 +92,22 @@ func child(scenario string) int {
 	for _, e := range h.Rest() {
 		r.Rest = append(r.Rest, e.Name)
 	}
+	if strings.HasPrefix(scenario, "release") {
+		if err := h.Release(); err != nil {
+			r.Err = err.Error()
+			write()
+			h.Fail(err.Error())
+			return 1
+		}
+		switch scenario {
+		case "release-fail":
+			h.Fail("the migration failed")
+			return 1
+		case "release-crash":
+			return 3
+		}
+		scenario = "ready"
+	}
 	switch scenario {
 	case "check":
 		write()

@@ -354,6 +354,25 @@ func TestSession_DrainAndCancel(t *testing.T) {
 	}
 }
 
+// TestSession_Restart: Restart ends every connected session with Goodbye{restart}, which tells the
+// agent to redial at once, and so does every session that starts later.
+func TestSession_Restart(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	e := startSessions(t, db, "dev", 0)
+	cert, _ := e.agentCert(t)
+	live := e.open(t, testCtx(t), cert, hello("0.1.0"))
+	recv(t, live)
+	e.sessions.Restart()
+	g := recv(t, live).GetGoodbye()
+	if g.GetReason() != agentv1.GoodbyeReason_GOODBYE_REASON_RESTART || g.GetRetryAfter() != nil {
+		t.Errorf("a connected session: %v, want restart without a retry delay", g)
+	}
+	other, _ := e.agentCert(t)
+	if g := recv(t, e.open(t, testCtx(t), other, hello("0.1.0"))).GetGoodbye(); g.GetReason() != agentv1.GoodbyeReason_GOODBYE_REASON_RESTART {
+		t.Errorf("a session after Restart: %v", g)
+	}
+}
+
 // TestSession_DatabaseDown: with the database gone, established sessions keep working and new
 // ones are refused as unavailable, so agents retry.
 func TestSession_DatabaseDown(t *testing.T) {

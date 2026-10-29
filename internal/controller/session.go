@@ -76,6 +76,8 @@ type Sessions struct {
 	ops      map[string]*op        // operations waiting for their OpResult, by ID
 	pending  map[string]*pendingOp // operations waiting for their Attach, by ID
 	draining *time.Time
+	// restarting is set by Restart: the controller hands over to a new process.
+	restarting bool
 }
 
 // SessionsOptions are the inputs of NewSessions.
@@ -164,6 +166,9 @@ func (s *Sessions) Session(st grpc.BidiStreamingServer[agentv1.AgentMessage, age
 	agent, ok := AgentFrom(st.Context())
 	if !ok {
 		return status.Error(codes.Unauthenticated, "client certificate required")
+	}
+	if s.isRestarting() {
+		return st.Send(goodbye(agentv1.GoodbyeReason_GOODBYE_REASON_RESTART, 0))
 	}
 	if s.isDraining() {
 		return st.Send(goodbye(agentv1.GoodbyeReason_GOODBYE_REASON_SHUTDOWN, retryAfter()))
@@ -478,6 +483,27 @@ func (s *Sessions) Drain(deadline time.Time) {
 		default:
 		}
 	}
+}
+
+// Restart ends every control session with Goodbye{restart}, and every session that starts from now
+// on: the agents redial at once, with a short jitter, and find the new process serving.
+func (s *Sessions) Restart() {
+	s.mu.Lock()
+	s.restarting = true
+	sessions := make([]*session, 0, len(s.active))
+	for _, sess := range s.active {
+		sessions = append(sessions, sess)
+	}
+	s.mu.Unlock()
+	for _, sess := range sessions {
+		sess.end(agentv1.GoodbyeReason_GOODBYE_REASON_RESTART, 0)
+	}
+}
+
+func (s *Sessions) isRestarting() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.restarting
 }
 
 func (s *Sessions) isDraining() bool { return s.drainDeadline() != nil }

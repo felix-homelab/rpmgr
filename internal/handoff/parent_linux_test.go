@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -350,5 +351,90 @@ func TestStart_ReplacedBinaryNotInstalledIsRefused(t *testing.T) {
 			}
 			stillServes(t, l)
 		})
+	}
+}
+
+// released counts what a hand-off's Release and Resume did.
+type released struct{ release, resume atomic.Int32 }
+
+func (r *released) apply(c *Config, releaseErr error) {
+	c.Release = func(context.Context) error { r.release.Add(1); return releaseErr }
+	c.Resume = func() { r.resume.Add(1) }
+}
+
+func TestStart_ReleaseBeforeReady(t *testing.T) {
+	_, bin, rule := installed(t)
+	l, f := listener(t)
+	cfg, res := config(t, bin, rule, "release", addrsEnv+"="+l.Addr().String())
+	var r released
+	r.apply(&cfg, nil)
+	c, err := Start(context.Background(), cfg, []Socket{{Name: "https", File: f}})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if got := greeting(t, l.Addr()); got != "gen 2" {
+		t.Errorf("greeting %q", got)
+	}
+	<-c.Exited()
+	if r.release.Load() != 1 || r.resume.Load() != 0 {
+		t.Errorf("Release ran %d times, Resume %d; want 1 and 0", r.release.Load(), r.resume.Load())
+	}
+	if got := readResult(t, res); got.Err != "" {
+		t.Errorf("the new process: %s", got.Err)
+	}
+}
+
+func TestStart_ResumesAfterTheNewProcessFailedPastTheRelease(t *testing.T) {
+	_, bin, rule := installed(t)
+	for _, tc := range []struct{ scenario, want string }{
+		{"release-fail", "the new process failed: the migration failed"},
+		{"release-crash", "the new process exited: exit status 3"},
+	} {
+		t.Run(tc.scenario, func(t *testing.T) {
+			l, f := listener(t)
+			cfg, _ := config(t, bin, rule, tc.scenario, addrsEnv+"="+l.Addr().String())
+			cfg.window = 5 * time.Second
+			var r released
+			r.apply(&cfg, nil)
+			c, err := Start(context.Background(), cfg, []Socket{{Name: "https", File: f}})
+			if c != nil || !errors.Is(err, ErrNotReady) || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Start = %v, %v; want ErrNotReady with %q", c, err, tc.want)
+			}
+			if r.release.Load() != 1 || r.resume.Load() != 1 {
+				t.Errorf("Release ran %d times, Resume %d; want 1 and 1", r.release.Load(), r.resume.Load())
+			}
+			stillServes(t, l)
+		})
+	}
+}
+
+func TestStart_ReleaseRefused(t *testing.T) {
+	_, bin, rule := installed(t)
+	l, f := listener(t)
+	cfg, _ := config(t, bin, rule, "release", addrsEnv+"="+l.Addr().String())
+	cfg.window = 5 * time.Second
+	var r released
+	r.apply(&cfg, errors.New("store busy"))
+	c, err := Start(context.Background(), cfg, []Socket{{Name: "https", File: f}})
+	if c != nil || !errors.Is(err, ErrNotReady) || !strings.Contains(err.Error(), "store busy") {
+		t.Fatalf("Start = %v, %v; want ErrNotReady naming the refusal", c, err)
+	}
+	if r.resume.Load() != 1 {
+		t.Errorf("Resume ran %d times, want 1: a failed Release may have stopped half of it", r.resume.Load())
+	}
+	stillServes(t, l)
+}
+
+func TestStart_NoReleaseNoResume(t *testing.T) {
+	_, bin, rule := installed(t)
+	l, f := listener(t)
+	cfg, _ := config(t, bin, rule, "fail", addrsEnv+"="+l.Addr().String())
+	var r released
+	r.apply(&cfg, nil)
+	if _, err := Start(context.Background(), cfg, []Socket{{Name: "https", File: f}}); err == nil {
+		t.Fatal("Start succeeded")
+	}
+	if r.release.Load() != 0 || r.resume.Load() != 0 {
+		t.Errorf("Release ran %d times, Resume %d; a child that never asked needs neither", r.release.Load(), r.resume.Load())
 	}
 }
