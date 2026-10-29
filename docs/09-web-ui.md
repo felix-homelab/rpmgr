@@ -201,6 +201,15 @@ flowchart LR
   nothing yet. Disabled routes, disabled connectors, drained gateways and decommissioned agents are
   not counted ([D81](14-open-decisions.md#engineering)). Routes in maintenance are not counted
   either; the routes' figure says how many there are ([D88](14-open-decisions.md#engineering)).
+- **Restarting** is a card below the summary, shown only while an agent has an old process that
+  drains after a hand-off ([D160](14-open-decisions.md#engineering)). One line per agent: its
+  name, what the old process still holds (gateway: connections, UDP flows and data sessions;
+  connector: streams and data sessions), since when it drains and when it ends at the latest.
+  The list reads again every few seconds, and a line is gone once the old process exited. The
+  Owner and the Admin of the org get **End now** on each line, the Instance Admin for the
+  all-in-one's own agents; it opens a confirmation that names the agent and the number of open
+  connections and flows it cuts, and asks for a step-up. Others see the line only. The gateway
+  group's page and the connector's page show the same line for their agent.
 - **Needs attention** is a card next to the traffic. Each area is marked as fine or as needing
   attention, and lists what needs it, each linked to its page, or says that nothing in it does:
   - agents without a control session: gateways, with when they were last seen or that they have

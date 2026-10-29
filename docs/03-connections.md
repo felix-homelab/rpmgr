@@ -1519,6 +1519,7 @@ sequenceDiagram
 | Start timeout of a role that restarts with hand-off (Phase 2) | `TimeoutStartSec=120` in the drop-in `handoff.conf`, which systemd also applies to `ExecReload`, so that a `systemctl reload` is not cut off by systemd's default of 90 s while `rpmgr handoff` waits for the readiness window and 30 s more | [R] Longer than the wait of `rpmgr handoff` |
 | Hand-off readiness window (Phase 2) | 60 s from the exec until the new process reports ready, else the old one kills it and keeps serving; `rpmgr handoff` waits 30 s longer for the outcome | [R] Shorter than the updater's readiness window, so the updater sees the hand-off's outcome inside its own |
 | QUIC bind window (Phase 2) | a process a hand-off started tries to bind the QUIC port every 100 ms for 5 s after the old process exited; the `udp` route ports are tried at once and then at the route rebind interval | [R] The old process's socket closes with it, so the port is free within moments; the window only absorbs the gap |
+| Old process report (Phase 2) | the old process of a hand-off tells the new one what it still holds at once and then every 5 s, until it exits ([D160](14-open-decisions.md#engineering)) | [R] Fresh enough for a dashboard, one small message on a local pipe |
 | Hand-off status pipe (Phase 2) | one message at most 4 MiB, the manifest included; at most 16 384 sockets per hand-off; a reason one process sends the other at most 512 bytes | [R] Bounds what one process reads from the other |
 | Hand-off session wait (Phase 2) | a new public connection in the new process waits up to 5 s for a session of its route before 503 or a reset | [R] Connectors redial at once on `Drain{handoff}`, a connector on `auto` over TCP; the wait covers their reconnect, so no visitor sees the switch [F S10: connectors moved within 0.04 s over QUIC and 0.5 s over TCP, and no new visitor connection was refused or reset; the load test of slice 17.8 holds it for a lone gateway and an all-in-one] |
 | Session liveness | each controller node marks its live sessions seen every 60 s; a session not seen for 3 min is not live | An agent shows as connected while its control session is live; a node that stops without recording its sessions' ends leaves them to age, and ends them when it starts again |
@@ -1755,6 +1756,29 @@ sequenceDiagram
    **Generation.** Every log line and every metric only the gateway registers carry the process's generation, 1 after
    a plain start and one more after each hand-off ([10](10-operations.md#metrics)); the old
    process keeps its own.
+
+### Showing and ending the drain
+
+While the old process drains, the web UI shows it and an admin can end it early
+([D160](14-open-decisions.md#engineering)):
+
+- **Reports.** The old process sends the new one a `drain` message on the status pipe, at once and
+  then every 5 s ([Timeouts, keepalive and backoff](#timeouts-keepalive-and-backoff)). Its reason
+  holds five numbers: the open TCP and HTTP connections (for a connector, the open streams), the
+  open UDP flows, the open data sessions, and the start of the drain and its latest end as seconds
+  of the Unix epoch. A report that does not parse is skipped.
+- **To the controller.** The new process puts the last report in its `Status` (`draining`), in the
+  first `Status` of each control session and whenever it changes, and sends `draining` with
+  `active` false once the pipe breaks, which is the old process exiting. The controller keeps it
+  in memory, with the agent's control session; the session ending removes it. An agent that
+  reports no old process shows none: the old process of an earlier release sends no report, so
+  nothing is shown for it.
+- **End now.** The controller sends the agent `EndDrain`, answered with `OpResult`, to an agent
+  that announced the capability `drain.end`. The new process sends `end` on the pipe. The old
+  process stops its drain as if the hand-off drain had passed: it closes the connections and flows
+  it still holds, the gateway's data sessions and the connector's streams, and exits. A refusal
+  is `FAILED_PRECONDITION`: no old process drains, the agent has no control session with this
+  controller, or its release has no `drain.end`.
 
 ### All-in-one hand-over
 

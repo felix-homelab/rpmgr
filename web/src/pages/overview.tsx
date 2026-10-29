@@ -5,6 +5,7 @@ import { useQuery } from "@connectrpc/connect-query";
 import { Link, type LinkOptions } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Restarting } from "@/components/draining";
 import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
 import { Status, type Look } from "@/components/status";
@@ -35,6 +36,7 @@ export function Overview() {
       {org && (
         <>
           <Summary orgId={org.orgId} />
+          <Restarting orgId={org.orgId} />
           <div className="grid items-start gap-6 xl:grid-cols-3">
             <Traffic orgId={org.orgId} className="xl:col-span-2" />
             <Health orgId={org.orgId} />

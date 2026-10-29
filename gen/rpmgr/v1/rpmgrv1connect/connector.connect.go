@@ -47,6 +47,9 @@ const (
 	// ConnectorServiceDecommissionConnectorProcedure is the fully-qualified name of the
 	// ConnectorService's DecommissionConnector RPC.
 	ConnectorServiceDecommissionConnectorProcedure = "/rpmgr.v1.ConnectorService/DecommissionConnector"
+	// ConnectorServiceEndConnectorDrainProcedure is the fully-qualified name of the ConnectorService's
+	// EndConnectorDrain RPC.
+	ConnectorServiceEndConnectorDrainProcedure = "/rpmgr.v1.ConnectorService/EndConnectorDrain"
 	// ConnectorServiceGetConnectorStatusProcedure is the fully-qualified name of the ConnectorService's
 	// GetConnectorStatus RPC.
 	ConnectorServiceGetConnectorStatusProcedure = "/rpmgr.v1.ConnectorService/GetConnectorStatus"
@@ -65,6 +68,9 @@ type ConnectorServiceClient interface {
 	// and it stays as a tombstone. Its route targets are deleted, and so is each route left with no
 	// target, which frees its ports and hostnames (D78).
 	DecommissionConnector(context.Context, *connect.Request[v1.DecommissionConnectorRequest]) (*connect.Response[v1.DecommissionConnectorResponse], error)
+	// EndConnectorDrain ends the drain of the connector's old process at once: it closes the
+	// streams it still holds and exits (D160). Refused when no old process drains.
+	EndConnectorDrain(context.Context, *connect.Request[v1.EndConnectorDrainRequest]) (*connect.Response[v1.EndConnectorDrainResponse], error)
 	// GetConnectorStatus returns what the controller knows of a connector's state: its control
 	// session, its data sessions to gateways and the routes it reports not ready.
 	GetConnectorStatus(context.Context, *connect.Request[v1.GetConnectorStatusRequest]) (*connect.Response[v1.GetConnectorStatusResponse], error)
@@ -107,6 +113,12 @@ func NewConnectorServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(connectorServiceMethods.ByName("DecommissionConnector")),
 			connect.WithClientOptions(opts...),
 		),
+		endConnectorDrain: connect.NewClient[v1.EndConnectorDrainRequest, v1.EndConnectorDrainResponse](
+			httpClient,
+			baseURL+ConnectorServiceEndConnectorDrainProcedure,
+			connect.WithSchema(connectorServiceMethods.ByName("EndConnectorDrain")),
+			connect.WithClientOptions(opts...),
+		),
 		getConnectorStatus: connect.NewClient[v1.GetConnectorStatusRequest, v1.GetConnectorStatusResponse](
 			httpClient,
 			baseURL+ConnectorServiceGetConnectorStatusProcedure,
@@ -123,6 +135,7 @@ type connectorServiceClient struct {
 	getConnector          *connect.Client[v1.GetConnectorRequest, v1.GetConnectorResponse]
 	updateConnector       *connect.Client[v1.UpdateConnectorRequest, v1.UpdateConnectorResponse]
 	decommissionConnector *connect.Client[v1.DecommissionConnectorRequest, v1.DecommissionConnectorResponse]
+	endConnectorDrain     *connect.Client[v1.EndConnectorDrainRequest, v1.EndConnectorDrainResponse]
 	getConnectorStatus    *connect.Client[v1.GetConnectorStatusRequest, v1.GetConnectorStatusResponse]
 }
 
@@ -146,6 +159,11 @@ func (c *connectorServiceClient) DecommissionConnector(ctx context.Context, req 
 	return c.decommissionConnector.CallUnary(ctx, req)
 }
 
+// EndConnectorDrain calls rpmgr.v1.ConnectorService.EndConnectorDrain.
+func (c *connectorServiceClient) EndConnectorDrain(ctx context.Context, req *connect.Request[v1.EndConnectorDrainRequest]) (*connect.Response[v1.EndConnectorDrainResponse], error) {
+	return c.endConnectorDrain.CallUnary(ctx, req)
+}
+
 // GetConnectorStatus calls rpmgr.v1.ConnectorService.GetConnectorStatus.
 func (c *connectorServiceClient) GetConnectorStatus(ctx context.Context, req *connect.Request[v1.GetConnectorStatusRequest]) (*connect.Response[v1.GetConnectorStatusResponse], error) {
 	return c.getConnectorStatus.CallUnary(ctx, req)
@@ -164,6 +182,9 @@ type ConnectorServiceHandler interface {
 	// and it stays as a tombstone. Its route targets are deleted, and so is each route left with no
 	// target, which frees its ports and hostnames (D78).
 	DecommissionConnector(context.Context, *connect.Request[v1.DecommissionConnectorRequest]) (*connect.Response[v1.DecommissionConnectorResponse], error)
+	// EndConnectorDrain ends the drain of the connector's old process at once: it closes the
+	// streams it still holds and exits (D160). Refused when no old process drains.
+	EndConnectorDrain(context.Context, *connect.Request[v1.EndConnectorDrainRequest]) (*connect.Response[v1.EndConnectorDrainResponse], error)
 	// GetConnectorStatus returns what the controller knows of a connector's state: its control
 	// session, its data sessions to gateways and the routes it reports not ready.
 	GetConnectorStatus(context.Context, *connect.Request[v1.GetConnectorStatusRequest]) (*connect.Response[v1.GetConnectorStatusResponse], error)
@@ -202,6 +223,12 @@ func NewConnectorServiceHandler(svc ConnectorServiceHandler, opts ...connect.Han
 		connect.WithSchema(connectorServiceMethods.ByName("DecommissionConnector")),
 		connect.WithHandlerOptions(opts...),
 	)
+	connectorServiceEndConnectorDrainHandler := connect.NewUnaryHandler(
+		ConnectorServiceEndConnectorDrainProcedure,
+		svc.EndConnectorDrain,
+		connect.WithSchema(connectorServiceMethods.ByName("EndConnectorDrain")),
+		connect.WithHandlerOptions(opts...),
+	)
 	connectorServiceGetConnectorStatusHandler := connect.NewUnaryHandler(
 		ConnectorServiceGetConnectorStatusProcedure,
 		svc.GetConnectorStatus,
@@ -219,6 +246,8 @@ func NewConnectorServiceHandler(svc ConnectorServiceHandler, opts ...connect.Han
 			connectorServiceUpdateConnectorHandler.ServeHTTP(w, r)
 		case ConnectorServiceDecommissionConnectorProcedure:
 			connectorServiceDecommissionConnectorHandler.ServeHTTP(w, r)
+		case ConnectorServiceEndConnectorDrainProcedure:
+			connectorServiceEndConnectorDrainHandler.ServeHTTP(w, r)
 		case ConnectorServiceGetConnectorStatusProcedure:
 			connectorServiceGetConnectorStatusHandler.ServeHTTP(w, r)
 		default:
@@ -244,6 +273,10 @@ func (UnimplementedConnectorServiceHandler) UpdateConnector(context.Context, *co
 
 func (UnimplementedConnectorServiceHandler) DecommissionConnector(context.Context, *connect.Request[v1.DecommissionConnectorRequest]) (*connect.Response[v1.DecommissionConnectorResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ConnectorService.DecommissionConnector is not implemented"))
+}
+
+func (UnimplementedConnectorServiceHandler) EndConnectorDrain(context.Context, *connect.Request[v1.EndConnectorDrainRequest]) (*connect.Response[v1.EndConnectorDrainResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ConnectorService.EndConnectorDrain is not implemented"))
 }
 
 func (UnimplementedConnectorServiceHandler) GetConnectorStatus(context.Context, *connect.Request[v1.GetConnectorStatusRequest]) (*connect.Response[v1.GetConnectorStatusResponse], error) {

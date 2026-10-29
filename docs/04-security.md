@@ -1486,6 +1486,15 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
   applies a deny list or a snapshot that revokes, tightens an access policy or removes a route, it
   tells the old one over the status pipe, which then cuts its open connections at once, as
   security beats continuity ([03](03-connections.md#timeouts-keepalive-and-backoff)).
+- **Ending the old process's drain** ([D160](14-open-decisions.md#engineering)). The status pipe
+  carries the request from the new process, so only a process the old one started can end its
+  drain. Through the API it needs the right to change the agent: `infrastructure.write` for a
+  gateway and `connectors.write` for a connector, held by the Owner and Admin of the agent's org,
+  and for the all-in-one's own agents (`built_in`) the Instance Admin. It needs a step-up, as
+  it resets connections, and is audited like every other call that changes state
+  (`rpmgr.v1.GatewayService.EndGatewayDrain`, `rpmgr.v1.ConnectorService.EndConnectorDrain`, the
+  agent as target). A token needs the scope of the permission. The counts shown are those of the
+  agent's own org.
 - **Containers** restart without a hand-off: the process is the container's first process
   ([D149](14-open-decisions.md#engineering)).
 

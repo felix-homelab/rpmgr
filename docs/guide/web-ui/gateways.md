@@ -52,6 +52,10 @@ The **Gateways** card lists the group's gateways by slot:
 | **Last seen** | When the controller last heard from it |
 | **Actions** | The buttons below, and for an Owner or Admin **Live log…**, which follows the gateway's log in a dialog as the connector page's **Live log** card does ([Connectors](connectors.md#live-log)); not for a built-in gateway |
 
+While a gateway's old process drains after a restart without a cut, a **Restarting** line under
+the table shows what it still holds, with **End now**
+([Updates](../operations/updates.md#watch-and-end-a-draining-old-process)).
+
 - **Edit…** opens a form for the gateway's **Name**, **Tunnel endpoints** and **WSS hostname**
   (empty offers no WSS); **Save** saves them, or says why the controller refuses the name.
 - **Drain** stops the gateway taking new public connections and ends the open ones after the
@@ -127,7 +131,7 @@ The **Settings** card changes the group:
 ## On the command line
 
 `rpmgr list gateway-group`, `rpmgr create gateway-group`, `rpmgr update gateway-group`,
-`rpmgr create gateway`, `rpmgr update gateway`, `rpmgr drain gateway`, `rpmgr enable gateway`,
+`rpmgr create gateway`, `rpmgr update gateway` (also `--end-drain`), `rpmgr drain gateway`, `rpmgr enable gateway`,
 `rpmgr decommission gateway`, `rpmgr create gateway-token`, `rpmgr create port-pool`,
 `rpmgr set port-quota`, `rpmgr upload gateway-page`, `rpmgr remove gateway-page` and their
 siblings do the same ([Command line](../reference/cli.md)).

@@ -74,7 +74,18 @@ message ControllerMessage {
     // Agents with the capability of the operation's kind: start an imperative operation, carried
     // by an Attach stream; a refusal is an OpResult with an error.
     Open open_operation = 9;
+    // Agents with the capability "drain.end": end the drain of the old process of a hand-off
+    // now, answered with OpResult.
+    EndDrain end_drain = 10;
   }
+}
+
+// EndDrain asks the agent to end the drain of the old process of its last hand-off: the old
+// process closes what it still holds and exits (docs/03-connections.md, "Showing and ending the
+// drain").
+message EndDrain {
+  // The operation, echoed in the OpResult.
+  string op_id = 1;
 }
 
 // Open starts an imperative operation (docs/03-connections.md, "Control session").
@@ -265,6 +276,29 @@ message Status {
   // whenever it changes; unset otherwise (docs/04-security.md, "Over-the-air updates"). A Status
   // that carries only the update state leaves a gateway's data sessions and counters as they are.
   UpdateState update = 5;
+  // The old process a hand-off left draining, set whenever the agent reports it: with active
+  // false it says the old process is gone. A Status without it leaves what the controller holds as
+  // it is; the controller drops it when the session ends. A Status that carries only this leaves
+  // a gateway's data sessions and counters as they are.
+  DrainingProcess draining = 6;
+}
+
+// DrainingProcess is the old process of a socket hand-off, which keeps its open connections for
+// the hand-off drain; the new process reports it from what the old one tells it
+// (docs/03-connections.md, "Showing and ending the drain").
+message DrainingProcess {
+  // Whether an old process drains now; false when it has exited, and the rest is then not set.
+  bool active = 1;
+  // Its open TCP and HTTP connections; for a connector its open streams.
+  int64 connections = 2;
+  // Its open UDP flows.
+  int64 flows = 3;
+  // Its open data sessions.
+  int64 sessions = 4;
+  // When it began to drain.
+  google.protobuf.Timestamp since = 5;
+  // When it ends at the latest.
+  google.protobuf.Timestamp ends = 6;
 }
 
 // UpdateState is where an agent stands with the release it was offered, and the root updater's

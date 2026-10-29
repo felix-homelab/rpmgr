@@ -122,11 +122,12 @@ export function policyCommand(detail: string): string | undefined {
 }
 
 // useConnectors reads all connectors of the org in service.
-export function useConnectors(orgId: string | undefined) {
+export function useConnectors(orgId: string | undefined, refetchInterval?: number) {
   const transport = useTransport();
   return useQuery({
     queryKey: ["connectors", orgId],
     enabled: !!orgId,
+    refetchInterval,
     queryFn: () => {
       const api = createClient(ConnectorService, transport);
       return listAll(async (pageToken) => {
@@ -138,11 +139,12 @@ export function useConnectors(orgId: string | undefined) {
 }
 
 // useGateways reads all gateways of the org in service.
-export function useGateways(orgId: string | undefined) {
+export function useGateways(orgId: string | undefined, refetchInterval?: number) {
   const transport = useTransport();
   return useQuery({
     queryKey: ["gateways", orgId],
     enabled: !!orgId,
+    refetchInterval,
     queryFn: () => {
       const api = createClient(GatewayService, transport);
       return listAll(async (pageToken) => {

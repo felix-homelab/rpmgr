@@ -122,6 +122,12 @@ Changes to the design documents are not recorded here: see the git history and t
   access-policy --rule require-header:<header> --header-values-file <file>`, and in manifests.
   Gateways of earlier releases do not serve a route that applies such a rule until they are
   upgraded. (#620, #621)
+- Dashboard: after a restart with a hand-off, a "Restarting" card and a line on the page of the
+  gateway, connector or all-in-one show the old process that is still draining: its open
+  connections, UDP flows and sessions, since when it drains and when it ends at the latest. An
+  Owner or Admin can end it at once with **End now**, `rpmgr update gateway <name> --end-drain`
+  (or `update connector`), or the API methods `EndGatewayDrain` and `EndConnectorDrain`, after a
+  step-up; the all-in-one's own agents need the Instance Admin. Needs v0.3.0 on the agent. (#1009)
 
 ### Changed
 

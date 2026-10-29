@@ -1034,9 +1034,9 @@ rpmgr update <command>
 |---|---|
 | [`rpmgr update route`](#rpmgr-update-route) | Change the fields of a route that the flags name |
 | [`rpmgr update route-target`](#rpmgr-update-route-target) | Change the fields of a route target that the flags name |
-| [`rpmgr update connector`](#rpmgr-update-connector) | Change a connector's name, labels or transport |
+| [`rpmgr update connector`](#rpmgr-update-connector) | Change a connector's name, labels or transport; with --end-drain, end the drain of its old process after a hand-off |
 | [`rpmgr update gateway-group`](#rpmgr-update-gateway-group) | Change the fields of a gateway group that the flags name |
-| [`rpmgr update gateway`](#rpmgr-update-gateway) | Change the fields of a gateway that the flags name |
+| [`rpmgr update gateway`](#rpmgr-update-gateway) | Change the fields of a gateway that the flags name; with --end-drain, end the drain of its old process after a hand-off |
 | [`rpmgr update port-pool`](#rpmgr-update-port-pool) | Change the fields of a port pool that the flags name |
 | [`rpmgr update ca-bundle`](#rpmgr-update-ca-bundle) | Change the fields of a ca bundle that the flags name |
 | [`rpmgr update access-policy`](#rpmgr-update-access-policy) | Change an access policy's name, description or rules |
@@ -1126,7 +1126,7 @@ rpmgr update route-target [flags] <id>
 
 ## rpmgr update connector
 
-Change a connector's name, labels or transport.
+Change a connector's name, labels or transport; with --end-drain, end the drain of its old process after a hand-off.
 
 ```text
 rpmgr update connector [flags] <id or name>
@@ -1134,6 +1134,7 @@ rpmgr update connector [flags] <id or name>
 
 | Flag | Default | Description |
 |---|---|---|
+| `--end-drain` |  | end the drain of the old process of the last hand-off now: it closes its open connections and exits |
 | `--force` |  | update without checking that the connector is unchanged since this command read it |
 | `--label value` |  | a label key=value; repeat for more; the labels replace the old ones |
 | `--name string` |  | the connector's name, unique in the org |
@@ -1161,7 +1162,7 @@ rpmgr update gateway-group [flags] <id or name>
 
 ## rpmgr update gateway
 
-Change the fields of a gateway that the flags name.
+Change the fields of a gateway that the flags name; with --end-drain, end the drain of its old process after a hand-off.
 
 ```text
 rpmgr update gateway [flags] <id or name>
@@ -1169,6 +1170,7 @@ rpmgr update gateway [flags] <id or name>
 
 | Flag | Default | Description |
 |---|---|---|
+| `--end-drain` |  | end the drain of the old process of the last hand-off now: it closes its open connections and exits |
 | `--force` |  | update without checking that it is unchanged since this command read it |
 | `--name string` |  | the gateway's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
