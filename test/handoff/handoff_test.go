@@ -5,7 +5,7 @@
 // Package handoff upgrades a lone gateway and an all-in-one under load, from the previous build
 // to this tree's, with the socket hand-off (docs/03-connections.md, "Restarts with socket
 // hand-off"; docs/12-testing-and-quality.md; slices 17.4 and 17.8). Run with check-handoff.sh;
-// needs Docker. HANDOFF_FROM names the previous build as a git revision, default HEAD~1; the
+// needs Docker. HANDOFF_FROM names the previous build as a git revision, default HEAD; the
 // processes are started by the test and signalled with SIGUSR2, as `rpmgr handoff` does under
 // systemd (D155): the unit paths are covered by the install script and updater tests.
 package handoff
