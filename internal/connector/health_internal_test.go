@@ -62,6 +62,71 @@ func TestTargetHealth_Thresholds(t *testing.T) {
 	}
 }
 
+// TestTargetHealth_Unknown (D156): an unknown target becomes healthy with its first pass, and
+// unhealthy only after the unhealthy threshold of failures in a row; either is a change.
+func TestTargetHealth_Unknown(t *testing.T) {
+	c := &HealthCheck{Unhealthy: 3, Healthy: 2}
+	h := &targetHealth{unknown: true}
+	if !h.observe(true, c) || h.unknown || h.unhealthy {
+		t.Errorf("a first pass: %+v, want healthy and changed", h)
+	}
+	h = &targetHealth{unknown: true}
+	for i := range 2 {
+		if h.observe(false, c) || !h.unknown {
+			t.Fatalf("failure %d: %+v, want unknown still, unchanged", i+1, h)
+		}
+	}
+	if h.observe(true, c); h.unknown || h.unhealthy {
+		t.Errorf("a pass after two failures: %+v, want healthy", h)
+	}
+	h = &targetHealth{unknown: true}
+	for range 2 {
+		h.observe(false, c)
+	}
+	if !h.observe(false, c) || h.unknown || !h.unhealthy {
+		t.Errorf("the third failure: %+v, want unhealthy and changed", h)
+	}
+	if st := targetStatus("tg_a", &targetHealth{unknown: true}); st.GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_TARGET_UNKNOWN {
+		t.Errorf("an unknown target's status: %v", st)
+	}
+}
+
+// TestInheritHealth (D156): a target with the same ID and address keeps its state, and its
+// streaks only if the check is the same; every other target, new or moved, starts unknown.
+func TestInheritHealth(t *testing.T) {
+	a := Target{ID: "tg_a", Host: "10.0.0.1", Port: 80}
+	b := Target{ID: "tg_b", Host: "10.0.0.2", Port: 80}
+	prev := &Route{ID: "rt", Targets: []Target{a, b}}
+	old := map[string]*targetHealth{"tg_a": {unhealthy: true, streak: -4, err: "refused"}, "tg_b": {streak: 2}}
+	moved := b
+	moved.Port = 81
+	fresh := Target{ID: "tg_c", Host: "10.0.0.3", Port: 80}
+	r := Route{ID: "rt", Targets: []Target{a, moved, fresh}}
+
+	for _, keep := range []bool{true, false} {
+		got := inheritHealth(r, prev, old, keep)
+		wantStreak := 0
+		if keep {
+			wantStreak = -4
+		}
+		if h := got["tg_a"]; !h.unhealthy || h.unknown || h.streak != wantStreak || h.err != "refused" {
+			t.Errorf("keep %v: an unchanged target: %+v", keep, h)
+		}
+		if !got["tg_b"].unknown || !got["tg_c"].unknown || len(got) != 3 {
+			t.Errorf("keep %v: a moved and a new target: %+v", keep, got)
+		}
+	}
+	if got := inheritHealth(r, nil, nil, true); !got["tg_a"].unknown || len(got) != 3 {
+		t.Errorf("a route without a previous check: %+v", got)
+	}
+	if got := inheritHealth(r, prev, map[string]*targetHealth{}, true); !got["tg_a"].unknown {
+		t.Errorf("a target without a recorded state: %+v", got["tg_a"])
+	}
+	if old["tg_a"].streak != -4 {
+		t.Error("the previous state was changed")
+	}
+}
+
 // targetOf is a target at the address of a URL.
 func targetOf(t *testing.T, raw string) Target {
 	t.Helper()

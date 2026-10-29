@@ -147,6 +147,22 @@ describe("RouteDetail", () => {
     expect(cell(4).textContent).toBe("—"); // disabled
   });
 
+  it("shows a target whose first health check has not finished as unknown and serving (D156)", async () => {
+    detail({
+      ...postgres,
+      healthCheck: { type: HealthCheckType.TCP },
+      status: { ...postgres.status, state: RouteState.READY, notServing: [
+        { id: "tgt_2", reason: "TARGET_UNKNOWN", detail: "" },
+      ] },
+    });
+    const rows = within(await screen.findByRole("table")).getAllByRole("row");
+    await waitFor(() => expect(rows[1]!.textContent).toContain("db-host-1"));
+    const cells = within(rows[2]!).getAllByRole("cell");
+    expect(cells[3]!.textContent).toBe("unknownIts first health check has not finished. It gets traffic once it passed, or while no other target of its priority is healthy.");
+    expect(cells[4]!.textContent).toContain("ready"); // not a problem: it serves when no other target does
+    expect(within(rows[2]!).queryByText("its health check has not decided yet")).toBeNull();
+  });
+
   it("marks every target healthy that its connector checks and finds no fault in, and shows no column values without a check", async () => {
     const ready = { ...postgres.status, state: RouteState.READY, notServing: [] };
     detail({ ...postgres, healthCheck: { type: HealthCheckType.TCP }, status: ready });

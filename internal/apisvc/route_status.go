@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/certs"
@@ -353,6 +354,10 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 			// The route is ready on the connector, but this target failed its health check.
 			nt := v.notReady[[2]string{t.ConnectorID, t.ID}]
 			out.NotServing = append(out.NotServing, &rpmgrv1.RouteNotServing{Id: t.ID, Reason: notReadyReason(nt.Reason), Detail: nt.Detail})
+			if nt.Reason == agentv1.NotReadyReason_NOT_READY_REASON_TARGET_UNKNOWN.String() {
+				// Not checked yet: it serves when no other target of its priority is healthy (D156).
+				out.TargetsReady++
+			}
 			ready[t.ConnectorID] = true // its other targets serve
 		default:
 			out.TargetsReady++

@@ -187,14 +187,7 @@ func (t *Targets) Set(routes []Route) {
 	for _, r := range routes {
 		next[r.ID] = r
 		delete(t.draining, r.ID)
-		// A route's checks start again, its targets healthy, when the route or its check changed.
-		switch c := t.checkers[r.ID]; {
-		case r.Check == nil:
-			t.stopChecks(r.ID)
-		case c == nil || !reflect.DeepEqual(c.r, r):
-			t.stopChecks(r.ID)
-			t.startChecks(r)
-		}
+		t.updateChecks(r)
 	}
 	var gone []string
 	for id, r := range t.routes {
@@ -219,6 +212,34 @@ func (t *Targets) Set(routes []Route) {
 		t.report(&tunnelv1.RouteHealth{RouteId: id})
 	}
 	t.Recheck()
+}
+
+// updateChecks brings the route's health checks in line with r, keeping what they found (D156):
+// targets that did not change keep their state and streaks, a changed check keeps the state of the
+// targets but starts counting anew, and a new target starts unknown; a changed check or target set
+// starts a round at once, a change of another field none. Under t.mu.
+func (t *Targets) updateChecks(r Route) {
+	c := t.checkers[r.ID]
+	if r.Check == nil {
+		t.stopChecks(r.ID)
+		return
+	}
+	if c == nil {
+		t.startChecks(r, nil, nil, false)
+		return
+	}
+	sameCheck := reflect.DeepEqual(c.r.Check, r.Check)
+	sameTargets := len(c.r.Targets) == len(r.Targets)
+	for i := 0; sameTargets && i < len(r.Targets); i++ {
+		sameTargets = c.r.Targets[i].ID == r.Targets[i].ID && sameAddress(c.r.Targets[i], r.Targets[i])
+	}
+	if sameCheck && sameTargets {
+		c.r = r // a weight or priority, say: the checks go on
+		return
+	}
+	prev, prevHealth := c.r, t.targetHealth[r.ID]
+	t.stopChecks(r.ID)
+	t.startChecks(r, &prev, prevHealth, sameCheck)
 }
 
 // Recheck evaluates every route's readiness against the policy in force and reports the changes;
@@ -420,7 +441,7 @@ func (t *Targets) dialled(route, target string, gen uint64) {
 }
 
 // Status returns the routes that are not ready, and the targets their health checks found
-// unhealthy, for the resource status of Applied.
+// unhealthy or have not decided on yet, for the resource status of Applied.
 func (t *Targets) Status() []*agentv1.ResourceStatus {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -431,7 +452,7 @@ func (t *Targets) Status() []*agentv1.ResourceStatus {
 		}
 		hs := t.targetHealth[id]
 		for _, tg := range slices.Sorted(maps.Keys(hs)) {
-			if hs[tg].unhealthy {
+			if hs[tg].unhealthy || hs[tg].unknown {
 				out = append(out, targetStatus(tg, hs[tg]))
 			}
 		}
@@ -567,16 +588,27 @@ func codeOf(err error) tunnelv1.ResultCode {
 	return tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED // refused, unreachable, or a name that does not resolve
 }
 
-// healthy returns the targets the route's health check did not find unhealthy, or all of them if it
-// found every one unhealthy: a stream still tries the last chance rather than none.
+// healthy returns the targets the route's health check did not find unhealthy, and not those it has
+// not decided on yet while another target of their priority passed it (D156); or all of them if
+// that leaves none: a stream still tries the last chance rather than none.
 func (t *Targets) healthy(route string, ts []Target) []Target {
 	t.mu.Lock()
-	sick := t.unhealthyLocked(route)
+	sick, unknown := t.unhealthyLocked(route), t.unknownLocked(route)
 	t.mu.Unlock()
-	if len(sick) == 0 {
+	if len(sick) == 0 && len(unknown) == 0 {
 		return ts
 	}
-	if out := slices.DeleteFunc(slices.Clone(ts), func(tg Target) bool { _, ok := sick[tg.ID]; return ok }); len(out) > 0 {
+	known := map[uint32]bool{} // the priorities with a target that passed
+	for _, tg := range ts {
+		if _, bad := sick[tg.ID]; !bad && !unknown[tg.ID] {
+			known[tg.Priority] = true
+		}
+	}
+	out := slices.DeleteFunc(slices.Clone(ts), func(tg Target) bool {
+		_, bad := sick[tg.ID]
+		return bad || unknown[tg.ID] && known[tg.Priority]
+	})
+	if len(out) > 0 {
 		return out
 	}
 	return ts

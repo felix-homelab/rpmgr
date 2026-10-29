@@ -243,6 +243,10 @@ enum NotReadyReason {
   NOT_READY_REASON_POLICY_INVALID = 5;
   // Phase 2: every target the local policy allows failed its health check.
   NOT_READY_REASON_TARGETS_UNHEALTHY = 6;
+  // Phase 2, on a target: its health check has not decided yet (D156). It still serves, as the
+  // route is ready, but a connector sends it no traffic while another target of its priority is
+  // known to be healthy.
+  NOT_READY_REASON_TARGET_UNKNOWN = 7;
 }
 
 // Status reports readiness and counters.

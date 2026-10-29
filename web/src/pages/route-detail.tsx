@@ -231,7 +231,8 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
   route: Route; target: RouteTarget; connector: string; onEdit: () => void; onRemove: () => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const problem = r.status?.notServing.find((n) => n.id === target.id);
+  // A target whose health check has not decided yet still serves (D156); its Health cell says so.
+  const problem = r.status?.notServing.find((n) => n.id === target.id && n.reason !== "TARGET_UNKNOWN");
   const status = useQuery(ConnectorService.method.getConnectorStatus, { connectorId: target.connectorId });
   const own = useQuery(ConnectorService.method.getConnector, { connectorId: target.connectorId });
   const transports = new Set(status.data?.status?.dataSessions.map((s) => s.transport));
@@ -298,8 +299,8 @@ function checkSummary(r: Route, t: TFunction): string {
 }
 
 // TargetHealth is what the route's health check found of an enabled target (docs/03-connections.md,
-// "Target health"): healthy, unhealthy with the last failure, or not checked by a connector of an
-// earlier release; nothing without a check or while the target does not serve for another reason,
+// "Target health"): healthy, unhealthy with the last failure, unknown until its first check, or not
+// checked by a connector of an earlier release; nothing without a check or while the target does not serve for another reason,
 // which the status column names.
 function TargetHealth({ route: r, target }: { route: Route; target: RouteTarget }) {
   const { t } = useTranslation();
@@ -312,6 +313,14 @@ function TargetHealth({ route: r, target }: { route: Route; target: RouteTarget 
       <>
         <Status look="off">{t("route.health.notChecked")}</Status>
         <div className="mt-1 text-muted-foreground">{t("route.health.notCheckedNote")}</div>
+      </>
+    );
+  }
+  if (problem?.reason === "TARGET_UNKNOWN") {
+    return (
+      <>
+        <Status look="off">{t("route.health.undecided")}</Status>
+        <div className="mt-1 text-muted-foreground">{t("route.health.undecidedNote")}</div>
       </>
     );
   }
