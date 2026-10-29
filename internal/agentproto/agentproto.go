@@ -67,6 +67,9 @@ const (
 const (
 	// CapHTTPRequireHeader: the gateway enforces the require_header rules of access policies.
 	CapHTTPRequireHeader = "http.require-header"
+	// CapSessionHandoff: the gateway drains the data sessions of the process a connector's
+	// SessionHello names in handoff_from, instead of closing them.
+	CapSessionHandoff = "session.handoff"
 )
 
 // Phase1 lists every capability of Phase 1 agents.

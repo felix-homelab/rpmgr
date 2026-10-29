@@ -693,7 +693,7 @@ func TestSessions_DroppedConnectorKeepsStreams(t *testing.T) {
 }
 
 // TestSessions_ConnectorCap: a connector holds at most MaxConnectorSessions data sessions to a
-// gateway; one more is refused before its handshake, another connector is not affected, and a
+// gateway; one more is refused after its hello, another connector is not affected, and a
 // session that ends frees a slot.
 func TestSessions_ConnectorCap(t *testing.T) {
 	a := &assignment{known: map[string]bool{cid("con_busy"): true, cid("con_other"): true}}
@@ -706,8 +706,9 @@ func TestSessions_ConnectorCap(t *testing.T) {
 	if got := m.Count()["h2"]; got != gateway.MaxConnectorSessions {
 		t.Fatalf("%d sessions admitted, want %d", got, gateway.MaxConnectorSessions)
 	}
-	gw, _ := h2Session(t)
-	if err := m.Serve(context.Background(), gw, certOf(busy)); !errors.Is(err, gateway.ErrSessionCap) {
+	extra := start(t, m, busy, nil)
+	extra.send(t, hello())
+	if err := extra.serveErr(t); !errors.Is(err, gateway.ErrSessionCap) {
 		t.Fatalf("one session more: %v, want ErrSessionCap", err)
 	}
 	other := start(t, m, connectorID("con_other"), hello())
@@ -1081,5 +1082,128 @@ func TestSessions_HealthyPriorities(t *testing.T) {
 	}
 	if _, ok := m.BestPriority("r1"); ok {
 		t.Fatal("a best priority without a healthy target")
+	}
+}
+
+// handedOff returns the next message of c's session, which is Drain{handoff} when the gateway told
+// it to move for a hand-off.
+func handedOff(t *testing.T, c *connector) *tunnelv1.Drain {
+	t.Helper()
+	select {
+	case msg := <-c.msgs:
+		return msg.GetDrain()
+	case <-time.After(5 * time.Second):
+		t.Fatal("no message")
+		return nil
+	}
+}
+
+// TestSessions_ConnectorHandoff: a session that names the earlier boot_id in handoff_from drains the
+// sessions of that start with the hand-off drain instead of closing them; they take no new stream
+// and stay open. A handoff_from that names an unknown boot_id or another connector's changes
+// nothing for the other connector, and the earlier start closes as a restart's; a second hand-off
+// in a row drains the process of the first and closes the one before it.
+func TestSessions_ConnectorHandoff(t *testing.T) {
+	a := &assignment{known: map[string]bool{cid("con_r"): true, cid("con_o"): true},
+		routes: map[string][]string{"r1": {cid("con_r")}}}
+	const drain = 90 * time.Second
+	m := gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: "gw_01", Assignment: a, HandoffDrain: drain})
+	booted := func(boot, from string) *tunnelv1.SessionMessage {
+		h := hello("r1")
+		h.GetHello().BootId, h.GetHello().HandoffFrom = boot, from
+		return h
+	}
+	id := connectorID("con_r")
+	old := start(t, m, id, booted("boot-1", ""))
+	other := start(t, m, connectorID("con_o"), booted("boot-o", ""))
+
+	begin := time.Now()
+	next := start(t, m, id, booted("boot-2", "boot-1"))
+	d := handedOff(t, old)
+	if d.GetReason() != "handoff" || d.GetDeadline().AsTime().Before(begin.Add(drain-time.Second)) || d.GetDeadline().AsTime().After(begin.Add(drain+5*time.Second)) {
+		t.Fatalf("got %v, want Drain{handoff} in %v", d, drain)
+	}
+	select {
+	case err := <-old.served:
+		t.Fatalf("the old process's session ended: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if got := m.Count()["h2"]; got != 3 {
+		t.Fatalf("%d sessions, want the old, the new and the other connector's", got)
+	}
+	for range 4 { // streams go to the new process's session only
+		st, code, err := m.OpenStream(context.Background(), &tunnelv1.StreamOpen{RouteId: "r1"})
+		if err != nil || code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+			t.Fatalf("a stream: %s %v", code, err)
+		}
+		_ = st.Close()
+		select {
+		case <-next.opens:
+		case <-old.opens:
+			t.Fatal("a stream went to a drained session")
+		case <-time.After(5 * time.Second):
+			t.Fatal("no stream arrived")
+		}
+	}
+
+	// A second hand-off: the process of the first drains, the one before it closes.
+	third := start(t, m, id, booted("boot-3", "boot-2"))
+	if d := handedOff(t, next); d.GetReason() != "handoff" {
+		t.Fatalf("got %v, want Drain{handoff}", d)
+	}
+	_ = old.serveErr(t)
+	select {
+	case err := <-next.served:
+		t.Fatalf("the first new process's session ended: %v", err)
+	case err := <-third.served:
+		t.Fatalf("the newest session ended: %v", err)
+	case err := <-other.served:
+		t.Fatalf("another connector's session ended: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// An unknown boot_id, and the boot_id of another connector's process, are no hand-off.
+	_ = start(t, m, id, booted("boot-4", "boot-unknown"))
+	_ = next.serveErr(t)
+	_ = third.serveErr(t)
+	_ = start(t, m, id, booted("boot-5", "boot-o"))
+	select {
+	case err := <-other.served:
+		t.Fatalf("another connector's session ended: %v", err)
+	case msg := <-other.msgs:
+		t.Fatalf("another connector's session got %v", msg)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// TestSessions_ConnectorHandoffAtCap: the old process's sessions do not count against the cap of
+// the new one's, which would be refused with no session left to serve; without a hand-off a session
+// of the same start at the cap is still refused.
+func TestSessions_ConnectorHandoffAtCap(t *testing.T) {
+	a := &assignment{known: map[string]bool{cid("con_r"): true}, routes: map[string][]string{"r1": {cid("con_r")}}}
+	m := newSessions(a, nil)
+	booted := func(boot, from string) *tunnelv1.SessionMessage {
+		h := hello("r1")
+		h.GetHello().BootId, h.GetHello().HandoffFrom = boot, from
+		return h
+	}
+	id := connectorID("con_r")
+	var old []*connector
+	for range gateway.MaxConnectorSessions {
+		old = append(old, start(t, m, id, booted("boot-1", "")))
+	}
+	over := start(t, m, id, nil)
+	over.send(t, booted("boot-1", ""))
+	if err := over.serveErr(t); !errors.Is(err, gateway.ErrSessionCap) {
+		t.Fatalf("a session of the same start beyond the cap: %v", err)
+	}
+	next := start(t, m, id, booted("boot-2", "boot-1"))
+	if next.welcome == nil {
+		t.Fatal("the new process's session was refused at the cap")
+	}
+	for _, c := range old {
+		if d := handedOff(t, c); d.GetReason() != "handoff" {
+			t.Fatalf("got %v, want Drain{handoff}", d)
+		}
 	}
 }
