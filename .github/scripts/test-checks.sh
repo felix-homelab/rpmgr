@@ -340,6 +340,8 @@ areas "go=true web=true checks=false ops=true md=false" internal/units/units.go
 areas "go=true web=true checks=false ops=true md=false" test/installsh/installsh_test.go
 areas "go=true web=true checks=false ops=true md=false" test/ota/ota_test.go
 areas "go=true web=true checks=true ops=true md=false" .github/scripts/check-install.sh
+areas "go=true web=true checks=true ops=true md=false" .github/scripts/check-handoff.sh
+areas "go=true web=true checks=false ops=true md=false" test/handoff/handoff_test.go internal/gateway/run.go
 expect pass "every stage" "$dir/changed-areas.sh" --all
 expect fail "one commit only" "$dir/changed-areas.sh" HEAD
 [[ $("$dir/changed-areas.sh" --none | tr '\n' ' ') == "go=false web=false checks=false ops=false md=false " ]] && passed=$((passed + 1)) ||

@@ -26,7 +26,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fail(errors.New("usage: e2eclient serve|check|hold|gone|ready|udp|http|ws|grpc|tls|load [flags]"))
+		fail(errors.New("usage: e2eclient serve|check|hold|gone|ready|udp|http|ws|grpc|tls|load|probe|scrape|accepts [flags]"))
 	}
 	fs := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 	addr := fs.String("addr", "", "the route's address, host:port")
@@ -47,6 +47,10 @@ func main() {
 	every := fs.Duration("every", 200*time.Millisecond, "hold: how often to send a ping")
 	addrs := fs.String("addrs", "", "load: the routes' addresses, comma-separated")
 	conns := fs.Int("conns", 2, "load: connections per address")
+	tcpAddr := fs.String("tcp", "", "probe: a TCP route's address")
+	udpTo := fs.String("udpaddr", "", "probe: a UDP route's address")
+	httpVia := fs.String("httpaddr", "", "probe: the address that serves the HTTP route's host")
+	every2 := fs.Duration("interval", 50*time.Millisecond, "probe: the time between attempts")
 	_ = fs.Parse(os.Args[2:])
 	var err error
 	switch os.Args[1] {
@@ -70,6 +74,12 @@ func main() {
 		err = grpcCheck(*addr, *host)
 	case "tls":
 		err = tlsCheck(*addr, *host, *expect)
+	case "probe":
+		printProbe(probe(*tcpAddr, *udpTo, *httpVia, *target, *duration, *every2))
+	case "scrape":
+		err = scrape(*target)
+	case "accepts":
+		err = accepts(*addr, *duration)
 	case "load":
 		err = load(*addrs, *conns, *size, *duration)
 	default:
