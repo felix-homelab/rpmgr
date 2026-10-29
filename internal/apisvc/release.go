@@ -63,7 +63,9 @@ type Releases struct {
 	MirrorNow func()
 	// Checks is the release check; nil checks for no releases.
 	Checks ReleaseChecker
-	Now    func() time.Time
+	// Self updates the controller's own host (D158); nil refuses UpdateController.
+	Self *SelfUpdate
+	Now  func() time.Time
 }
 
 var (

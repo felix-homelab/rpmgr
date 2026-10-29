@@ -104,7 +104,7 @@ func rolloutCommands() map[string][]*cli.Command {
 		},
 	}
 	return map[string][]*cli.Command{"check": {checkRelease()}, "upload": {uploadRelease()}, "create": {create}, "advance": {advanceRollout()},
-		"upgrade": {upgradeAgents("connector"), upgradeAgents("gateway")},
+		"upgrade": {upgradeAgents("connector"), upgradeAgents("gateway"), upgradeController()},
 		"pause":   {changeRollout("pause", "pause a running rollout; agents offered the release keep it", false)},
 		"resume":  {changeRollout("resume", "let a paused rollout run again", true)},
 		"cancel":  {changeRollout("cancel", "end a running or paused rollout for good", true)}}
@@ -262,6 +262,82 @@ func upgradeAgents(kind string) *cli.Command {
 			return s.print(ctx, env.Stdout, kindOf("rollout-target"), output, rows, nil, true)
 		},
 	}
+}
+
+// upgradeController is `rpmgr upgrade controller`: the controller, or all-in-one, stages a release
+// for the root updater of its host, which backs the database up and installs it (D158); --status
+// tells how the update stands.
+func upgradeController() *cli.Command {
+	var (
+		release string
+		status  bool
+	)
+	return &cli.Command{
+		Name: "controller", Summary: "update the controller or all-in-one over the air, after a backup (Instance Admin)",
+		Args: "(--release <version> | --status)",
+		Flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&release, "release", "", "the release, by version or ID; newer than the controller, mirrored, and taken by the channel")
+			fs.BoolVar(&status, "status", false, "show how the controller's update stands, and why none can be started")
+		},
+		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			if len(args) > 0 || (release == "") == !status {
+				return cli.Usagef("give --release <version> or --status, and no argument")
+			}
+			s, err := newAPISession(env)
+			if err != nil {
+				return err
+			}
+			rc := rpmgrv1connect.NewReleaseServiceClient(s.hc, s.creds.Controller)
+			if status {
+				resp, err := rc.GetControllerUpdate(ctx, connect.NewRequest(&rpmgrv1.GetControllerUpdateRequest{}))
+				if err != nil {
+					return apiError(err)
+				}
+				return writeControllerUpdate(env.Stdout, resp.Msg.GetUpdate(), resp.Msg.GetBlocked(), resp.Msg.GetRunningVersion())
+			}
+			req := &rpmgrv1.UpdateControllerRequest{}
+			if req.ReleaseId, err = s.releaseID(ctx, release); err != nil {
+				return err
+			}
+			var resp *connect.Response[rpmgrv1.UpdateControllerResponse]
+			if err := s.withStepUp(ctx, func() error {
+				resp, err = rc.UpdateController(ctx, connect.NewRequest(req))
+				return err
+			}); err != nil {
+				return apiError(err)
+			}
+			_, err = fmt.Fprintf(env.Stdout, "Staged %s for the root updater, which backs the database up and installs it.\n"+
+				"The controller restarts; follow it with `rpmgr upgrade controller --status`.\n", resp.Msg.GetUpdate().GetVersion())
+			return err
+		},
+	}
+}
+
+// writeControllerUpdate says how the controller's own update stands.
+func writeControllerUpdate(w io.Writer, u *rpmgrv1.ControllerUpdate, blocked, running string) error {
+	if _, err := fmt.Fprintf(w, "The controller runs %s.\n", running); err != nil {
+		return err
+	}
+	if u == nil {
+		_, err := fmt.Fprintln(w, "No update is under way or reported.")
+		return err
+	}
+	state := strings.ToLower(strings.TrimPrefix(u.GetState().String(), "CONTROLLER_UPDATE_STATE_"))
+	line := fmt.Sprintf("Update to %s: %s", u.GetVersion(), strings.ReplaceAll(state, "_", " "))
+	if u.GetStep() != "" {
+		line += " (" + strings.ReplaceAll(u.GetStep(), "_", " ") + ")"
+	}
+	if u.GetReason() != "" {
+		line += ": " + u.GetReason()
+	}
+	if _, err := fmt.Fprintln(w, line+"."); err != nil {
+		return err
+	}
+	if blocked != "" {
+		_, err := fmt.Fprintf(w, "No update can be started now: %s.\n", blocked)
+		return err
+	}
+	return nil
 }
 
 // advanceRollout is `rpmgr advance rollout`.

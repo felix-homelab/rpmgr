@@ -1828,6 +1828,7 @@ rpmgr upgrade <command>
 |---|---|
 | [`rpmgr upgrade connector`](#rpmgr-upgrade-connector) | Update connectors to the controller's version, one after another, in its easy rollout (Instance Admin) |
 | [`rpmgr upgrade gateway`](#rpmgr-upgrade-gateway) | Update gateways to the controller's version, one after another, in its easy rollout (Instance Admin) |
+| [`rpmgr upgrade controller`](#rpmgr-upgrade-controller) | Update the controller or all-in-one over the air, after a backup (Instance Admin) |
 
 ## rpmgr upgrade connector
 
@@ -1852,6 +1853,19 @@ rpmgr upgrade gateway [flags] <gateway>…
 | Flag | Default | Description |
 |---|---|---|
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+
+## rpmgr upgrade controller
+
+Update the controller or all-in-one over the air, after a backup (Instance Admin).
+
+```text
+rpmgr upgrade controller [flags] (--release <version> | --status)
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--release string` |  | the release, by version or ID; newer than the controller, mirrored, and taken by the channel |
+| `--status` |  | show how the controller's update stands, and why none can be started |
 
 ## rpmgr logs
 

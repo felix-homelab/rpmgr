@@ -246,7 +246,12 @@ func (r *Releases) checkTarget(ctx context.Context, tx *ent.Tx, rel *ent.Release
 			"apisvc: release %s is below %s, the oldest agent version the controller accepts; its agents could not connect",
 			rel.Version, r.MinAgentVersion)), ReasonReleaseBelowMin)
 	}
-	set, _, err := settings.Instance(ctx, tx.Client())
+	return checkChannel(ctx, tx.Client(), rel)
+}
+
+// checkChannel refuses a pre-release on an instance whose update channel is stable.
+func checkChannel(ctx context.Context, c *ent.Client, rel *ent.Release) error {
+	set, _, err := settings.Instance(ctx, c)
 	if err != nil {
 		return err
 	}

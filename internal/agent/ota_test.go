@@ -3,11 +3,15 @@
 package agent_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
+	"io/fs"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -734,4 +738,68 @@ func TestStager_OfferBaseURL(t *testing.T) {
 			}
 		})
 	}
+}
+
+// filesSource serves a release's files from memory, as the mirror's directory does.
+type filesSource map[string][]byte
+
+func (f filesSource) Open(_ context.Context, name string) (io.ReadCloser, error) {
+	b, ok := f[name]
+	if !ok {
+		return nil, fs.ErrNotExist
+	}
+	return io.NopCloser(bytes.NewReader(b)), nil
+}
+
+// TestStageRelease: the controller stages a release of its own mirror for the root updater, which
+// checks it as it does an agent's; a manifest of another version, one without a build for this
+// host, a signature that does not verify and too little space are refused, and nothing is
+// staged then (D158).
+func TestStageRelease(t *testing.T) {
+	root, err := release.ParsePublicKey(otaRoot.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := func(dir string) agent.UpdateOptions {
+		return agent.UpdateOptions{Dir: dir, Variant: "full", Roots: []release.PublicKey{root}, OS: "linux", Arch: "amd64",
+			FreeSpace: func(string) (uint64, error) { return 1 << 40, nil }}
+	}
+	r := newOTARelease(t, "0.2.0", 7, release.Stable, "full")
+	t.Run("staged, the manifest with it", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "update")
+		if err := agent.StageRelease(context.Background(), opts(dir), filesSource(r.files), "0.2.0"); err != nil {
+			t.Fatal(err)
+		}
+		for name, want := range r.files {
+			if got, err := os.ReadFile(filepath.Join(dir, name)); err != nil || !bytes.Equal(got, want) { //nolint:gosec // G304: under t.TempDir
+				t.Errorf("%s staged as %q, %v", name, got, err)
+			}
+		}
+	})
+	t.Run("refused, and nothing staged", func(t *testing.T) {
+		bad := maps.Clone(r.files)
+		bad[release.ManifestSigFile] = otaRoot.Sign([]byte("another manifest"))
+		noBuild := newOTARelease(t, "0.2.0", 7, release.Stable, "connector")
+		for name, tc := range map[string]struct {
+			src     filesSource
+			version string
+			free    uint64
+		}{
+			"another version":           {filesSource(r.files), "0.3.0", 1 << 40},
+			"a signature that fails":    {filesSource(bad), "0.2.0", 1 << 40},
+			"no build for this variant": {filesSource(noBuild.files), "0.2.0", 1 << 40},
+			"nothing in the mirror":     {filesSource{}, "0.2.0", 1 << 40},
+			"too little space":          {filesSource(r.files), "0.2.0", 10},
+		} {
+			dir := filepath.Join(t.TempDir(), "update")
+			o := opts(dir)
+			o.FreeSpace = func(string) (uint64, error) { return tc.free, nil }
+			if err := agent.StageRelease(context.Background(), o, tc.src, tc.version); err == nil {
+				t.Errorf("%s: staged", name)
+			}
+			if _, err := os.Stat(filepath.Join(dir, release.ManifestFile)); err == nil {
+				t.Errorf("%s: a manifest was staged", name)
+			}
+		}
+	})
 }
