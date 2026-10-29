@@ -174,8 +174,11 @@ test, in the order of [10](10-operations.md#upgrades-and-version-skew), under li
     a connector's restart may break the connections held through it.
 - **With the hand-off** (Phase 2; slices 17.4 and 17.8, `test/handoff`, `check-handoff.sh`): one
   container runs the controller, a lone gateway, an all-in-one and the services, two more run a
-  connector each. Every process of the hand-off starts from the previous build, the commit before
-  the one under test or `HANDOFF_FROM` (D155), and `SIGUSR2` hands it over to this tree's build,
+  connector each. Every process of the hand-off starts from the build `HANDOFF_FROM` names, and
+  `SIGUSR2` hands it over to this tree's build. A pull request starts from the code under review
+  (`HEAD`, the default), the nightly run from the last release tag (`release`: `git describe
+  --tags --abbrev=0 --match 'v*'`, which must have the hand-off), both strict; this refines
+  D155 point 4 ([D159](14-open-decisions.md#engineering)). The hand-off is
   replaced at the same path, without systemd (the unit paths are tested by the install script and
   updater tests and by the real-world run). New TCP and HTTP connections,
   a UDP flow and a connection held across the hand-off run throughout
@@ -185,10 +188,8 @@ test, in the order of [10](10-operations.md#upgrades-and-version-skew), under li
     none over QUIC while the old one holds the UDP port, the UDP flow answers without a silence
     until the old process exits and starts again in the new one, the held connection survives, and
     the connectors return to QUIC at the re-probe (shortened to 15 s by `RPMGR_TEST_REPROBE`, an
-    `rpmgrtest` hook). No connection may be refused or reset: that holds with `HANDOFF_STRICT=1`
-    only, while a gap of the build is known (a connection that arrives between the start of the
-    hand-off and the moment the old process stops accepting can be reset); the test pins the gap
-    down to that window.
+    `rpmgrtest` hook). No connection may be refused or reset (D127, D159); a route that only the
+    connector pinned to QUIC serves is not judged: it has no session until the old process exits.
   - **Lone gateway, a connector pinned to QUIC:** it has no session with the new process until the
     old one exits, and reconnects then; its route answers again.
   - **All-in-one:** the same load; the admin listener and the controller are the new process's.

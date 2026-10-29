@@ -125,6 +125,7 @@ type Sessions struct {
 	byConnector map[string][]*dataSession
 	capWarned   map[string]time.Time // when a connector at the cap was last warned about
 	draining    bool                 // the gateway stops
+	handoff     bool                 // it stops for a hand-off: its sessions still open streams, no new session is admitted
 	disabled    bool                 // the gateway is disabled (R22) until Enable
 	passive     map[entryKey]*entryHealth
 }
@@ -164,6 +165,7 @@ type dataSession struct {
 	streams   map[*trackedStream]struct{} // open, for the load
 	retiring  atomic.Bool                 // the snapshot dropped the connector; retire runs
 	drained   atomic.Bool                 // told to move; it opens no new stream and closes at its deadline
+	handoff   atomic.Bool                 // drained for a hand-off: it still serves when no other session does
 	// writing is the start, in Unix nanoseconds, of a stream write still in progress, or 0. With
 	// concurrent writers it tracks one of them, which is enough to notice a session whose writes
 	// all block.
@@ -612,6 +614,22 @@ type passedOver struct {
 func (m *Sessions) candidates(route string, skip passedOver) []rankedSessions {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	out := m.candidatesLocked(route, skip, false)
+	if len(out) == 0 {
+		// A session drained for a hand-off keeps its streams and a connector still serves new ones
+		// on it, so a connection this process accepted before it stopped accepting uses it
+		// rather than failing, when no other session of the route is left.
+		out = m.candidatesLocked(route, skip, true)
+	}
+	if skip.passive {
+		out = m.passable(route, out, m.o.Now())
+	}
+	return out
+}
+
+// candidatesLocked is candidates before passive health; with handoff, the sessions drained for a
+// hand-off count too. Called with m.mu held.
+func (m *Sessions) candidatesLocked(route string, skip passedOver, handoff bool) []rankedSessions {
 	var out []rankedSessions
 	for _, c := range m.o.Assignment.Connectors(route) {
 		if skip.tiers[tier{c.ID, c.Priority}] {
@@ -619,16 +637,13 @@ func (m *Sessions) candidates(route string, skip passedOver) []rankedSessions {
 		}
 		r := rankedSessions{RouteConnector: c}
 		for _, d := range m.byConnector[c.ID] {
-			if d.readyFor(route, c) && !d.drained.Load() && !skip.sessions[d] {
+			if d.readyFor(route, c) && (!d.drained.Load() || handoff && d.handoff.Load()) && !skip.sessions[d] {
 				r.sessions = append(r.sessions, d)
 			}
 		}
 		if len(r.sessions) > 0 {
 			out = append(out, r)
 		}
-	}
-	if skip.passive {
-		out = m.passable(route, out, m.o.Now())
 	}
 	return out
 }
@@ -735,7 +750,9 @@ func (m *Sessions) Open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnel.
 // skip.passive, a marked entry past its back-off is opened by one stream at a time, its trial.
 func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip passedOver) (*trackedStream, error) {
 	m.mu.Lock()
-	draining := m.draining || m.disabled
+	// A process a hand-off replaces keeps opening streams on its sessions, drained for the
+	// hand-off, for the connections it accepted before it stopped accepting.
+	draining := (m.draining && !m.handoff) || m.disabled
 	m.mu.Unlock()
 	if draining {
 		return nil, ErrDraining
@@ -927,6 +944,7 @@ func (m *Sessions) Drain(deadline time.Time) {
 func (m *Sessions) DrainHandoff(deadline time.Time) {
 	m.mu.Lock()
 	m.draining = true
+	m.handoff = true
 	m.mu.Unlock()
 	m.drain(deadline, "handoff")
 }
@@ -968,6 +986,9 @@ func (m *Sessions) drain(deadline time.Time, reason string) {
 	var all []*dataSession
 	for _, ds := range m.byConnector {
 		for _, d := range ds {
+			if reason == "handoff" {
+				d.handoff.Store(true)
+			}
 			if !d.drained.Swap(true) {
 				all = append(all, d)
 			}
@@ -981,6 +1002,9 @@ func (m *Sessions) drain(deadline time.Time, reason string) {
 
 // drainSession drains one session unless it is drained already.
 func (m *Sessions) drainSession(d *dataSession, deadline time.Time, reason string) {
+	if reason == "handoff" {
+		d.handoff.Store(true)
+	}
 	if !d.drained.Swap(true) {
 		m.send(d, deadline, reason)
 	}

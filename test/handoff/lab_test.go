@@ -42,16 +42,15 @@ const (
 )
 
 type lab struct {
-	t         *testing.T
-	dir       string // the host's scratch directory: binaries and certificates
-	net       string
-	prefix    string
-	ip        string // the lab container's address, where the services listen
-	pin       string
-	oldBuild  string
-	newBuild  string
-	clientEx  string
-	triggerAt time.Duration // when the running hand-off was triggered, since the start of its load
+	t        *testing.T
+	dir      string // the host's scratch directory: binaries and certificates
+	net      string
+	prefix   string
+	ip       string // the lab container's address, where the services listen
+	pin      string
+	oldBuild string
+	newBuild string
+	clientEx string
 }
 
 var (
@@ -92,10 +91,10 @@ func newLab(t *testing.T) *lab {
 	l.net = l.prefix
 	ref := os.Getenv("HANDOFF_FROM")
 	if ref == "" {
-		ref = "HEAD~1"
+		ref = "HEAD"
 	}
-	// The previous build is the tree one commit back (D155, point 4), or the revision named in
-	// HANDOFF_FROM: it is the process that hands over.
+	// The previous build is the revision named in HANDOFF_FROM, by default this tree (D159); it is
+	// the process that hands over.
 	oldSrc := filepath.Join(l.dir, "old-src")
 	if err := os.Mkdir(oldSrc, 0o750); err != nil {
 		t.Fatal(err)

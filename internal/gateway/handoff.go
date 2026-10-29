@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/netip"
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/handoff"
@@ -35,6 +37,42 @@ type listeners struct {
 type heldListener struct {
 	name string
 	ln   net.Listener
+	// retire, if set, stops the listener taking connections without failing its server.
+	retire func()
+}
+
+// retirable is a listener whose server ends as if it were shut down, not as if it failed, once
+// retire closed it: an admin server returns http.ErrServerClosed, which its owner takes for a
+// normal stop.
+type retirable struct {
+	net.Listener
+	retired atomic.Bool
+}
+
+func (r *retirable) Accept() (net.Conn, error) {
+	c, err := r.Listener.Accept()
+	if err != nil && r.retired.Load() {
+		return nil, http.ErrServerClosed
+	}
+	return c, err
+}
+
+func (r *retirable) retire() {
+	r.retired.Store(true)
+	_ = r.Close()
+}
+
+// retireAdmin stops taking connections on the admin listener, which both processes of a hand-off
+// hold: the old one would otherwise answer a share of them, with its own readiness and metrics,
+// after the new one took over.
+func (l *listeners) retireAdmin() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, h := range l.open {
+		if h.retire != nil {
+			h.retire()
+		}
+	}
 }
 
 // listen returns the listener on addr ("host:port"): the one handed over for that address, else a
@@ -47,8 +85,15 @@ func (l *listeners) listen(name, addr string) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
+	h := heldListener{name: name, ln: ln}
+	if name == "admin" {
+		r := &retirable{Listener: ln}
+		h.retire = r.retire
+		ln = r
+		h.ln = r.Listener
+	}
 	l.mu.Lock()
-	l.open = append(l.open, heldListener{name, ln})
+	l.open = append(l.open, h)
 	l.mu.Unlock()
 	return ln, nil
 }
