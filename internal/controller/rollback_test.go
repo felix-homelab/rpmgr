@@ -5,10 +5,13 @@
 package controller_test
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -192,5 +195,36 @@ func TestRestoreLinksPlantedBetweenSteps(t *testing.T) {
 				t.Errorf("the staging directory still holds %d files", len(left))
 			}
 		})
+	}
+}
+
+// TestBackupTo: `rpmgr backup --out -` writes the archive to a writer, which the root updater reads
+// from a backup run as the service user; it holds what the file form holds.
+func TestBackupTo(t *testing.T) {
+	ctx := context.Background()
+	h := newHost(t)
+	h.writeBoot(t, h.fileKEK())
+	if _, err := controller.Init(ctx, h.opts()); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	info, err := controller.BackupTo(ctx, h.cfg, &buf, "1.5.0", time.Now)
+	if err != nil || info.Version != "1.5.0" {
+		t.Fatalf("BackupTo = %+v, %v", info, err)
+	}
+	tr := tar.NewReader(&buf)
+	var got []string
+	for {
+		hd, err := tr.Next()
+		if err != nil {
+			break
+		}
+		got = append(got, hd.Name)
+	}
+	if want := []string{controller.BackupMeta, controller.BackupDatabase, controller.BackupRevocations, controller.BackupCheckpoints}; !slices.Equal(got, want) {
+		t.Errorf("archive holds %v; want %v", got, want)
+	}
+	if _, err := controller.BackupTo(ctx, filepath.Join(t.TempDir(), "none.yaml"), &buf, "1.5.0", time.Now); err == nil {
+		t.Error("BackupTo without a boot file succeeded")
 	}
 }

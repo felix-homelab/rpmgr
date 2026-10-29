@@ -60,6 +60,16 @@ func Backup(ctx context.Context, path, out, version string, now func() time.Time
 	return info, nil
 }
 
+// BackupTo is `rpmgr backup --out -`: the same archive, written to w, which the root updater reads
+// from a backup run as the service user, so that root opens nothing in the state directory.
+func BackupTo(ctx context.Context, path string, w io.Writer, version string, now func() time.Time) (BackupInfo, error) {
+	cfg, err := loadController(path)
+	if err != nil {
+		return BackupInfo{}, err
+	}
+	return backup(ctx, cfg.Database.DSN, w, version, now)
+}
+
 func backup(ctx context.Context, dsn string, w io.Writer, version string, now func() time.Time) (BackupInfo, error) {
 	if root, err := os.OpenRoot(filepath.Dir(dsn)); err == nil {
 		// Run by root, SQLite would follow a link the service user planted for a journal name.

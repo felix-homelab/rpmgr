@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/felix-homelab/rpmgr/internal/units"
+	"golang.org/x/mod/semver"
 )
 
 // ControlPlane is what the updater needs to know of the controller or all-in-one of its host.
@@ -21,6 +21,23 @@ type ControlPlane struct {
 	Config string
 	// Driver is the database driver of the boot file, "sqlite" or "postgres".
 	Driver string
+	// UID and GID are the owner of the state directory, the service user, whom the backup runs as.
+	UID, GID uint32
+}
+
+// SelfUpdateSince is the first release that can be updated over the air as a controller or
+// all-in-one: its `rpmgr backup` writes to standard output and its `rpmgr restore` stages in a
+// directory only root writes (D158). A running release before it is updated by hand once.
+const SelfUpdateSince = "0.3.0"
+
+// ByHand is what an Instance Admin is told when the running release is older than SelfUpdateSince.
+const ByHand = "update this controller by hand once (install.sh --upgrade --restart); later updates can start here"
+
+// HasSelfUpdate reports whether a release, as `rpmgr version` names it, can be the running one of an
+// over-the-air update of a controller. A version that is no semantic version cannot.
+func HasSelfUpdate(version string) bool {
+	v := "v" + strings.TrimPrefix(version, "v")
+	return semver.IsValid(v) && semver.Compare(v, "v"+SelfUpdateSince+"-0") >= 0
 }
 
 // BackupSuffix is added to the binary's path for the backup taken before an update of a
@@ -85,16 +102,39 @@ func (a *Applier) backUp(ctx context.Context, role, bin string) (string, error) 
 		return "", fmt.Errorf("%w: the %s runs on %s, and a self-update needs a backup it can restore; "+
 			"only SQLite has one until the PostgreSQL backup method (P2-M08) exists (D158); update it by hand", ErrRefused, role, cp.Driver)
 	}
+	if !HasSelfUpdate(a.Previous) {
+		return "", fmt.Errorf("%w: the running release %s cannot back itself up for an update: %s", ErrRefused, a.Previous, ByHand)
+	}
 	out := bin + BackupSuffix
 	tmp := out + ".new"
-	_ = os.Remove(tmp)
-	if b, err := a.exec(ctx, bin, "backup", "--config", cp.Config, "--out", tmp); err != nil {
-		_ = os.Remove(tmp)
-		return "", fmt.Errorf("%w: the backup of the %s failed, so nothing was updated: %w: %s", ErrRefused, role, err, strings.TrimSpace(string(b)))
+	_ = os.Remove(tmp)                                                   // a planted link is removed, never written through
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // G304: beside the installed binary, root's
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrRefused, err)
 	}
-	if fi, err := os.Lstat(tmp); err != nil || !fi.Mode().IsRegular() {
+	// The backup runs as the service user, which owns the state directory, and writes the archive to
+	// standard output into root's own file: root never opens a path in the directory the user
+	// controls.
+	rctx, cancel := context.WithTimeout(ctx, backupWindow)
+	defer cancel()
+	run := a.RunAs
+	if run == nil {
+		run = runAs
+	}
+	stderr, err := run(rctx, cp.UID, cp.GID, f, bin, "backup", "--config", cp.Config, "--out", "-")
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
 		_ = os.Remove(tmp)
-		return "", fmt.Errorf("%w: the backup of the %s left no file, so nothing was updated", ErrRefused, role)
+		return "", fmt.Errorf("%w: the backup of the %s failed, so nothing was updated: %w: %s", ErrRefused, role, err, strings.TrimSpace(string(stderr)))
+	}
+	if fi, err := os.Lstat(tmp); err != nil || !fi.Mode().IsRegular() || fi.Size() == 0 {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("%w: the backup of the %s left no archive, so nothing was updated", ErrRefused, role)
 	}
 	if err := os.Rename(tmp, out); err != nil {
 		_ = os.Remove(tmp)
@@ -129,13 +169,10 @@ func (a *Applier) restoreDatabase(ctx context.Context, p *pending, role string) 
 			"and %s is untouched: look at the database, and run `rpmgr restore --in %s` only if it was migrated",
 			err, strings.TrimSpace(string(probe)), role, p.Backup, p.Backup)
 	}
-	args := []string{"restore", "--in", p.Backup, "--config", cp.Config}
-	if units.HasHandoff(p.Previous) {
-		// The restore does its SQLite work in a directory only root writes, not in the state
-		// directory, which the service user owns; a release before v0.3.0 has no such flag.
-		args = append(args, "--stage-dir", filepath.Join(a.State, "restore"))
-	}
-	if b, rerr := a.exec(ctx, p.Path, args...); rerr != nil {
+	// The restore does its SQLite work in a directory only root writes, not in the state directory,
+	// which the service user owns.
+	if b, rerr := a.exec(ctx, p.Path, "restore", "--in", p.Backup, "--config", cp.Config,
+		"--stage-dir", filepath.Join(a.State, "restore")); rerr != nil {
 		return fmt.Errorf("update: rolling back: the database was migrated (%s) and restoring %s failed: %w: %s; "+
 			"the %s is stopped: run `rpmgr restore --in %s` and start it", strings.TrimSpace(string(probe)), p.Backup, rerr, strings.TrimSpace(string(b)), role, p.Backup)
 	}

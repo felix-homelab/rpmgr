@@ -186,12 +186,16 @@ func backupCommand() *cli.Command {
 		Name:    "backup",
 		Summary: "write a consistent backup of the controller",
 		Flags: func(fs *flag.FlagSet) {
-			fs.StringVar(&out, "out", "", "the archive to write; it must not exist (required)")
+			fs.StringVar(&out, "out", "", "the archive to write; it must not exist; - writes it to standard output, as the root updater reads it (required)")
 			fs.StringVar(&configPath, "config", "", bootFlagHelp)
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
 			if out == "" {
 				return cli.Usagef("backup needs --out")
+			}
+			if out == "-" {
+				_, err := controller.BackupTo(ctx, controllerBoot(configPath, env.Getenv), env.Stdout, version.Get().Version, time.Now)
+				return err
 			}
 			info, err := controller.Backup(ctx, controllerBoot(configPath, env.Getenv), out, version.Get().Version, time.Now)
 			if err != nil {

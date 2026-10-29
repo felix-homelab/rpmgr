@@ -1329,10 +1329,18 @@ the request that started the update. What differs:
   written through), the live files are renamed aside and the copies renamed into place, and the
   owner is set through the handle. A live, `-wal` or `-shm` name that is no regular file is refused
   with `ErrUnsafeStateFile` first. A test plants links at every name before the restore and at each
-  of its steps. A release before v0.3.0 has no `--stage-dir`, so the rollback of the first update
-  from one runs its restore as before, in the state directory. `rpmgr backup` refuses a link at the
-  database's names, but SQLite opens the live database by path, so a link swapped in after that
-  check is not caught.
+  of its steps. The **backup** touches nothing of the user's directory as root: the updater runs the
+  installed binary's `rpmgr backup --out -` as the owner of the state directory (the service user,
+  read from the directory's own entry, with no supplementary groups) and streams its standard
+  output into root's own file `<binary>.backup.new`, created exclusively with mode 0600 after any
+  planted name there is removed, then renamed. A test asserts the credential and that a planted
+  link is not written through.
+- **Running release.** Both the backup and the restore are those of the running release, so an
+  update of a controller or all-in-one starts only from a release that has them, v0.3.0 and later
+  (`update.SelfUpdateSince`). A controller on an earlier release is updated by hand once
+  (`install.sh --upgrade --restart`); the API refuses with "update this controller by hand once
+  (install.sh --upgrade --restart); later updates can start here", the web UI shows that text
+  instead of the button, and the updater refuses too.
 - **Status.** While it works the updater writes `updating` with a `step` (`verifying`,
   `backing_up`, `handing_over`, `waiting`) to the status file, which the outcome replaces.
 

@@ -7,6 +7,7 @@ package update_test
 import (
 	"context"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -27,6 +28,8 @@ type cmds struct {
 	bins  []string         // the binary of each call
 	fail  map[string]bool  // subcommands that fail
 	args  [][]string       // the arguments of each call
+	creds [][2]uint32      // the user of each backup
+	empty bool             // the backup writes nothing
 	newer bool             // migrate finds a schema a newer release migrated
 	inUse func(sub string) // runs at each call, to look at the host
 }
@@ -55,6 +58,26 @@ func (c *cmds) run(_ context.Context, bin string, args ...string) ([]byte, error
 	return nil, nil
 }
 
+// runAs is the backup, run as the service user: it records the credential and writes the archive to
+// the file root gave it.
+func (c *cmds) runAs(_ context.Context, uid, gid uint32, out io.Writer, bin string, args ...string) ([]byte, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.calls, c.bins, c.args = append(c.calls, args[0]), append(c.bins, bin), append(c.args, args)
+	c.creds = append(c.creds, [2]uint32{uid, gid})
+	if c.inUse != nil {
+		c.inUse(args[0])
+	}
+	if c.fail["backup"] {
+		return []byte("backup failed (test)"), errors.New("exit status 1")
+	}
+	if c.empty {
+		return nil, nil
+	}
+	_, err := out.Write([]byte("archive"))
+	return nil, err
+}
+
 // exitErr is the error of a command that ended with a code.
 type exitErr int
 
@@ -66,9 +89,9 @@ func controlHost(t *testing.T, role, running string, ready func([]byte) error) (
 	t.Helper()
 	i := newInstalled(t, hostOpts{}, running, []string{role}, ready)
 	c := &cmds{fail: map[string]bool{}}
-	i.a.Exec = c.run
+	i.a.Exec, i.a.RunAs = c.run, c.runAs
 	i.a.Control = func(string) (update.ControlPlane, error) {
-		return update.ControlPlane{Config: "/etc/rpmgr/" + role + ".yaml", Driver: "sqlite"}, nil
+		return update.ControlPlane{Config: "/etc/rpmgr/" + role + ".yaml", Driver: "sqlite", UID: 1234, GID: 5678}, nil
 	}
 	i.svc.notify = map[string]bool{"rpmgr-" + role + ".service": true}
 	return i, c
@@ -140,14 +163,59 @@ func TestOTA_ControlPlaneBackupAndRestore(t *testing.T) {
 		i.leftovers()
 	})
 
-	t.Run("a backup that leaves no file: refused", func(t *testing.T) {
-		i, _ := controlHost(t, "all-in-one", "1.1.0", nil)
-		i.a.Exec = func(context.Context, string, ...string) ([]byte, error) { return nil, nil }
+	t.Run("a backup that writes nothing: refused", func(t *testing.T) {
+		i, c := controlHost(t, "all-in-one", "1.1.0", nil)
+		c.empty = true
 		i.stage(rel{version: "1.2.0", seq: 6})
 		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRefused) {
 			t.Fatalf("Apply = %v; want refused", err)
 		}
 		i.runs("1.1.0")
+		if i.backupKept() {
+			t.Error("an empty backup was kept")
+		}
+	})
+
+	t.Run("the backup runs as the service user and root opens only its own file", func(t *testing.T) {
+		i, c := controlHost(t, "all-in-one", "1.1.0", nil)
+		victim := filepath.Join(t.TempDir(), "victim")
+		if err := os.WriteFile(victim, []byte("precious"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		// A link planted at the temporary name is removed, never written through.
+		if err := os.Symlink(victim, i.bin+update.BackupSuffix+".new"); err != nil {
+			t.Fatal(err)
+		}
+		i.stage(rel{version: "1.2.0", seq: 6})
+		if err := i.a.Apply(context.Background()); err != nil {
+			t.Fatalf("Apply = %v", err)
+		}
+		if len(c.creds) != 1 || c.creds[0] != [2]uint32{1234, 5678} || c.bins[0] != i.bin ||
+			!slices.Equal(c.args[0], []string{"backup", "--config", "/etc/rpmgr/all-in-one.yaml", "--out", "-"}) {
+			t.Errorf("credentials %v, calls %v; want one backup as 1234:5678 writing to standard output", c.creds, c.args)
+		}
+		if b, _ := os.ReadFile(victim); string(b) != "precious" { //nolint:gosec // G304: under t.TempDir
+			t.Errorf("root wrote through the planted link: %q", b)
+		}
+		if b, err := os.ReadFile(i.bin + update.BackupSuffix); err != nil || string(b) != "archive" { //nolint:gosec // G304: under t.TempDir
+			t.Errorf("the kept backup holds %q, %v", b, err)
+		}
+		if fi, _ := os.Stat(i.bin + update.BackupSuffix); fi.Mode().Perm() != 0o600 {
+			t.Errorf("backup mode %v; want 0600", fi.Mode())
+		}
+	})
+
+	t.Run("a running release without the self-update is refused, to be updated by hand once", func(t *testing.T) {
+		i, c := controlHost(t, "all-in-one", "0.2.0", nil)
+		i.stage(rel{version: "1.2.0", seq: 6, floor: "0.1.0"})
+		err := i.a.Apply(context.Background())
+		if !errors.Is(err, update.ErrRefused) || !strings.Contains(err.Error(), update.ByHand) {
+			t.Fatalf("Apply = %v; want refused with %q", err, update.ByHand)
+		}
+		if len(c.calls) != 0 {
+			t.Errorf("calls %v; want none", c.calls)
+		}
+		i.runs("0.2.0")
 	})
 
 	t.Run("PostgreSQL: refused with the reason, no backup attempted", func(t *testing.T) {
@@ -246,20 +314,17 @@ func TestOTA_ControlPlaneBackupAndRestore(t *testing.T) {
 		i.runs("1.1.0")
 	})
 
-	t.Run("the restore stages in the updater's own directory, when the previous release has the flag", func(t *testing.T) {
-		for running, want := range map[string]bool{"1.1.0": true, "0.2.0": false} {
-			i, c := controlHost(t, "controller", running, notReady("1.2.0"))
-			i.svc.notify = nil
-			c.newer = true
-			i.stage(rel{version: "1.2.0", seq: 6, floor: "0.1.0"})
-			if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRolledBack) {
-				t.Fatalf("%s: Apply = %v; want rolled back", running, err)
-			}
-			got := c.args[len(c.args)-1]
-			has := slices.Contains(got, "--stage-dir")
-			if has != want || (want && got[len(got)-1] != filepath.Join(i.u.State, "restore")) {
-				t.Errorf("previous %s: restore ran with %v; stage-dir %v, want %v", running, got, has, want)
-			}
+	t.Run("the restore stages in the updater's own directory", func(t *testing.T) {
+		i, c := controlHost(t, "controller", "1.1.0", notReady("1.2.0"))
+		i.svc.notify = nil
+		c.newer = true
+		i.stage(rel{version: "1.2.0", seq: 6})
+		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRolledBack) {
+			t.Fatalf("Apply = %v; want rolled back", err)
+		}
+		got := c.args[len(c.args)-1]
+		if got[0] != "restore" || got[len(got)-2] != "--stage-dir" || got[len(got)-1] != filepath.Join(i.u.State, "restore") {
+			t.Errorf("restore ran with %v; want --stage-dir in the updater's directory", got)
 		}
 	})
 
