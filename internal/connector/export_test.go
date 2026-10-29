@@ -49,6 +49,7 @@ func (c Chooser) Plan(gw string, local netip.Addr) string    { return c.c.plan(g
 func (c Chooser) Won(gw string, local netip.Addr, tr string) { c.c.won(gw, local, tr) }
 func (c Chooser) Forget(gw string, local netip.Addr)         { c.c.forget(gw, local) }
 func (c Chooser) Blackholed(gw string)                       { c.c.blackholed(gw) }
+func (c Chooser) HandedOff(gw string)                        { c.c.handedOff(gw) }
 func (c Chooser) MayProbe(gw string) bool                    { return c.c.mayProbe(gw) }
 
 // IsBlackhole is isBlackhole.

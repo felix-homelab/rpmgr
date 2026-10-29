@@ -67,6 +67,26 @@ func TestChooser(t *testing.T) {
 	}
 }
 
+// TestChooser_HandedOff: after a gateway drained for a hand-off the link races without QUIC for a
+// short time only, for that gateway only, so that the re-probe brings it back to QUIC.
+func TestChooser_HandedOff(t *testing.T) {
+	now := time.Unix(1_000_000, 0)
+	c := connector.NewChooser(func() time.Time { return now })
+	a := netip.MustParseAddr("192.0.2.10")
+	c.Won("gw_1", a, connector.TransportQUIC)
+	c.HandedOff("gw_1")
+	if got := c.Plan("gw_1", a); got != "" || c.MayProbe("gw_1") {
+		t.Fatalf("handed off: %q, probe %v; want a race without QUIC", got, c.MayProbe("gw_1"))
+	}
+	if !c.MayProbe("gw_2") {
+		t.Fatal("another gateway is demoted too")
+	}
+	now = now.Add(time.Minute) // far below the hour of a session that timed out
+	if !c.MayProbe("gw_1") {
+		t.Fatal("QUIC is still demoted a minute after the hand-off")
+	}
+}
+
 // TestIsBlackhole: only an idle timeout demotes QUIC.
 func TestIsBlackhole(t *testing.T) {
 	if !connector.IsBlackhole(fmt.Errorf("read: %w", &quic.IdleTimeoutError{})) {

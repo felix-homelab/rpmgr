@@ -176,6 +176,7 @@ type session struct {
 	srtt      atomic.Int64      // the smoothed round-trip time from Ping and Pong, 0 before the first
 	announced map[string]string // routes reported ready on it, with their priorities (prioKey); under Sessions.mu
 	retired   bool              // under Sessions.mu
+	handoff   atomic.Bool       // the gateway drained it for a hand-off: its process is replaced
 }
 
 // outgoing is a message to send after Sessions.mu is released.
@@ -705,6 +706,9 @@ func (m *Sessions) slot(ctx context.Context, l *link, tr string, first tunnel.Se
 			if hooks != nil && hooks.ended(err, false) {
 				return
 			}
+			if errors.Is(err, errHandedOff) {
+				continue // the new process is already there: no backoff
+			}
 		}
 		wait := b.Next(0)
 		m.o.Logger.Info("data session to a gateway ended", "gateway", l.gw, "transport", tr, "error", err, "retry_in", wait)
@@ -723,6 +727,15 @@ func (m *Sessions) slot(ctx context.Context, l *link, tr string, first tunnel.Se
 // errDrained ends a session's run when the gateway drains: the session keeps its streams until
 // the gateway closes it, and the slot dials a replacement.
 var errDrained = errors.New("connector: the gateway is draining")
+
+// handoffReason is the reason of a gateway's Drain for a socket hand-off.
+const handoffReason = "handoff"
+
+// errHandedOff is errDrained for a gateway that drains for a socket hand-off: its new process
+// takes the TCP connections at once, but only the old one reads the UDP socket, so the slot
+// redials at once and an auto link moves to TCP (docs/03-connections.md, "Restarts with socket
+// hand-off", "UDP and QUIC").
+var errHandedOff = fmt.Errorf("%w for a hand-off", errDrained)
 
 // run serves an established session until it ends, the gateway drains it, or ctx ends, which
 // retires it.
@@ -748,6 +761,9 @@ func (m *Sessions) run(ctx context.Context, l *link, ts tunnel.Session, tr strin
 		out := m.retire(s)
 		m.mu.Unlock()
 		m.flush(out)
+		if s.handoff.Load() {
+			return errHandedOff
+		}
 		return errDrained
 	case <-ctx.Done():
 		m.mu.Lock()
@@ -818,6 +834,10 @@ func (m *Sessions) runAuto(ctx context.Context, l *link) {
 				return moved()
 			case dialled:
 				m.choose.forget(gw, local)
+			case tr == TransportQUIC && errors.Is(err, errHandedOff):
+				// Only the old process reads the UDP socket until it exits: a QUIC dial would
+				// wait for its handshake timeout. The next race goes over TCP at once.
+				m.choose.handedOff(gw)
 			case tr == TransportQUIC && isBlackhole(err):
 				m.o.Logger.Warn("QUIC to a gateway timed out; using TCP for an hour", "gateway", gw)
 				m.choose.blackholed(gw)
@@ -1108,6 +1128,9 @@ func (m *Sessions) serve(ctx context.Context, s *session, drained chan struct{})
 		}
 		switch {
 		case msg.GetDrain() != nil:
+			if msg.GetDrain().GetReason() == handoffReason {
+				s.handoff.Store(true)
+			}
 			once.Do(func() { close(drained) })
 		case msg.GetPong() != nil:
 			s.pong(msg.GetPong().GetSeq())

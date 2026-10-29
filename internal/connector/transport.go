@@ -24,6 +24,9 @@ var (
 	reprobeEvery = 10 * time.Minute
 	// demoteFor is how long QUIC is not tried at all after a session timed out mid-way.
 	demoteFor = time.Hour
+	// handoffDemoteFor is how long QUIC is not tried after a gateway drained for a hand-off: its
+	// old process holds the UDP socket until it exits.
+	handoffDemoteFor = 10 * time.Second
 )
 
 // chooser decides the transport of a gateway's auto link: the winner of the last race from the
@@ -80,6 +83,19 @@ func (c *chooser) blackholed(gateway string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.demoted[gateway] = c.now().Add(demoteFor)
+	for k := range c.winners {
+		if k.gateway == gateway {
+			delete(c.winners, k)
+		}
+	}
+}
+
+// handedOff demotes QUIC to the gateway for handoffDemoteFor and drops its winners, so that the
+// link races without QUIC, after the gateway drained its sessions for a hand-off.
+func (c *chooser) handedOff(gateway string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.demoted[gateway] = c.now().Add(handoffDemoteFor)
 	for k := range c.winners {
 		if k.gateway == gateway {
 			delete(c.winners, k)
