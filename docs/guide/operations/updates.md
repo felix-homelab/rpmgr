@@ -25,6 +25,14 @@ This page shows how to run both and what they tell you. The rules behind them ar
   later stage includes every agent of an earlier one.
 - **Gateways go one at a time per group.** Each drains first, so that its connectors move to the
   other gateways, and is enabled again after the update.
+- **Hosts that can hand off do not restart.** The updater restarts a gateway or connector with a
+  socket hand-off when the installed release and the new one have it and the unit runs it as
+  `Type=notify` (v0.3.0 and later). The old process serves until the new one is ready, so a
+  gateway that is alone in its group refuses no connection. A host that cannot, such as one that
+  still runs a release from before v0.3.0, restarts as before, and so does the first update after
+  the updater wrote the unit's drop-in. If the new process is not ready, the old one keeps
+  serving and the update is rolled back
+  ([When something goes wrong](#when-something-goes-wrong)).
 - **In a staged rollout, a rollback or a silent agent pauses the rollout.** You then resume it, or
   cancel it. Agents
   that are offline, or whose policy says `auto_update: notify` or `off`, are listed and skipped;
@@ -218,6 +226,9 @@ one that other users may write; fix its owner or mode first
   ([Choose what a host takes](#choose-what-a-host-takes)).
 - **An agent rolled back.** Its updater installed the release, the role did not become ready, and
   the previous binary is back. The rollout is paused; read the agent's log, then resume or cancel.
+  After a failed hand-off the old process never stopped serving, and
+  `/run/rpmgr-update/status.json` names the reason; `handed_off` lists the roles that were
+  handed over.
 - **An agent stays staged, or is stalled.** It downloaded the release, but nothing installed it,
   or it reported nothing for long enough that the rollout stopped waiting. Check that it is
   connected and that its host's updater runs

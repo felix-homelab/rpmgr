@@ -218,8 +218,9 @@ RestartSec=2s
     installed release has the hand-off (v0.3.0 on). A binary of an older release never sends
     `READY=1`, so under `Type=notify` its start would hang: the updater removes the drop-ins of
     the roles, runs `systemctl daemon-reload` and restarts them when it rolls back to a release
-    without the hand-off. Writing the drop-in on an update to a release with it comes with slice
-    17.6 and 17.7.
+    without the hand-off. The updater and `install.sh --upgrade` write it on an update to a
+    release with the hand-off, and the first restart after that is a plain one, since the running
+    unit was not `Type=notify` ([04](04-security.md#over-the-air-updates)).
   - **`READY=1` comes at the role's ready point**, not at start: the gateway sends it once its
     listeners are up, and a gateway that a hand-off started once it holds its route ports (it
     applied its first snapshot) and the old process switched. A connector sends it at once after a
@@ -296,8 +297,8 @@ RestartSec=2s
      from before D84 read the file as invalid and dial nothing until the file is changed back or
      the binary updated again ([04](04-security.md#connector-local-policy));
   7. writes the outcome to `/run/rpmgr-update/status.json` (root, 0644): `updated`, `rolled_back`,
-     `rollback_failed` or `refused`, the version, the previous one and a reason, which the agent
-     reports at its next start, and removes `pending.json`. `rollback_failed` means `.prev` could
+     `rollback_failed` or `refused`, the version, the previous one, a reason and the roles that were
+     handed over, which the agent reports at its next start, and removes `pending.json`. `rollback_failed` means `.prev` could
      not be put back: the host needs an operator, who installs a release with
      `install.sh --upgrade`;
   8. at every start, and once at boot after the roles, finishes an install that `pending.json`
@@ -326,7 +327,7 @@ RestartSec=2s
   RuntimeDirectory=rpmgr-update
   RuntimeDirectoryPreserve=yes
   ProtectSystem=strict
-  ReadWritePaths=/usr/local/bin /var/lib/rpmgr-update
+  ReadWritePaths=/usr/local/bin /var/lib/rpmgr-update /etc/systemd/system
 
   [Install]
   WantedBy=multi-user.target

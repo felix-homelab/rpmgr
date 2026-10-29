@@ -31,9 +31,9 @@ ExecStart={{.Bin}} updater apply --staged /var/lib/rpmgr/update --state /var/lib
 RuntimeDirectory=rpmgr-update
 RuntimeDirectoryMode=0755
 RuntimeDirectoryPreserve=yes
-# It writes only the binary's directory, its own state and the status file.
+# It writes only the binary's directory, its own state, the status file and the roles' unit drop-ins.
 ProtectSystem=strict
-ReadWritePaths={{.BinDir}} /var/lib/rpmgr-update
+ReadWritePaths={{.BinDir}} /var/lib/rpmgr-update /etc/systemd/system
 NoNewPrivileges=yes
 ProtectHome=yes
 PrivateTmp=yes

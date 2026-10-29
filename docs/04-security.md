@@ -1226,15 +1226,21 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    cross-filesystem rename), fsyncs and re-hashes it, keeps the previous binary as `.prev`, renames
    `.rpmgr.new` over the binary at the path recorded in `/var/lib/rpmgr-update/install.json`
    (`/usr/local/bin/rpmgr` for script installs), and restarts each role service `install.json`
-   lists. From Phase 2 a role whose running process has the hand-off is restarted by one
-   ([Socket hand-off](#socket-hand-off-phase-2)): the old process keeps serving until the new one
-   is ready, so a lone gateway refuses no visitor connection during an update.
+   lists. From Phase 2 a role is restarted by a hand-off ([Socket hand-off](#socket-hand-off-phase-2))
+   when the installed release and the running one have it and its unit is `Type=notify`: the
+   updater runs `rpmgr handoff <role>` from the installed path, never from the running image, which
+   reads `(deleted)` after the rename, and the old process keeps serving until the new one is
+   ready, so a lone gateway refuses no visitor connection during an update. Any other role is
+   restarted. Before the restart the updater writes the role's hand-off drop-in
+   ([D155](14-open-decisions.md#engineering)) where it is missing, which is all a host set up
+   before the drop-in needs; that first restart is a plain one.
 6. The updater polls each role's admin `/readyz`, which reports ready only when the control session
    is established and a snapshot is applied, and counts a role as ready only while systemd has it
    active. If a role is not ready within the readiness window, or its service fails or restarts in
    a loop before then, the updater **rolls back** to `.prev`, restarts the roles again, and records
    the version as failed. A hand-off whose new process is not ready leaves the old process
-   serving, so the rollback only puts `.prev` back and restarts nothing. Before the rename it
+   serving, so the rollback only puts `.prev` back and restarts nothing for it; a role already handed
+   over is restarted by the rollback, which never signals an older process. Before the rename it
    records the install as pending in its own directory, so that a run that a crash or a reboot
    interrupts is finished by the next one: the updater also runs once at boot, checks the roles
    and rolls back if one is not ready.

@@ -56,11 +56,13 @@ var (
 
 // Status is the updater's last outcome (/run/rpmgr-update/status.json).
 type Status struct {
-	State    string    `json:"state"`
-	Version  string    `json:"version,omitempty"`
-	Previous string    `json:"previous,omitempty"`
-	Reason   string    `json:"reason,omitempty"`
-	At       time.Time `json:"at"`
+	State    string `json:"state"`
+	Version  string `json:"version,omitempty"`
+	Previous string `json:"previous,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+	// HandedOff are the roles the update restarted with a socket hand-off instead of a restart.
+	HandedOff []string  `json:"handed_off,omitempty"`
+	At        time.Time `json:"at"`
 }
 
 // Unit is what systemd says about a role's unit.
@@ -71,6 +73,17 @@ type Unit struct {
 	Restarts int
 	// MainPID is its main process, 0 when none runs.
 	MainPID int
+	// Notify is whether its Type is notify, which the hand-off drop-in sets: the process that runs
+	// reports readiness to systemd, so the new process of a hand-off can become the main one.
+	Notify bool
+}
+
+// Handoffer is a Services that can restart a role with a socket hand-off (Systemd); one that is
+// not restarts every role.
+type Handoffer interface {
+	// Handoff hands the role's sockets and sessions to a new process of the binary at bin, which
+	// returns when that is ready. On an error the old process serves on.
+	Handoff(ctx context.Context, bin, role string) error
 }
 
 // Services restarts the role services and reports their state; Systemd is the real one.
@@ -102,7 +115,9 @@ type Applier struct {
 	// Clock is for the status file's time; nil means time.Now.
 	Clock func() time.Time
 
-	reported bool // the last Apply wrote the status file
+	reported  bool            // the last Apply wrote the status file
+	handedOff []string        // the roles the last install handed off
+	unchanged map[string]bool // the roles whose old process still serves after a failed hand-off
 }
 
 // Reported reports whether the last Apply wrote an outcome to the status file. It did not when
@@ -143,7 +158,7 @@ var errInterrupted = errors.New("update: interrupted (test)")
 // changed); one wrapping ErrRolledBack when a role did not become ready and the previous binary was
 // put back; and one wrapping ErrRollbackFailed when that failed too.
 func (a *Applier) Apply(ctx context.Context) error {
-	a.reported = false
+	a.reported, a.handedOff, a.unchanged = false, nil, nil
 	p, err := a.readPending()
 	switch {
 	case err == nil:
@@ -198,9 +213,10 @@ func (a *Applier) resume(ctx context.Context, p *pending) error {
 func (a *Applier) finish(ctx context.Context, p *pending, note string) error {
 	status := func(state, reason string) Status {
 		parts := slices.DeleteFunc([]string{note, reason}, func(s string) bool { return s == "" })
-		return Status{State: state, Version: p.Version, Previous: p.Previous, Reason: strings.Join(parts, "; ")}
+		return Status{State: state, Version: p.Version, Previous: p.Previous, Reason: strings.Join(parts, "; "),
+			HandedOff: slices.Clone(a.handedOff)}
 	}
-	if err := a.restartAndWait(ctx, p.Roles); err != nil {
+	if err := a.restartAndWait(ctx, p); err != nil {
 		reason := err.Error()
 		state, werr := RolledBack, ErrRolledBack
 		if rerr := a.rollback(ctx, p); rerr != nil {
@@ -366,6 +382,9 @@ func (a *Applier) rollback(ctx context.Context, p *pending) error {
 		errs = append(errs, a.removeDropIns(p.Roles)...)
 	}
 	for _, role := range p.Roles {
+		if a.unchanged[role] {
+			continue // its old process serves on: a failed hand-off changed nothing of it
+		}
 		if err := a.Services.Restart(ctx, unitOf(role)); err != nil {
 			errs = append(errs, err)
 		}
@@ -390,12 +409,75 @@ func (a *Applier) removeDropIns(roles []string) []error {
 	return errs
 }
 
-// restartAndWait restarts each role and waits until all are active and ready, within the
-// readiness window. A role whose service fails, or restarts too often, ends the wait at once.
-func (a *Applier) restartAndWait(ctx context.Context, roles []string) error {
-	base := make(map[string]int, len(roles))
+// handoffRoles returns the roles of the install that restart with a hand-off: one whose installed
+// release and running release have it, whose unit is Type=notify and whose process runs. Any other
+// is restarted (docs/10-operations.md, "Hardened systemd units"). It must run before the drop-ins
+// are written.
+func (a *Applier) handoffRoles(ctx context.Context, p *pending) map[string]bool {
+	h, ok := a.Services.(Handoffer)
+	if !ok || h == nil || !units.HasHandoff(p.Version) || !units.HasHandoff(p.Previous) {
+		return nil
+	}
+	roles := map[string]bool{}
+	for _, role := range p.Roles {
+		if u, err := a.Services.State(ctx, unitOf(role)); err == nil && u.Notify && u.MainPID > 0 && u.Active == "active" {
+			roles[role] = true
+		}
+	}
+	return roles
+}
+
+// writeDropIns writes the hand-off drop-in of each role where the installed release has the
+// hand-off and the role has none yet, so that the restart that follows (Systemd.Restart reloads
+// systemd first) runs it as Type=notify. A rollback to a release without it removes them again.
+func (a *Applier) writeDropIns(roles []string) error {
+	dir := a.Units
+	if dir == "" {
+		dir = "/etc/systemd/system"
+	}
 	for _, role := range roles {
-		if err := a.Services.Restart(ctx, unitOf(role)); err != nil {
+		d := filepath.Join(dir, unitOf(role)+".d")
+		if _, err := os.Stat(filepath.Join(d, units.DropIn)); err == nil {
+			continue
+		}
+		b, err := units.RenderDropIn(role)
+		if err != nil {
+			return fmt.Errorf("update: %w", err)
+		}
+		if err := os.MkdirAll(d, 0o755); err != nil { //nolint:gosec // G301: systemd reads the unit directories as root
+			return fmt.Errorf("update: writing the drop-in of %s: %w", unitOf(role), err)
+		}
+		if err := writeAtomic(d, units.DropIn, b[:len(b)-1], 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// restartAndWait restarts each role, with a hand-off where it can, and waits until all are active
+// and ready, within the readiness window. A role whose service fails, or restarts too often, ends
+// the wait at once. A hand-off that fails leaves the old process serving, and so a rollback has
+// nothing to restart for it.
+func (a *Applier) restartAndWait(ctx context.Context, p *pending) error {
+	roles := p.Roles
+	handoff := a.handoffRoles(ctx, p)
+	if units.HasHandoff(p.Version) {
+		if err := a.writeDropIns(roles); err != nil {
+			return err
+		}
+	}
+	base := make(map[string]int, len(roles))
+	for i, role := range roles {
+		if handoff[role] {
+			if err := a.Services.(Handoffer).Handoff(ctx, p.Path, role); err != nil {
+				a.unchanged = map[string]bool{}
+				for _, r := range roles[i:] {
+					a.unchanged[r] = true
+				}
+				return fmt.Errorf("handing %s over: %w; the old process serves on", unitOf(role), err)
+			}
+			a.handedOff = append(a.handedOff, role)
+		} else if err := a.Services.Restart(ctx, unitOf(role)); err != nil {
 			return fmt.Errorf("restarting %s: %w", unitOf(role), err)
 		}
 		u, err := a.Services.State(ctx, unitOf(role))

@@ -181,7 +181,7 @@ func TestRenderUpdater(t *testing.T) {
 		"Type=oneshot",
 		"ExecStart=/opt/rpmgr/bin/rpmgr updater apply --staged /var/lib/rpmgr/update --state /var/lib/rpmgr-update",
 		"RuntimeDirectory=rpmgr-update", "RuntimeDirectoryPreserve=yes", "ProtectSystem=strict",
-		"ReadWritePaths=/opt/rpmgr/bin /var/lib/rpmgr-update", "NoNewPrivileges=yes",
+		"ReadWritePaths=/opt/rpmgr/bin /var/lib/rpmgr-update /etc/systemd/system", "NoNewPrivileges=yes",
 		// Once at boot, after the roles, to finish an install that a crash or reboot interrupted.
 		"After=network-online.target rpmgr-gateway.service rpmgr-connector.service", "WantedBy=multi-user.target",
 	} {
