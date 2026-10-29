@@ -131,7 +131,12 @@ func (a *Applier) restoreDatabase(ctx context.Context, p *pending, role string) 
 		return fmt.Errorf("update: rolling back: the database was migrated (%s) and restoring %s failed: %w: %s; "+
 			"the %s is stopped: run `rpmgr restore --in %s` and start it", strings.TrimSpace(string(probe)), p.Backup, rerr, strings.TrimSpace(string(b)), role, p.Backup)
 	}
-	a.restored = "the database was migrated by " + p.Version + " and restored from " + p.Backup
+	taken := ""
+	if fi, err := os.Stat(p.Backup); err == nil {
+		taken = ", taken " + fi.ModTime().UTC().Format(time.RFC3339)
+	}
+	a.restored = "the database was migrated by " + p.Version + " and restored from " + p.Backup + taken +
+		"; writes since then are lost, except revocations, which are applied again"
 	return nil
 }
 

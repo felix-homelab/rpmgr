@@ -29,7 +29,7 @@ func lines(t *testing.T, role string, o units.Options) map[string]bool {
 // reload on SIGHUP (their local policy), gateways and all-in-one reload with a hand-off; only controller and
 // all-in-one load the KEK credential, and only when named.
 func TestRender(t *testing.T) {
-	common := []string{"User=rpmgr", "Group=rpmgr", "ReadOnlyPaths=-/var/lib/rpmgr/update", "NoNewPrivileges=yes", "ProtectSystem=strict", "ProtectHome=yes", "PrivateTmp=yes",
+	common := []string{"User=rpmgr", "Group=rpmgr", "NoNewPrivileges=yes", "ProtectSystem=strict", "ProtectHome=yes", "PrivateTmp=yes",
 		"PrivateDevices=yes", "RestrictNamespaces=yes", "MemoryDenyWriteExecute=yes", "SystemCallArchitectures=native",
 		"StateDirectory=rpmgr", "ReadOnlyPaths=/etc/rpmgr", "Restart=on-failure", "WantedBy=multi-user.target"}
 	const cred = "LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek" //nolint:gosec // G101: a unit line naming a credential
@@ -182,7 +182,7 @@ func TestRenderUpdater(t *testing.T) {
 		"Type=oneshot",
 		"ExecStart=/opt/rpmgr/bin/rpmgr updater apply --staged /var/lib/rpmgr/update --state /var/lib/rpmgr-update",
 		"RuntimeDirectory=rpmgr-update", "RuntimeDirectoryPreserve=yes", "ProtectSystem=strict",
-		"ReadWritePaths=/opt/rpmgr/bin /var/lib/rpmgr-update -/var/lib/rpmgr -/etc/systemd/system/rpmgr-gateway.service.d -/etc/systemd/system/rpmgr-connector.service.d -/etc/systemd/system/rpmgr-all-in-one.service.d", "NoNewPrivileges=yes",
+		"ReadWritePaths=/opt/rpmgr/bin /var/lib/rpmgr-update -/var/lib/rpmgr -/etc/systemd/system/rpmgr-gateway.service.d -/etc/systemd/system/rpmgr-connector.service.d -/etc/systemd/system/rpmgr-all-in-one.service.d", "ReadOnlyPaths=-/var/lib/rpmgr/update", "NoNewPrivileges=yes",
 		// Once at boot, after the roles, to finish an install that a crash or reboot interrupted.
 		"After=network-online.target rpmgr-controller.service rpmgr-gateway.service rpmgr-connector.service rpmgr-all-in-one.service", "WantedBy=multi-user.target",
 	} {
