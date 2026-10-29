@@ -257,6 +257,17 @@ func TestDataSessions(t *testing.T) {
 		if a := got[gw.ID+"/con_a/quic"]; !a.EstablishedAt.Equal(first.EstablishedAt) {
 			t.Fatalf("the update state ended the data sessions: %+v, first %+v", a, first)
 		}
+		// So does one with only the old process of a hand-off (D160), which a new process sends
+		// every few seconds.
+		send(t, gst, &agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{
+			Draining: &agentv1.DrainingProcess{Active: true, Connections: 4}}}})
+		report(gst, ds("con_a", quic, 32*time.Millisecond), ds("con_a", h2, 0))
+		got = waitFor("the report after a draining state", func(m map[string]*ent.DataSession) bool {
+			return len(m) == 2 && m[gw.ID+"/con_a/quic"] != nil && m[gw.ID+"/con_a/quic"].RttMs == 32
+		})
+		if a := got[gw.ID+"/con_a/quic"]; !a.EstablishedAt.Equal(first.EstablishedAt) {
+			t.Fatalf("the draining state ended the data sessions: %+v, first %+v", a, first)
+		}
 
 		var names []string
 		for i := range 5000 {

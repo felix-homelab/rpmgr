@@ -93,6 +93,15 @@ service GatewayService {
       resource_field: "gateway_id"
     };
   }
+  // EndGatewayDrain ends the drain of the gateway's old process at once: it closes the
+  // connections it still holds and exits (D160). Refused when no old process drains.
+  rpc EndGatewayDrain(EndGatewayDrainRequest) returns (EndGatewayDrainResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "gateway_id"
+      step_up: true
+    };
+  }
   // CreatePortPool adds a range of public ports of one protocol to a gateway group, from which
   // TCP and UDP routes take their ports; pools of a group and protocol never overlap.
   rpc CreatePortPool(CreatePortPoolRequest) returns (CreatePortPoolResponse) {
@@ -251,6 +260,21 @@ message GatewayStatus {
   // Whether its last session announced over-the-air updates (the capability "ota"): it runs on its
   // own on a Linux host with the root updater, so a rollout can update it (D129).
   bool over_the_air = 8;
+  // The old process of its last hand-off while it drains; not set when none does, or when the
+  // gateway is a release without the report (D160).
+  DrainingProcess draining = 9;
+}
+
+// EndGatewayDrainRequest names a gateway.
+message EndGatewayDrainRequest {
+  // The gateway's ID.
+  string gateway_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// EndGatewayDrainResponse is the drain it ended.
+message EndGatewayDrainResponse {
+  // The old process as the gateway last reported it, whose connections the call cut.
+  DrainingProcess ended = 1;
 }
 
 // CreateGatewayRequest is a new gateway.

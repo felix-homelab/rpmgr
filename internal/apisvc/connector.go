@@ -36,7 +36,9 @@ type Connectors struct {
 	API *api.Server
 	// Revocations revoke a decommissioned connector's identity.
 	Revocations *Revocations
-	Now         func() time.Time
+	// Drains shows and ends the old process of a hand-off; nil shows none.
+	Drains Drains
+	Now    func() time.Time
 }
 
 // connectorFields are the fields of a connector a client may change.
@@ -194,7 +196,9 @@ func (c *Connectors) ListConnectors(ctx context.Context, req *connect.Request[rp
 		byID[s.ID] = s
 	}
 	for _, r := range rows {
-		out.Connectors = append(out.Connectors, connectorOf(r, byID[r.ID], c.now()))
+		con := connectorOf(r, byID[r.ID], c.now())
+		con.Session.Draining = drainOf(c.Drains, r.ID)
+		out.Connectors = append(out.Connectors, con)
 	}
 	return connect.NewResponse(out), nil
 }
@@ -210,7 +214,9 @@ func (c *Connectors) GetConnector(ctx context.Context, req *connect.Request[rpmg
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&rpmgrv1.GetConnectorResponse{Connector: connectorOf(row, s, c.now())}), nil
+	con := connectorOf(row, s, c.now())
+	con.Session.Draining = drainOf(c.Drains, row.ID)
+	return connect.NewResponse(&rpmgrv1.GetConnectorResponse{Connector: con}), nil
 }
 
 // GetConnectorStatus implements ConnectorService.
@@ -226,6 +232,7 @@ func (c *Connectors) GetConnectorStatus(ctx context.Context, req *connect.Reques
 		return nil, err
 	}
 	out := &rpmgrv1.ConnectorStatus{Session: agentSessionOf(s, c.now())}
+	out.Session.Draining = drainOf(c.Drains, row.ID)
 	ds, err := rc.DataSession.Query().Where(datasession.ConnectorID(row.ID)).
 		Order(ent.Asc(datasession.FieldGatewayID), ent.Asc(datasession.FieldTransport)).All(ctx)
 	if err != nil {

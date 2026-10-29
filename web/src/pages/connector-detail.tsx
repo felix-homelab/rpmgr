@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { Field } from "@/components/field";
 import { canStreamLogs, LiveLog } from "@/components/live-log";
+import { DrainingLine } from "@/components/draining";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
 import { UpdateButton } from "@/components/update-button";
@@ -50,7 +51,7 @@ export function ConnectorDetail() {
   const { t } = useTranslation();
   const { connectorId } = page.useParams();
   const org = useOrg();
-  const got = useQuery(ConnectorService.method.getConnector, { connectorId });
+  const got = useQuery(ConnectorService.method.getConnector, { connectorId }, { refetchInterval: 5000 });
   const status = useQuery(ConnectorService.method.getConnectorStatus, { connectorId });
   const names = useAgentNames(org?.orgId);
   const routes = useRoutes(org?.orgId);
@@ -109,6 +110,7 @@ export function ConnectorDetail() {
             ? t("connectors.controlUp", { addr: c.session.remoteAddr, when: when(c.session.lastSeenTime) })
             : t("connectors.controlDown", { when: when(c.session?.lastSeenTime) || t("connectors.never") })}
         </p>
+        <DrainingLine kind="connector" id={c.id} name={c.name} builtIn={c.builtIn} draining={c.session?.draining} />
         {(s?.dataSessions.length ?? 0) > 0 && (
           <Table framed={false}>
             <THead>

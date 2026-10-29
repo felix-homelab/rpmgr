@@ -70,6 +70,9 @@ const (
 	// CapSessionHandoff: the gateway drains the data sessions of the process a connector's
 	// SessionHello names in handoff_from, instead of closing them.
 	CapSessionHandoff = "session.handoff"
+	// CapDrainEnd: the agent reports the old process of a hand-off (Status.draining) and ends its
+	// drain when asked (EndDrain), D160.
+	CapDrainEnd = "drain.end"
 )
 
 // Phase1 lists every capability of Phase 1 agents.
