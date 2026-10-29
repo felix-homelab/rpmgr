@@ -21,6 +21,7 @@ Changes to the design documents are not recorded here: see the git history and t
   drop-in `handoff.conf` (`Type=notify`) that `rpmgr setup`, the install scripts and the updater
   write, so the first restart after it is a plain one. Needs v0.3.0 on both sides; QUIC and `udp`
   routes move after the old process exits, and an all-in-one's controller is briefly unavailable.
+  Routes that only a connector pinned to `quic` serves are reset until the old process exits.
   Containers restart as before. (#884, #885)
 - Gateways: passive health. A gateway passes over a connector at a priority whose targets refused
   or timed out several new connections in a row, for a back-off that grows with each failed try,

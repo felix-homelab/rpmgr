@@ -1714,7 +1714,7 @@ sequenceDiagram
    the hand-off is reported as failed.
 4. **Switch.** The old process stops accepting at once: it closes its copies of the public
    listeners and its admin listener, which the new process holds too, so the kernel hands every
-   new connection to the new process ([D158](14-open-decisions.md#engineering)). It sends its
+   new connection to the new process ([D159](14-open-decisions.md#engineering)). It sends its
    data sessions `Drain{reason: handoff}` and keeps them for the streams of the connections it
    has, those it accepted just before it stopped included: it still opens streams on them,
    though it admits no new session. Connectors open new sessions to the same endpoint at once,
