@@ -165,6 +165,7 @@ type HTTPRoutes struct {
 	table    atomic.Pointer[httpTable]
 	tokens   atomic.Pointer[map[string]DomainToken] // by claim ID
 	active   atomic.Int64                           // requests being served
+	fresh    freshConns                             // connections that have not sent a request yet
 
 	mu         sync.Mutex
 	transports map[string]*routeTransport   // by route ID
@@ -466,12 +467,12 @@ func NewHTTPRoutes(o HTTPOptions) *HTTPRoutes {
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetHTTP2(true)
-	h.server = &http.Server{Handler: h, ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle, Protocols: protocols,
+	h.server = &http.Server{Handler: h, ConnState: h.fresh.state, ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle, Protocols: protocols,
 		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
 	go func() { _ = h.server.Serve(h.ln) }()
-	h.server80 = &http.Server{Handler: http.HandlerFunc(h.serve80), ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle,
+	h.server80 = &http.Server{Handler: http.HandlerFunc(h.serve80), ConnState: h.fresh.state, ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle,
 		ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
-	h.unrouted = &http.Server{Handler: http.HandlerFunc(h.serveUnrouted), ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle,
+	h.unrouted = &http.Server{Handler: http.HandlerFunc(h.serveUnrouted), ConnState: h.fresh.state, ReadHeaderTimeout: httpReadHeader, IdleTimeout: httpIdle,
 		Protocols: protocols, ErrorLog: slog.NewLogLogger(o.Logger.Handler(), slog.LevelDebug)}
 	go func() { _ = h.unrouted.Serve(h.lnNone) }()
 	return h
@@ -631,7 +632,9 @@ func (h *HTTPRoutes) UnroutedTLSConfig() *tls.Config {
 
 // Serve takes one connection the router chose for an http route.
 func (h *HTTPRoutes) Serve(c *tls.Conn) {
+	h.fresh.add(c)
 	if !h.ln.put(c) {
+		h.fresh.done(c)
 		_ = c.Close()
 	}
 }
@@ -639,7 +642,9 @@ func (h *HTTPRoutes) Serve(c *tls.Conn) {
 // ServeUnrouted takes one connection of a name no route serves, or of none, which only ever gets
 // the 404 page.
 func (h *HTTPRoutes) ServeUnrouted(c *tls.Conn) {
+	h.fresh.add(c)
 	if !h.lnNone.put(c) {
+		h.fresh.done(c)
 		_ = c.Close()
 	}
 }
@@ -1320,6 +1325,41 @@ func matchPrefix(path, prefix string) bool {
 
 // Active returns the number of requests being served.
 func (h *HTTPRoutes) Active() int64 { return h.active.Load() }
+
+// Fresh returns the number of connections the server took in the last few seconds that have not
+// sent a request yet: their client may be about to. A drain that closes the server before it has
+// served them resets them (an EOF for the client).
+func (h *HTTPRoutes) Fresh() int { return h.fresh.count() }
+
+// freshGrace is how long a connection that sent nothing counts as fresh, as net/http's Shutdown
+// treats a new connection that has been silent for longer as idle.
+const freshGrace = 5 * time.Second
+
+// freshConns tracks the connections of an HTTP server from their accept to their first request.
+type freshConns struct{ m sync.Map } // net.Conn -> time.Time
+
+func (f *freshConns) add(c net.Conn) { f.m.Store(c, time.Now()) }
+
+func (f *freshConns) done(c net.Conn) { f.m.Delete(c) }
+
+// state is the server's ConnState hook: a connection counts until it leaves the new state.
+func (f *freshConns) state(c net.Conn, st http.ConnState) {
+	if st == http.StateNew {
+		f.m.LoadOrStore(c, time.Now())
+		return
+	}
+	f.m.Delete(c)
+}
+
+func (f *freshConns) count() (n int) {
+	f.m.Range(func(_, v any) bool {
+		if time.Since(v.(time.Time)) < freshGrace {
+			n++
+		}
+		return true
+	})
+	return n
+}
 
 // Drain stops taking connections and keep-alives; requests in flight go on.
 func (h *HTTPRoutes) Drain() {
