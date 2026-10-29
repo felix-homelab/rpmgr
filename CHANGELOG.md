@@ -13,7 +13,7 @@ Changes to the design documents are not recorded here: see the git history and t
 ### Added
 
 - Controllers and all-in-ones update over the air, on SQLite. An Instance Admin chooses "Update
-  controller to x.y.z" on Settings → Updates, or runs `rpmgr upgrade controller --release
+  controller to x.y.z" on Settings → Updates, or runs `rpmgr create rollout --controller --release
   x.y.z`, after a step-up. The root updater takes a backup of the database first, kept as
   `rpmgr.backup` next to the previous binary, restarts the controller or hands an all-in-one
   over, and, when the new release fails after its migration, restores the backup and starts the

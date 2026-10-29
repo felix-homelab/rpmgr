@@ -155,7 +155,7 @@ func getCommand() *cli.Command {
 	var instance bool
 	return &cli.Command{
 		Name: "get", Summary: "show a resource of the public API, the settings, or the install command of an agent",
-		Args: "install-command | settings | <" + kindsHelp(func(k apicli.Kind) bool { return !k.NoGet }) + "> <id or name>",
+		Args: "install-command | settings | controller-update | <" + kindsHelp(func(k apicli.Kind) bool { return !k.NoGet }) + "> <id or name>",
 		Flags: func(fs *flag.FlagSet) {
 			outputFlag(fs, &output)
 			fs.BoolVar(&instance, "instance", false, "settings: the instance's settings, for an Instance Admin, instead of the org's")
@@ -167,6 +167,9 @@ func getCommand() *cli.Command {
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) == 1 && args[0] == "install-command" {
 				return installCommand(ctx, env, role, allow, deny)
+			}
+			if len(args) == 1 && args[0] == "controller-update" {
+				return getControllerUpdate(ctx, env)
 			}
 			if len(args) == 1 && args[0] == "settings" {
 				return getSettings(ctx, env, instance, output)

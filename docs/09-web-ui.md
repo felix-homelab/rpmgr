@@ -808,8 +808,10 @@ one page, with a section list beside them that jumps to each section
   carries the old version and the updater reports a refusal, it says that nothing changed.
   After a restore the sessions are invalidated, so the page sends the user to sign in, as any page
   does. After 15 min without an answer the page says that the controller does not answer, with the
-  command that shows the updater's status on the host (`systemctl status rpmgr-update`), and keeps
-  asking.
+  command that shows the updater's status on the host (`systemctl status rpmgr-update`), and stops
+  asking. A failure it saw is kept in memory (the UI keeps nothing in browser storage), so that it is
+  shown again after the sign-in a restore causes, as long as the page is not reloaded, and a rollback by restore adds that the changes made
+  since the backup, whose time the reason names, are lost.
 
   ```
   ┌ Updating the controller to 1.5.0 ───────────────────────────────────────┐

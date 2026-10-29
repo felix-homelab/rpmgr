@@ -22,7 +22,7 @@ export const timing = { poll: 2000, giveUp: 15 * 60 * 1000 };
 
 // stepIndex is the step the updater reports, as an index of updateSteps; the staged release waits
 // for the updater, so its verification is next.
-function stepIndex(u: ControllerUpdate | undefined): number {
+function stepIndex(u: Pick<ControllerUpdate, "step"> | undefined): number {
   switch (u?.step) {
     case "backing_up": return 2;
     case "handing_over": return 3;
@@ -33,12 +33,29 @@ function stepIndex(u: ControllerUpdate | undefined): number {
 
 // stepStates is each step's state: all done once the new version answers; the step reached
 // failed when the update failed (reached is the furthest step seen); else the reported one current.
-export function stepStates(u: ControllerUpdate | undefined, done: boolean, failed: boolean, reached: number): StepState[] {
+export function stepStates(u: Pick<ControllerUpdate, "step"> | undefined, done: boolean, failed: boolean, reached: number): StepState[] {
   const at = done ? updateSteps.length : failed ? reached : Math.max(stepIndex(u), reached);
   return updateSteps.map((_, i) => (i < at ? "done" : i === at ? (failed ? "failed" : "current") : "pending"));
 }
 
 const failures = [ControllerUpdateState.ROLLED_BACK, ControllerUpdateState.ROLLBACK_FAILED, ControllerUpdateState.REFUSED];
+
+// The last failure is kept in memory, as the UI keeps nothing in browser storage: a restore ends
+// every session, so the page is left for the sign-in and comes back by client-side navigation, and
+// must still say what happened. A reload loses it, and the controller's own status then says it.
+const failureKey = "failure";
+interface Failure { to: string; state: ControllerUpdateState; step: string; reason: string }
+const kept = new Map<string, Failure>();
+
+function savedFailure(to?: string): Failure | undefined {
+  const f = kept.get(failureKey);
+  return f && f.to === to && failures.includes(f.state) ? f : undefined;
+}
+
+export function keepFailure(f: Failure | undefined) {
+  if (f) kept.set(failureKey, f);
+  else kept.delete(failureKey);
+}
 
 // validateUpdatingSearch reads the version the update installs and the one it replaces.
 export function validateUpdatingSearch(s: Record<string, unknown>): { to?: string; from?: string } {
@@ -56,24 +73,30 @@ export function Updating({ to, from }: { to?: string; from?: string }) {
   const navigate = useNavigate();
   // The session answers with the version that runs; a controller that is restarting answers
   // nothing, and the query keeps the last answer, so only a success counts.
-  const session = useQuery(AuthService.method.getSession, {}, { refetchInterval: timing.poll, retry: false });
-  const update = useQuery(ReleaseService.method.getControllerUpdate, {}, { refetchInterval: timing.poll, retry: false });
-  const [reached, setReached] = useState(1);
   const [gaveUp, setGaveUp] = useState(false);
+  const [saved] = useState(() => savedFailure(to));
+  const poll = gaveUp ? false : timing.poll; // after giving up the page stops asking
+  const session = useQuery(AuthService.method.getSession, {}, { refetchInterval: poll, retry: false });
+  const update = useQuery(ReleaseService.method.getControllerUpdate, {}, { refetchInterval: poll, retry: false });
+  const [reached, setReached] = useState(1);
   useEffect(() => {
     const timer = setTimeout(() => setGaveUp(true), timing.giveUp);
     return () => clearTimeout(timer);
   }, []);
   const running = session.data?.controllerVersion;
   const u = update.data?.update;
-  const ours = u?.version === to ? u : undefined;
+  const live = u?.version === to ? u : undefined;
+  const ours = live ?? saved;
   const done = !!to && running === to;
   const failed = !done && !!ours && failures.includes(ours.state);
   useEffect(() => {
     if (done) {
+      keepFailure(undefined);
       void navigate({ to: "/", replace: true });
+    } else if (live && to) {
+      keepFailure(failures.includes(live.state) ? { to, state: live.state, step: live.step, reason: live.reason } : undefined);
     }
-  }, [done, navigate]);
+  }, [done, live, to, navigate]);
   // The furthest step seen stays, so that the controller's silence while it restarts does not set
   // the steps back.
   if (ours && stepIndex(ours) > reached) {
@@ -103,6 +126,7 @@ export function Updating({ to, from }: { to?: string; from?: string }) {
               <Alert>{ours?.state === ControllerUpdateState.ROLLBACK_FAILED
                 ? t("updating.rollbackFailed", { reason: ours.reason })
                 : t("updating.failed", { version: here ?? "", reason: ours?.reason ?? "" })}</Alert>
+              {ours?.state === ControllerUpdateState.ROLLED_BACK && ours.reason.includes("restored from") && <Alert tone="info">{t("updating.lost")}</Alert>}
               <p><Link to="/" className="text-sm underline">{t("updating.dashboard")}</Link></p>
             </>
           )}

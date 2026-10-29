@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ControllerUpdateState, ReleaseService, ReleaseSource, type ControllerUpdate, type UpdateControllerRequest } from "@/gen/rpmgr/v1/release_pb";
 import { InstanceSettingsSchema, SettingsService, UpdateChannel } from "@/gen/rpmgr/v1/settings_pb";
 import { UserService } from "@/gen/rpmgr/v1/user_pb";
-import { stepStates, timing, updateSteps } from "@/pages/updating";
+import { keepFailure, stepStates, timing, updateSteps } from "@/pages/updating";
 import { apiError, auth, show } from "@/testing/api";
 import { create } from "@bufbuild/protobuf";
 
@@ -14,6 +14,7 @@ const original = { ...timing };
 beforeEach(() => Object.assign(timing, { poll: 15, giveUp: 400 }));
 afterEach(() => {
   cleanup();
+  keepFailure(undefined);
   Object.assign(timing, original);
 });
 
@@ -86,6 +87,25 @@ describe("Updating", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("so nothing was updated");
     const steps = within(screen.getByRole("list", { name: "Steps of the update" })).getAllByRole("listitem");
     expect(steps[1]!.querySelector(".text-destructive")).toBeTruthy();
+  });
+
+  it("keeps the failure in memory, so that it shows after the sign-in a restore causes", async () => {
+    updating(() => ({ controllerVersion: "1.5.0" }), () => ({ update: update({ state: state.ROLLED_BACK, reason: "restored from /usr/local/bin/rpmgr.backup, taken 2026-10-29T12:00:00Z" }) }));
+    await screen.findByRole("alert");
+    cleanup();
+    // The controller then asks for a sign-in and answers nothing else: the stored failure is shown.
+    updating(() => new ConnectError("unavailable", Code.Unavailable), () => { throw new ConnectError("unavailable", Code.Unavailable); });
+    expect((await screen.findAllByRole("alert"))[0]!.textContent).toContain("still runs");
+    expect(screen.getByText(/changes made after it was taken/)).toBeTruthy();
+  });
+
+  it("stops asking after it gave up", async () => {
+    let asked = 0;
+    updating(() => (asked++, new ConnectError("unavailable", Code.Unavailable)), () => { throw new ConnectError("unavailable", Code.Unavailable); });
+    await screen.findByText(/systemctl status rpmgr-update/);
+    const then = asked;
+    await new Promise((r) => setTimeout(r, 120));
+    expect(asked).toBe(then);
   });
 
   it("warns that the previous version could not be put back", async () => {

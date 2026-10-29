@@ -1265,6 +1265,7 @@
     "restarting": "The controller is restarting…",
     "failed": "The update failed. Version {{version}} still runs. {{reason}}",
     "rollbackFailed": "The update failed and the previous version could not be put back. {{reason}} Ask the operator of the host; the controller may be stopped.",
+    "lost": "The backup was restored: changes made after it was taken, named above, are lost, except revocations, which are applied again. Your session ended; sign in again.",
     "dashboard": "Go to the dashboard",
     "gaveUp": "The controller does not answer. Check the host: systemctl status rpmgr-update and the controller's journal."
   },

@@ -29,6 +29,12 @@ const ReasonControllerUpdate = "CONTROLLER_UPDATE_REFUSED"
 // reported nothing: the path unit starts it at once, so a longer wait means it did not start.
 const stagedWait = 2 * time.Minute
 
+// updatingStale is how long a status of `updating` stays believed without the root updater writing
+// again: it writes at each step, so an older one is from an updater that died, as with a crash or
+// a reboot, and the next run at boot resolves it. A restart of the controller loses what it staged,
+// so without this a dead update would show as under way for good.
+const updatingStale = 30 * time.Minute
+
 // SelfUpdate connects ReleaseService to the controller's host (D158). The controller stages a
 // release for the root updater, which backs the database up, installs it and restarts the
 // controller; it never installs anything itself.
@@ -137,6 +143,9 @@ func (u *SelfUpdate) current(now time.Time) *rpmgrv1.ControllerUpdate {
 		update.RolledBack:     rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_ROLLED_BACK,
 		update.RollbackFailed: rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_ROLLBACK_FAILED,
 		update.Refused:        rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_REFUSED}[st.State]
+	if err == nil && st.State == update.Updating && now.Sub(st.At) > updatingStale {
+		st = update.Status{} // an updater that stopped writing: no update is under way
+	}
 	// The status counts only when it is newer than the request: an earlier outcome is history.
 	if err == nil && known && (staged == "" || (st.Version == staged && !st.At.Before(at))) {
 		return &rpmgrv1.ControllerUpdate{Version: st.Version, State: state, Step: st.Step, Reason: st.Reason, Previous: st.Previous,

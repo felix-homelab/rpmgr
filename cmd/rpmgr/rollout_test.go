@@ -351,21 +351,25 @@ func TestEasyRolloutCommands(t *testing.T) {
 	}
 	// The controller's own update (D158): by version, after a step-up; refusals are shown; --status
 	// says how it stands and why none can start; the flags are exclusive.
-	for _, args := range [][]string{{}, {"--release", "1.6.0", "--status"}, {"--release", "1.6.0", "extra"}} {
-		if code, _, _ := run(append([]string{"upgrade", "controller"}, args...)...); code != cli.ExitUsage {
-			t.Errorf("upgrade controller %v: %d", args, code)
+	for _, args := range [][]string{{"--controller"}, {"--controller", "--release", "1.6.0", "--easy"}, {"--controller", "--release", "1.6.0", "--canary", "nas"},
+		{"--controller", "--release", "1.6.0", "extra"}} {
+		if code, _, _ := run(append([]string{"create", "rollout"}, args...)...); code != cli.ExitUsage {
+			t.Errorf("create rollout %v: %d", args, code)
 		}
 	}
-	if code, out, errOut := run("upgrade", "controller", "--release", "rel_3"); code != cli.ExitOK || a.ctlUp.GetReleaseId() != "rel_3" ||
+	if a.ctlUp != nil {
+		t.Fatalf("a refused command sent %v", a.ctlUp)
+	}
+	if code, out, errOut := run("create", "rollout", "--controller", "--release", "rel_3"); code != cli.ExitOK || a.ctlUp.GetReleaseId() != "rel_3" ||
 		!strings.Contains(out, "Staged 1.6.0") {
-		t.Errorf("upgrade controller: %d %q %q %v", code, out, errOut, a.ctlUp)
+		t.Errorf("create rollout --controller: %d %q %q %v", code, out, errOut, a.ctlUp)
 	}
-	if code, _, errOut := run("upgrade", "controller", "--release", "rel_1"); code != cli.ExitError || !strings.Contains(errOut, "not newer") {
-		t.Errorf("upgrade controller to an older release: %d %q", code, errOut)
+	if code, _, errOut := run("create", "rollout", "--controller", "--release", "rel_1"); code != cli.ExitError || !strings.Contains(errOut, "not newer") {
+		t.Errorf("create rollout --controller to an older release: %d %q", code, errOut)
 	}
-	if code, out, _ := run("upgrade", "controller", "--status"); code != cli.ExitOK || !strings.Contains(out, "The controller runs 1.5.0.") ||
+	if code, out, _ := run("get", "controller-update"); code != cli.ExitOK || !strings.Contains(out, "The controller runs 1.5.0.") ||
 		!strings.Contains(out, "Update to 1.6.0: updating (backing up).") || !strings.Contains(out, "No update can be started now: the controller runs on postgres.") {
-		t.Errorf("upgrade controller --status: %d %q", code, out)
+		t.Errorf("get controller-update: %d %q", code, out)
 	}
 	a.upgrade = nil
 	if code, _, errOut := run("upgrade", "connector", "edge"); code != cli.ExitError || a.upgrade != nil {

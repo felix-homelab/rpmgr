@@ -199,3 +199,28 @@ func TestUpdateController_NoUpdater(t *testing.T) {
 		t.Errorf("GetControllerUpdate = %v, %v", resp, err)
 	}
 }
+
+// A status of `updating` that the root updater stopped writing to, as after a crash, is no update
+// under way, whereas a recent one is; a controller that restarted lost what it staged.
+func TestGetControllerUpdate_StaleUpdating(t *testing.T) {
+	e, ada, _, _ := gatewayEnv(t)
+	ctx := context.Background()
+	var at time.Time
+	e.rel.Self = &apisvc.SelfUpdate{Stage: func(context.Context, string) error { return nil },
+		Status: func() (update.Status, error) {
+			return update.Status{State: update.Updating, Step: update.StepHandingOver, Version: "1.6.0", At: at}, nil
+		}}
+	for name, tc := range map[string]struct {
+		at   time.Time
+		want rpmgrv1.ControllerUpdateState
+	}{
+		"written a minute ago": {e.clock.Add(-time.Minute), rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_UPDATING},
+		"written an hour ago":  {e.clock.Add(-time.Hour), rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_UNSPECIFIED},
+	} {
+		at = tc.at
+		resp, err := ada.rel.GetControllerUpdate(ctx, connect.NewRequest(&rpmgrv1.GetControllerUpdateRequest{}))
+		if err != nil || resp.Msg.GetUpdate().GetState() != tc.want {
+			t.Errorf("%s: %v, %v; want %v", name, resp, err, tc.want)
+		}
+	}
+}

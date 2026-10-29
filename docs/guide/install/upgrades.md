@@ -61,7 +61,7 @@ rpmgr install: restarted rpmgr-connector with rpmgr 0.1.1
 ### 1. The controller
 
 **Over the air (SQLite, v0.3.0 and later).** Choose **Update controller to …** on **Settings →
-Updates**, or run `rpmgr upgrade controller --release <version>`. The host's updater backs the
+Updates**, or run `rpmgr create rollout --controller --release <version>`. The host's updater backs the
 database up itself, installs the release, restarts the controller (an all-in-one is handed over),
 and restores the backup and starts the previous version when the new one fails after its
 migration ([Update the controller](../operations/updates.md#update-the-controller)). The steps

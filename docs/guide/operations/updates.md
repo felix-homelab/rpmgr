@@ -55,15 +55,15 @@ controller goes first, as in every upgrade: no agent runs ahead of it. A control
    **Update controller to 1.5.0**. It is off, with the reason beside it, while the mirror does not
    hold the release, a rollout runs, an update of the controller is under way, the host has no
    root updater, or the database is PostgreSQL. Choose it and confirm your identity. From the
-   command line: `rpmgr upgrade controller --release 1.5.0`.
+   command line: `rpmgr create rollout --controller --release 1.5.0`.
 
    ![The releases card with Update controller to 0.2.0](../images/web/controller-update.png)
 
 2. The **Updating…** page follows the update: downloading, verifying, backing up, handing over,
    migrating and ready. The controller restarts for a short while, an all-in-one's with a
    hand-off; the page asks it in the background, says that it is restarting, and goes back to the
-   dashboard when the new version answers. Keep it open. If you close it, `rpmgr upgrade
-   controller --status` tells how the update stands.
+   dashboard when the new version answers. Keep it open. If you close it, `rpmgr get
+   controller-update` tells how the update stands.
 
    ![The Updating page while the database is backed up](../images/web/updating.png)
 
@@ -195,8 +195,8 @@ controller host.
 
 ```
 rpmgr list release
-rpmgr upgrade controller --release 1.5.0
-rpmgr upgrade controller --status
+rpmgr create rollout --controller --release 1.5.0
+rpmgr get controller-update
 rpmgr create rollout --release 1.5.0 --canary db-host-1
 rpmgr get rollout rol_…
 rpmgr list rollout-target rol_…
@@ -288,7 +288,7 @@ one that other users may write; fix its owner or mode first
   updater, and the restarted agent then announces over-the-air updates
   ([Upgrades](../install/upgrades.md)). To repair it by hand, see
   [Repair the updater on a host](#repair-the-updater-on-a-host).
-- **The controller's update is refused.** The page and `rpmgr upgrade controller --status` give
+- **The controller's update is refused.** The page and `rpmgr get controller-update` give
   the reason: the mirror does not hold the release, a rollout runs, the host has no root updater
   or its state directory is not `/var/lib/rpmgr`, the database is PostgreSQL, the release is not
   newer than the controller, or its backup failed (the status says why; the backup is written next
