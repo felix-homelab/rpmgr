@@ -141,6 +141,9 @@ type Applier struct {
 	// Exec runs a command of rpmgr itself, `<bin> backup`, `migrate` and `restore`, and returns
 	// its output; nil runs it with os/exec.
 	Exec func(ctx context.Context, bin string, args ...string) ([]byte, error)
+	// RunAs runs bin as the user uid:gid, its standard output going to stdout, and returns its
+	// standard error; nil runs it with os/exec and a credential. The backup of a controller runs so.
+	RunAs func(ctx context.Context, uid, gid uint32, stdout io.Writer, bin string, args ...string) ([]byte, error)
 
 	reported  bool            // the last Apply wrote the status file
 	handedOff []string        // the roles the last install handed off

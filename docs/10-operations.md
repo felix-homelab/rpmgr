@@ -680,8 +680,9 @@ service that still runs the previous binary, with the command that restarts it.
     `update/` directory read-only; a database in another directory needs a drop-in that adds it to
     `ReadWritePaths=`. `rpmgr restore` does its SQLite work in `/var/lib/rpmgr-update/restore/` (`--stage-dir`, mode
     0700, root's) and moves only finished files into the state directory, which the service user
-    owns, through a handle that follows no link; `rpmgr backup` and the restore refuse a link at the
-    database's names ([04](04-security.md#controllers-and-all-in-ones-over-the-air)). A
+    owns, through a handle that follows no link; `rpmgr backup --out -` runs as the service user and the updater streams it into its
+    own file ([04](04-security.md#controllers-and-all-in-ones-over-the-air)). Only a controller
+    that already runs v0.3.0 or later is updated this way; an earlier one is updated by hand once. A
     rollback asks the previous binary's `rpmgr migrate`, which ends with **exit code 3** for a
     schema a newer release migrated (`ErrUnknownMigration`), and only then runs `rpmgr restore --in
     <binary>.backup`; after any other failure of the check it restores nothing and leaves the role

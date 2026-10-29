@@ -497,7 +497,7 @@ rpmgr backup [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
-| `--out string` |  | the archive to write; it must not exist (required) |
+| `--out string` |  | the archive to write; it must not exist; - writes it to standard output, as the root updater reads it (required) |
 
 ## rpmgr restore
 

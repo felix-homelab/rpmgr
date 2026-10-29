@@ -216,6 +216,7 @@ func controlPlane(bootDir, role string) (update.ControlPlane, error) {
 	var f struct {
 		Database struct {
 			Driver string `yaml:"driver"`
+			DSN    string `yaml:"dsn"`
 		} `yaml:"database"`
 	}
 	if err := yaml.Unmarshal(b, &f); err != nil {
@@ -224,5 +225,17 @@ func controlPlane(bootDir, role string) (update.ControlPlane, error) {
 	if f.Database.Driver == "" {
 		f.Database.Driver = "sqlite" // the default of config
 	}
-	return update.ControlPlane{Config: path, Driver: f.Database.Driver}, nil
+	cp := update.ControlPlane{Config: path, Driver: f.Database.Driver}
+	if cp.Driver != "sqlite" {
+		return cp, nil
+	}
+	if f.Database.DSN == "" {
+		f.Database.DSN = "/var/lib/rpmgr/controller.db" // the default of config
+	}
+	// The backup runs as the owner of the state directory, which is the service user. It is read
+	// from the directory's own entry, not from anything inside it.
+	if cp.UID, cp.GID, err = update.OwnerOf(filepath.Dir(f.Database.DSN)); err != nil {
+		return cp, fmt.Errorf("the state directory of %s: %w", path, err)
+	}
+	return cp, nil
 }
