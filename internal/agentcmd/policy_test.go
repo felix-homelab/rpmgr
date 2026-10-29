@@ -25,6 +25,19 @@ func asUser(t *testing.T, uid int) *int {
 	return &reloads
 }
 
+// TestReloadArgs: the policy reaches an all-in-one's connector by SIGHUP to its main process, as its
+// reload is a hand-off, and a connector's by systemctl reload.
+func TestReloadArgs(t *testing.T) {
+	for unit, want := range map[string]string{
+		"rpmgr-connector.service":  "reload rpmgr-connector.service",
+		"rpmgr-all-in-one.service": "kill --kill-whom=main --signal=SIGHUP rpmgr-all-in-one.service",
+	} {
+		if got := strings.Join(reloadArgs(unit), " "); got != want {
+			t.Errorf("reloadArgs(%s) = %q, want %q", unit, got, want)
+		}
+	}
+}
+
 func TestPolicyCommands(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "policy.yaml")
 	reloads := asUser(t, 0)

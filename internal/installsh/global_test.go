@@ -16,6 +16,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/installsh"
 	"github.com/felix-homelab/rpmgr/internal/release"
+	"github.com/felix-homelab/rpmgr/internal/units"
 )
 
 // github fakes the GitHub of rpmgr's releases: the download URLs of release v1.4.2, and the API's
@@ -300,6 +301,32 @@ func TestVariant_KeptOnTheHost(t *testing.T) {
 			}
 		} else if err == nil || !strings.Contains(out, tc.want) {
 			t.Errorf("%s: %v\n%s", name, err, out)
+		}
+	}
+}
+
+// TestScripts_HasHandoff: the scripts decide with has_handoff, in shell, which releases get the
+// hand-off drop-in, and agree with units.HasHandoff, which the updater uses, on every version.
+func TestScripts_HasHandoff(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh")
+	}
+	script, err := installsh.RenderGlobal("", []release.PublicKey{pubkey(t, root)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, fn, ok := strings.Cut(string(script), "has_handoff() {")
+	fn, _, ok2 := strings.Cut(fn, "\n}\n")
+	if !ok || !ok2 {
+		t.Fatal("no has_handoff in the global script")
+	}
+	for _, v := range []string{"0.1.0", "0.2.9", "0.2.0-rc.1", "0.3.0-rc.1", "0.3.0", "0.3.1", "0.10.0", "1.0.0", "12.0.0", "dev", "", "x.3.0"} {
+		out, err := exec.Command("sh", "-c", "has_handoff() {"+fn+"\n}\nhas_handoff \"$1\" && echo yes || echo no", "sh", v).Output() //nolint:gosec // G204: a test's own script
+		if err != nil {
+			t.Fatalf("%q: %v", v, err)
+		}
+		if got, want := strings.TrimSpace(string(out)) == "yes", units.HasHandoff(v); got != want {
+			t.Errorf("has_handoff %q = %v; units.HasHandoff = %v", v, got, want)
 		}
 	}
 }

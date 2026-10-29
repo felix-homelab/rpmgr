@@ -19,9 +19,19 @@ var (
 	geteuid = os.Geteuid
 	// reloadConnector asks the running connector to reload its policy (SIGHUP through systemd).
 	reloadConnector = func(ctx context.Context) error {
-		return exec.CommandContext(ctx, "systemctl", "reload", policyUnit(os.Stat)).Run() //nolint:gosec // G204: one of two fixed units
+		return exec.CommandContext(ctx, "systemctl", reloadArgs(policyUnit(os.Stat))...).Run() //nolint:gosec // G204: one of two fixed units
 	}
 )
+
+// reloadArgs are the arguments of systemctl that make a unit's connector read the policy: reload
+// for the connector's unit, whose ExecReload sends SIGHUP; a signal for the all-in-one's, whose
+// reload is a hand-off (D155).
+func reloadArgs(unit string) []string {
+	if unit == "rpmgr-all-in-one.service" {
+		return []string{"kill", "--kill-whom=main", "--signal=SIGHUP", unit}
+	}
+	return []string{"reload", unit}
+}
 
 // policyUnit is the unit whose connector reads the policy: rpmgr-connector, or, on a host with an
 // all-in-one's boot file and no connector's, rpmgr-all-in-one, whose own connector reads it
