@@ -27,9 +27,14 @@ import (
 // commands returns rpmgr's command tree (docs/16-cli.md). Commands that are not implemented yet
 // report "not available in this build".
 func commands() *cli.Command {
-	return &cli.Command{
-		Name:    "rpmgr",
-		Summary: "publish services on private networks through public gateways",
+	root := &cli.Command{
+		Name:     "rpmgr",
+		Summary:  "publish services on private networks through public gateways",
+		Sections: []string{sectionResources, sectionHost, sectionRole, sectionSession},
+		Topics:   helpTopics(),
+		Removed: map[string]string{
+			"upgrade": "to update agents, use 'rpmgr create rollout --easy --release <version> --agent <agent>…'",
+		},
 		Sub: append([]*cli.Command{
 			agentcmd.Role("controller", "run the controller: web UI, API, CA and configuration", runController,
 				controllerInit()),
@@ -57,6 +62,66 @@ func commands() *cli.Command {
 			agentcmd.SystemdUnit(),
 			agentcmd.Version("full"),
 		}, append(apiCommands(), testCommands...)...),
+	}
+	for _, c := range root.Sub {
+		c.Section = sectionOf[c.Name]
+		if c.Section == "" {
+			c.Section = sectionResources // the verbs of the public API: all but the listed ones
+		}
+	}
+	return root
+}
+
+// The sections of `rpmgr --help` (D151).
+const (
+	sectionResources = "Resources"
+	sectionHost      = "This host"
+	sectionRole      = "Run a role"
+	sectionSession   = "Session"
+)
+
+// sectionOf is the section of each command of the tree that is not a verb of the public API, by
+// name. The test commands of the rpmgrtest build count as this host's.
+var sectionOf = func() map[string]string {
+	m := map[string]string{}
+	for _, n := range []string{"setup", "enroll", "leave", "handoff", "status", "diag", "policy", "updater", "backup",
+		"restore", "migrate", "ca", "kek", "user", "release", "systemd-unit"} {
+		m[n] = sectionHost
+	}
+	for _, n := range []string{"controller", "gateway", "connector", "all-in-one"} {
+		m[n] = sectionRole
+	}
+	for _, n := range []string{"login", "logout", "version"} {
+		m[n] = sectionSession
+	}
+	return m
+}()
+
+// helpTopics are the topics of `rpmgr help <topic>` (D151): the commands of one task in the
+// order they are used, across the API and this host. A step that begins with "rpmgr " names a
+// command of the tree, which a test checks.
+func helpTopics() []cli.Topic {
+	return []cli.Topic{
+		{Name: "updates", Summary: "update the controller and the agents over the air", Steps: []cli.Step{
+			{Do: "rpmgr check release", Note: "ask for new releases now instead of at the next daily check"},
+			{Do: "rpmgr list release", Note: "see the releases the controller knows"},
+			{Do: "rpmgr upload release <dir>", Note: "or hand the controller a signed release from a directory, over the API"},
+			{Do: "rpmgr release import <dir>", Note: "or import it on the controller host, for air-gapped installations"},
+			{Do: "rpmgr create rollout --controller --release <version>", Note: "update the controller, or all-in-one, first"},
+			{Do: "rpmgr get controller-update", Note: "follow the controller's update"},
+			{Do: "rpmgr create rollout --easy --release <version> --agent <agent>…", Note: "update agents one after another, no stages"},
+			{Do: "rpmgr create rollout --release <version> --canary <agent>…", Note: "or update in stages, starting with canary agents"},
+			{Do: "rpmgr get rollout <rollout>", Note: "see how a rollout stands"},
+			{Do: "rpmgr list rollout-target <rollout>", Note: "see each agent's state, or an easy rollout's queue"},
+			{Do: "rpmgr advance rollout (--percent <n> | --all) <rollout>", Note: "let a staged rollout reach more agents"},
+			{Do: "rpmgr pause rollout <rollout>", Note: "hold a rollout; 'resume rollout' lets it run, 'cancel rollout' ends it"},
+		}},
+		{Name: "hand-off", Summary: "restart a gateway, all-in-one or connector without refusing connections", Steps: []cli.Step{
+			{Do: "rpmgr handoff <role>", Note: "hand the sockets and sessions of a running role to a new process"},
+			{Do: "systemctl reload rpmgr-gateway", Note: "the same for a gateway; rpmgr-all-in-one for an all-in-one"},
+			{Do: "install.sh --upgrade --restart", Note: "install a new binary and hand over where the running release can"},
+			{Do: "rpmgr status", Note: "check the roles of this host afterwards"},
+		}},
 	}
 }
 
