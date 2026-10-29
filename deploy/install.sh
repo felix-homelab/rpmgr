@@ -233,6 +233,26 @@ verify_release() {
   say "verified rpmgr $VERSION (manifest $seq)"
 }
 
+# has_handoff <version>: a release with socket hand-off, from 0.3.0 on, whose roles want the unit
+# drop-in handoff.conf (Type=notify). Anything that is no release version has none.
+has_handoff() {
+  case $1 in
+    0.[0-2].* | 0.[0-2]-*) return 1 ;;
+    [0-9]*.[0-9]*.[0-9]*) return 0 ;;
+  esac
+  return 1
+}
+# make_dropin_dirs: the drop-in directories of the three roles, root's, which the root updater's
+# sandbox may write and nothing else under /etc/systemd/system (D155).
+make_dropin_dirs() {
+  for r in gateway connector all-in-one; do install -d -m 0755 "/etc/systemd/system/rpmgr-$r.service.d" || return 1; done
+}
+# write_dropin <role>: the drop-in of a role that restarts with hand-off, as the new binary prints it.
+write_dropin() {
+  d=/etc/systemd/system/rpmgr-$1.service.d
+  "$BIN" systemd-unit --drop-in "$1" >"$tmp/handoff.conf" && make_dropin_dirs &&
+    install -m 0644 "$tmp/handoff.conf" "$d/handoff.conf"
+}
 say "downloading rpmgr $VERSION ($variant) for linux/$arch from $GITHUB/$REPO"
 artifact="rpmgr-$VERSION-linux-$arch"
 [ "$variant" = full ] || artifact="$artifact-$variant"
@@ -281,6 +301,37 @@ if command -v systemctl >/dev/null 2>&1; then
     if systemctl is-active --quiet "$unit" 2>/dev/null; then running="$running $unit"; fi
   done
 fi
+# The running units that restart with a hand-off: the process announced in its runtime directory
+# that it takes SIGUSR2, and systemd runs it as Type=notify. Decided before the units are written,
+# as the drop-in changes the type systemd has loaded; the first restart after it is a plain one.
+handoff_units=''
+for unit in $running; do
+  role=${unit#rpmgr-}
+  case $role in gateway | all-in-one | connector) ;; *) continue ;; esac
+  pid=$(systemctl show -p MainPID --value "$unit" 2>/dev/null) || pid=''
+  [ -n "$pid" ] && [ "$pid" != 0 ] || continue
+  [ "$(cat "/run/rpmgr/$role/handoff.pid" 2>/dev/null)" = "$pid" ] || continue
+  [ "$(systemctl show -p Type --value "$unit" 2>/dev/null)" = notify ] || continue
+  handoff_units="$handoff_units $unit"
+done
+# The units of the roles on this host (a gateway, all-in-one or connector with a unit) and their
+# hand-off drop-ins, written by the new binary from the boot files, so that `systemctl reload` and
+# a restart hand off. A release without the hand-off leaves them as they are; a role whose unit the
+# binary cannot render keeps the one it has.
+if command -v systemctl >/dev/null 2>&1 && has_handoff "$VERSION"; then
+  written=0
+  make_dropin_dirs || die "cannot create the unit drop-in directories"
+  for role in gateway all-in-one connector; do
+    [ -f "/etc/systemd/system/rpmgr-$role.service" ] || continue
+    if "$BIN" systemd-unit --bin "$BIN" "$role" >"$tmp/unit" && write_dropin "$role" &&
+      install -m 0644 "$tmp/unit" "/etc/systemd/system/rpmgr-$role.service"; then
+      written=1
+    else
+      say "could not write the unit of rpmgr-$role with the hand-off; it keeps the one it has"
+    fi
+  done
+  [ "$written" = 0 ] || systemctl daemon-reload || die "systemctl daemon-reload failed"
+fi
 # stays_up <unit>: the unit is active for 5 s on end and systemd did not restart it meanwhile, as it
 # would a binary that fails at start (Restart=on-failure).
 stays_up() {
@@ -294,13 +345,32 @@ stays_up() {
 if [ "$restart" = 1 ]; then
   [ -n "$running" ] || say "no rpmgr service runs; nothing to restart"
   for unit in $running; do
+    case " $handoff_units " in
+      *" $unit "*)
+        # A failed hand-off leaves the old process serving; the script fails, as a failed restart does.
+        "$BIN" handoff "${unit#rpmgr-}" || die "cannot hand $unit over to rpmgr $VERSION; the old process serves on; see: journalctl -u $unit -n 50"
+        stays_up "$unit" || die "$unit does not stay up with rpmgr $VERSION; see: journalctl -u $unit -n 50"
+        say "handed $unit over to rpmgr $VERSION without a restart"
+        continue
+        ;;
+    esac
+    case $unit in
+      rpmgr-gateway | rpmgr-all-in-one | rpmgr-connector)
+        say "restarting $unit without a hand-off: its running process or unit does not support one yet (before 0.3.0, or" \
+          "Type=notify is new); the next restart can hand off" ;;
+    esac
     systemctl restart "$unit" || die "cannot restart $unit; see: journalctl -u $unit -n 50"
     stays_up "$unit" || die "$unit does not stay up with rpmgr $VERSION; see: journalctl -u $unit -n 50"
     say "restarted $unit with rpmgr $VERSION"
   done
 else
   for unit in $running; do
-    say "$unit runs the previous binary until you restart it: sudo systemctl restart $unit"
+    case " $handoff_units " in
+      *" $unit "*)
+        if [ "$unit" = rpmgr-connector ]; then how="sudo rpmgr handoff connector"; else how="sudo systemctl reload $unit"; fi
+        say "$unit runs the previous binary until you hand it over: $how" ;;
+      *) say "$unit runs the previous binary until you restart it: sudo systemctl restart $unit" ;;
+    esac
   done
 fi
 [ "$upgrade" = 0 ] || exit 0

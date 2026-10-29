@@ -17,7 +17,11 @@ RuntimeDirectory=rpmgr/{{.Role}}
 User=rpmgr
 Group=rpmgr
 ExecStart={{.Bin}} {{.Role}} --config /etc/rpmgr/{{.Role}}.yaml
-{{- if .Reload}}
+{{- if .ReloadHandoff}}
+# systemctl reload restarts with a hand-off and fails, the old process serving, if the new one is
+# not ready.
+ExecReload={{.Bin}} handoff {{.Role}}
+{{- else if .Reload}}
 ExecReload=/bin/kill -HUP $MAINPID
 {{- end}}
 {{- if .BindLow}}

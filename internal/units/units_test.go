@@ -26,7 +26,7 @@ func lines(t *testing.T, role string, o units.Options) map[string]bool {
 
 // TestRender: every role runs as rpmgr with the hardening of docs/10-operations.md; gateways,
 // controllers and all-in-one may bind ports below 1024, connectors get no capability; connectors
-// and all-in-one, whose connector has a local policy, reload on SIGHUP; only controller and
+// reload on SIGHUP (their local policy), gateways and all-in-one reload with a hand-off; only controller and
 // all-in-one load the KEK credential, and only when named.
 func TestRender(t *testing.T) {
 	common := []string{"User=rpmgr", "Group=rpmgr", "NoNewPrivileges=yes", "ProtectSystem=strict", "ProtectHome=yes", "PrivateTmp=yes",
@@ -38,15 +38,16 @@ func TestRender(t *testing.T) {
 		credential string
 		want, not  []string
 	}{
-		{"gateway", "rpmgr-kek", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE", "RuntimeDirectory=rpmgr/gateway"},
+		{"gateway", "rpmgr-kek", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE", "RuntimeDirectory=rpmgr/gateway",
+			"ExecReload=/usr/local/bin/rpmgr handoff gateway"},
 			[]string{cred, "ExecReload=/bin/kill -HUP $MAINPID", "Type=notify", "NotifyAccess=all"}},
 		{"connector", "rpmgr-kek", []string{"CapabilityBoundingSet=", "ExecReload=/bin/kill -HUP $MAINPID",
 			"RuntimeDirectory=rpmgr/connector"}, []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE", "Type=notify", "NotifyAccess=all"}},
 		{"controller", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE"},
 			[]string{"ExecReload=/bin/kill -HUP $MAINPID", "Type=notify", "NotifyAccess=all", "RuntimeDirectory=rpmgr/controller"}},
 		{"controller", "", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE"}, []string{cred}},
-		{"all-in-one", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE", "ExecReload=/bin/kill -HUP $MAINPID",
-			"RuntimeDirectory=rpmgr/all-in-one"}, []string{"Type=notify", "NotifyAccess=all"}},
+		{"all-in-one", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE", "ExecReload=/usr/local/bin/rpmgr handoff all-in-one",
+			"RuntimeDirectory=rpmgr/all-in-one"}, []string{"ExecReload=/bin/kill -HUP $MAINPID", "Type=notify", "NotifyAccess=all"}},
 	} {
 		got := lines(t, tc.role, units.Options{Bin: "/usr/local/bin/rpmgr", Credential: tc.credential})
 		want := append(append([]string{"ExecStart=/usr/local/bin/rpmgr " + tc.role + " --config /etc/rpmgr/" + tc.role + ".yaml"}, common...), tc.want...)
@@ -181,7 +182,7 @@ func TestRenderUpdater(t *testing.T) {
 		"Type=oneshot",
 		"ExecStart=/opt/rpmgr/bin/rpmgr updater apply --staged /var/lib/rpmgr/update --state /var/lib/rpmgr-update",
 		"RuntimeDirectory=rpmgr-update", "RuntimeDirectoryPreserve=yes", "ProtectSystem=strict",
-		"ReadWritePaths=/opt/rpmgr/bin /var/lib/rpmgr-update", "NoNewPrivileges=yes",
+		"ReadWritePaths=/opt/rpmgr/bin /var/lib/rpmgr-update -/etc/systemd/system/rpmgr-gateway.service.d -/etc/systemd/system/rpmgr-connector.service.d -/etc/systemd/system/rpmgr-all-in-one.service.d", "NoNewPrivileges=yes",
 		// Once at boot, after the roles, to finish an install that a crash or reboot interrupted.
 		"After=network-online.target rpmgr-gateway.service rpmgr-connector.service", "WantedBy=multi-user.target",
 	} {
@@ -215,6 +216,10 @@ func TestRenderDropIn(t *testing.T) {
 				t.Errorf("%s: no %q in %q", role, l, b)
 			}
 		}
+	}
+	// The start timeout of 03 covers a reload, whose hand-off may take the readiness window and more.
+	if b, _ := units.RenderDropIn("gateway"); !strings.Contains(string(b), "\nTimeoutStartSec=120\n") {
+		t.Errorf("no TimeoutStartSec=120 in %q", b)
 	}
 	for _, role := range []string{"controller", "update", ""} {
 		if b, err := units.RenderDropIn(role); err == nil {

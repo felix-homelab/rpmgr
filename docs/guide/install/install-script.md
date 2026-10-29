@@ -216,7 +216,9 @@ the global script needs, and `systemctl`, `useradd` and `install`.
 9. **Enrolls** with `rpmgr enroll`, unless the host has an identity already: then it says
    `this host is enrolled already; to enroll it again, run rpmgr enroll --replace`.
 10. **Starts the service:** writes the unit `rpmgr systemd-unit` prints to
-    `/etc/systemd/system/rpmgr-<role>.service`, then `systemctl daemon-reload` and
+    `/etc/systemd/system/rpmgr-<role>.service` and, for a release from v0.3.0 on, the drop-in
+    `rpmgr-<role>.service.d/handoff.conf`, which lets the role restart without refusing
+    connections, then `systemctl daemon-reload` and
     `systemctl enable --now rpmgr-<role>`, and enables the updater: `systemctl enable
     rpmgr-update.service`, which runs once at every boot, and `systemctl enable --now
     rpmgr-update.path`, which starts it when the agent has downloaded a release.

@@ -14,6 +14,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/handoff"
+	"github.com/felix-homelab/rpmgr/internal/units"
 	"github.com/felix-homelab/rpmgr/internal/update"
 )
 
@@ -33,6 +34,13 @@ const handoffWait = handoff.ReadinessWindow + 30*time.Second
 var mainPID = func(ctx context.Context, role string) (int, error) {
 	u, err := update.Systemd{}.State(ctx, "rpmgr-"+role+".service")
 	return u.MainPID, err
+}
+
+// notifyType reports whether a role's unit, as systemd has loaded it, is Type=notify, which the
+// drop-in handoff.conf sets; a test replaces it.
+var notifyType = func(ctx context.Context, role string) (bool, error) {
+	u, err := update.Systemd{}.State(ctx, "rpmgr-"+role+".service")
+	return u.Notify, err
 }
 
 // readyRoles are the roles that report their own readiness and adopt the sockets of a hand-off
@@ -102,6 +110,13 @@ func runHandoff(ctx context.Context, env *cli.Env, role string, poll, wait time.
 		// An older release ends on SIGUSR2; one that is still starting has no trigger yet.
 		return fmt.Errorf("refused: process %d of rpmgr-%s does not take hand-offs: it is a release without them "+
 			"or has not finished starting; `systemctl restart rpmgr-%s` restarts it without one", pid, role, role)
+	}
+	// Under Type=simple systemd would end the new process with the old one, which is why the
+	// drop-in sets the type (D155); a host set up before it needs the unit written again.
+	if ok, err := notifyType(ctx, role); err != nil || !ok {
+		return fmt.Errorf("refused: rpmgr-%s.service is not Type=notify, which the hand-off needs: its drop-in %s is missing "+
+			"or systemd has not read it; `rpmgr systemd-unit --drop-in %s` prints it, `systemctl daemon-reload` and "+
+			"`systemctl restart rpmgr-%s` start the role under it", role, units.DropIn, role, role)
 	}
 	before, err := handoff.ReadOutcome(dir)
 	if err == nil && before.State == handoff.StateRunning && before.OldPID == pid {

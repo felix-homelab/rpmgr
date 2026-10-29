@@ -577,6 +577,13 @@ func (p *Plan) unitSteps() {
 		if err := writeMode(path, unit, 0o644); err != nil {
 			return err
 		}
+		// The drop-in directories of all three roles are root's, for the updater, which may write
+		// only those (docs/10-operations.md, "Hardened systemd units").
+		for _, r := range []string{"gateway", "connector", "all-in-one"} {
+			if err := mkdirMode(filepath.Join(h.Paths.Units, "rpmgr-"+r+".service.d"), 0o755); err != nil {
+				return err
+			}
+		}
 		if dropIn, err := units.RenderDropIn(role); err == nil { // the roles that restart with hand-off
 			dir := filepath.Join(h.Paths.Units, name+".service.d")
 			if err := mkdirMode(dir, 0o755); err != nil {

@@ -32,6 +32,17 @@ type services struct {
 	active   map[string]string // a unit's ActiveState other than active
 	looping  map[string]bool   // units that systemd keeps restarting
 	counts   map[string]int
+	// A unit in notify runs as Type=notify with a main process: a hand-off may restart it.
+	notify     map[string]bool
+	handoffs   []string         // "<bin> <role>" of each hand-off
+	handoffErr map[string]error // a role whose hand-off fails
+}
+
+func (s *services) Handoff(_ context.Context, bin, role string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.handoffs = append(s.handoffs, bin+" "+role)
+	return s.handoffErr[role]
 }
 
 func (s *services) Restart(_ context.Context, unit string) error {
@@ -54,7 +65,11 @@ func (s *services) State(_ context.Context, unit string) (update.Unit, error) {
 	if a := s.active[unit]; a != "" {
 		active = a
 	}
-	return update.Unit{Active: active, Restarts: s.counts[unit]}, nil
+	u := update.Unit{Active: active, Restarts: s.counts[unit]}
+	if s.notify[unit] {
+		u.Notify, u.MainPID = true, 4242
+	}
+	return u, nil
 }
 
 func (s *services) restarted() []string {
@@ -82,8 +97,13 @@ func newInstalled(t *testing.T, o hostOpts, running string, roles []string, read
 	}
 	h := newHost(t, o)
 	svc := &services{}
-	a := &update.Applier{Updater: *h.u, Services: svc, Previous: running, Status: filepath.Join(t.TempDir(), "run", "status.json"),
+	a := &update.Applier{Updater: *h.u, Services: svc, Previous: running, Units: t.TempDir(), Status: filepath.Join(t.TempDir(), "run", "status.json"),
 		Interval: 5 * time.Millisecond, Window: 200 * time.Millisecond, Clock: func() time.Time { return now }}
+	for _, r := range []string{"gateway", "connector", "all-in-one"} { // as the install scripts and setup make them
+		if err := os.MkdirAll(filepath.Join(a.Units, "rpmgr-"+r+".service.d"), 0o755); err != nil { //nolint:gosec // G301: under t.TempDir
+			t.Fatal(err)
+		}
+	}
 	a.Ready = func(context.Context, string) error {
 		b, err := os.ReadFile(bin) //nolint:gosec // G304: under t.TempDir
 		if err != nil {
@@ -625,13 +645,13 @@ func TestApply_PlantedLinks(t *testing.T) {
 func TestSystemd_State(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "systemctl")
-	mustWrite(t, script, "#!/bin/sh\nif [ \"$1\" = show ]; then printf 'ActiveState=activating\\nNRestarts=4\\nMainPID=812\\n'; fi\n", 0o755)
+	mustWrite(t, script, "#!/bin/sh\nif [ \"$1\" = show ]; then printf 'ActiveState=activating\\nNRestarts=4\\nMainPID=812\\nType=notify\\n'; fi\n", 0o755)
 	s := update.Systemd{Systemctl: script}
 	if err := s.Restart(context.Background(), "rpmgr-connector.service"); err != nil {
 		t.Fatal(err)
 	}
 	u, err := s.State(context.Background(), "rpmgr-connector.service")
-	if err != nil || u != (update.Unit{Active: "activating", Restarts: 4, MainPID: 812}) {
+	if err != nil || u != (update.Unit{Active: "activating", Restarts: 4, MainPID: 812, Notify: true}) {
 		t.Fatalf("State = %+v, %v", u, err)
 	}
 	log := filepath.Join(dir, "calls")
@@ -652,6 +672,27 @@ func TestSystemd_State(t *testing.T) {
 	mustWrite(t, script, "#!/bin/sh\necho 'NRestarts=0'\n", 0o755)
 	if _, err := s.State(context.Background(), "rpmgr-connector.service"); err == nil {
 		t.Error("State succeeded without an ActiveState")
+	}
+}
+
+// TestSystemd_Handoff runs `<bin> handoff <role>` of the binary it is given, and returns what a
+// failed hand-off says.
+func TestSystemd_Handoff(t *testing.T) {
+	dir := t.TempDir()
+	bin, log := filepath.Join(dir, "rpmgr"), filepath.Join(dir, "calls")
+	mustWrite(t, bin, "#!/bin/sh\necho \"$@\" >> "+log+"\n", 0o755)
+	if err := (update.Systemd{}).Handoff(context.Background(), bin, "gateway"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(log); string(b) != "handoff gateway\n" { //nolint:gosec // G304: under t.TempDir
+		t.Errorf("the binary was called with %q", b)
+	}
+	mustWrite(t, bin, "#!/bin/sh\necho 'hand-off failed: not ready; process 7 serves on' >&2\nexit 1\n", 0o755)
+	if err := (update.Systemd{}).Handoff(context.Background(), bin, "gateway"); err == nil || !strings.Contains(err.Error(), "serves on") {
+		t.Errorf("Handoff of a failing binary: %v", err)
+	}
+	if err := (update.Systemd{}).Handoff(context.Background(), filepath.Join(dir, "none"), "gateway"); err == nil {
+		t.Error("Handoff succeeded without a binary")
 	}
 }
 

@@ -253,6 +253,24 @@ both quotas.
   Port quota pq_01M4ZF08GYEPFR3XND9F2HATSJ: at most 10 tcp ports, 0 held.
   ```
 
+## Restart a gateway without refusing connections
+
+From v0.3.0 on, a gateway restarts with a hand-off. As root on its host:
+
+```sh
+sudo systemctl reload rpmgr-gateway
+```
+
+The new process takes over the listening sockets, so no visitor connection is refused, the old
+process serves until the new one is ready, and open connections end or get the drain period. The
+command fails with the reason when the new process does not become ready, and the old one keeps
+serving. `systemctl restart` restarts as before, and so do the install script, with `--upgrade
+--restart`, and the updater when the host cannot hand over ([Upgrades](install/upgrades.md),
+[Updates](operations/updates.md)). A host set up before v0.3.0 needs the unit's drop-in
+`handoff.conf` first: the install script writes it, and the reload then refuses and says to restart once.
+An all-in-one reloads the same way, but its controller answers `503` for a few seconds. QUIC and
+`udp` routes move after the old process exits. Containers restart without a hand-off.
+
 ## The all-in-one's built-in gateway
 
 An all-in-one runs a gateway in the controller's process. `rpmgr all-in-one init` creates the

@@ -48,7 +48,11 @@ case $1 in
         echo >/dev/tty; echo "typed a token of ${#tok} characters" >>/tmp/rpmgr-calls ;;
     esac
     mkdir -p /var/lib/rpmgr/identity && echo chain >/var/lib/rpmgr/identity/chain.pem ;;
-  systemd-unit) echo "[Service]"; echo "ExecStart=$3 $4" ;;
+  systemd-unit)
+    case $2 in
+      --drop-in) echo "[Service]"; echo "Type=notify" ;;
+      *) echo "[Service]"; echo "ExecStart=$3 $4" ;;
+    esac ;;
   policy) echo "  - target $5" >>/tmp/rpmgr-policy ;;
 esac
 `
@@ -149,7 +153,7 @@ func TestInstall(t *testing.T) {
 				  --token-file /root/token; echo "exit: $?"
 				for f in /etc/rpmgr/connector.yaml /etc/rpmgr/policy.yaml /var/lib/rpmgr-update/install.json \
 				  /var/lib/rpmgr-update/state.json /etc/sysctl.d/60-rpmgr.conf /etc/systemd/system/rpmgr-connector.service \
-				  /etc/systemd/system/rpmgr-update.path /etc/systemd/system/rpmgr-update.service \
+				  /etc/systemd/system/rpmgr-connector.service.d/handoff.conf /etc/systemd/system/rpmgr-update.path /etc/systemd/system/rpmgr-update.service \
 				  /tmp/rpmgr-calls /tmp/rpmgr-policy /tmp/systemctl-calls; do echo "== $f"; cat "$f" 2>&1; done
 				echo "== owner"; stat -c '%U %a' /var/lib/rpmgr/identity /var/lib/rpmgr /var/lib/rpmgr-update /usr/local/bin/rpmgr \
 				  /etc/sysctl.d/60-rpmgr.conf /etc/rpmgr/connector.yaml /etc/rpmgr/policy.yaml \
@@ -181,6 +185,8 @@ func TestInstall(t *testing.T) {
 				"argv: policy allow-target --no-reload -- 10.0.0.5:5432", "argv: policy allow-target --no-reload -- /run/app.sock",
 				"argv: enroll --controller " + srv.URL + " --ca-pin sha256:pin --token-file /root/token",
 				"argv: systemd-unit --bin /usr/local/bin/rpmgr connector",
+				// The release has the hand-off: the unit gets its drop-in (D155), before systemd reads it.
+				"argv: systemd-unit --drop-in connector", "handoff.conf\n[Service]\nType=notify\n",
 				"systemctl daemon-reload", "systemctl enable --now rpmgr-connector",
 				"== owner\nrpmgr ", "\nrpmgr 750\nroot 700\nroot 755\nroot 644\nroot 644\nroot 644\nroot 600\nroot 600\nroot 644\n", "== binary\n" + hex.EncodeToString(sum[:]),
 			} {
