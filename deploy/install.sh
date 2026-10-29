@@ -242,10 +242,15 @@ has_handoff() {
   esac
   return 1
 }
+# make_dropin_dirs: the drop-in directories of the three roles, root's, which the root updater's
+# sandbox may write and nothing else under /etc/systemd/system (D155).
+make_dropin_dirs() {
+  for r in gateway connector all-in-one; do install -d -m 0755 "/etc/systemd/system/rpmgr-$r.service.d" || return 1; done
+}
 # write_dropin <role>: the drop-in of a role that restarts with hand-off, as the new binary prints it.
 write_dropin() {
   d=/etc/systemd/system/rpmgr-$1.service.d
-  "$BIN" systemd-unit --drop-in "$1" >"$tmp/handoff.conf" && install -d -m 0755 "$d" &&
+  "$BIN" systemd-unit --drop-in "$1" >"$tmp/handoff.conf" && make_dropin_dirs &&
     install -m 0644 "$tmp/handoff.conf" "$d/handoff.conf"
 }
 say "downloading rpmgr $VERSION ($variant) for linux/$arch from $GITHUB/$REPO"
@@ -315,6 +320,7 @@ done
 # binary cannot render keeps the one it has.
 if command -v systemctl >/dev/null 2>&1 && has_handoff "$VERSION"; then
   written=0
+  make_dropin_dirs || die "cannot create the unit drop-in directories"
   for role in gateway all-in-one connector; do
     [ -f "/etc/systemd/system/rpmgr-$role.service" ] || continue
     if "$BIN" systemd-unit --bin "$BIN" "$role" >"$tmp/unit" && write_dropin "$role" &&

@@ -1231,7 +1231,9 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    updater runs `rpmgr handoff <role>` from the installed path, never from the running image, which
    reads `(deleted)` after the rename, and the old process keeps serving until the new one is
    ready, so a lone gateway refuses no visitor connection during an update. Any other role is
-   restarted. Before the restart the updater writes the role's hand-off drop-in
+   restarted. Before the restart the updater writes the role's hand-off drop-in, into a directory the install
+   scripts or setup created (its write set is the binary's directory, its state, the status file and
+   the three `rpmgr-<role>.service.d` directories, never a unit)
    ([D155](14-open-decisions.md#engineering)) where it is missing, which is all a host set up
    before the drop-in needs; that first restart is a plain one.
 6. The updater polls each role's admin `/readyz`, which reports ready only when the control session

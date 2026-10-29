@@ -304,6 +304,11 @@ func TestPlan_AllInOne(t *testing.T) {
 	if err != nil || !strings.Contains(string(unit), "ExecStart="+h.Paths.Bin+" all-in-one") || strings.Contains(string(unit), "LoadCredentialEncrypted") {
 		t.Errorf("unit %q %v", unit, err)
 	}
+	for _, r := range []string{"gateway", "connector", "all-in-one"} { // the only directories the updater may write
+		if fi, err := os.Stat(filepath.Join(h.Paths.Units, "rpmgr-"+r+".service.d")); err != nil || fi.Mode().Perm() != 0o755 {
+			t.Errorf("drop-in directory of %s: %v, %v", r, fi, err)
+		}
+	}
 	if d, err := os.ReadFile(filepath.Join(h.Paths.Units, "rpmgr-all-in-one.service.d", "handoff.conf")); err != nil ||
 		!strings.Contains(string(d), "\nType=notify\nNotifyAccess=all\n") || strings.Contains(string(unit), "Type=notify") {
 		t.Errorf("hand-off drop-in %q %v; want Type=notify there and not in the unit", d, err)

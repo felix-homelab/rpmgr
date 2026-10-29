@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -430,6 +431,9 @@ func (a *Applier) handoffRoles(ctx context.Context, p *pending) map[string]bool 
 // writeDropIns writes the hand-off drop-in of each role where the installed release has the
 // hand-off and the role has none yet, so that the restart that follows (Systemd.Restart reloads
 // systemd first) runs it as Type=notify. A rollback to a release without it removes them again.
+// The updater creates no directory: a role whose drop-in directory is missing, as on a host the
+// install scripts and setup did not prepare, and a role without a drop-in are skipped and restart
+// plainly (the sandbox lets it write only those directories).
 func (a *Applier) writeDropIns(roles []string) error {
 	dir := a.Units
 	if dir == "" {
@@ -442,10 +446,11 @@ func (a *Applier) writeDropIns(roles []string) error {
 		}
 		b, err := units.RenderDropIn(role)
 		if err != nil {
-			return fmt.Errorf("update: %w", err)
+			continue // a role without a drop-in
 		}
-		if err := os.MkdirAll(d, 0o755); err != nil { //nolint:gosec // G301: systemd reads the unit directories as root
-			return fmt.Errorf("update: writing the drop-in of %s: %w", unitOf(role), err)
+		if fi, err := os.Stat(d); err != nil || !fi.IsDir() {
+			slog.Warn("no drop-in directory: restarting without writing the hand-off drop-in", "unit", unitOf(role), "dir", d)
+			continue
 		}
 		if err := writeAtomic(d, units.DropIn, b[:len(b)-1], 0o644); err != nil {
 			return err

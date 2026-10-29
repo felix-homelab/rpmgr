@@ -213,12 +213,14 @@ RestartSec=2s
   role, as systemd removes a unit's runtime directory when the unit stops.
   - **`Type=notify` is in a drop-in** ([D155](14-open-decisions.md#engineering)): the unit keeps the
     default service type, and `rpmgr-<role>.service.d/handoff.conf` (`rpmgr systemd-unit <role>
-    --drop-in` prints it) sets `Type=notify` and `NotifyAccess=all`, so that the new process of a
+    --drop-in` prints it) sets `Type=notify`, `NotifyAccess=all` and the start timeout of [03](03-connections.md#timeouts-keepalive-and-backoff), which also covers `ExecReload`, so that the new process of a
     hand-off can tell systemd it is the main one. `rpmgr setup` writes it with the unit when the
     installed release has the hand-off (v0.3.0 on). A binary of an older release never sends
     `READY=1`, so under `Type=notify` its start would hang: the updater removes the drop-ins of
     the roles, runs `systemctl daemon-reload` and restarts them when it rolls back to a release
-    without the hand-off. The updater and `install.sh --upgrade` write it on an update to a
+    without the hand-off. The install scripts and `rpmgr setup` create the three drop-in directories (root, 0755), the only
+    place under `/etc/systemd/system` the updater's sandbox may write (`ReadWritePaths=-…`); the
+    updater creates none, and for a role whose directory is missing it restarts plainly. The updater and `install.sh --upgrade` write it on an update to a
     release with the hand-off, and the first restart after that is a plain one, since the running
     unit was not `Type=notify` ([04](04-security.md#over-the-air-updates)).
   - **`READY=1` comes at the role's ready point**, not at start: the gateway sends it once its
@@ -334,7 +336,7 @@ RestartSec=2s
   RuntimeDirectory=rpmgr-update
   RuntimeDirectoryPreserve=yes
   ProtectSystem=strict
-  ReadWritePaths=/usr/local/bin /var/lib/rpmgr-update /etc/systemd/system
+  ReadWritePaths=/usr/local/bin /var/lib/rpmgr-update -/etc/systemd/system/rpmgr-gateway.service.d -/etc/systemd/system/rpmgr-connector.service.d -/etc/systemd/system/rpmgr-all-in-one.service.d
 
   [Install]
   WantedBy=multi-user.target

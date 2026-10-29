@@ -99,6 +99,11 @@ func newInstalled(t *testing.T, o hostOpts, running string, roles []string, read
 	svc := &services{}
 	a := &update.Applier{Updater: *h.u, Services: svc, Previous: running, Units: t.TempDir(), Status: filepath.Join(t.TempDir(), "run", "status.json"),
 		Interval: 5 * time.Millisecond, Window: 200 * time.Millisecond, Clock: func() time.Time { return now }}
+	for _, r := range []string{"gateway", "connector", "all-in-one"} { // as the install scripts and setup make them
+		if err := os.MkdirAll(filepath.Join(a.Units, "rpmgr-"+r+".service.d"), 0o755); err != nil { //nolint:gosec // G301: under t.TempDir
+			t.Fatal(err)
+		}
+	}
 	a.Ready = func(context.Context, string) error {
 		b, err := os.ReadFile(bin) //nolint:gosec // G304: under t.TempDir
 		if err != nil {

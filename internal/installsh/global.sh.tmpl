@@ -197,6 +197,7 @@ done
 # binary cannot render keeps the one it has.
 if command -v systemctl >/dev/null 2>&1 && has_handoff "$VERSION"; then
   written=0
+  make_dropin_dirs || die "cannot create the unit drop-in directories"
   for role in gateway all-in-one connector; do
     [ -f "/etc/systemd/system/rpmgr-$role.service" ] || continue
     if "$BIN" systemd-unit --bin "$BIN" "$role" >"$tmp/unit" && write_dropin "$role" &&

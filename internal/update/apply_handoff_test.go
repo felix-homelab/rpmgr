@@ -140,12 +140,21 @@ func TestApplyHandoff(t *testing.T) {
 		}
 	})
 
-	t.Run("a drop-in that cannot be written is an error, and the rollback, which removes it, reports its own", func(t *testing.T) {
-		i := newInstalled(t, hostOpts{}, "0.2.0", []string{"gateway"}, nil)
-		writeAll(t, filepath.Join(i.a.Units, "rpmgr-gateway.service.d"), "a file where the directory belongs")
+	t.Run("no drop-in directory: none is made, the role is restarted plainly", func(t *testing.T) {
+		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"gateway"}, nil)
+		d := filepath.Join(i.a.Units, "rpmgr-gateway.service.d")
+		if err := os.Remove(d); err != nil {
+			t.Fatal(err)
+		}
 		i.stage(rel{version: "1.2.0", seq: 6})
-		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRollbackFailed) {
-			t.Fatalf("Apply = %v; want the install to fail and the rollback with it", err)
+		if err := i.a.Apply(context.Background()); err != nil {
+			t.Fatalf("Apply = %v", err)
+		}
+		if _, err := os.Stat(d); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("the updater made the drop-in directory: %v", err)
+		}
+		if len(i.svc.restarted()) != 1 || len(i.svc.handoffs) != 0 {
+			t.Errorf("restarts %v, hand-offs %v; want one restart", i.svc.restarted(), i.svc.handoffs)
 		}
 	})
 }

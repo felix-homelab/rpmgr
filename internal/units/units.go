@@ -70,7 +70,7 @@ func RenderDropIn(role string) ([]byte, error) {
 	case "gateway", "all-in-one", "connector":
 		return []byte("# SPDX-License-Identifier: Apache-2.0\n# rpmgr-" + role + ".service.d/" + DropIn +
 			", written with the unit (docs/10-operations.md, \"Hardened systemd units\").\n" +
-			"[Service]\nType=notify\nNotifyAccess=all\n"), nil
+			"[Service]\nType=notify\nNotifyAccess=all\nTimeoutStartSec=120\n"), nil
 	case "controller":
 		return nil, errors.New("units: the controller restarts without a hand-off and has no drop-in")
 	}

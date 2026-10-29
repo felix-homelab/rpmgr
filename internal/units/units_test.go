@@ -182,7 +182,7 @@ func TestRenderUpdater(t *testing.T) {
 		"Type=oneshot",
 		"ExecStart=/opt/rpmgr/bin/rpmgr updater apply --staged /var/lib/rpmgr/update --state /var/lib/rpmgr-update",
 		"RuntimeDirectory=rpmgr-update", "RuntimeDirectoryPreserve=yes", "ProtectSystem=strict",
-		"ReadWritePaths=/opt/rpmgr/bin /var/lib/rpmgr-update /etc/systemd/system", "NoNewPrivileges=yes",
+		"ReadWritePaths=/opt/rpmgr/bin /var/lib/rpmgr-update -/etc/systemd/system/rpmgr-gateway.service.d -/etc/systemd/system/rpmgr-connector.service.d -/etc/systemd/system/rpmgr-all-in-one.service.d", "NoNewPrivileges=yes",
 		// Once at boot, after the roles, to finish an install that a crash or reboot interrupted.
 		"After=network-online.target rpmgr-gateway.service rpmgr-connector.service", "WantedBy=multi-user.target",
 	} {
@@ -216,6 +216,10 @@ func TestRenderDropIn(t *testing.T) {
 				t.Errorf("%s: no %q in %q", role, l, b)
 			}
 		}
+	}
+	// The start timeout of 03 covers a reload, whose hand-off may take the readiness window and more.
+	if b, _ := units.RenderDropIn("gateway"); !strings.Contains(string(b), "\nTimeoutStartSec=120\n") {
+		t.Errorf("no TimeoutStartSec=120 in %q", b)
 	}
 	for _, role := range []string{"controller", "update", ""} {
 		if b, err := units.RenderDropIn(role); err == nil {

@@ -183,6 +183,7 @@ func TestGlobalInstall(t *testing.T) {
 				PATH=/t/systemd:$PATH sh /t/install.sh --upgrade >/tmp/upgrade.out 2>&1; echo "exit handoff upgrade: $?"
 				sed -n '/^release root keys:/,$p' /tmp/upgrade.out | tail -n +2
 				PATH=/t/systemd:$PATH sh /t/install.sh --upgrade --restart; echo "exit handoff: $?"
+				echo "== dirs"; stat -c '%n %U %a' /etc/systemd/system/rpmgr-*.service.d
 				echo "== hand-off drop-in"; cat /etc/systemd/system/rpmgr-gateway.service.d/handoff.conf; grep ExecStart /etc/systemd/system/rpmgr-gateway.service
 				touch /tmp/handoff-fail
 				PATH=/t/systemd:$PATH sh /t/install.sh --upgrade --restart; echo "exit failed handoff: $?"
@@ -247,7 +248,8 @@ func TestGlobalInstall(t *testing.T) {
 					"\nrpmgr-update.path\nrpmgr-update.service\n",
 					// The unit and its drop-in are written for a gateway that has a unit; a gateway that takes
 					// hand-offs under Type=notify is handed over, not restarted, and a failed hand-off fails the script.
-					"exit handoff upgrade: 0", "rpmgr-gateway runs the previous binary until you hand it over: sudo systemctl reload rpmgr-gateway",
+					"exit handoff upgrade: 0",
+					"== dirs\n/etc/systemd/system/rpmgr-all-in-one.service.d root 755\n/etc/systemd/system/rpmgr-connector.service.d root 755\n/etc/systemd/system/rpmgr-gateway.service.d root 755\n", "rpmgr-gateway runs the previous binary until you hand it over: sudo systemctl reload rpmgr-gateway",
 					"handed rpmgr-gateway over to rpmgr 1.4.2 without a restart", "exit handoff: 0",
 					"== hand-off drop-in\n[Service]\nType=notify\nExecStart=/usr/local/bin/rpmgr gateway\n",
 					"cannot hand rpmgr-gateway over to rpmgr 1.4.2; the old process serves on", "exit failed handoff: 1",
