@@ -96,7 +96,7 @@ func TestRestoreRefusesLinks(t *testing.T) {
 			}
 			_, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: h.cfg, Archive: archive})
 			if strings.Contains(name, ".restoring") {
-				// A staged name is removed and created again inside the root, never followed.
+				// The names of the old staging scheme are not used any more: the link stays.
 				if err != nil {
 					t.Fatalf("Restore with a link at the staged name %s = %v", name, err)
 				}
@@ -119,6 +119,77 @@ func TestRestoreRefusesLinks(t *testing.T) {
 				if _, err := controller.Backup(ctx, h.cfg, out, "1.5.0", time.Now); !errors.Is(err, controller.ErrUnsafeStateFile) {
 					t.Errorf("Backup with a link at %s = %v; want ErrUnsafeStateFile", name, err)
 				}
+			}
+		})
+	}
+}
+
+// TestRestoreLinksPlantedBetweenSteps: the service user owns the state directory and can swap any
+// name in it at any moment, so a link is planted at every name the restore touches, live,
+// journal, temporary and replaced-aside, before the restore and at each of its steps. Whatever the
+// restore then does, root never writes through a link: the targets stay as they were.
+func TestRestoreLinksPlantedBetweenSteps(t *testing.T) {
+	ctx := context.Background()
+	now := func() time.Time { return time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC) }
+	prev := ".before-restore-20261029T120000Z"
+	var names []string
+	for _, n := range []string{"controller.db", "revocations.log", "audit-checkpoints.log"} {
+		for _, s := range []string{"", "-wal", "-shm"} {
+			names = append(names, n+s, ".restoring-"+n+s, n+s+prev, n+s+".restoring")
+		}
+	}
+	for _, step := range []string{"", "staged", "copying", "moving", "installing"} {
+		t.Run("at "+step, func(t *testing.T) {
+			h := newHost(t)
+			h.writeBoot(t, h.fileKEK())
+			if _, err := controller.Init(ctx, h.opts()); err != nil {
+				t.Fatal(err)
+			}
+			archive := filepath.Join(t.TempDir(), "rpmgr.backup")
+			if _, err := controller.Backup(ctx, h.cfg, archive, "1.5.0", now); err != nil {
+				t.Fatal(err)
+			}
+			state := filepath.Dir(h.db)
+			victims := t.TempDir()
+			plant := func(only func(string) bool) {
+				for _, n := range names {
+					if !only(n) {
+						continue
+					}
+					target := filepath.Join(victims, n)
+					if _, err := os.Lstat(target); err != nil {
+						if err := os.WriteFile(target, []byte("precious"), 0o600); err != nil {
+							t.Fatal(err)
+						}
+					}
+					link := filepath.Join(state, n)
+					_ = os.Remove(link)
+					_ = os.Symlink(target, link)
+				}
+			}
+			// Before the restore (step ""), or at one of its steps.
+			if step == "" {
+				plant(func(string) bool { return true })
+			} else {
+				controller.OnRestoreStep(t, func(s string) {
+					if s == step {
+						plant(func(string) bool { return true })
+					}
+				})
+			}
+			stage := filepath.Join(t.TempDir(), "stage")
+			_, _ = controller.Restore(ctx, controller.RestoreOptions{ConfigPath: h.cfg, Archive: archive, Now: now, StageDir: stage})
+			entries, err := os.ReadDir(victims)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, e := range entries {
+				if b, _ := os.ReadFile(filepath.Join(victims, e.Name())); string(b) != "precious" { //nolint:gosec // G304: under t.TempDir
+					t.Errorf("planted at %q, root wrote through the link to %s: %q", step, e.Name(), b)
+				}
+			}
+			if left, _ := os.ReadDir(stage); len(left) != 0 {
+				t.Errorf("the staging directory still holds %d files", len(left))
 			}
 		})
 	}

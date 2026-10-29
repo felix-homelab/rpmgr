@@ -1317,13 +1317,20 @@ the request that started the update. What differs:
   `update/` staging directory, which stays read-only (`ReadOnlyPaths=`); a boot file whose database
   lives elsewhere makes the backup fail and so the update refuse until a drop-in adds that
   directory ([10](10-operations.md#hardened-systemd-units)). That directory belongs to the
-  unprivileged service user, so what root does there must not follow a link the user plants:
-  `rpmgr restore` opens the directory as a root (`os.Root`), creates the staged files with
-  `O_EXCL` inside it, renames inside it, and refuses with `ErrUnsafeStateFile` any live, staged,
-  `-wal` or `-shm` name that is no regular file; `rpmgr backup` refuses the same for the database
-  and its journal names. Residual: SQLite opens the staged database by path, so a link planted
-  between the check and the open is not caught; the staged names are removed and checked just
-  before, and the update stops at the first unexpected file.
+  unprivileged service user, so what root does there must not follow a link the user plants, at any
+  moment. `rpmgr restore` therefore does every SQLite operation, and reads the state directory's
+  revocation log, in a **staging directory only root writes**, `/var/lib/rpmgr-update/restore/`
+  (mode 0700, passed as `--stage-dir`; run by hand it defaults to a new private directory under
+  the temporary one), with the database's `-wal` and `-shm` files there too. Only the finished files
+  go into the state directory, through an `os.Root` handle that follows no link out of it: each is
+  copied into a temporary name created exclusively (a planted name is removed first, never
+  written through), the live files are renamed aside and the copies renamed into place, and the
+  owner is set through the handle. A live, `-wal` or `-shm` name that is no regular file is refused
+  with `ErrUnsafeStateFile` first. A test plants links at every name before the restore and at each
+  of its steps. A release before v0.3.0 has no `--stage-dir`, so the rollback of the first update
+  from one runs its restore as before, in the state directory. `rpmgr backup` refuses a link at the
+  database's names, but SQLite opens the live database by path, so a link swapped in after that
+  check is not caught.
 - **Status.** While it works the updater writes `updating` with a `step` (`verifying`,
   `backing_up`, `handing_over`, `waiting`) to the status file, which the outcome replaces.
 

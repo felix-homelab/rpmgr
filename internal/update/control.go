@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/felix-homelab/rpmgr/internal/units"
 )
 
 // ControlPlane is what the updater needs to know of the controller or all-in-one of its host.
@@ -127,7 +129,13 @@ func (a *Applier) restoreDatabase(ctx context.Context, p *pending, role string) 
 			"and %s is untouched: look at the database, and run `rpmgr restore --in %s` only if it was migrated",
 			err, strings.TrimSpace(string(probe)), role, p.Backup, p.Backup)
 	}
-	if b, rerr := a.exec(ctx, p.Path, "restore", "--in", p.Backup, "--config", cp.Config); rerr != nil {
+	args := []string{"restore", "--in", p.Backup, "--config", cp.Config}
+	if units.HasHandoff(p.Previous) {
+		// The restore does its SQLite work in a directory only root writes, not in the state
+		// directory, which the service user owns; a release before v0.3.0 has no such flag.
+		args = append(args, "--stage-dir", filepath.Join(a.State, "restore"))
+	}
+	if b, rerr := a.exec(ctx, p.Path, args...); rerr != nil {
 		return fmt.Errorf("update: rolling back: the database was migrated (%s) and restoring %s failed: %w: %s; "+
 			"the %s is stopped: run `rpmgr restore --in %s` and start it", strings.TrimSpace(string(probe)), p.Backup, rerr, strings.TrimSpace(string(b)), role, p.Backup)
 	}

@@ -77,3 +77,10 @@ func LoopbackWebhooks(o WebhookOptions) WebhookOptions {
 	o.policy = func(*ent.Webhook) egress.Policy { return egress.Policy{Internal: true} }
 	return o
 }
+
+// OnRestoreStep runs f at each step of Restore ("staged", "copying", "moving", "installing") until
+// the test ends.
+func OnRestoreStep(t testing.TB, f func(step string)) {
+	restoreHook = f
+	t.Cleanup(func() { restoreHook = nil })
+}

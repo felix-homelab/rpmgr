@@ -63,3 +63,9 @@ func giveTo(path, name string) error {
 	}
 	return os.Chown(path, uid, gid)
 }
+
+// ownedByCaller reports whether the caller owns the file.
+func ownedByCaller(fi fs.FileInfo) bool {
+	sys, ok := fi.Sys().(*syscall.Stat_t)
+	return !ok || int(sys.Uid) == geteuid()
+}
