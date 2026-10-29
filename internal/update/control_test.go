@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -25,6 +26,7 @@ type cmds struct {
 	calls []string
 	bins  []string         // the binary of each call
 	fail  map[string]bool  // subcommands that fail
+	args  [][]string       // the arguments of each call
 	newer bool             // migrate finds a schema a newer release migrated
 	inUse func(sub string) // runs at each call, to look at the host
 }
@@ -33,7 +35,7 @@ func (c *cmds) run(_ context.Context, bin string, args ...string) ([]byte, error
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	sub := args[0]
-	c.calls, c.bins = append(c.calls, sub), append(c.bins, bin)
+	c.calls, c.bins, c.args = append(c.calls, sub), append(c.bins, bin), append(c.args, args)
 	if c.inUse != nil {
 		c.inUse(sub)
 	}
@@ -242,6 +244,23 @@ func TestOTA_ControlPlaneBackupAndRestore(t *testing.T) {
 			t.Errorf("calls %v; want %v", c.calls, want)
 		}
 		i.runs("1.1.0")
+	})
+
+	t.Run("the restore stages in the updater's own directory, when the previous release has the flag", func(t *testing.T) {
+		for running, want := range map[string]bool{"1.1.0": true, "0.2.0": false} {
+			i, c := controlHost(t, "controller", running, notReady("1.2.0"))
+			i.svc.notify = nil
+			c.newer = true
+			i.stage(rel{version: "1.2.0", seq: 6, floor: "0.1.0"})
+			if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRolledBack) {
+				t.Fatalf("%s: Apply = %v; want rolled back", running, err)
+			}
+			got := c.args[len(c.args)-1]
+			has := slices.Contains(got, "--stage-dir")
+			if has != want || (want && got[len(got)-1] != filepath.Join(i.u.State, "restore")) {
+				t.Errorf("previous %s: restore ran with %v; stage-dir %v, want %v", running, got, has, want)
+			}
+		}
 	})
 
 	t.Run("a controller that fails before any migration: the previous binary runs on the database as it is", func(t *testing.T) {
