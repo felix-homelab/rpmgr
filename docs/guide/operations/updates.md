@@ -191,6 +191,26 @@ through them, so update the gateways first. Windows and macOS connectors restart
 limits are in [03](../../03-connections.md#restarts-with-socket-hand-off-phase-2), the units in
 [10](../../10-operations.md).
 
+## Watch and end a draining old process
+
+After a restart with a hand-off the old process keeps the connections it had until they end or the
+hand-off drain does, and nothing else shows it. From v0.3.0 the dashboard shows it in a **Restarting**
+card and on the page of its gateway or connector: what it still holds, since when it drains and
+when it ends at the latest ([Overview](../web-ui/overview.md#restarting)). To end it early, press
+**End now** there, or run:
+
+```sh
+rpmgr update gateway gw-eu-1 --end-drain
+rpmgr update connector nas-01 --end-drain
+```
+
+The old process then closes the connections it still holds, and their clients see them reset, so
+end it only when that is acceptable; the confirmation, and the command's output, say how many it
+closes. It needs a step-up and the right to change the agent (an Owner or Admin; the Instance
+Admin for the all-in-one's own agents) and is audited. It is refused when no old process drains,
+and for an agent of an earlier release, which shows nothing. In a controller replica set the card
+shows the agents whose control session is with the replica that answers.
+
 ## Choose what a host takes
 
 Each connector and gateway host decides for itself, in its local policy, whether it takes updates

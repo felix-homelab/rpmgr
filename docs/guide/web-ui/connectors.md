@@ -116,6 +116,10 @@ connected). Below, one row per data session: the **Gateway** it goes to, its **T
 `TLS and HTTP/2` or `WSS`), the **Round trip** time and **Since** when it is up
 ([Connector networking](../connectors/network.md)).
 
+While the connector's old process drains after a restart without a cut, the card also shows
+what that process still holds, with **End now**
+([Updates](../operations/updates.md#watch-and-end-a-draining-old-process)).
+
 ### Live log
 
 For an Owner or Admin, the **Live log** card follows the connector's log: choose the **Level**,
