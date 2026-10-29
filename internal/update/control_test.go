@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -24,6 +25,7 @@ type cmds struct {
 	calls []string
 	bins  []string         // the binary of each call
 	fail  map[string]bool  // subcommands that fail
+	newer bool             // migrate finds a schema a newer release migrated
 	inUse func(sub string) // runs at each call, to look at the host
 }
 
@@ -34,6 +36,9 @@ func (c *cmds) run(_ context.Context, bin string, args ...string) ([]byte, error
 	c.calls, c.bins = append(c.calls, sub), append(c.bins, bin)
 	if c.inUse != nil {
 		c.inUse(sub)
+	}
+	if sub == "migrate" && c.newer {
+		return []byte("the database has a migration this version does not know"), exitErr(update.ExitUnknownMigration)
 	}
 	if c.fail[sub] {
 		return []byte(sub + " failed (test)"), errors.New("exit status 1")
@@ -47,6 +52,12 @@ func (c *cmds) run(_ context.Context, bin string, args ...string) ([]byte, error
 	}
 	return nil, nil
 }
+
+// exitErr is the error of a command that ended with a code.
+type exitErr int
+
+func (e exitErr) Error() string { return "exit status " + strconv.Itoa(int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
 
 // controlHost is an installed all-in-one or controller with a fake backup.
 func controlHost(t *testing.T, role, running string, ready func([]byte) error) (*installed, *cmds) {
@@ -198,7 +209,7 @@ func TestOTA_ControlPlaneBackupAndRestore(t *testing.T) {
 	t.Run("a hand-off that fails after the migration: the backup is restored, the previous binary started", func(t *testing.T) {
 		i, c := controlHost(t, "all-in-one", "1.1.0", notReady("1.2.0")) // the old process does not come back
 		i.svc.handoffErr = map[string]error{"all-in-one": errors.New("the new process ended after the migration")}
-		c.fail["migrate"] = true // the previous binary finds a newer schema
+		c.newer = true // the previous binary finds a newer schema
 		i.stage(rel{version: "1.2.0", seq: 6})
 		err := i.a.Apply(context.Background())
 		if !errors.Is(err, update.ErrRolledBack) || !strings.Contains(err.Error(), "restored from "+i.bin+update.BackupSuffix) {
@@ -222,7 +233,7 @@ func TestOTA_ControlPlaneBackupAndRestore(t *testing.T) {
 	t.Run("a controller not ready after its migration: the backup is restored", func(t *testing.T) {
 		i, c := controlHost(t, "controller", "1.1.0", notReady("1.2.0"))
 		i.svc.notify = nil
-		c.fail["migrate"] = true
+		c.newer = true
 		i.stage(rel{version: "1.2.0", seq: 6})
 		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRolledBack) {
 			t.Fatalf("Apply = %v; want rolled back", err)
@@ -251,7 +262,7 @@ func TestOTA_ControlPlaneBackupAndRestore(t *testing.T) {
 	t.Run("a restore that fails: rollback failed, the role stays stopped", func(t *testing.T) {
 		i, c := controlHost(t, "controller", "1.1.0", notReady("1.2.0"))
 		i.svc.notify = nil
-		c.fail["migrate"], c.fail["restore"] = true, true
+		c.newer, c.fail["restore"] = true, true
 		i.stage(rel{version: "1.2.0", seq: 6})
 		err := i.a.Apply(context.Background())
 		if !errors.Is(err, update.ErrRollbackFailed) || !strings.Contains(err.Error(), "rpmgr restore --in "+i.bin+update.BackupSuffix) {
@@ -259,6 +270,21 @@ func TestOTA_ControlPlaneBackupAndRestore(t *testing.T) {
 		}
 		if len(i.svc.restarted()) != 1 { // only the update's own restart: never the old binary on a newer schema
 			t.Errorf("restarts %v; want the update's restart only", i.svc.restarted())
+		}
+		i.status(update.RollbackFailed)
+	})
+
+	t.Run("a probe that fails for another reason: no restore, the role stays stopped, rollback failed", func(t *testing.T) {
+		i, c := controlHost(t, "controller", "1.1.0", notReady("1.2.0"))
+		i.svc.notify = nil
+		c.fail["migrate"] = true // exit 1: nothing says the schema is newer
+		i.stage(rel{version: "1.2.0", seq: 6})
+		err := i.a.Apply(context.Background())
+		if !errors.Is(err, update.ErrRollbackFailed) || !strings.Contains(err.Error(), "could not check the database") {
+			t.Fatalf("Apply = %v; want rollback failed", err)
+		}
+		if slices.Contains(c.calls, "restore") || len(i.svc.restarted()) != 1 {
+			t.Errorf("calls %v, restarts %v; want no restore and no start of the previous binary", c.calls, i.svc.restarted())
 		}
 		i.status(update.RollbackFailed)
 	})

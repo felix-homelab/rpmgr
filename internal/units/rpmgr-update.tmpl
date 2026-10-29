@@ -36,6 +36,8 @@ RuntimeDirectoryPreserve=yes
 # controller or all-in-one, whose backup and restore it runs; one that is missing is skipped.
 ProtectSystem=strict
 ReadWritePaths={{.BinDir}} /var/lib/rpmgr-update -/var/lib/rpmgr -/etc/systemd/system/rpmgr-gateway.service.d -/etc/systemd/system/rpmgr-connector.service.d -/etc/systemd/system/rpmgr-all-in-one.service.d
+# The staging directory, which the service user writes, stays read-only for the updater.
+ReadOnlyPaths=-/var/lib/rpmgr/update
 NoNewPrivileges=yes
 ProtectHome=yes
 PrivateTmp=yes

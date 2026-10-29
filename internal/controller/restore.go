@@ -160,17 +160,34 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 		{filepath.Join(state, BackupRevocations), filepath.Join(state, BackupRevocations+".restoring")},
 		{filepath.Join(state, BackupCheckpoints), filepath.Join(state, BackupCheckpoints+".restoring")},
 	}
+	// The state directory belongs to the service user, and a restore run by root must not follow a
+	// link it plants: the staged files are created inside a root of that directory, never replacing
+	// a name, and every name this restore touches must be a regular file or absent.
+	root, err := os.OpenRoot(state)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	defer func() { _ = root.Close() }()
 	clean := func() {
 		for _, f := range files {
 			for _, s := range []string{"", "-wal", "-shm"} {
-				_ = os.Remove(f.staged + s)
+				_ = root.Remove(filepath.Base(f.staged + s))
 			}
 		}
 	}
 	clean()
 	defer clean()
+	var names []string
+	for _, f := range files {
+		for _, s := range []string{"", "-wal", "-shm"} {
+			names = append(names, filepath.Base(f.live+s), filepath.Base(f.staged+s))
+		}
+	}
+	if err := refuseLinks(root, names...); err != nil {
+		return RestoreResult{}, err
+	}
 	for i, b := range [][]byte{a.db, a.revs, a.cpoints} {
-		if err := os.WriteFile(files[i].staged, b, 0o600); err != nil {
+		if err := stageFile(root, filepath.Base(files[i].staged), b); err != nil {
 			return RestoreResult{}, err
 		}
 	}
@@ -186,20 +203,49 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 	res.Previous = ".before-restore-" + o.Now().UTC().Format("20060102T150405Z")
 	for _, f := range files {
 		for _, s := range []string{"", "-wal", "-shm"} {
-			if err := os.Rename(f.live+s, f.live+s+res.Previous); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if err := root.Rename(filepath.Base(f.live+s), filepath.Base(f.live+s+res.Previous)); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return RestoreResult{}, err
 			}
 		}
 	}
 	for _, f := range files {
 		for _, s := range []string{"", "-wal", "-shm"} {
-			if err := os.Rename(f.staged+s, f.live+s); err != nil && (s == "" || !errors.Is(err, os.ErrNotExist)) {
+			if err := root.Rename(filepath.Base(f.staged+s), filepath.Base(f.live+s)); err != nil && (s == "" || !errors.Is(err, os.ErrNotExist)) {
 				return RestoreResult{}, fmt.Errorf("controller: putting the restored %s in place: %w; the replaced files end in %s",
 					filepath.Base(f.live), err, res.Previous)
 			}
 		}
 	}
 	return res, ownLike(state, state)
+}
+
+// ErrUnsafeStateFile is returned for a file of the state directory that is no regular file, such as
+// a link planted by the service user, which a restore or backup run by root would follow.
+var ErrUnsafeStateFile = errors.New("controller: a file of the state directory is no regular file")
+
+// refuseLinks refuses any of names in root that exists and is not a regular file.
+func refuseLinks(root *os.Root, names ...string) error {
+	for _, n := range names {
+		if fi, err := root.Lstat(n); err == nil && !fi.Mode().IsRegular() {
+			return fmt.Errorf("%w: %s", ErrUnsafeStateFile, n)
+		} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+// stageFile creates name in root, which must not exist, with b as its content.
+func stageFile(root *os.Root, name string, b []byte) error {
+	f, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(b)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }
 
 // sinceBackup returns the entries of the given sinks and local logs that the backup's own log, at

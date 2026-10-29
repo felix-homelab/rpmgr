@@ -1305,16 +1305,27 @@ the request that started the update. What differs:
   only puts `.prev` back. When the new process ends after migrating the database, or a restarted
   controller is not ready, the rollback **stops the role, asks the previous binary whether the
   database is still at its schema** (`rpmgr migrate` applies nothing then, and refuses a newer
-  schema with `ErrUnknownMigration`), and when it is not, restores the backup with `rpmgr restore`
+  schema with `ErrUnknownMigration`, which ends it with exit code 3), and only on that code
+  restores the backup with `rpmgr restore`
   and starts the previous binary. The status is `rolled_back` and names the restore. An old binary
-  never runs on a newer schema: when the restore fails the role stays stopped, the status is
+  never runs on a newer schema; any other failure of the check does not restore, because nothing
+  says the schema is newer: the role stays stopped, the status is `rollback_failed` with the
+  error, and the operator decides. When the restore fails the role stays stopped, the status is
   `rollback_failed` and its reason names the command that restores the backup. What a restore
   keeps and loses is in [10](10-operations.md#backup-and-restore): writes since the backup are
   lost except the revocations, which are applied again, and sessions are invalidated.
-- **Write set.** The updater unit also writes the state directory `/var/lib/rpmgr`, because
-  `rpmgr backup` and `rpmgr restore` work in the database's directory; a boot file whose database
+- **Write set and links.** The updater unit also writes the state directory `/var/lib/rpmgr`,
+  because `rpmgr backup` and `rpmgr restore` work in the database's directory, but not its
+  `update/` staging directory, which stays read-only (`ReadOnlyPaths=`); a boot file whose database
   lives elsewhere makes the backup fail and so the update refuse until a drop-in adds that
-  directory ([10](10-operations.md#hardened-systemd-units)).
+  directory ([10](10-operations.md#hardened-systemd-units)). That directory belongs to the
+  unprivileged service user, so what root does there must not follow a link the user plants:
+  `rpmgr restore` opens the directory as a root (`os.Root`), creates the staged files with
+  `O_EXCL` inside it, renames inside it, and refuses with `ErrUnsafeStateFile` any live, staged,
+  `-wal` or `-shm` name that is no regular file; `rpmgr backup` refuses the same for the database
+  and its journal names. Residual: SQLite opens the staged database by path, so a link planted
+  between the check and the open is not caught; the staged names are removed and checked just
+  before, and the update stops at the first unexpected file.
 - **Status.** While it works the updater writes `updating` with a `step` (`verifying`,
   `backing_up`, `handing_over`, `waiting`) to the status file, which the outcome replaces.
 

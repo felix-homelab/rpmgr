@@ -338,6 +338,7 @@ RestartSec=2s
   RuntimeDirectoryPreserve=yes
   ProtectSystem=strict
   ReadWritePaths=/usr/local/bin /var/lib/rpmgr-update -/var/lib/rpmgr -/etc/systemd/system/rpmgr-gateway.service.d -/etc/systemd/system/rpmgr-connector.service.d -/etc/systemd/system/rpmgr-all-in-one.service.d
+  ReadOnlyPaths=-/var/lib/rpmgr/update
 
   [Install]
   WantedBy=multi-user.target
@@ -675,11 +676,15 @@ service that still runs the previous binary, with the command that restarts it.
     audited as `local-cli`.
   - **Before an update over the air** ([D158](14-open-decisions.md#engineering)) the root updater
     runs it itself, into `<binary>.backup` next to the previous binary, and a failure there stops
-    the update. The updater's unit writes `/var/lib/rpmgr` for it (and for the restore below); a
-    database in another directory needs a drop-in that adds it to `ReadWritePaths=`. A rollback
-    after the migration runs `rpmgr restore --in <binary>.backup` with the previous binary; if that
-    fails, the role stays stopped, because the previous binary refuses the migrated schema, and
-    you run the same command by hand.
+    the update. The updater's unit writes `/var/lib/rpmgr` for it (and for the restore below), but keeps its
+    `update/` directory read-only; a database in another directory needs a drop-in that adds it to
+    `ReadWritePaths=`. `rpmgr backup` and `rpmgr restore` refuse a link in the state directory,
+    which the service user owns ([04](04-security.md#controllers-and-all-in-ones-over-the-air)). A
+    rollback asks the previous binary's `rpmgr migrate`, which ends with **exit code 3** for a
+    schema a newer release migrated (`ErrUnknownMigration`), and only then runs `rpmgr restore --in
+    <binary>.backup`; after any other failure of the check it restores nothing and leaves the role
+    stopped. If the restore fails, the role stays stopped, because the previous binary refuses the
+    migrated schema, and you run the same command by hand.
 - **The KEK is backed up separately** and stored apart from database backups. A database backup
   without its KEK cannot be used to recover CA keys, ACME keys or other secrets; a KEK stored next
   to the backup defeats the encryption.

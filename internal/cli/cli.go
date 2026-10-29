@@ -23,6 +23,10 @@ const (
 	ExitUsage = 2 // the command line is invalid, or the command is not available in this build
 )
 
+// ExitCoder is an error that names the exit code of the command it ends, for a caller that tells
+// failures apart, such as the root updater reading `rpmgr migrate`.
+type ExitCoder interface{ ExitCode() int }
+
 // ErrNotAvailable is returned by commands that this build does not implement yet.
 var ErrNotAvailable = errors.New("not available in this build")
 
@@ -115,6 +119,10 @@ func Main(ctx context.Context, root *Command, args []string, env *Env) int {
 		return ExitUsage
 	default:
 		fmt.Fprintf(env.Stderr, "%s: %v\n", strings.Join(path, " "), err)
+		var ec ExitCoder
+		if errors.As(err, &ec) {
+			return ec.ExitCode()
+		}
 		return ExitError
 	}
 }

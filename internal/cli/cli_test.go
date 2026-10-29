@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"reflect"
 	"strings"
@@ -57,6 +58,9 @@ func testTree(got *[]string) *Command {
 				},
 				Run: func(context.Context, *Env, []string) error { return Usagef("the tags %s are refused", tags.String()) },
 			},
+			{Name: "coded", Summary: "fails with a code of its own", Run: func(context.Context, *Env, []string) error {
+				return fmt.Errorf("wrapped: %w", codedErr(3))
+			}},
 			{Name: "fail", Summary: "always fails", Run: func(context.Context, *Env, []string) error {
 				return errors.New("boom")
 			}},
@@ -71,6 +75,12 @@ func run(t *testing.T, args ...string) (code int, stdout, stderr string, got []s
 	code = Main(context.Background(), testTree(&got), args, env)
 	return code, out.String(), errOut.String(), got
 }
+
+// codedErr is an error that names its exit code (ExitCoder).
+type codedErr int
+
+func (e codedErr) Error() string { return fmt.Sprintf("exit %d", int(e)) }
+func (e codedErr) ExitCode() int { return int(e) }
 
 func TestMainDispatch(t *testing.T) {
 	tests := []struct {
@@ -101,6 +111,7 @@ func TestMainDispatch(t *testing.T) {
 		{name: "command with sub runs itself", args: []string{"both"}, code: ExitOK, gotArgs: []string{}, wantRun: true},
 		{name: "command with sub runs sub", args: []string{"both", "sub"}, code: ExitOK, gotArgs: []string{}, wantRun: true},
 		{name: "not available", args: []string{"later"}, code: ExitUsage, stderr: "rpmgr later: not available in this build"},
+		{name: "an error with its own exit code", args: []string{"coded"}, code: 3, stderr: "rpmgr coded: wrapped: exit 3"},
 		{name: "runtime error", args: []string{"fail"}, code: ExitError, stderr: "rpmgr fail: boom"},
 		{name: "flag after the arguments", args: []string{"copy", "a", "b", "--force"}, code: ExitOK, gotArgs: []string{"a", "b"}, wantRun: true},
 		{name: "flag between the arguments", args: []string{"copy", "a", "-force", "b"}, code: ExitOK, gotArgs: []string{"a", "b"}, wantRun: true},
