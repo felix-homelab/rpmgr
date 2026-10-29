@@ -17,8 +17,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/units"
 )
 
-// Roles are the roles an installation record may name; the updater replaces the binary of
-// gateways and connectors only (D102).
+// Roles are the roles an installation record may name; the updater replaces the binary of every
+// one of them (D158).
 var Roles = []string{"controller", "gateway", "connector", "all-in-one"}
 
 // Installed is what an installer records for the updater (docs/10-operations.md, "Who installs the

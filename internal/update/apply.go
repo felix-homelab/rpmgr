@@ -29,6 +29,11 @@ const (
 	readyInterval = 2 * time.Second
 	readyWindow   = 5 * time.Minute
 	maxRestarts   = 3
+	// backupWindow bounds each of the backup before the swap and the restore of a rollback; and
+	// servesAgain bounds the wait, after a failed hand-off, for the old process to answer again
+	// (docs/03-connections.md, "Timeouts, keepalive and backoff").
+	backupWindow = 10 * time.Minute
+	servesAgain  = 30 * time.Second
 )
 
 // StatusFile is where the updater writes its last outcome, which the agent reports
@@ -46,6 +51,17 @@ const (
 	RolledBack     = "rolled_back"
 	RollbackFailed = "rollback_failed"
 	Refused        = "refused"
+	// Updating is written to the status file while a controller or all-in-one host is being
+	// updated, with the Step; the outcome replaces it.
+	Updating = "updating"
+)
+
+// The steps of an update of a controller or all-in-one, in Status.Step.
+const (
+	StepVerifying   = "verifying"
+	StepBackingUp   = "backing_up"
+	StepHandingOver = "handing_over" // the restart or hand-off; the new process migrates the database
+	StepWaiting     = "waiting"      // for every role to be ready
 )
 
 // ErrRolledBack means the new release was installed but a role did not become ready, so the
@@ -58,6 +74,7 @@ var (
 // Status is the updater's last outcome (/run/rpmgr-update/status.json).
 type Status struct {
 	State    string `json:"state"`
+	Step     string `json:"step,omitempty"`
 	Version  string `json:"version,omitempty"`
 	Previous string `json:"previous,omitempty"`
 	Reason   string `json:"reason,omitempty"`
@@ -91,6 +108,9 @@ type Handoffer interface {
 type Services interface {
 	// Restart restarts a unit, such as rpmgr-connector.service.
 	Restart(ctx context.Context, unit string) error
+	// Stop stops a unit; the rollback of a controller or all-in-one needs it to restore the
+	// database.
+	Stop(ctx context.Context, unit string) error
 	// State reports a unit's state.
 	State(ctx context.Context, unit string) (Unit, error)
 }
@@ -115,10 +135,17 @@ type Applier struct {
 	Units string
 	// Clock is for the status file's time; nil means time.Now.
 	Clock func() time.Time
+	// Control describes the controller or all-in-one of the host (its boot file and database
+	// driver). Without it a host with such a role is refused: nothing could back it up.
+	Control func(role string) (ControlPlane, error)
+	// Exec runs a command of rpmgr itself, `<bin> backup`, `migrate` and `restore`, and returns
+	// its output; nil runs it with os/exec.
+	Exec func(ctx context.Context, bin string, args ...string) ([]byte, error)
 
 	reported  bool            // the last Apply wrote the status file
 	handedOff []string        // the roles the last install handed off
 	unchanged map[string]bool // the roles whose old process still serves after a failed hand-off
+	restored  string          // what the last rollback did to the database, for the reason
 }
 
 // Reported reports whether the last Apply wrote an outcome to the status file. It did not when
@@ -134,7 +161,10 @@ type pending struct {
 	Path     string   `json:"path"`
 	Prev     string   `json:"prev"`
 	Roles    []string `json:"roles"`
-	Next     State    `json:"next"` // the state to persist after success
+	// Backup is the backup of a controller or all-in-one taken before the swap, which a rollback
+	// after a migration restores.
+	Backup string `json:"backup,omitempty"`
+	Next   State  `json:"next"` // the state to persist after success
 }
 
 // Test hooks: beforeSwap runs after the new binary is written beside the installed one and before
@@ -159,7 +189,7 @@ var errInterrupted = errors.New("update: interrupted (test)")
 // changed); one wrapping ErrRolledBack when a role did not become ready and the previous binary was
 // put back; and one wrapping ErrRollbackFailed when that failed too.
 func (a *Applier) Apply(ctx context.Context) error {
-	a.reported, a.handedOff, a.unchanged = false, nil, nil
+	a.reported, a.handedOff, a.unchanged, a.restored = false, nil, nil, ""
 	p, err := a.readPending()
 	switch {
 	case err == nil:
@@ -182,6 +212,13 @@ func (a *Applier) Apply(ctx context.Context) error {
 	}
 	p = &pending{Version: s.Manifest.Version, Seq: s.Manifest.Seq, SHA256: s.Artifact.SHA256, Previous: a.Previous,
 		Path: in.Path, Prev: in.Path + ".prev", Roles: in.roles(), Next: s.Next}
+	if role := controlRole(p.Roles); role != "" {
+		a.step(p, StepVerifying)
+		a.step(p, StepBackingUp)
+		if p.Backup, err = a.backUp(ctx, role, in.Path); err != nil {
+			return a.report(Status{State: Refused, Version: p.Version, Previous: a.Previous, Reason: err.Error()}, err)
+		}
+	}
 	warning, err := a.swap(s, p)
 	if err != nil {
 		return a.report(Status{State: Refused, Version: p.Version, Previous: a.Previous, Reason: err.Error()}, err)
@@ -217,12 +254,16 @@ func (a *Applier) finish(ctx context.Context, p *pending, note string) error {
 		return Status{State: state, Version: p.Version, Previous: p.Previous, Reason: strings.Join(parts, "; "),
 			HandedOff: slices.Clone(a.handedOff)}
 	}
+	a.step(p, StepHandingOver)
 	if err := a.restartAndWait(ctx, p); err != nil {
 		reason := err.Error()
 		state, werr := RolledBack, ErrRolledBack
 		if rerr := a.rollback(ctx, p); rerr != nil {
 			state, werr = RollbackFailed, ErrRollbackFailed
 			reason += "; " + rerr.Error()
+		}
+		if a.restored != "" {
+			reason += "; " + a.restored
 		}
 		if serr := a.recordFailed(p); serr != nil {
 			reason += "; recording the failed version: " + serr.Error()
@@ -386,6 +427,13 @@ func (a *Applier) rollback(ctx context.Context, p *pending) error {
 		if a.unchanged[role] {
 			continue // its old process serves on: a failed hand-off changed nothing of it
 		}
+		if isControl(role) && p.Backup != "" {
+			if err := a.restoreDatabase(ctx, p, role); err != nil {
+				// Never the previous binary on a database the new release migrated: it refuses it.
+				errs = append(errs, err)
+				continue
+			}
+		}
 		if err := a.Services.Restart(ctx, unitOf(role)); err != nil {
 			errs = append(errs, err)
 		}
@@ -478,6 +526,12 @@ func (a *Applier) restartAndWait(ctx context.Context, p *pending) error {
 				a.unchanged = map[string]bool{}
 				for _, r := range roles[i:] {
 					a.unchanged[r] = true
+				}
+				if isControl(role) && !a.serves(ctx, role) {
+					// The new process migrated the database and ended: the old one refuses it
+					// (docs/03-connections.md, "All-in-one hand-over"), so the rollback restores.
+					delete(a.unchanged, role)
+					return fmt.Errorf("handing %s over: %w; the old process does not serve again", unitOf(role), err)
 				}
 				return fmt.Errorf("handing %s over: %w; the old process serves on", unitOf(role), err)
 			}
@@ -692,9 +746,10 @@ func syncDir(dir string) error {
 	return d.Sync()
 }
 
-// updatable reports whether the updater replaces a role's binary: gateways and connectors only
-// (D102).
-func updatable(role string) bool { return role == "gateway" || role == "connector" }
+// updatable reports whether the updater replaces a role's binary: every role (D158).
+func updatable(role string) bool {
+	return role == "gateway" || role == "connector" || isControl(role)
+}
 
 // unitOf is the systemd unit of a role.
 func unitOf(role string) string { return "rpmgr-" + role + ".service" }

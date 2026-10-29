@@ -182,9 +182,9 @@ func TestRenderUpdater(t *testing.T) {
 		"Type=oneshot",
 		"ExecStart=/opt/rpmgr/bin/rpmgr updater apply --staged /var/lib/rpmgr/update --state /var/lib/rpmgr-update",
 		"RuntimeDirectory=rpmgr-update", "RuntimeDirectoryPreserve=yes", "ProtectSystem=strict",
-		"ReadWritePaths=/opt/rpmgr/bin /var/lib/rpmgr-update -/etc/systemd/system/rpmgr-gateway.service.d -/etc/systemd/system/rpmgr-connector.service.d -/etc/systemd/system/rpmgr-all-in-one.service.d", "NoNewPrivileges=yes",
+		"ReadWritePaths=/opt/rpmgr/bin /var/lib/rpmgr-update -/var/lib/rpmgr -/etc/systemd/system/rpmgr-gateway.service.d -/etc/systemd/system/rpmgr-connector.service.d -/etc/systemd/system/rpmgr-all-in-one.service.d", "NoNewPrivileges=yes",
 		// Once at boot, after the roles, to finish an install that a crash or reboot interrupted.
-		"After=network-online.target rpmgr-gateway.service rpmgr-connector.service", "WantedBy=multi-user.target",
+		"After=network-online.target rpmgr-controller.service rpmgr-gateway.service rpmgr-connector.service rpmgr-all-in-one.service", "WantedBy=multi-user.target",
 	} {
 		if !strings.Contains(service, want+"\n") {
 			t.Errorf("rpmgr-update.service lacks %q", want)

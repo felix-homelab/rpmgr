@@ -485,15 +485,17 @@ func TestStage_Install(t *testing.T) {
 		fails   bool  // Stage fails
 		want    error // and wraps want, if set
 	}{
-		"several agent roles":       {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","roles":["gateway","connector"]}`},
-		"single role of v0.1.0":     {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","role":"connector"}`},
-		"controller host":           {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","roles":["controller","connector"]}`, fails: true, want: update.ErrRefused},
-		"all-in-one host of v0.1.0": {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","role":"all-in-one"}`, fails: true, want: update.ErrRefused},
-		"no variant":                {install: `{"method":"script","path":"/usr/local/bin/rpmgr","roles":["connector"]}`, fails: true},
-		"unknown key":               {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","roles":["connector"],"x":1}`, fails: true},
-		"no role":                   {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full"}`, fails: true},
-		"not JSON":                  {install: `method=script`, fails: true},
-		"two documents":             {install: `{"method":"script","path":"/p","variant":"full","roles":["connector"]}{}`, fails: true},
+		"several agent roles":         {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","roles":["gateway","connector"]}`},
+		"single role of v0.1.0":       {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","role":"connector"}`},
+		"controller host":             {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","roles":["controller","connector"]}`},
+		"all-in-one host of v0.1.0":   {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","role":"all-in-one"}`},
+		"controller and all-in-one":   {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","roles":["controller","all-in-one"]}`, fails: true, want: update.ErrRefused},
+		"connector build, controller": {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"connector","roles":["controller"]}`, fails: true, want: update.ErrRefused},
+		"no variant":                  {install: `{"method":"script","path":"/usr/local/bin/rpmgr","roles":["connector"]}`, fails: true},
+		"unknown key":                 {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full","roles":["connector"],"x":1}`, fails: true},
+		"no role":                     {install: `{"method":"script","path":"/usr/local/bin/rpmgr","variant":"full"}`, fails: true},
+		"not JSON":                    {install: `method=script`, fails: true},
+		"two documents":               {install: `{"method":"script","path":"/p","variant":"full","roles":["connector"]}{}`, fails: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := newHost(t, hostOpts{install: tc.install})

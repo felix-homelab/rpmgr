@@ -23,7 +23,7 @@ TestOTA_FreshHostReplayRejected	done	2.4	#605	internal/update; the scripts in te
 TestOTA_SignedDowngradeAccepted	done	2.3	#604	internal/update
 TestOTA_StagedFileSwapTOCTOU	done	2.2	#603	as root in 2.2; as the service user in 2.11 (#612)
 TestOTA_HostileStagingRefused	done	2.2	#603	OTA
-TestOTA_ControlPlaneBackupAndRestore	pending	2.12	#1006	internal/update
+TestOTA_ControlPlaneBackupAndRestore	done	2.12	#1006	internal/update
 TestOTA_CrossFilesystemInstall	pending	2.11	#612	test/ota
 TestOTA_UpdaterHonoursPolicy	done	2.3	#604	internal/update; under systemd in 2.11 (#612, test/ota)
 TestRestore_RevocationsReapplied	done	11.6	#160

@@ -36,6 +36,8 @@ type services struct {
 	notify     map[string]bool
 	handoffs   []string         // "<bin> <role>" of each hand-off
 	handoffErr map[string]error // a role whose hand-off fails
+	stops      []string
+	stopErr    error
 }
 
 func (s *services) Handoff(_ context.Context, bin, role string) error {
@@ -50,6 +52,13 @@ func (s *services) Restart(_ context.Context, unit string) error {
 	defer s.mu.Unlock()
 	s.restarts = append(s.restarts, unit)
 	return nil
+}
+
+func (s *services) Stop(_ context.Context, unit string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stops = append(s.stops, unit)
+	return s.stopErr
 }
 
 func (s *services) State(_ context.Context, unit string) (update.Unit, error) {
@@ -567,9 +576,9 @@ func TestApply_AfterTheRename(t *testing.T) {
 
 func TestApply_RefusedHosts(t *testing.T) {
 	for name, roles := range map[string][]string{
-		"a controller host":  {"controller"},
-		"an all-in-one host": {"all-in-one", "connector"},
-		"an unknown role":    {"connector", "importer"},
+		"a controller host, which this updater cannot back up":  {"controller"},
+		"an all-in-one host, which this updater cannot back up": {"all-in-one", "connector"},
+		"an unknown role": {"connector", "importer"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			i := newInstalled(t, hostOpts{}, "1.1.0", roles, nil)
@@ -757,4 +766,21 @@ func TestApply_NothingStaged(t *testing.T) {
 		i.status(update.Refused)
 		i.runs("1.1.0")
 	})
+}
+
+// TestSystemd_Stop runs `systemctl stop <unit>` and returns what a failing one says.
+func TestSystemd_Stop(t *testing.T) {
+	dir := t.TempDir()
+	script, log := filepath.Join(dir, "systemctl"), filepath.Join(dir, "calls")
+	mustWrite(t, script, "#!/bin/sh\necho \"$@\" >> "+log+"\n", 0o755)
+	if err := (update.Systemd{Systemctl: script}).Stop(context.Background(), "rpmgr-controller.service"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(log); string(b) != "stop rpmgr-controller.service\n" { //nolint:gosec // G304: under t.TempDir
+		t.Errorf("systemctl was called with %q", b)
+	}
+	mustWrite(t, script, "#!/bin/sh\necho 'unit is masked' >&2\nexit 1\n", 0o755)
+	if err := (update.Systemd{Systemctl: script}).Stop(context.Background(), "rpmgr-controller.service"); err == nil || !strings.Contains(err.Error(), "masked") {
+		t.Errorf("Stop of a failing systemctl: %v", err)
+	}
 }

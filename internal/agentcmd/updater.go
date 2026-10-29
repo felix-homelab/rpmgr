@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"go.yaml.in/yaml/v3"
+
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/update"
@@ -124,6 +126,7 @@ func updaterApply() *cli.Command {
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
 			a.Previous = version.Get().Version
 			a.Ready = func(ctx context.Context, role string) error { return ready(ctx, BootDir, role) }
+			a.Control = func(role string) (update.ControlPlane, error) { return controlPlane(BootDir, role) }
 			if err := a.Apply(ctx); err != nil {
 				return err
 			}
@@ -165,6 +168,18 @@ func ready(ctx context.Context, bootDir, role string) error {
 			return err
 		}
 		admin = c.Listen.Admin
+	case "controller":
+		var c config.Controller
+		if err := config.Load(path, &c); err != nil {
+			return err
+		}
+		admin = c.Listen.Admin
+	case "all-in-one":
+		var a config.AllInOne
+		if err := config.Load(path, &a); err != nil {
+			return err
+		}
+		admin = a.Listen.Admin
 	default:
 		return fmt.Errorf("no updatable role %q", role)
 	}
@@ -187,4 +202,27 @@ func ready(ctx context.Context, bootDir, role string) error {
 		return fmt.Errorf("not ready: %s", strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(body)), "not ready:")))
 	}
 	return nil
+}
+
+// controlPlane names the boot file of the controller or all-in-one and its database driver. The
+// driver is read from the file itself, not through config.Load, so that a PostgreSQL controller
+// is refused for what it is and not for a boot file that does not load.
+func controlPlane(bootDir, role string) (update.ControlPlane, error) {
+	path := filepath.Join(bootDir, role+".yaml")
+	b, err := os.ReadFile(path) //nolint:gosec // G304: the role's boot file
+	if err != nil {
+		return update.ControlPlane{}, err
+	}
+	var f struct {
+		Database struct {
+			Driver string `yaml:"driver"`
+		} `yaml:"database"`
+	}
+	if err := yaml.Unmarshal(b, &f); err != nil {
+		return update.ControlPlane{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if f.Database.Driver == "" {
+		f.Database.Driver = "sqlite" // the default of config
+	}
+	return update.ControlPlane{Config: path, Driver: f.Database.Driver}, nil
 }
