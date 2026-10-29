@@ -70,21 +70,23 @@ func TestTargetHealth_Unknown(t *testing.T) {
 	if !h.observe(true, c) || h.unknown || h.unhealthy {
 		t.Errorf("a first pass: %+v, want healthy and changed", h)
 	}
+	// The first failure decides too (D157): unhealthy at once, whatever the threshold.
 	h = &targetHealth{unknown: true}
-	for i := range 2 {
-		if h.observe(false, c) || !h.unknown {
-			t.Fatalf("failure %d: %+v, want unknown still, unchanged", i+1, h)
-		}
-	}
-	if h.observe(true, c); h.unknown || h.unhealthy {
-		t.Errorf("a pass after two failures: %+v, want healthy", h)
-	}
-	h = &targetHealth{unknown: true}
-	for range 2 {
-		h.observe(false, c)
-	}
 	if !h.observe(false, c) || h.unknown || !h.unhealthy {
-		t.Errorf("the third failure: %+v, want unhealthy and changed", h)
+		t.Errorf("a first failure: %+v, want unhealthy and changed", h)
+	}
+	// From then on the thresholds apply: healthy again only after the healthy threshold.
+	if h.observe(true, c) || !h.unhealthy {
+		t.Errorf("one pass after the first failure: %+v, want unhealthy still", h)
+	}
+	if !h.observe(true, c) || h.unhealthy {
+		t.Errorf("the second pass: %+v, want healthy and changed", h)
+	}
+	// A blocked first check reports the policy's refusal, not unknown.
+	h = &targetHealth{unknown: true, blocked: "not allowed by the local policy"}
+	h.observe(false, c)
+	if st := targetStatus("tg_a", h); st.GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY {
+		t.Errorf("a blocked first check's status: %v", st)
 	}
 	if st := targetStatus("tg_a", &targetHealth{unknown: true}); st.GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_TARGET_UNKNOWN {
 		t.Errorf("an unknown target's status: %v", st)
