@@ -3,6 +3,7 @@
 package handoff
 
 import (
+	"context"
 	"io"
 	"os"
 	"time"
@@ -25,6 +26,11 @@ type Config struct {
 	Args []string
 	// Env is its environment; nil for this process's. Env itself is set by Start.
 	Env []string
+	// Release, if set, lets go of what only one process may hold, when the new process asks for
+	// that (Handoff.Release) before it opens it. Resume takes it up again if the hand-off then
+	// fails, once the new process is gone.
+	Release func(ctx context.Context) error
+	Resume  func()
 	// Generation is the new process's generation, one more than this one's.
 	Generation uint64
 	// Stdout and Stderr default to this process's.

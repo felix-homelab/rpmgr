@@ -73,6 +73,10 @@ type RunOptions struct {
 	// Listener, if set, takes the place of listen.https: all-in-one hands it the connections its
 	// gateway routes to the controller, and its own control session.
 	Listener net.Listener
+	// Restart, if set and closed when ctx ends, makes Run say goodbye to the agents with
+	// GOODBYE_REASON_RESTART instead of draining them: all-in-one hands the controller over to a
+	// new process, which serves again at once.
+	Restart <-chan struct{}
 	// Registry, if set, receives the controller's metrics and Run serves no admin listener;
 	// Readiness then gets the controller's readiness check.
 	Registry  telemetry.Registry
@@ -520,7 +524,12 @@ func Run(ctx context.Context, o RunOptions) error {
 	case result = <-errs:
 	}
 	// Drain: agents move to another endpoint, then the servers stop.
-	sessions.Drain(time.Now().Add(drainWait))
+	select {
+	case <-o.Restart:
+		sessions.Restart()
+	default:
+		sessions.Drain(time.Now().Add(drainWait))
+	}
 	waitUntil := time.Now().Add(drainWait)
 	for time.Now().Before(waitUntil) && len(sessions.Connected()) > 0 {
 		time.Sleep(100 * time.Millisecond)

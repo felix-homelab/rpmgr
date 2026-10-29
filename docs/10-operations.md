@@ -223,8 +223,10 @@ RestartSec=2s
   - **`READY=1` comes at the role's ready point**, not at start: the gateway sends it once its
     listeners are up, and a gateway that a hand-off started once it holds its route ports (it
     applied its first snapshot) and the old process switched. A gateway that cannot bind its
-    listeners, or whose hand-off fails, ends and `systemctl start` fails. All-in-one and
-    connector still send it at once, until their slices.
+    listeners, or whose hand-off fails, ends and `systemctl start` fails. So does an all-in-one,
+    which is ready when its gateway's control session to its controller is up and sends `READY=1`
+    after the database moved ([03](03-connections.md#all-in-one-hand-over)); the connector still
+    sends it at once, until its slice.
     A gateway that serves QUIC hands off too: the new process opens its QUIC listener and its `udp`
     routes once the old one has exited ([03](03-connections.md#restarts-with-socket-hand-off-phase-2)).
   - **`rpmgr handoff`** signals only a process that announced in `/run/rpmgr/<role>/handoff.pid`
@@ -620,7 +622,8 @@ affect agents take effect through reconciliation and show apply status like any 
    ([03](03-connections.md#restarts-with-socket-hand-off-phase-2),
    [D127](14-open-decisions.md#project-and-process)). An upgrade from an earlier release, a plain
    `systemctl restart` and a container restart drain and stop as before; an all-in-one's web UI
-   and API answer 503 for the seconds its controller moves.
+   and API are unavailable for the seconds its controller moves, and its agents redial at once
+   ([03](03-connections.md#all-in-one-hand-over)).
 3. **Connectors.** Through the staged OTA rollout: canary → percentage → all, with automatic
    rollback on failure, each stage approved by the Instance Admin; a rollback pauses the rollout
    ([04](04-security.md#over-the-air-updates)). A rollout's target is the controller's own

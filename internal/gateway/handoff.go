@@ -126,7 +126,7 @@ func (l *listeners) start(ctx context.Context) (*handoff.Child, error) {
 		return nil, err
 	}
 	defer closeSockets(socks)
-	return handoff.Start(ctx, handoff.Config{Generation: l.link.Generation() + 1}, socks)
+	return handoff.Start(ctx, handoff.Config{Generation: l.link.Generation() + 1, Release: l.link.Release, Resume: l.link.Resume}, socks)
 }
 
 // routeName names the listener of a route's port.

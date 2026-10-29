@@ -15,6 +15,11 @@ import (
 type Link struct {
 	// Inherited is the hand-off that started this process; nil after a plain start.
 	Inherited *Handoff
+	// Release and Resume are the Config's of the hand-offs this role starts (Config.Release): a
+	// role that holds something only one process may, as the all-in-one its database, sets them
+	// before it calls Serve.
+	Release func(ctx context.Context) error
+	Resume  func()
 
 	getenv func(string) string
 	begin  func() // starts the trigger of a process a hand-off started, once it took over

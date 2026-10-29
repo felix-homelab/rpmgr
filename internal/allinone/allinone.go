@@ -34,6 +34,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
+	"github.com/felix-homelab/rpmgr/internal/handoff"
 	"github.com/felix-homelab/rpmgr/internal/memnet"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -248,6 +249,10 @@ type RunOptions struct {
 	// Now is the clock of the built-in agents' enrollment and of the check whether their
 	// certificates expired; nil is time.Now.
 	Now func() time.Time
+	// Handoff, if set, is the all-in-one's link to hand-offs: the controller's database and the
+	// built-in gateway's listeners move to a new process (docs/03-connections.md, "All-in-one
+	// hand-over"). Nil: a plain start, no hand-off.
+	Handoff *handoff.Link
 }
 
 // started, if set, is called once Run has taken SIGHUP over and before it starts anything (tests).
@@ -320,7 +325,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err != nil {
 		return err
 	}
-	mem, tunnels := memnet.NewListener(), memnet.NewListener()
+	mem, tunnels := &memSwap{}, memnet.NewListener()
+	mem.set(memnet.NewListener())
 	defer func() { _, _ = mem.Close(), tunnels.Close() }()
 	reg := o.Registry
 	if reg == nil {
@@ -338,46 +344,83 @@ func Run(ctx context.Context, o RunOptions) error {
 	// The controller's port-80 handler goes to the gateway, which serves port 80; the CA validates
 	// the public URL's certificate through the gateway, so ACME waits for it.
 	port80 := controller.RedirectHandler(public)
-	ctlListening, gwListening, conListening := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	ctl := start(func(ctx context.Context) error {
-		return controller.Run(ctx, controller.RunOptions{Config: cfg.Controller(), Version: o.Version, Sources: routes.Sources(),
-			Getenv: o.Getenv, Logger: o.Logger.With("role", "controller"), Listener: mem, Registry: reg, Readiness: readiness,
-			ACMERoots: o.ACMERoots, Port80: func(h http.Handler) { port80 = h }, ACMEAfter: gwListening,
-			Listening: func() { close(ctlListening) }})
-	})
-	if err := wait(ctlListening, ctl); err != nil {
+	gwListening, conListening := make(chan struct{}), make(chan struct{})
+	ctl := &ctlHolder{reg: reg, ready: readiness, mem: mem, gone: make(chan error, 1),
+		opts: controller.RunOptions{Config: cfg.Controller(), Version: o.Version, Sources: routes.Sources(), Getenv: o.Getenv,
+			Logger: o.Logger.With("role", "controller"), ACMERoots: o.ACMERoots, Port80: func(h http.Handler) { port80 = h },
+			ACMEAfter: gwListening}}
+	names := &follower{run: func(ctx context.Context) {
+		l.followNames(ctx, cfg, own, public.Hostname(), controller.RevisionCheck, o.Logger)
+	}}
+	link := o.Handoff
+	if link != nil && link.Inherited != nil {
+		// The old process still holds the database: it lets go, and the controller opens and
+		// migrates it only then (never two writers).
+		if err := link.Inherited.Release(); err != nil {
+			return err
+		}
+	}
+	if err := ctl.start(); err != nil {
 		return err
 	}
+	if link != nil {
+		link.Release = func(context.Context) error {
+			o.Logger.Info("handing the controller over: ending its sessions and closing the database")
+			names.end() // it reads the database too
+			if err := ctl.stop(true); err != nil {
+				o.Logger.Warn("the controller ended with an error", "error", err)
+			}
+			return nil
+		}
+		link.Resume = func() {
+			o.Logger.Warn("the hand-over failed: the controller opens the database again")
+			if err := ctl.start(); err != nil {
+				select {
+				case ctl.gone <- fmt.Errorf("allinone: the controller cannot resume after a failed hand-over: %w", err):
+				default:
+				}
+				return
+			}
+			names.start(ctx)
+		}
+	}
 	if err := l.prepare(ctx, cfg, o.Now()); err != nil {
-		return errors.Join(err, ctl.end())
+		return errors.Join(err, ctl.stop(false))
 	}
 	own.setNames(append(l.names, public.Hostname()))
-	follow, stopFollow := context.WithCancel(ctx)
-	followed := make(chan struct{})
-	go func() {
-		defer close(followed)
-		l.followNames(follow, cfg, own, public.Hostname(), controller.RevisionCheck, o.Logger)
-	}()
-	defer func() { stopFollow(); <-followed }()
+	names.start(ctx)
+	defer names.end()
 	for _, a := range []*builtIn{&l.gateway, &l.connector} {
 		if a.token == "" {
 			continue
 		}
 		o.Logger.Info("enrolling all-in-one's own "+a.role+" again", "identity", a.dir, "reason", a.why)
 		if err := a.enroll(ctx, cfg.PublicURL, l.root, mem.Dial, o.Now, true); err != nil {
-			return errors.Join(fmt.Errorf("%w (%s)", err, a.why), ctl.end())
+			return errors.Join(fmt.Errorf("%w (%s)", err, a.why), ctl.stop(false))
 		}
 		o.Logger.Info("enrolled all-in-one's own "+a.role, "identity", a.dir)
+	}
+	// An all-in-one that can hand off holds its admin listener through the gateway, which hands it
+	// over with its own; it opens it before anything can hand over.
+	var adminLn net.Listener
+	var adminErr error
+	var hold func(func(string, string) (net.Listener, error))
+	listenAdmin := func(addr string) (net.Listener, error) { return net.Listen("tcp", addr) }
+	if link != nil {
+		hold = func(listen func(string, string) (net.Listener, error)) {
+			adminLn, adminErr = listen("admin", cfg.Listen.Admin)
+		}
+		listenAdmin = func(string) (net.Listener, error) { return adminLn, nil }
 	}
 	gw := start(func(ctx context.Context) error {
 		return gateway.Run(ctx, gateway.RunOptions{Config: cfg.Gateway(), Version: o.Version, Logger: o.Logger.With("role", "gateway"),
 			DrainPeriod: o.DrainPeriod, Controller: mem.Deliver, ControllerNames: []string{public.Hostname()}, Dial: mem.Dial,
 			Port80Fallback: port80, Tunnels: tunnels, RoutePorts: func(bound func(uint16) bool) { own.routes.Store(&bound) },
-			Registry: telemetry.WithLabels(reg, prometheus.Labels{"role": "gateway"}), Readiness: readiness,
+			Registry: telemetry.WithLabels(reg, prometheus.Labels{"role": "gateway"}), Readiness: readiness, Handoff: link, Hold: hold,
 			Listening: func() { close(gwListening) }})
 	})
 	if err := wait(gwListening, gw); err != nil {
-		return errors.Join(err, ctl.end())
+		return errors.Join(err, ctl.stop(false))
 	}
 	con := start(func(ctx context.Context) error {
 		return connector.Run(ctx, connector.RunOptions{Config: cfg.Connector(), Version: o.Version, Getenv: o.Getenv,
@@ -387,10 +430,13 @@ func Run(ctx context.Context, o RunOptions) error {
 			Listening: func() { close(conListening) }})
 	})
 	if err := wait(conListening, con); err != nil {
-		return errors.Join(err, gw.end(), ctl.end())
+		return errors.Join(err, gw.end(), ctl.stop(false))
+	}
+	if adminErr != nil {
+		return errors.Join(adminErr, con.end(), gw.end(), ctl.stop(false))
 	}
 	admin := start(func(ctx context.Context) error {
-		return telemetry.ServeAdmin(ctx, cfg.Listen.Admin, reg, func(ctx context.Context) error {
+		return telemetry.ServeAdminOn(ctx, cfg.Listen.Admin, listenAdmin, reg, func(ctx context.Context) error {
 			mu.Lock()
 			defer mu.Unlock()
 			var errs []error
@@ -403,19 +449,20 @@ func Run(ctx context.Context, o RunOptions) error {
 	if o.Listening != nil {
 		o.Listening()
 	}
+	var ctlErr error
 	select {
 	case <-ctx.Done():
 	case gw.err = <-gw.done:
 		gw.ended = true
-	case ctl.err = <-ctl.done:
-		ctl.ended = true
+	case err := <-ctl.gone:
+		ctlErr = err
 	case con.err = <-con.done:
 		con.ended = true
 	case admin.err = <-admin.done:
 		admin.ended = true
 	}
 	// The admin listener is closed last: its address is free again once Run returns.
-	return errors.Join(gw.end(), con.end(), ctl.end(), admin.end())
+	return errors.Join(gw.end(), con.end(), errors.Join(ctlErr, ctl.stop(false)), admin.end())
 }
 
 // wait returns once listening is closed, or the part's error if it ends first.

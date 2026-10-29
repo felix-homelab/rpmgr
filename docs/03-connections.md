@@ -1616,7 +1616,7 @@ used, not by the route compiler:
 | **Database down** | Controller serves reads from memory where possible, rejects writes, keeps sessions. New control sessions are refused as unavailable, because each needs a session epoch from the database; agents retry with backoff. |
 | **Gateway crashes** | New user connections for its routes go to the other gateways in the group. Public connections in flight on the crashed gateway are lost. With a persisted `StatelessResetKey` and padded session pings, connectors notice the restart within one ping interval (15 s) instead of after the idle timeout. |
 | **Gateway planned restart** | `Drain`, connectors re-home, in-flight connections get the gateway drain period. |
-| **Gateway or all-in-one restart with hand-off** (Phase 2) | The new process takes the listening sockets over before the old one stops accepting; no new visitor connection is refused, open ones get the hand-off drain; an all-in-one's API and web UI answer 503 for the seconds the controller moves ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2)). |
+| **Gateway or all-in-one restart with hand-off** (Phase 2) | The new process takes the listening sockets over before the old one stops accepting; no new visitor connection is refused, open ones get the hand-off drain; an all-in-one's API and web UI are unavailable for the seconds the controller moves ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2), [All-in-one hand-over](#all-in-one-hand-over)). |
 | **Connector restart with hand-off** (Phase 2, Linux) | The new process opens its sessions before the old one stops taking streams; open streams get the hand-off drain ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2)). |
 | **Connector restarts** | Its sessions close; routes with no other ready connector return 503 (HTTP) or refuse (TCP). It restarts from the persisted last-known-good snapshot, reconnects, and reports a new `boot_id`. A killed process closes no session: a gateway closes the sessions of the earlier `boot_id` when the first session with the new one arrives, so that they neither take streams nor fill the connector's session cap. |
 | **Bad configuration** | Rejected at compile time by the controller, or `Rejected` by the agent; last-known-good keeps running; the UI shows the reasons. No outage. |
@@ -1714,7 +1714,7 @@ sequenceDiagram
    and it does not open another. The control `Goodbye` of a restart carries
    `GOODBYE_REASON_RESTART`, on which an agent reconnects at once, without backoff
    ([D155](14-open-decisions.md#engineering)); the old controller of an all-in-one sends it
-   (slice 17.5).
+   ([All-in-one hand-over](#all-in-one-hand-over)).
 5. **Drain.** The old process serves its open connections until they end or the **hand-off drain**
    cuts them ([D146](14-open-decisions.md#engineering)), then exits. A revocation, a tightened
    access policy or a removed route that the new process applies meanwhile cuts the old process's
@@ -1736,6 +1736,35 @@ sequenceDiagram
    **Generation.** Every log line and every metric only the gateway registers carry the process's generation, 1 after
    a plain start and one more after each hand-off ([10](10-operations.md#metrics)); the old
    process keeps its own.
+
+### All-in-one hand-over
+
+An all-in-one hands over its gateway's listeners as above, its admin listener among them
+(`admin`), and also its controller, whose database only one process may write. The controller
+listens in memory, so it has no socket to hand over; what moves is the database. The new process
+therefore asks for it before it opens it, over the status pipe, and the old process lets go first:
+
+1. The new process adopts the sockets, then sends `release` and waits, within the hand-off
+   readiness window, for the answer. It has not opened the database.
+2. The old process ends its control sessions with `Goodbye{restart}`, the built-in gateway's and
+   connector's included, stops its controller, which closes the database and releases the
+   controller lock (`controller.db.lock`,
+   [10](10-operations.md#hardened-systemd-units), is the second guard: a second controller refuses to open a locked database), and answers `released`. The
+   gateway keeps serving the connections it has and the built-in agents redial until the new
+   controller runs.
+3. The new process opens and migrates the database, starts its controller and its built-in agents,
+   and reports `ready` once its gateway's control session is up; the switch goes on as above.
+
+The controller answers nothing while it is stopped: its connections, the API and the web UI
+included, are closed instead of answered with 503, because the controller terminates their TLS.
+Agents redial at once, with a short jitter, on `GOODBYE_REASON_RESTART`.
+
+**Failure.** If the new process fails after `released`, because the migration fails, it ends or
+the readiness window passes, the old process kills it, waits until it is gone, opens the database
+again and starts its controller; its gateway and the built-in agents connect to it again and the
+hand-off is reported as failed. No write is lost: the database was closed, not copied. If the old
+process cannot start its controller again, it ends with an error and the service manager starts
+the unit. A separate controller does not take part: it has no hand-off.
 
 **UDP and QUIC.** A datagram on a shared socket goes to whichever process reads it, and a QUIC
 packet of the old process's session that the new process reads is answered with a stateless reset
