@@ -1516,6 +1516,7 @@ sequenceDiagram
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Hand-off drain (Phase 2) | 10 min; the boot-file setting `handoff.drain` takes 0 to 24 h; at the end the old process cuts what is still open and exits ([D146](14-open-decisions.md#engineering)) | [R] Long-lived SSH, database, WebSocket and CONNECT connections survive almost every update; an old process costs only memory |
 | Hand-off readiness window (Phase 2) | 60 s from the exec until the new process reports ready, else the old one kills it and keeps serving; `rpmgr handoff` waits 30 s longer for the outcome | [R] Shorter than the updater's readiness window, so the updater sees the hand-off's outcome inside its own |
+| QUIC bind window (Phase 2) | a process a hand-off started tries to bind the QUIC port every 100 ms for 5 s after the old process exited; the `udp` route ports are tried at once and then at the route rebind interval | [R] The old process's socket closes with it, so the port is free within moments; the window only absorbs the gap |
 | Hand-off status pipe (Phase 2) | one message at most 4 MiB, the manifest included; at most 16 384 sockets per hand-off; a reason one process sends the other at most 512 bytes | [R] Bounds what one process reads from the other |
 | Hand-off session wait (Phase 2) | a new public connection in the new process waits up to 5 s for a session of its route before 503 or a reset | [R] Connectors redial at once on `Drain{handoff}`; the wait covers their reconnect, so no visitor sees the switch [F S10: connectors moved within 0.04 s over QUIC and 0.5 s over TCP, and no new visitor connection was refused or reset] |
 | Session liveness | each controller node marks its live sessions seen every 60 s; a session not seen for 3 min is not live | An agent shows as connected while its control session is live; a node that stops without recording its sessions' ends leaves them to age, and ends them when it starts again |
@@ -1697,8 +1698,8 @@ sequenceDiagram
    `http`, `admin` and `route-<port>`. The new process matches a configured address to a handed
    socket by the address the old process bound (`listen.tcp: ":443"` is `[::]:443`), and binds what
    is not handed. A socket nothing needs is closed and logged once the first snapshot is applied.
-   The UDP socket of the QUIC listener is not handed until slice 17.4, so until then a gateway that
-   serves QUIC refuses a hand-off.
+   The UDP sockets, those of the QUIC listener and of the `udp` routes, are not handed over: the
+   new process opens them once the old one has exited (**UDP and QUIC** below).
 3. **Ready.** The new process starts from the stored last-known-good snapshot, opens its control
    session, which supersedes the old process's, applies the snapshot it receives and reports ready
    over the pipe. The old process takes the `Goodbye{superseded}` this causes without ending and
@@ -1756,7 +1757,10 @@ reads the UDP sockets until it exits ([S10](spikes/S10.md), the fallback of
 [ADR-0022](adr/0022-socket-hand-off-by-re-exec.md)):
 
 - **QUIC.** The old process accepts no new QUIC session after the switch and keeps its open ones
-  for the drain. The new process starts its QUIC listener once the old one has exited. Connectors
+  for the drain. The new process starts its QUIC listener and its `udp` routes once the old one
+  has exited; it tries the QUIC port every 100 ms for up to the **QUIC bind window** and, if the
+  port stays held, logs an error, serves data sessions over TCP only and tries again at the
+  **QUIC bind retry** interval. A process that has itself switched binds no QUIC port. Connectors
   on `auto` open their new sessions over TCP meanwhile, within the happy-eyeballs head start
   [F S10: 0.3 s], and come back to QUIC at the next re-probe. A connector whose transport is
   pinned to `quic` reaches the new process only after the old one has exited, up to the hand-off
