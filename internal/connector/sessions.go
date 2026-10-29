@@ -129,7 +129,21 @@ type Sessions struct {
 	// ready are the routes ready on this host, each with its ready priorities: nil for all of them,
 	// as without a health check (D133).
 	ready map[string][]uint32
+	// handoff is the state of a restart with socket hand-off, with handoffDone closed when it ends.
+	handoff     handoffState
+	handoffDone chan struct{}
+	// open are the sessions that run, retired ones too until they end: a retired session keeps its
+	// streams.
+	open map[*session]bool
 }
+
+type handoffState int
+
+const (
+	noHandoff handoffState = iota
+	handingOff
+	handedOff // the new process took over: this one opens no further session
+)
 
 type gatewayState struct {
 	g     Gateway
@@ -185,7 +199,7 @@ func New(o Options) *Sessions {
 		o.Now = time.Now
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Sessions{o: o, ctx: ctx, cancel: cancel, choose: newChooser(o.Now), gateways: map[string]*gatewayState{},
+	s := &Sessions{o: o, ctx: ctx, cancel: cancel, choose: newChooser(o.Now), gateways: map[string]*gatewayState{}, open: map[*session]bool{},
 		ready: map[string][]uint32{}}
 	o.Metrics.watch(s)
 	return s
@@ -519,6 +533,85 @@ func (m *Sessions) Status() []*agentv1.ResourceStatus {
 	return out
 }
 
+// BeginHandoff marks a restart with socket hand-off: the new process opens its own sessions,
+// which makes the gateways drain this process's, and this process redials none of them until it
+// is known whether the new one took over. end(true) keeps this process from opening any further
+// session; its open sessions serve their streams until they end. end(false), after a failed
+// hand-off, redials at once.
+func (m *Sessions) BeginHandoff() (end func(tookOver bool)) {
+	done := make(chan struct{})
+	m.mu.Lock()
+	m.handoff, m.handoffDone = handingOff, done
+	m.mu.Unlock()
+	var once sync.Once
+	return func(tookOver bool) {
+		once.Do(func() {
+			m.mu.Lock()
+			m.handoff = noHandoff
+			if tookOver {
+				m.handoff = handedOff
+			}
+			m.mu.Unlock()
+			close(done)
+		})
+	}
+}
+
+// superseded reports whether the new process of a hand-off took over: no session is dialled then.
+func (m *Sessions) superseded() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.handoff == handedOff
+}
+
+// afterHandoff is asked once a session ended: it waits while a hand-off is in progress, and
+// reports whether the new process took over, so that the slot ends instead of redialling. After a
+// failed hand-off the slot redials at once.
+func (m *Sessions) afterHandoff(ctx context.Context) (stop, now bool) {
+	m.mu.Lock()
+	state, done := m.handoff, m.handoffDone
+	m.mu.Unlock()
+	if state == handingOff {
+		m.o.Logger.Info("a session ended during a hand-off; waiting for its outcome")
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return true, false
+		}
+		if m.superseded() {
+			return true, false
+		}
+		return false, true
+	}
+	return state == handedOff, false
+}
+
+// Streams returns the number of open streams on every session, retired ones included.
+func (m *Sessions) Streams() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var n int64
+	for s := range m.open {
+		n += s.streams.Load()
+	}
+	return int(n)
+}
+
+// Settled reports whether every gateway has a session or failed to open one, which is when a
+// process a hand-off started is ready: it has done what it can to take the streams over.
+func (m *Sessions) Settled() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, gs := range m.gateways {
+		for _, l := range gs.links {
+			if len(l.sessions) == 0 && l.failed == nil {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // Close ends every session and waits for the links.
 func (m *Sessions) Close() {
 	m.cancel()
@@ -575,7 +668,7 @@ func (m *Sessions) runMode(ctx context.Context, l *link, tr string, first tunnel
 
 func (m *Sessions) slot(ctx context.Context, l *link, tr string, first tunnel.Session, hooks *modeHooks) {
 	b := agent.DataBackoff()
-	for ctx.Err() == nil {
+	for ctx.Err() == nil && !m.superseded() {
 		start := time.Now()
 		ts, err := first, error(nil)
 		first = nil
@@ -602,7 +695,14 @@ func (m *Sessions) slot(ctx context.Context, l *link, tr string, first tunnel.Se
 				hooks.live.Add(-1)
 			}
 			b.Healthy(time.Since(start))
-			if ctx.Err() != nil || (hooks != nil && hooks.ended(err, false)) {
+			stop, now := m.afterHandoff(ctx)
+			if stop || ctx.Err() != nil {
+				return
+			}
+			if now {
+				continue
+			}
+			if hooks != nil && hooks.ended(err, false) {
 				return
 			}
 		}
@@ -630,7 +730,16 @@ func (m *Sessions) run(ctx context.Context, l *link, ts tunnel.Session, tr strin
 	s := &session{l: l, transport: tr, s: ts, announced: map[string]string{}}
 	drained := make(chan struct{})
 	done := make(chan error, 1)
-	m.wg.Go(func() { done <- m.serve(ctx, s, drained) })
+	m.mu.Lock()
+	m.open[s] = true
+	m.mu.Unlock()
+	m.wg.Go(func() {
+		err := m.serve(ctx, s, drained)
+		m.mu.Lock()
+		delete(m.open, s)
+		m.mu.Unlock()
+		done <- err
+	})
 	select {
 	case err := <-done:
 		return err
@@ -658,7 +767,7 @@ func (m *Sessions) runAuto(ctx context.Context, l *link) {
 	gw := l.gw
 	b := agent.DataBackoff()
 	var handover *probed
-	for ctx.Err() == nil {
+	for ctx.Err() == nil && !m.superseded() {
 		m.mu.Lock()
 		ep := l.gs.g.Endpoints[0]
 		m.mu.Unlock()

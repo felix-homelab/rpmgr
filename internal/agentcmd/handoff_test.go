@@ -213,7 +213,7 @@ func TestHandoffCommand(t *testing.T) {
 func ptr[T any](v T) *T { return &v }
 
 // TestStartHandoffs: a role outside the hand-off roles gets no Link; a role that is not ready by
-// itself is announced at once; the gateway reports its own readiness through its Link, and the
+// itself is announced at once; the gateway and the connector report their own readiness through their Link, and the
 // trigger of either announces the process only from then on.
 func TestStartHandoffs(t *testing.T) {
 	run := RunDir
@@ -235,7 +235,7 @@ func TestStartHandoffs(t *testing.T) {
 		_, err := os.Stat(filepath.Join(RunDir, role, handoff.CapableFile))
 		return err == nil
 	}
-	for _, role := range []string{"gateway", "connector"} {
+	for _, role := range []string{"gateway", "connector", "all-in-one"} {
 		if err := os.Mkdir(filepath.Join(RunDir, role), 0o755); err != nil { //nolint:gosec // G301: as RuntimeDirectory= makes it
 			t.Fatal(err)
 		}
@@ -247,24 +247,26 @@ func TestStartHandoffs(t *testing.T) {
 	}
 	finish(nil)
 
-	ctx, finish, err = startHandoffs(context.Background(), env, "connector")
-	if err != nil || handoff.LinkFrom(ctx) == nil || !capable("connector") {
-		t.Fatalf("connector: link %v, capable %v, %v", handoff.LinkFrom(ctx), capable("connector"), err)
+	ctx, finish, err = startHandoffs(context.Background(), env, "all-in-one")
+	if err != nil || handoff.LinkFrom(ctx) == nil || !capable("all-in-one") {
+		t.Fatalf("all-in-one: link %v, capable %v, %v", handoff.LinkFrom(ctx), capable("all-in-one"), err)
 	}
 	if _, err := handoff.LinkFrom(ctx).Handoff(ctx); !errors.Is(err, handoff.ErrRefused) {
-		t.Errorf("the connector took a hand-off: %v", err)
+		t.Errorf("the all-in-one took a hand-off: %v", err)
 	}
 	finish(nil)
 
-	ctx, finish, err = startHandoffs(context.Background(), env, "gateway")
-	if err != nil || handoff.LinkFrom(ctx) == nil {
-		t.Fatalf("gateway: %v", err)
+	for _, role := range []string{"gateway", "connector"} {
+		ctx, finish, err = startHandoffs(context.Background(), env, role)
+		if err != nil || handoff.LinkFrom(ctx) == nil {
+			t.Fatalf("%s: %v", role, err)
+		}
+		if capable(role) {
+			t.Fatalf("the %s takes SIGUSR2 before it is ready", role)
+		}
+		if err := handoff.LinkFrom(ctx).Ready(); err != nil || !capable(role) {
+			t.Fatalf("%s ready: capable %v, %v", role, capable(role), err)
+		}
+		finish(nil)
 	}
-	if capable("gateway") {
-		t.Fatal("the gateway takes SIGUSR2 before it is ready")
-	}
-	if err := handoff.LinkFrom(ctx).Ready(); err != nil || !capable("gateway") {
-		t.Fatalf("gateway ready: capable %v, %v", capable("gateway"), err)
-	}
-	finish(nil)
 }

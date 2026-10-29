@@ -44,7 +44,8 @@ const tunnelHandshake = 10 * time.Second
 // Capabilities are what this gateway version implements (docs/03-connections.md, "Versioning and
 // capabilities").
 var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapHTTPHeaderMatch, agentproto.CapRouteLimits,
-	agentproto.CapHTTPRequireHeader, agentproto.CapPagesCustom, agentproto.CapTCPHTTPConnect, agentproto.CapTunnelWSS}
+	agentproto.CapHTTPRequireHeader, agentproto.CapPagesCustom, agentproto.CapTCPHTTPConnect, agentproto.CapTunnelWSS,
+	agentproto.CapSessionHandoff}
 
 // RunOptions configure Run.
 type RunOptions struct {
@@ -192,7 +193,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	sessions = NewSessions(SessionsOptions{TrustDomain: id.TrustDomain, GatewayID: id.AgentID, Assignment: assign,
 		Denied: ctl.DenyList().Denied, Capabilities: Capabilities, Now: o.Now, Logger: o.Logger, Metrics: metrics,
-		AwaitSession:  oldAlive.Load,
+		AwaitSession: oldAlive.Load, HandoffDrain: cfg.Handoff.DrainPeriod(),
 		OnOpenRequest: NewControlStreams(carried).Decide, OnChange: report.change})
 	host, _, err := net.SplitHostPort(cfg.Listen.TCP)
 	if err != nil {

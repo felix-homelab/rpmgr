@@ -707,7 +707,11 @@ type SessionHello struct {
 	// A random ID that is new at every start of the connector process.
 	BootId string `protobuf:"bytes,4,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
 	// The routes that are ready on the connector.
-	ReadyRoutes   []string `protobuf:"bytes,5,rep,name=ready_routes,json=readyRoutes,proto3" json:"ready_routes,omitempty"`
+	ReadyRoutes []string `protobuf:"bytes,5,rep,name=ready_routes,json=readyRoutes,proto3" json:"ready_routes,omitempty"`
+	// Phase 2, capability session.handoff of the gateway: the boot_id of the connector process this
+	// one replaces in a restart with socket hand-off. The gateway then drains that process's sessions
+	// instead of closing them; a boot_id of no live session of this connector is ignored.
+	HandoffFrom   string `protobuf:"bytes,6,opt,name=handoff_from,json=handoffFrom,proto3" json:"handoff_from,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -775,6 +779,13 @@ func (x *SessionHello) GetReadyRoutes() []string {
 		return x.ReadyRoutes
 	}
 	return nil
+}
+
+func (x *SessionHello) GetHandoffFrom() string {
+	if x != nil {
+		return x.HandoffFrom
+	}
+	return ""
 }
 
 // SessionWelcome answers SessionHello.
@@ -1308,14 +1319,15 @@ const file_rpmgr_tunnel_v1_tunnel_proto_rawDesc = "" +
 	"\ropen_rejected\x18\b \x01(\v2\x1d.rpmgr.tunnel.v1.OpenRejectedH\x00R\fopenRejected\x124\n" +
 	"\agoodbye\x18\t \x01(\v2\x18.rpmgr.tunnel.v1.GoodbyeH\x00R\agoodbyeB\x05\n" +
 	"\x03msgJ\x04\b\n" +
-	"\x10\v\"\xb4\x01\n" +
+	"\x10\v\"\xd7\x01\n" +
 	"\fSessionHello\x12\x1f\n" +
 	"\vproto_minor\x18\x01 \x01(\rR\n" +
 	"protoMinor\x12#\n" +
 	"\ragent_version\x18\x02 \x01(\tR\fagentVersion\x12\"\n" +
 	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\x12\x17\n" +
 	"\aboot_id\x18\x04 \x01(\tR\x06bootId\x12!\n" +
-	"\fready_routes\x18\x05 \x03(\tR\vreadyRoutes\"\x99\x01\n" +
+	"\fready_routes\x18\x05 \x03(\tR\vreadyRoutes\x12!\n" +
+	"\fhandoff_from\x18\x06 \x01(\tR\vhandoffFrom\"\x99\x01\n" +
 	"\x0eSessionWelcome\x12\x1d\n" +
 	"\n" +
 	"gateway_id\x18\x01 \x01(\tR\tgatewayId\x12\x1f\n" +

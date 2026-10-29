@@ -19,6 +19,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/connector"
+	"github.com/felix-homelab/rpmgr/internal/handoff"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 	"github.com/felix-homelab/rpmgr/internal/units"
@@ -94,7 +95,7 @@ func runConnector(ctx context.Context, env *cli.Env, path string) error {
 	}
 	defer stop()
 	return connector.Run(ctx, connector.RunOptions{Config: cfg, Version: version.Get().Version, Getenv: env.Getenv, Logger: logger, LiveLog: live,
-		Now: Clock, Update: update.UpdaterInstalled()})
+		Now: Clock, Update: update.UpdaterInstalled(), Handoff: handoff.LinkFrom(ctx)})
 }
 
 // Version is `rpmgr version`; with --verbose it also prints the build's variant, full or

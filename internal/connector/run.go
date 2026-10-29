@@ -14,6 +14,8 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/handoff"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
@@ -67,6 +70,57 @@ type RunOptions struct {
 	// of the state directory, as its local policy allows (OTA): a connector on Linux that runs on
 	// its own, never all-in-one's.
 	Update bool
+	// Handoff, if set, is the connector's link to restarts with socket hand-off: a process a
+	// hand-off started opens its sessions naming the old process's boot_id and reports ready once
+	// they are up, and Run hands the sessions to a new process on request, without sockets to
+	// pass (docs/03-connections.md, "Restarts with socket hand-off").
+	Handoff *handoff.Link
+}
+
+// HandoffFromEnv names the environment variable through which the old process of a hand-off tells
+// the new one its boot_id: the new process names it as handoff_from in its SessionHello. Only a
+// process a hand-off started reads it, and only a hex string of at most 64 digits.
+const HandoffFromEnv = "RPMGR_HANDOFF_FROM"
+
+// handoffFrom returns the boot_id the old process named, "" after a plain start or if the value
+// is no boot_id.
+func handoffFrom(link *handoff.Link, getenv func(string) string) string {
+	v := getenv(HandoffFromEnv)
+	if link == nil || link.Inherited == nil || len(v) == 0 || len(v) > 64 || strings.Trim(v, "0123456789abcdef") != "" {
+		return ""
+	}
+	return v
+}
+
+// handoffEnv is this process's environment for the new process, naming boot as the old boot_id.
+func handoffEnv(boot string) []string {
+	env := slices.DeleteFunc(os.Environ(), func(e string) bool { return strings.HasPrefix(e, HandoffFromEnv+"=") })
+	return append(env, HandoffFromEnv+"="+boot)
+}
+
+// readyEvery is how often a process a hand-off started looks whether it can report ready.
+const readyEvery = 100 * time.Millisecond
+
+// reportReady reports the connector ready through link. After a plain start that is at once. A
+// process a hand-off started waits until its control session is up and its first snapshot applied,
+// and every gateway has a data session or failed to open one: the old process keeps serving until
+// then, and the readiness window bounds the wait. It returns nil if ctx ends first.
+func reportReady(ctx context.Context, link *handoff.Link, controlReady func(context.Context) error, settled func() bool) error {
+	if link.Inherited != nil {
+		t := time.NewTicker(readyEvery)
+		defer t.Stop()
+		for controlReady(ctx) != nil || !settled() {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-t.C:
+			}
+		}
+	}
+	if err := link.Ready(); err != nil {
+		return fmt.Errorf("connector: hand-off: %w", err)
+	}
+	return nil
 }
 
 // Run runs a connector from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -147,9 +201,11 @@ func Run(ctx context.Context, o RunOptions) error {
 	if _, err := rand.Read(boot); err != nil {
 		return err
 	}
+	from := handoffFrom(o.Handoff, o.Getenv)
 	sessions = New(Options{QUIC: tr, Dial: dial, InProcess: o.InProcess, Streams: targets.Handle, Now: o.Now, Logger: o.Logger, Metrics: metrics,
 		Hello: func() *tunnelv1.SessionHello {
-			return &tunnelv1.SessionHello{AgentVersion: o.Version, Capabilities: Capabilities, BootId: hex.EncodeToString(boot)}
+			return &tunnelv1.SessionHello{AgentVersion: o.Version, Capabilities: Capabilities, BootId: hex.EncodeToString(boot),
+				HandoffFrom: from}
 		},
 		TLS: func(gatewayID string) (*tls.Config, error) { return gatewayTLS(ctl, gatewayID, o.Now) }})
 	defer sessions.Close()
@@ -195,8 +251,35 @@ func Run(ctx context.Context, o RunOptions) error {
 	if o.Listening != nil {
 		o.Listening()
 	}
+	switched := make(chan *handoff.Child, 1)
+	if o.Handoff != nil {
+		o.Handoff.Serve(func(c context.Context) (*handoff.Child, error) {
+			// The new process's sessions supersede this one's, and the gateways then drain these.
+			endSessions, endControl := sessions.BeginHandoff(), ctl.BeginHandoff()
+			child, err := handoff.Start(c, handoff.Config{Generation: o.Handoff.Generation() + 1, Env: handoffEnv(hex.EncodeToString(boot))}, nil)
+			endSessions(err == nil)
+			endControl(err == nil)
+			if err != nil {
+				return nil, err
+			}
+			o.Handoff.Serve(nil) // this process only drains now
+			switched <- child
+			return child, nil
+		})
+		go func() {
+			if err := reportReady(run, o.Handoff, ctl.Ready, sessions.Settled); err != nil {
+				errs <- err
+			}
+		}()
+	}
 	select {
 	case <-ctx.Done():
+		stop()
+		<-done
+		return nil
+	case <-switched:
+		o.Logger.Info("the new process took over: keeping the open streams for the hand-off drain", "generation", o.Handoff.Generation())
+		drainHandoff(ctx, sessions, time.Now().Add(cfg.Handoff.DrainPeriod()))
 		stop()
 		<-done
 		return nil
@@ -209,6 +292,20 @@ func Run(ctx context.Context, o RunOptions) error {
 			err = nil
 		}
 		return err
+	}
+}
+
+// drainHandoff waits until the old process of a hand-off has no open stream left, ctx ends or the
+// deadline, the hand-off drain, passes; the caller then ends the sessions.
+func drainHandoff(ctx context.Context, sessions *Sessions, deadline time.Time) {
+	t := time.NewTicker(readyEvery)
+	defer t.Stop()
+	for time.Now().Before(deadline) && sessions.Streams() > 0 {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
 	}
 }
 
