@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"time"
 
@@ -37,8 +38,19 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/token"
 )
 
-// OrgSlug is the organisation the seeded configuration belongs to.
+// OrgSlug is the organisation the seeded configuration belongs to, unless OrgEnv names another:
+// the hand-off test seeds an all-in-one, whose organisation is "default".
 const OrgSlug = "e2e"
+
+// OrgEnv names the organisation to seed instead of OrgSlug.
+const OrgEnv = "RPMGR_TESTSEED_ORG"
+
+func orgSlug() string {
+	if v := os.Getenv(OrgEnv); v != "" {
+		return v
+	}
+	return OrgSlug
+}
 
 // Seeder writes into one controller database.
 type Seeder struct {
@@ -69,9 +81,9 @@ func (s *Seeder) Close() error { return s.db.Close() }
 // tx runs fn in a configuration transaction in the seeding organisation.
 func (s *Seeder) tx(fn func(tx *ent.Tx, org string) ([]string, error)) error {
 	_, err := store.ConfigTx(s.sys, s.db, func(tx *ent.Tx) ([]string, error) {
-		o, err := tx.Org.Query().Where(org.Slug(OrgSlug)).Only(s.sys)
+		o, err := tx.Org.Query().Where(org.Slug(orgSlug())).Only(s.sys)
 		if ent.IsNotFound(err) {
-			o, err = tx.Org.Create().SetName("End to end").SetSlug(OrgSlug).Save(s.sys)
+			o, err = tx.Org.Create().SetName("End to end").SetSlug(orgSlug()).Save(s.sys)
 		}
 		if err != nil {
 			return nil, err

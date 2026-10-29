@@ -40,7 +40,8 @@ while IFS= read -r f; do
   esac
   case $f in
     internal/units/* | internal/installsh/* | internal/release/* | test/installsh/* | test/ota/* | cmd/rpmgr/* | \
-      .github/scripts/check-units.sh | .github/scripts/check-install.sh | .github/scripts/check-ota.sh) ops=true ;;
+      internal/handoff/* | internal/gateway/* | internal/connector/* | internal/allinone/* | internal/testseed/* | test/handoff/* | test/e2e/e2eclient/* | \
+      .github/scripts/check-units.sh | .github/scripts/check-install.sh | .github/scripts/check-ota.sh | .github/scripts/check-handoff.sh) ops=true ;;
   esac
 done <<<"$files"
 emit "$go" "$web" "$checks" "$ops" "$md"

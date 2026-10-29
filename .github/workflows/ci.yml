@@ -386,6 +386,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2 # the hand-off test builds the previous commit
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -398,6 +399,9 @@ jobs:
       - name: The root updater on a real systemd host, with /var on a tmpfs
         if: ${{ !cancelled() }}
         run: .github/scripts/check-ota.sh
+      - name: A lone gateway and an all-in-one upgraded under load with the socket hand-off
+        if: ${{ !cancelled() }}
+        run: .github/scripts/check-handoff.sh
 
   web:
     needs: changes
