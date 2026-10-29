@@ -126,6 +126,12 @@ func (h *targetHealth) observe(pass bool, c *HealthCheck) bool {
 		return false
 	}
 	h.streak = min(h.streak, 0) - 1
+	if h.unknown {
+		// The first result decides either way (D157): a new target that fails is unhealthy at
+		// once, with its failure, rather than unknown until the threshold.
+		h.unhealthy, h.unknown = true, false
+		return true
+	}
 	if !h.unhealthy && -h.streak >= c.Unhealthy {
 		h.unhealthy, h.unknown = true, false
 		return true

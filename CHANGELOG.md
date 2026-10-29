@@ -141,8 +141,10 @@ Changes to the design documents are not recorded here: see the git history and t
   healthy for a while, down targets included, so that an unrelated edit does not send traffic to
   them. A target whose address and check are unchanged keeps its health, a changed check keeps the
   previous state until its first result, which runs at once, and a new target, or one removed and
-  added again, is **unknown**: it gets no traffic while another target of its priority is healthy,
-  and the route's status and the web UI show it as unknown. (#996)
+  added again, is **unknown** until its first check, which runs at once: it gets no traffic while
+  another target of its priority is healthy, and the route's status and the web UI show it as
+  unknown. The first result decides either way, so a new target that fails shows its failure at
+  once. (#996)
 
 ## [0.2.0] - 2026-10-24
 

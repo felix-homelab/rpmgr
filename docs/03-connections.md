@@ -1029,8 +1029,9 @@ the capability `route.limits`:
   capped part of the body is read. A target that expects a PROXY header gets a `LOCAL` one when the
   check dials its own port. A `udp` route allows only a `tcp` check on a port it names; a
   `tls_passthrough` route, whose targets expect TLS, and a route with an `h2c` target, which speaks
-  no HTTP/1.1, only a `tcp` check. A target is **unknown** until a check decides: its first pass
-  makes it healthy, and the unhealthy threshold of failed checks in a row makes it unhealthy. A
+  no HTTP/1.1, only a `tcp` check. A target is **unknown** until its first check decides: a pass
+  makes it healthy and a failure unhealthy, with the failure or the local policy's refusal
+  ([D157](14-open-decisions.md#engineering)); the thresholds apply from then on. A
   healthy target becomes unhealthy after the unhealthy threshold of failed checks in a row and an
   unhealthy one healthy again after the healthy threshold of passed ones, so a target whose results
   alternate keeps its state. The changes of the targets' health in one round of checks also go to
