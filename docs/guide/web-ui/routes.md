@@ -238,7 +238,7 @@ The **Targets** card lists the route's targets:
 | **Connector** | The connector that reaches the target |
 | **Address** | Host and port, or the socket path; an HTTPS target that the gateway does not verify has the badge `unverified` |
 | **Weight** | Its share of new connections among the targets of the same priority |
-| **Health** | With a health check: `healthy`, or `unhealthy` with `Last check: …` and why the last check failed; `not checked` when its connector's release runs no checks, so the target counts as healthy until the connector is upgraded. `—` without a check, for a disabled target, and while the target does not serve for another reason, which **Status** names |
+| **Health** | With a health check: `healthy`, `unhealthy` with `Last check: …` and why the last check failed, or `unknown` while its first check has not finished (a new target gets no traffic then while another target of its priority is healthy); `not checked` when its connector's release runs no checks, so the target counts as healthy until the connector is upgraded. `—` without a check, for a disabled target, and while the target does not serve for another reason, which **Status** names |
 | **Status** | `ready`, `disabled`, or why it does not serve, such as `blocked by the connector's local policy` or `its health checks fail`; a target whose connector reaches the gateways only over TLS and HTTP/2 adds `served over TLS and HTTP/2, the fallback for QUIC` |
 
 **A target blocked by a local policy** shows the command that allows it, to run on the

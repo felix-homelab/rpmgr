@@ -201,8 +201,9 @@ func TestHealthCheck_PrioritiesAndStreams(t *testing.T) {
 		!strings.Contains(st.GetDetail(), "503") || !proto.Equal(e.lastTarget(flaky.ID), st) {
 		t.Errorf("an unhealthy target: status %v, last change %v", st, e.lastTarget(flaky.ID))
 	}
-	if st := e.statusOf(steady.ID); st != nil || e.lastTarget(steady.ID) != nil {
-		t.Errorf("a healthy target: status %v, change %v", st, e.lastTarget(steady.ID))
+	// Its first pass took it from unknown (D156) to healthy: reported without a reason.
+	if st, last := e.statusOf(steady.ID), e.lastTarget(steady.ID); st != nil || last.GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_UNSPECIFIED {
+		t.Errorf("a healthy target: status %v, change %v", st, last)
 	}
 
 	down.Store(false)

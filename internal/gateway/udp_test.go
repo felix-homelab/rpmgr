@@ -509,3 +509,29 @@ func (h *signalHandler) Handle(_ context.Context, r slog.Record) error {
 
 func (h *signalHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
 func (h *signalHandler) WithGroup(string) slog.Handler      { return h }
+
+// TestUDPRoutes_Rebind: a process a hand-off started binds the pending ports as soon as the old one
+// exited, without waiting for the retry; a port still held stays pending.
+func TestUDPRoutes_Rebind(t *testing.T) {
+	gateway.SetRouteTimers(t, time.Second, time.Hour)
+	route := ids.New("rt")
+	m := newSessions(&assignment{known: map[string]bool{cid("udp-rebind"): true}, routes: map[string][]string{route: {cid("udp-rebind")}}}, nil)
+	t.Cleanup(m.Close)
+	start(t, m, connectorID("udp-rebind"), hello(route))
+	var changes atomic.Int32
+	u, _, _ := udpGatewayWith(t, m, route, time.Minute, func(o *gateway.UDPOptions) { o.OnChange = func() { changes.Add(1) } })
+	taken, release := takeUDPPort(t)
+	if st := u.Apply([]gateway.UDPRoute{{ID: route, Port: taken, FlowIdle: time.Minute}}); len(st) != 1 {
+		t.Fatalf("status %v", st)
+	}
+	u.Rebind()
+	if len(u.Status()) != 1 || changes.Load() != 0 {
+		t.Fatal("bound a held port")
+	}
+	release()
+	u.Rebind()
+	if len(u.Status()) != 0 || !u.Bound(taken) || changes.Load() != 1 {
+		t.Fatalf("not bound at once: status %v, changes %d", u.Status(), changes.Load())
+	}
+	u.Rebind() // nothing pending: harmless
+}

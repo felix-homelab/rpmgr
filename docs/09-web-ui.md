@@ -371,8 +371,8 @@ flowchart LR
       three go under one update mask path. The form refuses a bandwidth below the API's smallest
       before sending, and shows a bound the API refuses on the field it names.
     - **Health check** (every type): TCP or HTTP, port, path, expected status, interval, timeout
-      and thresholds; route detail shows each target's health, and "health not checked" for a
-      connector that runs no checks.
+      and thresholds; route detail shows each target's health, `unknown` for a target whose first
+      check has not finished, and "health not checked" for a connector that runs no checks.
     - **CONNECT** (tcp in `http_connect` mode): the authorities and the authentication mode; for
       "basic auth in the clear" a warning stays on the form, in the colour of errors, that the
       password crosses the network readable by anyone on the path.
