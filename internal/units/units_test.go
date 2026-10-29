@@ -29,7 +29,7 @@ func lines(t *testing.T, role string, o units.Options) map[string]bool {
 // reload on SIGHUP (their local policy), gateways and all-in-one reload with a hand-off; only controller and
 // all-in-one load the KEK credential, and only when named.
 func TestRender(t *testing.T) {
-	common := []string{"User=rpmgr", "Group=rpmgr", "NoNewPrivileges=yes", "ProtectSystem=strict", "ProtectHome=yes", "PrivateTmp=yes",
+	common := []string{"User=rpmgr", "Group=rpmgr", "ReadOnlyPaths=-/var/lib/rpmgr/update", "NoNewPrivileges=yes", "ProtectSystem=strict", "ProtectHome=yes", "PrivateTmp=yes",
 		"PrivateDevices=yes", "RestrictNamespaces=yes", "MemoryDenyWriteExecute=yes", "SystemCallArchitectures=native",
 		"StateDirectory=rpmgr", "ReadOnlyPaths=/etc/rpmgr", "Restart=on-failure", "WantedBy=multi-user.target"}
 	const cred = "LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek" //nolint:gosec // G101: a unit line naming a credential

@@ -19,6 +19,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/update"
 )
 
 // Local administration on the controller host (docs/16-cli.md): each command reads the
@@ -72,6 +74,11 @@ func localCommand(name, summary string, flags func(fs *flag.FlagSet), run func(c
 func migrateCommand() *cli.Command {
 	return localCommand("migrate", "apply database migrations", nil, func(ctx context.Context, env *cli.Env, path string) error {
 		res, err := controller.Migrate(ctx, path, time.Now)
+		if errors.Is(err, store.ErrUnknownMigration) {
+			// A distinct code, so that the root updater's rollback tells a schema a newer release
+			// migrated from any other failure (docs/10-operations.md, "Backup and restore").
+			return unknownMigration{err}
+		}
 		if err != nil {
 			return err
 		}
@@ -183,3 +190,9 @@ func kekCommand() *cli.Command {
 				return err
 			}))
 }
+
+// unknownMigration ends `rpmgr migrate` with update.ExitUnknownMigration.
+type unknownMigration struct{ error }
+
+func (unknownMigration) ExitCode() int   { return update.ExitUnknownMigration }
+func (e unknownMigration) Unwrap() error { return e.error }

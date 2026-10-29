@@ -4,6 +4,7 @@ package update
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,6 +24,20 @@ type ControlPlane struct {
 // BackupSuffix is added to the binary's path for the backup taken before an update of a
 // controller or all-in-one, which stays next to the binary and its .prev (D158).
 const BackupSuffix = ".backup"
+
+// ExitUnknownMigration is the exit code of `rpmgr migrate` for a database with a migration the
+// binary does not know, which a newer release applied (store.ErrUnknownMigration): the only
+// failure after which the rollback restores the backup.
+const ExitUnknownMigration = 3
+
+// exitCode is the exit code an error of Exec carries, or -1.
+func exitCode(err error) int {
+	var ec interface{ ExitCode() int }
+	if errors.As(err, &ec) {
+		return ec.ExitCode()
+	}
+	return -1
+}
 
 // isControl reports whether a role is the controller or an all-in-one, which own the database.
 func isControl(role string) bool { return role == "controller" || role == "all-in-one" }
@@ -104,6 +119,13 @@ func (a *Applier) restoreDatabase(ctx context.Context, p *pending, role string) 
 	if err == nil {
 		a.restored = "the database is as the previous release left it; the backup was not needed"
 		return nil
+	}
+	if exitCode(err) != ExitUnknownMigration {
+		// The probe failed for another reason, so nothing says the schema is newer: restoring would
+		// lose writes for no cause. The role stays stopped and the operator decides.
+		return fmt.Errorf("update: rolling back: the previous binary could not check the database (%w: %s); the %s is stopped, "+
+			"and %s is untouched: look at the database, and run `rpmgr restore --in %s` only if it was migrated",
+			err, strings.TrimSpace(string(probe)), role, p.Backup, p.Backup)
 	}
 	if b, rerr := a.exec(ctx, p.Path, "restore", "--in", p.Backup, "--config", cp.Config); rerr != nil {
 		return fmt.Errorf("update: rolling back: the database was migrated (%s) and restoring %s failed: %w: %s; "+

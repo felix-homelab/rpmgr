@@ -52,6 +52,7 @@
 | 0 | Success, or help was requested |
 | 1 | The command ran and failed |
 | 2 | Invalid command line (unknown command or flag, missing or unexpected argument), or the command is not available in this build |
+| 3 | Only `rpmgr migrate`: the database has a migration this binary does not know, which a newer release applied; the root updater's rollback restores its backup on this code alone ([04](04-security.md#controllers-and-all-in-ones-over-the-air)) |
 
 ## Commands
 
