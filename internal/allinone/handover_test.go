@@ -147,6 +147,7 @@ func TestAllInOne_ResumeRefusesASchemaTheNewProcessMigrated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	//nolint:gosec // G202: the table name is the store's constant; nothing comes from outside
 	_, err = db.Exec(`INSERT INTO ` + store.RevisionTable + ` (version, description, type, applied, total, executed_at,
   execution_time, error, error_stmt, hash, partial_hashes, operator_version)
   VALUES ('99991231000000', 'newer', 2, 1, 1, '2999-01-01T00:00:00Z', 0, '', '', 'x', '[]', '')`)
