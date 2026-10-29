@@ -13,7 +13,6 @@ package handoff
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -204,10 +203,10 @@ func (l *lab) judge(s scenario, p probeOut, exitAt time.Duration, strict bool) {
 	t.Logf("failures started at %v ms", p.FailAtMS)
 	t.Logf("%s: tcp %d ok %d failed, http %d ok %d failed, udp %d answers, silences %+v, first errors %v",
 		s.role, p.TCPOK, p.TCPFail, p.HTTPOK, p.HTTPFail, p.UDPOK, p.UDPGaps, p.Errors)
+	l.refused(s, p)
 	if !strict {
 		return
 	}
-	l.refused(s, p)
 	if p.TCPOK < 200 || p.HTTPOK < 200 {
 		t.Errorf("too little load went through: tcp %d, http %d", p.TCPOK, p.HTTPOK)
 	}
@@ -225,31 +224,11 @@ func (l *lab) judge(s scenario, p probeOut, exitAt time.Duration, strict bool) {
 	}
 }
 
-// settle is how long after the trigger a connection may still fail with the current hand-off
-// (see refused).
-const settle = 12 * time.Second
-
-// refused judges the connections that failed. D127's exit check is none: HANDOFF_STRICT=1 asks
-// for it. This build does not meet it yet: a connection that arrives between the start of the
-// hand-off and the moment the old process stops accepting (about 5 s here) can be reset, by
-// whichever process takes it from the shared queue while the route has no usable session. Until
-// that is fixed the test pins the gap down: every failure falls into that window, none before or
-// after, and the load keeps getting through.
+// refused judges the connections that failed: D127's exit check is none, so any refused or reset
+// connection fails the test.
 func (l *lab) refused(s scenario, p probeOut) {
-	t := l.t
-	if p.TCPFail == 0 && p.HTTPFail == 0 {
-		return
-	}
-	if os.Getenv("HANDOFF_STRICT") != "" {
-		t.Errorf("a refused or reset connection under load: tcp %d, http %d: %v", p.TCPFail, p.HTTPFail, p.Errors)
-		return
-	}
-	t.Logf("KNOWN GAP (D127): %d tcp and %d http connections of %s were reset in the hand-off window", p.TCPFail, p.HTTPFail, s.role)
-	for _, at := range p.FailAtMS {
-		if d := time.Duration(at) * time.Millisecond; d < l.triggerAt-time.Second || d > l.triggerAt+settle {
-			t.Errorf("a connection failed at %v, outside the hand-off window (triggered at %v): %v", d, l.triggerAt, p.Errors)
-			return
-		}
+	if p.TCPFail != 0 || p.HTTPFail != 0 {
+		l.t.Errorf("a refused or reset connection of %s under load: tcp %d, http %d: %v", s.role, p.TCPFail, p.HTTPFail, p.Errors)
 	}
 }
 
@@ -321,7 +300,6 @@ func (l *lab) gateway(t *testing.T, s scenario, gen int) {
 	var early map[string]int
 	p, extra := l.load(s, func(start time.Time) {
 		var newPID int
-		l.triggerAt = time.Since(start)
 		oldPID, newPID = l.handoff(s)
 		t.Logf("hand-off from %d to %d, outcome ok %v after the start of the load", oldPID, newPID, time.Since(start))
 		if !l.alive(oldPID) {
@@ -376,7 +354,6 @@ func (l *lab) allInOneUpgrade(t *testing.T) {
 	var oldPID int
 	p, _ := l.load(s, func(start time.Time) {
 		var newPID int
-		l.triggerAt = time.Since(start)
 		oldPID, newPID = l.handoff(s)
 		t.Logf("hand-off from %d to %d, outcome ok %v after the start of the load", oldPID, newPID, time.Since(start))
 		l.ready("lab", s.admin)
