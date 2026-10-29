@@ -97,6 +97,10 @@ const (
 	NotReadyReason_NOT_READY_REASON_POLICY_INVALID NotReadyReason = 5
 	// Phase 2: every target the local policy allows failed its health check.
 	NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY NotReadyReason = 6
+	// Phase 2, on a target: its health check has not decided yet (D156). It still serves, as the
+	// route is ready, but a connector sends it no traffic while another target of its priority is
+	// known to be healthy.
+	NotReadyReason_NOT_READY_REASON_TARGET_UNKNOWN NotReadyReason = 7
 )
 
 // Enum value maps for NotReadyReason.
@@ -109,6 +113,7 @@ var (
 		4: "NOT_READY_REASON_ENVIRONMENT",
 		5: "NOT_READY_REASON_POLICY_INVALID",
 		6: "NOT_READY_REASON_TARGETS_UNHEALTHY",
+		7: "NOT_READY_REASON_TARGET_UNKNOWN",
 	}
 	NotReadyReason_value = map[string]int32{
 		"NOT_READY_REASON_UNSPECIFIED":             0,
@@ -118,6 +123,7 @@ var (
 		"NOT_READY_REASON_ENVIRONMENT":             4,
 		"NOT_READY_REASON_POLICY_INVALID":          5,
 		"NOT_READY_REASON_TARGETS_UNHEALTHY":       6,
+		"NOT_READY_REASON_TARGET_UNKNOWN":          7,
 	}
 )
 
@@ -2912,7 +2918,7 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\rLeaveResponse*H\n" +
 	"\rOperationKind\x12\x1e\n" +
 	"\x1aOPERATION_KIND_UNSPECIFIED\x10\x00\x12\x17\n" +
-	"\x13OPERATION_KIND_LOGS\x10\x01*\x9d\x02\n" +
+	"\x13OPERATION_KIND_LOGS\x10\x01*\xc2\x02\n" +
 	"\x0eNotReadyReason\x12 \n" +
 	"\x1cNOT_READY_REASON_UNSPECIFIED\x10\x00\x12,\n" +
 	"(NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY\x10\x01\x12 \n" +
@@ -2920,7 +2926,8 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"&NOT_READY_REASON_TRANSPORT_UNAVAILABLE\x10\x03\x12 \n" +
 	"\x1cNOT_READY_REASON_ENVIRONMENT\x10\x04\x12#\n" +
 	"\x1fNOT_READY_REASON_POLICY_INVALID\x10\x05\x12&\n" +
-	"\"NOT_READY_REASON_TARGETS_UNHEALTHY\x10\x06*\xb2\x01\n" +
+	"\"NOT_READY_REASON_TARGETS_UNHEALTHY\x10\x06\x12#\n" +
+	"\x1fNOT_READY_REASON_TARGET_UNKNOWN\x10\a*\xb2\x01\n" +
 	"\vUpdatePhase\x12\x1c\n" +
 	"\x18UPDATE_PHASE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16UPDATE_PHASE_AVAILABLE\x10\x01\x12\x19\n" +

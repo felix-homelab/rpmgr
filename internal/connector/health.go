@@ -100,9 +100,11 @@ func healthCheckOf(c *agentv1.HealthCheck) *HealthCheck {
 	return out
 }
 
-// targetHealth is what the checks found of one target: healthy until Unhealthy checks in a row
-// fail, then unhealthy until Healthy checks in a row pass, so that one odd result moves nothing.
+// targetHealth is what the checks found of one target: unknown until its first pass (healthy) or
+// until Unhealthy checks in a row fail (unhealthy); then healthy until Unhealthy checks in a row
+// fail and unhealthy until Healthy checks in a row pass, so that one odd result moves nothing.
 type targetHealth struct {
+	unknown   bool // no check has decided yet (D156); never with unhealthy
 	unhealthy bool
 	streak    int    // passes in a row if positive, failures in a row if negative
 	blocked   string // the local policy's refusal of the last check, which made it fail, or ""
@@ -113,6 +115,10 @@ type targetHealth struct {
 func (h *targetHealth) observe(pass bool, c *HealthCheck) bool {
 	if pass {
 		h.streak = max(h.streak, 0) + 1
+		if h.unknown {
+			h.unknown = false
+			return true
+		}
 		if h.unhealthy && h.streak >= c.Healthy {
 			h.unhealthy = false
 			return true
@@ -121,7 +127,7 @@ func (h *targetHealth) observe(pass bool, c *HealthCheck) bool {
 	}
 	h.streak = min(h.streak, 0) - 1
 	if !h.unhealthy && -h.streak >= c.Unhealthy {
-		h.unhealthy = true
+		h.unhealthy, h.unknown = true, false
 		return true
 	}
 	return false
@@ -131,16 +137,19 @@ func (h *targetHealth) observe(pass bool, c *HealthCheck) bool {
 type checker struct {
 	stop context.CancelFunc
 	done chan struct{}
-	r    Route // the route it checks, as Set gave it
+	r    Route // the route it checks, as Set gave it; under Targets.mu
 }
 
 // startChecks runs r's health check in the background, a round at once and then every interval,
-// each target of a round at the same time. Under t.mu.
-func (t *Targets) startChecks(r Route) {
+// each target of a round at the same time. A target of prev, the route as it was served, with the
+// same address keeps the state it had in prevHealth, and its streaks if keepStreaks (the check is
+// the same; another check would not continue them); any other target starts unknown (D156).
+// Under t.mu.
+func (t *Targets) startChecks(r Route, prev *Route, prevHealth map[string]*targetHealth, keepStreaks bool) {
 	ctx, cancel := context.WithCancel(t.ctx)
 	c := &checker{stop: cancel, done: make(chan struct{}), r: r}
 	t.checkers[r.ID] = c
-	t.targetHealth[r.ID] = map[string]*targetHealth{}
+	t.targetHealth[r.ID] = inheritHealth(r, prev, prevHealth, keepStreaks)
 	go func() {
 		defer close(c.done)
 		tick := time.NewTicker(r.Check.Interval)
@@ -156,6 +165,35 @@ func (t *Targets) startChecks(r Route) {
 	}()
 }
 
+// sameAddress reports whether two targets are dialled at the same place.
+func sameAddress(a, b Target) bool {
+	return a.Host == b.Host && a.Port == b.Port && a.UnixPath == b.UnixPath
+}
+
+// inheritHealth is the health of r's targets after a change of the route: a target of prev with
+// the same address keeps its state in prevHealth, with its streaks too if keepStreaks, else it
+// starts unknown (D156).
+func inheritHealth(r Route, prev *Route, prevHealth map[string]*targetHealth, keepStreaks bool) map[string]*targetHealth {
+	out := map[string]*targetHealth{}
+	for _, tg := range r.Targets {
+		out[tg.ID] = &targetHealth{unknown: true}
+		if prev == nil {
+			continue
+		}
+		for _, old := range prev.Targets {
+			if old.ID != tg.ID || !sameAddress(old, tg) || prevHealth[tg.ID] == nil {
+				continue
+			}
+			h := *prevHealth[tg.ID]
+			if !keepStreaks {
+				h.streak = 0
+			}
+			out[tg.ID] = &h
+		}
+	}
+	return out
+}
+
 // stopChecks stops a route's checks and forgets what they found. Under t.mu.
 func (t *Targets) stopChecks(id string) {
 	if c := t.checkers[id]; c != nil {
@@ -168,7 +206,9 @@ func (t *Targets) stopChecks(id string) {
 // checkRound checks every target of c's route once and reports the route's readiness if a
 // target's health changed, unless c was stopped meanwhile.
 func (t *Targets) checkRound(ctx context.Context, c *checker) {
+	t.mu.Lock()
 	r := c.r
+	t.mu.Unlock()
 	results := make([]error, len(r.Targets))
 	var wg sync.WaitGroup
 	for i, tg := range r.Targets {
@@ -187,7 +227,7 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 	if hs := t.targetHealth[r.ID]; hs != nil && t.checkers[r.ID] == c {
 		for i, tg := range r.Targets {
 			if hs[tg.ID] == nil {
-				hs[tg.ID] = &targetHealth{}
+				continue // not a target of the route any more
 			}
 			var b *checkBlocked
 			blocked := ""
@@ -223,11 +263,13 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 	t.reportRoute(h)
 }
 
-// targetStatus is a target's health as the controller records it, while unhealthy: blocked by the
+// targetStatus is a target's health as the controller records it, while unknown or unhealthy: blocked by the
 // local policy with its refusal, if the policy refuses its checks, else targets_unhealthy with the
 // last failure; ready otherwise (docs/03-connections.md, "Target health").
 func targetStatus(id string, h *targetHealth) *agentv1.ResourceStatus {
 	switch {
+	case h.unknown:
+		return &agentv1.ResourceStatus{ResourceId: id, Reason: agentv1.NotReadyReason_NOT_READY_REASON_TARGET_UNKNOWN}
 	case !h.unhealthy:
 		return &agentv1.ResourceStatus{ResourceId: id}
 	case h.blocked != "":
@@ -254,6 +296,17 @@ func (t *Targets) unhealthyLocked(route string) map[string]string {
 	for id, h := range t.targetHealth[route] {
 		if h.unhealthy {
 			out[id] = h.blocked
+		}
+	}
+	return out
+}
+
+// unknownLocked returns the route's targets no check has decided yet. Under t.mu.
+func (t *Targets) unknownLocked(route string) map[string]bool {
+	out := map[string]bool{}
+	for id, h := range t.targetHealth[route] {
+		if h.unknown {
+			out[id] = true
 		}
 	}
 	return out

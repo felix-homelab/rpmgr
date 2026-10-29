@@ -219,6 +219,15 @@ func TestRouteStatus_Health(t *testing.T) {
 	if st := status(); st.GetState() != rpmgrv1.RouteState_ROUTE_STATE_READY || !slices.Equal(st.GetHealthNotChecked(), tgs[2:]) {
 		t.Fatalf("every target ready: %v", st)
 	}
+	// A target whose check has not decided yet still serves (D156): the route stays ready, and the
+	// status names the target.
+	c.ResourceStatus.Create().SetOrgID(org).SetAgentID(c1).SetResourceID(tgs[0]).SetReason("NOT_READY_REASON_TARGET_UNKNOWN").
+		SetSince(e.clock).ExecX(e.sys)
+	if st := status(); st.GetState() != rpmgrv1.RouteState_ROUTE_STATE_READY || st.GetTargetsReady() != 3 || len(st.GetNotServing()) != 1 ||
+		st.GetNotServing()[0].GetId() != tgs[0] || st.GetNotServing()[0].GetReason() != "TARGET_UNKNOWN" {
+		t.Fatalf("one unknown target: %v", st)
+	}
+	c.ResourceStatus.Delete().Where(resourcestatus.ResourceID(tgs[0])).ExecX(e.sys)
 	notReady := func(agent, resource string) {
 		c.ResourceStatus.Create().SetOrgID(org).SetAgentID(agent).SetResourceID(resource).SetReason("NOT_READY_REASON_TARGETS_UNHEALTHY").
 			SetDetail("connection refused").SetSince(e.clock).ExecX(e.sys)
