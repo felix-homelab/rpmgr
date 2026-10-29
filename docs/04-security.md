@@ -1088,10 +1088,11 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
 
 ### Over-the-air updates
 
-OTA covers script installs and standalone binaries on **Linux with systemd**, and replaces
-**connectors and gateways** only ([D102](14-open-decisions.md#engineering)): controllers and
-all-in-ones are upgraded by hand, after a backup, before their agents
-([10](10-operations.md#upgrades-and-version-skew)). Windows and macOS connectors (Phase 2) are
+OTA covers script installs and standalone binaries on **Linux with systemd**, and replaces the
+binary of **every role**: connectors and gateways through a rollout, and controllers and
+all-in-ones, started by an Instance Admin, after a backup and before their agents
+([D158](14-open-decisions.md#engineering), which supersedes D102;
+[Controllers and all-in-ones](#controllers-and-all-in-ones-over-the-air)). Windows and macOS connectors (Phase 2) are
 updated by hand; OTA for them is a Phase 3 item ([13](13-roadmap.md#phase-3--advanced)). The
 timeouts and size limits named below are in [03](03-connections.md#timeouts-keepalive-and-backoff).
 
@@ -1171,8 +1172,9 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    run on their own on a host with the root updater installed (its directory
    `/var/lib/rpmgr-update/` exists and the unit `rpmgr-update.path` is enabled, so that a host the
    v0.1.0 install script or `rpmgr setup --no-unit` left without the units is never offered a
-   release nothing would install), never all-in-one's, whose roles share the controller's
-   binary, nor one in the container image, which has no updater. The offer
+   release nothing would install), never all-in-one's, nor one in the container image, which has no updater. A host with a controller or all-in-one
+   is updated by the Instance Admin's own request instead
+   ([below](#controllers-and-all-in-ones-over-the-air)), never by a rollout. The offer
    names the version, the controller's public URL (the `public_url` of [10](10-operations.md),
    which `/install.sh` and enrollment use), its manifest's `seq` and its files under `/dl/` with
    sizes and SHA-256; the controller offers a release only while its rollout runs, the agent's
@@ -1220,8 +1222,9 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    copy the service user cannot touch removes the time-of-check/time-of-use gap; refusing symlinks,
    FIFOs and oversized files keeps a compromised agent from hanging the updater or filling the
    disk. A version that was rolled back on this host is refused until a manifest with a higher
-   `seq` offers it again (D120), and a host whose `install.json` lists a controller or all-in-one
-   role refuses every release, because its roles share the binary.
+   `seq` offers it again (D120). A host whose `install.json` lists a controller or all-in-one
+   role is checked and backed up first, as
+   [below](#controllers-and-all-in-ones-over-the-air).
 5. It copies the verified file into the target directory as `.rpmgr.new` (same filesystem, so no
    cross-filesystem rename), fsyncs and re-hashes it, keeps the previous binary as `.prev`, renames
    `.rpmgr.new` over the binary at the path recorded in `/var/lib/rpmgr-update/install.json`
@@ -1269,6 +1272,49 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
    ([10](10-operations.md#hardened-systemd-units)). Afterwards the running version plays no role: a manifest with a higher `seq` may lower the
    floor, which makes **signed downgrades** possible. The automatic rollback to `.prev` is exempt,
    because floor and `seq` are only raised after success.
+
+#### Controllers and all-in-ones over the air
+
+[D158](14-open-decisions.md#engineering). The control plane is updated by the same root-owned
+updater, under the same checks (the steps above), and the controller never trusts more than an
+agent's offer is trusted: the **signed manifest, `seq`, floor, channel and SHA-256** decide, not
+the request that started the update. What differs:
+
+- **Trigger and target.** The Instance Admin requests "Update to x.y.z" for the controller or
+  all-in-one, with a step-up, audited like a rollout's steps. The target is a release the mirror
+  holds with its recorded manifest and that the controller's `update_channel` takes. The controller
+  stages the files itself in `/var/lib/rpmgr/update/` and writes the manifest last, as an agent
+  does, so the updater cannot tell who staged them, and verifies them again
+  ([D120](14-open-decisions.md#security-defaults)). A compromised controller process can stage no
+  release the maintainer's keys did not sign; it can ask for the update of a release that is signed,
+  not older than the floor and newer than the `seq` it replaces, which an Instance Admin could ask
+  for too. A host whose local policy sets `auto_update` to `notify` or `off` refuses it.
+- **Backup first.** Before it replaces anything the updater runs the installed binary's
+  `rpmgr backup` ([10](10-operations.md#backup-and-restore)) into `<binary>.backup`, next to the
+  binary and its `.prev`, mode 0600, and replaces the backup of an earlier update only when the new
+  one is complete. A backup that fails is a refusal: nothing is changed. The archive holds the
+  database with its secrets envelope-encrypted and no KEK, as any backup; it lives in the binary's
+  directory, which only root writes. **First version SQLite only** (D158): on a PostgreSQL
+  controller the updater refuses, naming P2-M08, which provides a backup method; such a controller
+  is updated by hand.
+- **Restart.** An all-in-one is handed over ([Socket hand-off](#socket-hand-off-phase-2)); a
+  controller, which has no hand-off, is restarted and answers nothing for the seconds it takes.
+- **Failure.** Before the migration, the old process of an all-in-one serves on and the rollback
+  only puts `.prev` back. When the new process ends after migrating the database, or a restarted
+  controller is not ready, the rollback **stops the role, asks the previous binary whether the
+  database is still at its schema** (`rpmgr migrate` applies nothing then, and refuses a newer
+  schema with `ErrUnknownMigration`), and when it is not, restores the backup with `rpmgr restore`
+  and starts the previous binary. The status is `rolled_back` and names the restore. An old binary
+  never runs on a newer schema: when the restore fails the role stays stopped, the status is
+  `rollback_failed` and its reason names the command that restores the backup. What a restore
+  keeps and loses is in [10](10-operations.md#backup-and-restore): writes since the backup are
+  lost except the revocations, which are applied again, and sessions are invalidated.
+- **Write set.** The updater unit also writes the state directory `/var/lib/rpmgr`, because
+  `rpmgr backup` and `rpmgr restore` work in the database's directory; a boot file whose database
+  lives elsewhere makes the backup fail and so the update refuse until a drop-in adds that
+  directory ([10](10-operations.md#hardened-systemd-units)).
+- **Status.** While it works the updater writes `updating` with a `step` (`verifying`,
+  `backing_up`, `handing_over`, `waiting`) to the status file, which the outcome replaces.
 
 #### Easy rollouts
 

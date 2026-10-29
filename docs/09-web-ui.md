@@ -783,6 +783,43 @@ one page, with a section list beside them that jumps to each section
   works in both rollout modes. It is off, with the reason next to it, when the agent is up to
   date, built in, has no over-the-air updater, declined the last offer because of its local policy,
   or is offline, and while a staged rollout or a rollout of another release runs.
+- **Update the controller** ([D158](14-open-decisions.md#engineering)), for the Instance Admin
+  only: on `/settings/updates` the release list offers "Update controller to 1.5.0" beside the
+  controller's own version (an all-in-one's too, which also runs the built-in agents), for a
+  release the mirror holds and the instance's channel takes. After a step-up it asks the
+  controller to stage the release and the root updater to install it
+  ([04](04-security.md#controllers-and-all-in-ones-over-the-air)) and opens the **Updating…**
+  page. The button is off, with the reason next to it, for a release that is not mirrored or not
+  taken by the channel, while an update of the controller runs, while a rollout runs (agents
+  never run ahead of the controller, and an update restarts it), on a host without the root
+  updater or whose local policy does not set `auto_update: auto`, and on a PostgreSQL controller,
+  which is updated by hand until P2-M08 provides a backup method.
+- **The Updating… page** (`/updating`) is a full-width page without the navigation, which the
+  update opens and any signed-in page returns to while the controller's own update runs. It shows
+  the steps as a list, each pending, current, done or failed: downloading (the controller stages
+  the files), verifying, backing up, handing over (the restart; the new version migrates the
+  database), and ready. In the background it asks the controller's `GetSession` every 2 s, which
+  a stopped controller does not answer: the page says "The controller is restarting" and keeps
+  asking. It returns to the dashboard, with a note naming the new version, when the answer
+  carries the version that was asked for. When the updater reports `rolled_back` or
+  `rollback_failed`, the page says that the old version still runs, with the reason, the step
+  that failed and whether the backup was restored, and links to the dashboard; when the answer
+  carries the old version and the updater reports a refusal, it says that nothing changed.
+  After a restore the sessions are invalidated, so the page then asks to sign in again. The page
+  stops asking after 15 min and says that the controller does not answer, with the command that
+  shows the updater's status on the host (`systemctl status rpmgr-update`).
+
+  ```
+  ┌ Updating the controller to 1.5.0 ───────────────────────────────────────┐
+  │ Do not close this page. The controller restarts for a short while.      │
+  │  ✓ Downloading                                                          │
+  │  ✓ Verifying                                                            │
+  │  ✓ Backing up      kept as /usr/local/bin/rpmgr.backup                  │
+  │  ● Handing over    the new version migrates the database                │
+  │  ○ Ready                                                                │
+  │ The controller is restarting…                                           │
+  └─────────────────────────────────────────────────────────────────────────┘
+  ```
 - **Saving** sends the settings as read with the page's fields changed, the mask of those fields and
   the etag (U1); a page never saves another page's fields. If the settings changed since they were
   read, the page says so and shows them as they are now.

@@ -337,7 +337,7 @@ RestartSec=2s
   RuntimeDirectory=rpmgr-update
   RuntimeDirectoryPreserve=yes
   ProtectSystem=strict
-  ReadWritePaths=/usr/local/bin /var/lib/rpmgr-update -/etc/systemd/system/rpmgr-gateway.service.d -/etc/systemd/system/rpmgr-connector.service.d -/etc/systemd/system/rpmgr-all-in-one.service.d
+  ReadWritePaths=/usr/local/bin /var/lib/rpmgr-update -/var/lib/rpmgr -/etc/systemd/system/rpmgr-gateway.service.d -/etc/systemd/system/rpmgr-connector.service.d -/etc/systemd/system/rpmgr-all-in-one.service.d
 
   [Install]
   WantedBy=multi-user.target
@@ -351,9 +351,9 @@ RestartSec=2s
 - **Who installs the updater** ([04](04-security.md#over-the-air-updates)): `rpmgr setup`, the
   controller-hosted `/install.sh` and the global install script write the updater units,
   `install.json` and `state.json` on every Linux host with systemd, whatever its role. On a host
-  whose roles include a controller or an all-in-one the updater refuses every release, because the
-  roles share one binary and such hosts are upgraded by hand
-  ([D102](14-open-decisions.md#engineering)).
+  whose roles include a controller or an all-in-one the updater backs the database up first and
+  updates it on the Instance Admin's request ([D158](14-open-decisions.md#engineering)), on SQLite
+  only until P2-M08 provides a PostgreSQL backup method.
   - **What is recorded:** `install.json` records the method (`script`, or `setup` for a binary
     that no script installed), the binary's path, the variant and a `roles` list, so that a host
     with a gateway and a connector restarts both; `rpmgr systemd-unit update` prints the units
@@ -622,7 +622,15 @@ affect agents take effect through reconciliation and show apply status like any 
 
 **Upgrade order**: controller(s) → gateways → connectors.
 
-1. **Controller.** Back up first ([Backup and restore](#backup-and-restore)). Migrations run at
+1. **Controller.** From v0.3.0 the Instance Admin updates a controller or all-in-one over the air
+   on SQLite ("Update to x.y.z" in the web UI, the CLI or the API;
+   [D158](14-open-decisions.md#engineering)): the root updater takes the backup itself, keeps it
+   as `<binary>.backup` next to `.prev`, restarts the role (an all-in-one with a hand-off), and
+   restores that backup and starts the previous binary when the new one fails after its migration;
+   the web UI shows an "Updating…" page meanwhile
+   ([09](09-web-ui.md#settings), [04](04-security.md#controllers-and-all-in-ones-over-the-air)).
+   A PostgreSQL controller is refused until P2-M08 and upgraded by hand: back up first
+   ([Backup and restore](#backup-and-restore)). Migrations run at
    start under a database lock (single node) or with `rpmgr migrate` before rolling the replicas
    (HA). Agents keep running their last-known-good snapshot while the controller restarts
    ([03](03-connections.md#failure-modes)).
@@ -665,6 +673,13 @@ service that still runs the previous binary, with the command that restarts it.
     version, time, trust domain, `db_epoch`).
   - **Writing it:** it never overwrites a file, leaves nothing behind when it fails, and is
     audited as `local-cli`.
+  - **Before an update over the air** ([D158](14-open-decisions.md#engineering)) the root updater
+    runs it itself, into `<binary>.backup` next to the previous binary, and a failure there stops
+    the update. The updater's unit writes `/var/lib/rpmgr` for it (and for the restore below); a
+    database in another directory needs a drop-in that adds it to `ReadWritePaths=`. A rollback
+    after the migration runs `rpmgr restore --in <binary>.backup` with the previous binary; if that
+    fails, the role stays stopped, because the previous binary refuses the migrated schema, and
+    you run the same command by hand.
 - **The KEK is backed up separately** and stored apart from database backups. A database backup
   without its KEK cannot be used to recover CA keys, ACME keys or other secrets; a KEK stored next
   to the backup defeats the encryption.
