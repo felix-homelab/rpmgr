@@ -26,7 +26,7 @@ func lines(t *testing.T, role string, o units.Options) map[string]bool {
 
 // TestRender: every role runs as rpmgr with the hardening of docs/10-operations.md; gateways,
 // controllers and all-in-one may bind ports below 1024, connectors get no capability; connectors
-// and all-in-one, whose connector has a local policy, reload on SIGHUP; only controller and
+// reload on SIGHUP (their local policy), gateways and all-in-one reload with a hand-off; only controller and
 // all-in-one load the KEK credential, and only when named.
 func TestRender(t *testing.T) {
 	common := []string{"User=rpmgr", "Group=rpmgr", "NoNewPrivileges=yes", "ProtectSystem=strict", "ProtectHome=yes", "PrivateTmp=yes",
@@ -38,15 +38,16 @@ func TestRender(t *testing.T) {
 		credential string
 		want, not  []string
 	}{
-		{"gateway", "rpmgr-kek", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE", "RuntimeDirectory=rpmgr/gateway"},
+		{"gateway", "rpmgr-kek", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE", "RuntimeDirectory=rpmgr/gateway",
+			"ExecReload=/usr/local/bin/rpmgr handoff gateway"},
 			[]string{cred, "ExecReload=/bin/kill -HUP $MAINPID", "Type=notify", "NotifyAccess=all"}},
 		{"connector", "rpmgr-kek", []string{"CapabilityBoundingSet=", "ExecReload=/bin/kill -HUP $MAINPID",
 			"RuntimeDirectory=rpmgr/connector"}, []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE", "Type=notify", "NotifyAccess=all"}},
 		{"controller", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE"},
 			[]string{"ExecReload=/bin/kill -HUP $MAINPID", "Type=notify", "NotifyAccess=all", "RuntimeDirectory=rpmgr/controller"}},
 		{"controller", "", []string{"AmbientCapabilities=CAP_NET_BIND_SERVICE"}, []string{cred}},
-		{"all-in-one", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE", "ExecReload=/bin/kill -HUP $MAINPID",
-			"RuntimeDirectory=rpmgr/all-in-one"}, []string{"Type=notify", "NotifyAccess=all"}},
+		{"all-in-one", "rpmgr-kek", []string{cred, "AmbientCapabilities=CAP_NET_BIND_SERVICE", "ExecReload=/usr/local/bin/rpmgr handoff all-in-one",
+			"RuntimeDirectory=rpmgr/all-in-one"}, []string{"ExecReload=/bin/kill -HUP $MAINPID", "Type=notify", "NotifyAccess=all"}},
 	} {
 		got := lines(t, tc.role, units.Options{Bin: "/usr/local/bin/rpmgr", Credential: tc.credential})
 		want := append(append([]string{"ExecStart=/usr/local/bin/rpmgr " + tc.role + " --config /etc/rpmgr/" + tc.role + ".yaml"}, common...), tc.want...)

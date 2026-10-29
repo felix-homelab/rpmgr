@@ -12,6 +12,16 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Zero-downtime restarts: gateways, connectors and all-in-ones restart and upgrade without
+  refusing connections. `systemctl reload rpmgr-gateway` (and of an all-in-one) hands the
+  listening sockets and sessions to a new process, `rpmgr handoff <role>` does the same for a
+  connector, `install.sh --upgrade --restart` hands over where the running release can and says
+  why where it cannot, and the over-the-air updater swaps a gateway or connector the same way,
+  rolling back while the old process still serves when the new one is not ready. The units get a
+  drop-in `handoff.conf` (`Type=notify`) that `rpmgr setup`, the install scripts and the updater
+  write, so the first restart after it is a plain one. Needs v0.3.0 on both sides; QUIC and `udp`
+  routes move after the old process exits, and an all-in-one's controller is briefly unavailable.
+  Containers restart as before. (#884, #885)
 - Gateways: passive health. A gateway passes over a connector at a priority whose targets refused
   or timed out several new connections in a row, for a back-off that grows with each failed try,
   then tries it again with one connection; a success brings it back. HTTP error statuses never count,

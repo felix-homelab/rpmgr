@@ -34,6 +34,11 @@ echo "argv: $*" >>/tmp/rpmgr-calls
 case "$1 ${2-}" in
   "version --verbose") echo "rpmgr 1.4.2 (stub)"; echo "release root keys:" ;;
   "setup --help") [ -f /tmp/has-setup ] && exit 0; echo "rpmgr: unknown command setup" >&2; exit 2 ;;
+  "systemd-unit --drop-in") echo "[Service]"; echo "Type=notify" ;;
+  "systemd-unit --bin") echo "[Service]"; echo "ExecStart=$3 $4" ;;
+  "handoff "*)
+    [ -f /tmp/handoff-fail ] && { echo "hand-off failed: not ready; process 4242 serves on" >&2; exit 1; }
+    echo "Process 4242 handed $2 over" ;;
   "updater "*) [ -f /tmp/has-updater ] && exec /r/rpmgr "$@"; echo "rpmgr: unknown command updater" >&2; exit 2 ;;
 esac
 `
@@ -46,6 +51,10 @@ case $1 in
   is-active) grep -qx "$3" /tmp/running 2>/dev/null ;;
   restart) exit 0 ;;
   show)
+    case $3 in
+      MainPID) echo 4242; exit 0 ;;
+      Type) if [ -f /tmp/notify ]; then echo notify; else echo simple; fi; exit 0 ;;
+    esac
     n=$(cat /tmp/nrestarts 2>/dev/null || echo 0)
     if [ -f /tmp/crashloop ]; then n=$((n + 1)); echo "$n" >/tmp/nrestarts; fi
     echo "$n" ;;
@@ -167,6 +176,19 @@ func TestGlobalInstall(t *testing.T) {
 				touch /tmp/crashloop
 				PATH=/t/systemd:$PATH sh /t/install.sh --upgrade --restart; echo "exit crashloop: $?"
 				echo "== systemctl"; cat /tmp/systemctl-calls
+				echo "== hand-off: a gateway with a unit, a process that takes hand-offs, Type=notify"
+				rm /tmp/crashloop; echo 0 >/tmp/nrestarts; echo rpmgr-gateway >/tmp/running
+				echo "[Service]" >/etc/systemd/system/rpmgr-gateway.service
+				mkdir -p /run/rpmgr/gateway; echo 4242 >/run/rpmgr/gateway/handoff.pid; touch /tmp/notify; rm /tmp/systemctl-calls
+				PATH=/t/systemd:$PATH sh /t/install.sh --upgrade >/tmp/upgrade.out 2>&1; echo "exit handoff upgrade: $?"
+				sed -n '/^release root keys:/,$p' /tmp/upgrade.out | tail -n +2
+				PATH=/t/systemd:$PATH sh /t/install.sh --upgrade --restart; echo "exit handoff: $?"
+				echo "== hand-off drop-in"; cat /etc/systemd/system/rpmgr-gateway.service.d/handoff.conf; grep ExecStart /etc/systemd/system/rpmgr-gateway.service
+				touch /tmp/handoff-fail
+				PATH=/t/systemd:$PATH sh /t/install.sh --upgrade --restart; echo "exit failed handoff: $?"
+				rm /tmp/handoff-fail /tmp/notify
+				PATH=/t/systemd:$PATH sh /t/install.sh --upgrade --restart; echo "exit not notify: $?"
+				echo "== hand-off calls"; cat /tmp/systemctl-calls; grep '^argv: handoff' /tmp/rpmgr-calls
 				echo "== units"; ls /etc/systemd/system/`
 			}
 			out, err := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "host", "-v", dir+":/t:ro", "-v", real+":/r:ro", d.image, "sh", "-c",
@@ -222,7 +244,16 @@ func TestGlobalInstall(t *testing.T) {
 					"rpmgr-all-in-one does not stay up with rpmgr 1.4.2; see: journalctl -u rpmgr-all-in-one -n 50", "exit crashloop: 1",
 					// With systemd, the updater's units are written and enabled.
 					"systemctl enable rpmgr-update.service", "systemctl enable --now rpmgr-update.path",
-					"\nrpmgr-update.path\nrpmgr-update.service\n")
+					"\nrpmgr-update.path\nrpmgr-update.service\n",
+					// The unit and its drop-in are written for a gateway that has a unit; a gateway that takes
+					// hand-offs under Type=notify is handed over, not restarted, and a failed hand-off fails the script.
+					"exit handoff upgrade: 0", "rpmgr-gateway runs the previous binary until you hand it over: sudo systemctl reload rpmgr-gateway",
+					"handed rpmgr-gateway over to rpmgr 1.4.2 without a restart", "exit handoff: 0",
+					"== hand-off drop-in\n[Service]\nType=notify\nExecStart=/usr/local/bin/rpmgr gateway\n",
+					"cannot hand rpmgr-gateway over to rpmgr 1.4.2; the old process serves on", "exit failed handoff: 1",
+					// The unit is not Type=notify yet: a restart, which says why.
+					"restarting rpmgr-gateway without a hand-off", "restarted rpmgr-gateway with rpmgr 1.4.2", "exit not notify: 0",
+					"argv: handoff gateway")
 			}
 			for _, w := range want {
 				if !strings.Contains(text, w) {

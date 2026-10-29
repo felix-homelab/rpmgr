@@ -109,8 +109,10 @@ others while one restarts.
 
 - It refuses a host without `/usr/local/bin/rpmgr` before it downloads anything:
   `nothing to upgrade: /usr/local/bin/rpmgr is not installed; install it without --upgrade`.
-- It verifies the release as every install does, replaces the binary in one rename, and changes
-  nothing else: not the boot files, the policy, the identity, the units or the database.
+- It verifies the release as every install does and replaces the binary in one rename. It leaves
+  the boot files, the policy, the identity and the database as they are. Only for a gateway,
+  all-in-one or connector that has a unit, and a release from v0.3.0 on, it writes the unit again
+  and its drop-in `handoff.conf`, so that the role restarts without refusing connections (below).
 - It offers no setup. After the version and the release root keys, it prints only what is left to
   do.
 
@@ -127,11 +129,40 @@ others while one restarts.
 Without `--restart`, the script names each service that still runs the previous binary:
 
 ```text
-rpmgr install: rpmgr-gateway runs the previous binary until you restart it: sudo systemctl restart rpmgr-gateway
+rpmgr install: rpmgr-controller runs the previous binary until you restart it: sudo systemctl restart rpmgr-controller
 ```
 
-The install script does not rewrite the systemd unit. To take the unit of a newer release, print
-it again with `rpmgr systemd-unit <role>`, as in
+### Restart without refusing connections
+
+From v0.3.0 on, a gateway, an all-in-one and a connector restart with a **hand-off**: the new
+process takes over the listening sockets and the sessions, and the old one serves until the new
+one is ready. With `--restart` the script hands such a service over instead of restarting it:
+
+```text
+rpmgr install: handed rpmgr-gateway over to rpmgr 0.3.0 without a restart
+```
+
+- **When it hands over.** The running process is of v0.3.0 or later and its unit runs as
+  `Type=notify`, which the drop-in `rpmgr-<role>.service.d/handoff.conf` sets. A host set up
+  before the drop-in has none: the script writes it, restarts the service as before and says
+  `restarting rpmgr-gateway without a hand-off`. The next upgrade hands over. The same goes for
+  an upgrade from a release before v0.3.0.
+- **Without `--restart`,** the script names how to hand over later:
+  `sudo systemctl reload rpmgr-gateway`, which does the same for a gateway and an all-in-one, and
+  `sudo rpmgr handoff connector` for a connector.
+- **A failed hand-off** (the new process was not ready) ends the script with exit code 1 and the
+  message `cannot hand <unit> over to rpmgr <version>; the old process serves on`; nothing has
+  stopped. Read `journalctl -u <unit>`, then restart by hand if you must.
+- **The controller restarts as before.** An all-in-one hands its gateway over without refusing a
+  connection, but its controller is unavailable for a few seconds: the API and the web UI answer
+  `503` until the new process serves.
+- **Limits.** QUIC and `udp` routes move after the old process exits, so a UDP flow may lose
+  packets for a moment. The limits are in
+  [03](../../03-connections.md#restarts-with-socket-hand-off-phase-2). A container restarts
+  without a hand-off.
+
+To take the unit of a newer release on a host the script does not write it for, such as a
+controller's, print it again with `rpmgr systemd-unit <role>`, as in
 [Manual installation and containers](manual.md#3-the-unit), then `sudo systemctl daemon-reload`
 and restart the service.
 

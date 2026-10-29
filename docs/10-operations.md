@@ -203,9 +203,9 @@ RestartSec=2s
   shell) are documented with the exact additional unit settings when they ship; the userspace
   netstack variant needs none.
 - **All-in-one**: the controller's settings, its sink included, with `CAP_NET_BIND_SERVICE`, and
-  the connector's `ExecReload`: its own connector reads `policy.yaml`, and `rpmgr policy …`
-  reloads `rpmgr-all-in-one.service` on a host with an all-in-one boot file and no connector's
-  ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
+  the gateway's `ExecReload`, which is the hand-off (below): its own connector reads `policy.yaml`,
+  and `rpmgr policy …` signals `rpmgr-all-in-one.service` with `SIGHUP` on a host with an
+  all-in-one boot file and no connector's ([ADR-0019](adr/0019-all-in-one-runs-a-connector.md)).
 - **Restarts with socket hand-off** (Phase 2;
   [03](03-connections.md#restarts-with-socket-hand-off-phase-2),
   [D148](14-open-decisions.md#engineering)): the gateway, all-in-one and connector units have
@@ -234,14 +234,21 @@ RestartSec=2s
     that it takes `SIGUSR2`; for an older process it refuses and names `systemctl restart`.
     After an update the running image is `<path> (deleted)`: the old process starts the installed
     path, not that one ([04](04-security.md#socket-hand-off-phase-2)).
-  - **Gateway and all-in-one** (`systemctl reload` from slice 17.6,
-    [D155](14-open-decisions.md#engineering); until then the units keep `ExecReload` sending
-    `SIGHUP`, and `rpmgr handoff <role>` does the hand-off): `ExecReload=<bin> handoff <role>`, so
-    that `systemctl reload` restarts with a hand-off and fails, with the reason, if the new process
-    does not become ready; the old one then keeps serving. `systemctl restart` stays the restart without one.
+  - **Gateway and all-in-one** ([D155](14-open-decisions.md#engineering)):
+    `ExecReload=<bin> handoff <role>`, so that `systemctl reload` restarts with a hand-off and
+    fails, with the reason, if the new process does not become ready; the old one then keeps
+    serving. `systemctl restart` stays the restart without one. `rpmgr handoff` also refuses a
+    unit that is not `Type=notify`, as one set up before the drop-in is, and says how to write it.
   - **All-in-one policy reload:** `rpmgr policy …` signals the running all-in-one with `SIGHUP`
     itself (`systemctl kill --kill-whom=main --signal=SIGHUP`), since its reload is now the
     hand-off.
+  - **`install.sh --upgrade`** of the global script writes the unit and the drop-in of each
+    gateway, all-in-one and connector that has a unit, when the new release has the hand-off, so
+    that a host set up before the drop-in gets it. With `--restart` it hands a running role over
+    when its process announced that it takes hand-offs and systemd runs its unit as `Type=notify`
+    before the script writes anything; otherwise it restarts and says why, and the next restart
+    hands off. A failed hand-off ends the script with exit code 1 and the old process serving.
+    The controller's `/install.sh` writes the drop-in with the unit.
   - **Connector:** its `ExecReload` stays the policy reload; `rpmgr handoff connector` restarts it
     with a hand-off, which has no socket to pass: the new process opens its sessions to the gateways
     first and the old one keeps its open streams for the hand-off drain. A gateway without the

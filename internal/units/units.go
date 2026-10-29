@@ -115,15 +115,18 @@ var (
 // Render returns the unit of a role: controller, gateway, connector or all-in-one.
 func Render(role string, o Options) ([]byte, error) {
 	data := struct {
-		Role, Bin, Credential    string
-		BindLow, Reload, Handoff bool
-		Writable                 []string
+		Role, Bin, Credential                   string
+		BindLow, Reload, ReloadHandoff, Handoff bool
+		Writable                                []string
 	}{Role: role, Bin: o.Bin, Credential: o.Credential, Handoff: role != "controller"}
 	switch role {
-	case "controller", "gateway":
+	case "controller":
 		data.BindLow = true // ports 443 and 80
+	case "gateway":
+		data.BindLow, data.ReloadHandoff = true, true // ports 443 and 80; reload restarts with a hand-off
 	case "all-in-one":
-		data.BindLow, data.Reload = true, true // and rpmgr policy reloads its connector
+		// Reload restarts with a hand-off; rpmgr policy signals its connector with SIGHUP itself.
+		data.BindLow, data.ReloadHandoff = true, true
 	case "connector":
 		data.Reload, data.Credential = true, "" // rpmgr policy reloads it; it binds no low port
 	default:

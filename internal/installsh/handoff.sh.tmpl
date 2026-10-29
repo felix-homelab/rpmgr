@@ -1,0 +1,22 @@
+{{- /* SPDX-License-Identifier: Apache-2.0 */ -}}
+{{- /*
+The hand-off helpers of both install scripts (docs/10-operations.md, "Hardened systemd units").
+A script that includes "handoff" defines $BIN and $tmp first.
+*/ -}}
+{{- define "handoff" -}}
+# has_handoff <version>: a release with socket hand-off, from 0.3.0 on, whose roles want the unit
+# drop-in handoff.conf (Type=notify). Anything that is no release version has none.
+has_handoff() {
+  case $1 in
+    0.[0-2].* | 0.[0-2]-*) return 1 ;;
+    [0-9]*.[0-9]*.[0-9]*) return 0 ;;
+  esac
+  return 1
+}
+# write_dropin <role>: the drop-in of a role that restarts with hand-off, as the new binary prints it.
+write_dropin() {
+  d=/etc/systemd/system/rpmgr-$1.service.d
+  "$BIN" systemd-unit --drop-in "$1" >"$tmp/handoff.conf" && install -d -m 0755 "$d" &&
+    install -m 0644 "$tmp/handoff.conf" "$d/handoff.conf"
+}
+{{- end}}

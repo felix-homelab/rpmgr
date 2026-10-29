@@ -179,7 +179,8 @@ rpmgr list rollout-target rol_…
 
 ## Restart a connector without cutting connections
 
-On Linux, a connector restarts without a gap: `sudo rpmgr handoff connector` starts the installed
+The updater and `systemctl reload` do this for gateways ([Gateways](../gateways.md)). On Linux, a
+connector restarts without a gap: `sudo rpmgr handoff connector` starts the installed
 binary as a new process, which opens its sessions to the gateways before the old process stops
 taking streams. New connections of your routes keep working, and the old process keeps its open
 connections until they end or the hand-off drain does. The command waits for the outcome and says

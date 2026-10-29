@@ -85,6 +85,7 @@ umask 077
 # the global install script.
 {{template "roots" .}}
 {{template "verify" .}}
+{{template "handoff" .}}
 fetch() {
   curl -fsS --proto =https --tlsv1.2 --retry 2 --max-time 600 -o "$tmp/$1" "$controller/dl/$VERSION/$1" ||
     die "cannot download $1 from $controller/dl/$VERSION/"
@@ -203,6 +204,11 @@ fi
 
 install -d -m 0755 /etc/systemd/system
 "$BIN" systemd-unit --bin "$BIN" "$role" >"/etc/systemd/system/rpmgr-$role.service"
+# A release with the hand-off restarts without refusing connections: its unit is Type=notify through
+# a drop-in, which an older release, that never says it is ready, must not get.
+if has_handoff "$VERSION"; then
+  write_dropin "$role" || die "cannot write the hand-off drop-in of rpmgr-$role"
+fi
 systemctl daemon-reload
 # The updater first: the role's agent announces over-the-air updates only once rpmgr-update.path is
 # enabled, and checks that when it starts.

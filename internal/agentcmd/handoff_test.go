@@ -26,7 +26,8 @@ import (
 // which takes SIGUSR2 through a handoff.Trigger.
 func TestHandoffCommand(t *testing.T) {
 	run := RunDir
-	t.Cleanup(func() { RunDir, mainPID = run, nil })
+	t.Cleanup(func() { RunDir, mainPID, notifyType = run, nil, nil })
+	notifyType = func(context.Context, string) (bool, error) { return true, nil }
 	RunDir = t.TempDir()
 	pid := os.Getpid()
 	mainPID = func(context.Context, string) (int, error) { return pid, nil }
@@ -198,6 +199,23 @@ func TestHandoffCommand(t *testing.T) {
 		mainPID = func(context.Context, string) (int, error) { return 0, errors.New("systemctl: not found") }
 		if _, err := cmd(time.Second); err == nil || !strings.Contains(err.Error(), "container") {
 			t.Errorf("without systemd: %v", err)
+		}
+	})
+	t.Run("a unit that is not Type=notify", func(t *testing.T) {
+		defer func(f func(context.Context, string) (bool, error)) { notifyType = f }(notifyType)
+		mainPID = func(context.Context, string) (int, error) { return pid, nil }
+		start(t, func(context.Context) (*handoff.Child, error) { return nil, errors.New("must not be asked") })
+		before := calls.Load()
+		notifyType = func(context.Context, string) (bool, error) { return false, nil }
+		if _, err := cmd(time.Second); err == nil || !strings.Contains(err.Error(), "not Type=notify") || !strings.Contains(err.Error(), "handoff.conf") {
+			t.Errorf("a unit without the drop-in: %v", err)
+		}
+		notifyType = func(context.Context, string) (bool, error) { return false, errors.New("systemctl failed") }
+		if _, err := cmd(time.Second); err == nil || !strings.Contains(err.Error(), "not Type=notify") {
+			t.Errorf("a unit systemctl cannot show: %v", err)
+		}
+		if calls.Load() != before {
+			t.Error("the process was signalled although the unit is not Type=notify")
 		}
 	})
 	t.Run("usage", func(t *testing.T) {
