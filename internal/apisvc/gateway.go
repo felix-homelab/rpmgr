@@ -42,7 +42,9 @@ type Gateways struct {
 	Revocations *Revocations
 	// Previews hands out the links of page previews; nil shows none.
 	Previews *PagePreviews
-	Now      func() time.Time
+	// Drains shows and ends the old process of a hand-off; nil shows none.
+	Drains Drains
+	Now    func() time.Time
 }
 
 // groupFields are the fields of a gateway group a client may change.
@@ -423,5 +425,6 @@ func (g *Gateways) gatewayOf(ctx context.Context, r *ent.Gateway) *rpmgrv1.Gatew
 		out.Status.LastGoodbyeReason, out.Status.BelowMinAgentVersion = s.LastGoodbye, s.LastGoodbye == upgradeRequired
 		out.Status.OverTheAir = slices.Contains(s.Capabilities, agentproto.CapOTA)
 	}
+	out.Status.Draining = drainOf(g.Drains, r.ID)
 	return out
 }

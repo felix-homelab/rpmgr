@@ -32,6 +32,19 @@
     "title": "Overview",
     "signedIn": "Signed in as {{name}}"
   },
+  "draining": {
+    "title": "Restarting",
+    "description": "These agents restarted without dropping connections. Their old process still holds the connections it had and exits when they end.",
+    "gatewayCounts": "{{connections}} connections, {{flows}} UDP flows, {{sessions}} sessions",
+    "connectorCounts": "{{connections}} streams, {{sessions}} sessions",
+    "times": "draining since {{since}}, ends by {{ends}} at the latest",
+    "end": "End now",
+    "endNamed": "End the old process of {{name}} now",
+    "confirmTitle": "End the old process of {{name}}",
+    "confirm_one": "The old process of {{name}} closes its {{count}} open connection or flow at once; its clients see the connection reset.",
+    "confirm_other": "The old process of {{name}} closes its {{count}} open connections and flows at once; their clients see the connections reset.",
+    "confirm_zero": "The old process of {{name}} has no open connection or flow left; it exits at once."
+  },
   "summary": {
     "title": "Summary",
     "of": "of {{total}}",

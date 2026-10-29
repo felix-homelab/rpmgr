@@ -247,7 +247,10 @@ type AgentSession struct {
 	LastGoodbyeReason string `protobuf:"bytes,6,opt,name=last_goodbye_reason,json=lastGoodbyeReason,proto3" json:"last_goodbye_reason,omitempty"`
 	// Whether its last session announced over-the-air updates (the capability "ota"): it runs on its
 	// own on a Linux host with the root updater, so a rollout can update it (D129).
-	OverTheAir    bool `protobuf:"varint,7,opt,name=over_the_air,json=overTheAir,proto3" json:"over_the_air,omitempty"`
+	OverTheAir bool `protobuf:"varint,7,opt,name=over_the_air,json=overTheAir,proto3" json:"over_the_air,omitempty"`
+	// The old process of its last hand-off while it drains; not set when none does, or when the
+	// agent is a release without the report (D160).
+	Draining      *DrainingProcess `protobuf:"bytes,8,opt,name=draining,proto3" json:"draining,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -329,6 +332,13 @@ func (x *AgentSession) GetOverTheAir() bool {
 		return x.OverTheAir
 	}
 	return false
+}
+
+func (x *AgentSession) GetDraining() *DrainingProcess {
+	if x != nil {
+		return x.Draining
+	}
+	return nil
 }
 
 // ConnectorStatus is a connector's state as the controller last heard of it.
@@ -1121,6 +1131,98 @@ func (x *DecommissionConnectorResponse) GetDeletedRoutes() []*DeletedRoute {
 	return nil
 }
 
+// EndConnectorDrainRequest names a connector.
+type EndConnectorDrainRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The connector's ID.
+	ConnectorId   string `protobuf:"bytes,1,opt,name=connector_id,json=connectorId,proto3" json:"connector_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EndConnectorDrainRequest) Reset() {
+	*x = EndConnectorDrainRequest{}
+	mi := &file_rpmgr_v1_connector_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EndConnectorDrainRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EndConnectorDrainRequest) ProtoMessage() {}
+
+func (x *EndConnectorDrainRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_connector_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EndConnectorDrainRequest.ProtoReflect.Descriptor instead.
+func (*EndConnectorDrainRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_connector_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *EndConnectorDrainRequest) GetConnectorId() string {
+	if x != nil {
+		return x.ConnectorId
+	}
+	return ""
+}
+
+// EndConnectorDrainResponse is the drain it ended.
+type EndConnectorDrainResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The old process as the connector last reported it, whose streams the call cut.
+	Ended         *DrainingProcess `protobuf:"bytes,1,opt,name=ended,proto3" json:"ended,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EndConnectorDrainResponse) Reset() {
+	*x = EndConnectorDrainResponse{}
+	mi := &file_rpmgr_v1_connector_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EndConnectorDrainResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EndConnectorDrainResponse) ProtoMessage() {}
+
+func (x *EndConnectorDrainResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_connector_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EndConnectorDrainResponse.ProtoReflect.Descriptor instead.
+func (*EndConnectorDrainResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_connector_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *EndConnectorDrainResponse) GetEnded() *DrainingProcess {
+	if x != nil {
+		return x.Ended
+	}
+	return nil
+}
+
 // DeletedRoute names a route that is gone.
 type DeletedRoute struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1134,7 +1236,7 @@ type DeletedRoute struct {
 
 func (x *DeletedRoute) Reset() {
 	*x = DeletedRoute{}
-	mi := &file_rpmgr_v1_connector_proto_msgTypes[15]
+	mi := &file_rpmgr_v1_connector_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1146,7 +1248,7 @@ func (x *DeletedRoute) String() string {
 func (*DeletedRoute) ProtoMessage() {}
 
 func (x *DeletedRoute) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_connector_proto_msgTypes[15]
+	mi := &file_rpmgr_v1_connector_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1159,7 +1261,7 @@ func (x *DeletedRoute) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletedRoute.ProtoReflect.Descriptor instead.
 func (*DeletedRoute) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_connector_proto_rawDescGZIP(), []int{15}
+	return file_rpmgr_v1_connector_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *DeletedRoute) GetId() string {
@@ -1197,7 +1299,7 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\bbuilt_in\x18\v \x01(\bR\abuiltIn\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb2\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe9\x02\n" +
 	"\fAgentSession\x12\x1c\n" +
 	"\tconnected\x18\x01 \x01(\bR\tconnected\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12@\n" +
@@ -1207,7 +1309,8 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\x17below_min_agent_version\x18\x05 \x01(\bR\x14belowMinAgentVersion\x12.\n" +
 	"\x13last_goodbye_reason\x18\x06 \x01(\tR\x11lastGoodbyeReason\x12 \n" +
 	"\fover_the_air\x18\a \x01(\bR\n" +
-	"overTheAir\"\xc1\x01\n" +
+	"overTheAir\x125\n" +
+	"\bdraining\x18\b \x01(\v2\x19.rpmgr.v1.DrainingProcessR\bdraining\"\xc1\x01\n" +
 	"\x0fConnectorStatus\x120\n" +
 	"\asession\x18\x01 \x01(\v2\x16.rpmgr.v1.AgentSessionR\asession\x12C\n" +
 	"\rdata_sessions\x18\x02 \x03(\v2\x1e.rpmgr.v1.ConnectorDataSessionR\fdataSessions\x127\n" +
@@ -1261,7 +1364,11 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\tconnector\x18\x01 \x01(\v2\x13.rpmgr.v1.ConnectorR\tconnector\x12.\n" +
 	"\brevision\x18\x02 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
 	"\fapply_status\x18\x03 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\x12=\n" +
-	"\x0edeleted_routes\x18\x04 \x03(\v2\x16.rpmgr.v1.DeletedRouteR\rdeletedRoutes\"2\n" +
+	"\x0edeleted_routes\x18\x04 \x03(\v2\x16.rpmgr.v1.DeletedRouteR\rdeletedRoutes\"F\n" +
+	"\x18EndConnectorDrainRequest\x12*\n" +
+	"\fconnector_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vconnectorId\"L\n" +
+	"\x19EndConnectorDrainResponse\x12/\n" +
+	"\x05ended\x18\x01 \x01(\v2\x19.rpmgr.v1.DrainingProcessR\x05ended\"2\n" +
 	"\fDeletedRoute\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name*\x90\x01\n" +
@@ -1270,7 +1377,7 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\x13DATA_TRANSPORT_AUTO\x10\x01\x12\x17\n" +
 	"\x13DATA_TRANSPORT_QUIC\x10\x02\x12\x15\n" +
 	"\x11DATA_TRANSPORT_H2\x10\x03\x12\x16\n" +
-	"\x12DATA_TRANSPORT_WSS\x10\x042\x84\x05\n" +
+	"\x12DATA_TRANSPORT_WSS\x10\x042\x8b\x06\n" +
 	"\x10ConnectorService\x12n\n" +
 	"\x0eListConnectors\x12\x1f.rpmgr.v1.ListConnectorsRequest\x1a .rpmgr.v1.ListConnectorsResponse\"\x19\x8a\xb5\x18\x12\n" +
 	"\borg.read\x12\x06org_id\x90\x02\x01\x12n\n" +
@@ -1279,7 +1386,9 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\x0fUpdateConnector\x12 .rpmgr.v1.UpdateConnectorRequest\x1a!.rpmgr.v1.UpdateConnectorResponse\"$\x8a\xb5\x18 \n" +
 	"\x10connectors.write\x12\fconnector.id\x12\x8e\x01\n" +
 	"\x15DecommissionConnector\x12&.rpmgr.v1.DecommissionConnectorRequest\x1a'.rpmgr.v1.DecommissionConnectorResponse\"$\x8a\xb5\x18 \n" +
-	"\x10connectors.write\x12\fconnector_id\x12\x80\x01\n" +
+	"\x10connectors.write\x12\fconnector_id\x12\x84\x01\n" +
+	"\x11EndConnectorDrain\x12\".rpmgr.v1.EndConnectorDrainRequest\x1a#.rpmgr.v1.EndConnectorDrainResponse\"&\x8a\xb5\x18\"\n" +
+	"\x10connectors.write\x12\fconnector_id\x18\x01\x12\x80\x01\n" +
 	"\x12GetConnectorStatus\x12#.rpmgr.v1.GetConnectorStatusRequest\x1a$.rpmgr.v1.GetConnectorStatusResponse\"\x1f\x8a\xb5\x18\x18\n" +
 	"\borg.read\x12\fconnector_id\x90\x02\x01B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
@@ -1296,7 +1405,7 @@ func file_rpmgr_v1_connector_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_connector_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_rpmgr_v1_connector_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_rpmgr_v1_connector_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_rpmgr_v1_connector_proto_goTypes = []any{
 	(DataTransport)(0),                    // 0: rpmgr.v1.DataTransport
 	(*Connector)(nil),                     // 1: rpmgr.v1.Connector
@@ -1314,56 +1423,63 @@ var file_rpmgr_v1_connector_proto_goTypes = []any{
 	(*UpdateConnectorResponse)(nil),       // 13: rpmgr.v1.UpdateConnectorResponse
 	(*DecommissionConnectorRequest)(nil),  // 14: rpmgr.v1.DecommissionConnectorRequest
 	(*DecommissionConnectorResponse)(nil), // 15: rpmgr.v1.DecommissionConnectorResponse
-	(*DeletedRoute)(nil),                  // 16: rpmgr.v1.DeletedRoute
-	nil,                                   // 17: rpmgr.v1.Connector.LabelsEntry
-	(*timestamppb.Timestamp)(nil),         // 18: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),           // 19: google.protobuf.Duration
-	(*fieldmaskpb.FieldMask)(nil),         // 20: google.protobuf.FieldMask
-	(*Revision)(nil),                      // 21: rpmgr.v1.Revision
-	(*ApplyStatus)(nil),                   // 22: rpmgr.v1.ApplyStatus
+	(*EndConnectorDrainRequest)(nil),      // 16: rpmgr.v1.EndConnectorDrainRequest
+	(*EndConnectorDrainResponse)(nil),     // 17: rpmgr.v1.EndConnectorDrainResponse
+	(*DeletedRoute)(nil),                  // 18: rpmgr.v1.DeletedRoute
+	nil,                                   // 19: rpmgr.v1.Connector.LabelsEntry
+	(*timestamppb.Timestamp)(nil),         // 20: google.protobuf.Timestamp
+	(*DrainingProcess)(nil),               // 21: rpmgr.v1.DrainingProcess
+	(*durationpb.Duration)(nil),           // 22: google.protobuf.Duration
+	(*fieldmaskpb.FieldMask)(nil),         // 23: google.protobuf.FieldMask
+	(*Revision)(nil),                      // 24: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),                   // 25: rpmgr.v1.ApplyStatus
 }
 var file_rpmgr_v1_connector_proto_depIdxs = []int32{
-	17, // 0: rpmgr.v1.Connector.labels:type_name -> rpmgr.v1.Connector.LabelsEntry
+	19, // 0: rpmgr.v1.Connector.labels:type_name -> rpmgr.v1.Connector.LabelsEntry
 	0,  // 1: rpmgr.v1.Connector.transport:type_name -> rpmgr.v1.DataTransport
 	2,  // 2: rpmgr.v1.Connector.session:type_name -> rpmgr.v1.AgentSession
-	18, // 3: rpmgr.v1.Connector.create_time:type_name -> google.protobuf.Timestamp
-	18, // 4: rpmgr.v1.Connector.decommission_time:type_name -> google.protobuf.Timestamp
-	18, // 5: rpmgr.v1.AgentSession.last_seen_time:type_name -> google.protobuf.Timestamp
-	2,  // 6: rpmgr.v1.ConnectorStatus.session:type_name -> rpmgr.v1.AgentSession
-	4,  // 7: rpmgr.v1.ConnectorStatus.data_sessions:type_name -> rpmgr.v1.ConnectorDataSession
-	5,  // 8: rpmgr.v1.ConnectorStatus.not_ready:type_name -> rpmgr.v1.NotReadyResource
-	0,  // 9: rpmgr.v1.ConnectorDataSession.transport:type_name -> rpmgr.v1.DataTransport
-	19, // 10: rpmgr.v1.ConnectorDataSession.rtt:type_name -> google.protobuf.Duration
-	18, // 11: rpmgr.v1.ConnectorDataSession.establish_time:type_name -> google.protobuf.Timestamp
-	18, // 12: rpmgr.v1.ConnectorDataSession.report_time:type_name -> google.protobuf.Timestamp
-	18, // 13: rpmgr.v1.NotReadyResource.since:type_name -> google.protobuf.Timestamp
-	1,  // 14: rpmgr.v1.ListConnectorsResponse.connectors:type_name -> rpmgr.v1.Connector
-	1,  // 15: rpmgr.v1.GetConnectorResponse.connector:type_name -> rpmgr.v1.Connector
-	3,  // 16: rpmgr.v1.GetConnectorStatusResponse.status:type_name -> rpmgr.v1.ConnectorStatus
-	1,  // 17: rpmgr.v1.UpdateConnectorRequest.connector:type_name -> rpmgr.v1.Connector
-	20, // 18: rpmgr.v1.UpdateConnectorRequest.update_mask:type_name -> google.protobuf.FieldMask
-	1,  // 19: rpmgr.v1.UpdateConnectorResponse.connector:type_name -> rpmgr.v1.Connector
-	21, // 20: rpmgr.v1.UpdateConnectorResponse.revision:type_name -> rpmgr.v1.Revision
-	22, // 21: rpmgr.v1.UpdateConnectorResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	1,  // 22: rpmgr.v1.DecommissionConnectorResponse.connector:type_name -> rpmgr.v1.Connector
-	21, // 23: rpmgr.v1.DecommissionConnectorResponse.revision:type_name -> rpmgr.v1.Revision
-	22, // 24: rpmgr.v1.DecommissionConnectorResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	16, // 25: rpmgr.v1.DecommissionConnectorResponse.deleted_routes:type_name -> rpmgr.v1.DeletedRoute
-	6,  // 26: rpmgr.v1.ConnectorService.ListConnectors:input_type -> rpmgr.v1.ListConnectorsRequest
-	8,  // 27: rpmgr.v1.ConnectorService.GetConnector:input_type -> rpmgr.v1.GetConnectorRequest
-	12, // 28: rpmgr.v1.ConnectorService.UpdateConnector:input_type -> rpmgr.v1.UpdateConnectorRequest
-	14, // 29: rpmgr.v1.ConnectorService.DecommissionConnector:input_type -> rpmgr.v1.DecommissionConnectorRequest
-	10, // 30: rpmgr.v1.ConnectorService.GetConnectorStatus:input_type -> rpmgr.v1.GetConnectorStatusRequest
-	7,  // 31: rpmgr.v1.ConnectorService.ListConnectors:output_type -> rpmgr.v1.ListConnectorsResponse
-	9,  // 32: rpmgr.v1.ConnectorService.GetConnector:output_type -> rpmgr.v1.GetConnectorResponse
-	13, // 33: rpmgr.v1.ConnectorService.UpdateConnector:output_type -> rpmgr.v1.UpdateConnectorResponse
-	15, // 34: rpmgr.v1.ConnectorService.DecommissionConnector:output_type -> rpmgr.v1.DecommissionConnectorResponse
-	11, // 35: rpmgr.v1.ConnectorService.GetConnectorStatus:output_type -> rpmgr.v1.GetConnectorStatusResponse
-	31, // [31:36] is the sub-list for method output_type
-	26, // [26:31] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	20, // 3: rpmgr.v1.Connector.create_time:type_name -> google.protobuf.Timestamp
+	20, // 4: rpmgr.v1.Connector.decommission_time:type_name -> google.protobuf.Timestamp
+	20, // 5: rpmgr.v1.AgentSession.last_seen_time:type_name -> google.protobuf.Timestamp
+	21, // 6: rpmgr.v1.AgentSession.draining:type_name -> rpmgr.v1.DrainingProcess
+	2,  // 7: rpmgr.v1.ConnectorStatus.session:type_name -> rpmgr.v1.AgentSession
+	4,  // 8: rpmgr.v1.ConnectorStatus.data_sessions:type_name -> rpmgr.v1.ConnectorDataSession
+	5,  // 9: rpmgr.v1.ConnectorStatus.not_ready:type_name -> rpmgr.v1.NotReadyResource
+	0,  // 10: rpmgr.v1.ConnectorDataSession.transport:type_name -> rpmgr.v1.DataTransport
+	22, // 11: rpmgr.v1.ConnectorDataSession.rtt:type_name -> google.protobuf.Duration
+	20, // 12: rpmgr.v1.ConnectorDataSession.establish_time:type_name -> google.protobuf.Timestamp
+	20, // 13: rpmgr.v1.ConnectorDataSession.report_time:type_name -> google.protobuf.Timestamp
+	20, // 14: rpmgr.v1.NotReadyResource.since:type_name -> google.protobuf.Timestamp
+	1,  // 15: rpmgr.v1.ListConnectorsResponse.connectors:type_name -> rpmgr.v1.Connector
+	1,  // 16: rpmgr.v1.GetConnectorResponse.connector:type_name -> rpmgr.v1.Connector
+	3,  // 17: rpmgr.v1.GetConnectorStatusResponse.status:type_name -> rpmgr.v1.ConnectorStatus
+	1,  // 18: rpmgr.v1.UpdateConnectorRequest.connector:type_name -> rpmgr.v1.Connector
+	23, // 19: rpmgr.v1.UpdateConnectorRequest.update_mask:type_name -> google.protobuf.FieldMask
+	1,  // 20: rpmgr.v1.UpdateConnectorResponse.connector:type_name -> rpmgr.v1.Connector
+	24, // 21: rpmgr.v1.UpdateConnectorResponse.revision:type_name -> rpmgr.v1.Revision
+	25, // 22: rpmgr.v1.UpdateConnectorResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	1,  // 23: rpmgr.v1.DecommissionConnectorResponse.connector:type_name -> rpmgr.v1.Connector
+	24, // 24: rpmgr.v1.DecommissionConnectorResponse.revision:type_name -> rpmgr.v1.Revision
+	25, // 25: rpmgr.v1.DecommissionConnectorResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	18, // 26: rpmgr.v1.DecommissionConnectorResponse.deleted_routes:type_name -> rpmgr.v1.DeletedRoute
+	21, // 27: rpmgr.v1.EndConnectorDrainResponse.ended:type_name -> rpmgr.v1.DrainingProcess
+	6,  // 28: rpmgr.v1.ConnectorService.ListConnectors:input_type -> rpmgr.v1.ListConnectorsRequest
+	8,  // 29: rpmgr.v1.ConnectorService.GetConnector:input_type -> rpmgr.v1.GetConnectorRequest
+	12, // 30: rpmgr.v1.ConnectorService.UpdateConnector:input_type -> rpmgr.v1.UpdateConnectorRequest
+	14, // 31: rpmgr.v1.ConnectorService.DecommissionConnector:input_type -> rpmgr.v1.DecommissionConnectorRequest
+	16, // 32: rpmgr.v1.ConnectorService.EndConnectorDrain:input_type -> rpmgr.v1.EndConnectorDrainRequest
+	10, // 33: rpmgr.v1.ConnectorService.GetConnectorStatus:input_type -> rpmgr.v1.GetConnectorStatusRequest
+	7,  // 34: rpmgr.v1.ConnectorService.ListConnectors:output_type -> rpmgr.v1.ListConnectorsResponse
+	9,  // 35: rpmgr.v1.ConnectorService.GetConnector:output_type -> rpmgr.v1.GetConnectorResponse
+	13, // 36: rpmgr.v1.ConnectorService.UpdateConnector:output_type -> rpmgr.v1.UpdateConnectorResponse
+	15, // 37: rpmgr.v1.ConnectorService.DecommissionConnector:output_type -> rpmgr.v1.DecommissionConnectorResponse
+	17, // 38: rpmgr.v1.ConnectorService.EndConnectorDrain:output_type -> rpmgr.v1.EndConnectorDrainResponse
+	11, // 39: rpmgr.v1.ConnectorService.GetConnectorStatus:output_type -> rpmgr.v1.GetConnectorStatusResponse
+	34, // [34:40] is the sub-list for method output_type
+	28, // [28:34] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_connector_proto_init() }
@@ -1380,7 +1496,7 @@ func file_rpmgr_v1_connector_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_connector_proto_rawDesc), len(file_rpmgr_v1_connector_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   17,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

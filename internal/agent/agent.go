@@ -15,6 +15,7 @@ import (
 	"net"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -61,6 +62,10 @@ type ControlOptions struct {
 	// that what changed while there was none is not lost: a connector's complete readiness, a
 	// gateway's data sessions.
 	SessionStatus func() *agentv1.Status
+	// OnEndDrain, if set, ends the drain of the old process of the last hand-off and returns once
+	// it is told to; the agent then announces drain.end, reports it with SetDraining and answers
+	// EndDrain with the error. Without it every EndDrain is refused.
+	OnEndDrain func(context.Context) error
 	// Update, if set, stages the releases the controller offers for the root updater and
 	// announces the capability ota (docs/04-security.md, "Over-the-air updates"): gateways and
 	// connectors on Linux that run on their own, never all-in-one's.
@@ -76,6 +81,9 @@ type Control struct {
 	rt     *Runtime
 	deny   *DenyList
 	stager *Stager // nil without ControlOptions.Update
+	// draining is the old process of a hand-off, as SetDraining last reported it; it goes in the
+	// first Status of each session.
+	draining atomic.Pointer[agentv1.DrainingProcess]
 }
 
 // NewControl loads the identity and wires the control plane; Run starts it.
@@ -95,6 +103,9 @@ func NewControl(o ControlOptions) (*Control, error) {
 	caps := o.Capabilities
 	if o.LiveLog != nil {
 		caps = append(slices.Clone(caps), agentproto.CapLogsStream)
+	}
+	if o.OnEndDrain != nil {
+		caps = append(slices.Clone(caps), agentproto.CapDrainEnd)
 	}
 	var onOffer func(*agentv1.ReleaseOffer)
 	if o.Update != nil {
@@ -133,6 +144,12 @@ func NewControl(o ControlOptions) (*Control, error) {
 					st.Update = u
 				}
 			}
+			if d := c.draining.Load(); d != nil && d.GetActive() {
+				if st == nil {
+					st = &agentv1.Status{}
+				}
+				st.Draining = d
+			}
 			if st != nil {
 				c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: st}})
 			}
@@ -140,6 +157,10 @@ func NewControl(o ControlOptions) (*Control, error) {
 		OnMessage: func(m *agentv1.ControllerMessage) {
 			if p := m.GetProbeTarget(); p != nil {
 				go c.probe(p) // a dial must not hold up the control session
+				return
+			}
+			if e := m.GetEndDrain(); e != nil {
+				go c.endDrain(e)
 				return
 			}
 			if op := m.GetOpenOperation(); op != nil {
@@ -193,6 +214,25 @@ func (c *Control) probe(p *agentv1.ProbeTarget) {
 		r.Certificate = der
 	}
 	c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_OpResult{OpResult: r}})
+}
+
+// endDrain answers an EndDrain: the role ends the old process's drain, or says why it cannot.
+func (c *Control) endDrain(e *agentv1.EndDrain) {
+	r := &agentv1.OpResult{OpId: e.GetOpId()}
+	if c.o.OnEndDrain == nil {
+		r.Error = "this agent ends no drains"
+	} else if err := c.o.OnEndDrain(context.Background()); err != nil {
+		r.Error = err.Error()
+	}
+	c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_OpResult{OpResult: r}})
+}
+
+// SetDraining reports the old process of the last hand-off to the controller: a Status that
+// carries only it, now and in the first Status of every session while it is active. d with
+// Active false says the old process is gone.
+func (c *Control) SetDraining(d *agentv1.DrainingProcess) {
+	c.draining.Store(d)
+	c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{Draining: d}}})
 }
 
 // ErrUnsupportedOperation is an operation an agent does not run.

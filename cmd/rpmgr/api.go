@@ -39,9 +39,14 @@ func apiCommands() []*cli.Command {
 	createTarget, updateTarget := targetCommands()
 	updateConnector, decommissionConnector, revokeToken := connectorCommands()
 	add(map[string][]*cli.Command{"create": {createRoute, createTarget, enrollmentTokenCommand()},
-		"update": {updateRoute, updateTarget, updateConnector}, "decommission": {decommissionConnector}, "revoke": {revokeToken},
+		"update": {updateRoute, updateTarget, withEndDrain(updateConnector, "connector")}, "decommission": {decommissionConnector}, "revoke": {revokeToken},
 		"enable": {enableRoute}, "disable": {disableRoute}, "preview": {previewRoute}})
 	createInfra, updateInfra, more := infrastructureCommands()
+	for i, c := range updateInfra {
+		if c.Name == "gateway" {
+			updateInfra[i] = withEndDrain(c, "gateway")
+		}
+	}
 	add(map[string][]*cli.Command{"create": createInfra, "update": updateInfra})
 	add(more)
 	createDomain, updateDomain, moreDomain := domainCommands()

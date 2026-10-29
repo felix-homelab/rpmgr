@@ -44,6 +44,17 @@ area has nothing yet.
 A route's own traffic, per hour or per day, is on its page ([Routes](routes.md#traffic)). The
 metrics behind it, and how long they are kept, are in [Monitoring](../operations/monitoring.md).
 
+## Restarting
+
+A card under the summary that appears only while an agent restarted without dropping connections
+and its old process is still draining: it holds the connections it had and exits when they end or
+the hand-off drain does ([Updates](../operations/updates.md#watch-and-end-a-draining-old-process)).
+Each line names the agent, what its old process still holds (a gateway's connections, UDP flows and
+data sessions, a connector's streams and data sessions), since when it drains and when it ends at
+the latest. The line is gone once the old process exited. An Owner or Admin can press **End now**
+on a line: a confirmation names the agent and how many connections and flows it closes, and asks you
+to confirm it is you. The all-in-one's own agents need the Instance Admin.
+
 ## Needs attention
 
 A card beside the traffic. Each area is marked with a green tick when nothing in it needs you, or

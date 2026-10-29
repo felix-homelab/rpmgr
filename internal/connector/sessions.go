@@ -587,6 +587,13 @@ func (m *Sessions) afterHandoff(ctx context.Context) (stop, now bool) {
 	return state == handedOff, false
 }
 
+// OpenSessions returns the number of open sessions, retired ones included.
+func (m *Sessions) OpenSessions() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.open)
+}
+
 // Streams returns the number of open streams on every session, retired ones included.
 func (m *Sessions) Streams() int {
 	m.mu.Lock()

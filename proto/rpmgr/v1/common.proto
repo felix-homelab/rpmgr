@@ -4,6 +4,8 @@ syntax = "proto3";
 
 package rpmgr.v1;
 
+import "google/protobuf/timestamp.proto";
+
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
 
 // Revision is a configuration revision: every configuration change makes one, and agents apply
@@ -13,4 +15,20 @@ message Revision {
   string db_epoch = 1;
   // The sequence number within the epoch.
   int64 seq = 2;
+}
+
+// DrainingProcess is the old process a socket hand-off left draining: it keeps its open
+// connections for up to the hand-off drain and exits (docs/03-connections.md, "Showing and ending
+// the drain"). The counts are what its new process last reported.
+message DrainingProcess {
+  // Its open TCP and HTTP connections; for a connector its open streams.
+  int64 connections = 1;
+  // Its open UDP flows.
+  int64 flows = 2;
+  // Its open data sessions.
+  int64 sessions = 3;
+  // When it began to drain.
+  google.protobuf.Timestamp since = 4;
+  // When it ends at the latest.
+  google.protobuf.Timestamp ends = 5;
 }

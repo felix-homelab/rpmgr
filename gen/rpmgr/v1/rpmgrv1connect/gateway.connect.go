@@ -65,6 +65,9 @@ const (
 	// GatewayServiceDecommissionGatewayProcedure is the fully-qualified name of the GatewayService's
 	// DecommissionGateway RPC.
 	GatewayServiceDecommissionGatewayProcedure = "/rpmgr.v1.GatewayService/DecommissionGateway"
+	// GatewayServiceEndGatewayDrainProcedure is the fully-qualified name of the GatewayService's
+	// EndGatewayDrain RPC.
+	GatewayServiceEndGatewayDrainProcedure = "/rpmgr.v1.GatewayService/EndGatewayDrain"
 	// GatewayServiceCreatePortPoolProcedure is the fully-qualified name of the GatewayService's
 	// CreatePortPool RPC.
 	GatewayServiceCreatePortPoolProcedure = "/rpmgr.v1.GatewayService/CreatePortPool"
@@ -128,6 +131,9 @@ type GatewayServiceClient interface {
 	// DecommissionGateway retires a gateway for good: its identity is revoked, its sessions end, and
 	// it stays as a tombstone that no longer counts towards its group.
 	DecommissionGateway(context.Context, *connect.Request[v1.DecommissionGatewayRequest]) (*connect.Response[v1.DecommissionGatewayResponse], error)
+	// EndGatewayDrain ends the drain of the gateway's old process at once: it closes the
+	// connections it still holds and exits (D160). Refused when no old process drains.
+	EndGatewayDrain(context.Context, *connect.Request[v1.EndGatewayDrainRequest]) (*connect.Response[v1.EndGatewayDrainResponse], error)
 	// CreatePortPool adds a range of public ports of one protocol to a gateway group, from which
 	// TCP and UDP routes take their ports; pools of a group and protocol never overlap.
 	CreatePortPool(context.Context, *connect.Request[v1.CreatePortPoolRequest]) (*connect.Response[v1.CreatePortPoolResponse], error)
@@ -235,6 +241,12 @@ func NewGatewayServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(gatewayServiceMethods.ByName("DecommissionGateway")),
 			connect.WithClientOptions(opts...),
 		),
+		endGatewayDrain: connect.NewClient[v1.EndGatewayDrainRequest, v1.EndGatewayDrainResponse](
+			httpClient,
+			baseURL+GatewayServiceEndGatewayDrainProcedure,
+			connect.WithSchema(gatewayServiceMethods.ByName("EndGatewayDrain")),
+			connect.WithClientOptions(opts...),
+		),
 		createPortPool: connect.NewClient[v1.CreatePortPoolRequest, v1.CreatePortPoolResponse](
 			httpClient,
 			baseURL+GatewayServiceCreatePortPoolProcedure,
@@ -327,6 +339,7 @@ type gatewayServiceClient struct {
 	listGateways        *connect.Client[v1.ListGatewaysRequest, v1.ListGatewaysResponse]
 	updateGateway       *connect.Client[v1.UpdateGatewayRequest, v1.UpdateGatewayResponse]
 	decommissionGateway *connect.Client[v1.DecommissionGatewayRequest, v1.DecommissionGatewayResponse]
+	endGatewayDrain     *connect.Client[v1.EndGatewayDrainRequest, v1.EndGatewayDrainResponse]
 	createPortPool      *connect.Client[v1.CreatePortPoolRequest, v1.CreatePortPoolResponse]
 	getPortPool         *connect.Client[v1.GetPortPoolRequest, v1.GetPortPoolResponse]
 	listPortPools       *connect.Client[v1.ListPortPoolsRequest, v1.ListPortPoolsResponse]
@@ -389,6 +402,11 @@ func (c *gatewayServiceClient) UpdateGateway(ctx context.Context, req *connect.R
 // DecommissionGateway calls rpmgr.v1.GatewayService.DecommissionGateway.
 func (c *gatewayServiceClient) DecommissionGateway(ctx context.Context, req *connect.Request[v1.DecommissionGatewayRequest]) (*connect.Response[v1.DecommissionGatewayResponse], error) {
 	return c.decommissionGateway.CallUnary(ctx, req)
+}
+
+// EndGatewayDrain calls rpmgr.v1.GatewayService.EndGatewayDrain.
+func (c *gatewayServiceClient) EndGatewayDrain(ctx context.Context, req *connect.Request[v1.EndGatewayDrainRequest]) (*connect.Response[v1.EndGatewayDrainResponse], error) {
+	return c.endGatewayDrain.CallUnary(ctx, req)
 }
 
 // CreatePortPool calls rpmgr.v1.GatewayService.CreatePortPool.
@@ -476,6 +494,9 @@ type GatewayServiceHandler interface {
 	// DecommissionGateway retires a gateway for good: its identity is revoked, its sessions end, and
 	// it stays as a tombstone that no longer counts towards its group.
 	DecommissionGateway(context.Context, *connect.Request[v1.DecommissionGatewayRequest]) (*connect.Response[v1.DecommissionGatewayResponse], error)
+	// EndGatewayDrain ends the drain of the gateway's old process at once: it closes the
+	// connections it still holds and exits (D160). Refused when no old process drains.
+	EndGatewayDrain(context.Context, *connect.Request[v1.EndGatewayDrainRequest]) (*connect.Response[v1.EndGatewayDrainResponse], error)
 	// CreatePortPool adds a range of public ports of one protocol to a gateway group, from which
 	// TCP and UDP routes take their ports; pools of a group and protocol never overlap.
 	CreatePortPool(context.Context, *connect.Request[v1.CreatePortPoolRequest]) (*connect.Response[v1.CreatePortPoolResponse], error)
@@ -579,6 +600,12 @@ func NewGatewayServiceHandler(svc GatewayServiceHandler, opts ...connect.Handler
 		connect.WithSchema(gatewayServiceMethods.ByName("DecommissionGateway")),
 		connect.WithHandlerOptions(opts...),
 	)
+	gatewayServiceEndGatewayDrainHandler := connect.NewUnaryHandler(
+		GatewayServiceEndGatewayDrainProcedure,
+		svc.EndGatewayDrain,
+		connect.WithSchema(gatewayServiceMethods.ByName("EndGatewayDrain")),
+		connect.WithHandlerOptions(opts...),
+	)
 	gatewayServiceCreatePortPoolHandler := connect.NewUnaryHandler(
 		GatewayServiceCreatePortPoolProcedure,
 		svc.CreatePortPool,
@@ -678,6 +705,8 @@ func NewGatewayServiceHandler(svc GatewayServiceHandler, opts ...connect.Handler
 			gatewayServiceUpdateGatewayHandler.ServeHTTP(w, r)
 		case GatewayServiceDecommissionGatewayProcedure:
 			gatewayServiceDecommissionGatewayHandler.ServeHTTP(w, r)
+		case GatewayServiceEndGatewayDrainProcedure:
+			gatewayServiceEndGatewayDrainHandler.ServeHTTP(w, r)
 		case GatewayServiceCreatePortPoolProcedure:
 			gatewayServiceCreatePortPoolHandler.ServeHTTP(w, r)
 		case GatewayServiceGetPortPoolProcedure:
@@ -749,6 +778,10 @@ func (UnimplementedGatewayServiceHandler) UpdateGateway(context.Context, *connec
 
 func (UnimplementedGatewayServiceHandler) DecommissionGateway(context.Context, *connect.Request[v1.DecommissionGatewayRequest]) (*connect.Response[v1.DecommissionGatewayResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.DecommissionGateway is not implemented"))
+}
+
+func (UnimplementedGatewayServiceHandler) EndGatewayDrain(context.Context, *connect.Request[v1.EndGatewayDrainRequest]) (*connect.Response[v1.EndGatewayDrainResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.GatewayService.EndGatewayDrain is not implemented"))
 }
 
 func (UnimplementedGatewayServiceHandler) CreatePortPool(context.Context, *connect.Request[v1.CreatePortPoolRequest]) (*connect.Response[v1.CreatePortPoolResponse], error) {

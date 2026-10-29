@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Field } from "@/components/field";
 import { LinesField, trimmed } from "@/components/lines-field";
 import { canStreamLogs, LiveLogButton } from "@/components/live-log";
+import { DrainingLine } from "@/components/draining";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
@@ -161,7 +162,7 @@ export function GatewayGroupPage() {
   const { groupId } = page.useParams();
   const org = useOrg();
   const groups = useGroups(org?.orgId);
-  const gateways = useGateways(org?.orgId);
+  const gateways = useGateways(org?.orgId, 5000);
   const updates = useRolloutTargets();
   const group = groups.data?.find((g) => g.id === groupId);
   const names = useAgentNames(org?.orgId);
@@ -223,6 +224,12 @@ export function GatewayGroupPage() {
               ))}
             </tbody>
           </Table>
+        )}
+        {members.some((g) => g.status?.draining) && (
+          <div className="grid gap-2 border-t border-border pt-4" role="group" aria-label={t("draining.title")}>
+            <h3 className="text-sm font-medium">{t("draining.title")}</h3>
+            {members.map((g) => <DrainingLine key={g.id} kind="gateway" id={g.id} name={g.name} builtIn={g.builtIn} draining={g.status?.draining} />)}
+          </div>
         )}
         {editing ? (
           <GatewayForm key={editing} orgId={org.orgId} groupId={group.id} gateway={members.find((g) => g.id === editing)}
