@@ -399,20 +399,29 @@ func readHello(control tunnel.Stream) (*tunnelv1.SessionHello, error) {
 	}
 }
 
-// admits reports why the gateway takes no new data session from the connector id: it is
-// draining or disabled, or the connector holds MaxConnectorSessions already.
+// admits reports why the gateway takes no new data session from the connector id before its hello:
+// it is draining or disabled, or the connector holds twice the cap, which no hand-off needs. The
+// cap itself is checked by add, once the hello says whether the session replaces a process that
+// hands its sessions over: the old process's sessions are about to drain and do not count.
 func (m *Sessions) admits(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.admitsLocked(id)
+	if len(m.byConnector[id]) >= 2*MaxConnectorSessions {
+		return m.admitsLocked(id, 0)
+	}
+	if m.draining || m.disabled {
+		return ErrDraining
+	}
+	return nil
 }
 
-// admitsLocked is admits under m.mu.
-func (m *Sessions) admitsLocked(id string) error {
+// admitsLocked is admits under m.mu, with the cap of sessions per connector, which does not count
+// the handed sessions of the old process: they are about to drain.
+func (m *Sessions) admitsLocked(id string, handed int) error {
 	switch {
 	case m.draining || m.disabled:
 		return ErrDraining
-	case len(m.byConnector[id]) >= MaxConnectorSessions:
+	case len(m.byConnector[id])-handed >= MaxConnectorSessions:
 		if now := m.o.Now(); now.Sub(m.capWarned[id]) >= capWarnEvery {
 			m.capWarned[id] = now
 			m.o.Logger.Warn("refusing a data session of a connector at the cap", "connector", id, "sessions", MaxConnectorSessions)
@@ -446,7 +455,7 @@ func (m *Sessions) add(d *dataSession) error {
 			return true
 		})
 	}
-	err := m.admitsLocked(d.connector)
+	err := m.admitsLocked(d.connector, len(handed)) // the sessions of the old process are about to drain
 	if err == nil {
 		m.byConnector[d.connector] = append(m.byConnector[d.connector], d)
 	}

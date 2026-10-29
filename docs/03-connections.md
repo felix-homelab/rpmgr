@@ -1785,7 +1785,12 @@ either. From the start of the hand-off the old process opens no new session. A s
 ends meanwhile, such as a drained one, is not dialled again until the outcome is known: if the new
 process failed, the old one opens its sessions again at once. If the new process took over, the old
 one opens none again, ends its control session by the `Goodbye{superseded}` and serves its open
-streams until none is left or the hand-off drain ends. A `handoff_from` that names
+streams until none is left or the hand-off drain ends. The old process's drained
+sessions do not count towards the cap on a connector's sessions, so that the new process's are
+admitted at the cap. A gateway of an earlier release ignores `handoff_from` and closes the old
+process's sessions as soon as the new one's first arrives, which cuts their open streams: a
+connector hand-off keeps streams alive only through gateways with `session.handoff`, so update the
+gateways first. A `handoff_from` that names
 no live session of the same connector is ignored, and the earlier sessions close as a restart's
 ([04](04-security.md#socket-hand-off-phase-2)).
 
