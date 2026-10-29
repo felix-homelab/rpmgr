@@ -247,16 +247,8 @@ func TestStartHandoffs(t *testing.T) {
 	}
 	finish(nil)
 
-	ctx, finish, err = startHandoffs(context.Background(), env, "all-in-one")
-	if err != nil || handoff.LinkFrom(ctx) == nil || !capable("all-in-one") {
-		t.Fatalf("all-in-one: link %v, capable %v, %v", handoff.LinkFrom(ctx), capable("all-in-one"), err)
-	}
-	if _, err := handoff.LinkFrom(ctx).Handoff(ctx); !errors.Is(err, handoff.ErrRefused) {
-		t.Errorf("the all-in-one took a hand-off: %v", err)
-	}
-	finish(nil)
-
-	for _, role := range []string{"gateway", "connector"} {
+	// Every role with a hand-off reports its own readiness and takes SIGUSR2 only from then on.
+	for _, role := range []string{"gateway", "connector", "all-in-one"} {
 		ctx, finish, err = startHandoffs(context.Background(), env, role)
 		if err != nil || handoff.LinkFrom(ctx) == nil {
 			t.Fatalf("%s: %v", role, err)
