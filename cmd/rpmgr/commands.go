@@ -186,12 +186,16 @@ func backupCommand() *cli.Command {
 		Name:    "backup",
 		Summary: "write a consistent backup of the controller",
 		Flags: func(fs *flag.FlagSet) {
-			fs.StringVar(&out, "out", "", "the archive to write; it must not exist (required)")
+			fs.StringVar(&out, "out", "", "the archive to write; it must not exist; - writes it to standard output, as the root updater reads it (required)")
 			fs.StringVar(&configPath, "config", "", bootFlagHelp)
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
 			if out == "" {
 				return cli.Usagef("backup needs --out")
+			}
+			if out == "-" {
+				_, err := controller.BackupTo(ctx, controllerBoot(configPath, env.Getenv), env.Stdout, version.Get().Version, time.Now)
+				return err
 			}
 			info, err := controller.Backup(ctx, controllerBoot(configPath, env.Getenv), out, version.Get().Version, time.Now)
 			if err != nil {
@@ -208,7 +212,7 @@ func backupCommand() *cli.Command {
 // restoreCommand is `rpmgr restore`: the controller's database and logs from a backup, with the
 // revocations since applied again (docs/10-operations.md, "Backup and restore").
 func restoreCommand() *cli.Command {
-	var configPath, in string
+	var configPath, in, stage string
 	var logs []string
 	return &cli.Command{
 		Name:    "restore",
@@ -217,6 +221,7 @@ func restoreCommand() *cli.Command {
 			fs.StringVar(&in, "in", "", "the archive of rpmgr backup (required)")
 			fs.Func("revocation-log", "the revocation-log sink directory, or a replica's revocations.log; repeat for each (default the state directory's revocations.log)",
 				func(s string) error { logs = append(logs, s); return nil })
+			fs.StringVar(&stage, "stage-dir", "", "where the restore does its SQLite work: a directory you own with mode 0700 that no one else can write (default a new private directory under the temporary one); the root updater passes /var/lib/rpmgr-update/restore")
 			fs.StringVar(&configPath, "config", "", bootFlagHelp)
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
@@ -224,7 +229,7 @@ func restoreCommand() *cli.Command {
 				return cli.Usagef("restore needs --in")
 			}
 			r, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: controllerBoot(configPath, env.Getenv),
-				Archive: in, RevocationLogs: logs})
+				Archive: in, RevocationLogs: logs, StageDir: stage})
 			if err != nil {
 				return err
 			}

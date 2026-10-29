@@ -58,7 +58,7 @@ func TestUpdaterReady(t *testing.T) {
 		t.Error("a role without a boot file counted as ready")
 	}
 	if err := ready(context.Background(), dir, "controller"); err == nil {
-		t.Error("the updater checked a controller, which it never replaces")
+		t.Error("a controller without a boot file counted as ready")
 	}
 }
 
@@ -189,4 +189,42 @@ func TestUpdaterInstall(t *testing.T) {
 			t.Errorf("another variant: %d %q", code, errOut)
 		}
 	})
+}
+
+// TestControlPlane: the updater reads the database driver from the boot file itself, so that a
+// PostgreSQL controller is named as one even though its boot file does not load yet.
+func TestControlPlane(t *testing.T) {
+	dir := t.TempDir()
+	write := func(role, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, role+".yaml"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := t.TempDir()
+	write("controller", "version: 1\npublic_url: https://panel.example.com\ndatabase: {dsn: "+state+"/controller.db}\n")
+	write("nostate", "version: 1\ndatabase: {dsn: /nonexistent/state/controller.db}\n")
+	write("all-in-one", "version: 1\ndatabase: {driver: postgres, dsn: 'postgres://x'}\n")
+	write("broken", "database: [")
+	for role, want := range map[string]string{"controller": "sqlite", "all-in-one": "postgres"} {
+		cp, err := controlPlane(dir, role)
+		if err != nil || cp.Driver != want || cp.Config != filepath.Join(dir, role+".yaml") {
+			t.Errorf("controlPlane(%s) = %+v, %v; want driver %s", role, cp, err, want)
+		}
+	}
+	// The backup runs as the owner of the state directory.
+	if cp, _ := controlPlane(dir, "controller"); int(cp.UID) != os.Getuid() || int(cp.GID) != os.Getgid() {
+		t.Errorf("the state directory's owner is %d:%d; want %d:%d", cp.UID, cp.GID, os.Getuid(), os.Getgid())
+	}
+	for _, role := range []string{"broken", "missing", "nostate"} {
+		if _, err := controlPlane(dir, role); err == nil {
+			t.Errorf("controlPlane(%s) succeeded", role)
+		}
+	}
+	srv := httptest.NewServer(telemetry.AdminHandler(telemetry.NewRegistry(), func(context.Context) error { return nil }))
+	defer srv.Close()
+	write("controller", "version: 1\npublic_url: https://panel.example.com\nlisten: {admin: '"+strings.TrimPrefix(srv.URL, "http://")+"'}\n")
+	if err := ready(context.Background(), dir, "controller"); err != nil {
+		t.Errorf("a ready controller: %v", err)
+	}
 }

@@ -44,6 +44,9 @@ import (
 type RestoreOptions struct {
 	ConfigPath string // the controller's boot file, or all-in-one's
 	Archive    string // the archive of `rpmgr backup`
+	// StageDir is where the restore does its SQLite work: a directory the caller owns with mode 0700,
+	// which no other user can write. Empty means a new private directory under the temporary one.
+	StageDir string
 	// RevocationLogs are where the revocations since the backup are: sink directories and local
 	// revocations.log files. None means the state directory's revocations.log.
 	RevocationLogs []string
@@ -154,52 +157,218 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 		return RestoreResult{}, err
 	}
 
-	// Everything is staged next to the files it replaces, then renamed into place.
-	files := []struct{ live, staged string }{
-		{dsn, dsn + ".restoring"},
-		{filepath.Join(state, BackupRevocations), filepath.Join(state, BackupRevocations+".restoring")},
-		{filepath.Join(state, BackupCheckpoints), filepath.Join(state, BackupCheckpoints+".restoring")},
+	// The state directory belongs to the service user, which a restore run by root must not let
+	// steer it: every SQLite operation and every read of a file the user controls happens in a
+	// private staging directory only the caller can write, and only finished files go into the state
+	// directory, through a root handle (os.Root) that follows no link out of it, never by path.
+	root, err := os.OpenRoot(state)
+	if err != nil {
+		return RestoreResult{}, err
 	}
-	clean := func() {
-		for _, f := range files {
-			for _, s := range []string{"", "-wal", "-shm"} {
-				_ = os.Remove(f.staged + s)
+	defer func() { _ = root.Close() }()
+	live := []string{filepath.Base(dsn), BackupRevocations, BackupCheckpoints}
+	stage, done, err := stagingDir(o.StageDir, live...)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	defer done()
+	var names []string
+	for i, n := range live {
+		for _, s := range []string{"", "-wal", "-shm"} {
+			if i == 0 || s == "" {
+				names = append(names, n+s)
 			}
 		}
 	}
-	clean()
-	defer clean()
+	if err := refuseLinks(root, names...); err != nil {
+		return RestoreResult{}, err
+	}
+	staged := func(name string) string { return filepath.Join(stage, name) }
 	for i, b := range [][]byte{a.db, a.revs, a.cpoints} {
-		if err := os.WriteFile(files[i].staged, b, 0o600); err != nil {
+		if err := stageFile(staged(live[i]), b); err != nil {
 			return RestoreResult{}, err
 		}
 	}
-	newer, review, err := sinceBackup(files[1].staged, files[1].live, o.RevocationLogs)
+	// The local revocation log is read through the root, into the staging directory.
+	if err := copyFrom(root, BackupRevocations, staged(localLog)); err != nil {
+		return RestoreResult{}, err
+	}
+	hook("staged")
+	newer, review, err := sinceBackup(staged(BackupRevocations), staged(localLog), o.RevocationLogs)
 	if err != nil {
 		return RestoreResult{}, err
 	}
 	res := RestoreResult{TrustDomain: a.info.TrustDomain, Backup: a.info.Created, OldEpoch: a.info.DBEpoch, Review: review}
-	if err := prepare(ctx, files[0].staged, files[1].staged, a.info, newer, o.Now, &res); err != nil {
+	if err := prepare(ctx, staged(live[0]), staged(BackupRevocations), a.info, newer, o.Now, &res); err != nil {
 		return RestoreResult{}, err
 	}
 
-	res.Previous = ".before-restore-" + o.Now().UTC().Format("20060102T150405Z")
-	for _, f := range files {
+	// The finished files are copied into temporary names inside the root, then the live ones are
+	// moved aside and the copies renamed into place: nothing is replaced when a copy fails.
+	type move struct{ tmp, live string }
+	var moves []move
+	defer func() {
+		for _, m := range moves {
+			_ = root.Remove(m.tmp)
+		}
+	}()
+	for _, n := range live {
 		for _, s := range []string{"", "-wal", "-shm"} {
-			if err := os.Rename(f.live+s, f.live+s+res.Previous); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if _, err := os.Lstat(staged(n + s)); err != nil {
+				if errors.Is(err, os.ErrNotExist) && s != "" {
+					continue
+				}
+				return RestoreResult{}, err
+			}
+			hook("copying")
+			tmp := ".restoring-" + n + s
+			if err := copyInto(root, staged(n+s), tmp); err != nil {
+				return RestoreResult{}, err
+			}
+			moves = append(moves, move{tmp, n + s})
+		}
+	}
+	res.Previous = ".before-restore-" + o.Now().UTC().Format("20060102T150405Z")
+	hook("moving")
+	for _, n := range live {
+		for _, s := range []string{"", "-wal", "-shm"} {
+			if err := root.Rename(n+s, n+s+res.Previous); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return RestoreResult{}, err
 			}
 		}
 	}
-	for _, f := range files {
-		for _, s := range []string{"", "-wal", "-shm"} {
-			if err := os.Rename(f.staged+s, f.live+s); err != nil && (s == "" || !errors.Is(err, os.ErrNotExist)) {
-				return RestoreResult{}, fmt.Errorf("controller: putting the restored %s in place: %w; the replaced files end in %s",
-					filepath.Base(f.live), err, res.Previous)
+	hook("installing")
+	for _, m := range moves {
+		if err := root.Rename(m.tmp, m.live); err != nil {
+			return RestoreResult{}, fmt.Errorf("controller: putting the restored %s in place: %w; the replaced files end in %s",
+				m.live, err, res.Previous)
+		}
+	}
+	moves = nil
+	return res, ownLike(state, state)
+}
+
+// localLog is the name, in the staging directory, of the state directory's revocation log as it was
+// when the restore began.
+const localLog = "local-" + BackupRevocations
+
+// restoreHook, if set, runs at the steps of Restore, "staged", "copying", "moving" and
+// "installing": a test plants a link there, as the service user could.
+var restoreHook func(step string)
+
+func hook(step string) {
+	if restoreHook != nil {
+		restoreHook(step)
+	}
+}
+
+// stagingDir returns the directory in which a restore does its SQLite work: dir, which the caller
+// must own and no one else may write (the root updater passes /var/lib/rpmgr-update/restore), or a
+// new private one under the temporary directory. The files a restore stages are removed from it
+// at the start and at the end.
+func stagingDir(dir string, files ...string) (string, func(), error) {
+	remove := func(d string) {
+		for _, n := range append([]string{localLog}, files...) {
+			for _, s := range []string{"", "-wal", "-shm", "-journal"} {
+				_ = os.Remove(filepath.Join(d, n+s))
 			}
 		}
 	}
-	return res, ownLike(state, state)
+	if dir == "" {
+		d, err := os.MkdirTemp("", "rpmgr-restore-")
+		if err != nil {
+			return "", nil, err
+		}
+		return d, func() { remove(d); _ = os.Remove(d) }, nil
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", nil, err
+	}
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		return "", nil, err
+	}
+	if !fi.IsDir() || fi.Mode().Perm()&0o077 != 0 || !ownedByCaller(fi) {
+		return "", nil, fmt.Errorf("controller: the staging directory %s must be a directory of mode 0700 that the caller owns", dir)
+	}
+	remove(dir)
+	return dir, func() { remove(dir) }, nil
+}
+
+// stageFile creates path, which must not exist, in the private staging directory.
+func stageFile(path string, b []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // G304: the private staging directory
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(b)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// copyFrom copies name of root to path, if it exists; a file that does not is no error.
+func copyFrom(root *os.Root, name, path string) error {
+	in, err := root.Open(name)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // G304: the private staging directory
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(out, in)
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// copyInto copies the file at path, in the private staging directory, to the new file name of root,
+// mode 0600; a name that exists, such as a link planted there, is replaced only by removing it first
+// and creating the new file exclusively, never by writing through it.
+func copyInto(root *os.Root, path, name string) error {
+	if err := root.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	in, err := os.Open(path) //nolint:gosec // G304: the private staging directory
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(out, in)
+	if err == nil {
+		err = out.Sync()
+	}
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// ErrUnsafeStateFile is returned for a file of the state directory that is no regular file, such as
+// a link planted by the service user, which a restore or backup run by root would follow.
+var ErrUnsafeStateFile = errors.New("controller: a file of the state directory is no regular file")
+
+// refuseLinks refuses any of names in root that exists and is not a regular file.
+func refuseLinks(root *os.Root, names ...string) error {
+	for _, n := range names {
+		if fi, err := root.Lstat(n); err == nil && !fi.Mode().IsRegular() {
+			return fmt.Errorf("%w: %s", ErrUnsafeStateFile, n)
+		} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 // sinceBackup returns the entries of the given sinks and local logs that the backup's own log, at

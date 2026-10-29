@@ -271,7 +271,7 @@ func ReadInstall(dir string) (Install, error) {
 }
 
 // install reads the installation record. A host whose roles include a controller or an
-// all-in-one is upgraded by hand (D102): its roles share the binary.
+// all-in-one is updated too (D158): the Applier backs it up first.
 func (u *Updater) install() (Install, error) {
 	in, err := ReadInstall(u.State)
 	if err != nil {
@@ -281,12 +281,14 @@ func (u *Updater) install() (Install, error) {
 	switch {
 	case in.Variant == "" || in.Path == "" || len(roles) == 0:
 		return Install{}, fmt.Errorf("update: %s names no variant, path or role", installFile)
-	case slices.Contains(roles, "controller") || slices.Contains(roles, "all-in-one"):
-		return Install{}, fmt.Errorf("%w: this host runs a controller or an all-in-one, which is upgraded by hand", ErrRefused)
+	case in.Variant == "connector" && controlRole(roles) != "":
+		return Install{}, fmt.Errorf("%w: %s records the connector build, which has no controller", ErrRefused, installFile)
+	case slices.Contains(roles, "controller") && slices.Contains(roles, "all-in-one"):
+		return Install{}, fmt.Errorf("%w: %s names a controller and an all-in-one on one host", ErrRefused, installFile)
 	}
 	for _, r := range roles {
 		if !updatable(r) {
-			return Install{}, fmt.Errorf("%w: %s names the role %q; the updater replaces gateways and connectors only", ErrRefused, installFile, r)
+			return Install{}, fmt.Errorf("%w: %s names the role %q; the updater replaces the roles of rpmgr only", ErrRefused, installFile, r)
 		}
 	}
 	slices.Sort(roles)

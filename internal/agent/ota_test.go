@@ -583,6 +583,13 @@ func TestStager_UpdaterOutcome(t *testing.T) {
 	if st := s.State(); st != nil {
 		t.Errorf("a corrupt status file: %v", st)
 	}
+	// An update of a controller or all-in-one under way (D158) is no outcome yet.
+	if err := os.WriteFile(e.status, []byte(`{"state":"updating","step":"backing_up","version":"0.2.0","at":"2026-10-29T10:00:00Z"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if st := s.State(); st != nil {
+		t.Errorf("an update under way: %v", st)
+	}
 }
 
 // resign changes a release's manifest and signs it again.

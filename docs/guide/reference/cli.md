@@ -497,7 +497,7 @@ rpmgr backup [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
-| `--out string` |  | the archive to write; it must not exist (required) |
+| `--out string` |  | the archive to write; it must not exist; - writes it to standard output, as the root updater reads it (required) |
 
 ## rpmgr restore
 
@@ -517,6 +517,7 @@ rpmgr restore <command>
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
 | `--in string` |  | the archive of rpmgr backup (required) |
 | `--revocation-log value` |  | the revocation-log sink directory, or a replica's revocations.log; repeat for each (default the state directory's revocations.log) |
+| `--stage-dir string` |  | where the restore does its SQLite work: a directory you own with mode 0700 that no one else can write (default a new private directory under the temporary one); the root updater passes /var/lib/rpmgr-update/restore |
 
 ## rpmgr restore confirm
 

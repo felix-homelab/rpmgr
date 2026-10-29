@@ -195,6 +195,9 @@ func (s *Stager) outcome() *agentv1.UpdaterOutcome {
 		s.logger.Warn("cannot read the updater's status file", "file", s.o.StatusFile, "error", err)
 		return nil
 	}
+	if st.State == update.Updating {
+		return nil // under way: the outcome comes with its end
+	}
 	out := &agentv1.UpdaterOutcome{Version: st.Version, Previous: st.Previous, Reason: st.Reason}
 	if !st.At.IsZero() {
 		out.At = timestamppb.New(st.At)

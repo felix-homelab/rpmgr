@@ -82,3 +82,11 @@ func (s Systemd) State(ctx context.Context, unit string) (Unit, error) {
 	}
 	return u, nil
 }
+
+// Stop runs systemctl stop, which waits until the unit has stopped.
+func (s Systemd) Stop(ctx context.Context, unit string) error {
+	if out, err := exec.CommandContext(ctx, s.cmd(), "stop", unit).CombinedOutput(); err != nil { //nolint:gosec // G204: a fixed unit name
+		return fmt.Errorf("systemctl stop %s: %w: %s", unit, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
