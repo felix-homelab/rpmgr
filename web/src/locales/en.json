@@ -1417,6 +1417,7 @@
     },
     "controllerButton": {
       "label": "Update controller to {{version}}",
+      "byHand": "Update this controller by hand once (install.sh --upgrade --restart); later updates can start here.",
       "why": {
         "notMirrored": "The mirror does not hold it yet.",
         "rollout": "A rollout runs; let it end first.",

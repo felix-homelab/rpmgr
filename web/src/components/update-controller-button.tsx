@@ -26,6 +26,8 @@ export function UpdateControllerButton({ release, rollout }: { release: Release;
   const stepUp = useStepUp();
   const [said, setSaid] = useState("");
   if (!release.newerThanController || !status.data) return null;
+  // A controller older than the first that can update itself is updated by hand once.
+  if (status.data.byHand) return <span className="text-xs text-muted-foreground">{t("updates.controllerButton.byHand")}</span>;
   const current = status.data.update?.state;
   const blocked = status.data.blocked;
   const why = blocked ? t("updates.controllerButton.why.blocked", { reason: blocked })

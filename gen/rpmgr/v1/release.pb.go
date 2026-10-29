@@ -1873,8 +1873,11 @@ type GetControllerUpdateResponse struct {
 	Blocked string `protobuf:"bytes,2,opt,name=blocked,proto3" json:"blocked,omitempty"`
 	// The version the controller runs.
 	RunningVersion string `protobuf:"bytes,3,opt,name=running_version,json=runningVersion,proto3" json:"running_version,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Whether the running release is older than the first that can update itself over the air, v0.3.0:
+	// it is updated by hand once, and `blocked` says so.
+	ByHand        bool `protobuf:"varint,4,opt,name=by_hand,json=byHand,proto3" json:"by_hand,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetControllerUpdateResponse) Reset() {
@@ -1926,6 +1929,13 @@ func (x *GetControllerUpdateResponse) GetRunningVersion() string {
 		return x.RunningVersion
 	}
 	return ""
+}
+
+func (x *GetControllerUpdateResponse) GetByHand() bool {
+	if x != nil {
+		return x.ByHand
+	}
+	return false
 }
 
 // GetRolloutRequest names a rollout.
@@ -2843,11 +2853,12 @@ const file_rpmgr_v1_release_proto_rawDesc = "" +
 	"release_id\x18\x01 \x01(\tB\t\xbaH\x06r\x04\x10\x01\x18@R\treleaseId\"N\n" +
 	"\x18UpdateControllerResponse\x122\n" +
 	"\x06update\x18\x01 \x01(\v2\x1a.rpmgr.v1.ControllerUpdateR\x06update\"\x1c\n" +
-	"\x1aGetControllerUpdateRequest\"\x94\x01\n" +
+	"\x1aGetControllerUpdateRequest\"\xad\x01\n" +
 	"\x1bGetControllerUpdateResponse\x122\n" +
 	"\x06update\x18\x01 \x01(\v2\x1a.rpmgr.v1.ControllerUpdateR\x06update\x12\x18\n" +
 	"\ablocked\x18\x02 \x01(\tR\ablocked\x12'\n" +
-	"\x0frunning_version\x18\x03 \x01(\tR\x0erunningVersion\";\n" +
+	"\x0frunning_version\x18\x03 \x01(\tR\x0erunningVersion\x12\x17\n" +
+	"\aby_hand\x18\x04 \x01(\bR\x06byHand\";\n" +
 	"\x11GetRolloutRequest\x12&\n" +
 	"\n" +
 	"rollout_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\trolloutId\"A\n" +

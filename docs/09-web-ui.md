@@ -786,7 +786,8 @@ one page, with a section list beside them that jumps to each section
 - **Update the controller** ([D158](14-open-decisions.md#engineering)), for the Instance Admin
   only: on `/settings/updates` the release list offers "Update controller to 1.5.0" beside the
   controller's own version (an all-in-one's too, which also runs the built-in agents), for a
-  release the mirror holds and the instance's channel takes. After a step-up it asks the
+  release the mirror holds and the instance's channel takes. A controller that runs a release before v0.3.0 shows, instead of the button, "Update this
+  controller by hand once (install.sh --upgrade --restart); later updates can start here. After a step-up it asks the
   controller to stage the release and the root updater to install it
   ([04](04-security.md#controllers-and-all-in-ones-over-the-air)) and opens the **Updating…**
   page. The button is off, with the reason next to it, for a release that is not mirrored or not

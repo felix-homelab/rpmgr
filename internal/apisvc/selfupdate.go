@@ -61,6 +61,10 @@ func (r *Releases) UpdateController(ctx context.Context, req *connect.Request[rp
 	if u == nil || u.Stage == nil {
 		return nil, refusedUpdate("this controller has no root updater")
 	}
+	if !update.HasSelfUpdate(r.Version) {
+		// Its backup and restore are those of the running release, which must have them.
+		return nil, refusedUpdate(update.ByHand)
+	}
 	if why := u.blocked(); why != "" {
 		return nil, refusedUpdate(why)
 	}
@@ -109,6 +113,9 @@ func (r *Releases) GetControllerUpdate(context.Context, *connect.Request[rpmgrv1
 	if u := r.Self; u != nil && u.Stage != nil {
 		out.Blocked = u.blocked()
 		out.Update = u.current(r.now())
+		if out.ByHand = !update.HasSelfUpdate(r.Version); out.ByHand {
+			out.Blocked = update.ByHand
+		}
 	} else {
 		out.Blocked = "this controller has no root updater"
 	}

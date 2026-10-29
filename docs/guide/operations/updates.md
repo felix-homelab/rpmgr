@@ -46,7 +46,12 @@ is not updated over the air.
 
 ## Update the controller
 
-From v0.3.0 the controller, or the all-in-one, updates itself over the air, on **SQLite** only. The
+From v0.3.0 the controller, or the all-in-one, updates itself over the air, on **SQLite** only,
+and only from a controller that already runs v0.3.0 or later: its own backup and restore do the
+work, so a controller on an earlier release is **updated by hand once** (`install.sh --upgrade
+--restart`, [Upgrades](../install/upgrades.md)), and the page and the API say "update this
+controller by hand once (install.sh --upgrade --restart); later updates can start here" instead
+of offering the button. The
 controller goes first, as in every upgrade: no agent runs ahead of it. A controller on
 **PostgreSQL** is refused until its backup method exists (P2-M08); upgrade it by hand
 ([Upgrades](../install/upgrades.md)).

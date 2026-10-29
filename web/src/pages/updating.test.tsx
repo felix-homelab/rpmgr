@@ -139,7 +139,7 @@ function release(version: string, over: Partial<{ newerThanController: boolean; 
 
 // settings shows /settings/updates for the controller 1.5.0 with a release 1.6.0 and the state of
 // the update and of the rollouts as given.
-function settings(o: { mirrored?: boolean; blocked?: string; running?: boolean; update?: ControllerUpdate; admin?: boolean; fails?: boolean } = {}) {
+function settings(o: { byHand?: boolean; mirrored?: boolean; blocked?: string; running?: boolean; update?: ControllerUpdate; admin?: boolean; fails?: boolean } = {}) {
   const calls: UpdateControllerRequest[] = [];
   let steppedUp = false;
   const view = show("/settings/updates", auth({
@@ -156,7 +156,7 @@ function settings(o: { mirrored?: boolean; blocked?: string; running?: boolean; 
         release("1.5.0", { controllerVersion: true })], controllerVersion: "1.5.0" }),
       listRollouts: () => ({ rollouts: o.running ? [{ id: "rol_1", releaseId: "rel_1.5.0", version: "1.5.0", stage: 1, percentage: 0, state: 1, etag: "r1",
         counts: { pending: 1 } }] : [] }),
-      getControllerUpdate: () => ({ runningVersion: "1.5.0", blocked: o.blocked ?? "", update: o.update }),
+      getControllerUpdate: () => ({ runningVersion: "1.5.0", blocked: o.blocked ?? "", update: o.update, byHand: o.byHand ?? false }),
       updateController: (req) => {
         if (!steppedUp) throw apiError(Code.Unauthenticated, "STEP_UP_REQUIRED");
         if (o.fails) throw apiError(Code.FailedPrecondition, "CONTROLLER_UPDATE_REFUSED");
@@ -201,6 +201,12 @@ describe("the Update controller button", () => {
       expect(b.disabled).toBe(true);
     });
   }
+
+  it("shows the by-hand text instead of the button for a controller that cannot update itself yet", async () => {
+    settings({ byHand: true });
+    expect(await screen.findByText(/Update this controller by hand once \(install.sh --upgrade --restart\); later updates can start here/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Update controller to 1.6.0" })).toBeNull();
+  });
 
   it("shows what the controller refused, and stays on the page", async () => {
     const view = settings({ fails: true });

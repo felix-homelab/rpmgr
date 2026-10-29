@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"strings"
 	"testing"
 	"time"
 
@@ -222,5 +223,42 @@ func TestGetControllerUpdate_StaleUpdating(t *testing.T) {
 		if err != nil || resp.Msg.GetUpdate().GetState() != tc.want {
 			t.Errorf("%s: %v, %v; want %v", name, resp, err, tc.want)
 		}
+	}
+}
+
+// A controller older than the first release that can update itself, v0.3.0, is updated by hand
+// once: the API says so and stages nothing, whatever else is right.
+func TestUpdateController_ByHand(t *testing.T) {
+	e, ada, _, _ := gatewayEnv(t)
+	ctx := context.Background()
+	staged := 0
+	e.rel.Self = &apisvc.SelfUpdate{Stage: func(context.Context, string) error { staged++; return nil },
+		Status: func() (update.Status, error) { return update.Status{}, fs.ErrNotExist }}
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := ada.rel.UploadRelease(ctx, connect.NewRequest(signedRelease(t, e.clock, "1.6.0", 10, release.Stable)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := resp.Msg.GetRelease().GetId()
+	e.db.Client().Release.UpdateOneID(id).SetMirroredAt(e.clock).ExecX(e.sys)
+	for _, running := range []string{"0.2.0", "0.2.9", "dev"} {
+		e.rel.Version = running
+		_, err := ada.rel.UpdateController(ctx, connect.NewRequest(&rpmgrv1.UpdateControllerRequest{ReleaseId: id}))
+		if code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonControllerUpdate || !strings.Contains(err.Error(), update.ByHand) {
+			t.Errorf("running %s: %v; want the by-hand refusal", running, err)
+		}
+		got, err := ada.rel.GetControllerUpdate(ctx, connect.NewRequest(&rpmgrv1.GetControllerUpdateRequest{}))
+		if err != nil || !got.Msg.GetByHand() || got.Msg.GetBlocked() != update.ByHand {
+			t.Errorf("running %s: GetControllerUpdate = %v, %v", running, got, err)
+		}
+	}
+	if staged != 0 {
+		t.Errorf("staged %d times", staged)
+	}
+	e.rel.Version = "0.3.0-rc.1" // a pre-release of v0.3.0 has the feature
+	if got, err := ada.rel.GetControllerUpdate(ctx, connect.NewRequest(&rpmgrv1.GetControllerUpdateRequest{})); err != nil || got.Msg.GetByHand() {
+		t.Errorf("running 0.3.0-rc.1: %v, %v", got, err)
 	}
 }

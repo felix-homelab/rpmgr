@@ -508,6 +508,9 @@ message GetControllerUpdateResponse {
   string blocked = 2;
   // The version the controller runs.
   string running_version = 3;
+  // Whether the running release is older than the first that can update itself over the air, v0.3.0:
+  // it is updated by hand once, and `blocked` says so.
+  bool by_hand = 4;
 }
 
 // GetRolloutRequest names a rollout.
