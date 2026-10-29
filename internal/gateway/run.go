@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/quic-go/quic-go"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
@@ -294,30 +293,39 @@ func Run(ctx context.Context, o RunOptions) error {
 	if cfg.Listen.TunnelUDP != "" {
 		udp = cfg.Listen.TunnelUDP
 	}
-	// The QUIC listener's UDP socket is not handed over yet (slice 17.4): a process a hand-off
-	// started leaves it, and so the data sessions over QUIC, to the old process and takes TCP.
-	var qln *tunnel.QUICListener
-	udpAddr := "none (handed-over process)"
-	if !adopted {
-		pc, err := net.ListenPacket("udp", udp)
-		if err != nil {
-			return err
-		}
-		tr := &quic.Transport{Conn: pc, StatelessResetKey: resetKey}
-		defer func() { _ = tr.Close(); _ = pc.Close() }() // a Transport does not close a conn it was given
-		if err := tunnel.RegisterHostMetrics(reg, pc); err != nil {
-			return err
-		}
-		if qln, err = tunnel.ListenQUIC(tr, QUICTLS(id.TrustDomain, id.AgentID, tunnelTLS), budget); err != nil {
-			return err
-		}
-		udpAddr = pc.LocalAddr().String()
-		held.quic = true
+	// The QUIC listener's UDP socket is not handed over: only the old process of a hand-off reads
+	// it until it exits, so a process a hand-off started opens it then (docs/03-connections.md,
+	// "UDP and QUIC").
+	qs := &quicSide{addr: udp, key: resetKey, tls: QUICTLS(id.TrustDomain, id.AgentID, tunnelTLS), budget: budget, reg: reg,
+		serve: func(s *tunnel.QUICSession) {
+			if err := sessions.Serve(run, s, s.PeerCertificate()); err != nil {
+				o.Logger.Debug("data session over QUIC ended", "error", err)
+			}
+		}}
+	defer qs.close()
+	if err := qs.register(); err != nil {
+		return err
 	}
-	closeQUIC := func() {
-		if qln != nil {
-			_ = qln.Close()
+	udpAddr := "none (until the old process exits)"
+	if !adopted {
+		if err := qs.open(run); err != nil {
+			return err
 		}
+		udpAddr = qs.localAddr()
+	}
+	closeQUIC := qs.stopAccepting
+	// freed runs in a process a hand-off started once the old one exited and its UDP sockets are
+	// free: the QUIC listener and the pending udp routes bind now.
+	freed := func() {
+		go func() {
+			udpRoutes.Rebind()
+			err := qs.openUntilBound(run, func(err error) {
+				o.Logger.Error("cannot listen for data sessions over QUIC after the hand-off; connectors use TCP, and it tries again", "udp", udp, "error", err)
+			})
+			if err == nil {
+				o.Logger.Info("listening for data sessions over QUIC", "udp", qs.localAddr())
+			}
+		}()
 	}
 	tcp, err := held.listen("tcp", cfg.Listen.TCP)
 	if err != nil {
@@ -381,21 +389,6 @@ func Run(ctx context.Context, o RunOptions) error {
 				ReadinessComplete: true}
 		})
 	})
-	if qln != nil {
-		go func() {
-			for {
-				s, err := qln.Accept(run)
-				if err != nil {
-					return
-				}
-				go func() {
-					if err := sessions.Serve(run, s, s.PeerCertificate()); err != nil {
-						o.Logger.Debug("data session over QUIC ended", "error", err)
-					}
-				}()
-			}
-		}()
-	}
 	o.Logger.Info("gateway running", "gateway", id.AgentID, "tcp", tcp.Addr().String(), "udp", udpAddr)
 	if o.Listening != nil {
 		o.Listening()
@@ -434,6 +427,7 @@ func Run(ctx context.Context, o RunOptions) error {
 					for {
 						if _, _, err := pipe.Recv(); err != nil {
 							oldAlive.Store(false)
+							freed()
 							return
 						}
 					}
@@ -459,6 +453,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		// have, then drains its open connections for the hand-off drain.
 		period = cfg.Handoff.DrainPeriod()
 		deadline = time.Now().Add(period)
+		closeQUIC() // no new QUIC session; the open ones stay until the drain ends
 		reload := func() {
 			if err := ctl.DenyList().Load(); err != nil {
 				o.Logger.Warn("reading the deny-list after a hand-off", "error", err)

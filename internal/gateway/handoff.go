@@ -27,8 +27,6 @@ type listeners struct {
 	// plain start.
 	take func(netip.AddrPort) (net.Listener, bool, error)
 	log  *slog.Logger
-	// quic is set while the gateway serves a QUIC listener.
-	quic bool
 
 	mu   sync.Mutex
 	open []heldListener
@@ -121,17 +119,8 @@ func closeSockets(s []handoff.Socket) {
 	}
 }
 
-// quicHandoff says the UDP socket of the QUIC listener is handed over too. It is not until slice
-// 17.4: a new process would serve no data session over QUIC while the old one still accepts, so a
-// gateway with a QUIC listener refuses a hand-off. 17.4 removes the variable.
-var quicHandoff = false
-
 // start hands the listeners over to a new process (handoff.Link.Serve).
 func (l *listeners) start(ctx context.Context) (*handoff.Child, error) {
-	if l.quic && !quicHandoff {
-		return nil, fmt.Errorf("%w: this gateway serves QUIC data sessions, whose UDP socket is not handed over "+
-			"yet (slice 17.4, #882); restart it with `systemctl restart`", handoff.ErrRefused)
-	}
 	socks, err := l.sockets()
 	if err != nil {
 		return nil, err
