@@ -43,7 +43,10 @@ func TestRollbackRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Writer.ExecContext(ctx, `INSERT INTO `+store.RevisionTable+` (version, description, type, applied, total, executed_at,
+	if store.RevisionTable != "rpmgr_schema_revisions" {
+		t.Fatal("the revision table was renamed: update this test")
+	}
+	if _, err := db.Writer.ExecContext(ctx, `INSERT INTO rpmgr_schema_revisions (version, description, type, applied, total, executed_at,
   execution_time, error, error_stmt, hash, partial_hashes, operator_version) VALUES ('29991231235959', 'newer', 2, 1, 1, '2099-01-01T00:00:00Z',
   0, '', '', 'h', '[]', 'rpmgr')`); err != nil {
 		t.Fatal(err)
