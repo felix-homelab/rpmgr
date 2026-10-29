@@ -495,6 +495,49 @@ func TestSessions_Drain(t *testing.T) {
 	}
 }
 
+// TestSessions_DrainHandoffStillServes: a session drained for a hand-off serves a stream when no
+// other session of the route is left, so that a connection the old process accepted just before
+// it stopped accepting is not reset; a session that is there undrained is preferred, and a drain
+// for another reason, or the gateway's own, still opens no stream.
+func TestSessions_DrainHandoffStillServes(t *testing.T) {
+	a := &assignment{known: map[string]bool{cid("con_1"): true, cid("con_2"): true},
+		routes: map[string][]string{"r1": {cid("con_1")}, "r2": {cid("con_2")}}}
+	m := newSessions(a, nil)
+	c1 := start(t, m, connectorID("con_1"), hello("r1"))
+	c2 := start(t, m, connectorID("con_2"), hello("r2"))
+	m.DrainHandoff(time.Now().Add(time.Minute))
+	if d := handedOff(t, c1); d.GetReason() != "handoff" {
+		t.Fatalf("got %v, want Drain{handoff}", d)
+	}
+	_ = handedOff(t, c2)
+	ctx := context.Background()
+	for _, r := range []string{"r1", "r2"} {
+		st, code, err := m.OpenStream(ctx, &tunnelv1.StreamOpen{RouteId: r})
+		if err != nil || st == nil || code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+			t.Fatalf("route %s on a session drained for a hand-off: %v, %v", r, code, err)
+		}
+		_ = st.Close()
+	}
+	if _, _, err := m.OpenStream(ctx, &tunnelv1.StreamOpen{RouteId: "unknown"}); !errors.Is(err, gateway.ErrNoSession) {
+		t.Fatalf("a route nobody serves: %v, want ErrNoSession", err)
+	}
+	m.Close()
+}
+
+// TestSessions_DisableOpensNoStream: unlike a hand-off, a disabled gateway's drained session
+// opens no stream even when it is the route's only one.
+func TestSessions_DisableOpensNoStream(t *testing.T) {
+	a := &assignment{known: map[string]bool{cid("con_1"): true}, routes: map[string][]string{"r1": {cid("con_1")}}}
+	m := newSessions(a, nil)
+	c := start(t, m, connectorID("con_1"), hello("r1"))
+	m.Disable(time.Minute)
+	<-c.msgs
+	if _, _, err := m.OpenStream(context.Background(), &tunnelv1.StreamOpen{RouteId: "r1"}); err == nil {
+		t.Fatal("a disabled gateway opened a stream")
+	}
+	m.Close()
+}
+
 // TestSessions_Disable (R22): a disabled gateway tells its sessions to move with the drain
 // deadline; they keep their open streams although the snapshot no longer assigns their connector,
 // and close at the deadline. Until Enable no session or stream is admitted, and a second Disable

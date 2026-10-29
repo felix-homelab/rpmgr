@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/netip"
 	"path/filepath"
 	"strconv"
@@ -124,6 +125,55 @@ func TestListeners_Sockets(t *testing.T) {
 	if len(l.open) != 1 {
 		t.Errorf("%d listeners remembered, want 1", len(l.open))
 	}
+}
+
+// TestListeners_RetireAdmin: after the switch the old process's admin server ends as if shut
+// down, not failed, and its listener takes no more connections; the other listeners stay open.
+func TestListeners_RetireAdmin(t *testing.T) {
+	l := &listeners{log: quiet()}
+	l.retireAdmin() // nothing held: no panic
+	admin, err := l.listen("admin", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := l.listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = other.Close() })
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}), ReadHeaderTimeout: time.Second}
+	served := make(chan error, 1)
+	go func() { served <- srv.Serve(admin) }()
+	addr := admin.Addr().String()
+	c, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = c.Close()
+	l.retireAdmin()
+	select {
+	case err := <-served:
+		if !errors.Is(err, http.ErrServerClosed) {
+			t.Fatalf("the admin server ended with %v, want http.ErrServerClosed", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the admin server did not end")
+	}
+	if c, err := net.DialTimeout("tcp", addr, time.Second); err == nil {
+		_ = c.Close()
+		t.Fatal("the retired admin listener still accepts")
+	}
+	if c, err := net.Dial("tcp", other.Addr().String()); err != nil {
+		t.Fatalf("another listener closed with it: %v", err)
+	} else {
+		_ = c.Close()
+	}
+	socks, err := l.sockets()
+	if err != nil || len(socks) != 1 || socks[0].Name != "tcp" {
+		t.Fatalf("sockets after retiring: %v, %v; want the tcp listener only", socks, err)
+	}
+	closeSockets(socks)
+	l.retireAdmin() // twice is harmless
 }
 
 // TestListeners_StartRefused: a hand-off whose binary does not pass the rule of 04 starts nothing

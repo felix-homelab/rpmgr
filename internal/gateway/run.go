@@ -446,19 +446,15 @@ func Run(ctx context.Context, o RunOptions) error {
 		})
 	}
 
-	// stopAccepting takes no new public connection and no new data session, and binds no new
-	// port; the open ones stay. Calling it twice is harmless.
+	// stopAccepting takes no new public connection and no new data session over a socket, and
+	// binds no new port; the open ones stay. Calling it twice is harmless.
 	stopAccepting := func() {
 		_ = tcp.Close()
 		if plain != nil {
 			_ = plain.Close()
 		}
-		if o.Tunnels != nil {
-			_ = o.Tunnels.Close() // no new data sessions in memory either
-		}
 		closeQUIC() // the open QUIC sessions stay until the drain ends
 		routes.Drain()
-		httpRoutes.Drain()
 	}
 	var result error
 	var child *handoff.Child
@@ -480,6 +476,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		// wait covers the connectors' move. Connections this process kept accepting meanwhile
 		// found every session of its drained and were reset (#1005).
 		stopAccepting()
+		held.retireAdmin() // the new process answers the admin listener alone from now on
 		reload := func() {
 			if err := ctl.DenyList().Load(); err != nil {
 				o.Logger.Warn("reading the deny-list after a hand-off", "error", err)
@@ -499,6 +496,12 @@ func Run(ctx context.Context, o RunOptions) error {
 	// Drain: no new public connections or data sessions; the open streams get the drain period,
 	// and the gateway stops earlier once none is left.
 	stopAccepting()
+	// Not at the switch: it drops the connections the router accepted and has not handed to the
+	// HTTP server yet, which their clients see as an EOF.
+	httpRoutes.Drain()
+	if o.Tunnels != nil {
+		_ = o.Tunnels.Close() // no new data sessions in memory either; its connector has no socket to move
+	}
 	sessions.Drain(o.Now().Add(time.Until(deadline)))
 	for result == nil && !closed(successor) && time.Now().Before(deadline) && (routes.Conns() > 0 || pass.Conns() > 0 || httpRoutes.Active() > 0 ||
 		sessions.Streams() > 0) {

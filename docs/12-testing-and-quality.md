@@ -185,10 +185,8 @@ test, in the order of [10](10-operations.md#upgrades-and-version-skew), under li
     none over QUIC while the old one holds the UDP port, the UDP flow answers without a silence
     until the old process exits and starts again in the new one, the held connection survives, and
     the connectors return to QUIC at the re-probe (shortened to 15 s by `RPMGR_TEST_REPROBE`, an
-    `rpmgrtest` hook). No connection may be refused or reset: that holds with `HANDOFF_STRICT=1`
-    only, while a gap of the build is known (a connection that arrives between the start of the
-    hand-off and the moment the old process stops accepting can be reset); the test pins the gap
-    down to that window.
+    `rpmgrtest` hook). No connection may be refused or reset (D127, D158); a route that only the
+    connector pinned to QUIC serves is not judged: it has no session until the old process exits.
   - **Lone gateway, a connector pinned to QUIC:** it has no session with the new process until the
     old one exits, and reconnects then; its route answers again.
   - **All-in-one:** the same load; the admin listener and the controller are the new process's.
