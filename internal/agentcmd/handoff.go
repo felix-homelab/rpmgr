@@ -36,9 +36,9 @@ var mainPID = func(ctx context.Context, role string) (int, error) {
 }
 
 // readyRoles are the roles that report their own readiness and adopt the sockets of a hand-off
-// (handoff.LinkFrom): the gateway and the all-in-one. The connector is ready for systemd
-// (Type=notify) and takes SIGUSR2 as soon as it runs, and refuses a hand-off, until its slice (17.9) lands.
-var readyRoles = []string{"gateway", "all-in-one"}
+// (handoff.LinkFrom): the gateway, the connector and the all-in-one, each ready for systemd
+// (Type=notify) at its own ready point.
+var readyRoles = []string{"gateway", "connector", "all-in-one"}
 
 // startHandoffs prepares a role for socket hand-off: it takes the hand-off that started this
 // process, if any, and returns a context that carries the role's handoff.Link. The Link starts

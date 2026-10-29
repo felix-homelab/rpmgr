@@ -587,9 +587,16 @@ func TestGatewayPagePreview(t *testing.T) {
 		t.Errorf("the built-in page: %d %v", w.Code, w.Header())
 	}
 
-	// Refused links: altered, unsigned, expired, of a changed page; POST.
+	// Refused links: altered, unsigned, expired, of a changed page; POST. The signature ends the
+	// link in base64url, whose last character carries unused bits, so a character inside it is
+	// changed, and always to another one.
+	i := len(url) - 10
+	other := byte('A')
+	if url[i] == 'A' {
+		other = 'B'
+	}
 	for name, u := range map[string]string{
-		"altered":  url[:len(url)-2] + "AA",
+		"altered":  url[:i] + string(other) + url[i+1:],
 		"no token": apisvc.PreviewPath,
 		"garbage":  apisvc.PreviewPath + "x.y",
 	} {

@@ -222,11 +222,12 @@ RestartSec=2s
     17.6 and 17.7.
   - **`READY=1` comes at the role's ready point**, not at start: the gateway sends it once its
     listeners are up, and a gateway that a hand-off started once it holds its route ports (it
-    applied its first snapshot) and the old process switched. A gateway that cannot bind its
-    listeners, or whose hand-off fails, ends and `systemctl start` fails. So does an all-in-one,
-    which is ready when its gateway's control session to its controller is up and sends `READY=1`
-    after the database moved ([03](03-connections.md#all-in-one-hand-over)); the connector still
-    sends it at once, until its slice.
+    applied its first snapshot) and the old process switched. A connector sends it at once after a
+    plain start, and a connector that a hand-off started once its control session is up and its
+    gateways have data sessions or refused them. A gateway that cannot bind its listeners, or whose
+    hand-off fails, ends and `systemctl start` fails. So does an all-in-one, which is ready when its
+    gateway's control session to its controller is up and sends `READY=1` after the database moved
+    ([03](03-connections.md#all-in-one-hand-over)).
     A gateway that serves QUIC hands off too: the new process opens its QUIC listener and its `udp`
     routes once the old one has exited ([03](03-connections.md#restarts-with-socket-hand-off-phase-2)).
   - **`rpmgr handoff`** signals only a process that announced in `/run/rpmgr/<role>/handoff.pid`
@@ -242,7 +243,10 @@ RestartSec=2s
     itself (`systemctl kill --kill-whom=main --signal=SIGHUP`), since its reload is now the
     hand-off.
   - **Connector:** its `ExecReload` stays the policy reload; `rpmgr handoff connector` restarts it
-    with a hand-off.
+    with a hand-off, which has no socket to pass: the new process opens its sessions to the gateways
+    first and the old one keeps its open streams for the hand-off drain. A gateway without the
+    capability `session.handoff` closes the old process's sessions, which ends their streams
+    ([03](03-connections.md#restarts-with-socket-hand-off-phase-2)).
   - **Containers:** no hand-off; the image's process is the container's first one, and an
     orchestrator replaces containers instead ([D149](14-open-decisions.md#engineering)).
 - **Updater** (every role): a root-owned pair `rpmgr-update.path` (watches `/var/lib/rpmgr/update/`)

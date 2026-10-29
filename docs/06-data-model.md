@@ -275,7 +275,10 @@ The terms of the table:
   reports each target its checks find unhealthy, under the target's ID, so a target with such a
   row is not ready either. A target that is not ready shows its reason: `OFFLINE`, `DISABLED`,
   `CAPABILITY_MISSING`, or the connector's own, such as `BLOCKED_BY_LOCAL_POLICY` or
-  `TARGETS_UNHEALTHY` with the check's last failure. The targets whose connector lacks
+  `TARGETS_UNHEALTHY` with the check's last failure. A target whose check has not decided yet
+  shows `TARGET_UNKNOWN` and counts as ready, as it serves when no other target of its priority is
+  healthy ([03](03-connections.md#target-health-phase-2), [D156](14-open-decisions.md#engineering)).
+  The targets whose connector lacks
   `health.active` count as healthy and are listed as "health not checked"
   ([D133](14-open-decisions.md#engineering)).
 - **Serving gateway:** online, with every capability the route needs, reporting the route ready,

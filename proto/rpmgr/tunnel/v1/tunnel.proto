@@ -147,6 +147,10 @@ message SessionHello {
   string boot_id = 4;
   // The routes that are ready on the connector.
   repeated string ready_routes = 5;
+  // Phase 2, capability session.handoff of the gateway: the boot_id of the connector process this
+  // one replaces in a restart with socket hand-off. The gateway then drains that process's sessions
+  // instead of closing them; a boot_id of no live session of this connector is ignored.
+  string handoff_from = 6;
 }
 
 // SessionWelcome answers SessionHello.

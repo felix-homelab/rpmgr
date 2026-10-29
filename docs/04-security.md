@@ -1393,6 +1393,13 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
   pipe names, checks each one's socket type, listening state and local address against its own boot
   file, and closes, and logs, any other it inherited. It never serves a socket its configuration
   does not name.
+- **A connector's `handoff_from`.** The new process of a connector names the old one's `boot_id`
+  in `SessionHello.handoff_from`, taken from an environment variable only a process a hand-off
+  started reads, and only if it is a hexadecimal string of at most 64 digits. The gateway looks the
+  `boot_id` up among the live sessions of the connector whose certificate opened the new session,
+  so a session never drains, or learns of, another connector's; a name that matches none is
+  ignored and the earlier sessions close as a restart's. A connector the deny-list names is
+  refused as ever, and its drained sessions close at once with the next recheck.
 - **What the old process keeps.** It keeps its identity and serves its open connections until the
   hand-off drain ends them; the new process uses the identity on disk, as on a restart. The old
   process's control session was superseded, so it learns of no change itself: when the new process

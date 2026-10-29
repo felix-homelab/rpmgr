@@ -319,6 +319,11 @@ What the route then does:
 - New connections pass over unhealthy targets. A connector whose targets of a priority are all
   unhealthy gets none of that priority's connections, so they go to the next priority, and come back
   once a target is healthy again ([Failback](#failback)).
+- A target that is new on the route, or was removed and added again, is **unknown** until its first
+  check: it gets connections only when no other target of its priority is healthy, and the route's
+  status shows it as `unknown`. A change of the route, such as another weight or a new target, keeps
+  what the checks found of the other targets; a changed check keeps their state until its own
+  results change it, and runs at once.
 - While some targets are unhealthy, the route is **degraded** and its status lists each of them,
   `TARGETS_UNHEALTHY` with the last check's failure. When every target on every connector is
   unhealthy, the route is **unavailable**: an HTTP client gets a 503, a TCP client a reset.

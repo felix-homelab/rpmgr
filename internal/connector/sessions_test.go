@@ -744,3 +744,86 @@ func TestSessions_StreamsOnlyForTheGatewaysRoutes(t *testing.T) {
 		t.Errorf("rt_both through B after A moved: %s", got)
 	}
 }
+
+// handoffWorld sets up one gateway the connector holds QUIC sessions to, and returns it with the
+// connector and the old process's sessions of the gateway, held by an open stream.
+func handoffWorld(t *testing.T) (*world, pki.Identity, *testGateway, *connector.Sessions, *gateway.Sessions) {
+	t.Helper()
+	w := newWorld(t)
+	id := w.gatewayID()
+	g := startGateway(t, w, id, w.leaf(t, w.is, w.inter, id))
+	m := newConnector(t, w)
+	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_1": connector.TransportQUIC}}})
+	eventually(t, "no session", func() bool { return g.sessions.Load().Count()["quic"] == connector.QUICSessions })
+	old := g.sessions.Load()
+	held, _, err := old.OpenStream(context.Background(), &tunnelv1.StreamOpen{RouteId: "rt_1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = held.Close() })
+	eventually(t, "the held stream is not open", func() bool { return m.Streams() == 1 })
+	return w, id, g, m, old
+}
+
+// TestSessions_HandoffNoRedial: a connector whose new process took over opens no further session
+// when the gateway drains its sessions, not even once the hand-off is over, and keeps the open
+// stream until the gateway closes the session. During the hand-off it does not redial either.
+func TestSessions_HandoffNoRedial(t *testing.T) {
+	w, id, g, m, old := handoffWorld(t)
+	end := m.BeginHandoff()
+	old.DrainHandoff(time.Now().Add(gateway.DrainPeriod))
+	fresh := w.sessions(id) // the new process's sessions of the gateway
+	g.sessions.Store(fresh)
+	time.Sleep(500 * time.Millisecond)
+	if n := fresh.Count()["quic"]; n != 0 {
+		t.Fatalf("%d sessions opened during the hand-off", n)
+	}
+	end(true)
+	time.Sleep(500 * time.Millisecond)
+	if n := fresh.Count()["quic"]; n != 0 {
+		t.Fatalf("%d sessions opened after the hand-off", n)
+	}
+	if n := m.Streams(); n != 1 {
+		t.Fatalf("%d open streams, want the held one", n)
+	}
+	if old.Count()["quic"] < 1 {
+		t.Fatal("the draining session closed with a stream open")
+	}
+}
+
+// TestSessions_HandoffFailed: after a failed hand-off the connector opens its sessions again at
+// once, so that the gateway has them although it drained the old ones.
+func TestSessions_HandoffFailed(t *testing.T) {
+	w, id, g, m, old := handoffWorld(t)
+	end := m.BeginHandoff()
+	old.DrainHandoff(time.Now().Add(gateway.DrainPeriod))
+	fresh := w.sessions(id)
+	g.sessions.Store(fresh)
+	time.Sleep(300 * time.Millisecond)
+	if n := fresh.Count()["quic"]; n != 0 {
+		t.Fatalf("%d sessions opened before the outcome", n)
+	}
+	end(false)
+	eventually(t, "no session after the failed hand-off", func() bool { return fresh.Count()["quic"] == connector.QUICSessions })
+	if err := echo(t, fresh, "rt_1"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSessions_Settled: without gateways a connector is settled; with one it is once a session is
+// up; a gateway that cannot be reached settles it as well, since a new process cannot do more.
+func TestSessions_Settled(t *testing.T) {
+	w := newWorld(t)
+	m := newConnector(t, w)
+	if !m.Settled() {
+		t.Fatal("not settled without gateways")
+	}
+	id := w.gatewayID()
+	g := startGateway(t, w, id, w.leaf(t, w.is, w.inter, id))
+	m.SetReady(&tunnelv1.RouteHealth{RouteId: "rt_1", Ready: true})
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{g.addr}, Routes: map[string]string{"rt_1": connector.TransportQUIC}}})
+	eventually(t, "not settled with a session", func() bool { return m.Settled() && g.sessions.Load().Count()["quic"] > 0 })
+	m.Set([]connector.Gateway{{ID: "gw_dead", Endpoints: []string{"127.0.0.1:1"}, Routes: map[string]string{"rt_1": connector.TransportH2}}})
+	eventually(t, "not settled after a dial failed", m.Settled)
+}

@@ -521,7 +521,7 @@ sequenceDiagram
   A->>G: QUIC Initial, ALPN rpmgr-tunnel/1, SNI <gateway-id>.gateway.<td> (TCP+TLS+h2 starts 300 ms later)
   A->>A: VerifyConnection: chain → pinned root, SPIFFE ID = expected gateway, not on deny-list
   G->>G: VerifyConnection: chain → pinned root, not on deny-list,<br/>identity is a connector known to this gateway's snapshot
-  A->>G: open session control stream: SessionHello{proto_minor, agent_version, caps[], boot_id, ready_routes[]}
+  A->>G: open session control stream: SessionHello{proto_minor, agent_version, caps[], boot_id, ready_routes[], handoff_from}
   G-->>A: SessionWelcome{gateway_id, proto_minor, caps[], observed_addr}
   loop every 15 s
     A->>G: Ping{seq} (padded to ≥ 64 bytes)
@@ -1029,14 +1029,28 @@ the capability `route.limits`:
   capped part of the body is read. A target that expects a PROXY header gets a `LOCAL` one when the
   check dials its own port. A `udp` route allows only a `tcp` check on a port it names; a
   `tls_passthrough` route, whose targets expect TLS, and a route with an `h2c` target, which speaks
-  no HTTP/1.1, only a `tcp` check. A target counts as healthy until checked; it becomes unhealthy
-  after the unhealthy threshold of failed checks in a row and healthy again after the healthy
-  threshold of passed ones, so a target whose results alternate keeps its state. A changed route or
-  check starts its targets healthy again. The changes of the targets' health in one round of checks
-  also go to the controller in one `Status`, each target's ID as the resource, for the route's
-  status ([06](06-data-model.md#desired-vs-observed-state)).
+  no HTTP/1.1, only a `tcp` check. A target is **unknown** until its first check decides: a pass
+  makes it healthy and a failure unhealthy, with the failure or the local policy's refusal
+  ([D157](14-open-decisions.md#engineering)); the thresholds apply from then on. A
+  healthy target becomes unhealthy after the unhealthy threshold of failed checks in a row and an
+  unhealthy one healthy again after the healthy threshold of passed ones, so a target whose results
+  alternate keeps its state. The changes of the targets' health in one round of checks also go to
+  the controller in one `Status`, each target's ID as the resource, for the route's status
+  ([06](06-data-model.md#desired-vs-observed-state)); a target that is unknown is reported with
+  `TARGET_UNKNOWN`, so that its route's status shows it ([D156](14-open-decisions.md#engineering)).
+- **A change of the route keeps the state** ([D156](14-open-decisions.md#engineering)). A snapshot
+  that changes a route does not reset what the checks found:
+  - A target with the same ID and address keeps its state and its counts when the check is the
+    same, whatever else changed, such as its weight, its priority or other fields of the route.
+  - A changed check keeps each target's state, but counts anew; its first round runs at once, not
+    after one interval, and the state changes only as the new check's results make it.
+  - A target that is new, or whose address changed, starts unknown, and so does a target removed
+    and added again. Its first check runs at once.
+  - A route that is removed, or has no check any more, forgets its states.
 - **What gateways see.** The connector skips unhealthy targets when it picks one for a stream or a
-  UDP flow, unless every one is unhealthy, and reports, per route, the priorities that still have a
+  UDP flow, unless every one is unhealthy, and an unknown target while another target of its
+  priority is healthy; when none of a priority is healthy, an unknown one gets its traffic like any
+  other, so that a route whose targets are all unknown still serves. It reports, per route, the priorities that still have a
   healthy target (`RouteHealth.ready_priorities`); a route whose every allowed target is unhealthy
   is not ready, `not_ready(targets_unhealthy)`. A `SessionHello` names only the routes ready at
   every priority; the others follow as `RouteHealth` with their priorities. A gateway passes over a
@@ -1618,7 +1632,7 @@ used, not by the route compiler:
 | **Gateway planned restart** | `Drain`, connectors re-home, in-flight connections get the gateway drain period. |
 | **Gateway or all-in-one restart with hand-off** (Phase 2) | The new process takes the listening sockets over before the old one stops accepting; no new visitor connection is refused, open ones get the hand-off drain; an all-in-one's API and web UI are unavailable for the seconds the controller moves ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2), [All-in-one hand-over](#all-in-one-hand-over)). |
 | **Connector restart with hand-off** (Phase 2, Linux) | The new process opens its sessions before the old one stops taking streams; open streams get the hand-off drain ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2)). |
-| **Connector restarts** | Its sessions close; routes with no other ready connector return 503 (HTTP) or refuse (TCP). It restarts from the persisted last-known-good snapshot, reconnects, and reports a new `boot_id`. A killed process closes no session: a gateway closes the sessions of the earlier `boot_id` when the first session with the new one arrives, so that they neither take streams nor fill the connector's session cap. |
+| **Connector restarts** | Its sessions close; routes with no other ready connector return 503 (HTTP) or refuse (TCP). It restarts from the persisted last-known-good snapshot, reconnects, and reports a new `boot_id`. A killed process closes no session: a gateway closes the sessions of the earlier `boot_id` when the first session with the new one arrives, so that they neither take streams nor fill the connector's session cap. A session that names the earlier `boot_id` in `handoff_from` is a hand-off instead: the gateway drains those sessions ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2)). |
 | **Bad configuration** | Rejected at compile time by the controller, or `Rejected` by the agent; last-known-good keeps running; the UI shows the reasons. No outage. |
 | **Certificate expiring** | Renewed at 50 % of lifetime over the control session. If the agent was offline past expiry, it re-authenticates within the grace period using the same key, otherwise it must re-enroll ([04](04-security.md#enrollment)). |
 | **Clock skew** | Certificates are backdated 5 min; `Welcome` carries the controller's time; the agent warns above 30 s skew and reports TLS time errors as "clock skew". No protocol message depends on timestamps. |
@@ -1805,6 +1819,24 @@ gateways mark the old process's sessions draining instead of closing them as a r
 the hand-off drain. Gateways announce the capability `session.handoff`; an older gateway closes the
 old sessions as on a restart, which ends their streams. Windows and macOS connectors restart
 without a hand-off.
+
+The old process tells the new one its `boot_id` in the environment variable `RPMGR_HANDOFF_FROM`,
+which only a process a hand-off started reads, and only if it is hexadecimal and at most 64 digits;
+it passes no socket. The new process reports ready once its control session is up, its first
+snapshot is applied, and every gateway of its snapshot has a data session or refused one: a
+gateway it cannot reach does not hold the hand-off back, as the old process could not reach it
+either. From the start of the hand-off the old process opens no new session. A session of it that
+ends meanwhile, such as a drained one, is not dialled again until the outcome is known: if the new
+process failed, the old one opens its sessions again at once. If the new process took over, the old
+one opens none again, ends its control session by the `Goodbye{superseded}` and serves its open
+streams until none is left or the hand-off drain ends. The old process's drained
+sessions do not count towards the cap on a connector's sessions, so that the new process's are
+admitted at the cap. A gateway of an earlier release ignores `handoff_from` and closes the old
+process's sessions as soon as the new one's first arrives, which cuts their open streams: a
+connector hand-off keeps streams alive only through gateways with `session.handoff`, so update the
+gateways first. A `handoff_from` that names
+no live session of the same connector is ignored, and the earlier sessions close as a restart's
+([04](04-security.md#socket-hand-off-phase-2)).
 
 ## Performance budget
 
