@@ -7,6 +7,7 @@ import { CircleCheck, CircleDashed, FileUp, LoaderCircle, RefreshCw, Upload } fr
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/public-page";
+import { UpdateControllerButton } from "@/components/update-controller-button";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
@@ -78,8 +79,11 @@ function Releases() {
                   <TD>{r.mirrored ? t("updates.yes") : t("updates.no")}</TD>
                   <TD>{r.controllerVersion ? t("updates.thisController") : r.newerThanController ? t("updates.newer") : "—"}</TD>
                   <TD className="text-right">
-                    <Button size="sm" variant="outline" disabled={r.newerThanController || !!running || mode === undefined}
-                      onClick={() => setRolling(r)}>{t("updates.rollOut")}</Button>
+                    <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                      <UpdateControllerButton release={r} rollout={!!running} />
+                      <Button size="sm" variant="outline" disabled={r.newerThanController || !!running || mode === undefined}
+                        onClick={() => setRolling(r)}>{t("updates.rollOut")}</Button>
+                    </span>
                   </TD>
                 </TR>
               ))}

@@ -792,10 +792,11 @@ one page, with a section list beside them that jumps to each section
   page. The button is off, with the reason next to it, for a release that is not mirrored or not
   taken by the channel, while an update of the controller runs, while a rollout runs (agents
   never run ahead of the controller, and an update restarts it), on a host without the root
-  updater or whose local policy does not set `auto_update: auto`, and on a PostgreSQL controller,
-  which is updated by hand until P2-M08 provides a backup method.
-- **The Updating… page** (`/updating`) is a full-width page without the navigation, which the
-  update opens and any signed-in page returns to while the controller's own update runs. It shows
+  updater, and on a PostgreSQL controller, which is updated by hand until P2-M08 provides a backup
+  method. A local policy that does not set `auto_update: auto` is the updater's to refuse: the
+  Updating page then shows the refusal.
+- **The Updating… page** (`/updating?to=1.5.0&from=1.4.2`) is a page without the navigation, which
+  "Update controller to…" opens, so that it works while the controller restarts. It shows
   the steps as a list, each pending, current, done or failed: downloading (the controller stages
   the files), verifying, backing up, handing over (the restart; the new version migrates the
   database), and ready. In the background it asks the controller's `GetSession` every 2 s, which
@@ -805,9 +806,10 @@ one page, with a section list beside them that jumps to each section
   `rollback_failed`, the page says that the old version still runs, with the reason, the step
   that failed and whether the backup was restored, and links to the dashboard; when the answer
   carries the old version and the updater reports a refusal, it says that nothing changed.
-  After a restore the sessions are invalidated, so the page then asks to sign in again. The page
-  stops asking after 15 min and says that the controller does not answer, with the command that
-  shows the updater's status on the host (`systemctl status rpmgr-update`).
+  After a restore the sessions are invalidated, so the page sends the user to sign in, as any page
+  does. After 15 min without an answer the page says that the controller does not answer, with the
+  command that shows the updater's status on the host (`systemctl status rpmgr-update`), and keeps
+  asking.
 
   ```
   ┌ Updating the controller to 1.5.0 ───────────────────────────────────────┐

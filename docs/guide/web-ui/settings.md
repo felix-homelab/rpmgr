@@ -91,6 +91,9 @@ GiB)**). Their ranges and defaults are in the design documents
 - **Rollouts**: what **Roll out…** starts. **Easy** (the default) updates the agents you choose one
   after another; **Advanced** runs staged rollouts. **Update** on a connector or gateway works in
   both.
+- **Update controller to …** on a release newer than the controller updates the controller or
+  all-in-one itself, after a backup, and opens the **Updating…** page
+  ([Update the controller](../operations/updates.md#update-the-controller)).
 - **Releases**: every release the controller verified, with its **Version**, **Channel**,
   **Source** (**release check**, **upload** or **import**), whether it is **Mirrored**, and whether
   it is **this controller**. **Upload release…** takes the four signed files of a release for an

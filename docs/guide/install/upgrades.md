@@ -1,8 +1,9 @@
 # Upgrades
 
-rpmgr updates **connectors and gateways** itself, in a staged rollout you approve
-([Updates](../operations/updates.md)); **controllers and all-in-ones** are upgraded by hand, with
-the new release's install script. This page gives the order of the hosts, the steps for each, what
+rpmgr updates **connectors and gateways** itself, in a staged rollout you approve, and the
+**controller or all-in-one** when you ask for it, on SQLite
+([Updates](../operations/updates.md)); a controller on PostgreSQL is upgraded by hand, with the
+new release's install script. This page gives the order of the hosts, the steps for each, what
 the install script's `--upgrade` and `--restart` do, which versions work together, and how to go
 back. Read it before every upgrade.
 
@@ -58,6 +59,14 @@ rpmgr install: restarted rpmgr-connector with rpmgr 0.1.1
 ```
 
 ### 1. The controller
+
+**Over the air (SQLite, v0.3.0 and later).** Choose **Update controller to …** on **Settings →
+Updates**, or run `rpmgr upgrade controller --release <version>`. The host's updater backs the
+database up itself, installs the release, restarts the controller (an all-in-one is handed over),
+and restores the backup and starts the previous version when the new one fails after its
+migration ([Update the controller](../operations/updates.md#update-the-controller)). The steps
+below are for a controller on PostgreSQL, a host without the root updater, and releases before
+v0.3.0.
 
 1. Back up: `sudo rpmgr backup --out /root/rpmgr-before-0.1.1.tar`.
 2. Run the install script with `--upgrade --restart` on the controller's or all-in-one's host.

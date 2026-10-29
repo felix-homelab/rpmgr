@@ -14,6 +14,7 @@ import { Pki } from "@/pages/pki";
 import { Users } from "@/pages/users";
 import { Settings } from "@/pages/settings";
 import { Updates } from "@/pages/updates";
+import { Updating, validateUpdatingSearch } from "@/pages/updating";
 import { Invite } from "@/pages/invite";
 import { OrgPage } from "@/pages/org";
 import { Policies } from "@/pages/policies";
@@ -75,6 +76,17 @@ const account = createRoute({
   component: Account,
   validateSearch: (search: Record<string, unknown>): { mfa?: "required" } => (search.mfa === "required" ? { mfa: "required" } : {}),
 });
+// The controller's own update (D158): a page of its own, so that it works while the controller
+// restarts and the pages behind sign-in cannot load.
+const updating = createRoute({
+  getParentRoute: () => root,
+  path: "/updating",
+  component: function UpdatingPage() {
+    const { to, from } = updating.useSearch();
+    return <Updating to={to} from={from} />;
+  },
+  validateSearch: validateUpdatingSearch,
+});
 const login = createRoute({
   getParentRoute: () => root,
   path: "/login",
@@ -89,7 +101,7 @@ const reset = createRoute({ getParentRoute: () => root, path: "/reset", componen
 const forgot = createRoute({ getParentRoute: () => root, path: "/forgot", component: Forgot });
 const invite = createRoute({ getParentRoute: () => root, path: "/invite", component: Invite });
 
-const routeTree = root.addChildren([app.addChildren([overview, routes, routeNew, routeDetail, routeEdit, connectors, connectorDetail, gateways, gatewayGroup, domains, policies, orgPage, audit, settings, updates, pki, users, account]), login, setup, reset, forgot, invite]);
+const routeTree = root.addChildren([app.addChildren([overview, routes, routeNew, routeDetail, routeEdit, connectors, connectorDetail, gateways, gatewayGroup, domains, policies, orgPage, audit, settings, updates, pki, users, account]), login, updating, setup, reset, forgot, invite]);
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
   return createRouter({ routeTree, history, context, defaultPreload: "intent" });
