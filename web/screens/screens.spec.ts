@@ -362,7 +362,7 @@ test("screenshots of the controller update", async ({ page }) => {
   await expect(page.getByRole("listitem").filter({ hasText: "Backing up" })).toHaveAttribute("aria-current", "step");
   await shot(page, "updating");
   update = { update: { version: "0.2.0", state: "CONTROLLER_UPDATE_STATE_ROLLED_BACK", previous: "0.1.0",
-    reason: "handing rpmgr-all-in-one.service over: the new process ended after the migration; the database was migrated by 0.2.0 and restored from /usr/local/bin/rpmgr.backup" } };
+    reason: "handing rpmgr-all-in-one.service over: the new process ended after the migration; the database was migrated by 0.2.0 and restored from /usr/local/bin/rpmgr.backup, taken 2026-10-29T12:00:00Z; writes since then are lost, except revocations, which are applied again" } };
   await expect(page.getByRole("alert")).toContainText("Version 0.1.0 still runs.");
   await shot(page, "updating-failed");
 });

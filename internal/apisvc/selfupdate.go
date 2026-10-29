@@ -138,14 +138,14 @@ func (u *SelfUpdate) current(now time.Time) *rpmgrv1.ControllerUpdate {
 		return &rpmgrv1.ControllerUpdate{Version: staged, State: rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_UPDATING,
 			Reason: "the updater's status cannot be read: " + err.Error()}
 	}
+	if err == nil && st.State == update.Updating && now.Sub(st.At) > updatingStale {
+		st = update.Status{} // an updater that stopped writing: no update is under way
+	}
 	state, known := map[string]rpmgrv1.ControllerUpdateState{update.Updating: rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_UPDATING,
 		update.Updated:        rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_UPDATED,
 		update.RolledBack:     rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_ROLLED_BACK,
 		update.RollbackFailed: rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_ROLLBACK_FAILED,
 		update.Refused:        rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_REFUSED}[st.State]
-	if err == nil && st.State == update.Updating && now.Sub(st.At) > updatingStale {
-		st = update.Status{} // an updater that stopped writing: no update is under way
-	}
 	// The status counts only when it is newer than the request: an earlier outcome is history.
 	if err == nil && known && (staged == "" || (st.Version == staged && !st.At.Before(at))) {
 		return &rpmgrv1.ControllerUpdate{Version: st.Version, State: state, Step: st.Step, Reason: st.Reason, Previous: st.Previous,
