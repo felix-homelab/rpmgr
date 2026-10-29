@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/gateway"
+	"github.com/felix-homelab/rpmgr/internal/handoff"
 )
 
 type pipeMsg struct{ typ, reason string }
@@ -143,6 +144,26 @@ func TestFollowNew_Messages(t *testing.T) {
 	case <-f.ended:
 	case <-time.After(time.Second):
 		t.Fatal("the drain was not ended by the successor")
+	}
+}
+
+// TestFollowNew_End: the new process asking to end the drain (D160) ends it at once, as a
+// successor does, with every connector still not moved.
+func TestFollowNew_End(t *testing.T) {
+	m, _, _ := twoConnectors(t)
+	p := newFakePipe()
+	f := follow(t, context.Background(), p, nil, m, time.Now().Add(time.Minute), func() {})
+	if f.returned(t) {
+		t.Fatal("the wait for the connectors ended without a reason")
+	}
+	p.c <- pipeMsg{handoff.MsgEnd, ""}
+	if !f.returned(t) {
+		t.Fatal("no stop after the end message")
+	}
+	select {
+	case <-f.ended:
+	case <-time.After(time.Second):
+		t.Fatal("the drain was not ended")
 	}
 }
 

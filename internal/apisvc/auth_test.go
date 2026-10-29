@@ -58,6 +58,7 @@ type env struct {
 	txt      fakeVerifier // the TXT proofs DomainService finds
 	renew    renewals     // the renewals CertificateService starts
 	probe    fakeProber   // what RouteService's probes find
+	drains   fakeDrains   // the old processes of hand-offs the gateways and connectors report
 	agents   fakeLogs     // the live logs LogService opens
 	sealer   *secret.Sealer
 	pki      *apisvc.Pki
@@ -140,13 +141,13 @@ func newEnv(t *testing.T) *env {
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			e.previews = &apisvc.PagePreviews{DB: db, Sys: sys, Key: []byte("a preview key of the tests, 32 b"), Now: now}
 			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: srv, Revocations: revocations, Previews: e.previews,
-				Now: now}, o...)
+				Drains: &e.drains, Now: now}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_connector_proto.Services().ByName("ConnectorService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewConnectorServiceHandler(&apisvc.Connectors{DB: db, API: srv, Revocations: revocations, Now: now}, o...)
+			return rpmgrv1connect.NewConnectorServiceHandler(&apisvc.Connectors{DB: db, API: srv, Revocations: revocations, Drains: &e.drains, Now: now}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}

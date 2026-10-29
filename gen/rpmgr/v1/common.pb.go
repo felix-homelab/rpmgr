@@ -11,6 +11,7 @@ package rpmgrv1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -79,14 +80,104 @@ func (x *Revision) GetSeq() int64 {
 	return 0
 }
 
+// DrainingProcess is the old process a socket hand-off left draining: it keeps its open
+// connections for up to the hand-off drain and exits (docs/03-connections.md, "Showing and ending
+// the drain"). The counts are what its new process last reported.
+type DrainingProcess struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Its open TCP and HTTP connections; for a connector its open streams.
+	Connections int64 `protobuf:"varint,1,opt,name=connections,proto3" json:"connections,omitempty"`
+	// Its open UDP flows.
+	Flows int64 `protobuf:"varint,2,opt,name=flows,proto3" json:"flows,omitempty"`
+	// Its open data sessions.
+	Sessions int64 `protobuf:"varint,3,opt,name=sessions,proto3" json:"sessions,omitempty"`
+	// When it began to drain.
+	Since *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=since,proto3" json:"since,omitempty"`
+	// When it ends at the latest.
+	Ends          *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=ends,proto3" json:"ends,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DrainingProcess) Reset() {
+	*x = DrainingProcess{}
+	mi := &file_rpmgr_v1_common_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DrainingProcess) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DrainingProcess) ProtoMessage() {}
+
+func (x *DrainingProcess) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_common_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DrainingProcess.ProtoReflect.Descriptor instead.
+func (*DrainingProcess) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_common_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *DrainingProcess) GetConnections() int64 {
+	if x != nil {
+		return x.Connections
+	}
+	return 0
+}
+
+func (x *DrainingProcess) GetFlows() int64 {
+	if x != nil {
+		return x.Flows
+	}
+	return 0
+}
+
+func (x *DrainingProcess) GetSessions() int64 {
+	if x != nil {
+		return x.Sessions
+	}
+	return 0
+}
+
+func (x *DrainingProcess) GetSince() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Since
+	}
+	return nil
+}
+
+func (x *DrainingProcess) GetEnds() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Ends
+	}
+	return nil
+}
+
 var File_rpmgr_v1_common_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_common_proto_rawDesc = "" +
 	"\n" +
-	"\x15rpmgr/v1/common.proto\x12\brpmgr.v1\"7\n" +
+	"\x15rpmgr/v1/common.proto\x12\brpmgr.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"7\n" +
 	"\bRevision\x12\x19\n" +
 	"\bdb_epoch\x18\x01 \x01(\tR\adbEpoch\x12\x10\n" +
-	"\x03seq\x18\x02 \x01(\x03R\x03seqB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
+	"\x03seq\x18\x02 \x01(\x03R\x03seq\"\xc7\x01\n" +
+	"\x0fDrainingProcess\x12 \n" +
+	"\vconnections\x18\x01 \x01(\x03R\vconnections\x12\x14\n" +
+	"\x05flows\x18\x02 \x01(\x03R\x05flows\x12\x1a\n" +
+	"\bsessions\x18\x03 \x01(\x03R\bsessions\x120\n" +
+	"\x05since\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x05since\x12.\n" +
+	"\x04ends\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x04endsB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
 	file_rpmgr_v1_common_proto_rawDescOnce sync.Once
@@ -100,16 +191,20 @@ func file_rpmgr_v1_common_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_common_proto_rawDescData
 }
 
-var file_rpmgr_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_rpmgr_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_rpmgr_v1_common_proto_goTypes = []any{
-	(*Revision)(nil), // 0: rpmgr.v1.Revision
+	(*Revision)(nil),              // 0: rpmgr.v1.Revision
+	(*DrainingProcess)(nil),       // 1: rpmgr.v1.DrainingProcess
+	(*timestamppb.Timestamp)(nil), // 2: google.protobuf.Timestamp
 }
 var file_rpmgr_v1_common_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	2, // 0: rpmgr.v1.DrainingProcess.since:type_name -> google.protobuf.Timestamp
+	2, // 1: rpmgr.v1.DrainingProcess.ends:type_name -> google.protobuf.Timestamp
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_common_proto_init() }
@@ -123,7 +218,7 @@ func file_rpmgr_v1_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_common_proto_rawDesc), len(file_rpmgr_v1_common_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -210,6 +211,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		TLS: func(gatewayID string) (*tls.Config, error) { return gatewayTLS(ctl, gatewayID, o.Now) }})
 	defer sessions.Close()
 	applier := NewApplier(targets, sessions)
+	var toOld atomic.Pointer[handoff.Pipe] // set in a process a hand-off started, once it is ready
 	var update *agent.UpdateOptions
 	if o.Update {
 		update = &agent.UpdateOptions{Dir: filepath.Join(cfg.StateDir, "update"), Policy: watcher.Current, Variant: version.Variant}
@@ -217,6 +219,12 @@ func Run(ctx context.Context, o RunOptions) error {
 	ctl, err = agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
 		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, LiveLog: o.LiveLog, Update: update,
 		Dial: o.ControlDial, Fallback: sessions.ControlConn, OnProbeTarget: targets.Probe,
+		OnEndDrain: func(context.Context) error {
+			if p := toOld.Load(); p != nil {
+				return handoff.EndOld(p)
+			}
+			return errors.New("no old process drains")
+		},
 		SessionStatus: func() *agentv1.Status {
 			return &agentv1.Status{Readiness: applier.Readiness(), ReadinessComplete: true}
 		}})
@@ -269,6 +277,22 @@ func Run(ctx context.Context, o RunOptions) error {
 		go func() {
 			if err := reportReady(run, o.Handoff, ctl.Ready, sessions.Settled); err != nil {
 				errs <- err
+				return
+			}
+			if o.Handoff.Inherited != nil && run.Err() == nil {
+				// The old process runs until it closes its end of the pipe; what it reports is the
+				// drain the controller shows.
+				pipe := o.Handoff.Inherited.Pipe()
+				toOld.Store(pipe)
+				var seen bool // an old process of an earlier release never reports
+				_ = handoff.Watch(pipe, func(d handoff.Drain) {
+					seen = true
+					ctl.SetDraining(agent.DrainingProcessOf(d))
+				}, nil)
+				toOld.Store(nil)
+				if seen {
+					ctl.SetDraining(agent.DrainGone())
+				}
 			}
 		}()
 	}
@@ -277,9 +301,30 @@ func Run(ctx context.Context, o RunOptions) error {
 		stop()
 		<-done
 		return nil
-	case <-switched:
+	case child := <-switched:
 		o.Logger.Info("the new process took over: keeping the open streams for the hand-off drain", "generation", o.Handoff.Generation())
-		drainHandoff(ctx, sessions, time.Now().Add(cfg.Handoff.DrainPeriod()))
+		since := time.Now()
+		deadline := since.Add(cfg.Handoff.DrainPeriod())
+		// The new process shows the drain and can end it: it reports what is open and may ask to end.
+		dctx, endDrain := context.WithCancel(ctx)
+		go handoff.ReportDrain(dctx, child.Pipe.Send, 0, since, deadline, func() (int64, int64, int64) {
+			return int64(sessions.Streams()), 0, int64(sessions.OpenSessions())
+		})
+		go func() {
+			for {
+				typ, _, err := child.Pipe.Recv()
+				if err != nil {
+					return // the new process exited
+				}
+				if typ == handoff.MsgEnd {
+					o.Logger.Info("the new process asked to end the drain")
+					endDrain()
+					return
+				}
+			}
+		}()
+		drainHandoff(dctx, sessions, deadline)
+		endDrain()
 		stop()
 		<-done
 		return nil

@@ -50,6 +50,15 @@ service ConnectorService {
       resource_field: "connector_id"
     };
   }
+  // EndConnectorDrain ends the drain of the connector's old process at once: it closes the
+  // streams it still holds and exits (D160). Refused when no old process drains.
+  rpc EndConnectorDrain(EndConnectorDrainRequest) returns (EndConnectorDrainResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "connectors.write"
+      resource_field: "connector_id"
+      step_up: true
+    };
+  }
   // GetConnectorStatus returns what the controller knows of a connector's state: its control
   // session, its data sessions to gateways and the routes it reports not ready.
   rpc GetConnectorStatus(GetConnectorStatusRequest) returns (GetConnectorStatusResponse) {
@@ -135,6 +144,9 @@ message AgentSession {
   // Whether its last session announced over-the-air updates (the capability "ota"): it runs on its
   // own on a Linux host with the root updater, so a rollout can update it (D129).
   bool over_the_air = 7;
+  // The old process of its last hand-off while it drains; not set when none does, or when the
+  // agent is a release without the report (D160).
+  DrainingProcess draining = 8;
 }
 
 // ConnectorStatus is a connector's state as the controller last heard of it.
@@ -258,6 +270,18 @@ message DecommissionConnectorResponse {
   ApplyStatus apply_status = 3;
   // The routes the decommission deleted, as it left them with no target; empty on a second call.
   repeated DeletedRoute deleted_routes = 4;
+}
+
+// EndConnectorDrainRequest names a connector.
+message EndConnectorDrainRequest {
+  // The connector's ID.
+  string connector_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// EndConnectorDrainResponse is the drain it ended.
+message EndConnectorDrainResponse {
+  // The old process as the connector last reported it, whose streams the call cut.
+  DrainingProcess ended = 1;
 }
 
 // DeletedRoute names a route that is gone.

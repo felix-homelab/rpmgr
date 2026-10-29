@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/felix-homelab/rpmgr/internal/handoff"
 )
 
 // The messages the new process of a hand-off sends the old one on the status pipe once it took
@@ -61,6 +63,10 @@ func followNew(ctx context.Context, recv func() (typ, reason string, err error),
 				cut(reason)
 			case msgSuccessor:
 				log.Info("the new process hands off itself; ending the drain")
+				close(end)
+				return
+			case handoff.MsgEnd:
+				log.Info("the new process asked to end the drain")
 				close(end)
 				return
 			default:

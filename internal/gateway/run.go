@@ -151,6 +151,12 @@ func Run(ctx context.Context, o RunOptions) error {
 	ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
 		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, LiveLog: o.LiveLog, Dial: o.Dial, OnAcmeChallenge: challenges.Apply,
 		Update: update,
+		OnEndDrain: func(context.Context) error {
+			if p := toOld.Load(); p != nil && oldAlive.Load() {
+				return handoff.EndOld(p)
+			}
+			return errors.New("no old process drains")
+		},
 		OnDenyList: func() {
 			if sessions != nil {
 				sessions.Recheck()
@@ -432,13 +438,16 @@ func Run(ctx context.Context, o RunOptions) error {
 				// The old process runs until it closes its end of the pipe; until then a new
 				// connection of a route without a session waits for one.
 				go func() {
-					for {
-						if _, _, err := pipe.Recv(); err != nil {
-							oldAlive.Store(false)
-							freed()
-							return
-						}
+					var seen bool // the old process reported; one of an earlier release never does
+					_ = handoff.Watch(pipe, func(d handoff.Drain) {
+						seen = true
+						ctl.SetDraining(agent.DrainingProcessOf(d))
+					}, nil)
+					oldAlive.Store(false)
+					if seen {
+						ctl.SetDraining(agent.DrainGone())
 					}
+					freed()
 				}()
 				_ = pipe.Send(msgRevoked, "") // a revocation between this process's start and now
 				reportSessions(run, pipe.Send, sessions, o.Logger)
@@ -490,6 +499,15 @@ func Run(ctx context.Context, o RunOptions) error {
 			pass.CutRoute(id)
 			httpRoutes.CutRoute(id)
 		}
+		background.Go(func() {
+			handoff.ReportDrain(run, child.Pipe.Send, 0, time.Now(), deadline, func() (int64, int64, int64) {
+				open := 0
+				for _, n := range sessions.Count() {
+					open += n
+				}
+				return int64(routes.Conns()+pass.Conns()) + httpRoutes.Active(), int64(udpRoutes.Flows()), int64(open)
+			})
+		})
 		successor = followNew(ctx, child.Pipe.Recv, child.Exited(), sessions, deadline, reload, cut, o.Logger)
 		o.Logger.Info("stopping accepting: the new process took over", "generation", held.link.Generation())
 	}
