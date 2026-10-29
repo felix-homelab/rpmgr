@@ -446,6 +446,20 @@ func Run(ctx context.Context, o RunOptions) error {
 		})
 	}
 
+	// stopAccepting takes no new public connection and no new data session, and binds no new
+	// port; the open ones stay. Calling it twice is harmless.
+	stopAccepting := func() {
+		_ = tcp.Close()
+		if plain != nil {
+			_ = plain.Close()
+		}
+		if o.Tunnels != nil {
+			_ = o.Tunnels.Close() // no new data sessions in memory either
+		}
+		closeQUIC() // the open QUIC sessions stay until the drain ends
+		routes.Drain()
+		httpRoutes.Drain()
+	}
 	var result error
 	var child *handoff.Child
 	select {
@@ -457,11 +471,15 @@ func Run(ctx context.Context, o RunOptions) error {
 	deadline := time.Now().Add(period) // one deadline for the wait for the connectors and the drain
 	var successor <-chan struct{}      // closed when a hand-off of the new process ends the drain early
 	if child != nil {
-		// Switched: connectors move to the new process and this one keeps accepting until they
-		// have, then drains its open connections for the hand-off drain.
+		// Switched: this process stops accepting at once, the connectors move to the new one, and
+		// this one then drains its open connections for the hand-off drain.
 		period = cfg.Handoff.DrainPeriod()
 		deadline = time.Now().Add(period)
-		closeQUIC() // no new QUIC session; the open ones stay until the drain ends
+		// Stop accepting now, not once the connectors have moved: the new process holds the same
+		// sockets and is ready, so the kernel hands every new connection to it, and its session
+		// wait covers the connectors' move. Connections this process kept accepting meanwhile
+		// found every session of its drained and were reset (#1005).
+		stopAccepting()
 		reload := func() {
 			if err := ctl.DenyList().Load(); err != nil {
 				o.Logger.Warn("reading the deny-list after a hand-off", "error", err)
@@ -480,16 +498,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	// Drain: no new public connections or data sessions; the open streams get the drain period,
 	// and the gateway stops earlier once none is left.
-	_ = tcp.Close()
-	if plain != nil {
-		_ = plain.Close()
-	}
-	if o.Tunnels != nil {
-		_ = o.Tunnels.Close() // no new data sessions in memory either; closing twice is harmless
-	}
-	closeQUIC()
-	routes.Drain()
-	httpRoutes.Drain()
+	stopAccepting()
 	sessions.Drain(o.Now().Add(time.Until(deadline)))
 	for result == nil && !closed(successor) && time.Now().Before(deadline) && (routes.Conns() > 0 || pass.Conns() > 0 || httpRoutes.Active() > 0 ||
 		sessions.Streams() > 0) {

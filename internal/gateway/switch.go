@@ -29,7 +29,8 @@ const movedEvery = 100 * time.Millisecond
 // followNew runs in the old process once the new one took over. It drains the data sessions with
 // reason handoff, so that connectors open new ones in the new process, and returns once every
 // connector the old process had has a session there, the new process exited, the deadline passed
-// or ctx ended: the old process then stops accepting. A revocation the new process reports closes
+// or ctx ended. The old process has stopped accepting by then (Run), so what it waits for is only
+// that its sessions' streams and revocations stay in step. A revocation the new process reports closes
 // the sessions of the revoked identity at once. The returned channel is closed when the new
 // process hands off itself, which ends the drain early.
 func followNew(ctx context.Context, recv func() (typ, reason string, err error), exited <-chan struct{}, sessions *Sessions, deadline time.Time, reload func(), cut func(routeID string), log *slog.Logger) (ended <-chan struct{}) {
