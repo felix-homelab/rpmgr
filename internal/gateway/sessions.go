@@ -107,6 +107,9 @@ type SessionsOptions struct {
 	// the session wait for one: the new process of a hand-off sets it until the old one is gone
 	// (docs/03-connections.md, "Restarts with socket hand-off", step 4).
 	AwaitSession func() bool
+	// HandoffDrain is how long the sessions of a connector's old process keep their streams once
+	// its new process names it in handoff_from; 0 takes DrainPeriod.
+	HandoffDrain time.Duration
 	Now          func() time.Time
 	Logger       *slog.Logger
 }
@@ -151,6 +154,7 @@ func (m *Sessions) metrics() *Metrics {
 type dataSession struct {
 	connector string
 	boot      string // the boot_id of the connector process, new at its every start; "" if unnamed
+	from      string // handoff_from: the boot_id of the process this one replaces in a hand-off
 	peer      *x509.Certificate
 	s         tunnel.Session
 	send      func(*tunnelv1.SessionMessage) error
@@ -260,7 +264,7 @@ func (m *Sessions) Serve(ctx context.Context, s tunnel.Session, peer *x509.Certi
 	if err != nil {
 		return err
 	}
-	d := &dataSession{connector: id.ID, boot: hello.GetBootId(), peer: peer, s: s, send: send, now: m.o.Now, ready: map[string]bool{},
+	d := &dataSession{connector: id.ID, boot: hello.GetBootId(), from: hello.GetHandoffFrom(), peer: peer, s: s, send: send, now: m.o.Now, ready: map[string]bool{},
 		prios: map[string][]uint32{}}
 	for _, r := range hello.GetReadyRoutes() {
 		d.ready[r] = true
@@ -422,17 +426,24 @@ func (m *Sessions) admitsLocked(id string) error {
 // meanwhile. A session of a new start of the connector process, which names another boot_id,
 // closes the sessions of its earlier start at once: that process is gone, and its sessions would
 // take streams and slots of the cap until their transport noticed (docs/03-connections.md,
-// "Failure modes").
+// "Failure modes"). Where it names the earlier boot_id in handoff_from, that process lives on for
+// the hand-off drain: its sessions move and keep their streams until then. Another boot_id, or one
+// of another connector's, is no hand-off: the lookup is within d's connector, so a connector never
+// drains the sessions of another (docs/04-security.md).
 func (m *Sessions) add(d *dataSession) error {
 	m.mu.Lock()
-	var earlier []*dataSession
+	var earlier, handed []*dataSession
 	if d.boot != "" {
 		m.byConnector[d.connector] = slices.DeleteFunc(m.byConnector[d.connector], func(x *dataSession) bool {
-			if x.boot != "" && x.boot != d.boot {
-				earlier = append(earlier, x)
-				return true
+			switch {
+			case x.boot == "" || x.boot == d.boot:
+				return false
+			case d.from != "" && x.boot == d.from:
+				handed = append(handed, x)
+				return false
 			}
-			return false
+			earlier = append(earlier, x)
+			return true
 		})
 	}
 	err := m.admitsLocked(d.connector)
@@ -440,6 +451,14 @@ func (m *Sessions) add(d *dataSession) error {
 		m.byConnector[d.connector] = append(m.byConnector[d.connector], d)
 	}
 	m.mu.Unlock()
+	if len(handed) > 0 && err == nil { // refused, the new process's session leaves the old ones as they are
+		deadline := m.o.Now().Add(cmp.Or(m.o.HandoffDrain, DrainPeriod))
+		m.o.Logger.Info("draining the data sessions of the connector's old process: its new one took over", "connector", d.connector,
+			"sessions", len(handed), "deadline", deadline)
+		for _, x := range handed {
+			m.drainSession(x, deadline, "handoff")
+		}
+	}
 	if len(earlier) > 0 {
 		m.o.Logger.Info("closing the data sessions of the connector's earlier start", "connector", d.connector, "sessions", len(earlier))
 		for _, x := range earlier {
@@ -947,10 +966,21 @@ func (m *Sessions) drain(deadline time.Time, reason string) {
 	}
 	m.mu.Unlock()
 	for _, d := range all {
-		_ = d.send(&tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Drain{Drain: &tunnelv1.Drain{
-			Reason: reason, Deadline: timestamppb.New(deadline)}}})
-		time.AfterFunc(deadline.Sub(m.o.Now()), func() { _ = d.s.Close() })
+		m.send(d, deadline, reason)
 	}
+}
+
+// drainSession drains one session unless it is drained already.
+func (m *Sessions) drainSession(d *dataSession, deadline time.Time, reason string) {
+	if !d.drained.Swap(true) {
+		m.send(d, deadline, reason)
+	}
+}
+
+func (m *Sessions) send(d *dataSession, deadline time.Time, reason string) {
+	_ = d.send(&tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Drain{Drain: &tunnelv1.Drain{
+		Reason: reason, Deadline: timestamppb.New(deadline)}}})
+	time.AfterFunc(deadline.Sub(m.o.Now()), func() { _ = d.s.Close() })
 }
 
 // Close ends every session.

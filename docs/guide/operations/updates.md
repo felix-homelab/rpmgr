@@ -169,6 +169,19 @@ rpmgr upgrade gateway edge-2
 rpmgr list rollout-target rol_…
 ```
 
+## Restart a connector without cutting connections
+
+On Linux, a connector restarts without a gap: `sudo rpmgr handoff connector` starts the installed
+binary as a new process, which opens its sessions to the gateways before the old process stops
+taking streams. New connections of your routes keep working, and the old process keeps its open
+connections until they end or the hand-off drain does. The command waits for the outcome and says
+why when the new process did not become ready; the old one then keeps serving.
+
+A gateway of an older release closes the old process's sessions, which ends the connections
+through them, so update the gateways first. Windows and macOS connectors restart as before. The
+limits are in [03](../../03-connections.md#restarts-with-socket-hand-off-phase-2), the units in
+[10](../../10-operations.md).
+
 ## Choose what a host takes
 
 Each connector and gateway host decides for itself, in its local policy, whether it takes updates
