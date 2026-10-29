@@ -50,6 +50,12 @@ const (
 	// ReleaseServiceUpgradeAgentsProcedure is the fully-qualified name of the ReleaseService's
 	// UpgradeAgents RPC.
 	ReleaseServiceUpgradeAgentsProcedure = "/rpmgr.v1.ReleaseService/UpgradeAgents"
+	// ReleaseServiceUpdateControllerProcedure is the fully-qualified name of the ReleaseService's
+	// UpdateController RPC.
+	ReleaseServiceUpdateControllerProcedure = "/rpmgr.v1.ReleaseService/UpdateController"
+	// ReleaseServiceGetControllerUpdateProcedure is the fully-qualified name of the ReleaseService's
+	// GetControllerUpdate RPC.
+	ReleaseServiceGetControllerUpdateProcedure = "/rpmgr.v1.ReleaseService/GetControllerUpdate"
 	// ReleaseServiceGetRolloutProcedure is the fully-qualified name of the ReleaseService's GetRollout
 	// RPC.
 	ReleaseServiceGetRolloutProcedure = "/rpmgr.v1.ReleaseService/GetRollout"
@@ -96,6 +102,16 @@ type ReleaseServiceClient interface {
 	// controller's own version that runs or is paused, or starts one with them when no rollout does
 	// (D129). It is refused while a staged rollout or a rollout of another release runs or is paused.
 	UpgradeAgents(context.Context, *connect.Request[v1.UpgradeAgentsRequest]) (*connect.Response[v1.UpgradeAgentsResponse], error)
+	// UpdateController stages a release for the root updater of the controller's own host, which
+	// backs the database up, installs it and restarts the controller or all-in-one (D158). The
+	// release must be newer than the controller, held by the mirror and taken by the instance's
+	// update channel; it is refused while a rollout runs or another update of the controller is
+	// under way, on a host without the root updater and on a PostgreSQL controller. The controller
+	// restarts a little later: GetControllerUpdate follows the update.
+	UpdateController(context.Context, *connect.Request[v1.UpdateControllerRequest]) (*connect.Response[v1.UpdateControllerResponse], error)
+	// GetControllerUpdate returns the state of the controller's own update: the staged release and
+	// what the root updater reports, and why an update cannot be started.
+	GetControllerUpdate(context.Context, *connect.Request[v1.GetControllerUpdateRequest]) (*connect.Response[v1.GetControllerUpdateResponse], error)
 	// GetRollout returns a rollout with how many of its agents are in each state.
 	GetRollout(context.Context, *connect.Request[v1.GetRolloutRequest]) (*connect.Response[v1.GetRolloutResponse], error)
 	// ListRollouts pages through the rollouts, the newest first.
@@ -156,6 +172,19 @@ func NewReleaseServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(releaseServiceMethods.ByName("UpgradeAgents")),
 			connect.WithClientOptions(opts...),
 		),
+		updateController: connect.NewClient[v1.UpdateControllerRequest, v1.UpdateControllerResponse](
+			httpClient,
+			baseURL+ReleaseServiceUpdateControllerProcedure,
+			connect.WithSchema(releaseServiceMethods.ByName("UpdateController")),
+			connect.WithClientOptions(opts...),
+		),
+		getControllerUpdate: connect.NewClient[v1.GetControllerUpdateRequest, v1.GetControllerUpdateResponse](
+			httpClient,
+			baseURL+ReleaseServiceGetControllerUpdateProcedure,
+			connect.WithSchema(releaseServiceMethods.ByName("GetControllerUpdate")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
 		getRollout: connect.NewClient[v1.GetRolloutRequest, v1.GetRolloutResponse](
 			httpClient,
 			baseURL+ReleaseServiceGetRolloutProcedure,
@@ -206,18 +235,20 @@ func NewReleaseServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 
 // releaseServiceClient implements ReleaseServiceClient.
 type releaseServiceClient struct {
-	listReleases       *connect.Client[v1.ListReleasesRequest, v1.ListReleasesResponse]
-	checkReleases      *connect.Client[v1.CheckReleasesRequest, v1.CheckReleasesResponse]
-	uploadRelease      *connect.Client[v1.UploadReleaseRequest, v1.UploadReleaseResponse]
-	createRollout      *connect.Client[v1.CreateRolloutRequest, v1.CreateRolloutResponse]
-	upgradeAgents      *connect.Client[v1.UpgradeAgentsRequest, v1.UpgradeAgentsResponse]
-	getRollout         *connect.Client[v1.GetRolloutRequest, v1.GetRolloutResponse]
-	listRollouts       *connect.Client[v1.ListRolloutsRequest, v1.ListRolloutsResponse]
-	listRolloutTargets *connect.Client[v1.ListRolloutTargetsRequest, v1.ListRolloutTargetsResponse]
-	advanceRollout     *connect.Client[v1.AdvanceRolloutRequest, v1.AdvanceRolloutResponse]
-	pauseRollout       *connect.Client[v1.PauseRolloutRequest, v1.PauseRolloutResponse]
-	resumeRollout      *connect.Client[v1.ResumeRolloutRequest, v1.ResumeRolloutResponse]
-	cancelRollout      *connect.Client[v1.CancelRolloutRequest, v1.CancelRolloutResponse]
+	listReleases        *connect.Client[v1.ListReleasesRequest, v1.ListReleasesResponse]
+	checkReleases       *connect.Client[v1.CheckReleasesRequest, v1.CheckReleasesResponse]
+	uploadRelease       *connect.Client[v1.UploadReleaseRequest, v1.UploadReleaseResponse]
+	createRollout       *connect.Client[v1.CreateRolloutRequest, v1.CreateRolloutResponse]
+	upgradeAgents       *connect.Client[v1.UpgradeAgentsRequest, v1.UpgradeAgentsResponse]
+	updateController    *connect.Client[v1.UpdateControllerRequest, v1.UpdateControllerResponse]
+	getControllerUpdate *connect.Client[v1.GetControllerUpdateRequest, v1.GetControllerUpdateResponse]
+	getRollout          *connect.Client[v1.GetRolloutRequest, v1.GetRolloutResponse]
+	listRollouts        *connect.Client[v1.ListRolloutsRequest, v1.ListRolloutsResponse]
+	listRolloutTargets  *connect.Client[v1.ListRolloutTargetsRequest, v1.ListRolloutTargetsResponse]
+	advanceRollout      *connect.Client[v1.AdvanceRolloutRequest, v1.AdvanceRolloutResponse]
+	pauseRollout        *connect.Client[v1.PauseRolloutRequest, v1.PauseRolloutResponse]
+	resumeRollout       *connect.Client[v1.ResumeRolloutRequest, v1.ResumeRolloutResponse]
+	cancelRollout       *connect.Client[v1.CancelRolloutRequest, v1.CancelRolloutResponse]
 }
 
 // ListReleases calls rpmgr.v1.ReleaseService.ListReleases.
@@ -243,6 +274,16 @@ func (c *releaseServiceClient) CreateRollout(ctx context.Context, req *connect.R
 // UpgradeAgents calls rpmgr.v1.ReleaseService.UpgradeAgents.
 func (c *releaseServiceClient) UpgradeAgents(ctx context.Context, req *connect.Request[v1.UpgradeAgentsRequest]) (*connect.Response[v1.UpgradeAgentsResponse], error) {
 	return c.upgradeAgents.CallUnary(ctx, req)
+}
+
+// UpdateController calls rpmgr.v1.ReleaseService.UpdateController.
+func (c *releaseServiceClient) UpdateController(ctx context.Context, req *connect.Request[v1.UpdateControllerRequest]) (*connect.Response[v1.UpdateControllerResponse], error) {
+	return c.updateController.CallUnary(ctx, req)
+}
+
+// GetControllerUpdate calls rpmgr.v1.ReleaseService.GetControllerUpdate.
+func (c *releaseServiceClient) GetControllerUpdate(ctx context.Context, req *connect.Request[v1.GetControllerUpdateRequest]) (*connect.Response[v1.GetControllerUpdateResponse], error) {
+	return c.getControllerUpdate.CallUnary(ctx, req)
 }
 
 // GetRollout calls rpmgr.v1.ReleaseService.GetRollout.
@@ -303,6 +344,16 @@ type ReleaseServiceHandler interface {
 	// controller's own version that runs or is paused, or starts one with them when no rollout does
 	// (D129). It is refused while a staged rollout or a rollout of another release runs or is paused.
 	UpgradeAgents(context.Context, *connect.Request[v1.UpgradeAgentsRequest]) (*connect.Response[v1.UpgradeAgentsResponse], error)
+	// UpdateController stages a release for the root updater of the controller's own host, which
+	// backs the database up, installs it and restarts the controller or all-in-one (D158). The
+	// release must be newer than the controller, held by the mirror and taken by the instance's
+	// update channel; it is refused while a rollout runs or another update of the controller is
+	// under way, on a host without the root updater and on a PostgreSQL controller. The controller
+	// restarts a little later: GetControllerUpdate follows the update.
+	UpdateController(context.Context, *connect.Request[v1.UpdateControllerRequest]) (*connect.Response[v1.UpdateControllerResponse], error)
+	// GetControllerUpdate returns the state of the controller's own update: the staged release and
+	// what the root updater reports, and why an update cannot be started.
+	GetControllerUpdate(context.Context, *connect.Request[v1.GetControllerUpdateRequest]) (*connect.Response[v1.GetControllerUpdateResponse], error)
 	// GetRollout returns a rollout with how many of its agents are in each state.
 	GetRollout(context.Context, *connect.Request[v1.GetRolloutRequest]) (*connect.Response[v1.GetRolloutResponse], error)
 	// ListRollouts pages through the rollouts, the newest first.
@@ -357,6 +408,19 @@ func NewReleaseServiceHandler(svc ReleaseServiceHandler, opts ...connect.Handler
 		ReleaseServiceUpgradeAgentsProcedure,
 		svc.UpgradeAgents,
 		connect.WithSchema(releaseServiceMethods.ByName("UpgradeAgents")),
+		connect.WithHandlerOptions(opts...),
+	)
+	releaseServiceUpdateControllerHandler := connect.NewUnaryHandler(
+		ReleaseServiceUpdateControllerProcedure,
+		svc.UpdateController,
+		connect.WithSchema(releaseServiceMethods.ByName("UpdateController")),
+		connect.WithHandlerOptions(opts...),
+	)
+	releaseServiceGetControllerUpdateHandler := connect.NewUnaryHandler(
+		ReleaseServiceGetControllerUpdateProcedure,
+		svc.GetControllerUpdate,
+		connect.WithSchema(releaseServiceMethods.ByName("GetControllerUpdate")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	releaseServiceGetRolloutHandler := connect.NewUnaryHandler(
@@ -416,6 +480,10 @@ func NewReleaseServiceHandler(svc ReleaseServiceHandler, opts ...connect.Handler
 			releaseServiceCreateRolloutHandler.ServeHTTP(w, r)
 		case ReleaseServiceUpgradeAgentsProcedure:
 			releaseServiceUpgradeAgentsHandler.ServeHTTP(w, r)
+		case ReleaseServiceUpdateControllerProcedure:
+			releaseServiceUpdateControllerHandler.ServeHTTP(w, r)
+		case ReleaseServiceGetControllerUpdateProcedure:
+			releaseServiceGetControllerUpdateHandler.ServeHTTP(w, r)
 		case ReleaseServiceGetRolloutProcedure:
 			releaseServiceGetRolloutHandler.ServeHTTP(w, r)
 		case ReleaseServiceListRolloutsProcedure:
@@ -457,6 +525,14 @@ func (UnimplementedReleaseServiceHandler) CreateRollout(context.Context, *connec
 
 func (UnimplementedReleaseServiceHandler) UpgradeAgents(context.Context, *connect.Request[v1.UpgradeAgentsRequest]) (*connect.Response[v1.UpgradeAgentsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.UpgradeAgents is not implemented"))
+}
+
+func (UnimplementedReleaseServiceHandler) UpdateController(context.Context, *connect.Request[v1.UpdateControllerRequest]) (*connect.Response[v1.UpdateControllerResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.UpdateController is not implemented"))
+}
+
+func (UnimplementedReleaseServiceHandler) GetControllerUpdate(context.Context, *connect.Request[v1.GetControllerUpdateRequest]) (*connect.Response[v1.GetControllerUpdateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.GetControllerUpdate is not implemented"))
 }
 
 func (UnimplementedReleaseServiceHandler) GetRollout(context.Context, *connect.Request[v1.GetRolloutRequest]) (*connect.Response[v1.GetRolloutResponse], error) {

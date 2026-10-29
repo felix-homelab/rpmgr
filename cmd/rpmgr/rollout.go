@@ -37,18 +37,26 @@ func rolloutCommands() map[string][]*cli.Command {
 		canaries        cli.List
 		agents          cli.List
 		easy            bool
+		controller      bool
 	)
 	create := &cli.Command{
 		Name: "rollout", Summary: "roll a release out to the connectors and gateways: staged, its canary agents first, or easy, one agent after another",
-		Args: "--release <version> (--canary <agent>… | --easy --agent <agent>…)",
+		Args: "--release <version> (--canary <agent>… | --easy --agent <agent>… | --controller)",
 		Flags: func(fs *flag.FlagSet) {
-			fs.StringVar(&release, "release", "", "the release, by version or ID; no newer than the controller")
+			fs.StringVar(&release, "release", "", "the release, by version or ID; no newer than the controller, but with --controller newer")
+			fs.BoolVar(&controller, "controller", false, "update the controller or all-in-one itself over the air, after a backup, instead of agents; the release must be newer and mirrored")
 			fs.Var(&canaries, "canary", "a staged rollout's canary agent: a connector or gateway of the org by name, or of any org by ID; repeat for more")
 			fs.BoolVar(&easy, "easy", false, "an easy rollout: the --agent agents update one after another, and a failed one is skipped")
 			fs.Var(&agents, "agent", "an easy rollout's agent, in the order they update: a connector or gateway of the org by name, or of any org by ID; repeat for more")
 			outputFlag(fs, &output)
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			if controller {
+				if len(args) > 0 || release == "" || easy || len(canaries) > 0 || len(agents) > 0 {
+					return cli.Usagef("--controller takes --release and nothing else")
+				}
+				return updateController(ctx, env, release)
+			}
 			switch {
 			case len(args) > 0 || release == "":
 				return cli.Usagef("give --release, and no argument")
@@ -262,6 +270,71 @@ func upgradeAgents(kind string) *cli.Command {
 			return s.print(ctx, env.Stdout, kindOf("rollout-target"), output, rows, nil, true)
 		},
 	}
+}
+
+// updateController is `rpmgr create rollout --controller --release <version>`: the controller, or
+// all-in-one, stages a release for the root updater of its host, which backs the database up and
+// installs it (D158); `rpmgr get controller-update` tells how it stands.
+func updateController(ctx context.Context, env *cli.Env, release string) error {
+	s, err := newAPISession(env)
+	if err != nil {
+		return err
+	}
+	req := &rpmgrv1.UpdateControllerRequest{}
+	if req.ReleaseId, err = s.releaseID(ctx, release); err != nil {
+		return err
+	}
+	rc := rpmgrv1connect.NewReleaseServiceClient(s.hc, s.creds.Controller)
+	var resp *connect.Response[rpmgrv1.UpdateControllerResponse]
+	if err := s.withStepUp(ctx, func() error {
+		resp, err = rc.UpdateController(ctx, connect.NewRequest(req))
+		return err
+	}); err != nil {
+		return apiError(err)
+	}
+	_, err = fmt.Fprintf(env.Stdout, "Staged %s for the root updater, which backs the database up and installs it.\n"+
+		"The controller restarts; follow it with `rpmgr get controller-update`.\n", resp.Msg.GetUpdate().GetVersion())
+	return err
+}
+
+// getControllerUpdate is `rpmgr get controller-update`.
+func getControllerUpdate(ctx context.Context, env *cli.Env) error {
+	s, err := newAPISession(env)
+	if err != nil {
+		return err
+	}
+	resp, err := rpmgrv1connect.NewReleaseServiceClient(s.hc, s.creds.Controller).GetControllerUpdate(ctx, connect.NewRequest(&rpmgrv1.GetControllerUpdateRequest{}))
+	if err != nil {
+		return apiError(err)
+	}
+	return writeControllerUpdate(env.Stdout, resp.Msg.GetUpdate(), resp.Msg.GetBlocked(), resp.Msg.GetRunningVersion())
+}
+
+// writeControllerUpdate says how the controller's own update stands.
+func writeControllerUpdate(w io.Writer, u *rpmgrv1.ControllerUpdate, blocked, running string) error {
+	if _, err := fmt.Fprintf(w, "The controller runs %s.\n", running); err != nil {
+		return err
+	}
+	if u == nil {
+		_, err := fmt.Fprintln(w, "No update is under way or reported.")
+		return err
+	}
+	state := strings.ToLower(strings.TrimPrefix(u.GetState().String(), "CONTROLLER_UPDATE_STATE_"))
+	line := fmt.Sprintf("Update to %s: %s", u.GetVersion(), strings.ReplaceAll(state, "_", " "))
+	if u.GetStep() != "" {
+		line += " (" + strings.ReplaceAll(u.GetStep(), "_", " ") + ")"
+	}
+	if u.GetReason() != "" {
+		line += ": " + u.GetReason()
+	}
+	if _, err := fmt.Fprintln(w, line+"."); err != nil {
+		return err
+	}
+	if blocked != "" {
+		_, err := fmt.Fprintf(w, "No update can be started now: %s.\n", blocked)
+		return err
+	}
+	return nil
 }
 
 // advanceRollout is `rpmgr advance rollout`.

@@ -348,7 +348,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	ctl := &ctlHolder{reg: reg, ready: readiness, mem: mem, gone: make(chan error, 1),
 		opts: controller.RunOptions{Config: cfg.Controller(), Version: o.Version, Sources: routes.Sources(), Getenv: o.Getenv,
 			Logger: o.Logger.With("role", "controller"), ACMERoots: o.ACMERoots, Port80: func(h http.Handler) { port80 = h },
-			ACMEAfter: gwListening}}
+			ACMEAfter: gwListening, SelfUpdate: true}}
 	names := &follower{run: func(ctx context.Context) {
 		l.followNames(ctx, cfg, own, public.Hostname(), controller.RevisionCheck, o.Logger)
 	}}

@@ -57,6 +57,24 @@ service ReleaseService {
       step_up: true
     };
   }
+  // UpdateController stages a release for the root updater of the controller's own host, which
+  // backs the database up, installs it and restarts the controller or all-in-one (D158). The
+  // release must be newer than the controller, held by the mirror and taken by the instance's
+  // update channel; it is refused while a rollout runs or another update of the controller is
+  // under way, on a host without the root updater and on a PostgreSQL controller. The controller
+  // restarts a little later: GetControllerUpdate follows the update.
+  rpc UpdateController(UpdateControllerRequest) returns (UpdateControllerResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+  // GetControllerUpdate returns the state of the controller's own update: the staged release and
+  // what the root updater reports, and why an update cannot be started.
+  rpc GetControllerUpdate(GetControllerUpdateRequest) returns (GetControllerUpdateResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
   // GetRollout returns a rollout with how many of its agents are in each state.
   rpc GetRollout(GetRolloutRequest) returns (GetRolloutResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
@@ -427,6 +445,72 @@ message UpgradeAgentsResponse {
   // The agents' targets in the order of the request, each with its place in the queue; an agent
   // queued before keeps its place.
   repeated RolloutTarget rollout_targets = 2;
+}
+
+// ControllerUpdateState is where the update of the controller itself stands (D158).
+enum ControllerUpdateState {
+  // Not set: no update is known.
+  CONTROLLER_UPDATE_STATE_UNSPECIFIED = 0;
+  // The release is staged and the root updater has not started yet.
+  CONTROLLER_UPDATE_STATE_STAGED = 1;
+  // The root updater works; ControllerUpdate.step says on what.
+  CONTROLLER_UPDATE_STATE_UPDATING = 2;
+  // The new version runs.
+  CONTROLLER_UPDATE_STATE_UPDATED = 3;
+  // The new version failed and the previous one runs; the reason says why, and whether the
+  // backup was restored.
+  CONTROLLER_UPDATE_STATE_ROLLED_BACK = 4;
+  // The new version failed and the previous one could not be put back: the operator must act.
+  CONTROLLER_UPDATE_STATE_ROLLBACK_FAILED = 5;
+  // The updater refused the release and changed nothing, such as after a failed backup.
+  CONTROLLER_UPDATE_STATE_REFUSED = 6;
+}
+
+// ControllerUpdate is the update of the controller itself; output only.
+message ControllerUpdate {
+  // The version the update installs.
+  string version = 1;
+  // Its state.
+  ControllerUpdateState state = 2;
+  // While UPDATING: verifying, backing_up, handing_over or waiting.
+  string step = 3;
+  // Why it was refused or rolled back.
+  string reason = 4;
+  // The version that ran before it.
+  string previous = 5;
+  // When the state last changed; not set while the root updater has reported nothing.
+  google.protobuf.Timestamp update_time = 6;
+}
+
+// UpdateControllerRequest names the release to update the controller to.
+message UpdateControllerRequest {
+  // The release's ID.
+  string release_id = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 64
+  }];
+}
+
+// UpdateControllerResponse is the update that was started.
+message UpdateControllerResponse {
+  ControllerUpdate update = 1;
+}
+
+// GetControllerUpdateRequest has no fields.
+message GetControllerUpdateRequest {}
+
+// GetControllerUpdateResponse is the state of the controller's own update.
+message GetControllerUpdateResponse {
+  // The update the staged release or the updater's status file tells of; not set when neither does.
+  ControllerUpdate update = 1;
+  // Why no update can be started now, such as a missing root updater or a PostgreSQL database;
+  // empty when one can.
+  string blocked = 2;
+  // The version the controller runs.
+  string running_version = 3;
+  // Whether the running release is older than the first that can update itself over the air, v0.3.0:
+  // it is updated by hand once, and `blocked` says so.
+  bool by_hand = 4;
 }
 
 // GetRolloutRequest names a rollout.

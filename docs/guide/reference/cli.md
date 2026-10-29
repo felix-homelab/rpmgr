@@ -699,7 +699,7 @@ rpmgr version [flags]
 Show a resource of the public API, the settings, or the install command of an agent.
 
 ```text
-rpmgr get [flags] install-command | settings | <route|connector|gateway|gateway-group|port-pool|domain|certificate|ca-bundle|route-target|access-policy|rollout> <id or name>
+rpmgr get [flags] install-command | settings | controller-update | <route|connector|gateway|gateway-group|port-pool|domain|certificate|ca-bundle|route-target|access-policy|rollout> <id or name>
 ```
 
 | Flag | Default | Description |
@@ -1011,16 +1011,17 @@ rpmgr create reset-link <user ID or e-mail address>
 Roll a release out to the connectors and gateways: staged, its canary agents first, or easy, one agent after another.
 
 ```text
-rpmgr create rollout [flags] --release <version> (--canary <agent>… | --easy --agent <agent>…)
+rpmgr create rollout [flags] --release <version> (--canary <agent>… | --easy --agent <agent>… | --controller)
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--agent value` |  | an easy rollout's agent, in the order they update: a connector or gateway of the org by name, or of any org by ID; repeat for more |
 | `--canary value` |  | a staged rollout's canary agent: a connector or gateway of the org by name, or of any org by ID; repeat for more |
+| `--controller` |  | update the controller or all-in-one itself over the air, after a backup, instead of agents; the release must be newer and mirrored |
 | `--easy` |  | an easy rollout: the --agent agents update one after another, and a failed one is skipped |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
-| `--release string` |  | the release, by version or ID; no newer than the controller |
+| `--release string` |  | the release, by version or ID; no newer than the controller, but with --controller newer |
 
 ## rpmgr update
 

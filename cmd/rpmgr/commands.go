@@ -98,7 +98,7 @@ func runController(ctx context.Context, env *cli.Env, path string) error {
 	}
 	defer stop()
 	return controller.Run(ctx, controller.RunOptions{Config: cfg, Version: version.Get().Version, Sources: routes.Sources(),
-		Getenv: env.Getenv, Logger: logger, Now: agentcmd.Clock})
+		Getenv: env.Getenv, Logger: logger, Now: agentcmd.Clock, SelfUpdate: true})
 }
 
 // runAllInOne is `rpmgr all-in-one`: it runs until SIGINT or SIGTERM; the gateway drains first.

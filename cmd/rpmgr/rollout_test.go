@@ -37,6 +37,27 @@ type releaseAPI struct {
 	changes []string // the pause, resume and cancel calls, each with its etag
 	targets *rpmgrv1.ListRolloutTargetsRequest
 	upgrade *rpmgrv1.UpgradeAgentsRequest
+	ctlUp   *rpmgrv1.UpdateControllerRequest
+}
+
+func (a *releaseAPI) UpdateController(_ context.Context, req *connect.Request[rpmgrv1.UpdateControllerRequest]) (*connect.Response[rpmgrv1.UpdateControllerResponse], error) {
+	if err := a.needStepUp(); err != nil {
+		return nil, err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.ctlUp = req.Msg
+	if req.Msg.GetReleaseId() == "rel_1" {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("release 1.4.2 is not newer than the controller's 1.5.0"))
+	}
+	return connect.NewResponse(&rpmgrv1.UpdateControllerResponse{Update: &rpmgrv1.ControllerUpdate{Version: "1.6.0",
+		State: rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_STAGED}}), nil
+}
+
+func (a *releaseAPI) GetControllerUpdate(context.Context, *connect.Request[rpmgrv1.GetControllerUpdateRequest]) (*connect.Response[rpmgrv1.GetControllerUpdateResponse], error) {
+	return connect.NewResponse(&rpmgrv1.GetControllerUpdateResponse{RunningVersion: "1.5.0", Blocked: "the controller runs on postgres",
+		Update: &rpmgrv1.ControllerUpdate{Version: "1.6.0", State: rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_UPDATING,
+			Step: "backing_up", Reason: ""}}), nil
 }
 
 func (a *releaseAPI) needStepUp() error {
@@ -327,6 +348,28 @@ func TestEasyRolloutCommands(t *testing.T) {
 	if code != cli.ExitOK || json.Unmarshal([]byte(out), &listed) != nil || len(listed) != 1 || listed[0]["agentId"] != "gw_1" ||
 		listed[0]["position"] != float64(4) {
 		t.Errorf("upgrade gateway -o json: %d %q", code, out)
+	}
+	// The controller's own update (D158): by version, after a step-up; refusals are shown; --status
+	// says how it stands and why none can start; the flags are exclusive.
+	for _, args := range [][]string{{"--controller"}, {"--controller", "--release", "1.6.0", "--easy"}, {"--controller", "--release", "1.6.0", "--canary", "nas"},
+		{"--controller", "--release", "1.6.0", "extra"}} {
+		if code, _, _ := run(append([]string{"create", "rollout"}, args...)...); code != cli.ExitUsage {
+			t.Errorf("create rollout %v: %d", args, code)
+		}
+	}
+	if a.ctlUp != nil {
+		t.Fatalf("a refused command sent %v", a.ctlUp)
+	}
+	if code, out, errOut := run("create", "rollout", "--controller", "--release", "rel_3"); code != cli.ExitOK || a.ctlUp.GetReleaseId() != "rel_3" ||
+		!strings.Contains(out, "Staged 1.6.0") {
+		t.Errorf("create rollout --controller: %d %q %q %v", code, out, errOut, a.ctlUp)
+	}
+	if code, _, errOut := run("create", "rollout", "--controller", "--release", "rel_1"); code != cli.ExitError || !strings.Contains(errOut, "not newer") {
+		t.Errorf("create rollout --controller to an older release: %d %q", code, errOut)
+	}
+	if code, out, _ := run("get", "controller-update"); code != cli.ExitOK || !strings.Contains(out, "The controller runs 1.5.0.") ||
+		!strings.Contains(out, "Update to 1.6.0: updating (backing up).") || !strings.Contains(out, "No update can be started now: the controller runs on postgres.") {
+		t.Errorf("get controller-update: %d %q", code, out)
 	}
 	a.upgrade = nil
 	if code, _, errOut := run("upgrade", "connector", "edge"); code != cli.ExitError || a.upgrade != nil {

@@ -423,6 +423,30 @@ func (s *Stager) attempt(ctx context.Context, offer *agentv1.ReleaseOffer) error
 	return nil
 }
 
+// StageRelease stages a release of the controller's own mirror, src, for the root updater of the
+// host the controller runs on (D158): it verifies the signed files with o.Roots, as an agent does
+// for an offer, and writes them and the artifact for this build into o.Dir, the manifest last. The
+// root updater verifies them again; nothing here is trusted. The caller has checked the channel.
+func StageRelease(ctx context.Context, o UpdateOptions, src release.Source, version string) error {
+	s := newStager(o, "", nil, time.Now, nil)
+	signed, err := (&release.Mirror{Roots: s.o.Roots, Now: s.now}).Fetch(ctx, src)
+	if err != nil {
+		return err
+	}
+	m := signed.Manifest
+	if m.Version != version {
+		return fmt.Errorf("the mirror holds the manifest of %s, not of %s", m.Version, version)
+	}
+	a, err := m.Artifact(s.o.OS, s.o.Arch, s.o.Variant)
+	if err != nil {
+		return fmt.Errorf("the release has no %s build for %s/%s", s.o.Variant, s.o.OS, s.o.Arch)
+	}
+	if a.Size > update.MaxArtifact {
+		return fmt.Errorf("its artifact has %d bytes, above the cap of %d", a.Size, update.MaxArtifact)
+	}
+	return s.write(ctx, src, signed, release.ArtifactName(version, a), a)
+}
+
 // offered checks the offer's entry for the artifact, if it has one, against the signed manifest.
 func offered(o *agentv1.ReleaseOffer, name string, a release.Artifact) error {
 	for _, f := range o.GetFiles() {
@@ -436,7 +460,7 @@ func offered(o *agentv1.ReleaseOffer, name string, a release.Artifact) error {
 // write stages a verified release: it removes what earlier releases left, downloads the artifact
 // with the free-space check, and writes the signed files, the manifest last. A release staged
 // already, the same manifest with its artifact, is left as it is.
-func (s *Stager) write(ctx context.Context, src *dlSource, signed *release.Signed, name string, a release.Artifact) error {
+func (s *Stager) write(ctx context.Context, src release.Source, signed *release.Signed, name string, a release.Artifact) error {
 	if err := os.MkdirAll(s.o.Dir, 0o750); err != nil {
 		return err
 	}

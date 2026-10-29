@@ -48,6 +48,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/migrations"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
+	"github.com/felix-homelab/rpmgr/internal/update"
 	"github.com/felix-homelab/rpmgr/internal/webhook"
 	"github.com/felix-homelab/rpmgr/internal/websession"
 	"github.com/felix-homelab/rpmgr/internal/webui"
@@ -98,6 +99,9 @@ type RunOptions struct {
 	// KEK, if set, is used instead of loading the boot file's: all-in-one's init passes the KEK it
 	// has just obtained, as a new systemd credential is readable only inside a service.
 	KEK *secret.KEK
+	// SelfUpdate lets an Instance Admin update this controller over the air (D158): production
+	// runs set it, tests that touch no host do not.
+	SelfUpdate bool
 }
 
 // ErrNotInitialised is returned by Run for a database without an installation.
@@ -265,6 +269,10 @@ func Run(ctx context.Context, o RunOptions) error {
 		mirror.Roots = release.Roots()
 	}
 	checks := NewReleaseChecks(mirror)
+	var self *apisvc.SelfUpdate
+	if o.SelfUpdate {
+		self = hostUpdater(stateDir, cfg.Database.Driver, mirror, update.UpdaterInstalled)
+	}
 	apiServer, err := api.New(api.Options{DB: db, Sys: sys, Sealer: sealer, Resolver: api.StoreResolver(db, sys),
 		OperatorsMayEnroll: api.StoreOperatorsMayEnroll(db, sys), PageKey: pageKey, Now: o.Now, Logger: o.Logger,
 		Authenticator: apisvc.Credentials{Sessions: webSessions, Tokens: tokens,
@@ -359,7 +367,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_release_proto.Services().ByName("ReleaseService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewReleaseServiceHandler(&apisvc.Releases{DB: db, Sys: sys, API: apiServer, Version: o.Version, MinAgentVersion: MinAgentVersion(o.Version), MirrorNow: checks.Wake,
-				Checks: checks, Roots: o.ReleaseRoots, Now: o.Now}, opts...)
+				Self: self, Checks: checks, Roots: o.ReleaseRoots, Now: o.Now}, opts...)
 		}); err != nil {
 		return err
 	}

@@ -336,6 +336,37 @@ test("screenshots of a rollout", async ({ page }) => {
   }
 });
 
+// The controller's own update (D158): the releases card with "Update controller to 0.2.0" for a
+// release newer than the controller, then the Updating page while the updater backs the database
+// up, and after a failed update. The installation knows no signed release and its root updater is
+// not installed, so the browser is given made-up answers about both.
+test("screenshots of the controller update", async ({ page }) => {
+  test.setTimeout(120_000);
+  await signIn(page, "ada@example.com");
+  await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
+  await page.route("**/rpmgr.v1.ReleaseService/ListReleases", (route) => route.fulfill({ json: { controllerVersion: "0.1.0",
+    releaseCheck: { checkTime: "2026-10-24T08:00:00Z", outcome: "RELEASE_CHECK_OUTCOME_OK" },
+    releases: [{ id: "rel_2", version: "0.2.0", channel: "UPDATE_CHANNEL_STABLE", manifestSeq: "2", source: "RELEASE_SOURCE_CHECK", mirrored: true,
+      mirrorTime: "2026-10-24T08:00:00Z", createTime: "2026-10-24T08:00:00Z", newerThanController: true },
+    { id: "rel_1", version: "0.1.0", channel: "UPDATE_CHANNEL_STABLE", manifestSeq: "1", source: "RELEASE_SOURCE_CHECK", mirrored: true,
+      mirrorTime: "2026-10-20T08:00:00Z", createTime: "2026-10-20T08:00:00Z", controllerVersion: true }] } }));
+  let update: object = {};
+  await page.route("**/rpmgr.v1.ReleaseService/GetControllerUpdate", (route) => route.fulfill({ json: { runningVersion: "0.1.0", ...update } }));
+  await page.goto("/settings/updates");
+  const releasesCard = page.getByRole("region", { name: "Releases" });
+  await expect(releasesCard.getByRole("button", { name: "Update controller to 0.2.0" })).toBeEnabled();
+  await part(page, releasesCard, "controller-update", false);
+  update = { update: { version: "0.2.0", state: "CONTROLLER_UPDATE_STATE_UPDATING", step: "backing_up", previous: "0.1.0" } };
+  await page.goto("/updating?to=0.2.0&from=0.1.0");
+  await expect(page.getByRole("heading", { name: "Updating the controller to 0.2.0", level: 1 })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "Backing up" })).toHaveAttribute("aria-current", "step");
+  await shot(page, "updating");
+  update = { update: { version: "0.2.0", state: "CONTROLLER_UPDATE_STATE_ROLLED_BACK", previous: "0.1.0",
+    reason: "handing rpmgr-all-in-one.service over: the new process ended after the migration; the database was migrated by 0.2.0 and restored from /usr/local/bin/rpmgr.backup, taken 2026-10-29T12:00:00Z; writes since then are lost, except revocations, which are applied again" } };
+  await expect(page.getByRole("alert")).toContainText("Version 0.1.0 still runs.");
+  await shot(page, "updating-failed");
+});
+
 // part writes a screenshot of one part of the page, such as a dialog or a card; a check shot, only
 // when named, is of the whole page instead, to show what overflows it.
 async function part(page: Page, locator: ReturnType<Page["locator"]>, name: string, check: boolean) {

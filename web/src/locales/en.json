@@ -1255,6 +1255,33 @@
     "removed": "The second factor of {{name}} is removed, and their sessions have ended.",
     "notYours": "You cannot recover this account: the user is also a member of another organisation, or an Instance Admin. Ask the Instance Admin."
   },
+  "updating": {
+    "title": "Updating the controller to {{version}}",
+    "keepOpen": "Keep this page open. The controller restarts for a short while; this page goes on when the new version answers.",
+    "steps": "Steps of the update",
+    "step": {
+      "downloading": "Downloading",
+      "verifying": "Verifying",
+      "backingUp": "Backing up",
+      "handingOver": "Handing over",
+      "migrating": "Migrating",
+      "ready": "Ready"
+    },
+    "detail": {
+      "downloading": "the controller stages the release",
+      "verifying": "the updater checks the signed files",
+      "backingUp": "the database is copied next to the binary",
+      "handingOver": "the new version takes over",
+      "migrating": "the new version migrates the database and starts",
+      "ready": "waiting for the new version to answer"
+    },
+    "restarting": "The controller is restarting…",
+    "failed": "The update failed. Version {{version}} still runs. {{reason}}",
+    "rollbackFailed": "The update failed and the previous version could not be put back. {{reason}} Ask the operator of the host; the controller may be stopped.",
+    "lost": "The backup was restored: changes made after it was taken, named above, are lost, except revocations, which are applied again. Your session ended; sign in again.",
+    "dashboard": "Go to the dashboard",
+    "gaveUp": "The controller does not answer. Check the host: systemctl status rpmgr-update and the controller's journal."
+  },
   "updates": {
     "checkNow": "Check now",
     "checking": "Checking for releases…",
@@ -1400,6 +1427,16 @@
       "failed": "Failed",
       "skipped": "Skipped",
       "nobody": "—"
+    },
+    "controllerButton": {
+      "label": "Update controller to {{version}}",
+      "byHand": "Update this controller by hand once (install.sh --upgrade --restart); later updates can start here.",
+      "why": {
+        "notMirrored": "The mirror does not hold it yet.",
+        "rollout": "A rollout runs; let it end first.",
+        "underWay": "An update of the controller is under way.",
+        "blocked": "{{reason}}"
+      }
     },
     "button": {
       "label": "Update to {{version}}",

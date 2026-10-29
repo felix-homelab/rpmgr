@@ -1,9 +1,10 @@
 # Updates
 
-rpmgr updates **connectors and gateways** itself, in a rollout you start. Controllers and
-all-in-ones are upgraded by hand ([Upgrades](../install/upgrades.md)). A rollout is **easy**, the
-agents you choose one after another, or **staged**, test agents first and then stages you approve.
-This page shows how to run both and what they tell you. The rules behind them are in
+rpmgr updates **connectors and gateways** itself, in a rollout you start, and the **controller or
+all-in-one** itself, when you ask for it ([Update the controller](#update-the-controller)). A
+rollout is **easy**, the agents you choose one after another, or **staged**, test agents first and
+then stages you approve. This page shows how to run both and what they tell you. The rules behind
+them are in
 [04](../../04-security.md#over-the-air-updates),
 [10](../../10-operations.md#upgrades-and-version-skew),
 [D121](../../14-open-decisions.md#engineering) and [D129](../../14-open-decisions.md#engineering).
@@ -42,6 +43,56 @@ This page shows how to run both and what they tell you. The rules behind them ar
 Hosts need the root updater and a policy that allows updates
 ([Install](../install/install-script.md)). A host in the container image, or on Windows or macOS,
 is not updated over the air.
+
+## Update the controller
+
+From v0.3.0 the controller, or the all-in-one, updates itself over the air, on **SQLite** only,
+and only from a controller that already runs v0.3.0 or later: its own backup and restore do the
+work, so a controller on an earlier release is **updated by hand once** (`install.sh --upgrade
+--restart`, [Upgrades](../install/upgrades.md)), and the page and the API say "update this
+controller by hand once (install.sh --upgrade --restart); later updates can start here" instead
+of offering the button. The
+controller goes first, as in every upgrade: no agent runs ahead of it. A controller on
+**PostgreSQL** is refused until its backup method exists (P2-M08); upgrade it by hand
+([Upgrades](../install/upgrades.md)).
+
+1. Open **Settings → Updates**. A release newer than the controller, which the mirror holds, has
+   **Update controller to 1.5.0**. It is off, with the reason beside it, while the mirror does not
+   hold the release, a rollout runs, an update of the controller is under way, the host has no
+   root updater, or the database is PostgreSQL. Choose it and confirm your identity. From the
+   command line: `rpmgr create rollout --controller --release 1.5.0`.
+
+   ![The releases card with Update controller to 0.2.0](../images/web/controller-update.png)
+
+2. The **Updating…** page follows the update: downloading, verifying, backing up, handing over,
+   migrating and ready. The controller restarts for a short while, an all-in-one's with a
+   hand-off; the page asks it in the background, says that it is restarting, and goes back to the
+   dashboard when the new version answers. Keep it open. If you close it, `rpmgr get
+   controller-update` tells how the update stands.
+
+   ![The Updating page while the database is backed up](../images/web/updating.png)
+
+3. Before anything changes, the host's updater takes a **backup** of the database and keeps it
+   next to the binary, as `/usr/local/bin/rpmgr.backup`, beside the previous binary
+   `rpmgr.prev`. Back up the KEK separately
+   ([Backup and restore](backup-and-restore.md)). A backup that fails stops the update before it
+   changes anything.
+
+**If the new version fails.** Before its migration, the old process serves on, or the previous
+binary starts on the database as it was. After its migration, the updater stops the controller,
+restores the backup it took, and starts the previous binary. The page then says that the old
+version still runs, with the reason, and the status is `rolled_back` in
+`/run/rpmgr-update/status.json`. A restore keeps what `rpmgr restore` keeps: changes made after the
+backup are lost, except revocations, which are applied again, and every session ends, so you sign
+in again ([Backup and restore](backup-and-restore.md)). The previous binary never runs on a
+database the new one migrated; if the restore itself fails, the controller stays stopped and the
+status is `rollback_failed`, naming the command to run: `rpmgr restore --in
+/usr/local/bin/rpmgr.backup`.
+
+![The Updating page after a failed update](../images/web/updating-failed.png)
+
+The rules are in [04](../../04-security.md#controllers-and-all-in-ones-over-the-air) and
+[D158](../../14-open-decisions.md#engineering).
 
 ## Check for a new release now
 
@@ -149,6 +200,8 @@ controller host.
 
 ```
 rpmgr list release
+rpmgr create rollout --controller --release 1.5.0
+rpmgr get controller-update
 rpmgr create rollout --release 1.5.0 --canary db-host-1
 rpmgr get rollout rol_…
 rpmgr list rollout-target rol_…
@@ -260,6 +313,12 @@ one that other users may write; fix its owner or mode first
   updater, and the restarted agent then announces over-the-air updates
   ([Upgrades](../install/upgrades.md)). To repair it by hand, see
   [Repair the updater on a host](#repair-the-updater-on-a-host).
+- **The controller's update is refused.** The page and `rpmgr get controller-update` give
+  the reason: the mirror does not hold the release, a rollout runs, the host has no root updater
+  or its state directory is not `/var/lib/rpmgr`, the database is PostgreSQL, the release is not
+  newer than the controller, or its backup failed (the status says why; the backup is written next
+  to the binary, so that directory needs room, and the updater's unit writes `/var/lib/rpmgr`, so
+  a database in another directory needs a drop-in that adds it to `ReadWritePaths=`).
 - **The rollout's agents stay pending.** The mirror does not hold the release yet: the controller
   could not fetch it from the release source. Import the release on the controller host, or cancel
   the rollout.

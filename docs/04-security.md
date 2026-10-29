@@ -1281,8 +1281,10 @@ agent's offer is trusted: the **signed manifest, `seq`, floor, channel and SHA-2
 the request that started the update. What differs:
 
 - **Trigger and target.** The Instance Admin requests "Update to x.y.z" for the controller or
-  all-in-one, with a step-up, audited like a rollout's steps. The target is a release the mirror
-  holds with its recorded manifest and that the controller's `update_channel` takes. The controller
+  all-in-one, with a step-up, audited like a rollout's steps. The target is a release newer than
+  the controller, which the mirror holds with its recorded manifest and the controller's
+  `update_channel` takes: never a downgrade, because the database may be migrated and an older
+  binary refuses it. The controller
   stages the files itself in `/var/lib/rpmgr/update/` and writes the manifest last, as an agent
   does, so the updater cannot tell who staged them, and verifies them again
   ([D120](14-open-decisions.md#security-defaults)). A compromised controller process can stage no
