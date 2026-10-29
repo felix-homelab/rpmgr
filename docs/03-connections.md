@@ -1764,7 +1764,8 @@ the readiness window passes, the old process kills it, waits until it is gone, o
 again and starts its controller; its gateway and the built-in agents connect to it again and the
 hand-off is reported as failed. No write is lost: the database was closed, not copied. If the old
 process cannot start its controller again, it ends with an error and the service manager starts
-the unit. A separate controller does not take part: it has no hand-off.
+the unit. If the new process had already migrated, the old one refuses the newer schema and stays
+down, and the operator restores the backup ([10](10-operations.md#backup-and-restore)). A separate controller does not take part: it has no hand-off.
 
 **UDP and QUIC.** A datagram on a shared socket goes to whichever process reads it, and a QUIC
 packet of the old process's session that the new process reads is answered with a stateless reset

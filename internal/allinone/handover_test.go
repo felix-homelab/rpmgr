@@ -6,6 +6,8 @@ package allinone_test
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/allinone"
 	"github.com/felix-homelab/rpmgr/internal/handoff"
+	"github.com/felix-homelab/rpmgr/internal/store"
 )
 
 // holdsDatabase reports whether this process has the controller's database open.
@@ -126,4 +129,38 @@ func openDatabaseFiles() []string {
 		}
 	}
 	return out
+}
+
+// TestAllInOne_ResumeRefusesASchemaTheNewProcessMigrated: if the new process had already migrated,
+// the old one's controller refuses the newer schema and Run ends, so that the operator restores
+// the backup.
+func TestAllInOne_ResumeRefusesASchemaTheNewProcessMigrated(t *testing.T) {
+	h := newHost(t)
+	h.init(t)
+	link := handoff.NewLink(nil, func(string) string { return "" }, nil)
+	done, _ := h.runWith(t, link)
+	waitFor(t, "not ready", h.ready)
+	if err := link.Release(context.Background()); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	db, err := sql.Open("sqlite", h.cfg.Database.DSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO ` + store.RevisionTable + ` (version, description, type, applied, total, executed_at,
+  execution_time, error, error_stmt, hash, partial_hashes, operator_version)
+  VALUES ('99991231000000', 'newer', 2, 1, 1, '2999-01-01T00:00:00Z', 0, '', '', 'x', '[]', '')`)
+	_ = db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	link.Resume()
+	select {
+	case err := <-done:
+		if !errors.Is(err, store.ErrUnknownMigration) {
+			t.Fatalf("Run ended with %v, want ErrUnknownMigration", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("Run did not end although the schema is newer")
+	}
 }
