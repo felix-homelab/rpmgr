@@ -27,7 +27,7 @@ const shown = ["url", "event_types"];
 
 // writers are the roles that hold webhooks.write (docs/04-security.md, "Roles"). The API needs it
 // for every method, reads included, since a URL may carry a token of the receiver's.
-const writers = ["owner", "admin"];
+export const writers = ["owner", "admin"];
 
 // eventTypesOf reads the event types of a form: names or prefixes such as route.*, separated by
 // commas, spaces or lines. None means all events.

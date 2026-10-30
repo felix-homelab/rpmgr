@@ -33,6 +33,30 @@
     "title": "Overview",
     "signedIn": "Signed in as {{name}}"
   },
+  "alerts": {
+    "title": "Alerts",
+    "intro": "What the controller has found wrong and not yet seen resolved.",
+    "org": "Organisation",
+    "instance": "Instance",
+    "none": "No alert is firing.",
+    "since": "since {{when}}",
+    "failed": "The alerts could not be read: {{message}}",
+    "disabledTitle": "Disabled webhook endpoints",
+    "disabled": "The webhook endpoint {{url}} was disabled because deliveries to it kept failing.",
+    "enableAgain": "Enable it again",
+    "kinds": {
+      "agent_offline": "Agent offline",
+      "config_not_applied": "Configuration not applied",
+      "agent_certificate_expiring": "Certificate renewal failing",
+      "public_certificate_expiring": "Public certificate expiring",
+      "route_no_ready_connector": "Route has no ready connector",
+      "clock_skew": "Clock skew",
+      "audit_checkpoints_behind": "Audit checkpoints behind",
+      "revocation_log_on_host": "Revocation log not yet off-host",
+      "webhook_failing": "Webhook endpoint failing",
+      "audit_sink_backlog": "Audit sink backlog"
+    }
+  },
   "draining": {
     "title": "Restarting",
     "description": "These agents restarted without dropping connections. Their old process still holds the connections it had and exits when they end.",
@@ -1166,6 +1190,10 @@
     "changed": "The settings changed since this page loaded them. The page shows them as they are now; try again.",
     "requireMfa": "Every member must sign in with a second factor",
     "operatorsMayEnroll": "Operators may enroll and revoke connectors",
+    "alertEmail": "E-mail the Owners and Admins when an alert fires or resolves",
+    "alertTypes": "Alert types the organisation is e-mailed about",
+    "alertTypesHint": "Webhooks get every alert event whatever is chosen here. Choose at least one type.",
+    "alertTypesNone": "Choose at least one alert type.",
     "defaultGroup": "Gateway group preselected for new routes",
     "none": "None",
     "days": "Enter whole days for: {{fields}}.",
