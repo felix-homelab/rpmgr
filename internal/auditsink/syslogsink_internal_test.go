@@ -93,7 +93,8 @@ func TestSyslogSink_BatchDeadline(t *testing.T) {
 	t.Run("a stalled receiver ends the batch at the deadline", func(t *testing.T) {
 		srv := syslogtest.New(t, 0)
 		srv.SetStall(true)
-		k := newTestSyslog(t, srv, 400*time.Millisecond)
+		// The deadline also covers the dial and the handshake: long enough for both on a busy runner.
+		k := newTestSyslog(t, srv, time.Second)
 		start := time.Now()
 		if err := k.Ship(ctx, testItem(1, body)); err != nil {
 			t.Fatal(err)
@@ -103,8 +104,8 @@ func TestSyslogSink_BatchDeadline(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "longer than the time allowed for a batch") {
 			t.Fatalf("flush: %v", err)
 		}
-		if elapsed < 300*time.Millisecond || elapsed > SyslogDrainTimeout-time.Second {
-			t.Errorf("the batch ended after %v, want about 400ms (drain %v)", elapsed, SyslogDrainTimeout)
+		if elapsed < 900*time.Millisecond || elapsed > SyslogDrainTimeout-time.Second {
+			t.Errorf("the batch ended after %v, want about 1s (drain %v)", elapsed, SyslogDrainTimeout)
 		}
 		if k.conn != nil {
 			t.Error("the connection is still open")
@@ -113,11 +114,11 @@ func TestSyslogSink_BatchDeadline(t *testing.T) {
 
 	t.Run("an item after the deadline fails the batch", func(t *testing.T) {
 		srv := syslogtest.New(t, 0)
-		k := newTestSyslog(t, srv, 100*time.Millisecond)
+		k := newTestSyslog(t, srv, time.Second)
 		if err := k.Ship(ctx, testItem(1, body)); err != nil {
 			t.Fatal(err)
 		}
-		time.Sleep(150 * time.Millisecond)
+		time.Sleep(1200 * time.Millisecond)
 		if err := k.Ship(ctx, testItem(2, body)); err == nil || !strings.Contains(err.Error(), "time allowed") {
 			t.Fatalf("ship after the deadline: %v", err)
 		}
