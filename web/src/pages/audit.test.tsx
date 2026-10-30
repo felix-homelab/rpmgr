@@ -2,11 +2,12 @@
 
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Code } from "@connectrpc/connect";
 import { AuditService, type ListAuditEntriesRequest, type ListInstanceAuditEntriesRequest } from "@/gen/rpmgr/v1/audit_pb";
 import { OrgService } from "@/gen/rpmgr/v1/org_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
-import { auth, show } from "@/testing/api";
+import { apiError, auth, show } from "@/testing/api";
 
 afterEach(cleanup);
 
@@ -115,5 +116,78 @@ describe("Audit", () => {
     expect(await screen.findByRole("heading", { name: "Instance audit log" })).toBeTruthy();
     await waitFor(() => expect(inst).toHaveLength(1));
     expect(await screen.findByText("instance.settings")).toBeTruthy();
+  });
+
+  // exportPage is the audit page with an export that asks for a step-up first, or fails.
+  function exportPage(path: string, instanceAdmin: boolean, fail?: Code) {
+    const calls = { org: [] as string[], inst: 0, steppedUp: 0 };
+    let steppedUp = false;
+    const guard = () => {
+      if (fail !== undefined) throw apiError(fail);
+      if (!steppedUp) throw apiError(Code.Unauthenticated, "STEP_UP_REQUIRED");
+    };
+    show(path, auth({ getSession: () => ({ userId: "usr_ada", instanceAdmin, memberships: [{ orgId: "org_1", role: "owner" }] }),
+      stepUp: () => (calls.steppedUp++, steppedUp = true, {}) }), (router) => {
+      router.service(UserService, { getMe: () => ({ user: { id: "usr_ada", theme: Theme.SYSTEM } }) });
+      router.service(OrgService, { listMembers: () => ({ members: [] }) });
+      router.service(AuditService, {
+        listAuditEntries: () => ({ entries: [] }),
+        listInstanceAuditEntries: () => ({ entries: [] }),
+        exportAudit: async function* (req) {
+          calls.org.push(req.orgId);
+          guard();
+          yield { lines: ['{"type":"header"}', '{"type":"entry","seq":1}'] };
+          yield { lines: ['{"type":"entry","seq":2}'] };
+        },
+        exportInstanceAudit: async function* () {
+          calls.inst++;
+          guard();
+          yield { lines: ['{"type":"header"}'] };
+        },
+      });
+    });
+    return calls;
+  }
+
+  // download stubs the browser's file download and returns what was saved.
+  function download() {
+    const saved: { name: string; blob: Blob }[] = [];
+    let blob: Blob | undefined;
+    URL.createObjectURL = (b: Blob | MediaSource) => ((blob = b as Blob), "blob:audit");
+    URL.revokeObjectURL = () => {};
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      saved.push({ name: this.download, blob: blob! });
+    });
+    return { saved, restore: () => click.mockRestore() };
+  }
+
+  it("exports the chain after a step-up and downloads it as JSON Lines", async () => {
+    const dl = download();
+    const calls = exportPage("/audit", false);
+    fireEvent.click(await screen.findByRole("button", { name: "Export" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Confirm it is you" }));
+    fireEvent.change(dialog.getByLabelText("Password"), { target: { value: "pw" } });
+    fireEvent.click(dialog.getByRole("button", { name: "Confirm" }));
+    expect((await screen.findByRole("status")).textContent).toMatch(/^Saved audit-org_1\.jsonl\. .*rpmgr audit verify-export/);
+    expect(calls).toEqual({ org: ["org_1", "org_1"], inst: 0, steppedUp: 1 });
+    expect(dl.saved.map((s) => s.name)).toEqual(["audit-org_1.jsonl"]);
+    expect(await dl.saved[0]!.blob.text()).toBe('{"type":"header"}\n{"type":"entry","seq":1}\n{"type":"entry","seq":2}\n');
+    dl.restore();
+  });
+
+  it("exports the instance's chain to the Instance Admin, and saves nothing when the export is refused", async () => {
+    const dl = download();
+    const calls = exportPage("/audit?log=instance", true);
+    fireEvent.click(await screen.findByRole("button", { name: "Export" }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Confirm it is you" })).getByRole("button", { name: "Cancel" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/The export failed/);
+    expect(dl.saved).toEqual([]);
+    expect(calls.inst).toBe(1);
+    cleanup();
+    exportPage("/audit", false, Code.PermissionDenied);
+    fireEvent.click(await screen.findByRole("button", { name: "Export" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/The export failed/);
+    expect(dl.saved).toEqual([]);
+    dl.restore();
   });
 });

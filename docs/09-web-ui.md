@@ -638,8 +638,12 @@ one page, with a section list beside them that jumps to each section
   every checkpoint's signature and, while its entry is kept, that entry's hash. It says whether the
   chain is intact up to which entry, with the last checkpoint, or where it broke and why
   ([04](04-security.md#audit-log)).
-- [R] The export of the information architecture is left out in Phase 1: the API has no export
-  method, and the log is read in pages.
+- **Export** (Phase 2) sits beside "Verify the chain". It exports the log shown, the org's or the
+  instance's, with the step-up the API asks for (the same dialog as elsewhere, U7), and saves the
+  chain as a JSON Lines file with its proofs. Afterwards the page names the file and the
+  `rpmgr audit verify-export` command that verifies it offline. A refused or failed export saves
+  nothing and says why. Who sees the page sees the button: the API decides, with `audit.read` for an
+  org and the Instance Admin for the instance ([04](04-security.md#audit-log)).
 
 ### Settings
 
@@ -871,8 +875,9 @@ one page, with a section list beside them that jumps to each section
   instance webhooks as above; and the private ranges webhook receivers may use.
 - **Org settings**: alert e-mails on or off and the alert types the org gets
   ([D139](14-open-decisions.md#engineering)).
-- **Audit log**: **Export** asks for a step-up and downloads the chain as JSON Lines; the dialog
-  shows the `rpmgr audit verify-export` command with the CA pin to verify it offline.
+- **Audit log**: **Export** asks for a step-up and downloads the chain as JSON Lines; the page then
+  shows the `rpmgr audit verify-export` command to verify it offline, with the root's pin that the
+  Instance Admin reads under Settings → PKI.
 
 ### Enroll connector dialog
 
