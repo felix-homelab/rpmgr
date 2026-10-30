@@ -73,6 +73,10 @@ Changes to the design documents are not recorded here: see the git history and t
   Every checkpoint, and with `--entries` every entry, is written as an object that the bucket's
   Object Lock in compliance mode keeps unchangeable; a bucket without Object Lock or a store without
   conditional writes is refused. (#656)
+- An Audit sinks page under Settings, for the Instance Admin, manages the audit sinks: it lists
+  each with its state, target, last success, backlog and last error, creates and edits webhook and
+  syslog sinks in a form with a section per kind, enables, disables, tests and deletes them. The
+  signing secret is write-only in the page. (#657)
 - Instance webhooks and private receivers: the Instance Admin manages the endpoints that receive
   instance events through `InstanceWebhookService`, and lists in the new instance setting
   `webhook_private_ranges` the private networks that organisations' receivers may use; a refused

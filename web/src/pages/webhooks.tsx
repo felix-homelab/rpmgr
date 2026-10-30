@@ -48,7 +48,7 @@ export function checkUrl(t: TFunction, text: string): string {
 }
 
 // failure is what a change's error says; nothing for a cancelled step-up.
-function failure(t: TFunction, err: unknown): string {
+export function failure(t: TFunction, err: unknown): string {
   if (reasonOf(err) === Reason.stepUpRequired) {
     return "";
   }

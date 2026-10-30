@@ -193,6 +193,11 @@ and says so in its last error until the receiver accepts it; fix the receiver or
 secret. The details and the alert are in [04](../../04-security.md#audit-log) and
 [10](../../10-operations.md#audit-sink-backlog).
 
+The Instance Admin can do the same in the web UI, under **Settings**, **Audit sinks**: it lists
+each sink with its state, last success, backlog and last error, and makes, edits, tests, switches
+and deletes sinks ([Settings](../web-ui/settings.md#audit-sinks)). The secret is write-only there
+too.
+
 To send the log to a syslog server instead, use the kind `syslog`. The server must accept RFC 5424
 messages over TLS (RFC 5425, usually port 6514), and its certificate must name the host you give.
 Pass the CA that signed it with `--ca-file`; without the option the system's roots are used. A
