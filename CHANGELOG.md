@@ -27,6 +27,13 @@ Changes to the design documents are not recorded here: see the git history and t
   pin alone and finds an edited, removed or reordered entry or a forged checkpoint. An export is an
   `audit.export` entry in the chain, recorded again as a failure when it breaks off. The audit
   page has an Export button that does the same after a step-up. (#652, #653)
+
+  Admins hold the new permission `webhooks.write`, which an API token can carry. The CLI
+  follows. (#650)
+- A Webhooks page under Administration manages an organisation's webhook endpoints: it lists them
+  with their state, creates, edits, enables again, rotates and deletes them, shows the signing
+  secret once with a copy button, sends a test event and lists each endpoint's deliveries with
+  their status, error and next retry. (#651)
 - Controllers and all-in-ones update over the air, on SQLite. An Instance Admin chooses "Update
   controller to x.y.z" on Settings → Updates, or runs `rpmgr create rollout --controller --release
   x.y.z`, after a step-up. The root updater takes a backup of the database first, kept as

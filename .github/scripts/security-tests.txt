@@ -98,7 +98,7 @@ TestWebhook_EventsScopedToOrg	done	5.9	#649	webhooks (D144)
 TestWebhook_SecretWriteOnly	done	5.10	#650	webhooks
 TestAuditExport_StepUpAndOrgScoped	done	5.12	#652	internal/apisvc; the export is audited as audit.export, a failed one twice
 TestAuditExport_TamperDetectedOffline	done	5.13	#653	internal/audit (VerifyExport) and rpmgr audit verify-export
-TestAuditSink_BacklogNeverBlocksAppend	pending	5.14	#654	audit sinks (D141); syslog clause in 5.20 (#936)
+TestAuditSink_BacklogNeverBlocksAppend	done	5.14	#654	audit sinks (D141); syslog clause in 5.20 (#936)
 TestAuditSink_RewriteDetectedAgainstSink	pending	5.16	#656	audit sinks (D141)
 TestHandoff_OnlyVerifiedBinaryGetsSockets	done	17.3	#881	internal/handoff; the roles use it from 17.10 on
 TestHandoff_UnexpectedDescriptorsRefused	done	17.3	#881	internal/handoff; the roles use it from 17.10 on
