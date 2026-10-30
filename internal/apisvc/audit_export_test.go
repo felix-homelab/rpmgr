@@ -12,6 +12,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -193,5 +194,33 @@ func TestAuditExport_StepUpAndOrgScoped(t *testing.T) {
 	}
 	if n := exportEntries(t, e, org, "rpmgr.v1.AuditService.ExportAudit", audit.Denied); n == 0 { // a refusal has the method's name
 		t.Fatal("a refused export is not in the audit log")
+	}
+}
+
+// TestAuditExport_DeadlineEndsTheStream (docs/03-connections.md, "Timeouts"): an export that runs
+// past its deadline is ended with DEADLINE_EXCEEDED and recorded as a failure, not left open.
+func TestAuditExport_DeadlineEndsTheStream(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+		return castore.InitCA(e.sys, tx, e.sealer, "rpmgr-teststor", e.clock.Add(-time.Hour))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if apisvc.DefaultExportDeadline != 5*time.Minute {
+		t.Fatalf("the default export deadline is %v, docs/03 says 5 min", apisvc.DefaultExportDeadline)
+	}
+	e.audit.ExportDeadline = time.Nanosecond // gone before the first line is written
+	if _, err := exportOrg(ada, org); connect.CodeOf(err) != connect.CodeDeadlineExceeded {
+		t.Fatalf("an export past its deadline: %v", err)
+	}
+	if s, f := exportEntries(t, e, org, exportAction, audit.Success), exportEntries(t, e, org, exportAction, audit.Failure); s != 1 || f != 1 {
+		t.Fatalf("the export is recorded as %d success and %d failure, want one of each", s, f)
+	}
+	e.audit.ExportDeadline = 0
+	if lines, err := exportOrg(ada, org); err != nil || len(lines) == 0 {
+		t.Fatalf("an export within the default deadline: %d lines, %v", len(lines), err)
 	}
 }

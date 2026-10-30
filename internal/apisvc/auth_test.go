@@ -42,6 +42,7 @@ const pw = "correct horse battery staple"
 
 // env serves AuthService behind the API interceptor, as the controller does.
 type env struct {
+	audit    *apisvc.Audit
 	db       *store.DB
 	sys      context.Context
 	clock    time.Time
@@ -209,7 +210,8 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_audit_proto.Services().ByName("AuditService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewAuditServiceHandler(&apisvc.Audit{DB: db, Sys: sys, API: srv}, o...)
+			e.audit = &apisvc.Audit{DB: db, Sys: sys, API: srv}
+			return rpmgrv1connect.NewAuditServiceHandler(e.audit, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}

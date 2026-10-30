@@ -31,7 +31,13 @@ type Audit struct {
 	Sys context.Context // the system scope: the instance chain and the CA's certificates
 	API *api.Server
 	Now func() time.Time // the clock of export headers; nil for time.Now
+	// ExportDeadline bounds one export stream, the read transaction with it; 0 for
+	// DefaultExportDeadline (docs/03-connections.md, "Timeouts").
+	ExportDeadline time.Duration
 }
+
+// DefaultExportDeadline is how long an audit export may run (docs/03-connections.md).
+const DefaultExportDeadline = 5 * time.Minute
 
 // ListAuditEntries implements AuditService.
 func (a *Audit) ListAuditEntries(ctx context.Context, req *connect.Request[rpmgrv1.ListAuditEntriesRequest]) (
@@ -135,6 +141,14 @@ func (a *Audit) export(ctx, scope context.Context, orgID string, sendLines func(
 		return storeError(err)
 	}
 	// From here an export that fails is recorded again, as a failure (api.record.finishStream).
+	d := a.ExportDeadline
+	if d <= 0 {
+		d = DefaultExportDeadline
+	}
+	scope, cancel := context.WithTimeout(scope, d)
+	defer cancel()
+	stop := context.AfterFunc(ctx, cancel) // the instance scope does not end with the request
+	defer stop()
 	signers, inters, root, err := castore.SignerCertificates(a.Sys, a.DB, pki.PurposeAuditCheckpoint)
 	if err != nil {
 		return err
@@ -161,6 +175,9 @@ func (a *Audit) export(ctx, scope context.Context, orgID string, sendLines func(
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			return connect.NewError(connect.CodeDeadlineExceeded, errors.New("apisvc: the audit export took longer than its deadline"))
+		}
 		return storeError(err)
 	}
 	return send()
