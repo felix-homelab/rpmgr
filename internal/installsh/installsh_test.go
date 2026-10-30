@@ -276,21 +276,29 @@ func TestRefusals(t *testing.T) {
 		args []string
 		want string
 	}{
-		"plain HTTP":               {"", []string{"--controller", "http://panel.example.com", "--verify-only"}, "must be an https:// URL"},
-		"no controller":            {"", []string{"--verify-only"}, "must be an https:// URL"},
-		"no pin to install":        {"", []string{"--controller", s.URL}, "--ca-pin is required"},
-		"an unknown argument":      {"", []string{"--controller", s.URL, "--yes"}, "unknown argument --yes"},
-		"an unknown role":          {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "controller"}, "--role must be"},
-		"targets for a gateway":    {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "gateway", "--allow-target", "10.0.0.5:22"}, "no local policy"},
-		"a target with a newline":  {"", []string{"--controller", s.URL, "--allow-target", "10.0.0.5:22\nx"}, "with a newline"},
-		"denials for a gateway":    {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "gateway", "--deny-target", "10.0.0.5"}, "no local policy"},
-		"a denial with a newline":  {"", []string{"--controller", s.URL, "--deny-target", "10.0.0.5\nx"}, "with a newline"},
-		"a denial without target":  {"", []string{"--controller", s.URL, "--deny-target"}, "--deny-target needs a target"},
-		"an unreadable token file": {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--token-file", "/nonexistent/token"}, "cannot read --token-file"},
-		"an unknown variant":       {"", []string{"--controller", s.URL, "--verify-only", "--variant", "lite"}, "--variant must be full or connector"},
-		"a connector-only gateway": {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "gateway", "--variant", "connector"}, "runs no gateway"},
-		"OpenSSL 1.1":              {old + ":", []string{"--controller", s.URL, "--verify-only"}, "OpenSSL 3.0 or later is needed"},
-		"OpenSSL that fails":       {broken + ":", []string{"--controller", s.URL, "--verify-only"}, "openssl does not run"},
+		"plain HTTP":                 {"", []string{"--controller", "http://panel.example.com", "--verify-only"}, "must be an https:// URL"},
+		"no controller":              {"", []string{"--verify-only"}, "must be an https:// URL"},
+		"no pin to install":          {"", []string{"--controller", s.URL}, "--ca-pin is required"},
+		"an unknown argument":        {"", []string{"--controller", s.URL, "--yes"}, "unknown argument --yes"},
+		"an unknown role":            {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "controller"}, "--role must be"},
+		"targets for a gateway":      {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "gateway", "--allow-target", "10.0.0.5:22"}, "no local policy"},
+		"a target with a newline":    {"", []string{"--controller", s.URL, "--allow-target", "10.0.0.5:22\nx"}, "with a newline"},
+		"denials for a gateway":      {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "gateway", "--deny-target", "10.0.0.5"}, "no local policy"},
+		"a denial with a newline":    {"", []string{"--controller", s.URL, "--deny-target", "10.0.0.5\nx"}, "with a newline"},
+		"a denial without target":    {"", []string{"--controller", s.URL, "--deny-target"}, "--deny-target needs a target"},
+		"an unreadable token file":   {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--token-file", "/nonexistent/token"}, "cannot read --token-file"},
+		"an unknown variant":         {"", []string{"--controller", s.URL, "--verify-only", "--variant", "lite"}, "--variant must be full or connector"},
+		"a connector-only gateway":   {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "gateway", "--variant", "connector"}, "runs no gateway"},
+		"another firewall":           {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "gateway", "--firewall", "nftables"}, "--firewall must be ufw"},
+		"a firewall for a connector": {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--firewall", "ufw"}, "--firewall is a gateway's"},
+		"a range without a firewall": {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "gateway", "--firewall-max-range", "20000-29999"}, "needs --firewall ufw"},
+		"a range with a letter":      {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "gateway", "--firewall", "ufw", "--firewall-max-range", "2000a-29999"}, "must be <from>-<to>"},
+		"a range with one end":       {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "gateway", "--firewall", "ufw", "--firewall-max-range", "20000"}, "must be <from>-<to>"},
+		"a range that starts at 0":   {"", []string{"--controller", s.URL, "--ca-pin", "sha256:x", "--role", "gateway", "--firewall", "ufw", "--firewall-max-range", "0-100"}, "must be <from>-<to>"},
+		"a range without a value":    {"", []string{"--controller", s.URL, "--firewall-max-range"}, "--firewall-max-range needs"},
+		"a firewall without a value": {"", []string{"--controller", s.URL, "--firewall"}, "--firewall needs ufw"},
+		"OpenSSL 1.1":                {old + ":", []string{"--controller", s.URL, "--verify-only"}, "OpenSSL 3.0 or later is needed"},
+		"OpenSSL that fails":         {broken + ":", []string{"--controller", s.URL, "--verify-only"}, "openssl does not run"},
 	} {
 		out, err := run(t, s, tc.path, tc.args...)
 		if err == nil || !strings.Contains(out, tc.want) {
@@ -365,5 +373,90 @@ func TestSyntax(t *testing.T) {
 	cmd.Stdin = bytes.NewReader(b)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("sh -n: %v\n%s", err, out)
+	}
+}
+
+// TestFirewallSteps (D152): with --firewall ufw the script adds the firewall section to a boot file
+// that has none, lets the binary write the helper's bounds, directory and units from it, and
+// enables them after the updater's, before the role's unit; without the flag it does none of it.
+func TestFirewallSteps(t *testing.T) {
+	b, err := installsh.Render("1.4.2", []release.PublicKey{pubkey(t, root)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(b)
+	order := []string{`firewall install --role "$role"`, "systemctl enable --now rpmgr-update.path",
+		"systemctl enable rpmgr-firewall.service", "systemctl enable --now rpmgr-firewall.path", `systemctl enable --now "rpmgr-$role"`}
+	at := 0
+	for _, want := range order {
+		i := strings.Index(script[at:], want)
+		if i < 0 {
+			t.Fatalf("no %q after offset %d in the script", want, at)
+		}
+		at += i + len(want)
+	}
+	// The two units are enabled in one block, behind the flag.
+	enable := strings.Index(script, "systemctl enable rpmgr-firewall.service")
+	if enable < 0 || !strings.HasSuffix(strings.TrimSpace(script[:enable]), `if [ -n "$firewall" ]; then`) || strings.Count(script, "rpmgr-firewall") != 2 {
+		t.Error("the firewall units are not enabled only behind the flag")
+	}
+	if !strings.Contains(script, `grep -q '^firewall:' "$boot"`) {
+		t.Error("an existing firewall section of the boot file is not kept")
+	}
+}
+
+// TestFirewallBootSection (D152) runs the script's firewall step on boot files: the section is
+// appended on a line of its own, also when the file does not end in a newline; an existing section
+// stays as it is, and the script says where it has another max_range than the flag asked for.
+func TestFirewallBootSection(t *testing.T) {
+	b, err := installsh.Render("1.4.2", []release.PublicKey{pubkey(t, root)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(b)
+	start := strings.Index(script, "if [ -n \"$firewall\" ]; then\n  if grep -q '^firewall:'")
+	if start < 0 {
+		t.Fatal("no firewall step in the script")
+	}
+	step := script[start:]
+	step = step[:strings.Index(step, "\nfi\n")+len("\nfi\n")]
+	const head = "version: 1\nlisten:\n  admin: '127.0.0.1:9090'"
+	for name, tc := range map[string]struct {
+		boot, rng string
+		want      string // the boot file afterwards
+		say       string // in the script's message; empty for none
+	}{
+		"a file with a final newline":    {head + "\n", "20000-29999", head + "\nfirewall:\n  backend: ufw\n  max_range: '20000-29999'\n", ""},
+		"a file without a final newline": {head, "20000-29999", head + "\nfirewall:\n  backend: ufw\n  max_range: '20000-29999'\n", ""},
+		"an empty file":                  {"", "", "firewall:\n  backend: ufw\n", ""},
+		"no range asked for":             {head + "\n", "", head + "\nfirewall:\n  backend: ufw\n", ""},
+		"the same range kept":            {head + "\nfirewall:\n  backend: ufw\n  max_range: '20000-29999'\n", "20000-29999", head + "\nfirewall:\n  backend: ufw\n  max_range: '20000-29999'\n", "keeping the firewall section"},
+		"another range kept and said": {head + "\nfirewall:\n  backend: ufw\n  max_range: 30000-30999\n", "20000-29999", head + "\nfirewall:\n  backend: ufw\n  max_range: 30000-30999\n",
+			"has max_range '30000-30999', not the 20000-29999 asked for"},
+		"no range in the section, one asked for": {head + "\nfirewall:\n  backend: ufw", "20000-29999", head + "\nfirewall:\n  backend: ufw",
+			"has max_range 'none', not the 20000-29999 asked for"},
+		"a section kept without a flag range": {head + "\nfirewall:\n  backend: ufw\n  max_range: 30000-30999\n", "", head + "\nfirewall:\n  backend: ufw\n  max_range: 30000-30999\n", "keeping the firewall section"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			boot := filepath.Join(t.TempDir(), "gateway.yaml")
+			if err := os.WriteFile(boot, []byte(tc.boot), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			prog := "say() { echo \"$*\" >&2; }\nfirewall=ufw fw_range=" + tc.rng + " boot=" + boot + "\n" + step
+			out, err := exec.Command("sh", "-eu", "-c", prog).CombinedOutput()
+			if err != nil {
+				t.Fatalf("%v: %s", err, out)
+			}
+			got, err := os.ReadFile(boot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("the boot file is\n%q\nwant\n%q", got, tc.want)
+			}
+			if tc.say == "" && strings.TrimSpace(string(out)) != "" || !strings.Contains(string(out), tc.say) {
+				t.Errorf("the script said %q, want %q", out, tc.say)
+			}
+		})
 	}
 }

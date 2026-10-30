@@ -177,6 +177,8 @@ as the local policy reads it, so a pasted command runs nothing but the installer
 | `--allow-target <target>` | A target the connector's local policy allows. Repeat it for more. A connector only |
 | `--deny-target <target>` | A target the connector's local policy denies, whatever allows it. Repeat it for more. A connector only |
 | `--token-file <file>` | Read the enrollment or gateway token from this file instead of asking |
+| `--firewall ufw` | A gateway only: hand the host's `ufw` to rpmgr, which opens the gateway's ports and the port pools' ranges ([Gateways](../gateways.md#the-hosts-firewall)). Off without it |
+| `--firewall-max-range <from>-<to>` | With `--firewall`: the largest range of port pools rpmgr may open, such as `20000-29999`. Without it rpmgr opens only the gateway's listeners |
 | `--tcp-bbr` | Also set the TCP congestion control to BBR in the host tuning. A later run keeps it ([below](#run-again)) |
 | `--verify-only` | Download and verify the release, install nothing. Needs neither root nor a pin |
 
@@ -191,7 +193,7 @@ the global script needs, and `systemctl`, `useradd` and `install`.
 ### What it does
 
 1. **Checks** its options: an `https://` controller URL, a pin, a role, no targets for a gateway, a
-   readable token file.
+   readable token file, and `--firewall` only as `ufw` for a gateway, with a range as `<from>-<to>`.
 2. **Downloads and verifies** the five release files for the host's architecture from
    `/dl/<version>/`, as the global script does. With `--verify-only`, it stops here.
 3. **Installs**, as root: the user `rpmgr`, `/etc/rpmgr`, `/var/lib/rpmgr`, the updater's state
@@ -200,6 +202,8 @@ the global script needs, and `systemctl`, `useradd` and `install`.
    when that one is taken, never 9090.
 5. **Writes the boot file** `/etc/rpmgr/<role>.yaml` with the controller URL and the admin
    listener, if the file does not exist ([Boot files](../reference/boot-files.md)).
+   With `--firewall ufw` it adds the section `firewall:` with `backend: ufw` and the range to the
+   boot file, unless the file has one, which it keeps.
 6. **A connector's local policy:** writes `/etc/rpmgr/policy.yaml` if it does not exist, allowing
    nothing, then adds the denied targets and after them the allowed ones, so that an allowed target
    never stands without the denials that narrow it.
@@ -208,6 +212,9 @@ the global script needs, and `systemctl`, `useradd` and `install`.
    already, raises the floor and the release number the updater keeps to those of this release,
    never lowering them, and writes the units `rpmgr-update.path` and `rpmgr-update.service`
    ([10](../../10-operations.md#hardened-systemd-units)).
+   With `--firewall ufw` the binary also writes the helper's bounds file `/etc/rpmgr/firewall.json`
+   from the boot file, makes `/var/lib/rpmgr/firewall`, and writes the units
+   `rpmgr-firewall.path` and `rpmgr-firewall.service`.
 8. **Host tuning:** writes `/etc/sysctl.d/60-rpmgr.conf` with the UDP buffers QUIC needs, and with
    `--tcp-bbr` BBR. It applies them at once, raising a buffer only where it is lower, or says that
    the file applies at the next boot. To keep larger buffers after a boot, set them in a file that
@@ -221,7 +228,8 @@ the global script needs, and `systemctl`, `useradd` and `install`.
     connections, then `systemctl daemon-reload` and
     `systemctl enable --now rpmgr-<role>`, and enables the updater: `systemctl enable
     rpmgr-update.service`, which runs once at every boot, and `systemctl enable --now
-    rpmgr-update.path`, which starts it when the agent has downloaded a release.
+    rpmgr-update.path`, which starts it when the agent has downloaded a release. With
+    `--firewall ufw` it enables `rpmgr-firewall.service` and `rpmgr-firewall.path` as well.
 
 It ends with a line such as:
 

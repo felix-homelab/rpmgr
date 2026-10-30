@@ -11,6 +11,7 @@
 #     [--role gateway|connector] [--variant full|connector]
 #     [--allow-target <target>]... [--deny-target <target>]...
 #     [--token-file <file>] [--tcp-bbr]
+#     [--firewall ufw [--firewall-max-range <from>-<to>]]
 #     [--verify-only]
 #
 # Run it from a file, not piped into sudo: sudo-rs, Ubuntu's sudo since 25.10, passes nothing typed
@@ -27,7 +28,7 @@ STATE=${RPMGR_INSTALL_STATE:-/var/lib/rpmgr-update}
 die() { echo "rpmgr install: $*" >&2; exit 1; }
 say() { echo "rpmgr install: $*" >&2; }
 
-controller='' pin='' role=connector variant='' token_file='' bbr=0 verify_only=0 targets='' denied=''
+controller='' pin='' role=connector variant='' token_file='' bbr=0 verify_only=0 targets='' denied='' firewall='' fw_range=''
 nl='
 '
 while [ $# -gt 0 ]; do
@@ -45,6 +46,8 @@ while [ $# -gt 0 ]; do
       denied="$denied$2
 "; shift 2 ;;
     --token-file) [ $# -ge 2 ] || die "--token-file needs a file"; token_file=$2; shift 2 ;;
+    --firewall) [ $# -ge 2 ] || die "--firewall needs ufw"; firewall=$2; shift 2 ;;
+    --firewall-max-range) [ $# -ge 2 ] || die "--firewall-max-range needs <from>-<to>"; fw_range=$2; shift 2 ;;
     --tcp-bbr) bbr=1; shift ;;
     --verify-only) verify_only=1; shift ;;
     *) die "unknown argument $1" ;;
@@ -59,6 +62,12 @@ case $variant in '' | full | connector) ;; *) die "--variant must be full or con
 {{template "variant" .}}
 if [ "$variant" = connector ] && [ "$role" != connector ]; then die "the connector-only build runs no $role; use --variant full"; fi
 if [ "$role" = gateway ] && [ -n "$targets$denied" ]; then die "a gateway has no local policy for --allow-target or --deny-target"; fi
+# ufw handed to rpmgr for the port pools (D152): a gateway's, with the largest range of pools it may open.
+case $firewall in '' | ufw) ;; *) die "--firewall must be ufw, the only firewall rpmgr manages" ;; esac
+if [ -n "$firewall" ] && [ "$role" != gateway ]; then die "a $role has no port pools to open: --firewall is a gateway's"; fi
+if [ -n "$fw_range" ] && [ -z "$firewall" ]; then die "--firewall-max-range needs --firewall ufw"; fi
+case $fw_range in '' | [1-9]*-[1-9]*) ;; *) die "--firewall-max-range must be <from>-<to>, such as 20000-29999" ;; esac
+case $fw_range in *[!0-9-]*) die "--firewall-max-range must be <from>-<to>, such as 20000-29999" ;; esac
 if [ -n "$token_file" ] && [ ! -r "$token_file" ]; then die "cannot read --token-file $token_file"; fi
 
 for tool in curl openssl sed grep date dd od wc head cut tr; do
@@ -130,6 +139,28 @@ if [ ! -f "$boot" ]; then
   chmod 0644 "$boot"
 fi
 
+# The firewall section goes into the boot file, a new one or an old one that has none; the helper's
+# bounds, the directory and the units come from the boot file, by `rpmgr firewall install` below.
+if [ -n "$firewall" ]; then
+  if grep -q '^firewall:' "$boot"; then
+    # The section is the operator's: it stays as it is, and the script says where it differs.
+    cur=$(sed -n "s/^  max_range:[[:space:]]*['\"]\{0,1\}\([0-9-]*\).*/\1/p" "$boot" | head -n 1)
+    if [ -n "$fw_range" ] && [ "$cur" != "$fw_range" ]; then
+      say "the firewall section of $boot has max_range '${cur:-none}', not the $fw_range asked for: it stays as it is; edit $boot to change it"
+    else
+      say "keeping the firewall section of $boot"
+    fi
+  else
+    # A boot file that does not end in a newline would run the section into its last line.
+    if [ -s "$boot" ] && [ -n "$(tail -c 1 "$boot")" ]; then echo >>"$boot"; fi
+    {
+      echo "firewall:"
+      echo "  backend: $firewall"
+      if [ -n "$fw_range" ]; then echo "  max_range: '$fw_range'"; fi
+    } >>"$boot"
+  fi
+fi
+
 if [ "$role" = connector ]; then
   policy=/etc/rpmgr/policy.yaml
   if [ ! -f "$policy" ]; then
@@ -159,6 +190,9 @@ fi
 # updater's units, which are enabled with the role's below.
 "$BIN" updater install --state "$STATE" --path "$BIN" --role "$role" --seq "$seq" --floor "$VERSION" >/dev/null ||
   die "cannot install the updater's state and units"
+if [ -n "$firewall" ]; then
+  "$BIN" firewall install --role "$role" --bin "$BIN" >/dev/null || die "cannot install the firewall helper's files and units"
+fi
 
 # Host tuning (docs/03-connections.md, "Host tuning applied by the installer"). The file always
 # holds the 7 MiB UDP buffers quic-go asks for, whatever the host has now, so that a re-run keeps
@@ -214,5 +248,9 @@ systemctl daemon-reload
 # enabled, and checks that when it starts.
 systemctl enable rpmgr-update.service # its run at boot finishes an update a reboot interrupted
 systemctl enable --now rpmgr-update.path
+if [ -n "$firewall" ]; then
+  systemctl enable rpmgr-firewall.service # its run at boot, after ufw
+  systemctl enable --now rpmgr-firewall.path
+fi
 systemctl enable --now "rpmgr-$role"
 say "rpmgr $VERSION runs as rpmgr-$role; admin listener 127.0.0.1:$port"

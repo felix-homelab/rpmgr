@@ -199,11 +199,22 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   // Gateways.
   await open(page, "Gateways", "Gateway groups");
   await shot(page, "gateways");
+  // The instance has no gateway that hands its ufw to rpmgr and no port pool: the group's gateway
+  // reports an applied firewall and the group has one made-up pool, as the page shows them.
+  const listed = page.waitForResponse("**/rpmgr.v1.GatewayService/ListGateways");
+  await page.reload();
+  const real = (await (await listed).json()) as { gateways: { status?: object }[] };
+  const firewall = { state: "FIREWALL_STATE_APPLIED", reportTime: new Date().toISOString(), rules: ["80/tcp", "443/tcp", "443/udp", "20000:20099/tcp"] };
+  await page.route("**/rpmgr.v1.GatewayService/ListGateways", (route) => route.fulfill({ json: { gateways: real.gateways.map((g) => ({ ...g, status: { ...g.status, firewall } })) } }));
+  await page.route("**/rpmgr.v1.GatewayService/ListPortPools", (route) => route.fulfill({ json: { portPools: [
+    { id: "pp_demo", gatewayGroupId: new URL(page.url()).pathname.split("/").pop(), protocol: "PORT_PROTOCOL_TCP", portFrom: 20000, portTo: 20099 }] } }));
   await page.getByRole("link", { name: "default", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Gateway group default", level: 1 })).toBeVisible();
   await page.getByRole("listitem", { name: "Maintenance" }).getByRole("button", { name: "Preview" }).click();
   await page.waitForTimeout(1000);
   await shot(page, "gateway-group", true);
+  await page.unroute("**/rpmgr.v1.GatewayService/ListGateways");
+  await page.unroute("**/rpmgr.v1.GatewayService/ListPortPools");
 
   // Security and administration.
   await open(page, "Domains & certificates", "Domains & certificates");

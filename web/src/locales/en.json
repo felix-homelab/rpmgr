@@ -755,6 +755,7 @@
       "wss": "WSS hostname",
       "wssValue": "WSS: {{name}}",
       "state": "State",
+      "firewall": "Firewall",
       "version": "Version",
       "update": "Update",
       "lastSeen": "Last seen",
@@ -794,6 +795,17 @@
     "resetAsk": "Reset…",
     "ask": "Go back to the built-in page {{page}}?",
     "reset": "Use the built-in page"
+  },
+  "firewall": {
+    "off": "Off",
+    "applied": "Applied",
+    "failed": "Failed",
+    "unknown": "Not reported",
+    "rules_one": "{{count}} rule",
+    "rules_other": "{{count}} rules",
+    "refused": "Refused, outside the bounds: {{ports}}",
+    "poolOpen_one": "Open in the firewall of {{open}} of {{count}} gateway",
+    "poolOpen_other": "Open in the firewall of {{open}} of {{count}} gateways"
   },
   "pools": {
     "title": "Port pools",

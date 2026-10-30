@@ -500,7 +500,25 @@ rpmgr firewall <command>
 
 | Command | What it does |
 |---|---|
+| [`rpmgr firewall install`](#rpmgr-firewall-install) | Write the firewall helper's bounds from the boot file, its directory and its units, as root |
 | [`rpmgr firewall apply`](#rpmgr-firewall-apply) | Open the gateway's port ranges in ufw, inside the bounds, as root, and report the outcome |
+
+## rpmgr firewall install
+
+Write the firewall helper's bounds from the boot file, its directory and its units, as root.
+
+```text
+rpmgr firewall install [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--bin string` | `/usr/local/bin/rpmgr` | the installed binary |
+| `--etc string` | `/etc/rpmgr` | the boot files; the bounds file goes here |
+| `--lib string` | `/var/lib/rpmgr` | the state directory, whose firewall/ the gateway writes the desired file in |
+| `--no-units` |  | write no units, as on a host without systemd |
+| `--role string` | `gateway` | the role whose boot file names the firewall: gateway or all-in-one |
+| `--units string` | `/etc/systemd/system` | where the units rpmgr-firewall.path and rpmgr-firewall.service go |
 
 ## rpmgr firewall apply
 

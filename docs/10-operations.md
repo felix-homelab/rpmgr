@@ -445,15 +445,26 @@ The gateway's side and `rpmgr setup`:
   A second run writes the same files again. A host without `ufw` is no failure: setup says the
   firewall shows as failed until `ufw` is installed and active.
 
-What the next slice changes:
+The install script and the web UI:
 
-- **Guide pages:** [gateways](guide/gateways.md) (the pools' ports need no manual step when the
-  firewall is switched on; the provider's firewall stays the operator's), the
-  [quick start](guide/quick-start.md) (its `ufw allow` lines), the web UI's
-  [gateways page](guide/web-ui/gateways.md) (the firewall state of a gateway and of its pools),
-  the [setup](guide/install/setup.md) and [install script](guide/install/install-script.md) pages
-  (the flag), [troubleshooting](guide/operations/troubleshooting.md) (a failed firewall), the
-  [CLI](guide/reference/cli.md) and [files](guide/install/manual.md) references, and the CHANGELOG.
+- **`/install.sh --firewall ufw [--firewall-max-range <from>-<to>]`** (a gateway): adds the
+  `firewall:` section to the boot file unless it has one, runs `rpmgr firewall install` (hidden,
+  [D151](14-open-decisions.md#engineering); it writes the bounds file from the boot file, makes the
+  directory and writes the units, and enables nothing, as `rpmgr updater install` does) and
+  enables `rpmgr-firewall.service` and `rpmgr-firewall.path` after the updater's. Run again, the
+  script keeps the section it finds. An existing gateway host switches the firewall on by adding
+  the section to its boot file and running `rpmgr firewall install`, then enabling the two units.
+- **Web UI:** the gateway group's page shows the firewall state of each gateway (`Off`, `Applied`
+  with the number of rules, or `Failed` with the reason and the ports the helper refused; a gateway
+  that reports nothing is `Off`, an offline one a dash), and each port pool of the group shows in
+  how many of the gateways that manage their firewall its range is open
+  ([09](09-web-ui.md#gateways)).
+- **Guide pages:** [gateways](guide/gateways.md), the [quick start](guide/quick-start.md) (no
+  `ufw allow` for a host that has handed its `ufw` over), the web UI's
+  [gateways page](guide/web-ui/gateways.md), the [setup](guide/install/setup.md) and
+  [install script](guide/install/install-script.md) pages,
+  [troubleshooting](guide/operations/troubleshooting.md) (a failed firewall), and the
+  [CLI](guide/reference/cli.md) and [files](guide/install/manual.md) references.
 
 ### Windows and macOS connectors (Phase 2)
 

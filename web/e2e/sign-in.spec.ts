@@ -197,6 +197,29 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expectAccessible(page);
   await policyForm.getByRole("button", { name: "Cancel" }).click();
 
+  // The firewall column of a gateway group's page (D152): the instance has no gateway that hands
+  // its ufw to rpmgr, so the three states are made up on top of the real list, each on a copy of the
+  // group's gateway. The page, with them and with the pools' lines, stays accessible.
+  const fakeFirewalls = [
+    { state: "FIREWALL_STATE_APPLIED", rules: ["80/tcp", "443/tcp", "443/udp"] },
+    { state: "FIREWALL_STATE_FAILED", reason: "ufw is inactive; nothing was changed", refused: ["22/tcp"] },
+    { state: "FIREWALL_STATE_OFF", reason: "switched off; ufw is not installed" },
+  ];
+  const listed = page.waitForResponse("**/rpmgr.v1.GatewayService/ListGateways");
+  await page.goto("/gateways");
+  const real = (await (await listed).json()) as { gateways: { status?: object }[] };
+  await page.route("**/rpmgr.v1.GatewayService/ListGateways", (route) => route.fulfill({ json: { gateways: [
+    ...real.gateways,
+    ...fakeFirewalls.map((firewall, i) => ({ ...real.gateways[0], id: `gtw_fake${i}`, name: `fw-${i + 1}`, slot: 10 + i, status: { ...real.gateways[0]!.status, firewall } })),
+  ] } }));
+  await page.getByRole("link", { name: "default", exact: true }).click();
+  const gatewayRows = page.getByRole("region", { name: "Gateways" }).getByRole("row");
+  await expect(gatewayRows.filter({ hasText: "fw-1" })).toContainText("Applied3 rules");
+  await expect(gatewayRows.filter({ hasText: "fw-2" })).toContainText("Failedufw is inactive; nothing was changedRefused, outside the bounds: 22/tcp");
+  await expect(gatewayRows.filter({ hasText: "fw-3" })).toContainText("Offswitched off; ufw is not installed");
+  await expectAccessible(page);
+  await page.unroute("**/rpmgr.v1.GatewayService/ListGateways");
+
   // On a wide screen every page fills the window beside the sidebar, and the route form stands in
   // two columns, which a phone stacks.
   const desktop = page.viewportSize()!;
