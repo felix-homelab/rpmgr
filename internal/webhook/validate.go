@@ -5,6 +5,7 @@ package webhook
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
@@ -15,6 +16,8 @@ const (
 	MaxURL        = 2048 // bytes of a receiver's URL
 	MaxEventTypes = 32   // event types an endpoint names
 	MaxEventType  = 64   // bytes of one event type
+	// MaxPerOrg is how many endpoints an org, or the instance, has.
+	MaxPerOrg = 20
 )
 
 // eventType is an event type or a prefix of one: lower-case words joined by dots and underscores,
@@ -42,6 +45,28 @@ func ValidateURL(raw string) error {
 		return errors.New("webhook: the url must not hold credentials")
 	case u.Fragment != "" || strings.Contains(raw, "#"):
 		return errors.New("webhook: the url must not have a fragment")
+	}
+	return nil
+}
+
+// ValidateOrgURL is ValidateURL for an org's endpoint, which also names no host that can only be
+// the controller's own side: localhost, or a loopback, link-local or unspecified address as a
+// literal. It tells the person who sets it early; the guard that checks every resolved address
+// when the controller dials stays the defence.
+func ValidateOrgURL(raw string) error {
+	if err := ValidateURL(raw); err != nil {
+		return err
+	}
+	u, _ := url.Parse(raw)
+	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return errors.New("webhook: the url names localhost, which an org's endpoint cannot reach")
+	}
+	if a, err := netip.ParseAddr(host); err == nil {
+		a = a.Unmap().WithZone("")
+		if a.IsLoopback() || a.IsLinkLocalUnicast() || a.IsUnspecified() {
+			return errors.New("webhook: the url names a loopback, link-local or unspecified address, which an org's endpoint cannot reach")
+		}
 	}
 	return nil
 }

@@ -35,10 +35,13 @@ import (
 // The limits of a delivery (docs/03-connections.md, "Timeouts, keepalive and backoff") and the
 // maximum age of a signature receivers accept (docs/04-security.md).
 const (
-	Timeout   = 5 * time.Second
-	MaxBody   = 64 << 10
-	MaxAnswer = 64 << 10
-	MaxAge    = 5 * time.Minute
+	Timeout = 5 * time.Second
+	// DialTimeout bounds one address of a receiver, so that a blackholed first address leaves
+	// time for the next.
+	DialTimeout = 2 * time.Second
+	MaxBody     = 64 << 10
+	MaxAnswer   = 64 << 10
+	MaxAge      = 5 * time.Minute
 )
 
 // The headers of a delivery.
@@ -243,11 +246,13 @@ func (s *Sender) dial(ctx context.Context, addr string, p egress.Policy, proxy *
 		}
 		target := net.JoinHostPort(a.Unmap().String(), port)
 		var conn net.Conn
+		actx, cancel := context.WithTimeout(ctx, DialTimeout)
 		if proxy == nil {
-			conn, err = (&net.Dialer{Control: p.Control}).DialContext(ctx, "tcp", target)
+			conn, err = (&net.Dialer{Control: p.Control}).DialContext(actx, "tcp", target)
 		} else {
-			conn, err = connect(ctx, proxy, target)
+			conn, err = connect(actx, proxy, target)
 		}
+		cancel()
 		if err == nil {
 			return conn, nil
 		}

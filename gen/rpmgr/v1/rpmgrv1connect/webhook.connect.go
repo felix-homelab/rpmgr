@@ -25,6 +25,8 @@ const _ = connect.IsAtLeastVersion1_13_0
 const (
 	// WebhookServiceName is the fully-qualified name of the WebhookService service.
 	WebhookServiceName = "rpmgr.v1.WebhookService"
+	// InstanceWebhookServiceName is the fully-qualified name of the InstanceWebhookService service.
+	InstanceWebhookServiceName = "rpmgr.v1.InstanceWebhookService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -59,6 +61,30 @@ const (
 	// WebhookServiceTestWebhookProcedure is the fully-qualified name of the WebhookService's
 	// TestWebhook RPC.
 	WebhookServiceTestWebhookProcedure = "/rpmgr.v1.WebhookService/TestWebhook"
+	// InstanceWebhookServiceCreateInstanceWebhookProcedure is the fully-qualified name of the
+	// InstanceWebhookService's CreateInstanceWebhook RPC.
+	InstanceWebhookServiceCreateInstanceWebhookProcedure = "/rpmgr.v1.InstanceWebhookService/CreateInstanceWebhook"
+	// InstanceWebhookServiceGetInstanceWebhookProcedure is the fully-qualified name of the
+	// InstanceWebhookService's GetInstanceWebhook RPC.
+	InstanceWebhookServiceGetInstanceWebhookProcedure = "/rpmgr.v1.InstanceWebhookService/GetInstanceWebhook"
+	// InstanceWebhookServiceListInstanceWebhooksProcedure is the fully-qualified name of the
+	// InstanceWebhookService's ListInstanceWebhooks RPC.
+	InstanceWebhookServiceListInstanceWebhooksProcedure = "/rpmgr.v1.InstanceWebhookService/ListInstanceWebhooks"
+	// InstanceWebhookServiceUpdateInstanceWebhookProcedure is the fully-qualified name of the
+	// InstanceWebhookService's UpdateInstanceWebhook RPC.
+	InstanceWebhookServiceUpdateInstanceWebhookProcedure = "/rpmgr.v1.InstanceWebhookService/UpdateInstanceWebhook"
+	// InstanceWebhookServiceDeleteInstanceWebhookProcedure is the fully-qualified name of the
+	// InstanceWebhookService's DeleteInstanceWebhook RPC.
+	InstanceWebhookServiceDeleteInstanceWebhookProcedure = "/rpmgr.v1.InstanceWebhookService/DeleteInstanceWebhook"
+	// InstanceWebhookServiceRotateInstanceWebhookSecretProcedure is the fully-qualified name of the
+	// InstanceWebhookService's RotateInstanceWebhookSecret RPC.
+	InstanceWebhookServiceRotateInstanceWebhookSecretProcedure = "/rpmgr.v1.InstanceWebhookService/RotateInstanceWebhookSecret"
+	// InstanceWebhookServiceListInstanceWebhookDeliveriesProcedure is the fully-qualified name of the
+	// InstanceWebhookService's ListInstanceWebhookDeliveries RPC.
+	InstanceWebhookServiceListInstanceWebhookDeliveriesProcedure = "/rpmgr.v1.InstanceWebhookService/ListInstanceWebhookDeliveries"
+	// InstanceWebhookServiceTestInstanceWebhookProcedure is the fully-qualified name of the
+	// InstanceWebhookService's TestInstanceWebhook RPC.
+	InstanceWebhookServiceTestInstanceWebhookProcedure = "/rpmgr.v1.InstanceWebhookService/TestInstanceWebhook"
 )
 
 // WebhookServiceClient is a client for the rpmgr.v1.WebhookService service.
@@ -339,4 +365,284 @@ func (UnimplementedWebhookServiceHandler) ListWebhookDeliveries(context.Context,
 
 func (UnimplementedWebhookServiceHandler) TestWebhook(context.Context, *connect.Request[v1.TestWebhookRequest]) (*connect.Response[v1.TestWebhookResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.WebhookService.TestWebhook is not implemented"))
+}
+
+// InstanceWebhookServiceClient is a client for the rpmgr.v1.InstanceWebhookService service.
+type InstanceWebhookServiceClient interface {
+	// CreateInstanceWebhook adds an endpoint and returns its secret, once.
+	CreateInstanceWebhook(context.Context, *connect.Request[v1.CreateInstanceWebhookRequest]) (*connect.Response[v1.CreateInstanceWebhookResponse], error)
+	// GetInstanceWebhook returns an endpoint, without its secret.
+	GetInstanceWebhook(context.Context, *connect.Request[v1.GetInstanceWebhookRequest]) (*connect.Response[v1.GetInstanceWebhookResponse], error)
+	// ListInstanceWebhooks lists the instance's endpoints by ID, without their secrets.
+	ListInstanceWebhooks(context.Context, *connect.Request[v1.ListInstanceWebhooksRequest]) (*connect.Response[v1.ListInstanceWebhooksResponse], error)
+	// UpdateInstanceWebhook changes an endpoint's URL, event types or enabled flag.
+	UpdateInstanceWebhook(context.Context, *connect.Request[v1.UpdateInstanceWebhookRequest]) (*connect.Response[v1.UpdateInstanceWebhookResponse], error)
+	// DeleteInstanceWebhook removes an endpoint and its deliveries.
+	DeleteInstanceWebhook(context.Context, *connect.Request[v1.DeleteInstanceWebhookRequest]) (*connect.Response[v1.DeleteInstanceWebhookResponse], error)
+	// RotateInstanceWebhookSecret makes a new secret and returns it, once; the old one signs too
+	// for the period in docs/03-connections.md.
+	RotateInstanceWebhookSecret(context.Context, *connect.Request[v1.RotateInstanceWebhookSecretRequest]) (*connect.Response[v1.RotateInstanceWebhookSecretResponse], error)
+	// ListInstanceWebhookDeliveries lists an endpoint's deliveries, the newest first.
+	ListInstanceWebhookDeliveries(context.Context, *connect.Request[v1.ListInstanceWebhookDeliveriesRequest]) (*connect.Response[v1.ListInstanceWebhookDeliveriesResponse], error)
+	// TestInstanceWebhook sends a webhook.test event to an endpoint now and returns what the
+	// receiver answered. It is audited.
+	TestInstanceWebhook(context.Context, *connect.Request[v1.TestInstanceWebhookRequest]) (*connect.Response[v1.TestInstanceWebhookResponse], error)
+}
+
+// NewInstanceWebhookServiceClient constructs a client for the rpmgr.v1.InstanceWebhookService
+// service. By default, it uses the Connect protocol with the binary Protobuf Codec, asks for
+// gzipped responses, and sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply
+// the connect.WithGRPC() or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewInstanceWebhookServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) InstanceWebhookServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	instanceWebhookServiceMethods := v1.File_rpmgr_v1_webhook_proto.Services().ByName("InstanceWebhookService").Methods()
+	return &instanceWebhookServiceClient{
+		createInstanceWebhook: connect.NewClient[v1.CreateInstanceWebhookRequest, v1.CreateInstanceWebhookResponse](
+			httpClient,
+			baseURL+InstanceWebhookServiceCreateInstanceWebhookProcedure,
+			connect.WithSchema(instanceWebhookServiceMethods.ByName("CreateInstanceWebhook")),
+			connect.WithClientOptions(opts...),
+		),
+		getInstanceWebhook: connect.NewClient[v1.GetInstanceWebhookRequest, v1.GetInstanceWebhookResponse](
+			httpClient,
+			baseURL+InstanceWebhookServiceGetInstanceWebhookProcedure,
+			connect.WithSchema(instanceWebhookServiceMethods.ByName("GetInstanceWebhook")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		listInstanceWebhooks: connect.NewClient[v1.ListInstanceWebhooksRequest, v1.ListInstanceWebhooksResponse](
+			httpClient,
+			baseURL+InstanceWebhookServiceListInstanceWebhooksProcedure,
+			connect.WithSchema(instanceWebhookServiceMethods.ByName("ListInstanceWebhooks")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		updateInstanceWebhook: connect.NewClient[v1.UpdateInstanceWebhookRequest, v1.UpdateInstanceWebhookResponse](
+			httpClient,
+			baseURL+InstanceWebhookServiceUpdateInstanceWebhookProcedure,
+			connect.WithSchema(instanceWebhookServiceMethods.ByName("UpdateInstanceWebhook")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteInstanceWebhook: connect.NewClient[v1.DeleteInstanceWebhookRequest, v1.DeleteInstanceWebhookResponse](
+			httpClient,
+			baseURL+InstanceWebhookServiceDeleteInstanceWebhookProcedure,
+			connect.WithSchema(instanceWebhookServiceMethods.ByName("DeleteInstanceWebhook")),
+			connect.WithClientOptions(opts...),
+		),
+		rotateInstanceWebhookSecret: connect.NewClient[v1.RotateInstanceWebhookSecretRequest, v1.RotateInstanceWebhookSecretResponse](
+			httpClient,
+			baseURL+InstanceWebhookServiceRotateInstanceWebhookSecretProcedure,
+			connect.WithSchema(instanceWebhookServiceMethods.ByName("RotateInstanceWebhookSecret")),
+			connect.WithClientOptions(opts...),
+		),
+		listInstanceWebhookDeliveries: connect.NewClient[v1.ListInstanceWebhookDeliveriesRequest, v1.ListInstanceWebhookDeliveriesResponse](
+			httpClient,
+			baseURL+InstanceWebhookServiceListInstanceWebhookDeliveriesProcedure,
+			connect.WithSchema(instanceWebhookServiceMethods.ByName("ListInstanceWebhookDeliveries")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		testInstanceWebhook: connect.NewClient[v1.TestInstanceWebhookRequest, v1.TestInstanceWebhookResponse](
+			httpClient,
+			baseURL+InstanceWebhookServiceTestInstanceWebhookProcedure,
+			connect.WithSchema(instanceWebhookServiceMethods.ByName("TestInstanceWebhook")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// instanceWebhookServiceClient implements InstanceWebhookServiceClient.
+type instanceWebhookServiceClient struct {
+	createInstanceWebhook         *connect.Client[v1.CreateInstanceWebhookRequest, v1.CreateInstanceWebhookResponse]
+	getInstanceWebhook            *connect.Client[v1.GetInstanceWebhookRequest, v1.GetInstanceWebhookResponse]
+	listInstanceWebhooks          *connect.Client[v1.ListInstanceWebhooksRequest, v1.ListInstanceWebhooksResponse]
+	updateInstanceWebhook         *connect.Client[v1.UpdateInstanceWebhookRequest, v1.UpdateInstanceWebhookResponse]
+	deleteInstanceWebhook         *connect.Client[v1.DeleteInstanceWebhookRequest, v1.DeleteInstanceWebhookResponse]
+	rotateInstanceWebhookSecret   *connect.Client[v1.RotateInstanceWebhookSecretRequest, v1.RotateInstanceWebhookSecretResponse]
+	listInstanceWebhookDeliveries *connect.Client[v1.ListInstanceWebhookDeliveriesRequest, v1.ListInstanceWebhookDeliveriesResponse]
+	testInstanceWebhook           *connect.Client[v1.TestInstanceWebhookRequest, v1.TestInstanceWebhookResponse]
+}
+
+// CreateInstanceWebhook calls rpmgr.v1.InstanceWebhookService.CreateInstanceWebhook.
+func (c *instanceWebhookServiceClient) CreateInstanceWebhook(ctx context.Context, req *connect.Request[v1.CreateInstanceWebhookRequest]) (*connect.Response[v1.CreateInstanceWebhookResponse], error) {
+	return c.createInstanceWebhook.CallUnary(ctx, req)
+}
+
+// GetInstanceWebhook calls rpmgr.v1.InstanceWebhookService.GetInstanceWebhook.
+func (c *instanceWebhookServiceClient) GetInstanceWebhook(ctx context.Context, req *connect.Request[v1.GetInstanceWebhookRequest]) (*connect.Response[v1.GetInstanceWebhookResponse], error) {
+	return c.getInstanceWebhook.CallUnary(ctx, req)
+}
+
+// ListInstanceWebhooks calls rpmgr.v1.InstanceWebhookService.ListInstanceWebhooks.
+func (c *instanceWebhookServiceClient) ListInstanceWebhooks(ctx context.Context, req *connect.Request[v1.ListInstanceWebhooksRequest]) (*connect.Response[v1.ListInstanceWebhooksResponse], error) {
+	return c.listInstanceWebhooks.CallUnary(ctx, req)
+}
+
+// UpdateInstanceWebhook calls rpmgr.v1.InstanceWebhookService.UpdateInstanceWebhook.
+func (c *instanceWebhookServiceClient) UpdateInstanceWebhook(ctx context.Context, req *connect.Request[v1.UpdateInstanceWebhookRequest]) (*connect.Response[v1.UpdateInstanceWebhookResponse], error) {
+	return c.updateInstanceWebhook.CallUnary(ctx, req)
+}
+
+// DeleteInstanceWebhook calls rpmgr.v1.InstanceWebhookService.DeleteInstanceWebhook.
+func (c *instanceWebhookServiceClient) DeleteInstanceWebhook(ctx context.Context, req *connect.Request[v1.DeleteInstanceWebhookRequest]) (*connect.Response[v1.DeleteInstanceWebhookResponse], error) {
+	return c.deleteInstanceWebhook.CallUnary(ctx, req)
+}
+
+// RotateInstanceWebhookSecret calls rpmgr.v1.InstanceWebhookService.RotateInstanceWebhookSecret.
+func (c *instanceWebhookServiceClient) RotateInstanceWebhookSecret(ctx context.Context, req *connect.Request[v1.RotateInstanceWebhookSecretRequest]) (*connect.Response[v1.RotateInstanceWebhookSecretResponse], error) {
+	return c.rotateInstanceWebhookSecret.CallUnary(ctx, req)
+}
+
+// ListInstanceWebhookDeliveries calls
+// rpmgr.v1.InstanceWebhookService.ListInstanceWebhookDeliveries.
+func (c *instanceWebhookServiceClient) ListInstanceWebhookDeliveries(ctx context.Context, req *connect.Request[v1.ListInstanceWebhookDeliveriesRequest]) (*connect.Response[v1.ListInstanceWebhookDeliveriesResponse], error) {
+	return c.listInstanceWebhookDeliveries.CallUnary(ctx, req)
+}
+
+// TestInstanceWebhook calls rpmgr.v1.InstanceWebhookService.TestInstanceWebhook.
+func (c *instanceWebhookServiceClient) TestInstanceWebhook(ctx context.Context, req *connect.Request[v1.TestInstanceWebhookRequest]) (*connect.Response[v1.TestInstanceWebhookResponse], error) {
+	return c.testInstanceWebhook.CallUnary(ctx, req)
+}
+
+// InstanceWebhookServiceHandler is an implementation of the rpmgr.v1.InstanceWebhookService
+// service.
+type InstanceWebhookServiceHandler interface {
+	// CreateInstanceWebhook adds an endpoint and returns its secret, once.
+	CreateInstanceWebhook(context.Context, *connect.Request[v1.CreateInstanceWebhookRequest]) (*connect.Response[v1.CreateInstanceWebhookResponse], error)
+	// GetInstanceWebhook returns an endpoint, without its secret.
+	GetInstanceWebhook(context.Context, *connect.Request[v1.GetInstanceWebhookRequest]) (*connect.Response[v1.GetInstanceWebhookResponse], error)
+	// ListInstanceWebhooks lists the instance's endpoints by ID, without their secrets.
+	ListInstanceWebhooks(context.Context, *connect.Request[v1.ListInstanceWebhooksRequest]) (*connect.Response[v1.ListInstanceWebhooksResponse], error)
+	// UpdateInstanceWebhook changes an endpoint's URL, event types or enabled flag.
+	UpdateInstanceWebhook(context.Context, *connect.Request[v1.UpdateInstanceWebhookRequest]) (*connect.Response[v1.UpdateInstanceWebhookResponse], error)
+	// DeleteInstanceWebhook removes an endpoint and its deliveries.
+	DeleteInstanceWebhook(context.Context, *connect.Request[v1.DeleteInstanceWebhookRequest]) (*connect.Response[v1.DeleteInstanceWebhookResponse], error)
+	// RotateInstanceWebhookSecret makes a new secret and returns it, once; the old one signs too
+	// for the period in docs/03-connections.md.
+	RotateInstanceWebhookSecret(context.Context, *connect.Request[v1.RotateInstanceWebhookSecretRequest]) (*connect.Response[v1.RotateInstanceWebhookSecretResponse], error)
+	// ListInstanceWebhookDeliveries lists an endpoint's deliveries, the newest first.
+	ListInstanceWebhookDeliveries(context.Context, *connect.Request[v1.ListInstanceWebhookDeliveriesRequest]) (*connect.Response[v1.ListInstanceWebhookDeliveriesResponse], error)
+	// TestInstanceWebhook sends a webhook.test event to an endpoint now and returns what the
+	// receiver answered. It is audited.
+	TestInstanceWebhook(context.Context, *connect.Request[v1.TestInstanceWebhookRequest]) (*connect.Response[v1.TestInstanceWebhookResponse], error)
+}
+
+// NewInstanceWebhookServiceHandler builds an HTTP handler from the service implementation. It
+// returns the path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewInstanceWebhookServiceHandler(svc InstanceWebhookServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	instanceWebhookServiceMethods := v1.File_rpmgr_v1_webhook_proto.Services().ByName("InstanceWebhookService").Methods()
+	instanceWebhookServiceCreateInstanceWebhookHandler := connect.NewUnaryHandler(
+		InstanceWebhookServiceCreateInstanceWebhookProcedure,
+		svc.CreateInstanceWebhook,
+		connect.WithSchema(instanceWebhookServiceMethods.ByName("CreateInstanceWebhook")),
+		connect.WithHandlerOptions(opts...),
+	)
+	instanceWebhookServiceGetInstanceWebhookHandler := connect.NewUnaryHandler(
+		InstanceWebhookServiceGetInstanceWebhookProcedure,
+		svc.GetInstanceWebhook,
+		connect.WithSchema(instanceWebhookServiceMethods.ByName("GetInstanceWebhook")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	instanceWebhookServiceListInstanceWebhooksHandler := connect.NewUnaryHandler(
+		InstanceWebhookServiceListInstanceWebhooksProcedure,
+		svc.ListInstanceWebhooks,
+		connect.WithSchema(instanceWebhookServiceMethods.ByName("ListInstanceWebhooks")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	instanceWebhookServiceUpdateInstanceWebhookHandler := connect.NewUnaryHandler(
+		InstanceWebhookServiceUpdateInstanceWebhookProcedure,
+		svc.UpdateInstanceWebhook,
+		connect.WithSchema(instanceWebhookServiceMethods.ByName("UpdateInstanceWebhook")),
+		connect.WithHandlerOptions(opts...),
+	)
+	instanceWebhookServiceDeleteInstanceWebhookHandler := connect.NewUnaryHandler(
+		InstanceWebhookServiceDeleteInstanceWebhookProcedure,
+		svc.DeleteInstanceWebhook,
+		connect.WithSchema(instanceWebhookServiceMethods.ByName("DeleteInstanceWebhook")),
+		connect.WithHandlerOptions(opts...),
+	)
+	instanceWebhookServiceRotateInstanceWebhookSecretHandler := connect.NewUnaryHandler(
+		InstanceWebhookServiceRotateInstanceWebhookSecretProcedure,
+		svc.RotateInstanceWebhookSecret,
+		connect.WithSchema(instanceWebhookServiceMethods.ByName("RotateInstanceWebhookSecret")),
+		connect.WithHandlerOptions(opts...),
+	)
+	instanceWebhookServiceListInstanceWebhookDeliveriesHandler := connect.NewUnaryHandler(
+		InstanceWebhookServiceListInstanceWebhookDeliveriesProcedure,
+		svc.ListInstanceWebhookDeliveries,
+		connect.WithSchema(instanceWebhookServiceMethods.ByName("ListInstanceWebhookDeliveries")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	instanceWebhookServiceTestInstanceWebhookHandler := connect.NewUnaryHandler(
+		InstanceWebhookServiceTestInstanceWebhookProcedure,
+		svc.TestInstanceWebhook,
+		connect.WithSchema(instanceWebhookServiceMethods.ByName("TestInstanceWebhook")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/rpmgr.v1.InstanceWebhookService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case InstanceWebhookServiceCreateInstanceWebhookProcedure:
+			instanceWebhookServiceCreateInstanceWebhookHandler.ServeHTTP(w, r)
+		case InstanceWebhookServiceGetInstanceWebhookProcedure:
+			instanceWebhookServiceGetInstanceWebhookHandler.ServeHTTP(w, r)
+		case InstanceWebhookServiceListInstanceWebhooksProcedure:
+			instanceWebhookServiceListInstanceWebhooksHandler.ServeHTTP(w, r)
+		case InstanceWebhookServiceUpdateInstanceWebhookProcedure:
+			instanceWebhookServiceUpdateInstanceWebhookHandler.ServeHTTP(w, r)
+		case InstanceWebhookServiceDeleteInstanceWebhookProcedure:
+			instanceWebhookServiceDeleteInstanceWebhookHandler.ServeHTTP(w, r)
+		case InstanceWebhookServiceRotateInstanceWebhookSecretProcedure:
+			instanceWebhookServiceRotateInstanceWebhookSecretHandler.ServeHTTP(w, r)
+		case InstanceWebhookServiceListInstanceWebhookDeliveriesProcedure:
+			instanceWebhookServiceListInstanceWebhookDeliveriesHandler.ServeHTTP(w, r)
+		case InstanceWebhookServiceTestInstanceWebhookProcedure:
+			instanceWebhookServiceTestInstanceWebhookHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedInstanceWebhookServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedInstanceWebhookServiceHandler struct{}
+
+func (UnimplementedInstanceWebhookServiceHandler) CreateInstanceWebhook(context.Context, *connect.Request[v1.CreateInstanceWebhookRequest]) (*connect.Response[v1.CreateInstanceWebhookResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.InstanceWebhookService.CreateInstanceWebhook is not implemented"))
+}
+
+func (UnimplementedInstanceWebhookServiceHandler) GetInstanceWebhook(context.Context, *connect.Request[v1.GetInstanceWebhookRequest]) (*connect.Response[v1.GetInstanceWebhookResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.InstanceWebhookService.GetInstanceWebhook is not implemented"))
+}
+
+func (UnimplementedInstanceWebhookServiceHandler) ListInstanceWebhooks(context.Context, *connect.Request[v1.ListInstanceWebhooksRequest]) (*connect.Response[v1.ListInstanceWebhooksResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.InstanceWebhookService.ListInstanceWebhooks is not implemented"))
+}
+
+func (UnimplementedInstanceWebhookServiceHandler) UpdateInstanceWebhook(context.Context, *connect.Request[v1.UpdateInstanceWebhookRequest]) (*connect.Response[v1.UpdateInstanceWebhookResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.InstanceWebhookService.UpdateInstanceWebhook is not implemented"))
+}
+
+func (UnimplementedInstanceWebhookServiceHandler) DeleteInstanceWebhook(context.Context, *connect.Request[v1.DeleteInstanceWebhookRequest]) (*connect.Response[v1.DeleteInstanceWebhookResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.InstanceWebhookService.DeleteInstanceWebhook is not implemented"))
+}
+
+func (UnimplementedInstanceWebhookServiceHandler) RotateInstanceWebhookSecret(context.Context, *connect.Request[v1.RotateInstanceWebhookSecretRequest]) (*connect.Response[v1.RotateInstanceWebhookSecretResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.InstanceWebhookService.RotateInstanceWebhookSecret is not implemented"))
+}
+
+func (UnimplementedInstanceWebhookServiceHandler) ListInstanceWebhookDeliveries(context.Context, *connect.Request[v1.ListInstanceWebhookDeliveriesRequest]) (*connect.Response[v1.ListInstanceWebhookDeliveriesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.InstanceWebhookService.ListInstanceWebhookDeliveries is not implemented"))
+}
+
+func (UnimplementedInstanceWebhookServiceHandler) TestInstanceWebhook(context.Context, *connect.Request[v1.TestInstanceWebhookRequest]) (*connect.Response[v1.TestInstanceWebhookResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.InstanceWebhookService.TestInstanceWebhook is not implemented"))
 }

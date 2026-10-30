@@ -81,6 +81,52 @@ service WebhookService {
   }
 }
 
+// InstanceWebhookService is the instance's webhook endpoints, which receive instance events:
+// releases and rollouts, shared-group gateways, the sinks' backlog and the controller's replicas
+// (docs/07-api.md, "Webhooks (Phase 2)"). Every method needs the Instance Admin role. An endpoint
+// of an org is NOT_FOUND here, and one of the instance is NOT_FOUND in WebhookService. Instance
+// endpoints may reach private networks and loopback (docs/04-security.md, "Webhooks and the egress
+// guard (Phase 2)").
+service InstanceWebhookService {
+  // CreateInstanceWebhook adds an endpoint and returns its secret, once.
+  rpc CreateInstanceWebhook(CreateInstanceWebhookRequest) returns (CreateInstanceWebhookResponse) {
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // GetInstanceWebhook returns an endpoint, without its secret.
+  rpc GetInstanceWebhook(GetInstanceWebhookRequest) returns (GetInstanceWebhookResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // ListInstanceWebhooks lists the instance's endpoints by ID, without their secrets.
+  rpc ListInstanceWebhooks(ListInstanceWebhooksRequest) returns (ListInstanceWebhooksResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // UpdateInstanceWebhook changes an endpoint's URL, event types or enabled flag.
+  rpc UpdateInstanceWebhook(UpdateInstanceWebhookRequest) returns (UpdateInstanceWebhookResponse) {
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // DeleteInstanceWebhook removes an endpoint and its deliveries.
+  rpc DeleteInstanceWebhook(DeleteInstanceWebhookRequest) returns (DeleteInstanceWebhookResponse) {
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // RotateInstanceWebhookSecret makes a new secret and returns it, once; the old one signs too
+  // for the period in docs/03-connections.md.
+  rpc RotateInstanceWebhookSecret(RotateInstanceWebhookSecretRequest) returns (RotateInstanceWebhookSecretResponse) {
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // ListInstanceWebhookDeliveries lists an endpoint's deliveries, the newest first.
+  rpc ListInstanceWebhookDeliveries(ListInstanceWebhookDeliveriesRequest) returns (ListInstanceWebhookDeliveriesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // TestInstanceWebhook sends a webhook.test event to an endpoint now and returns what the
+  // receiver answered. It is audited.
+  rpc TestInstanceWebhook(TestInstanceWebhookRequest) returns (TestInstanceWebhookResponse) {
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+}
+
 // WebhookDisabledReason is why an endpoint is disabled.
 enum WebhookDisabledReason {
   // Not disabled.
@@ -95,7 +141,7 @@ enum WebhookDisabledReason {
 message Webhook {
   // The endpoint's ID, whk_…; output only.
   string id = 1;
-  // The org; output only. Empty for an instance endpoint (not served yet).
+  // The org; output only. Empty for an instance endpoint.
   string org_id = 2;
   // Where events are posted: an https:// URL without credentials.
   string url = 3;
@@ -258,6 +304,125 @@ message TestWebhookRequest {
 
 // TestWebhookResponse is what the receiver answered.
 message TestWebhookResponse {
+  // Whether the receiver answered with a 2xx status.
+  bool delivered = 1;
+  // The receiver's status code; 0 if it did not answer.
+  int32 status_code = 2;
+  // Why it failed; empty on success.
+  string error = 3;
+}
+
+// CreateInstanceWebhookRequest is a new instance endpoint.
+message CreateInstanceWebhookRequest {
+  // The endpoint: its url and event_types; enabled is ignored, a new endpoint is enabled.
+  Webhook webhook = 1 [(buf.validate.field).required = true];
+  // Makes a retry of the same request return the first answer, secret included.
+  string request_id = 2 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateInstanceWebhookResponse is the endpoint and its secret.
+message CreateInstanceWebhookResponse {
+  // The endpoint.
+  Webhook webhook = 1;
+  // The secret, rpmgr_whs_…; it cannot be shown again.
+  string secret = 2 [(rpmgr.v1.sensitive) = true];
+}
+
+// GetInstanceWebhookRequest names an endpoint.
+message GetInstanceWebhookRequest {
+  // The endpoint's ID.
+  string webhook_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetInstanceWebhookResponse is the endpoint.
+message GetInstanceWebhookResponse {
+  // The endpoint.
+  Webhook webhook = 1;
+}
+
+// ListInstanceWebhooksRequest asks for a page of the instance's endpoints.
+message ListInstanceWebhooksRequest {
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 1;
+  // The page after the one that returned it.
+  string page_token = 2;
+}
+
+// ListInstanceWebhooksResponse is one page of endpoints.
+message ListInstanceWebhooksResponse {
+  // The endpoints.
+  repeated Webhook webhooks = 1;
+  // The token of the next page; empty on the last.
+  string next_page_token = 2;
+}
+
+// UpdateInstanceWebhookRequest changes an endpoint.
+message UpdateInstanceWebhookRequest {
+  // The endpoint with its ID and the new values of the fields the mask names.
+  Webhook webhook = 1 [(buf.validate.field).required = true];
+  // The fields to change: url, event_types, enabled.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateInstanceWebhookResponse is the changed endpoint.
+message UpdateInstanceWebhookResponse {
+  // The endpoint.
+  Webhook webhook = 1;
+}
+
+// DeleteInstanceWebhookRequest names an endpoint.
+message DeleteInstanceWebhookRequest {
+  // The endpoint's ID.
+  string webhook_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DeleteInstanceWebhookResponse is empty.
+message DeleteInstanceWebhookResponse {}
+
+// RotateInstanceWebhookSecretRequest names an endpoint.
+message RotateInstanceWebhookSecretRequest {
+  // The endpoint's ID.
+  string webhook_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// RotateInstanceWebhookSecretResponse is the endpoint and its new secret.
+message RotateInstanceWebhookSecretResponse {
+  // The endpoint.
+  Webhook webhook = 1;
+  // The new secret, rpmgr_whs_…; it cannot be shown again.
+  string secret = 2 [(rpmgr.v1.sensitive) = true];
+}
+
+// ListInstanceWebhookDeliveriesRequest asks for a page of an endpoint's deliveries.
+message ListInstanceWebhookDeliveriesRequest {
+  // The endpoint's ID.
+  string webhook_id = 1 [(buf.validate.field).string.min_len = 1];
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 2;
+  // The page after the one that returned it.
+  string page_token = 3;
+}
+
+// ListInstanceWebhookDeliveriesResponse is one page of deliveries.
+message ListInstanceWebhookDeliveriesResponse {
+  // The deliveries, the newest first.
+  repeated WebhookDelivery deliveries = 1;
+  // The token of the next page; empty on the last.
+  string next_page_token = 2;
+}
+
+// TestInstanceWebhookRequest names an endpoint.
+message TestInstanceWebhookRequest {
+  // The endpoint's ID.
+  string webhook_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// TestInstanceWebhookResponse is what the receiver answered.
+message TestInstanceWebhookResponse {
   // Whether the receiver answered with a 2xx status.
   bool delivered = 1;
   // The receiver's status code; 0 if it did not answer.

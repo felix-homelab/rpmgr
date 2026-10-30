@@ -111,7 +111,7 @@ var notChanges = map[string]bool{
 	"rpmgr.v1.AuthService.RequestPasswordReset": true, "session.login": true, "token.use": true,
 	"system_scope.grant": true, "job.run": true, "agent.logs_open": true, "audit.prune": true,
 	// TestWebhook sends its own webhook.test event to the endpoint it tests.
-	"rpmgr.v1.WebhookService.TestWebhook": true,
+	"rpmgr.v1.WebhookService.TestWebhook": true, "rpmgr.v1.InstanceWebhookService.TestInstanceWebhook": true,
 }
 
 // FromAudit reports whether an audit entry of action with result is an event: every change its
