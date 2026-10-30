@@ -16,7 +16,7 @@ import (
 
 // addAlert stores an alert of org ("" for an instance alert) in state.
 func (e *env) addAlert(org, kind, subject string, state alert.State) string {
-	c := e.db.Client().Alert.Create().SetKind(kind).SetSubjectType("gateway").SetSubjectID("gw_"+subject).
+	c := e.db.Client().Alert.Create().SetKind(kind).SetSubjectType("gateway").SetSubjectID("gw_" + subject).
 		SetSubjectName(subject).SetState(state).SetSince(time.Unix(1_700_000_000, 0))
 	if org != "" {
 		c.SetOrgID(org)
