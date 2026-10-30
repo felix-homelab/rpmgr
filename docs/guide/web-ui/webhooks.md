@@ -56,7 +56,18 @@ without a gap; the row says until when the old one still signs.
   deliveries** loads the next page.
 - **Delete…** asks first, names the endpoint, and removes it with its deliveries.
 
+## Instance webhooks
+
+The Instance Admin's endpoints, which receive the instance's events, are on **Settings →
+Webhooks**, a tab beside **PKI**, **Updates** and **Users** ([Settings](settings.md#webhooks)). The
+**Instance webhooks** card works like this page: the same rows, form, secret, test and deliveries.
+It differs in two ways: an instance endpoint may name a receiver on a private network, and an
+organisation's Owner neither sees nor changes it.
+
 ## On the command line
 
-The command line has no webhook command in this version. The API's `WebhookService` does all of
-this ([API](../reference/api.md#manage-a-webhook-endpoint)).
+`rpmgr create webhook --url <URL>` makes an endpoint and prints its signing secret once;
+`rpmgr update webhook --rotate-secret <id>` rotates it. `get`, `list`, `update`, `enable`,
+`disable`, `test` and `delete` cover the rest, and `--instance` addresses the instance's endpoints
+([Webhooks](../operations/webhooks.md#on-the-command-line)). The API's `WebhookService` does the
+same ([API](../reference/api.md#manage-a-webhook-endpoint)).

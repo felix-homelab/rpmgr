@@ -29,6 +29,12 @@ Changes to the design documents are not recorded here: see the git history and t
   with their state, creates, edits, enables again, rotates and deletes them, shows the signing
   secret once with a copy button, sends a test event and lists each endpoint's deliveries with
   their status, error and next retry. (#651)
+- The Instance Admin manages the instance's webhooks under Settings → Webhooks, with the signing
+  secret shown once, and lists the private networks organisations' receivers may use in
+  `webhook_private_ranges`, which the page checks entry by entry. The CLI gets `create`, `update`,
+  `get`, `list`, `delete`, `enable`, `disable` and `test` for `webhook`, `list webhook-delivery`,
+  and `--instance` for the instance's endpoints; `create webhook` and `update webhook
+  --rotate-secret` print the secret once. (#651)
 - Controllers and all-in-ones update over the air, on SQLite. An Instance Admin chooses "Update
   controller to x.y.z" on Settings → Updates, or runs `rpmgr create rollout --controller --release
   x.y.z`, after a step-up. The root updater takes a backup of the database first, kept as
