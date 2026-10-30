@@ -82,6 +82,35 @@ func TestCompile_GatewayPortPools(t *testing.T) {
 	})
 }
 
+// TestCompile_GatewayPortPoolsOtherOrg: a pool of another org never reaches a gateway, neither
+// that of a group of the same name nor one stored in the gateway's own group.
+func TestCompile_GatewayPortPoolsOtherOrg(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		if err := f.pool(t, f.orgB, f.groupB, routes.TCP, 40000, 40009); err != nil { // groupB is named "eu" like groupA
+			t.Fatal(err)
+		}
+		// A pool of org B in group A cannot exist: the database's foreign key holds a pool to the org
+		// of its group.
+		if err := db.Client().PortPool.Create().SetOrgID(f.orgB).SetGatewayGroupID(f.groupA).SetProtocol("udp").
+			SetPortFrom(50000).SetPortTo(50009).Exec(f.sys); err == nil {
+			t.Error("a pool of another org was stored in the group")
+		}
+		var ranges []string
+		for _, r := range f.compileAs(t, pki.KindGateway, f.gateway, agentproto.CapFirewallRanges) {
+			if p := r.GetGatewayPortPool(); p != nil {
+				ranges = append(ranges, p.GetProtocol())
+				if p.GetPortFrom() != 20000 || p.GetPortTo() != 20099 {
+					t.Errorf("a gateway of org A got the pool %v", p)
+				}
+			}
+		}
+		if len(ranges) != 1 {
+			t.Errorf("pools %v, want the group's own one", ranges)
+		}
+	})
+}
+
 func hashOf(t *testing.T, rs []*agentv1.Resource, id string) string {
 	t.Helper()
 	for _, r := range rs {
