@@ -18,6 +18,15 @@ Changes to the design documents are not recorded here: see the git history and t
   rotation both secrets sign for 24 hours. Enabling an endpoint again clears a disable. Owners and
   Admins hold the new permission `webhooks.write`, which an API token can carry. The web UI and the
   CLI follow. (#650)
+
+- Audit export with proofs. After a step-up, `rpmgr audit export --out <file>` (an Owner or Admin
+  for the org's chain, `--instance` for the instance chain as Instance Admin), or the API calls
+  `ExportAudit` and `ExportInstanceAudit`, write a chain as JSON Lines: its entries with their
+  hashes and its signed checkpoints, the entries after the newest checkpoint flagged. `rpmgr audit
+  verify-export --ca-pin sha256:<base64> <file>` verifies the file on any machine against the CA's
+  pin alone and finds an edited, removed or reordered entry or a forged checkpoint. An export is an
+  `audit.export` entry in the chain, recorded again as a failure when it breaks off. The export
+  button on the audit page follows.
 - Controllers and all-in-ones update over the air, on SQLite. An Instance Admin chooses "Update
   controller to x.y.z" on Settings → Updates, or runs `rpmgr create rollout --controller --release
   x.y.z`, after a step-up. The root updater takes a backup of the database first, kept as

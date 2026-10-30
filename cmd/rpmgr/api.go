@@ -60,7 +60,7 @@ func apiCommands() []*cli.Command {
 	add(settingsCommands())
 	add(rolloutCommands())
 	add(logsCommands())
-	out := []*cli.Command{getCommand(), listCommand(), deleteCommand()}
+	out := []*cli.Command{getCommand(), listCommand(), deleteCommand(), auditCommands()}
 	for _, v := range []struct{ verb, summary string }{
 		{"create", "create a resource of the public API"}, {"update", "change a resource of the public API"},
 		{"enable", "serve a resource again"}, {"disable", "stop serving a resource, keeping its configuration"},
