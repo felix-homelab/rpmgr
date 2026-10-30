@@ -150,7 +150,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
 		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, LiveLog: o.LiveLog, Dial: o.Dial, OnAcmeChallenge: challenges.Apply,
-		Update: update,
+		Update: update, Firewall: cfg.Firewall.On(),
 		OnEndDrain: func(context.Context) error {
 			if p := toOld.Load(); p != nil && oldAlive.Load() {
 				return handoff.EndOld(p)
@@ -245,8 +245,12 @@ func Run(ctx context.Context, o RunOptions) error {
 		o.RoutePorts(func(port uint16) bool { return routes.Bound(port) || udpRoutes.Bound(port) })
 	}
 	wss := &WSSHostname{}
+	var fw *Firewall // the host's ufw, handed to rpmgr by the boot file (D152)
+	if cfg.Firewall.On() {
+		fw = NewFirewall(FirewallOptions{Dir: cfg.Firewall.Dir, Report: ctl.SetFirewall, Now: o.Now, Logger: o.Logger})
+	}
 	applier.Bind(Served{TCP: routes, UDP: udpRoutes, Passthrough: pass, HTTP: httpRoutes, Certificates: certificates, Pages: pages, WSS: wss,
-		Sessions: sessions, DrainPeriod: o.DrainPeriod})
+		Firewall: fw, Sessions: sessions, DrainPeriod: o.DrainPeriod})
 
 	tunnelTLS := pki.ServerConfig(ctl.Certificate(), id.Roots, pki.Expect{TrustDomain: id.TrustDomain,
 		Kinds: []pki.Kind{pki.KindConnector}, Denied: ctl.DenyList().Denied}, o.Now)
@@ -397,6 +401,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	background.Go(func() { certificates.Run(run) })
 	background.Go(func() { pages.Run(run) })
+	if fw != nil {
+		background.Go(func() { fw.Run(run) })
+	}
 	background.Go(func() {
 		report.run(run, ReportEvery, ctl.Send, func() *agentv1.Status {
 			return &agentv1.Status{DataSessions: sessions.Report(), Counters: metrics.Counters(), Readiness: applier.Readiness(),

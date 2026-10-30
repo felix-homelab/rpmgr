@@ -70,6 +70,9 @@ type ControlOptions struct {
 	// announces the capability ota (docs/04-security.md, "Over-the-air updates"): gateways and
 	// connectors on Linux that run on their own, never all-in-one's.
 	Update *UpdateOptions
+	// Firewall, if set, announces the capability firewall.ranges: the gateway manages its host's
+	// ufw through the root helper and reports its state with SetFirewall (D152).
+	Firewall bool
 }
 
 // Control is an agent's control plane: its identity, the control session with certificate
@@ -84,6 +87,9 @@ type Control struct {
 	// draining is the old process of a hand-off, as SetDraining last reported it; it goes in the
 	// first Status of each session.
 	draining atomic.Pointer[agentv1.DrainingProcess]
+	// firewall is the firewall helper's state, as SetFirewall last reported it; it goes in the
+	// first Status of each session.
+	firewall atomic.Pointer[agentv1.FirewallState]
 }
 
 // NewControl loads the identity and wires the control plane; Run starts it.
@@ -106,6 +112,9 @@ func NewControl(o ControlOptions) (*Control, error) {
 	}
 	if o.OnEndDrain != nil {
 		caps = append(slices.Clone(caps), agentproto.CapDrainEnd)
+	}
+	if o.Firewall {
+		caps = append(slices.Clone(caps), agentproto.CapFirewallRanges)
 	}
 	var onOffer func(*agentv1.ReleaseOffer)
 	if o.Update != nil {
@@ -149,6 +158,12 @@ func NewControl(o ControlOptions) (*Control, error) {
 					st = &agentv1.Status{}
 				}
 				st.Draining = d
+			}
+			if f := c.firewall.Load(); f != nil {
+				if st == nil {
+					st = &agentv1.Status{}
+				}
+				st.Firewall = f
 			}
 			if st != nil {
 				c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: st}})
@@ -233,6 +248,13 @@ func (c *Control) endDrain(e *agentv1.EndDrain) {
 func (c *Control) SetDraining(d *agentv1.DrainingProcess) {
 	c.draining.Store(d)
 	c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{Draining: d}}})
+}
+
+// SetFirewall reports the state of the host's firewall management to the controller: a Status that
+// carries only it, now and in the first Status of every session.
+func (c *Control) SetFirewall(f *agentv1.FirewallState) {
+	c.firewall.Store(f)
+	c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{Firewall: f}}})
 }
 
 // ErrUnsupportedOperation is an operation an agent does not run.

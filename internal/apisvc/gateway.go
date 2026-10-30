@@ -44,7 +44,9 @@ type Gateways struct {
 	Previews *PagePreviews
 	// Drains shows and ends the old process of a hand-off; nil shows none.
 	Drains Drains
-	Now    func() time.Time
+	// Firewalls shows the state of a gateway host's firewall management; nil shows none.
+	Firewalls Firewalls
+	Now       func() time.Time
 }
 
 // groupFields are the fields of a gateway group a client may change.
@@ -426,5 +428,6 @@ func (g *Gateways) gatewayOf(ctx context.Context, r *ent.Gateway) *rpmgrv1.Gatew
 		out.Status.OverTheAir = slices.Contains(s.Capabilities, agentproto.CapOTA)
 	}
 	out.Status.Draining = drainOf(g.Drains, r.ID)
+	out.Status.Firewall = firewallOf(g.Firewalls, r.ID)
 	return out
 }

@@ -227,9 +227,52 @@ rpmgr delete port-pool <pool ID>
 - Pools of one group and protocol never overlap.
 - A pool can shrink only while every port taken from it stays inside, and be deleted only when no
   route holds a port of it.
-- Open the pools' ports in the gateway hosts' firewalls, for the protocol of each pool.
+- A gateway host's firewall must let the pools' ports in, for the protocol of each pool: let rpmgr
+  do it on a host with `ufw` ([The host's firewall](#the-hosts-firewall)), or open them yourself.
 - A route that asks for a port outside the pools is refused (`PORT_NOT_IN_POOL`); one that asks for
   any port when none is free, too (`POOL_EXHAUSTED`).
+
+## The host's firewall
+
+A gateway host's firewall must let the public in: 80/tcp, 443/tcp and 443/udp, which the gateway
+listens on, and the ports of the port pools. On a host that uses `ufw` you can hand this to rpmgr.
+It is off unless you switch it on, per host, and it changes nothing on a host where you do not.
+
+### Switch it on
+
+Add `--firewall ufw` when you set the gateway up ([Setup](install/setup.md)), and with it the
+largest range of pools rpmgr may open:
+
+```sh
+sudo rpmgr setup --role gateway --controller https://rpmgr.example.com --ca-pin <pin> \
+  --firewall ufw --firewall-max-range 20000-29999
+```
+
+Without `--firewall-max-range` rpmgr opens only the gateway's listeners and no pool. A pool that
+reaches outside the range is opened only inside it, and the gateway reports the rest as refused.
+
+### What it does
+
+- The gateway stays unprivileged. It writes the ranges of its group's pools to a file; a separate
+  helper that runs as root opens only ports inside the listeners and the range you set, so that a
+  gateway that someone has taken over cannot open SSH or any other port.
+- When a pool is created, resized or deleted, its range is opened or closed in `ufw` for its
+  protocol. A TCP or UDP route changes nothing: its port is in a pool already.
+- rpmgr adds only rules that carry the comment `rpmgr` and removes only those. Rules you added
+  yourself stay as they are, also one for the same port without the comment: it stays when
+  rpmgr's own is removed.
+- With `ufw` missing or inactive, rpmgr changes nothing and says so.
+- The provider's firewall in front of the host, such as a cloud security group, stays your task:
+  rpmgr does not touch it, so open the same ports there.
+
+The gateway shows the state of the helper in its status: **off**, **applied**, or **failed** with
+the reason, such as `ufw` being inactive or a range outside the bounds.
+
+### Switch it off
+
+Remove `/etc/rpmgr/firewall.json`, then run `sudo systemctl start rpmgr-firewall.service`: the
+helper removes the rules it added. Remove the `firewall` section from the boot file as well, and
+restart the gateway.
 
 ## Port quotas
 

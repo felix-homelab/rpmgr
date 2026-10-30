@@ -158,6 +158,22 @@ func WriteUnits(dir, bin string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	return writeUnitFiles(dir, b)
+}
+
+// WriteFirewallUnits writes the firewall helper's pair of units, rpmgr-firewall.path and
+// rpmgr-firewall.service, as WriteUnits writes the updater's (D152).
+func WriteFirewallUnits(dir, bin string) ([]string, error) {
+	b, err := units.RenderFirewall(bin)
+	if err != nil {
+		return nil, err
+	}
+	return writeUnitFiles(dir, b)
+}
+
+// writeUnitFiles splits rendered units at the comment lines that name their files and writes each
+// into dir, which is created if it is missing.
+func writeUnitFiles(dir string, b []byte) ([]string, error) {
 	if err := mkdirMode(dir, 0o755); err != nil { // minimal systems may lack it
 		return nil, fmt.Errorf("update: %w", err)
 	}
