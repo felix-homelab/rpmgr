@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +27,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
@@ -272,7 +274,9 @@ func (s *Sessions) receive(ctx context.Context, st grpc.BidiStreamingServer[agen
 			if st.GetDraining() != nil {
 				s.recordDraining(id.ID, st.GetDraining())
 			}
-			if st.GetFirewall() != nil {
+			// Only a gateway that announced firewall.ranges has a firewall to report; from any other
+			// agent the message is ignored.
+			if st.GetFirewall() != nil && id.Kind == pki.KindGateway && slices.Contains(sess.caps, agentproto.CapFirewallRanges) {
 				s.recordFirewall(id.ID, st.GetFirewall())
 			}
 			// A Status with only the update state (OTA), the draining old process or the firewall state leaves a
