@@ -39,7 +39,7 @@ RuntimeDirectoryPreserve=yes
 # It writes only what ufw writes (its rules and its lock) and its status file, and holds only the
 # capabilities that ufw and iptables need.
 ProtectSystem=strict
-ReadWritePaths=-/etc/ufw -/lib/ufw -/usr/lib/ufw -/run/ufw.lock -/run/rpmgr-firewall
+ReadWritePaths=-/etc/ufw -/lib/ufw -/usr/lib/ufw /run
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN
 RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
 NoNewPrivileges=yes

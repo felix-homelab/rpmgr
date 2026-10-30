@@ -268,7 +268,7 @@ func TestRenderFirewall(t *testing.T) {
 		"After=network-online.target ufw.service", "WantedBy=multi-user.target", "StartLimitIntervalSec=0",
 		"CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN",
 		"RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6",
-		"ReadWritePaths=-/etc/ufw -/lib/ufw -/usr/lib/ufw -/run/ufw.lock -/run/rpmgr-firewall"} {
+		"ReadWritePaths=-/etc/ufw -/lib/ufw -/usr/lib/ufw /run"} {
 		if !strings.Contains(service, want+"\n") {
 			t.Errorf("rpmgr-firewall.service lacks %q", want)
 		}

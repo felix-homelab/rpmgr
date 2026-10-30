@@ -402,16 +402,15 @@ off by default.
 - **Runs** when the desired file changes, at boot after `ufw.service`, and when started by hand
   (`systemctl start rpmgr-firewall.service`), which is also how a `ufw` the operator enabled later
   is picked up. Applying twice changes nothing: the second run finds every rule present.
-- **Sandbox.** `ProtectSystem=strict` with only `/etc/ufw`, `/lib/ufw`, `/usr/lib/ufw`, `/run/ufw.lock`
-  and `/run/rpmgr-firewall` writable (each with `-`, so a missing one is ignored), so that `ufw` can
-  write its rules and its lock; `CapabilityBoundingSet=` of `CAP_NET_ADMIN CAP_NET_RAW
-  CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN`; `RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET
-  AF_INET6`; `ProtectHome=yes`, `PrivateTmp=yes`, `NoNewPrivileges=yes`;
-  `RuntimeDirectory=rpmgr-firewall` with `RuntimeDirectoryPreserve=yes` keeps `status.json` after the
-  run. [V VB-25] None of this has run against a real `ufw`: the paths `ufw` writes, the capabilities
-  and the address families it needs, and whether `ufw` can create `/run/ufw.lock` when the file does
-  not exist yet (a missing path with `-` is not mounted writable), are to be checked on Debian 13,
-  Ubuntu 22.04 and 24.04 before the release.
+- **Sandbox.** `ProtectSystem=strict` with only `/etc/ufw`, `/lib/ufw` and `/usr/lib/ufw` (each with
+  `-`, so a missing one is ignored) and `/run` writable, so that `ufw` can write its rules and
+  create its lock `/run/ufw.lock`, which a path that does not exist yet could not be made writable
+  for; `CapabilityBoundingSet=` of `CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE CAP_FOWNER
+  CAP_CHOWN`; `RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6`; `ProtectHome=yes`,
+  `PrivateTmp=yes`, `NoNewPrivileges=yes`; `RuntimeDirectory=rpmgr-firewall` with
+  `RuntimeDirectoryPreserve=yes` keeps `status.json` after the run. [V VB-25] None of this has run
+  against a real `ufw`: the paths `ufw` writes, the capabilities and the address families it needs,
+  are to be checked on Debian 13, Ubuntu 22.04 and 24.04 before the release.
 - **A flood of writes.** The service has `StartLimitIntervalSec=0` (the helper is idempotent and
   cheap) and the path unit `TriggerLimitIntervalSec=0`, so that a gateway rewriting the desired file
   over and over cannot push either unit into a limit that would end the watch. `TriggerLimitIntervalSec=`
