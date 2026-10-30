@@ -19,6 +19,12 @@ Changes to the design documents are not recorded here: see the git history and t
   failing, are e-mailed to the organisation's Owners and Admins (the Instance Admins for an
   instance alert). The organisation settings `alert_email` and `alert_types` turn the alert e-mails
   off and choose the alert kinds, in the API and `rpmgr update settings`.
+- Webhook endpoints can be managed through the API: `WebhookService` creates, lists, changes and
+  deletes an organisation's endpoints, rotates an endpoint's secret, lists its deliveries and sends
+  a test event. The secret, `rpmgr_whs_…`, is shown once when it is made or rotated; after a
+  rotation both secrets sign for 24 hours. Enabling an endpoint again clears a disable. Owners and
+  Admins hold the new permission `webhooks.write`, which an API token can carry. The web UI and the
+  CLI follow. (#650)
 - Controllers and all-in-ones update over the air, on SQLite. An Instance Admin chooses "Update
   controller to x.y.z" on Settings → Updates, or runs `rpmgr create rollout --controller --release
   x.y.z`, after a step-up. The root updater takes a backup of the database first, kept as

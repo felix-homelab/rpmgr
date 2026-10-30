@@ -105,11 +105,13 @@ func utf8Start(b byte) bool { return b&0xC0 != 0x80 }
 
 // notChanges are the audited actions that change no configuration and so are no events: signing
 // in and out, a step-up, asking for a reset link, the use of a token or a system scope, opening a
-// live log, and pruning the audit log.
+// live log, pruning the audit log, and a test send to a webhook, which is its own event.
 var notChanges = map[string]bool{
 	"rpmgr.v1.AuthService.Login": true, "rpmgr.v1.AuthService.StepUp": true, "rpmgr.v1.AuthService.Logout": true,
 	"rpmgr.v1.AuthService.RequestPasswordReset": true, "session.login": true, "token.use": true,
 	"system_scope.grant": true, "job.run": true, "agent.logs_open": true, "audit.prune": true,
+	// TestWebhook sends its own webhook.test event to the endpoint it tests.
+	"rpmgr.v1.WebhookService.TestWebhook": true,
 }
 
 // FromAudit reports whether an audit entry of action with result is an event: every change its

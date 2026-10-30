@@ -38,6 +38,8 @@ const (
 	PermOrgWrite = "org.write"
 	// PermAgentsLogs: the live logs of the org's connectors and gateways (Phase 2).
 	PermAgentsLogs = "agents.logs"
+	// PermWebhooksWrite: the org's webhook endpoints, their secrets and deliveries (Phase 2).
+	PermWebhooksWrite = "webhooks.write"
 )
 
 // grants lists the roles that hold each org permission.
@@ -50,6 +52,7 @@ var grants = map[string][]string{
 	PermAuditRead:           {RoleOwner, RoleAdmin},
 	PermOrgWrite:            {RoleOwner},
 	PermAgentsLogs:          {RoleOwner, RoleAdmin},
+	PermWebhooksWrite:       {RoleOwner, RoleAdmin},
 }
 
 // OrgPermission reports whether p is a permission that org roles grant.

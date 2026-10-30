@@ -24,6 +24,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/portquota"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhook"
 )
 
 // Resolver returns the org that owns the resource with an ID, or ErrNotFound.
@@ -71,6 +72,17 @@ var owners = map[string]ownerFunc{
 	},
 	"rt": func(ctx context.Context, c *ent.Client, id string) (string, error) {
 		return c.Route.Query().Where(route.ID(id)).Select(route.FieldOrgID).String(ctx)
+	},
+	"whk": func(ctx context.Context, c *ent.Client, id string) (string, error) {
+		// An instance endpoint (no org) is not an org's resource: it resolves like a missing one.
+		w, err := c.Webhook.Query().Where(webhook.ID(id)).Only(ctx)
+		if err == nil && w.OrgID == nil {
+			err = ErrNotFound
+		}
+		if err != nil {
+			return "", err
+		}
+		return *w.OrgID, nil
 	},
 	"tg": func(ctx context.Context, c *ent.Client, id string) (string, error) {
 		return c.RouteTarget.Query().Where(routetarget.ID(id)).Select(routetarget.FieldOrgID).String(ctx)
