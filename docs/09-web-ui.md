@@ -859,7 +859,11 @@ one page, with a section list beside them that jumps to each section
   ([04](04-security.md#roles)); hidden without it. Text only, in a monospace panel: a level and a
   text filter, **Raise to debug** (audited; lasts until the panel closes or the operation ends,
   [D140](14-open-decisions.md#engineering)), **Pause** (the panel stops scrolling, lines keep
-  arriving), and a marker where the agent dropped or cut lines. When the operation ends at its
+  arriving), and a marker where the agent dropped or cut lines. The lines the agent kept from
+  before the log opened come first, marked as earlier lines and set apart from new ones
+  ([D154](14-open-decisions.md#engineering)). While the log is connected and nothing has arrived
+  the panel says **Connected – no new lines yet** with the level it follows (debug when raised);
+  it no longer shows a bare "Waiting for the first line…". When the operation ends at its
   deadline, the panel says so and offers **Continue**, which opens a new one. An offline agent, or
   one whose release has no live logs, shows why instead.
 - **Administration → Webhooks** (Owner and Admin, `webhooks.write`; no other role can read an

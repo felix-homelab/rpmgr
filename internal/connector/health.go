@@ -245,8 +245,12 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 			}
 			changed := hs[tg.ID].blocked != blocked && hs[tg.ID].unhealthy
 			hs[tg.ID].blocked = blocked
+			wasUnhealthy := hs[tg.ID].unhealthy
 			if hs[tg.ID].observe(results[i] == nil, r.Check) || changed {
 				targets = append(targets, targetStatus(tg.ID, hs[tg.ID]))
+				if hs[tg.ID].unhealthy != wasUnhealthy || hs[tg.ID].unhealthy {
+					t.logHealth(r.ID, tg.ID, hs[tg.ID])
+				}
 			}
 		}
 		if cur, ok := t.routes[r.ID]; ok && len(targets) > 0 {
@@ -267,6 +271,20 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 		t.reportMu.Unlock()
 	}
 	t.reportRoute(h)
+}
+
+// logHealth logs a target turning healthy or unhealthy, with the reason (D154); the reason is the
+// check's own failure text or the local policy's refusal, never what a target answered.
+func (t *Targets) logHealth(route, target string, h *targetHealth) {
+	if !h.unhealthy {
+		t.o.Logger.Info("target healthy", "route", route, "target", target)
+		return
+	}
+	reason := h.err
+	if h.blocked != "" {
+		reason = "the local policy does not allow " + h.blocked
+	}
+	t.o.Logger.Info("target unhealthy", "route", route, "target", target, "reason", reason)
 }
 
 // targetStatus is a target's health as the controller records it, while unknown or unhealthy: blocked by the

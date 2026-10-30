@@ -12,6 +12,14 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Live logs are useful on a healthy agent. A new live log starts with the agent's latest lines, up
+  to 200 lines and 64 KiB after redaction, marked as earlier lines in the web UI and in `rpmgr
+  logs`, with how many older lines are gone. Connectors and gateways now log what they do: the
+  configuration applied with its routes, routes not ready, target health changes with the reason,
+  data sessions opened and ended and, at debug level, each stream with its duration and bytes,
+  never request contents or headers. The panel says "Connected – no new lines yet" with its level
+  instead of "Waiting for the first line…". (#973)
+
 - Webhook endpoints can be managed through the API: `WebhookService` creates, lists, changes and
   deletes an organisation's endpoints, rotates an endpoint's secret, lists its deliveries and sends
   a test event. The secret, `rpmgr_whs_…`, is shown once when it is made or rotated; after a

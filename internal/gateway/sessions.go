@@ -275,7 +275,13 @@ func (m *Sessions) Serve(ctx context.Context, s tunnel.Session, peer *x509.Certi
 	if err := m.add(d); err != nil {
 		return err
 	}
-	defer m.remove(d)
+	m.o.Logger.Info("data session of a connector opened", "connector", d.connector, "transport", s.Transport())
+	started := m.o.Now()
+	defer func() {
+		m.remove(d)
+		m.o.Logger.Info("data session of a connector ended", "connector", d.connector, "transport", s.Transport(),
+			"duration", m.o.Now().Sub(started).Round(time.Second))
+	}()
 	if err := send(&tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Welcome{Welcome: &tunnelv1.SessionWelcome{
 		GatewayId: m.o.GatewayID, ProtoMinor: protoMinor, Capabilities: m.o.Capabilities}}}); err != nil {
 		return err
