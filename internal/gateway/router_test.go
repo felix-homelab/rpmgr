@@ -306,3 +306,43 @@ func TestQUICTLS(t *testing.T) {
 		t.Fatal("another gateway's name was accepted")
 	}
 }
+
+// A connection the router accepted counts as pending until its handler has it, so that a drain
+// does not close what is a few milliseconds from its server (#1008).
+func TestRouter_Pending(t *testing.T) {
+	r := &gateway.Router{TrustDomain: td, GatewayID: "gw_x", Logger: nil}
+	l := memnet.NewListener()
+	served := make(chan error, 1)
+	go func() { served <- r.Serve(l) }()
+
+	if n := r.Pending(); n != 0 {
+		t.Fatalf("pending before any connection: %d", n)
+	}
+	c, err := l.Dial(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return r.Pending() == 1 }, "the accepted connection to be pending")
+	// The client says nothing: the router is still peeking, so it stays pending.
+	time.Sleep(50 * time.Millisecond)
+	if n := r.Pending(); n != 1 {
+		t.Fatalf("pending while peeking: %d, want 1", n)
+	}
+	_ = c.Close() // a peek that fails ends the connection's handling too
+	waitFor(t, func() bool { return r.Pending() == 0 }, "no connection to be pending after the peek failed")
+	_ = l.Close()
+	if err := <-served; err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+}
+
+func waitFor(t *testing.T, cond func() bool, what string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}

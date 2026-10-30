@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mholt/acmez/v3"
@@ -93,16 +94,22 @@ type Router struct {
 	Logger     *slog.Logger
 
 	wg, tunnels sync.WaitGroup
+	pending     atomic.Int64 // connections accepted and not yet handed to their handler
 }
 
+// Pending returns the number of connections the router accepted and has not handed over: they are
+// being peeked at or are about to be. A drain waits for them, or their clients see an EOF.
+func (r *Router) Pending() int64 { return r.pending.Load() }
+
 // Serve accepts connections until l is closed.
-func (r *Router) Serve(l net.Listener) error { return serve(l, &r.wg, r.Handle) }
+func (r *Router) Serve(l net.Listener) error { return serve(l, &r.wg, &r.pending, r.Handle) }
 
 // ServeTunnels accepts connections until l is closed and serves them as HandleTunnel does.
-func (r *Router) ServeTunnels(l net.Listener) error { return serve(l, &r.tunnels, r.HandleTunnel) }
+func (r *Router) ServeTunnels(l net.Listener) error { return serve(l, &r.tunnels, nil, r.HandleTunnel) }
 
-// serve hands every connection l accepts to handle and, once l is closed, waits for them.
-func serve(l net.Listener, wg *sync.WaitGroup, handle func(net.Conn)) error {
+// serve hands every connection l accepts to handle and, once l is closed, waits for them. A
+// connection counts in pending, if set, from its accept until handle returned.
+func serve(l net.Listener, wg *sync.WaitGroup, pending *atomic.Int64, handle func(net.Conn)) error {
 	for {
 		c, err := l.Accept()
 		if err != nil {
@@ -112,7 +119,15 @@ func serve(l net.Listener, wg *sync.WaitGroup, handle func(net.Conn)) error {
 			}
 			return err
 		}
-		wg.Go(func() { handle(c) })
+		if pending != nil {
+			pending.Add(1)
+		}
+		wg.Go(func() {
+			if pending != nil {
+				defer pending.Add(-1)
+			}
+			handle(c)
+		})
 	}
 }
 

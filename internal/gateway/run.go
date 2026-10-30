@@ -515,14 +515,22 @@ func Run(ctx context.Context, o RunOptions) error {
 	// and the gateway stops earlier once none is left.
 	stopAccepting()
 	// Not at the switch: it drops the connections the router accepted and has not handed to the
-	// HTTP server yet, which their clients see as an EOF.
+	// HTTP server yet, which their clients see as an EOF. Not before the router handed over the
+	// connections it accepted before it stopped, either: they may be a few milliseconds from the
+	// switch and the connectors may have moved by then (#1008).
+	for result == nil && router.Pending() > 0 && time.Now().Before(deadline) {
+		select {
+		case <-time.After(10 * time.Millisecond):
+		case result = <-errs:
+		}
+	}
 	httpRoutes.Drain()
 	if o.Tunnels != nil {
 		_ = o.Tunnels.Close() // no new data sessions in memory either; its connector has no socket to move
 	}
 	sessions.Drain(o.Now().Add(time.Until(deadline)))
 	for result == nil && !closed(successor) && time.Now().Before(deadline) && (routes.Conns() > 0 || pass.Conns() > 0 || httpRoutes.Active() > 0 ||
-		sessions.Streams() > 0) {
+		httpRoutes.Fresh() > 0 || sessions.Streams() > 0) {
 		select {
 		case <-time.After(100 * time.Millisecond):
 		case result = <-errs:
