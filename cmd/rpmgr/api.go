@@ -60,6 +60,7 @@ func apiCommands() []*cli.Command {
 	add(settingsCommands())
 	add(rolloutCommands())
 	add(logsCommands())
+	add(webhookCommands())
 	out := []*cli.Command{getCommand(), listCommand(), deleteCommand()}
 	for _, v := range []struct{ verb, summary string }{
 		{"create", "create a resource of the public API"}, {"update", "change a resource of the public API"},
@@ -69,7 +70,7 @@ func apiCommands() []*cli.Command {
 		{"verify", "check a proof now"}, {"check", "check for new releases now"}, {"trust", "trust something without a proof"}, {"upload", "upload a file to the controller"},
 		{"renew", "renew a certificate now"}, {"remove", "remove a member from the org, a user's second factor, or a gateway group's own page"},
 		{"advance", "move a rollout to its next stage"}, {"pause", "pause a rollout"}, {"resume", "let a paused rollout run again"},
-		{"cancel", "end a rollout for good"},
+		{"cancel", "end a rollout for good"}, {"test", "send a test event to a webhook endpoint"},
 		{"logs", "follow the live log of a connector or gateway"},
 	} {
 		out = append(out, group(v.verb, v.summary, verbs[v.verb]...))
@@ -81,7 +82,7 @@ func apiCommands() []*cli.Command {
 func kindsHelp(takes func(apicli.Kind) bool) string {
 	var names []string
 	for _, k := range apicli.Kinds {
-		if takes(k) {
+		if takes(k) && !strings.HasPrefix(k.Name, "instance-") {
 			names = append(names, k.Name)
 		}
 	}
@@ -163,7 +164,7 @@ func getCommand() *cli.Command {
 		Args: "install-command | settings | controller-update | <" + kindsHelp(func(k apicli.Kind) bool { return !k.NoGet }) + "> <id or name>",
 		Flags: func(fs *flag.FlagSet) {
 			outputFlag(fs, &output)
-			fs.BoolVar(&instance, "instance", false, "settings: the instance's settings, for an Instance Admin, instead of the org's")
+			fs.BoolVar(&instance, "instance", false, "settings: the instance's settings, for an Instance Admin, instead of the org's; webhook: the instance's endpoints")
 			fs.StringVar(&role, "role", "connector", "install-command: the role to install, connector or gateway")
 			fs.Var(&allow, "allow-target", "install-command: a target the connector may reach: an address or subnet, optionally :port or "+
 				":port-port, IPv6 in brackets, or a socket path; repeat for more")
@@ -181,6 +182,9 @@ func getCommand() *cli.Command {
 			}
 			k, err := kindArgs(args, 2)
 			if err != nil {
+				return err
+			}
+			if k, err = instanceKind(k, instance); err != nil {
 				return err
 			}
 			if k.NoGet {
@@ -205,13 +209,14 @@ func getCommand() *cli.Command {
 
 func listCommand() *cli.Command {
 	var output string
-	var all bool
+	var all, instance bool
 	return &cli.Command{
 		Name: "list", Summary: "list the resources of a kind in the org, or of the instance",
 		Args: "<" + kindsHelp(func(k apicli.Kind) bool { return k.Plural != "" }) + "> [<what they belong to>]",
 		Flags: func(fs *flag.FlagSet) {
 			outputFlag(fs, &output)
 			fs.BoolVar(&all, "all", false, "also the decommissioned agents, and the used-up, expired and revoked enrollment tokens")
+			fs.BoolVar(&instance, "instance", false, "webhook, webhook-delivery: the instance's endpoints, for an Instance Admin, instead of the org's")
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			n := 1
@@ -222,6 +227,9 @@ func listCommand() *cli.Command {
 			}
 			k, err := kindArgs(args, n)
 			if err != nil {
+				return err
+			}
+			if k, err = instanceKind(k, instance); err != nil {
 				return err
 			}
 			if k.Plural == "" {
@@ -282,18 +290,22 @@ func listCommand() *cli.Command {
 
 func deleteCommand() *cli.Command {
 	var (
-		force bool
-		wait  time.Duration
+		force, instance bool
+		wait            time.Duration
 	)
 	return &cli.Command{
 		Name: "delete", Summary: "delete a resource of the public API", Args: "<" + kindsHelp(func(k apicli.Kind) bool { return k.Delete }) + "> <id>",
 		Flags: func(fs *flag.FlagSet) {
 			fs.BoolVar(&force, "force", false, "delete without checking that the resource is unchanged since this command read it")
+			fs.BoolVar(&instance, "instance", false, "webhook: the instance's endpoint, for an Instance Admin, instead of the org's")
 			fs.DurationVar(&wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			k, err := kindArgs(args, 2)
 			if err != nil {
+				return err
+			}
+			if k, err = instanceKind(k, instance); err != nil {
 				return err
 			}
 			if !k.Delete {
@@ -469,7 +481,7 @@ func writeTable(w io.Writer, k apicli.Kind, res []protoreflect.Message) error {
 		if id == "-" {
 			id = cell(v, "userId")
 		}
-		for _, alt := range []string{"fqdn", "displayName", "version", "agentName"} {
+		for _, alt := range []string{"fqdn", "displayName", "version", "agentName", "url", "eventType"} {
 			if name == "-" {
 				name = cell(v, alt)
 			}

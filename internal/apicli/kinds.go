@@ -33,6 +33,9 @@ type Kind struct {
 	// Parent is the List request's field that names what the resources belong to, e.g.
 	// "rollout_id"; list takes it as its second argument. Empty for the org's resources.
 	Parent string
+	// Message names the response's message that holds a resource when it is not Resource, as
+	// the instance's webhooks' Webhook does; empty for Resource.
+	Message string
 }
 
 // Kinds are the kinds of the public API's resources, by name.
@@ -66,6 +69,16 @@ var Kinds = []Kind{
 		Columns: []string{"email", "role", "createTime"}, NoGet: true},
 	{Name: "token", Prefix: "atk_", Service: "rpmgr.v1.TokenService", Resource: "APIToken", Plural: "APITokens", IDField: "token_id",
 		Columns: []string{"prefix", "scopes", "expireTime", "lastUseTime"}, NoGet: true},
+	// Webhook endpoints of the org, and of the instance for an Instance Admin (--instance); a
+	// delivery is listed with its endpoint.
+	{Name: "webhook", Prefix: "whk_", Service: "rpmgr.v1.WebhookService", Resource: "Webhook", Plural: "Webhooks", IDField: "webhook_id",
+		Columns: []string{"eventTypes", "enabled", "disabledReason", "lastSuccessTime"}, Delete: true},
+	{Name: "instance-webhook", Prefix: "whk_", Service: "rpmgr.v1.InstanceWebhookService", Resource: "InstanceWebhook", Message: "Webhook",
+		Plural: "InstanceWebhooks", IDField: "webhook_id", Columns: []string{"eventTypes", "enabled", "disabledReason", "lastSuccessTime"}, Delete: true},
+	{Name: "webhook-delivery", Service: "rpmgr.v1.WebhookService", Resource: "WebhookDelivery", Plural: "WebhookDeliveries", Parent: "webhook_id",
+		Columns: []string{"attempt", "statusCode", "error", "sendTime", "nextAttemptTime"}, NoGet: true},
+	{Name: "instance-webhook-delivery", Service: "rpmgr.v1.InstanceWebhookService", Resource: "InstanceWebhookDelivery", Message: "WebhookDelivery",
+		Plural: "InstanceWebhookDeliveries", Parent: "webhook_id", Columns: []string{"attempt", "statusCode", "error", "sendTime", "nextAttemptTime"}, NoGet: true},
 	{Name: "release", Prefix: "rel_", Service: "rpmgr.v1.ReleaseService", Resource: "Release", Plural: "Releases",
 		Columns: []string{"channel", "source", "mirrored", "controllerVersion", "newerThanController"}, NoGet: true},
 	{Name: "rollout", Prefix: "rol_", Service: "rpmgr.v1.ReleaseService", Resource: "Rollout", Plural: "Rollouts", IDField: "rollout_id",
@@ -157,9 +170,13 @@ func call(ctx context.Context, hc *http.Client, base string, md protoreflect.Met
 // Field returns the field of a response that holds the kind's resource, or a list of them.
 func (k Kind) Field(m protoreflect.Message) (protoreflect.FieldDescriptor, error) {
 	fields := m.Descriptor().Fields()
+	want := k.Resource
+	if k.Message != "" {
+		want = k.Message
+	}
 	for i := range fields.Len() {
 		fd := fields.Get(i)
-		if fd.Kind() == protoreflect.MessageKind && string(fd.Message().Name()) == k.Resource {
+		if fd.Kind() == protoreflect.MessageKind && string(fd.Message().Name()) == want {
 			return fd, nil
 		}
 	}
