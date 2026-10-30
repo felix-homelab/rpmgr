@@ -1620,7 +1620,11 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
     as JSON (VB-23).
   - **Webhook**: delivered and signed as a webhook ([Webhooks and the egress
     guard](#webhooks-and-the-egress-guard-phase-2)), with the event type `audit.checkpoint` or
-    `audit.entry`.
+    `audit.entry`. `Rpmgr-Event-Id` is the ID of the checkpoint or entry, so a receiver drops a
+    repeat of the at-least-once shipping. The body is the item as JSON with its chain and seq. An
+    entry larger than a delivery may be ([03](03-connections.md#timeouts-keepalive-and-backoff))
+    is shipped without its `diff` and marked `"truncated": true`, so one entry never holds a
+    sink's cursor.
   - **Object storage** (S3-compatible, the client of the revocation log): each checkpoint or batch
     is an object written with `If-None-Match: *` into a bucket with Object Lock in compliance
     mode, so not even the sink's own credentials can rewrite or delete it before the lock ends; a
@@ -1636,14 +1640,26 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
     (412), and a refusal of Object Lock is any 4xx (AWS answers 403, SILO 400). Limits are in
     [03](03-connections.md#timeouts-keepalive-and-backoff).
 - [R] **Export** (Phase 2, `ExportAudit`): an org's chain, for `audit.read` with a step-up, or the
-  instance chain for the Instance Admin with a step-up; audited as `audit.export`. The export is
-  JSON Lines: a header line (format version, chain, first and last seq, the signers' certificates),
+  instance chain for the Instance Admin with a step-up (`ExportInstanceAudit`). The request is
+  audited as `audit.export` before the chain is read, so the export holds its own entry; an export
+  that breaks off, such as one the client abandons, is recorded once more with the result
+  `failure`, and a refused one is recorded as any refusal is, under the method's name. The export
+  is JSON Lines: a header line (format version, chain, first and last seq, the seq of the newest
+  checkpoint, the root's and the signers' certificates),
   then each entry with every stored field as in its canonical form plus `prev_hash` and `hash`,
   with each checkpoint in its place. It ends at the newest checkpoint; entries after it are listed
   as an unanchored tail, flagged so, which a later export anchors. `rpmgr audit verify-export
-  --ca-pin <sha256>` verifies an export offline against the CA root pin alone: links, hashes,
+  --ca-pin sha256:<base64>` verifies an export offline against the CA root pin alone: links, hashes,
   checkpoint signatures and their keys' certificates, and that nothing was removed, reordered or
-  edited.
+  edited. The header is not signed. It tells the verifier where to start and end, and the verifier
+  takes the seqs it reports from the verified entries: a first entry that is not the header's
+  `first_seq` is refused. A cut at the start or the end that falls exactly on a checkpoint, with the
+  header adjusted to it, leaves a file that verifies, because every part of it is still signed:
+  cutting leading entries up to a checkpoint, or trailing entries back to an older one. Only a
+  reference from outside shows it, an audit sink or an earlier export that holds the newer seq.
+  Leading entries cut away anywhere else are refused; entries cut from the end are the unanchored
+  tail of an older state, which no signature covers. One export stream runs at most the export deadline
+  ([03](03-connections.md#timeouts-keepalive-and-backoff)), its read transaction with it.
 - **Webhook signatures** (Phase 2) and their maximum age are under
   [Webhooks and the egress guard](#webhooks-and-the-egress-guard-phase-2).
 - Only the audit package writes the audit tables: the store refuses every create, update and delete

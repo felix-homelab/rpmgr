@@ -129,6 +129,30 @@ func (f AuditHeadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditHeadMutation", m)
 }
 
+// The AuditSinkFunc type is an adapter to allow the use of ordinary
+// function as AuditSink mutator.
+type AuditSinkFunc func(context.Context, *ent.AuditSinkMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AuditSinkFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AuditSinkMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditSinkMutation", m)
+}
+
+// The AuditSinkCursorFunc type is an adapter to allow the use of ordinary
+// function as AuditSinkCursor mutator.
+type AuditSinkCursorFunc func(context.Context, *ent.AuditSinkCursorMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AuditSinkCursorFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AuditSinkCursorMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditSinkCursorMutation", m)
+}
+
 // The CABundleFunc type is an adapter to allow the use of ordinary
 // function as CABundle mutator.
 type CABundleFunc func(context.Context, *ent.CABundleMutation) (ent.Value, error)

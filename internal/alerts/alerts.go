@@ -32,6 +32,7 @@ const (
 	CheckpointsBehind    = "audit_checkpoints_behind"
 	RevocationLogOnHost  = "revocation_log_on_host"
 	WebhookFailing       = "webhook_failing"
+	AuditSinkBacklog     = "audit_sink_backlog"
 	offlineFor           = 5 * time.Minute
 	routeNoReadyFor      = 2 * time.Minute
 	AgentCertWithin      = 48 * time.Hour
@@ -39,6 +40,8 @@ const (
 	ClockSkewOver        = 30 * time.Second
 	CheckpointsBehindFor = time.Hour
 	WebhookFailingFor    = time.Hour
+	// AuditSinkBacklogFor is how long a sink's oldest unshipped item waits before the alert fires.
+	AuditSinkBacklogFor = 15 * time.Minute
 )
 
 // For is how long a kind's condition must hold before its alert fires; the conditions with a
@@ -56,6 +59,7 @@ var titles = map[string]string{
 	CheckpointsBehind:   "Audit checkpoints behind",
 	RevocationLogOnHost: "Revocation log not yet off-host",
 	WebhookFailing:      "Webhook endpoint failing",
+	AuditSinkBacklog:    "Audit sink backlog",
 }
 
 // Observation is a condition that holds now for one subject. Since is when it began, where the

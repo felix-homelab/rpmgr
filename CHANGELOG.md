@@ -19,6 +19,21 @@ Changes to the design documents are not recorded here: see the git history and t
   Admins hold the new permission `webhooks.write`, which an API token can carry. The web UI and the
   CLI follow. (#650)
 
+- Audit export with proofs. After a step-up, `rpmgr audit export --out <file>` (an Owner or Admin
+  for the org's chain, `--instance` for the instance chain as Instance Admin), or the API calls
+  `ExportAudit` and `ExportInstanceAudit`, write a chain as JSON Lines: its entries with their
+  hashes and its signed checkpoints, the entries after the newest checkpoint flagged. `rpmgr audit
+  verify-export --ca-pin sha256:<base64> <file>` verifies the file on any machine against the CA's
+  pin alone and finds an edited, removed or reordered entry or a forged checkpoint. An export is an
+  `audit.export` entry in the chain, recorded again as a failure when it breaks off. The audit
+  page has an Export button that does the same after a step-up. (#652, #653)
+
+  Admins hold the new permission `webhooks.write`, which an API token can carry. The CLI
+  follows. (#650)
+- A Webhooks page under Administration manages an organisation's webhook endpoints: it lists them
+  with their state, creates, edits, enables again, rotates and deletes them, shows the signing
+  secret once with a copy button, sends a test event and lists each endpoint's deliveries with
+  their status, error and next retry. (#651)
 - Webhooks carry the status events `agent.connect`, `agent.disconnect`,
   `apply.reject` and `route.status`, written once per change of state and bounded to one per
   subject per minute for a flapping agent or route.

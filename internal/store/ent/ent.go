@@ -22,6 +22,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsink"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsinkcursor"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
@@ -149,6 +151,8 @@ func checkColumn(t, c string) error {
 			auditcheckpoint.Table:    auditcheckpoint.ValidColumn,
 			auditentry.Table:         auditentry.ValidColumn,
 			audithead.Table:          audithead.ValidColumn,
+			auditsink.Table:          auditsink.ValidColumn,
+			auditsinkcursor.Table:    auditsinkcursor.ValidColumn,
 			cabundle.Table:           cabundle.ValidColumn,
 			cakey.Table:              cakey.ValidColumn,
 			certificate.Table:        certificate.ValidColumn,

@@ -16,6 +16,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsink"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsinkcursor"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
@@ -672,6 +674,120 @@ func init() {
 	auditheadDescID := auditheadFields[0].Descriptor()
 	// audithead.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	audithead.IDValidator = auditheadDescID.Validators[0].(func(string) error)
+	auditsinkMixin := schema.AuditSink{}.Mixin()
+	auditsink.Policy = privacy.NewPolicies(auditsinkMixin[0], schema.AuditSink{})
+	auditsink.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := auditsink.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	auditsinkMixinHooks0 := auditsinkMixin[0].Hooks()
+
+	auditsink.Hooks[1] = auditsinkMixinHooks0[0]
+	auditsinkMixinInters0 := auditsinkMixin[0].Interceptors()
+	auditsink.Interceptors[0] = auditsinkMixinInters0[0]
+	auditsinkFields := schema.AuditSink{}.Fields()
+	_ = auditsinkFields
+	// auditsinkDescName is the schema descriptor for name field.
+	auditsinkDescName := auditsinkFields[2].Descriptor()
+	// auditsink.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	auditsink.NameValidator = auditsinkDescName.Validators[0].(func(string) error)
+	// auditsinkDescEntries is the schema descriptor for entries field.
+	auditsinkDescEntries := auditsinkFields[5].Descriptor()
+	// auditsink.DefaultEntries holds the default value on creation for the entries field.
+	auditsink.DefaultEntries = auditsinkDescEntries.Default.(bool)
+	// auditsinkDescEnabled is the schema descriptor for enabled field.
+	auditsinkDescEnabled := auditsinkFields[6].Descriptor()
+	// auditsink.DefaultEnabled holds the default value on creation for the enabled field.
+	auditsink.DefaultEnabled = auditsinkDescEnabled.Default.(bool)
+	// auditsinkDescLastError is the schema descriptor for last_error field.
+	auditsinkDescLastError := auditsinkFields[7].Descriptor()
+	// auditsink.DefaultLastError holds the default value on creation for the last_error field.
+	auditsink.DefaultLastError = auditsinkDescLastError.Default.(string)
+	// auditsinkDescCreatedAt is the schema descriptor for created_at field.
+	auditsinkDescCreatedAt := auditsinkFields[9].Descriptor()
+	// auditsink.DefaultCreatedAt holds the default value on creation for the created_at field.
+	auditsink.DefaultCreatedAt = auditsinkDescCreatedAt.Default.(func() time.Time)
+	// auditsinkDescID is the schema descriptor for id field.
+	auditsinkDescID := auditsinkFields[0].Descriptor()
+	// auditsink.DefaultID holds the default value on creation for the id field.
+	auditsink.DefaultID = auditsinkDescID.Default.(func() string)
+	// auditsink.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	auditsink.IDValidator = func() func(string) error {
+		validators := auditsinkDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	auditsinkcursorMixin := schema.AuditSinkCursor{}.Mixin()
+	auditsinkcursor.Policy = privacy.NewPolicies(auditsinkcursorMixin[0], schema.AuditSinkCursor{})
+	auditsinkcursor.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := auditsinkcursor.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	auditsinkcursorMixinHooks0 := auditsinkcursorMixin[0].Hooks()
+
+	auditsinkcursor.Hooks[1] = auditsinkcursorMixinHooks0[0]
+	auditsinkcursorMixinInters0 := auditsinkcursorMixin[0].Interceptors()
+	auditsinkcursor.Interceptors[0] = auditsinkcursorMixinInters0[0]
+	auditsinkcursorFields := schema.AuditSinkCursor{}.Fields()
+	_ = auditsinkcursorFields
+	// auditsinkcursorDescSinkID is the schema descriptor for sink_id field.
+	auditsinkcursorDescSinkID := auditsinkcursorFields[1].Descriptor()
+	// auditsinkcursor.SinkIDValidator is a validator for the "sink_id" field. It is called by the builders before save.
+	auditsinkcursor.SinkIDValidator = auditsinkcursorDescSinkID.Validators[0].(func(string) error)
+	// auditsinkcursorDescChain is the schema descriptor for chain field.
+	auditsinkcursorDescChain := auditsinkcursorFields[2].Descriptor()
+	// auditsinkcursor.ChainValidator is a validator for the "chain" field. It is called by the builders before save.
+	auditsinkcursor.ChainValidator = auditsinkcursorDescChain.Validators[0].(func(string) error)
+	// auditsinkcursorDescEntrySeq is the schema descriptor for entry_seq field.
+	auditsinkcursorDescEntrySeq := auditsinkcursorFields[3].Descriptor()
+	// auditsinkcursor.DefaultEntrySeq holds the default value on creation for the entry_seq field.
+	auditsinkcursor.DefaultEntrySeq = auditsinkcursorDescEntrySeq.Default.(int64)
+	// auditsinkcursor.EntrySeqValidator is a validator for the "entry_seq" field. It is called by the builders before save.
+	auditsinkcursor.EntrySeqValidator = auditsinkcursorDescEntrySeq.Validators[0].(func(int64) error)
+	// auditsinkcursorDescCheckpointSeq is the schema descriptor for checkpoint_seq field.
+	auditsinkcursorDescCheckpointSeq := auditsinkcursorFields[4].Descriptor()
+	// auditsinkcursor.DefaultCheckpointSeq holds the default value on creation for the checkpoint_seq field.
+	auditsinkcursor.DefaultCheckpointSeq = auditsinkcursorDescCheckpointSeq.Default.(int64)
+	// auditsinkcursor.CheckpointSeqValidator is a validator for the "checkpoint_seq" field. It is called by the builders before save.
+	auditsinkcursor.CheckpointSeqValidator = auditsinkcursorDescCheckpointSeq.Validators[0].(func(int64) error)
+	// auditsinkcursorDescID is the schema descriptor for id field.
+	auditsinkcursorDescID := auditsinkcursorFields[0].Descriptor()
+	// auditsinkcursor.DefaultID holds the default value on creation for the id field.
+	auditsinkcursor.DefaultID = auditsinkcursorDescID.Default.(func() string)
+	// auditsinkcursor.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	auditsinkcursor.IDValidator = func() func(string) error {
+		validators := auditsinkcursorDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	cabundleMixin := schema.CABundle{}.Mixin()
 	cabundle.Policy = privacy.NewPolicies(cabundleMixin[0], schema.CABundle{})
 	cabundle.Hooks[0] = func(next ent.Mutator) ent.Mutator {

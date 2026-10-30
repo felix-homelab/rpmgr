@@ -44,6 +44,12 @@ regexes = ['''AKIDEXAMPLE''', '''AKIAIOSFODNN7EXAMPLE''', '''wJalrXUtnFEMI/K7MDE
 description = "object store test secret"
 regexes = ['''^s3cr3t-key-that-must-never-leak$''']
 
+# The made-up webhook secrets of the web UI's webhook tests: the real prefix with a readable
+# placeholder, so that the page shows a secret as the API returns it.
+[[allowlists]]
+description = "web test webhook secrets"
+regexes = ['''^rpmgr_whs_SECRET[0-9]$''']
+
 # Atlas migration checksums: hashes of the migration files.
 [[allowlists]]
 description = "Atlas migration checksums"

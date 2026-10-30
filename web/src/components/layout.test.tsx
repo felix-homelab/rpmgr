@@ -42,7 +42,7 @@ describe("Layout", () => {
     const group = (name: string) => within(nav.getByRole("list", { name })).getAllByRole("link").map((l) => l.textContent);
     expect(group("Network")).toEqual(["Routes", "Connectors", "Gateways"]);
     expect(group("Security")).toEqual(["Domains & certificates", "Access policies"]);
-    expect(group("Administration")).toEqual(["Organisation", "Audit log", "Settings"]);
+    expect(group("Administration")).toEqual(["Organisation", "Webhooks", "Audit log", "Settings"]);
     await waitFor(() => expect(nav.getByRole("link", { name: "Routes" }).getAttribute("aria-current")).toBe("page"));
     // The overview is current only on its own page, not on every page under /.
     expect(nav.getByRole("link", { name: "Overview" }).getAttribute("aria-current")).toBeNull();

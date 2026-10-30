@@ -995,8 +995,8 @@ first time and a route's first status are no events.
 [R] Each alert the controller evaluates has a kind, the name `alert_types` chooses and an alert
 event's summary begins with: `agent_offline`, `config_not_applied`, `agent_certificate_expiring`,
 `public_certificate_expiring`, `route_no_ready_connector`, `clock_skew`,
-`audit_checkpoints_behind`, `revocation_log_on_host` and `webhook_failing`, and, with their
-slices, `audit_sink_backlog` and the DNS alerts. An agent counts once it has connected,
+`audit_checkpoints_behind`, `revocation_log_on_host`, `webhook_failing` and
+`audit_sink_backlog`, and, with its slice, the DNS alerts. An agent counts once it has connected,
 while it is enabled and not ephemeral; agent offline counts from its disconnection, configuration
 not applied and clock skew only while it is online, an alert of either keeping its state while the
 agent is offline, and certificate renewal failing looks at its

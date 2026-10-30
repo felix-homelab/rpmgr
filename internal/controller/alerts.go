@@ -12,6 +12,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/alerts"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/audit"
+	"github.com/felix-homelab/rpmgr/internal/auditsink"
 	"github.com/felix-homelab/rpmgr/internal/events"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
@@ -237,6 +238,15 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 	}
 	if o.RevocationLog != nil && o.RevocationLog().Alerting(now) {
 		add("", alerts.RevocationLogOnHost, "instance", "revocation_log", "revocation log", time.Time{})
+	}
+	backlogs, err := auditsink.Backlogs(ctx, o.DB)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, b := range backlogs {
+		if !b.Oldest.IsZero() && now.Sub(b.Oldest) > alerts.AuditSinkBacklogFor {
+			add("", alerts.AuditSinkBacklog, "audit_sink", b.SinkID, b.Sink, time.Time{})
+		}
 	}
 	return obs, status, nil
 }

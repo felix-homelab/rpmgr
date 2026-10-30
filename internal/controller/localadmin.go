@@ -25,6 +25,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/apirequest"
+	eauditsink "github.com/felix-homelab/rpmgr/internal/store/ent/auditsink"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
@@ -137,6 +138,7 @@ var sealedColumns = []sealedColumn{
 	{apirequest.Table, apirequest.FieldID, apirequest.FieldResponseEnc, false},
 	{ewebhook.Table, ewebhook.FieldID, ewebhook.FieldSecretEnc, true},
 	{ewebhook.Table, ewebhook.FieldID, ewebhook.FieldPreviousSecretEnc, true},
+	{eauditsink.Table, eauditsink.FieldID, eauditsink.FieldSecretEnc, true},
 }
 
 // SealedRef names one sealed value.
