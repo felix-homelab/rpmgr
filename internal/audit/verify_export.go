@@ -88,7 +88,7 @@ func VerifyExport(r io.Reader, pin string) (ExportResult, error) {
 	if chain == InstanceChain {
 		org = ""
 	}
-	res := ExportResult{Chain: chain, FirstSeq: h.FirstSeq, LastSeq: h.LastSeq, AnchoredSeq: h.AnchoredSeq, Root: pin}
+	res := ExportResult{Chain: chain, Root: pin} // seqs are filled from the verified entries
 	broken := func(seq int64, format string, a ...any) (ExportResult, error) {
 		return ExportResult{}, &ChainError{chain, seq, fmt.Sprintf(format, a...)}
 	}
@@ -141,6 +141,10 @@ func VerifyExport(r io.Reader, pin string) (ExportResult, error) {
 			}
 			if !started {
 				started = true
+				if en.Seq != h.FirstSeq {
+					return broken(en.Seq, "the first entry is not the one the header names (seq %d)", h.FirstSeq)
+				}
+				res.FirstSeq = en.Seq
 				switch {
 				case en.Seq == 1:
 					head = Head{Chain: chain, Hash: genesis(chain)}
@@ -177,6 +181,10 @@ func VerifyExport(r io.Reader, pin string) (ExportResult, error) {
 	}
 	if h.LastSeq != 0 && head.Seq != h.LastSeq || h.LastSeq == 0 && res.Entries > 0 {
 		return broken(h.LastSeq, "the export ends before its last entry")
+	}
+	res.LastSeq, res.AnchoredSeq = head.Seq, cpSeq
+	if res.Entries == 0 {
+		res.LastSeq = 0
 	}
 	return res, nil
 }

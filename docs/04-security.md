@@ -1646,7 +1646,15 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
   as an unanchored tail, flagged so, which a later export anchors. `rpmgr audit verify-export
   --ca-pin sha256:<base64>` verifies an export offline against the CA root pin alone: links, hashes,
   checkpoint signatures and their keys' certificates, and that nothing was removed, reordered or
-  edited.
+  edited. The header is not signed. It tells the verifier where to start and end, and the verifier
+  takes the seqs it reports from the verified entries: a first entry that is not the header's
+  `first_seq` is refused. A cut at the start or the end that falls exactly on a checkpoint, with the
+  header adjusted to it, leaves a file that verifies, because every part of it is still signed:
+  cutting leading entries up to a checkpoint, or trailing entries back to an older one. Only a
+  reference from outside shows it, an audit sink or an earlier export that holds the newer seq.
+  Leading entries cut away anywhere else are refused; entries cut from the end are the unanchored
+  tail of an older state, which no signature covers. One export stream runs at most the export deadline
+  ([03](03-connections.md#timeouts-keepalive-and-backoff)), its read transaction with it.
 - **Webhook signatures** (Phase 2) and their maximum age are under
   [Webhooks and the egress guard](#webhooks-and-the-egress-guard-phase-2).
 - Only the audit package writes the audit tables: the store refuses every create, update and delete

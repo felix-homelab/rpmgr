@@ -152,6 +152,9 @@ func Export(ctx context.Context, db *store.DB, orgID string, trust Trust, now ti
 			if err != nil {
 				return err
 			}
+			if err := ctx.Err(); err != nil { // a deadline or an abandoned export ends the read
+				return err
+			}
 			if err := write(ExportEntry{Type: LineEntry, Seq: e.Seq, ID: e.ID, Time: e.Time.UTC(), ActorType: string(e.ActorType),
 				ActorID: e.ActorID, CredentialID: e.CredentialID, AuthMethod: e.AuthMethod, IP: e.IP, UserAgent: e.UserAgent,
 				RequestID: e.RequestID, Action: e.Action, TargetType: e.TargetType, TargetID: e.TargetID, Result: string(e.Result),
