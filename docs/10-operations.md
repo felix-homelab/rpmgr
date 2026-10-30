@@ -141,6 +141,9 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 | `/run/rpmgr-update/status.json` | root, 0644 | The updater's last outcome (`updated`, `rolled_back`, `rollback_failed`, `refused`), which the agent reports ([04](04-security.md#over-the-air-updates)) |
 | `/run/rpmgr/<role>/handoff.json` | rpmgr, 0644 | The outcome of the role's last restart with socket hand-off (`running`, `ok`, `failed`, `refused`, with the reason and both process IDs), which `rpmgr handoff` waits for; read without following a link and only as a small regular file ([03](03-connections.md#restarts-with-socket-hand-off-phase-2)) |
 | `/run/rpmgr/<role>/handoff.pid` | rpmgr, 0644 | The process ID of the role's process once it takes `SIGUSR2` as a hand-off; `rpmgr handoff` signals no other process ([03](03-connections.md#restarts-with-socket-hand-off-phase-2)) |
+| `/var/lib/rpmgr/firewall/desired.json` | rpmgr, 0644 in a 0750 directory | The ranges the gateway wants open; **untrusted input** to the helper |
+| `/etc/rpmgr/firewall.json` | root, 0644 | The bounds, written by `rpmgr setup --firewall ufw` from the boot file's listeners and the maximum range; refused if not root-owned or if group or others may write it |
+| `/run/rpmgr-firewall/status.json` | root, 0644 | The helper's last outcome, which the gateway reads and reports |
 | `/var/lib/rpmgr/dl/<version>/` (controller) | rpmgr, 0750; files 0640 | The release mirror, served under `/dl/`: the controller's own version, the targets of its rollouts and its previous version, verified release files only; `dl/.own.json` records the own and the previous version ([04](04-security.md#over-the-air-updates)) |
 | `/var/lib/rpmgr/audit-checkpoints.log` (controller) | rpmgr, 0640 | Signed audit checkpoints, appended locally and included in every backup; the external sink (Phase 2) is what makes tampering evident ([04](04-security.md#audit-log)) |
 | `/var/lib/rpmgr/revocations.log` (controller) | rpmgr, 0640 | This replica's durable, fsync'd **revocation log**: every revocation and credential supersession is appended here first, then shipped asynchronously to the shared readable sink ([Backup and restore](#backup-and-restore)) |
@@ -379,6 +382,61 @@ RestartSec=2s
     says.
 - No secret appears in `ExecStart` or `Environment=` ([04](04-security.md#secrets-at-rest-and-in-logs)).
 - The installer applies the host tuning from [03](03-connections.md#host-tuning-applied-by-the-installer).
+
+### Host firewall helper (Phase 2)
+
+The root-owned helper that applies a gateway's port-pool ranges to `ufw` is a path unit and a
+oneshot service, built as the updater's ([D152](14-open-decisions.md#engineering);
+[04](04-security.md#host-firewall-for-port-pools-phase-2) has the trust model). It is optional and
+off by default.
+
+| Item | Value |
+|---|---|
+| Units | `rpmgr-firewall.path` (watches `/var/lib/rpmgr/firewall/desired.json`) and the oneshot `rpmgr-firewall.service`, printed by `rpmgr systemd-unit firewall`, written and enabled by `rpmgr setup --firewall ufw` and the install scripts' flag (slice 3) |
+| Command | `rpmgr firewall apply --desired /var/lib/rpmgr/firewall/desired.json --bounds /etc/rpmgr/firewall.json --status /run/rpmgr-firewall/status.json`; hidden from `--help` like `rpmgr updater` ([D151](14-open-decisions.md#engineering)) |
+| Desired file | `{"version": 1, "ranges": [{"protocol": "tcp", "from": 20000, "to": 20999}]}`, written by the gateway; the helper merges overlapping and adjacent ranges of a protocol |
+| Bounds file | `{"version": 1, "backend": "ufw", "listeners": [{"protocol": "tcp", "port": 80}, {"protocol": "tcp", "port": 443}, {"protocol": "udp", "port": 443}], "max_range": {"from": 20000, "to": 29999}}`; `backend` `""` or `off`, or a missing file, switches the helper off and removes its rules; `max_range` may be left out, which allows no pool |
+| Rules | `ufw allow <port or from:to>/<protocol> comment rpmgr`; the listeners are always opened, the desired ranges clamped to `max_range` |
+| Status | `off` (switched off, with the reason), `applied` (with the rules it holds) or `failed` (with the reason, and the ranges it refused as outside the bounds); with `backend` `ufw`, a missing or inactive `ufw` is `failed` with that reason and nothing is changed; with any other backend the status is `off` |
+
+- **Runs** when the desired file changes, at boot after `ufw.service`, and when started by hand
+  (`systemctl start rpmgr-firewall.service`), which is also how a `ufw` the operator enabled later
+  is picked up. Applying twice changes nothing: the second run finds every rule present.
+- **Sandbox.** `ProtectSystem=strict` with only `/etc/ufw`, `/lib/ufw` and `/usr/lib/ufw` (each with
+  `-`, so a missing one is ignored) and `/run` writable, so that `ufw` can write its rules and
+  create its lock `/run/ufw.lock`, which a path that does not exist yet could not be made writable
+  for; `CapabilityBoundingSet=` of `CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE CAP_FOWNER
+  CAP_CHOWN`; `RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6`; `ProtectHome=yes`,
+  `PrivateTmp=yes`, `NoNewPrivileges=yes`; `RuntimeDirectory=rpmgr-firewall` with
+  `RuntimeDirectoryPreserve=yes` keeps `status.json` after the run. [V VB-25] None of this has run
+  against a real `ufw`: the paths `ufw` writes, the capabilities and the address families it needs,
+  are to be checked on Debian 13, Ubuntu 22.04 and 24.04 before the release.
+- **A flood of writes.** The service has `StartLimitIntervalSec=0` (the helper is idempotent and
+  cheap) and the path unit `TriggerLimitIntervalSec=0`, so that a gateway rewriting the desired file
+  over and over cannot push either unit into a limit that would end the watch. `TriggerLimitIntervalSec=`
+  exists from systemd 253; on 249 the line is ignored with a warning and the default trigger limit
+  stays [V VB-25] (the default values and the 249 behaviour are not checked on a real host).
+- **`ufw`'s output** is read from `ufw status numbered` (`Status: active` or `inactive`, then one
+  line per rule such as `[ 2] 20000:20999/tcp  ALLOW IN  Anywhere  # rpmgr`, an IPv6 rule with
+  `(v6)` after its port). [V] The format is the one of ufw 0.36 as the tests' samples record it,
+  not yet checked against a real host; a line the helper cannot read is ignored and never deleted.
+- **A rule of the operator's** for the same port and protocol without the comment is not ours:
+  `ufw allow` skips adding an identical rule, the port stays open when ours is removed, and
+  the status lists the rule as applied. [V] Whether `ufw` treats the comment as part of a rule's
+  identity is to be checked.
+
+What slices 3 and 4 change:
+
+- **Boot file** ([Boot files](#boot-files), the gateway's and the all-in-one's, and the guide's
+  [boot-file reference](guide/reference/boot-files.md)): a `firewall:` block with `backend` (`""`
+  or `ufw`) and `max_range`, which `rpmgr setup --firewall ufw` turns into the bounds file.
+- **Guide pages:** [gateways](guide/gateways.md) (the pools' ports need no manual step when the
+  firewall is switched on; the provider's firewall stays the operator's), the
+  [quick start](guide/quick-start.md) (its `ufw allow` lines), the web UI's
+  [gateways page](guide/web-ui/gateways.md) (the firewall state of a gateway and of its pools),
+  the [setup](guide/install/setup.md) and [install script](guide/install/install-script.md) pages
+  (the flag), [troubleshooting](guide/operations/troubleshooting.md) (a failed firewall), the
+  [CLI](guide/reference/cli.md) and [files](guide/install/manual.md) references, and the CHANGELOG.
 
 ### Windows and macOS connectors (Phase 2)
 

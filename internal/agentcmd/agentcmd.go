@@ -152,7 +152,7 @@ func fileExists(path string) bool {
 // systemd units"). The connector-only build prints the connector's only.
 func SystemdUnit(roles ...string) *cli.Command {
 	if len(roles) == 0 {
-		roles = []string{"controller", "gateway", "connector", "all-in-one", "update"}
+		roles = []string{"controller", "gateway", "connector", "all-in-one", "update", "firewall"}
 	}
 	var configPath, bin string
 	var dropIn bool
@@ -180,7 +180,7 @@ func SystemdUnit(roles ...string) *cli.Command {
 				_, err = env.Stdout.Write(b)
 				return err
 			}
-			if args[0] == "update" {
+			if args[0] == "update" || args[0] == "firewall" {
 				if bin == "" {
 					in, err := update.ReadInstall(update.StateDir)
 					if err != nil {
@@ -188,7 +188,11 @@ func SystemdUnit(roles ...string) *cli.Command {
 					}
 					bin = in.Path
 				}
-				b, err := units.RenderUpdater(bin)
+				render := units.RenderUpdater
+				if args[0] == "firewall" {
+					render = units.RenderFirewall
+				}
+				b, err := render(bin)
 				if err != nil {
 					return err
 				}

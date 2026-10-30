@@ -20,6 +20,7 @@
 | `tls_passthrough` routes, routed by SNI without terminating TLS | P1 |
 | `tcp` routes in `http_connect` mode (HTTP CONNECT multiplexer on one port), without proxy credentials, with basic auth over TLS, or with basic auth in the clear ([03](03-connections.md#http-connect-routes-phase-2)) | P2 |
 | Port pools per gateway group and port quotas per org and gateway group | P1 |
+| Opt-in `ufw` management of the port pools' ranges on a gateway host, by a root-owned helper ([D152](14-open-decisions.md#engineering)) | P2 |
 | Route enable/disable with one switch, applied without touching other routes | P1 |
 | Route preview: compile and show what agents would receive, without saving | P1 |
 
