@@ -327,6 +327,14 @@ func Run(ctx context.Context, o RunOptions) error {
 		}); err != nil {
 		return err
 	}
+	webhookSender := &webhook.Sender{Proxy: proxy, Now: o.Now}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_webhook_proto.Services().ByName("WebhookService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewWebhookServiceHandler(&apisvc.Webhooks{DB: db, API: apiServer, Sealer: sealer, Sender: webhookSender,
+				Own: ownAddresses(), Logger: o.Logger, Now: o.Now}, opts...)
+		}); err != nil {
+		return err
+	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_status_proto.Services().ByName("StatusService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewStatusServiceHandler(&apisvc.Status{DB: db, Sys: sys, Now: o.Now}, opts...)
@@ -477,7 +485,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	job(RollupJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}), "traffic rollup job")
 	job(EventsJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}), "events job")
 	job(AlertJob(AlertOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger, RevocationLog: shipper.Status}), "alert job")
-	job(WebhookJob(WebhookOptions{DB: db, Leases: leases, Sealer: sealer, Sender: &webhook.Sender{Proxy: proxy, Now: o.Now}, Now: o.Now,
+	job(WebhookJob(WebhookOptions{DB: db, Leases: leases, Sealer: sealer, Sender: webhookSender, Now: o.Now,
 		Logger: o.Logger, Own: ownAddresses()}), "webhook job")
 	job(RolloutJob(RolloutOptions{DB: db, Now: o.Now, Logger: o.Logger}), "rollout job")
 	bg.Go(func() { ReloadCA(jobs, caOpts) })
