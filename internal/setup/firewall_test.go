@@ -304,3 +304,61 @@ func TestNew_FirewallRefuses(t *testing.T) {
 		}
 	}
 }
+
+// TestInstallFirewall (D152): what the install script runs once the boot file names the firewall:
+// the bounds come from the boot file of a gateway or an all-in-one, a boot file without the key or
+// another role is refused, and a missing boot file is an error.
+func TestInstallFirewall(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the firewall helper is Linux's")
+	}
+	f := &fakeHost{}
+	var given []string
+	h := firewallHost(t, f, true, &given)
+	ctx := context.Background()
+	boot := func(role, body string) {
+		write(t, filepath.Join(h.Paths.Etc, role+".yaml"), body)
+	}
+	if _, err := setup.InstallFirewall(ctx, h, "gateway", false); err == nil {
+		t.Error("a host without a boot file was accepted")
+	}
+	boot("gateway", "version: 1\ncontroller: {endpoints: [https://panel.example.com]}\n")
+	if _, err := setup.InstallFirewall(ctx, h, "gateway", false); err == nil || !strings.Contains(err.Error(), "firewall.backend: ufw") {
+		t.Errorf("a boot file without the key: %v", err)
+	}
+	for _, role := range []string{"connector", "controller", "router"} {
+		if _, err := setup.InstallFirewall(ctx, h, role, false); err == nil || !strings.Contains(err.Error(), "no firewall to hand") {
+			t.Errorf("%s: %v", role, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(h.Paths.Etc, "firewall.json")); err == nil {
+		t.Fatal("a refused call wrote the bounds")
+	}
+	boot("gateway", "version: 1\ncontroller: {endpoints: [https://panel.example.com]}\nlisten: {http: \"\", tcp: \":8443\"}\n"+
+		"firewall: {backend: ufw, max_range: 20000-20999}\n")
+	r, err := setup.InstallFirewall(ctx, h, "gateway", false)
+	if err != nil || r.FirewallNote != "" {
+		t.Fatalf("gateway: %+v, %v", r, err)
+	}
+	b := readBounds(t, h)
+	if want := []firewall.Listener{{Protocol: "tcp", Port: 8443}, {Protocol: "udp", Port: 443}}; !slices.Equal(b.Listeners, want) || b.MaxRange.To != 20999 {
+		t.Errorf("bounds %+v, want listeners %v: no port 80 when listen.http is off", b, want)
+	}
+	if len(f.commands) != 0 {
+		t.Errorf("commands %q: the install script enables the units, not the binary", f.commands)
+	}
+	if svc, err := os.ReadFile(filepath.Join(h.Paths.Units, "rpmgr-firewall.service")); err != nil || !strings.Contains(string(svc), "firewall apply") {
+		t.Errorf("service %q, %v", svc, err)
+	}
+	boot("all-in-one", "version: 1\npublic_url: https://panel.example.com\nfirewall: {backend: ufw}\n")
+	if _, err := setup.InstallFirewall(ctx, h, "all-in-one", true); err != nil {
+		t.Fatal(err)
+	}
+	if b := readBounds(t, h); b.MaxRange != nil || len(b.Listeners) != 3 {
+		t.Errorf("all-in-one bounds %+v: three listeners and no range", b)
+	}
+	h.IsRoot = func() bool { return false }
+	if _, err := setup.InstallFirewall(ctx, h, "gateway", false); err == nil || !strings.Contains(err.Error(), "root") {
+		t.Errorf("without root: %v", err)
+	}
+}

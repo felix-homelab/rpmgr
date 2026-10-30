@@ -37,15 +37,22 @@ dig +short app.example.com
 
 ## 2. Open the server's ports
 
-Visitors reach the gateway on 80/tcp, 443/tcp and 443/udp; connectors use 443 as well. Open them in
-the provider's firewall in front of the server, and in the server's own firewall if it has one. With
-`ufw`:
+Visitors reach the gateway on 80/tcp, 443/tcp and 443/udp; connectors use 443 as well.
 
-```sh
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow 443/udp
-```
+- **In the provider's firewall in front of the server,** open them now. rpmgr never changes that
+  one, so this stays your task, also for the ports of port pools later.
+- **In the server's own firewall,** let rpmgr do it if the server uses `ufw`: step 4 hands `ufw` to
+  rpmgr with `--firewall ufw`, so there is nothing to type here. `ufw` must be active
+  (`sudo ufw status`); with `ufw` inactive nothing on the server blocks the ports, and the gateway
+  shows the firewall as failed until you enable `ufw` or leave the flag out.
+- **With another firewall,** or a `ufw` you manage yourself, open them there and leave the flag out
+  of step 4. With `ufw`:
+
+  ```sh
+  sudo ufw allow 80/tcp
+  sudo ufw allow 443/tcp
+  sudo ufw allow 443/udp
+  ```
 
 ## 3. Install rpmgr on the server
 
@@ -74,8 +81,12 @@ the next step in forms.
 
 ```sh
 sudo rpmgr setup --role all-in-one --public-url https://panel.example.com \
-  --acme-email you@example.com --yes
+  --acme-email you@example.com --firewall ufw --firewall-max-range 20000-29999 --yes
 ```
+
+`--firewall ufw` hands the server's `ufw` to rpmgr: it opens the gateway's ports now, and the ranges
+of the port pools you create later, as far as `--firewall-max-range` allows. Leave both flags out
+if you opened the ports yourself in step 2.
 
 Setup writes the boot file, creates the key-encryption key (KEK), the database and the internal CA,
 creates the gateway group `default` with the built-in gateway `local` and the built-in connector
@@ -89,6 +100,7 @@ What you see (abbreviated; `…` marks values that differ on your host):
 → write the boot file /etc/rpmgr/all-in-one.yaml
 → initialise the all-in-one: KEK, database, trust domain and CA, and enroll its gateway and connector
 → set the instance's ACME directory and e-mail address
+→ hand ufw to rpmgr: write the bounds /etc/rpmgr/firewall.json (root's), create /var/lib/rpmgr/firewall, …
 → install the unit /etc/systemd/system/rpmgr-all-in-one.service and start it: systemctl daemon-reload, enable --now rpmgr-all-in-one
 → wait until 127.0.0.1:7381/readyz reports ready
 
@@ -241,7 +253,10 @@ rpmgr create route-target --route app --connector <connector name> \
 1. **A port pool.** Under **Network → Gateways**, open the group `default`. Under **Port pools**,
    choose **Add a port pool**, choose the **Protocol** TCP, enter the **First port** `20000` and the
    **Last port** `20099`, and choose **Add the pool** ([Gateways](gateways.md)).
-2. **The firewall.** Open the pool's ports on the server, in the provider's firewall too:
+2. **The firewall.** The provider's firewall in front of the server is yours: open the pool's
+   ports there. On the server, `ufw` opens them for you shortly after, because step 4 handed it to
+   rpmgr and the range is inside `--firewall-max-range`; the group's page shows `Open in the
+   firewall of 1 of 1 gateway` beside the pool. Without `--firewall`, open them yourself:
 
    ```sh
    sudo ufw allow 20000:20099/tcp
@@ -298,6 +313,6 @@ rpmgr create route-target --route game --connector <connector name> --address 19
 | The domain claim stays pending | The TXT record's name and value, and time for DNS to update |
 | The install command fails at `cannot download … /dl/…` | The controller cannot reach GitHub to fill its release mirror ([Air-gapped installations](install/air-gapped.md)) |
 | A route shows **blocked by the connector's local policy** | Allow the target on the connector's host with `sudo rpmgr policy allow-target`; the route's page shows the command |
-| The TCP port does not answer | The pool's ports in both firewalls, and the route's actual port |
+| The TCP port does not answer | The pool's ports in both firewalls (with `--firewall ufw`: the **Firewall** column of the gateway on the group's page, and the provider's firewall), and the route's actual port |
 
 The [Troubleshooting](operations/troubleshooting.md) page covers more.

@@ -172,6 +172,12 @@ policy, with `gateway` in place of `connector` and the admin port 7382.
    sudo rpmgr status        # the last line, Service:, says "running and ready"
    ```
 
+Without the install script, a gateway host hands its `ufw` to rpmgr the way
+[Gateways](../gateways.md#the-hosts-firewall) describes: the `firewall:` section in
+`/etc/rpmgr/gateway.yaml`, `rpmgr firewall install` (the bounds file `/etc/rpmgr/firewall.json`,
+the directory `/var/lib/rpmgr/firewall` and the units `rpmgr-firewall.path` and
+`rpmgr-firewall.service`, which `rpmgr systemd-unit firewall` prints) and `systemctl enable`.
+
 `rpmgr enroll` flags:
 
 | Flag | Meaning |
