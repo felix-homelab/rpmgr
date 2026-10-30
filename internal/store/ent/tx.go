@@ -34,6 +34,10 @@ type Tx struct {
 	AuditEntry *AuditEntryClient
 	// AuditHead is the client for interacting with the AuditHead builders.
 	AuditHead *AuditHeadClient
+	// AuditSink is the client for interacting with the AuditSink builders.
+	AuditSink *AuditSinkClient
+	// AuditSinkCursor is the client for interacting with the AuditSinkCursor builders.
+	AuditSinkCursor *AuditSinkCursorClient
 	// CABundle is the client for interacting with the CABundle builders.
 	CABundle *CABundleClient
 	// CAKey is the client for interacting with the CAKey builders.
@@ -285,6 +289,8 @@ func (tx *Tx) init() {
 	tx.AuditCheckpoint = NewAuditCheckpointClient(tx.config)
 	tx.AuditEntry = NewAuditEntryClient(tx.config)
 	tx.AuditHead = NewAuditHeadClient(tx.config)
+	tx.AuditSink = NewAuditSinkClient(tx.config)
+	tx.AuditSinkCursor = NewAuditSinkCursorClient(tx.config)
 	tx.CABundle = NewCABundleClient(tx.config)
 	tx.CAKey = NewCAKeyClient(tx.config)
 	tx.Certificate = NewCertificateClient(tx.config)

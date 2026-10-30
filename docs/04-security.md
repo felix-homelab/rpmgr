@@ -1619,7 +1619,11 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
     as JSON (VB-23).
   - **Webhook**: delivered and signed as a webhook ([Webhooks and the egress
     guard](#webhooks-and-the-egress-guard-phase-2)), with the event type `audit.checkpoint` or
-    `audit.entry`.
+    `audit.entry`. `Rpmgr-Event-Id` is the ID of the checkpoint or entry, so a receiver drops a
+    repeat of the at-least-once shipping. The body is the item as JSON with its chain and seq. An
+    entry larger than a delivery may be ([03](03-connections.md#timeouts-keepalive-and-backoff))
+    is shipped without its `diff` and marked `"truncated": true`, so one entry never holds a
+    sink's cursor.
   - **Object storage** (S3-compatible, the client of the revocation log): each checkpoint or batch
     is an object written with `If-None-Match: *` into a bucket with Object Lock in compliance
     mode, so not even the sink's own credentials can rewrite or delete it before the lock ends; a

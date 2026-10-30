@@ -22,6 +22,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsink"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsinkcursor"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
@@ -99,6 +101,8 @@ const (
 	TypeAuditCheckpoint    = "AuditCheckpoint"
 	TypeAuditEntry         = "AuditEntry"
 	TypeAuditHead          = "AuditHead"
+	TypeAuditSink          = "AuditSink"
+	TypeAuditSinkCursor    = "AuditSinkCursor"
 	TypeCABundle           = "CABundle"
 	TypeCAKey              = "CAKey"
 	TypeCertificate        = "Certificate"
@@ -8469,6 +8473,1616 @@ func (m *AuditHeadMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *AuditHeadMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown AuditHead edge %s", name)
+}
+
+// AuditSinkMutation represents an operation that mutates the AuditSink nodes in the graph.
+type AuditSinkMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *string
+	kind            *auditsink.Kind
+	name            *string
+	settings        *map[string]string
+	secret_enc      *[]byte
+	entries         *bool
+	enabled         *bool
+	last_error      *string
+	last_success_at *time.Time
+	created_at      *time.Time
+	clearedFields   map[string]struct{}
+	cursors         map[string]struct{}
+	removedcursors  map[string]struct{}
+	clearedcursors  bool
+	done            bool
+	oldValue        func(context.Context) (*AuditSink, error)
+	predicates      []predicate.AuditSink
+}
+
+var _ ent.Mutation = (*AuditSinkMutation)(nil)
+
+// auditsinkOption allows management of the mutation configuration using functional options.
+type auditsinkOption func(*AuditSinkMutation)
+
+// newAuditSinkMutation creates new mutation for the AuditSink entity.
+func newAuditSinkMutation(c config, op Op, opts ...auditsinkOption) *AuditSinkMutation {
+	m := &AuditSinkMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAuditSink,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAuditSinkID sets the ID field of the mutation.
+func withAuditSinkID(id string) auditsinkOption {
+	return func(m *AuditSinkMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AuditSink
+		)
+		m.oldValue = func(ctx context.Context) (*AuditSink, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AuditSink.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAuditSink sets the old AuditSink of the mutation.
+func withAuditSink(node *AuditSink) auditsinkOption {
+	return func(m *AuditSinkMutation) {
+		m.oldValue = func(context.Context) (*AuditSink, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AuditSinkMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AuditSinkMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of AuditSink entities.
+func (m *AuditSinkMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AuditSinkMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AuditSinkMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AuditSink.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetKind sets the "kind" field.
+func (m *AuditSinkMutation) SetKind(a auditsink.Kind) {
+	m.kind = &a
+}
+
+// Kind returns the value of the "kind" field in the mutation.
+func (m *AuditSinkMutation) Kind() (r auditsink.Kind, exists bool) {
+	v := m.kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKind returns the old "kind" field's value of the AuditSink entity.
+// If the AuditSink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkMutation) OldKind(ctx context.Context) (v auditsink.Kind, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKind: %w", err)
+	}
+	return oldValue.Kind, nil
+}
+
+// ResetKind resets all changes to the "kind" field.
+func (m *AuditSinkMutation) ResetKind() {
+	m.kind = nil
+}
+
+// SetName sets the "name" field.
+func (m *AuditSinkMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *AuditSinkMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the AuditSink entity.
+// If the AuditSink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *AuditSinkMutation) ResetName() {
+	m.name = nil
+}
+
+// SetSettings sets the "settings" field.
+func (m *AuditSinkMutation) SetSettings(value map[string]string) {
+	m.settings = &value
+}
+
+// Settings returns the value of the "settings" field in the mutation.
+func (m *AuditSinkMutation) Settings() (r map[string]string, exists bool) {
+	v := m.settings
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSettings returns the old "settings" field's value of the AuditSink entity.
+// If the AuditSink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkMutation) OldSettings(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSettings is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSettings requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSettings: %w", err)
+	}
+	return oldValue.Settings, nil
+}
+
+// ClearSettings clears the value of the "settings" field.
+func (m *AuditSinkMutation) ClearSettings() {
+	m.settings = nil
+	m.clearedFields[auditsink.FieldSettings] = struct{}{}
+}
+
+// SettingsCleared returns if the "settings" field was cleared in this mutation.
+func (m *AuditSinkMutation) SettingsCleared() bool {
+	_, ok := m.clearedFields[auditsink.FieldSettings]
+	return ok
+}
+
+// ResetSettings resets all changes to the "settings" field.
+func (m *AuditSinkMutation) ResetSettings() {
+	m.settings = nil
+	delete(m.clearedFields, auditsink.FieldSettings)
+}
+
+// SetSecretEnc sets the "secret_enc" field.
+func (m *AuditSinkMutation) SetSecretEnc(b []byte) {
+	m.secret_enc = &b
+}
+
+// SecretEnc returns the value of the "secret_enc" field in the mutation.
+func (m *AuditSinkMutation) SecretEnc() (r []byte, exists bool) {
+	v := m.secret_enc
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSecretEnc returns the old "secret_enc" field's value of the AuditSink entity.
+// If the AuditSink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkMutation) OldSecretEnc(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSecretEnc is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSecretEnc requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSecretEnc: %w", err)
+	}
+	return oldValue.SecretEnc, nil
+}
+
+// ClearSecretEnc clears the value of the "secret_enc" field.
+func (m *AuditSinkMutation) ClearSecretEnc() {
+	m.secret_enc = nil
+	m.clearedFields[auditsink.FieldSecretEnc] = struct{}{}
+}
+
+// SecretEncCleared returns if the "secret_enc" field was cleared in this mutation.
+func (m *AuditSinkMutation) SecretEncCleared() bool {
+	_, ok := m.clearedFields[auditsink.FieldSecretEnc]
+	return ok
+}
+
+// ResetSecretEnc resets all changes to the "secret_enc" field.
+func (m *AuditSinkMutation) ResetSecretEnc() {
+	m.secret_enc = nil
+	delete(m.clearedFields, auditsink.FieldSecretEnc)
+}
+
+// SetEntries sets the "entries" field.
+func (m *AuditSinkMutation) SetEntries(b bool) {
+	m.entries = &b
+}
+
+// Entries returns the value of the "entries" field in the mutation.
+func (m *AuditSinkMutation) Entries() (r bool, exists bool) {
+	v := m.entries
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEntries returns the old "entries" field's value of the AuditSink entity.
+// If the AuditSink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkMutation) OldEntries(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEntries is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEntries requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEntries: %w", err)
+	}
+	return oldValue.Entries, nil
+}
+
+// ResetEntries resets all changes to the "entries" field.
+func (m *AuditSinkMutation) ResetEntries() {
+	m.entries = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *AuditSinkMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *AuditSinkMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the AuditSink entity.
+// If the AuditSink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *AuditSinkMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetLastError sets the "last_error" field.
+func (m *AuditSinkMutation) SetLastError(s string) {
+	m.last_error = &s
+}
+
+// LastError returns the value of the "last_error" field in the mutation.
+func (m *AuditSinkMutation) LastError() (r string, exists bool) {
+	v := m.last_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastError returns the old "last_error" field's value of the AuditSink entity.
+// If the AuditSink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkMutation) OldLastError(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastError: %w", err)
+	}
+	return oldValue.LastError, nil
+}
+
+// ResetLastError resets all changes to the "last_error" field.
+func (m *AuditSinkMutation) ResetLastError() {
+	m.last_error = nil
+}
+
+// SetLastSuccessAt sets the "last_success_at" field.
+func (m *AuditSinkMutation) SetLastSuccessAt(t time.Time) {
+	m.last_success_at = &t
+}
+
+// LastSuccessAt returns the value of the "last_success_at" field in the mutation.
+func (m *AuditSinkMutation) LastSuccessAt() (r time.Time, exists bool) {
+	v := m.last_success_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastSuccessAt returns the old "last_success_at" field's value of the AuditSink entity.
+// If the AuditSink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkMutation) OldLastSuccessAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastSuccessAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastSuccessAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastSuccessAt: %w", err)
+	}
+	return oldValue.LastSuccessAt, nil
+}
+
+// ClearLastSuccessAt clears the value of the "last_success_at" field.
+func (m *AuditSinkMutation) ClearLastSuccessAt() {
+	m.last_success_at = nil
+	m.clearedFields[auditsink.FieldLastSuccessAt] = struct{}{}
+}
+
+// LastSuccessAtCleared returns if the "last_success_at" field was cleared in this mutation.
+func (m *AuditSinkMutation) LastSuccessAtCleared() bool {
+	_, ok := m.clearedFields[auditsink.FieldLastSuccessAt]
+	return ok
+}
+
+// ResetLastSuccessAt resets all changes to the "last_success_at" field.
+func (m *AuditSinkMutation) ResetLastSuccessAt() {
+	m.last_success_at = nil
+	delete(m.clearedFields, auditsink.FieldLastSuccessAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *AuditSinkMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *AuditSinkMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the AuditSink entity.
+// If the AuditSink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *AuditSinkMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// AddCursorIDs adds the "cursors" edge to the AuditSinkCursor entity by ids.
+func (m *AuditSinkMutation) AddCursorIDs(ids ...string) {
+	if m.cursors == nil {
+		m.cursors = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.cursors[ids[i]] = struct{}{}
+	}
+}
+
+// ClearCursors clears the "cursors" edge to the AuditSinkCursor entity.
+func (m *AuditSinkMutation) ClearCursors() {
+	m.clearedcursors = true
+}
+
+// CursorsCleared reports if the "cursors" edge to the AuditSinkCursor entity was cleared.
+func (m *AuditSinkMutation) CursorsCleared() bool {
+	return m.clearedcursors
+}
+
+// RemoveCursorIDs removes the "cursors" edge to the AuditSinkCursor entity by IDs.
+func (m *AuditSinkMutation) RemoveCursorIDs(ids ...string) {
+	if m.removedcursors == nil {
+		m.removedcursors = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.cursors, ids[i])
+		m.removedcursors[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedCursors returns the removed IDs of the "cursors" edge to the AuditSinkCursor entity.
+func (m *AuditSinkMutation) RemovedCursorsIDs() (ids []string) {
+	for id := range m.removedcursors {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// CursorsIDs returns the "cursors" edge IDs in the mutation.
+func (m *AuditSinkMutation) CursorsIDs() (ids []string) {
+	for id := range m.cursors {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetCursors resets all changes to the "cursors" edge.
+func (m *AuditSinkMutation) ResetCursors() {
+	m.cursors = nil
+	m.clearedcursors = false
+	m.removedcursors = nil
+}
+
+// Where appends a list predicates to the AuditSinkMutation builder.
+func (m *AuditSinkMutation) Where(ps ...predicate.AuditSink) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AuditSinkMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AuditSinkMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AuditSink, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AuditSinkMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AuditSinkMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AuditSink).
+func (m *AuditSinkMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AuditSinkMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.kind != nil {
+		fields = append(fields, auditsink.FieldKind)
+	}
+	if m.name != nil {
+		fields = append(fields, auditsink.FieldName)
+	}
+	if m.settings != nil {
+		fields = append(fields, auditsink.FieldSettings)
+	}
+	if m.secret_enc != nil {
+		fields = append(fields, auditsink.FieldSecretEnc)
+	}
+	if m.entries != nil {
+		fields = append(fields, auditsink.FieldEntries)
+	}
+	if m.enabled != nil {
+		fields = append(fields, auditsink.FieldEnabled)
+	}
+	if m.last_error != nil {
+		fields = append(fields, auditsink.FieldLastError)
+	}
+	if m.last_success_at != nil {
+		fields = append(fields, auditsink.FieldLastSuccessAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, auditsink.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AuditSinkMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case auditsink.FieldKind:
+		return m.Kind()
+	case auditsink.FieldName:
+		return m.Name()
+	case auditsink.FieldSettings:
+		return m.Settings()
+	case auditsink.FieldSecretEnc:
+		return m.SecretEnc()
+	case auditsink.FieldEntries:
+		return m.Entries()
+	case auditsink.FieldEnabled:
+		return m.Enabled()
+	case auditsink.FieldLastError:
+		return m.LastError()
+	case auditsink.FieldLastSuccessAt:
+		return m.LastSuccessAt()
+	case auditsink.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AuditSinkMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case auditsink.FieldKind:
+		return m.OldKind(ctx)
+	case auditsink.FieldName:
+		return m.OldName(ctx)
+	case auditsink.FieldSettings:
+		return m.OldSettings(ctx)
+	case auditsink.FieldSecretEnc:
+		return m.OldSecretEnc(ctx)
+	case auditsink.FieldEntries:
+		return m.OldEntries(ctx)
+	case auditsink.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case auditsink.FieldLastError:
+		return m.OldLastError(ctx)
+	case auditsink.FieldLastSuccessAt:
+		return m.OldLastSuccessAt(ctx)
+	case auditsink.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown AuditSink field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AuditSinkMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case auditsink.FieldKind:
+		v, ok := value.(auditsink.Kind)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKind(v)
+		return nil
+	case auditsink.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case auditsink.FieldSettings:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSettings(v)
+		return nil
+	case auditsink.FieldSecretEnc:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSecretEnc(v)
+		return nil
+	case auditsink.FieldEntries:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEntries(v)
+		return nil
+	case auditsink.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case auditsink.FieldLastError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastError(v)
+		return nil
+	case auditsink.FieldLastSuccessAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastSuccessAt(v)
+		return nil
+	case auditsink.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AuditSink field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AuditSinkMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AuditSinkMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AuditSinkMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown AuditSink numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AuditSinkMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(auditsink.FieldSettings) {
+		fields = append(fields, auditsink.FieldSettings)
+	}
+	if m.FieldCleared(auditsink.FieldSecretEnc) {
+		fields = append(fields, auditsink.FieldSecretEnc)
+	}
+	if m.FieldCleared(auditsink.FieldLastSuccessAt) {
+		fields = append(fields, auditsink.FieldLastSuccessAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AuditSinkMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AuditSinkMutation) ClearField(name string) error {
+	switch name {
+	case auditsink.FieldSettings:
+		m.ClearSettings()
+		return nil
+	case auditsink.FieldSecretEnc:
+		m.ClearSecretEnc()
+		return nil
+	case auditsink.FieldLastSuccessAt:
+		m.ClearLastSuccessAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AuditSink nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AuditSinkMutation) ResetField(name string) error {
+	switch name {
+	case auditsink.FieldKind:
+		m.ResetKind()
+		return nil
+	case auditsink.FieldName:
+		m.ResetName()
+		return nil
+	case auditsink.FieldSettings:
+		m.ResetSettings()
+		return nil
+	case auditsink.FieldSecretEnc:
+		m.ResetSecretEnc()
+		return nil
+	case auditsink.FieldEntries:
+		m.ResetEntries()
+		return nil
+	case auditsink.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case auditsink.FieldLastError:
+		m.ResetLastError()
+		return nil
+	case auditsink.FieldLastSuccessAt:
+		m.ResetLastSuccessAt()
+		return nil
+	case auditsink.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AuditSink field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AuditSinkMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.cursors != nil {
+		edges = append(edges, auditsink.EdgeCursors)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AuditSinkMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case auditsink.EdgeCursors:
+		ids := make([]ent.Value, 0, len(m.cursors))
+		for id := range m.cursors {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AuditSinkMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.removedcursors != nil {
+		edges = append(edges, auditsink.EdgeCursors)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AuditSinkMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case auditsink.EdgeCursors:
+		ids := make([]ent.Value, 0, len(m.removedcursors))
+		for id := range m.removedcursors {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AuditSinkMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedcursors {
+		edges = append(edges, auditsink.EdgeCursors)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AuditSinkMutation) EdgeCleared(name string) bool {
+	switch name {
+	case auditsink.EdgeCursors:
+		return m.clearedcursors
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AuditSinkMutation) ClearEdge(name string) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown AuditSink unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AuditSinkMutation) ResetEdge(name string) error {
+	switch name {
+	case auditsink.EdgeCursors:
+		m.ResetCursors()
+		return nil
+	}
+	return fmt.Errorf("unknown AuditSink edge %s", name)
+}
+
+// AuditSinkCursorMutation represents an operation that mutates the AuditSinkCursor nodes in the graph.
+type AuditSinkCursorMutation struct {
+	config
+	op                  Op
+	typ                 string
+	id                  *string
+	chain               *string
+	entry_seq           *int64
+	addentry_seq        *int64
+	checkpoint_seq      *int64
+	addcheckpoint_seq   *int64
+	oldest_unshipped_at *time.Time
+	clearedFields       map[string]struct{}
+	sink                *string
+	clearedsink         bool
+	done                bool
+	oldValue            func(context.Context) (*AuditSinkCursor, error)
+	predicates          []predicate.AuditSinkCursor
+}
+
+var _ ent.Mutation = (*AuditSinkCursorMutation)(nil)
+
+// auditsinkcursorOption allows management of the mutation configuration using functional options.
+type auditsinkcursorOption func(*AuditSinkCursorMutation)
+
+// newAuditSinkCursorMutation creates new mutation for the AuditSinkCursor entity.
+func newAuditSinkCursorMutation(c config, op Op, opts ...auditsinkcursorOption) *AuditSinkCursorMutation {
+	m := &AuditSinkCursorMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAuditSinkCursor,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAuditSinkCursorID sets the ID field of the mutation.
+func withAuditSinkCursorID(id string) auditsinkcursorOption {
+	return func(m *AuditSinkCursorMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AuditSinkCursor
+		)
+		m.oldValue = func(ctx context.Context) (*AuditSinkCursor, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AuditSinkCursor.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAuditSinkCursor sets the old AuditSinkCursor of the mutation.
+func withAuditSinkCursor(node *AuditSinkCursor) auditsinkcursorOption {
+	return func(m *AuditSinkCursorMutation) {
+		m.oldValue = func(context.Context) (*AuditSinkCursor, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AuditSinkCursorMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AuditSinkCursorMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of AuditSinkCursor entities.
+func (m *AuditSinkCursorMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AuditSinkCursorMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AuditSinkCursorMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AuditSinkCursor.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSinkID sets the "sink_id" field.
+func (m *AuditSinkCursorMutation) SetSinkID(s string) {
+	m.sink = &s
+}
+
+// SinkID returns the value of the "sink_id" field in the mutation.
+func (m *AuditSinkCursorMutation) SinkID() (r string, exists bool) {
+	v := m.sink
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSinkID returns the old "sink_id" field's value of the AuditSinkCursor entity.
+// If the AuditSinkCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkCursorMutation) OldSinkID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSinkID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSinkID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSinkID: %w", err)
+	}
+	return oldValue.SinkID, nil
+}
+
+// ResetSinkID resets all changes to the "sink_id" field.
+func (m *AuditSinkCursorMutation) ResetSinkID() {
+	m.sink = nil
+}
+
+// SetChain sets the "chain" field.
+func (m *AuditSinkCursorMutation) SetChain(s string) {
+	m.chain = &s
+}
+
+// Chain returns the value of the "chain" field in the mutation.
+func (m *AuditSinkCursorMutation) Chain() (r string, exists bool) {
+	v := m.chain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChain returns the old "chain" field's value of the AuditSinkCursor entity.
+// If the AuditSinkCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkCursorMutation) OldChain(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChain is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChain requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChain: %w", err)
+	}
+	return oldValue.Chain, nil
+}
+
+// ResetChain resets all changes to the "chain" field.
+func (m *AuditSinkCursorMutation) ResetChain() {
+	m.chain = nil
+}
+
+// SetEntrySeq sets the "entry_seq" field.
+func (m *AuditSinkCursorMutation) SetEntrySeq(i int64) {
+	m.entry_seq = &i
+	m.addentry_seq = nil
+}
+
+// EntrySeq returns the value of the "entry_seq" field in the mutation.
+func (m *AuditSinkCursorMutation) EntrySeq() (r int64, exists bool) {
+	v := m.entry_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEntrySeq returns the old "entry_seq" field's value of the AuditSinkCursor entity.
+// If the AuditSinkCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkCursorMutation) OldEntrySeq(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEntrySeq is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEntrySeq requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEntrySeq: %w", err)
+	}
+	return oldValue.EntrySeq, nil
+}
+
+// AddEntrySeq adds i to the "entry_seq" field.
+func (m *AuditSinkCursorMutation) AddEntrySeq(i int64) {
+	if m.addentry_seq != nil {
+		*m.addentry_seq += i
+	} else {
+		m.addentry_seq = &i
+	}
+}
+
+// AddedEntrySeq returns the value that was added to the "entry_seq" field in this mutation.
+func (m *AuditSinkCursorMutation) AddedEntrySeq() (r int64, exists bool) {
+	v := m.addentry_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetEntrySeq resets all changes to the "entry_seq" field.
+func (m *AuditSinkCursorMutation) ResetEntrySeq() {
+	m.entry_seq = nil
+	m.addentry_seq = nil
+}
+
+// SetCheckpointSeq sets the "checkpoint_seq" field.
+func (m *AuditSinkCursorMutation) SetCheckpointSeq(i int64) {
+	m.checkpoint_seq = &i
+	m.addcheckpoint_seq = nil
+}
+
+// CheckpointSeq returns the value of the "checkpoint_seq" field in the mutation.
+func (m *AuditSinkCursorMutation) CheckpointSeq() (r int64, exists bool) {
+	v := m.checkpoint_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCheckpointSeq returns the old "checkpoint_seq" field's value of the AuditSinkCursor entity.
+// If the AuditSinkCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkCursorMutation) OldCheckpointSeq(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCheckpointSeq is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCheckpointSeq requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCheckpointSeq: %w", err)
+	}
+	return oldValue.CheckpointSeq, nil
+}
+
+// AddCheckpointSeq adds i to the "checkpoint_seq" field.
+func (m *AuditSinkCursorMutation) AddCheckpointSeq(i int64) {
+	if m.addcheckpoint_seq != nil {
+		*m.addcheckpoint_seq += i
+	} else {
+		m.addcheckpoint_seq = &i
+	}
+}
+
+// AddedCheckpointSeq returns the value that was added to the "checkpoint_seq" field in this mutation.
+func (m *AuditSinkCursorMutation) AddedCheckpointSeq() (r int64, exists bool) {
+	v := m.addcheckpoint_seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCheckpointSeq resets all changes to the "checkpoint_seq" field.
+func (m *AuditSinkCursorMutation) ResetCheckpointSeq() {
+	m.checkpoint_seq = nil
+	m.addcheckpoint_seq = nil
+}
+
+// SetOldestUnshippedAt sets the "oldest_unshipped_at" field.
+func (m *AuditSinkCursorMutation) SetOldestUnshippedAt(t time.Time) {
+	m.oldest_unshipped_at = &t
+}
+
+// OldestUnshippedAt returns the value of the "oldest_unshipped_at" field in the mutation.
+func (m *AuditSinkCursorMutation) OldestUnshippedAt() (r time.Time, exists bool) {
+	v := m.oldest_unshipped_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOldestUnshippedAt returns the old "oldest_unshipped_at" field's value of the AuditSinkCursor entity.
+// If the AuditSinkCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkCursorMutation) OldOldestUnshippedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOldestUnshippedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOldestUnshippedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOldestUnshippedAt: %w", err)
+	}
+	return oldValue.OldestUnshippedAt, nil
+}
+
+// ClearOldestUnshippedAt clears the value of the "oldest_unshipped_at" field.
+func (m *AuditSinkCursorMutation) ClearOldestUnshippedAt() {
+	m.oldest_unshipped_at = nil
+	m.clearedFields[auditsinkcursor.FieldOldestUnshippedAt] = struct{}{}
+}
+
+// OldestUnshippedAtCleared returns if the "oldest_unshipped_at" field was cleared in this mutation.
+func (m *AuditSinkCursorMutation) OldestUnshippedAtCleared() bool {
+	_, ok := m.clearedFields[auditsinkcursor.FieldOldestUnshippedAt]
+	return ok
+}
+
+// ResetOldestUnshippedAt resets all changes to the "oldest_unshipped_at" field.
+func (m *AuditSinkCursorMutation) ResetOldestUnshippedAt() {
+	m.oldest_unshipped_at = nil
+	delete(m.clearedFields, auditsinkcursor.FieldOldestUnshippedAt)
+}
+
+// ClearSink clears the "sink" edge to the AuditSink entity.
+func (m *AuditSinkCursorMutation) ClearSink() {
+	m.clearedsink = true
+	m.clearedFields[auditsinkcursor.FieldSinkID] = struct{}{}
+}
+
+// SinkCleared reports if the "sink" edge to the AuditSink entity was cleared.
+func (m *AuditSinkCursorMutation) SinkCleared() bool {
+	return m.clearedsink
+}
+
+// SinkIDs returns the "sink" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// SinkID instead. It exists only for internal usage by the builders.
+func (m *AuditSinkCursorMutation) SinkIDs() (ids []string) {
+	if id := m.sink; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetSink resets all changes to the "sink" edge.
+func (m *AuditSinkCursorMutation) ResetSink() {
+	m.sink = nil
+	m.clearedsink = false
+}
+
+// Where appends a list predicates to the AuditSinkCursorMutation builder.
+func (m *AuditSinkCursorMutation) Where(ps ...predicate.AuditSinkCursor) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AuditSinkCursorMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AuditSinkCursorMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AuditSinkCursor, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AuditSinkCursorMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AuditSinkCursorMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AuditSinkCursor).
+func (m *AuditSinkCursorMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AuditSinkCursorMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.sink != nil {
+		fields = append(fields, auditsinkcursor.FieldSinkID)
+	}
+	if m.chain != nil {
+		fields = append(fields, auditsinkcursor.FieldChain)
+	}
+	if m.entry_seq != nil {
+		fields = append(fields, auditsinkcursor.FieldEntrySeq)
+	}
+	if m.checkpoint_seq != nil {
+		fields = append(fields, auditsinkcursor.FieldCheckpointSeq)
+	}
+	if m.oldest_unshipped_at != nil {
+		fields = append(fields, auditsinkcursor.FieldOldestUnshippedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AuditSinkCursorMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case auditsinkcursor.FieldSinkID:
+		return m.SinkID()
+	case auditsinkcursor.FieldChain:
+		return m.Chain()
+	case auditsinkcursor.FieldEntrySeq:
+		return m.EntrySeq()
+	case auditsinkcursor.FieldCheckpointSeq:
+		return m.CheckpointSeq()
+	case auditsinkcursor.FieldOldestUnshippedAt:
+		return m.OldestUnshippedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AuditSinkCursorMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case auditsinkcursor.FieldSinkID:
+		return m.OldSinkID(ctx)
+	case auditsinkcursor.FieldChain:
+		return m.OldChain(ctx)
+	case auditsinkcursor.FieldEntrySeq:
+		return m.OldEntrySeq(ctx)
+	case auditsinkcursor.FieldCheckpointSeq:
+		return m.OldCheckpointSeq(ctx)
+	case auditsinkcursor.FieldOldestUnshippedAt:
+		return m.OldOldestUnshippedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown AuditSinkCursor field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AuditSinkCursorMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case auditsinkcursor.FieldSinkID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSinkID(v)
+		return nil
+	case auditsinkcursor.FieldChain:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChain(v)
+		return nil
+	case auditsinkcursor.FieldEntrySeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEntrySeq(v)
+		return nil
+	case auditsinkcursor.FieldCheckpointSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCheckpointSeq(v)
+		return nil
+	case auditsinkcursor.FieldOldestUnshippedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOldestUnshippedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AuditSinkCursor field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AuditSinkCursorMutation) AddedFields() []string {
+	var fields []string
+	if m.addentry_seq != nil {
+		fields = append(fields, auditsinkcursor.FieldEntrySeq)
+	}
+	if m.addcheckpoint_seq != nil {
+		fields = append(fields, auditsinkcursor.FieldCheckpointSeq)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AuditSinkCursorMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case auditsinkcursor.FieldEntrySeq:
+		return m.AddedEntrySeq()
+	case auditsinkcursor.FieldCheckpointSeq:
+		return m.AddedCheckpointSeq()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AuditSinkCursorMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case auditsinkcursor.FieldEntrySeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEntrySeq(v)
+		return nil
+	case auditsinkcursor.FieldCheckpointSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCheckpointSeq(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AuditSinkCursor numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AuditSinkCursorMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(auditsinkcursor.FieldOldestUnshippedAt) {
+		fields = append(fields, auditsinkcursor.FieldOldestUnshippedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AuditSinkCursorMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AuditSinkCursorMutation) ClearField(name string) error {
+	switch name {
+	case auditsinkcursor.FieldOldestUnshippedAt:
+		m.ClearOldestUnshippedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AuditSinkCursor nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AuditSinkCursorMutation) ResetField(name string) error {
+	switch name {
+	case auditsinkcursor.FieldSinkID:
+		m.ResetSinkID()
+		return nil
+	case auditsinkcursor.FieldChain:
+		m.ResetChain()
+		return nil
+	case auditsinkcursor.FieldEntrySeq:
+		m.ResetEntrySeq()
+		return nil
+	case auditsinkcursor.FieldCheckpointSeq:
+		m.ResetCheckpointSeq()
+		return nil
+	case auditsinkcursor.FieldOldestUnshippedAt:
+		m.ResetOldestUnshippedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AuditSinkCursor field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AuditSinkCursorMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.sink != nil {
+		edges = append(edges, auditsinkcursor.EdgeSink)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AuditSinkCursorMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case auditsinkcursor.EdgeSink:
+		if id := m.sink; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AuditSinkCursorMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AuditSinkCursorMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AuditSinkCursorMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedsink {
+		edges = append(edges, auditsinkcursor.EdgeSink)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AuditSinkCursorMutation) EdgeCleared(name string) bool {
+	switch name {
+	case auditsinkcursor.EdgeSink:
+		return m.clearedsink
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AuditSinkCursorMutation) ClearEdge(name string) error {
+	switch name {
+	case auditsinkcursor.EdgeSink:
+		m.ClearSink()
+		return nil
+	}
+	return fmt.Errorf("unknown AuditSinkCursor unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AuditSinkCursorMutation) ResetEdge(name string) error {
+	switch name {
+	case auditsinkcursor.EdgeSink:
+		m.ResetSink()
+		return nil
+	}
+	return fmt.Errorf("unknown AuditSinkCursor edge %s", name)
 }
 
 // CABundleMutation represents an operation that mutates the CABundle nodes in the graph.

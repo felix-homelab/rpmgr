@@ -294,6 +294,62 @@ var (
 		Columns:    AuditHeadsColumns,
 		PrimaryKey: []*schema.Column{AuditHeadsColumns[0]},
 	}
+	// AuditSinksColumns holds the columns for the "audit_sinks" table.
+	AuditSinksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"syslog", "webhook", "s3"}},
+		{Name: "name", Type: field.TypeString},
+		{Name: "settings", Type: field.TypeJSON, Nullable: true},
+		{Name: "secret_enc", Type: field.TypeBytes, Nullable: true},
+		{Name: "entries", Type: field.TypeBool, Default: false},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "last_error", Type: field.TypeString, Default: ""},
+		{Name: "last_success_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// AuditSinksTable holds the schema information for the "audit_sinks" table.
+	AuditSinksTable = &schema.Table{
+		Name:       "audit_sinks",
+		Columns:    AuditSinksColumns,
+		PrimaryKey: []*schema.Column{AuditSinksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "auditsink_name",
+				Unique:  true,
+				Columns: []*schema.Column{AuditSinksColumns[2]},
+			},
+		},
+	}
+	// AuditSinkCursorsColumns holds the columns for the "audit_sink_cursors" table.
+	AuditSinkCursorsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "chain", Type: field.TypeString},
+		{Name: "entry_seq", Type: field.TypeInt64, Default: 0},
+		{Name: "checkpoint_seq", Type: field.TypeInt64, Default: 0},
+		{Name: "oldest_unshipped_at", Type: field.TypeTime, Nullable: true},
+		{Name: "sink_id", Type: field.TypeString},
+	}
+	// AuditSinkCursorsTable holds the schema information for the "audit_sink_cursors" table.
+	AuditSinkCursorsTable = &schema.Table{
+		Name:       "audit_sink_cursors",
+		Columns:    AuditSinkCursorsColumns,
+		PrimaryKey: []*schema.Column{AuditSinkCursorsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "audit_sink_cursors_audit_sinks_sink",
+				Columns:    []*schema.Column{AuditSinkCursorsColumns[5]},
+				RefColumns: []*schema.Column{AuditSinksColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "auditsinkcursor_sink_id_chain",
+				Unique:  true,
+				Columns: []*schema.Column{AuditSinkCursorsColumns[5], AuditSinkCursorsColumns[1]},
+			},
+		},
+	}
 	// CaBundlesColumns holds the columns for the "ca_bundles" table.
 	CaBundlesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -2182,6 +2238,8 @@ var (
 		AuditCheckpointsTable,
 		AuditLogTable,
 		AuditHeadsTable,
+		AuditSinksTable,
+		AuditSinkCursorsTable,
 		CaBundlesTable,
 		CaKeysTable,
 		CertificatesTable,
@@ -2270,6 +2328,13 @@ func init() {
 	}
 	AuditHeadsTable.Annotation = &entsql.Annotation{
 		Table: "audit_heads",
+	}
+	AuditSinksTable.Annotation = &entsql.Annotation{
+		Table: "audit_sinks",
+	}
+	AuditSinkCursorsTable.ForeignKeys[0].RefTable = AuditSinksTable
+	AuditSinkCursorsTable.Annotation = &entsql.Annotation{
+		Table: "audit_sink_cursors",
 	}
 	CaBundlesTable.Annotation = &entsql.Annotation{
 		Table: "ca_bundles",
