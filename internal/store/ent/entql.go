@@ -320,6 +320,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			auditsink.FieldEnabled:       {Type: field.TypeBool, Column: auditsink.FieldEnabled},
 			auditsink.FieldLastError:     {Type: field.TypeString, Column: auditsink.FieldLastError},
 			auditsink.FieldLastSuccessAt: {Type: field.TypeTime, Column: auditsink.FieldLastSuccessAt},
+			auditsink.FieldVerification:  {Type: field.TypeJSON, Column: auditsink.FieldVerification},
 			auditsink.FieldCreatedAt:     {Type: field.TypeTime, Column: auditsink.FieldCreatedAt},
 		},
 	}
@@ -2961,6 +2962,11 @@ func (f *AuditSinkFilter) WhereLastError(p entql.StringP) {
 // WhereLastSuccessAt applies the entql time.Time predicate on the last_success_at field.
 func (f *AuditSinkFilter) WhereLastSuccessAt(p entql.TimeP) {
 	f.Where(p.Field(auditsink.FieldLastSuccessAt))
+}
+
+// WhereVerification applies the entql json.RawMessage predicate on the verification field.
+func (f *AuditSinkFilter) WhereVerification(p entql.BytesP) {
+	f.Where(p.Field(auditsink.FieldVerification))
 }
 
 // WhereCreatedAt applies the entql time.Time predicate on the created_at field.

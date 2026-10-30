@@ -11,6 +11,8 @@ import (
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
+
+	"github.com/felix-homelab/rpmgr/internal/sinkverify"
 )
 
 // AuditSink is an external destination of the audit log (docs/04-security.md, "Audit log";
@@ -39,6 +41,7 @@ func (AuditSink) Fields() []ent.Field {
 		field.Bool("enabled").Default(true),
 		field.String("last_error").Default(""),
 		field.Time("last_success_at").Optional().Nillable(),
+		field.JSON("verification", &sinkverify.Verification{}).Optional(),
 		field.Time("created_at").Immutable().Default(time.Now),
 	}
 }

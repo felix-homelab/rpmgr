@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/felix-homelab/rpmgr/internal/headermatch"
+	"github.com/felix-homelab/rpmgr/internal/sinkverify"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/acmestorage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
@@ -8493,6 +8494,7 @@ type AuditSinkMutation struct {
 	enabled         *bool
 	last_error      *string
 	last_success_at *time.Time
+	verification    **sinkverify.Verification
 	created_at      *time.Time
 	clearedFields   map[string]struct{}
 	cursors         map[string]struct{}
@@ -8934,6 +8936,55 @@ func (m *AuditSinkMutation) ResetLastSuccessAt() {
 	delete(m.clearedFields, auditsink.FieldLastSuccessAt)
 }
 
+// SetVerification sets the "verification" field.
+func (m *AuditSinkMutation) SetVerification(s *sinkverify.Verification) {
+	m.verification = &s
+}
+
+// Verification returns the value of the "verification" field in the mutation.
+func (m *AuditSinkMutation) Verification() (r *sinkverify.Verification, exists bool) {
+	v := m.verification
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVerification returns the old "verification" field's value of the AuditSink entity.
+// If the AuditSink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuditSinkMutation) OldVerification(ctx context.Context) (v *sinkverify.Verification, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVerification is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVerification requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVerification: %w", err)
+	}
+	return oldValue.Verification, nil
+}
+
+// ClearVerification clears the value of the "verification" field.
+func (m *AuditSinkMutation) ClearVerification() {
+	m.verification = nil
+	m.clearedFields[auditsink.FieldVerification] = struct{}{}
+}
+
+// VerificationCleared returns if the "verification" field was cleared in this mutation.
+func (m *AuditSinkMutation) VerificationCleared() bool {
+	_, ok := m.clearedFields[auditsink.FieldVerification]
+	return ok
+}
+
+// ResetVerification resets all changes to the "verification" field.
+func (m *AuditSinkMutation) ResetVerification() {
+	m.verification = nil
+	delete(m.clearedFields, auditsink.FieldVerification)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *AuditSinkMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -9058,7 +9109,7 @@ func (m *AuditSinkMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AuditSinkMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 10)
 	if m.kind != nil {
 		fields = append(fields, auditsink.FieldKind)
 	}
@@ -9082,6 +9133,9 @@ func (m *AuditSinkMutation) Fields() []string {
 	}
 	if m.last_success_at != nil {
 		fields = append(fields, auditsink.FieldLastSuccessAt)
+	}
+	if m.verification != nil {
+		fields = append(fields, auditsink.FieldVerification)
 	}
 	if m.created_at != nil {
 		fields = append(fields, auditsink.FieldCreatedAt)
@@ -9110,6 +9164,8 @@ func (m *AuditSinkMutation) Field(name string) (ent.Value, bool) {
 		return m.LastError()
 	case auditsink.FieldLastSuccessAt:
 		return m.LastSuccessAt()
+	case auditsink.FieldVerification:
+		return m.Verification()
 	case auditsink.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -9137,6 +9193,8 @@ func (m *AuditSinkMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldLastError(ctx)
 	case auditsink.FieldLastSuccessAt:
 		return m.OldLastSuccessAt(ctx)
+	case auditsink.FieldVerification:
+		return m.OldVerification(ctx)
 	case auditsink.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -9204,6 +9262,13 @@ func (m *AuditSinkMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetLastSuccessAt(v)
 		return nil
+	case auditsink.FieldVerification:
+		v, ok := value.(*sinkverify.Verification)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVerification(v)
+		return nil
 	case auditsink.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -9250,6 +9315,9 @@ func (m *AuditSinkMutation) ClearedFields() []string {
 	if m.FieldCleared(auditsink.FieldLastSuccessAt) {
 		fields = append(fields, auditsink.FieldLastSuccessAt)
 	}
+	if m.FieldCleared(auditsink.FieldVerification) {
+		fields = append(fields, auditsink.FieldVerification)
+	}
 	return fields
 }
 
@@ -9272,6 +9340,9 @@ func (m *AuditSinkMutation) ClearField(name string) error {
 		return nil
 	case auditsink.FieldLastSuccessAt:
 		m.ClearLastSuccessAt()
+		return nil
+	case auditsink.FieldVerification:
+		m.ClearVerification()
 		return nil
 	}
 	return fmt.Errorf("unknown AuditSink nullable field %s", name)
@@ -9304,6 +9375,9 @@ func (m *AuditSinkMutation) ResetField(name string) error {
 		return nil
 	case auditsink.FieldLastSuccessAt:
 		m.ResetLastSuccessAt()
+		return nil
+	case auditsink.FieldVerification:
+		m.ResetVerification()
 		return nil
 	case auditsink.FieldCreatedAt:
 		m.ResetCreatedAt()

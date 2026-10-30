@@ -53,6 +53,9 @@ const (
 	// AuditSinkServiceTestAuditSinkProcedure is the fully-qualified name of the AuditSinkService's
 	// TestAuditSink RPC.
 	AuditSinkServiceTestAuditSinkProcedure = "/rpmgr.v1.AuditSinkService/TestAuditSink"
+	// AuditSinkServiceVerifyAuditSinkProcedure is the fully-qualified name of the AuditSinkService's
+	// VerifyAuditSink RPC.
+	AuditSinkServiceVerifyAuditSinkProcedure = "/rpmgr.v1.AuditSinkService/VerifyAuditSink"
 )
 
 // AuditSinkServiceClient is a client for the rpmgr.v1.AuditSinkService service.
@@ -75,6 +78,10 @@ type AuditSinkServiceClient interface {
 	// required because the controller opens a connection to an address of the Instance Admin's
 	// choosing.
 	TestAuditSink(context.Context, *connect.Request[v1.TestAuditSinkRequest]) (*connect.Response[v1.TestAuditSinkResponse], error)
+	// VerifyAuditSink reads an object-storage sink back and returns, per chain, the last checkpoint
+	// that verified and any gap or problem; the outcome is also kept as the sink's status. A step-up
+	// is required for the same reason as for a test.
+	VerifyAuditSink(context.Context, *connect.Request[v1.VerifyAuditSinkRequest]) (*connect.Response[v1.VerifyAuditSinkResponse], error)
 }
 
 // NewAuditSinkServiceClient constructs a client for the rpmgr.v1.AuditSinkService service. By
@@ -126,6 +133,12 @@ func NewAuditSinkServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(auditSinkServiceMethods.ByName("TestAuditSink")),
 			connect.WithClientOptions(opts...),
 		),
+		verifyAuditSink: connect.NewClient[v1.VerifyAuditSinkRequest, v1.VerifyAuditSinkResponse](
+			httpClient,
+			baseURL+AuditSinkServiceVerifyAuditSinkProcedure,
+			connect.WithSchema(auditSinkServiceMethods.ByName("VerifyAuditSink")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -137,6 +150,7 @@ type auditSinkServiceClient struct {
 	updateAuditSink *connect.Client[v1.UpdateAuditSinkRequest, v1.UpdateAuditSinkResponse]
 	deleteAuditSink *connect.Client[v1.DeleteAuditSinkRequest, v1.DeleteAuditSinkResponse]
 	testAuditSink   *connect.Client[v1.TestAuditSinkRequest, v1.TestAuditSinkResponse]
+	verifyAuditSink *connect.Client[v1.VerifyAuditSinkRequest, v1.VerifyAuditSinkResponse]
 }
 
 // CreateAuditSink calls rpmgr.v1.AuditSinkService.CreateAuditSink.
@@ -169,6 +183,11 @@ func (c *auditSinkServiceClient) TestAuditSink(ctx context.Context, req *connect
 	return c.testAuditSink.CallUnary(ctx, req)
 }
 
+// VerifyAuditSink calls rpmgr.v1.AuditSinkService.VerifyAuditSink.
+func (c *auditSinkServiceClient) VerifyAuditSink(ctx context.Context, req *connect.Request[v1.VerifyAuditSinkRequest]) (*connect.Response[v1.VerifyAuditSinkResponse], error) {
+	return c.verifyAuditSink.CallUnary(ctx, req)
+}
+
 // AuditSinkServiceHandler is an implementation of the rpmgr.v1.AuditSinkService service.
 type AuditSinkServiceHandler interface {
 	// CreateAuditSink creates a sink. It is enabled at once and ships from the start of every chain.
@@ -189,6 +208,10 @@ type AuditSinkServiceHandler interface {
 	// required because the controller opens a connection to an address of the Instance Admin's
 	// choosing.
 	TestAuditSink(context.Context, *connect.Request[v1.TestAuditSinkRequest]) (*connect.Response[v1.TestAuditSinkResponse], error)
+	// VerifyAuditSink reads an object-storage sink back and returns, per chain, the last checkpoint
+	// that verified and any gap or problem; the outcome is also kept as the sink's status. A step-up
+	// is required for the same reason as for a test.
+	VerifyAuditSink(context.Context, *connect.Request[v1.VerifyAuditSinkRequest]) (*connect.Response[v1.VerifyAuditSinkResponse], error)
 }
 
 // NewAuditSinkServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -236,6 +259,12 @@ func NewAuditSinkServiceHandler(svc AuditSinkServiceHandler, opts ...connect.Han
 		connect.WithSchema(auditSinkServiceMethods.ByName("TestAuditSink")),
 		connect.WithHandlerOptions(opts...),
 	)
+	auditSinkServiceVerifyAuditSinkHandler := connect.NewUnaryHandler(
+		AuditSinkServiceVerifyAuditSinkProcedure,
+		svc.VerifyAuditSink,
+		connect.WithSchema(auditSinkServiceMethods.ByName("VerifyAuditSink")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.AuditSinkService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AuditSinkServiceCreateAuditSinkProcedure:
@@ -250,6 +279,8 @@ func NewAuditSinkServiceHandler(svc AuditSinkServiceHandler, opts ...connect.Han
 			auditSinkServiceDeleteAuditSinkHandler.ServeHTTP(w, r)
 		case AuditSinkServiceTestAuditSinkProcedure:
 			auditSinkServiceTestAuditSinkHandler.ServeHTTP(w, r)
+		case AuditSinkServiceVerifyAuditSinkProcedure:
+			auditSinkServiceVerifyAuditSinkHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -281,4 +312,8 @@ func (UnimplementedAuditSinkServiceHandler) DeleteAuditSink(context.Context, *co
 
 func (UnimplementedAuditSinkServiceHandler) TestAuditSink(context.Context, *connect.Request[v1.TestAuditSinkRequest]) (*connect.Response[v1.TestAuditSinkResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuditSinkService.TestAuditSink is not implemented"))
+}
+
+func (UnimplementedAuditSinkServiceHandler) VerifyAuditSink(context.Context, *connect.Request[v1.VerifyAuditSinkRequest]) (*connect.Response[v1.VerifyAuditSinkResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuditSinkService.VerifyAuditSink is not implemented"))
 }
