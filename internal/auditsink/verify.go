@@ -3,12 +3,14 @@
 package auditsink
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strconv"
@@ -26,11 +28,16 @@ import (
 // maxNamed is how many missing items a gap names before it says "and n more".
 const maxNamed = 10
 
+// checkBatch is how many entries checkEntries reads from the database at once.
+const checkBatch = 200
+
 // VerifyS3 reads an object-storage sink back (docs/04-security.md, "Audit log"): for every chain
 // it verifies the chain in the database, lists what the sink holds, reports what the database
-// shipped and the sink lacks, and reads the sink's checkpoints from the last one verified before:
-// each must be what its key says, be signed by a key the CA certified for audit checkpoints, and
-// match the entry the database holds at its seq. ctx carries the system scope. A sink that cannot
+// shipped and the sink lacks, and reads every checkpoint the sink holds: each must be what its key says, be signed by a key the CA certified for audit checkpoints, and
+// match the entry the database holds at its seq. With entries shipped, the entries after the newest
+// checkpoint, which no checkpoint covers, are compared with the database byte for byte. The
+// sink's stored verification is output only: it is never read, as whoever can write the database
+// can write it too. ctx carries the system scope. A sink that cannot
 // be read to the end gives an *UnreachableError and no outcome.
 func (r *Runner) VerifyS3(ctx context.Context, s *ent.AuditSink, trust audit.Trust) (*sinkverify.Verification, error) {
 	if s.Kind != "s3" {
@@ -64,15 +71,7 @@ func (r *Runner) VerifyS3(ctx context.Context, s *ent.AuditSink, trust audit.Tru
 	sort.Strings(chains)
 	out := &sinkverify.Verification{Time: r.o.Now().UTC()}
 	for _, chain := range chains {
-		var prev sinkverify.Chain
-		if s.Verification != nil {
-			for _, p := range s.Verification.Chains {
-				if p.Chain == chain {
-					prev = p
-				}
-			}
-		}
-		v, err := r.verifyChain(ctx, c, s, trust, chain, prev)
+		v, err := r.verifyChain(ctx, c, s, trust, chain)
 		if err != nil {
 			if ctx.Err() != nil || objstore.Retryable(err) {
 				return nil, &UnreachableError{fmt.Errorf("reading the object store back did not finish: %w", s3Failure(err))}
@@ -84,10 +83,11 @@ func (r *Runner) VerifyS3(ctx context.Context, s *ent.AuditSink, trust audit.Tru
 	return out, nil
 }
 
-// verifyChain is VerifyS3 for one chain; prev is its part of the last verification.
-func (r *Runner) verifyChain(ctx context.Context, c *objstore.Client, s *ent.AuditSink, trust audit.Trust, chain string, prev sinkverify.Chain) (sinkverify.Chain, error) {
+// verifyChain is VerifyS3 for one chain. It starts from nothing: every checkpoint of the sink is
+// read and compared, whatever an earlier verification reported.
+func (r *Runner) verifyChain(ctx context.Context, c *objstore.Client, s *ent.AuditSink, trust audit.Trust, chain string) (sinkverify.Chain, error) {
 	org := orgOfChain(chain)
-	out := sinkverify.Chain{Chain: chain, CheckpointSeq: prev.CheckpointSeq, CheckpointTime: prev.CheckpointTime}
+	out := sinkverify.Chain{Chain: chain}
 	// The chain itself first: the stored hash of an entry proves nothing about its content.
 	if _, _, err := audit.VerifyChain(ctx, r.o.DB, org, trust); err != nil {
 		var broken *audit.ChainError
@@ -125,9 +125,6 @@ func (r *Runner) verifyChain(ctx context.Context, c *objstore.Client, s *ent.Aud
 
 	var held []audit.Checkpoint
 	for _, seq := range cpSeqs {
-		if seq < prev.CheckpointSeq {
-			continue
-		}
 		cp, problem, err := readCheckpoint(ctx, c, chain, org, seq)
 		if err != nil {
 			return out, err
@@ -160,7 +157,56 @@ func (r *Runner) verifyChain(ctx context.Context, c *objstore.Client, s *ent.Aud
 	if n := len(held); n > 0 {
 		out.CheckpointSeq, out.CheckpointTime = held[n-1].Seq, held[n-1].Time
 	}
+	if s.Entries && out.Problem == "" {
+		problem, err := r.checkEntries(ctx, c, org, chain, entrySeqs, out.CheckpointSeq)
+		if err != nil {
+			return out, err
+		}
+		out.Problem = problem
+	}
 	return out, nil
+}
+
+// checkEntries compares the entries the sink holds above seq, which no verified checkpoint
+// covers, with the database's: the object must hold the bytes the entry ships as, and the database
+// must hold an entry for each object. It returns the first problem, or "".
+func (r *Runner) checkEntries(ctx context.Context, c *objstore.Client, org, chain string, sinkSeqs []int64, seq int64) (string, error) {
+	want := map[int64]bool{}
+	for _, q := range sinkSeqs {
+		if q > seq {
+			want[q] = true
+		}
+	}
+	for after := seq; ; {
+		var es []audit.Entry
+		if err := store.ReadTx(ctx, r.o.DB, func(tx *ent.Tx, _ store.Revision) (err error) {
+			es, err = audit.EntriesAfter(ctx, tx, org, after, checkBatch)
+			return err
+		}); err != nil {
+			return "", err
+		}
+		for _, e := range es {
+			after = e.Seq
+			if !want[e.Seq] {
+				continue
+			}
+			delete(want, e.Seq)
+			b, err := c.Get(ctx, s3Key(chain, "entries", e.Seq))
+			if err != nil {
+				return "", err
+			}
+			if !bytes.Equal(b, entryItem(e).Body) {
+				return fmt.Sprintf("the entry at seq %d is not what the sink holds: it was rewritten", e.Seq), nil
+			}
+		}
+		if len(es) < checkBatch {
+			break
+		}
+	}
+	if len(want) > 0 {
+		return fmt.Sprintf("the sink holds an entry at seq %d that the database does not: entries were removed", slices.Min(slices.Collect(maps.Keys(want)))), nil
+	}
+	return "", nil
 }
 
 // listSeqs lists the keys under prefix and returns the seqs their last parts name, in order. A key
@@ -213,8 +259,14 @@ func gapOf(cpSeqs, entrySeqs []int64, local []audit.Checkpoint, cur *ent.AuditSi
 		have[s] = true
 	}
 	var missing []string
+	// What the sink was sent: up to the cursor, and up to the newest checkpoint the sink holds, as
+	// the cursor is the database's word and a checkpoint older than one the sink holds was sent.
+	sent := cur.CheckpointSeq
+	if len(cpSeqs) > 0 {
+		sent = max(sent, slices.Max(cpSeqs))
+	}
 	for _, c := range local {
-		if c.Seq <= cur.CheckpointSeq && !have[c.Seq] {
+		if c.Seq <= sent && !have[c.Seq] {
 			missing = append(missing, strconv.FormatInt(c.Seq, 10))
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"log/slog"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -227,10 +228,13 @@ func TestAuditSink_RewriteDetectedAgainstSink(t *testing.T) {
 			c.CheckpointSeq != 3 || c.Checked != 1 {
 			t.Fatalf("a chain rewritten under a checkpoint of the sink: %+v %v", c, err)
 		}
-		// The next verification, which starts from the last one that verified, finds it again.
-		prev := &sinkverify.Verification{Chains: []sinkverify.Chain{{Chain: e.a, CheckpointSeq: 3}}}
-		if v, err = w.verify(t, prev); err != nil || w.chain(t, v).Intact() {
-			t.Fatalf("a later verification: %+v %v", v, err)
+		// The stored result of an earlier verification is output only: whatever it says, the
+		// rewrite is found again.
+		for name, seq := range map[string]int64{"the last one that verified": 3, "a stale one": 2, "the newest": 4, "the largest": math.MaxInt64} {
+			prev := &sinkverify.Verification{Chains: []sinkverify.Chain{{Chain: e.a, CheckpointSeq: seq}}}
+			if v, err = w.verify(t, prev); err != nil || w.chain(t, v).Intact() || !strings.Contains(w.chain(t, v).Problem, "rewritten") {
+				t.Fatalf("a later verification with %s stored: %+v %v", name, v, err)
+			}
 		}
 	})
 }
@@ -305,7 +309,7 @@ func TestVerifyS3(t *testing.T) {
 		})
 	}
 
-	t.Run("a later read-back starts at the last verified checkpoint", func(t *testing.T) {
+	t.Run("a later read-back reads every checkpoint again", func(t *testing.T) {
 		withCA(t, func(t *testing.T, e env, ca *castore.CA, trust audit.Trust) {
 			w := newSinkWorld(t, e, ca, trust)
 			v, err := w.verify(t, nil)
@@ -314,13 +318,78 @@ func TestVerifyS3(t *testing.T) {
 			}
 			gets := objectGets(w.srv)
 			v2, err := w.verify(t, v)
-			if c := w.chain(t, v2); err != nil || !c.Intact() || c.CheckpointSeq != 4 || c.Checked != 1 || objectGets(w.srv)-gets != 1 {
-				t.Fatalf("second read-back: %+v %v, %d GETs", c, err, objectGets(w.srv)-gets)
+			if c := w.chain(t, v2); err != nil || !c.Intact() || c.CheckpointSeq != 4 || c.Checked != 2 || objectGets(w.srv)-gets != gets {
+				t.Fatalf("second read-back: %+v %v, %d GETs, first %d", c, err, objectGets(w.srv)-gets, gets)
 			}
-			// Nothing newer, and an older object gone: not looked at again, so not found.
 			w.srv.Remove(w.cpKey(3))
 			if v3, err := w.verify(t, v2); err != nil || w.chain(t, v3).Gap == "" {
 				t.Fatalf("a missing older checkpoint is still a gap: %+v %v", v3, err)
+			}
+		})
+	})
+
+	// The stored verification is whatever the database holds, so a writer of the database can set
+	// it: it must never skip a checkpoint.
+	stored := map[string]int64{"the largest seq": math.MaxInt64, "the head": 5, "a stale seq": 3}
+	for name, seq := range stored {
+		prev := &sinkverify.Verification{Chains: []sinkverify.Chain{{Chain: "", CheckpointSeq: seq}}}
+		t.Run("a tampered stored verification with "+name+" and a database that lost its tail", func(t *testing.T) {
+			withCA(t, func(t *testing.T, e env, ca *castore.CA, trust audit.Trust) {
+				w := newSinkWorld(t, e, ca, trust)
+				prev.Chains[0].Chain = e.a
+				w.x(t, "DELETE FROM audit_log WHERE org_id = $1 AND seq >= 4", e.a)
+				w.x(t, "DELETE FROM audit_checkpoints WHERE org_id = $1", e.a)
+				w.x(t, "UPDATE audit_heads SET seq = 3, hash = (SELECT hash FROM audit_log WHERE org_id = $1 AND seq = 3) WHERE chain = $1", e.a)
+				v, err := w.verify(t, prev)
+				if c := w.chain(t, v); err != nil || c.Intact() || !strings.Contains(c.Problem, "entries were removed") {
+					t.Fatalf("truncation under %s: %+v %v", name, c, err)
+				}
+			})
+		})
+		t.Run("a tampered stored verification with "+name+" and a rewritten entry", func(t *testing.T) {
+			withCA(t, func(t *testing.T, e env, ca *castore.CA, trust audit.Trust) {
+				w := newSinkWorld(t, e, ca, trust)
+				prev.Chains[0].Chain = e.a
+				rewriteFrom(t, w, 2)
+				v, err := w.verify(t, prev)
+				if c := w.chain(t, v); err != nil || c.Intact() || !strings.Contains(c.Problem, "rewritten") {
+					t.Fatalf("a rewrite under %s: %+v %v", name, c, err)
+				}
+			})
+		})
+	}
+
+	t.Run("an entry after the newest checkpoint that is rewritten", func(t *testing.T) {
+		withCA(t, func(t *testing.T, e env, ca *castore.CA, trust audit.Trust) {
+			w := newSinkWorld(t, e, ca, trust)
+			rewriteFrom(t, w, 5)
+			v, err := w.verify(t, nil)
+			if c := w.chain(t, v); err != nil || c.Intact() || !strings.Contains(c.Problem, "seq 5") || !strings.Contains(c.Problem, "rewritten") || c.CheckpointSeq != 4 {
+				t.Fatalf("a rewrite of the newest entry: %+v %v", c, err)
+			}
+		})
+	})
+
+	t.Run("an entry object that the database lacks", func(t *testing.T) {
+		withCA(t, func(t *testing.T, e env, ca *castore.CA, trust audit.Trust) {
+			w := newSinkWorld(t, e, ca, trust)
+			w.x(t, "DELETE FROM audit_log WHERE org_id = $1 AND seq = 5", e.a)
+			w.x(t, "UPDATE audit_heads SET seq = 4, hash = (SELECT hash FROM audit_log WHERE org_id = $1 AND seq = 4) WHERE chain = $1", e.a)
+			v, err := w.verify(t, nil)
+			if c := w.chain(t, v); err != nil || c.Intact() || !strings.Contains(c.Problem, "seq 5") {
+				t.Fatalf("an entry removed after the newest checkpoint: %+v %v", c, err)
+			}
+		})
+	})
+
+	t.Run("a checkpoint the database holds below one the sink holds, missing from the sink", func(t *testing.T) {
+		withCA(t, func(t *testing.T, e env, ca *castore.CA, trust audit.Trust) {
+			w := newSinkWorld(t, e, ca, trust)
+			w.x(t, "DELETE FROM audit_sink_cursors")
+			w.srv.Remove(w.cpKey(3))
+			v, err := w.verify(t, nil)
+			if c := w.chain(t, v); err != nil || c.Intact() || c.Gap != "checkpoints 3 missing from the sink" {
+				t.Fatalf("a hole with the cursor gone: %+v %v", c, err)
 			}
 		})
 	})
@@ -360,4 +429,29 @@ func TestVerifyS3(t *testing.T) {
 			}
 		})
 	})
+}
+
+// rewriteFrom rewrites the action of the entry at seq and recomputes the hashes after it and the
+// head, so that the chain verifies in the database again.
+func rewriteFrom(t *testing.T, w *sinkWorld, seq int64) {
+	t.Helper()
+	e := w.e
+	prev := entryAt(t, e, e.a, seq-1).Hash
+	var last []byte
+	for q := seq; ; q++ {
+		var en audit.Entry
+		if q > 5 {
+			break
+		}
+		en = entryAt(t, e, e.a, q)
+		en.PrevHash = prev
+		if q == seq {
+			en.Action = "session.logout"
+		}
+		last = audit.ChainHash(prev, en)
+		w.x(t, "UPDATE audit_log SET action = $1, prev_hash = $2, hash = $3 WHERE org_id = $4 AND seq = $5", en.Action, prev, last, e.a, q)
+		prev = last
+	}
+	w.x(t, "UPDATE audit_heads SET hash = $1 WHERE chain = $2", last, e.a)
+	w.x(t, "DELETE FROM audit_checkpoints WHERE org_id = $1", e.a)
 }
