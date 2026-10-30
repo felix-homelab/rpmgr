@@ -64,6 +64,22 @@ describe("LiveLog", () => {
     await waitFor(() => expect(requests).toHaveLength(2));
   });
 
+  it("does not show a line twice when Continue opens a new stream with the backlog again", async () => {
+    let opened = 0;
+    const requests = page("/connectors/con_db", "owner", async function* () {
+      opened++;
+      yield { line: { time: at, level: "info", text: "msg=earlier", backlog: true } };
+      yield { line: { time: at, level: "info", text: `msg=live-${opened}` } };
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Start" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    const log = await screen.findByRole("log", { name: "Live log lines" });
+    await waitFor(() => expect(log.textContent).toContain("msg=live-2"));
+    expect([...log.children].filter((c) => c.textContent?.includes("msg=earlier"))).toHaveLength(1);
+    expect(log.textContent).not.toContain("msg=live-1");
+  });
+
   it.each([[Code.Unavailable, "The agent is offline, or its rpmgr release has no live logs."],
     [Code.ResourceExhausted, "Too many live logs are open, for you or for this agent. Close one and try again."]])(
     "says why a stream failed (%s)", async (code, text) => {

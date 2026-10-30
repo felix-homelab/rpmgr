@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"sort"
 	"sync"
@@ -57,6 +58,21 @@ const (
 // the item.
 type Sink interface {
 	Ship(ctx context.Context, it Item) error
+}
+
+// Flusher is implemented by a sink whose destination acknowledges a batch, not each item (syslog
+// has no acknowledgement of a message). Flush runs after the items of one batch were shipped,
+// also when one of them failed; a Flush that fails fails the whole batch, whose cursor then stays
+// where it was.
+type Flusher interface {
+	Flush(ctx context.Context) error
+}
+
+// closeSink closes a sink that holds a connection.
+func closeSink(s Sink) {
+	if c, ok := s.(io.Closer); ok {
+		_ = c.Close()
+	}
 }
 
 // Options configure a Runner.
@@ -147,6 +163,7 @@ func (r *Runner) shipSink(ctx context.Context, s *ent.AuditSink, chains []string
 	if err != nil {
 		sinkErr = err
 	} else {
+		defer closeSink(sink)
 		for _, chain := range chains {
 			n, serr, derr := r.shipChain(ctx, s, sink, chain, fence)
 			shipped += n
@@ -259,6 +276,12 @@ func (r *Runner) shipChain(ctx context.Context, s *ent.AuditSink, sink Sink, cha
 			en = it.Seq
 		}
 	}
+	if f, ok := sink.(Flusher); ok {
+		if ferr := f.Flush(ctx); ferr != nil && ctx.Err() == nil {
+			n, cp, en = 0, cur.CheckpointSeq, cur.EntrySeq
+			sinkErr = ferr
+		}
+	}
 	if ctx.Err() != nil {
 		return n, nil, ctx.Err()
 	}
@@ -310,6 +333,8 @@ func (r *Runner) open(s *ent.AuditSink) (Sink, error) {
 	switch s.Kind {
 	case auditsink.KindWebhook:
 		return openWebhook(r.o, s)
+	case auditsink.KindSyslog:
+		return openSyslog(s)
 	default:
 		return nil, fmt.Errorf("the %s sink is not available yet", s.Kind)
 	}
@@ -329,12 +354,19 @@ func (r *Runner) Test(ctx context.Context, s *ent.AuditSink) error {
 	if err != nil {
 		return err
 	}
+	defer closeSink(sink)
 	id, now := ids.New("ate"), r.o.Now().UTC()
 	body, err := json.Marshal(map[string]any{"id": id, "type": EventTest, "time": now})
 	if err != nil {
 		return err
 	}
-	return sink.Ship(ctx, Item{ID: id, Type: EventTest, Time: now, Body: body})
+	if err := sink.Ship(ctx, Item{ID: id, Type: EventTest, Time: now, Body: body}); err != nil {
+		return err
+	}
+	if f, ok := sink.(Flusher); ok {
+		return f.Flush(ctx)
+	}
+	return nil
 }
 
 // Describe is the text of a sink's failure for its status and for a test: it never names the

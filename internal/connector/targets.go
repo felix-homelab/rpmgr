@@ -508,11 +508,23 @@ func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream
 		return
 	}
 	st.SetReliableBoundary()
+	// A stream's life for a live log (D154): the route, target and gateway, then the duration and
+	// bytes; never the client's address or what the stream carried.
+	started := time.Now()
+	t.o.Logger.Debug("stream opened", "gateway", gatewayID, "route", open.GetRouteId(), "target", target)
 	if open.GetKind() == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW {
 		t.relayUDP(ctx, open.GetRouteId(), st, conn)
+		if t.o.Logger.Enabled(ctx, slog.LevelDebug) {
+			t.o.Logger.Debug("stream closed", "gateway", gatewayID, "route", open.GetRouteId(), "target", target,
+				"duration", time.Since(started).Round(time.Millisecond))
+		}
 		return
 	}
-	tunnel.Relay(st, conn)
+	toTarget, fromTarget := tunnel.Relay(st, conn)
+	if t.o.Logger.Enabled(ctx, slog.LevelDebug) {
+		t.o.Logger.Debug("stream closed", "gateway", gatewayID, "route", open.GetRouteId(), "target", target,
+			"duration", time.Since(started).Round(time.Millisecond), "bytes_to_target", toTarget, "bytes_from_target", fromTarget)
+	}
 }
 
 func isBlocked(err error) bool {

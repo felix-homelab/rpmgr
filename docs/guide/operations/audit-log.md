@@ -165,6 +165,50 @@ checkpoint. For now both copies are on the controller's host, so the protection 
 attacker who can change the database but not the host. Sending checkpoints to an external sink is
 planned for Phase 2 ([04](../../04-security.md#audit-log)).
 
+## Ship the log to an external sink
+
+An Instance Admin can send the log's signed checkpoints, and optionally every entry, to a webhook
+receiver, so that a copy lives where no one with access to the database can change it. Every
+change below asks for a step-up.
+
+```sh
+rpmgr create audit-sink --name siem --kind webhook --url https://siem.example.com/rpmgr \
+  --secret-file ./siem.secret --entries
+rpmgr test audit-sink siem
+rpmgr list audit-sink
+```
+
+The secret signs each delivery in the `Rpmgr-Signature` header, which the receiver verifies; keep
+it in a file other users cannot read. It is stored encrypted, never shown again and left out of the audit log; to
+replace it, run `rpmgr update audit-sink siem --secret-file ./new.secret`. `rpmgr get audit-sink
+siem` shows the sink's status: when it last succeeded, its last error, how many items it has not
+acknowledged and since when. `--enabled=false` pauses shipping; a sink catches up from where it
+stopped. `rpmgr delete audit-sink siem` removes the sink and its position, and what the receiver
+holds stays there.
+
+Each delivery has the event type `audit.checkpoint` or `audit.entry`, and its `Rpmgr-Event-Id` is
+the ID of the checkpoint or entry, which a receiver uses to drop repeats: shipping is at least
+once. If the receiver answers with a client error such as 404 or 401, the sink stops at that item
+and says so in its last error until the receiver accepts it; fix the receiver or the sink's URL or
+secret. The details and the alert are in [04](../../04-security.md#audit-log) and
+[10](../../10-operations.md#audit-sink-backlog).
+
+To send the log to a syslog server instead, use the kind `syslog`. The server must accept RFC 5424
+messages over TLS (RFC 5425, usually port 6514), and its certificate must name the host you give.
+Pass the CA that signed it with `--ca-file`; without the option the system's roots are used. A
+syslog sink has no secret.
+
+```sh
+rpmgr create audit-sink --name syslog --kind syslog --address logs.example.com:6514 \
+  --ca-file ./logs-ca.pem --entries
+rpmgr test audit-sink syslog
+```
+
+Each checkpoint or entry is one message with the same JSON as a webhook delivery. Syslog confirms
+nothing to the sender, so after a dropped connection the sink sends the batch again; a receiver
+may see an item twice, and the `id` in the JSON tells repeats apart. If the last error says the
+certificate is not signed by a CA of the sink's bundle, check the file passed to `--ca-file`.
+
 ## How long entries are kept
 
 Entries are kept for the instance's **audit retention**, which the Instance Admin sets: under

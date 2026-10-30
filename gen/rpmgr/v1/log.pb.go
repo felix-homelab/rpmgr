@@ -155,9 +155,14 @@ type LogLine struct {
 	// The line, redacted on the agent.
 	Text string `protobuf:"bytes,3,opt,name=text,proto3" json:"text,omitempty"`
 	// How many lines the agent dropped before this one, as the stream read too slowly.
+	// It counts every line the agent dropped from its backlog, regardless of the viewer's level
+	// and filter.
 	DroppedBefore uint32 `protobuf:"varint,4,opt,name=dropped_before,json=droppedBefore,proto3" json:"dropped_before,omitempty"`
 	// The line was cut at the limit of docs/03.
-	Truncated     bool `protobuf:"varint,5,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	Truncated bool `protobuf:"varint,5,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	// The line is one the agent kept from before the log opened, not a new one (D154); the first
+	// such line carries in dropped_before how many older lines the agent no longer held.
+	Backlog       bool `protobuf:"varint,6,opt,name=backlog,proto3" json:"backlog,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -227,6 +232,13 @@ func (x *LogLine) GetTruncated() bool {
 	return false
 }
 
+func (x *LogLine) GetBacklog() bool {
+	if x != nil {
+		return x.Backlog
+	}
+	return false
+}
+
 var File_rpmgr_v1_log_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_log_proto_rawDesc = "" +
@@ -238,13 +250,14 @@ const file_rpmgr_v1_log_proto_rawDesc = "" +
 	"\x06filter\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\xc8\x01R\x06filter\x12$\n" +
 	"\x0eraise_to_debug\x18\x04 \x01(\bR\fraiseToDebug\";\n" +
 	"\x12StreamLogsResponse\x12%\n" +
-	"\x04line\x18\x01 \x01(\v2\x11.rpmgr.v1.LogLineR\x04line\"\xa8\x01\n" +
+	"\x04line\x18\x01 \x01(\v2\x11.rpmgr.v1.LogLineR\x04line\"\xc2\x01\n" +
 	"\aLogLine\x12.\n" +
 	"\x04time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x14\n" +
 	"\x05level\x18\x02 \x01(\tR\x05level\x12\x12\n" +
 	"\x04text\x18\x03 \x01(\tR\x04text\x12%\n" +
 	"\x0edropped_before\x18\x04 \x01(\rR\rdroppedBefore\x12\x1c\n" +
-	"\ttruncated\x18\x05 \x01(\bR\ttruncated2t\n" +
+	"\ttruncated\x18\x05 \x01(\bR\ttruncated\x12\x18\n" +
+	"\abacklog\x18\x06 \x01(\bR\abacklog2t\n" +
 	"\n" +
 	"LogService\x12f\n" +
 	"\n" +

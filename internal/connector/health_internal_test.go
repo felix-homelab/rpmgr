@@ -3,6 +3,7 @@
 package connector
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -13,6 +14,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -466,5 +468,25 @@ func TestHealthCheck_Bounded(t *testing.T) {
 	defer mu.Unlock()
 	if total != maxChecks+36 {
 		t.Errorf("a check without a place dialled")
+	}
+}
+
+// TestLogHealth (D154): a target turning healthy or unhealthy is logged at info with its route,
+// its ID and the reason, which is the check's own failure text or the policy's refusal.
+func TestLogHealth(t *testing.T) {
+	var buf bytes.Buffer
+	tg := &Targets{o: TargetsOptions{Logger: slog.New(slog.NewTextHandler(&buf, nil))}}
+	tg.logHealth("rt_1", "tg_1", &targetHealth{unhealthy: true, err: "connection refused"})
+	tg.logHealth("rt_1", "tg_1", &targetHealth{unhealthy: true, blocked: "10.0.0.5:80", err: "x"})
+	tg.logHealth("rt_1", "tg_1", &targetHealth{})
+	out := buf.String()
+	for _, want := range []string{"level=INFO msg=\"target unhealthy\" route=rt_1 target=tg_1 reason=\"connection refused\"",
+		"the local policy does not allow 10.0.0.5:80", "msg=\"target healthy\" route=rt_1 target=tg_1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "reason=x") {
+		t.Error("a policy refusal was logged as the check's failure")
 	}
 }

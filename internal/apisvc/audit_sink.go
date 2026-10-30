@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"slices"
 	"time"
 
 	"connectrpc.com/connect"
@@ -58,7 +59,7 @@ func sinkSecretContext(id string) secret.Context {
 // carries; the secret counts through its sealed bytes, which differ at every seal.
 func sinkVersion(r *ent.AuditSink) int64 {
 	h := sha256.New()
-	for _, s := range []string{r.ID, r.Name, r.Settings["url"], fmt.Sprint(r.Entries, r.Enabled)} {
+	for _, s := range []string{r.ID, r.Name, r.Settings["url"], r.Settings["address"], r.Settings["ca"], fmt.Sprint(r.Entries, r.Enabled)} {
 		_, _ = fmt.Fprintf(h, "%d:%s", len(s), s)
 	}
 	if r.SecretEnc != nil {
@@ -69,8 +70,12 @@ func sinkVersion(r *ent.AuditSink) int64 {
 
 // sinkOf is the API's sink: the secret never leaves the row.
 func sinkOf(r *ent.AuditSink, b *auditsink.Backlog) *rpmgrv1.AuditSink {
-	out := &rpmgrv1.AuditSink{Id: r.ID, Name: r.Name, Kind: rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_WEBHOOK, Url: r.Settings["url"],
-		SecretSet: r.SecretEnc != nil && len(*r.SecretEnc) > 0, Entries: r.Entries, Enabled: r.Enabled,
+	kind := rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_WEBHOOK
+	if r.Kind == eauditsink.KindSyslog {
+		kind = rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_SYSLOG
+	}
+	out := &rpmgrv1.AuditSink{Id: r.ID, Name: r.Name, Kind: kind, Url: r.Settings["url"], Address: r.Settings["address"],
+		CaBundle: r.Settings["ca"], SecretSet: r.SecretEnc != nil && len(*r.SecretEnc) > 0, Entries: r.Entries, Enabled: r.Enabled,
 		CreateTime: timestamppb.New(r.CreatedAt), Etag: etagOf(sinkVersion(r))}
 	st := &rpmgrv1.AuditSinkStatus{LastError: r.LastError}
 	if r.LastSuccessAt != nil {
@@ -112,6 +117,18 @@ func checkWebhookURL(raw string) error {
 	return nil
 }
 
+// checkSyslog refuses an address or CA bundle a syslog sink can never use, and a field of another
+// kind.
+func checkSyslog(address, ca, url, secret string) error {
+	if url != "" || secret != "" {
+		return badSink("a syslog sink has no url and no secret")
+	}
+	if err := auditsink.CheckSyslogSettings(address, ca); err != nil {
+		return badSink("%v", err)
+	}
+	return nil
+}
+
 // checkSecret refuses a secret too short to sign with.
 func checkSecret(s string) error {
 	if len(s) < 16 {
@@ -137,29 +154,48 @@ func (a *AuditSinks) backlogs(ctx context.Context) (map[string]*auditsink.Backlo
 func (a *AuditSinks) CreateAuditSink(ctx context.Context, req *connect.Request[rpmgrv1.CreateAuditSinkRequest]) (
 	*connect.Response[rpmgrv1.CreateAuditSinkResponse], error) {
 	in := req.Msg.GetAuditSink()
-	if in.GetKind() != rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_WEBHOOK {
-		return nil, badSink("the kind must be a sink kind this controller offers: webhook")
-	}
-	if in.GetName() == "" {
+	if in.GetName() == "" && in.GetKind() != rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_UNSPECIFIED {
 		return nil, badSink("a sink needs a name")
 	}
-	if err := checkWebhookURL(in.GetUrl()); err != nil {
-		return nil, err
-	}
-	if err := checkSecret(in.GetSecret()); err != nil {
-		return nil, err
-	}
 	id := ids.New("ask")
-	sealed, err := a.Sealer.Seal(sinkSecretContext(id), secret.New(in.GetSecret()))
-	if err != nil {
-		return nil, err
+	var sealed []byte
+	var kind eauditsink.Kind
+	settings := map[string]string{}
+	switch in.GetKind() {
+	case rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_WEBHOOK:
+		if err := checkWebhookURL(in.GetUrl()); err != nil {
+			return nil, err
+		}
+		if in.GetAddress() != "" || in.GetCaBundle() != "" {
+			return nil, badSink("a webhook sink has no address and no CA bundle")
+		}
+		if err := checkSecret(in.GetSecret()); err != nil {
+			return nil, err
+		}
+		var err error
+		if sealed, err = a.Sealer.Seal(sinkSecretContext(id), secret.New(in.GetSecret())); err != nil {
+			return nil, err
+		}
+		kind, settings["url"] = eauditsink.KindWebhook, in.GetUrl()
+	case rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_SYSLOG:
+		if err := checkSyslog(in.GetAddress(), in.GetCaBundle(), in.GetUrl(), in.GetSecret()); err != nil {
+			return nil, err
+		}
+		kind, settings["address"] = eauditsink.KindSyslog, in.GetAddress()
+		if in.GetCaBundle() != "" {
+			settings["ca"] = in.GetCaBundle()
+		}
+	default:
+		return nil, badSink("the kind must be a sink kind this controller offers: webhook or syslog")
 	}
 	sys := store.CarryTxHook(a.Sys, ctx)
 	var row *ent.AuditSink
-	err = store.WriteTx(sys, a.DB, func(tx *ent.Tx) (err error) {
-		row, err = tx.AuditSink.Create().SetID(id).SetKind(eauditsink.KindWebhook).SetName(in.GetName()).
-			SetSettings(map[string]string{"url": in.GetUrl()}).SetSecretEnc(sealed).SetEntries(in.GetEntries()).
-			SetEnabled(true).Save(sys)
+	err := store.WriteTx(sys, a.DB, func(tx *ent.Tx) (err error) {
+		q := tx.AuditSink.Create().SetID(id).SetKind(kind).SetName(in.GetName()).SetSettings(settings).SetEntries(in.GetEntries()).SetEnabled(true)
+		if sealed != nil {
+			q.SetSecretEnc(sealed)
+		}
+		row, err = q.Save(sys)
 		return err
 	})
 	if err != nil {
@@ -237,18 +273,37 @@ func (a *AuditSinks) UpdateAuditSink(ctx context.Context, req *connect.Request[r
 			return err
 		}
 		next := sinkOf(cur, nil)
-		if err := api.ApplyMask(next, in, m.GetUpdateMask(), "name", "url", "secret", "entries", "enabled"); err != nil {
+		if err := api.ApplyMask(next, in, m.GetUpdateMask(), "name", "url", "secret", "address", "ca_bundle", "entries", "enabled"); err != nil {
 			return err
 		}
 		if next.GetName() == "" {
 			return badSink("a sink needs a name")
 		}
-		if err := checkWebhookURL(next.GetUrl()); err != nil {
-			return err
+		settings := map[string]string{}
+		paths := m.GetUpdateMask().GetPaths()
+		if cur.Kind == eauditsink.KindSyslog {
+			if slices.Contains(paths, "url") || slices.Contains(paths, "secret") {
+				return badSink("a syslog sink has no url and no secret")
+			}
+			if err := checkSyslog(next.GetAddress(), next.GetCaBundle(), "", ""); err != nil {
+				return err
+			}
+			settings["address"] = next.GetAddress()
+			if next.GetCaBundle() != "" {
+				settings["ca"] = next.GetCaBundle()
+			}
+		} else {
+			if slices.Contains(paths, "address") || slices.Contains(paths, "ca_bundle") {
+				return badSink("a webhook sink has no address and no CA bundle")
+			}
+			if err := checkWebhookURL(next.GetUrl()); err != nil {
+				return err
+			}
+			settings["url"] = next.GetUrl()
 		}
-		u := tx.AuditSink.UpdateOneID(cur.ID).SetName(next.GetName()).SetSettings(map[string]string{"url": next.GetUrl()}).
+		u := tx.AuditSink.UpdateOneID(cur.ID).SetName(next.GetName()).SetSettings(settings).
 			SetEntries(next.GetEntries()).SetEnabled(next.GetEnabled())
-		for _, p := range m.GetUpdateMask().GetPaths() {
+		for _, p := range paths {
 			if p != "secret" {
 				continue
 			}

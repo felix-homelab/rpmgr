@@ -986,6 +986,15 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
   `Proxy-Authorization`, `Cookie` and `Set-Cookie`; the values of `password=`, `passwd=`, `secret=`
   and `token=` pairs; and strings shaped like a JWT. A raised level changes what is logged, never what
   is redacted.
+- [R] **The backlog of a live log and the lines the agents log about their work**
+  ([D154](14-open-decisions.md#engineering)). The agent redacts a line, as above, before it enters
+  the backlog, so the backlog holds nothing the live stream would not, and a viewer's level and
+  filter apply to it as to new lines. The lines about the agent's work (configuration applied,
+  target health, data sessions, streams) carry identifiers, counts, durations, byte totals and
+  reasons from the agent's own checks, such as a route, target or gateway ID, a revision, a state
+  and its cause. They never carry request contents, URLs with query strings, headers, cookies,
+  credentials or the bytes a stream moved. The backlog lives in the agent's memory only and is
+  gone when the process ends.
 - No secret appears in argv, in the environment of long-running processes, or in unit files.
 
 ## Supply chain and updates
@@ -1622,9 +1631,25 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
   ([10](10-operations.md#suggested-alerts)), both counted from the audit tables and the cursors, so
   that the backlog ages while no replica holds the job's lease; the schedule is in
   [03](03-connections.md#timeouts-keepalive-and-backoff).
-  - **Syslog**: RFC 5425 framing over TLS only, never UDP or plain TCP; the server is verified
-    against the sink's CA bundle. Each message is an RFC 5424 record holding the checkpoint or entry
-    as JSON (VB-23).
+  - **Syslog**: RFC 5425 framing (octet counting) over TLS only, never UDP or plain TCP, with TLS
+    1.3 or 1.2 as for other third-party servers. The server's certificate is verified against the
+    sink's CA bundle, or the system roots if it has none, and must name the host of the sink's
+    address; there is no client certificate, and no way to skip verification. The address is
+    checked by the egress guard as it is dialled, with the Instance Admin's policy of a webhook
+    sink. Each message is an RFC 5424 record (facility 13, severity 6, the item's type as its
+    message ID) holding the checkpoint or entry as JSON, as the webhook sink sends it; an entry
+    that would make the record longer than a receiver must accept
+    ([03](03-connections.md#timeouts-keepalive-and-backoff)) is sent without its `diff`, and if
+    that is not enough, replaced by a marker that keeps its ID, type, time, chain and seq and its
+    hash, marked `"truncated": true`, in its place in the order, so that no entry holds the sink's
+    cursor. A batch that is not sent within its time limit
+    ([03](03-connections.md#timeouts-keepalive-and-backoff)) fails and goes again from the cursor.
+    The sink's CA bundle holds PEM certificates and nothing else: a block of another type, text
+    outside the blocks or an empty bundle is refused when the sink is set. The sink has
+    no secret. Syslog has no acknowledgement of a message: a batch counts as shipped once the
+    connection was closed in order and the server did not reset it, so a connection the server
+    drops with a reset sends the batch again from the cursor, while a server that closes quietly
+    after it lost messages cannot be told apart from one that read them all (VB-23).
   - **Webhook**: delivered and signed as a webhook ([Webhooks and the egress
     guard](#webhooks-and-the-egress-guard-phase-2)), with the event type `audit.checkpoint` or
     `audit.entry`. `Rpmgr-Event-Id` is the ID of the checkpoint or entry, so a receiver drops a
