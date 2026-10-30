@@ -115,3 +115,82 @@ func TestServeLogs_BadLevel(t *testing.T) {
 		t.Fatal("a level of trace was accepted")
 	}
 }
+
+// TestServeLogs_Backlog (D154): an operation sends the backlog first, marked, the first line with
+// how many older lines the agent no longer held, then new lines unmarked; the level and the filter
+// apply to the backlog, and the backlog holds nothing unredacted.
+func TestServeLogs_Backlog(t *testing.T) {
+	logger, live, err := telemetry.NewLiveLogger(&bytes.Buffer{}, telemetry.LogConfig{Level: "info"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range telemetry.LiveLogBacklogLines + 3 { // three lines fall out of the backlog
+		logger.Info("filler")
+	}
+	logger.Warn("earlier warning password=hunter2")
+	logger.Info("earlier info")
+
+	var mu sync.Mutex
+	var got []*agentv1.LogLine
+	send := func(f *agentv1.AttachFrame) error {
+		mu.Lock()
+		got = append(got, f.GetLog())
+		mu.Unlock()
+		return nil
+	}
+	read := func(params *agentv1.LogParams, want int, then func()) []*agentv1.LogLine {
+		t.Helper()
+		mu.Lock()
+		got = nil
+		mu.Unlock()
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() { done <- serveLogs(ctx, live, params, send) }()
+		defer func() { cancel(); <-done }()
+		if then != nil {
+			time.Sleep(50 * time.Millisecond)
+			then()
+		}
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+			mu.Lock()
+			n := len(got)
+			mu.Unlock()
+			if n >= want {
+				break
+			}
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]*agentv1.LogLine(nil), got...)
+	}
+
+	lines := read(&agentv1.LogParams{Level: "info"}, telemetry.LiveLogBacklogLines+1, func() { logger.Info("fresh") })
+	if len(lines) != telemetry.LiveLogBacklogLines+1 {
+		t.Fatalf("%d lines", len(lines))
+	}
+	n := len(lines) - 1
+	if !lines[0].GetBacklog() || lines[0].GetDroppedBefore() != 5 { // 3 filler plus the 2 the two lines pushed out
+		t.Errorf("the first backlog line: backlog %v dropped %d", lines[0].GetBacklog(), lines[0].GetDroppedBefore())
+	}
+	for i, l := range lines[:n] {
+		if !l.GetBacklog() || i > 0 && l.GetDroppedBefore() != 0 {
+			t.Fatalf("line %d: %v", i, l)
+		}
+	}
+	if w := lines[n-1]; !strings.Contains(w.GetText(), "earlier info") || strings.Contains(lines[n-2].GetText(), "hunter2") ||
+		!strings.Contains(lines[n-2].GetText(), "password=[REDACTED]") {
+		t.Errorf("the order or the redaction of the backlog: %q %q", lines[n-2].GetText(), w.GetText())
+	}
+	if l := lines[n]; l.GetBacklog() || l.GetText() != "msg=fresh" {
+		t.Errorf("the new line: %v", l)
+	}
+
+	if lines := read(&agentv1.LogParams{Level: "warn"}, 1, nil); len(lines) != 1 || !lines[0].GetBacklog() ||
+		lines[0].GetLevel() != "warn" {
+		t.Errorf("the level on the backlog: %v", lines)
+	}
+	if lines := read(&agentv1.LogParams{Level: "info", Filter: "earlier info"}, 1, nil); len(lines) != 1 ||
+		!strings.Contains(lines[0].GetText(), "earlier info") {
+		t.Errorf("the filter on the backlog: %v", lines)
+	}
+}

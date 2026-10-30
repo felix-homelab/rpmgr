@@ -81,6 +81,8 @@ var Kinds = []Kind{
 		Plural: "InstanceWebhookDeliveries", Parent: "webhook_id", Columns: []string{"attempt", "statusCode", "error", "sendTime", "nextAttemptTime"}, NoGet: true},
 	{Name: "release", Prefix: "rel_", Service: "rpmgr.v1.ReleaseService", Resource: "Release", Plural: "Releases",
 		Columns: []string{"channel", "source", "mirrored", "controllerVersion", "newerThanController"}, NoGet: true},
+	{Name: "audit-sink", Prefix: "ask_", Service: "rpmgr.v1.AuditSinkService", Resource: "AuditSink", Plural: "AuditSinks", IDField: "audit_sink_id",
+		Columns: []string{"kind", "enabled", "entries", "status.backlog", "status.oldestUnshippedTime", "status.lastError"}, Delete: true},
 	{Name: "rollout", Prefix: "rol_", Service: "rpmgr.v1.ReleaseService", Resource: "Rollout", Plural: "Rollouts", IDField: "rollout_id",
 		Columns: []string{"mode", "stage", "percentage", "state", "counts.updated", "counts.pending", "pauseReason"}},
 	{Name: "rollout-target", Prefix: "rlt_", Service: "rpmgr.v1.ReleaseService", Resource: "RolloutTarget", Plural: "RolloutTargets",

@@ -698,6 +698,7 @@ func (m *Sessions) slot(ctx context.Context, l *link, tr string, first tunnel.Se
 			if tr == TransportWSS {
 				label = TransportWSS // reverse HTTP/2 inside the WebSocket
 			}
+			m.o.Logger.Info("data session to a gateway opened", "gateway", l.gw, "transport", label)
 			err = m.run(ctx, l, ts, label)
 			if hooks != nil {
 				hooks.live.Add(-1)

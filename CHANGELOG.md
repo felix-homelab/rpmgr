@@ -17,6 +17,14 @@ Changes to the design documents are not recorded here: see the git history and t
   for every member of the organisation, and `ListInstanceAlerts` lists the instance alerts for the
   Instance Admin. (#960)
 
+- Live logs are useful on a healthy agent. A new live log starts with the agent's latest lines, up
+  to 200 lines and 64 KiB after redaction, marked as earlier lines in the web UI and in `rpmgr
+  logs`, with how many older lines are gone. Connectors and gateways now log what they do: the
+  configuration applied with its routes, routes not ready, target health changes with the reason,
+  data sessions opened and ended and, at debug level, each stream with its duration and bytes,
+  never request contents or headers. The panel says "Connected – no new lines yet" with its level
+  instead of "Waiting for the first line…". (#973)
+
 - Webhook endpoints can be managed through the API: `WebhookService` creates, lists, changes and
   deletes an organisation's endpoints, rotates an endpoint's secret, lists its deliveries and sends
   a test event. The secret, `rpmgr_whs_…`, is shown once when it is made or rotated; after a
@@ -44,14 +52,17 @@ Changes to the design documents are not recorded here: see the git history and t
   instance alert). The organisation settings `alert_email` and `alert_types` turn the alert e-mails
   off and choose the alert kinds, in the API and `rpmgr update settings`.
 - Audit sinks: an Instance Admin sends the audit log's signed checkpoints, and optionally every
-  entry, to a webhook receiver through `AuditSinkService` in the API (create, get, list, update,
-  delete and test), after a step-up. The signing
+  entry, to a webhook receiver with `rpmgr create audit-sink` (also `get`, `list`, `update`,
+  `delete` and `test audit-sink`, and `AuditSinkService` in the API), after a step-up. The signing
   secret is stored encrypted and never shown again. Each sink has a status with its last error,
   its backlog and the age of the oldest item not yet acknowledged, which also feed the metrics
   `rpmgr_audit_sink_backlog` and `rpmgr_audit_sink_oldest_unshipped_timestamp_seconds` and the
   alert "audit sink backlog". A receiver that refuses an item with a 4xx answer holds the sink at
   that item until it accepts it, and the status says so. (#654)
-
+- Audit sinks can send to a syslog server over TLS: `rpmgr create audit-sink --kind syslog
+  --address <host:port> [--ca-file <file>]`, RFC 5424 messages with RFC 5425 framing, the server's
+  certificate verified against the given CA or the system roots. A syslog sink has the same
+  status, backlog and alert as a webhook sink. (#936)
 - Instance webhooks and private receivers: the Instance Admin manages the endpoints that receive
   instance events through `InstanceWebhookService`, and lists in the new instance setting
   `webhook_private_ranges` the private networks that organisations' receivers may use; a refused

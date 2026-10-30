@@ -176,7 +176,7 @@ func (l *Logs) StreamLogs(ctx context.Context, req *connect.Request[rpmgrv1.Stre
 			continue
 		}
 		if err := st.Send(&rpmgrv1.StreamLogsResponse{Line: &rpmgrv1.LogLine{Time: line.GetTime(), Level: line.GetLevel(),
-			Text: line.GetText(), DroppedBefore: line.GetDroppedBefore(), Truncated: line.GetTruncated()}}); err != nil {
+			Text: line.GetText(), DroppedBefore: line.GetDroppedBefore(), Truncated: line.GetTruncated(), Backlog: line.GetBacklog()}}); err != nil {
 			return nil // the client went away
 		}
 		beat.Reset(logHeartbeat)
