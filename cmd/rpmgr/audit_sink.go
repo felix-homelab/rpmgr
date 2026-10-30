@@ -20,8 +20,11 @@ import (
 func auditSinkCommands() map[string][]*cli.Command {
 	create, update := resourceCommands("audit-sink", []field{
 		{flag: "name", name: "name", usage: "the sink's name, unique among the sinks", update: true},
-		{flag: "kind", name: "kind", usage: "how it delivers: webhook"},
-		{flag: "url", name: "url", usage: "the webhook's https:// URL, without credentials", update: true},
+		{flag: "kind", name: "kind", usage: "how it delivers: webhook or syslog (RFC 5424 over TLS)"},
+		{flag: "url", name: "url", usage: "the webhook's https:// URL, without credentials (webhook sinks)", update: true},
+		{flag: "address", name: "address", usage: "the syslog server as host:port; its certificate is checked against the host", update: true},
+		{flag: "ca-file", name: "ca_bundle", usage: "a file of PEM CA certificates the syslog server's certificate must chain to; " +
+			"without it the system roots", update: true, file: true},
 		{flag: "secret-file", name: "secret", usage: "a file holding the secret that signs the deliveries, at least 16 bytes; " +
 			"write-only", update: true, file: true, trim: true},
 		{flag: "entries", name: "entries", usage: "send the entries too; the checkpoints always go", update: true},

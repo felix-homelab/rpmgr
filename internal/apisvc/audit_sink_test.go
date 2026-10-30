@@ -19,6 +19,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/auditsink/syslogtest"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsink"
@@ -306,5 +307,150 @@ func TestAuditSinks(t *testing.T) {
 	}
 	if n < 8 {
 		t.Errorf("%d audit entries of sink requests", n)
+	}
+}
+
+// TestAuditSinks_RefusedWithoutStepUpOrAdmin (#1026 review): update, delete and test each need an
+// Instance Admin with a step-up. Without one the request changes nothing and reaches no receiver.
+func TestAuditSinks_RefusedWithoutStepUpOrAdmin(t *testing.T) {
+	e := newEnv(t)
+	ada := e.browser()
+	if err := ada.login("ada@example.com", pw); err != nil {
+		t.Fatal(err)
+	}
+	bob, _ := e.addOwner(t, storetest.Org(t, e.db, "org-b"), "bob@example.com")
+	if err := bob.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	c := e.db.Client()
+	row := c.AuditSink.Create().SetKind(auditsink.KindSyslog).SetName("keep").SetSettings(map[string]string{"address": "logs.example.com:6514"}).SaveX(e.sys)
+	calls := map[string]func(b *browser) error{
+		"update": func(b *browser) error {
+			_, err := b.sink.UpdateAuditSink(ctx, connect.NewRequest(&rpmgrv1.UpdateAuditSinkRequest{
+				AuditSink:  &rpmgrv1.AuditSink{Id: row.ID, Name: "changed"},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name"}}}))
+			return err
+		},
+		"delete": func(b *browser) error {
+			_, err := b.sink.DeleteAuditSink(ctx, connect.NewRequest(&rpmgrv1.DeleteAuditSinkRequest{AuditSinkId: row.ID}))
+			return err
+		},
+		"test": func(b *browser) error {
+			_, err := b.sink.TestAuditSink(ctx, connect.NewRequest(&rpmgrv1.TestAuditSinkRequest{AuditSinkId: row.ID}))
+			return err
+		},
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			if err := call(ada); reason(err) != api.ReasonStepUpRequired {
+				t.Errorf("an Instance Admin without a step-up: %v", err)
+			}
+			if err := call(bob); code(err) != connect.CodePermissionDenied {
+				t.Errorf("an Owner who is no Instance Admin, with a step-up: %v", err)
+			}
+		})
+	}
+	if after := c.AuditSink.GetX(e.sys, row.ID); after.Name != "keep" {
+		t.Errorf("a refused request changed the sink: %v", after)
+	}
+}
+
+// TestAuditSinks_Syslog (#936): the Instance Admin creates, changes and tests a syslog sink; the
+// address and CA bundle are checked; the fields of the other kind are refused; the kind never
+// changes; the test item reaches a local TLS server.
+func TestAuditSinks_Syslog(t *testing.T) {
+	e := newEnv(t)
+	ada := e.browser()
+	if err := ada.login("ada@example.com", pw); err != nil {
+		t.Fatal(err)
+	}
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	srv := syslogtest.New(t, 0)
+	kind := rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_SYSLOG
+	create := func(in *rpmgrv1.AuditSink) (*rpmgrv1.AuditSink, error) {
+		r, err := ada.sink.CreateAuditSink(ctx, connect.NewRequest(&rpmgrv1.CreateAuditSinkRequest{AuditSink: in}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetAuditSink(), nil
+	}
+	for name, in := range map[string]*rpmgrv1.AuditSink{
+		"no address":                {Name: "a", Kind: kind},
+		"no port":                   {Name: "a", Kind: kind, Address: "logs.example.com"},
+		"a bad port":                {Name: "a", Kind: kind, Address: "logs.example.com:99999"},
+		"a bad bundle":              {Name: "a", Kind: kind, Address: srv.Addr, CaBundle: "nope"},
+		"a url":                     {Name: "a", Kind: kind, Address: srv.Addr, Url: "https://example.com/x"},
+		"a secret":                  {Name: "a", Kind: kind, Address: srv.Addr, Secret: sinkKey},
+		"a long address":            {Name: "a", Kind: kind, Address: strings.Repeat("x", 301)},
+		"a webhook with an address": {Name: "a", Kind: rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_WEBHOOK, Url: "https://example.com/x", Secret: sinkKey, Address: srv.Addr},
+	} {
+		if _, err := create(in); code(err) != connect.CodeInvalidArgument {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if n := e.db.Client().AuditSink.Query().CountX(e.sys); n != 0 {
+		t.Fatalf("%d sinks after refused requests", n)
+	}
+	s, err := create(&rpmgrv1.AuditSink{Name: "logs", Kind: kind, Address: srv.Addr, CaBundle: srv.CA, Entries: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.GetKind() != kind || s.GetAddress() != srv.Addr || s.GetCaBundle() != srv.CA || s.GetSecretSet() || s.GetUrl() != "" || !s.GetEnabled() {
+		t.Fatalf("the new sink: %v", s)
+	}
+	if row := e.db.Client().AuditSink.GetX(e.sys, s.GetId()); row.SecretEnc != nil && len(*row.SecretEnc) > 0 {
+		t.Error("a syslog sink has a secret")
+	}
+	test := func() *rpmgrv1.TestAuditSinkResponse {
+		r, err := ada.sink.TestAuditSink(ctx, connect.NewRequest(&rpmgrv1.TestAuditSinkRequest{AuditSinkId: s.GetId()}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.Msg
+	}
+	if r := test(); !r.GetOk() || len(srv.Messages()) != 1 || !strings.Contains(srv.Messages()[0], "audit.test") {
+		t.Fatalf("a test: %v %q", r, srv.Messages())
+	}
+
+	update := func(in *rpmgrv1.AuditSink, paths ...string) (*rpmgrv1.AuditSink, error) {
+		in.Id = s.GetId()
+		r, err := ada.sink.UpdateAuditSink(ctx, connect.NewRequest(&rpmgrv1.UpdateAuditSinkRequest{AuditSink: in,
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: paths}}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetAuditSink(), nil
+	}
+	for name, c := range map[string]struct {
+		in    *rpmgrv1.AuditSink
+		paths []string
+	}{
+		"a cleared address": {&rpmgrv1.AuditSink{}, []string{"address"}},
+		"a bad bundle":      {&rpmgrv1.AuditSink{CaBundle: "nope"}, []string{"ca_bundle"}},
+		"a url":             {&rpmgrv1.AuditSink{Url: "https://example.com"}, []string{"url"}},
+		"a secret":          {&rpmgrv1.AuditSink{Secret: sinkKey}, []string{"secret"}},
+		"the kind":          {&rpmgrv1.AuditSink{Kind: rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_WEBHOOK}, []string{"kind"}},
+	} {
+		if _, err := update(c.in, c.paths...); code(err) != connect.CodeInvalidArgument {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	// A bundle of another CA fails the test, in words that name no address; the system roots too.
+	up, err := update(&rpmgrv1.AuditSink{CaBundle: syslogtest.OtherCA(t)}, "ca_bundle")
+	if err != nil || up.GetCaBundle() == srv.CA || up.GetEtag() == s.GetEtag() {
+		t.Fatalf("a new bundle: %v %v", up, err)
+	}
+	if r := test(); r.GetOk() || !strings.Contains(r.GetError(), "not signed by a CA of the sink's bundle") || strings.Contains(r.GetError(), "127.0.0.1") {
+		t.Fatalf("a server of another CA: %v", r)
+	}
+	if up, err = update(&rpmgrv1.AuditSink{CaBundle: srv.CA, Entries: false}, "ca_bundle", "entries"); err != nil || up.GetEntries() {
+		t.Fatalf("restoring the bundle: %v %v", up, err)
+	}
+	if r := test(); !r.GetOk() {
+		t.Fatalf("a test after the bundle was restored: %v", r)
 	}
 }

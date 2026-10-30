@@ -197,3 +197,46 @@ func TestAuditSinkCommands(t *testing.T) {
 		t.Fatalf("delete: %d %q %v", code, out, a.deleted)
 	}
 }
+
+// TestAuditSinkCommands_Syslog (#936): create audit-sink --kind syslog sends the address and the CA
+// bundle from a file, as it is; update names them in its mask; a missing bundle file sends nothing.
+func TestAuditSinkCommands_Syslog(t *testing.T) {
+	a := &sinkAPI{}
+	mux := http.NewServeMux()
+	mux.Handle(rpmgrv1connect.NewAuditSinkServiceHandler(a))
+	mux.Handle(rpmgrv1connect.NewAuthServiceHandler(a))
+	srv := httptest.NewTLSServer(mux)
+	t.Cleanup(srv.Close)
+	dir := t.TempDir()
+	creds := filepath.Join(dir, "credentials.yaml")
+	if err := apicli.Save(creds, &apicli.Credentials{Controller: srv.URL, Org: "org_1", Token: secret.FromBytes([]byte("rpmgr_pat_good")),
+		CAFile: writeCA(t, srv)}); err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) (int, string, string) {
+		return runWith(map[string]string{"RPMGR_CREDENTIALS": creds}, "", args...)
+	}
+	bundle := "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"
+	caFile := filepath.Join(dir, "ca.pem")
+	if err := os.WriteFile(caFile, []byte(bundle), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := stepUpPrompt
+	stepUpPrompt = func() (string, error) { return "right", nil }
+	t.Cleanup(func() { stepUpPrompt = old })
+
+	if code, _, _ := run("create", "audit-sink", "--name", "logs", "--kind", "syslog", "--address", "logs.example.com:6514",
+		"--ca-file", filepath.Join(dir, "missing.pem")); code == cli.ExitOK || a.created != nil {
+		t.Fatalf("a missing CA file: %d %v", code, a.created)
+	}
+	code, out, errOut := run("create", "audit-sink", "--name", "logs", "--kind", "syslog", "--address", "logs.example.com:6514", "--ca-file", caFile)
+	got := a.created.GetAuditSink()
+	if code != cli.ExitOK || got.GetKind() != rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_SYSLOG || got.GetAddress() != "logs.example.com:6514" ||
+		got.GetCaBundle() != bundle || got.GetSecret() != "" || got.GetUrl() != "" {
+		t.Fatalf("create: %d %q %q %v", code, out, errOut, a.created)
+	}
+	if code, _, _ := run("update", "audit-sink", "ask_1", "--address", "logs.example.com:6515", "--force"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"address"}) || a.updated.GetAuditSink().GetAddress() != "logs.example.com:6515" {
+		t.Fatalf("update: %d %v", code, a.updated)
+	}
+}

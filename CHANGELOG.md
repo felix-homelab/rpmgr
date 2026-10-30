@@ -20,6 +20,10 @@ Changes to the design documents are not recorded here: see the git history and t
   `rpmgr_audit_sink_backlog` and `rpmgr_audit_sink_oldest_unshipped_timestamp_seconds` and the
   alert "audit sink backlog". A receiver that refuses an item with a 4xx answer holds the sink at
   that item until it accepts it, and the status says so. (#654)
+- Audit sinks can send to a syslog server over TLS: `rpmgr create audit-sink --kind syslog
+  --address <host:port> [--ca-file <file>]`, RFC 5424 messages with RFC 5425 framing, the server's
+  certificate verified against the given CA or the system roots. A syslog sink has the same
+  status, backlog and alert as a webhook sink. (#936)
 - Controllers and all-in-ones update over the air, on SQLite. An Instance Admin chooses "Update
   controller to x.y.z" on Settings → Updates, or runs `rpmgr create rollout --controller --release
   x.y.z`, after a step-up. The root updater takes a backup of the database first, kept as

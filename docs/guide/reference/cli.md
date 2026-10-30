@@ -987,12 +987,14 @@ rpmgr create audit-sink [flags]
 
 | Flag | Default | Description |
 |---|---|---|
+| `--address string` |  | the syslog server as host:port; its certificate is checked against the host |
+| `--ca-file string` |  | a file of PEM CA certificates the syslog server's certificate must chain to; without it the system roots |
 | `--entries` |  | send the entries too; the checkpoints always go |
-| `--kind string` |  | how it delivers: webhook |
+| `--kind string` |  | how it delivers: webhook or syslog (RFC 5424 over TLS) |
 | `--name string` |  | the sink's name, unique among the sinks |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--secret-file string` |  | a file holding the secret that signs the deliveries, at least 16 bytes; write-only |
-| `--url string` |  | the webhook's https:// URL, without credentials |
+| `--url string` |  | the webhook's https:// URL, without credentials (webhook sinks) |
 
 ## rpmgr create invitation
 
@@ -1258,13 +1260,15 @@ rpmgr update audit-sink [flags] <id or name>
 
 | Flag | Default | Description |
 |---|---|---|
+| `--address string` |  | the syslog server as host:port; its certificate is checked against the host |
+| `--ca-file string` |  | a file of PEM CA certificates the syslog server's certificate must chain to; without it the system roots |
 | `--enabled` |  | ship to it (false stops shipping; it catches up when enabled again) |
 | `--entries` |  | send the entries too; the checkpoints always go |
 | `--force` |  | update without checking that it is unchanged since this command read it |
 | `--name string` |  | the sink's name, unique among the sinks |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--secret-file string` |  | a file holding the secret that signs the deliveries, at least 16 bytes; write-only |
-| `--url string` |  | the webhook's https:// URL, without credentials |
+| `--url string` |  | the webhook's https:// URL, without credentials (webhook sinks) |
 
 ## rpmgr update member
 
