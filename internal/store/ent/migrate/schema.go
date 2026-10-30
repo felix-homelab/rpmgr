@@ -1027,6 +1027,30 @@ var (
 		Columns:    LeasesColumns,
 		PrimaryKey: []*schema.Column{LeasesColumns[0]},
 	}
+	// MailJobsColumns holds the columns for the "mail_jobs" table.
+	MailJobsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "event_id", Type: field.TypeString, Unique: true},
+		{Name: "state", Type: field.TypeEnum, Enums: []string{"pending", "sent", "skipped", "given_up"}},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "next_attempt_at", Type: field.TypeTime},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "done", Type: field.TypeJSON, Nullable: true},
+	}
+	// MailJobsTable holds the schema information for the "mail_jobs" table.
+	MailJobsTable = &schema.Table{
+		Name:       "mail_jobs",
+		Columns:    MailJobsColumns,
+		PrimaryKey: []*schema.Column{MailJobsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mailjob_state_next_attempt_at",
+				Unique:  false,
+				Columns: []*schema.Column{MailJobsColumns[3], MailJobsColumns[5]},
+			},
+		},
+	}
 	// MembershipsColumns holds the columns for the "memberships" table.
 	MembershipsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -2218,6 +2242,7 @@ var (
 		InvitationsTable,
 		IssuedCertificatesTable,
 		LeasesTable,
+		MailJobsTable,
 		MembershipsTable,
 		OrgsTable,
 		OrgSettingsTable,
@@ -2344,6 +2369,9 @@ func init() {
 	}
 	LeasesTable.Annotation = &entsql.Annotation{
 		Table: "leases",
+	}
+	MailJobsTable.Annotation = &entsql.Annotation{
+		Table: "mail_jobs",
 	}
 	MembershipsTable.ForeignKeys[0].RefTable = UsersTable
 	OrgSettingsTable.Annotation = &entsql.Annotation{

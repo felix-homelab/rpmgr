@@ -45,6 +45,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/invitation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/mailjob"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
@@ -171,6 +172,7 @@ func checkColumn(t, c string) error {
 			invitation.Table:         invitation.ValidColumn,
 			issuedcertificate.Table:  issuedcertificate.ValidColumn,
 			lease.Table:              lease.ValidColumn,
+			mailjob.Table:            mailjob.ValidColumn,
 			membership.Table:         membership.ValidColumn,
 			org.Table:                org.ValidColumn,
 			orgsetting.Table:         orgsetting.ValidColumn,

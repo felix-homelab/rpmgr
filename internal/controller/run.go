@@ -487,6 +487,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	job(AlertJob(AlertOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger, RevocationLog: shipper.Status}), "alert job")
 	job(WebhookJob(WebhookOptions{DB: db, Leases: leases, Sealer: sealer, Sender: webhookSender, Now: o.Now,
 		Logger: o.Logger, Own: ownAddresses()}), "webhook job")
+	job(MailJob(MailOptions{DB: db, Leases: leases, Mailer: relay, PublicURL: cfg.PublicURL, Now: o.Now, Logger: o.Logger}), "mail job")
 	job(RolloutJob(RolloutOptions{DB: db, Now: o.Now, Logger: o.Logger}), "rollout job")
 	bg.Go(func() { ReloadCA(jobs, caOpts) })
 	bg.Go(func() { shipper.Run(jobs) })

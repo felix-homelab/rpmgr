@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/alerts"
@@ -15,6 +16,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/events"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -52,7 +54,7 @@ func AlertJob(o AlertOptions) lease.Job {
 				if err := o.Leases.Fence(ctx, tx, l); err != nil {
 					return err
 				}
-				if changed, err = alerts.Apply(ctx, tx, now, obs); err != nil {
+				if changed, err = alerts.ApplyChosen(ctx, tx, now, obs, chosenIn(tx)); err != nil {
 					return err
 				}
 				if statusChanged, err = alerts.ApplyStatus(ctx, tx, now, status); err != nil {
@@ -69,6 +71,23 @@ func AlertJob(o AlertOptions) lease.Job {
 			}
 			return nil
 		}}
+}
+
+// chosenIn reads the alert types each org chose in tx, once per org.
+func chosenIn(tx *ent.Tx) alerts.Chosen {
+	types := map[string][]string{}
+	return func(ctx context.Context, org, kind string) (bool, error) {
+		t, ok := types[org]
+		if !ok {
+			s, _, err := settings.Org(ctx, tx.Client(), org)
+			if err != nil {
+				return false, err
+			}
+			t = s.GetAlertTypes()
+			types[org] = t
+		}
+		return len(t) == 0 || slices.Contains(t, kind), nil
+	}
 }
 
 // agentRef is an agent the alerts look at.

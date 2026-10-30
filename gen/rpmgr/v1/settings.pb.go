@@ -572,8 +572,13 @@ type OrgSettings struct {
 	OperatorsMayEnroll *bool `protobuf:"varint,2,opt,name=operators_may_enroll,json=operatorsMayEnroll,proto3,oneof" json:"operators_may_enroll,omitempty"`
 	// Gateway group preselected for new routes; empty means none.
 	DefaultGatewayGroupId string `protobuf:"bytes,3,opt,name=default_gateway_group_id,json=defaultGatewayGroupId,proto3" json:"default_gateway_group_id,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// Whether a firing or resolved alert is e-mailed to the org's Owners and Admins, with SMTP
+	// configured; default true (docs/10-operations.md, "Suggested alerts").
+	AlertEmail *bool `protobuf:"varint,4,opt,name=alert_email,json=alertEmail,proto3,oneof" json:"alert_email,omitempty"`
+	// The alert kinds the org gets, as events and e-mails; empty means all.
+	AlertTypes    []string `protobuf:"bytes,5,rep,name=alert_types,json=alertTypes,proto3" json:"alert_types,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *OrgSettings) Reset() {
@@ -625,6 +630,20 @@ func (x *OrgSettings) GetDefaultGatewayGroupId() string {
 		return x.DefaultGatewayGroupId
 	}
 	return ""
+}
+
+func (x *OrgSettings) GetAlertEmail() bool {
+	if x != nil && x.AlertEmail != nil {
+		return *x.AlertEmail
+	}
+	return false
+}
+
+func (x *OrgSettings) GetAlertTypes() []string {
+	if x != nil {
+		return x.AlertTypes
+	}
+	return nil
 }
 
 // GetInstanceSettingsRequest is empty.
@@ -1314,14 +1333,20 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\xbaH\ar\x05\x18\xfe\x01`\x01R\x04from\x12$\n" +
 	"\busername\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\xfe\x01R\busername\x12>\n" +
 	"\bsecurity\x18\x04 \x01(\x0e2\x16.rpmgr.v1.SmtpSecurityB\n" +
-	"\xbaH\a\x82\x01\x04\x10\x01 \x00R\bsecurity\"\xf9\x01\n" +
+	"\xbaH\a\x82\x01\x04\x10\x01 \x00R\bsecurity\"\xab\x04\n" +
 	"\vOrgSettings\x12$\n" +
 	"\vrequire_mfa\x18\x01 \x01(\bH\x00R\n" +
 	"requireMfa\x88\x01\x01\x125\n" +
 	"\x14operators_may_enroll\x18\x02 \x01(\bH\x01R\x12operatorsMayEnroll\x88\x01\x01\x12d\n" +
-	"\x18default_gateway_group_id\x18\x03 \x01(\tB+\xbaH(r&2$^(gwg_[0-7][0-9A-HJKMNP-TV-Z]{25})?$R\x15defaultGatewayGroupIdB\x0e\n" +
+	"\x18default_gateway_group_id\x18\x03 \x01(\tB+\xbaH(r&2$^(gwg_[0-7][0-9A-HJKMNP-TV-Z]{25})?$R\x15defaultGatewayGroupId\x12$\n" +
+	"\valert_email\x18\x04 \x01(\bH\x02R\n" +
+	"alertEmail\x88\x01\x01\x12\xf9\x01\n" +
+	"\valert_types\x18\x05 \x03(\tB\xd7\x01\xbaH\xd3\x01\x92\x01\xcf\x01\x10\t\x18\x01\"\xc8\x01r\xc5\x01R\ragent_offlineR\x12config_not_appliedR\x1aagent_certificate_expiringR\x1bpublic_certificate_expiringR\x18route_no_ready_connectorR\n" +
+	"clock_skewR\x18audit_checkpoints_behindR\x16revocation_log_on_hostR\x0fwebhook_failingR\n" +
+	"alertTypesB\x0e\n" +
 	"\f_require_mfaB\x17\n" +
-	"\x15_operators_may_enroll\"\x1c\n" +
+	"\x15_operators_may_enrollB\x0e\n" +
+	"\f_alert_email\"\x1c\n" +
 	"\x1aGetInstanceSettingsRequest\"\xdb\x01\n" +
 	"\x1bGetInstanceSettingsResponse\x126\n" +
 	"\bsettings\x18\x01 \x01(\v2\x1a.rpmgr.v1.InstanceSettingsR\bsettings\x12\x12\n" +

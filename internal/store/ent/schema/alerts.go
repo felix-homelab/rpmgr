@@ -86,3 +86,45 @@ func (StatusMark) Interceptors() []ent.Interceptor {
 
 // Hooks scope writes to the scope's org; the system scope's job writes any.
 func (StatusMark) Hooks() []ent.Hook { return []ent.Hook{orgMutationHook} }
+
+// MailJob is the e-mail of one event: an alert's firing or resolving, a webhook endpoint's
+// disabling (docs/06-data-model.md, "Observability (Phase 2)"). The singleton mail job makes one
+// for each such event and sends it to the recipients of its org, retrying a failure until the
+// give-up time; a failed mail never touches the alert or the delivery that caused it.
+type MailJob struct{ ent.Schema }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (MailJob) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "mail_jobs"}}
+}
+
+// Fields of a mail job. done lists the recipients that got the mail, so a retry sends only to
+// the others.
+func (MailJob) Fields() []ent.Field {
+	return []ent.Field{
+		idField("mlj"),
+		field.String("org_id").Optional().Nillable().Immutable(),
+		field.String("event_id").NotEmpty().Immutable().Unique(),
+		field.Enum("state").Values("pending", "sent", "skipped", "given_up"),
+		field.Int("attempts").Default(0),
+		field.Time("next_attempt_at"),
+		field.Time("created_at").Immutable(),
+		field.Strings("done").Optional(),
+	}
+}
+
+// Indexes serve the job's read of the mails that are due.
+func (MailJob) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("state", "next_attempt_at")}
+}
+
+// Policy denies every query without a scope.
+func (MailJob) Policy() ent.Policy { return scopePolicy() }
+
+// Interceptors show an org scope only its own org's mails.
+func (MailJob) Interceptors() []ent.Interceptor {
+	return []ent.Interceptor{filterInterceptor("org_id")}
+}
+
+// Hooks scope writes to the scope's org; the system scope's mail job writes any.
+func (MailJob) Hooks() []ent.Hook { return []ent.Hook{orgMutationHook} }
