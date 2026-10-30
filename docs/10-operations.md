@@ -1190,7 +1190,9 @@ Each runbook: **symptoms → steps → done when**.
   again at the slowest pace of [03](03-connections.md#timeouts-keepalive-and-backoff). Check the sink's reachability and credentials from the controller host (syslog: the
   server's TLS certificate against the sink's CA bundle; object storage: the bucket, Object Lock
   and the credentials). Appends go on meanwhile; nothing is lost, as the sink's cursor holds its
-  place. Fix the sink; it catches up by itself.
+  place. Fix the sink; it catches up by itself. An object-storage sink whose last error names a key
+  that holds other bytes has found an object that is not the item: that is a sign of tampering or of
+  two controllers sharing a bucket, so look at the object before anything else.
 - **Done when**: the backlog is 0 and the alert resolved.
 
 ### A restart with hand-off failed

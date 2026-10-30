@@ -895,8 +895,17 @@ one page, with a section list beside them that jumps to each section
   listed twice, or more than 32. Its hint says that the ranges admit private receivers for
   organisations' endpoints ([D145](14-open-decisions.md#engineering)), and that loopback,
   link-local and cloud metadata addresses stay blocked whatever is listed.
-- **Settings → Audit sinks** (Instance Admin): the audit sinks, each with its kind, whether
-  entries go along, its last success, last error and backlog, secrets write-only.
+- **Settings → Audit sinks** (Instance Admin, a tab beside Webhooks; the API lets no other role
+  read a sink, so it sees a note): the audit sinks, each with its name, kind, state (enabled,
+  disabled, **failing** when its last attempt failed), target, whether entries go along, its last
+  success, backlog with the age of the oldest item and last error, as the API returns them. The
+  form has the fields every sink has (name, entries) and one section per kind: a webhook sink's URL
+  and signing secret, a syslog sink's address and CA certificates; a new kind adds a section, and
+  the kind of a sink never changes. The page checks the name, the URL, the secret's length and the
+  address before it sends anything, and shows a violation the API names at its field. The secret
+  is write-only: a password field that is empty when a sink is edited, sent only when typed, and
+  never shown; the row says only whether one is stored. **Send test item**, **Enable** and
+  **Disable**, **Edit** and **Delete…** (which asks first) each ask for a step-up.
 - **Org settings**: alert e-mails on or off (`alert_email`) and the alert types the org gets
   (`alert_types`), one checkbox per kind ([D139](14-open-decisions.md#engineering)). The kinds are
   all checked while none is chosen, as an empty list means all; checking them all saves an empty

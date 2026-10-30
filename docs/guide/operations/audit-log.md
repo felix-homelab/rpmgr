@@ -193,6 +193,11 @@ and says so in its last error until the receiver accepts it; fix the receiver or
 secret. The details and the alert are in [04](../../04-security.md#audit-log) and
 [10](../../10-operations.md#audit-sink-backlog).
 
+The Instance Admin can do the same in the web UI, under **Settings**, **Audit sinks**: it lists
+each sink with its state, last success, backlog and last error, and makes, edits, tests, switches
+and deletes sinks ([Settings](../web-ui/settings.md#audit-sinks)). The secret is write-only there
+too.
+
 To send the log to a syslog server instead, use the kind `syslog`. The server must accept RFC 5424
 messages over TLS (RFC 5425, usually port 6514), and its certificate must name the host you give.
 Pass the CA that signed it with `--ca-file`; without the option the system's roots are used. A
@@ -208,6 +213,26 @@ Each checkpoint or entry is one message with the same JSON as a webhook delivery
 nothing to the sender, so after a dropped connection the sink sends the batch again; a receiver
 may see an item twice, and the `id` in the JSON tells repeats apart. If the last error says the
 certificate is not signed by a CA of the sink's bundle, check the file passed to `--ca-file`.
+
+To send the log to S3-compatible object storage, use the kind `s3`. The bucket must have Object
+Lock enabled (which needs versioning) and the store must support conditional writes; the sink
+refuses a bucket that does not, when you create it and when you test it. Every checkpoint, and
+with `--entries` every entry, is written as its own object that not even the sink's own access key
+can change or delete until its lock ends, 365 days unless you set `--retention-days`. The access
+key needs the right to write and read objects and to list the bucket. The secret key comes from a
+file and is write-only like a webhook's secret.
+
+```sh
+rpmgr create audit-sink --name vault --kind s3 --endpoint https://s3.example.com \
+  --region eu-central-1 --bucket rpmgr-audit --access-key-id AKIAIOSFODNN7EXAMPLE \
+  --secret-file ./vault.secret --entries
+rpmgr test audit-sink vault
+```
+
+Each save, update and test of the sink leaves a probe object under `audit/probe/`, which stays
+locked for a short time and cannot be deleted before that ends. Objects lie under `audit/<chain>/`, where the chain is an org's ID or `instance`. If the last error
+says an object holds other bytes than the item, do not retry: someone wrote under that key, so
+look at the object.
 
 ## How long entries are kept
 
