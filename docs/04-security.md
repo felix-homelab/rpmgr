@@ -1636,7 +1636,7 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
   then each entry with every stored field as in its canonical form plus `prev_hash` and `hash`,
   with each checkpoint in its place. It ends at the newest checkpoint; entries after it are listed
   as an unanchored tail, flagged so, which a later export anchors. `rpmgr audit verify-export
-  --ca-pin <sha256>` verifies an export offline against the CA root pin alone: links, hashes,
+  --ca-pin sha256:<base64>` verifies an export offline against the CA root pin alone: links, hashes,
   checkpoint signatures and their keys' certificates, and that nothing was removed, reordered or
   edited.
 - **Webhook signatures** (Phase 2) and their maximum age are under

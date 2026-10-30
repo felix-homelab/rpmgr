@@ -71,8 +71,8 @@ changed, removed or put in another place breaks the chain from there on.
 
 ### With the API
 
-The command line has no audit command; use the API with a token that has the scope `audit.read`
-([API](../reference/api.md)):
+The command line exports a chain ([Export a chain](#export-a-chain-with-its-proofs)) but does not
+list entries; use the API with a token that has the scope `audit.read` ([API](../reference/api.md)):
 
 ```sh
 curl -sS https://panel.example.com/rpmgr.v1.AuditService/ListAuditEntries \
@@ -124,6 +124,28 @@ the chain as JSON Lines, in parts of lines:
    checkpoint that anchors the first entry left.
 3. Entries after the newest checkpoint are flagged `unanchored`. No signature covers them yet; a
    later export, made after the next checkpoint, anchors them.
+
+### With the command line
+
+```sh
+rpmgr audit export --out audit-org.jsonl
+```
+
+writes your org's chain to a new file (mode 0600; an existing file is never replaced), asking for
+a step-up on the terminal. `--instance` exports the instance chain, `--out -` writes standard
+output. Verify the file on any machine, with no access to the controller, using the pin of your
+CA's root, which the join command and **Settings → PKI** show:
+
+```sh
+rpmgr audit verify-export --ca-pin sha256:<base64> audit-org.jsonl
+```
+
+It checks that the entries link and hash as the chain does, that every checkpoint carries a
+signature of a key your CA certified for audit checkpoints, and that nothing was removed,
+reordered or edited. A failure says at which entry and exits 1. Entries after the newest
+checkpoint are reported as not yet anchored. An export proves the chain as of its newest
+checkpoint: a cut-off file is found only if its end no longer matches its header, so compare the
+newest checkpoint with a copy you keep elsewhere, such as `audit-checkpoints.log` in a backup.
 
 Every export is an entry in the chain, `audit.export`, written before the chain is read. An export
 that breaks off is recorded a second time with the result `failure`.
