@@ -351,6 +351,54 @@ func (f AuditHeadMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutat
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.AuditHeadMutation", m)
 }
 
+// The AuditSinkQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type AuditSinkQueryRuleFunc func(context.Context, *ent.AuditSinkQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f AuditSinkQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AuditSinkQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.AuditSinkQuery", q)
+}
+
+// The AuditSinkMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type AuditSinkMutationRuleFunc func(context.Context, *ent.AuditSinkMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f AuditSinkMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.AuditSinkMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.AuditSinkMutation", m)
+}
+
+// The AuditSinkCursorQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type AuditSinkCursorQueryRuleFunc func(context.Context, *ent.AuditSinkCursorQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f AuditSinkCursorQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AuditSinkCursorQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.AuditSinkCursorQuery", q)
+}
+
+// The AuditSinkCursorMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type AuditSinkCursorMutationRuleFunc func(context.Context, *ent.AuditSinkCursorMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f AuditSinkCursorMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.AuditSinkCursorMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.AuditSinkCursorMutation", m)
+}
+
 // The CABundleQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type CABundleQueryRuleFunc func(context.Context, *ent.CABundleQuery) error
@@ -1726,6 +1774,10 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.AuditHeadQuery:
 		return q.Filter(), nil
+	case *ent.AuditSinkQuery:
+		return q.Filter(), nil
+	case *ent.AuditSinkCursorQuery:
+		return q.Filter(), nil
 	case *ent.CABundleQuery:
 		return q.Filter(), nil
 	case *ent.CAKeyQuery:
@@ -1862,6 +1914,10 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.AuditEntryMutation:
 		return m.Filter(), nil
 	case *ent.AuditHeadMutation:
+		return m.Filter(), nil
+	case *ent.AuditSinkMutation:
+		return m.Filter(), nil
+	case *ent.AuditSinkCursorMutation:
 		return m.Filter(), nil
 	case *ent.CABundleMutation:
 		return m.Filter(), nil
