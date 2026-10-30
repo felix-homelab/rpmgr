@@ -63,11 +63,12 @@ function Tabs() {
   const { t } = useTranslation();
   const tab = "-mb-px border-b-2 border-transparent px-1 pb-2.5 font-medium text-muted-foreground transition-colors hover:text-foreground [&.active]:border-primary [&.active]:text-foreground";
   return (
-    <nav aria-label={t("settings.pages")} className="flex gap-6 border-b border-border text-sm">
+    <nav aria-label={t("settings.pages")} className="flex flex-wrap gap-x-6 gap-y-2 border-b border-border text-sm">
       <Link to="/settings" activeOptions={{ exact: true }} className={tab}>{t("settings.title")}</Link>
       <Link to="/settings/pki" className={tab}>{t("settings.pki")}</Link>
       <Link to="/settings/updates" className={tab}>{t("settings.updates")}</Link>
       <Link to="/settings/webhooks" className={tab}>{t("webhooks.title")}</Link>
+      <Link to="/settings/audit-sinks" className={tab}>{t("auditSinks.title")}</Link>
       <Link to="/settings/users" className={tab}>{t("users.title")}</Link>
     </nav>
   );

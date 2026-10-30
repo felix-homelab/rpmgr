@@ -44,6 +44,15 @@ async function signIn(page: Page, email: string) {
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
+// confirmStepUp confirms the step-up that a change asked for, if the page asks within a moment.
+async function confirmStepUp(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Confirm it is you" });
+  if (await dialog.waitFor({ timeout: 3000 }).then(() => true, () => false)) {
+    await dialog.getByLabel("Password").fill(password);
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+  }
+}
+
 // call is an API call with the page's session, as the UI makes it.
 async function call(page: Page, method: string, body: object) {
   return page.evaluate(async ([method, body]) => {
@@ -268,6 +277,27 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await expect(page.getByText("Saved.")).toBeVisible();
   await page.waitForTimeout(800);
   await shot(page, "settings-webhooks", true);
+  // The audit sinks, a webhook and a syslog server; each change asks for a step-up, which is
+  // confirmed when it is asked for.
+  await page.getByRole("navigation", { name: "Instance pages" }).getByRole("link", { name: "Audit sinks" }).click();
+  await expect(page.getByRole("heading", { name: "Audit sinks", level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: "New audit sink…" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("siem");
+  await page.getByLabel("URL").fill("https://siem.example.com/rpmgr");
+  await page.getByLabel(/^Signing secret/).fill("rpmgr_whs_SECRET1");
+  await page.getByRole("button", { name: "Create the sink" }).click();
+  await confirmStepUp(page);
+  await expect(page.getByText("siem", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "New audit sink…" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("syslog");
+  await page.getByLabel("Kind").selectOption({ label: "Syslog over TLS" });
+  await page.getByLabel("Address").fill("logs.example.com:6514");
+  await shot(page, "settings-audit-sinks-form", true);
+  await page.getByRole("button", { name: "Create the sink" }).click();
+  await confirmStepUp(page);
+  await expect(page.getByText("syslog", { exact: true })).toBeVisible();
+  await page.waitForTimeout(800);
+  await shot(page, "settings-audit-sinks", true);
   await page.getByRole("link", { name: "Users" }).click();
   await expect(page.getByRole("heading", { name: "Users", level: 1 })).toBeVisible();
   await page.waitForTimeout(800);

@@ -14,6 +14,7 @@ import { Forgot } from "@/pages/forgot";
 import { Pki } from "@/pages/pki";
 import { Users } from "@/pages/users";
 import { InstanceWebhooksPage } from "@/pages/instance-webhooks";
+import { AuditSinksPage } from "@/pages/audit-sinks";
 import { Settings } from "@/pages/settings";
 import { Updates } from "@/pages/updates";
 import { Updating, validateUpdatingSearch } from "@/pages/updating";
@@ -74,6 +75,7 @@ const updates = createRoute({ getParentRoute: () => app, path: "/settings/update
 const pki = createRoute({ getParentRoute: () => app, path: "/settings/pki", component: Pki });
 const users = createRoute({ getParentRoute: () => app, path: "/settings/users", component: Users });
 const instanceWebhooks = createRoute({ getParentRoute: () => app, path: "/settings/webhooks", component: InstanceWebhooksPage });
+const auditSinks = createRoute({ getParentRoute: () => app, path: "/settings/audit-sinks", component: AuditSinksPage });
 const account = createRoute({
   getParentRoute: () => app,
   path: "/account",
@@ -105,7 +107,7 @@ const reset = createRoute({ getParentRoute: () => root, path: "/reset", componen
 const forgot = createRoute({ getParentRoute: () => root, path: "/forgot", component: Forgot });
 const invite = createRoute({ getParentRoute: () => root, path: "/invite", component: Invite });
 
-const routeTree = root.addChildren([app.addChildren([overview, routes, routeNew, routeDetail, routeEdit, connectors, connectorDetail, gateways, gatewayGroup, domains, policies, orgPage, webhooks, audit, settings, updates, pki, users, instanceWebhooks, account]), login, updating, setup, reset, forgot, invite]);
+const routeTree = root.addChildren([app.addChildren([overview, routes, routeNew, routeDetail, routeEdit, connectors, connectorDetail, gateways, gatewayGroup, domains, policies, orgPage, webhooks, audit, settings, updates, pki, users, instanceWebhooks, auditSinks, account]), login, updating, setup, reset, forgot, invite]);
 
 export function createAppRouter(context: RouterContext, history?: RouterHistory) {
   return createRouter({ routeTree, history, context, defaultPreload: "intent" });

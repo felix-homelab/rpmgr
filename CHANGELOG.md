@@ -50,6 +50,10 @@ Changes to the design documents are not recorded here: see the git history and t
   --address <host:port> [--ca-file <file>]`, RFC 5424 messages with RFC 5425 framing, the server's
   certificate verified against the given CA or the system roots. A syslog sink has the same
   status, backlog and alert as a webhook sink. (#936)
+- An Audit sinks page under Settings, for the Instance Admin, manages the audit sinks: it lists
+  each with its state, target, last success, backlog and last error, creates and edits webhook and
+  syslog sinks in a form with a section per kind, enables, disables, tests and deletes them. The
+  signing secret is write-only in the page. (#657)
 - Instance webhooks and private receivers: the Instance Admin manages the endpoints that receive
   instance events through `InstanceWebhookService`, and lists in the new instance setting
   `webhook_private_ranges` the private networks that organisations' receivers may use; a refused
