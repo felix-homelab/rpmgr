@@ -5,6 +5,7 @@ package webhook_test
 import (
 	"bufio"
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"io"
@@ -246,5 +247,50 @@ func TestWebhook_Timeout(t *testing.T) {
 	}
 	if code, err := s.Send(ctx, webhook.Delivery{URL: u + "?do=big", Body: []byte("{}"), Policy: internal}); code != 200 || err != nil {
 		t.Fatalf("big answer: %d %v", code, err)
+	}
+}
+
+// TestSend_UntrustedCertificate: a receiver whose certificate the system roots do not vouch for,
+// such as a self-signed one, is not delivered to, and the answer names no URL.
+func TestSend_UntrustedCertificate(t *testing.T) {
+	var hits atomic.Int32
+	_, trusted, u := receiver(t, func(http.ResponseWriter, *http.Request) { hits.Add(1) })
+	untrusting := &webhook.Sender{Lookup: trusted.Lookup} // no RootCAs: the system's
+	_, err := untrusting.Send(context.Background(), webhook.Delivery{URL: u, EventID: "evt_1", Body: []byte("{}"),
+		Secrets: []secret.Value{secret.New(key)}, Policy: internal})
+	if !errors.Is(err, webhook.ErrNotDelivered) || hits.Load() != 0 {
+		t.Fatalf("a self-signed receiver: %v, %d requests", err, hits.Load())
+	}
+	var ua x509.UnknownAuthorityError
+	if !errors.As(err, &ua) {
+		t.Errorf("the error is not an unknown authority: %v", err)
+	}
+	if strings.Contains(webhook.Describe(err), "/hook") || strings.Contains(webhook.Describe(err), "example.com:") {
+		t.Errorf("the description names the URL: %s", webhook.Describe(err))
+	}
+	// The same receiver with its certificate trusted is delivered to.
+	if _, err := trusted.Send(context.Background(), webhook.Delivery{URL: u, EventID: "evt_1", Body: []byte("{}"),
+		Secrets: []secret.Value{secret.New(key)}, Policy: internal}); err != nil || hits.Load() != 1 {
+		t.Fatalf("a trusted receiver: %v, %d requests", err, hits.Load())
+	}
+}
+
+// TestSend_DialDeadlinePerAddress: an address that does not answer uses only its share of the
+// delivery's time, so the receiver's next address is still tried.
+func TestSend_DialDeadlinePerAddress(t *testing.T) {
+	var hits atomic.Int32
+	_, s, u := receiver(t, func(http.ResponseWriter, *http.Request) { hits.Add(1) })
+	// 192.0.2.1 is TEST-NET-1: nothing answers there, or no route leads there at all.
+	s.Lookup = func(context.Context, string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("127.0.0.1")}, nil
+	}
+	start := time.Now()
+	_, err := s.Send(context.Background(), webhook.Delivery{URL: u, EventID: "evt_1", Body: []byte("{}"),
+		Secrets: []secret.Value{secret.New(key)}, Policy: internal})
+	if err != nil || hits.Load() != 1 {
+		t.Fatalf("the second address: %v, %d requests after %s", err, hits.Load(), time.Since(start))
+	}
+	if d := time.Since(start); d >= webhook.Timeout {
+		t.Errorf("took %s, the first address used the whole time", d)
 	}
 }

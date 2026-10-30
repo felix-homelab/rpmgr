@@ -172,8 +172,14 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_webhook_proto.Services().ByName("WebhookService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			e.webhooks = &apisvc.Webhooks{DB: db, API: srv, Sealer: sealer, Logger: log, Now: now}
+			e.webhooks = &apisvc.Webhooks{DB: db, API: srv, Sealer: sealer, Sys: sys, Logger: log, Now: now}
 			return rpmgrv1connect.NewWebhookServiceHandler(e.webhooks, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_webhook_proto.Services().ByName("InstanceWebhookService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewInstanceWebhookServiceHandler(&apisvc.InstanceWebhooks{W: e.webhooks}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -297,6 +303,7 @@ type browser struct {
 	rel    rpmgrv1connect.ReleaseServiceClient
 	logs   rpmgrv1connect.LogServiceClient
 	wh     rpmgrv1connect.WebhookServiceClient
+	iwh    rpmgrv1connect.InstanceWebhookServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -312,6 +319,7 @@ func (e *env) browser() *browser {
 	b.rt = rpmgrv1connect.NewRouteServiceClient(&http.Client{Transport: b}, e.url)
 	b.logs = rpmgrv1connect.NewLogServiceClient(&http.Client{Transport: b}, e.url)
 	b.wh = rpmgrv1connect.NewWebhookServiceClient(&http.Client{Transport: b}, e.url)
+	b.iwh = rpmgrv1connect.NewInstanceWebhookServiceClient(&http.Client{Transport: b}, e.url)
 	b.st = rpmgrv1connect.NewStatusServiceClient(&http.Client{Transport: b}, e.url)
 	b.pol = rpmgrv1connect.NewPolicyServiceClient(&http.Client{Transport: b}, e.url)
 	b.crt = rpmgrv1connect.NewCertificateServiceClient(&http.Client{Transport: b}, e.url)

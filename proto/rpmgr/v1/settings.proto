@@ -195,6 +195,20 @@ message InstanceSettings {
     defined_only: true
     not_in: [0]
   }];
+  // The private ranges webhook receivers of orgs may reach, each a CIDR such as "10.0.0.0/8"; none
+  // by default. A range never admits loopback, link-local, metadata, multicast or broadcast
+  // addresses or the controller's own (docs/04-security.md, "Webhooks and the egress guard").
+  repeated string webhook_private_ranges = 16 [(buf.validate.field).repeated = {
+    max_items: 32
+    unique: true
+    items: {
+      string: {
+        ip_prefix: true
+        strict: true
+        max_len: 43
+      }
+    }
+  }];
 }
 
 // SmtpSettings are a mail relay (docs/04-security.md, "Human authentication and sessions"). Its
