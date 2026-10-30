@@ -32,6 +32,9 @@ type Server struct {
 	msgs  []string
 	conns int
 	drop  int
+	// stall makes the server read nothing and never close, as a receiver that hangs does.
+	stall bool
+	done  chan struct{}
 }
 
 // CA is a certificate authority that signs the server certificate for 127.0.0.1.
@@ -79,9 +82,9 @@ func New(t *testing.T, dropAfter int) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{Addr: ln.Addr().String(), CA: ca.pem, drop: dropAfter}
+	s := &Server{Addr: ln.Addr().String(), CA: ca.pem, drop: dropAfter, done: make(chan struct{})}
 	conf := &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}, MinVersion: tls.VersionTLS12}
-	t.Cleanup(func() { _ = ln.Close() })
+	t.Cleanup(func() { _ = ln.Close(); close(s.done) })
 	go func() {
 		for {
 			c, err := ln.Accept()
@@ -101,11 +104,25 @@ func (s *Server) SetDrop(n int) {
 	s.mu.Unlock()
 }
 
+// SetStall makes the server, from the next connection on, accept it, finish the handshake, read nothing and never close
+// it, until the test ends.
+func (s *Server) SetStall(on bool) {
+	s.mu.Lock()
+	s.stall = on
+	s.mu.Unlock()
+}
+
 func (s *Server) serve(c *tls.Conn) {
 	defer func() { _ = c.Close() }()
 	s.mu.Lock()
 	s.conns++
+	stall := s.stall
 	s.mu.Unlock()
+	if stall {
+		_ = c.Handshake()
+		<-s.done
+		return
+	}
 	r := bufio.NewReader(c)
 	n := 0
 	for {

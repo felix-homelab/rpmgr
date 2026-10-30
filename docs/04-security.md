@@ -1630,7 +1630,12 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
     message ID) holding the checkpoint or entry as JSON, as the webhook sink sends it; an entry
     that would make the record longer than a receiver must accept
     ([03](03-connections.md#timeouts-keepalive-and-backoff)) is sent without its `diff`, and if
-    that is not enough without its user agent and reason, marked `"truncated": true`. The sink has
+    that is not enough, replaced by a marker that keeps its ID, type, time, chain and seq and its
+    hash, marked `"truncated": true`, in its place in the order, so that no entry holds the sink's
+    cursor. A batch that is not sent within its time limit
+    ([03](03-connections.md#timeouts-keepalive-and-backoff)) fails and goes again from the cursor.
+    The sink's CA bundle holds PEM certificates and nothing else: a block of another type, text
+    outside the blocks or an empty bundle is refused when the sink is set. The sink has
     no secret. Syslog has no acknowledgement of a message: a batch counts as shipped once the
     connection was closed in order and the server did not reset it, so a connection the server
     drops with a reset sends the batch again from the cursor, while a server that closes quietly

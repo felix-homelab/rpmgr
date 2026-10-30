@@ -100,9 +100,53 @@ func TestSyslogSettings(t *testing.T) {
 		"a text port":          {"logs.example.com:syslog-tls", "", false},
 		"a negative port":      {"logs.example.com:-1", "", false},
 		"a bundle that is not": {"logs.example.com:6514", "garbage", false},
+		"a valid bundle":       {"logs.example.com:6514", srv.CA, true},
+		"two certificates":     {"logs.example.com:6514", srv.CA + srv.CA, true},
+		"a non-certificate":    {"logs.example.com:6514", srv.CA + privateKeyBlock, false},
 	} {
 		if err := auditsink.CheckSyslogSettings(c.address, c.ca); (err == nil) != c.ok {
 			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// privateKeyBlock is a well-formed PEM block that is no certificate; its body is no key.
+const privateKeyBlock = "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n"
+
+// TestSyslogSettings_CABundle (#936): a CA bundle is accepted only if every block in it is a valid
+// CERTIFICATE and nothing else is in it; nothing is skipped silently.
+func TestSyslogSettings_CABundle(t *testing.T) {
+	srv := syslogtest.New(t, 0)
+	other := syslogtest.OtherCA(t)
+	truncated := srv.CA[:len(srv.CA)/2]
+	badCert := "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"
+	for name, c := range map[string]struct {
+		ca   string
+		want string // "" accepts
+	}{
+		"valid":                        {srv.CA, ""},
+		"valid with blank lines":       {"\n\n" + srv.CA + "\n  \n", ""},
+		"two valid":                    {srv.CA + other, ""},
+		"only whitespace":              {"  \n\t\n", "no certificate"},
+		"garbage":                      {"garbage", "no certificate"},
+		"a private key only":           {privateKeyBlock, "not a certificate"},
+		"a key after a certificate":    {srv.CA + privateKeyBlock, "not a certificate"},
+		"a key before a certificate":   {privateKeyBlock + srv.CA, "not a certificate"},
+		"a certificate that is no DER": {srv.CA + badCert, "cannot be parsed"},
+		"trailing garbage":             {srv.CA + "trailing garbage", "not a PEM block"},
+		"garbage between blocks":       {srv.CA + "garbage\n" + other, "not a PEM block"},
+		"leading garbage":              {"garbage\n" + srv.CA, "no certificate"},
+		"a cut-off block":              {truncated, "cannot be read"},
+		"a cut-off block after a good": {srv.CA + truncated, "cannot be read"},
+	} {
+		err := auditsink.CheckSyslogSettings("logs.example.com:6514", c.ca)
+		switch {
+		case c.want == "" && err != nil:
+			t.Errorf("%s: refused: %v", name, err)
+		case c.want != "" && err == nil:
+			t.Errorf("%s: accepted", name)
+		case c.want != "" && !strings.Contains(err.Error(), c.want):
+			t.Errorf("%s: %q, want %q", name, err, c.want)
 		}
 	}
 }

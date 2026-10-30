@@ -379,14 +379,16 @@ func TestAuditSinks_Syslog(t *testing.T) {
 		return r.Msg.GetAuditSink(), nil
 	}
 	for name, in := range map[string]*rpmgrv1.AuditSink{
-		"no address":                {Name: "a", Kind: kind},
-		"no port":                   {Name: "a", Kind: kind, Address: "logs.example.com"},
-		"a bad port":                {Name: "a", Kind: kind, Address: "logs.example.com:99999"},
-		"a bad bundle":              {Name: "a", Kind: kind, Address: srv.Addr, CaBundle: "nope"},
-		"a url":                     {Name: "a", Kind: kind, Address: srv.Addr, Url: "https://example.com/x"},
-		"a secret":                  {Name: "a", Kind: kind, Address: srv.Addr, Secret: sinkKey},
-		"a long address":            {Name: "a", Kind: kind, Address: strings.Repeat("x", 301)},
-		"a webhook with an address": {Name: "a", Kind: rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_WEBHOOK, Url: "https://example.com/x", Secret: sinkKey, Address: srv.Addr},
+		"no address":                            {Name: "a", Kind: kind},
+		"no port":                               {Name: "a", Kind: kind, Address: "logs.example.com"},
+		"a bad port":                            {Name: "a", Kind: kind, Address: "logs.example.com:99999"},
+		"a bad bundle":                          {Name: "a", Kind: kind, Address: srv.Addr, CaBundle: "nope"},
+		"a bundle with a non-certificate block": {Name: "a", Kind: kind, Address: srv.Addr, CaBundle: srv.CA + "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n"},
+		"a bundle with trailing text":           {Name: "a", Kind: kind, Address: srv.Addr, CaBundle: srv.CA + "trailing"},
+		"a url":                                 {Name: "a", Kind: kind, Address: srv.Addr, Url: "https://example.com/x"},
+		"a secret":                              {Name: "a", Kind: kind, Address: srv.Addr, Secret: sinkKey},
+		"a long address":                        {Name: "a", Kind: kind, Address: strings.Repeat("x", 301)},
+		"a webhook with an address":             {Name: "a", Kind: rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_WEBHOOK, Url: "https://example.com/x", Secret: sinkKey, Address: srv.Addr},
 	} {
 		if _, err := create(in); code(err) != connect.CodeInvalidArgument {
 			t.Errorf("%s: %v", name, err)

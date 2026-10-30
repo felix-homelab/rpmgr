@@ -3,10 +3,12 @@
 package auditsink
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -21,13 +23,14 @@ import (
 )
 
 // The limits of the syslog sink (docs/03-connections.md, "Timeouts, keepalive and backoff"): the
-// dial with its handshake, each write and the drain that ends a batch each have a deadline, and
-// no message is longer than MaxSyslogMessage, which every receiver of RFC 5425 must accept at the
-// least (it asks for 2048 octets and recommends 8192).
+// dial with its handshake, each write and the drain that ends a batch each have a deadline, the
+// whole batch has one too, and no message is longer than MaxSyslogMessage, which every receiver
+// of RFC 5425 must accept at the least (it asks for 2048 octets and recommends 8192).
 const (
 	SyslogDialTimeout  = 10 * time.Second
 	SyslogWriteTimeout = 10 * time.Second
 	SyslogDrainTimeout = 5 * time.Second
+	SyslogBatchTimeout = 60 * time.Second
 	MaxSyslogMessage   = 8192
 )
 
@@ -55,6 +58,10 @@ type syslogSink struct {
 	hostname string
 	policy   egress.Policy
 	conn     *tls.Conn
+	// batchTimeout bounds a whole batch, from its first item to the end of its Flush; batchStart
+	// is when the batch in hand began, zero between batches.
+	batchTimeout time.Duration
+	batchStart   time.Time
 	// failed is a connection that broke while a batch was written: what it carried is unconfirmed.
 	failed error
 }
@@ -86,11 +93,41 @@ func CheckSyslogSettings(address, ca string) error {
 	return nil
 }
 
-// rootsOf is the pool of a PEM bundle, which must hold at least one certificate and nothing else
-// that would be skipped silently.
+// rootsOf is the pool of a PEM bundle. It holds at least one certificate and nothing else: a block
+// of another type, a certificate that does not parse, and text between or after the blocks are
+// refused, not skipped, since a bundle that is silently shorter than the admin wrote it would
+// verify the wrong servers.
 func rootsOf(ca string) (*x509.CertPool, error) {
 	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM([]byte(ca)) {
+	rest := []byte(ca)
+	n := 0
+	for {
+		rest = bytes.TrimSpace(rest)
+		if len(rest) == 0 {
+			break
+		}
+		if !bytes.HasPrefix(rest, []byte("-----BEGIN ")) {
+			if n == 0 {
+				return nil, errors.New("the CA bundle holds no certificate in PEM form")
+			}
+			return nil, errors.New("the CA bundle holds text that is not a PEM block")
+		}
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			return nil, errors.New("the CA bundle holds a PEM block that cannot be read")
+		}
+		if block.Type != "CERTIFICATE" {
+			return nil, fmt.Errorf("the CA bundle holds a PEM block of type %q, which is not a certificate", block.Type)
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, errors.New("the CA bundle holds a certificate that cannot be parsed")
+		}
+		pool.AddCert(cert)
+		n++
+	}
+	if n == 0 {
 		return nil, errors.New("the CA bundle holds no certificate in PEM form")
 	}
 	return pool, nil
@@ -102,7 +139,8 @@ func openSyslog(s *ent.AuditSink) (Sink, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the syslog sink has no usable address: %w", err)
 	}
-	k := &syslogSink{address: address, host: host, hostname: syslogHostname(), policy: egress.Policy{Internal: true}}
+	k := &syslogSink{address: address, host: host, hostname: syslogHostname(), policy: egress.Policy{Internal: true},
+		batchTimeout: SyslogBatchTimeout}
 	if ca := s.Settings["ca"]; ca != "" {
 		if k.roots, err = rootsOf(ca); err != nil {
 			return nil, fmt.Errorf("the syslog sink's %w", err)
@@ -139,29 +177,54 @@ func (k *syslogSink) Ship(ctx context.Context, it Item) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if k.batchStart.IsZero() {
+		k.batchStart = time.Now()
+	}
+	deadline := k.batchStart.Add(k.batchTimeout)
+	if !time.Now().Before(deadline) {
+		return k.expire()
+	}
 	if k.conn == nil {
-		if err := k.dial(ctx); err != nil {
+		if err := k.dial(ctx, deadline); err != nil {
 			return err
 		}
 	}
 	frame := append([]byte(strconv.Itoa(len(msg))+" "), msg...)
-	_ = k.conn.SetWriteDeadline(time.Now().Add(SyslogWriteTimeout))
+	_ = k.conn.SetWriteDeadline(earlier(time.Now().Add(SyslogWriteTimeout), deadline))
 	if _, err := k.conn.Write(frame); err != nil {
 		k.drop()
+		if !time.Now().Before(deadline) {
+			return k.expire()
+		}
 		k.failed = syslogFailure("writing to the syslog server failed", err)
 		return k.failed
 	}
 	return nil
 }
 
+// expire fails the batch in hand because it ran past its deadline: what it carried is unconfirmed,
+// so the cursor stays where it was.
+func (k *syslogSink) expire() error {
+	k.drop()
+	k.failed = errors.New("sending a batch to the syslog server took longer than the time allowed for a batch")
+	return k.failed
+}
+
+func earlier(a, b time.Time) time.Time {
+	if b.Before(a) {
+		return b
+	}
+	return a
+}
+
 // dial connects, checks the address with the egress policy as it is dialled, and verifies the
 // server.
-func (k *syslogSink) dial(ctx context.Context) error {
+func (k *syslogSink) dial(ctx context.Context, batchDeadline time.Time) error {
 	d := &tls.Dialer{
 		NetDialer: &net.Dialer{Timeout: SyslogDialTimeout, Control: k.policy.Control},
 		Config:    &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: k.roots, ServerName: k.host},
 	}
-	ctx, cancel := context.WithTimeout(ctx, SyslogDialTimeout)
+	ctx, cancel := context.WithDeadline(ctx, earlier(time.Now().Add(SyslogDialTimeout), batchDeadline))
 	defer cancel()
 	c, err := d.DialContext(ctx, "tcp", k.address)
 	if err != nil {
@@ -182,6 +245,8 @@ func (k *syslogSink) drop() {
 // failure of the connection fails the batch; a server that keeps the connection open past the
 // drain timeout has not dropped it.
 func (k *syslogSink) Flush(ctx context.Context) error {
+	start := k.batchStart
+	k.batchStart = time.Time{}
 	if failed := k.failed; failed != nil {
 		k.failed = nil
 		return failed
@@ -193,13 +258,21 @@ func (k *syslogSink) Flush(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	_ = k.conn.SetDeadline(time.Now().Add(SyslogDrainTimeout))
+	deadline := start.Add(k.batchTimeout)
+	drain := time.Now().Add(SyslogDrainTimeout)
+	// The drain is the last part of the batch: when the batch's deadline comes first, the batch is
+	// out of time, not drained.
+	ofBatch := !drain.Before(deadline)
+	_ = k.conn.SetDeadline(earlier(drain, deadline))
 	if err := k.conn.CloseWrite(); err != nil {
 		return syslogFailure("the syslog server dropped the connection", err)
 	}
 	if _, err := io.Copy(io.Discard, k.conn); err != nil {
 		var ne net.Error
 		if errors.As(err, &ne) && ne.Timeout() {
+			if ofBatch {
+				return errors.New("sending a batch to the syslog server took longer than the time allowed for a batch")
+			}
 			return nil
 		}
 		return syslogFailure("the syslog server dropped the connection", err)
@@ -236,10 +309,32 @@ func (k *syslogSink) message(it Item) ([]byte, error) {
 			}
 		}
 		if len(k.header(it))+len(body) > MaxSyslogMessage {
-			return nil, errors.New("an item of the audit log does not fit one syslog message")
+			// Nothing that can be spared is left: ship a marker that names the item, so that it
+			// never holds the cursor and the receiver sees where it was, in its place in the order.
+			body = truncationMarker(m)
 		}
 	}
 	return append(k.header(it), body...), nil
+}
+
+// truncationMarker is the JSON that stands for an item too long for one message: what identifies
+// it (its ID, type, time, chain and seq, and the hash of an entry, or the head hash of a
+// checkpoint), and "truncated": true. Every value kept is cut to 256 octets, so the marker fits
+// whatever the item held.
+func truncationMarker(m map[string]any) []byte {
+	marker := map[string]any{"truncated": true}
+	for _, key := range []string{"id", "type", "time", "chain", "seq", "hash", "head_hash"} {
+		v, ok := m[key]
+		if !ok {
+			continue
+		}
+		if str, isStr := v.(string); isStr && len(str) > 256 {
+			v = str[:256]
+		}
+		marker[key] = v
+	}
+	body, _ := json.Marshal(marker)
+	return body
 }
 
 func (k *syslogSink) header(it Item) []byte {

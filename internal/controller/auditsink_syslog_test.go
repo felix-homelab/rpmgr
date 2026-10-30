@@ -4,6 +4,7 @@ package controller_test
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"net"
 	"strings"
@@ -135,6 +136,75 @@ func TestAuditSink_SyslogOversizeEntry(t *testing.T) {
 		}
 		if b := e.backlog("syslog"); b.Items != 0 || e.status(s).LastError != "" {
 			t.Fatalf("backlog %+v, error %q", b, e.status(s).LastError)
+		}
+	})
+}
+
+// TestAuditSink_SyslogUnshortenableEntry (#936): an entry that is too long for one message even
+// without its diff, user agent and reason must not hold the cursor for good: it is shipped as a
+// marker with its ID, type, seq and hash, between its neighbours in order, and the cursor moves on.
+func TestAuditSink_SyslogUnshortenableEntry(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newSinkEnv(t, db)
+		srv := syslogtest.New(t, 0)
+		s := e.syslogSink("syslog", srv.Addr, srv.CA, true)
+		first := e.appendTo("")
+		huge, err := audit.Record(context.Background(), e.db, audit.Entry{ActorType: audit.ActorUser, ActorID: "usr_ada", Action: "route.update",
+			TargetType: "route", TargetID: strings.Repeat("t", 3*auditsink.MaxSyslogMessage), Result: audit.Success, Diff: strings.Repeat("x", 20000)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		last := e.appendTo("")
+		e.checkpoint("", last)
+		e.mustRun()
+		if got := e.status(s); got.LastError != "" {
+			t.Fatalf("error %q", got.LastError)
+		}
+		if b := e.backlog("syslog"); b.Items != 0 {
+			t.Fatalf("the cursor did not pass the entry: backlog %+v", b)
+		}
+		msgs := srv.Messages()
+		var order []string
+		var marker string
+		for _, m := range msgs {
+			if len(m) > auditsink.MaxSyslogMessage {
+				t.Errorf("a message of %d octets", len(m))
+			}
+			if strings.Contains(m, huge.ID) {
+				marker = m
+			}
+		}
+		for _, id := range itemIDs(t, msgs) {
+			if id == first.ID || id == huge.ID || id == last.ID {
+				order = append(order, id)
+			}
+		}
+		if got, want := strings.Join(order, ","), strings.Join([]string{first.ID, huge.ID, last.ID}, ","); got != want {
+			t.Fatalf("order %s, want %s", got, want)
+		}
+		var body struct {
+			ID        string
+			Type      string
+			Seq       int64
+			Hash      string
+			Truncated bool
+			Diff      *string
+		}
+		if err := json.Unmarshal([]byte(marker[strings.Index(marker, "{"):]), &body); err != nil {
+			t.Fatalf("the marker is no JSON: %v", err)
+		}
+		if !body.Truncated || body.Type != "audit.entry" || body.Seq != huge.Seq || body.Hash != hex.EncodeToString(huge.Hash) || body.Diff != nil {
+			t.Fatalf("the marker: %+v (want seq %d)", body, huge.Seq)
+		}
+		if !strings.Contains(marker, " audit.entry - {") {
+			t.Fatalf("the header: %q", marker[:min(len(marker), 120)])
+		}
+		// A second pass ships nothing more: the cursor is past the marker.
+		n := len(srv.Messages())
+		e.clock = e.clock.Add(auditsink.Every)
+		e.mustRun()
+		if len(srv.Messages()) != n {
+			t.Errorf("the marker was shipped again")
 		}
 	})
 }
