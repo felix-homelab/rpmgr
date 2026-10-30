@@ -143,8 +143,16 @@ fi
 # bounds, the directory and the units come from the boot file, by `rpmgr firewall install` below.
 if [ -n "$firewall" ]; then
   if grep -q '^firewall:' "$boot"; then
-    say "keeping the firewall section of $boot"
+    # The section is the operator's: it stays as it is, and the script says where it differs.
+    cur=$(sed -n "s/^  max_range:[[:space:]]*['\"]\{0,1\}\([0-9-]*\).*/\1/p" "$boot" | head -n 1)
+    if [ -n "$fw_range" ] && [ "$cur" != "$fw_range" ]; then
+      say "the firewall section of $boot has max_range '${cur:-none}', not the $fw_range asked for: it stays as it is; edit $boot to change it"
+    else
+      say "keeping the firewall section of $boot"
+    fi
   else
+    # A boot file that does not end in a newline would run the section into its last line.
+    if [ -s "$boot" ] && [ -n "$(tail -c 1 "$boot")" ]; then echo >>"$boot"; fi
     {
       echo "firewall:"
       echo "  backend: $firewall"

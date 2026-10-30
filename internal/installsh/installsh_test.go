@@ -404,3 +404,59 @@ func TestFirewallSteps(t *testing.T) {
 		t.Error("an existing firewall section of the boot file is not kept")
 	}
 }
+
+// TestFirewallBootSection (D152) runs the script's firewall step on boot files: the section is
+// appended on a line of its own, also when the file does not end in a newline; an existing section
+// stays as it is, and the script says where it has another max_range than the flag asked for.
+func TestFirewallBootSection(t *testing.T) {
+	b, err := installsh.Render("1.4.2", []release.PublicKey{pubkey(t, root)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(b)
+	start := strings.Index(script, "if [ -n \"$firewall\" ]; then\n  if grep -q '^firewall:'")
+	if start < 0 {
+		t.Fatal("no firewall step in the script")
+	}
+	step := script[start:]
+	step = step[:strings.Index(step, "\nfi\n")+len("\nfi\n")]
+	const head = "version: 1\nlisten:\n  admin: '127.0.0.1:9090'"
+	for name, tc := range map[string]struct {
+		boot, rng string
+		want      string // the boot file afterwards
+		say       string // in the script's message; empty for none
+	}{
+		"a file with a final newline":    {head + "\n", "20000-29999", head + "\nfirewall:\n  backend: ufw\n  max_range: '20000-29999'\n", ""},
+		"a file without a final newline": {head, "20000-29999", head + "\nfirewall:\n  backend: ufw\n  max_range: '20000-29999'\n", ""},
+		"an empty file":                  {"", "", "firewall:\n  backend: ufw\n", ""},
+		"no range asked for":             {head + "\n", "", head + "\nfirewall:\n  backend: ufw\n", ""},
+		"the same range kept":            {head + "\nfirewall:\n  backend: ufw\n  max_range: '20000-29999'\n", "20000-29999", head + "\nfirewall:\n  backend: ufw\n  max_range: '20000-29999'\n", "keeping the firewall section"},
+		"another range kept and said": {head + "\nfirewall:\n  backend: ufw\n  max_range: 30000-30999\n", "20000-29999", head + "\nfirewall:\n  backend: ufw\n  max_range: 30000-30999\n",
+			"has max_range '30000-30999', not the 20000-29999 asked for"},
+		"no range in the section, one asked for": {head + "\nfirewall:\n  backend: ufw", "20000-29999", head + "\nfirewall:\n  backend: ufw",
+			"has max_range 'none', not the 20000-29999 asked for"},
+		"a section kept without a flag range": {head + "\nfirewall:\n  backend: ufw\n  max_range: 30000-30999\n", "", head + "\nfirewall:\n  backend: ufw\n  max_range: 30000-30999\n", "keeping the firewall section"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			boot := filepath.Join(t.TempDir(), "gateway.yaml")
+			if err := os.WriteFile(boot, []byte(tc.boot), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			prog := "say() { echo \"$*\" >&2; }\nfirewall=ufw fw_range=" + tc.rng + " boot=" + boot + "\n" + step
+			out, err := exec.Command("sh", "-eu", "-c", prog).CombinedOutput()
+			if err != nil {
+				t.Fatalf("%v: %s", err, out)
+			}
+			got, err := os.ReadFile(boot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("the boot file is\n%q\nwant\n%q", got, tc.want)
+			}
+			if tc.say == "" && strings.TrimSpace(string(out)) != "" || !strings.Contains(string(out), tc.say) {
+				t.Errorf("the script said %q, want %q", out, tc.say)
+			}
+		})
+	}
+}
