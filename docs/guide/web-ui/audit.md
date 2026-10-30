@@ -46,8 +46,17 @@ checkpoint and when it was made, or `The chain is broken at entry …` with the 
 chain is a sign that entries were changed or removed outside rpmgr
 ([Audit log](../operations/audit-log.md)).
 
+## Export
+
+**Export**, beside **Verify the chain**, saves the log you are looking at, the organisation's or the
+instance's, as a file, `audit-<organisation ID>.jsonl` or `audit-instance.jsonl`. Exporting asks you
+to confirm it is you first, with your password or a code from your authenticator. The file holds
+every entry with the hashes that link them and the signed checkpoints, so that it can be verified
+away from the controller. Afterwards the page names the file and shows the command that verifies it.
+If the export is refused or fails, the page says why and saves nothing. The export is itself an
+entry of the log, `audit.export`.
+
 ## On the command line
 
-The command line has no audit command in this version. The API's `AuditService` lists and
-verifies the logs ([API](../reference/api.md)); exporting the log is not available yet
-([09](../../09-web-ui.md#audit-log)).
+`rpmgr audit export` and `rpmgr audit verify-export` export a log and verify the file offline
+([Audit log](../operations/audit-log.md#export-a-chain-with-its-proofs), [CLI](../reference/cli.md)).

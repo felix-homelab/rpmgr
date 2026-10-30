@@ -47,6 +47,12 @@ const (
 	// AuditServiceVerifyInstanceAuditChainProcedure is the fully-qualified name of the AuditService's
 	// VerifyInstanceAuditChain RPC.
 	AuditServiceVerifyInstanceAuditChainProcedure = "/rpmgr.v1.AuditService/VerifyInstanceAuditChain"
+	// AuditServiceExportAuditProcedure is the fully-qualified name of the AuditService's ExportAudit
+	// RPC.
+	AuditServiceExportAuditProcedure = "/rpmgr.v1.AuditService/ExportAudit"
+	// AuditServiceExportInstanceAuditProcedure is the fully-qualified name of the AuditService's
+	// ExportInstanceAudit RPC.
+	AuditServiceExportInstanceAuditProcedure = "/rpmgr.v1.AuditService/ExportInstanceAudit"
 )
 
 // AuditServiceClient is a client for the rpmgr.v1.AuditService service.
@@ -59,6 +65,13 @@ type AuditServiceClient interface {
 	ListInstanceAuditEntries(context.Context, *connect.Request[v1.ListInstanceAuditEntriesRequest]) (*connect.Response[v1.ListInstanceAuditEntriesResponse], error)
 	// VerifyInstanceAuditChain verifies the instance chain as VerifyAuditChain does an org's.
 	VerifyInstanceAuditChain(context.Context, *connect.Request[v1.VerifyInstanceAuditChainRequest]) (*connect.Response[v1.VerifyInstanceAuditChainResponse], error)
+	// ExportAudit streams an org's chain as JSON Lines with its proofs (docs/04-security.md, "Audit
+	// log"): a header, the entries with their hashes and the signed checkpoints in their places, up
+	// to the newest checkpoint, then the entries after it marked as the unanchored tail. The export
+	// is recorded in the chain before the chain is read, so it holds its own entry.
+	ExportAudit(context.Context, *connect.Request[v1.ExportAuditRequest]) (*connect.ServerStreamForClient[v1.ExportAuditResponse], error)
+	// ExportInstanceAudit streams the instance chain as ExportAudit does an org's.
+	ExportInstanceAudit(context.Context, *connect.Request[v1.ExportInstanceAuditRequest]) (*connect.ServerStreamForClient[v1.ExportInstanceAuditResponse], error)
 }
 
 // NewAuditServiceClient constructs a client for the rpmgr.v1.AuditService service. By default, it
@@ -100,6 +113,18 @@ func NewAuditServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		exportAudit: connect.NewClient[v1.ExportAuditRequest, v1.ExportAuditResponse](
+			httpClient,
+			baseURL+AuditServiceExportAuditProcedure,
+			connect.WithSchema(auditServiceMethods.ByName("ExportAudit")),
+			connect.WithClientOptions(opts...),
+		),
+		exportInstanceAudit: connect.NewClient[v1.ExportInstanceAuditRequest, v1.ExportInstanceAuditResponse](
+			httpClient,
+			baseURL+AuditServiceExportInstanceAuditProcedure,
+			connect.WithSchema(auditServiceMethods.ByName("ExportInstanceAudit")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -109,6 +134,8 @@ type auditServiceClient struct {
 	verifyAuditChain         *connect.Client[v1.VerifyAuditChainRequest, v1.VerifyAuditChainResponse]
 	listInstanceAuditEntries *connect.Client[v1.ListInstanceAuditEntriesRequest, v1.ListInstanceAuditEntriesResponse]
 	verifyInstanceAuditChain *connect.Client[v1.VerifyInstanceAuditChainRequest, v1.VerifyInstanceAuditChainResponse]
+	exportAudit              *connect.Client[v1.ExportAuditRequest, v1.ExportAuditResponse]
+	exportInstanceAudit      *connect.Client[v1.ExportInstanceAuditRequest, v1.ExportInstanceAuditResponse]
 }
 
 // ListAuditEntries calls rpmgr.v1.AuditService.ListAuditEntries.
@@ -131,6 +158,16 @@ func (c *auditServiceClient) VerifyInstanceAuditChain(ctx context.Context, req *
 	return c.verifyInstanceAuditChain.CallUnary(ctx, req)
 }
 
+// ExportAudit calls rpmgr.v1.AuditService.ExportAudit.
+func (c *auditServiceClient) ExportAudit(ctx context.Context, req *connect.Request[v1.ExportAuditRequest]) (*connect.ServerStreamForClient[v1.ExportAuditResponse], error) {
+	return c.exportAudit.CallServerStream(ctx, req)
+}
+
+// ExportInstanceAudit calls rpmgr.v1.AuditService.ExportInstanceAudit.
+func (c *auditServiceClient) ExportInstanceAudit(ctx context.Context, req *connect.Request[v1.ExportInstanceAuditRequest]) (*connect.ServerStreamForClient[v1.ExportInstanceAuditResponse], error) {
+	return c.exportInstanceAudit.CallServerStream(ctx, req)
+}
+
 // AuditServiceHandler is an implementation of the rpmgr.v1.AuditService service.
 type AuditServiceHandler interface {
 	// ListAuditEntries lists an org's audit entries, newest first.
@@ -141,6 +178,13 @@ type AuditServiceHandler interface {
 	ListInstanceAuditEntries(context.Context, *connect.Request[v1.ListInstanceAuditEntriesRequest]) (*connect.Response[v1.ListInstanceAuditEntriesResponse], error)
 	// VerifyInstanceAuditChain verifies the instance chain as VerifyAuditChain does an org's.
 	VerifyInstanceAuditChain(context.Context, *connect.Request[v1.VerifyInstanceAuditChainRequest]) (*connect.Response[v1.VerifyInstanceAuditChainResponse], error)
+	// ExportAudit streams an org's chain as JSON Lines with its proofs (docs/04-security.md, "Audit
+	// log"): a header, the entries with their hashes and the signed checkpoints in their places, up
+	// to the newest checkpoint, then the entries after it marked as the unanchored tail. The export
+	// is recorded in the chain before the chain is read, so it holds its own entry.
+	ExportAudit(context.Context, *connect.Request[v1.ExportAuditRequest], *connect.ServerStream[v1.ExportAuditResponse]) error
+	// ExportInstanceAudit streams the instance chain as ExportAudit does an org's.
+	ExportInstanceAudit(context.Context, *connect.Request[v1.ExportInstanceAuditRequest], *connect.ServerStream[v1.ExportInstanceAuditResponse]) error
 }
 
 // NewAuditServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -178,6 +222,18 @@ func NewAuditServiceHandler(svc AuditServiceHandler, opts ...connect.HandlerOpti
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	auditServiceExportAuditHandler := connect.NewServerStreamHandler(
+		AuditServiceExportAuditProcedure,
+		svc.ExportAudit,
+		connect.WithSchema(auditServiceMethods.ByName("ExportAudit")),
+		connect.WithHandlerOptions(opts...),
+	)
+	auditServiceExportInstanceAuditHandler := connect.NewServerStreamHandler(
+		AuditServiceExportInstanceAuditProcedure,
+		svc.ExportInstanceAudit,
+		connect.WithSchema(auditServiceMethods.ByName("ExportInstanceAudit")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.AuditService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AuditServiceListAuditEntriesProcedure:
@@ -188,6 +244,10 @@ func NewAuditServiceHandler(svc AuditServiceHandler, opts ...connect.HandlerOpti
 			auditServiceListInstanceAuditEntriesHandler.ServeHTTP(w, r)
 		case AuditServiceVerifyInstanceAuditChainProcedure:
 			auditServiceVerifyInstanceAuditChainHandler.ServeHTTP(w, r)
+		case AuditServiceExportAuditProcedure:
+			auditServiceExportAuditHandler.ServeHTTP(w, r)
+		case AuditServiceExportInstanceAuditProcedure:
+			auditServiceExportInstanceAuditHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -211,4 +271,12 @@ func (UnimplementedAuditServiceHandler) ListInstanceAuditEntries(context.Context
 
 func (UnimplementedAuditServiceHandler) VerifyInstanceAuditChain(context.Context, *connect.Request[v1.VerifyInstanceAuditChainRequest]) (*connect.Response[v1.VerifyInstanceAuditChainResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuditService.VerifyInstanceAuditChain is not implemented"))
+}
+
+func (UnimplementedAuditServiceHandler) ExportAudit(context.Context, *connect.Request[v1.ExportAuditRequest], *connect.ServerStream[v1.ExportAuditResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuditService.ExportAudit is not implemented"))
+}
+
+func (UnimplementedAuditServiceHandler) ExportInstanceAudit(context.Context, *connect.Request[v1.ExportInstanceAuditRequest], *connect.ServerStream[v1.ExportInstanceAuditResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.AuditService.ExportInstanceAudit is not implemented"))
 }

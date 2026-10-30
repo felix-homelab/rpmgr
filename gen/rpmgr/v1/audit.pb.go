@@ -25,6 +25,181 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// ExportAuditRequest names the org whose chain to export.
+type ExportAuditRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org.
+	OrgId         string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportAuditRequest) Reset() {
+	*x = ExportAuditRequest{}
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportAuditRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportAuditRequest) ProtoMessage() {}
+
+func (x *ExportAuditRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportAuditRequest.ProtoReflect.Descriptor instead.
+func (*ExportAuditRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *ExportAuditRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+// ExportInstanceAuditRequest is empty.
+type ExportInstanceAuditRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportInstanceAuditRequest) Reset() {
+	*x = ExportInstanceAuditRequest{}
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportInstanceAuditRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportInstanceAuditRequest) ProtoMessage() {}
+
+func (x *ExportInstanceAuditRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportInstanceAuditRequest.ProtoReflect.Descriptor instead.
+func (*ExportInstanceAuditRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{1}
+}
+
+// ExportAuditResponse is the next part of an export.
+type ExportAuditResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The next lines of the export in order, each a JSON object without its line end.
+	Lines         []string `protobuf:"bytes,1,rep,name=lines,proto3" json:"lines,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportAuditResponse) Reset() {
+	*x = ExportAuditResponse{}
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportAuditResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportAuditResponse) ProtoMessage() {}
+
+func (x *ExportAuditResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportAuditResponse.ProtoReflect.Descriptor instead.
+func (*ExportAuditResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ExportAuditResponse) GetLines() []string {
+	if x != nil {
+		return x.Lines
+	}
+	return nil
+}
+
+// ExportInstanceAuditResponse is the next part of an export of the instance chain.
+type ExportInstanceAuditResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The next lines of the export in order, each a JSON object without its line end.
+	Lines         []string `protobuf:"bytes,1,rep,name=lines,proto3" json:"lines,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportInstanceAuditResponse) Reset() {
+	*x = ExportInstanceAuditResponse{}
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportInstanceAuditResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportInstanceAuditResponse) ProtoMessage() {}
+
+func (x *ExportInstanceAuditResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportInstanceAuditResponse.ProtoReflect.Descriptor instead.
+func (*ExportInstanceAuditResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ExportInstanceAuditResponse) GetLines() []string {
+	if x != nil {
+		return x.Lines
+	}
+	return nil
+}
+
 // AuditEntry is one entry of an audit chain.
 type AuditEntry struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -66,7 +241,7 @@ type AuditEntry struct {
 
 func (x *AuditEntry) Reset() {
 	*x = AuditEntry{}
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[0]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -78,7 +253,7 @@ func (x *AuditEntry) String() string {
 func (*AuditEntry) ProtoMessage() {}
 
 func (x *AuditEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[0]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -91,7 +266,7 @@ func (x *AuditEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditEntry.ProtoReflect.Descriptor instead.
 func (*AuditEntry) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{0}
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *AuditEntry) GetId() string {
@@ -225,7 +400,7 @@ type ListAuditEntriesRequest struct {
 
 func (x *ListAuditEntriesRequest) Reset() {
 	*x = ListAuditEntriesRequest{}
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[1]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -237,7 +412,7 @@ func (x *ListAuditEntriesRequest) String() string {
 func (*ListAuditEntriesRequest) ProtoMessage() {}
 
 func (x *ListAuditEntriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[1]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -250,7 +425,7 @@ func (x *ListAuditEntriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAuditEntriesRequest.ProtoReflect.Descriptor instead.
 func (*ListAuditEntriesRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{1}
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ListAuditEntriesRequest) GetOrgId() string {
@@ -305,7 +480,7 @@ type ListInstanceAuditEntriesRequest struct {
 
 func (x *ListInstanceAuditEntriesRequest) Reset() {
 	*x = ListInstanceAuditEntriesRequest{}
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[2]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -317,7 +492,7 @@ func (x *ListInstanceAuditEntriesRequest) String() string {
 func (*ListInstanceAuditEntriesRequest) ProtoMessage() {}
 
 func (x *ListInstanceAuditEntriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[2]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -330,7 +505,7 @@ func (x *ListInstanceAuditEntriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInstanceAuditEntriesRequest.ProtoReflect.Descriptor instead.
 func (*ListInstanceAuditEntriesRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{2}
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListInstanceAuditEntriesRequest) GetPageSize() int32 {
@@ -374,7 +549,7 @@ type ListAuditEntriesResponse struct {
 
 func (x *ListAuditEntriesResponse) Reset() {
 	*x = ListAuditEntriesResponse{}
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[3]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -386,7 +561,7 @@ func (x *ListAuditEntriesResponse) String() string {
 func (*ListAuditEntriesResponse) ProtoMessage() {}
 
 func (x *ListAuditEntriesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[3]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -399,7 +574,7 @@ func (x *ListAuditEntriesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAuditEntriesResponse.ProtoReflect.Descriptor instead.
 func (*ListAuditEntriesResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{3}
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListAuditEntriesResponse) GetEntries() []*AuditEntry {
@@ -429,7 +604,7 @@ type ListInstanceAuditEntriesResponse struct {
 
 func (x *ListInstanceAuditEntriesResponse) Reset() {
 	*x = ListInstanceAuditEntriesResponse{}
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[4]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -441,7 +616,7 @@ func (x *ListInstanceAuditEntriesResponse) String() string {
 func (*ListInstanceAuditEntriesResponse) ProtoMessage() {}
 
 func (x *ListInstanceAuditEntriesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[4]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -454,7 +629,7 @@ func (x *ListInstanceAuditEntriesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInstanceAuditEntriesResponse.ProtoReflect.Descriptor instead.
 func (*ListInstanceAuditEntriesResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{4}
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListInstanceAuditEntriesResponse) GetEntries() []*AuditEntry {
@@ -482,7 +657,7 @@ type VerifyAuditChainRequest struct {
 
 func (x *VerifyAuditChainRequest) Reset() {
 	*x = VerifyAuditChainRequest{}
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[5]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -494,7 +669,7 @@ func (x *VerifyAuditChainRequest) String() string {
 func (*VerifyAuditChainRequest) ProtoMessage() {}
 
 func (x *VerifyAuditChainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[5]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -507,7 +682,7 @@ func (x *VerifyAuditChainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyAuditChainRequest.ProtoReflect.Descriptor instead.
 func (*VerifyAuditChainRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{5}
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *VerifyAuditChainRequest) GetOrgId() string {
@@ -526,7 +701,7 @@ type VerifyInstanceAuditChainRequest struct {
 
 func (x *VerifyInstanceAuditChainRequest) Reset() {
 	*x = VerifyInstanceAuditChainRequest{}
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[6]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -538,7 +713,7 @@ func (x *VerifyInstanceAuditChainRequest) String() string {
 func (*VerifyInstanceAuditChainRequest) ProtoMessage() {}
 
 func (x *VerifyInstanceAuditChainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[6]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -551,7 +726,7 @@ func (x *VerifyInstanceAuditChainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyInstanceAuditChainRequest.ProtoReflect.Descriptor instead.
 func (*VerifyInstanceAuditChainRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{6}
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{10}
 }
 
 // VerifyAuditChainResponse is the outcome of verifying an org's chain.
@@ -565,7 +740,7 @@ type VerifyAuditChainResponse struct {
 
 func (x *VerifyAuditChainResponse) Reset() {
 	*x = VerifyAuditChainResponse{}
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[7]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -577,7 +752,7 @@ func (x *VerifyAuditChainResponse) String() string {
 func (*VerifyAuditChainResponse) ProtoMessage() {}
 
 func (x *VerifyAuditChainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[7]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -590,7 +765,7 @@ func (x *VerifyAuditChainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyAuditChainResponse.ProtoReflect.Descriptor instead.
 func (*VerifyAuditChainResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{7}
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *VerifyAuditChainResponse) GetVerification() *AuditVerification {
@@ -611,7 +786,7 @@ type VerifyInstanceAuditChainResponse struct {
 
 func (x *VerifyInstanceAuditChainResponse) Reset() {
 	*x = VerifyInstanceAuditChainResponse{}
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -623,7 +798,7 @@ func (x *VerifyInstanceAuditChainResponse) String() string {
 func (*VerifyInstanceAuditChainResponse) ProtoMessage() {}
 
 func (x *VerifyInstanceAuditChainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -636,7 +811,7 @@ func (x *VerifyInstanceAuditChainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyInstanceAuditChainResponse.ProtoReflect.Descriptor instead.
 func (*VerifyInstanceAuditChainResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{8}
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *VerifyInstanceAuditChainResponse) GetVerification() *AuditVerification {
@@ -665,7 +840,7 @@ type AuditVerification struct {
 
 func (x *AuditVerification) Reset() {
 	*x = AuditVerification{}
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[9]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -677,7 +852,7 @@ func (x *AuditVerification) String() string {
 func (*AuditVerification) ProtoMessage() {}
 
 func (x *AuditVerification) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[9]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -690,7 +865,7 @@ func (x *AuditVerification) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditVerification.ProtoReflect.Descriptor instead.
 func (*AuditVerification) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{9}
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *AuditVerification) GetIntact() bool {
@@ -743,7 +918,7 @@ type AuditCheckpoint struct {
 
 func (x *AuditCheckpoint) Reset() {
 	*x = AuditCheckpoint{}
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -755,7 +930,7 @@ func (x *AuditCheckpoint) String() string {
 func (*AuditCheckpoint) ProtoMessage() {}
 
 func (x *AuditCheckpoint) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_audit_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -768,7 +943,7 @@ func (x *AuditCheckpoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditCheckpoint.ProtoReflect.Descriptor instead.
 func (*AuditCheckpoint) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{10}
+	return file_rpmgr_v1_audit_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *AuditCheckpoint) GetSeq() int64 {
@@ -796,7 +971,14 @@ var File_rpmgr_v1_audit_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_audit_proto_rawDesc = "" +
 	"\n" +
-	"\x14rpmgr/v1/audit.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"\xc6\x03\n" +
+	"\x14rpmgr/v1/audit.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"4\n" +
+	"\x12ExportAuditRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\"\x1c\n" +
+	"\x1aExportInstanceAuditRequest\"+\n" +
+	"\x13ExportAuditResponse\x12\x14\n" +
+	"\x05lines\x18\x01 \x03(\tR\x05lines\"3\n" +
+	"\x1bExportInstanceAuditResponse\x12\x14\n" +
+	"\x05lines\x18\x01 \x03(\tR\x05lines\"\xc6\x03\n" +
 	"\n" +
 	"AuditEntry\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
@@ -858,7 +1040,7 @@ const file_rpmgr_v1_audit_proto_rawDesc = "" +
 	"\x0fAuditCheckpoint\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x03R\x03seq\x12.\n" +
 	"\x04time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x15\n" +
-	"\x06key_id\x18\x03 \x01(\tR\x05keyId2\x98\x04\n" +
+	"\x06key_id\x18\x03 \x01(\tR\x05keyId2\x80\x06\n" +
 	"\fAuditService\x12v\n" +
 	"\x10ListAuditEntries\x12!.rpmgr.v1.ListAuditEntriesRequest\x1a\".rpmgr.v1.ListAuditEntriesResponse\"\x1b\x8a\xb5\x18\x14\n" +
 	"\n" +
@@ -869,7 +1051,12 @@ const file_rpmgr_v1_audit_proto_rawDesc = "" +
 	"\x18ListInstanceAuditEntries\x12).rpmgr.v1.ListInstanceAuditEntriesRequest\x1a*.rpmgr.v1.ListInstanceAuditEntriesResponse\"\x17\x8a\xb5\x18\x10\n" +
 	"\x0einstance.admin\x90\x02\x01\x12\x8a\x01\n" +
 	"\x18VerifyInstanceAuditChain\x12).rpmgr.v1.VerifyInstanceAuditChainRequest\x1a*.rpmgr.v1.VerifyInstanceAuditChainResponse\"\x17\x8a\xb5\x18\x10\n" +
-	"\x0einstance.admin\x90\x02\x01B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
+	"\x0einstance.admin\x90\x02\x01\x12h\n" +
+	"\vExportAudit\x12\x1c.rpmgr.v1.ExportAuditRequest\x1a\x1d.rpmgr.v1.ExportAuditResponse\"\x1a\x8a\xb5\x18\x16\n" +
+	"\n" +
+	"audit.read\x12\x06org_id\x18\x010\x01\x12|\n" +
+	"\x13ExportInstanceAudit\x12$.rpmgr.v1.ExportInstanceAuditRequest\x1a%.rpmgr.v1.ExportInstanceAuditResponse\"\x16\x8a\xb5\x18\x12\n" +
+	"\x0einstance.admin\x18\x010\x01B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
 	file_rpmgr_v1_audit_proto_rawDescOnce sync.Once
@@ -883,39 +1070,47 @@ func file_rpmgr_v1_audit_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_audit_proto_rawDescData
 }
 
-var file_rpmgr_v1_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_rpmgr_v1_audit_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_rpmgr_v1_audit_proto_goTypes = []any{
-	(*AuditEntry)(nil),                       // 0: rpmgr.v1.AuditEntry
-	(*ListAuditEntriesRequest)(nil),          // 1: rpmgr.v1.ListAuditEntriesRequest
-	(*ListInstanceAuditEntriesRequest)(nil),  // 2: rpmgr.v1.ListInstanceAuditEntriesRequest
-	(*ListAuditEntriesResponse)(nil),         // 3: rpmgr.v1.ListAuditEntriesResponse
-	(*ListInstanceAuditEntriesResponse)(nil), // 4: rpmgr.v1.ListInstanceAuditEntriesResponse
-	(*VerifyAuditChainRequest)(nil),          // 5: rpmgr.v1.VerifyAuditChainRequest
-	(*VerifyInstanceAuditChainRequest)(nil),  // 6: rpmgr.v1.VerifyInstanceAuditChainRequest
-	(*VerifyAuditChainResponse)(nil),         // 7: rpmgr.v1.VerifyAuditChainResponse
-	(*VerifyInstanceAuditChainResponse)(nil), // 8: rpmgr.v1.VerifyInstanceAuditChainResponse
-	(*AuditVerification)(nil),                // 9: rpmgr.v1.AuditVerification
-	(*AuditCheckpoint)(nil),                  // 10: rpmgr.v1.AuditCheckpoint
-	(*timestamppb.Timestamp)(nil),            // 11: google.protobuf.Timestamp
+	(*ExportAuditRequest)(nil),               // 0: rpmgr.v1.ExportAuditRequest
+	(*ExportInstanceAuditRequest)(nil),       // 1: rpmgr.v1.ExportInstanceAuditRequest
+	(*ExportAuditResponse)(nil),              // 2: rpmgr.v1.ExportAuditResponse
+	(*ExportInstanceAuditResponse)(nil),      // 3: rpmgr.v1.ExportInstanceAuditResponse
+	(*AuditEntry)(nil),                       // 4: rpmgr.v1.AuditEntry
+	(*ListAuditEntriesRequest)(nil),          // 5: rpmgr.v1.ListAuditEntriesRequest
+	(*ListInstanceAuditEntriesRequest)(nil),  // 6: rpmgr.v1.ListInstanceAuditEntriesRequest
+	(*ListAuditEntriesResponse)(nil),         // 7: rpmgr.v1.ListAuditEntriesResponse
+	(*ListInstanceAuditEntriesResponse)(nil), // 8: rpmgr.v1.ListInstanceAuditEntriesResponse
+	(*VerifyAuditChainRequest)(nil),          // 9: rpmgr.v1.VerifyAuditChainRequest
+	(*VerifyInstanceAuditChainRequest)(nil),  // 10: rpmgr.v1.VerifyInstanceAuditChainRequest
+	(*VerifyAuditChainResponse)(nil),         // 11: rpmgr.v1.VerifyAuditChainResponse
+	(*VerifyInstanceAuditChainResponse)(nil), // 12: rpmgr.v1.VerifyInstanceAuditChainResponse
+	(*AuditVerification)(nil),                // 13: rpmgr.v1.AuditVerification
+	(*AuditCheckpoint)(nil),                  // 14: rpmgr.v1.AuditCheckpoint
+	(*timestamppb.Timestamp)(nil),            // 15: google.protobuf.Timestamp
 }
 var file_rpmgr_v1_audit_proto_depIdxs = []int32{
-	11, // 0: rpmgr.v1.AuditEntry.time:type_name -> google.protobuf.Timestamp
-	0,  // 1: rpmgr.v1.ListAuditEntriesResponse.entries:type_name -> rpmgr.v1.AuditEntry
-	0,  // 2: rpmgr.v1.ListInstanceAuditEntriesResponse.entries:type_name -> rpmgr.v1.AuditEntry
-	9,  // 3: rpmgr.v1.VerifyAuditChainResponse.verification:type_name -> rpmgr.v1.AuditVerification
-	9,  // 4: rpmgr.v1.VerifyInstanceAuditChainResponse.verification:type_name -> rpmgr.v1.AuditVerification
-	10, // 5: rpmgr.v1.AuditVerification.last_checkpoint:type_name -> rpmgr.v1.AuditCheckpoint
-	11, // 6: rpmgr.v1.AuditCheckpoint.time:type_name -> google.protobuf.Timestamp
-	1,  // 7: rpmgr.v1.AuditService.ListAuditEntries:input_type -> rpmgr.v1.ListAuditEntriesRequest
-	5,  // 8: rpmgr.v1.AuditService.VerifyAuditChain:input_type -> rpmgr.v1.VerifyAuditChainRequest
-	2,  // 9: rpmgr.v1.AuditService.ListInstanceAuditEntries:input_type -> rpmgr.v1.ListInstanceAuditEntriesRequest
-	6,  // 10: rpmgr.v1.AuditService.VerifyInstanceAuditChain:input_type -> rpmgr.v1.VerifyInstanceAuditChainRequest
-	3,  // 11: rpmgr.v1.AuditService.ListAuditEntries:output_type -> rpmgr.v1.ListAuditEntriesResponse
-	7,  // 12: rpmgr.v1.AuditService.VerifyAuditChain:output_type -> rpmgr.v1.VerifyAuditChainResponse
-	4,  // 13: rpmgr.v1.AuditService.ListInstanceAuditEntries:output_type -> rpmgr.v1.ListInstanceAuditEntriesResponse
-	8,  // 14: rpmgr.v1.AuditService.VerifyInstanceAuditChain:output_type -> rpmgr.v1.VerifyInstanceAuditChainResponse
-	11, // [11:15] is the sub-list for method output_type
-	7,  // [7:11] is the sub-list for method input_type
+	15, // 0: rpmgr.v1.AuditEntry.time:type_name -> google.protobuf.Timestamp
+	4,  // 1: rpmgr.v1.ListAuditEntriesResponse.entries:type_name -> rpmgr.v1.AuditEntry
+	4,  // 2: rpmgr.v1.ListInstanceAuditEntriesResponse.entries:type_name -> rpmgr.v1.AuditEntry
+	13, // 3: rpmgr.v1.VerifyAuditChainResponse.verification:type_name -> rpmgr.v1.AuditVerification
+	13, // 4: rpmgr.v1.VerifyInstanceAuditChainResponse.verification:type_name -> rpmgr.v1.AuditVerification
+	14, // 5: rpmgr.v1.AuditVerification.last_checkpoint:type_name -> rpmgr.v1.AuditCheckpoint
+	15, // 6: rpmgr.v1.AuditCheckpoint.time:type_name -> google.protobuf.Timestamp
+	5,  // 7: rpmgr.v1.AuditService.ListAuditEntries:input_type -> rpmgr.v1.ListAuditEntriesRequest
+	9,  // 8: rpmgr.v1.AuditService.VerifyAuditChain:input_type -> rpmgr.v1.VerifyAuditChainRequest
+	6,  // 9: rpmgr.v1.AuditService.ListInstanceAuditEntries:input_type -> rpmgr.v1.ListInstanceAuditEntriesRequest
+	10, // 10: rpmgr.v1.AuditService.VerifyInstanceAuditChain:input_type -> rpmgr.v1.VerifyInstanceAuditChainRequest
+	0,  // 11: rpmgr.v1.AuditService.ExportAudit:input_type -> rpmgr.v1.ExportAuditRequest
+	1,  // 12: rpmgr.v1.AuditService.ExportInstanceAudit:input_type -> rpmgr.v1.ExportInstanceAuditRequest
+	7,  // 13: rpmgr.v1.AuditService.ListAuditEntries:output_type -> rpmgr.v1.ListAuditEntriesResponse
+	11, // 14: rpmgr.v1.AuditService.VerifyAuditChain:output_type -> rpmgr.v1.VerifyAuditChainResponse
+	8,  // 15: rpmgr.v1.AuditService.ListInstanceAuditEntries:output_type -> rpmgr.v1.ListInstanceAuditEntriesResponse
+	12, // 16: rpmgr.v1.AuditService.VerifyInstanceAuditChain:output_type -> rpmgr.v1.VerifyInstanceAuditChainResponse
+	2,  // 17: rpmgr.v1.AuditService.ExportAudit:output_type -> rpmgr.v1.ExportAuditResponse
+	3,  // 18: rpmgr.v1.AuditService.ExportInstanceAudit:output_type -> rpmgr.v1.ExportInstanceAuditResponse
+	13, // [13:19] is the sub-list for method output_type
+	7,  // [7:13] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
 	7,  // [7:7] is the sub-list for extension extendee
 	0,  // [0:7] is the sub-list for field type_name
@@ -933,7 +1128,7 @@ func file_rpmgr_v1_audit_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_audit_proto_rawDesc), len(file_rpmgr_v1_audit_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
