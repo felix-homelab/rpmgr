@@ -9,6 +9,7 @@ package auditsink
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
+	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -197,7 +199,8 @@ func (r *Runner) backoff(id string, failure error, now time.Time) {
 	}
 	b.fails++
 	d := BackoffMax
-	if b.fails <= 5 {
+	var perm *PermanentError
+	if b.fails <= 5 && !errors.As(failure, &perm) {
 		d = min(BackoffMin<<(b.fails-1), BackoffMax)
 	}
 	b.next = now.Add(d)
@@ -314,3 +317,26 @@ func (r *Runner) open(s *ent.AuditSink) (Sink, error) {
 
 // describe is the text of a failure for the sink's status: no text names the sink's URL.
 func describe(err error) string { return webhook.Describe(err) }
+
+// EventTest is the type of the item that Test sends. It is no checkpoint or entry, and no cursor
+// has it.
+const EventTest = "audit.test"
+
+// Test sends s a test item at once, outside its cursors, and returns the sink's failure; nil
+// means the receiver acknowledged it.
+func (r *Runner) Test(ctx context.Context, s *ent.AuditSink) error {
+	sink, err := r.open(s)
+	if err != nil {
+		return err
+	}
+	id, now := ids.New("ate"), r.o.Now().UTC()
+	body, err := json.Marshal(map[string]any{"id": id, "type": EventTest, "time": now})
+	if err != nil {
+		return err
+	}
+	return sink.Ship(ctx, Item{ID: id, Type: EventTest, Time: now, Body: body})
+}
+
+// Describe is the text of a sink's failure for its status and for a test: it never names the
+// sink's URL or holds its secret.
+func Describe(err error) string { return describe(err) }
