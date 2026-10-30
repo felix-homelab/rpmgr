@@ -224,9 +224,13 @@ rpmgr create audit-sink --name vault --kind s3 --endpoint https://s3.example.com
 rpmgr test audit-sink vault
 ```
 
-Objects lie under `audit/<chain>/`, where the chain is an org's ID or `instance`. If the last error
-says an object holds other bytes than the item, do not retry: someone wrote under that key, so
-look at the object.
+Objects lie under `audit/<chain>/`, where the chain is an org's ID or `instance`. To check that
+the log still matches what the bucket holds, run `rpmgr verify audit --sink vault` (after a
+step-up). For each chain it prints the last checkpoint that verified and any gap, an item the
+bucket lacks, or problem, such as a chain that was rewritten under a checkpoint the bucket holds;
+the command exits with 1 unless every chain is intact. `rpmgr get audit-sink vault` shows the
+outcome of the last verification. If the last error says an object holds other bytes than the
+item, do not retry: someone wrote under that key, so look at the object and verify the sink.
 
 ## How long entries are kept
 

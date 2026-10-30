@@ -1683,8 +1683,22 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
     succeeds, and a delete that succeeds, each refuse the sink with the reason; a store that cannot
     be reached refuses it as well, and saves nothing. The probe object stays in the bucket until
     its day has passed. A sink whose settings and secret key did not change is not checked again
-    when it is saved. Verification can read the sink back and finds a chain rewritten under a
-    checkpoint it holds. The client (`internal/objstore`) signs with AWS Signature Version 4 and
+    when it is saved. **Verification** reads the sink back: `VerifyAuditSink`, for the Instance
+    Admin with a step-up, or `rpmgr verify audit --sink <name>`. For each chain it verifies the
+    chain locally as for any verification, lists the sink's objects, and reports a **gap**: a
+    checkpoint the database holds, up to the sink's cursor, that the sink does not, and entry seqs
+    missing between the sink's first and last entry or below the cursor. It then reads the sink's
+    checkpoints from the last one it verified before (all of them the first time) and checks that
+    each names a chain and seq that its key says, carries a valid signature of a key the CA
+    certified for audit checkpoints at its time, and has the head hash of the entry the database
+    holds at its seq. A checkpoint that fails any of these is reported with its seq, so a chain that
+    was rewritten under a checkpoint the sink holds, or cut below one, is found even if the
+    database's own checkpoints were removed with it. A checkpoint older than the entries the
+    retention left is counted as checked, not compared. Each sink's status keeps the outcome of the
+    last verification: when it ran and, per chain, the last checkpoint that verified and any gap or
+    problem. A verification that does not reach the sink, or runs past its limit
+    ([03](03-connections.md#timeouts-keepalive-and-backoff)), is an error of the call and replaces
+    nothing. The client (`internal/objstore`) signs with AWS Signature Version 4 and
     reads the access key from a file that neither group nor others can read, or from memory
     (unsealed from the KEK by the caller); the secret key never appears in a log line or an error.
     The endpoint is `https` (TLS 1.2 or later, certificate verified against the system roots or the

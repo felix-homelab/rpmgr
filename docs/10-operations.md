@@ -1013,7 +1013,8 @@ the replica that evaluates the alerts.
 - [ ] MFA required for the org; WebAuthn for Owners and Instance Admins.
 - [ ] SSO configured with a break-glass local Owner whose credentials are stored offline.
 - [ ] External audit sink configured (Phase 2: object storage with Object Lock resists tampering
-      best); revocation-log sink configured (required for more than one controller replica).
+      best, and `rpmgr verify audit --sink <name>` reports a chain rewritten under a checkpoint the
+      sink holds); revocation-log sink configured (required for more than one controller replica).
 - [ ] Webhook receivers on private networks: only the ranges they need listed in
       `webhook_private_ranges` (Phase 2).
 - [ ] Every connector's `policy.yaml` reviewed: `allow_targets` as narrow as possible (the default
@@ -1192,7 +1193,8 @@ Each runbook: **symptoms → steps → done when**.
   and the credentials). Appends go on meanwhile; nothing is lost, as the sink's cursor holds its
   place. Fix the sink; it catches up by itself. An object-storage sink whose last error names a key
   that holds other bytes has found an object that is not the item: that is a sign of tampering or of
-  two controllers sharing a bucket, so look at the object before anything else.
+  two controllers sharing a bucket, so run `rpmgr verify audit --sink <name>` and look at the object
+  before anything else.
 - **Done when**: the backlog is 0 and the alert resolved.
 
 ### A restart with hand-off failed
