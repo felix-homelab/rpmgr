@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 )
@@ -105,6 +106,10 @@ type Config struct {
 	RootCAs *x509.CertPool
 	// Proxy chooses the proxy of a request; nil means HTTP_PROXY, HTTPS_PROXY and NO_PROXY.
 	Proxy func(*http.Request) (*url.URL, error)
+	// Control is called for each connection before it is dialled, with the address about to be
+	// used, as net.Dialer.Control is; a caller uses it to refuse addresses. With a proxy it sees the
+	// proxy's address, not the store's.
+	Control func(network, address string, c syscall.RawConn) error
 	// Timeout bounds one request; zero means DefaultTimeout.
 	Timeout time.Duration
 	// Now is the clock of the signature; nil means time.Now.
@@ -158,6 +163,7 @@ func New(cfg Config) (*Client, error) {
 	}
 	tr := &http.Transport{
 		Proxy:               proxy,
+		DialContext:         (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second, Control: cfg.Control}).DialContext,
 		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: cfg.RootCAs},
 		TLSHandshakeTimeout: 10 * time.Second,
 		MaxIdleConnsPerHost: 4,
