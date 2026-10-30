@@ -1168,9 +1168,16 @@ Each runbook: **symptoms → steps → done when**.
 
 ### Audit sink backlog
 
-- **Symptoms**: the "audit sink backlog" alert; the sink's status in Settings shows its last
-  error and a growing backlog.
-- **Steps**: check the sink's reachability and credentials from the controller host (syslog: the
+- **Symptoms**: the "audit sink backlog" alert; the sink's status (`rpmgr get audit-sink <name>`
+  or `AuditSinkService.GetAuditSink`) shows its last error and a growing backlog. The backlog and
+  its age are counted from the audit tables, so they grow even while no controller replica holds
+  the shipping job's lease; a lease nobody holds shows in the alert for the job (the leases are
+  in [High availability](#high-availability)).
+- **Steps**: send a test item with `rpmgr test audit-sink <name>`. A last error that says the
+  receiver refused an item with a 4xx code is permanent: the sink ships nothing more of that
+  chain until the receiver accepts the item, so fix the receiver (its URL, its signature check,
+  its size limit) or the sink (`rpmgr update audit-sink`, a new `--secret-file`); the sink is tried
+  again at the slowest pace of [03](03-connections.md#timeouts-keepalive-and-backoff). Check the sink's reachability and credentials from the controller host (syslog: the
   server's TLS certificate against the sink's CA bundle; object storage: the bucket, Object Lock
   and the credentials). Appends go on meanwhile; nothing is lost, as the sink's cursor holds its
   place. Fix the sink; it catches up by itself.

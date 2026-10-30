@@ -12,6 +12,14 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Audit sinks: an Instance Admin sends the audit log's signed checkpoints, and optionally every
+  entry, to a webhook receiver with `rpmgr create audit-sink` (also `get`, `list`, `update`,
+  `delete` and `test audit-sink`, and `AuditSinkService` in the API), after a step-up. The signing
+  secret is stored encrypted and never shown again. Each sink has a status with its last error,
+  its backlog and the age of the oldest item not yet acknowledged, which also feed the metrics
+  `rpmgr_audit_sink_backlog` and `rpmgr_audit_sink_oldest_unshipped_timestamp_seconds` and the
+  alert "audit sink backlog". A receiver that refuses an item with a 4xx answer holds the sink at
+  that item until it accepts it, and the status says so. (#654)
 - Controllers and all-in-ones update over the air, on SQLite. An Instance Admin chooses "Update
   controller to x.y.z" on Settings → Updates, or runs `rpmgr create rollout --controller --release
   x.y.z`, after a step-up. The root updater takes a backup of the database first, kept as

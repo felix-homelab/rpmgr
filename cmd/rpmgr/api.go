@@ -55,6 +55,7 @@ func apiCommands() []*cli.Command {
 	add(moreDomain)
 	createPolicy, updatePolicy := accessPolicyCommands()
 	add(map[string][]*cli.Command{"create": {createPolicy}, "update": {updatePolicy}})
+	add(auditSinkCommands())
 	add(memberCommands())
 	add(recoveryCommands())
 	add(settingsCommands())
@@ -71,6 +72,7 @@ func apiCommands() []*cli.Command {
 		{"advance", "move a rollout to its next stage"}, {"pause", "pause a rollout"}, {"resume", "let a paused rollout run again"},
 		{"cancel", "end a rollout for good"},
 		{"logs", "follow the live log of a connector or gateway"},
+		{"test", "send an audit sink a test item"},
 	} {
 		out = append(out, group(v.verb, v.summary, verbs[v.verb]...))
 	}

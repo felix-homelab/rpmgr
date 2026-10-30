@@ -97,6 +97,7 @@ rpmgr <command>
 | [`rpmgr resume`](#rpmgr-resume) | Let a paused rollout run again |
 | [`rpmgr cancel`](#rpmgr-cancel) | End a rollout for good |
 | [`rpmgr logs`](#rpmgr-logs) | Follow the live log of a connector or gateway |
+| [`rpmgr test`](#rpmgr-test) | Send an audit sink a test item |
 
 ## rpmgr controller
 
@@ -698,7 +699,7 @@ rpmgr version [flags]
 Show a resource of the public API, the settings, or the install command of an agent.
 
 ```text
-rpmgr get [flags] install-command | settings | controller-update | <route|connector|gateway|gateway-group|port-pool|domain|certificate|ca-bundle|route-target|access-policy|rollout> <id or name>
+rpmgr get [flags] install-command | settings | controller-update | <route|connector|gateway|gateway-group|port-pool|domain|certificate|ca-bundle|route-target|access-policy|audit-sink|rollout> <id or name>
 ```
 
 | Flag | Default | Description |
@@ -714,7 +715,7 @@ rpmgr get [flags] install-command | settings | controller-update | <route|connec
 List the resources of a kind in the org, or of the instance.
 
 ```text
-rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|enrollment-token|access-policy|member|token|release|rollout|rollout-target> [<what they belong to>]
+rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|enrollment-token|access-policy|member|token|release|audit-sink|rollout|rollout-target> [<what they belong to>]
 ```
 
 | Flag | Default | Description |
@@ -727,7 +728,7 @@ rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|d
 Delete a resource of the public API.
 
 ```text
-rpmgr delete [flags] <route|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|route-target|access-policy> <id>
+rpmgr delete [flags] <route|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|route-target|access-policy|audit-sink> <id>
 ```
 
 | Flag | Default | Description |
@@ -755,6 +756,7 @@ rpmgr create <command>
 | [`rpmgr create domain`](#rpmgr-create-domain) | Create a domain |
 | [`rpmgr create ca-bundle`](#rpmgr-create-ca-bundle) | Create a ca bundle |
 | [`rpmgr create access-policy`](#rpmgr-create-access-policy) | Create an access policy of IP rules, where a deny wins, basic auth and required headers |
+| [`rpmgr create audit-sink`](#rpmgr-create-audit-sink) | Create a audit sink |
 | [`rpmgr create invitation`](#rpmgr-create-invitation) | Invite someone to the org and print the one-time link; as Admin or Owner it takes a step-up |
 | [`rpmgr create token`](#rpmgr-create-token) | Personal API tokens are made in the web UI |
 | [`rpmgr create reset-link`](#rpmgr-create-reset-link) | Print a one-time link that sets a member's password, for one who forgot it; takes a step-up |
@@ -940,7 +942,6 @@ rpmgr create domain [flags]
 | `--fqdn string` |  | the name to claim, e.g. example.com |
 | `--method string` |  | how to prove it: txt (a DNS TXT record, the default) or http (a token the org's gateways serve) |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
-| `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 | `--wildcard` |  | claim the names under it as well |
 
 ## rpmgr create ca-bundle
@@ -975,6 +976,23 @@ rpmgr create access-policy [flags]
 | `--passwords-file string` |  | a file of user:password lines for the basic-auth users; the others are asked for |
 | `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,…, basic-auth:\<user>,…, require-header:\<header> or rate-limit:\<per second>[,\<burst>]; repeat for more; a deny wins over every allow |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
+
+## rpmgr create audit-sink
+
+Create a audit sink.
+
+```text
+rpmgr create audit-sink [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--entries` |  | send the entries too; the checkpoints always go |
+| `--kind string` |  | how it delivers: webhook |
+| `--name string` |  | the sink's name, unique among the sinks |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+| `--secret-file string` |  | a file holding the secret that signs the deliveries, at least 16 bytes; write-only |
+| `--url string` |  | the webhook's https:// URL, without credentials |
 
 ## rpmgr create invitation
 
@@ -1040,6 +1058,7 @@ rpmgr update <command>
 | [`rpmgr update port-pool`](#rpmgr-update-port-pool) | Change the fields of a port pool that the flags name |
 | [`rpmgr update ca-bundle`](#rpmgr-update-ca-bundle) | Change the fields of a ca bundle that the flags name |
 | [`rpmgr update access-policy`](#rpmgr-update-access-policy) | Change an access policy's name, description or rules |
+| [`rpmgr update audit-sink`](#rpmgr-update-audit-sink) | Change the fields of a audit sink that the flags name |
 | [`rpmgr update member`](#rpmgr-update-member) | Change a member's role; granting Admin or Owner takes a step-up |
 | [`rpmgr update user`](#rpmgr-update-user) | Grant or revoke the Instance Admin role; as Instance Admin, with a step-up |
 | [`rpmgr update settings`](#rpmgr-update-settings) | Change the org's settings, or with --instance the instance's |
@@ -1228,6 +1247,24 @@ rpmgr update access-policy [flags] <id or name>
 | `--passwords-file string` |  | a file of user:password lines for the basic-auth users; the others are asked for |
 | `--rule value` |  | a rule: allow:\<cidr>,…, deny:\<cidr>,…, basic-auth:\<user>,…, require-header:\<header> or rate-limit:\<per second>[,\<burst>]; repeat for more; a deny wins over every allow |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
+
+## rpmgr update audit-sink
+
+Change the fields of a audit sink that the flags name.
+
+```text
+rpmgr update audit-sink [flags] <id or name>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--enabled` |  | ship to it (false stops shipping; it catches up when enabled again) |
+| `--entries` |  | send the entries too; the checkpoints always go |
+| `--force` |  | update without checking that it is unchanged since this command read it |
+| `--name string` |  | the sink's name, unique among the sinks |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+| `--secret-file string` |  | a file holding the secret that signs the deliveries, at least 16 bytes; write-only |
+| `--url string` |  | the webhook's https:// URL, without credentials |
 
 ## rpmgr update member
 
@@ -1859,3 +1896,23 @@ rpmgr logs gateway [flags] <gateway>
 | `--debug` |  | raise the gateway's level to debug while the log is followed; audited |
 | `--filter string` |  | show only lines that contain this text |
 | `--level string` | `info` | the lowest level shown: debug, info, warn or error |
+
+## rpmgr test
+
+Send an audit sink a test item.
+
+```text
+rpmgr test <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr test audit-sink`](#rpmgr-test-audit-sink) | Send a sink a test item now and show the receiver's answer |
+
+## rpmgr test audit-sink
+
+Send a sink a test item now and show the receiver's answer.
+
+```text
+rpmgr test audit-sink <id or name>
+```

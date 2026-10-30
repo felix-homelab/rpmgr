@@ -35,6 +35,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 	"github.com/felix-homelab/rpmgr/internal/telemetry/telemetrytest"
 	"github.com/felix-homelab/rpmgr/internal/version"
+	"github.com/felix-homelab/rpmgr/internal/webhook"
 	"github.com/felix-homelab/rpmgr/internal/websession"
 )
 
@@ -61,6 +62,7 @@ type env struct {
 	drains   fakeDrains   // the old processes of hand-offs the gateways and connectors report
 	agents   fakeLogs     // the live logs LogService opens
 	sealer   *secret.Sealer
+	sinks    *apisvc.AuditSinks // AuditSinkService; a test sets its Sender
 	pki      *apisvc.Pki
 	rel      *apisvc.Releases
 	previews *apisvc.PagePreviews // the previews of gateway pages
@@ -225,6 +227,13 @@ func newEnv(t *testing.T) *env {
 		}); err != nil {
 		t.Fatal(err)
 	}
+	e.sinks = &apisvc.AuditSinks{DB: db, API: srv, Sys: sys, Sealer: sealer, Sender: &webhook.Sender{Now: now}, Now: now, Logger: log}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_audit_sink_proto.Services().ByName("AuditSinkService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewAuditSinkServiceHandler(e.sinks, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_policy_proto.Services().ByName("PolicyService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewPolicyServiceHandler(&apisvc.Policies{DB: db, API: srv, Sys: sys}, o...)
@@ -282,6 +291,7 @@ type browser struct {
 	pol    rpmgrv1connect.PolicyServiceClient
 	crt    rpmgrv1connect.CertificateServiceClient
 	set    rpmgrv1connect.SettingsServiceClient
+	sink   rpmgrv1connect.AuditSinkServiceClient
 	aud    rpmgrv1connect.AuditServiceClient
 	met    rpmgrv1connect.MetricsServiceClient
 	pki    rpmgrv1connect.PkiServiceClient
@@ -306,6 +316,7 @@ func (e *env) browser() *browser {
 	b.pol = rpmgrv1connect.NewPolicyServiceClient(&http.Client{Transport: b}, e.url)
 	b.crt = rpmgrv1connect.NewCertificateServiceClient(&http.Client{Transport: b}, e.url)
 	b.set = rpmgrv1connect.NewSettingsServiceClient(&http.Client{Transport: b}, e.url)
+	b.sink = rpmgrv1connect.NewAuditSinkServiceClient(&http.Client{Transport: b}, e.url)
 	b.aud = rpmgrv1connect.NewAuditServiceClient(&http.Client{Transport: b}, e.url)
 	b.met = rpmgrv1connect.NewMetricsServiceClient(&http.Client{Transport: b}, e.url)
 	b.pki = rpmgrv1connect.NewPkiServiceClient(&http.Client{Transport: b}, e.url)
