@@ -1719,7 +1719,10 @@ sequenceDiagram
    new connection to the new process ([D159](14-open-decisions.md#engineering)). It sends its
    data sessions `Drain{reason: handoff}` and keeps them for the streams of the connections it
    has, those it accepted just before it stopped included: it still opens streams on them,
-   though it admits no new session. Connectors open new sessions to the same endpoint at once,
+   though it admits no new session. It closes its HTTP servers only once it has handed those
+   connections to them and each has sent its request (a connection silent for 5 s no longer
+   counts), so that no client of a route gets an EOF for a connection the kernel gave the old
+   process an instant before the switch (#1008). Connectors open new sessions to the same endpoint at once,
    without backoff, and keep the draining ones for their open streams; a connector on `auto`
    opens its new session over TCP, as the old process reads the UDP socket alone and a QUIC dial
    would wait for its handshake timeout. Until a route has a session in the new process, a new

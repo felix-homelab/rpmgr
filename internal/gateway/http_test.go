@@ -1138,3 +1138,42 @@ func TestHTTPRoutes_HSTS(t *testing.T) {
 		t.Errorf("a route without HSTS passes the upstream's: %v", r.header.Values("Strict-Transport-Security"))
 	}
 }
+
+// A connection that has not sent a request yet is fresh, so that the drain of a hand-off waits for
+// its request instead of closing it (#1008); a request or a close ends it.
+func TestHTTPRoutes_Fresh(t *testing.T) {
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{})
+	t.Cleanup(h.Close)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = h.Serve80(ln) }()
+
+	if n := h.Fresh(); n != 0 {
+		t.Fatalf("fresh before any connection: %d", n)
+	}
+	c, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	waitFor(t, func() bool { return h.Fresh() == 1 }, "the silent connection to be fresh")
+
+	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	if _, err := io.WriteString(c, "GET / HTTP/1.1\r\nHost: nothing.example\r\nConnection: close\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(io.Discard, c); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return h.Fresh() == 0 }, "the connection to leave the fresh state once it sent a request")
+
+	silent, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return h.Fresh() == 1 }, "a second silent connection to be fresh")
+	_ = silent.Close()
+	waitFor(t, func() bool { return h.Fresh() == 0 }, "a closed connection not to be fresh")
+}
