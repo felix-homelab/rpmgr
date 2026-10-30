@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
@@ -43,10 +45,33 @@ func openWebhook(o Options, s *ent.AuditSink) (Sink, error) {
 }
 
 func (w *webhookSink) Ship(ctx context.Context, it Item) error {
-	_, err := w.sender.Send(ctx, webhook.Delivery{URL: w.url, EventID: it.ID, EventType: it.Type, Body: it.Body,
+	code, err := w.sender.Send(ctx, webhook.Delivery{URL: w.url, EventID: it.ID, EventType: it.Type, Body: it.Body,
 		Secrets: []secret.Value{w.secret}, Policy: egress.Policy{Internal: true}})
+	if err != nil && permanentStatus(code) {
+		return &PermanentError{Status: code, Err: err}
+	}
 	return err
 }
+
+// permanentStatus reports whether a receiver's answer says that sending the same item again will
+// fail the same way: a 4xx other than 408 (timeout) and 429 (rate limit), which pass.
+func permanentStatus(code int) bool {
+	return code >= 400 && code < 500 && code != http.StatusRequestTimeout && code != http.StatusTooManyRequests
+}
+
+// PermanentError is a refusal of an item that a retry will not change: the receiver answered with a
+// 4xx other than 408 and 429. The sink's cursor on that chain waits until the receiver accepts the
+// item, so the error says so, and the runner retries it only at the slowest pace.
+type PermanentError struct {
+	Status int
+	Err    error
+}
+
+func (e *PermanentError) Error() string {
+	return fmt.Sprintf("the receiver refused an item with %d; the sink ships nothing more of that chain until the receiver accepts it", e.Status)
+}
+
+func (e *PermanentError) Unwrap() error { return e.Err }
 
 // checkpointBody is the JSON of a checkpoint.
 type checkpointBody struct {
