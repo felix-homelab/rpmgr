@@ -41,6 +41,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/invitation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/mailjob"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
@@ -69,6 +70,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/statusmark"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
@@ -2132,6 +2134,50 @@ func init() {
 	leaseDescID := leaseFields[0].Descriptor()
 	// lease.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	lease.IDValidator = leaseDescID.Validators[0].(func(string) error)
+	mailjob.Policy = privacy.NewPolicies(schema.MailJob{})
+	mailjob.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := mailjob.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	mailjobHooks := schema.MailJob{}.Hooks()
+
+	mailjob.Hooks[1] = mailjobHooks[0]
+	mailjobInters := schema.MailJob{}.Interceptors()
+	mailjob.Interceptors[0] = mailjobInters[0]
+	mailjobFields := schema.MailJob{}.Fields()
+	_ = mailjobFields
+	// mailjobDescEventID is the schema descriptor for event_id field.
+	mailjobDescEventID := mailjobFields[2].Descriptor()
+	// mailjob.EventIDValidator is a validator for the "event_id" field. It is called by the builders before save.
+	mailjob.EventIDValidator = mailjobDescEventID.Validators[0].(func(string) error)
+	// mailjobDescAttempts is the schema descriptor for attempts field.
+	mailjobDescAttempts := mailjobFields[4].Descriptor()
+	// mailjob.DefaultAttempts holds the default value on creation for the attempts field.
+	mailjob.DefaultAttempts = mailjobDescAttempts.Default.(int)
+	// mailjobDescID is the schema descriptor for id field.
+	mailjobDescID := mailjobFields[0].Descriptor()
+	// mailjob.DefaultID holds the default value on creation for the id field.
+	mailjob.DefaultID = mailjobDescID.Default.(func() string)
+	// mailjob.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	mailjob.IDValidator = func() func(string) error {
+		validators := mailjobDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	membershipMixin := schema.Membership{}.Mixin()
 	membership.Policy = privacy.NewPolicies(membershipMixin[0], schema.Membership{})
 	membership.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -3655,6 +3701,30 @@ func init() {
 			return nil
 		}
 	}()
+	statusmark.Policy = privacy.NewPolicies(schema.StatusMark{})
+	statusmark.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := statusmark.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	statusmarkHooks := schema.StatusMark{}.Hooks()
+
+	statusmark.Hooks[1] = statusmarkHooks[0]
+	statusmarkInters := schema.StatusMark{}.Interceptors()
+	statusmark.Interceptors[0] = statusmarkInters[0]
+	statusmarkFields := schema.StatusMark{}.Fields()
+	_ = statusmarkFields
+	// statusmarkDescState is the schema descriptor for state field.
+	statusmarkDescState := statusmarkFields[2].Descriptor()
+	// statusmark.StateValidator is a validator for the "state" field. It is called by the builders before save.
+	statusmark.StateValidator = statusmarkDescState.Validators[0].(func(string) error)
+	// statusmarkDescID is the schema descriptor for id field.
+	statusmarkDescID := statusmarkFields[0].Descriptor()
+	// statusmark.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	statusmark.IDValidator = statusmarkDescID.Validators[0].(func(string) error)
 	totpcredentialMixin := schema.TOTPCredential{}.Mixin()
 	totpcredential.Policy = privacy.NewPolicies(totpcredentialMixin[0], schema.TOTPCredential{})
 	totpcredential.Hooks[0] = func(next ent.Mutator) ent.Mutator {

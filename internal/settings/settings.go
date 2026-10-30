@@ -59,7 +59,7 @@ const LetsEncrypt = config.LetsEncrypt
 
 // OrgDefaults returns the default settings of an org.
 func OrgDefaults() *rpmgrv1.OrgSettings {
-	return &rpmgrv1.OrgSettings{RequireMfa: proto.Bool(false), OperatorsMayEnroll: proto.Bool(false)}
+	return &rpmgrv1.OrgSettings{RequireMfa: proto.Bool(false), OperatorsMayEnroll: proto.Bool(false), AlertEmail: proto.Bool(true)}
 }
 
 // Instance returns the effective instance settings, stored values over defaults, and their etag
