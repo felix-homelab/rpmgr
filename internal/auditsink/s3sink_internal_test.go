@@ -283,8 +283,8 @@ func TestCheckBucket(t *testing.T) {
 // TestCheckS3Settings (#656): settings the store's client or the lock rules cannot use are refused
 // before any request.
 func TestCheckS3Settings(t *testing.T) {
-	good := S3Settings{Endpoint: "https://s3.example.com", Region: "eu-central-1", Bucket: "audit-bucket", AccessKeyID: "AKIAIOSFODNN7EXAMPLE"}
-	if err := CheckS3Settings(good, awsExampleSecret); err != nil {
+	good := S3Settings{Endpoint: "https://s3.example.com", Region: "eu-central-1", Bucket: "audit-bucket", AccessKeyID: "AKIAIOSFODNN7EXAMPLE"} //nolint:gosec // G101: AWS documentation example credentials, not secrets
+	if err := CheckS3Settings(good, secret.New(awsExampleSecret)); err != nil {
 		t.Fatal(err)
 	}
 	for name, c := range map[string]struct {
@@ -310,7 +310,7 @@ func TestCheckS3Settings(t *testing.T) {
 	} {
 		s := good
 		c.mod(&s)
-		err := CheckS3Settings(s, c.key)
+		err := CheckS3Settings(s, secret.New(c.key))
 		if name == "a bad bundle" {
 			// The bundle is read when the client is built for a request.
 			_, err = s.client(secret.New(c.key), nil)
@@ -324,7 +324,7 @@ func TestCheckS3Settings(t *testing.T) {
 	for _, days := range []int{0, 30, 3650} {
 		s := good
 		s.LockDays = days
-		if err := CheckS3Settings(s, awsExampleSecret); err != nil {
+		if err := CheckS3Settings(s, secret.New(awsExampleSecret)); err != nil {
 			t.Errorf("%d days: %v", days, err)
 		}
 	}
@@ -353,9 +353,9 @@ func TestS3Sink_IgnoresEnvironmentProxy(t *testing.T) {
 	t.Setenv("NO_PROXY", "")
 	t.Setenv("no_proxy", "")
 	for _, endpoint := range []string{"https://169.254.169.254", "https://[fe80::1]", "https://224.0.0.1"} {
-		s := S3Settings{Endpoint: endpoint, Region: "eu-central-1", Bucket: "audit-bucket", AccessKeyID: "AKIAIOSFODNN7EXAMPLE"}
+		s := S3Settings{Endpoint: endpoint, Region: "eu-central-1", Bucket: "audit-bucket", AccessKeyID: "AKIAIOSFODNN7EXAMPLE"} //nolint:gosec // G101: AWS documentation example credentials, not secrets
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		err := CheckSettingsAndBucket(ctx, s, awsExampleSecret, time.Now)
+		err := CheckSettingsAndBucket(ctx, s, secret.New(awsExampleSecret), time.Now)
 		cancel()
 		if err == nil {
 			t.Errorf("%s: accepted", endpoint)

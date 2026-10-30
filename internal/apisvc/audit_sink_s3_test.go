@@ -139,7 +139,7 @@ func TestAuditSinks_S3(t *testing.T) {
 	if row.SecretEnc == nil || strings.Contains(string(*row.SecretEnc), awsKey1) {
 		t.Fatal("the secret key is stored in the clear")
 	}
-	if v, err := e.sealer.Open(secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: row.ID}, *row.SecretEnc); err != nil || v.Reveal() != awsKey1 {
+	if v, err := e.sealer.Open(secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: row.ID}, *row.SecretEnc); err != nil || !v.EqualString(awsKey1) {
 		t.Fatalf("the sealed key: %v", err)
 	}
 	if keys := srv.Keys(); len(keys) != 1 || !strings.HasPrefix(keys[0], "audit/probe/") {
@@ -204,7 +204,7 @@ func TestAuditSinks_S3(t *testing.T) {
 		t.Fatalf("a new key: %v %v", up, err)
 	}
 	row = c.AuditSink.GetX(e.sys, s.GetId())
-	if v, err := e.sealer.Open(secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: row.ID}, *row.SecretEnc); err != nil || v.Reveal() != awsKey2 {
+	if v, err := e.sealer.Open(secret.Context{Table: "audit_sinks", Column: "secret_enc", RowID: row.ID}, *row.SecretEnc); err != nil || !v.EqualString(awsKey2) {
 		t.Fatalf("the replaced key: %v", err)
 	}
 

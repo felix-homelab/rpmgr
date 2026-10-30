@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"math"
 	"net/url"
 	"slices"
 	"time"
@@ -82,7 +83,7 @@ func sinkOf(r *ent.AuditSink, b *auditsink.Backlog) *rpmgrv1.AuditSink {
 	s3 := auditsink.S3SettingsOf(r.Settings)
 	out := &rpmgrv1.AuditSink{Id: r.ID, Name: r.Name, Kind: kind, Url: r.Settings["url"], Address: r.Settings["address"],
 		CaBundle: r.Settings["ca"], Endpoint: s3.Endpoint, Region: s3.Region, Bucket: s3.Bucket, AccessKeyId: s3.AccessKeyID,
-		RetentionDays: int32(s3.LockDays), SecretSet: r.SecretEnc != nil && len(*r.SecretEnc) > 0, Entries: r.Entries, Enabled: r.Enabled,
+		RetentionDays: lockDays(s3.LockDays), SecretSet: r.SecretEnc != nil && len(*r.SecretEnc) > 0, Entries: r.Entries, Enabled: r.Enabled,
 		CreateTime: timestamppb.New(r.CreatedAt), Etag: etagOf(sinkVersion(r))}
 	st := &rpmgrv1.AuditSinkStatus{LastError: r.LastError}
 	if r.LastSuccessAt != nil {
@@ -103,6 +104,15 @@ func sinkOf(r *ent.AuditSink, b *auditsink.Backlog) *rpmgrv1.AuditSink {
 	}
 	out.Status = st
 	return out
+}
+
+// lockDays is a retention in days for the API; a value outside the int32 range, which the lock
+// rules never allow, shows as zero.
+func lockDays(n int) int32 {
+	if n < 0 || n > math.MaxInt32 {
+		return 0
+	}
+	return int32(n)
 }
 
 func badSink(format string, args ...any) error {
@@ -150,8 +160,8 @@ func s3SettingsOf(in *rpmgrv1.AuditSink) auditsink.S3Settings {
 // checkS3 refuses what an object-storage sink cannot use, then checks the bucket: one without Object
 // Lock or without conditional create is refused and nothing is saved. A store that cannot be
 // reached is Unavailable, not a verdict on the settings.
-func (a *AuditSinks) checkS3(ctx context.Context, set auditsink.S3Settings, key string) error {
-	if err := checkSecret(key); err != nil {
+func (a *AuditSinks) checkS3(ctx context.Context, set auditsink.S3Settings, key secret.Value) error {
+	if err := checkSecretLen(key.Len()); err != nil {
 		return err
 	}
 	err := auditsink.CheckSettingsAndBucket(ctx, set, key, a.now)
@@ -166,8 +176,10 @@ func (a *AuditSinks) checkS3(ctx context.Context, set auditsink.S3Settings, key 
 }
 
 // checkSecret refuses a secret too short to sign with.
-func checkSecret(s string) error {
-	if len(s) < 16 {
+func checkSecret(s string) error { return checkSecretLen(len(s)) }
+
+func checkSecretLen(n int) error {
+	if n < 16 {
 		return badSink("the secret must be at least 16 bytes")
 	}
 	return nil
@@ -229,7 +241,7 @@ func (a *AuditSinks) CreateAuditSink(ctx context.Context, req *connect.Request[r
 			return nil, badSink("an object-storage sink has no url and no address")
 		}
 		set := s3SettingsOf(in)
-		if err := a.checkS3(ctx, set, in.GetSecret()); err != nil {
+		if err := a.checkS3(ctx, set, secret.New(in.GetSecret())); err != nil {
 			return nil, err
 		}
 		var err error
@@ -376,13 +388,13 @@ func (a *AuditSinks) UpdateAuditSink(ctx context.Context, req *connect.Request[r
 		}
 		newSecret := slices.Contains(paths, "secret")
 		if newSecret || !maps.Equal(settings, pre.Settings) {
-			key := in.GetSecret()
+			key := secret.New(in.GetSecret())
 			if !newSecret {
 				v, err := a.Sealer.Open(sinkSecretContext(pre.ID), *pre.SecretEnc)
 				if err != nil {
 					return nil, badSink("the stored secret key cannot be opened; set it again")
 				}
-				key = v.Reveal()
+				key = v
 			}
 			if err := a.checkS3(ctx, s3SettingsOf(next), key); err != nil {
 				return nil, err

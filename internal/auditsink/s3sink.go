@@ -91,11 +91,11 @@ func (s S3Settings) client(key secret.Value, now func() time.Time) (*objstore.Cl
 
 // CheckS3Settings reports why settings and a secret key cannot be used by an object-storage sink,
 // or nil. It does not reach the store.
-func CheckS3Settings(s S3Settings, key string) error {
+func CheckS3Settings(s S3Settings, key secret.Value) error {
 	if s.LockDays != 0 && (s.LockDays < MinLockDays || s.LockDays > MaxLockDays) {
 		return fmt.Errorf("the lock period is from %d to %d days", MinLockDays, MaxLockDays)
 	}
-	c, err := s.client(secret.New(key), nil)
+	c, err := s.client(key, nil)
 	if err != nil {
 		return err
 	}
@@ -235,11 +235,11 @@ func (r *Runner) checkS3(ctx context.Context, s *ent.AuditSink) error {
 // CheckSettingsAndBucket checks an object-storage sink's settings and then its bucket, as the API
 // does before it saves the sink: the bucket must keep an object locked in compliance mode, answer
 // a second conditional create with "exists", and refuse to delete the locked version.
-func CheckSettingsAndBucket(ctx context.Context, s S3Settings, key string, now func() time.Time) error {
+func CheckSettingsAndBucket(ctx context.Context, s S3Settings, key secret.Value, now func() time.Time) error {
 	if err := CheckS3Settings(s, key); err != nil {
 		return err
 	}
-	c, err := s.client(secret.New(key), now)
+	c, err := s.client(key, now)
 	if err != nil {
 		return err
 	}
