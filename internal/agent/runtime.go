@@ -249,10 +249,32 @@ func (r *Runtime) receive(ctx context.Context, signed *agentv1.Signed) {
 		return
 	}
 	notReady := r.apply(ctx, signed, snap)
+	// What the agent did, for a live log (D154): the revision, the routes it serves, how many are
+	// not ready; never a route's contents.
+	r.o.Logger.Info("configuration applied", "seq", rev.GetSeq(), "routes", routeCount(snap), "not_ready", len(notReady))
+	for _, n := range notReady[:min(len(notReady), maxNotReadyLogged)] {
+		r.o.Logger.Info("route not ready", "route", n.GetResourceId(), "reason", n.GetReason().String())
+	}
 	if err := r.persist(signed); err != nil {
 		r.o.Logger.Error("cannot store the last-known-good snapshot", "error", err)
 	}
 	r.o.Send(applied(rev, hash, notReady))
+}
+
+// maxNotReadyLogged bounds the not-ready resources one applied snapshot logs one line each for.
+const maxNotReadyLogged = 10
+
+// routeCount is how many of the snapshot's resources are routes.
+func routeCount(snap *agentv1.Snapshot) int {
+	n := 0
+	for _, res := range snap.GetResources() {
+		switch res.GetKind().(type) {
+		case *agentv1.Resource_ConnectorRoute, *agentv1.Resource_GatewayTcpRoute, *agentv1.Resource_GatewayUdpRoute,
+			*agentv1.Resource_GatewayTcpUdpRoute, *agentv1.Resource_GatewayHttpRoute, *agentv1.Resource_GatewayPassthroughRoute:
+			n++
+		}
+	}
+	return n
 }
 
 // newer reports whether rev may replace cur: a higher revision of the same database epoch, or any
