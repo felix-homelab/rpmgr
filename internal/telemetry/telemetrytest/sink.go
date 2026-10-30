@@ -19,7 +19,7 @@ import (
 // leaked matches what a log line must never hold: a token of any rpmgr kind, of which the 20
 // characters after the prefix are already a secret, or a PEM private key. A token's stored display
 // prefix (the kind and 4 characters) may be logged.
-var leaked = regexp.MustCompile(`rpmgr_(enr|pat|sat|ses|prs|inv)_[0-9A-Za-z]{20,}|PRIVATE KEY-----`)
+var leaked = regexp.MustCompile(`rpmgr_(enr|pat|sat|ses|prs|inv|whs)_[0-9A-Za-z]{20,}|PRIVATE KEY-----`)
 
 // Reporter is what a Sink reports to; a *testing.T is one.
 type Reporter interface {

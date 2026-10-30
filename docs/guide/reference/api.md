@@ -186,6 +186,7 @@ Some lists differ:
   `ListSuspendedAPITokens`, and `TokenService.ListAPITokens` take no `pageSize` and no
   `pageToken`: they return everything in one answer. Sessions and tokens come newest first,
   members with the Owners first.
+- **Webhook deliveries.** `WebhookService.ListWebhookDeliveries` returns the newest first.
 
 ### Create a route and a target
 
@@ -300,6 +301,29 @@ spec:
 Manifests name other resources by their names, never carry secrets, and leave out decommissioned
 agents. Applying manifests is not there yet; it is planned for Phase 2
 ([13](../../13-roadmap.md#phase-2--production)).
+
+### Manage a webhook endpoint
+
+An endpoint receives the organisation's events as signed HTTPS requests. Owners and Admins manage
+endpoints; nobody else can read them, because a receiver's URL may carry a token. The URL must start
+with `https://` and hold no credentials. `eventTypes` names the types it wants, such as
+`route.update` or a prefix such as `route.*`; none means all.
+
+```sh
+rpc WebhookService/CreateWebhook "{\"orgId\":\"$ORG\",
+  \"webhook\":{\"url\":\"https://hooks.example.com/rpmgr\",\"eventTypes\":[\"route.*\"]}}"
+```
+
+The answer carries the endpoint and its `secret`, `rpmgr_whs_…`. It is shown once, here and in the
+answer of `RotateWebhookSecret`, and no call reads it back: store it where the receiver can check
+the `Rpmgr-Signature` header. After a rotation both secrets sign for a while, so the receiver can
+switch without a gap. `UpdateWebhook` takes an update mask over `url`, `eventTypes` and `enabled`;
+enabling an endpoint again clears a disable, also one that rpmgr made after days of failed
+deliveries. `TestWebhook` sends a `webhook.test` event now and answers what the receiver said, and
+`ListWebhookDeliveries` lists the attempts of an endpoint, the newest first. The format of the
+events, the headers and the limits are in [07](../../07-api.md#webhooks-phase-2),
+[04](../../04-security.md#webhooks-and-the-egress-guard-phase-2) and
+[03](../../03-connections.md#timeouts-keepalive-and-backoff).
 
 ## Change a resource: etags and update masks
 
@@ -496,6 +520,7 @@ once, in the answer that makes it.
 | `AuditService` | [audit.proto](../../../proto/rpmgr/v1/audit.proto) | The audit log, and verifying its chains |
 | `SettingsService` | [settings.proto](../../../proto/rpmgr/v1/settings.proto) | Instance and organisation settings, the mail relay's password |
 | `PkiService` | [pki.proto](../../../proto/rpmgr/v1/pki.proto) | The internal CA's keys and the intermediate's rotation |
+| `WebhookService` | [webhook.proto](../../../proto/rpmgr/v1/webhook.proto) | An organisation's webhook endpoints, their secrets and deliveries |
 | `ManifestService` | [manifest.proto](../../../proto/rpmgr/v1/manifest.proto) | YAML manifests of the org's resources |
 
 The shared messages are in [common.proto](../../../proto/rpmgr/v1/common.proto). The design of the

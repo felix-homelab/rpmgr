@@ -1625,7 +1625,15 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
     mode, so not even the sink's own credentials can rewrite or delete it before the lock ends; a
     bucket without Object Lock, or a store without conditional create, is refused when the sink is
     saved (VB-24). Verification can read the sink back and finds a chain rewritten under a
-    checkpoint it holds.
+    checkpoint it holds. The client (`internal/objstore`) signs with AWS Signature Version 4 and
+    reads the access key from a file that neither group nor others can read, or from memory
+    (unsealed from the KEK by the caller); the secret key never appears in a log line or an error.
+    The endpoint is `https` (TLS 1.2 or later, certificate verified against the system roots or the
+    sink's CA bundle), or `http` on a loopback address only; a redirect is never followed, so a
+    signature does not leave for another host; `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` apply. A
+    conditional create that finds the key taken is not an error of the store but the answer `exists`
+    (412), and a refusal of Object Lock is any 4xx (AWS answers 403, SILO 400). Limits are in
+    [03](03-connections.md#timeouts-keepalive-and-backoff).
 - [R] **Export** (Phase 2, `ExportAudit`): an org's chain, for `audit.read` with a step-up, or the
   instance chain for the Instance Admin with a step-up (`ExportInstanceAudit`). The request is
   audited as `audit.export` before the chain is read, so the export holds its own entry; an export
