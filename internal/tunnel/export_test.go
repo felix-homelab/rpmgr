@@ -13,9 +13,10 @@ func WithMaxStreams(w H2Windows, n int) H2Windows {
 // PendingFlows is how many unknown flows a session keeps datagrams for.
 const PendingFlows = pendingFlows
 
-// WithStalls makes the stalled-stream rule of QUIC sessions on b assume the given windows and age.
-func WithStalls(b *Budget, stream, conn int, age time.Duration) *Budget {
-	b.stall = &stallParams{stream: stream, conn: conn, age: age}
+// BudgetWithStallAge makes the stalled-stream rule of QUIC sessions admitted by b reset streams
+// after age.
+func BudgetWithStallAge(b *Budget, age time.Duration) *Budget {
+	b.stallAge = age
 	return b
 }
 
@@ -52,4 +53,12 @@ func StallWatched(s Session) int {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	return len(st.streams)
+}
+
+// SetAdmissionExpiry shortens how long a QUIC reservation waits for its handshake, for tests; the
+// returned function restores it.
+func SetAdmissionExpiry(d time.Duration) func() {
+	old := admissionExpiry
+	admissionExpiry = d
+	return func() { admissionExpiry = old }
 }

@@ -271,7 +271,7 @@ func TestQUICTLS(t *testing.T) {
 	}
 	tr := &quic.Transport{Conn: pc}
 	t.Cleanup(func() { _ = tr.Close() })
-	ln, err := tr.Listen(gateway.QUICTLS(td, w.gw.ID, w.tunnelTLS), tunnel.QUICConfig(false, tunnel.NewBudget(tunnel.DefaultWindowBudget)))
+	ln, err := tr.Listen(gateway.QUICTLS(td, w.gw.ID, w.tunnelTLS), tunnel.QUICConfig(false, tunnel.DefaultH2Windows()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +290,7 @@ func TestQUICTLS(t *testing.T) {
 	dial := func(cfg *tls.Config) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		c, err := ctr.Dial(ctx, pc.LocalAddr(), cfg, tunnel.QUICConfig(true, tunnel.NewBudget(tunnel.DefaultWindowBudget)))
+		c, err := ctr.Dial(ctx, pc.LocalAddr(), cfg, tunnel.QUICConfig(true, tunnel.DefaultH2Windows()))
 		if err == nil {
 			_ = c.CloseWithError(0, "")
 		}
