@@ -434,7 +434,11 @@ spec:
 - **Alert e-mails** ([D139](14-open-decisions.md#engineering)): with SMTP configured, an alert's
   firing and resolving are also mailed to the org's Owners and Admins, and an instance alert to
   the Instance Admins; an org turns this off with the org setting `alert_email`, and chooses which
-  alert types it gets with `alert_types` ([D142](14-open-decisions.md#engineering)).
+  alert types it gets with `alert_types` ([D142](14-open-decisions.md#engineering)). An alert of a
+  kind the org did not choose is tracked but writes no event, so neither a webhook nor an e-mail
+  hears of it; `alert_types` empty means all. A webhook endpoint disabled for failing is mailed to
+  the org's Owners and Admins whatever `alert_email` says, as it asks for a person's action
+  ([D143](14-open-decisions.md#engineering)). Mails never go to Operators or Viewers.
 
 ## Agent protocol catalogue
 

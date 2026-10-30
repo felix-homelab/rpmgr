@@ -48,6 +48,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/invitation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/mailjob"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
@@ -156,6 +157,8 @@ type Client struct {
 	IssuedCertificate *IssuedCertificateClient
 	// Lease is the client for interacting with the Lease builders.
 	Lease *LeaseClient
+	// MailJob is the client for interacting with the MailJob builders.
+	MailJob *MailJobClient
 	// Membership is the client for interacting with the Membership builders.
 	Membership *MembershipClient
 	// Org is the client for interacting with the Org builders.
@@ -266,6 +269,7 @@ func (c *Client) init() {
 	c.Invitation = NewInvitationClient(c.config)
 	c.IssuedCertificate = NewIssuedCertificateClient(c.config)
 	c.Lease = NewLeaseClient(c.config)
+	c.MailJob = NewMailJobClient(c.config)
 	c.Membership = NewMembershipClient(c.config)
 	c.Org = NewOrgClient(c.config)
 	c.OrgSetting = NewOrgSettingClient(c.config)
@@ -424,6 +428,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Invitation:         NewInvitationClient(cfg),
 		IssuedCertificate:  NewIssuedCertificateClient(cfg),
 		Lease:              NewLeaseClient(cfg),
+		MailJob:            NewMailJobClient(cfg),
 		Membership:         NewMembershipClient(cfg),
 		Org:                NewOrgClient(cfg),
 		OrgSetting:         NewOrgSettingClient(cfg),
@@ -509,6 +514,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Invitation:         NewInvitationClient(cfg),
 		IssuedCertificate:  NewIssuedCertificateClient(cfg),
 		Lease:              NewLeaseClient(cfg),
+		MailJob:            NewMailJobClient(cfg),
 		Membership:         NewMembershipClient(cfg),
 		Org:                NewOrgClient(cfg),
 		OrgSetting:         NewOrgSettingClient(cfg),
@@ -577,7 +583,7 @@ func (c *Client) Use(hooks ...Hook) {
 		c.ConfigSeq, c.ConnectAuthority, c.ConnectListener, c.Connector, c.DataSession,
 		c.Domain, c.EnrollmentToken, c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage,
 		c.HealthCheck, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
-		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
+		c.IssuedCertificate, c.Lease, c.MailJob, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
 		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
 		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
@@ -600,7 +606,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.ConfigSeq, c.ConnectAuthority, c.ConnectListener, c.Connector, c.DataSession,
 		c.Domain, c.EnrollmentToken, c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage,
 		c.HealthCheck, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
-		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
+		c.IssuedCertificate, c.Lease, c.MailJob, c.Membership, c.Org, c.OrgSetting,
 		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
 		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
 		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
@@ -682,6 +688,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.IssuedCertificate.mutate(ctx, m)
 	case *LeaseMutation:
 		return c.Lease.mutate(ctx, m)
+	case *MailJobMutation:
+		return c.MailJob.mutate(ctx, m)
 	case *MembershipMutation:
 		return c.Membership.mutate(ctx, m)
 	case *OrgMutation:
@@ -5409,6 +5417,141 @@ func (c *LeaseClient) mutate(ctx context.Context, m *LeaseMutation) (Value, erro
 		return (&LeaseDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Lease mutation op: %q", m.Op())
+	}
+}
+
+// MailJobClient is a client for the MailJob schema.
+type MailJobClient struct {
+	config
+}
+
+// NewMailJobClient returns a client for the MailJob from the given config.
+func NewMailJobClient(c config) *MailJobClient {
+	return &MailJobClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mailjob.Hooks(f(g(h())))`.
+func (c *MailJobClient) Use(hooks ...Hook) {
+	c.hooks.MailJob = append(c.hooks.MailJob, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mailjob.Intercept(f(g(h())))`.
+func (c *MailJobClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MailJob = append(c.inters.MailJob, interceptors...)
+}
+
+// Create returns a builder for creating a MailJob entity.
+func (c *MailJobClient) Create() *MailJobCreate {
+	mutation := newMailJobMutation(c.config, OpCreate)
+	return &MailJobCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MailJob entities.
+func (c *MailJobClient) CreateBulk(builders ...*MailJobCreate) *MailJobCreateBulk {
+	return &MailJobCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MailJobClient) MapCreateBulk(slice any, setFunc func(*MailJobCreate, int)) *MailJobCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MailJobCreateBulk{err: fmt.Errorf("calling to MailJobClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MailJobCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MailJobCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MailJob.
+func (c *MailJobClient) Update() *MailJobUpdate {
+	mutation := newMailJobMutation(c.config, OpUpdate)
+	return &MailJobUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MailJobClient) UpdateOne(_m *MailJob) *MailJobUpdateOne {
+	mutation := newMailJobMutation(c.config, OpUpdateOne, withMailJob(_m))
+	return &MailJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MailJobClient) UpdateOneID(id string) *MailJobUpdateOne {
+	mutation := newMailJobMutation(c.config, OpUpdateOne, withMailJobID(id))
+	return &MailJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MailJob.
+func (c *MailJobClient) Delete() *MailJobDelete {
+	mutation := newMailJobMutation(c.config, OpDelete)
+	return &MailJobDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MailJobClient) DeleteOne(_m *MailJob) *MailJobDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MailJobClient) DeleteOneID(id string) *MailJobDeleteOne {
+	builder := c.Delete().Where(mailjob.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MailJobDeleteOne{builder}
+}
+
+// Query returns a query builder for MailJob.
+func (c *MailJobClient) Query() *MailJobQuery {
+	return &MailJobQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMailJob},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MailJob entity by its id.
+func (c *MailJobClient) Get(ctx context.Context, id string) (*MailJob, error) {
+	return c.Query().Where(mailjob.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MailJobClient) GetX(ctx context.Context, id string) *MailJob {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MailJobClient) Hooks() []Hook {
+	hooks := c.hooks.MailJob
+	return append(hooks[:len(hooks):len(hooks)], mailjob.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *MailJobClient) Interceptors() []Interceptor {
+	inters := c.inters.MailJob
+	return append(inters[:len(inters):len(inters)], mailjob.Interceptors[:]...)
+}
+
+func (c *MailJobClient) mutate(ctx context.Context, m *MailJobMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MailJobCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MailJobUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MailJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MailJobDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MailJob mutation op: %q", m.Op())
 	}
 }
 
@@ -10322,7 +10465,7 @@ type (
 		CompiledSnapshot, ConfigRevision, ConfigSeq, ConnectAuthority, ConnectListener,
 		Connector, DataSession, Domain, EnrollmentToken, Event, Gateway, GatewayGroup,
 		GatewayPage, HealthCheck, Instance, InstanceSecret, InstanceSetting,
-		Invitation, IssuedCertificate, Lease, Membership, Org, OrgSetting,
+		Invitation, IssuedCertificate, Lease, MailJob, Membership, Org, OrgSetting,
 		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode,
 		Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,
 		RolloutTarget, Route, RouteHTTP, RouteHostname, RouteLimit, RoutePolicy,
@@ -10336,7 +10479,7 @@ type (
 		CompiledSnapshot, ConfigRevision, ConfigSeq, ConnectAuthority, ConnectListener,
 		Connector, DataSession, Domain, EnrollmentToken, Event, Gateway, GatewayGroup,
 		GatewayPage, HealthCheck, Instance, InstanceSecret, InstanceSetting,
-		Invitation, IssuedCertificate, Lease, Membership, Org, OrgSetting,
+		Invitation, IssuedCertificate, Lease, MailJob, Membership, Org, OrgSetting,
 		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode,
 		Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,
 		RolloutTarget, Route, RouteHTTP, RouteHostname, RouteLimit, RoutePolicy,

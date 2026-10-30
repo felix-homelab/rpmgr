@@ -80,6 +80,8 @@ type Tx struct {
 	IssuedCertificate *IssuedCertificateClient
 	// Lease is the client for interacting with the Lease builders.
 	Lease *LeaseClient
+	// MailJob is the client for interacting with the MailJob builders.
+	MailJob *MailJobClient
 	// Membership is the client for interacting with the Membership builders.
 	Membership *MembershipClient
 	// Org is the client for interacting with the Org builders.
@@ -310,6 +312,7 @@ func (tx *Tx) init() {
 	tx.Invitation = NewInvitationClient(tx.config)
 	tx.IssuedCertificate = NewIssuedCertificateClient(tx.config)
 	tx.Lease = NewLeaseClient(tx.config)
+	tx.MailJob = NewMailJobClient(tx.config)
 	tx.Membership = NewMembershipClient(tx.config)
 	tx.Org = NewOrgClient(tx.config)
 	tx.OrgSetting = NewOrgSettingClient(tx.config)

@@ -405,6 +405,18 @@ func (f LeaseFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.LeaseMutation", m)
 }
 
+// The MailJobFunc type is an adapter to allow the use of ordinary
+// function as MailJob mutator.
+type MailJobFunc func(context.Context, *ent.MailJobMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MailJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.MailJobMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MailJobMutation", m)
+}
+
 // The MembershipFunc type is an adapter to allow the use of ordinary
 // function as Membership mutator.
 type MembershipFunc func(context.Context, *ent.MembershipMutation) (ent.Value, error)

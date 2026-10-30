@@ -980,7 +980,10 @@ alert. A firing or resolved alert is an event (`alert.fire`, `alert.resolve`) fo
 that want it, and an e-mail to the org's Owners and Admins, or the Instance Admins for an instance
 alert, when SMTP is configured; an org chooses the alert types it gets and can turn the e-mails off
 ([D139](14-open-decisions.md#engineering), [07](07-api.md#webhooks-phase-2)). The Overview shows
-the alerts that fire.
+the alerts that fire. Sending is its own job, apart from the evaluation: a mail that fails is
+retried and given up as 03 says, is logged, and holds back neither the alert nor the webhooks;
+a mail needs the relay of the instance settings, and without it none is made
+([04](04-security.md#human-authentication-and-sessions)).
 
 [R] The same job writes the status events `agent.connect`, `agent.disconnect`, `apply.reject` and
 `route.status` ([07](07-api.md#webhooks-phase-2)): once per change of state, remembered in the

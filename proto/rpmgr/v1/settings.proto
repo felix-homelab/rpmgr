@@ -241,6 +241,29 @@ message OrgSettings {
   string default_gateway_group_id = 3 [(buf.validate.field).string = {
     pattern: "^(gwg_[0-7][0-9A-HJKMNP-TV-Z]{25})?$"
   }];
+  // Whether a firing or resolved alert is e-mailed to the org's Owners and Admins, with SMTP
+  // configured; default true (docs/10-operations.md, "Suggested alerts").
+  optional bool alert_email = 4;
+  // The alert kinds the org gets, as events and e-mails; empty means all.
+  repeated string alert_types = 5 [(buf.validate.field).repeated = {
+    max_items: 9
+    unique: true
+    items: {
+      string: {
+        in: [
+          "agent_offline",
+          "config_not_applied",
+          "agent_certificate_expiring",
+          "public_certificate_expiring",
+          "route_no_ready_connector",
+          "clock_skew",
+          "audit_checkpoints_behind",
+          "revocation_log_on_host",
+          "webhook_failing"
+        ]
+      }
+    }
+  }];
 }
 
 // GetInstanceSettingsRequest is empty.

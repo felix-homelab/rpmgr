@@ -105,6 +105,9 @@ type IssuedCertificate func(*sql.Selector)
 // Lease is the predicate function for lease builders.
 type Lease func(*sql.Selector)
 
+// MailJob is the predicate function for mailjob builders.
+type MailJob func(*sql.Selector)
+
 // Membership is the predicate function for membership builders.
 type Membership func(*sql.Selector)
 
