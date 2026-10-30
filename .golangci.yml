@@ -102,6 +102,10 @@ linters:
       - path: internal/webhook/webhook\.go
         text: Reveal
         linters: [forbidigo]
+      # A new webhook secret is shown once, in the answer that makes or rotates it.
+      - path: internal/apisvc/webhook\.go
+        text: Reveal
+        linters: [forbidigo]
       # The command line's API token is written to its credentials file and sent as a Bearer header.
       - path: internal/apicli/apicli\.go
         text: Reveal
