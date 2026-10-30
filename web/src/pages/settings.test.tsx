@@ -97,7 +97,8 @@ describe("Settings", () => {
     fireEvent.click(orgForm().getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.org).toHaveLength(1));
     expect(calls.org[0]).toMatchObject({ orgId: "org_1", etag: "o1", settings: { operatorsMayEnroll: true, defaultGatewayGroupId: "gwg_edge", requireMfa: false } });
-    expect(calls.org[0]!.updateMask?.paths).toEqual(["require_mfa", "operators_may_enroll", "default_gateway_group_id"]);
+    expect(calls.org[0]!.updateMask?.paths).toEqual(["require_mfa", "operators_may_enroll", "default_gateway_group_id", "alert_email", "alert_types"]);
+    expect(calls.org[0]!.settings).toMatchObject({ alertEmail: true, alertTypes: [] }); // untouched: e-mail on, every type
     expect(await screen.findByText("Saved.")).toBeTruthy();
 
     await waitFor(() => expect((orgForm().getByLabelText("Operators may enroll and revoke connectors") as HTMLInputElement).checked).toBe(true));
@@ -110,11 +111,54 @@ describe("Settings", () => {
     expect(calls.org[1]).toMatchObject({ etag: "o2", settings: { requireMfa: true } });
   });
 
+  it("saves the alert e-mails and the alert types the org chose, and all types as none", async () => {
+    const { calls } = page();
+    await screen.findByRole("option", { name: "edge" });
+    const types = orgForm().getByRole("group", { name: "Alert types the organisation is e-mailed about" });
+    expect(within(types).getAllByRole("checkbox").every((c) => (c as HTMLInputElement).checked)).toBe(true); // none chosen: all
+    expect((orgForm().getByLabelText("E-mail the Owners and Admins when an alert fires or resolves") as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(orgForm().getByLabelText("E-mail the Owners and Admins when an alert fires or resolves"));
+    for (const name of ["Agent offline", "Clock skew"]) {
+      fireEvent.click(within(types).getByLabelText(name));
+    }
+    fireEvent.click(orgForm().getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.org).toHaveLength(1));
+    expect(calls.org[0]!.settings?.alertEmail).toBe(false);
+    expect(calls.org[0]!.settings?.alertTypes).toEqual([
+      "config_not_applied", "agent_certificate_expiring", "public_certificate_expiring", "route_no_ready_connector",
+      "audit_checkpoints_behind", "revocation_log_on_host", "webhook_failing",
+    ]);
+    expect(await screen.findByText("Saved.")).toBeTruthy();
+
+    // Reread: the chosen types are checked and the others are not; choosing them all again saves none.
+    const reread = () => within(orgForm().getByRole("group", { name: "Alert types the organisation is e-mailed about" }));
+    await waitFor(() => expect((reread().getByLabelText("Clock skew") as HTMLInputElement).checked).toBe(false));
+    expect((reread().getByLabelText("Webhook endpoint failing") as HTMLInputElement).checked).toBe(true);
+    for (const name of ["Agent offline", "Clock skew"]) {
+      fireEvent.click(reread().getByLabelText(name));
+    }
+    fireEvent.click(orgForm().getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.org).toHaveLength(2));
+    expect(calls.org[1]!.settings?.alertTypes).toEqual([]);
+  });
+
+  it("does not save with no alert type chosen, since none would mean all", async () => {
+    const { calls } = page();
+    await screen.findByRole("option", { name: "edge" });
+    const types = orgForm().getByRole("group", { name: "Alert types the organisation is e-mailed about" });
+    within(types).getAllByRole("checkbox").forEach((c) => fireEvent.click(c));
+    fireEvent.click(orgForm().getByRole("button", { name: "Save" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Choose at least one alert type.");
+    expect(calls.org).toHaveLength(0);
+  });
+
   it("shows the org's settings read-only to members other than the Owner, and no instance settings", async () => {
     page({ role: "admin" });
     expect(await screen.findByText("Only the organisation's Owner changes these.")).toBeTruthy();
     await waitFor(() => expect(orgForm().getByRole("button", { name: "Save" }).matches(":disabled")).toBe(true));
     expect(orgForm().getByLabelText("Every member must sign in with a second factor").matches(":disabled")).toBe(true);
+    expect(orgForm().getByLabelText("E-mail the Owners and Admins when an alert fires or resolves").matches(":disabled")).toBe(true);
+    expect(orgForm().getByLabelText("Clock skew").matches(":disabled")).toBe(true); // an alert type
     expect(screen.queryByRole("form", { name: "Instance settings" })).toBeNull();
   });
 

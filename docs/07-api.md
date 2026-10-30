@@ -90,7 +90,7 @@ names.
 | `DnsNameService` | `CreateDnsName`, `GetDnsName`, `ListDnsNames`, `UpdateDnsName`, `DeleteDnsName` | 2 |
 | `PolicyService` | CRUD on access policies (`CreateAccessPolicy`, `GetAccessPolicy`, `ListAccessPolicies`, `UpdateAccessPolicy`, `DeleteAccessPolicy`) with their rules (`ip_allow`, `ip_deny`, `basic_auth`; their order is stored but a deny wins over every allow, D85; a CIDR with host bits set is accepted and kept in its masked form, so `10.0.0.1/16` is `10.0.0.0/16`); a policy shows the routes that apply it and cannot be deleted while one does. An update replaces the rules as a whole. Basic-auth passwords are write-only: the controller hashes them ([04](04-security.md#secrets-at-rest-and-in-logs)) under the account password rules, and in an update a user without a password keeps the one of its name. A `basic_auth` rule on a policy that a route other than an http route, or a CONNECT route in a basic mode, applies is refused with `BASIC_AUTH_NOT_HTTP`. Phase 2 rule kinds ([03](03-connections.md#access-policies), [04](04-security.md#route-edge-rules)): `rate_limit` (a rate and a burst per client, on every route type, at most one per policy); `require_header` (a header name, once per policy, and 1 to 4 write-only values of 32 to 1024 visible ASCII characters, kept as their SHA-256; a read shows the header only, and in an update a rule without values keeps the values of its header; on a policy a route other than an http route applies, `REQUIRE_HEADER_NOT_HTTP`); `oidc` (a route identity provider, the accepted e-mail addresses, domains and groups, the session length; with basic auth on one route, `OIDC_WITH_BASIC_AUTH`). Route identity providers are managed here too, their client secret write-only | 2 (basic auth, IP rules: 1) |
 | `PrivateServiceService` | private services and visitor grants | 2 |
-| `StatusService` | `GetApplyStatus`, `WatchApplyStatus` (stream), `WatchEvents` (stream) | 1 |
+| `StatusService` | `GetApplyStatus`, `WatchApplyStatus` (stream), `WatchEvents` (stream), `ListAlerts` (the org's alerts, those that fire unless `state` asks for pending or resolved ones; `org.read`, so every role), `ListInstanceAlerts` (the same for the instance alerts; Instance Admin) | 1 (alerts: 2) |
 | `LogService` | `StreamLogs` (a connector's or gateway's live log, server stream from an imperative operation; `agents.logs`) | 2 |
 | `MetricsService` | `GetRouteTraffic` (a route's hourly or daily buckets, at most 31 days of hours or 400 days of days), `GetOverview` (an org's last 24 hours per hour, and its 10 busiest routes); from the rollups, buckets without traffic left out | 1 |
 | `AuditService` | `ListAuditEntries`, `VerifyAuditChain` (an org's chain, `audit.read`), `ListInstanceAuditEntries`, `VerifyInstanceAuditChain` (the instance chain, Instance Admin), `ExportAudit` (an org's chain, `audit.read`) and `ExportInstanceAudit` (the instance chain, Instance Admin), each a server stream of the chain as JSON Lines with its proofs, ending at the newest checkpoint, after a step-up, audited as `audit.export` ([04](04-security.md#audit-log)) | 1 (export: 2) |
@@ -308,6 +308,13 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
 - `StatusService.WatchEvents` is a server stream of resource changes and status changes for the
   caller's org. It needs `org.read`, which lets every role read every resource of the org, so P1
   filters it no further. The UI uses it instead of polling.
+- `StatusService.ListAlerts` and `ListInstanceAlerts` read the alerts the controller keeps
+  ([06](06-data-model.md#observability-phase-2)) as a list by ID, a page at a time as the other
+  lists are: each alert has its kind, subject (type, ID and the name it had when first seen), state
+  and `since`, and `fired_at` or `resolved_at` once they apply. They list the alerts that fire
+  unless `state` names another. The alert events above are the changes; the list is what fires
+  now, which a client reads on loading and again at each `alert.fire` or `alert.resolve`
+  ([10](10-operations.md#suggested-alerts)).
   - **Resource changes:** one event per configuration revision of the org, in revision order, with
     the IDs of the resources it changed, the actor and the time. The client reads those resources
     again. A revision that a controller job makes for an org, such as an ACME renewal or the purge

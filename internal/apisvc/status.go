@@ -13,6 +13,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
+	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -35,6 +36,8 @@ type Status struct {
 	DB *store.DB
 	// Sys is the controller's system scope: the revisions WatchEvents reads are instance rows.
 	Sys context.Context
+	// API signs the page tokens of the alert lists.
+	API *api.Server
 	Now func() time.Time
 	// Every is how often the streams look again; 0 is 500 ms for WatchApplyStatus and 1 s for
 	// WatchEvents.
