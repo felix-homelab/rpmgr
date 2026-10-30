@@ -38,7 +38,7 @@ Each entry holds:
 | `authMethod` | **Authentication** | How it signed in: `session`, `token`, `pwd+otp` … |
 | `ip`, `userAgent` | **Address**, **User agent** | The client |
 | `requestId` | **Request ID** | The request's ID, as the API's `Rpmgr-Request-Id` header returns it |
-| `action` | | What was done: the API method, such as `rpmgr.v1.RouteService.UpdateRoute` or `rpmgr.v1.AuthService.Login`, or a named event, such as `token.create`, `token.use`, `identity.revoke`, `route.delete`, `connector.enroll`, `connector.reenroll`, `agent.enroll` (a failed enrollment), `ca.rotate_intermediate` or `audit.prune` |
+| `action` | | What was done: the API method, such as `rpmgr.v1.RouteService.UpdateRoute` or `rpmgr.v1.AuthService.Login`, or a named event, such as `token.create`, `token.use`, `identity.revoke`, `route.delete`, `connector.enroll`, `connector.reenroll`, `agent.enroll` (a failed enrollment), `ca.rotate_intermediate`, `audit.export` or `audit.prune` |
 | `targetType`, `targetId` | | The kind and ID of what it was done to |
 | `result` | | `success`, `failure` or `denied` |
 | `diff` | | The request, with its secrets replaced |
@@ -71,8 +71,8 @@ changed, removed or put in another place breaks the chain from there on.
 
 ### With the API
 
-The command line has no audit command; use the API with a token that has the scope `audit.read`
-([API](../reference/api.md)):
+The command line exports a chain ([Export a chain](#export-a-chain-with-its-proofs)) but does not
+list entries; use the API with a token that has the scope `audit.read` ([API](../reference/api.md)):
 
 ```sh
 curl -sS https://panel.example.com/rpmgr.v1.AuditService/ListAuditEntries \
@@ -105,6 +105,50 @@ checkpoint of the chain: its signature, and that it matches the entry it covers.
 A broken chain means someone with access to the database changed it, or the database was damaged.
 Keep the database as it is, compare it with a backup and the checkpoints, and treat the instance as
 compromised until you know which.
+
+## Export a chain with its proofs
+
+An export is a file that proves itself: it holds a chain's entries, the hashes that link them and
+the signed checkpoints, so that it can be verified away from the controller. Exporting takes the
+permission `audit.read` for an org's chain, or the Instance Admin for the instance chain, and a
+step-up ([Step-up](../../04-security.md#human-authentication-and-sessions)).
+
+`AuditService.ExportAudit` (an org's chain) and `ExportInstanceAudit` (the instance chain) stream
+the chain as JSON Lines, in parts of lines:
+
+1. The first line is the header: the format (`rpmgr-audit-export/1`), the chain, the seq of its
+   first and last entry, the seq of its newest checkpoint (`anchored_seq`) and the certificates the
+   checkpoints verify with.
+2. Then each entry with every field the hash covers, `prev_hash` and `hash`, and each checkpoint
+   after the entry it covers. After retention removed the first entries, the export starts with the
+   checkpoint that anchors the first entry left.
+3. Entries after the newest checkpoint are flagged `unanchored`. No signature covers them yet; a
+   later export, made after the next checkpoint, anchors them.
+
+### With the command line
+
+```sh
+rpmgr audit export --out audit-org.jsonl
+```
+
+writes your org's chain to a new file (mode 0600; an existing file is never replaced), asking for
+a step-up on the terminal. `--instance` exports the instance chain, `--out -` writes standard
+output. Verify the file on any machine, with no access to the controller, using the pin of your
+CA's root, which the join command and **Settings → PKI** show:
+
+```sh
+rpmgr audit verify-export --ca-pin sha256:<base64> audit-org.jsonl
+```
+
+It checks that the entries link and hash as the chain does, that every checkpoint carries a
+signature of a key your CA certified for audit checkpoints, and that nothing was removed,
+reordered or edited. A failure says at which entry and exits 1. Entries after the newest
+checkpoint are reported as not yet anchored. An export proves the chain as of its newest
+checkpoint: a cut-off file is found only if its end no longer matches its header, so compare the
+newest checkpoint with a copy you keep elsewhere, such as `audit-checkpoints.log` in a backup.
+
+Every export is an entry in the chain, `audit.export`, written before the chain is read. An export
+that breaks off is recorded a second time with the result `failure`.
 
 ## Signed checkpoints
 

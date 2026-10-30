@@ -43,6 +43,7 @@ const pw = "correct horse battery staple"
 
 // env serves AuthService behind the API interceptor, as the controller does.
 type env struct {
+	audit    *apisvc.Audit
 	db       *store.DB
 	sys      context.Context
 	clock    time.Time
@@ -65,6 +66,7 @@ type env struct {
 	sinks    *apisvc.AuditSinks // AuditSinkService; a test sets its Sender
 	pki      *apisvc.Pki
 	rel      *apisvc.Releases
+	webhooks *apisvc.Webhooks
 	previews *apisvc.PagePreviews // the previews of gateway pages
 	logs     *telemetrytest.Sink  // where every service logs; a secret in a line fails the test
 	// revlogStatus, if set, is where SettingsService finds the revocation log's status.
@@ -171,6 +173,13 @@ func newEnv(t *testing.T) *env {
 		}); err != nil {
 		t.Fatal(err)
 	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_webhook_proto.Services().ByName("WebhookService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			e.webhooks = &apisvc.Webhooks{DB: db, API: srv, Sealer: sealer, Logger: log, Now: now}
+			return rpmgrv1connect.NewWebhookServiceHandler(e.webhooks, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_route_proto.Services().ByName("RouteService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewRouteServiceHandler(&apisvc.Routes{DB: db, API: srv, Sys: sys, Prober: &e.probe, Now: now}, o...)
@@ -211,7 +220,8 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_audit_proto.Services().ByName("AuditService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewAuditServiceHandler(&apisvc.Audit{DB: db, Sys: sys, API: srv}, o...)
+			e.audit = &apisvc.Audit{DB: db, Sys: sys, API: srv}
+			return rpmgrv1connect.NewAuditServiceHandler(e.audit, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -298,6 +308,7 @@ type browser struct {
 	man    rpmgrv1connect.ManifestServiceClient
 	rel    rpmgrv1connect.ReleaseServiceClient
 	logs   rpmgrv1connect.LogServiceClient
+	wh     rpmgrv1connect.WebhookServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -312,6 +323,7 @@ func (e *env) browser() *browser {
 	b.dom = rpmgrv1connect.NewDomainServiceClient(&http.Client{Transport: b}, e.url)
 	b.rt = rpmgrv1connect.NewRouteServiceClient(&http.Client{Transport: b}, e.url)
 	b.logs = rpmgrv1connect.NewLogServiceClient(&http.Client{Transport: b}, e.url)
+	b.wh = rpmgrv1connect.NewWebhookServiceClient(&http.Client{Transport: b}, e.url)
 	b.st = rpmgrv1connect.NewStatusServiceClient(&http.Client{Transport: b}, e.url)
 	b.pol = rpmgrv1connect.NewPolicyServiceClient(&http.Client{Transport: b}, e.url)
 	b.crt = rpmgrv1connect.NewCertificateServiceClient(&http.Client{Transport: b}, e.url)

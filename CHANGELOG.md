@@ -12,6 +12,28 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- Webhook endpoints can be managed through the API: `WebhookService` creates, lists, changes and
+  deletes an organisation's endpoints, rotates an endpoint's secret, lists its deliveries and sends
+  a test event. The secret, `rpmgr_whs_…`, is shown once when it is made or rotated; after a
+  rotation both secrets sign for 24 hours. Enabling an endpoint again clears a disable. Owners and
+  Admins hold the new permission `webhooks.write`, which an API token can carry. The web UI and the
+  CLI follow. (#650)
+
+- Audit export with proofs. After a step-up, `rpmgr audit export --out <file>` (an Owner or Admin
+  for the org's chain, `--instance` for the instance chain as Instance Admin), or the API calls
+  `ExportAudit` and `ExportInstanceAudit`, write a chain as JSON Lines: its entries with their
+  hashes and its signed checkpoints, the entries after the newest checkpoint flagged. `rpmgr audit
+  verify-export --ca-pin sha256:<base64> <file>` verifies the file on any machine against the CA's
+  pin alone and finds an edited, removed or reordered entry or a forged checkpoint. An export is an
+  `audit.export` entry in the chain, recorded again as a failure when it breaks off. The audit
+  page has an Export button that does the same after a step-up. (#652, #653)
+
+  Admins hold the new permission `webhooks.write`, which an API token can carry. The CLI
+  follows. (#650)
+- A Webhooks page under Administration manages an organisation's webhook endpoints: it lists them
+  with their state, creates, edits, enables again, rotates and deletes them, shows the signing
+  secret once with a copy button, sends a test event and lists each endpoint's deliveries with
+  their status, error and next retry. (#651)
 - Audit sinks: an Instance Admin sends the audit log's signed checkpoints, and optionally every
   entry, to a webhook receiver with `rpmgr create audit-sink` (also `get`, `list`, `update`,
   `delete` and `test audit-sink`, and `AuditSinkService` in the API), after a step-up. The signing
