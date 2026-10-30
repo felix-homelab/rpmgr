@@ -14,6 +14,8 @@ const (
 	PreviousSigns = 24 * time.Hour      // after a secret rotation
 	KeepFor       = 30 * 24 * time.Hour // deliveries
 	KeepAtMost    = 1000                // deliveries per endpoint
+	TestBurst     = 5                   // test sends a caller makes at once
+	TestEvery     = 12 * time.Second    // between further test sends of a caller
 )
 
 // Next is when the attempt after a failed attempt n at sent, of an event of at, is due: 10 s after

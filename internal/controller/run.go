@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -328,10 +329,17 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	webhookSender := &webhook.Sender{Proxy: proxy, Now: o.Now}
+	hooks := &apisvc.Webhooks{DB: db, API: apiServer, Sealer: sealer, Sender: webhookSender, Sys: sys,
+		Own: ownAddresses, Private: privateRanges(db, sys), Logger: o.Logger, Now: o.Now}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_webhook_proto.Services().ByName("WebhookService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewWebhookServiceHandler(&apisvc.Webhooks{DB: db, API: apiServer, Sealer: sealer, Sender: webhookSender,
-				Own: ownAddresses(), Logger: o.Logger, Now: o.Now}, opts...)
+			return rpmgrv1connect.NewWebhookServiceHandler(hooks, opts...)
+		}); err != nil {
+		return err
+	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_webhook_proto.Services().ByName("InstanceWebhookService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewInstanceWebhookServiceHandler(&apisvc.InstanceWebhooks{W: hooks}, opts...)
 		}); err != nil {
 		return err
 	}
@@ -493,7 +501,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	job(EventsJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}), "events job")
 	job(AlertJob(AlertOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger, RevocationLog: shipper.Status}), "alert job")
 	job(WebhookJob(WebhookOptions{DB: db, Leases: leases, Sealer: sealer, Sender: webhookSender, Now: o.Now,
-		Logger: o.Logger, Own: ownAddresses()}), "webhook job")
+		Logger: o.Logger, Own: ownAddresses, Private: privateRanges(db, sys)}), "webhook job")
 	job(AuditSinkJob(AuditSinkOptions{DB: db, Leases: leases, Sealer: sealer, Sender: &webhook.Sender{Proxy: proxy, Now: o.Now}, Now: o.Now,
 		Logger: o.Logger}), "audit sink job")
 	job(RolloutJob(RolloutOptions{DB: db, Now: o.Now, Logger: o.Logger}), "rollout job")
@@ -595,6 +603,18 @@ func AgentEndpoints(publicURL string) func(ctx context.Context, tx *ent.Tx) ([]s
 			return nil, err
 		}
 		return settings.ControllerEndpoints(inst, publicURL), nil
+	}
+}
+
+// privateRanges returns the ranges webhook receivers of orgs may reach, as the instance settings
+// list them now.
+func privateRanges(db *store.DB, sys context.Context) func(context.Context) ([]netip.Prefix, error) {
+	return func(context.Context) ([]netip.Prefix, error) {
+		inst, _, err := settings.Instance(sys, db.ReadClient())
+		if err != nil {
+			return nil, err
+		}
+		return settings.PrivateRanges(inst), nil
 	}
 }
 

@@ -1526,13 +1526,19 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
   name that changes its answer (DNS rebinding) gains nothing:
   - **Always denied:** loopback, unspecified, link-local (`169.254.0.0/16`, `fe80::/10`), the cloud
     metadata addresses (`169.254.169.254`, `fd00:ec2::254`, `100.100.100.200`), multicast and
-    broadcast, the controller's own addresses (every address of its host's interfaces), and the
-    IPv4-mapped, IPv4-compatible, NAT64 and 6to4 forms of each.
+    broadcast, the controller's own addresses (every address of its host's interfaces, read again
+    at every delivery pass and every test, so an interface that appears later is excluded too), and
+    the IPv4-mapped, IPv4-compatible, NAT64 and 6to4 forms of each.
   - **Private ranges** (RFC 1918, `fc00::/7`, `100.64.0.0/10` and every other non-global unicast
     range) are denied unless the Instance Admin lists the range in the instance setting
     `webhook_private_ranges`. A refused delivery names the range, which the UI offers to list, but
     never the address the name resolved to, so a webhook does not map the controller's network. A
-    listed range never admits an always-denied address.
+    listed range never admits an always-denied address, however wide it is: `0.0.0.0/0` admits
+    every private range and none of the always-denied addresses.
+  - **At save**, an org's endpoint is refused if its URL names `localhost` or a loopback,
+    link-local or unspecified address as a literal ([07](07-api.md#webhooks-phase-2)). This only
+    informs the person; the checks above, at dial time, are the defence. Each address of a
+    receiver is dialled with its own deadline ([03](03-connections.md#timeouts-keepalive-and-backoff)).
   - **Instance endpoints and audit sinks**, which only the Instance Admin sets, may reach private
     ranges and loopback; link-local, metadata, multicast and broadcast addresses stay denied
     ([D145](14-open-decisions.md#engineering), E5).
