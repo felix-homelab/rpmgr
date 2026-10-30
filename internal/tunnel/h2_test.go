@@ -21,6 +21,12 @@ import (
 // whether TLS is below it.
 func h2Pair(t *testing.T, w tunnel.H2Windows) (*tunnel.H2Gateway, *tunnel.H2Connector) {
 	t.Helper()
+	return h2PairWindows(t, w, w)
+}
+
+// h2PairWindows is h2Pair with the windows of each side.
+func h2PairWindows(t *testing.T, wg, wc tunnel.H2Windows) (*tunnel.H2Gateway, *tunnel.H2Connector) {
+	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -37,8 +43,8 @@ func h2Pair(t *testing.T, w tunnel.H2Windows) (*tunnel.H2Gateway, *tunnel.H2Conn
 	if err != nil {
 		t.Fatal(err)
 	}
-	con := tunnel.ServeH2Connector(dialled, w)
-	gw, err := tunnel.NewH2Gateway(<-accepted, w)
+	con := tunnel.ServeH2Connector(dialled, wc)
+	gw, err := tunnel.NewH2Gateway(<-accepted, wg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +55,13 @@ func h2Pair(t *testing.T, w tunnel.H2Windows) (*tunnel.H2Gateway, *tunnel.H2Conn
 // h2Session opens the control stream on both sides and returns them.
 func h2Session(t *testing.T, w tunnel.H2Windows) (gw *tunnel.H2Gateway, con *tunnel.H2Connector, gc, cc tunnel.Stream) {
 	t.Helper()
-	gw, con = h2Pair(t, w)
+	return h2SessionWindows(t, w, w)
+}
+
+// h2SessionWindows is h2Session with the windows of each side.
+func h2SessionWindows(t *testing.T, wg, wc tunnel.H2Windows) (gw *tunnel.H2Gateway, con *tunnel.H2Connector, gc, cc tunnel.Stream) {
+	t.Helper()
+	gw, con = h2PairWindows(t, wg, wc)
 	gc, err := gw.Control(context.Background())
 	if err != nil {
 		t.Fatal(err)

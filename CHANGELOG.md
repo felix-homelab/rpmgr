@@ -239,6 +239,11 @@ Changes to the design documents are not recorded here: see the git history and t
   another target of its priority is healthy, and the route's status and the web UI show it as
   unknown. The first result decides either way, so a new target that fails shows its failure at
   once. (#996)
+- Data sessions: a session no longer stays frozen when a peer stops reading several streams. The
+  rule that resets streams without read progress for 30 s, once they hold more than half of the
+  session's connection window, was written but never ran; it now runs on every QUIC and HTTP/2
+  data session, so the other routes on the session flow again. A reader that merely pauses is left
+  alone. (#1044)
 
 ## [0.2.0] - 2026-10-24
 

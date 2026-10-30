@@ -48,7 +48,8 @@ var (
 // H2Windows are a session's receive windows; 4.5 lowers them when the window budget is tight.
 type H2Windows struct {
 	Stream, Conn int
-	maxStreams   int // tests only; 0 is 10 000
+	maxStreams   int           // tests only; 0 is 10 000
+	stallAge     time.Duration // tests only; 0 is StallAge
 }
 
 // DefaultH2Windows are the windows of 03: 16 MiB per stream and 256 MiB per connection.
@@ -90,6 +91,7 @@ type H2Gateway struct {
 	done      chan struct{}
 	doneOnce  sync.Once
 	control   atomic.Bool
+	stalls    *Stalls
 }
 
 // NewH2Gateway starts the HTTP/2 client on conn, which the connector dialled and the gateway
@@ -112,13 +114,16 @@ func NewH2Gateway(conn net.Conn, w H2Windows) (*H2Gateway, error) {
 		cancel()
 		return nil, err
 	}
-	g := &H2Gateway{cc: cc, transport: "h2", ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	g := &H2Gateway{cc: cc, transport: "h2", ctx: ctx, cancel: cancel, done: make(chan struct{}),
+		stalls: NewStalls(w.Stream, w.Conn, w.stallAge)}
+	go g.stalls.Run(ctx) // ends with the session: Close and a dead connection both cancel ctx
 	if conn.RemoteAddr().Network() == "wss" {
 		g.transport = "wss" // inside a WebSocket (gateway.ServeWSS)
 	}
 	cc.SetStateHook(func(cc *http.ClientConn) {
 		if cc.Err() != nil {
 			g.doneOnce.Do(func() { close(g.done) })
+			cancel()
 		}
 	})
 	return g, nil
@@ -129,7 +134,15 @@ func (g *H2Gateway) Control(context.Context) (Stream, error) {
 	if g.control.Swap(true) {
 		return nil, errors.New("tunnel: the session control stream is already open")
 	}
-	return g.open(pathControl)
+	// The control stream is not watched: the stalled-stream rule resets a stream, and a reset
+	// control stream ends the session, which would turn a rule that frees the session into one that
+	// kills it. It carries little, so what it holds unread is no pressure on the window, and its
+	// reader waits in Read for the session's life.
+	st, err := g.open(pathControl)
+	if err != nil {
+		return nil, err
+	}
+	return st, nil
 }
 
 // OpenStream opens a stream without waiting for the connector. It reserves a slot first and never
@@ -138,10 +151,16 @@ func (g *H2Gateway) OpenStream(context.Context) (Stream, error) {
 	if !g.control.Load() {
 		return nil, ErrControlFirst
 	}
-	return g.open(pathStream)
+	st, err := g.open(pathStream)
+	if err != nil {
+		return nil, err
+	}
+	// The gateway receives the connector's bytes as the response body, which holds the stream's
+	// window until the relay reads it.
+	return g.stalls.Watch(st), nil
 }
 
-func (g *H2Gateway) open(path string) (Stream, error) {
+func (g *H2Gateway) open(path string) (*h2ClientStream, error) {
 	if err := g.cc.Reserve(); err != nil {
 		if g.cc.Err() != nil {
 			return nil, g.cc.Err()
@@ -248,8 +267,9 @@ type H2Connector struct {
 	srv     *http.Server
 	l       *oneConnListener
 	control chan Stream
-	accept  chan *h2ServerStream
+	accept  chan Stream
 	done    chan struct{}
+	stalls  *Stalls
 
 	mu   sync.Mutex
 	seen bool // a request arrived
@@ -260,7 +280,8 @@ type H2Connector struct {
 // rpmgr-tunnel-h2/1, until the session ends.
 func ServeH2Connector(conn net.Conn, w H2Windows) *H2Connector {
 	c := &H2Connector{l: &oneConnListener{conn: plainConn{conn}, done: make(chan struct{})},
-		control: make(chan Stream, 1), accept: make(chan *h2ServerStream), done: make(chan struct{})}
+		control: make(chan Stream, 1), accept: make(chan Stream), done: make(chan struct{}),
+		stalls: NewStalls(w.Stream, w.Conn, w.stallAge)}
 	c.srv = &http.Server{
 		Handler:   c,
 		Protocols: h2cOnly(),
@@ -273,8 +294,11 @@ func ServeH2Connector(conn net.Conn, w H2Windows) *H2Connector {
 		ErrorLog:          log.New(io.Discard, "", 0),
 		ReadHeaderTimeout: h2PingTimeout, // the gateway is authenticated; this only bounds a stuck peer
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go c.stalls.Run(ctx)
 	go func() {
 		_ = c.srv.Serve(c.l)
+		cancel() // the session ended: stop the stalled-stream rule
 		close(c.done)
 	}()
 	return c
@@ -340,11 +364,17 @@ func (c *H2Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the session control stream must be the first stream", http.StatusMisdirectedRequest)
 	case r.URL.Path == pathStream:
 		st := newServerStream(w, r)
+		// The connector receives the gateway's bytes as the request body, which holds the stream's
+		// window until the relay reads it. The control stream above is not watched, see Control on
+		// H2Gateway.
+		ws := c.stalls.Watch(st)
 		select {
-		case c.accept <- st:
+		case c.accept <- ws:
 			st.serve()
 		case <-r.Context().Done():
+			ws.(*stalling).forget() // never accepted
 		case <-c.done:
+			ws.(*stalling).forget()
 		}
 	default:
 		http.NotFound(w, r)
