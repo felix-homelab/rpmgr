@@ -240,6 +240,37 @@ func TestFirewallTooManyRangesIsReportedNotWritten(t *testing.T) {
 	}
 }
 
+// A failed write is forgotten once the wanted ranges are the ones already written again.
+func TestFirewallRevertToTheWrittenRangesClearsAFailedWrite(t *testing.T) {
+	e := newFwEnv(t)
+	a := []*agentv1.GatewayPortPool{pool("tcp", 2000, 2010)}
+	e.fw.Set(a)
+	e.fw.Step()
+	e.helper(t, firewall.Status{State: firewall.Applied, Rules: []string{"2000:2010/tcp"}})
+	e.now = e.now.Add(gateway.FirewallEvery)
+	e.fw.Step()
+	if s := e.last(t); s.GetPhase() != agentv1.FirewallPhase_FIREWALL_PHASE_APPLIED {
+		t.Fatalf("before the failure: %v", s)
+	}
+	var tooMany []*agentv1.GatewayPortPool
+	for i := range uint32(firewall.MaxRanges + 1) {
+		tooMany = append(tooMany, pool("tcp", 3000+2*i, 3000+2*i))
+	}
+	e.fw.Set(tooMany)
+	e.now = e.now.Add(gateway.FirewallEvery)
+	e.fw.Step()
+	if s := e.last(t); s.GetPhase() != agentv1.FirewallPhase_FIREWALL_PHASE_FAILED {
+		t.Fatalf("too many ranges: %v", s)
+	}
+	e.fw.Set(a)
+	e.now = e.now.Add(gateway.FirewallEvery)
+	e.helper(t, firewall.Status{State: firewall.Applied, Rules: []string{"2000:2010/tcp"}})
+	e.fw.Step()
+	if s := e.last(t); s.GetPhase() != agentv1.FirewallPhase_FIREWALL_PHASE_APPLIED {
+		t.Errorf("after the revert to the written ranges the state stays %v", s)
+	}
+}
+
 func TestFirewallReportsTheHelpersStates(t *testing.T) {
 	e := newFwEnv(t)
 	e.fw.Set([]*agentv1.GatewayPortPool{pool("tcp", 20000, 20099)})
