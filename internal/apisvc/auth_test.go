@@ -43,32 +43,33 @@ const pw = "correct horse battery staple"
 
 // env serves AuthService behind the API interceptor, as the controller does.
 type env struct {
-	audit    *apisvc.Audit
-	db       *store.DB
-	sys      context.Context
-	clock    time.Time
-	acc      *accounts.Accounts
-	mfa      *accounts.MFA
-	sessions *websession.Sessions
-	auth     *apisvc.Auth
-	orgs     *apisvc.Org
-	tokens   *accounts.Tokens
-	log      string // the revocation log
-	url      string
-	ada      string       // the first user's ID
-	denied   atomic.Int32 // how often a service applied a changed deny-list
-	txt      fakeVerifier // the TXT proofs DomainService finds
-	renew    renewals     // the renewals CertificateService starts
-	probe    fakeProber   // what RouteService's probes find
-	drains   fakeDrains   // the old processes of hand-offs the gateways and connectors report
-	agents   fakeLogs     // the live logs LogService opens
-	sealer   *secret.Sealer
-	sinks    *apisvc.AuditSinks // AuditSinkService; a test sets its Sender
-	pki      *apisvc.Pki
-	rel      *apisvc.Releases
-	webhooks *apisvc.Webhooks
-	previews *apisvc.PagePreviews // the previews of gateway pages
-	logs     *telemetrytest.Sink  // where every service logs; a secret in a line fails the test
+	audit     *apisvc.Audit
+	db        *store.DB
+	sys       context.Context
+	clock     time.Time
+	acc       *accounts.Accounts
+	mfa       *accounts.MFA
+	sessions  *websession.Sessions
+	auth      *apisvc.Auth
+	orgs      *apisvc.Org
+	tokens    *accounts.Tokens
+	log       string // the revocation log
+	url       string
+	ada       string        // the first user's ID
+	denied    atomic.Int32  // how often a service applied a changed deny-list
+	txt       fakeVerifier  // the TXT proofs DomainService finds
+	renew     renewals      // the renewals CertificateService starts
+	probe     fakeProber    // what RouteService's probes find
+	drains    fakeDrains    // the old processes of hand-offs the gateways and connectors report
+	firewalls fakeFirewalls // the firewall states the gateways report
+	agents    fakeLogs      // the live logs LogService opens
+	sealer    *secret.Sealer
+	sinks     *apisvc.AuditSinks // AuditSinkService; a test sets its Sender
+	pki       *apisvc.Pki
+	rel       *apisvc.Releases
+	webhooks  *apisvc.Webhooks
+	previews  *apisvc.PagePreviews // the previews of gateway pages
+	logs      *telemetrytest.Sink  // where every service logs; a secret in a line fails the test
 	// revlogStatus, if set, is where SettingsService finds the revocation log's status.
 	revlogStatus func() revlog.Status
 }
@@ -145,7 +146,7 @@ func newEnv(t *testing.T) *env {
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			e.previews = &apisvc.PagePreviews{DB: db, Sys: sys, Key: []byte("a preview key of the tests, 32 b"), Now: now}
 			return rpmgrv1connect.NewGatewayServiceHandler(&apisvc.Gateways{DB: db, API: srv, Revocations: revocations, Previews: e.previews,
-				Drains: &e.drains, Now: now}, o...)
+				Drains: &e.drains, Firewalls: &e.firewalls, Now: now}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}

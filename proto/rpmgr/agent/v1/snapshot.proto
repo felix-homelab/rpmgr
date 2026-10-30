@@ -115,6 +115,9 @@ message Resource {
     GatewayPage gateway_page = 16;
     // The gateway's WSS hostname, to gateways with the capability tunnel.wss.
     GatewayWSS gateway_wss = 17;
+    // Gateways with the capability firewall.ranges: a port pool of the gateway's group, whose
+    // range the gateway asks the host's root helper to open (D152).
+    GatewayPortPool gateway_port_pool = 18;
   }
 }
 
@@ -134,6 +137,19 @@ message GatewayDomainChallenge {
 message GatewayWSS {
   // The hostname, normalised.
   string hostname = 1;
+}
+
+// GatewayPortPool is a port pool of a gateway's group, in the snapshot of a gateway that manages its
+// host's firewall (docs/04-security.md, "Host firewall for port pools"). The gateway writes the
+// ranges of its pools to the desired file of the root helper; nothing else reaches the firewall.
+// The resource ID is the pool's ID.
+message GatewayPortPool {
+  // The protocol: "tcp" or "udp".
+  string protocol = 1;
+  // The first port of the range, 1 to 65535.
+  uint32 port_from = 2;
+  // The last port of the range, from port_from to 65535.
+  uint32 port_to = 3;
 }
 
 // GatewayDrain is in the snapshot of a disabled gateway, which has no routes (R22). The gateway
