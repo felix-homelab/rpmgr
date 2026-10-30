@@ -38,8 +38,9 @@ type WebhookOptions struct {
 	Sender *webhook.Sender
 	Now    func() time.Time
 	Logger *slog.Logger
-	// Own are the controller's own addresses, which org endpoints never reach.
-	Own []netip.Addr
+	// Own returns the controller's own addresses, which org endpoints never reach; it is called
+	// once per pass, so an interface that appears later (a VPN, a Docker bridge) is excluded too.
+	Own func() []netip.Addr
 	// Private returns the ranges org endpoints may reach (webhook_private_ranges); nil is none.
 	Private func(ctx context.Context) ([]netip.Prefix, error)
 	// policy replaces the endpoints' egress policies; only tests set it.
@@ -79,6 +80,10 @@ func deliverWebhooks(ctx context.Context, o WebhookOptions, l lease.Lease) error
 			return err
 		}
 	}
+	var own []netip.Addr
+	if o.Own != nil {
+		own = o.Own()
+	}
 	var work []*attempt
 	for _, h := range hooks {
 		due, err := dueFor(ctx, c, h, now)
@@ -92,9 +97,13 @@ func deliverWebhooks(ctx context.Context, o WebhookOptions, l lease.Lease) error
 	}
 	var wg sync.WaitGroup
 	for _, a := range work {
-		d, err := delivery(o, a, now, private)
+		d, err := delivery(o, a, now, private, own)
 		if err != nil {
 			a.err, a.sent = err, now
+			if o.Logger != nil && !errors.Is(err, errDropped) {
+				// The error names no secret: it comes from the KEK's unsealing or the envelope.
+				o.Logger.ErrorContext(ctx, "a webhook delivery cannot be prepared", "webhook", a.hook.ID, "event", a.event.ID, "err", err)
+			}
 			continue
 		}
 		wg.Go(func() {
@@ -179,7 +188,7 @@ func notDelivered(id string) predicate.Event {
 
 // delivery is the request of a: the envelope, signed with the endpoint's secret and, during a
 // rotation, its previous one, under the endpoint's egress policy.
-func delivery(o WebhookOptions, a *attempt, now time.Time, private []netip.Prefix) (webhook.Delivery, error) {
+func delivery(o WebhookOptions, a *attempt, now time.Time, private []netip.Prefix, own []netip.Addr) (webhook.Delivery, error) {
 	h := a.hook
 	if a.event == nil || a.event.Ts.Before(h.EnabledAt) {
 		return webhook.Delivery{}, errDropped
@@ -204,7 +213,7 @@ func delivery(o WebhookOptions, a *attempt, now time.Time, private []netip.Prefi
 	}
 	p := egress.Policy{Internal: h.OrgID == nil}
 	if h.OrgID != nil {
-		p.Private, p.Own = private, o.Own
+		p.Private, p.Own = private, own
 	}
 	if o.policy != nil {
 		p = o.policy(h)

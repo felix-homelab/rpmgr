@@ -186,7 +186,8 @@ Some lists differ:
   `ListSuspendedAPITokens`, and `TokenService.ListAPITokens` take no `pageSize` and no
   `pageToken`: they return everything in one answer. Sessions and tokens come newest first,
   members with the Owners first.
-- **Webhook deliveries.** `WebhookService.ListWebhookDeliveries` returns the newest first.
+- **Webhook deliveries.** `WebhookService.ListWebhookDeliveries` and
+  `InstanceWebhookService.ListInstanceWebhookDeliveries` return the newest first.
 
 ### Create a route and a target
 
@@ -521,6 +522,7 @@ once, in the answer that makes it.
 | `SettingsService` | [settings.proto](../../../proto/rpmgr/v1/settings.proto) | Instance and organisation settings, the mail relay's password |
 | `PkiService` | [pki.proto](../../../proto/rpmgr/v1/pki.proto) | The internal CA's keys and the intermediate's rotation |
 | `WebhookService` | [webhook.proto](../../../proto/rpmgr/v1/webhook.proto) | An organisation's webhook endpoints, their secrets and deliveries |
+| `InstanceWebhookService` | [webhook.proto](../../../proto/rpmgr/v1/webhook.proto) | The instance's webhook endpoints, for the Instance Admin |
 | `ManifestService` | [manifest.proto](../../../proto/rpmgr/v1/manifest.proto) | YAML manifests of the org's resources |
 
 The shared messages are in [common.proto](../../../proto/rpmgr/v1/common.proto). The design of the

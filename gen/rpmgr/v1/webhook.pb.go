@@ -84,7 +84,7 @@ type Webhook struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The endpoint's ID, whk_…; output only.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// The org; output only. Empty for an instance endpoint (not served yet).
+	// The org; output only. Empty for an instance endpoint.
 	OrgId string `protobuf:"bytes,2,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
 	// Where events are posted: an https:// URL without credentials.
 	Url string `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
@@ -1213,6 +1213,850 @@ func (x *TestWebhookResponse) GetError() string {
 	return ""
 }
 
+// CreateInstanceWebhookRequest is a new instance endpoint.
+type CreateInstanceWebhookRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoint: its url and event_types; enabled is ignored, a new endpoint is enabled.
+	Webhook *Webhook `protobuf:"bytes,1,opt,name=webhook,proto3" json:"webhook,omitempty"`
+	// Makes a retry of the same request return the first answer, secret included.
+	RequestId     string `protobuf:"bytes,2,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateInstanceWebhookRequest) Reset() {
+	*x = CreateInstanceWebhookRequest{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateInstanceWebhookRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateInstanceWebhookRequest) ProtoMessage() {}
+
+func (x *CreateInstanceWebhookRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateInstanceWebhookRequest.ProtoReflect.Descriptor instead.
+func (*CreateInstanceWebhookRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *CreateInstanceWebhookRequest) GetWebhook() *Webhook {
+	if x != nil {
+		return x.Webhook
+	}
+	return nil
+}
+
+func (x *CreateInstanceWebhookRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+// CreateInstanceWebhookResponse is the endpoint and its secret.
+type CreateInstanceWebhookResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoint.
+	Webhook *Webhook `protobuf:"bytes,1,opt,name=webhook,proto3" json:"webhook,omitempty"`
+	// The secret, rpmgr_whs_…; it cannot be shown again.
+	Secret        string `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateInstanceWebhookResponse) Reset() {
+	*x = CreateInstanceWebhookResponse{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateInstanceWebhookResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateInstanceWebhookResponse) ProtoMessage() {}
+
+func (x *CreateInstanceWebhookResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateInstanceWebhookResponse.ProtoReflect.Descriptor instead.
+func (*CreateInstanceWebhookResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *CreateInstanceWebhookResponse) GetWebhook() *Webhook {
+	if x != nil {
+		return x.Webhook
+	}
+	return nil
+}
+
+func (x *CreateInstanceWebhookResponse) GetSecret() string {
+	if x != nil {
+		return x.Secret
+	}
+	return ""
+}
+
+// GetInstanceWebhookRequest names an endpoint.
+type GetInstanceWebhookRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoint's ID.
+	WebhookId     string `protobuf:"bytes,1,opt,name=webhook_id,json=webhookId,proto3" json:"webhook_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInstanceWebhookRequest) Reset() {
+	*x = GetInstanceWebhookRequest{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInstanceWebhookRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInstanceWebhookRequest) ProtoMessage() {}
+
+func (x *GetInstanceWebhookRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInstanceWebhookRequest.ProtoReflect.Descriptor instead.
+func (*GetInstanceWebhookRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *GetInstanceWebhookRequest) GetWebhookId() string {
+	if x != nil {
+		return x.WebhookId
+	}
+	return ""
+}
+
+// GetInstanceWebhookResponse is the endpoint.
+type GetInstanceWebhookResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoint.
+	Webhook       *Webhook `protobuf:"bytes,1,opt,name=webhook,proto3" json:"webhook,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInstanceWebhookResponse) Reset() {
+	*x = GetInstanceWebhookResponse{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInstanceWebhookResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInstanceWebhookResponse) ProtoMessage() {}
+
+func (x *GetInstanceWebhookResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInstanceWebhookResponse.ProtoReflect.Descriptor instead.
+func (*GetInstanceWebhookResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *GetInstanceWebhookResponse) GetWebhook() *Webhook {
+	if x != nil {
+		return x.Webhook
+	}
+	return nil
+}
+
+// ListInstanceWebhooksRequest asks for a page of the instance's endpoints.
+type ListInstanceWebhooksRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// At most this many, 50 if not set, 500 at most.
+	PageSize int32 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// The page after the one that returned it.
+	PageToken     string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListInstanceWebhooksRequest) Reset() {
+	*x = ListInstanceWebhooksRequest{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListInstanceWebhooksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListInstanceWebhooksRequest) ProtoMessage() {}
+
+func (x *ListInstanceWebhooksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListInstanceWebhooksRequest.ProtoReflect.Descriptor instead.
+func (*ListInstanceWebhooksRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ListInstanceWebhooksRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListInstanceWebhooksRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+// ListInstanceWebhooksResponse is one page of endpoints.
+type ListInstanceWebhooksResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoints.
+	Webhooks []*Webhook `protobuf:"bytes,1,rep,name=webhooks,proto3" json:"webhooks,omitempty"`
+	// The token of the next page; empty on the last.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListInstanceWebhooksResponse) Reset() {
+	*x = ListInstanceWebhooksResponse{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListInstanceWebhooksResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListInstanceWebhooksResponse) ProtoMessage() {}
+
+func (x *ListInstanceWebhooksResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListInstanceWebhooksResponse.ProtoReflect.Descriptor instead.
+func (*ListInstanceWebhooksResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ListInstanceWebhooksResponse) GetWebhooks() []*Webhook {
+	if x != nil {
+		return x.Webhooks
+	}
+	return nil
+}
+
+func (x *ListInstanceWebhooksResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+// UpdateInstanceWebhookRequest changes an endpoint.
+type UpdateInstanceWebhookRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoint with its ID and the new values of the fields the mask names.
+	Webhook *Webhook `protobuf:"bytes,1,opt,name=webhook,proto3" json:"webhook,omitempty"`
+	// The fields to change: url, event_types, enabled.
+	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	// The etag the caller read; empty skips the check.
+	Etag          string `protobuf:"bytes,3,opt,name=etag,proto3" json:"etag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateInstanceWebhookRequest) Reset() {
+	*x = UpdateInstanceWebhookRequest{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateInstanceWebhookRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateInstanceWebhookRequest) ProtoMessage() {}
+
+func (x *UpdateInstanceWebhookRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateInstanceWebhookRequest.ProtoReflect.Descriptor instead.
+func (*UpdateInstanceWebhookRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *UpdateInstanceWebhookRequest) GetWebhook() *Webhook {
+	if x != nil {
+		return x.Webhook
+	}
+	return nil
+}
+
+func (x *UpdateInstanceWebhookRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
+	}
+	return nil
+}
+
+func (x *UpdateInstanceWebhookRequest) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+// UpdateInstanceWebhookResponse is the changed endpoint.
+type UpdateInstanceWebhookResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoint.
+	Webhook       *Webhook `protobuf:"bytes,1,opt,name=webhook,proto3" json:"webhook,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateInstanceWebhookResponse) Reset() {
+	*x = UpdateInstanceWebhookResponse{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateInstanceWebhookResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateInstanceWebhookResponse) ProtoMessage() {}
+
+func (x *UpdateInstanceWebhookResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateInstanceWebhookResponse.ProtoReflect.Descriptor instead.
+func (*UpdateInstanceWebhookResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *UpdateInstanceWebhookResponse) GetWebhook() *Webhook {
+	if x != nil {
+		return x.Webhook
+	}
+	return nil
+}
+
+// DeleteInstanceWebhookRequest names an endpoint.
+type DeleteInstanceWebhookRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoint's ID.
+	WebhookId string `protobuf:"bytes,1,opt,name=webhook_id,json=webhookId,proto3" json:"webhook_id,omitempty"`
+	// The etag the caller read; empty skips the check.
+	Etag          string `protobuf:"bytes,2,opt,name=etag,proto3" json:"etag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteInstanceWebhookRequest) Reset() {
+	*x = DeleteInstanceWebhookRequest{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteInstanceWebhookRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteInstanceWebhookRequest) ProtoMessage() {}
+
+func (x *DeleteInstanceWebhookRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteInstanceWebhookRequest.ProtoReflect.Descriptor instead.
+func (*DeleteInstanceWebhookRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *DeleteInstanceWebhookRequest) GetWebhookId() string {
+	if x != nil {
+		return x.WebhookId
+	}
+	return ""
+}
+
+func (x *DeleteInstanceWebhookRequest) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+// DeleteInstanceWebhookResponse is empty.
+type DeleteInstanceWebhookResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteInstanceWebhookResponse) Reset() {
+	*x = DeleteInstanceWebhookResponse{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteInstanceWebhookResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteInstanceWebhookResponse) ProtoMessage() {}
+
+func (x *DeleteInstanceWebhookResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteInstanceWebhookResponse.ProtoReflect.Descriptor instead.
+func (*DeleteInstanceWebhookResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{27}
+}
+
+// RotateInstanceWebhookSecretRequest names an endpoint.
+type RotateInstanceWebhookSecretRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoint's ID.
+	WebhookId     string `protobuf:"bytes,1,opt,name=webhook_id,json=webhookId,proto3" json:"webhook_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RotateInstanceWebhookSecretRequest) Reset() {
+	*x = RotateInstanceWebhookSecretRequest{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RotateInstanceWebhookSecretRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RotateInstanceWebhookSecretRequest) ProtoMessage() {}
+
+func (x *RotateInstanceWebhookSecretRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RotateInstanceWebhookSecretRequest.ProtoReflect.Descriptor instead.
+func (*RotateInstanceWebhookSecretRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *RotateInstanceWebhookSecretRequest) GetWebhookId() string {
+	if x != nil {
+		return x.WebhookId
+	}
+	return ""
+}
+
+// RotateInstanceWebhookSecretResponse is the endpoint and its new secret.
+type RotateInstanceWebhookSecretResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoint.
+	Webhook *Webhook `protobuf:"bytes,1,opt,name=webhook,proto3" json:"webhook,omitempty"`
+	// The new secret, rpmgr_whs_…; it cannot be shown again.
+	Secret        string `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RotateInstanceWebhookSecretResponse) Reset() {
+	*x = RotateInstanceWebhookSecretResponse{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RotateInstanceWebhookSecretResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RotateInstanceWebhookSecretResponse) ProtoMessage() {}
+
+func (x *RotateInstanceWebhookSecretResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RotateInstanceWebhookSecretResponse.ProtoReflect.Descriptor instead.
+func (*RotateInstanceWebhookSecretResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *RotateInstanceWebhookSecretResponse) GetWebhook() *Webhook {
+	if x != nil {
+		return x.Webhook
+	}
+	return nil
+}
+
+func (x *RotateInstanceWebhookSecretResponse) GetSecret() string {
+	if x != nil {
+		return x.Secret
+	}
+	return ""
+}
+
+// ListInstanceWebhookDeliveriesRequest asks for a page of an endpoint's deliveries.
+type ListInstanceWebhookDeliveriesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoint's ID.
+	WebhookId string `protobuf:"bytes,1,opt,name=webhook_id,json=webhookId,proto3" json:"webhook_id,omitempty"`
+	// At most this many, 50 if not set, 500 at most.
+	PageSize int32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// The page after the one that returned it.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListInstanceWebhookDeliveriesRequest) Reset() {
+	*x = ListInstanceWebhookDeliveriesRequest{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListInstanceWebhookDeliveriesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListInstanceWebhookDeliveriesRequest) ProtoMessage() {}
+
+func (x *ListInstanceWebhookDeliveriesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListInstanceWebhookDeliveriesRequest.ProtoReflect.Descriptor instead.
+func (*ListInstanceWebhookDeliveriesRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *ListInstanceWebhookDeliveriesRequest) GetWebhookId() string {
+	if x != nil {
+		return x.WebhookId
+	}
+	return ""
+}
+
+func (x *ListInstanceWebhookDeliveriesRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListInstanceWebhookDeliveriesRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+// ListInstanceWebhookDeliveriesResponse is one page of deliveries.
+type ListInstanceWebhookDeliveriesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The deliveries, the newest first.
+	Deliveries []*WebhookDelivery `protobuf:"bytes,1,rep,name=deliveries,proto3" json:"deliveries,omitempty"`
+	// The token of the next page; empty on the last.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListInstanceWebhookDeliveriesResponse) Reset() {
+	*x = ListInstanceWebhookDeliveriesResponse{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListInstanceWebhookDeliveriesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListInstanceWebhookDeliveriesResponse) ProtoMessage() {}
+
+func (x *ListInstanceWebhookDeliveriesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListInstanceWebhookDeliveriesResponse.ProtoReflect.Descriptor instead.
+func (*ListInstanceWebhookDeliveriesResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *ListInstanceWebhookDeliveriesResponse) GetDeliveries() []*WebhookDelivery {
+	if x != nil {
+		return x.Deliveries
+	}
+	return nil
+}
+
+func (x *ListInstanceWebhookDeliveriesResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+// TestInstanceWebhookRequest names an endpoint.
+type TestInstanceWebhookRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoint's ID.
+	WebhookId     string `protobuf:"bytes,1,opt,name=webhook_id,json=webhookId,proto3" json:"webhook_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TestInstanceWebhookRequest) Reset() {
+	*x = TestInstanceWebhookRequest{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TestInstanceWebhookRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TestInstanceWebhookRequest) ProtoMessage() {}
+
+func (x *TestInstanceWebhookRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TestInstanceWebhookRequest.ProtoReflect.Descriptor instead.
+func (*TestInstanceWebhookRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *TestInstanceWebhookRequest) GetWebhookId() string {
+	if x != nil {
+		return x.WebhookId
+	}
+	return ""
+}
+
+// TestInstanceWebhookResponse is what the receiver answered.
+type TestInstanceWebhookResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the receiver answered with a 2xx status.
+	Delivered bool `protobuf:"varint,1,opt,name=delivered,proto3" json:"delivered,omitempty"`
+	// The receiver's status code; 0 if it did not answer.
+	StatusCode int32 `protobuf:"varint,2,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	// Why it failed; empty on success.
+	Error         string `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TestInstanceWebhookResponse) Reset() {
+	*x = TestInstanceWebhookResponse{}
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TestInstanceWebhookResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TestInstanceWebhookResponse) ProtoMessage() {}
+
+func (x *TestInstanceWebhookResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_webhook_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TestInstanceWebhookResponse.ProtoReflect.Descriptor instead.
+func (*TestInstanceWebhookResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *TestInstanceWebhookResponse) GetDelivered() bool {
+	if x != nil {
+		return x.Delivered
+	}
+	return false
+}
+
+func (x *TestInstanceWebhookResponse) GetStatusCode() int32 {
+	if x != nil {
+		return x.StatusCode
+	}
+	return 0
+}
+
+func (x *TestInstanceWebhookResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_rpmgr_v1_webhook_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_webhook_proto_rawDesc = "" +
@@ -1306,6 +2150,62 @@ const file_rpmgr_v1_webhook_proto_rawDesc = "" +
 	"\tdelivered\x18\x01 \x01(\bR\tdelivered\x12\x1f\n" +
 	"\vstatus_code\x18\x02 \x01(\x05R\n" +
 	"statusCode\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"|\n" +
+	"\x1cCreateInstanceWebhookRequest\x123\n" +
+	"\awebhook\x18\x01 \x01(\v2\x11.rpmgr.v1.WebhookB\x06\xbaH\x03\xc8\x01\x01R\awebhook\x12'\n" +
+	"\n" +
+	"request_id\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x01R\trequestId\"j\n" +
+	"\x1dCreateInstanceWebhookResponse\x12+\n" +
+	"\awebhook\x18\x01 \x01(\v2\x11.rpmgr.v1.WebhookR\awebhook\x12\x1c\n" +
+	"\x06secret\x18\x02 \x01(\tB\x04\x88\xb5\x18\x01R\x06secret\"C\n" +
+	"\x19GetInstanceWebhookRequest\x12&\n" +
+	"\n" +
+	"webhook_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\twebhookId\"I\n" +
+	"\x1aGetInstanceWebhookResponse\x12+\n" +
+	"\awebhook\x18\x01 \x01(\v2\x11.rpmgr.v1.WebhookR\awebhook\"Y\n" +
+	"\x1bListInstanceWebhooksRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"u\n" +
+	"\x1cListInstanceWebhooksResponse\x12-\n" +
+	"\bwebhooks\x18\x01 \x03(\v2\x11.rpmgr.v1.WebhookR\bwebhooks\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xa4\x01\n" +
+	"\x1cUpdateInstanceWebhookRequest\x123\n" +
+	"\awebhook\x18\x01 \x01(\v2\x11.rpmgr.v1.WebhookB\x06\xbaH\x03\xc8\x01\x01R\awebhook\x12;\n" +
+	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask\x12\x12\n" +
+	"\x04etag\x18\x03 \x01(\tR\x04etag\"L\n" +
+	"\x1dUpdateInstanceWebhookResponse\x12+\n" +
+	"\awebhook\x18\x01 \x01(\v2\x11.rpmgr.v1.WebhookR\awebhook\"Z\n" +
+	"\x1cDeleteInstanceWebhookRequest\x12&\n" +
+	"\n" +
+	"webhook_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\twebhookId\x12\x12\n" +
+	"\x04etag\x18\x02 \x01(\tR\x04etag\"\x1f\n" +
+	"\x1dDeleteInstanceWebhookResponse\"L\n" +
+	"\"RotateInstanceWebhookSecretRequest\x12&\n" +
+	"\n" +
+	"webhook_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\twebhookId\"p\n" +
+	"#RotateInstanceWebhookSecretResponse\x12+\n" +
+	"\awebhook\x18\x01 \x01(\v2\x11.rpmgr.v1.WebhookR\awebhook\x12\x1c\n" +
+	"\x06secret\x18\x02 \x01(\tB\x04\x88\xb5\x18\x01R\x06secret\"\x8a\x01\n" +
+	"$ListInstanceWebhookDeliveriesRequest\x12&\n" +
+	"\n" +
+	"webhook_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\twebhookId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8a\x01\n" +
+	"%ListInstanceWebhookDeliveriesResponse\x129\n" +
+	"\n" +
+	"deliveries\x18\x01 \x03(\v2\x19.rpmgr.v1.WebhookDeliveryR\n" +
+	"deliveries\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"D\n" +
+	"\x1aTestInstanceWebhookRequest\x12&\n" +
+	"\n" +
+	"webhook_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\twebhookId\"r\n" +
+	"\x1bTestInstanceWebhookResponse\x12\x1c\n" +
+	"\tdelivered\x18\x01 \x01(\bR\tdelivered\x12\x1f\n" +
+	"\vstatus_code\x18\x02 \x01(\x05R\n" +
+	"statusCode\x12\x14\n" +
 	"\x05error\x18\x03 \x01(\tR\x05error*\x89\x01\n" +
 	"\x15WebhookDisabledReason\x12'\n" +
 	"#WEBHOOK_DISABLED_REASON_UNSPECIFIED\x10\x00\x12#\n" +
@@ -1334,7 +2234,24 @@ const file_rpmgr_v1_webhook_proto_rawDesc = "" +
 	"webhook_id\x90\x02\x01\x12l\n" +
 	"\vTestWebhook\x12\x1c.rpmgr.v1.TestWebhookRequest\x1a\x1d.rpmgr.v1.TestWebhookResponse\" \x8a\xb5\x18\x1c\n" +
 	"\x0ewebhooks.write\x12\n" +
-	"webhook_idB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
+	"webhook_id2\xbb\b\n" +
+	"\x16InstanceWebhookService\x12~\n" +
+	"\x15CreateInstanceWebhook\x12&.rpmgr.v1.CreateInstanceWebhookRequest\x1a'.rpmgr.v1.CreateInstanceWebhookResponse\"\x14\x8a\xb5\x18\x10\n" +
+	"\x0einstance.admin\x12x\n" +
+	"\x12GetInstanceWebhook\x12#.rpmgr.v1.GetInstanceWebhookRequest\x1a$.rpmgr.v1.GetInstanceWebhookResponse\"\x17\x8a\xb5\x18\x10\n" +
+	"\x0einstance.admin\x90\x02\x01\x12~\n" +
+	"\x14ListInstanceWebhooks\x12%.rpmgr.v1.ListInstanceWebhooksRequest\x1a&.rpmgr.v1.ListInstanceWebhooksResponse\"\x17\x8a\xb5\x18\x10\n" +
+	"\x0einstance.admin\x90\x02\x01\x12~\n" +
+	"\x15UpdateInstanceWebhook\x12&.rpmgr.v1.UpdateInstanceWebhookRequest\x1a'.rpmgr.v1.UpdateInstanceWebhookResponse\"\x14\x8a\xb5\x18\x10\n" +
+	"\x0einstance.admin\x12~\n" +
+	"\x15DeleteInstanceWebhook\x12&.rpmgr.v1.DeleteInstanceWebhookRequest\x1a'.rpmgr.v1.DeleteInstanceWebhookResponse\"\x14\x8a\xb5\x18\x10\n" +
+	"\x0einstance.admin\x12\x90\x01\n" +
+	"\x1bRotateInstanceWebhookSecret\x12,.rpmgr.v1.RotateInstanceWebhookSecretRequest\x1a-.rpmgr.v1.RotateInstanceWebhookSecretResponse\"\x14\x8a\xb5\x18\x10\n" +
+	"\x0einstance.admin\x12\x99\x01\n" +
+	"\x1dListInstanceWebhookDeliveries\x12..rpmgr.v1.ListInstanceWebhookDeliveriesRequest\x1a/.rpmgr.v1.ListInstanceWebhookDeliveriesResponse\"\x17\x8a\xb5\x18\x10\n" +
+	"\x0einstance.admin\x90\x02\x01\x12x\n" +
+	"\x13TestInstanceWebhook\x12$.rpmgr.v1.TestInstanceWebhookRequest\x1a%.rpmgr.v1.TestInstanceWebhookResponse\"\x14\x8a\xb5\x18\x10\n" +
+	"\x0einstance.adminB5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
 	file_rpmgr_v1_webhook_proto_rawDescOnce sync.Once
@@ -1349,68 +2266,109 @@ func file_rpmgr_v1_webhook_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_webhook_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_rpmgr_v1_webhook_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_rpmgr_v1_webhook_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_rpmgr_v1_webhook_proto_goTypes = []any{
-	(WebhookDisabledReason)(0),            // 0: rpmgr.v1.WebhookDisabledReason
-	(*Webhook)(nil),                       // 1: rpmgr.v1.Webhook
-	(*WebhookDelivery)(nil),               // 2: rpmgr.v1.WebhookDelivery
-	(*CreateWebhookRequest)(nil),          // 3: rpmgr.v1.CreateWebhookRequest
-	(*CreateWebhookResponse)(nil),         // 4: rpmgr.v1.CreateWebhookResponse
-	(*GetWebhookRequest)(nil),             // 5: rpmgr.v1.GetWebhookRequest
-	(*GetWebhookResponse)(nil),            // 6: rpmgr.v1.GetWebhookResponse
-	(*ListWebhooksRequest)(nil),           // 7: rpmgr.v1.ListWebhooksRequest
-	(*ListWebhooksResponse)(nil),          // 8: rpmgr.v1.ListWebhooksResponse
-	(*UpdateWebhookRequest)(nil),          // 9: rpmgr.v1.UpdateWebhookRequest
-	(*UpdateWebhookResponse)(nil),         // 10: rpmgr.v1.UpdateWebhookResponse
-	(*DeleteWebhookRequest)(nil),          // 11: rpmgr.v1.DeleteWebhookRequest
-	(*DeleteWebhookResponse)(nil),         // 12: rpmgr.v1.DeleteWebhookResponse
-	(*RotateWebhookSecretRequest)(nil),    // 13: rpmgr.v1.RotateWebhookSecretRequest
-	(*RotateWebhookSecretResponse)(nil),   // 14: rpmgr.v1.RotateWebhookSecretResponse
-	(*ListWebhookDeliveriesRequest)(nil),  // 15: rpmgr.v1.ListWebhookDeliveriesRequest
-	(*ListWebhookDeliveriesResponse)(nil), // 16: rpmgr.v1.ListWebhookDeliveriesResponse
-	(*TestWebhookRequest)(nil),            // 17: rpmgr.v1.TestWebhookRequest
-	(*TestWebhookResponse)(nil),           // 18: rpmgr.v1.TestWebhookResponse
-	(*timestamppb.Timestamp)(nil),         // 19: google.protobuf.Timestamp
-	(*fieldmaskpb.FieldMask)(nil),         // 20: google.protobuf.FieldMask
+	(WebhookDisabledReason)(0),                    // 0: rpmgr.v1.WebhookDisabledReason
+	(*Webhook)(nil),                               // 1: rpmgr.v1.Webhook
+	(*WebhookDelivery)(nil),                       // 2: rpmgr.v1.WebhookDelivery
+	(*CreateWebhookRequest)(nil),                  // 3: rpmgr.v1.CreateWebhookRequest
+	(*CreateWebhookResponse)(nil),                 // 4: rpmgr.v1.CreateWebhookResponse
+	(*GetWebhookRequest)(nil),                     // 5: rpmgr.v1.GetWebhookRequest
+	(*GetWebhookResponse)(nil),                    // 6: rpmgr.v1.GetWebhookResponse
+	(*ListWebhooksRequest)(nil),                   // 7: rpmgr.v1.ListWebhooksRequest
+	(*ListWebhooksResponse)(nil),                  // 8: rpmgr.v1.ListWebhooksResponse
+	(*UpdateWebhookRequest)(nil),                  // 9: rpmgr.v1.UpdateWebhookRequest
+	(*UpdateWebhookResponse)(nil),                 // 10: rpmgr.v1.UpdateWebhookResponse
+	(*DeleteWebhookRequest)(nil),                  // 11: rpmgr.v1.DeleteWebhookRequest
+	(*DeleteWebhookResponse)(nil),                 // 12: rpmgr.v1.DeleteWebhookResponse
+	(*RotateWebhookSecretRequest)(nil),            // 13: rpmgr.v1.RotateWebhookSecretRequest
+	(*RotateWebhookSecretResponse)(nil),           // 14: rpmgr.v1.RotateWebhookSecretResponse
+	(*ListWebhookDeliveriesRequest)(nil),          // 15: rpmgr.v1.ListWebhookDeliveriesRequest
+	(*ListWebhookDeliveriesResponse)(nil),         // 16: rpmgr.v1.ListWebhookDeliveriesResponse
+	(*TestWebhookRequest)(nil),                    // 17: rpmgr.v1.TestWebhookRequest
+	(*TestWebhookResponse)(nil),                   // 18: rpmgr.v1.TestWebhookResponse
+	(*CreateInstanceWebhookRequest)(nil),          // 19: rpmgr.v1.CreateInstanceWebhookRequest
+	(*CreateInstanceWebhookResponse)(nil),         // 20: rpmgr.v1.CreateInstanceWebhookResponse
+	(*GetInstanceWebhookRequest)(nil),             // 21: rpmgr.v1.GetInstanceWebhookRequest
+	(*GetInstanceWebhookResponse)(nil),            // 22: rpmgr.v1.GetInstanceWebhookResponse
+	(*ListInstanceWebhooksRequest)(nil),           // 23: rpmgr.v1.ListInstanceWebhooksRequest
+	(*ListInstanceWebhooksResponse)(nil),          // 24: rpmgr.v1.ListInstanceWebhooksResponse
+	(*UpdateInstanceWebhookRequest)(nil),          // 25: rpmgr.v1.UpdateInstanceWebhookRequest
+	(*UpdateInstanceWebhookResponse)(nil),         // 26: rpmgr.v1.UpdateInstanceWebhookResponse
+	(*DeleteInstanceWebhookRequest)(nil),          // 27: rpmgr.v1.DeleteInstanceWebhookRequest
+	(*DeleteInstanceWebhookResponse)(nil),         // 28: rpmgr.v1.DeleteInstanceWebhookResponse
+	(*RotateInstanceWebhookSecretRequest)(nil),    // 29: rpmgr.v1.RotateInstanceWebhookSecretRequest
+	(*RotateInstanceWebhookSecretResponse)(nil),   // 30: rpmgr.v1.RotateInstanceWebhookSecretResponse
+	(*ListInstanceWebhookDeliveriesRequest)(nil),  // 31: rpmgr.v1.ListInstanceWebhookDeliveriesRequest
+	(*ListInstanceWebhookDeliveriesResponse)(nil), // 32: rpmgr.v1.ListInstanceWebhookDeliveriesResponse
+	(*TestInstanceWebhookRequest)(nil),            // 33: rpmgr.v1.TestInstanceWebhookRequest
+	(*TestInstanceWebhookResponse)(nil),           // 34: rpmgr.v1.TestInstanceWebhookResponse
+	(*timestamppb.Timestamp)(nil),                 // 35: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),                 // 36: google.protobuf.FieldMask
 }
 var file_rpmgr_v1_webhook_proto_depIdxs = []int32{
 	0,  // 0: rpmgr.v1.Webhook.disabled_reason:type_name -> rpmgr.v1.WebhookDisabledReason
-	19, // 1: rpmgr.v1.Webhook.previous_secret_until:type_name -> google.protobuf.Timestamp
-	19, // 2: rpmgr.v1.Webhook.last_success_time:type_name -> google.protobuf.Timestamp
-	19, // 3: rpmgr.v1.Webhook.failing_since_time:type_name -> google.protobuf.Timestamp
-	19, // 4: rpmgr.v1.Webhook.create_time:type_name -> google.protobuf.Timestamp
-	19, // 5: rpmgr.v1.WebhookDelivery.send_time:type_name -> google.protobuf.Timestamp
-	19, // 6: rpmgr.v1.WebhookDelivery.next_attempt_time:type_name -> google.protobuf.Timestamp
+	35, // 1: rpmgr.v1.Webhook.previous_secret_until:type_name -> google.protobuf.Timestamp
+	35, // 2: rpmgr.v1.Webhook.last_success_time:type_name -> google.protobuf.Timestamp
+	35, // 3: rpmgr.v1.Webhook.failing_since_time:type_name -> google.protobuf.Timestamp
+	35, // 4: rpmgr.v1.Webhook.create_time:type_name -> google.protobuf.Timestamp
+	35, // 5: rpmgr.v1.WebhookDelivery.send_time:type_name -> google.protobuf.Timestamp
+	35, // 6: rpmgr.v1.WebhookDelivery.next_attempt_time:type_name -> google.protobuf.Timestamp
 	1,  // 7: rpmgr.v1.CreateWebhookRequest.webhook:type_name -> rpmgr.v1.Webhook
 	1,  // 8: rpmgr.v1.CreateWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
 	1,  // 9: rpmgr.v1.GetWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
 	1,  // 10: rpmgr.v1.ListWebhooksResponse.webhooks:type_name -> rpmgr.v1.Webhook
 	1,  // 11: rpmgr.v1.UpdateWebhookRequest.webhook:type_name -> rpmgr.v1.Webhook
-	20, // 12: rpmgr.v1.UpdateWebhookRequest.update_mask:type_name -> google.protobuf.FieldMask
+	36, // 12: rpmgr.v1.UpdateWebhookRequest.update_mask:type_name -> google.protobuf.FieldMask
 	1,  // 13: rpmgr.v1.UpdateWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
 	1,  // 14: rpmgr.v1.RotateWebhookSecretResponse.webhook:type_name -> rpmgr.v1.Webhook
 	2,  // 15: rpmgr.v1.ListWebhookDeliveriesResponse.deliveries:type_name -> rpmgr.v1.WebhookDelivery
-	3,  // 16: rpmgr.v1.WebhookService.CreateWebhook:input_type -> rpmgr.v1.CreateWebhookRequest
-	5,  // 17: rpmgr.v1.WebhookService.GetWebhook:input_type -> rpmgr.v1.GetWebhookRequest
-	7,  // 18: rpmgr.v1.WebhookService.ListWebhooks:input_type -> rpmgr.v1.ListWebhooksRequest
-	9,  // 19: rpmgr.v1.WebhookService.UpdateWebhook:input_type -> rpmgr.v1.UpdateWebhookRequest
-	11, // 20: rpmgr.v1.WebhookService.DeleteWebhook:input_type -> rpmgr.v1.DeleteWebhookRequest
-	13, // 21: rpmgr.v1.WebhookService.RotateWebhookSecret:input_type -> rpmgr.v1.RotateWebhookSecretRequest
-	15, // 22: rpmgr.v1.WebhookService.ListWebhookDeliveries:input_type -> rpmgr.v1.ListWebhookDeliveriesRequest
-	17, // 23: rpmgr.v1.WebhookService.TestWebhook:input_type -> rpmgr.v1.TestWebhookRequest
-	4,  // 24: rpmgr.v1.WebhookService.CreateWebhook:output_type -> rpmgr.v1.CreateWebhookResponse
-	6,  // 25: rpmgr.v1.WebhookService.GetWebhook:output_type -> rpmgr.v1.GetWebhookResponse
-	8,  // 26: rpmgr.v1.WebhookService.ListWebhooks:output_type -> rpmgr.v1.ListWebhooksResponse
-	10, // 27: rpmgr.v1.WebhookService.UpdateWebhook:output_type -> rpmgr.v1.UpdateWebhookResponse
-	12, // 28: rpmgr.v1.WebhookService.DeleteWebhook:output_type -> rpmgr.v1.DeleteWebhookResponse
-	14, // 29: rpmgr.v1.WebhookService.RotateWebhookSecret:output_type -> rpmgr.v1.RotateWebhookSecretResponse
-	16, // 30: rpmgr.v1.WebhookService.ListWebhookDeliveries:output_type -> rpmgr.v1.ListWebhookDeliveriesResponse
-	18, // 31: rpmgr.v1.WebhookService.TestWebhook:output_type -> rpmgr.v1.TestWebhookResponse
-	24, // [24:32] is the sub-list for method output_type
-	16, // [16:24] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	1,  // 16: rpmgr.v1.CreateInstanceWebhookRequest.webhook:type_name -> rpmgr.v1.Webhook
+	1,  // 17: rpmgr.v1.CreateInstanceWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
+	1,  // 18: rpmgr.v1.GetInstanceWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
+	1,  // 19: rpmgr.v1.ListInstanceWebhooksResponse.webhooks:type_name -> rpmgr.v1.Webhook
+	1,  // 20: rpmgr.v1.UpdateInstanceWebhookRequest.webhook:type_name -> rpmgr.v1.Webhook
+	36, // 21: rpmgr.v1.UpdateInstanceWebhookRequest.update_mask:type_name -> google.protobuf.FieldMask
+	1,  // 22: rpmgr.v1.UpdateInstanceWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
+	1,  // 23: rpmgr.v1.RotateInstanceWebhookSecretResponse.webhook:type_name -> rpmgr.v1.Webhook
+	2,  // 24: rpmgr.v1.ListInstanceWebhookDeliveriesResponse.deliveries:type_name -> rpmgr.v1.WebhookDelivery
+	3,  // 25: rpmgr.v1.WebhookService.CreateWebhook:input_type -> rpmgr.v1.CreateWebhookRequest
+	5,  // 26: rpmgr.v1.WebhookService.GetWebhook:input_type -> rpmgr.v1.GetWebhookRequest
+	7,  // 27: rpmgr.v1.WebhookService.ListWebhooks:input_type -> rpmgr.v1.ListWebhooksRequest
+	9,  // 28: rpmgr.v1.WebhookService.UpdateWebhook:input_type -> rpmgr.v1.UpdateWebhookRequest
+	11, // 29: rpmgr.v1.WebhookService.DeleteWebhook:input_type -> rpmgr.v1.DeleteWebhookRequest
+	13, // 30: rpmgr.v1.WebhookService.RotateWebhookSecret:input_type -> rpmgr.v1.RotateWebhookSecretRequest
+	15, // 31: rpmgr.v1.WebhookService.ListWebhookDeliveries:input_type -> rpmgr.v1.ListWebhookDeliveriesRequest
+	17, // 32: rpmgr.v1.WebhookService.TestWebhook:input_type -> rpmgr.v1.TestWebhookRequest
+	19, // 33: rpmgr.v1.InstanceWebhookService.CreateInstanceWebhook:input_type -> rpmgr.v1.CreateInstanceWebhookRequest
+	21, // 34: rpmgr.v1.InstanceWebhookService.GetInstanceWebhook:input_type -> rpmgr.v1.GetInstanceWebhookRequest
+	23, // 35: rpmgr.v1.InstanceWebhookService.ListInstanceWebhooks:input_type -> rpmgr.v1.ListInstanceWebhooksRequest
+	25, // 36: rpmgr.v1.InstanceWebhookService.UpdateInstanceWebhook:input_type -> rpmgr.v1.UpdateInstanceWebhookRequest
+	27, // 37: rpmgr.v1.InstanceWebhookService.DeleteInstanceWebhook:input_type -> rpmgr.v1.DeleteInstanceWebhookRequest
+	29, // 38: rpmgr.v1.InstanceWebhookService.RotateInstanceWebhookSecret:input_type -> rpmgr.v1.RotateInstanceWebhookSecretRequest
+	31, // 39: rpmgr.v1.InstanceWebhookService.ListInstanceWebhookDeliveries:input_type -> rpmgr.v1.ListInstanceWebhookDeliveriesRequest
+	33, // 40: rpmgr.v1.InstanceWebhookService.TestInstanceWebhook:input_type -> rpmgr.v1.TestInstanceWebhookRequest
+	4,  // 41: rpmgr.v1.WebhookService.CreateWebhook:output_type -> rpmgr.v1.CreateWebhookResponse
+	6,  // 42: rpmgr.v1.WebhookService.GetWebhook:output_type -> rpmgr.v1.GetWebhookResponse
+	8,  // 43: rpmgr.v1.WebhookService.ListWebhooks:output_type -> rpmgr.v1.ListWebhooksResponse
+	10, // 44: rpmgr.v1.WebhookService.UpdateWebhook:output_type -> rpmgr.v1.UpdateWebhookResponse
+	12, // 45: rpmgr.v1.WebhookService.DeleteWebhook:output_type -> rpmgr.v1.DeleteWebhookResponse
+	14, // 46: rpmgr.v1.WebhookService.RotateWebhookSecret:output_type -> rpmgr.v1.RotateWebhookSecretResponse
+	16, // 47: rpmgr.v1.WebhookService.ListWebhookDeliveries:output_type -> rpmgr.v1.ListWebhookDeliveriesResponse
+	18, // 48: rpmgr.v1.WebhookService.TestWebhook:output_type -> rpmgr.v1.TestWebhookResponse
+	20, // 49: rpmgr.v1.InstanceWebhookService.CreateInstanceWebhook:output_type -> rpmgr.v1.CreateInstanceWebhookResponse
+	22, // 50: rpmgr.v1.InstanceWebhookService.GetInstanceWebhook:output_type -> rpmgr.v1.GetInstanceWebhookResponse
+	24, // 51: rpmgr.v1.InstanceWebhookService.ListInstanceWebhooks:output_type -> rpmgr.v1.ListInstanceWebhooksResponse
+	26, // 52: rpmgr.v1.InstanceWebhookService.UpdateInstanceWebhook:output_type -> rpmgr.v1.UpdateInstanceWebhookResponse
+	28, // 53: rpmgr.v1.InstanceWebhookService.DeleteInstanceWebhook:output_type -> rpmgr.v1.DeleteInstanceWebhookResponse
+	30, // 54: rpmgr.v1.InstanceWebhookService.RotateInstanceWebhookSecret:output_type -> rpmgr.v1.RotateInstanceWebhookSecretResponse
+	32, // 55: rpmgr.v1.InstanceWebhookService.ListInstanceWebhookDeliveries:output_type -> rpmgr.v1.ListInstanceWebhookDeliveriesResponse
+	34, // 56: rpmgr.v1.InstanceWebhookService.TestInstanceWebhook:output_type -> rpmgr.v1.TestInstanceWebhookResponse
+	41, // [41:57] is the sub-list for method output_type
+	25, // [25:41] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_webhook_proto_init() }
@@ -1425,9 +2383,9 @@ func file_rpmgr_v1_webhook_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_webhook_proto_rawDesc), len(file_rpmgr_v1_webhook_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   18,
+			NumMessages:   34,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_rpmgr_v1_webhook_proto_goTypes,
 		DependencyIndexes: file_rpmgr_v1_webhook_proto_depIdxs,
