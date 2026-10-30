@@ -16,12 +16,14 @@ export const canStreamLogs = (role?: string) => role === "owner" || role === "ad
 // keptLines is how many lines the panel keeps; older ones scroll away for good.
 const keptLines = 2000;
 
-type Shown = { key: number; text: string; level?: string };
+type Shown = { key: number; text: string; level?: string; earlier?: boolean };
 
 // LiveLog streams a connector's or gateway's live log, redacted on the agent (docs/09-web-ui.md,
 // "Live logs, webhooks and audit sinks (Phase 2)"): a level and a text filter, Raise to debug, and
 // Pause, which stops the panel scrolling while lines keep arriving. A marker shows where the agent
-// dropped or cut lines; when the stream ends at its deadline the panel says so and offers to go on.
+// dropped or cut lines; the lines the agent kept from before the log opened come first, marked as
+// earlier ones (D154), and while no new line has arrived the panel says it is connected, with the
+// level it follows. When the stream ends at its deadline the panel says so and offers to go on.
 export function LiveLog({ agentId }: { agentId: string }) {
   const { t } = useTranslation();
   const transport = useTransport();
@@ -33,6 +35,8 @@ export function LiveLog({ agentId }: { agentId: string }) {
   const [paused, setPaused] = useState(false);
   const [lines, setLines] = useState<Shown[]>([]);
   const [ended, setEnded] = useState("");
+  const [fresh, setFresh] = useState(false); // a new line, not an earlier one, has arrived
+  const [followed, setFollowed] = useState("info"); // the level the running log follows
   const abort = useRef<AbortController>(undefined);
   const counter = useRef(0);
   const panel = useRef<HTMLPreElement>(null);
@@ -47,10 +51,10 @@ export function LiveLog({ agentId }: { agentId: string }) {
   const shown = (l: LogLine): Shown[] => {
     const out: Shown[] = [];
     if (l.droppedBefore > 0) {
-      out.push({ key: counter.current++, text: t("liveLog.dropped", { count: l.droppedBefore }) });
+      out.push({ key: counter.current++, text: t(l.backlog ? "liveLog.goneEarlier" : "liveLog.dropped", { count: l.droppedBefore }) });
     }
     const at = l.time ? timestampDate(l.time).toISOString() : "";
-    out.push({ key: counter.current++, level: l.level, text: `${at} ${l.level.toUpperCase().padEnd(5)} ${l.text}${l.truncated ? ` ${t("liveLog.cut")}` : ""}` });
+    out.push({ key: counter.current++, level: l.level, earlier: l.backlog, text: `${at} ${l.level.toUpperCase().padEnd(5)} ${l.text}${l.truncated ? ` ${t("liveLog.cut")}` : ""}` });
     return out;
   };
 
@@ -59,12 +63,17 @@ export function LiveLog({ agentId }: { agentId: string }) {
     const a = new AbortController();
     abort.current = a;
     setEnded("");
+    setFresh(false);
+    setFollowed(debug ? "debug" : level);
     setRunning(true);
     try {
       const stream = createClient(LogService, transport).streamLogs({ agentId, level, filter, raiseToDebug: debug }, { signal: a.signal });
       for await (const m of stream) {
         if (m.line) {
           const add = shown(m.line);
+          if (!m.line.backlog) {
+            setFresh(true);
+          }
           setLines((ls) => [...ls, ...add].slice(-keptLines));
         }
       }
@@ -119,9 +128,11 @@ export function LiveLog({ agentId }: { agentId: string }) {
       {ended && <Alert>{ended}</Alert>}
       <pre ref={panel} id={id} role="log" aria-label={t("liveLog.panel")} tabIndex={0}
         className="h-80 overflow-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">
-        {lines.length === 0 ? <span className="text-muted-foreground">{running ? t("liveLog.waiting") : t("liveLog.empty")}</span>
-          : lines.map((l) => <div key={l.key} className={l.level ? undefined : "text-muted-foreground italic"}>{l.text}</div>)}
+        {lines.length === 0 ? <span className="text-muted-foreground">{running ? t("liveLog.connecting") : t("liveLog.empty")}</span>
+          : lines.map((l) => <div key={l.key} className={l.level && !l.earlier ? undefined : "text-muted-foreground italic"}
+            title={l.earlier ? t("liveLog.earlier") : undefined}>{l.text}</div>)}
       </pre>
+      {running && !fresh && <p role="status" className="text-xs text-muted-foreground">{t("liveLog.connected", { level: t(`liveLog.levels.${followed}`) })}</p>}
     </div>
   );
 }
