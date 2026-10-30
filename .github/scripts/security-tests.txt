@@ -35,8 +35,9 @@ TestEnrollReplace_TokenBoundToConnector	done	8.2	#116
 TestBasicAuth_HashOncePerTTL	done	5.11	#97
 TestBasicAuth_CacheScopedToPolicy	done	5.11	#97
 TestPrivateUDP_GatewaySeesCiphertextOnly	p2	-	-	private services
-TestFlowControl_StalledStreamsDoNotFreezeSession	done	4.5	#75
-TestFlowControl_PausedClientNotResetWithoutPressure	done	4.5	#75
+TestFlowControl_StalledStreamsDoNotFreezeSession	done	4.5	#75	session level on HTTP/2 and QUIC since #1044 (internal/tunnel)
+TestFlowControl_PausedClientNotResetWithoutPressure	done	4.5	#75	session level on HTTP/2 and QUIC since #1044 (internal/tunnel)
+TestFlowControl_ResetStreamEndsRelayOnBothEnds	done	4.5	#1044	internal/tunnel
 TestH2_AdmissionUnderBudget	done	4.5	#75	h3-share clause in P3 (HTTP/3 ingress)
 TestGateway_PerGatewayTunnelEndpoints	done	4.10	#80	WSS clause done in P2 4.10 (#638, internal/connector)
 TestOpenRequest_Semantics	done	4.4	#74
