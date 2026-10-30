@@ -16,8 +16,12 @@ Changes to the design documents are not recorded here: see the git history and t
   deletes an organisation's endpoints, rotates an endpoint's secret, lists its deliveries and sends
   a test event. The secret, `rpmgr_whs_…`, is shown once when it is made or rotated; after a
   rotation both secrets sign for 24 hours. Enabling an endpoint again clears a disable. Owners and
-  Admins hold the new permission `webhooks.write`, which an API token can carry. The web UI and the
-  CLI follow. (#650)
+  Admins hold the new permission `webhooks.write`, which an API token can carry. The CLI
+  follows. (#650)
+- A Webhooks page under Administration manages an organisation's webhook endpoints: it lists them
+  with their state, creates, edits, enables again, rotates and deletes them, shows the signing
+  secret once with a copy button, sends a test event and lists each endpoint's deliveries with
+  their status, error and next retry. (#651)
 - Controllers and all-in-ones update over the air, on SQLite. An Instance Admin chooses "Update
   controller to x.y.z" on Settings → Updates, or runs `rpmgr create rollout --controller --release
   x.y.z`, after a step-up. The root updater takes a backup of the database first, kept as
