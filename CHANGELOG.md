@@ -18,6 +18,10 @@ Changes to the design documents are not recorded here: see the git history and t
   rotation both secrets sign for 24 hours. Enabling an endpoint again clears a disable. Owners and
   Admins hold the new permission `webhooks.write`, which an API token can carry. The web UI and the
   CLI follow. (#650)
+
+- Webhooks carry the status events `agent.connect`, `agent.disconnect`,
+  `apply.reject` and `route.status`, written once per change of state and bounded to one per
+  subject per minute for a flapping agent or route.
 - Controllers and all-in-ones update over the air, on SQLite. An Instance Admin chooses "Update
   controller to x.y.z" on Settings → Updates, or runs `rpmgr create rollout --controller --release
   x.y.z`, after a step-up. The root updater takes a backup of the database first, kept as

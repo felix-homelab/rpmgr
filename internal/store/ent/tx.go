@@ -134,6 +134,8 @@ type Tx struct {
 	SecretMeta *SecretMetaClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// StatusMark is the client for interacting with the StatusMark builders.
+	StatusMark *StatusMarkClient
 	// TOTPCredential is the client for interacting with the TOTPCredential builders.
 	TOTPCredential *TOTPCredentialClient
 	// TrafficBaseline is the client for interacting with the TrafficBaseline builders.
@@ -335,6 +337,7 @@ func (tx *Tx) init() {
 	tx.RouteUDP = NewRouteUDPClient(tx.config)
 	tx.SecretMeta = NewSecretMetaClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
+	tx.StatusMark = NewStatusMarkClient(tx.config)
 	tx.TOTPCredential = NewTOTPCredentialClient(tx.config)
 	tx.TrafficBaseline = NewTrafficBaselineClient(tx.config)
 	tx.User = NewUserClient(tx.config)

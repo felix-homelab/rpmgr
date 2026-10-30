@@ -69,6 +69,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/statusmark"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
@@ -1752,6 +1753,33 @@ func (f TraverseSession) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.SessionQuery", q)
 }
 
+// The StatusMarkFunc type is an adapter to allow the use of ordinary function as a Querier.
+type StatusMarkFunc func(context.Context, *ent.StatusMarkQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f StatusMarkFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.StatusMarkQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.StatusMarkQuery", q)
+}
+
+// The TraverseStatusMark type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseStatusMark func(context.Context, *ent.StatusMarkQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseStatusMark) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseStatusMark) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.StatusMarkQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.StatusMarkQuery", q)
+}
+
 // The TOTPCredentialFunc type is an adapter to allow the use of ordinary function as a Querier.
 type TOTPCredentialFunc func(context.Context, *ent.TOTPCredentialQuery) (ent.Value, error)
 
@@ -2010,6 +2038,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.SecretMetaQuery, predicate.SecretMeta, secretmeta.OrderOption]{typ: ent.TypeSecretMeta, tq: q}, nil
 	case *ent.SessionQuery:
 		return &query[*ent.SessionQuery, predicate.Session, session.OrderOption]{typ: ent.TypeSession, tq: q}, nil
+	case *ent.StatusMarkQuery:
+		return &query[*ent.StatusMarkQuery, predicate.StatusMark, statusmark.OrderOption]{typ: ent.TypeStatusMark, tq: q}, nil
 	case *ent.TOTPCredentialQuery:
 		return &query[*ent.TOTPCredentialQuery, predicate.TOTPCredential, totpcredential.OrderOption]{typ: ent.TypeTOTPCredential, tq: q}, nil
 	case *ent.TrafficBaselineQuery:

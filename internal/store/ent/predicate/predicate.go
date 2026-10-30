@@ -186,6 +186,9 @@ type SecretMeta func(*sql.Selector)
 // Session is the predicate function for session builders.
 type Session func(*sql.Selector)
 
+// StatusMark is the predicate function for statusmark builders.
+type StatusMark func(*sql.Selector)
+
 // TOTPCredential is the predicate function for totpcredential builders.
 type TOTPCredential func(*sql.Selector)
 
