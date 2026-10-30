@@ -58,6 +58,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 | `whd_` | webhook delivery (Phase 2) | `ask_` | audit sink (Phase 2) |
 | `ost_` | org settings | `ctn_` | controller node |
 | `rlt_` | rollout target | `gwp_` | gateway page (Phase 2) |
+| `asc_` | audit sink cursor (Phase 2) | | |
 
 ## Entities
 
@@ -178,8 +179,8 @@ erDiagram
 | `alerts` | id, org_id (null: an instance alert), kind, subject_type, subject_id, subject_name, state (`pending`, `firing`, `resolved`), since, fired_at, resolved_at | One row per alert and subject; the singleton alert job moves it from `pending` to `firing` once its condition held for its duration, and writes `alert.fire` and `alert.resolve` events once each, so a restart or a lease takeover never fires twice ([10](10-operations.md#suggested-alerts)). A pending alert whose condition ends is deleted without an event; a resolved one is kept as long as events, then purged by the same job. `subject_name` keeps the subject's name for the events of a subject that is gone |
 | `webhooks` | id, org_id (null: an instance endpoint), url, secret_enc, previous_secret_enc, previous_until, event_types, enabled, disabled_reason, enabled_at, last_success_at, failing_since, created_at, version | Endpoints ([07](07-api.md#webhooks-phase-2)); the secrets are write-only. A disabled endpoint keeps its reason (`failing`, or turned off by a person) until a person enables it ([D143](14-open-decisions.md#engineering)) |
 | `webhook_deliveries` | id, webhook_id, org_id, event_id, event_type, attempt, status_code, error, sent_at, next_attempt_at | One row per attempt, written after the attempt in the delivery job's fenced transaction; unique (webhook_id, event_id, attempt). An event without a row for an endpoint is new to it; `next_attempt_at` is set on the newest failed attempt while a retry is due. An endpoint receives the events from its `enabled_at` on, so none of the time it was disabled; `failing_since` is its first failed delivery after its last success. Kept for the period in 03 |
-| `audit_sinks` | id, kind (`syslog`, `webhook`, `s3`), name, settings (address, bucket, CA bundle), secret_enc, entries (whether entries go with the checkpoints), enabled, last_error, last_success_at | Instance-level, set by the Instance Admin ([04](04-security.md#audit-log), [D141](14-open-decisions.md#engineering)) |
-| `audit_sink_cursors` | sink_id, chain (org ID or `instance`), entry_seq, checkpoint_seq, oldest_unshipped_at | How far each sink has acknowledged each chain; advanced only after the sink acknowledged a batch. The backlog metric and alert read `oldest_unshipped_at` |
+| `audit_sinks` | id, kind (`syslog`, `webhook`, `s3`), name, settings (address, bucket, CA bundle), secret_enc, entries (whether entries go with the checkpoints), enabled, last_error, last_success_at, created_at | Instance-level, set by the Instance Admin ([04](04-security.md#audit-log), [D141](14-open-decisions.md#engineering)) |
+| `audit_sink_cursors` | sink_id, chain (org ID or `instance`), entry_seq, checkpoint_seq, oldest_unshipped_at | How far each sink has acknowledged each chain; advanced only after the sink acknowledged a batch. The backlog metric and alert read `oldest_unshipped_at`, NULL when the sink holds everything. Unique (sink_id, chain); deleting a sink deletes its cursors. The `webhook` sink keeps its URL in `settings` and its signing secret in `secret_enc`, which is write-only |
 
 ### Releases (Phase 2)
 

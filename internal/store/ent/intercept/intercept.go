@@ -18,6 +18,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsink"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsinkcursor"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
@@ -400,6 +402,60 @@ func (f TraverseAuditHead) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.AuditHeadQuery", q)
+}
+
+// The AuditSinkFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AuditSinkFunc func(context.Context, *ent.AuditSinkQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AuditSinkFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AuditSinkQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AuditSinkQuery", q)
+}
+
+// The TraverseAuditSink type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAuditSink func(context.Context, *ent.AuditSinkQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAuditSink) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAuditSink) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AuditSinkQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AuditSinkQuery", q)
+}
+
+// The AuditSinkCursorFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AuditSinkCursorFunc func(context.Context, *ent.AuditSinkCursorQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AuditSinkCursorFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AuditSinkCursorQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AuditSinkCursorQuery", q)
+}
+
+// The TraverseAuditSinkCursor type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAuditSinkCursor func(context.Context, *ent.AuditSinkCursorQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAuditSinkCursor) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAuditSinkCursor) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AuditSinkCursorQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AuditSinkCursorQuery", q)
 }
 
 // The CABundleFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1910,6 +1966,10 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AuditEntryQuery, predicate.AuditEntry, auditentry.OrderOption]{typ: ent.TypeAuditEntry, tq: q}, nil
 	case *ent.AuditHeadQuery:
 		return &query[*ent.AuditHeadQuery, predicate.AuditHead, audithead.OrderOption]{typ: ent.TypeAuditHead, tq: q}, nil
+	case *ent.AuditSinkQuery:
+		return &query[*ent.AuditSinkQuery, predicate.AuditSink, auditsink.OrderOption]{typ: ent.TypeAuditSink, tq: q}, nil
+	case *ent.AuditSinkCursorQuery:
+		return &query[*ent.AuditSinkCursorQuery, predicate.AuditSinkCursor, auditsinkcursor.OrderOption]{typ: ent.TypeAuditSinkCursor, tq: q}, nil
 	case *ent.CABundleQuery:
 		return &query[*ent.CABundleQuery, predicate.CABundle, cabundle.OrderOption]{typ: ent.TypeCABundle, tq: q}, nil
 	case *ent.CAKeyQuery:

@@ -2,7 +2,7 @@
 
 import { useQuery } from "@connectrpc/connect-query";
 import { Link, linkOptions, type LinkOptions } from "@tanstack/react-router";
-import { Cable, Globe, LayoutDashboard, Route, ScrollText, Server, Settings, ShieldCheck, Users, Waypoints, type LucideIcon } from "lucide-react";
+import { Cable, Globe, LayoutDashboard, Route, ScrollText, Server, Settings, ShieldCheck, Users, Waypoints, Webhook, type LucideIcon } from "lucide-react";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
@@ -37,6 +37,7 @@ export const navGroups: { key?: string; items: NavItem[] }[] = [
     key: "admin",
     items: [
       { key: "org", icon: Users, link: linkOptions({ to: "/org" }) },
+      { key: "webhooks", icon: Webhook, link: linkOptions({ to: "/webhooks" }) },
       { key: "audit", icon: ScrollText, link: linkOptions({ to: "/audit", search: {}, activeOptions: { includeSearch: false } }) },
       { key: "settings", icon: Settings, link: linkOptions({ to: "/settings" }) },
     ],

@@ -36,6 +36,12 @@ type AuditEntry func(*sql.Selector)
 // AuditHead is the predicate function for audithead builders.
 type AuditHead func(*sql.Selector)
 
+// AuditSink is the predicate function for auditsink builders.
+type AuditSink func(*sql.Selector)
+
+// AuditSinkCursor is the predicate function for auditsinkcursor builders.
+type AuditSinkCursor func(*sql.Selector)
+
 // CABundle is the predicate function for cabundle builders.
 type CABundle func(*sql.Selector)
 
