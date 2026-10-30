@@ -380,6 +380,16 @@ func LastSuccessAtNotNil() predicate.AuditSink {
 	return predicate.AuditSink(sql.FieldNotNull(FieldLastSuccessAt))
 }
 
+// VerificationIsNil applies the IsNil predicate on the "verification" field.
+func VerificationIsNil() predicate.AuditSink {
+	return predicate.AuditSink(sql.FieldIsNull(FieldVerification))
+}
+
+// VerificationNotNil applies the NotNil predicate on the "verification" field.
+func VerificationNotNil() predicate.AuditSink {
+	return predicate.AuditSink(sql.FieldNotNull(FieldVerification))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.AuditSink {
 	return predicate.AuditSink(sql.FieldEQ(FieldCreatedAt, v))

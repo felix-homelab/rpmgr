@@ -1703,6 +1703,7 @@ rpmgr verify <command>
 | Command | What it does |
 |---|---|
 | [`rpmgr verify domain`](#rpmgr-verify-domain) | Check a domain claim's proof now |
+| [`rpmgr verify audit`](#rpmgr-verify-audit) | Read an object-storage audit sink back and report a gap or a chain rewritten under a checkpoint it holds |
 
 ## rpmgr verify domain
 
@@ -1711,6 +1712,18 @@ Check a domain claim's proof now.
 ```text
 rpmgr verify domain <id>
 ```
+
+## rpmgr verify audit
+
+Read an object-storage audit sink back and report a gap or a chain rewritten under a checkpoint it holds.
+
+```text
+rpmgr verify audit [flags] --sink <id or name>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--sink string` |  | the object-storage sink to read back (required) |
 
 ## rpmgr check
 

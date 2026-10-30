@@ -20,12 +20,13 @@ import (
 )
 
 // The limits of the object-storage sink (docs/03-connections.md, "Timeouts, keepalive and
-// backoff"; docs/04-security.md, "Audit log"): a whole batch is written within S3BatchTimeout and
-// the check of a bucket within S3CheckTimeout. An object is locked for the sink's lock days,
-// DefaultLockDays unless set, within the range.
+// backoff"; docs/04-security.md, "Audit log"): a whole batch is written within S3BatchTimeout, the
+// check of a bucket within S3CheckTimeout and a verification within S3VerifyTimeout. An object
+// is locked for the sink's lock days, DefaultLockDays unless set, within the range.
 const (
 	S3BatchTimeout  = 60 * time.Second
 	S3CheckTimeout  = 60 * time.Second
+	S3VerifyTimeout = 5 * time.Minute
 	DefaultLockDays = 365
 	MinLockDays     = 30
 	MaxLockDays     = 3650
@@ -280,7 +281,7 @@ func checkFailure(what string, err error) error {
 	return fmt.Errorf("the object store refused %s: %w", what, err)
 }
 
-// UnreachableError is a check or a read-back that the store did not let finish: no connection,
+// UnreachableError is a check or a verification that the store did not let finish: no connection,
 // no answer in time, or an answer such as 5xx that a later try may not repeat. It is not a verdict
 // on the bucket.
 type UnreachableError struct{ Err error }

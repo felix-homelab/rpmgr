@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/felix-homelab/rpmgr/internal/sinkverify"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsink"
 )
 
@@ -34,6 +35,8 @@ type AuditSink struct {
 	LastError string `json:"last_error,omitempty"`
 	// LastSuccessAt holds the value of the "last_success_at" field.
 	LastSuccessAt *time.Time `json:"last_success_at,omitempty"`
+	// Verification holds the value of the "verification" field.
+	Verification *sinkverify.Verification `json:"verification,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -65,7 +68,7 @@ func (*AuditSink) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case auditsink.FieldSettings, auditsink.FieldSecretEnc:
+		case auditsink.FieldSettings, auditsink.FieldSecretEnc, auditsink.FieldVerification:
 			values[i] = new([]byte)
 		case auditsink.FieldEntries, auditsink.FieldEnabled:
 			values[i] = new(sql.NullBool)
@@ -145,6 +148,14 @@ func (_m *AuditSink) assignValues(columns []string, values []any) error {
 				_m.LastSuccessAt = new(time.Time)
 				*_m.LastSuccessAt = value.Time
 			}
+		case auditsink.FieldVerification:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field verification", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Verification); err != nil {
+					return fmt.Errorf("unmarshal field verification: %w", err)
+				}
+			}
 		case auditsink.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -216,6 +227,9 @@ func (_m *AuditSink) String() string {
 		builder.WriteString("last_success_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("verification=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Verification))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

@@ -20,9 +20,13 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/auditsink"
 	"github.com/felix-homelab/rpmgr/internal/ids"
+	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/secret"
+	"github.com/felix-homelab/rpmgr/internal/sinkverify"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	eauditsink "github.com/felix-homelab/rpmgr/internal/store/ent/auditsink"
@@ -101,7 +105,26 @@ func sinkOf(r *ent.AuditSink, b *auditsink.Backlog) *rpmgrv1.AuditSink {
 			st.Chains = append(st.Chains, cs)
 		}
 	}
+	st.Verification = sinkVerificationOf(r.Verification)
 	out.Status = st
+	return out
+}
+
+// sinkVerificationOf is the API's outcome of a read-back, nil for none.
+func sinkVerificationOf(v *sinkverify.Verification) *rpmgrv1.AuditSinkVerification {
+	if v == nil {
+		return nil
+	}
+	out := &rpmgrv1.AuditSinkVerification{Time: timestamppb.New(v.Time), Intact: true}
+	for _, c := range v.Chains {
+		cv := &rpmgrv1.AuditSinkChainVerification{Chain: c.Chain, Checked: int32(c.Checked), CheckpointSeq: c.CheckpointSeq, Gap: c.Gap,
+			Problem: c.Problem, Intact: c.Intact()}
+		if !c.CheckpointTime.IsZero() {
+			cv.CheckpointTime = timestamppb.New(c.CheckpointTime)
+		}
+		out.Intact = out.Intact && cv.Intact
+		out.Chains = append(out.Chains, cv)
+	}
 	return out
 }
 
@@ -470,4 +493,40 @@ func (a *AuditSinks) TestAuditSink(ctx context.Context, req *connect.Request[rpm
 		return connect.NewResponse(&rpmgrv1.TestAuditSinkResponse{Error: auditsink.Describe(err)}), nil
 	}
 	return connect.NewResponse(&rpmgrv1.TestAuditSinkResponse{Ok: true}), nil
+}
+
+// VerifyAuditSink implements AuditSinkService: it reads an object-storage sink back, keeps the
+// outcome as the sink's status and returns it. A chain with a gap or a problem is the answer, not
+// an error of the call; a store that cannot be read to the end is Unavailable and changes nothing.
+func (a *AuditSinks) VerifyAuditSink(ctx context.Context, req *connect.Request[rpmgrv1.VerifyAuditSinkRequest]) (
+	*connect.Response[rpmgrv1.VerifyAuditSinkResponse], error) {
+	sys := store.CarryTxHook(a.Sys, ctx)
+	row, err := a.DB.ReadClient().AuditSink.Get(sys, req.Msg.GetAuditSinkId())
+	if err != nil {
+		return nil, storeError(err)
+	}
+	if row.Kind != eauditsink.KindS3 {
+		return nil, badSink("only an object-storage sink can be read back")
+	}
+	signers, inters, root, err := castore.SignerCertificates(a.Sys, a.DB, pki.PurposeAuditCheckpoint)
+	if err != nil {
+		return nil, err
+	}
+	logger := a.Logger
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+	r := auditsink.NewRunner(auditsink.Options{DB: a.DB, Sealer: a.Sealer, Now: a.now, Logger: logger})
+	v, err := r.VerifyS3(sys, row, audit.Trust{Root: root, Intermediates: inters, Signers: signers})
+	var unreachable *auditsink.UnreachableError
+	switch {
+	case errors.As(err, &unreachable):
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("apisvc: %s", auditsink.Describe(err)))
+	case err != nil:
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("apisvc: %s", auditsink.Describe(err)))
+	}
+	if err := store.WriteTx(sys, a.DB, func(tx *ent.Tx) error { return tx.AuditSink.UpdateOneID(row.ID).SetVerification(v).Exec(sys) }); err != nil {
+		return nil, storeError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.VerifyAuditSinkResponse{Verification: sinkVerificationOf(v)}), nil
 }

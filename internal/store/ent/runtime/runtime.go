@@ -708,7 +708,7 @@ func init() {
 	// auditsink.DefaultLastError holds the default value on creation for the last_error field.
 	auditsink.DefaultLastError = auditsinkDescLastError.Default.(string)
 	// auditsinkDescCreatedAt is the schema descriptor for created_at field.
-	auditsinkDescCreatedAt := auditsinkFields[9].Descriptor()
+	auditsinkDescCreatedAt := auditsinkFields[10].Descriptor()
 	// auditsink.DefaultCreatedAt holds the default value on creation for the created_at field.
 	auditsink.DefaultCreatedAt = auditsinkDescCreatedAt.Default.(func() time.Time)
 	// auditsinkDescID is the schema descriptor for id field.
