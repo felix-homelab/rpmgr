@@ -210,6 +210,15 @@ rpmgr logs gateway gw-eu-1 --level debug --filter route --debug
 - **Level.** `--level` (**Level** in the web UI) shows that level and above. `--debug` (**Raise to
   debug while open**) lets the agent's debug lines through while you follow it; the agent's own
   log on its host keeps its level. Opening a log, and raising it, is in the audit log.
+- **Earlier lines.** The agent keeps its latest lines, a few hundred at most
+  ([03](../../03-connections.md#timeouts-keepalive-and-backoff)), and sends them first when you
+  open a log, marked as earlier lines. A marker before the first of them says how many older lines
+  are gone. Debug lines are among them only if someone had raised the level while they were
+  written. A healthy agent logs little: it reports a configuration applied, a target turning
+  healthy or unhealthy, and data sessions opening and ending; at debug level also each stream.
+  Requests, headers and credentials are never in them. When nothing has arrived yet, the panel says
+  **Connected – no new lines yet** and names the level. The command line sets the earlier lines
+  off with `--- earlier lines ---` and `--- new lines ---`.
 - **Gaps.** When the agent logs faster than its lines can be sent, it drops lines and says how many
   (`… 12 lines dropped`); a very long line is cut and marked `…(cut)`. Your viewing never slows the
   agent.
