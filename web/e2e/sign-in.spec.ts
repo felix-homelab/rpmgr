@@ -201,7 +201,7 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   // two columns, which a phone stacks.
   const desktop = page.viewportSize()!;
   await page.setViewportSize({ width: 2560, height: 1440 });
-  for (const path of ["/", "/routes", "/routes/new", "/gateways", "/settings", "/account", "/settings/pki"]) {
+  for (const path of ["/", "/routes", "/routes/new", "/gateways", "/settings", "/account", "/settings/pki", "/settings/webhooks"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await unfilled(page), path).toEqual([]);

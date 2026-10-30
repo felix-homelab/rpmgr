@@ -60,6 +60,8 @@ The API's methods are in [settings.proto](../../../proto/rpmgr/v1/settings.proto
 | **Every member must sign in with a second factor** | `require_mfa` | Members who signed in without a second factor are refused in the organisation (`MFA_REQUIRED`), and so are API tokens made from such sessions. Members can always set up an authenticator. Changing it needs a step-up |
 | **Operators may enroll and revoke connectors** | `operators_may_enroll` | Gives Operators the permission to enroll, change and decommission connectors ([Members and roles](../accounts/members-and-roles.md)) |
 | **Gateway group preselected for new routes** | `default_gateway_group_id` | The group the route form offers first; **None** offers none. The command line takes the group's name or ID |
+| Command line and API only | `alert_email` | On by default. Mails an alert's firing and resolving to the organisation's Owners and Admins when the instance has a mail relay. Turning it off does not stop the mail about a webhook endpoint that was disabled for failing |
+| Command line and API only | `alert_types` | The kinds of alert the organisation is e-mailed about, by name such as `agent_offline,clock_skew`; empty means all. Webhooks still get every alert event. The names are listed in [10](../../10-operations.md#suggested-alerts) |
 
 Before you turn on **Every member must sign in with a second factor**, set up your own
 authenticator and sign in with it, and make new API tokens from that session: from then on, a token
@@ -145,6 +147,16 @@ relay refused a mail is in the controller's log ([Monitoring](monitoring.md#logs
 | Web UI | Name | What it does |
 |---|---|---|
 | **Keep audit entries (days)** | `audit_retention` | How long audit entries are kept; older ones go, up to a signed checkpoint ([Audit log](audit-log.md#how-long-entries-are-kept)) |
+
+### Webhooks tab
+
+| Web UI | Name | What it does |
+|---|---|---|
+| **Private networks admitted for organisations' webhook receivers** | `webhook_private_ranges` | Ranges such as `10.0.0.0/8`, one per line in the web UI and comma-separated in `--set`, that an organisation's webhook endpoints may name; none by default. Loopback, link-local and cloud metadata addresses are never admitted ([Webhooks](webhooks.md#private-receivers)) |
+
+```sh
+rpmgr update settings --instance --set webhook_private_ranges=10.0.0.0/8,192.168.0.0/16
+```
 
 ### PKI tab
 

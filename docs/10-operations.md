@@ -978,9 +978,19 @@ each org; audit checkpoints behind, revocation log not yet off-host and audit si
 instance; and, with DNS automation, the DNS alerts. "UDP payloads too large" stays a Prometheus
 alert. A firing or resolved alert is an event (`alert.fire`, `alert.resolve`) for the webhooks
 that want it, and an e-mail to the org's Owners and Admins, or the Instance Admins for an instance
-alert, when SMTP is configured; an org chooses the alert types it gets and can turn the e-mails off
+alert, when SMTP is configured; an org chooses the alert types it is mailed about and can turn the e-mails off
 ([D139](14-open-decisions.md#engineering), [07](07-api.md#webhooks-phase-2)). The Overview shows
-the alerts that fire.
+the alerts that fire. Sending is its own job, apart from the evaluation: a mail that fails is
+retried and given up as 03 says, is logged, and holds back neither the alert nor the webhooks;
+a mail needs the relay of the instance settings, and without it the mail is skipped for good: an
+alert that fired before SMTP was set is not mailed afterwards, and neither is its resolving
+([04](04-security.md#human-authentication-and-sessions)).
+
+[R] The same job writes the status events `agent.connect`, `agent.disconnect`, `apply.reject` and
+`route.status` ([07](07-api.md#webhooks-phase-2)): once per change of state, remembered in the
+database so a restart neither replays nor loses one, and bounded for a flapping agent or route by
+the gap in [03](03-connections.md#timeouts-keepalive-and-backoff). An agent seen offline for the
+first time and a route's first status are no events.
 
 [R] Each alert the controller evaluates has a kind, the name `alert_types` chooses and an alert
 event's summary begins with: `agent_offline`, `config_not_applied`, `agent_certificate_expiring`,

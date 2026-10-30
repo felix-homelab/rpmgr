@@ -21,7 +21,7 @@ import (
 // keepalive and backoff").
 const Every = 30 * time.Second
 
-// The kinds of alert the controller evaluates (D142), the names alert_types will choose from.
+// The kinds of alert the controller evaluates (D142), the names alert_types chooses the e-mails from.
 const (
 	AgentOffline         = "agent_offline"
 	ConfigNotApplied     = "config_not_applied"
@@ -132,11 +132,9 @@ func Apply(ctx context.Context, tx *ent.Tx, now time.Time, obs []Observation) ([
 			if err := tx.Alert.UpdateOne(a).SetState(alert.StateFiring).SetFiredAt(now).Exec(ctx); err != nil {
 				return nil, err
 			}
-			ch, err := event(ctx, tx, a, "alert.fire")
-			if err != nil {
+			if err := emitEvent(ctx, tx, a, "alert.fire", &out); err != nil {
 				return nil, err
 			}
-			out = append(out, ch)
 		}
 	}
 	for k, a := range byKey {
@@ -152,13 +150,22 @@ func Apply(ctx context.Context, tx *ent.Tx, now time.Time, obs []Observation) ([
 		if err := tx.Alert.UpdateOne(a).SetState(alert.StateResolved).SetResolvedAt(now).Exec(ctx); err != nil {
 			return nil, err
 		}
-		ch, err := event(ctx, tx, a, "alert.resolve")
-		if err != nil {
+		if err := emitEvent(ctx, tx, a, "alert.resolve", &out); err != nil {
 			return nil, err
 		}
-		out = append(out, ch)
 	}
 	return out, nil
+}
+
+// emitEvent writes the event of a's change and adds it to out. Every alert writes its events, whatever
+// the org's alert_types: that setting chooses the e-mails only (D139, D142).
+func emitEvent(ctx context.Context, tx *ent.Tx, a *ent.Alert, typ string, out *[]events.Event) error {
+	ch, err := event(ctx, tx, a, typ)
+	if err != nil {
+		return err
+	}
+	*out = append(*out, ch)
+	return nil
 }
 
 // event writes the event of a's firing or resolving: its subject is what the alert is about, and

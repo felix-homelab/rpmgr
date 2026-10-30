@@ -84,6 +84,8 @@ type Tx struct {
 	IssuedCertificate *IssuedCertificateClient
 	// Lease is the client for interacting with the Lease builders.
 	Lease *LeaseClient
+	// MailJob is the client for interacting with the MailJob builders.
+	MailJob *MailJobClient
 	// Membership is the client for interacting with the Membership builders.
 	Membership *MembershipClient
 	// Org is the client for interacting with the Org builders.
@@ -138,6 +140,8 @@ type Tx struct {
 	SecretMeta *SecretMetaClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// StatusMark is the client for interacting with the StatusMark builders.
+	StatusMark *StatusMarkClient
 	// TOTPCredential is the client for interacting with the TOTPCredential builders.
 	TOTPCredential *TOTPCredentialClient
 	// TrafficBaseline is the client for interacting with the TrafficBaseline builders.
@@ -314,6 +318,7 @@ func (tx *Tx) init() {
 	tx.Invitation = NewInvitationClient(tx.config)
 	tx.IssuedCertificate = NewIssuedCertificateClient(tx.config)
 	tx.Lease = NewLeaseClient(tx.config)
+	tx.MailJob = NewMailJobClient(tx.config)
 	tx.Membership = NewMembershipClient(tx.config)
 	tx.Org = NewOrgClient(tx.config)
 	tx.OrgSetting = NewOrgSettingClient(tx.config)
@@ -341,6 +346,7 @@ func (tx *Tx) init() {
 	tx.RouteUDP = NewRouteUDPClient(tx.config)
 	tx.SecretMeta = NewSecretMetaClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
+	tx.StatusMark = NewStatusMarkClient(tx.config)
 	tx.TOTPCredential = NewTOTPCredentialClient(tx.config)
 	tx.TrafficBaseline = NewTrafficBaselineClient(tx.config)
 	tx.User = NewUserClient(tx.config)

@@ -951,6 +951,30 @@ func (f LeaseMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation)
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.LeaseMutation", m)
 }
 
+// The MailJobQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type MailJobQueryRuleFunc func(context.Context, *ent.MailJobQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f MailJobQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.MailJobQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.MailJobQuery", q)
+}
+
+// The MailJobMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type MailJobMutationRuleFunc func(context.Context, *ent.MailJobMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f MailJobMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.MailJobMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.MailJobMutation", m)
+}
+
 // The MembershipQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type MembershipQueryRuleFunc func(context.Context, *ent.MembershipQuery) error
@@ -1599,6 +1623,30 @@ func (f SessionMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutatio
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.SessionMutation", m)
 }
 
+// The StatusMarkQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type StatusMarkQueryRuleFunc func(context.Context, *ent.StatusMarkQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f StatusMarkQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.StatusMarkQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.StatusMarkQuery", q)
+}
+
+// The StatusMarkMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type StatusMarkMutationRuleFunc func(context.Context, *ent.StatusMarkMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f StatusMarkMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.StatusMarkMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.StatusMarkMutation", m)
+}
+
 // The TOTPCredentialQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type TOTPCredentialQueryRuleFunc func(context.Context, *ent.TOTPCredentialQuery) error
@@ -1824,6 +1872,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.LeaseQuery:
 		return q.Filter(), nil
+	case *ent.MailJobQuery:
+		return q.Filter(), nil
 	case *ent.MembershipQuery:
 		return q.Filter(), nil
 	case *ent.OrgQuery:
@@ -1877,6 +1927,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 	case *ent.SecretMetaQuery:
 		return q.Filter(), nil
 	case *ent.SessionQuery:
+		return q.Filter(), nil
+	case *ent.StatusMarkQuery:
 		return q.Filter(), nil
 	case *ent.TOTPCredentialQuery:
 		return q.Filter(), nil
@@ -1965,6 +2017,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 		return m.Filter(), nil
 	case *ent.LeaseMutation:
 		return m.Filter(), nil
+	case *ent.MailJobMutation:
+		return m.Filter(), nil
 	case *ent.MembershipMutation:
 		return m.Filter(), nil
 	case *ent.OrgMutation:
@@ -2018,6 +2072,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.SecretMetaMutation:
 		return m.Filter(), nil
 	case *ent.SessionMutation:
+		return m.Filter(), nil
+	case *ent.StatusMarkMutation:
 		return m.Filter(), nil
 	case *ent.TOTPCredentialMutation:
 		return m.Filter(), nil

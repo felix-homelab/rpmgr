@@ -97,8 +97,8 @@ rpmgr <command>
 | [`rpmgr pause`](#rpmgr-pause) | Pause a rollout |
 | [`rpmgr resume`](#rpmgr-resume) | Let a paused rollout run again |
 | [`rpmgr cancel`](#rpmgr-cancel) | End a rollout for good |
+| [`rpmgr test`](#rpmgr-test) | Send a test event to a webhook endpoint or a test item to an audit sink |
 | [`rpmgr logs`](#rpmgr-logs) | Follow the live log of a connector or gateway |
-| [`rpmgr test`](#rpmgr-test) | Send an audit sink a test item |
 
 ## rpmgr controller
 
@@ -700,14 +700,14 @@ rpmgr version [flags]
 Show a resource of the public API, the settings, or the install command of an agent.
 
 ```text
-rpmgr get [flags] install-command | settings | controller-update | <route|connector|gateway|gateway-group|port-pool|domain|certificate|ca-bundle|route-target|access-policy|audit-sink|rollout> <id or name>
+rpmgr get [flags] install-command | settings | controller-update | <route|connector|gateway|gateway-group|port-pool|domain|certificate|ca-bundle|route-target|access-policy|webhook|audit-sink|rollout> <id or name>
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--allow-target value` |  | install-command: a target the connector may reach: an address or subnet, optionally :port or :port-port, IPv6 in brackets, or a socket path; repeat for more |
 | `--deny-target value` |  | install-command: a target the connector must not reach, whatever allows it; the same form |
-| `--instance` |  | settings: the instance's settings, for an Instance Admin, instead of the org's |
+| `--instance` |  | settings: the instance's settings, for an Instance Admin, instead of the org's; webhook: the instance's endpoints |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--role string` | `connector` | install-command: the role to install, connector or gateway |
 
@@ -716,12 +716,13 @@ rpmgr get [flags] install-command | settings | controller-update | <route|connec
 List the resources of a kind in the org, or of the instance.
 
 ```text
-rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|enrollment-token|access-policy|member|token|release|audit-sink|rollout|rollout-target> [<what they belong to>]
+rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|enrollment-token|access-policy|member|token|webhook|webhook-delivery|release|audit-sink|rollout|rollout-target> [<what they belong to>]
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--all` |  | also the decommissioned agents, and the used-up, expired and revoked enrollment tokens |
+| `--instance` |  | webhook, webhook-delivery: the instance's endpoints, for an Instance Admin, instead of the org's |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 
 ## rpmgr delete
@@ -729,12 +730,13 @@ rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|d
 Delete a resource of the public API.
 
 ```text
-rpmgr delete [flags] <route|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|route-target|access-policy|audit-sink> <id>
+rpmgr delete [flags] <route|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|route-target|access-policy|webhook|audit-sink> <id>
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--force` |  | delete without checking that the resource is unchanged since this command read it |
+| `--instance` |  | webhook: the instance's endpoint, for an Instance Admin, instead of the org's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
 ## rpmgr audit
@@ -800,6 +802,7 @@ rpmgr create <command>
 | [`rpmgr create token`](#rpmgr-create-token) | Personal API tokens are made in the web UI |
 | [`rpmgr create reset-link`](#rpmgr-create-reset-link) | Print a one-time link that sets a member's password, for one who forgot it; takes a step-up |
 | [`rpmgr create rollout`](#rpmgr-create-rollout) | Roll a release out to the connectors and gateways: staged, its canary agents first, or easy, one agent after another |
+| [`rpmgr create webhook`](#rpmgr-create-webhook) | Make a webhook endpoint and print its signing secret once |
 
 ## rpmgr create route
 
@@ -1079,6 +1082,21 @@ rpmgr create rollout [flags] --release <version> (--canary <agent>… | --easy -
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--release string` |  | the release, by version or ID; no newer than the controller, but with --controller newer |
 
+## rpmgr create webhook
+
+Make a webhook endpoint and print its signing secret once.
+
+```text
+rpmgr create webhook [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--disabled` |  | make it disabled; enable webhook turns it on |
+| `--event value` |  | an event type or a prefix such as route.\*; repeat for more; none means all events |
+| `--instance` |  | the instance's endpoints, which receive instance events, for an Instance Admin, instead of the org's |
+| `--url string` |  | the https:// URL the events are sent to, without a user name, a password or a fragment |
+
 ## rpmgr update
 
 Change a resource of the public API.
@@ -1101,6 +1119,7 @@ rpmgr update <command>
 | [`rpmgr update member`](#rpmgr-update-member) | Change a member's role; granting Admin or Owner takes a step-up |
 | [`rpmgr update user`](#rpmgr-update-user) | Grant or revoke the Instance Admin role; as Instance Admin, with a step-up |
 | [`rpmgr update settings`](#rpmgr-update-settings) | Change the org's settings, or with --instance the instance's |
+| [`rpmgr update webhook`](#rpmgr-update-webhook) | Change a webhook endpoint; with --rotate-secret replace its signing secret and print the new one once |
 
 ## rpmgr update route
 
@@ -1345,6 +1364,23 @@ rpmgr update settings [flags]
 | `--set value` |  | \<setting>=\<value>, a setting as get settings names it; an empty value restores the default; repeat for more |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
+## rpmgr update webhook
+
+Change a webhook endpoint; with --rotate-secret replace its signing secret and print the new one once.
+
+```text
+rpmgr update webhook [flags] <id>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--all-events` |  | send every event, not only the types listed |
+| `--event value` |  | an event type or a prefix such as route.\*; repeat for more; none means all events |
+| `--force` |  | update without checking that the endpoint is unchanged since this command read it |
+| `--instance` |  | the instance's endpoints, which receive instance events, for an Instance Admin, instead of the org's |
+| `--rotate-secret` |  | replace the signing secret; the old one keeps signing for 24 h |
+| `--url string` |  | the https:// URL the events are sent to, without a user name, a password or a fragment |
+
 ## rpmgr enable
 
 Serve a resource again.
@@ -1357,6 +1393,7 @@ rpmgr enable <command>
 |---|---|
 | [`rpmgr enable route`](#rpmgr-enable-route) | Enable a route |
 | [`rpmgr enable gateway`](#rpmgr-enable-gateway) | Let a drained gateway take connections again |
+| [`rpmgr enable webhook`](#rpmgr-enable-webhook) | Enable a webhook endpoint; enabling one that failed clears its disabled state |
 
 ## rpmgr enable route
 
@@ -1385,6 +1422,18 @@ rpmgr enable gateway [flags] <id or name>
 | `--force` |  | change it without checking that it is unchanged since this command read it |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
 
+## rpmgr enable webhook
+
+Enable a webhook endpoint; enabling one that failed clears its disabled state.
+
+```text
+rpmgr enable webhook [flags] <id>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--instance` |  | the instance's endpoint, for an Instance Admin |
+
 ## rpmgr disable
 
 Stop serving a resource, keeping its configuration.
@@ -1396,6 +1445,7 @@ rpmgr disable <command>
 | Command | What it does |
 |---|---|
 | [`rpmgr disable route`](#rpmgr-disable-route) | Disable a route |
+| [`rpmgr disable webhook`](#rpmgr-disable-webhook) | Disable a webhook endpoint; enabling one that failed clears its disabled state |
 
 ## rpmgr disable route
 
@@ -1410,6 +1460,18 @@ rpmgr disable route [flags] <id or name>
 | `--force` |  | change it without checking that it is unchanged since this command read it |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
+
+## rpmgr disable webhook
+
+Disable a webhook endpoint; enabling one that failed clears its disabled state.
+
+```text
+rpmgr disable webhook [flags] <id>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--instance` |  | the instance's endpoint, for an Instance Admin |
 
 ## rpmgr drain
 
@@ -1895,6 +1957,39 @@ rpmgr cancel rollout [flags] <rollout>
 | `--force` |  | cancel without checking that the rollout is unchanged since this command read it |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 
+## rpmgr test
+
+Send a test event to a webhook endpoint or a test item to an audit sink.
+
+```text
+rpmgr test <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr test audit-sink`](#rpmgr-test-audit-sink) | Send a sink a test item now and show the receiver's answer |
+| [`rpmgr test webhook`](#rpmgr-test-webhook) | Send a test event to a webhook endpoint through the egress guard and say what the receiver answered |
+
+## rpmgr test audit-sink
+
+Send a sink a test item now and show the receiver's answer.
+
+```text
+rpmgr test audit-sink <id or name>
+```
+
+## rpmgr test webhook
+
+Send a test event to a webhook endpoint through the egress guard and say what the receiver answered.
+
+```text
+rpmgr test webhook [flags] <id>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--instance` |  | the instance's endpoint, for an Instance Admin |
+
 ## rpmgr logs
 
 Follow the live log of a connector or gateway.
@@ -1935,23 +2030,3 @@ rpmgr logs gateway [flags] <gateway>
 | `--debug` |  | raise the gateway's level to debug while the log is followed; audited |
 | `--filter string` |  | show only lines that contain this text |
 | `--level string` | `info` | the lowest level shown: debug, info, warn or error |
-
-## rpmgr test
-
-Send an audit sink a test item.
-
-```text
-rpmgr test <command>
-```
-
-| Command | What it does |
-|---|---|
-| [`rpmgr test audit-sink`](#rpmgr-test-audit-sink) | Send a sink a test item now and show the receiver's answer |
-
-## rpmgr test audit-sink
-
-Send a sink a test item now and show the receiver's answer.
-
-```text
-rpmgr test audit-sink <id or name>
-```

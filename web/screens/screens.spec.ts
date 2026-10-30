@@ -254,6 +254,20 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await shot(page, "release-upload");
   await upload.getByRole("button", { name: "Cancel" }).click();
   await page.unroute(listReleases);
+  // The instance's webhooks, with one endpoint whose secret stays on the page, and the private
+  // ranges the organisations' receivers may use.
+  await page.getByRole("navigation", { name: "Instance pages" }).getByRole("link", { name: "Webhooks" }).click();
+  await expect(page.getByRole("heading", { name: "Webhooks", level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: "New webhook…" }).click();
+  await page.getByLabel("URL").fill("https://10.20.0.5/rpmgr-instance");
+  await page.getByLabel("Event types").fill("release.*, rollout.*");
+  await page.getByRole("button", { name: "Create the webhook" }).click();
+  await expect(page.getByRole("region", { name: "Signing secret" })).toBeVisible();
+  await page.getByLabel(/^Private networks admitted/).fill("10.20.0.0/16\nfd00:20::/32");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+  await page.waitForTimeout(800);
+  await shot(page, "settings-webhooks", true);
   await page.getByRole("link", { name: "Users" }).click();
   await expect(page.getByRole("heading", { name: "Users", level: 1 })).toBeVisible();
   await page.waitForTimeout(800);

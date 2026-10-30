@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"time"
@@ -43,16 +44,19 @@ func AlertJob(o AlertOptions) lease.Job {
 	return lease.Job{Name: "alerts", Reason: "evaluate the alerts", Every: alerts.Every,
 		Run: func(ctx context.Context, l lease.Lease) error {
 			now := o.Now().UTC()
-			obs, err := observe(ctx, o, now)
+			obs, status, err := observe(ctx, o, now)
 			if err != nil {
 				return err
 			}
-			var changed []events.Event
+			var changed, statusChanged []events.Event
 			err = store.WriteTx(ctx, o.DB, func(tx *ent.Tx) error {
 				if err := o.Leases.Fence(ctx, tx, l); err != nil {
 					return err
 				}
 				if changed, err = alerts.Apply(ctx, tx, now, obs); err != nil {
+					return err
+				}
+				if statusChanged, err = alerts.ApplyStatus(ctx, tx, now, status); err != nil {
 					return err
 				}
 				_, err = alerts.Purge(ctx, tx, now.Add(-events.Keep))
@@ -61,7 +65,7 @@ func AlertJob(o AlertOptions) lease.Job {
 			if err != nil {
 				return err
 			}
-			for _, e := range changed {
+			for _, e := range append(changed, statusChanged...) {
 				o.Logger.Info("alert", "event", e.Type, "org", e.OrgID, "summary", e.Summary)
 			}
 			return nil
@@ -73,9 +77,10 @@ type agentRef struct{ org, typ, name string }
 
 // observe returns every condition that holds at now. Any failed read fails the pass, so a
 // condition is never taken to have ended because it could not be read.
-func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Observation, error) {
+func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Observation, []alerts.StatusObservation, error) {
 	c := o.DB.ReadClient()
 	var obs []alerts.Observation
+	var status []alerts.StatusObservation
 	add := func(org, kind, typ, id, name string, since time.Time) {
 		obs = append(obs, alerts.Observation{OrgID: org, Kind: kind, SubjectType: typ, SubjectID: id, SubjectName: name, Since: since})
 	}
@@ -84,21 +89,21 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 	agents := map[string]agentRef{}
 	gws, err := c.Gateway.Query().Where(gateway.DecommissionedAtIsNil(), gateway.Enabled(true)).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, g := range gws {
 		agents[g.ID] = agentRef{g.OrgID, "gateway", g.Name}
 	}
 	cons, err := c.Connector.Query().Where(connector.DecommissionedAtIsNil(), connector.Enabled(true), connector.Ephemeral(false)).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, x := range cons {
 		agents[x.ID] = agentRef{x.OrgID, "connector", x.Name}
 	}
 	sessions, err := c.AgentSession.Query().All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	online := map[string]bool{}
 	for _, s := range sessions {
@@ -107,7 +112,14 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 			continue
 		}
 		// An agent that never connected has no session and is no alert: it is not set up yet.
-		if online[s.ID] = schema.AgentSessionLive(s.DisconnectedAt, s.LastSeenAt, now); !online[s.ID] {
+		online[s.ID] = schema.AgentSessionLive(s.DisconnectedAt, s.LastSeenAt, now)
+		state := alerts.StateOnline
+		if !online[s.ID] {
+			state = alerts.StateOffline
+		}
+		status = append(status, alerts.StatusObservation{OrgID: a.org, Kind: alerts.StatusAgent, SubjectType: a.typ, SubjectID: s.ID,
+			SubjectName: a.name, State: state})
+		if !online[s.ID] {
 			since := s.LastSeenAt
 			if s.DisconnectedAt != nil {
 				since = *s.DisconnectedAt
@@ -117,7 +129,7 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 	}
 	states, err := c.AgentState.Query().All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, st := range states {
 		a, ok := agents[st.ID]
@@ -126,6 +138,13 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 		}
 		// An offline agent's configuration and clock are not known now: its alerts of them neither
 		// resolve nor fire again when it is back, and none opens while it is away.
+		rejected := snapshot.ApplyStatus(st, now) == snapshot.ApplyRejected
+		state := alerts.StateOK
+		if rejected {
+			state = fmt.Sprintf("rejected:%s:%d", st.RejectedDbEpoch, st.RejectedSeq)
+		}
+		status = append(status, alerts.StatusObservation{OrgID: a.org, Kind: alerts.StatusApply, SubjectType: a.typ, SubjectID: st.ID,
+			SubjectName: a.name, State: state, Unknown: !online[st.ID]})
 		if !online[st.ID] {
 			for _, kind := range []string{alerts.ConfigNotApplied, alerts.ClockSkew} {
 				obs = append(obs, alerts.Observation{OrgID: a.org, Kind: kind, SubjectType: a.typ, SubjectID: st.ID, SubjectName: a.name, Unknown: true})
@@ -144,7 +163,7 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 	certs, err := c.IssuedCertificate.Query().Where(issuedcertificate.RevokedAtIsNil(),
 		issuedcertificate.SubjectTypeIn(issuedcertificate.SubjectTypeConnector, issuedcertificate.SubjectTypeGateway)).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	newest := map[string]time.Time{}
 	for _, x := range certs {
@@ -162,7 +181,7 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 	pub, err := c.Certificate.Query().Where(certificate.SourceEQ(certificate.SourceAcme), certificate.NotAfterNotNil(),
 		certificate.NotAfterLT(now.Add(alerts.PublicCertWithin))).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, x := range pub {
 		name := ""
@@ -175,12 +194,20 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 	// Routes without a ready target, per org.
 	orgs, err := c.Org.Query().IDs(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, org := range orgs {
+		states, err := apisvc.RouteStates(ctx, c, org, now)
+		if err != nil {
+			return nil, nil, err
+		}
+		for r, state := range states {
+			status = append(status, alerts.StatusObservation{OrgID: org, Kind: alerts.StatusRoute, SubjectType: "route", SubjectID: r.ID,
+				SubjectName: r.Name, State: state})
+		}
 		rs, err := apisvc.RoutesWithoutReadyTarget(ctx, c, org, now)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, r := range rs {
 			add(org, alerts.RouteNoReadyTarget, "route", r.ID, r.Name, time.Time{})
@@ -191,7 +218,7 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 	// endpoint's is an instance alert.
 	hooks, err := c.Webhook.Query().Where(ewebhook.Enabled(true), ewebhook.FailingSinceLTE(now.Add(-alerts.WebhookFailingFor))).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, h := range hooks {
 		name := h.URL
@@ -204,7 +231,7 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 	// The instance's alerts.
 	oldest, pending, err := audit.Uncovered(ctx, o.DB)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if pending && now.Sub(oldest) > alerts.CheckpointsBehindFor {
 		add("", alerts.CheckpointsBehind, "instance", "audit", "audit checkpoints", time.Time{})
@@ -214,12 +241,12 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 	}
 	backlogs, err := auditsink.Backlogs(ctx, o.DB)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, b := range backlogs {
 		if b.Enabled && !b.Oldest.IsZero() && now.Sub(b.Oldest) > alerts.AuditSinkBacklogFor {
 			add("", alerts.AuditSinkBacklog, "audit_sink", b.SinkID, b.Sink, time.Time{})
 		}
 	}
-	return obs, nil
+	return obs, status, nil
 }
