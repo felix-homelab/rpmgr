@@ -31,6 +31,19 @@ regexes = ['''^GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ$''']
 description = "argon2.IDKey"
 regexes = ['''^argon2\.IDKey$''']
 
+# The example credentials of AWS's Signature Version 4 test suite and S3 documentation, which the
+# object store client's signing tests use as published (AKIDEXAMPLE, AKIAIOSFODNN7EXAMPLE and their
+# secret keys ending in EXAMPLEKEY): well-known example values, not secrets.
+[[allowlists]]
+description = "AWS SigV4 and S3 documentation example credentials"
+regexes = ['''AKIDEXAMPLE''', '''AKIAIOSFODNN7EXAMPLE''', '''wJalrXUtnFEMI/K7MDENG[+/]bPxRfiCYEXAMPLEKEY''']
+
+# The made-up secret key of the object store client's tests, which checks that it never leaks into
+# logs or errors.
+[[allowlists]]
+description = "object store test secret"
+regexes = ['''^s3cr3t-key-that-must-never-leak$''']
+
 # Atlas migration checksums: hashes of the migration files.
 [[allowlists]]
 description = "Atlas migration checksums"

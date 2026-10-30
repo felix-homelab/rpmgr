@@ -1,0 +1,267 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// WebhookService is an org's webhook endpoints (docs/07-api.md, "Webhooks (Phase 2)";
+// docs/04-security.md, "Webhooks and the egress guard"). An endpoint receives the org's events as
+// signed HTTPS requests. Every method needs webhooks.write, because a receiver's URL may carry a
+// token of the receiver's. The endpoint's secret is shown once, when it is made or rotated, and
+// never read back.
+service WebhookService {
+  // CreateWebhook adds an endpoint and returns its secret, once.
+  rpc CreateWebhook(CreateWebhookRequest) returns (CreateWebhookResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "webhooks.write"
+      resource_field: "org_id"
+    };
+  }
+  // GetWebhook returns an endpoint, without its secret.
+  rpc GetWebhook(GetWebhookRequest) returns (GetWebhookResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "webhooks.write"
+      resource_field: "webhook_id"
+    };
+  }
+  // ListWebhooks lists an org's endpoints by ID, without their secrets.
+  rpc ListWebhooks(ListWebhooksRequest) returns (ListWebhooksResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "webhooks.write"
+      resource_field: "org_id"
+    };
+  }
+  // UpdateWebhook changes an endpoint's URL, event types or enabled flag. Enabling an endpoint
+  // again clears a disable, whatever its reason.
+  rpc UpdateWebhook(UpdateWebhookRequest) returns (UpdateWebhookResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "webhooks.write"
+      resource_field: "webhook.id"
+    };
+  }
+  // DeleteWebhook removes an endpoint and its deliveries.
+  rpc DeleteWebhook(DeleteWebhookRequest) returns (DeleteWebhookResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "webhooks.write"
+      resource_field: "webhook_id"
+    };
+  }
+  // RotateWebhookSecret makes a new secret and returns it, once. The old one signs too, as a
+  // second value of Rpmgr-Signature, for the period in docs/03-connections.md.
+  rpc RotateWebhookSecret(RotateWebhookSecretRequest) returns (RotateWebhookSecretResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "webhooks.write"
+      resource_field: "webhook_id"
+    };
+  }
+  // ListWebhookDeliveries lists an endpoint's deliveries, the newest first.
+  rpc ListWebhookDeliveries(ListWebhookDeliveriesRequest) returns (ListWebhookDeliveriesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "webhooks.write"
+      resource_field: "webhook_id"
+    };
+  }
+  // TestWebhook sends a webhook.test event to an endpoint now, through the egress guard, and
+  // returns what the receiver answered. It is audited.
+  rpc TestWebhook(TestWebhookRequest) returns (TestWebhookResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "webhooks.write"
+      resource_field: "webhook_id"
+    };
+  }
+}
+
+// WebhookDisabledReason is why an endpoint is disabled.
+enum WebhookDisabledReason {
+  // Not disabled.
+  WEBHOOK_DISABLED_REASON_UNSPECIFIED = 0;
+  // No successful delivery for the period in docs/03-connections.md.
+  WEBHOOK_DISABLED_REASON_FAILING = 1;
+  // A person disabled it.
+  WEBHOOK_DISABLED_REASON_PERSON = 2;
+}
+
+// Webhook is one endpoint. It never carries the secret.
+message Webhook {
+  // The endpoint's ID, whk_…; output only.
+  string id = 1;
+  // The org; output only. Empty for an instance endpoint (not served yet).
+  string org_id = 2;
+  // Where events are posted: an https:// URL without credentials.
+  string url = 3;
+  // The event types the endpoint wants, by name or by prefix such as route.*; none means all.
+  repeated string event_types = 4;
+  // Whether events are delivered. A new endpoint is enabled.
+  bool enabled = 5;
+  // Why it is disabled; output only.
+  WebhookDisabledReason disabled_reason = 6;
+  // Whether the endpoint has a secret; output only, always true.
+  bool secret_set = 7;
+  // Whether the previous secret still signs; output only.
+  bool previous_secret_signs = 8;
+  // When the previous secret stops signing; output only.
+  google.protobuf.Timestamp previous_secret_until = 9;
+  // When the last delivery succeeded; output only.
+  google.protobuf.Timestamp last_success_time = 10;
+  // Since when deliveries fail without a success; output only.
+  google.protobuf.Timestamp failing_since_time = 11;
+  // When it was made; output only.
+  google.protobuf.Timestamp create_time = 12;
+  // The version to send back with an update or a deletion; output only.
+  string etag = 13;
+}
+
+// WebhookDelivery is one attempt to deliver an event.
+message WebhookDelivery {
+  // The delivery's ID, whd_…; output only.
+  string id = 1;
+  // The endpoint.
+  string webhook_id = 2;
+  // The event's ID, the same on every attempt.
+  string event_id = 3;
+  // The event's type.
+  string event_type = 4;
+  // The attempt, from 1.
+  int32 attempt = 5;
+  // The receiver's status code; 0 if it did not answer.
+  int32 status_code = 6;
+  // Why it failed; empty on success. Never holds the URL.
+  string error = 7;
+  // When it was sent.
+  google.protobuf.Timestamp send_time = 8;
+  // When the next attempt is due; unset if none is.
+  google.protobuf.Timestamp next_attempt_time = 9;
+}
+
+// CreateWebhookRequest is a new endpoint.
+message CreateWebhookRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The endpoint: its url and event_types; enabled is ignored, a new endpoint is enabled.
+  Webhook webhook = 2 [(buf.validate.field).required = true];
+  // Makes a retry of the same request return the first answer, secret included.
+  string request_id = 3 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateWebhookResponse is the endpoint and its secret.
+message CreateWebhookResponse {
+  // The endpoint.
+  Webhook webhook = 1;
+  // The secret, rpmgr_whs_…; it cannot be shown again.
+  string secret = 2 [(rpmgr.v1.sensitive) = true];
+}
+
+// GetWebhookRequest names an endpoint.
+message GetWebhookRequest {
+  // The endpoint's ID.
+  string webhook_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetWebhookResponse is the endpoint.
+message GetWebhookResponse {
+  // The endpoint.
+  Webhook webhook = 1;
+}
+
+// ListWebhooksRequest asks for a page of an org's endpoints.
+message ListWebhooksRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 2;
+  // The page after the one that returned it.
+  string page_token = 3;
+}
+
+// ListWebhooksResponse is one page of endpoints.
+message ListWebhooksResponse {
+  // The endpoints.
+  repeated Webhook webhooks = 1;
+  // The token of the next page; empty on the last.
+  string next_page_token = 2;
+}
+
+// UpdateWebhookRequest changes an endpoint.
+message UpdateWebhookRequest {
+  // The endpoint with its ID and the new values of the fields the mask names.
+  Webhook webhook = 1 [(buf.validate.field).required = true];
+  // The fields to change: url, event_types, enabled.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateWebhookResponse is the changed endpoint.
+message UpdateWebhookResponse {
+  // The endpoint.
+  Webhook webhook = 1;
+}
+
+// DeleteWebhookRequest names an endpoint.
+message DeleteWebhookRequest {
+  // The endpoint's ID.
+  string webhook_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DeleteWebhookResponse is empty.
+message DeleteWebhookResponse {}
+
+// RotateWebhookSecretRequest names an endpoint.
+message RotateWebhookSecretRequest {
+  // The endpoint's ID.
+  string webhook_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// RotateWebhookSecretResponse is the endpoint and its new secret.
+message RotateWebhookSecretResponse {
+  // The endpoint.
+  Webhook webhook = 1;
+  // The new secret, rpmgr_whs_…; it cannot be shown again.
+  string secret = 2 [(rpmgr.v1.sensitive) = true];
+}
+
+// ListWebhookDeliveriesRequest asks for a page of an endpoint's deliveries.
+message ListWebhookDeliveriesRequest {
+  // The endpoint's ID.
+  string webhook_id = 1 [(buf.validate.field).string.min_len = 1];
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 2;
+  // The page after the one that returned it.
+  string page_token = 3;
+}
+
+// ListWebhookDeliveriesResponse is one page of deliveries.
+message ListWebhookDeliveriesResponse {
+  // The deliveries, the newest first.
+  repeated WebhookDelivery deliveries = 1;
+  // The token of the next page; empty on the last.
+  string next_page_token = 2;
+}
+
+// TestWebhookRequest names an endpoint.
+message TestWebhookRequest {
+  // The endpoint's ID.
+  string webhook_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// TestWebhookResponse is what the receiver answered.
+message TestWebhookResponse {
+  // Whether the receiver answered with a 2xx status.
+  bool delivered = 1;
+  // The receiver's status code; 0 if it did not answer.
+  int32 status_code = 2;
+  // Why it failed; empty on success.
+  string error = 3;
+}

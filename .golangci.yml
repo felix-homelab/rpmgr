@@ -82,6 +82,10 @@ linters:
       - path: internal/certs/
         text: Reveal
         linters: [forbidigo]
+      # The object store's secret key is opened to sign a request, and to check its characters.
+      - path: internal/objstore/(sigv4|accesskey)(_test)?\.go
+        text: Reveal
+        linters: [forbidigo]
       # The mail relay's password is opened to log in to it.
       - path: internal/mail/mail\.go
         text: Reveal
@@ -96,6 +100,10 @@ linters:
         linters: [forbidigo]
       # A webhook's secrets are opened to sign its deliveries.
       - path: internal/webhook/webhook\.go
+        text: Reveal
+        linters: [forbidigo]
+      # A new webhook secret is shown once, in the answer that makes or rotates it.
+      - path: internal/apisvc/webhook\.go
         text: Reveal
         linters: [forbidigo]
       # The command line's API token is written to its credentials file and sent as a Bearer header.

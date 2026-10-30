@@ -60,6 +60,9 @@ func TestSink(t *testing.T) {
 		{"a token in an error", func(s *telemetrytest.Sink) {
 			s.Logger().Error("enrollment failed", "error", fmt.Errorf("parse %q: %w", tok, errors.New("bad")))
 		}, 1},
+		{"a webhook secret", func(s *telemetrytest.Sink) {
+			s.Logger().Info("sending with rpmgr_whs_ABCDEFGHIJKLMNOPQRSTUVWXYZ234567")
+		}, 1},
 		{"a truncated token", func(s *telemetrytest.Sink) { s.Logger().Warn("token", "id", tok[:len("rpmgr_pat_")+20]) }, 1},
 		{"a private key", func(s *telemetrytest.Sink) { s.Logger().Debug("loaded", "pem", key) }, 1},
 		{"a registered value", func(s *telemetrytest.Sink) { s.Secret(registered); s.Logger().Info("kek", "raw", registered) }, 1},

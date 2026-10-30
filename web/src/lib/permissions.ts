@@ -13,6 +13,7 @@ export const orgPermissions = [
   "audit.read",
   "org.write",
   "agents.logs",
+  "webhooks.write",
 ] as const;
 
 export const instancePermission = "instance.admin";
