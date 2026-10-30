@@ -433,7 +433,13 @@ func carry(ctx context.Context, s *Sessions, rev func() *agentv1.Revision, logge
 		abort(c)
 		return
 	}
-	relayConn(st, c, idle, lim)
+	started := time.Now()
+	logger.Debug("stream opened", "route", routeID)
+	toClient, fromClient := relayConn(st, c, idle, lim)
+	if logger.Enabled(ctx, slog.LevelDebug) {
+		logger.Debug("stream closed", "route", routeID, "duration", time.Since(started).Round(time.Millisecond),
+			"bytes_from_client", fromClient, "bytes_to_client", toClient)
+	}
 }
 
 // openStream opens a stream for a route on one of its connectors' sessions, for the connection c.
@@ -459,11 +465,11 @@ func openStream(ctx context.Context, s *Sessions, rev func() *agentv1.Revision, 
 
 // relayConn relays c over the stream st, within the route's bandwidth lim, closing c after the
 // route's idle timeout without traffic; 0 never.
-func relayConn(st tunnel.Stream, c net.Conn, idle time.Duration, lim *RouteLimit) {
+func relayConn(st tunnel.Stream, c net.Conn, idle time.Duration, lim *RouteLimit) (toConn, toStream int64) {
 	if idle > 0 {
 		c = newIdleConn(c, idle)
 	}
-	tunnel.Relay(st, lim.Conn(c))
+	return tunnel.Relay(st, lim.Conn(c))
 }
 
 // idleConn closes its connection when no byte moved in either direction for the idle timeout.

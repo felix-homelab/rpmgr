@@ -61,12 +61,27 @@ func streamLogs(kind string) *cli.Command {
 				return apiError(err)
 			}
 			defer func() { _ = st.Close() }()
+			earlier := false // the lines read so far are the agent's backlog (D154)
 			for st.Receive() {
 				l := st.Msg().GetLine()
 				if l == nil {
 					continue // a heartbeat
 				}
-				if n := l.GetDroppedBefore(); n > 0 {
+				if l.GetBacklog() != earlier {
+					earlier = l.GetBacklog()
+					mark := "--- new lines ---"
+					if earlier {
+						mark = "--- earlier lines ---"
+					}
+					if _, err := fmt.Fprintln(env.Stdout, mark); err != nil {
+						return err
+					}
+				}
+				if n := l.GetDroppedBefore(); n > 0 && earlier {
+					if _, err := fmt.Fprintf(env.Stdout, "… %d older lines are no longer kept\n", n); err != nil {
+						return err
+					}
+				} else if n > 0 {
 					if _, err := fmt.Fprintf(env.Stdout, "… %d lines dropped: the %s logged faster than they could be sent\n", n, kind); err != nil {
 						return err
 					}

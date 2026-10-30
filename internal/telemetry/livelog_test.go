@@ -4,6 +4,7 @@ package telemetry_test
 
 import (
 	"bytes"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -82,5 +83,170 @@ func TestLiveLog(t *testing.T) {
 	}
 	if logger.Enabled(t.Context(), slog.LevelDebug) {
 		t.Fatal("debug stayed enabled after the raising subscription closed")
+	}
+}
+
+func newLive(t *testing.T, level string) (*slog.Logger, *telemetry.LiveLog) {
+	t.Helper()
+	logger, live, err := telemetry.NewLiveLogger(&bytes.Buffer{}, telemetry.LogConfig{Level: level})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return logger, live
+}
+
+func texts(ls []telemetry.Line) []string {
+	var out []string
+	for _, l := range ls {
+		out = append(out, l.Text)
+	}
+	return out
+}
+
+// TestLiveLogBacklog (D154): a subscription gets the lines logged before it opened, oldest first,
+// redacted, from its level up and matching its filter, once; lines logged after it come through
+// Take, never twice.
+func TestLiveLogBacklog(t *testing.T) {
+	logger, live := newLive(t, "info")
+	tok := "rpmgr_" + "pat_0123456789abcdefgh" // made at run time, so no secret scanner takes the test for a leak
+	logger.Info("first")
+	logger.Debug("never logged: below the agent's level")
+	logger.Warn("second " + tok + " password=hunter2")
+	logger.Info("third", "token", tok)
+
+	sub := live.Subscribe(slog.LevelInfo, "", false)
+	defer sub.Close()
+	logger.Info("after")
+	got, dropped := sub.Backlog()
+	if dropped != 0 || len(got) != 3 || got[0].Text != "msg=first" || !strings.Contains(got[1].Text, "second") || got[2].Text != "msg=third token=[REDACTED]" {
+		t.Fatalf("backlog: %q dropped %d", texts(got), dropped)
+	}
+	for _, l := range got {
+		if strings.Contains(l.Text, tok) || strings.Contains(l.Text, "hunter2") {
+			t.Errorf("the backlog holds a secret: %q", l.Text)
+		}
+	}
+	if again, _ := sub.Backlog(); len(again) != 0 {
+		t.Errorf("the backlog came twice: %q", texts(again))
+	}
+	if lines, _ := sub.Take(); len(lines) != 1 || lines[0].Text != "msg=after" {
+		t.Errorf("new lines: %q", texts(lines))
+	}
+
+	warn := live.Subscribe(slog.LevelWarn, "", false)
+	defer warn.Close()
+	if got, _ := warn.Backlog(); len(got) != 1 || !strings.Contains(got[0].Text, "second") {
+		t.Errorf("the level did not apply to the backlog: %q", texts(got))
+	}
+	// The filter matches the redacted text, so it cannot find a secret.
+	byTok := live.Subscribe(slog.LevelInfo, "hunter2", false)
+	defer byTok.Close()
+	if got, _ := byTok.Backlog(); len(got) != 0 {
+		t.Errorf("a filter found a secret in the backlog: %q", texts(got))
+	}
+	byText := live.Subscribe(slog.LevelInfo, "third", false)
+	defer byText.Close()
+	if got, _ := byText.Backlog(); len(got) != 1 {
+		t.Errorf("the filter did not apply to the backlog: %q", texts(got))
+	}
+}
+
+// TestLiveLogBacklog_Debug (D140, D154): debug lines are in the backlog only if a viewer raised
+// the level when they were logged, and a viewer at info does not get them.
+func TestLiveLogBacklog_Debug(t *testing.T) {
+	logger, live := newLive(t, "info")
+	logger.Debug("unseen")
+	raised := live.Subscribe(slog.LevelInfo, "", true)
+	logger.Debug("seen")
+	raised.Close()
+	late := live.Subscribe(slog.LevelInfo, "", false)
+	defer late.Close()
+	if got, _ := late.Backlog(); len(got) != 0 {
+		t.Errorf("an info viewer got debug lines: %q", texts(got))
+	}
+	debug := live.Subscribe(slog.LevelDebug, "", false)
+	defer debug.Close()
+	if got, _ := debug.Backlog(); len(got) != 1 || got[0].Text != "msg=seen" {
+		t.Errorf("the debug line logged while raised: %q", texts(got))
+	}
+}
+
+// TestLiveLogBacklog_Bounds: the backlog keeps the last LiveLogBacklogLines lines and
+// LiveLogBacklogBytes bytes, the oldest dropped and counted, and an empty backlog says nothing.
+func TestLiveLogBacklog_Bounds(t *testing.T) {
+	logger, live := newLive(t, "info")
+	if got, dropped := live.Subscribe(slog.LevelInfo, "", false).Backlog(); len(got) != 0 || dropped != 0 {
+		t.Fatalf("an empty backlog: %q %d", texts(got), dropped)
+	}
+	const total = telemetry.LiveLogBacklogLines + 50
+	for i := range total {
+		logger.Info("n", "i", i)
+	}
+	sub := live.Subscribe(slog.LevelInfo, "", false)
+	defer sub.Close()
+	got, dropped := sub.Backlog()
+	if len(got) != telemetry.LiveLogBacklogLines || dropped != 50 {
+		t.Fatalf("lines: %d dropped %d", len(got), dropped)
+	}
+	if got[0].Text != "msg=n i=50" || got[len(got)-1].Text != "msg=n i=249" {
+		t.Errorf("the oldest went first: %q ... %q", got[0].Text, got[len(got)-1].Text)
+	}
+
+	// By bytes: long lines leave room for fewer than the line bound.
+	logger, live = newLive(t, "info")
+	long := strings.Repeat("x", 4<<10)
+	for range 40 {
+		logger.Info(long)
+	}
+	sub2 := live.Subscribe(slog.LevelInfo, "", false)
+	defer sub2.Close()
+	got, dropped = sub2.Backlog()
+	size := 0
+	for _, l := range got {
+		size += len(l.Text)
+	}
+	if size > telemetry.LiveLogBacklogBytes || len(got) == 0 || len(got)+dropped != 40 {
+		t.Errorf("bytes: %d bytes in %d lines, dropped %d", size, len(got), dropped)
+	}
+	// A single line above the bound is still kept, alone.
+	logger.Info(strings.Repeat("y", telemetry.LiveLogLine))
+	if got, _ := live.Subscribe(slog.LevelInfo, "", false).Backlog(); len(got) == 0 {
+		t.Error("the newest line was dropped")
+	}
+}
+
+// TestLiveLogBacklog_Wrap: after the ring wraps several times the backlog is still in order, the
+// dropped count is exact and the byte bound holds.
+func TestLiveLogBacklog_Wrap(t *testing.T) {
+	logger, live := newLive(t, "info")
+	const total = 3*telemetry.LiveLogBacklogLines + 17
+	for i := range total {
+		logger.Info("n", "i", i)
+	}
+	got, dropped := live.Subscribe(slog.LevelInfo, "", false).Backlog()
+	if len(got) != telemetry.LiveLogBacklogLines || dropped != total-telemetry.LiveLogBacklogLines {
+		t.Fatalf("lines: %d dropped %d", len(got), dropped)
+	}
+	for k, l := range got {
+		if want := fmt.Sprintf("msg=n i=%d", total-telemetry.LiveLogBacklogLines+k); l.Text != want {
+			t.Fatalf("line %d: %q, want %q", k, l.Text, want)
+		}
+	}
+
+	// Long lines after a wrap: the byte bound evicts from the head of the ring.
+	long := strings.Repeat("x", 4<<10)
+	for range 40 {
+		logger.Info(long)
+	}
+	got, dropped = live.Subscribe(slog.LevelInfo, "", false).Backlog()
+	size := 0
+	for _, l := range got {
+		size += len(l.Text)
+	}
+	if size > telemetry.LiveLogBacklogBytes || len(got) == 0 || len(got)+dropped != total+40 {
+		t.Errorf("bytes: %d bytes in %d lines, dropped %d", size, len(got), dropped)
+	}
+	if last := got[len(got)-1].Text; last != "msg="+long {
+		t.Errorf("the newest line is not last: %.20q", last)
 	}
 }

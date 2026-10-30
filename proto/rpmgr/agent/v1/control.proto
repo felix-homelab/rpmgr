@@ -153,9 +153,14 @@ message LogLine {
   // The line, redacted on the agent.
   string text = 3;
   // How many lines the agent dropped before this one, as the viewer read too slowly.
+  // It counts every line the agent dropped from its backlog, regardless of the viewer's level
+  // and filter.
   uint32 dropped_before = 4;
   // The line was cut at the limit of docs/03.
   bool truncated = 5;
+  // The line is one the agent kept from before the log opened, not a new one (D154); the first
+  // such line carries in dropped_before how many older lines the agent no longer held.
+  bool backlog = 6;
 }
 
 // AttachEnd ends an operation.
