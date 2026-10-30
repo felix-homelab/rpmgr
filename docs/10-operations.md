@@ -978,11 +978,12 @@ each org; audit checkpoints behind, revocation log not yet off-host and audit si
 instance; and, with DNS automation, the DNS alerts. "UDP payloads too large" stays a Prometheus
 alert. A firing or resolved alert is an event (`alert.fire`, `alert.resolve`) for the webhooks
 that want it, and an e-mail to the org's Owners and Admins, or the Instance Admins for an instance
-alert, when SMTP is configured; an org chooses the alert types it gets and can turn the e-mails off
+alert, when SMTP is configured; an org chooses the alert types it is mailed about and can turn the e-mails off
 ([D139](14-open-decisions.md#engineering), [07](07-api.md#webhooks-phase-2)). The Overview shows
 the alerts that fire. Sending is its own job, apart from the evaluation: a mail that fails is
 retried and given up as 03 says, is logged, and holds back neither the alert nor the webhooks;
-a mail needs the relay of the instance settings, and without it none is made
+a mail needs the relay of the instance settings, and without it the mail is skipped for good: an
+alert that fired before SMTP was set is not mailed afterwards, and neither is its resolving
 ([04](04-security.md#human-authentication-and-sessions)).
 
 [R] The same job writes the status events `agent.connect`, `agent.disconnect`, `apply.reject` and
