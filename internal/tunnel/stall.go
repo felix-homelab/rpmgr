@@ -83,16 +83,23 @@ func (s *Stalls) Check(now time.Time) int {
 		held -= s.streamWindow
 		delete(s.streams, w)
 	}
-	s.resets += len(victims)
 	s.mu.Unlock()
+	n := 0
 	for _, w := range victims {
-		w.reset.Store(true)
+		// A stream whose relay ended since the selection is not reset, nor counted.
+		if !w.state.CompareAndSwap(streamLive, streamReset) {
+			continue
+		}
+		n++
+		s.mu.Lock()
+		s.resets++ // counted before the reset has its effects
+		s.mu.Unlock()
 		w.Stream.Abort()
 		if f := w.onReset.Load(); f != nil {
 			(*f)()
 		}
 	}
-	return len(victims)
+	return n
 }
 
 // Run checks every second until ctx ends.
@@ -117,9 +124,15 @@ type stalling struct {
 	reading atomic.Bool  // the reader waits in Read
 	since   atomic.Int64 // when the last Read returned, as time since s.base
 
-	reset   atomic.Bool            // the rule reset the stream
+	state   atomic.Int32           // streamLive, streamEnded or streamReset
 	onReset atomic.Pointer[func()] // called after the rule's reset; see OnReset
 }
+
+const (
+	streamLive  = iota
+	streamEnded // the stream ended on its own: closed, aborted or its receive direction ended
+	streamReset // the rule reset it
+)
 
 // resetNotifier is a stream that tells when the stalled-stream rule resets it.
 type resetNotifier interface {
@@ -131,7 +144,7 @@ type resetNotifier interface {
 // that does not read, which a reset of the stream alone does not wake. stop unregisters f.
 func (w *stalling) OnReset(f func()) (stop func()) {
 	w.onReset.Store(&f)
-	if w.reset.Load() {
+	if w.state.Load() == streamReset {
 		f()
 	}
 	return func() { w.onReset.Store(nil) }
@@ -141,6 +154,9 @@ func (w *stalling) OnReset(f func()) (stop func()) {
 func (w *stalling) Unwrap() Stream { return w.Stream }
 
 func (w *stalling) Read(p []byte) (int, error) {
+	// since is stored on entry as well, so that a Check between the two loads of reading and since
+	// never sees a reader that has just come back to Read as one that has waited since its last Read.
+	w.since.Store(int64(time.Since(w.s.base)))
 	w.reading.Store(true)
 	n, err := w.Stream.Read(p)
 	w.since.Store(int64(time.Since(w.s.base)))
@@ -152,6 +168,7 @@ func (w *stalling) Read(p []byte) (int, error) {
 }
 
 func (w *stalling) forget() {
+	w.state.CompareAndSwap(streamLive, streamEnded)
 	w.s.mu.Lock()
 	delete(w.s.streams, w)
 	w.s.mu.Unlock()

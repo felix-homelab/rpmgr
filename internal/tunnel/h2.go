@@ -371,6 +371,11 @@ func (c *H2Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		select {
 		case c.accept <- ws:
 			st.serve()
+		case <-st.done:
+			// The rule reset the stream before it was accepted (Abort finishes it): return at
+			// once, which sends RST_STREAM and returns the unread bytes to the connection window.
+			ws.(*stalling).forget()
+			st.serve()
 		case <-r.Context().Done():
 			ws.(*stalling).forget() // never accepted
 		case <-c.done:

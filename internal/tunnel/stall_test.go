@@ -506,3 +506,45 @@ func BenchmarkStalls_Read(b *testing.B) {
 		})
 	}
 }
+
+// TestH2_ResetOfUnacceptedStreamReturnsWindow: the connector's rule resets streams that nobody
+// accepted, and their unread bytes return to the connection window at once, instead of staying
+// until the stream is accepted: a second stream blocked on the exhausted window flows again.
+func TestH2_ResetOfUnacceptedStreamReturnsWindow(t *testing.T) {
+	w := tunnel.H2Windows{Stream: 256 << 10, Conn: 256 << 10}
+	// Only the connector's rule acts: the gateway's ends are plain writers nobody reads.
+	gw, con, _, _ := h2SessionWindows(t, tunnel.WithStallAge(w, peerAge), tunnel.WithStallAge(w, 300*time.Millisecond))
+	open := func() tunnel.Stream {
+		g, err := gw.OpenStream(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return g
+	}
+	first := open()
+	if _, err := first.Write(make([]byte, 200<<10)); err != nil { // fits; held unread by the connector
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	second := open()
+	wrote := make(chan error, 1)
+	go func() { _, err := second.Write(make([]byte, 200<<10)); wrote <- err }() // above the 56 KiB left
+	select {
+	case err := <-wrote:
+		t.Fatalf("the window was not exhausted (%v); the test proves nothing", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	// Nothing accepts a stream. Whether the rule resets the second stream as well or only the
+	// first, the write ends only if a reset returned credit, and the first one is reset.
+	select {
+	case <-wrote:
+	case <-time.After(15 * time.Second):
+		t.Fatal("a reset of a stream nobody accepted did not return its bytes to the connection window")
+	}
+	if got := tunnel.StallResets(con); got == 0 {
+		t.Fatal("no stream reset")
+	}
+	if _, err := io.Copy(io.Discard, first); err == nil {
+		t.Fatal("the unaccepted stream's gateway end does not see the reset")
+	}
+}
