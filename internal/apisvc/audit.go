@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
@@ -29,7 +30,14 @@ type Audit struct {
 	DB  *store.DB
 	Sys context.Context // the system scope: the instance chain and the CA's certificates
 	API *api.Server
+	Now func() time.Time // the clock of export headers; nil for time.Now
+	// ExportDeadline bounds one export stream, the read transaction with it; 0 for
+	// DefaultExportDeadline (docs/03-connections.md, "Timeouts").
+	ExportDeadline time.Duration
 }
+
+// DefaultExportDeadline is how long an audit export may run (docs/03-connections.md).
+const DefaultExportDeadline = 5 * time.Minute
 
 // ListAuditEntries implements AuditService.
 func (a *Audit) ListAuditEntries(ctx context.Context, req *connect.Request[rpmgrv1.ListAuditEntriesRequest]) (
@@ -101,6 +109,78 @@ func (a *Audit) list(ctx context.Context, orgID string, req proto.Message, pageS
 			Diff: r.Diff, Reason: r.Reason})
 	}
 	return out, next, nil
+}
+
+// An export goes out in parts of at most exportPartLines lines or about exportPartBytes bytes.
+const (
+	exportPartLines = 256
+	exportPartBytes = 256 << 10
+)
+
+// ExportAudit implements AuditService.
+func (a *Audit) ExportAudit(ctx context.Context, req *connect.Request[rpmgrv1.ExportAuditRequest],
+	stream *connect.ServerStream[rpmgrv1.ExportAuditResponse]) error {
+	return a.export(ctx, ctx, req.Msg.GetOrgId(), func(lines []string) error {
+		return stream.Send(&rpmgrv1.ExportAuditResponse{Lines: lines})
+	})
+}
+
+// ExportInstanceAudit implements AuditService.
+func (a *Audit) ExportInstanceAudit(ctx context.Context, _ *connect.Request[rpmgrv1.ExportInstanceAuditRequest],
+	stream *connect.ServerStream[rpmgrv1.ExportInstanceAuditResponse]) error {
+	return a.export(ctx, a.Sys, "", func(lines []string) error {
+		return stream.Send(&rpmgrv1.ExportInstanceAuditResponse{Lines: lines})
+	})
+}
+
+// export records the request in the audit log, then streams the chain of orgID read in scope, so
+// the export holds its own entry (docs/04-security.md, "Audit log").
+func (a *Audit) export(ctx, scope context.Context, orgID string, sendLines func([]string) error) error {
+	api.AuditAction(ctx, "audit.export")
+	if err := store.WriteTx(ctx, a.DB, func(*ent.Tx) error { return nil }); err != nil { // the API's hook appends the entry
+		return storeError(err)
+	}
+	// From here an export that fails is recorded again, as a failure (api.record.finishStream).
+	d := a.ExportDeadline
+	if d <= 0 {
+		d = DefaultExportDeadline
+	}
+	scope, cancel := context.WithTimeout(scope, d)
+	defer cancel()
+	stop := context.AfterFunc(ctx, cancel) // the instance scope does not end with the request
+	defer stop()
+	signers, inters, root, err := castore.SignerCertificates(a.Sys, a.DB, pki.PurposeAuditCheckpoint)
+	if err != nil {
+		return err
+	}
+	now := time.Now
+	if a.Now != nil {
+		now = a.Now
+	}
+	var part []string
+	size := 0
+	send := func() error {
+		if len(part) == 0 {
+			return nil
+		}
+		err := sendLines(part)
+		part, size = nil, 0
+		return err
+	}
+	err = audit.Export(scope, a.DB, orgID, audit.Trust{Root: root, Intermediates: inters, Signers: signers}, now(), func(line []byte) error {
+		part, size = append(part, string(line)), size+len(line)
+		if len(part) >= exportPartLines || size >= exportPartBytes {
+			return send()
+		}
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			return connect.NewError(connect.CodeDeadlineExceeded, errors.New("apisvc: the audit export took longer than its deadline"))
+		}
+		return storeError(err)
+	}
+	return send()
 }
 
 // VerifyAuditChain implements AuditService.

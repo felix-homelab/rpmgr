@@ -18,6 +18,19 @@ Changes to the design documents are not recorded here: see the git history and t
   rotation both secrets sign for 24 hours. Enabling an endpoint again clears a disable. Owners and
   Admins hold the new permission `webhooks.write`, which an API token can carry. The CLI
   follows. (#650)
+
+- Audit export with proofs. After a step-up, `rpmgr audit export --out <file>` (an Owner or Admin
+  for the org's chain, `--instance` for the instance chain as Instance Admin), or the API calls
+  `ExportAudit` and `ExportInstanceAudit`, write a chain as JSON Lines: its entries with their
+  hashes and its signed checkpoints, the entries after the newest checkpoint flagged. `rpmgr audit
+  verify-export --ca-pin sha256:<base64> <file>` verifies the file on any machine against the CA's
+  pin alone and finds an edited, removed or reordered entry or a forged checkpoint. An export is an
+  `audit.export` entry in the chain, recorded again as a failure when it breaks off. The audit
+  page has an Export button that does the same after a step-up. (#652, #653)
+- A Webhooks page under Administration manages an organisation's webhook endpoints: it lists them
+  with their state, creates, edits, enables again, rotates and deletes them, shows the signing
+  secret once with a copy button, sends a test event and lists each endpoint's deliveries with
+  their status, error and next retry. (#651)
 - Instance webhooks and private receivers: the Instance Admin manages the endpoints that receive
   instance events through `InstanceWebhookService`, and lists in the new instance setting
   `webhook_private_ranges` the private networks that organisations' receivers may use; a refused
@@ -25,10 +38,6 @@ Changes to the design documents are not recorded here: see the git history and t
   addresses are never admitted. An organisation's endpoint may not name `localhost` or a loopback
   or link-local address, an organisation has at most 20 endpoints, and a caller's test events are
   rate-limited. (#935)
-- A Webhooks page under Administration manages an organisation's webhook endpoints: it lists them
-  with their state, creates, edits, enables again, rotates and deletes them, shows the signing
-  secret once with a copy button, sends a test event and lists each endpoint's deliveries with
-  their status, error and next retry. (#651)
 - The Instance Admin manages the instance's webhooks under Settings → Webhooks, with the signing
   secret shown once, and lists the private networks organisations' receivers may use in
   `webhook_private_ranges`, which the page checks entry by entry. The CLI gets `create`, `update`,

@@ -128,6 +128,14 @@ func AuditReason(ctx context.Context, reason string) {
 	}
 }
 
+// AuditAction replaces the action in the audit entry of the request in ctx with a named event, for
+// a request whose entry is better found by that name, such as an export.
+func AuditAction(ctx context.Context, action string) {
+	if r, _ := ctx.Value(recordKey{}).(*record); r != nil {
+		r.req.Entry.Action = action
+	}
+}
+
 // AuditDiff replaces the diff in the audit entry of the request in ctx, for a request too large to
 // record whole, such as an uploaded release.
 func AuditDiff(ctx context.Context, diff string) {
@@ -174,6 +182,22 @@ func (r *record) finish(ctx context.Context, err error) {
 		e.Result, e.Reason = audit.Failure, code.String()
 	}
 	if _, aerr := audit.Record(ctx, r.s.o.DB, e); aerr != nil {
+		r.s.o.Logger.Error("cannot record a request in the audit log", "action", e.Action, "error", aerr)
+	}
+}
+
+// finishStream is finish for a server stream: one that fails after its request was recorded as a
+// success, as an export that breaks off, is recorded once more with its failure, so the log shows
+// that it did not end (docs/04-security.md, "Audit log").
+func (r *record) finishStream(ctx context.Context, err error) {
+	if r == nil || err == nil || !r.appended.Load() {
+		r.finish(ctx, err)
+		return
+	}
+	e := r.req.Entry
+	e.Result, e.Reason = audit.Failure, connect.CodeOf(err).String()
+	// A client that went away cancels ctx; the record must not.
+	if _, aerr := audit.Record(context.WithoutCancel(ctx), r.s.o.DB, e); aerr != nil {
 		r.s.o.Logger.Error("cannot record a request in the audit log", "action", e.Action, "error", aerr)
 	}
 }

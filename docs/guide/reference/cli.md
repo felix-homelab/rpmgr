@@ -77,6 +77,7 @@ rpmgr <command>
 | [`rpmgr get`](#rpmgr-get) | Show a resource of the public API, the settings, or the install command of an agent |
 | [`rpmgr list`](#rpmgr-list) | List the resources of a kind in the org, or of the instance |
 | [`rpmgr delete`](#rpmgr-delete) | Delete a resource of the public API |
+| [`rpmgr audit`](#rpmgr-audit) | Export the audit log with its proofs, and verify an export offline |
 | [`rpmgr create`](#rpmgr-create) | Create a resource of the public API |
 | [`rpmgr update`](#rpmgr-update) | Change a resource of the public API |
 | [`rpmgr enable`](#rpmgr-enable) | Serve a resource again |
@@ -737,6 +738,44 @@ rpmgr delete [flags] <route|gateway-group|port-pool|port-quota|domain|certificat
 | `--force` |  | delete without checking that the resource is unchanged since this command read it |
 | `--instance` |  | webhook: the instance's endpoint, for an Instance Admin, instead of the org's |
 | `--wait duration` |  | wait up to this long, at most 30s, for the agents to apply the change |
+
+## rpmgr audit
+
+Export the audit log with its proofs, and verify an export offline.
+
+```text
+rpmgr audit <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr audit export`](#rpmgr-audit-export) | Export an audit chain with its proofs as JSON Lines, after a step-up (Owner or Admin; the instance chain for the Instance Admin) |
+| [`rpmgr audit verify-export`](#rpmgr-audit-verify-export) | Verify an audit export offline against the CA's pin: links, hashes, checkpoint signatures, nothing removed or edited |
+
+## rpmgr audit export
+
+Export an audit chain with its proofs as JSON Lines, after a step-up (Owner or Admin; the instance chain for the Instance Admin).
+
+```text
+rpmgr audit export [flags] --out <file or ->
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--instance` |  | export the instance chain instead of the org's |
+| `--out string` |  | the file to write, mode 0600, never overwriting one; - for standard output (required) |
+
+## rpmgr audit verify-export
+
+Verify an audit export offline against the CA's pin: links, hashes, checkpoint signatures, nothing removed or edited.
+
+```text
+rpmgr audit verify-export [flags] --ca-pin sha256:<base64> <file or ->
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--ca-pin string` |  | pin of the controller's root CA, sha256:\<base64> (required) |
 
 ## rpmgr create
 
