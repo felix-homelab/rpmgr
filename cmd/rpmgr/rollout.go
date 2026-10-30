@@ -3,7 +3,6 @@
 package main
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -11,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -29,7 +27,7 @@ import (
 const maxReleaseFile = 1 << 20
 
 // rolloutCommands are check release, upload release, create rollout, advance, pause, resume and
-// cancel rollout, and upgrade connector and gateway (docs/16-cli.md); list release, get rollout,
+// cancel rollout (docs/16-cli.md); list release, get rollout,
 // list rollout and list rollout-target are part of get and list. All are for an Instance Admin.
 func rolloutCommands() map[string][]*cli.Command {
 	var (
@@ -112,10 +110,9 @@ func rolloutCommands() map[string][]*cli.Command {
 		},
 	}
 	return map[string][]*cli.Command{"check": {checkRelease()}, "upload": {uploadRelease()}, "create": {create}, "advance": {advanceRollout()},
-		"upgrade": {upgradeAgents("connector"), upgradeAgents("gateway")},
-		"pause":   {changeRollout("pause", "pause a running rollout; agents offered the release keep it", false)},
-		"resume":  {changeRollout("resume", "let a paused rollout run again", true)},
-		"cancel":  {changeRollout("cancel", "end a running or paused rollout for good", true)}}
+		"pause":  {changeRollout("pause", "pause a running rollout; agents offered the release keep it", false)},
+		"resume": {changeRollout("resume", "let a paused rollout run again", true)},
+		"cancel": {changeRollout("cancel", "end a running or paused rollout for good", true)}}
 }
 
 // checkPoll is how often check release asks whether the release check has ended.
@@ -215,59 +212,6 @@ func uploadRelease() *cli.Command {
 				return nil
 			}
 			return s.print(ctx, env.Stdout, kindOf("release"), output, []protoreflect.Message{rel.ProtoReflect()}, nil, false)
-		},
-	}
-}
-
-// upgradeAgents is `rpmgr upgrade connector|gateway <agent>…`: the agents join the easy rollout of
-// the controller's own version, or start one (D129).
-func upgradeAgents(kind string) *cli.Command {
-	var output string
-	return &cli.Command{
-		Name: kind, Summary: "update " + kind + "s to the controller's version, one after another, in its easy rollout (Instance Admin)",
-		Args:  "<" + kind + ">…",
-		Flags: func(fs *flag.FlagSet) { outputFlag(fs, &output) },
-		Run: func(ctx context.Context, env *cli.Env, args []string) error {
-			if len(args) == 0 {
-				return cli.Usagef("expected at least one %s, by name (the org's) or ID (any org's)", kind)
-			}
-			s, err := newAPISession(env)
-			if err != nil {
-				return err
-			}
-			k := kindOf(kind)
-			req := &rpmgrv1.UpgradeAgentsRequest{}
-			for _, ref := range args {
-				id, err := k.Resolve(ctx, s.hc, s.creds.Controller, s.creds.Org, ref)
-				if err != nil {
-					return apiError(err)
-				}
-				if !slices.Contains(req.AgentIds, id) {
-					req.AgentIds = append(req.AgentIds, id)
-				}
-			}
-			if err := protovalidate.Validate(req); err != nil {
-				return cli.Usagef("%v", err)
-			}
-			rc := rpmgrv1connect.NewReleaseServiceClient(s.hc, s.creds.Controller)
-			var resp *connect.Response[rpmgrv1.UpgradeAgentsResponse]
-			if err := s.withStepUp(ctx, func() error {
-				resp, err = rc.UpgradeAgents(ctx, connect.NewRequest(req))
-				return err
-			}); err != nil {
-				return apiError(err)
-			}
-			ro := resp.Msg.GetRollout()
-			w := notes(env, output).Stdout
-			rows := make([]protoreflect.Message, 0, len(resp.Msg.GetRolloutTargets()))
-			for _, t := range resp.Msg.GetRolloutTargets() {
-				if _, err := fmt.Fprintf(w, "%s %s is number %d in the queue of easy rollout %s of %s.\n", kind,
-					cmp.Or(t.GetAgentName(), t.GetAgentId()), t.GetPosition(), ro.GetId(), ro.GetVersion()); err != nil {
-					return err
-				}
-				rows = append(rows, t.ProtoReflect())
-			}
-			return s.print(ctx, env.Stdout, kindOf("rollout-target"), output, rows, nil, true)
 		},
 	}
 }
