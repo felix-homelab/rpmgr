@@ -12,6 +12,11 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- The web UI shows the alerts that fire on the Overview, the instance's too for the Instance Admin,
+  and tells Owners and Admins of a webhook endpoint that rpmgr disabled for failing, with a link to
+  enable it again. The organisation settings gain the alert e-mails on or off and the alert types
+  the organisation is e-mailed about. (#960)
+
 - The alerts the controller evaluates can be read through the API: `ListAlerts` lists an
   organisation's alerts, the ones that fire unless the request asks for pending or resolved ones,
   for every member of the organisation, and `ListInstanceAlerts` lists the instance alerts for the
