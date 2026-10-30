@@ -2,7 +2,7 @@
 
 import { Code, ConnectError, type Transport } from "@connectrpc/connect";
 import type { QueryClient } from "@tanstack/react-query";
-import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect, type RouterHistory } from "@tanstack/react-router";
+import { createRootRouteWithContext, createRoute, createRouter, lazyRouteComponent, Outlet, redirect, type RouterHistory } from "@tanstack/react-router";
 import { Layout } from "@/components/layout";
 import { Account } from "@/pages/account";
 import { ConnectorDetail } from "@/pages/connector-detail";
@@ -14,7 +14,6 @@ import { Forgot } from "@/pages/forgot";
 import { Pki } from "@/pages/pki";
 import { Users } from "@/pages/users";
 import { InstanceWebhooksPage } from "@/pages/instance-webhooks";
-import { AuditSinksPage } from "@/pages/audit-sinks";
 import { Settings } from "@/pages/settings";
 import { Updates } from "@/pages/updates";
 import { Updating, validateUpdatingSearch } from "@/pages/updating";
@@ -75,7 +74,8 @@ const updates = createRoute({ getParentRoute: () => app, path: "/settings/update
 const pki = createRoute({ getParentRoute: () => app, path: "/settings/pki", component: Pki });
 const users = createRoute({ getParentRoute: () => app, path: "/settings/users", component: Users });
 const instanceWebhooks = createRoute({ getParentRoute: () => app, path: "/settings/webhooks", component: InstanceWebhooksPage });
-const auditSinks = createRoute({ getParentRoute: () => app, path: "/settings/audit-sinks", component: AuditSinksPage });
+// A page of its own chunk, so the main one stays under the build's chunk size warning.
+const auditSinks = createRoute({ getParentRoute: () => app, path: "/settings/audit-sinks", component: lazyRouteComponent(() => import("@/pages/audit-sinks"), "AuditSinksPage") });
 const account = createRoute({
   getParentRoute: () => app,
   path: "/account",
