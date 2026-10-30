@@ -38,7 +38,8 @@ func (a *logsAPI) StreamLogs(_ context.Context, req *connect.Request[rpmgrv1.Str
 		return err
 	}
 	at := timestamppb.New(time.Date(2026, 10, 25, 9, 0, 0, 0, time.UTC))
-	for _, l := range []*rpmgrv1.LogLine{{Time: at, Level: "info", Text: "msg=ready"},
+	for _, l := range []*rpmgrv1.LogLine{{Time: at, Level: "info", Text: "msg=before", DroppedBefore: 7, Backlog: true},
+		{Time: at, Level: "info", Text: "msg=ready"},
 		{Time: at, Level: "debug", Text: "msg=dialing", DroppedBefore: 3, Truncated: true}} {
 		if err := st.Send(&rpmgrv1.StreamLogsResponse{Line: l}); err != nil {
 			return err
@@ -65,7 +66,8 @@ func TestLogs(t *testing.T) {
 	env := map[string]string{"RPMGR_CREDENTIALS": creds}
 	const con = "con_01JA3B5C7D9E1F2G3H4J5K6M7N"
 	code, out, errOut := runWith(env, "", "logs", "connector", "--level", "debug", "--filter", "dial", "--debug", con)
-	want := "2026-10-25T09:00:00Z INFO  msg=ready\n… 3 lines dropped: the connector logged faster than they could be sent\n" +
+	want := "--- earlier lines ---\n… 7 older lines are no longer kept\n2026-10-25T09:00:00Z INFO  msg=before\n" +
+		"--- new lines ---\n2026-10-25T09:00:00Z INFO  msg=ready\n… 3 lines dropped: the connector logged faster than they could be sent\n" +
 		"2026-10-25T09:00:00Z DEBUG msg=dialing …(cut)\n"
 	if code != cli.ExitOK || out != want || !strings.Contains(errOut, "ended at its deadline") {
 		t.Fatalf("logs: %d\n%s\n%s", code, out, errOut)

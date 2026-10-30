@@ -21,7 +21,7 @@ const liveLogRate = 200
 // serveLogs runs a live-log operation (docs/03-connections.md, "Control session"): it subscribes
 // to the agent's live log at the operation's level and filter, raised to debug if it asks, and
 // sends each line until ctx ends. Lines the buffer or the rate dropped are counted in the next
-// line's dropped_before; a slow controller never slows the agent's logging.
+// line's dropped_before; the agent's backlog (D154) is sent first, marked; a slow controller never slows the agent's logging.
 func serveLogs(ctx context.Context, live *telemetry.LiveLog, p *agentv1.LogParams, send func(*agentv1.AttachFrame) error) error {
 	level, err := telemetry.ParseLevel(p.GetLevel())
 	if err != nil {
@@ -31,6 +31,15 @@ func serveLogs(ctx context.Context, live *telemetry.LiveLog, p *agentv1.LogParam
 	defer sub.Close()
 	tokens, last := float64(liveLogRate), time.Now()
 	dropped := 0
+	// The backlog goes first, marked, the first line with how many older lines are gone; it is not
+	// rate-limited, as it is at most the backlog's bound (docs/03-connections.md).
+	earlier, gone := sub.Backlog()
+	for _, l := range earlier {
+		if err := send(logFrame(l, gone, true)); err != nil {
+			return fmt.Errorf("agent: sending a backlog line: %w", err)
+		}
+		gone = 0
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -48,13 +57,18 @@ func serveLogs(ctx context.Context, live *telemetry.LiveLog, p *agentv1.LogParam
 				continue
 			}
 			tokens--
-			if err := send(&agentv1.AttachFrame{Frame: &agentv1.AttachFrame_Log{Log: &agentv1.LogLine{Time: timestamppb.New(l.Time),
-				Level: levelName(l.Level), Text: l.Text, DroppedBefore: uint32(dropped), Truncated: l.Truncated}}}); err != nil { //nolint:gosec // G115: a count of lines
+			if err := send(logFrame(l, dropped, false)); err != nil {
 				return fmt.Errorf("agent: sending a log line: %w", err)
 			}
 			dropped = 0
 		}
 	}
+}
+
+// logFrame is the frame of a line; backlog marks one kept from before the log opened.
+func logFrame(l telemetry.Line, dropped int, backlog bool) *agentv1.AttachFrame {
+	return &agentv1.AttachFrame{Frame: &agentv1.AttachFrame_Log{Log: &agentv1.LogLine{Time: timestamppb.New(l.Time),
+		Level: levelName(l.Level), Text: l.Text, DroppedBefore: uint32(dropped), Truncated: l.Truncated, Backlog: backlog}}} //nolint:gosec // G115: a count of lines
 }
 
 // levelName names a level as live logs do.
