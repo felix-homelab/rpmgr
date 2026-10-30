@@ -3,6 +3,7 @@
 package controller_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -45,6 +46,8 @@ type hookEnv struct {
 	held   lease.Lease
 	job    lease.Job
 
+	logs *bytes.Buffer // what the job logs
+
 	mu     sync.Mutex
 	got    []received
 	answer func(path string, n int) int // the status for the n-th request to path
@@ -65,7 +68,7 @@ func newHookEnv(t *testing.T, guarded bool) *hookEnv {
 	}
 	sealer, _ := secret.NewSealer(kek)
 	e := &hookEnv{t: t, db: db, sys: storetest.SystemCtx(t), sealer: sealer, clock: time.Now().UTC(),
-		answer: func(string, int) int { return http.StatusNoContent }}
+		logs: &bytes.Buffer{}, answer: func(string, int) int { return http.StatusNoContent }}
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		e.mu.Lock()
@@ -91,7 +94,7 @@ func newHookEnv(t *testing.T, guarded bool) *hookEnv {
 		Now: func() time.Time { return e.clock }}
 	e.leases = lease.New(db, "ctn_test", nil)
 	o := controller.WebhookOptions{DB: db, Leases: e.leases, Sealer: sealer, Sender: sender, Now: func() time.Time { return e.clock },
-		Logger: slog.New(slog.DiscardHandler)}
+		Logger: slog.New(slog.NewTextHandler(e.logs, nil))}
 	if !guarded {
 		o = controller.LoopbackWebhooks(o)
 	}
@@ -373,5 +376,136 @@ func TestPurgeDeliveries(t *testing.T) {
 		c.WebhookDelivery.Query().Where(webhookdelivery.ID(old.ID)).ExistX(e.sys) ||
 		!c.WebhookDelivery.Query().Where(webhookdelivery.NextAttemptAtNotNil()).ExistX(e.sys) {
 		t.Fatal("kept the wrong deliveries")
+	}
+}
+
+// TestWebhookJob_DeliveryDuringRotation: while the previous secret still signs, the job signs each
+// delivery with both, so a receiver that has either verifies it; afterwards with the new one only.
+func TestWebhookJob_DeliveryDuringRotation(t *testing.T) {
+	e := newHookEnv(t, false)
+	org := storetest.Org(t, e.db, "org-a")
+	h := e.hook(org, "/rot")
+	const next = "rpmgr_whs_nextnextnextnextnextnextnextnextnext02" //nolint:gosec // G101: a test secret
+	cur, _ := e.sealer.Seal(secret.Context{Table: "webhooks", Column: "secret_enc", RowID: h.ID}, secret.New(next))
+	prev, _ := e.sealer.Seal(secret.Context{Table: "webhooks", Column: "previous_secret_enc", RowID: h.ID}, secret.New(hookSecret))
+	e.db.Client().Webhook.UpdateOneID(h.ID).SetSecretEnc(cur).SetPreviousSecretEnc(prev).SetPreviousUntil(e.clock.Add(time.Hour)).ExecX(e.sys)
+	time.Sleep(2 * time.Millisecond)
+	e.change(org, "route.update")
+	e.mustRun()
+	e.mu.Lock()
+	first := e.got[0]
+	e.mu.Unlock()
+	if strings.Count(first.sig, "v1=") != 2 {
+		t.Fatalf("during the rotation: %s", first.sig)
+	}
+	for _, k := range []string{next, hookSecret} {
+		if err := webhook.Verify(first.sig, first.body, k, e.clock); err != nil {
+			t.Errorf("the signature does not verify with %s...: %v", k[:14], err)
+		}
+	}
+	// Past previous_until the old secret has stopped signing.
+	e.clock = e.clock.Add(2 * time.Hour)
+	e.change(org, "route.update")
+	e.mustRun()
+	e.mu.Lock()
+	last := e.got[len(e.got)-1]
+	e.mu.Unlock()
+	if len(e.got) != 2 || strings.Count(last.sig, "v1=") != 1 || webhook.Verify(last.sig, last.body, hookSecret, e.clock) == nil ||
+		webhook.Verify(last.sig, last.body, next, e.clock) != nil {
+		t.Fatalf("after the rotation: %d requests, %s", len(e.got), last.sig)
+	}
+}
+
+// TestWebhookJob_UnsealFailure: an endpoint whose secret cannot be opened gets a failed attempt,
+// with a retry, an error that tells the owners nothing of the cause, and a log line that names
+// the endpoint and not the secret; the other endpoints are delivered to.
+func TestWebhookJob_UnsealFailure(t *testing.T) {
+	e := newHookEnv(t, false)
+	org := storetest.Org(t, e.db, "org-a")
+	bad := e.hook(org, "/bad")
+	e.hook(org, "/good")
+	e.db.Client().Webhook.UpdateOneID(bad.ID).SetSecretEnc([]byte("not sealed at all")).ExecX(e.sys)
+	time.Sleep(2 * time.Millisecond)
+	e.change(org, "route.update")
+	e.mustRun()
+	if len(e.ids("/bad")) != 0 || len(e.ids("/good")) != 1 {
+		t.Fatalf("bad %v, good %v", e.ids("/bad"), e.ids("/good"))
+	}
+	d := e.db.Client().WebhookDelivery.Query().Where(webhookdelivery.WebhookID(bad.ID)).OnlyX(e.sys)
+	if d.Error == "" || d.StatusCode != 0 || d.NextAttemptAt == nil || d.Attempt != 1 {
+		t.Fatalf("the failed attempt: %+v", d)
+	}
+	for _, text := range []string{d.Error, e.logs.String()} {
+		if strings.Contains(text, hookSecret) || strings.Contains(text, strings.TrimPrefix(hookSecret, webhook.SecretPrefix)) ||
+			strings.Contains(text, "not sealed at all") {
+			t.Fatalf("a secret is in %q", text)
+		}
+	}
+	if !strings.Contains(e.logs.String(), bad.ID) {
+		t.Errorf("the log does not name the endpoint: %q", e.logs.String())
+	}
+}
+
+// TestWebhookJob_RetryOfPurgedEvent: a retry whose event has left the outbox is dropped: no
+// request, no new attempt, and the schedule of the old one ends.
+func TestWebhookJob_RetryOfPurgedEvent(t *testing.T) {
+	e := newHookEnv(t, false)
+	org := storetest.Org(t, e.db, "org-a")
+	h := e.hook(org, "/gone")
+	e.answer = func(string, int) int { return http.StatusInternalServerError }
+	time.Sleep(2 * time.Millisecond)
+	ev := e.change(org, "route.update")
+	e.mustRun()
+	if len(e.ids("/gone")) != 1 {
+		t.Fatalf("first attempt: %v", e.ids("/gone"))
+	}
+	e.db.Client().Event.DeleteOneID(ev.ID).ExecX(e.sys)
+	e.clock = e.clock.Add(time.Minute)
+	e.mustRun()
+	if len(e.ids("/gone")) != 1 {
+		t.Fatalf("a request for an event that is gone: %v", e.ids("/gone"))
+	}
+	ds := e.db.Client().WebhookDelivery.Query().Where(webhookdelivery.WebhookID(h.ID)).AllX(e.sys)
+	if len(ds) != 1 || ds[0].NextAttemptAt != nil {
+		t.Fatalf("the deliveries: %+v", ds)
+	}
+	e.clock = e.clock.Add(time.Hour)
+	e.mustRun()
+	if len(e.ids("/gone")) != 1 {
+		t.Fatal("the dropped retry came back")
+	}
+}
+
+// TestWebhookJob_OwnAddressesPerPass: the controller's addresses are read at each pass, so an
+// interface that appears after the start (a VPN, a Docker bridge) is excluded at once, even
+// inside a listed private range.
+func TestWebhookJob_OwnAddressesPerPass(t *testing.T) {
+	e := newHookEnv(t, true)
+	org := storetest.Org(t, e.db, "org-a")
+	h := e.hook(org, "/own")
+	var own []netip.Addr
+	sender := &webhook.Sender{Now: func() time.Time { return e.clock },
+		Lookup: func(context.Context, string) ([]netip.Addr, error) {
+			return []netip.Addr{netip.MustParseAddr("10.9.9.9")}, nil
+		}}
+	e.job = controller.WebhookJob(controller.WebhookOptions{DB: e.db, Leases: e.leases, Sealer: e.sealer, Sender: sender,
+		Now: func() time.Time { return e.clock }, Logger: slog.New(slog.DiscardHandler),
+		Own: func() []netip.Addr { return own },
+		Private: func(context.Context) ([]netip.Prefix, error) {
+			return []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}, nil
+		}})
+	time.Sleep(2 * time.Millisecond)
+	e.change(org, "route.update")
+	e.mustRun()
+	d := e.db.Client().WebhookDelivery.Query().Where(webhookdelivery.WebhookID(h.ID)).OnlyX(e.sys)
+	if strings.Contains(d.Error, "egress guard") {
+		t.Fatalf("the listed range was refused: %s", d.Error)
+	}
+	own = []netip.Addr{netip.MustParseAddr("10.9.9.9")} // the interface appears
+	e.clock = e.clock.Add(time.Minute)
+	e.mustRun()
+	d = e.db.Client().WebhookDelivery.Query().Where(webhookdelivery.WebhookID(h.ID), webhookdelivery.Attempt(2)).OnlyX(e.sys)
+	if !strings.Contains(d.Error, "an address of the controller") || strings.Contains(d.Error, "10.9.9.9") {
+		t.Fatalf("after the interface appeared: %s", d.Error)
 	}
 }

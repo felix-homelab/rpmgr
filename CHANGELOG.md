@@ -41,6 +41,13 @@ Changes to the design documents are not recorded here: see the git history and t
   failing, are e-mailed to the organisation's Owners and Admins (the Instance Admins for an
   instance alert). The organisation settings `alert_email` and `alert_types` turn the alert e-mails
   off and choose the alert kinds, in the API and `rpmgr update settings`.
+- Instance webhooks and private receivers: the Instance Admin manages the endpoints that receive
+  instance events through `InstanceWebhookService`, and lists in the new instance setting
+  `webhook_private_ranges` the private networks that organisations' receivers may use; a refused
+  delivery names the range to list. Loopback, link-local, cloud metadata, multicast and broadcast
+  addresses are never admitted. An organisation's endpoint may not name `localhost` or a loopback
+  or link-local address, an organisation has at most 20 endpoints, and a caller's test events are
+  rate-limited. (#935)
 - Controllers and all-in-ones update over the air, on SQLite. An Instance Admin chooses "Update
   controller to x.y.z" on Settings → Updates, or runs `rpmgr create rollout --controller --release
   x.y.z`, after a step-up. The root updater takes a backup of the database first, kept as

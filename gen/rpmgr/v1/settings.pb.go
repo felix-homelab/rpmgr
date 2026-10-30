@@ -347,9 +347,13 @@ type InstanceSettings struct {
 	AuditRetention *durationpb.Duration `protobuf:"bytes,14,opt,name=audit_retention,json=auditRetention,proto3" json:"audit_retention,omitempty"`
 	// Which kind of rollout the web UI starts; default EASY (D129). Update on an agent, and the API,
 	// take either kind whatever it says.
-	RolloutMode   *RolloutMode `protobuf:"varint,15,opt,name=rollout_mode,json=rolloutMode,proto3,enum=rpmgr.v1.RolloutMode,oneof" json:"rollout_mode,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RolloutMode *RolloutMode `protobuf:"varint,15,opt,name=rollout_mode,json=rolloutMode,proto3,enum=rpmgr.v1.RolloutMode,oneof" json:"rollout_mode,omitempty"`
+	// The private ranges webhook receivers of orgs may reach, each a CIDR such as "10.0.0.0/8"; none
+	// by default. A range never admits loopback, link-local, metadata, multicast or broadcast
+	// addresses or the controller's own (docs/04-security.md, "Webhooks and the egress guard").
+	WebhookPrivateRanges []string `protobuf:"bytes,16,rep,name=webhook_private_ranges,json=webhookPrivateRanges,proto3" json:"webhook_private_ranges,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *InstanceSettings) Reset() {
@@ -485,6 +489,13 @@ func (x *InstanceSettings) GetRolloutMode() RolloutMode {
 		return *x.RolloutMode
 	}
 	return RolloutMode_ROLLOUT_MODE_UNSPECIFIED
+}
+
+func (x *InstanceSettings) GetWebhookPrivateRanges() []string {
+	if x != nil {
+		return x.WebhookPrivateRanges
+	}
+	return nil
 }
 
 // SmtpSettings are a mail relay (docs/04-security.md, "Human authentication and sessions"). Its
@@ -1294,7 +1305,7 @@ var File_rpmgr_v1_settings_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\n" +
-	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xd6\v\n" +
+	"\x17rpmgr/v1/settings.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xa4\f\n" +
 	"\x10InstanceSettings\x12W\n" +
 	"\x11default_transport\x18\x01 \x01(\x0e2\x19.rpmgr.v1.TransportPolicyB\n" +
 	"\xbaH\a\x82\x01\x04\x10\x01 \x00H\x00R\x10defaultTransport\x88\x01\x01\x12j\n" +
@@ -1318,7 +1329,9 @@ const file_rpmgr_v1_settings_proto_rawDesc = "" +
 	"\x04smtp\x18\r \x01(\v2\x16.rpmgr.v1.SmtpSettingsR\x04smtp\x12Y\n" +
 	"\x0faudit_retention\x18\x0e \x01(\v2\x19.google.protobuf.DurationB\x15\xbaH\x12\xaa\x01\x0f\"\x06\b\x80\x86\xb0\x96\x012\x05\b\x80\x9a\x9e\x01R\x0eauditRetention\x12I\n" +
 	"\frollout_mode\x18\x0f \x01(\x0e2\x15.rpmgr.v1.RolloutModeB\n" +
-	"\xbaH\a\x82\x01\x04\x10\x01 \x00H\x06R\vrolloutMode\x88\x01\x01B\x14\n" +
+	"\xbaH\a\x82\x01\x04\x10\x01 \x00H\x06R\vrolloutMode\x88\x01\x01\x12L\n" +
+	"\x16webhook_private_ranges\x18\x10 \x03(\tB\x16\xbaH\x13\x92\x01\x10\x10 \x18\x01\"\n" +
+	"r\b\x18+\xc8\x01\x01\xe8\x01\x01R\x14webhookPrivateRangesB\x14\n" +
 	"\x12_default_transportB\x18\n" +
 	"\x16_password_hash_profileB\x10\n" +
 	"\x0e_release_checkB\x11\n" +

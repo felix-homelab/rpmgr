@@ -80,3 +80,28 @@ func TestNewSecret(t *testing.T) {
 		t.Error("a secret prints itself")
 	}
 }
+
+// TestValidateOrgURL: an org's endpoint names no host that only the controller's own side can
+// be; every other receiver, a private address or name included, is the guard's to judge.
+func TestValidateOrgURL(t *testing.T) {
+	for _, u := range []string{"https://localhost/x", "https://LocalHost:8443", "https://localhost./x", "https://a.b.localhost/x",
+		"https://127.0.0.1/x", "https://127.9.9.9:1/x", "https://[::1]/x", "https://[::ffff:127.0.0.1]/x", "https://169.254.169.254/x",
+		"https://169.254.0.1/x", "https://[fe80::1]/x", "https://0.0.0.0/x", "https://[::]/x",
+		// What ValidateURL refuses is refused here too.
+		"", "http://hooks.example.com/", "https://user:pw@hooks.example.com/"} {
+		if err := webhook.ValidateOrgURL(u); err == nil {
+			t.Errorf("%q: accepted", u)
+		}
+		if strings.Contains(u, "localhost") || strings.Contains(u, "127.") || strings.Contains(u, "::") || strings.Contains(u, "169.254") || u == "https://0.0.0.0/x" {
+			if err := webhook.ValidateURL(u); err != nil {
+				t.Errorf("%q: ValidateURL, which leaves the guard to dial time: %v", u, err)
+			}
+		}
+	}
+	for _, u := range []string{"https://hooks.example.com/x", "https://localhost.example.com/", "https://notlocalhost/", "https://10.1.2.3/x",
+		"https://192.168.1.5:8443/x", "https://[fd00::1]/x", "https://[2001:db8::1]/", "https://nas.home.arpa/x"} {
+		if err := webhook.ValidateOrgURL(u); err != nil {
+			t.Errorf("%q: %v", u, err)
+		}
+	}
+}

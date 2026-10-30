@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"slices"
 	"time"
 
@@ -87,6 +88,18 @@ func ControllerEndpoints(inst *rpmgrv1.InstanceSettings, publicURL string) []str
 		return slices.Clone(eps)
 	}
 	return []string{publicURL}
+}
+
+// PrivateRanges returns the private ranges webhook receivers may reach (webhook_private_ranges).
+// The validation of the setting admits only prefixes, so one that does not parse is skipped.
+func PrivateRanges(inst *rpmgrv1.InstanceSettings) []netip.Prefix {
+	var out []netip.Prefix
+	for _, s := range inst.GetWebhookPrivateRanges() {
+		if p, err := netip.ParsePrefix(s); err == nil {
+			out = append(out, p.Masked())
+		}
+	}
+	return out
 }
 
 // InitInstanceTx stores the first instance settings in tx, the transaction that initialises the
