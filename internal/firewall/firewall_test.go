@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -133,6 +134,16 @@ func newEnv(t *testing.T, bounds string) *env {
 	if err := os.Chmod(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// The directories above the test's own are not root's; they pass as if they were.
+	old := lstat
+	lstat = func(p string) (os.FileInfo, error) {
+		fi, err := old(p)
+		if err == nil && p != dir && strings.HasPrefix(dir, strings.TrimSuffix(p, "/")+"/") {
+			return fakeDir{fi, uint32(os.Getuid()), 0o755}, nil
+		}
+		return fi, err
+	}
+	t.Cleanup(func() { lstat = old })
 	e := &env{t: t, dir: dir, u: &fakeUfw{}}
 	e.a = &Applier{Desired: filepath.Join(dir, "desired.json"), Bounds: filepath.Join(dir, "firewall.json"),
 		StatusFile: filepath.Join(dir, "run", "status.json"), Ufw: e.u, RootUID: uint32(os.Getuid()),
@@ -141,6 +152,33 @@ func newEnv(t *testing.T, bounds string) *env {
 		e.write("firewall.json", bounds, 0o644)
 	}
 	return e
+}
+
+// fakeDir is a directory with another owner and mode than the real one.
+type fakeDir struct {
+	os.FileInfo
+	uid  uint32
+	perm os.FileMode
+}
+
+func (d fakeDir) Mode() os.FileMode { return os.ModeDir | d.perm }
+func (d fakeDir) Sys() any {
+	st := *d.FileInfo.Sys().(*syscall.Stat_t)
+	st.Uid = d.uid
+	return &st
+}
+
+// ancestor makes dir, above the test's directory, look owned by uid with the mode perm.
+func (e *env) ancestor(dir string, uid uint32, perm os.FileMode) {
+	prev := lstat
+	lstat = func(p string) (os.FileInfo, error) {
+		fi, err := prev(p)
+		if err == nil && p == dir {
+			return fakeDir{fi, uid, perm}, nil
+		}
+		return fi, err
+	}
+	e.t.Cleanup(func() { lstat = prev })
 }
 
 func (e *env) write(name, content string, mode os.FileMode) {
@@ -252,6 +290,8 @@ func TestFirewall_OnlyBoundedPortsOpened(t *testing.T) {
 		{"straddles the bottom", `{"version":1,"ranges":[` + rng("udp", 100, 20010) + `]}`, false, "100:442/udp, 444:19999/udp"},
 		{"everything", `{"version":1,"ranges":[` + rng("tcp", 1, 65535) + `]}`, false, "1:79/tcp, 81:442/tcp, 444:19999/tcp, 30000:65535/tcp"},
 		{"port 0", `{"version":1,"ranges":[` + rng("tcp", 0, 10) + `]}`, true, ""},
+		{"overflowing port", `{"version":1,"ranges":[{"protocol":"tcp","from":20000,"to":99999999999}]}`, true, ""},
+		{"negative port", `{"version":1,"ranges":[{"protocol":"tcp","from":-1,"to":20000}]}`, true, ""},
 		{"port 65536", `{"version":1,"ranges":[` + rng("tcp", 65000, 65536) + `]}`, true, ""},
 		{"reversed", `{"version":1,"ranges":[` + rng("tcp", 21000, 20000) + `]}`, true, ""},
 		{"icmp", `{"version":1,"ranges":[` + rng("icmp", 20000, 20010) + `]}`, true, ""},
@@ -356,6 +396,10 @@ func TestFirewall_BoundsFileMustBeRootOwned(t *testing.T) {
 		{"group writable", func(e *env) { e.write("firewall.json", boundsOn, 0o664) }, "written by its group or others"},
 		{"world writable", func(e *env) { e.write("firewall.json", boundsOn, 0o666) }, "written by its group or others"},
 		{"world writable directory", func(e *env) { _ = os.Chmod(e.dir, 0o777) }, "written by its group or others"},
+		{"an ancestor of another owner", func(e *env) { e.ancestor(filepath.Dir(e.dir), uint32(os.Getuid())+1, 0o755) }, "not owned by root"},
+		{"a world-writable ancestor", func(e *env) { e.ancestor(filepath.Dir(e.dir), uint32(os.Getuid()), 0o777) }, "written by its group or others"},
+		{"a sticky world-writable ancestor", func(e *env) { e.ancestor(filepath.Dir(e.dir), uint32(os.Getuid()), 0o777|os.ModeSticky) }, "written by its group or others"},
+		{"a group-writable ancestor near the top", func(e *env) { e.ancestor(filepath.Dir(filepath.Dir(e.dir)), uint32(os.Getuid()), 0o775) }, "written by its group or others"},
 		{"a link", func(e *env) {
 			e.write("real.json", boundsOn, 0o644)
 			_ = os.Remove(e.a.Bounds)

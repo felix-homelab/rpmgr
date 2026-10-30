@@ -1521,10 +1521,12 @@ updater's agent does ([Over-the-air updates](#over-the-air-updates)).
   `/etc/rpmgr/firewall.json`, which root owns: the listeners of the gateway's boot file
   (80/tcp, 443/tcp and 443/udp by default) and an operator-set maximum range for pools. The file is
   written by `rpmgr setup --firewall ufw` and is refused unless it is a regular file, owned by
-  root, that neither its group nor other users may write, in a directory that follows the same
-  rule, as `install.json` and the policy file are. A range, or the part of a range, outside the
+  root, that neither its group nor other users may write, in a directory, and in every directory above it up to `/`, that follows the same
+  rule (no sticky-bit exception), as `install.json` and the policy file are. A range, or the part of a range, outside the
   maximum range is never opened; it is reported as refused. So a compromised gateway, which can
   write only the desired file, cannot open SSH, a database or any port outside the maximum range.
+  Nor can it stop the helper by rewriting the file in a flood: the units have no start or trigger
+  limit, and a run that changes nothing is cheap ([10](10-operations.md#host-firewall-helper-phase-2)).
 - **Rules it owns.** Every rule the helper adds carries the comment `rpmgr`. It lists the rules of
   `ufw`, adds the missing ones, and deletes only a rule that carries that comment, by its number
   and after listing the rules again, never by its text, so an identical rule of the operator's

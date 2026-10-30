@@ -3,8 +3,9 @@
 #   <test> <status> <slice> <issue> <note …>
 # status: pending (its slice is not merged yet; an area's design slice registers its tests),
 # done (exists in a _test.go file), p2 or p3 (a later phase, or an area not designed yet). The
-# PR that implements a test changes pending to done. The note names clauses that other slices or
-# later phases add.
+# PR that implements a test changes pending to done. A slice is <phase slice> or, for a slice of a
+# decision's own plan, D<n>.<k> (D152.3); a done row may leave it as -.
+# The note names clauses that other slices or later phases add.
 
 TestNoReplayableHandshake	done	2.10	#54
 TestRejectsUnpinnedCA	done	3.8	#63	enrollment (3.8), control-session (3.9, internal/itest) and data-session (4.10, internal/connector) clauses done
@@ -102,7 +103,7 @@ TestAuditSink_BacklogNeverBlocksAppend	done	5.14	#654	audit sinks (D141); syslog
 TestAuditSink_RewriteDetectedAgainstSink	pending	5.16	#656	audit sinks (D141)
 TestHandoff_OnlyVerifiedBinaryGetsSockets	done	17.3	#881	internal/handoff; the roles use it from 17.10 on
 TestHandoff_UnexpectedDescriptorsRefused	done	17.3	#881	internal/handoff; the roles use it from 17.10 on
-TestFirewall_OnlyBoundedPortsOpened	done	152.2	#968	internal/firewall; the gateway writes the desired file from slice 3 on
-TestFirewall_BoundsFileMustBeRootOwned	done	152.2	#968	internal/firewall
-TestFirewall_OnlyOwnRulesTouched	done	152.2	#968	internal/firewall
-TestFirewall_GatewayWritesRangesOnly	pending	152.3	#968	the gateway's desired file (slice 3)
+TestFirewall_OnlyBoundedPortsOpened	done	-	#968	internal/firewall; the gateway writes the desired file from slice 3 on
+TestFirewall_BoundsFileMustBeRootOwned	done	-	#968	internal/firewall
+TestFirewall_OnlyOwnRulesTouched	done	-	#968	internal/firewall
+TestFirewall_GatewayWritesRangesOnly	pending	D152.3	#968	the gateway's desired file (slice 3)

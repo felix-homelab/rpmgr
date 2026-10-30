@@ -397,17 +397,26 @@ off by default.
 | Desired file | `{"version": 1, "ranges": [{"protocol": "tcp", "from": 20000, "to": 20999}]}`, written by the gateway; the helper merges overlapping and adjacent ranges of a protocol |
 | Bounds file | `{"version": 1, "backend": "ufw", "listeners": [{"protocol": "tcp", "port": 80}, {"protocol": "tcp", "port": 443}, {"protocol": "udp", "port": 443}], "max_range": {"from": 20000, "to": 29999}}`; `backend` `""` or `off`, or a missing file, switches the helper off and removes its rules; `max_range` may be left out, which allows no pool |
 | Rules | `ufw allow <port or from:to>/<protocol> comment rpmgr`; the listeners are always opened, the desired ranges clamped to `max_range` |
-| Status | `off` (switched off, with the reason), `applied` (with the rules it holds) or `failed` (with the reason, and the ranges it refused as outside the bounds); a missing or inactive `ufw` is `failed` with that reason and nothing is changed |
+| Status | `off` (switched off, with the reason), `applied` (with the rules it holds) or `failed` (with the reason, and the ranges it refused as outside the bounds); with `backend` `ufw`, a missing or inactive `ufw` is `failed` with that reason and nothing is changed; with any other backend the status is `off` |
 
 - **Runs** when the desired file changes, at boot after `ufw.service`, and when started by hand
   (`systemctl start rpmgr-firewall.service`), which is also how a `ufw` the operator enabled later
   is picked up. Applying twice changes nothing: the second run finds every rule present.
-- **Sandbox.** `ProtectSystem=strict` with `/etc/ufw`, `/lib/ufw` and `/run` writable, so that
-  `ufw` can write its rules and its lock, `ProtectHome=yes`, `PrivateTmp=yes`,
-  `NoNewPrivileges=yes`; `RuntimeDirectory=rpmgr-firewall` with
-  `RuntimeDirectoryPreserve=yes` keeps `status.json` after the run. [V] The paths `ufw` writes on
-  each supported distribution are to be checked on a real host (Debian 13, Ubuntu 22.04 and 24.04)
-  before the release.
+- **Sandbox.** `ProtectSystem=strict` with only `/etc/ufw`, `/lib/ufw`, `/usr/lib/ufw`, `/run/ufw.lock`
+  and `/run/rpmgr-firewall` writable (each with `-`, so a missing one is ignored), so that `ufw` can
+  write its rules and its lock; `CapabilityBoundingSet=` of `CAP_NET_ADMIN CAP_NET_RAW
+  CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN`; `RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET
+  AF_INET6`; `ProtectHome=yes`, `PrivateTmp=yes`, `NoNewPrivileges=yes`;
+  `RuntimeDirectory=rpmgr-firewall` with `RuntimeDirectoryPreserve=yes` keeps `status.json` after the
+  run. [V VB-25] None of this has run against a real `ufw`: the paths `ufw` writes, the capabilities
+  and the address families it needs, and whether `ufw` can create `/run/ufw.lock` when the file does
+  not exist yet (a missing path with `-` is not mounted writable), are to be checked on Debian 13,
+  Ubuntu 22.04 and 24.04 before the release.
+- **A flood of writes.** The service has `StartLimitIntervalSec=0` (the helper is idempotent and
+  cheap) and the path unit `TriggerLimitIntervalSec=0`, so that a gateway rewriting the desired file
+  over and over cannot push either unit into a limit that would end the watch. `TriggerLimitIntervalSec=`
+  exists from systemd 253; on 249 the line is ignored with a warning and the default trigger limit
+  stays [V VB-25] (the default values and the 249 behaviour are not checked on a real host).
 - **`ufw`'s output** is read from `ufw status numbered` (`Status: active` or `inactive`, then one
   line per rule such as `[ 2] 20000:20999/tcp  ALLOW IN  Anywhere  # rpmgr`, an IPv6 rule with
   `(v6)` after its port). [V] The format is the one of ufw 0.36 as the tests' samples record it,

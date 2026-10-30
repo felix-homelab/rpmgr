@@ -4,6 +4,7 @@ package units_test
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -190,6 +191,11 @@ func TestRenderUpdater(t *testing.T) {
 			t.Errorf("rpmgr-update.service lacks %q", want)
 		}
 	}
+	for _, line := range strings.Split(service, "\n") {
+		if strings.HasPrefix(line, "ReadWritePaths=") && slices.Contains(strings.Fields(line), "-/run") {
+			t.Error("the firewall helper may not write all of /run")
+		}
+	}
 	if strings.Contains(service, "User=") {
 		t.Error("the updater must run as root")
 	}
@@ -251,7 +257,7 @@ func TestRenderFirewall(t *testing.T) {
 	if !ok || !strings.HasPrefix(path, "# /etc/systemd/system/rpmgr-firewall.path\n") {
 		t.Fatalf("the pair is not two units, each after its file name:\n%s", b)
 	}
-	for _, want := range []string{"PathChanged=/var/lib/rpmgr/firewall/desired.json", "Unit=rpmgr-firewall.service"} {
+	for _, want := range []string{"PathChanged=/var/lib/rpmgr/firewall/desired.json", "Unit=rpmgr-firewall.service", "TriggerLimitIntervalSec=0"} {
 		if !strings.Contains(path, want+"\n") {
 			t.Errorf("rpmgr-firewall.path lacks %q", want)
 		}
@@ -259,7 +265,10 @@ func TestRenderFirewall(t *testing.T) {
 	for _, want := range []string{"Type=oneshot",
 		"ExecStart=/opt/rpmgr/bin/rpmgr firewall apply --desired /var/lib/rpmgr/firewall/desired.json --bounds /etc/rpmgr/firewall.json --status /run/rpmgr-firewall/status.json",
 		"RuntimeDirectory=rpmgr-firewall", "RuntimeDirectoryPreserve=yes", "ProtectSystem=strict", "NoNewPrivileges=yes",
-		"After=network-online.target ufw.service", "WantedBy=multi-user.target"} {
+		"After=network-online.target ufw.service", "WantedBy=multi-user.target", "StartLimitIntervalSec=0",
+		"CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE CAP_FOWNER CAP_CHOWN",
+		"RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6",
+		"ReadWritePaths=-/etc/ufw -/lib/ufw -/usr/lib/ufw -/run/ufw.lock -/run/rpmgr-firewall"} {
 		if !strings.Contains(service, want+"\n") {
 			t.Errorf("rpmgr-firewall.service lacks %q", want)
 		}

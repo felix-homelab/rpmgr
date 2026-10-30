@@ -13,7 +13,7 @@ import (
 )
 
 // readChecked reads a regular file of at most limit bytes without following a symbolic link. With
-// root set it also requires that the file and its directory are owned by uid and that neither
+// root set it also requires that the file and its directory, and every directory above it, are owned by uid and that neither
 // group nor others may write them, as the updater requires of install.json.
 func readChecked(path string, limit int64, root bool, uid uint32) ([]byte, error) {
 	if root {
@@ -47,15 +47,28 @@ func readChecked(path string, limit int64, root bool, uid uint32) ([]byte, error
 	return b, err
 }
 
+// lstat is os.Lstat; the tests replace it to stand in for a root-owned tree.
+var lstat = os.Lstat
+
+// checkDir applies the rule of ownerOK to dir and to every directory above it up to "/": a
+// directory that another user owns, or that its group or others may write (a sticky bit does not
+// excuse it), would let that user replace the directory below it and so the file.
 func checkDir(dir string, uid uint32) error {
-	fi, err := os.Lstat(dir)
-	if err != nil {
-		return err
+	for d := filepath.Clean(dir); ; d = filepath.Dir(d) {
+		fi, err := lstat(d)
+		if err != nil {
+			return err
+		}
+		if !fi.IsDir() {
+			return fmt.Errorf("%s is no plain directory", d)
+		}
+		if err := ownerOK(d, fi, uid); err != nil {
+			return err
+		}
+		if d == filepath.Dir(d) {
+			return nil
+		}
 	}
-	if !fi.IsDir() {
-		return fmt.Errorf("%s is no plain directory", dir)
-	}
-	return ownerOK(dir, fi, uid)
 }
 
 func ownerOK(path string, fi os.FileInfo, uid uint32) error {
