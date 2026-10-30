@@ -3,6 +3,7 @@
 package telemetry_test
 
 import (
+	"fmt"
 	"bytes"
 	"log/slog"
 	"strings"
@@ -211,5 +212,41 @@ func TestLiveLogBacklog_Bounds(t *testing.T) {
 	logger.Info(strings.Repeat("y", telemetry.LiveLogLine))
 	if got, _ := live.Subscribe(slog.LevelInfo, "", false).Backlog(); len(got) == 0 {
 		t.Error("the newest line was dropped")
+	}
+}
+
+// TestLiveLogBacklog_Wrap: after the ring wraps several times the backlog is still in order, the
+// dropped count is exact and the byte bound holds.
+func TestLiveLogBacklog_Wrap(t *testing.T) {
+	logger, live := newLive(t, "info")
+	const total = 3*telemetry.LiveLogBacklogLines + 17
+	for i := range total {
+		logger.Info("n", "i", i)
+	}
+	got, dropped := live.Subscribe(slog.LevelInfo, "", false).Backlog()
+	if len(got) != telemetry.LiveLogBacklogLines || dropped != total-telemetry.LiveLogBacklogLines {
+		t.Fatalf("lines: %d dropped %d", len(got), dropped)
+	}
+	for k, l := range got {
+		if want := fmt.Sprintf("msg=n i=%d", total-telemetry.LiveLogBacklogLines+k); l.Text != want {
+			t.Fatalf("line %d: %q, want %q", k, l.Text, want)
+		}
+	}
+
+	// Long lines after a wrap: the byte bound evicts from the head of the ring.
+	long := strings.Repeat("x", 4<<10)
+	for range 40 {
+		logger.Info(long)
+	}
+	got, dropped = live.Subscribe(slog.LevelInfo, "", false).Backlog()
+	size := 0
+	for _, l := range got {
+		size += len(l.Text)
+	}
+	if size > telemetry.LiveLogBacklogBytes || len(got) == 0 || len(got)+dropped != total+40 {
+		t.Errorf("bytes: %d bytes in %d lines, dropped %d", size, len(got), dropped)
+	}
+	if last := got[len(got)-1].Text; last != "msg="+long {
+		t.Errorf("the newest line is not last: %.20q", last)
 	}
 }

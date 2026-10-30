@@ -1248,6 +1248,8 @@ type LogLine struct {
 	// The line, redacted on the agent.
 	Text string `protobuf:"bytes,3,opt,name=text,proto3" json:"text,omitempty"`
 	// How many lines the agent dropped before this one, as the viewer read too slowly.
+	// It counts every line the agent dropped from its backlog, regardless of the viewer's level
+	// and filter.
 	DroppedBefore uint32 `protobuf:"varint,4,opt,name=dropped_before,json=droppedBefore,proto3" json:"dropped_before,omitempty"`
 	// The line was cut at the limit of docs/03.
 	Truncated bool `protobuf:"varint,5,opt,name=truncated,proto3" json:"truncated,omitempty"`

@@ -57,6 +57,8 @@ message LogLine {
   // The line, redacted on the agent.
   string text = 3;
   // How many lines the agent dropped before this one, as the stream read too slowly.
+  // It counts every line the agent dropped from its backlog, regardless of the viewer's level
+  // and filter.
   uint32 dropped_before = 4;
   // The line was cut at the limit of docs/03.
   bool truncated = 5;

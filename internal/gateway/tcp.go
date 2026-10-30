@@ -436,8 +436,10 @@ func carry(ctx context.Context, s *Sessions, rev func() *agentv1.Revision, logge
 	started := time.Now()
 	logger.Debug("stream opened", "route", routeID)
 	toClient, fromClient := relayConn(st, c, idle, lim)
-	logger.Debug("stream closed", "route", routeID, "duration", time.Since(started).Round(time.Millisecond),
-		"bytes_from_client", fromClient, "bytes_to_client", toClient)
+	if logger.Enabled(ctx, slog.LevelDebug) {
+		logger.Debug("stream closed", "route", routeID, "duration", time.Since(started).Round(time.Millisecond),
+			"bytes_from_client", fromClient, "bytes_to_client", toClient)
+	}
 }
 
 // openStream opens a stream for a route on one of its connectors' sessions, for the connection c.

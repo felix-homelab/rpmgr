@@ -63,6 +63,7 @@ export function LiveLog({ agentId }: { agentId: string }) {
     const a = new AbortController();
     abort.current = a;
     setEnded("");
+    setLines([]); // the agent sends its backlog again, so earlier lines would show twice
     setFresh(false);
     setFollowed(debug ? "debug" : level);
     setRunning(true);

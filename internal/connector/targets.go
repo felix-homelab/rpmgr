@@ -514,13 +514,17 @@ func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream
 	t.o.Logger.Debug("stream opened", "gateway", gatewayID, "route", open.GetRouteId(), "target", target)
 	if open.GetKind() == tunnelv1.StreamKind_STREAM_KIND_UDP_FLOW {
 		t.relayUDP(ctx, open.GetRouteId(), st, conn)
-		t.o.Logger.Debug("stream closed", "gateway", gatewayID, "route", open.GetRouteId(), "target", target,
-			"duration", time.Since(started).Round(time.Millisecond))
+		if t.o.Logger.Enabled(ctx, slog.LevelDebug) {
+			t.o.Logger.Debug("stream closed", "gateway", gatewayID, "route", open.GetRouteId(), "target", target,
+				"duration", time.Since(started).Round(time.Millisecond))
+		}
 		return
 	}
 	toTarget, fromTarget := tunnel.Relay(st, conn)
-	t.o.Logger.Debug("stream closed", "gateway", gatewayID, "route", open.GetRouteId(), "target", target,
-		"duration", time.Since(started).Round(time.Millisecond), "bytes_to_target", toTarget, "bytes_from_target", fromTarget)
+	if t.o.Logger.Enabled(ctx, slog.LevelDebug) {
+		t.o.Logger.Debug("stream closed", "gateway", gatewayID, "route", open.GetRouteId(), "target", target,
+			"duration", time.Since(started).Round(time.Millisecond), "bytes_to_target", toTarget, "bytes_from_target", fromTarget)
+	}
 }
 
 func isBlocked(err error) bool {

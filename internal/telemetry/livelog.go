@@ -46,7 +46,10 @@ type liveState struct {
 	textMu sync.Mutex
 	buf    bytes.Buffer // the text handler writes each line here, under textMu
 	// The backlog (D154): the latest redacted lines, whether or not a log is open, under mu.
-	backlog      []Line
+	// A ring of LiveLogBacklogLines lines: the oldest is at head, backlogLen are held.
+	backlog      [LiveLogBacklogLines]Line
+	head         int
+	backlogLen   int
 	backlogBytes int
 	evicted      int // lines the backlog dropped since the agent started
 }
@@ -104,7 +107,8 @@ func (l *LiveLog) Subscribe(level slog.Level, filter string, debug bool) *Subscr
 	}
 	s := &Subscription{state: l.state, level: level, filter: filter, ready: make(chan struct{}, 1)}
 	l.state.mu.Lock()
-	for _, b := range l.state.backlog {
+	for i := range l.state.backlogLen {
+		b := l.state.backlog[(l.state.head+i)%LiveLogBacklogLines]
 		if b.Level >= level && (filter == "" || strings.Contains(b.Text, filter)) {
 			s.backlog = append(s.backlog, b)
 		}
@@ -165,21 +169,28 @@ func (s *Subscription) add(l Line) {
 	}
 }
 
-// keepLocked adds a line to the backlog, dropping the oldest past the bounds. Under mu.
+// keepLocked adds a line to the backlog, dropping the oldest past the bounds. Under mu. Every line
+// at or above the base level reaches it, formatted and redacted whether or not a viewer is open:
+// that is inherent to keeping a backlog (D154).
 func (st *liveState) keepLocked(l Line) {
-	st.backlog = append(st.backlog, l)
+	if st.backlogLen == LiveLogBacklogLines {
+		st.dropOldestLocked()
+	}
+	st.backlog[(st.head+st.backlogLen)%LiveLogBacklogLines] = l
+	st.backlogLen++
 	st.backlogBytes += len(l.Text)
-	n := 0
-	for n < len(st.backlog)-1 && (len(st.backlog)-n > LiveLogBacklogLines || st.backlogBytes > LiveLogBacklogBytes) {
-		st.backlogBytes -= len(st.backlog[n].Text)
-		n++
+	for st.backlogLen > 1 && st.backlogBytes > LiveLogBacklogBytes {
+		st.dropOldestLocked()
 	}
-	if n > 0 {
-		kept := copy(st.backlog, st.backlog[n:])
-		clear(st.backlog[kept:])
-		st.backlog = st.backlog[:kept]
-		st.evicted += n
-	}
+}
+
+// dropOldestLocked drops the oldest backlog line and counts it. Under mu.
+func (st *liveState) dropOldestLocked() {
+	st.backlogBytes -= len(st.backlog[st.head].Text)
+	st.backlog[st.head] = Line{}
+	st.head = (st.head + 1) % LiveLogBacklogLines
+	st.backlogLen--
+	st.evicted++
 }
 
 // updateLocked recomputes the lowest level a subscription wants. Under mu.
