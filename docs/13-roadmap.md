@@ -220,7 +220,7 @@ with a release milestone that holds its release issue:
 | Release | Milestones | Note |
 |---|---|---|
 | v0.2.0 | P2-M01, P2-M02 | Installed by hand; its release candidate runs `TestUpgrade` from v0.1.0 |
-| v0.3.0 | P2-M03 to P2-M05, P2-M17 | The first release delivered over the air; the first whose gateways and all-in-ones hand their sockets over on a restart ([D127](14-open-decisions.md#project-and-process)) |
+| v0.3.0 | P2-M03 to P2-M05, P2-M17, #968 | The first release delivered over the air; the first whose gateway hosts may hand their `ufw` to rpmgr for the port pools ([D152](14-open-decisions.md#engineering)); the first whose gateways and all-in-ones hand their sockets over on a restart ([D127](14-open-decisions.md#project-and-process)) |
 | v0.4.0 | P2-M06, P2-M07 | The first release with DNS-01; all of VB-19 runs before it ([D98](14-open-decisions.md#project-and-process)) |
 | v0.5.0 | P2-M08, P2-M09 | |
 | v0.6.0 | P2-M10, P2-M11 | |

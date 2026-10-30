@@ -1500,6 +1500,50 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
 - **Containers** restart without a hand-off: the process is the container's first process
   ([D149](14-open-decisions.md#engineering)).
 
+### Host firewall for port pools (Phase 2)
+
+A gateway host may hand its `ufw` to rpmgr, so that the ports of the group's pools are opened and
+closed without a manual step ([D152](14-open-decisions.md#engineering)). Switching it on gives rpmgr
+no new power over the host beyond one list of ports: the gateway stays unprivileged, as the
+updater's agent does ([Over-the-air updates](#over-the-air-updates)).
+
+- **The gateway only writes a file.** It writes the ranges it wants open, derived from the pools of
+  its group in the snapshot, to `/var/lib/rpmgr/firewall/desired.json`, which the service user
+  owns. The file is a request, never an instruction: it names no command, no rule text and no
+  action other than "these ranges, tcp or udp".
+- **A root-owned helper applies it.** A path unit starts the oneshot `rpmgr-firewall.service`,
+  which runs `rpmgr firewall apply` as root. The helper reads the desired file without following a
+  symbolic link, as a regular file of at most the size limit of
+  [03](03-connections.md#timeouts-keepalive-and-backoff), parses it strictly (no unknown field, no
+  second value, ports 1 to 65535, protocol `tcp` or `udp` only), and refuses anything else. A file
+  it refuses changes no rule.
+- **Bounds the gateway cannot change.** The helper opens only ports inside the bounds in
+  `/etc/rpmgr/firewall.json`, which root owns: the listeners of the gateway's boot file
+  (80/tcp, 443/tcp and 443/udp by default) and an operator-set maximum range for pools. The file is
+  written by `rpmgr setup --firewall ufw` and is refused unless it is a regular file, owned by
+  root, that neither its group nor other users may write, in a directory that follows the same
+  rule, as `install.json` and the policy file are. A range, or the part of a range, outside the
+  maximum range is never opened; it is reported as refused. So a compromised gateway, which can
+  write only the desired file, cannot open SSH, a database or any port outside the maximum range.
+- **Rules it owns.** Every rule the helper adds carries the comment `rpmgr`. It lists the rules of
+  `ufw`, adds the missing ones, and deletes only a rule that carries that comment, by its number
+  and after listing the rules again, never by its text, so an identical rule of the operator's
+  without the comment is never deleted. Rules of others are never changed. It removes all its own
+  rules when it is switched off (the bounds file names no backend, or is gone) and at
+  decommission (`rpmgr leave` on a gateway). A comment is no secret and no authorisation: only
+  root can write `ufw`'s rules, and the marker only tells the helper which are its own.
+- **No shell, no free text.** The helper runs `ufw` with an argument vector built from integers
+  and the two protocol names; nothing from the desired file reaches a command line as text.
+- **Absent or inactive.** Without `ufw` installed or active the helper changes nothing and writes
+  the reason to its status file `/run/rpmgr-firewall/status.json` (`off`, `applied`, `failed`),
+  which the gateway reads and shows ([10](10-operations.md#host-firewall-helper-phase-2)).
+- **Out of scope.** The provider's firewall in front of the host, rules for the gateway's admin
+  listener (which never listens on a public address) and firewalls other than `ufw`.
+
+Security regression tests ([12](12-testing-and-quality.md#security-testing)):
+`TestFirewall_OnlyBoundedPortsOpened`, `TestFirewall_BoundsFileMustBeRootOwned` and
+`TestFirewall_OnlyOwnRulesTouched` (slice 2) and `TestFirewall_GatewayWritesRangesOnly` (slice 3).
+
 ## Webhooks and the egress guard (Phase 2)
 
 - **Who.** An org's endpoints are managed by its Owners and Admins (`webhooks.write`); instance
