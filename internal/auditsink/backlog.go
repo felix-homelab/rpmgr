@@ -37,8 +37,8 @@ type ChainBacklog struct {
 // Backlogs returns the backlog of every sink, by name, from one read snapshot. It counts from the
 // audit tables and the cursors, never from what the job last wrote, so every replica reports the
 // same, and an item that no replica ships, because none holds the job's lease, still ages. It
-// reads the checkpoints after the slowest cursor in one query, whatever the number of sinks and
-// chains, and the time of an unshipped entry only where a sink that gets entries is behind.
+// counts the checkpoints after the cursors in two aggregate queries, whatever the number of
+// checkpoints, sinks and chains, and reads the time of an unshipped entry only where a sink that gets entries is behind.
 func Backlogs(ctx context.Context, db *store.DB) ([]Backlog, error) {
 	var out []Backlog
 	err := store.ReadTx(ctx, db, func(tx *ent.Tx, _ store.Revision) error {
@@ -65,24 +65,9 @@ func Backlogs(ctx context.Context, db *store.DB) ([]Backlog, error) {
 			chains = append(chains, c)
 		}
 		sort.Strings(chains)
-		// The checkpoints after the slowest cursor: a pair without a cursor starts at 0.
-		from := int64(-1)
-		for _, s := range sinks {
-			for _, chain := range chains {
-				seq := int64(0)
-				if c := byKey[key{s.ID, chain}]; c != nil {
-					seq = c.CheckpointSeq
-				}
-				if from < 0 || seq < from {
-					from = seq
-				}
-			}
-		}
-		var stamps map[string][]audit.Stamp
-		if from >= 0 {
-			if stamps, err = audit.CheckpointStamps(ctx, tx, from); err != nil {
-				return err
-			}
+		all, after, err := audit.CheckpointBacklog(ctx, tx)
+		if err != nil {
+			return err
 		}
 		for _, s := range sinks {
 			b := Backlog{SinkID: s.ID, Sink: s.Name, Enabled: s.Enabled}
@@ -91,12 +76,11 @@ func Backlogs(ctx context.Context, db *store.DB) ([]Backlog, error) {
 				if c := byKey[key{s.ID, chain}]; c != nil {
 					cb.CheckpointSeq, cb.EntrySeq = c.CheckpointSeq, c.EntrySeq
 				}
-				list := stamps[chain]
-				i := sort.Search(len(list), func(i int) bool { return list[i].Seq > cb.CheckpointSeq })
-				cb.Items = int64(len(list) - i)
-				if i < len(list) {
-					cb.Oldest = list[i].Time
+				st := all[chain]
+				if byKey[key{s.ID, chain}] != nil {
+					st = after[audit.SinkChain{Sink: s.ID, Chain: chain}]
 				}
+				cb.Items, cb.Oldest = st.Count, st.Oldest
 				if s.Entries && heads[chain] > cb.EntrySeq {
 					cb.Items += heads[chain] - cb.EntrySeq
 					org := chain

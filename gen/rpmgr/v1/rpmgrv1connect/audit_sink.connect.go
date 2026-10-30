@@ -63,8 +63,8 @@ type AuditSinkServiceClient interface {
 	GetAuditSink(context.Context, *connect.Request[v1.GetAuditSinkRequest]) (*connect.Response[v1.GetAuditSinkResponse], error)
 	// ListAuditSinks lists the sinks, the oldest first, each with its status.
 	ListAuditSinks(context.Context, *connect.Request[v1.ListAuditSinksRequest]) (*connect.Response[v1.ListAuditSinksResponse], error)
-	// UpdateAuditSink changes the fields the mask names: name, url, secret, entries, enabled. The
-	// kind never changes.
+	// UpdateAuditSink changes the fields the mask names: name, url, secret, address, ca_bundle,
+	// entries, enabled. The kind never changes.
 	UpdateAuditSink(context.Context, *connect.Request[v1.UpdateAuditSinkRequest]) (*connect.Response[v1.UpdateAuditSinkResponse], error)
 	// DeleteAuditSink deletes a sink and its cursors. What it shipped stays with the receiver.
 	DeleteAuditSink(context.Context, *connect.Request[v1.DeleteAuditSinkRequest]) (*connect.Response[v1.DeleteAuditSinkResponse], error)
@@ -174,8 +174,8 @@ type AuditSinkServiceHandler interface {
 	GetAuditSink(context.Context, *connect.Request[v1.GetAuditSinkRequest]) (*connect.Response[v1.GetAuditSinkResponse], error)
 	// ListAuditSinks lists the sinks, the oldest first, each with its status.
 	ListAuditSinks(context.Context, *connect.Request[v1.ListAuditSinksRequest]) (*connect.Response[v1.ListAuditSinksResponse], error)
-	// UpdateAuditSink changes the fields the mask names: name, url, secret, entries, enabled. The
-	// kind never changes.
+	// UpdateAuditSink changes the fields the mask names: name, url, secret, address, ca_bundle,
+	// entries, enabled. The kind never changes.
 	UpdateAuditSink(context.Context, *connect.Request[v1.UpdateAuditSinkRequest]) (*connect.Response[v1.UpdateAuditSinkResponse], error)
 	// DeleteAuditSink deletes a sink and its cursors. What it shipped stays with the receiver.
 	DeleteAuditSink(context.Context, *connect.Request[v1.DeleteAuditSinkRequest]) (*connect.Response[v1.DeleteAuditSinkResponse], error)

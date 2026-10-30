@@ -1,4 +1,4 @@
-h1:qFV7GRfU560jKiEeSQHXdwyw+qv7pK01w8WN6nafHg8=
+h1:OklRWcg7oPHZ1SNxIoZhPEMixfYAWkqjUWVLxTLqTx0=
 20261009220802_baseline.sql h1:P98oQ4RhN7c+aa0SgKZ9ZRM8/T6XYO+Yd4dzlDOBvr4=
 20261013061720_agent_names_active.sql h1:pSxlk4IT2yuwmcSmLQ4GrPs6B7VaQUX7L1NcrOHzvqg=
 20261014071548_target_tls_verification.sql h1:6F+dOuC0QwNWsAQhvW7rRkPRrB/RC/OgLAL0vWfs0oY=
@@ -19,3 +19,5 @@ h1:qFV7GRfU560jKiEeSQHXdwyw+qv7pK01w8WN6nafHg8=
 20261026070312_alerts.sql h1:hKE27hJBvp7YvwVI57nYCsUOqjqp6nleXixA/LTwmcs=
 20261026072139_webhooks.sql h1:rL9rOvFs48Dq8T5eonF/E6INDsEMabqYm0nhUGt5hec=
 20261030063057_audit_sinks.sql h1:K7hlYwdeO9qFdBElrG2vidN+zRqeH7TdX6TjojXjmpY=
+20261030071506_status_marks.sql h1:P9rDkUWgHO+5VXXgrKnC4s0cyI7bVAB7hx3dOHYjkB8=
+20261030072626_mail_jobs.sql h1:J2bllWDmrxw8IrCKDGQ9fzW7AVKmVlOArd7+UMN2Lno=
