@@ -125,13 +125,18 @@ type env struct {
 	u   *fakeUfw
 }
 
+// testUID is the uid of the test process, as the helper's root.
+func testUID() uint32 {
+	return uint32(os.Getuid()) //nolint:gosec // G115: a uid is never negative
+}
+
 func newEnv(t *testing.T, bounds string) *env {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "etc") // the umask of the test host decides the mode of a TempDir
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(dir, 0o755); err != nil {
+	if err := os.Chmod(dir, 0o755); err != nil { //nolint:gosec // G302: the fixture directory must be traversable, like root's /etc
 		t.Fatal(err)
 	}
 	// The directories above the test's own are not root's; they pass as if they were.
@@ -139,14 +144,14 @@ func newEnv(t *testing.T, bounds string) *env {
 	lstat = func(p string) (os.FileInfo, error) {
 		fi, err := old(p)
 		if err == nil && p != dir && strings.HasPrefix(dir, strings.TrimSuffix(p, "/")+"/") {
-			return fakeDir{fi, uint32(os.Getuid()), 0o755}, nil
+			return fakeDir{fi, testUID(), 0o755}, nil
 		}
 		return fi, err
 	}
 	t.Cleanup(func() { lstat = old })
 	e := &env{t: t, dir: dir, u: &fakeUfw{}}
 	e.a = &Applier{Desired: filepath.Join(dir, "desired.json"), Bounds: filepath.Join(dir, "firewall.json"),
-		StatusFile: filepath.Join(dir, "run", "status.json"), Ufw: e.u, RootUID: uint32(os.Getuid()),
+		StatusFile: filepath.Join(dir, "run", "status.json"), Ufw: e.u, RootUID: testUID(),
 		Now: func() time.Time { return time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC) }}
 	if bounds != "" {
 		e.write("firewall.json", bounds, 0o644)
@@ -395,11 +400,12 @@ func TestFirewall_BoundsFileMustBeRootOwned(t *testing.T) {
 		{"another owner", func(e *env) { e.a.RootUID++ }, "not owned by root"},
 		{"group writable", func(e *env) { e.write("firewall.json", boundsOn, 0o664) }, "written by its group or others"},
 		{"world writable", func(e *env) { e.write("firewall.json", boundsOn, 0o666) }, "written by its group or others"},
-		{"world writable directory", func(e *env) { _ = os.Chmod(e.dir, 0o777) }, "written by its group or others"},
-		{"an ancestor of another owner", func(e *env) { e.ancestor(filepath.Dir(e.dir), uint32(os.Getuid())+1, 0o755) }, "not owned by root"},
-		{"a world-writable ancestor", func(e *env) { e.ancestor(filepath.Dir(e.dir), uint32(os.Getuid()), 0o777) }, "written by its group or others"},
-		{"a sticky world-writable ancestor", func(e *env) { e.ancestor(filepath.Dir(e.dir), uint32(os.Getuid()), 0o777|os.ModeSticky) }, "written by its group or others"},
-		{"a group-writable ancestor near the top", func(e *env) { e.ancestor(filepath.Dir(filepath.Dir(e.dir)), uint32(os.Getuid()), 0o775) }, "written by its group or others"},
+		{"world writable directory", func(e *env) { _ = os.Chmod(e.dir, 0o777) }, //nolint:gosec // G302: the case under test is a world-writable directory
+			"written by its group or others"},
+		{"an ancestor of another owner", func(e *env) { e.ancestor(filepath.Dir(e.dir), testUID()+1, 0o755) }, "not owned by root"},
+		{"a world-writable ancestor", func(e *env) { e.ancestor(filepath.Dir(e.dir), testUID(), 0o777) }, "written by its group or others"},
+		{"a sticky world-writable ancestor", func(e *env) { e.ancestor(filepath.Dir(e.dir), testUID(), 0o777|os.ModeSticky) }, "written by its group or others"},
+		{"a group-writable ancestor near the top", func(e *env) { e.ancestor(filepath.Dir(filepath.Dir(e.dir)), testUID(), 0o775) }, "written by its group or others"},
 		{"a link", func(e *env) {
 			e.write("real.json", boundsOn, 0o644)
 			_ = os.Remove(e.a.Bounds)
