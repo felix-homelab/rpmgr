@@ -224,7 +224,8 @@ rpmgr create audit-sink --name vault --kind s3 --endpoint https://s3.example.com
 rpmgr test audit-sink vault
 ```
 
-Objects lie under `audit/<chain>/`, where the chain is an org's ID or `instance`. If the last error
+Each save, update and test of the sink leaves a probe object under `audit/probe/`, which stays
+locked for a short time and cannot be deleted before that ends. Objects lie under `audit/<chain>/`, where the chain is an org's ID or `instance`. If the last error
 says an object holds other bytes than the item, do not retry: someone wrote under that key, so
 look at the object.
 

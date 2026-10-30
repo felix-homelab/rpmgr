@@ -1627,8 +1627,9 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
     sink's CA bundle, or the system roots if it has none, and must name the host of the sink's
     address; there is no client certificate, and no way to skip verification. The address is
     checked by the egress guard as it is dialled, with the Instance Admin's policy of a webhook
-    sink. Each message is an RFC 5424 record (facility 13, severity 6, the item's type as its
-    message ID) holding the checkpoint or entry as JSON, as the webhook sink sends it; an entry
+    sink. No sink uses a proxy from the environment (HTTP_PROXY, HTTPS_PROXY), as the guard would
+    see the proxy's address and not the sink's. Each message is an RFC 5424 record (facility 13,
+    severity 6, the item's type as its message ID) holding the checkpoint or entry as JSON, as the webhook sink sends it; an entry
     that would make the record longer than a receiver must accept
     ([03](03-connections.md#timeouts-keepalive-and-backoff)) is sent without its `diff`, and if
     that is not enough, replaced by a marker that keeps its ID, type, time, chain and seq and its
@@ -1675,14 +1676,15 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
     and is counted as failed, and the rest goes in the next pass.
     A bucket that does not enforce Object Lock, or a store without conditional create, is refused
     when the sink is saved (VB-24), and when it is tested. The check writes the probe object
-    `audit/probe/<random ID>` with the lock mode compliance for one day and a conditional create,
+    `audit/probe/<random ID>` with the lock mode compliance for the probe lock period
+    ([03](03-connections.md#timeouts-keepalive-and-backoff)) and a conditional create,
     writes it a second time, which must answer `exists`, and tries to delete the version the first
     write returned, which the store must refuse. A first write that is refused (AWS answers 400 for
     a bucket without Object Lock, 403 for credentials without the right, SILO 400), a write that
     returns no version ID (the bucket is not versioned, so it cannot lock), a second write that
     succeeds, and a delete that succeeds, each refuse the sink with the reason; a store that cannot
-    be reached refuses it as well, and saves nothing. The probe object stays in the bucket until
-    its day has passed. A sink whose settings and secret key did not change is not checked again
+    be reached refuses it as well, and saves nothing. Each save, update and test leaves one probe
+    object, which stays in the bucket until its lock has ended. A sink whose settings and secret key did not change is not checked again
     when it is saved. Verification can read the sink back and finds a chain rewritten under a
     checkpoint it holds. The client (`internal/objstore`) signs with AWS Signature Version 4 and
     reads the access key from a file that neither group nor others can read, or from memory
