@@ -25,8 +25,8 @@ Changes to the design documents are not recorded here: see the git history and t
   hashes and its signed checkpoints, the entries after the newest checkpoint flagged. `rpmgr audit
   verify-export --ca-pin sha256:<base64> <file>` verifies the file on any machine against the CA's
   pin alone and finds an edited, removed or reordered entry or a forged checkpoint. An export is an
-  `audit.export` entry in the chain, recorded again as a failure when it breaks off. The export
-  button on the audit page follows.
+  `audit.export` entry in the chain, recorded again as a failure when it breaks off. The audit
+  page has an Export button that does the same after a step-up. (#652, #653)
 - Controllers and all-in-ones update over the air, on SQLite. An Instance Admin chooses "Update
   controller to x.y.z" on Settings → Updates, or runs `rpmgr create rollout --controller --release
   x.y.z`, after a step-up. The root updater takes a backup of the database first, kept as
