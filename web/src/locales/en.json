@@ -1014,6 +1014,8 @@
   "webhooks": {
     "title": "Webhooks",
     "intro": "Send the events of this organisation to a URL you run, signed with a secret only the receiver and rpmgr know.",
+    "instanceTitle": "Instance webhooks",
+    "instanceIntro": "Send the events of the instance, such as its audit entries, releases and rollouts, to a URL you run. Unlike an organisation's, these URLs may name a receiver on a private network.",
     "noAccess": "Webhook endpoints need the webhooks.write permission, which the Owner and the Admin hold. Ask one of them.",
     "new": "New webhook…",
     "create": "Create the webhook",
@@ -1113,6 +1115,14 @@
     "defaultGroup": "Gateway group preselected for new routes",
     "none": "None",
     "days": "Enter whole days for: {{fields}}.",
+    "invalid": "Some settings are not valid. Fix what is marked and save again.",
+    "errors": {
+      "rangeInvalid": "\"{{entry}}\" is not a range. Write an address and a prefix length, such as 10.0.0.0/8 or fd00::/8.",
+      "rangeHostBits": "\"{{entry}}\" has bits set beyond its prefix length. Write the network address: {{suggest}}.",
+      "rangeHostBits6": "\"{{entry}}\" has bits set beyond its prefix length. Write the network address of the range.",
+      "rangeTwice": "\"{{entry}}\" is listed twice.",
+      "rangeMany": "At most {{max}} ranges."
+    },
     "sections": {
       "agents": "Agents and transport",
       "updates": "Updates",
@@ -1121,6 +1131,7 @@
       "acme": "ACME certificates",
       "mail": "Mail relay",
       "audit": "Audit log",
+      "webhooks": "Webhook receivers",
       "pki": "Agent certificates and passwords"
     },
     "fields": {
@@ -1131,6 +1142,7 @@
       "releaseCheck": "Check for releases once a day",
       "channel": "Release channel",
       "aliases": "Further public URLs of the web UI",
+      "webhookPrivateRanges": "Private networks admitted for organisations' webhook receivers",
       "endpoints": "Controller endpoints for agents",
       "hourly": "Keep hourly statistics (days)",
       "daily": "Keep daily statistics (days)",
@@ -1147,6 +1159,7 @@
       "leafLifetime": "1 to 30 days.",
       "grace": "0 to 90 days.",
       "aliases": "One URL per line, accepted as Origin.",
+      "webhookPrivateRanges": "One range per line, such as 10.0.0.0/8; at most 32. Organisations' webhook endpoints may then name receivers in these private networks. Loopback, link-local and cloud metadata addresses stay blocked whatever is listed. Empty admits none.",
       "endpoints": "One URL per line, tried in order; empty means the public URL.",
       "hourly": "1 to 400 days.",
       "daily": "1 to 3650 days.",

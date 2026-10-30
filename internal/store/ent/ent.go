@@ -47,6 +47,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/invitation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/mailjob"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
@@ -74,6 +75,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/statusmark"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
@@ -174,6 +176,7 @@ func checkColumn(t, c string) error {
 			invitation.Table:         invitation.ValidColumn,
 			issuedcertificate.Table:  issuedcertificate.ValidColumn,
 			lease.Table:              lease.ValidColumn,
+			mailjob.Table:            mailjob.ValidColumn,
 			membership.Table:         membership.ValidColumn,
 			org.Table:                org.ValidColumn,
 			orgsetting.Table:         orgsetting.ValidColumn,
@@ -201,6 +204,7 @@ func checkColumn(t, c string) error {
 			routeudp.Table:           routeudp.ValidColumn,
 			secretmeta.Table:         secretmeta.ValidColumn,
 			session.Table:            session.ValidColumn,
+			statusmark.Table:         statusmark.ValidColumn,
 			totpcredential.Table:     totpcredential.ValidColumn,
 			trafficbaseline.Table:    trafficbaseline.ValidColumn,
 			user.Table:               user.ValidColumn,

@@ -149,7 +149,8 @@ func TestAlertJob(t *testing.T) {
 	// nas drops for a pass and comes back, its snapshot still rejected and its clock still off:
 	// while it is away nothing is known of either, so neither alert resolves or fires again; its
 	// offline alert waits its 5 min and goes without an event.
-	all := c.Event.Query().CountX(sys)
+	alertEvents := func() int { return c.Event.Query().Where(event.TypeHasPrefix("alert.")).CountX(sys) }
+	all := alertEvents()
 	clock = now.Add(3 * time.Minute)
 	c.AgentSession.UpdateOneID(nas.ID).SetDisconnectedAt(clock).ExecX(sys)
 	run()
@@ -159,8 +160,8 @@ func TestAlertJob(t *testing.T) {
 	clock = now.Add(4 * time.Minute)
 	c.AgentSession.UpdateOneID(nas.ID).ClearDisconnectedAt().SetLastSeenAt(clock).ExecX(sys)
 	run()
-	if n := c.Event.Query().CountX(sys); n != all {
-		t.Fatalf("%d events after nas was offline for a pass, want none", n-all)
+	if n := alertEvents(); n != all {
+		t.Fatalf("%d alert events after nas was offline for a pass, want none", n-all)
 	}
 	// A replica that lost the lease writes nothing.
 	clock = now.Add(time.Hour)

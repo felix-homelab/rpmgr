@@ -874,9 +874,16 @@ one page, with a section list beside them that jumps to each section
   deliveries of an endpoint with their attempts, status codes, errors and next retry. A URL the
   egress guard refuses for a private range names the range and, for an Instance Admin, offers to
   list it.
-- **Settings → Audit sinks and webhooks** (Instance Admin): the audit sinks, each with its kind,
-  whether entries go along, its last success, last error and backlog, secrets write-only; the
-  instance webhooks as above; and the private ranges webhook receivers may use.
+- **Settings → Webhooks** (Instance Admin, a tab beside PKI, Updates and Users): the instance's
+  endpoints as above, which receive instance events and may name a receiver on loopback or a
+  private network; and the instance setting `webhook_private_ranges` as a list of ranges, one per
+  line. The page checks each entry before it sends anything and says which one is wrong: not an
+  address and a prefix length, bits set beyond the prefix (with the network address to write),
+  listed twice, or more than 32. Its hint says that the ranges admit private receivers for
+  organisations' endpoints ([D145](14-open-decisions.md#engineering)), and that loopback,
+  link-local and cloud metadata addresses stay blocked whatever is listed.
+- **Settings → Audit sinks** (Instance Admin): the audit sinks, each with its kind, whether
+  entries go along, its last success, last error and backlog, secrets write-only.
 - **Org settings**: alert e-mails on or off and the alert types the org gets
   ([D139](14-open-decisions.md#engineering)).
 - **Audit log**: **Export** asks for a step-up and downloads the chain as JSON Lines; the page then

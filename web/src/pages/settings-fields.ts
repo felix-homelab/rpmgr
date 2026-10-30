@@ -2,13 +2,14 @@
 
 import { create } from "@bufbuild/protobuf";
 import type { Duration } from "@bufbuild/protobuf/wkt";
+import type { TFunction } from "i18next";
 import {
   PasswordHashProfile, RolloutMode, SmtpSecurity, SmtpSettingsSchema, TransportPolicy, UpdateChannel, type InstanceSettings,
 } from "@/gen/rpmgr/v1/settings_pb";
 
 // The sections of the instance settings; the PKI and Updates pages show theirs (docs/09-web-ui.md,
 // "Information architecture").
-export type Section = "agents" | "pki" | "updates" | "endpoints" | "traffic" | "acme" | "mail" | "audit";
+export type Section = "agents" | "pki" | "updates" | "endpoints" | "traffic" | "acme" | "mail" | "audit" | "webhooks";
 
 // A field of the instance settings form: its form key, its section, the settings field the update
 // mask names, how it is edited, and how it reads from and writes to the settings.
@@ -19,6 +20,7 @@ export interface SettingField {
   kind: "days" | "select" | "bool" | "lines" | "text";
   options?: [number, string][];
   required?: (values: Record<string, string>) => boolean; // whether the form needs a value
+  validate?: (value: string, t: TFunction) => string; // what is wrong with the value, or nothing
   get: (s: InstanceSettings) => string;
   set: (s: InstanceSettings, v: string) => void;
 }
@@ -36,6 +38,78 @@ const smtpField = (key: string, field: "server" | "from" | "username", required?
     s.smtp = { ...smtp(s), [field]: v.trim() };
   },
 });
+
+const maxRanges = 32;
+
+// ipv4 is the address of "a.b.c.d" as a number, or undefined if it is none.
+function ipv4(text: string): number | undefined {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(text);
+  const o = m?.slice(1).map(Number);
+  return o && o.every((x) => x <= 255) ? ((o[0]! << 24) | (o[1]! << 16) | (o[2]! << 8) | o[3]!) >>> 0 : undefined;
+}
+
+// ipv6 is the address of text as a number, or undefined if it is none. An address with an
+// embedded IPv4 part is not checked here: the server decides on it.
+function ipv6(text: string): bigint | undefined {
+  const parts = text.split("::");
+  if (parts.length > 2 || !/^[0-9a-f:]+$/i.test(text)) {
+    return undefined;
+  }
+  const head = parts[0] ? parts[0].split(":") : [];
+  const tail = parts[1] ? parts[1].split(":") : [];
+  const fill = 8 - head.length - tail.length;
+  if (parts.length === 2 ? fill < 1 : head.length !== 8) {
+    return undefined;
+  }
+  const groups = [...head, ...Array<string>(parts.length === 2 ? fill : 0).fill("0"), ...tail];
+  return groups.every((g) => /^[0-9a-f]{1,4}$/i.test(g)) ? groups.reduce((n, g) => (n << 16n) | BigInt(`0x${g}`), 0n) : undefined;
+}
+
+// rangeProblem says what is wrong with one entry of webhook_private_ranges, or nothing: it must be
+// an address and a prefix length with no bits set beyond the prefix, as the server requires.
+export function rangeProblem(t: TFunction, entry: string): string {
+  const [addr = "", len = "", ...extra] = entry.split("/");
+  const bad = t("settings.errors.rangeInvalid", { entry });
+  if (extra.length > 0 || !/^\d{1,3}$/.test(len)) {
+    return bad;
+  }
+  const bits = Number(len);
+  if (!addr.includes(":")) {
+    const n = ipv4(addr);
+    if (n === undefined || bits > 32) {
+      return bad;
+    }
+    const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+    const net = (n & mask) >>> 0;
+    const text = [24, 16, 8, 0].map((s) => (net >>> s) & 255).join(".");
+    return net === n ? "" : t("settings.errors.rangeHostBits", { entry, suggest: `${text}/${bits}` });
+  }
+  if (addr.includes(".")) {
+    return bits > 128 ? bad : "";
+  }
+  const n = ipv6(addr);
+  if (n === undefined || bits > 128) {
+    return bad;
+  }
+  return (n & ((1n << BigInt(128 - bits)) - 1n)) === 0n ? "" : t("settings.errors.rangeHostBits6", { entry });
+}
+
+// rangesProblem says what is wrong with the lines of webhook_private_ranges, or nothing.
+export function rangesProblem(value: string, t: TFunction): string {
+  const entries = lines(value);
+  const seen = new Set<string>();
+  const problems = entries.map((e) => {
+    if (seen.has(e)) {
+      return t("settings.errors.rangeTwice", { entry: e });
+    }
+    seen.add(e);
+    return rangeProblem(t, e);
+  });
+  if (entries.length > maxRanges) {
+    problems.push(t("settings.errors.rangeMany", { max: maxRanges }));
+  }
+  return problems.filter(Boolean).join(" ");
+}
 
 export const settingFields: SettingField[] = [
   { key: "transport", section: "agents", mask: "default_transport", kind: "select",
@@ -66,6 +140,9 @@ export const settingFields: SettingField[] = [
   smtpField("smtpUser", "username"),
   { key: "smtpSecurity", section: "mail", mask: "smtp", kind: "select", options: [[SmtpSecurity.STARTTLS, "starttls"], [SmtpSecurity.TLS, "tls"]],
     get: (s) => String(s.smtp?.security || SmtpSecurity.STARTTLS), set: (s, v) => (s.smtp = { ...smtp(s), security: Number(v) }) },
+  // The private networks organisations' webhook receivers may be in (D145). One range per line.
+  { key: "webhookPrivateRanges", section: "webhooks", mask: "webhook_private_ranges", kind: "lines", validate: rangesProblem,
+    get: (s) => s.webhookPrivateRanges.join("\n"), set: (s, v) => (s.webhookPrivateRanges = lines(v)) },
   { key: "auditRetention", section: "audit", mask: "audit_retention", kind: "days", get: (s) => days(s.auditRetention), set: (s, v) => (s.auditRetention = toDays(v)) },
 ];
 

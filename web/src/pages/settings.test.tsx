@@ -227,11 +227,11 @@ describe("Settings", () => {
     expect(within(screen.getByRole("main")).getByRole("link", { name: "Settings" }).getAttribute("href")).toBe("/settings");
   });
 
-  it("leads the Instance Admin between the settings, PKI, Updates and Users, marking the current page", async () => {
+  it("leads the Instance Admin between the settings, PKI, Updates, Webhooks and Users, marking the current page", async () => {
     page({ admin: true, path: "/settings/updates" });
     const tabs = within(await screen.findByRole("navigation", { name: "Instance pages" }));
     expect(tabs.getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
-      ["Settings", "/settings"], ["PKI", "/settings/pki"], ["Updates", "/settings/updates"], ["Users", "/settings/users"],
+      ["Settings", "/settings"], ["PKI", "/settings/pki"], ["Updates", "/settings/updates"], ["Webhooks", "/settings/webhooks"], ["Users", "/settings/users"],
     ]);
     await waitFor(() => expect(tabs.getByRole("link", { name: "Updates" }).getAttribute("aria-current")).toBe("page"));
     expect(tabs.getByRole("link", { name: "Settings" }).getAttribute("aria-current")).toBeNull(); // not on every page under /settings
