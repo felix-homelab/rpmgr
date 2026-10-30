@@ -44,6 +44,12 @@ const (
 	// StatusServiceWatchEventsProcedure is the fully-qualified name of the StatusService's WatchEvents
 	// RPC.
 	StatusServiceWatchEventsProcedure = "/rpmgr.v1.StatusService/WatchEvents"
+	// StatusServiceListAlertsProcedure is the fully-qualified name of the StatusService's ListAlerts
+	// RPC.
+	StatusServiceListAlertsProcedure = "/rpmgr.v1.StatusService/ListAlerts"
+	// StatusServiceListInstanceAlertsProcedure is the fully-qualified name of the StatusService's
+	// ListInstanceAlerts RPC.
+	StatusServiceListInstanceAlertsProcedure = "/rpmgr.v1.StatusService/ListInstanceAlerts"
 )
 
 // StatusServiceClient is a client for the rpmgr.v1.StatusService service.
@@ -57,6 +63,11 @@ type StatusServiceClient interface {
 	// revision, from the resume token on, so a client that reconnects misses none; and the changes of
 	// its routes' and agents' status as they are seen.
 	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest]) (*connect.ServerStreamForClient[v1.WatchEventsResponse], error)
+	// ListAlerts lists the org's alerts (docs/10-operations.md, "Suggested alerts"): the ones that
+	// fire now unless state asks for others, by ID. Anyone who may read the org may read them.
+	ListAlerts(context.Context, *connect.Request[v1.ListAlertsRequest]) (*connect.Response[v1.ListAlertsResponse], error)
+	// ListInstanceAlerts lists the instance alerts, the conditions of no org, as ListAlerts does.
+	ListInstanceAlerts(context.Context, *connect.Request[v1.ListInstanceAlertsRequest]) (*connect.Response[v1.ListInstanceAlertsResponse], error)
 }
 
 // NewStatusServiceClient constructs a client for the rpmgr.v1.StatusService service. By default, it
@@ -91,14 +102,30 @@ func NewStatusServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		listAlerts: connect.NewClient[v1.ListAlertsRequest, v1.ListAlertsResponse](
+			httpClient,
+			baseURL+StatusServiceListAlertsProcedure,
+			connect.WithSchema(statusServiceMethods.ByName("ListAlerts")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		listInstanceAlerts: connect.NewClient[v1.ListInstanceAlertsRequest, v1.ListInstanceAlertsResponse](
+			httpClient,
+			baseURL+StatusServiceListInstanceAlertsProcedure,
+			connect.WithSchema(statusServiceMethods.ByName("ListInstanceAlerts")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // statusServiceClient implements StatusServiceClient.
 type statusServiceClient struct {
-	getApplyStatus   *connect.Client[v1.GetApplyStatusRequest, v1.GetApplyStatusResponse]
-	watchApplyStatus *connect.Client[v1.WatchApplyStatusRequest, v1.WatchApplyStatusResponse]
-	watchEvents      *connect.Client[v1.WatchEventsRequest, v1.WatchEventsResponse]
+	getApplyStatus     *connect.Client[v1.GetApplyStatusRequest, v1.GetApplyStatusResponse]
+	watchApplyStatus   *connect.Client[v1.WatchApplyStatusRequest, v1.WatchApplyStatusResponse]
+	watchEvents        *connect.Client[v1.WatchEventsRequest, v1.WatchEventsResponse]
+	listAlerts         *connect.Client[v1.ListAlertsRequest, v1.ListAlertsResponse]
+	listInstanceAlerts *connect.Client[v1.ListInstanceAlertsRequest, v1.ListInstanceAlertsResponse]
 }
 
 // GetApplyStatus calls rpmgr.v1.StatusService.GetApplyStatus.
@@ -116,6 +143,16 @@ func (c *statusServiceClient) WatchEvents(ctx context.Context, req *connect.Requ
 	return c.watchEvents.CallServerStream(ctx, req)
 }
 
+// ListAlerts calls rpmgr.v1.StatusService.ListAlerts.
+func (c *statusServiceClient) ListAlerts(ctx context.Context, req *connect.Request[v1.ListAlertsRequest]) (*connect.Response[v1.ListAlertsResponse], error) {
+	return c.listAlerts.CallUnary(ctx, req)
+}
+
+// ListInstanceAlerts calls rpmgr.v1.StatusService.ListInstanceAlerts.
+func (c *statusServiceClient) ListInstanceAlerts(ctx context.Context, req *connect.Request[v1.ListInstanceAlertsRequest]) (*connect.Response[v1.ListInstanceAlertsResponse], error) {
+	return c.listInstanceAlerts.CallUnary(ctx, req)
+}
+
 // StatusServiceHandler is an implementation of the rpmgr.v1.StatusService service.
 type StatusServiceHandler interface {
 	// GetApplyStatus returns how far the org's agents are with a revision.
@@ -127,6 +164,11 @@ type StatusServiceHandler interface {
 	// revision, from the resume token on, so a client that reconnects misses none; and the changes of
 	// its routes' and agents' status as they are seen.
 	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.WatchEventsResponse]) error
+	// ListAlerts lists the org's alerts (docs/10-operations.md, "Suggested alerts"): the ones that
+	// fire now unless state asks for others, by ID. Anyone who may read the org may read them.
+	ListAlerts(context.Context, *connect.Request[v1.ListAlertsRequest]) (*connect.Response[v1.ListAlertsResponse], error)
+	// ListInstanceAlerts lists the instance alerts, the conditions of no org, as ListAlerts does.
+	ListInstanceAlerts(context.Context, *connect.Request[v1.ListInstanceAlertsRequest]) (*connect.Response[v1.ListInstanceAlertsResponse], error)
 }
 
 // NewStatusServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -157,6 +199,20 @@ func NewStatusServiceHandler(svc StatusServiceHandler, opts ...connect.HandlerOp
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	statusServiceListAlertsHandler := connect.NewUnaryHandler(
+		StatusServiceListAlertsProcedure,
+		svc.ListAlerts,
+		connect.WithSchema(statusServiceMethods.ByName("ListAlerts")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	statusServiceListInstanceAlertsHandler := connect.NewUnaryHandler(
+		StatusServiceListInstanceAlertsProcedure,
+		svc.ListInstanceAlerts,
+		connect.WithSchema(statusServiceMethods.ByName("ListInstanceAlerts")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.StatusService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case StatusServiceGetApplyStatusProcedure:
@@ -165,6 +221,10 @@ func NewStatusServiceHandler(svc StatusServiceHandler, opts ...connect.HandlerOp
 			statusServiceWatchApplyStatusHandler.ServeHTTP(w, r)
 		case StatusServiceWatchEventsProcedure:
 			statusServiceWatchEventsHandler.ServeHTTP(w, r)
+		case StatusServiceListAlertsProcedure:
+			statusServiceListAlertsHandler.ServeHTTP(w, r)
+		case StatusServiceListInstanceAlertsProcedure:
+			statusServiceListInstanceAlertsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -184,4 +244,12 @@ func (UnimplementedStatusServiceHandler) WatchApplyStatus(context.Context, *conn
 
 func (UnimplementedStatusServiceHandler) WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.WatchEventsResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.StatusService.WatchEvents is not implemented"))
+}
+
+func (UnimplementedStatusServiceHandler) ListAlerts(context.Context, *connect.Request[v1.ListAlertsRequest]) (*connect.Response[v1.ListAlertsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.StatusService.ListAlerts is not implemented"))
+}
+
+func (UnimplementedStatusServiceHandler) ListInstanceAlerts(context.Context, *connect.Request[v1.ListInstanceAlertsRequest]) (*connect.Response[v1.ListInstanceAlertsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.StatusService.ListInstanceAlerts is not implemented"))
 }
