@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -48,6 +49,51 @@ type Command struct {
 	// Run executes the command with its positional arguments, in their order, without the flags.
 	Run func(ctx context.Context, env *Env, args []string) error
 	Sub []*Command
+
+	// Section names the section of the parent's help that lists this command; see Sections.
+	Section string
+	// Hidden leaves the command out of its parent's help. It stays in the tree and runs.
+	Hidden bool
+	// Sections orders the sections of this group's help. A visible sub-command whose Section is
+	// not named, or empty, is listed last, under "Other commands". Without Sections the help
+	// is one list, "Commands".
+	Sections []string
+	// Topics are the topics of "help <topic>", on the root.
+	Topics []Topic
+	// Removed maps the name of a removed sub-command to what replaces it, which the unknown-command
+	// error names.
+	Removed map[string]string
+}
+
+// Topic is a help page about one task: the commands that do it, in the order they are used,
+// across the whole tree ("rpmgr help <topic>").
+type Topic struct {
+	Name    string // one word, lower case, never the name of a command
+	Summary string // one line, lower-case start, no trailing period
+	Steps   []Step
+}
+
+// Step is one line of a topic: a command line, or other text such as a shell command, and what
+// it is for. A Do that begins with the root's name and a space is a command line of the tree.
+type Step struct{ Do, Note string }
+
+// unknownCommand is the error for a name that is no sub-command of c.
+func (c *Command) unknownCommand(name string) error {
+	if r, ok := c.Removed[name]; ok {
+		return Usagef("unknown command %q: it was removed; %s", name, r)
+	}
+	return Usagef("unknown command %q", name)
+}
+
+// Visible returns the sub-commands that help lists, in the order of the tree.
+func (c *Command) Visible() []*Command {
+	var out []*Command
+	for _, s := range c.Sub {
+		if !s.Hidden {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // NotAvailable is the Run function of a command that this build does not implement yet.
@@ -68,10 +114,16 @@ func Main(ctx context.Context, root *Command, args []string, env *Env) int {
 	cmd := root
 	if len(args) > 0 && args[0] == "help" && root.Sub != nil {
 		// "rpmgr help [command ...]" prints the help of that command.
+		if len(args) == 2 && root.find(args[1]) == nil {
+			if t := root.topic(args[1]); t != nil {
+				t.write(env.Stdout, root.Name)
+				return ExitOK
+			}
+		}
 		for _, name := range args[1:] {
 			sub := cmd.find(name)
 			if sub == nil {
-				return usageFail(env, cmd, path, cmd.flagSet(path), Usagef("unknown command %q", name))
+				return usageFail(env, cmd, path, cmd.flagSet(path), cmd.unknownCommand(name))
 			}
 			cmd, path = sub, append(path, name)
 		}
@@ -81,7 +133,7 @@ func Main(ctx context.Context, root *Command, args []string, env *Env) int {
 	for len(args) > 0 && cmd.Sub != nil && !strings.HasPrefix(args[0], "-") {
 		sub := cmd.find(args[0])
 		if sub == nil {
-			return usageFail(env, cmd, path, cmd.flagSet(path), Usagef("unknown command %q", args[0]))
+			return usageFail(env, cmd, path, cmd.flagSet(path), cmd.unknownCommand(args[0]))
 		}
 		cmd, path, args = sub, append(path, args[0]), args[1:]
 	}
@@ -205,15 +257,19 @@ func (c *Command) writeHelp(w io.Writer, path []string, fs *flag.FlagSet) {
 	}
 	fmt.Fprintf(w, "Usage: %s\n\n%s.\n", synopsis, upperFirst(c.Summary))
 	if c.Sub != nil {
-		fmt.Fprintf(w, "\nCommands:\n")
-		tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
-		subs := append([]*Command(nil), c.Sub...)
-		sort.SliceStable(subs, func(i, j int) bool { return subs[i].Name < subs[j].Name })
-		for _, s := range subs {
-			fmt.Fprintf(tw, "  %s\t%s\n", s.Name, s.Summary)
-		}
-		if err := tw.Flush(); err != nil {
+		if !c.writeCommands(w) {
 			return
+		}
+		if len(c.Topics) > 0 {
+			fmt.Fprintf(w, "\nTopics:\n")
+			tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
+			for _, t := range c.Topics {
+				fmt.Fprintf(tw, "  %s\t%s\n", t.Name, t.Summary)
+			}
+			if err := tw.Flush(); err != nil {
+				return
+			}
+			fmt.Fprintf(w, "\nRun '%s help <topic>' for the commands of a topic, in the order they are used.\n", name)
 		}
 		fmt.Fprintf(w, "\nRun '%s <command> --help' for the flags of a command.\n", name)
 	}
@@ -222,6 +278,61 @@ func (c *Command) writeHelp(w io.Writer, path []string, fs *flag.FlagSet) {
 		fs.SetOutput(w)
 		fs.PrintDefaults()
 	}
+}
+
+// writeCommands lists the visible sub-commands, by section if the command has sections, else in
+// one list. Within a list they are sorted by name. It reports whether the writing worked.
+func (c *Command) writeCommands(w io.Writer) bool {
+	list := func(title string, subs []*Command) bool {
+		if len(subs) == 0 {
+			return true
+		}
+		fmt.Fprintf(w, "\n%s:\n", title)
+		tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
+		sort.SliceStable(subs, func(i, j int) bool { return subs[i].Name < subs[j].Name })
+		for _, s := range subs {
+			fmt.Fprintf(tw, "  %s\t%s\n", s.Name, s.Summary)
+		}
+		return tw.Flush() == nil
+	}
+	if len(c.Sections) == 0 {
+		return list("Commands", c.Visible())
+	}
+	by := map[string][]*Command{}
+	for _, s := range c.Visible() {
+		sec := s.Section
+		if !slices.Contains(c.Sections, sec) {
+			sec = ""
+		}
+		by[sec] = append(by[sec], s)
+	}
+	for _, sec := range c.Sections {
+		if !list(sec, by[sec]) {
+			return false
+		}
+	}
+	return list("Other commands", by[""])
+}
+
+func (c *Command) topic(name string) *Topic {
+	for i := range c.Topics {
+		if c.Topics[i].Name == name {
+			return &c.Topics[i]
+		}
+	}
+	return nil
+}
+
+// write prints the topic: its commands in the order they are used.
+func (t *Topic) write(w io.Writer, root string) {
+	fmt.Fprintf(w, "Usage: %s help %s\n\n%s.\n\nIn the order they are used:\n\n", root, t.Name, upperFirst(t.Summary))
+	for _, s := range t.Steps {
+		fmt.Fprintf(w, "  %s\n", s.Do)
+		if s.Note != "" {
+			fmt.Fprintf(w, "      %s\n", s.Note)
+		}
+	}
+	fmt.Fprintf(w, "\nRun '%s <command> --help' for the flags of a command.\n", root)
 }
 
 func upperFirst(s string) string {

@@ -337,17 +337,12 @@ func TestEasyRolloutCommands(t *testing.T) {
 		t.Fatalf("create rollout --easy: %d %q %q %v", code, out, errOut, a.create)
 	}
 
-	code, out, errOut = run("upgrade", "connector", "nas", "con_7", "nas")
-	if code != cli.ExitOK || strings.Join(a.upgrade.GetAgentIds(), ",") != "con_1,con_7" ||
-		!strings.Contains(out, "connector con_1 is number 4 in the queue of easy rollout rol_3 of 1.5.0") ||
-		!strings.Contains(out, "connector con_7 is number 5") {
+	// `rpmgr upgrade` is gone (D151): it is an unknown command that names the replacement, and sends nothing.
+	a.upgrade = nil
+	code, out, errOut = run("upgrade", "connector", "nas")
+	if code != cli.ExitUsage || a.upgrade != nil || out != "" || !strings.Contains(errOut, `unknown command "upgrade"`) ||
+		!strings.Contains(errOut, "create rollout --easy") {
 		t.Fatalf("upgrade connector: %d %q %q %v", code, out, errOut, a.upgrade)
-	}
-	code, out, _ = run("upgrade", "gateway", "edge", "-o", "json")
-	var listed []map[string]any
-	if code != cli.ExitOK || json.Unmarshal([]byte(out), &listed) != nil || len(listed) != 1 || listed[0]["agentId"] != "gw_1" ||
-		listed[0]["position"] != float64(4) {
-		t.Errorf("upgrade gateway -o json: %d %q", code, out)
 	}
 	// The controller's own update (D158): by version, after a step-up; refusals are shown; --status
 	// says how it stands and why none can start; the flags are exclusive.
@@ -370,16 +365,6 @@ func TestEasyRolloutCommands(t *testing.T) {
 	if code, out, _ := run("get", "controller-update"); code != cli.ExitOK || !strings.Contains(out, "The controller runs 1.5.0.") ||
 		!strings.Contains(out, "Update to 1.6.0: updating (backing up).") || !strings.Contains(out, "No update can be started now: the controller runs on postgres.") {
 		t.Errorf("get controller-update: %d %q", code, out)
-	}
-	a.upgrade = nil
-	if code, _, errOut := run("upgrade", "connector", "edge"); code != cli.ExitError || a.upgrade != nil {
-		t.Errorf("upgrade connector with a gateway's name: %d %q", code, errOut)
-	}
-	if code, _, _ := run("upgrade", "gateway"); code != cli.ExitUsage {
-		t.Errorf("upgrade gateway without one: %d", code)
-	}
-	if code, _, errOut := run("upgrade", "gateway", "gw_busy"); code != cli.ExitError || !strings.Contains(errOut, "staged rollout") {
-		t.Errorf("upgrade while a staged rollout runs: %d %q", code, errOut)
 	}
 	if prompts != 1 {
 		t.Errorf("%d step-up prompts, want 1", prompts)

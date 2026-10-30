@@ -244,3 +244,60 @@ func TestUsageErrorMessage(t *testing.T) {
 		t.Errorf("Usagef = %v, want a *UsageError with message %q", err, "bad input")
 	}
 }
+
+// TestSectionsHiddenTopicsRemoved (D151): help groups the visible commands by section, in the
+// order of Sections, and lists a command without a known section last; a hidden command is not
+// listed and runs; topics print their steps; a removed command's error names its replacement.
+func TestSectionsHiddenTopicsRemoved(t *testing.T) {
+	ran := false
+	run := func(context.Context, *Env, []string) error { ran = true; return nil }
+	root := &Command{
+		Name: "rpmgr", Summary: "test tree", Sections: []string{"B first", "A second"},
+		Topics:  []Topic{{Name: "moving", Summary: "move things", Steps: []Step{{Do: "rpmgr zed", Note: "does it"}, {Do: "systemctl reload x"}}}},
+		Removed: map[string]string{"old": "use 'rpmgr zed'"},
+		Sub: []*Command{
+			{Name: "alpha", Summary: "a", Section: "A second", Run: run},
+			{Name: "zed", Summary: "z", Section: "B first", Run: run},
+			{Name: "plumbing", Summary: "p", Section: "A second", Hidden: true, Run: run},
+			{Name: "stray", Summary: "s", Run: run},
+			{Name: "elsewhere", Summary: "e", Section: "not named", Run: run},
+		},
+	}
+	main := func(args ...string) (int, string, string) {
+		var out, errOut bytes.Buffer
+		code := Main(context.Background(), root, args, &Env{Stdout: &out, Stderr: &errOut})
+		return code, out.String(), errOut.String()
+	}
+	code, out, _ := main("--help")
+	b, a, o := strings.Index(out, "B first:"), strings.Index(out, "A second:"), strings.Index(out, "Other commands:")
+	if code != ExitOK || b < 0 || a < b || o < a || strings.Contains(out, "plumbing") || strings.Contains(out, "\nCommands:") {
+		t.Fatalf("sections: %d %q", code, out)
+	}
+	if !strings.Contains(out[o:], "elsewhere") || !strings.Contains(out[o:], "stray") || !strings.Contains(out[b:a], "zed") ||
+		!strings.Contains(out, "Topics:") || !strings.Contains(out, "moving") {
+		t.Errorf("sections list the wrong commands: %q", out)
+	}
+	if code, _, _ := main("plumbing"); code != ExitOK || !ran {
+		t.Errorf("a hidden command did not run: %d", code)
+	}
+	if code, out, _ := main("plumbing", "--help"); code != ExitOK || !strings.HasPrefix(out, "Usage: rpmgr plumbing") {
+		t.Errorf("hidden command help: %d %q", code, out)
+	}
+	code, out, _ = main("help", "moving")
+	if code != ExitOK || !strings.Contains(out, "Usage: rpmgr help moving") || !strings.Contains(out, "rpmgr zed\n      does it") ||
+		!strings.Contains(out, "systemctl reload x") {
+		t.Errorf("topic: %d %q", code, out)
+	}
+	if code, _, errOut := main("old"); code != ExitUsage || !strings.Contains(errOut, `unknown command "old": it was removed; use 'rpmgr zed'`) {
+		t.Errorf("removed: %d %q", code, errOut)
+	}
+	if code, _, errOut := main("help", "nothing"); code != ExitUsage || !strings.Contains(errOut, `unknown command "nothing"`) ||
+		strings.Contains(errOut, "removed") {
+		t.Errorf("unknown topic: %d %q", code, errOut)
+	}
+	// A command shadows a topic of its name.
+	root.Topics = append(root.Topics, Topic{Name: "zed", Summary: "x"})
+	if _, out, _ := main("help", "zed"); !strings.HasPrefix(out, "Usage: rpmgr zed") {
+		t.Errorf("topic shadows a command: %q", out)
+	}
+}

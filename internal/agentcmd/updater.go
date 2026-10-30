@@ -25,9 +25,11 @@ import (
 // Updater is `rpmgr updater`: the root-owned updater that rpmgr-update.service runs
 // (docs/04-security.md, "Over-the-air updates"). It is named updater, so that it never reads as
 // `rpmgr update <kind>` (D51). variant is the build's, full or connector, which install records.
+// The group and both commands are plumbing for the install scripts and rpmgr-update.service: they
+// run, but help does not list them (D151).
 func Updater(variant string) *cli.Command {
 	return &cli.Command{Name: "updater", Summary: "the root-owned updater of a Linux host",
-		Sub: []*cli.Command{updaterApply(), updaterInstall(variant)}}
+		Hidden: true, Sub: []*cli.Command{updaterApply(), updaterInstall(variant)}}
 }
 
 // isRoot reports whether the command runs as root; tests replace it.
