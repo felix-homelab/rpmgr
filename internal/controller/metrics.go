@@ -104,6 +104,9 @@ func (c dbCollector) Collect(ch chan<- prometheus.Metric) {
 		return
 	}
 	for _, b := range backlogs {
+		if !b.Enabled {
+			continue
+		}
 		oldest := 0.0
 		if !b.Oldest.IsZero() {
 			oldest = float64(b.Oldest.Unix())

@@ -1,0 +1,214 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// AuditSinkService is the external sinks of the audit log, which only the Instance Admin sets
+// (docs/04-security.md, "Audit log"; docs/07-api.md, "Services"). Every method needs a step-up; a
+// sink is not a configuration change, so no agent applies it and there is no revision.
+service AuditSinkService {
+  // CreateAuditSink creates a sink. It is enabled at once and ships from the start of every chain.
+  rpc CreateAuditSink(CreateAuditSinkRequest) returns (CreateAuditSinkResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+  // GetAuditSink returns a sink with its status.
+  rpc GetAuditSink(GetAuditSinkRequest) returns (GetAuditSinkResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // ListAuditSinks lists the sinks, the oldest first, each with its status.
+  rpc ListAuditSinks(ListAuditSinksRequest) returns (ListAuditSinksResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // UpdateAuditSink changes the fields the mask names: name, url, secret, entries, enabled. The
+  // kind never changes.
+  rpc UpdateAuditSink(UpdateAuditSinkRequest) returns (UpdateAuditSinkResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+  // DeleteAuditSink deletes a sink and its cursors. What it shipped stays with the receiver.
+  rpc DeleteAuditSink(DeleteAuditSinkRequest) returns (DeleteAuditSinkResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+  // TestAuditSink sends the sink a test item at once, outside its cursors, and returns the
+  // receiver's answer. A step-up is required because the controller opens a connection to an
+  // address of the Instance Admin's choosing.
+  rpc TestAuditSink(TestAuditSinkRequest) returns (TestAuditSinkResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+}
+
+// AuditSinkKind is how a sink delivers.
+enum AuditSinkKind {
+  AUDIT_SINK_KIND_UNSPECIFIED = 0;
+  // A signed webhook ("audit.checkpoint" and "audit.entry" events) to url.
+  AUDIT_SINK_KIND_WEBHOOK = 1;
+}
+
+// AuditSink is an external destination of the audit log. Every sink gets every chain's
+// checkpoints and, with entries set, the entries too.
+message AuditSink {
+  // Its ID, ask_…; output only.
+  string id = 1;
+  // Its name, unique among the sinks.
+  string name = 2 [(buf.validate.field) = {
+    ignore: IGNORE_IF_ZERO_VALUE
+    string: {pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"}
+  }];
+  // How it delivers; set at creation, never changed.
+  AuditSinkKind kind = 3 [(buf.validate.field).enum.defined_only = true];
+  // The receiver of a webhook sink: an https:// URL without credentials.
+  string url = 4 [(buf.validate.field).string.max_len = 2048];
+  // The secret that signs a webhook sink's deliveries, which the receiver verifies. Write-only:
+  // it is stored under the KEK, never returned and redacted in the audit log; empty in every
+  // answer.
+  string secret = 5 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string.max_len = 1024
+  ];
+  // Whether a secret is stored; output only.
+  bool secret_set = 6;
+  // Whether the entries go with the checkpoints, which always do.
+  bool entries = 7;
+  // Whether it ships; a new sink is enabled whatever the request says. A disabled sink keeps its
+  // cursors and catches up when it is enabled.
+  bool enabled = 8;
+  // How far it is; output only.
+  AuditSinkStatus status = 9;
+  // When it was created; output only.
+  google.protobuf.Timestamp create_time = 10;
+  // The version to send back with an update; output only.
+  string etag = 11;
+}
+
+// AuditSinkStatus is how far a sink is behind and why, from the audit tables and the sink's
+// cursors, so it is current even while no controller replica ships.
+message AuditSinkStatus {
+  // When the sink last acknowledged an item; unset if never.
+  google.protobuf.Timestamp last_success_time = 1;
+  // Why the last attempt failed, empty after a success. A receiver's permanent refusal (a 4xx
+  // other than 408 and 429) is named as such: the sink ships nothing more of that chain until the
+  // receiver accepts the item. It never holds the secret or the URL.
+  string last_error = 2;
+  // The checkpoints and, for a sink with entries, the entries it has not acknowledged.
+  int64 backlog = 3;
+  // When the oldest of them was appended; unset when there is none.
+  google.protobuf.Timestamp oldest_unshipped_time = 4;
+  // The same per chain that has entries.
+  repeated AuditSinkChainStatus chains = 5;
+}
+
+// AuditSinkChainStatus is a sink's position on one chain.
+message AuditSinkChainStatus {
+  // The chain: an org ID, or "instance".
+  string chain = 1;
+  // The seq of the last checkpoint the sink acknowledged; 0 if none.
+  int64 checkpoint_seq = 2;
+  // The seq of the last entry the sink acknowledged; 0 if none, and always 0 without entries.
+  int64 entry_seq = 3;
+  // What it has not acknowledged on this chain.
+  int64 backlog = 4;
+  // When the oldest of that was appended; unset when there is none.
+  google.protobuf.Timestamp oldest_unshipped_time = 5;
+}
+
+// CreateAuditSinkRequest creates a sink.
+message CreateAuditSinkRequest {
+  // The sink: name, kind, url and secret are required for a webhook sink.
+  AuditSink audit_sink = 1 [(buf.validate.field).required = true];
+}
+
+// CreateAuditSinkResponse is the new sink.
+message CreateAuditSinkResponse {
+  // The sink.
+  AuditSink audit_sink = 1;
+}
+
+// GetAuditSinkRequest names a sink.
+message GetAuditSinkRequest {
+  // The sink's ID.
+  string audit_sink_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetAuditSinkResponse is the sink.
+message GetAuditSinkResponse {
+  // The sink.
+  AuditSink audit_sink = 1;
+}
+
+// ListAuditSinksRequest pages through the sinks.
+message ListAuditSinksRequest {
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 1;
+  // The page after the one that returned it.
+  string page_token = 2;
+}
+
+// ListAuditSinksResponse is one page of sinks.
+message ListAuditSinksResponse {
+  // The sinks, the oldest first.
+  repeated AuditSink audit_sinks = 1;
+  // The token of the next page; empty after the last.
+  string next_page_token = 2;
+}
+
+// UpdateAuditSinkRequest changes a sink.
+message UpdateAuditSinkRequest {
+  // The sink, with its ID and the fields to change.
+  AuditSink audit_sink = 1 [(buf.validate.field).required = true];
+  // The fields to change: name, url, secret, entries, enabled.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateAuditSinkResponse is the changed sink.
+message UpdateAuditSinkResponse {
+  // The sink.
+  AuditSink audit_sink = 1;
+}
+
+// DeleteAuditSinkRequest names a sink.
+message DeleteAuditSinkRequest {
+  // The sink's ID.
+  string audit_sink_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DeleteAuditSinkResponse is empty.
+message DeleteAuditSinkResponse {}
+
+// TestAuditSinkRequest names a sink.
+message TestAuditSinkRequest {
+  // The sink's ID.
+  string audit_sink_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// TestAuditSinkResponse is the receiver's answer to a test item.
+message TestAuditSinkResponse {
+  // Whether the receiver acknowledged it.
+  bool ok = 1;
+  // Why not, as in the sink's last_error; empty when ok.
+  string error = 2;
+}
