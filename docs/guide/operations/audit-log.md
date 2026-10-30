@@ -38,7 +38,7 @@ Each entry holds:
 | `authMethod` | **Authentication** | How it signed in: `session`, `token`, `pwd+otp` … |
 | `ip`, `userAgent` | **Address**, **User agent** | The client |
 | `requestId` | **Request ID** | The request's ID, as the API's `Rpmgr-Request-Id` header returns it |
-| `action` | | What was done: the API method, such as `rpmgr.v1.RouteService.UpdateRoute` or `rpmgr.v1.AuthService.Login`, or a named event, such as `token.create`, `token.use`, `identity.revoke`, `route.delete`, `connector.enroll`, `connector.reenroll`, `agent.enroll` (a failed enrollment), `ca.rotate_intermediate` or `audit.prune` |
+| `action` | | What was done: the API method, such as `rpmgr.v1.RouteService.UpdateRoute` or `rpmgr.v1.AuthService.Login`, or a named event, such as `token.create`, `token.use`, `identity.revoke`, `route.delete`, `connector.enroll`, `connector.reenroll`, `agent.enroll` (a failed enrollment), `ca.rotate_intermediate`, `audit.export` or `audit.prune` |
 | `targetType`, `targetId` | | The kind and ID of what it was done to |
 | `result` | | `success`, `failure` or `denied` |
 | `diff` | | The request, with its secrets replaced |
@@ -105,6 +105,28 @@ checkpoint of the chain: its signature, and that it matches the entry it covers.
 A broken chain means someone with access to the database changed it, or the database was damaged.
 Keep the database as it is, compare it with a backup and the checkpoints, and treat the instance as
 compromised until you know which.
+
+## Export a chain with its proofs
+
+An export is a file that proves itself: it holds a chain's entries, the hashes that link them and
+the signed checkpoints, so that it can be verified away from the controller. Exporting takes the
+permission `audit.read` for an org's chain, or the Instance Admin for the instance chain, and a
+step-up ([Step-up](../../04-security.md#human-authentication-and-sessions)).
+
+`AuditService.ExportAudit` (an org's chain) and `ExportInstanceAudit` (the instance chain) stream
+the chain as JSON Lines, in parts of lines:
+
+1. The first line is the header: the format (`rpmgr-audit-export/1`), the chain, the seq of its
+   first and last entry, the seq of its newest checkpoint (`anchored_seq`) and the certificates the
+   checkpoints verify with.
+2. Then each entry with every field the hash covers, `prev_hash` and `hash`, and each checkpoint
+   after the entry it covers. After retention removed the first entries, the export starts with the
+   checkpoint that anchors the first entry left.
+3. Entries after the newest checkpoint are flagged `unanchored`. No signature covers them yet; a
+   later export, made after the next checkpoint, anchors them.
+
+Every export is an entry in the chain, `audit.export`, written before the chain is read. An export
+that breaks off is recorded a second time with the result `failure`.
 
 ## Signed checkpoints
 
