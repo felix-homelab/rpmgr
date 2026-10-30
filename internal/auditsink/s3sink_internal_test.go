@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -332,5 +334,34 @@ func TestCheckS3Settings(t *testing.T) {
 	round := S3SettingsOf(S3Settings{Endpoint: "e", Region: "r", Bucket: "b", AccessKeyID: "k", CA: "c", LockDays: 40}.Map())
 	if round != (S3Settings{Endpoint: "e", Region: "r", Bucket: "b", AccessKeyID: "k", CA: "c", LockDays: 40}) {
 		t.Errorf("settings do not survive the row: %+v", round)
+	}
+}
+
+// TestS3Sink_IgnoresEnvironmentProxy (#656): a proxy in the environment would hide the address
+// that is dialled from the egress guard, so the sink never uses one, and a metadata address is
+// refused with the proxy in place and never asked.
+func TestS3Sink_IgnoresEnvironmentProxy(t *testing.T) {
+	var asked atomic.Int64
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		asked.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(proxy.Close)
+	for _, k := range []string{"HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"} {
+		t.Setenv(k, proxy.URL)
+	}
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+	for _, endpoint := range []string{"https://169.254.169.254", "https://[fe80::1]", "https://224.0.0.1"} {
+		s := S3Settings{Endpoint: endpoint, Region: "eu-central-1", Bucket: "audit-bucket", AccessKeyID: "AKIAIOSFODNN7EXAMPLE"}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := CheckSettingsAndBucket(ctx, s, awsExampleSecret, time.Now)
+		cancel()
+		if err == nil {
+			t.Errorf("%s: accepted", endpoint)
+		}
+	}
+	if n := asked.Load(); n != 0 {
+		t.Errorf("the proxy was asked %d times", n)
 	}
 }

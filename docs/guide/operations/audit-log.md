@@ -224,7 +224,8 @@ rpmgr create audit-sink --name vault --kind s3 --endpoint https://s3.example.com
 rpmgr test audit-sink vault
 ```
 
-Objects lie under `audit/<chain>/`, where the chain is an org's ID or `instance`. To check that
+Each save, update and test of the sink leaves a probe object under `audit/probe/`, which stays
+locked for a short time and cannot be deleted before that ends. Objects lie under `audit/<chain>/`, where the chain is an org's ID or `instance`. To check that
 the log still matches what the bucket holds, run `rpmgr verify audit --sink vault` (after a
 step-up). For each chain it prints the last checkpoint that verified and any gap, an item the
 bucket lacks, or problem, such as a chain that was rewritten under a checkpoint the bucket holds;

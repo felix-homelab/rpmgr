@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -70,12 +72,14 @@ func (s S3Settings) Days() int {
 	return s.LockDays
 }
 
-// client builds the client of the bucket. The Instance Admin sets the endpoint, so it may reach
+// client builds the client of the bucket, which never uses a proxy of the environment. The Instance Admin sets the endpoint, so it may reach
 // private ranges and loopback; the egress guard still refuses link-local, metadata, multicast and
 // broadcast addresses at dial time (D145, E5).
 func (s S3Settings) client(key secret.Value, now func() time.Time) (*objstore.Client, error) {
 	cfg := objstore.Config{Endpoint: s.Endpoint, Region: s.Region, Bucket: s.Bucket, Now: now,
-		Credentials: objstore.Credentials{AccessKeyID: s.AccessKeyID, SecretAccessKey: key}, Control: egress.Policy{Internal: true}.Control}
+		Credentials: objstore.Credentials{AccessKeyID: s.AccessKeyID, SecretAccessKey: key}, Control: egress.Policy{Internal: true}.Control,
+		// No proxy: the guard sees only the address that is dialled, which a proxy would hide.
+		Proxy: func(*http.Request) (*url.URL, error) { return nil, nil }}
 	if s.CA != "" {
 		roots, err := rootsOf(s.CA)
 		if err != nil {

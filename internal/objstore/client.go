@@ -104,7 +104,7 @@ type Config struct {
 	VirtualHost bool
 	// RootCAs verifies the store's certificate; nil means the system's roots.
 	RootCAs *x509.CertPool
-	// Proxy chooses the proxy of a request; nil means HTTP_PROXY, HTTPS_PROXY and NO_PROXY.
+	// Proxy chooses the proxy of a request; nil means HTTP_PROXY, HTTPS_PROXY and NO_PROXY; a function that returns nil, nil means no proxy.
 	Proxy func(*http.Request) (*url.URL, error)
 	// Control is called for each connection before it is dialled, with the address about to be
 	// used, as net.Dialer.Control is; a caller uses it to refuse addresses. With a proxy it sees the
