@@ -16,8 +16,8 @@ Changes to the design documents are not recorded here: see the git history and t
   deletes an organisation's endpoints, rotates an endpoint's secret, lists its deliveries and sends
   a test event. The secret, `rpmgr_whs_…`, is shown once when it is made or rotated; after a
   rotation both secrets sign for 24 hours. Enabling an endpoint again clears a disable. Owners and
-  Admins hold the new permission `webhooks.write`, which an API token can carry. The web UI and the
-  CLI follow. (#650)
+  Admins hold the new permission `webhooks.write`, which an API token can carry. The CLI
+  follows. (#650)
 
 - Audit export with proofs. After a step-up, `rpmgr audit export --out <file>` (an Owner or Admin
   for the org's chain, `--instance` for the instance chain as Instance Admin), or the API calls
@@ -27,9 +27,6 @@ Changes to the design documents are not recorded here: see the git history and t
   pin alone and finds an edited, removed or reordered entry or a forged checkpoint. An export is an
   `audit.export` entry in the chain, recorded again as a failure when it breaks off. The audit
   page has an Export button that does the same after a step-up. (#652, #653)
-
-  Admins hold the new permission `webhooks.write`, which an API token can carry. The CLI
-  follows. (#650)
 - A Webhooks page under Administration manages an organisation's webhook endpoints: it lists them
   with their state, creates, edits, enables again, rotates and deletes them, shows the signing
   secret once with a copy button, sends a test event and lists each endpoint's deliveries with
@@ -50,6 +47,12 @@ Changes to the design documents are not recorded here: see the git history and t
   addresses are never admitted. An organisation's endpoint may not name `localhost` or a loopback
   or link-local address, an organisation has at most 20 endpoints, and a caller's test events are
   rate-limited. (#935)
+- The Instance Admin manages the instance's webhooks under Settings → Webhooks, with the signing
+  secret shown once, and lists the private networks organisations' receivers may use in
+  `webhook_private_ranges`, which the page checks entry by entry. The CLI gets `create`, `update`,
+  `get`, `list`, `delete`, `enable`, `disable` and `test` for `webhook`, `list webhook-delivery`,
+  and `--instance` for the instance's endpoints; `create webhook` and `update webhook
+  --rotate-secret` print the secret once. (#651)
 - Controllers and all-in-ones update over the air, on SQLite. An Instance Admin chooses "Update
   controller to x.y.z" on Settings → Updates, or runs `rpmgr create rollout --controller --release
   x.y.z`, after a step-up. The root updater takes a backup of the database first, kept as

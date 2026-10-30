@@ -146,6 +146,16 @@ relay refused a mail is in the controller's log ([Monitoring](monitoring.md#logs
 |---|---|---|
 | **Keep audit entries (days)** | `audit_retention` | How long audit entries are kept; older ones go, up to a signed checkpoint ([Audit log](audit-log.md#how-long-entries-are-kept)) |
 
+### Webhooks tab
+
+| Web UI | Name | What it does |
+|---|---|---|
+| **Private networks admitted for organisations' webhook receivers** | `webhook_private_ranges` | Ranges such as `10.0.0.0/8`, one per line in the web UI and comma-separated in `--set`, that an organisation's webhook endpoints may name; none by default. Loopback, link-local and cloud metadata addresses are never admitted ([Webhooks](webhooks.md#private-receivers)) |
+
+```sh
+rpmgr update settings --instance --set webhook_private_ranges=10.0.0.0/8,192.168.0.0/16
+```
+
 ### PKI tab
 
 | Web UI | Name | What it does |
