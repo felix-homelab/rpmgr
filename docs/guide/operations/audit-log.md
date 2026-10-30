@@ -193,6 +193,22 @@ and says so in its last error until the receiver accepts it; fix the receiver or
 secret. The details and the alert are in [04](../../04-security.md#audit-log) and
 [10](../../10-operations.md#audit-sink-backlog).
 
+To send the log to a syslog server instead, use the kind `syslog`. The server must accept RFC 5424
+messages over TLS (RFC 5425, usually port 6514), and its certificate must name the host you give.
+Pass the CA that signed it with `--ca-file`; without the option the system's roots are used. A
+syslog sink has no secret.
+
+```sh
+rpmgr create audit-sink --name syslog --kind syslog --address logs.example.com:6514 \
+  --ca-file ./logs-ca.pem --entries
+rpmgr test audit-sink syslog
+```
+
+Each checkpoint or entry is one message with the same JSON as a webhook delivery. Syslog confirms
+nothing to the sender, so after a dropped connection the sink sends the batch again; a receiver
+may see an item twice, and the `id` in the JSON tells repeats apart. If the last error says the
+certificate is not signed by a CA of the sink's bundle, check the file passed to `--ca-file`.
+
 ## How long entries are kept
 
 Entries are kept for the instance's **audit retention**, which the Instance Admin sets: under
