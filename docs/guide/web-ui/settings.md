@@ -9,9 +9,10 @@ default, is [Settings](../operations/settings.md).
 
 ![The settings page as the Instance Admin sees it](../images/web/settings.png)
 
-The Instance Admin moves between five pages with the tabs under the title: **Settings**, **PKI**,
-**Updates**, **Webhooks** and **Users**. Other members see no tabs; **PKI**, **Updates**,
-**Webhooks** and **Users** tell them that only the Instance Admin sees and changes these.
+The Instance Admin moves between six pages with the tabs under the title: **Settings**, **PKI**,
+**Updates**, **Webhooks**, **Audit sinks** and **Users**. Other members see no tabs; **PKI**,
+**Updates**, **Webhooks**, **Audit sinks** and **Users** tell them that only the Instance Admin
+sees and changes these.
 
 Each page saves only its own fields, with **Save**, and says `Saved.` If the settings changed since
 the page loaded them, it says so, shows them as they are now and asks you to try again.
@@ -33,6 +34,8 @@ Above the settings, the Instance Admin may see a notice about the revocation log
 | **Every member must sign in with a second factor** | Members without a second factor are refused in the organisation until they set one up ([Sign-in and two-factor authentication](../accounts/sign-in-and-mfa.md#when-your-organisation-requires-it)). Changing it needs a [step-up](README.md#the-step-up-dialog) |
 | **Operators may enroll and revoke connectors** | Gives the Operator role the `connectors.write` permission ([Members and roles](../accounts/members-and-roles.md)) |
 | **Gateway group preselected for new routes** | The group the new-route form chooses for you, or **None** |
+| **E-mail the Owners and Admins when an alert fires or resolves** | On by default; needs the instance's mail relay. It does not stop the mail about a webhook endpoint that was disabled for failing |
+| **Alert types the organisation is e-mailed about** | One checkbox for each kind of alert; all are checked until you choose. Checking all of them saves the same as none, which means all. At least one must stay checked. Webhooks get every alert event whatever is chosen |
 
 Members other than the Owner see the settings greyed out, with `Only the organisation's Owner
 changes these.`
@@ -73,6 +76,57 @@ Shown to the Instance Admin only.
   an entry that is no address with a prefix length, one with bits set beyond its prefix (the
   message gives the network address to write), one listed twice, and a list of more than the
   limit in [04](../../04-security.md#webhooks-and-the-egress-guard-phase-2).
+
+## Audit sinks
+
+Shown to the Instance Admin only. A sink sends the audit log's signed checkpoints, and optionally
+every entry, to a place that no one with access to the database can change; the how-to page, with
+what a receiver gets and how to read its signature, is [Audit log](../operations/audit-log.md).
+
+![The Audit sinks tab with a webhook sink and a syslog sink](../images/web/settings-audit-sinks.png)
+
+Each sink is a row with its name, its kind (**Webhook** or **Syslog over TLS**), its **state**,
+where it sends and whether it sends the checkpoints only or the entries too:
+
+- **Enabled:** it ships.
+- **Failing:** its last attempt failed; the row says why under **Last error**, and rpmgr keeps
+  trying.
+- **Disabled:** a person switched it off. It keeps its position and catches up when enabled. A
+  disabled sink whose last attempt failed says so.
+
+Under the name, **Last shipped** is when the sink last acknowledged an item, or `never`, and
+**Backlog** is how many items it has not acknowledged and since when, or `nothing waiting`. A
+receiver that refuses an item with a client error holds the sink at that item, and **Last error**
+says so until the receiver accepts it. `No audit sink yet` says that there is none; the log's
+copies are then all on the controller's host.
+
+**New audit sink…** and **Edit** open a form:
+
+- **Name** is lowercase letters, digits and hyphens, and unique among the sinks.
+- **Kind** is chosen when the sink is made and never changes.
+- A webhook has a **URL**, an `https://` address without a user name, a password or a fragment, and
+  a **Signing secret** of at least the length the form names. The secret is write-only: it is sent
+  when you type it and no page, command or API call reads it back. When you edit a sink, the field
+  is empty and says that a secret is stored; leave it empty to keep it or type a new one to replace
+  it.
+- A syslog sink has an **Address** as `host:port` and the **CA certificates** that its server's
+  certificate must chain to, pasted or read from a file in your browser; empty means the system's
+  roots.
+- **Send the entries too** adds every entry to the checkpoints, which always go.
+
+![The form of a syslog sink above the list](../images/web/settings-audit-sinks-form.png)
+
+The page checks the name, the URL, the secret's length and the address before it sends anything.
+Anything else the server refuses is shown at its field, or above the buttons.
+
+Every change asks for a [step-up](README.md#the-step-up-dialog), since a test makes the controller
+connect to an address of your choosing:
+
+- **Send test item** sends one item at once, outside the sink's position, and says whether the
+  receiver acknowledged it, or why not.
+- **Disable** and **Enable** switch shipping off and on.
+- **Delete…** asks first, then removes the sink and its position; what it shipped stays with the
+  receiver.
 
 ## PKI
 
