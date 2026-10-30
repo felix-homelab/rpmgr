@@ -12,6 +12,11 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- The alerts the controller evaluates can be read through the API: `ListAlerts` lists an
+  organisation's alerts, the ones that fire unless the request asks for pending or resolved ones,
+  for every member of the organisation, and `ListInstanceAlerts` lists the instance alerts for the
+  Instance Admin. (#960)
+
 - Live logs are useful on a healthy agent. A new live log starts with the agent's latest lines, up
   to 200 lines and 64 KiB after redaction, marked as earlier lines in the web UI and in `rpmgr
   logs`, with how many older lines are gone. Connectors and gateways now log what they do: the
