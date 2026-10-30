@@ -149,6 +149,15 @@ Changes to the design documents are not recorded here: see the git history and t
   list beside the form, above it on a phone, that jumps to each section and marks one holding a
   field with an error. A failed save or
   preview puts the cursor in the first field with an error. Every field stays on the page. (#969)
+- Command line: `rpmgr --help` lists the commands in sections, Resources, This host, Run a role
+  and Session, and `rpmgr help updates` and `rpmgr help hand-off` list the commands of one task
+  in the order they are used. `rpmgr updater install` and `apply`, which the install scripts and
+  `rpmgr-update.service` run, no longer appear in the help; they work as before. (#966)
+
+### Removed
+
+- `rpmgr upgrade connector|gateway`, which only the v0.3.0 pre-releases had: use `rpmgr create
+  rollout --easy --release <version> --agent <agent>…`, or **Update** on the agent's page. (#966)
 
 ### Fixed
 

@@ -96,7 +96,6 @@ rpmgr <command>
 | [`rpmgr pause`](#rpmgr-pause) | Pause a rollout |
 | [`rpmgr resume`](#rpmgr-resume) | Let a paused rollout run again |
 | [`rpmgr cancel`](#rpmgr-cancel) | End a rollout for good |
-| [`rpmgr upgrade`](#rpmgr-upgrade) | Update agents to the controller's version |
 | [`rpmgr logs`](#rpmgr-logs) | Follow the live log of a connector or gateway |
 
 ## rpmgr controller
@@ -1818,43 +1817,6 @@ rpmgr cancel rollout [flags] <rollout>
 | Flag | Default | Description |
 |---|---|---|
 | `--force` |  | cancel without checking that the rollout is unchanged since this command read it |
-| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
-
-## rpmgr upgrade
-
-Update agents to the controller's version.
-
-```text
-rpmgr upgrade <command>
-```
-
-| Command | What it does |
-|---|---|
-| [`rpmgr upgrade connector`](#rpmgr-upgrade-connector) | Update connectors to the controller's version, one after another, in its easy rollout (Instance Admin) |
-| [`rpmgr upgrade gateway`](#rpmgr-upgrade-gateway) | Update gateways to the controller's version, one after another, in its easy rollout (Instance Admin) |
-
-## rpmgr upgrade connector
-
-Update connectors to the controller's version, one after another, in its easy rollout (Instance Admin).
-
-```text
-rpmgr upgrade connector [flags] <connector>…
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
-
-## rpmgr upgrade gateway
-
-Update gateways to the controller's version, one after another, in its easy rollout (Instance Admin).
-
-```text
-rpmgr upgrade gateway [flags] <gateway>…
-```
-
-| Flag | Default | Description |
-|---|---|---|
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 
 ## rpmgr logs
