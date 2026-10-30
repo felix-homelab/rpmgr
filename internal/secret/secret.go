@@ -6,6 +6,7 @@
 package secret
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"log/slog"
 )
@@ -45,6 +46,22 @@ func (v Value) Reveal() string {
 
 // IsZero reports whether the secret is empty.
 func (v Value) IsZero() bool { return v.get == nil || len(v.get()) == 0 }
+
+// Len returns the length of the secret in bytes.
+func (v Value) Len() int {
+	if v.get == nil {
+		return 0
+	}
+	return len(v.get())
+}
+
+// EqualString reports, in constant time, whether the secret is s.
+func (v Value) EqualString(s string) bool {
+	if v.get == nil {
+		return s == ""
+	}
+	return subtle.ConstantTimeCompare(v.get(), []byte(s)) == 1
+}
 
 // String returns Redacted.
 func (v Value) String() string { return Redacted }

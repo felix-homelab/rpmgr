@@ -68,6 +68,11 @@ Changes to the design documents are not recorded here: see the git history and t
   --address <host:port> [--ca-file <file>]`, RFC 5424 messages with RFC 5425 framing, the server's
   certificate verified against the given CA or the system roots. A syslog sink has the same
   status, backlog and alert as a webhook sink. (#936)
+- Audit sinks can send to S3-compatible object storage: `rpmgr create audit-sink --kind s3
+  --endpoint <url> --region <region> --bucket <bucket> --access-key-id <id> --secret-file <file>`.
+  Every checkpoint, and with `--entries` every entry, is written as an object that the bucket's
+  Object Lock in compliance mode keeps unchangeable; a bucket without Object Lock or a store without
+  conditional writes is refused. (#656)
 - An Audit sinks page under Settings, for the Instance Admin, manages the audit sinks: it lists
   each with its state, target, last success, backlog and last error, creates and edits webhook and
   syslog sinks in a form with a section per kind, enables, disables, tests and deletes them. The
