@@ -363,3 +363,15 @@ func TestClipLongMessage(t *testing.T) {
 		t.Errorf("clip: %d bytes", len(got))
 	}
 }
+
+// TestPutTooLarge: an object larger than MaxObject is refused before any request, as there is no
+// multipart upload and one request carries it within the request timeout.
+func TestPutTooLarge(t *testing.T) {
+	c, err := New(Config{Endpoint: "http://127.0.0.1:9", Region: "us-east-1", Bucket: "bkt", Credentials: testCreds()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Put(context.Background(), "big", make([]byte, MaxObject+1), PutOptions{}); err == nil {
+		t.Fatal("an object over MaxObject was not refused")
+	}
+}

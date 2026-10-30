@@ -27,7 +27,7 @@ import (
 const (
 	// DefaultTimeout bounds one request, its body included.
 	DefaultTimeout = 30 * time.Second
-	// MaxObject is the largest object Get reads.
+	// MaxObject is the largest object Get reads and Put writes.
 	MaxObject = 16 << 20
 	// MaxKey is the longest key S3 accepts, in bytes.
 	MaxKey = 1024
@@ -209,6 +209,10 @@ type PutOptions struct {
 func (c *Client) Put(ctx context.Context, key string, body []byte, o PutOptions) (string, error) {
 	if err := validKey(key); err != nil {
 		return "", err
+	}
+	if len(body) > MaxObject {
+		// One signed request carries it, within the request timeout; there is no multipart upload.
+		return "", fmt.Errorf("objstore: object %s of %d bytes is larger than %d", key, len(body), MaxObject)
 	}
 	h := http.Header{}
 	if o.IfNoneMatch {
