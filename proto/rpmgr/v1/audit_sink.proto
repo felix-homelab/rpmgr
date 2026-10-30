@@ -32,8 +32,8 @@ service AuditSinkService {
     option idempotency_level = NO_SIDE_EFFECTS;
     option (rpmgr.v1.authz) = {permission: "instance.admin"};
   }
-  // UpdateAuditSink changes the fields the mask names: name, url, secret, entries, enabled. The
-  // kind never changes.
+  // UpdateAuditSink changes the fields the mask names: name, url, secret, address, ca_bundle,
+  // entries, enabled. The kind never changes.
   rpc UpdateAuditSink(UpdateAuditSinkRequest) returns (UpdateAuditSinkResponse) {
     option (rpmgr.v1.authz) = {
       permission: "instance.admin"
@@ -63,6 +63,8 @@ enum AuditSinkKind {
   AUDIT_SINK_KIND_UNSPECIFIED = 0;
   // A signed webhook ("audit.checkpoint" and "audit.entry" events) to url.
   AUDIT_SINK_KIND_WEBHOOK = 1;
+  // RFC 5424 messages over TLS (RFC 5425 framing) to address; never UDP or plain TCP.
+  AUDIT_SINK_KIND_SYSLOG = 2;
 }
 
 // AuditSink is an external destination of the audit log. Every sink gets every chain's
@@ -77,9 +79,9 @@ message AuditSink {
   }];
   // How it delivers; set at creation, never changed.
   AuditSinkKind kind = 3 [(buf.validate.field).enum.defined_only = true];
-  // The receiver of a webhook sink: an https:// URL without credentials.
+  // The receiver of a webhook sink: an https:// URL without credentials; empty for a syslog sink.
   string url = 4 [(buf.validate.field).string.max_len = 2048];
-  // The secret that signs a webhook sink's deliveries, which the receiver verifies. Write-only:
+  // The secret that signs a webhook sink's deliveries (a syslog sink has none), which the receiver verifies. Write-only:
   // it is stored under the KEK, never returned and redacted in the audit log; empty in every
   // answer.
   string secret = 5 [
@@ -99,6 +101,12 @@ message AuditSink {
   google.protobuf.Timestamp create_time = 10;
   // The version to send back with an update; output only.
   string etag = 11;
+  // The syslog server of a syslog sink as host:port; its certificate is checked against the
+  // host.
+  string address = 12 [(buf.validate.field).string.max_len = 300];
+  // The CA certificates, in PEM form, that the syslog server's certificate must chain to; empty
+  // means the system roots. Certificates are public, so it is returned.
+  string ca_bundle = 13 [(buf.validate.field).string.max_len = 65536];
 }
 
 // AuditSinkStatus is how far a sink is behind and why, from the audit tables and the sink's
