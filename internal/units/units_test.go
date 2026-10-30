@@ -238,3 +238,38 @@ func TestHasHandoff(t *testing.T) {
 		}
 	}
 }
+
+// TestRenderFirewall: the firewall helper's pair names the binary in ExecStart, runs as root (no
+// User=), starts when the gateway writes its desired file and after ufw, keeps the status file
+// after the run, and refuses a binary path that systemd would read differently.
+func TestRenderFirewall(t *testing.T) {
+	b, err := units.RenderFirewall("/opt/rpmgr/bin/rpmgr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, service, ok := strings.Cut(string(b), "# /etc/systemd/system/rpmgr-firewall.service\n")
+	if !ok || !strings.HasPrefix(path, "# /etc/systemd/system/rpmgr-firewall.path\n") {
+		t.Fatalf("the pair is not two units, each after its file name:\n%s", b)
+	}
+	for _, want := range []string{"PathChanged=/var/lib/rpmgr/firewall/desired.json", "Unit=rpmgr-firewall.service"} {
+		if !strings.Contains(path, want+"\n") {
+			t.Errorf("rpmgr-firewall.path lacks %q", want)
+		}
+	}
+	for _, want := range []string{"Type=oneshot",
+		"ExecStart=/opt/rpmgr/bin/rpmgr firewall apply --desired /var/lib/rpmgr/firewall/desired.json --bounds /etc/rpmgr/firewall.json --status /run/rpmgr-firewall/status.json",
+		"RuntimeDirectory=rpmgr-firewall", "RuntimeDirectoryPreserve=yes", "ProtectSystem=strict", "NoNewPrivileges=yes",
+		"After=network-online.target ufw.service", "WantedBy=multi-user.target"} {
+		if !strings.Contains(service, want+"\n") {
+			t.Errorf("rpmgr-firewall.service lacks %q", want)
+		}
+	}
+	if strings.Contains(service, "User=") {
+		t.Error("the firewall helper must run as root")
+	}
+	for _, bin := range []string{"", "rpmgr", "/usr/local/bin/rp mgr", "/usr/local/bin/%n", "/usr/local//bin/rpmgr", "/usr/local/bin/../rpmgr"} {
+		if _, err := units.RenderFirewall(bin); err == nil {
+			t.Errorf("RenderFirewall(%q) succeeded", bin)
+		}
+	}
+}

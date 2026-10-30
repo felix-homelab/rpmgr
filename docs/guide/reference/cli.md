@@ -65,6 +65,7 @@ rpmgr <command>
 | [`rpmgr diag`](#rpmgr-diag) | Diagnose this host |
 | [`rpmgr policy`](#rpmgr-policy) | Show or change the connector-local policy of this host |
 | [`rpmgr updater`](#rpmgr-updater) | The root-owned updater of a Linux host |
+| [`rpmgr firewall`](#rpmgr-firewall) | The root-owned firewall helper of a gateway host |
 | [`rpmgr backup`](#rpmgr-backup) | Write a consistent backup of the controller |
 | [`rpmgr restore`](#rpmgr-restore) | Restore the controller from a backup |
 | [`rpmgr migrate`](#rpmgr-migrate) | Apply database migrations |
@@ -486,6 +487,32 @@ rpmgr updater install [flags]
 | `--state string` | `/var/lib/rpmgr-update` | the updater's own directory: install.json, state.json |
 | `--units string` | `/etc/systemd/system` | where the units rpmgr-update.path and rpmgr-update.service go |
 
+## rpmgr firewall
+
+The root-owned firewall helper of a gateway host.
+
+```text
+rpmgr firewall <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr firewall apply`](#rpmgr-firewall-apply) | Open the gateway's port ranges in ufw, inside the bounds, as root, and report the outcome |
+
+## rpmgr firewall apply
+
+Open the gateway's port ranges in ufw, inside the bounds, as root, and report the outcome.
+
+```text
+rpmgr firewall apply [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--bounds string` | `/etc/rpmgr/firewall.json` | the bounds: the listeners and the maximum range; it must be owned by root and not writable by group or others |
+| `--desired string` | `/var/lib/rpmgr/firewall/desired.json` | the ranges the gateway wants open, written by the gateway |
+| `--status string` | `/run/rpmgr-firewall/status.json` | where the outcome is written for the gateway |
+
 ## rpmgr backup
 
 Write a consistent backup of the controller.
@@ -673,7 +700,7 @@ rpmgr release import [flags] <dir>
 Print the hardened systemd unit of a role.
 
 ```text
-rpmgr systemd-unit [flags] controller | gateway | connector | all-in-one | update
+rpmgr systemd-unit [flags] controller | gateway | connector | all-in-one | update | firewall
 ```
 
 | Flag | Default | Description |

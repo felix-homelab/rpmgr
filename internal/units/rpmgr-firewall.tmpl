@@ -1,0 +1,41 @@
+# /etc/systemd/system/rpmgr-firewall.path
+# SPDX-License-Identifier: Apache-2.0
+# Written by `rpmgr systemd-unit firewall` (docs/10-operations.md, "Host firewall helper"): starts
+# the root-owned firewall helper when the gateway has written the port ranges it wants open.
+[Unit]
+Description=rpmgr firewall helper: the gateway's port ranges
+Documentation=https://github.com/felix-homelab/rpmgr
+
+[Path]
+PathChanged=/var/lib/rpmgr/firewall/desired.json
+Unit=rpmgr-firewall.service
+
+[Install]
+WantedBy=multi-user.target
+# /etc/systemd/system/rpmgr-firewall.service
+# SPDX-License-Identifier: Apache-2.0
+# Written by `rpmgr systemd-unit firewall` (docs/10-operations.md, "Host firewall helper"): the
+# root-owned helper opens only the ports inside the bounds of /etc/rpmgr/firewall.json in ufw, with
+# rules marked "rpmgr", and removes them when it is switched off (docs/04-security.md, "Host
+# firewall for port pools"). It also runs once at boot, after ufw, so that the rules are checked.
+[Unit]
+Description=rpmgr firewall helper
+Documentation=https://github.com/felix-homelab/rpmgr
+After=network-online.target ufw.service
+
+[Service]
+Type=oneshot
+ExecStart={{.Bin}} firewall apply --desired /var/lib/rpmgr/firewall/desired.json --bounds /etc/rpmgr/firewall.json --status /run/rpmgr-firewall/status.json
+# The status file stays after the run, so the gateway reads it later.
+RuntimeDirectory=rpmgr-firewall
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+# It writes only what ufw writes: its rules and its lock.
+ProtectSystem=strict
+ReadWritePaths=-/etc/ufw -/lib/ufw -/run
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

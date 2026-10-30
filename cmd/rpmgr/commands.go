@@ -51,6 +51,7 @@ func commands() *cli.Command {
 			agentcmd.Diag(),
 			agentcmd.Policy(),
 			agentcmd.Updater("full"),
+			agentcmd.Firewall(),
 			backupCommand(),
 			restoreCommand(),
 			migrateCommand(),
@@ -84,7 +85,7 @@ const (
 // name. The test commands of the rpmgrtest build count as this host's.
 var sectionOf = func() map[string]string {
 	m := map[string]string{}
-	for _, n := range []string{"setup", "enroll", "leave", "handoff", "status", "diag", "policy", "updater", "backup",
+	for _, n := range []string{"setup", "enroll", "leave", "handoff", "status", "diag", "policy", "updater", "firewall", "backup",
 		"restore", "migrate", "ca", "kek", "user", "release", "systemd-unit"} {
 		m[n] = sectionHost
 	}

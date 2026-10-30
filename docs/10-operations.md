@@ -411,8 +411,7 @@ off by default.
 - **`ufw`'s output** is read from `ufw status numbered` (`Status: active` or `inactive`, then one
   line per rule such as `[ 2] 20000:20999/tcp  ALLOW IN  Anywhere  # rpmgr`, an IPv6 rule with
   `(v6)` after its port). [V] The format is the one of ufw 0.36 as the tests' samples record it,
-  not yet checked against a real host; a line that carries the comment and that the helper cannot
-  read is deleted as its own, and one it cannot read without the comment is ignored.
+  not yet checked against a real host; a line the helper cannot read is ignored and never deleted.
 - **A rule of the operator's** for the same port and protocol without the comment is not ours:
   `ufw allow` skips adding an identical rule, the port stays open when ours is removed, and
   the status lists the rule as applied. [V] Whether `ufw` treats the comment as part of a rule's
