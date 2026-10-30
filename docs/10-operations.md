@@ -982,6 +982,12 @@ alert, when SMTP is configured; an org chooses the alert types it gets and can t
 ([D139](14-open-decisions.md#engineering), [07](07-api.md#webhooks-phase-2)). The Overview shows
 the alerts that fire.
 
+[R] The same job writes the status events `agent.connect`, `agent.disconnect`, `apply.reject` and
+`route.status` ([07](07-api.md#webhooks-phase-2)): once per change of state, remembered in the
+database so a restart neither replays nor loses one, and bounded for a flapping agent or route by
+the gap in [03](03-connections.md#timeouts-keepalive-and-backoff). An agent seen offline for the
+first time and a route's first status are no events.
+
 [R] Each alert the controller evaluates has a kind, the name `alert_types` chooses and an alert
 event's summary begins with: `agent_offline`, `config_not_applied`, `agent_certificate_expiring`,
 `public_certificate_expiring`, `route_no_ready_connector`, `clock_skew`,

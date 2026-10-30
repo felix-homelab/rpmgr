@@ -729,6 +729,18 @@ func (f SessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SessionMutation", m)
 }
 
+// The StatusMarkFunc type is an adapter to allow the use of ordinary
+// function as StatusMark mutator.
+type StatusMarkFunc func(context.Context, *ent.StatusMarkMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f StatusMarkFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.StatusMarkMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.StatusMarkMutation", m)
+}
+
 // The TOTPCredentialFunc type is an adapter to allow the use of ordinary
 // function as TOTPCredential mutator.
 type TOTPCredentialFunc func(context.Context, *ent.TOTPCredentialMutation) (ent.Value, error)

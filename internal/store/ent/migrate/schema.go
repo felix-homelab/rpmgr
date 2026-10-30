@@ -2013,6 +2013,19 @@ var (
 			},
 		},
 	}
+	// StatusMarksColumns holds the columns for the "status_marks" table.
+	StatusMarksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "state", Type: field.TypeString},
+		{Name: "changed_at", Type: field.TypeTime},
+	}
+	// StatusMarksTable holds the schema information for the "status_marks" table.
+	StatusMarksTable = &schema.Table{
+		Name:       "status_marks",
+		Columns:    StatusMarksColumns,
+		PrimaryKey: []*schema.Column{StatusMarksColumns[0]},
+	}
 	// TotpCredentialsColumns holds the columns for the "totp_credentials" table.
 	TotpCredentialsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -2232,6 +2245,7 @@ var (
 		RouteUDPTable,
 		SecretsMetaTable,
 		SessionsTable,
+		StatusMarksTable,
 		TotpCredentialsTable,
 		TrafficBaselinesTable,
 		UsersTable,
@@ -2423,6 +2437,9 @@ func init() {
 		Table: "secrets_meta",
 	}
 	SessionsTable.ForeignKeys[0].RefTable = UsersTable
+	StatusMarksTable.Annotation = &entsql.Annotation{
+		Table: "status_marks",
+	}
 	TotpCredentialsTable.ForeignKeys[0].RefTable = UsersTable
 	TotpCredentialsTable.Annotation = &entsql.Annotation{
 		Table: "totp_credentials",

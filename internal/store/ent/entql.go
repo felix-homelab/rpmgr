@@ -64,6 +64,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/statusmark"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
@@ -78,7 +79,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 65)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 66)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   acmestorage.Table,
@@ -1331,6 +1332,22 @@ var schemaGraph = func() *sqlgraph.Schema {
 	}
 	graph.Nodes[60] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
+			Table:   statusmark.Table,
+			Columns: statusmark.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: statusmark.FieldID,
+			},
+		},
+		Type: "StatusMark",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			statusmark.FieldOrgID:     {Type: field.TypeString, Column: statusmark.FieldOrgID},
+			statusmark.FieldState:     {Type: field.TypeString, Column: statusmark.FieldState},
+			statusmark.FieldChangedAt: {Type: field.TypeTime, Column: statusmark.FieldChangedAt},
+		},
+	}
+	graph.Nodes[61] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
 			Table:   totpcredential.Table,
 			Columns: totpcredential.Columns,
 			ID: &sqlgraph.FieldSpec{
@@ -1347,7 +1364,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			totpcredential.FieldLastStep:    {Type: field.TypeInt64, Column: totpcredential.FieldLastStep},
 		},
 	}
-	graph.Nodes[61] = &sqlgraph.Node{
+	graph.Nodes[62] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   trafficbaseline.Table,
 			Columns: trafficbaseline.Columns,
@@ -1369,7 +1386,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			trafficbaseline.FieldReportedAt:  {Type: field.TypeTime, Column: trafficbaseline.FieldReportedAt},
 		},
 	}
-	graph.Nodes[62] = &sqlgraph.Node{
+	graph.Nodes[63] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   user.Table,
 			Columns: user.Columns,
@@ -1390,7 +1407,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			user.FieldTheme:         {Type: field.TypeEnum, Column: user.FieldTheme},
 		},
 	}
-	graph.Nodes[63] = &sqlgraph.Node{
+	graph.Nodes[64] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   webhook.Table,
 			Columns: webhook.Columns,
@@ -1416,7 +1433,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			webhook.FieldVersion:           {Type: field.TypeInt64, Column: webhook.FieldVersion},
 		},
 	}
-	graph.Nodes[64] = &sqlgraph.Node{
+	graph.Nodes[65] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   webhookdelivery.Table,
 			Columns: webhookdelivery.Columns,
@@ -7236,6 +7253,61 @@ func (f *SessionFilter) WhereHasUserWith(preds ...predicate.User) {
 }
 
 // addPredicate implements the predicateAdder interface.
+func (_q *StatusMarkQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the StatusMarkQuery builder.
+func (_q *StatusMarkQuery) Filter() *StatusMarkFilter {
+	return &StatusMarkFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *StatusMarkMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the StatusMarkMutation builder.
+func (m *StatusMarkMutation) Filter() *StatusMarkFilter {
+	return &StatusMarkFilter{config: m.config, predicateAdder: m}
+}
+
+// StatusMarkFilter provides a generic filtering capability at runtime for StatusMarkQuery.
+type StatusMarkFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *StatusMarkFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[60].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *StatusMarkFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(statusmark.FieldID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *StatusMarkFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(statusmark.FieldOrgID))
+}
+
+// WhereState applies the entql string predicate on the state field.
+func (f *StatusMarkFilter) WhereState(p entql.StringP) {
+	f.Where(p.Field(statusmark.FieldState))
+}
+
+// WhereChangedAt applies the entql time.Time predicate on the changed_at field.
+func (f *StatusMarkFilter) WhereChangedAt(p entql.TimeP) {
+	f.Where(p.Field(statusmark.FieldChangedAt))
+}
+
+// addPredicate implements the predicateAdder interface.
 func (_q *TOTPCredentialQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
 }
@@ -7264,7 +7336,7 @@ type TOTPCredentialFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *TOTPCredentialFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[60].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[61].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -7343,7 +7415,7 @@ type TrafficBaselineFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *TrafficBaselineFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[61].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[62].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -7428,7 +7500,7 @@ type UserFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *UserFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[62].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[63].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -7522,7 +7594,7 @@ type WebhookFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *WebhookFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[63].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[64].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})
@@ -7627,7 +7699,7 @@ type WebhookDeliveryFilter struct {
 // Where applies the entql predicate on the query filter.
 func (f *WebhookDeliveryFilter) Where(p entql.P) {
 	f.addPredicate(func(s *sql.Selector) {
-		if err := schemaGraph.EvalP(schemaGraph.Nodes[64].Type, p, s); err != nil {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[65].Type, p, s); err != nil {
 			s.AddError(err)
 		}
 	})

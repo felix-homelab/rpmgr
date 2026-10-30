@@ -53,3 +53,36 @@ func (Alert) Interceptors() []ent.Interceptor {
 
 // Hooks scope writes to the scope's org; the system scope's alert job writes any.
 func (Alert) Hooks() []ent.Hook { return []ent.Hook{orgMutationHook} }
+
+// StatusMark is the last state the status events reported for one subject: an agent's connection,
+// an agent's applied configuration, a route's status (docs/06-data-model.md, "Observability
+// (Phase 2)"). The singleton job compares what it observes with the mark and writes an event only
+// for a change, so a restart neither replays nor loses one. The ID is "<kind>:<subject id>".
+type StatusMark struct{ ent.Schema }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (StatusMark) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "status_marks"}}
+}
+
+// Fields of a status mark. changed_at is when the mark last changed, which bounds the events of a
+// flapping subject.
+func (StatusMark) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("id").NotEmpty().Immutable(),
+		field.String("org_id").Optional().Nillable().Immutable(),
+		field.String("state").NotEmpty(),
+		field.Time("changed_at"),
+	}
+}
+
+// Policy denies every query without a scope.
+func (StatusMark) Policy() ent.Policy { return scopePolicy() }
+
+// Interceptors show an org scope only its own org's marks.
+func (StatusMark) Interceptors() []ent.Interceptor {
+	return []ent.Interceptor{filterInterceptor("org_id")}
+}
+
+// Hooks scope writes to the scope's org; the system scope's job writes any.
+func (StatusMark) Hooks() []ent.Hook { return []ent.Hook{orgMutationHook} }

@@ -72,6 +72,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/statusmark"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
@@ -197,6 +198,7 @@ func checkColumn(t, c string) error {
 			routeudp.Table:           routeudp.ValidColumn,
 			secretmeta.Table:         secretmeta.ValidColumn,
 			session.Table:            session.ValidColumn,
+			statusmark.Table:         statusmark.ValidColumn,
 			totpcredential.Table:     totpcredential.ValidColumn,
 			trafficbaseline.Table:    trafficbaseline.ValidColumn,
 			user.Table:               user.ValidColumn,

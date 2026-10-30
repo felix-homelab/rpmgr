@@ -73,6 +73,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/statusmark"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
@@ -149,6 +150,7 @@ const (
 	TypeRouteUDP           = "RouteUDP"
 	TypeSecretMeta         = "SecretMeta"
 	TypeSession            = "Session"
+	TypeStatusMark         = "StatusMark"
 	TypeTOTPCredential     = "TOTPCredential"
 	TypeTrafficBaseline    = "TrafficBaseline"
 	TypeUser               = "User"
@@ -48638,6 +48640,468 @@ func (m *SessionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Session edge %s", name)
+}
+
+// StatusMarkMutation represents an operation that mutates the StatusMark nodes in the graph.
+type StatusMarkMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	org_id        *string
+	state         *string
+	changed_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*StatusMark, error)
+	predicates    []predicate.StatusMark
+}
+
+var _ ent.Mutation = (*StatusMarkMutation)(nil)
+
+// statusmarkOption allows management of the mutation configuration using functional options.
+type statusmarkOption func(*StatusMarkMutation)
+
+// newStatusMarkMutation creates new mutation for the StatusMark entity.
+func newStatusMarkMutation(c config, op Op, opts ...statusmarkOption) *StatusMarkMutation {
+	m := &StatusMarkMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeStatusMark,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withStatusMarkID sets the ID field of the mutation.
+func withStatusMarkID(id string) statusmarkOption {
+	return func(m *StatusMarkMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *StatusMark
+		)
+		m.oldValue = func(ctx context.Context) (*StatusMark, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().StatusMark.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withStatusMark sets the old StatusMark of the mutation.
+func withStatusMark(node *StatusMark) statusmarkOption {
+	return func(m *StatusMarkMutation) {
+		m.oldValue = func(context.Context) (*StatusMark, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m StatusMarkMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m StatusMarkMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of StatusMark entities.
+func (m *StatusMarkMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *StatusMarkMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *StatusMarkMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().StatusMark.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *StatusMarkMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *StatusMarkMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the StatusMark entity.
+// If the StatusMark object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StatusMarkMutation) OldOrgID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ClearOrgID clears the value of the "org_id" field.
+func (m *StatusMarkMutation) ClearOrgID() {
+	m.org_id = nil
+	m.clearedFields[statusmark.FieldOrgID] = struct{}{}
+}
+
+// OrgIDCleared returns if the "org_id" field was cleared in this mutation.
+func (m *StatusMarkMutation) OrgIDCleared() bool {
+	_, ok := m.clearedFields[statusmark.FieldOrgID]
+	return ok
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *StatusMarkMutation) ResetOrgID() {
+	m.org_id = nil
+	delete(m.clearedFields, statusmark.FieldOrgID)
+}
+
+// SetState sets the "state" field.
+func (m *StatusMarkMutation) SetState(s string) {
+	m.state = &s
+}
+
+// State returns the value of the "state" field in the mutation.
+func (m *StatusMarkMutation) State() (r string, exists bool) {
+	v := m.state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldState returns the old "state" field's value of the StatusMark entity.
+// If the StatusMark object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StatusMarkMutation) OldState(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldState: %w", err)
+	}
+	return oldValue.State, nil
+}
+
+// ResetState resets all changes to the "state" field.
+func (m *StatusMarkMutation) ResetState() {
+	m.state = nil
+}
+
+// SetChangedAt sets the "changed_at" field.
+func (m *StatusMarkMutation) SetChangedAt(t time.Time) {
+	m.changed_at = &t
+}
+
+// ChangedAt returns the value of the "changed_at" field in the mutation.
+func (m *StatusMarkMutation) ChangedAt() (r time.Time, exists bool) {
+	v := m.changed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChangedAt returns the old "changed_at" field's value of the StatusMark entity.
+// If the StatusMark object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StatusMarkMutation) OldChangedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChangedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChangedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChangedAt: %w", err)
+	}
+	return oldValue.ChangedAt, nil
+}
+
+// ResetChangedAt resets all changes to the "changed_at" field.
+func (m *StatusMarkMutation) ResetChangedAt() {
+	m.changed_at = nil
+}
+
+// Where appends a list predicates to the StatusMarkMutation builder.
+func (m *StatusMarkMutation) Where(ps ...predicate.StatusMark) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the StatusMarkMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *StatusMarkMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.StatusMark, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *StatusMarkMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *StatusMarkMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (StatusMark).
+func (m *StatusMarkMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *StatusMarkMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.org_id != nil {
+		fields = append(fields, statusmark.FieldOrgID)
+	}
+	if m.state != nil {
+		fields = append(fields, statusmark.FieldState)
+	}
+	if m.changed_at != nil {
+		fields = append(fields, statusmark.FieldChangedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *StatusMarkMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case statusmark.FieldOrgID:
+		return m.OrgID()
+	case statusmark.FieldState:
+		return m.State()
+	case statusmark.FieldChangedAt:
+		return m.ChangedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *StatusMarkMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case statusmark.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case statusmark.FieldState:
+		return m.OldState(ctx)
+	case statusmark.FieldChangedAt:
+		return m.OldChangedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown StatusMark field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *StatusMarkMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case statusmark.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case statusmark.FieldState:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetState(v)
+		return nil
+	case statusmark.FieldChangedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChangedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown StatusMark field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *StatusMarkMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *StatusMarkMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *StatusMarkMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown StatusMark numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *StatusMarkMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(statusmark.FieldOrgID) {
+		fields = append(fields, statusmark.FieldOrgID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *StatusMarkMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *StatusMarkMutation) ClearField(name string) error {
+	switch name {
+	case statusmark.FieldOrgID:
+		m.ClearOrgID()
+		return nil
+	}
+	return fmt.Errorf("unknown StatusMark nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *StatusMarkMutation) ResetField(name string) error {
+	switch name {
+	case statusmark.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case statusmark.FieldState:
+		m.ResetState()
+		return nil
+	case statusmark.FieldChangedAt:
+		m.ResetChangedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown StatusMark field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *StatusMarkMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *StatusMarkMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *StatusMarkMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *StatusMarkMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *StatusMarkMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *StatusMarkMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *StatusMarkMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown StatusMark unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *StatusMarkMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown StatusMark edge %s", name)
 }
 
 // TOTPCredentialMutation represents an operation that mutates the TOTPCredential nodes in the graph.

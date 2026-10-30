@@ -403,7 +403,14 @@ spec:
   (a route's state changed), `agent.connect`, `agent.disconnect`, `apply.reject`, `alert.fire` and
   `alert.resolve` ([10](10-operations.md#suggested-alerts)), `webhook.disable`, and with DNS
   automation `dns.conflict`, `dns.zone_held`, `dns.sync_failing` and `dns.token_expiring`.
-  Instance events go to instance endpoints only: the instance chain's audit actions, releases and
+  A status event is written once per change of state by the alert job, not per heartbeat or
+  reconnect: `agent.connect` and `agent.disconnect` for an agent that is enabled and not ephemeral
+  (a built-in agent included; the first connection is an event, an agent first seen offline is
+  not), `apply.reject` once for each snapshot an agent rejected, and `route.status` for a route's
+  new status, its summary naming both states. A subject that changes state faster than the gap in
+  [03](03-connections.md#timeouts-keepalive-and-backoff) reports its state once the gap passed, and
+  nothing if it is back where it was. Each event is of its subject's org and names no more than the
+  envelope does. Instance events go to instance endpoints only: the instance chain's audit actions, releases and
   rollouts, events of gateways in shared groups, and the instance alerts. An endpoint names the
   types it wants, by name or by prefix such as `route.*`; none means all
   ([D145](14-open-decisions.md#engineering), E1, E12).

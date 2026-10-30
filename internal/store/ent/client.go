@@ -75,6 +75,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/statusmark"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
@@ -209,6 +210,8 @@ type Client struct {
 	SecretMeta *SecretMetaClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// StatusMark is the client for interacting with the StatusMark builders.
+	StatusMark *StatusMarkClient
 	// TOTPCredential is the client for interacting with the TOTPCredential builders.
 	TOTPCredential *TOTPCredentialClient
 	// TrafficBaseline is the client for interacting with the TrafficBaseline builders.
@@ -290,6 +293,7 @@ func (c *Client) init() {
 	c.RouteUDP = NewRouteUDPClient(c.config)
 	c.SecretMeta = NewSecretMetaClient(c.config)
 	c.Session = NewSessionClient(c.config)
+	c.StatusMark = NewStatusMarkClient(c.config)
 	c.TOTPCredential = NewTOTPCredentialClient(c.config)
 	c.TrafficBaseline = NewTrafficBaselineClient(c.config)
 	c.User = NewUserClient(c.config)
@@ -447,6 +451,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		RouteUDP:           NewRouteUDPClient(cfg),
 		SecretMeta:         NewSecretMetaClient(cfg),
 		Session:            NewSessionClient(cfg),
+		StatusMark:         NewStatusMarkClient(cfg),
 		TOTPCredential:     NewTOTPCredentialClient(cfg),
 		TrafficBaseline:    NewTrafficBaselineClient(cfg),
 		User:               NewUserClient(cfg),
@@ -531,6 +536,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		RouteUDP:           NewRouteUDPClient(cfg),
 		SecretMeta:         NewSecretMetaClient(cfg),
 		Session:            NewSessionClient(cfg),
+		StatusMark:         NewStatusMarkClient(cfg),
 		TOTPCredential:     NewTOTPCredentialClient(cfg),
 		TrafficBaseline:    NewTrafficBaselineClient(cfg),
 		User:               NewUserClient(cfg),
@@ -577,7 +583,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
 		c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
 		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
-		c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook, c.WebhookDelivery,
+		c.StatusMark, c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook,
+		c.WebhookDelivery,
 	} {
 		n.Use(hooks...)
 	}
@@ -599,7 +606,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
 		c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
 		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
-		c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook, c.WebhookDelivery,
+		c.StatusMark, c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook,
+		c.WebhookDelivery,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -728,6 +736,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SecretMeta.mutate(ctx, m)
 	case *SessionMutation:
 		return c.Session.mutate(ctx, m)
+	case *StatusMarkMutation:
+		return c.StatusMark.mutate(ctx, m)
 	case *TOTPCredentialMutation:
 		return c.TOTPCredential.mutate(ctx, m)
 	case *TrafficBaselineMutation:
@@ -9462,6 +9472,141 @@ func (c *SessionClient) mutate(ctx context.Context, m *SessionMutation) (Value, 
 	}
 }
 
+// StatusMarkClient is a client for the StatusMark schema.
+type StatusMarkClient struct {
+	config
+}
+
+// NewStatusMarkClient returns a client for the StatusMark from the given config.
+func NewStatusMarkClient(c config) *StatusMarkClient {
+	return &StatusMarkClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `statusmark.Hooks(f(g(h())))`.
+func (c *StatusMarkClient) Use(hooks ...Hook) {
+	c.hooks.StatusMark = append(c.hooks.StatusMark, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `statusmark.Intercept(f(g(h())))`.
+func (c *StatusMarkClient) Intercept(interceptors ...Interceptor) {
+	c.inters.StatusMark = append(c.inters.StatusMark, interceptors...)
+}
+
+// Create returns a builder for creating a StatusMark entity.
+func (c *StatusMarkClient) Create() *StatusMarkCreate {
+	mutation := newStatusMarkMutation(c.config, OpCreate)
+	return &StatusMarkCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of StatusMark entities.
+func (c *StatusMarkClient) CreateBulk(builders ...*StatusMarkCreate) *StatusMarkCreateBulk {
+	return &StatusMarkCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *StatusMarkClient) MapCreateBulk(slice any, setFunc func(*StatusMarkCreate, int)) *StatusMarkCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &StatusMarkCreateBulk{err: fmt.Errorf("calling to StatusMarkClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*StatusMarkCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &StatusMarkCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for StatusMark.
+func (c *StatusMarkClient) Update() *StatusMarkUpdate {
+	mutation := newStatusMarkMutation(c.config, OpUpdate)
+	return &StatusMarkUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *StatusMarkClient) UpdateOne(_m *StatusMark) *StatusMarkUpdateOne {
+	mutation := newStatusMarkMutation(c.config, OpUpdateOne, withStatusMark(_m))
+	return &StatusMarkUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *StatusMarkClient) UpdateOneID(id string) *StatusMarkUpdateOne {
+	mutation := newStatusMarkMutation(c.config, OpUpdateOne, withStatusMarkID(id))
+	return &StatusMarkUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for StatusMark.
+func (c *StatusMarkClient) Delete() *StatusMarkDelete {
+	mutation := newStatusMarkMutation(c.config, OpDelete)
+	return &StatusMarkDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *StatusMarkClient) DeleteOne(_m *StatusMark) *StatusMarkDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *StatusMarkClient) DeleteOneID(id string) *StatusMarkDeleteOne {
+	builder := c.Delete().Where(statusmark.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &StatusMarkDeleteOne{builder}
+}
+
+// Query returns a query builder for StatusMark.
+func (c *StatusMarkClient) Query() *StatusMarkQuery {
+	return &StatusMarkQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeStatusMark},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a StatusMark entity by its id.
+func (c *StatusMarkClient) Get(ctx context.Context, id string) (*StatusMark, error) {
+	return c.Query().Where(statusmark.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *StatusMarkClient) GetX(ctx context.Context, id string) *StatusMark {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *StatusMarkClient) Hooks() []Hook {
+	hooks := c.hooks.StatusMark
+	return append(hooks[:len(hooks):len(hooks)], statusmark.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *StatusMarkClient) Interceptors() []Interceptor {
+	inters := c.inters.StatusMark
+	return append(inters[:len(inters):len(inters)], statusmark.Interceptors[:]...)
+}
+
+func (c *StatusMarkClient) mutate(ctx context.Context, m *StatusMarkMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&StatusMarkCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&StatusMarkUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&StatusMarkUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&StatusMarkDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown StatusMark mutation op: %q", m.Op())
+	}
+}
+
 // TOTPCredentialClient is a client for the TOTPCredential schema.
 type TOTPCredentialClient struct {
 	config
@@ -10182,8 +10327,8 @@ type (
 		Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,
 		RolloutTarget, Route, RouteHTTP, RouteHostname, RouteLimit, RoutePolicy,
 		RouteTCP, RouteTarget, RouteTrafficDaily, RouteTrafficHourly, RouteUDP,
-		SecretMeta, Session, TOTPCredential, TrafficBaseline, User, Webhook,
-		WebhookDelivery []ent.Hook
+		SecretMeta, Session, StatusMark, TOTPCredential, TrafficBaseline, User,
+		Webhook, WebhookDelivery []ent.Hook
 	}
 	inters struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
@@ -10196,8 +10341,8 @@ type (
 		Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,
 		RolloutTarget, Route, RouteHTTP, RouteHostname, RouteLimit, RoutePolicy,
 		RouteTCP, RouteTarget, RouteTrafficDaily, RouteTrafficHourly, RouteUDP,
-		SecretMeta, Session, TOTPCredential, TrafficBaseline, User, Webhook,
-		WebhookDelivery []ent.Interceptor
+		SecretMeta, Session, StatusMark, TOTPCredential, TrafficBaseline, User,
+		Webhook, WebhookDelivery []ent.Interceptor
 	}
 )
 
