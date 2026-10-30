@@ -92,9 +92,9 @@ describe("Gateways", () => {
     expect(await screen.findByRole("heading", { name: "Gateway group eu" })).toBeTruthy();
     const members = within(screen.getByRole("region", { name: "Gateways" }));
     await waitFor(() => expect(members.getAllByRole("row").slice(1).map((r) => r.textContent)).toEqual([
-      "gw-eu-11198.51.100.1:443connected0.1.0—Edit…DrainDecommission…Live log…", // the badges' icons are drawings, hidden from screen readers
-      "gw-eu-22198.51.100.2:443offlinedrained—Edit…ResumeDecommission…Live log…",
-      "gw-eu-33not enrolled—Edit…DrainEnrollment token…Decommission…Live log…",
+      "gw-eu-11198.51.100.1:443connectedOff0.1.0—Edit…DrainDecommission…Live log…", // the badges' icons are drawings, hidden from screen readers; the firewall is Off while connected, else a dash
+      "gw-eu-22198.51.100.2:443offlinedrained——Edit…ResumeDecommission…Live log…",
+      "gw-eu-33not enrolled——Edit…DrainEnrollment token…Decommission…Live log…",
     ]));
     const form = within(screen.getByRole("form", { name: "Settings" }));
     fireEvent.change(form.getByLabelText("Trusted proxies"), { target: { value: "10.0.0.0/8\n192.168.0.0/16" } });

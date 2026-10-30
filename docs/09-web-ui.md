@@ -522,10 +522,11 @@ one page, with a section list beside them that jumps to each section
   are connected. A new group is created there, and the page then opens it. Without groups, the
   page offers to create the first.
 - **A group's page** has a link back to the groups above its title. It lists its gateways by slot,
-  with their tunnel endpoints, state (not enrolled, connected or offline, and drained), version and
-  last contact. It also edits the group's name, region, public hostnames and trusted proxies, as
-  the whole group as read with their mask and the etag (U1). If the group changed since the page
-  read it, the form says so.
+  with their tunnel endpoints, state (not enrolled, connected or offline, and drained), the state of
+  the host's firewall management when the gateway reports one (off, applied or failed, D152),
+  version and last contact. It also edits the group's name, region, public hostnames and trusted
+  proxies, as the whole group as read with their mask and the etag (U1). If the group changed since
+  the page read it, the form says so.
 - **Gateway actions** on a group's page:
   - **Add a gateway** with its name and its own tunnel endpoints. A group has at most four; the
     server says so.
@@ -544,6 +545,9 @@ one page, with a section list beside them that jumps to each section
 - **Port pools and quotas** on a group's page:
   - the group's TCP and UDP port pools, from which TCP and UDP routes get their public ports;
   - a pool is added, its range changed, or removed after a confirmation that names it;
+  - beside each pool, in how many of the group's gateways that hand their `ufw` to rpmgr its range
+    is open now, read from the rules each reports; nothing when none does
+    ([D152](14-open-decisions.md#engineering));
   - a range is checked first: 1 to 65535, the first port no larger than the last;
   - per protocol, the org's quota of the group's ports, with how many are in use. An empty quota is
     removed, so that the pools alone limit the org.
