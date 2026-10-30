@@ -49,6 +49,8 @@ prompt.
 |---|---|---|---|
 | **Role of this host** | `--role` | `all-in-one` in the form | `all-in-one`, `controller`, `gateway` or `connector`. Required with `--yes` |
 | **listen.admin** | `--listen-admin` | the role's port on 127.0.0.1 | The admin listener: 127.0.0.1:7381 for an all-in-one or controller, 7382 for a gateway, 7383 for a connector |
+| (none) | `--firewall ufw` | off | A gateway or all-in-one only: hand the host's `ufw` to rpmgr, which opens the gateway's listeners and the port pools' ranges. Setup writes the `firewall` key of the boot file, the root-owned bounds file and the units of the root helper ([Gateways](../gateways.md#the-hosts-firewall)). Without `ufw` on the host, setup still finishes and warns |
+| (none) | `--firewall-max-range` | none | With `--firewall`: the largest range of port pools rpmgr may open, `<from>-<to>`, such as `20000-29999`. Without it rpmgr opens only the listeners |
 | **Install the unit rpmgr-&lt;role&gt;, start it and wait until it is ready?** | `--no-unit` | install it | Without the unit, setup writes the files, initialises or enrolls, and starts nothing |
 | (none) | `--force` | off | Replace an existing boot file, keeping the old one as `<file>.before-setup`; on a gateway or connector, also enroll again with a new token. A host with a controller database is refused all the same |
 | (none) | `--yes` | off | Ask nothing |

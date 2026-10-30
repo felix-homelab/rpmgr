@@ -151,6 +151,8 @@ the controller, not from this file.
 | `listen.tunnel_udp` | address or `""` | `""` | A separate UDP port for the QUIC data sessions. Empty shares `listen.udp` |
 | `listen.http` | address or `""` | `:80` | ACME HTTP-01 challenges and port 80 of `http` routes. `""` turns port 80 off |
 | `listen.admin` | address | `127.0.0.1:7382` | The admin listener (rules above) |
+| `firewall.backend` | `ufw` or `""` | `""` | Hand the host's `ufw` to rpmgr: the gateway writes the ranges of its group's port pools to a file and a root helper opens them ([Gateways](../gateways.md#the-hosts-firewall)). Empty leaves the firewall alone |
+| `firewall.max_range` | `<from>-<to>` | none | With `firewall.backend`: the largest range of port pools the helper may open. Empty allows no pool, only the listeners. Read by `rpmgr setup`, which writes the root-owned bounds file from it: change the range there and in the boot file together |
 | `log`, `tracing` | | | As above |
 
 The ports of `tcp`, `udp` and `tcp_udp` routes are not in the boot file: they come from the port
@@ -225,6 +227,7 @@ the connector reach the controller inside the process.
 | `tls.cert_file`, `tls.key_file` | | none | As for a controller |
 | `state_dir` | path | `/var/lib/rpmgr` | The gateway's identity and state go to `<state_dir>/gateway/identity` and `<state_dir>/gateway`, the connector's to `<state_dir>/connector/identity` and `<state_dir>/connector` |
 | `policy_file` | path | `/etc/rpmgr/policy.yaml` | The local policy of the built-in connector `local` |
+| `firewall.backend`, `firewall.max_range` | | `""`, none | As for a gateway: the helper's files go to `<state_dir>/firewall/` |
 | `revocation_log.sink` | path | `""` | As for a controller |
 | `log`, `tracing` | | | As above |
 
@@ -306,4 +309,7 @@ Typical messages:
 | `kek: file needs an absolute path and no name` | `kek.source: file` without `kek.path`, or with `kek.name` |
 | `tls: cert_file and key_file go together` | Only one of the two certificate keys |
 | `controller.passthrough: only a gateway forwards to a private controller` | `controller.passthrough` in a connector's file |
+| `firewall.backend "nftables": want ufw, or leave it out` | A firewall other than `ufw` |
+| `firewall.max_range "…": want <from>-<to> within 1 to 65535` | A maximum range that is no ascending pair of ports |
+| `firewall.max_range needs firewall.backend ufw` | A range without the backend |
 | `database.driver: postgres comes with Phase 2 (D57); use sqlite` | A Phase 2 value |

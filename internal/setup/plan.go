@@ -22,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/cli"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/connector"
+	"github.com/felix-homelab/rpmgr/internal/firewall"
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/units"
 	"github.com/felix-homelab/rpmgr/internal/update"
@@ -42,9 +43,10 @@ type Plan struct {
 
 // booted is what setup reads back from a parsed boot file.
 type booted struct {
-	admin  string        // the admin listener
-	policy string        // the connector-local policy file
-	unit   units.Options // what the boot file decides of the unit: KEK credential, sink
+	admin  string          // the admin listener
+	bounds firewall.Bounds // a gateway's or all-in-one's firewall bounds
+	policy string          // the connector-local policy file
+	unit   units.Options   // what the boot file decides of the unit: KEK credential, sink
 }
 
 type step struct {
@@ -63,6 +65,8 @@ type Result struct {
 	// NoUpdaterState: the updater is installed, but it has no state, because this development
 	// build has no release version; it refuses every release.
 	NoUpdaterState bool
+	// FirewallNote is a warning about the firewall setup handed to rpmgr: no ufw on the host.
+	FirewallNote string
 	// Written are the files and directories setup created, for cleaning up after a failure.
 	Written []string
 }
@@ -114,6 +118,7 @@ func New(v Values, h Host) (*Plan, error) {
 		p.agentSteps()
 	}
 	p.updaterSteps()
+	p.firewallSteps()
 	if !v.NoUnit {
 		p.unitSteps()
 	}
@@ -170,6 +175,13 @@ func (p *Plan) bootFile() error {
 	if len(listen) > 0 {
 		doc["listen"] = listen
 	}
+	if v.Firewall != "" {
+		fw := map[string]string{"backend": v.Firewall}
+		if v.FirewallRange != "" {
+			fw["max_range"] = v.FirewallRange
+		}
+		doc["firewall"] = fw
+	}
 	nonDefaultLib := paths.Lib != defaults.Lib
 	var parse func([]byte) (booted, error)
 	switch v.Role {
@@ -204,7 +216,8 @@ func (p *Plan) bootFile() error {
 			parse = func(b []byte) (booted, error) {
 				var c config.AllInOne
 				err := config.Parse(b, &c)
-				return booted{admin: c.Listen.Admin, policy: c.PolicyFile, unit: units.ForController(c.Controller())}, err
+				return booted{admin: c.Listen.Admin, policy: c.PolicyFile, unit: units.ForController(c.Controller()),
+					bounds: boundsOf(c.Gateway())}, err
 			}
 		} else {
 			parse = func(b []byte) (booted, error) {
@@ -223,7 +236,7 @@ func (p *Plan) bootFile() error {
 			parse = func(b []byte) (booted, error) {
 				var c config.Gateway
 				err := config.Parse(b, &c)
-				return booted{admin: c.Listen.Admin}, err
+				return booted{admin: c.Listen.Admin, bounds: boundsOf(c)}, err
 			}
 		} else {
 			if paths.Etc != defaults.Etc {
@@ -713,6 +726,9 @@ func (p *Plan) Summary() [][2]string {
 		if v.Proxy != "" {
 			out = append(out, [2]string{"proxy", redactedProxy(v.Proxy)})
 		}
+	}
+	if v.Firewall != "" {
+		out = append(out, [2]string{"firewall", p.firewallSummary()})
 	}
 	out = append(out, [2]string{"admin listener", p.admin})
 	unit := "rpmgr-" + string(v.Role) + ", enabled and started"

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -340,4 +341,39 @@ func runWith(env map[string]string, _ string, args ...string) (int, string, stri
 	tree := &cli.Command{Name: "rpmgr", Sub: []*cli.Command{Setup("full", serversetup.Server{}), Enroll(), Policy()}}
 	code := cli.Main(context.Background(), tree, args, &cli.Env{Stdout: &out, Stderr: &errOut, Getenv: func(k string) string { return env[k] }})
 	return code, out.String(), errOut.String()
+}
+
+// TestSetup_Firewall (D152): `rpmgr setup --firewall ufw` on a gateway writes the bounds and tells an
+// operator whose host has no ufw that the firewall will show as failed; a firewall other than ufw,
+// a range without one and a connector are refused before anything is written.
+func TestSetup_Firewall(t *testing.T) {
+	f := fakeSetup(t)
+	setupHost.HasUfw = func() bool { return false }
+	pin := "sha256:" + strings.Repeat("A", 43) + "="
+	tok, err := token.New(token.Enrollment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"RPMGR_ENROLL_TOKEN": tok}
+	gateway := []string{"setup", "--role", "gateway", "--controller", "https://panel.example.com", "--ca-pin", pin, "--yes"}
+	for name, extra := range map[string][]string{"another firewall": {"--firewall", "nftables"}, "a range alone": {"--firewall-max-range", "20000-29999"},
+		"a bad range": {"--firewall", "ufw", "--firewall-max-range", "5-1"}} {
+		if code, _, errOut := runWith(env, "", append(slices.Clone(gateway), extra...)...); code == cli.ExitOK || errOut == "" {
+			t.Errorf("%s: %d %q", name, code, errOut)
+		}
+	}
+	if code, _, errOut := runWith(env, "", "setup", "--role", "connector", "--controller", "https://panel.example.com", "--ca-pin", pin,
+		"--firewall", "ufw", "--yes"); code == cli.ExitOK || !strings.Contains(errOut, "gateway's or an all-in-one's") {
+		t.Errorf("a connector: %d %q", code, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(f.root, "etc")); err == nil {
+		t.Error("a refused setup wrote something")
+	}
+	code, out, errOut := runWith(env, "", append(slices.Clone(gateway), "--firewall", "ufw", "--firewall-max-range", "20000-29999")...)
+	if code != cli.ExitOK || !strings.Contains(out, "Warning: ufw is not installed") {
+		t.Fatalf("setup with the firewall: %d %q %q", code, out, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(f.root, "etc", "firewall.json")); err != nil {
+		t.Errorf("no bounds file: %v", err)
+	}
 }

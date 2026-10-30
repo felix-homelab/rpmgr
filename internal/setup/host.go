@@ -72,6 +72,8 @@ type Host struct {
 	Enroll func(ctx context.Context, o agent.EnrollOptions) (agent.Identity, error)
 	// Ready waits until the admin listener at addr reports ready.
 	Ready func(ctx context.Context, addr string) error
+	// HasUfw reports whether ufw is installed.
+	HasUfw func() bool
 	// PortFree reports whether a TCP address can be listened on.
 	PortFree func(addr string) bool
 	Getenv   func(string) string
@@ -118,6 +120,9 @@ func (h *Host) defaults() {
 			_ = ln.Close()
 			return true
 		}
+	}
+	if h.HasUfw == nil {
+		h.HasUfw = ufwInstalled
 	}
 	if h.Variant == "" {
 		h.Variant = "full"
