@@ -263,6 +263,12 @@ Changes to the design documents are not recorded here: see the git history and t
   session's connection window, was written but never ran; it now runs on every QUIC and HTTP/2
   data session, so the other routes on the session flow again. A reader that merely pauses is left
   alone. (#1044)
+- Data sessions: on QUIC, the stalled-stream rule acts when a session's window is full. Each QUIC
+  session now gets a connection window of its own from the memory budget, as an h2 session does,
+  at most 64 MiB with a stream window of at most a sixteenth of it, so that a few stalled streams
+  of an internet client can no longer freeze a session. The window of a session is fixed when it
+  starts; with many sessions the later ones get smaller windows, and a single stream on a long
+  path can carry less than with the former 16 MiB stream window. (#1049)
 
 ## [0.2.0] - 2026-10-24
 

@@ -5,60 +5,82 @@ package tunnel
 import (
 	"errors"
 	"testing"
-
-	"github.com/quic-go/quic-go"
 )
 
-// TestBudget: windows grow while the budget has room; a refusal changes nothing; a session's share
-// returns when it ends.
-func TestBudget(t *testing.T) {
-	b := NewBudget(100)
-	c1, c2 := new(quic.Conn), new(quic.Conn)
-	if !b.allow(c1, 60) || !b.allow(c2, 40) {
-		t.Fatal("refused within the budget")
+// TestBudget_QUICAdmission: a QUIC session is admitted with its connection window, at most 64 MiB
+// and a sixteenth of the free budget, and a stream window of at most a sixteenth of it; a release
+// returns the share, twice is harmless, and a budget with less than 1 MiB free refuses.
+func TestBudget_QUICAdmission(t *testing.T) {
+	const mib = 1 << 20
+	b := NewBudget(64 * mib)
+	w1, release1, err := b.AdmitQUIC()
+	if err != nil || w1.Conn != 4*mib || w1.Stream != mib/4 { // a sixteenth of 64 MiB
+		t.Fatalf("first session: %+v %v", w1, err)
 	}
-	if b.allow(c1, 1) {
-		t.Fatal("allowed beyond the budget")
+	w2, release2, err := b.AdmitQUIC()
+	if err != nil || w2.Conn != 60*mib/16 || w2.Stream != w2.Conn/16 {
+		t.Fatalf("second session: %+v %v", w2, err)
 	}
-	if b.Used() != 100 {
-		t.Fatalf("used %d", b.Used())
+	release1()
+	release1()                                     // twice is harmless
+	if want := uint64(w2.Conn); b.Used() != want { //nolint:gosec // G115: a test window
+		t.Fatalf("used %d after a release, want %d", b.Used(), want)
 	}
-	b.release(c1)
-	if b.Used() != 40 || !b.allow(c2, 60) || b.allow(c2, 1) {
-		t.Fatalf("after a release: used %d", b.Used())
+	release2()
+	if b.Used() != 0 {
+		t.Fatalf("used %d after both ended", b.Used())
 	}
-	b.release(c1) // twice is harmless
-	if b.Used() != 100 {
-		t.Fatalf("a second release changed the budget: %d", b.Used())
+	var releases []func()
+	for {
+		w, release, err := b.AdmitQUIC()
+		if errors.Is(err, ErrBudget) {
+			break
+		}
+		if err != nil || w.Conn < mib || w.Stream != w.Conn/16 {
+			t.Fatalf("session %d: %+v %v", len(releases)+1, w, err)
+		}
+		if b.Used() > 64*mib {
+			t.Fatalf("the reservations exceed the budget: %d", b.Used())
+		}
+		releases = append(releases, release)
+		if len(releases) > 1000 {
+			t.Fatal("no end to admission")
+		}
+	}
+	if len(releases) == 0 {
+		t.Fatal("nothing was admitted")
+	}
+	releases[0]()
+	if _, release, err := b.AdmitQUIC(); err != nil {
+		t.Fatalf("a freed share was not admitted again: %v", err)
+	} else {
+		release()
 	}
 }
 
-// TestBudget_QUICAndH2Share: QUIC windows and h2 reservations draw on one budget: QUIC growth
-// leaves h2 sessions smaller windows and finally none, and h2 reservations stop QUIC windows from
-// growing beyond what is left.
+// TestBudget_QUICAndH2Share: QUIC and h2 sessions draw on one budget, so each shrinks what is left
+// for the other and finally refuses it.
 func TestBudget_QUICAndH2Share(t *testing.T) {
 	const mib = 1 << 20
-	b := NewBudget(64 * mib)
-	q := new(quic.Conn)
-	if !b.allow(q, 48*mib) {
-		t.Fatal("QUIC refused within the budget")
+	b := NewBudget(32 * mib)
+	wq, releaseQ, err := b.AdmitQUIC()
+	if err != nil || wq.Conn != 2*mib {
+		t.Fatalf("QUIC: %+v %v", wq, err)
 	}
-	w, release, err := b.AdmitH2(DefaultH2Windows())
-	if err != nil || w.Conn != mib { // a sixteenth of 16 MiB free
-		t.Fatalf("h2 beside QUIC: %+v %v", w, err)
+	wh, releaseH, err := b.AdmitH2(DefaultH2Windows())
+	if err != nil || wh.Conn != 30*mib/16 {
+		t.Fatalf("h2 beside QUIC: %+v %v", wh, err)
 	}
-	if b.allow(q, 15*mib+1) {
-		t.Fatal("QUIC grew into the h2 reservation")
+	if b.Used() != uint64(wq.Conn+wh.Conn) { //nolint:gosec // G115: a test window
+		t.Fatalf("used %d", b.Used())
 	}
-	if !b.allow(q, 15*mib) {
-		t.Fatal("QUIC refused what is left")
-	}
-	if _, _, err := b.AdmitH2(DefaultH2Windows()); !errors.Is(err, ErrBudget) {
-		t.Fatalf("h2 in a budget QUIC filled: %v", err)
-	}
-	release()
-	b.release(q)
+	releaseQ()
+	releaseH()
 	if b.Used() != 0 {
 		t.Fatalf("used %d after both ended", b.Used())
+	}
+	full := NewBudget(mib - 1)
+	if _, _, err := full.AdmitQUIC(); !errors.Is(err, ErrBudget) {
+		t.Fatalf("a budget below 1 MiB admitted QUIC: %v", err)
 	}
 }
