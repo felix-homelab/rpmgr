@@ -309,3 +309,52 @@ func TestHandoffDrain(t *testing.T) {
 		}
 	}
 }
+
+// TestFirewall (D152): the firewall section is off by default, takes ufw and a maximum range, and
+// refuses anything else; an all-in-one's gateway puts its firewall directory beside the state
+// directory, not inside the gateway's own.
+func TestFirewall(t *testing.T) {
+	const agent = "version: 1\ncontroller: {endpoints: [https://panel.example.com]}\n"
+	var g config.Gateway
+	if err := config.Parse([]byte(agent), &g); err != nil || g.Firewall.On() || g.Firewall.Dir != "/var/lib/rpmgr/firewall" {
+		t.Fatalf("by default: %+v, %v", g.Firewall, err)
+	}
+	if _, _, ok := g.Firewall.Range(); ok {
+		t.Error("a maximum range by default")
+	}
+	g = config.Gateway{}
+	if err := config.Parse([]byte(agent+"state_dir: /srv/rpmgr\nfirewall: {backend: ufw, max_range: 20000-29999}\n"), &g); err != nil {
+		t.Fatal(err)
+	}
+	if from, to, ok := g.Firewall.Range(); !g.Firewall.On() || !ok || from != 20000 || to != 29999 || g.Firewall.Dir != "/srv/rpmgr/firewall" {
+		t.Errorf("parsed %+v (%d-%d %v)", g.Firewall, from, to, ok)
+	}
+	var a config.AllInOne
+	if err := config.Parse([]byte("version: 1\npublic_url: https://p.example\nstate_dir: /srv/rpmgr\nfirewall: {backend: ufw}\n"), &a); err != nil {
+		t.Fatal(err)
+	}
+	if gw := a.Gateway(); !gw.Firewall.On() || gw.Firewall.Dir != "/srv/rpmgr/firewall" {
+		t.Errorf("all-in-one's gateway: %+v", gw.Firewall)
+	}
+	for name, y := range map[string]string{
+		"another backend":       "firewall: {backend: nftables}\n",
+		"a range without ufw":   "firewall: {max_range: 20000-29999}\n",
+		"reversed":              "firewall: {backend: ufw, max_range: 30000-20000}\n",
+		"port 0":                "firewall: {backend: ufw, max_range: 0-100}\n",
+		"above 65535":           "firewall: {backend: ufw, max_range: 20000-65536}\n",
+		"no dash":               "firewall: {backend: ufw, max_range: 20000}\n",
+		"text":                  "firewall: {backend: ufw, max_range: a-b}\n",
+		"an unknown key":        "firewall: {backend: ufw, ports: [22]}\n",
+		"a range with a space":  "firewall: {backend: ufw, max_range: \"20000 - 29999\"}\n",
+		"a range with a prefix": "firewall: {backend: ufw, max_range: \"-1-100\"}\n",
+	} {
+		var g config.Gateway
+		if err := config.Parse([]byte(agent+y), &g); err == nil {
+			t.Errorf("%s: %q was accepted", name, y)
+		}
+	}
+	var c config.Connector
+	if err := config.Parse([]byte(agent+"firewall: {backend: ufw}\n"), &c); err == nil {
+		t.Error("a connector has no firewall section")
+	}
+}

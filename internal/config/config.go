@@ -301,8 +301,10 @@ func (p Passthrough) validate() error {
 
 // Gateway is /etc/rpmgr/gateway.yaml.
 type Gateway struct {
-	Agent  `yaml:",inline"`
-	Listen struct {
+	Agent `yaml:",inline"`
+	// Firewall is the opt-in management of the host's ufw for the port pools (D152).
+	Firewall Firewall `yaml:"firewall"`
+	Listen   struct {
 		TCP       string  `yaml:"tcp"`
 		UDP       string  `yaml:"udp"`
 		TunnelUDP string  `yaml:"tunnel_udp"` // "": tunnels share listen.udp
@@ -313,6 +315,7 @@ type Gateway struct {
 
 func (g *Gateway) defaults() {
 	g.Agent.defaults()
+	setDefault(&g.Firewall.Dir, filepath.Join(g.StateDir, "firewall"))
 	setDefault(&g.Listen.TCP, ":443")
 	setDefault(&g.Listen.UDP, ":443")
 	setDefaultPtr(&g.Listen.HTTP, ":80")
@@ -320,7 +323,7 @@ func (g *Gateway) defaults() {
 }
 
 func (g *Gateway) validate() error {
-	return errors.Join(g.Agent.validate(), g.Controller.Passthrough.validate(), checkAddr("listen.tcp", g.Listen.TCP, false),
+	return errors.Join(g.Agent.validate(), g.Controller.Passthrough.validate(), g.Firewall.Validate(), checkAddr("listen.tcp", g.Listen.TCP, false),
 		checkAddr("listen.udp", g.Listen.UDP, false), checkAddr("listen.tunnel_udp", g.Listen.TunnelUDP, true),
 		checkAddr("listen.http", *g.Listen.HTTP, true), checkAdmin(g.Listen.Admin))
 }
@@ -378,6 +381,7 @@ type AllInOne struct {
 	} `yaml:"tls"`
 	StateDir      string        `yaml:"state_dir"`
 	PolicyFile    string        `yaml:"policy_file"`
+	Firewall      Firewall      `yaml:"firewall"`
 	Log           Log           `yaml:"log"`
 	Tracing       Tracing       `yaml:"tracing"`
 	RevocationLog RevocationLog `yaml:"revocation_log"`
@@ -427,6 +431,9 @@ func (a *AllInOne) Gateway() Gateway {
 	g.IdentityDir = filepath.Join(g.StateDir, "identity")
 	g.Listen.TCP, g.Listen.UDP, g.Listen.TunnelUDP, g.Listen.Admin = a.Listen.TCP, a.Listen.UDP, a.Listen.TunnelUDP, a.Listen.Admin
 	g.Listen.HTTP = a.Listen.HTTP
+	// The helper's units watch <state_dir>/firewall, not the gateway's own state directory.
+	g.Firewall = a.Firewall
+	g.Firewall.Dir = filepath.Join(a.StateDir, "firewall")
 	return g
 }
 
@@ -530,4 +537,48 @@ func checkLog(l Log) error {
 		return fmt.Errorf("log: %w", err)
 	}
 	return nil
+}
+
+// Firewall is the boot-file section that hands the host's ufw to rpmgr for the port pools
+// (docs/10-operations.md, "Host firewall helper"; D152). It is off unless Backend is "ufw".
+type Firewall struct {
+	// Backend is "" (off) or "ufw".
+	Backend string `yaml:"backend"`
+	// MaxRange is the largest range the helper opens for pools, "<from>-<to>"; empty allows no
+	// pool, only the listeners.
+	MaxRange string `yaml:"max_range"`
+	// Dir is the directory of the desired file, <state_dir>/firewall; not a key of the file.
+	Dir string `yaml:"-"`
+}
+
+// On reports whether the host's firewall is handed to rpmgr.
+func (f Firewall) On() bool { return f.Backend == "ufw" }
+
+// Range returns the maximum range, ok false when none is set.
+func (f Firewall) Range() (from, to int, ok bool) {
+	if f.MaxRange == "" {
+		return 0, 0, false
+	}
+	a, b, found := strings.Cut(f.MaxRange, "-")
+	from, err1 := strconv.Atoi(a)
+	to, err2 := strconv.Atoi(b)
+	if !found || err1 != nil || err2 != nil || !portRe.MatchString(a) || !portRe.MatchString(b) || from < 1 || to > 65535 || from > to {
+		return 0, 0, false
+	}
+	return from, to, true
+}
+
+// Validate checks the section.
+func (f Firewall) Validate() error {
+	var errs []error
+	if f.Backend != "" && f.Backend != "ufw" {
+		errs = append(errs, fmt.Errorf("firewall.backend %q: want ufw, or leave it out", f.Backend))
+	}
+	if _, _, ok := f.Range(); f.MaxRange != "" && !ok {
+		errs = append(errs, fmt.Errorf("firewall.max_range %q: want <from>-<to> within 1 to 65535", f.MaxRange))
+	}
+	if f.MaxRange != "" && f.Backend == "" {
+		errs = append(errs, errors.New("firewall.max_range needs firewall.backend ufw"))
+	}
+	return errors.Join(errs...)
 }

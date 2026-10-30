@@ -232,6 +232,16 @@ func (d Desired) check() error {
 	return nil
 }
 
+// ParseDesired parses a desired file exactly as the helper does: one JSON value, no unknown field,
+// ports and protocols checked. The gateway's tests use it to check what the gateway writes.
+func ParseDesired(raw []byte) (Desired, error) {
+	var d Desired
+	if err := parseStrict(raw, &d); err != nil {
+		return d, err
+	}
+	return d, d.check()
+}
+
 // parseStrict decodes exactly one JSON value, refusing unknown fields and anything after it.
 func parseStrict(raw []byte, v any) error {
 	dec := json.NewDecoder(strings.NewReader(string(raw)))

@@ -103,7 +103,7 @@ TestAuditSink_BacklogNeverBlocksAppend	done	5.14	#654	audit sinks (D141); syslog
 TestAuditSink_RewriteDetectedAgainstSink	pending	5.16	#656	audit sinks (D141)
 TestHandoff_OnlyVerifiedBinaryGetsSockets	done	17.3	#881	internal/handoff; the roles use it from 17.10 on
 TestHandoff_UnexpectedDescriptorsRefused	done	17.3	#881	internal/handoff; the roles use it from 17.10 on
-TestFirewall_OnlyBoundedPortsOpened	done	-	#968	internal/firewall; the gateway writes the desired file from slice 3 on
+TestFirewall_OnlyBoundedPortsOpened	done	-	#968	internal/firewall
 TestFirewall_BoundsFileMustBeRootOwned	done	-	#968	internal/firewall
 TestFirewall_OnlyOwnRulesTouched	done	-	#968	internal/firewall
-TestFirewall_GatewayWritesRangesOnly	pending	D152.3	#968	the gateway's desired file (slice 3)
+TestFirewall_GatewayWritesRangesOnly	done	-	#968	internal/gateway

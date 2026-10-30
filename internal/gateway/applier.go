@@ -216,6 +216,7 @@ type Served struct {
 	Certificates *Certificates
 	Pages        *Pages
 	WSS          *WSSHostname
+	Firewall     *Firewall
 	Sessions     *Sessions
 	// DrainPeriod is how long a disabled gateway keeps its streams; 0 is DrainPeriod.
 	DrainPeriod time.Duration
@@ -472,6 +473,14 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 				bad(id, "WSS hostname %q is not normalised", res.GetGatewayWss().GetHostname())
 			}
 		case res.GetGatewayDrain() != nil:
+		case res.GetGatewayPortPool() != nil:
+			p := res.GetGatewayPortPool()
+			if p.GetProtocol() != "tcp" && p.GetProtocol() != "udp" {
+				bad(id, "port pool protocol %q is neither tcp nor udp", p.GetProtocol())
+			}
+			if p.GetPortFrom() < 1 || p.GetPortTo() > 65535 || p.GetPortFrom() > p.GetPortTo() {
+				bad(id, "port pool %d to %d is not within 1 to 65535 in order", p.GetPortFrom(), p.GetPortTo())
+			}
 		case res.GetGatewayPage() != nil:
 			p := res.GetGatewayPage()
 			kind, ok := pageKinds[p.GetKind()]
@@ -530,6 +539,7 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		tokens      = map[string]DomainToken{}
 		disabled    bool
 		wss         string
+		pools       []*agentv1.GatewayPortPool
 	)
 	for _, res := range snap.GetResources() {
 		access, _ := AccessOf(accessOf(res)) // Validate refused any that does not parse
@@ -618,6 +628,9 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 		case res.GetGatewayDrain() != nil:
 			disabled = true
 			continue
+		case res.GetGatewayPortPool() != nil:
+			pools = append(pools, res.GetGatewayPortPool())
+			continue // serves no route of its own
 		case res.GetGatewayPassthroughRoute() != nil:
 			p := res.GetGatewayPassthroughRoute()
 			passthrough = append(passthrough, PassthroughRoute{ID: res.GetId(), Hostnames: p.GetHostnames(), Access: access, Limit: limit})
@@ -675,6 +688,9 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 	}
 	if s.WSS != nil {
 		s.WSS.Set(wss)
+	}
+	if s.Firewall != nil {
+		s.Firewall.Set(pools)
 	}
 	if s.HTTP != nil {
 		s.HTTP.Apply(httpRoutes)
