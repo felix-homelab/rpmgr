@@ -1250,7 +1250,10 @@ type LogLine struct {
 	// How many lines the agent dropped before this one, as the viewer read too slowly.
 	DroppedBefore uint32 `protobuf:"varint,4,opt,name=dropped_before,json=droppedBefore,proto3" json:"dropped_before,omitempty"`
 	// The line was cut at the limit of docs/03.
-	Truncated     bool `protobuf:"varint,5,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	Truncated bool `protobuf:"varint,5,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	// The line is one the agent kept from before the log opened, not a new one (D154); the first
+	// such line carries in dropped_before how many older lines the agent no longer held.
+	Backlog       bool `protobuf:"varint,6,opt,name=backlog,proto3" json:"backlog,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1316,6 +1319,13 @@ func (x *LogLine) GetDroppedBefore() uint32 {
 func (x *LogLine) GetTruncated() bool {
 	if x != nil {
 		return x.Truncated
+	}
+	return false
+}
+
+func (x *LogLine) GetBacklog() bool {
+	if x != nil {
+		return x.Backlog
 	}
 	return false
 }
@@ -2983,13 +2993,14 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\x05frame\":\n" +
 	"\vAttachHello\x12\x13\n" +
 	"\x05op_id\x18\x01 \x01(\tR\x04opId\x12\x16\n" +
-	"\x06ticket\x18\x02 \x01(\fR\x06ticket\"\xa8\x01\n" +
+	"\x06ticket\x18\x02 \x01(\fR\x06ticket\"\xc2\x01\n" +
 	"\aLogLine\x12.\n" +
 	"\x04time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x14\n" +
 	"\x05level\x18\x02 \x01(\tR\x05level\x12\x12\n" +
 	"\x04text\x18\x03 \x01(\tR\x04text\x12%\n" +
 	"\x0edropped_before\x18\x04 \x01(\rR\rdroppedBefore\x12\x1c\n" +
-	"\ttruncated\x18\x05 \x01(\bR\ttruncated\"#\n" +
+	"\ttruncated\x18\x05 \x01(\bR\ttruncated\x12\x18\n" +
+	"\abacklog\x18\x06 \x01(\bR\abacklog\"#\n" +
 	"\tAttachEnd\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\"\xd3\x02\n" +
 	"\x05Hello\x12;\n" +

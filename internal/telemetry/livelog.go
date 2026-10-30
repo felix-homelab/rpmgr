@@ -22,6 +22,10 @@ import (
 const (
 	LiveLogBuffer = 256
 	LiveLogLine   = 8 << 10
+	// LiveLogBacklogLines and LiveLogBacklogBytes bound the backlog: the most recent lines the agent
+	// keeps for the live logs that open later (D154), the oldest dropped past either bound.
+	LiveLogBacklogLines = 200
+	LiveLogBacklogBytes = 64 << 10
 )
 
 // LiveLog is an agent's log with live-log subscriptions (docs/03-connections.md, "Control
@@ -41,6 +45,10 @@ type liveState struct {
 	any    bool       // there are subscriptions
 	textMu sync.Mutex
 	buf    bytes.Buffer // the text handler writes each line here, under textMu
+	// The backlog (D154): the latest redacted lines, whether or not a log is open, under mu.
+	backlog      []Line
+	backlogBytes int
+	evicted      int // lines the backlog dropped since the agent started
 }
 
 // Line is a live-log line: redacted, cut at LiveLogLine bytes.
@@ -60,6 +68,10 @@ type Subscription struct {
 	mu      sync.Mutex
 	lines   []Line
 	dropped int
+	// The backlog at the time of subscribing, from the level and filter up, and how many older
+	// lines the agent no longer held; taken once.
+	backlog        []Line
+	backlogDropped int
 }
 
 // NewLiveLogger is NewLogger with live-log subscriptions.
@@ -92,6 +104,12 @@ func (l *LiveLog) Subscribe(level slog.Level, filter string, debug bool) *Subscr
 	}
 	s := &Subscription{state: l.state, level: level, filter: filter, ready: make(chan struct{}, 1)}
 	l.state.mu.Lock()
+	for _, b := range l.state.backlog {
+		if b.Level >= level && (filter == "" || strings.Contains(b.Text, filter)) {
+			s.backlog = append(s.backlog, b)
+		}
+	}
+	s.backlogDropped = l.state.evicted
 	l.state.subs[s] = struct{}{}
 	l.state.updateLocked()
 	l.state.mu.Unlock()
@@ -108,6 +126,16 @@ func (s *Subscription) Close() {
 
 // Ready is signalled when lines wait to be taken.
 func (s *Subscription) Ready() <-chan struct{} { return s.ready }
+
+// Backlog returns the lines the agent kept from before the subscription, oldest first, that pass
+// its level and filter, and how many older lines the agent no longer held; it returns them once.
+func (s *Subscription) Backlog() ([]Line, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	lines, dropped := s.backlog, s.backlogDropped
+	s.backlog, s.backlogDropped = nil, 0
+	return lines, dropped
+}
 
 // Take returns the waiting lines, and how many were dropped before the first of them since the
 // last Take.
@@ -134,6 +162,23 @@ func (s *Subscription) add(l Line) {
 	select {
 	case s.ready <- struct{}{}:
 	default:
+	}
+}
+
+// keepLocked adds a line to the backlog, dropping the oldest past the bounds. Under mu.
+func (st *liveState) keepLocked(l Line) {
+	st.backlog = append(st.backlog, l)
+	st.backlogBytes += len(l.Text)
+	n := 0
+	for n < len(st.backlog)-1 && (len(st.backlog)-n > LiveLogBacklogLines || st.backlogBytes > LiveLogBacklogBytes) {
+		st.backlogBytes -= len(st.backlog[n].Text)
+		n++
+	}
+	if n > 0 {
+		kept := copy(st.backlog, st.backlog[n:])
+		clear(st.backlog[kept:])
+		st.backlog = st.backlog[:kept]
+		st.evicted += n
 	}
 }
 
@@ -170,9 +215,6 @@ func (h *liveHandler) Handle(ctx context.Context, r slog.Record) error {
 	if r.Level >= h.level {
 		err = h.base.Handle(ctx, r)
 	}
-	if !h.wanted(r.Level) {
-		return err
-	}
 	h.state.textMu.Lock()
 	h.state.buf.Reset()
 	_ = h.text.Handle(ctx, r)
@@ -183,6 +225,7 @@ func (h *liveHandler) Handle(ctx context.Context, r slog.Record) error {
 		line.Text, line.Truncated = strings.ToValidUTF8(line.Text[:LiveLogLine], ""), true
 	}
 	h.state.mu.Lock()
+	h.state.keepLocked(line)
 	subs := make([]*Subscription, 0, len(h.state.subs))
 	for s := range h.state.subs {
 		if r.Level >= s.level {
