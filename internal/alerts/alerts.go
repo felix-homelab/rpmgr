@@ -21,7 +21,7 @@ import (
 // keepalive and backoff").
 const Every = 30 * time.Second
 
-// The kinds of alert the controller evaluates (D142), the names alert_types will choose from.
+// The kinds of alert the controller evaluates (D142), the names alert_types chooses the e-mails from.
 const (
 	AgentOffline         = "agent_offline"
 	ConfigNotApplied     = "config_not_applied"
@@ -90,17 +90,6 @@ func keyOf(a *ent.Alert) string {
 // Unknown stays as it is. It returns the
 // events of the alerts that fired and resolved.
 func Apply(ctx context.Context, tx *ent.Tx, now time.Time, obs []Observation) ([]events.Event, error) {
-	return ApplyChosen(ctx, tx, now, obs, nil)
-}
-
-// Chosen reports whether org gets alerts of kind, as the org setting alert_types chooses; an
-// instance alert (empty org) is always chosen.
-type Chosen func(ctx context.Context, org, kind string) (bool, error)
-
-// ApplyChosen is Apply for an instance where orgs choose their alert types: the alerts of a kind
-// the org did not choose move through their states as before, but write no event, so no webhook
-// and no e-mail hears of them. A nil chosen chooses everything.
-func ApplyChosen(ctx context.Context, tx *ent.Tx, now time.Time, obs []Observation, chosen Chosen) ([]events.Event, error) {
 	open, err := tx.Alert.Query().Where(alert.StateIn(alert.StatePending, alert.StateFiring)).All(ctx)
 	if err != nil {
 		return nil, err
@@ -139,7 +128,7 @@ func ApplyChosen(ctx context.Context, tx *ent.Tx, now time.Time, obs []Observati
 			if err := tx.Alert.UpdateOne(a).SetState(alert.StateFiring).SetFiredAt(now).Exec(ctx); err != nil {
 				return nil, err
 			}
-			if err := emit(ctx, tx, a, "alert.fire", chosen, &out); err != nil {
+			if err := emitEvent(ctx, tx, a, "alert.fire", &out); err != nil {
 				return nil, err
 			}
 		}
@@ -157,22 +146,16 @@ func ApplyChosen(ctx context.Context, tx *ent.Tx, now time.Time, obs []Observati
 		if err := tx.Alert.UpdateOne(a).SetState(alert.StateResolved).SetResolvedAt(now).Exec(ctx); err != nil {
 			return nil, err
 		}
-		if err := emit(ctx, tx, a, "alert.resolve", chosen, &out); err != nil {
+		if err := emitEvent(ctx, tx, a, "alert.resolve", &out); err != nil {
 			return nil, err
 		}
 	}
 	return out, nil
 }
 
-// emit writes the event of a's change and adds it to out, unless the alert's org did not choose its
-// kind.
-func emit(ctx context.Context, tx *ent.Tx, a *ent.Alert, typ string, chosen Chosen, out *[]events.Event) error {
-	if chosen != nil && a.OrgID != nil {
-		ok, err := chosen(ctx, *a.OrgID, a.Kind)
-		if err != nil || !ok {
-			return err
-		}
-	}
+// emitEvent writes the event of a's change and adds it to out. Every alert writes its events, whatever
+// the org's alert_types: that setting chooses the e-mails only (D139, D142).
+func emitEvent(ctx context.Context, tx *ent.Tx, a *ent.Alert, typ string, out *[]events.Event) error {
 	ch, err := event(ctx, tx, a, typ)
 	if err != nil {
 		return err

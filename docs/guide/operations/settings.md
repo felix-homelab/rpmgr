@@ -61,7 +61,7 @@ The API's methods are in [settings.proto](../../../proto/rpmgr/v1/settings.proto
 | **Operators may enroll and revoke connectors** | `operators_may_enroll` | Gives Operators the permission to enroll, change and decommission connectors ([Members and roles](../accounts/members-and-roles.md)) |
 | **Gateway group preselected for new routes** | `default_gateway_group_id` | The group the route form offers first; **None** offers none. The command line takes the group's name or ID |
 | Command line and API only | `alert_email` | On by default. Mails an alert's firing and resolving to the organisation's Owners and Admins when the instance has a mail relay. Turning it off does not stop the mail about a webhook endpoint that was disabled for failing |
-| Command line and API only | `alert_types` | The kinds of alert the organisation gets, as events and e-mails, by name such as `agent_offline,clock_skew`; empty means all. The names are listed in [10](../../10-operations.md#suggested-alerts) |
+| Command line and API only | `alert_types` | The kinds of alert the organisation is e-mailed about, by name such as `agent_offline,clock_skew`; empty means all. Webhooks still get every alert event. The names are listed in [10](../../10-operations.md#suggested-alerts) |
 
 Before you turn on **Every member must sign in with a second factor**, set up your own
 authenticator and sign in with it, and make new API tokens from that session: from then on, a token

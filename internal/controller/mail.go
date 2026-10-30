@@ -34,6 +34,9 @@ const (
 	MailPerPass   = 20
 )
 
+// mailEnqueueMax is how many mail jobs one pass makes, and how many events it reads at a time.
+const mailEnqueueMax = 500
+
 // mailTypes are the events that are e-mailed: an alert firing and resolving, and a webhook
 // endpoint disabled for failing (D139, D143).
 var mailTypes = []string{"alert.fire", "alert.resolve", "webhook.disable"}
@@ -88,7 +91,9 @@ func runMail(ctx context.Context, o MailOptions, l lease.Lease) error {
 		for _, j := range due {
 			r := mailResult{job: j, state: mailjob.StateSkipped, done: j.Done, attempts: j.Attempts}
 			if configured {
-				r = sendMail(ctx, o, j, now)
+				if r, err = sendMail(ctx, o, l, j, now); err != nil {
+					return err
+				}
 			}
 			results = append(results, r)
 		}
@@ -115,23 +120,30 @@ func runMail(ctx context.Context, o MailOptions, l lease.Lease) error {
 // unique event ID keeps a lease takeover from making two.
 func enqueueMails(ctx context.Context, o MailOptions, l lease.Lease, now time.Time) error {
 	c := o.DB.ReadClient()
-	evs, err := c.Event.Query().Where(event.TypeIn(mailTypes...), event.TsGTE(now.Add(-MailGiveUp))).
-		Order(ent.Asc(event.FieldTs)).Limit(500).All(ctx)
-	if err != nil || len(evs) == 0 {
-		return err
-	}
-	ids := make([]string, len(evs))
-	for i, e := range evs {
-		ids[i] = e.ID
-	}
-	have, err := c.MailJob.Query().Where(mailjob.EventIDIn(ids...)).Select(mailjob.FieldEventID).Strings(ctx)
-	if err != nil {
-		return err
-	}
+	// Newest first, a page at a time, until enough events without a job are found, so a backlog of
+	// events that have jobs never hides a newer one.
 	var fresh []*ent.Event
-	for _, e := range evs {
-		if !slices.Contains(have, e.ID) {
-			fresh = append(fresh, e)
+	for off := 0; len(fresh) < mailEnqueueMax; off += mailEnqueueMax {
+		evs, err := c.Event.Query().Where(event.TypeIn(mailTypes...), event.TsGTE(now.Add(-MailGiveUp))).
+			Order(ent.Desc(event.FieldTs), ent.Desc(event.FieldID)).Offset(off).Limit(mailEnqueueMax).All(ctx)
+		if err != nil {
+			return err
+		}
+		ids := make([]string, len(evs))
+		for i, e := range evs {
+			ids[i] = e.ID
+		}
+		have, err := c.MailJob.Query().Where(mailjob.EventIDIn(ids...)).Select(mailjob.FieldEventID).Strings(ctx)
+		if err != nil {
+			return err
+		}
+		for _, e := range evs {
+			if !slices.Contains(have, e.ID) && len(fresh) < mailEnqueueMax {
+				fresh = append(fresh, e)
+			}
+		}
+		if len(evs) < mailEnqueueMax {
+			break
 		}
 	}
 	if len(fresh) == 0 {
@@ -156,9 +168,9 @@ func enqueueMails(ctx context.Context, o MailOptions, l lease.Lease, now time.Ti
 
 // sendMail sends j's mail to the recipients that did not get it yet. A mail that is no longer
 // wanted (the org turned alert e-mails off, the event or its recipients are gone) is skipped.
-func sendMail(ctx context.Context, o MailOptions, j *ent.MailJob, now time.Time) mailResult {
+func sendMail(ctx context.Context, o MailOptions, l lease.Lease, j *ent.MailJob, now time.Time) (mailResult, error) {
 	r := mailResult{job: j, state: mailjob.StateSkipped, done: j.Done, attempts: j.Attempts}
-	fail := func(err error) mailResult {
+	fail := func(err error) (mailResult, error) {
 		r.attempts++
 		r.state, r.next = mailjob.StatePending, now.Add(mailBackoff(r.attempts))
 		if now.Sub(j.CreatedAt) >= MailGiveUp {
@@ -167,12 +179,12 @@ func sendMail(ctx context.Context, o MailOptions, j *ent.MailJob, now time.Time)
 		} else {
 			o.Logger.Info("an alert e-mail failed, will retry", "event", j.EventID, "attempts", r.attempts, "error", err)
 		}
-		return r
+		return r, nil
 	}
 	c := o.DB.ReadClient()
 	e, err := c.Event.Get(ctx, j.EventID)
 	if ent.IsNotFound(err) {
-		return r
+		return r, nil
 	} else if err != nil {
 		return fail(err)
 	}
@@ -188,7 +200,24 @@ func sendMail(ctx context.Context, o MailOptions, j *ent.MailJob, now time.Time)
 			return fail(err)
 		}
 		if !s.GetAlertEmail() {
-			return r
+			return r, nil
+		}
+		// alert_types chooses the alerts that are mailed; the events are written for all.
+		kind, _, _ := strings.Cut(e.Summary, ":")
+		if t := s.GetAlertTypes(); len(t) > 0 && !slices.Contains(t, kind) {
+			return r, nil
+		}
+		if e.Type == "alert.resolve" {
+			// A resolving is mailed only after the mail of its firing, never alone.
+			switch st, err := firingMailState(ctx, c, e, kind); {
+			case err != nil:
+				return fail(err)
+			case st == mailjob.StatePending:
+				r.state, r.next = mailjob.StatePending, now.Add(MailEvery)
+				return r, nil
+			case st != "" && st != mailjob.StateSent:
+				return r, nil
+			}
 		}
 	}
 	to, err := mailRecipients(ctx, c, org)
@@ -196,7 +225,7 @@ func sendMail(ctx context.Context, o MailOptions, j *ent.MailJob, now time.Time)
 		return fail(err)
 	}
 	if len(to) == 0 {
-		return r
+		return r, nil
 	}
 	orgName := ""
 	if org != "" {
@@ -210,18 +239,63 @@ func sendMail(ctx context.Context, o MailOptions, j *ent.MailJob, now time.Time)
 		if slices.Contains(r.done, addr) {
 			continue
 		}
+		// A replica that lost the lease sends nothing more, and what was sent is recorded at once, so
+		// a takeover does not send it again.
+		if err := fenced(ctx, o, l, nil); err != nil {
+			return r, err
+		}
 		msg.To = addr
 		if err := o.Mailer.Send(ctx, msg); err != nil {
 			firstErr = err
 			continue
 		}
 		r.done = append(r.done, addr)
+		if err := fenced(ctx, o, l, func(tx *ent.Tx) error { return tx.MailJob.UpdateOne(j).SetDone(r.done).Exec(ctx) }); err != nil {
+			return r, err
+		}
 	}
 	if firstErr != nil {
 		return fail(firstErr)
 	}
 	r.state = mailjob.StateSent
-	return r
+	return r, nil
+}
+
+// fenced runs f, if any, in a transaction that checks the lease first.
+func fenced(ctx context.Context, o MailOptions, l lease.Lease, f func(tx *ent.Tx) error) error {
+	return store.WriteTx(ctx, o.DB, func(tx *ent.Tx) error {
+		if err := o.Leases.Fence(ctx, tx, l); err != nil {
+			return err
+		}
+		if f == nil {
+			return nil
+		}
+		return f(tx)
+	})
+}
+
+// firingMailState is the state of the mail job of the firing that resolve e ends: the newest
+// alert.fire event of the same subject and kind before it. It is empty when there is none or its
+// job is gone.
+func firingMailState(ctx context.Context, c *ent.Client, e *ent.Event, kind string) (mailjob.State, error) {
+	q := c.Event.Query().Where(event.TypeEQ("alert.fire"), event.SubjectTypeEQ(e.SubjectType), event.SubjectID(e.SubjectID),
+		event.SummaryHasPrefix(kind+":"), event.TsLTE(e.Ts))
+	if e.OrgID != nil {
+		q = q.Where(event.OrgID(*e.OrgID))
+	}
+	fire, err := q.Order(ent.Desc(event.FieldTs), ent.Desc(event.FieldID)).First(ctx)
+	if ent.IsNotFound(err) {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+	j, err := c.MailJob.Query().Where(mailjob.EventID(fire.ID)).Only(ctx)
+	if ent.IsNotFound(err) {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+	return j.State, nil
 }
 
 // mailBackoff is the delay after the n-th failed attempt: MailRetryFrom, doubling to MailRetryCap.
