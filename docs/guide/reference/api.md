@@ -519,6 +519,7 @@ once, in the answer that makes it.
 | `StatusService` | [status.proto](../../../proto/rpmgr/v1/status.proto) | Apply status of revisions, the event stream |
 | `MetricsService` | [metrics.proto](../../../proto/rpmgr/v1/metrics.proto) | Traffic of a route, and the org's overview |
 | `AuditService` | [audit.proto](../../../proto/rpmgr/v1/audit.proto) | The audit log, and verifying its chains |
+| `AuditSinkService` | [audit_sink.proto](../../../proto/rpmgr/v1/audit_sink.proto) | The external sinks of the audit log, for the Instance Admin |
 | `SettingsService` | [settings.proto](../../../proto/rpmgr/v1/settings.proto) | Instance and organisation settings, the mail relay's password |
 | `PkiService` | [pki.proto](../../../proto/rpmgr/v1/pki.proto) | The internal CA's keys and the intermediate's rotation |
 | `WebhookService` | [webhook.proto](../../../proto/rpmgr/v1/webhook.proto) | An organisation's webhook endpoints, their secrets and deliveries |

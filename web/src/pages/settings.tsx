@@ -67,6 +67,7 @@ function Tabs() {
       <Link to="/settings" activeOptions={{ exact: true }} className={tab}>{t("settings.title")}</Link>
       <Link to="/settings/pki" className={tab}>{t("settings.pki")}</Link>
       <Link to="/settings/updates" className={tab}>{t("settings.updates")}</Link>
+      <Link to="/settings/webhooks" className={tab}>{t("webhooks.title")}</Link>
       <Link to="/settings/users" className={tab}>{t("users.title")}</Link>
     </nav>
   );
@@ -201,11 +202,21 @@ function InstanceForm({ title, sections, fields, settings, etag, onDone }: {
   const update = useMutation(SettingsService.method.updateInstanceSettings);
   const queryClient = useQueryClient();
   const [values, setValues] = useState(() => Object.fromEntries(fields.map((f) => [f.key, f.get(settings)])));
+  const [problems, setProblems] = useState<Record<string, string>>({});
   async function save(e: FormEvent) {
     e.preventDefault();
     const bad = fields.filter((f) => f.kind === "days" && !/^\d*$/.test((values[f.key] ?? "").trim()));
     if (bad.length > 0) {
       onDone({ tone: "error", text: t("settings.days", { fields: bad.map((f) => t(`settings.fields.${f.key}`)).join(", ") }) });
+      return;
+    }
+    const invalid = Object.fromEntries(fields.flatMap((f) => {
+      const p = f.validate?.(values[f.key] ?? "", t);
+      return p ? [[f.key, p]] : [];
+    }));
+    setProblems(invalid);
+    if (Object.keys(invalid).length > 0) {
+      onDone({ tone: "error", text: t("settings.invalid") });
       return;
     }
     onDone(undefined);
@@ -230,7 +241,7 @@ function InstanceForm({ title, sections, fields, settings, etag, onDone }: {
           <fieldset key={sec} className="grid content-start gap-4 border-border not-first:border-t not-first:pt-5 xl:nth-2:border-t-0 xl:nth-2:pt-0">
             {sections.length > 1 && <legend className="float-left w-full text-sm font-semibold">{t(`settings.sections.${sec}`)}</legend>}
             {fields.filter((f) => f.section === sec).map((f) => (
-              <SettingInput key={f.key} field={f} required={f.required?.(values) ?? false} value={values[f.key] ?? ""} onChange={(v) => setValues({ ...values, [f.key]: v })} />
+              <SettingInput key={f.key} field={f} error={problems[f.key]} required={f.required?.(values) ?? false} value={values[f.key] ?? ""} onChange={(v) => setValues({ ...values, [f.key]: v })} />
             ))}
           </fieldset>
         ))}
@@ -240,7 +251,9 @@ function InstanceForm({ title, sections, fields, settings, etag, onDone }: {
   );
 }
 
-function SettingInput({ field: f, required, value, onChange }: { field: SettingField; required: boolean; value: string; onChange: (v: string) => void }) {
+function SettingInput({ field: f, required, error, value, onChange }: {
+  field: SettingField; required: boolean; error?: string; value: string; onChange: (v: string) => void;
+}) {
   const { t, i18n } = useTranslation();
   const id = useId();
   const label = t(`settings.fields.${f.key}`);
@@ -256,7 +269,7 @@ function SettingInput({ field: f, required, value, onChange }: { field: SettingF
   // false) and returns the key, so the hint is asked for only when its key exists (U11).
   const hintKey = `settings.hints.${f.key}`;
   const hint = i18n.exists(hintKey) ? t(hintKey) : "";
-  const described = hint ? `${id}-hint` : undefined;
+  const described = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(" ") || undefined;
   return (
     <div className="grid gap-1.5">
       <label htmlFor={id} className={labelClass(required)}>{label}</label>
@@ -265,11 +278,12 @@ function SettingInput({ field: f, required, value, onChange }: { field: SettingF
           {f.options?.map(([v, k]) => <option key={v} value={String(v)}>{t(`settings.options.${f.key}.${k}`)}</option>)}
         </Select>
       ) : f.kind === "lines" ? (
-        <Textarea id={id} required={required} aria-describedby={described} rows={2} value={value} onChange={(e) => onChange(e.target.value)} />
+        <Textarea id={id} required={required} aria-describedby={described} aria-invalid={error ? true : undefined} rows={f.key === "webhookPrivateRanges" ? 4 : 2} value={value} onChange={(e) => onChange(e.target.value)} />
       ) : (
         <Input id={id} required={required} aria-describedby={described} inputMode={f.kind === "days" ? "numeric" : undefined} value={value} onChange={(e) => onChange(e.target.value)} />
       )}
-      {hint && <p id={described} className="text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p id={`${id}-hint`} className="text-xs text-muted-foreground">{hint}</p>}
+      {error && <p id={`${id}-error`} role="alert" className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

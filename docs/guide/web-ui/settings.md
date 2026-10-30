@@ -9,9 +9,9 @@ default, is [Settings](../operations/settings.md).
 
 ![The settings page as the Instance Admin sees it](../images/web/settings.png)
 
-The Instance Admin moves between four pages with the tabs under the title: **Settings**, **PKI**,
-**Updates** and **Users**. Other members see no tabs; **PKI**, **Updates** and **Users** tell them
-that only the Instance Admin sees and changes these.
+The Instance Admin moves between five pages with the tabs under the title: **Settings**, **PKI**,
+**Updates**, **Webhooks** and **Users**. Other members see no tabs; **PKI**, **Updates**,
+**Webhooks** and **Users** tell them that only the Instance Admin sees and changes these.
 
 Each page saves only its own fields, with **Save**, and says `Saved.` If the settings changed since
 the page loaded them, it says so, shows them as they are now and asks you to try again.
@@ -56,6 +56,23 @@ the controller then sends no mail, so invitations and reset links are passed on 
 **Relay password**, below the sections, is write-only: the field says `set; type to replace` or
 `not set`. Type a password and **Save** to set it, or press **Remove the password** with the field
 empty to remove it.
+
+## Webhooks
+
+Shown to the Instance Admin only.
+
+![The Webhooks tab with an instance endpoint and its secret above the private ranges](../images/web/settings-webhooks.png)
+
+- The **Instance webhooks** card lists the endpoints that receive the instance's events, and makes,
+  edits, rotates, tests and deletes them like [Webhooks](webhooks.md) does for an organisation. The
+  signing secret is shown once.
+- **Private networks admitted for organisations' webhook receivers** is a list of ranges, one per
+  line, such as `10.0.0.0/8` or `fd00::/8`. An organisation's endpoint may name a receiver in one of
+  them; with an empty list it may name none. Loopback, link-local and cloud metadata addresses stay
+  blocked whatever is listed. **Save** checks every line first and names the ones that are wrong:
+  an entry that is no address with a prefix length, one with bits set beyond its prefix (the
+  message gives the network address to write), one listed twice, and a list of more than the
+  limit in [04](../../04-security.md#webhooks-and-the-egress-guard-phase-2).
 
 ## PKI
 

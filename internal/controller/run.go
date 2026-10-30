@@ -405,6 +405,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		}); err != nil {
 		return err
 	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_audit_sink_proto.Services().ByName("AuditSinkService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewAuditSinkServiceHandler(&apisvc.AuditSinks{DB: db, API: apiServer, Sys: sys, Sealer: sealer,
+				Sender: &webhook.Sender{Proxy: proxy, Now: o.Now}, Now: o.Now, Logger: o.Logger}, opts...)
+		}); err != nil {
+		return err
+	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_policy_proto.Services().ByName("PolicyService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewPolicyServiceHandler(&apisvc.Policies{DB: db, API: apiServer, Sys: sys}, opts...)

@@ -1619,7 +1619,8 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
   the entries too. Each keeps its own cursor per chain, advanced only after the sink acknowledged a
   batch, so shipping is at least once and a sink that was down catches up from its cursor. An
   append never waits for a sink. A sink has a backlog metric and an alert
-  ([10](10-operations.md#suggested-alerts)); the schedule is in
+  ([10](10-operations.md#suggested-alerts)), both counted from the audit tables and the cursors, so
+  that the backlog ages while no replica holds the job's lease; the schedule is in
   [03](03-connections.md#timeouts-keepalive-and-backoff).
   - **Syslog**: RFC 5425 framing over TLS only, never UDP or plain TCP; the server is verified
     against the sink's CA bundle. Each message is an RFC 5424 record holding the checkpoint or entry
@@ -1631,6 +1632,12 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
     entry larger than a delivery may be ([03](03-connections.md#timeouts-keepalive-and-backoff))
     is shipped without its `diff` and marked `"truncated": true`, so one entry never holds a
     sink's cursor.
+    A receiver's answer of 4xx other than 408 and 429 is a permanent refusal: sending the same item
+    again fails the same way, so the sink's cursor on that chain waits at the item until the
+    receiver accepts it, and the sink's status says so at once with the code. It is retried at the
+    slowest pace of [03](03-connections.md#timeouts-keepalive-and-backoff), where 408, 429 and 5xx
+    back off from the shortest. The sink's secret is write-only: set through the API after a step-up,
+    sealed under the KEK, never returned.
   - **Object storage** (S3-compatible, the client of the revocation log): each checkpoint or batch
     is an object written with `If-None-Match: *` into a bucket with Object Lock in compliance
     mode, so not even the sink's own credentials can rewrite or delete it before the lock ends; a
