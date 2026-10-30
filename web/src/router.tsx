@@ -11,11 +11,8 @@ import { DomainsPage } from "@/pages/domains-page";
 import { Audit, validateAuditSearch } from "@/pages/audit";
 import { Webhooks } from "@/pages/webhooks";
 import { Forgot } from "@/pages/forgot";
-import { Pki } from "@/pages/pki";
-import { Users } from "@/pages/users";
 import { InstanceWebhooksPage } from "@/pages/instance-webhooks";
 import { Settings } from "@/pages/settings";
-import { Updates } from "@/pages/updates";
 import { Updating, validateUpdatingSearch } from "@/pages/updating";
 import { Invite } from "@/pages/invite";
 import { OrgPage } from "@/pages/org";
@@ -70,11 +67,11 @@ const orgPage = createRoute({ getParentRoute: () => app, path: "/org", component
 const webhooks = createRoute({ getParentRoute: () => app, path: "/webhooks", component: Webhooks });
 const audit = createRoute({ getParentRoute: () => app, path: "/audit", component: Audit, validateSearch: validateAuditSearch });
 const settings = createRoute({ getParentRoute: () => app, path: "/settings", component: Settings });
-const updates = createRoute({ getParentRoute: () => app, path: "/settings/updates", component: Updates });
-const pki = createRoute({ getParentRoute: () => app, path: "/settings/pki", component: Pki });
-const users = createRoute({ getParentRoute: () => app, path: "/settings/users", component: Users });
+// Pages of their own chunks, so the main one stays under the build's chunk size warning.
+const updates = createRoute({ getParentRoute: () => app, path: "/settings/updates", component: lazyRouteComponent(() => import("@/pages/updates"), "Updates") });
+const pki = createRoute({ getParentRoute: () => app, path: "/settings/pki", component: lazyRouteComponent(() => import("@/pages/pki"), "Pki") });
+const users = createRoute({ getParentRoute: () => app, path: "/settings/users", component: lazyRouteComponent(() => import("@/pages/users"), "Users") });
 const instanceWebhooks = createRoute({ getParentRoute: () => app, path: "/settings/webhooks", component: InstanceWebhooksPage });
-// A page of its own chunk, so the main one stays under the build's chunk size warning.
 const auditSinks = createRoute({ getParentRoute: () => app, path: "/settings/audit-sinks", component: lazyRouteComponent(() => import("@/pages/audit-sinks"), "AuditSinksPage") });
 const account = createRoute({
   getParentRoute: () => app,
