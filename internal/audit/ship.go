@@ -86,17 +86,6 @@ func Heads(ctx context.Context, tx *ent.Tx) (map[string]int64, error) {
 	return out, rows.Err()
 }
 
-// CountCheckpointsAfter counts the checkpoints of the chain of orgID with a seq above seq.
-func CountCheckpointsAfter(ctx context.Context, tx *ent.Tx, orgID string, seq int64) (n int64, err error) {
-	cond, args := chainWhere(orgID, 2)
-	rows, err := tx.QueryContext(ctx, "SELECT count(*) FROM audit_checkpoints WHERE seq > $1 AND "+cond, append([]any{seq}, args...)...)
-	if err != nil {
-		return 0, err
-	}
-	_, err = scanFirst(rows, &n)
-	return n, err
-}
-
 // OldestAfter returns the time of the oldest checkpoint of the chain of orgID after checkpoint
 // seq cp and, if entries is set, of the oldest entry after entry seq; ok is false when there is
 // none.
@@ -124,4 +113,48 @@ func OldestAfter(ctx context.Context, tx *ent.Tx, orgID string, cp, entry int64,
 		}
 	}
 	return oldest, ok, nil
+}
+
+// Stamp is when the checkpoint at Seq of a chain was made.
+type Stamp struct {
+	Seq  int64
+	Time time.Time
+}
+
+// CheckpointStamps returns the seq and time of every checkpoint with a seq above seq, by chain
+// name (an org ID, or InstanceChain), each chain's oldest first: the one read the backlog of every
+// sink and chain is counted from.
+func CheckpointStamps(ctx context.Context, tx *ent.Tx, seq int64) (map[string][]Stamp, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT org_id, seq, ts FROM audit_checkpoints WHERE seq > $1 ORDER BY org_id, seq", seq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string][]Stamp{}
+	for rows.Next() {
+		var org *string
+		var s Stamp
+		if err := rows.Scan(&org, &s.Seq, &s.Time); err != nil {
+			return nil, err
+		}
+		chain := InstanceChain
+		if org != nil {
+			chain = *org
+		}
+		s.Time = s.Time.UTC()
+		out[chain] = append(out[chain], s)
+	}
+	return out, rows.Err()
+}
+
+// EntryTimeAfter returns the time of the oldest entry of the chain of orgID after entry seq; ok is
+// false when there is none.
+func EntryTimeAfter(ctx context.Context, tx *ent.Tx, orgID string, seq int64) (ts time.Time, ok bool, err error) {
+	cond, args := chainWhere(orgID, 2)
+	rows, err := tx.QueryContext(ctx, "SELECT ts FROM audit_log WHERE seq > $1 AND "+cond+" ORDER BY seq LIMIT 1", append([]any{seq}, args...)...)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	ok, err = scanFirst(rows, &ts)
+	return ts.UTC(), ok, err
 }
