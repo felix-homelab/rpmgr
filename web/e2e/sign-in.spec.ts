@@ -197,11 +197,33 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expectAccessible(page);
   await policyForm.getByRole("button", { name: "Cancel" }).click();
 
+  // The Overview with firing alerts, the instance's among them, and an endpoint the controller
+  // disabled, from made-up answers (#960): listed, announced, and accessible.
+  const answer = (method: string, json: object) => page.route(`**/rpmgr.v1.${method}`, (route) => route.fulfill({ json }));
+  await answer("StatusService/ListAlerts", { alerts: [{ id: "alr_1", kind: "agent_offline", subjectType: "gateway", subjectId: "gw_1",
+    subjectName: "gw-eu-1", state: "ALERT_STATE_FIRING", since: "2026-10-29T10:00:00Z", firedAt: "2026-10-29T10:05:00Z" }] });
+  await answer("StatusService/ListInstanceAlerts", { alerts: [{ id: "alr_2", kind: "revocation_log_on_host", subjectType: "instance", subjectId: "instance",
+    subjectName: "instance", state: "ALERT_STATE_FIRING", since: "2026-10-29T09:00:00Z", firedAt: "2026-10-29T09:00:00Z" }] });
+  await answer("WebhookService/ListWebhooks", { webhooks: [{ id: "whk_1", url: "https://hooks.example.com/rpmgr", enabled: false,
+    disabledReason: "WEBHOOK_DISABLED_REASON_FAILING", secretSet: true }] });
+  await page.goto("/");
+  const alerts = page.getByRole("region", { name: "Alerts" });
+  await expect(alerts.getByRole("list", { name: "Organisation" }).getByRole("listitem")).toContainText(["Agent offline"]);
+  await expect(alerts.getByRole("list", { name: "Instance" }).getByRole("listitem")).toContainText(["Revocation log not yet off-host"]);
+  await expect(page.getByRole("alert").filter({ hasText: "https://hooks.example.com/rpmgr" }).getByRole("link", { name: "Enable it again" })).toBeVisible();
+  await expectAccessible(page);
+  await page.goto("/settings");
+  await expect(page.getByRole("group", { name: "Alert types the organisation is e-mailed about" }).getByRole("checkbox")).toHaveCount(9);
+  await expectAccessible(page);
+  for (const method of ["StatusService/ListAlerts", "StatusService/ListInstanceAlerts", "WebhookService/ListWebhooks"]) {
+    await page.unroute(`**/rpmgr.v1.${method}`);
+  }
+
   // On a wide screen every page fills the window beside the sidebar, and the route form stands in
   // two columns, which a phone stacks.
   const desktop = page.viewportSize()!;
   await page.setViewportSize({ width: 2560, height: 1440 });
-  for (const path of ["/", "/routes", "/routes/new", "/gateways", "/settings", "/account", "/settings/pki", "/settings/webhooks"]) {
+  for (const path of ["/", "/routes", "/routes/new", "/gateways", "/settings", "/account", "/settings/pki", "/settings/webhooks", "/settings/audit-sinks"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await unfilled(page), path).toEqual([]);
@@ -262,6 +284,23 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expect(page.getByLabel("Path to request")).toHaveCount(0);
   await expect(page.getByLabel("Port to check")).toBeVisible();
   expect(await unmarked(page)).toEqual([]);
+  await page.goto("/settings/pki");
+
+  // Audit sinks: the empty page and the form of each kind, which a person fills before anything is
+  // sent, stay accessible, and a refused value is shown at its field.
+  await page.getByRole("link", { name: "Audit sinks" }).click();
+  await expect(page.getByText("No audit sink yet.")).toBeVisible();
+  await expectAccessible(page);
+  await page.getByRole("button", { name: "New audit sink…" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("siem");
+  await page.getByLabel("URL").fill("http://siem.example.com");
+  await page.getByRole("button", { name: "Create the sink" }).click();
+  await expect(page.getByText("The URL must start with https://.")).toBeVisible();
+  await expect(page.getByText("The secret must be at least 16 characters.")).toBeVisible();
+  await expectAccessible(page);
+  await page.getByLabel("Kind").selectOption({ label: "Syslog over TLS" });
+  await expect(page.getByLabel("Address")).toBeVisible();
+  await expectAccessible(page);
   await page.goto("/settings/pki");
 
   // A gateway group's own page: uploaded, then previewed as the controller renders it, with its

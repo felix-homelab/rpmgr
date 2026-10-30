@@ -32,8 +32,8 @@ one, and the old one stops signing by itself.
 Open **Deliveries** on the row to see each attempt with its HTTP status or error and the next
 retry. An endpoint that keeps failing is switched off after the period in
 [03](../../03-connections.md#timeouts-keepalive-and-backoff); its row then says **Disabled:
-failing since …**. Fix the receiver, check it with **Send test event**, and choose **Enable
-again**.
+failing since …**, and the web UI's overview announces it to Owners and Admins. Fix the
+receiver, check it with **Send test event**, and choose **Enable again**.
 
 ## Private receivers
 

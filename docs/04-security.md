@@ -1636,8 +1636,9 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
     sink's CA bundle, or the system roots if it has none, and must name the host of the sink's
     address; there is no client certificate, and no way to skip verification. The address is
     checked by the egress guard as it is dialled, with the Instance Admin's policy of a webhook
-    sink. Each message is an RFC 5424 record (facility 13, severity 6, the item's type as its
-    message ID) holding the checkpoint or entry as JSON, as the webhook sink sends it; an entry
+    sink. No sink uses a proxy from the environment (HTTP_PROXY, HTTPS_PROXY), as the guard would
+    see the proxy's address and not the sink's. Each message is an RFC 5424 record (facility 13,
+    severity 6, the item's type as its message ID) holding the checkpoint or entry as JSON, as the webhook sink sends it; an entry
     that would make the record longer than a receiver must accept
     ([03](03-connections.md#timeouts-keepalive-and-backoff)) is sent without its `diff`, and if
     that is not enough, replaced by a marker that keeps its ID, type, time, chain and seq and its
@@ -1663,11 +1664,37 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
     slowest pace of [03](03-connections.md#timeouts-keepalive-and-backoff), where 408, 429 and 5xx
     back off from the shortest. The sink's secret is write-only: set through the API after a step-up,
     sealed under the KEK, never returned.
-  - **Object storage** (S3-compatible, the client of the revocation log): each checkpoint or batch
-    is an object written with `If-None-Match: *` into a bucket with Object Lock in compliance
-    mode, so not even the sink's own credentials can rewrite or delete it before the lock ends; a
-    bucket without Object Lock, or a store without conditional create, is refused when the sink is
-    saved (VB-24). Verification can read the sink back and finds a chain rewritten under a
+  - **Object storage** (S3-compatible, the client of the revocation log): each checkpoint, and each
+    entry of a sink that gets entries, is one object, written with `If-None-Match: *` into a
+    bucket with Object Lock in compliance mode, so not even the sink's own credentials can rewrite
+    or delete it before the lock ends. The sink sets the endpoint, region, bucket, access key ID
+    and the secret key, which is write-only like a webhook's secret, and optionally a CA bundle for
+    the endpoint and a lock period of 30 to 3650 days (365 by default, as long as the default audit
+    retention); the controller holds no other copy of the secret key than the one sealed under the
+    KEK. The object's key is `audit/<chain>/checkpoints/<seq>` or `audit/<chain>/entries/<seq>`,
+    with the chain's name (an org ID, or `instance`) and the seq as 20 decimal digits, so that a key
+    is the same at every attempt and a listing runs in seq order. Its body is the item's JSON, as
+    the other sinks send it. A conditional create that finds the key taken means the item was
+    shipped already, but only if the object holds the same bytes: any other object under the key is
+    not the item, and the sink treats it as a permanent refusal that names the key, like a 4xx
+    answer of a webhook receiver, since a retry would find the same. A store's answer of 4xx other
+    than 408, 409 and 429 is the same permanent refusal; a timeout, a transport failure and any
+    other answer are retried on the schedule of the sinks. An item is acknowledged by the store's
+    answer to its write, so the cursor moves item by item; a batch that is not written within its
+    time limit ([03](03-connections.md#timeouts-keepalive-and-backoff)) stops at the item in hand
+    and is counted as failed, and the rest goes in the next pass.
+    A bucket that does not enforce Object Lock, or a store without conditional create, is refused
+    when the sink is saved (VB-24), and when it is tested. The check writes the probe object
+    `audit/probe/<random ID>` with the lock mode compliance for the probe lock period
+    ([03](03-connections.md#timeouts-keepalive-and-backoff)) and a conditional create,
+    writes it a second time, which must answer `exists`, and tries to delete the version the first
+    write returned, which the store must refuse. A first write that is refused (AWS answers 400 for
+    a bucket without Object Lock, 403 for credentials without the right, SILO 400), a write that
+    returns no version ID (the bucket is not versioned, so it cannot lock), a second write that
+    succeeds, and a delete that succeeds, each refuse the sink with the reason; a store that cannot
+    be reached refuses it as well, and saves nothing. Each save, update and test leaves one probe
+    object, which stays in the bucket until its lock has ended. A sink whose settings and secret key did not change is not checked again
+    when it is saved. Verification can read the sink back and finds a chain rewritten under a
     checkpoint it holds. The client (`internal/objstore`) signs with AWS Signature Version 4 and
     reads the access key from a file that neither group nor others can read, or from memory
     (unsealed from the KEK by the caller); the secret key never appears in a log line or an error.

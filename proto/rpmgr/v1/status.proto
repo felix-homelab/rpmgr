@@ -40,6 +40,20 @@ service StatusService {
       resource_field: "org_id"
     };
   }
+  // ListAlerts lists the org's alerts (docs/10-operations.md, "Suggested alerts"): the ones that
+  // fire now unless state asks for others, by ID. Anyone who may read the org may read them.
+  rpc ListAlerts(ListAlertsRequest) returns (ListAlertsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // ListInstanceAlerts lists the instance alerts, the conditions of no org, as ListAlerts does.
+  rpc ListInstanceAlerts(ListInstanceAlertsRequest) returns (ListInstanceAlertsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
 }
 
 // ApplyState is where a revision stands on the agents.
@@ -153,4 +167,82 @@ message WatchEventsResponse {
   // agent's control session going up or down. Such an event has no revision, and its resume token
   // is the last one. Status changes are not replayed after a reconnect.
   repeated string status_changed = 7;
+}
+
+// AlertState is where an alert stands.
+enum AlertState {
+  // Not set: the alerts that fire.
+  ALERT_STATE_UNSPECIFIED = 0;
+  // The condition holds, but not for as long as the alert needs to fire.
+  ALERT_STATE_PENDING = 1;
+  // The alert fires.
+  ALERT_STATE_FIRING = 2;
+  // The condition no longer holds.
+  ALERT_STATE_RESOLVED = 3;
+}
+
+// Alert is one alert about one subject.
+message Alert {
+  // The alert's ID.
+  string id = 1;
+  // The kind, such as "agent_offline"; the names alert_types takes.
+  string kind = 2;
+  // What the alert is about: "gateway", "connector", "route", "certificate" and so on.
+  string subject_type = 3;
+  // The subject's ID.
+  string subject_id = 4;
+  // The subject's name when the alert was first seen.
+  string subject_name = 5;
+  // Where the alert stands.
+  AlertState state = 6;
+  // When the condition began.
+  google.protobuf.Timestamp since = 7;
+  // When the alert fired; unset while it is pending.
+  google.protobuf.Timestamp fired_at = 8;
+  // When it resolved; unset while it has not.
+  google.protobuf.Timestamp resolved_at = 9;
+}
+
+// ListAlertsRequest asks for a page of an org's alerts.
+message ListAlertsRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Only alerts in this state; unset is firing.
+  AlertState state = 2 [(buf.validate.field).enum.defined_only = true];
+  // At most this many, 50 by default, 500 at most.
+  int32 page_size = 3 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  // The page_token of the previous page.
+  string page_token = 4 [(buf.validate.field).string.max_len = 1024];
+}
+
+// ListAlertsResponse is one page of alerts.
+message ListAlertsResponse {
+  // The alerts.
+  repeated Alert alerts = 1;
+  // The token of the next page; empty on the last.
+  string next_page_token = 2;
+}
+
+// ListInstanceAlertsRequest asks for a page of the instance alerts.
+message ListInstanceAlertsRequest {
+  // Only alerts in this state; unset is firing.
+  AlertState state = 1 [(buf.validate.field).enum.defined_only = true];
+  // At most this many, 50 by default, 500 at most.
+  int32 page_size = 2 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  // The page_token of the previous page.
+  string page_token = 3 [(buf.validate.field).string.max_len = 1024];
+}
+
+// ListInstanceAlertsResponse is one page of instance alerts.
+message ListInstanceAlertsResponse {
+  // The alerts.
+  repeated Alert alerts = 1;
+  // The token of the next page; empty on the last.
+  string next_page_token = 2;
 }
