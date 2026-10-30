@@ -985,6 +985,15 @@ redirect them ([15](15-dns.md#cloudflare-specifics)).
   `Proxy-Authorization`, `Cookie` and `Set-Cookie`; the values of `password=`, `passwd=`, `secret=`
   and `token=` pairs; and strings shaped like a JWT. A raised level changes what is logged, never what
   is redacted.
+- [R] **The backlog of a live log and the lines the agents log about their work**
+  ([D154](14-open-decisions.md#engineering)). The agent redacts a line, as above, before it enters
+  the backlog, so the backlog holds nothing the live stream would not, and a viewer's level and
+  filter apply to it as to new lines. The lines about the agent's work (configuration applied,
+  target health, data sessions, streams) carry identifiers, counts, durations, byte totals and
+  reasons from the agent's own checks, such as a route, target or gateway ID, a revision, a state
+  and its cause. They never carry request contents, URLs with query strings, headers, cookies,
+  credentials or the bytes a stream moved. The backlog lives in the agent's memory only and is
+  gone when the process ends.
 - No secret appears in argv, in the environment of long-running processes, or in unit files.
 
 ## Supply chain and updates
