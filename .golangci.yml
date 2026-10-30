@@ -82,6 +82,10 @@ linters:
       - path: internal/certs/
         text: Reveal
         linters: [forbidigo]
+      # The object store's secret key is opened to sign a request, and to check its characters.
+      - path: internal/objstore/(sigv4|accesskey)(_test)?\.go
+        text: Reveal
+        linters: [forbidigo]
       # The mail relay's password is opened to log in to it.
       - path: internal/mail/mail\.go
         text: Reveal
