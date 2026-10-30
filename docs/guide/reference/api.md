@@ -180,7 +180,8 @@ Some lists differ:
 
 - **The audit log.** `AuditService.ListAuditEntries` and `ListInstanceAuditEntries` return the
   newest entries first, and refuse a `pageSize` above 500 with `INVALID_ARGUMENT` instead of
-  cutting it.
+  cutting it. `ExportAudit` and `ExportInstanceAudit` are not lists but server streams of JSON
+  Lines, and take a step-up ([Export a chain](../operations/audit-log.md#export-a-chain-with-its-proofs)).
 - **Short lists.** `AuthService.ListSessions`, `OrgService.ListMembers` and
   `ListSuspendedAPITokens`, and `TokenService.ListAPITokens` take no `pageSize` and no
   `pageToken`: they return everything in one answer. Sessions and tokens come newest first,

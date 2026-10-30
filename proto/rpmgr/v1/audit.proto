@@ -12,7 +12,7 @@ option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
 
 // AuditService reads and verifies the audit log (docs/07-api.md, "Services"; docs/04-security.md,
 // "Audit log"): an org's chain for its Owners and Admins, the instance chain for the Instance
-// Admin. Exporting comes in Phase 2.
+// Admin.
 service AuditService {
   // ListAuditEntries lists an org's audit entries, newest first.
   rpc ListAuditEntries(ListAuditEntriesRequest) returns (ListAuditEntriesResponse) {
@@ -40,6 +40,45 @@ service AuditService {
     option idempotency_level = NO_SIDE_EFFECTS;
     option (rpmgr.v1.authz) = {permission: "instance.admin"};
   }
+  // ExportAudit streams an org's chain as JSON Lines with its proofs (docs/04-security.md, "Audit
+  // log"): a header, the entries with their hashes and the signed checkpoints in their places, up
+  // to the newest checkpoint, then the entries after it marked as the unanchored tail. The export
+  // is recorded in the chain before the chain is read, so it holds its own entry.
+  rpc ExportAudit(ExportAuditRequest) returns (stream ExportAuditResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "audit.read"
+      resource_field: "org_id"
+      step_up: true
+    };
+  }
+  // ExportInstanceAudit streams the instance chain as ExportAudit does an org's.
+  rpc ExportInstanceAudit(ExportInstanceAuditRequest) returns (stream ExportInstanceAuditResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
+}
+
+// ExportAuditRequest names the org whose chain to export.
+message ExportAuditRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// ExportInstanceAuditRequest is empty.
+message ExportInstanceAuditRequest {}
+
+// ExportAuditResponse is the next part of an export.
+message ExportAuditResponse {
+  // The next lines of the export in order, each a JSON object without its line end.
+  repeated string lines = 1;
+}
+
+// ExportInstanceAuditResponse is the next part of an export of the instance chain.
+message ExportInstanceAuditResponse {
+  // The next lines of the export in order, each a JSON object without its line end.
+  repeated string lines = 1;
 }
 
 // AuditEntry is one entry of an audit chain.

@@ -1627,8 +1627,12 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
     saved (VB-24). Verification can read the sink back and finds a chain rewritten under a
     checkpoint it holds.
 - [R] **Export** (Phase 2, `ExportAudit`): an org's chain, for `audit.read` with a step-up, or the
-  instance chain for the Instance Admin with a step-up; audited as `audit.export`. The export is
-  JSON Lines: a header line (format version, chain, first and last seq, the signers' certificates),
+  instance chain for the Instance Admin with a step-up (`ExportInstanceAudit`). The request is
+  audited as `audit.export` before the chain is read, so the export holds its own entry; an export
+  that breaks off, such as one the client abandons, is recorded once more with the result
+  `failure`, and a refused one is recorded as any refusal is, under the method's name. The export
+  is JSON Lines: a header line (format version, chain, first and last seq, the seq of the newest
+  checkpoint, the root's and the signers' certificates),
   then each entry with every stored field as in its canonical form plus `prev_hash` and `hash`,
   with each checkpoint in its place. It ends at the newest checkpoint; entries after it are listed
   as an unanchored tail, flagged so, which a later export anchors. `rpmgr audit verify-export
