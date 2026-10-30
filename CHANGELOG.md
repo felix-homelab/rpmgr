@@ -35,8 +35,8 @@ Changes to the design documents are not recorded here: see the git history and t
   secret once with a copy button, sends a test event and lists each endpoint's deliveries with
   their status, error and next retry. (#651)
 - Audit sinks: an Instance Admin sends the audit log's signed checkpoints, and optionally every
-  entry, to a webhook receiver through `AuditSinkService` in the API (create, get, list, update,
-  delete and test), after a step-up. The signing
+  entry, to a webhook receiver with `rpmgr create audit-sink` (also `get`, `list`, `update`,
+  `delete` and `test audit-sink`, and `AuditSinkService` in the API), after a step-up. The signing
   secret is stored encrypted and never shown again. Each sink has a status with its last error,
   its backlog and the age of the oldest item not yet acknowledged, which also feed the metrics
   `rpmgr_audit_sink_backlog` and `rpmgr_audit_sink_oldest_unshipped_timestamp_seconds` and the

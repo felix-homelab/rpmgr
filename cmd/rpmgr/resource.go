@@ -26,7 +26,9 @@ import (
 type field struct {
 	flag, name, usage, ref string
 	update                 bool // whether update may change it; create always sets it
+	updateOnly             bool // whether only update has the flag: the field has no say at creation
 	file                   bool // the flag names a file whose content is the field's value
+	trim                   bool // with file: the value ends at its last line break, which is left out
 }
 
 // resourceCommands are `create <kind>` and `update <kind>` of a kind whose resource the fields
@@ -47,9 +49,14 @@ func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, r
 	var wait time.Duration
 	var output string
 	var cfs, ufs *flag.FlagSet
+	// Only a resource that agents apply has an apply status to wait for.
+	applies := false
+	if md, err := k.Method("Create" + k.Resource); err == nil {
+		applies = md.Output().Fields().ByName("apply_status") != nil
+	}
 	register := func(fs *flag.FlagSet, forUpdate bool) {
 		for _, f := range fields {
-			if forUpdate && !f.update {
+			if forUpdate && !f.update || !forUpdate && f.updateOnly {
 				continue
 			}
 			fd := mt.Descriptor().Fields().ByName(protoreflect.Name(f.name))
@@ -65,7 +72,9 @@ func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, r
 				fs.StringVar(values[f.flag], f.flag, "", f.usage)
 			}
 		}
-		fs.DurationVar(&wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
+		if applies {
+			fs.DurationVar(&wait, "wait", 0, "wait up to this long, at most 30s, for the agents to apply the change")
+		}
 		outputFlag(fs, &output)
 	}
 	// build sets the fields the flags given name on m, and returns their paths.
@@ -90,6 +99,9 @@ func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, r
 						return nil, err
 					}
 					raw = string(b)
+					if f.trim {
+						raw = strings.TrimRight(raw, "\r\n")
+					}
 				}
 				v, err := s.value(ctx, fd, f, raw)
 				if err != nil {
@@ -123,7 +135,9 @@ func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, r
 			}
 			req := md.Input()
 			rm := msgOf(req)
-			rm.Set(req.Fields().ByName("org_id"), protoreflect.ValueOfString(s.creds.Org))
+			if org := req.Fields().ByName("org_id"); org != nil {
+				rm.Set(org, protoreflect.ValueOfString(s.creds.Org))
+			}
 			rm.Set(req.Fields().ByName(protoreflect.Name(resourceField)), protoreflect.ValueOfMessage(res))
 			return s.send(ctx, env, k, md, rm.Interface(), wait, output, "Created", after...)
 		},
