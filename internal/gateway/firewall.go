@@ -163,6 +163,7 @@ func (f *Firewall) write(now time.Time) {
 	}
 	raw = append(raw, '\n')
 	if bytes.Equal(raw, f.written) {
+		f.writeErr = nil // back at what is on disk: an earlier failed attempt no longer counts
 		return
 	}
 	if len(f.wanted.Ranges) > firewall.MaxRanges {

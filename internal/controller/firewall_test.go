@@ -10,6 +10,8 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
+	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
@@ -19,14 +21,45 @@ func firewallStatus(phase agentv1.FirewallPhase, reason string, refused ...strin
 		Phase: phase, Reason: reason, Rules: []string{"80/tcp"}, Refused: refused, Reported: timestamppb.New(time.Unix(1000, 0))}}}}
 }
 
+// firewallHello is the Hello of a gateway that manages its host's firewall.
+func firewallHello() *agentv1.Hello {
+	h := hello("0.1.0")
+	h.Capabilities = append(h.Capabilities, agentproto.CapFirewallRanges)
+	return h
+}
+
+// TestFirewallStateOnlyFromGatewaysThatAnnouncedIt: a firewall report of a gateway that did not
+// announce firewall.ranges, or of a connector, is ignored.
+func TestFirewallStateOnlyFromGatewaysThatAnnouncedIt(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := startSessions(t, db, "0.1.0", 0)
+		for name, tc := range map[string]struct {
+			kind  pki.Kind
+			hello *agentv1.Hello
+		}{
+			"a gateway without the capability": {pki.KindGateway, hello("0.1.0")},
+			"a connector with the capability":  {pki.KindConnector, firewallHello()},
+		} {
+			cert, id := e.certOf(t, tc.kind)
+			st := e.open(t, testCtx(t), cert, tc.hello)
+			recv(t, st)
+			send(t, st, firewallStatus(agentv1.FirewallPhase_FIREWALL_PHASE_APPLIED, ""))
+			time.Sleep(300 * time.Millisecond) // the controller has no signal for a message it ignores
+			if f := e.sessions.Firewall(id.ID); f != nil {
+				t.Errorf("%s: its report shows %v", name, f)
+			}
+		}
+	})
+}
+
 // TestFirewallState (D152): the state a gateway reports of its host's firewall shows until the next
 // report replaces it or its session ends; an agent that reported nothing shows none.
 func TestFirewallState(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
 		e := startSessions(t, db, "0.1.0", 0)
-		certA, a := e.agentCert(t)
-		certB, b := e.agentCert(t)
-		stA, stB := e.open(t, testCtx(t), certA, hello("0.1.0")), e.open(t, testCtx(t), certB, hello("0.1.0"))
+		certA, a := e.certOf(t, pki.KindGateway)
+		certB, b := e.certOf(t, pki.KindGateway)
+		stA, stB := e.open(t, testCtx(t), certA, firewallHello()), e.open(t, testCtx(t), certB, firewallHello())
 		recv(t, stA)
 		recv(t, stB)
 		eventually := func(what string, ok func() bool) {
@@ -70,7 +103,7 @@ func TestFirewallState(t *testing.T) {
 			t.Errorf("an unknown phase shows as %v", s)
 		}
 		// A new session starts without the old session's report: the gateway reports it again.
-		stB2 := e.open(t, testCtx(t), certB, hello("0.1.0"))
+		stB2 := e.open(t, testCtx(t), certB, firewallHello())
 		recv(t, stB2)
 		eventually("the report outlived its session", func() bool { return e.sessions.Firewall(b.ID) == nil })
 	})
