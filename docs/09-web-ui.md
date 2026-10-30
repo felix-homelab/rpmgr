@@ -203,6 +203,19 @@ flowchart LR
   nothing yet. Disabled routes, disabled connectors, drained gateways and decommissioned agents are
   not counted ([D81](14-open-decisions.md#engineering)). Routes in maintenance are not counted
   either; the routes' figure says how many there are ([D88](14-open-decisions.md#engineering)).
+- **Alerts** is a card below the summary, for every role: the alerts that fire now
+  ([10](10-operations.md#suggested-alerts)), each with its kind in words, its subject (linked to its
+  page where the page is known: a route, a connector) and since when. The Instance Admin sees the
+  instance alerts too, in a second list under their own heading. Without a firing alert the card
+  says so, and a failed read says why instead, never that none fires. The lists read again at the
+  pace of the alert job ([03](03-connections.md#timeouts-keepalive-and-backoff)), so an alert that
+  resolved leaves them without a reload ([07](07-api.md#events-and-streaming), `ListAlerts`).
+- **A disabled endpoint** is announced above the summary, for the Owner and the Admin, who may read
+  the endpoints: one notice per endpoint that the controller disabled for failing
+  ([D143](14-open-decisions.md#engineering)), naming its URL, with a link **Enable it again** to
+  the Webhooks page. The Instance Admin is told of the instance's endpoints too, with a link to
+  Settings → Webhooks. An endpoint a person disabled is not announced. The notice is gone once the
+  endpoint is enabled.
 - **Restarting** is a card below the summary, shown only while an agent has an old process that
   drains after a hand-off ([D160](14-open-decisions.md#engineering)). One line per agent: its
   name, what the old process still holds (gateway: connections, UDP flows and data sessions;
@@ -884,8 +897,12 @@ one page, with a section list beside them that jumps to each section
   link-local and cloud metadata addresses stay blocked whatever is listed.
 - **Settings → Audit sinks** (Instance Admin): the audit sinks, each with its kind, whether
   entries go along, its last success, last error and backlog, secrets write-only.
-- **Org settings**: alert e-mails on or off and the alert types the org gets
-  ([D139](14-open-decisions.md#engineering)).
+- **Org settings**: alert e-mails on or off (`alert_email`) and the alert types the org gets
+  (`alert_types`), one checkbox per kind ([D139](14-open-decisions.md#engineering)). The kinds are
+  all checked while none is chosen, as an empty list means all; checking them all saves an empty
+  list, and unchecking them all is refused on the page, since it would mean the opposite. Only the
+  Owner changes them; other members see them greyed out. Webhooks get every alert event whatever
+  is chosen.
 - **Audit log**: **Export** asks for a step-up and downloads the chain as JSON Lines; the page then
   shows the `rpmgr audit verify-export` command to verify it offline, with the root's pin that the
   Instance Admin reads under Settings → PKI.

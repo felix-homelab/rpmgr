@@ -197,6 +197,28 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expectAccessible(page);
   await policyForm.getByRole("button", { name: "Cancel" }).click();
 
+  // The Overview with firing alerts, the instance's among them, and an endpoint the controller
+  // disabled, from made-up answers (#960): listed, announced, and accessible.
+  const answer = (method: string, json: object) => page.route(`**/rpmgr.v1.${method}`, (route) => route.fulfill({ json }));
+  await answer("StatusService/ListAlerts", { alerts: [{ id: "alr_1", kind: "agent_offline", subjectType: "gateway", subjectId: "gw_1",
+    subjectName: "gw-eu-1", state: "ALERT_STATE_FIRING", since: "2026-10-29T10:00:00Z", firedAt: "2026-10-29T10:05:00Z" }] });
+  await answer("StatusService/ListInstanceAlerts", { alerts: [{ id: "alr_2", kind: "revocation_log_on_host", subjectType: "instance", subjectId: "instance",
+    subjectName: "instance", state: "ALERT_STATE_FIRING", since: "2026-10-29T09:00:00Z", firedAt: "2026-10-29T09:00:00Z" }] });
+  await answer("WebhookService/ListWebhooks", { webhooks: [{ id: "whk_1", url: "https://hooks.example.com/rpmgr", enabled: false,
+    disabledReason: "WEBHOOK_DISABLED_REASON_FAILING", secretSet: true }] });
+  await page.goto("/");
+  const alerts = page.getByRole("region", { name: "Alerts" });
+  await expect(alerts.getByRole("list", { name: "Organisation" }).getByRole("listitem")).toContainText(["Agent offline"]);
+  await expect(alerts.getByRole("list", { name: "Instance" }).getByRole("listitem")).toContainText(["Revocation log not yet off-host"]);
+  await expect(page.getByRole("alert").filter({ hasText: "https://hooks.example.com/rpmgr" }).getByRole("link", { name: "Enable it again" })).toBeVisible();
+  await expectAccessible(page);
+  await page.goto("/settings");
+  await expect(page.getByRole("group", { name: "Alert types the organisation is e-mailed about" }).getByRole("checkbox")).toHaveCount(9);
+  await expectAccessible(page);
+  for (const method of ["StatusService/ListAlerts", "StatusService/ListInstanceAlerts", "WebhookService/ListWebhooks"]) {
+    await page.unroute(`**/rpmgr.v1.${method}`);
+  }
+
   // On a wide screen every page fills the window beside the sidebar, and the route form stands in
   // two columns, which a phone stacks.
   const desktop = page.viewportSize()!;

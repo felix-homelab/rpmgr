@@ -103,8 +103,27 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await shot(page, "sign-in-code");
   await signIn(page, "ada@example.com");
   await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
+  // The seeded installation fires no alert and disabled no endpoint, so the overview is given made-up
+  // answers for the alerts and the endpoints, then loaded again.
+  const fake = async (method: string, json: object) => page.route(`**/rpmgr.v1.${method}`, (route) => route.fulfill({ json }));
+  const alert = { state: "ALERT_STATE_FIRING", firedAt: "2026-10-29T10:05:00Z" };
+  await fake("StatusService/ListAlerts", { alerts: [
+    { ...alert, id: "alr_1", kind: "agent_offline", subjectType: "gateway", subjectId: "gw_1", subjectName: "gw-eu-1", since: "2026-10-29T10:00:00Z" },
+    { ...alert, id: "alr_2", kind: "clock_skew", subjectType: "gateway", subjectId: "gw_1", subjectName: "gw-eu-1", since: "2026-10-29T08:40:00Z" },
+  ] });
+  await fake("StatusService/ListInstanceAlerts", { alerts: [
+    { ...alert, id: "alr_3", kind: "revocation_log_on_host", subjectType: "instance", subjectId: "instance", subjectName: "instance", since: "2026-10-28T16:20:00Z" },
+  ] });
+  await fake("WebhookService/ListWebhooks", { webhooks: [
+    { id: "whk_1", url: "https://ops.example.com/events", enabled: false, disabledReason: "WEBHOOK_DISABLED_REASON_FAILING", secretSet: true },
+  ] });
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Alerts" }).getByRole("list", { name: "Instance" })).toBeVisible();
   await page.waitForTimeout(1500);
   await shot(page, "overview", true);
+  for (const method of ["StatusService/ListAlerts", "StatusService/ListInstanceAlerts", "WebhookService/ListWebhooks"]) {
+    await page.unroute(`**/rpmgr.v1.${method}`);
+  }
 
   await page.keyboard.press("Control+k");
   await page.getByRole("combobox", { name: "Page, resource or action" }).fill("gr");

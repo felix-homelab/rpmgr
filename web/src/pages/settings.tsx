@@ -29,6 +29,12 @@ const check = "flex items-center gap-2.5 text-sm";
 
 const etagMismatch = "ETAG_MISMATCH";
 
+// The alert kinds an org chooses from, as the API accepts them (settings.proto, alert_types).
+const alertKinds = [
+  "agent_offline", "config_not_applied", "agent_certificate_expiring", "public_certificate_expiring", "route_no_ready_connector",
+  "clock_skew", "audit_checkpoints_behind", "revocation_log_on_host", "webhook_failing",
+] as const;
+
 // failure is what a settings save's error says; nothing for a cancelled step-up.
 function failure(err: unknown, t: (k: string) => string): Message {
   const reason = reasonOf(err);
@@ -136,14 +142,28 @@ function OrgForm({ orgId, settings, etag, disabled, onDone }: {
   const stepUp = useStepUp();
   const update = useMutation(SettingsService.method.updateOrgSettings);
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ mfa: settings.requireMfa ?? false, enroll: settings.operatorsMayEnroll ?? false, group: settings.defaultGatewayGroupId });
+  // No alert type chosen means all of them, which the form shows as all checked.
+  const [form, setForm] = useState({
+    mfa: settings.requireMfa ?? false, enroll: settings.operatorsMayEnroll ?? false, group: settings.defaultGatewayGroupId,
+    alertEmail: settings.alertEmail ?? true, types: settings.alertTypes.length === 0 ? [...alertKinds] : [...settings.alertTypes],
+  });
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (form.types.length === 0) {
+      onDone({ tone: "error", text: t("settings.alertTypesNone") });
+      return;
+    }
     onDone(undefined);
     const next = clone(OrgSettingsSchema, settings);
-    Object.assign(next, { requireMfa: form.mfa, operatorsMayEnroll: form.enroll, defaultGatewayGroupId: form.group });
+    Object.assign(next, {
+      requireMfa: form.mfa, operatorsMayEnroll: form.enroll, defaultGatewayGroupId: form.group,
+      alertEmail: form.alertEmail, alertTypes: alertKinds.every((k) => form.types.includes(k)) ? [] : form.types,
+    });
     try {
-      await stepUp(() => update.mutateAsync({ orgId, settings: next, etag, updateMask: { paths: ["require_mfa", "operators_may_enroll", "default_gateway_group_id"] } }));
+      await stepUp(() => update.mutateAsync({
+        orgId, settings: next, etag,
+        updateMask: { paths: ["require_mfa", "operators_may_enroll", "default_gateway_group_id", "alert_email", "alert_types"] },
+      }));
       onDone({ tone: "info", text: t("account.saved") });
     } catch (err) {
       onDone(failure(err, t));
@@ -171,6 +191,21 @@ function OrgForm({ orgId, settings, etag, disabled, onDone }: {
             {(groups.data ?? []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </Select>
         </label>
+        <label className={check}>
+          <input type="checkbox" className="size-4 accent-primary" checked={form.alertEmail} onChange={(e) => setForm({ ...form, alertEmail: e.target.checked })} />
+          {t("settings.alertEmail")}
+        </label>
+        <fieldset className="grid gap-2">
+          <legend className="text-sm font-medium">{t("settings.alertTypes")}</legend>
+          <p id="alert-types-hint" className="text-xs text-muted-foreground">{t("settings.alertTypesHint")}</p>
+          {alertKinds.map((k) => (
+            <label key={k} className={check}>
+              <input type="checkbox" className="size-4 accent-primary" aria-describedby="alert-types-hint" checked={form.types.includes(k)}
+                onChange={(e) => setForm({ ...form, types: e.target.checked ? [...form.types, k] : form.types.filter((x) => x !== k) })} />
+              {t(`alerts.kinds.${k}`)}
+            </label>
+          ))}
+        </fieldset>
         <Button type="submit" className="justify-self-start" disabled={update.isPending}>{t("routeForm.save")}</Button>
       </fieldset>
     </form>

@@ -33,6 +33,8 @@ Above the settings, the Instance Admin may see a notice about the revocation log
 | **Every member must sign in with a second factor** | Members without a second factor are refused in the organisation until they set one up ([Sign-in and two-factor authentication](../accounts/sign-in-and-mfa.md#when-your-organisation-requires-it)). Changing it needs a [step-up](README.md#the-step-up-dialog) |
 | **Operators may enroll and revoke connectors** | Gives the Operator role the `connectors.write` permission ([Members and roles](../accounts/members-and-roles.md)) |
 | **Gateway group preselected for new routes** | The group the new-route form chooses for you, or **None** |
+| **E-mail the Owners and Admins when an alert fires or resolves** | On by default; needs the instance's mail relay. It does not stop the mail about a webhook endpoint that was disabled for failing |
+| **Alert types the organisation is e-mailed about** | One checkbox for each kind of alert; all are checked until you choose. Checking all of them saves the same as none, which means all. At least one must stay checked. Webhooks get every alert event whatever is chosen |
 
 Members other than the Owner see the settings greyed out, with `Only the organisation's Owner
 changes these.`
