@@ -3,8 +3,8 @@
 package telemetry_test
 
 import (
-	"fmt"
 	"bytes"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
