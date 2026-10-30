@@ -37,6 +37,7 @@ flowchart LR
   ROOT --> AP[Access policies]
   ROOT --> AU[Audit log]
   ROOT --> ORG[Organisation]
+  ROOT --> WH[Webhooks - Phase 2]
   ROOT --> SET[Settings]
   ROOT --> P3[Phase 3]
   RT --> RT1[List] & RT2[Create wizard per type] & RT3[Route detail]
@@ -46,7 +47,7 @@ flowchart LR
   CO3 --> CO3a[Sessions] & CO3b[Routes] & CO3c[Local-policy status] & CO3d[Live logs] & CO3e[Version & upgrade]
   GW --> GW1[Gateway groups] & GW2[Gateways] & GW3[Port pools]
   DC --> DC1[Domains & verification] & DC2[Certificates & ACME status] & DC3[DNS providers & zones] & DC4[DNS names]
-  ORG --> ORG1[Members & roles] & ORG2[Invitations] & ORG3[API tokens] & ORG4[Service accounts] & ORG5[SSO & MFA policy] & ORG6[Webhooks - Phase 2]
+  ORG --> ORG1[Members & roles] & ORG2[Invitations] & ORG3[API tokens] & ORG4[Service accounts] & ORG5[SSO & MFA policy]
   SET --> SET1[Org settings] & SET2[Instance settings - Instance Admin] & SET4[PKI - Instance Admin] & SET5[Updates - Instance Admin] & SET6[Audit sinks and webhooks - Instance Admin, Phase 2] & SET3[Account]
   P3 --> P3a[Virtual networks] & P3b[Functions] & P3c[Shell - gated]
 ```
@@ -61,7 +62,8 @@ flowchart LR
 | **Domains & certificates** | Domain claims with the verification flow (TXT record or HTTP token, a "check now" button, status), certificates with source (ACME/uploaded), SANs, expiry, last ACME error. Phase 2: DNS providers (connect, rotate token, status, token expiry), managed zones (import, gates, plan approval, records, conflicts, adopt and release) and DNS names ([15](15-dns.md)) | Viewer / Admin; foreign records of a zone: Admin |
 | **Access policies** | IP allow/deny lists, basic auth, OIDC forward-auth, rate limits; where each policy is used | Viewer / Operator |
 | **Audit log** | Searchable by actor, action, target and time; entry detail with the redacted diff; chain-verification status; export with proofs (step-up), and how to verify it offline with `rpmgr audit verify-export` (Phase 2) | Admin |
-| **Organisation** | Members and roles; invitations as copyable one-time links, also e-mailed when SMTP is configured; API tokens (personal tokens in Phase 1, service accounts and their tokens in Phase 2: list, create with mandatory expiry, revoke); SSO and MFA policy; Phase 2: webhooks (endpoints and delivery log) | Admin; SSO and MFA policy are Owner-only |
+| **Organisation** | Members and roles; invitations as copyable one-time links, also e-mailed when SMTP is configured; API tokens (personal tokens in Phase 1, service accounts and their tokens in Phase 2: list, create with mandatory expiry, revoke); SSO and MFA policy; webhooks are on their own page | Admin; SSO and MFA policy are Owner-only |
+| **Webhooks** (Phase 2) | The organisation's webhook endpoints and their delivery log ([below](#live-logs-webhooks-and-audit-sinks-phase-2)) | Admin |
 | **Settings** | **Org settings**, and **instance settings** for the Instance Admin. Both are runtime settings stored in the database and editable here, with validation, a description and the default for each field. Boot settings (listen addresses, database DSN, KEK source) are shown read-only with the file they come from ([10](10-operations.md#configuration)). Instance settings include the default data-session transport ([03](03-connections.md#transport-selection)). Two instance-level pages: **PKI** (CA and intermediate status, intermediate rotation with step-up, leaf-certificate lifetime and grace period, password-hash profile, [04](04-security.md#pki-and-identity)) and **Updates** (release check, on by default; update channel; manifest upload for air-gapped installs; staged rollouts in Phase 2, [04](04-security.md#over-the-air-updates)). | Owner (org settings) / Instance Admin (instance settings, PKI, Updates) |
 | **Account** | Profile, password, MFA (TOTP, passkeys, recovery codes), active sessions with revoke, personal API tokens, theme and language | Any user |
 | **Restore review** (only after a fail-closed restore) | A full-width banner and a per-org checklist: each org stays read-only until its Owner re-confirms that org's memberships and roles (or the Instance Admin, with `rpmgr restore confirm --org` on the controller host); API tokens and service accounts are listed as suspended with a per-item re-enable action; users sign in again after a password reset and set up their second factor again. The banner explains that the instance-wide review is ended by the Instance Admin with `rpmgr restore confirm` on the controller host — not from the UI, because restored Owner memberships are exactly what is in doubt ([10](10-operations.md#backup-and-restore)) | Org Owner (own org); Instance Admin |
@@ -636,8 +638,12 @@ one page, with a section list beside them that jumps to each section
   every checkpoint's signature and, while its entry is kept, that entry's hash. It says whether the
   chain is intact up to which entry, with the last checkpoint, or where it broke and why
   ([04](04-security.md#audit-log)).
-- [R] The export of the information architecture is left out in Phase 1: the API has no export
-  method, and the log is read in pages.
+- **Export** (Phase 2) sits beside "Verify the chain". It exports the log shown, the org's or the
+  instance's, with the step-up the API asks for (the same dialog as elsewhere, U7), and saves the
+  chain as a JSON Lines file with its proofs. Afterwards the page names the file and the
+  `rpmgr audit verify-export` command that verifies it offline. A refused or failed export saves
+  nothing and says why. Who sees the page sees the button: the API decides, with `audit.read` for an
+  org and the Instance Admin for the instance ([04](04-security.md#audit-log)).
 
 ### Settings
 
@@ -856,7 +862,8 @@ one page, with a section list beside them that jumps to each section
   arriving), and a marker where the agent dropped or cut lines. When the operation ends at its
   deadline, the panel says so and offers **Continue**, which opens a new one. An offline agent, or
   one whose release has no live logs, shows why instead.
-- **Organisation → Webhooks**: the endpoints with their URL, event types, state (enabled,
+- **Administration → Webhooks** (Owner and Admin, `webhooks.write`; no other role can read an
+  endpoint, so it sees a note instead): the endpoints with their URL, event types, state (enabled,
   disabled by a person, **disabled: failing** with since when) and last delivery; create and edit
   in a form; **Rotate secret** and creation show the secret once, with **Copy**
   ([04](04-security.md#webhooks-and-the-egress-guard-phase-2)); **Send test event**; the
@@ -868,8 +875,9 @@ one page, with a section list beside them that jumps to each section
   instance webhooks as above; and the private ranges webhook receivers may use.
 - **Org settings**: alert e-mails on or off and the alert types the org gets
   ([D139](14-open-decisions.md#engineering)).
-- **Audit log**: **Export** asks for a step-up and downloads the chain as JSON Lines; the dialog
-  shows the `rpmgr audit verify-export` command with the CA pin to verify it offline.
+- **Audit log**: **Export** asks for a step-up and downloads the chain as JSON Lines; the page then
+  shows the `rpmgr audit verify-export` command to verify it offline, with the root's pin that the
+  Instance Admin reads under Settings → PKI.
 
 ### Enroll connector dialog
 

@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
+	"github.com/felix-homelab/rpmgr/internal/auditsink"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 )
@@ -51,6 +52,10 @@ var (
 		[]string{"hostname"}, nil)
 	checkpointAgeDesc = prometheus.NewDesc("rpmgr_audit_checkpoint_age_seconds",
 		"Age of the oldest audit entry no checkpoint covers yet; 0 when every entry is covered.", nil, nil)
+	sinkBacklogDesc = prometheus.NewDesc("rpmgr_audit_sink_backlog",
+		"Audit entries and checkpoints a sink has not acknowledged.", []string{"sink"}, nil)
+	sinkOldestDesc = prometheus.NewDesc("rpmgr_audit_sink_oldest_unshipped_timestamp_seconds",
+		"When the oldest item a sink has not acknowledged was appended; 0 when none.", []string{"sink"}, nil)
 )
 
 // dbCollector reads the certificates and the audit chains at each scrape.
@@ -63,6 +68,8 @@ type dbCollector struct {
 func (c dbCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- acmeExpiryDesc
 	ch <- checkpointAgeDesc
+	ch <- sinkBacklogDesc
+	ch <- sinkOldestDesc
 }
 
 func (c dbCollector) Collect(ch chan<- prometheus.Metric) {
@@ -90,5 +97,18 @@ func (c dbCollector) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(checkpointAgeDesc, prometheus.GaugeValue, max(0, c.now().Sub(oldest).Seconds()))
 	default:
 		ch <- prometheus.MustNewConstMetric(checkpointAgeDesc, prometheus.GaugeValue, 0)
+	}
+	backlogs, err := auditsink.Backlogs(c.sys, c.db)
+	if err != nil {
+		ch <- prometheus.NewInvalidMetric(sinkBacklogDesc, err)
+		return
+	}
+	for _, b := range backlogs {
+		oldest := 0.0
+		if !b.Oldest.IsZero() {
+			oldest = float64(b.Oldest.Unix())
+		}
+		ch <- prometheus.MustNewConstMetric(sinkBacklogDesc, prometheus.GaugeValue, float64(b.Items), b.Sink)
+		ch <- prometheus.MustNewConstMetric(sinkOldestDesc, prometheus.GaugeValue, oldest, b.Sink)
 	}
 }

@@ -212,6 +212,19 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await shot(page, "policies", true);
   await open(page, "Organisation", "Example Lab");
   await shot(page, "organisation", true);
+  // Two endpoints; the second one's secret stays on the page, masked, as it does after creating it.
+  await open(page, "Webhooks", "Webhooks");
+  for (const [url, types] of [["https://hooks.example.com/rpmgr", "route.*, connector.*"], ["https://ops.example.com/events", ""]]) {
+    await page.getByRole("button", { name: "New webhook…" }).click();
+    await page.getByLabel("URL").fill(url!);
+    await page.getByLabel("Event types").fill(types!);
+    await page.getByRole("button", { name: "Create the webhook" }).click();
+    await expect(page.getByRole("region", { name: "Signing secret" })).toBeVisible();
+    if (url!.startsWith("https://hooks")) {
+      await page.getByRole("button", { name: "I have stored it" }).click();
+    }
+  }
+  await shot(page, "webhooks", true);
   await open(page, "Audit log", "Audit log");
   // An entry opened, whose long request wraps within the page.
   await page.locator("details summary").filter({ hasText: "RouteService.UpdateRoute" }).first().click();

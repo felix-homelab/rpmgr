@@ -23,6 +23,7 @@ organisation, "Example Lab"; they are taken with the tool that
 | [Domains & certificates](domains.md) | Prove domains, upload certificates, keep CA bundles | Owner, Admin |
 | [Access policies](policies.md) | Allow or deny clients by address, require basic auth | Owner, Admin, Operator |
 | [Organisation](organisation.md) | Rename the organisation, manage members and invitations | Owner, Admin; renaming: Owner |
+| [Webhooks](webhooks.md) | Send the organisation's events to your own endpoints | Owner, Admin (`webhooks.write`) |
 | [Audit log](audit.md) | Read and verify who changed what | Owner, Admin can read it |
 | [Settings](settings.md) | The organisation's settings, and the instance's settings, PKI and updates | Owner; Instance Admin |
 | [Account](account.md) | Your profile, password, authenticator, sessions and API tokens | Every user, for themselves |
@@ -41,8 +42,8 @@ what each may do are in [Members and roles](../accounts/members-and-roles.md).
 
 - **The sidebar** on the left lists the pages in groups, each with an icon: **Overview**; under
   **Network**, **Routes**, **Connectors** and **Gateways**; under **Security**, **Domains &
-  certificates** and **Access policies**; under **Administration**, **Organisation**, **Audit
-  log** and **Settings**. The page you are on is highlighted. The product's mark and name at the
+  certificates** and **Access policies**; under **Administration**, **Organisation**, **Webhooks**,
+  **Audit log** and **Settings**. The page you are on is highlighted. The product's mark and name at the
   top lead to the overview.
 - **The version** of rpmgr that the controller runs stands at the foot of the sidebar, such as
   `rpmgr 0.2.0`. Only signed-in users see it; the sign-in page shows no version

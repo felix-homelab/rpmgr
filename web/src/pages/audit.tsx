@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { createClient } from "@connectrpc/connect";
+import { ConnectError, createClient } from "@connectrpc/connect";
 import { useMutation, useQuery as useConnectQuery, useTransport } from "@connectrpc/connect-query";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
@@ -18,6 +18,7 @@ import { AuthService } from "@/gen/rpmgr/v1/auth_pb";
 import { OrgService } from "@/gen/rpmgr/v1/org_pb";
 import { when } from "@/lib/format";
 import { useOrg } from "@/session";
+import { useStepUp } from "@/step-up";
 
 const route = getRouteApi("/app/audit");
 
@@ -80,7 +81,10 @@ export function Audit() {
           <label className={label}>{t("audit.actor")}<Input className="w-48 text-foreground" value={filters.actor} onChange={(e) => setFilters({ ...filters, actor: e.target.value })} /></label>
           <Button type="submit" variant="outline">{t("audit.filter")}</Button>
         </form>
-        <Verify key={instance ? "instance" : "org"} orgId={org?.orgId ?? ""} instance={instance} />
+        <div className="flex flex-wrap items-start gap-3">
+          <Export key={`export-${instance ? "instance" : "org"}`} orgId={org?.orgId ?? ""} instance={instance} />
+          <Verify key={instance ? "instance" : "org"} orgId={org?.orgId ?? ""} instance={instance} />
+        </div>
       </div>
       {shown.length > 0 && (
         <ol className="divide-y divide-border rounded-xl border border-border bg-card shadow-xs">
@@ -150,6 +154,51 @@ function Verify({ orgId, instance }: { orgId: string; instance: boolean }) {
             : t("audit.broken", { seq: String(result.brokenAt), problem: result.problem })}</span>
         </p>
       )}
+      {error && <Alert>{error}</Alert>}
+    </div>
+  );
+}
+
+// Export downloads the chain with its proofs as JSON Lines, after a step-up when the API asks for
+// one; `rpmgr audit verify-export` verifies the file offline (docs/04-security.md, "Audit log").
+function Export({ orgId, instance }: { orgId: string; instance: boolean }) {
+  const { t } = useTranslation();
+  const transport = useTransport();
+  const stepUp = useStepUp();
+  const [busy, setBusy] = useState(false);
+  const [file, setFile] = useState("");
+  const [error, setError] = useState("");
+  async function go() {
+    setError("");
+    setFile("");
+    setBusy(true);
+    try {
+      const api = createClient(AuditService, transport);
+      const lines: string[] = [];
+      await stepUp(async () => {
+        lines.length = 0;
+        for await (const part of instance ? api.exportInstanceAudit({}) : api.exportAudit({ orgId })) {
+          lines.push(...part.lines);
+        }
+      });
+      const name = `audit-${instance ? "instance" : orgId}.jsonl`;
+      const url = URL.createObjectURL(new Blob([lines.join("\n"), "\n"], { type: "application/x-ndjson" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+      setFile(name);
+    } catch (err) {
+      setError(t("audit.exportFailed", { message: ConnectError.from(err).rawMessage }));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="grid gap-2 text-sm sm:max-w-md">
+      <Button variant="outline" disabled={busy} onClick={() => void go()}>{t("audit.export")}</Button>
+      {file && <p role="status" className="text-muted-foreground">{t("audit.exported", { file })}</p>}
       {error && <Alert>{error}</Alert>}
     </div>
   );

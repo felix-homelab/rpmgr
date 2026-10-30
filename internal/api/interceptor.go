@@ -101,7 +101,7 @@ func (i interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) con
 			return err
 		})
 		err = i.s.sanitize(md, next(rec.hook(ctx), &replay{StreamingHandlerConn: conn, first: msg}))
-		rec.finish(ctx, err)
+		rec.finishStream(ctx, err)
 		rec.tell(nil, err)
 		return err
 	}

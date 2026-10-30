@@ -25,6 +25,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditcheckpoint"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/audithead"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsink"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsinkcursor"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
@@ -109,6 +111,10 @@ type Client struct {
 	AuditEntry *AuditEntryClient
 	// AuditHead is the client for interacting with the AuditHead builders.
 	AuditHead *AuditHeadClient
+	// AuditSink is the client for interacting with the AuditSink builders.
+	AuditSink *AuditSinkClient
+	// AuditSinkCursor is the client for interacting with the AuditSinkCursor builders.
+	AuditSinkCursor *AuditSinkCursorClient
 	// CABundle is the client for interacting with the CABundle builders.
 	CABundle *CABundleClient
 	// CAKey is the client for interacting with the CAKey builders.
@@ -240,6 +246,8 @@ func (c *Client) init() {
 	c.AuditCheckpoint = NewAuditCheckpointClient(c.config)
 	c.AuditEntry = NewAuditEntryClient(c.config)
 	c.AuditHead = NewAuditHeadClient(c.config)
+	c.AuditSink = NewAuditSinkClient(c.config)
+	c.AuditSinkCursor = NewAuditSinkCursorClient(c.config)
 	c.CABundle = NewCABundleClient(c.config)
 	c.CAKey = NewCAKeyClient(c.config)
 	c.Certificate = NewCertificateClient(c.config)
@@ -397,6 +405,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AuditCheckpoint:    NewAuditCheckpointClient(cfg),
 		AuditEntry:         NewAuditEntryClient(cfg),
 		AuditHead:          NewAuditHeadClient(cfg),
+		AuditSink:          NewAuditSinkClient(cfg),
+		AuditSinkCursor:    NewAuditSinkCursorClient(cfg),
 		CABundle:           NewCABundleClient(cfg),
 		CAKey:              NewCAKeyClient(cfg),
 		Certificate:        NewCertificateClient(cfg),
@@ -481,6 +491,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AuditCheckpoint:    NewAuditCheckpointClient(cfg),
 		AuditEntry:         NewAuditEntryClient(cfg),
 		AuditHead:          NewAuditHeadClient(cfg),
+		AuditSink:          NewAuditSinkClient(cfg),
+		AuditSinkCursor:    NewAuditSinkCursorClient(cfg),
 		CABundle:           NewCABundleClient(cfg),
 		CAKey:              NewCAKeyClient(cfg),
 		Certificate:        NewCertificateClient(cfg),
@@ -567,17 +579,18 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.ACMEStorage, c.APIRequest, c.APIToken, c.AccessPolicy, c.AgentSession,
 		c.AgentState, c.Alert, c.AuditCheckpoint, c.AuditEntry, c.AuditHead,
-		c.CABundle, c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision,
-		c.ConfigSeq, c.ConnectAuthority, c.ConnectListener, c.Connector, c.DataSession,
-		c.Domain, c.EnrollmentToken, c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage,
-		c.HealthCheck, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
-		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
-		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
-		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
-		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
-		c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
-		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
-		c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook, c.WebhookDelivery,
+		c.AuditSink, c.AuditSinkCursor, c.CABundle, c.CAKey, c.Certificate,
+		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.ConnectAuthority,
+		c.ConnectListener, c.Connector, c.DataSession, c.Domain, c.EnrollmentToken,
+		c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage, c.HealthCheck, c.Instance,
+		c.InstanceSecret, c.InstanceSetting, c.Invitation, c.IssuedCertificate,
+		c.Lease, c.Membership, c.Org, c.OrgSetting, c.PasswordReset, c.PolicyRule,
+		c.PortAllocation, c.PortPool, c.PortQuota, c.RecoveryCode, c.Release,
+		c.ResourceStatus, c.RevokedIdentity, c.RevokedSerial, c.Rollout,
+		c.RolloutTarget, c.Route, c.RouteHTTP, c.RouteHostname, c.RouteLimit,
+		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
+		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential,
+		c.TrafficBaseline, c.User, c.Webhook, c.WebhookDelivery,
 	} {
 		n.Use(hooks...)
 	}
@@ -589,17 +602,18 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.ACMEStorage, c.APIRequest, c.APIToken, c.AccessPolicy, c.AgentSession,
 		c.AgentState, c.Alert, c.AuditCheckpoint, c.AuditEntry, c.AuditHead,
-		c.CABundle, c.CAKey, c.Certificate, c.CompiledSnapshot, c.ConfigRevision,
-		c.ConfigSeq, c.ConnectAuthority, c.ConnectListener, c.Connector, c.DataSession,
-		c.Domain, c.EnrollmentToken, c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage,
-		c.HealthCheck, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
-		c.IssuedCertificate, c.Lease, c.Membership, c.Org, c.OrgSetting,
-		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
-		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
-		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
-		c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
-		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
-		c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook, c.WebhookDelivery,
+		c.AuditSink, c.AuditSinkCursor, c.CABundle, c.CAKey, c.Certificate,
+		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.ConnectAuthority,
+		c.ConnectListener, c.Connector, c.DataSession, c.Domain, c.EnrollmentToken,
+		c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage, c.HealthCheck, c.Instance,
+		c.InstanceSecret, c.InstanceSetting, c.Invitation, c.IssuedCertificate,
+		c.Lease, c.Membership, c.Org, c.OrgSetting, c.PasswordReset, c.PolicyRule,
+		c.PortAllocation, c.PortPool, c.PortQuota, c.RecoveryCode, c.Release,
+		c.ResourceStatus, c.RevokedIdentity, c.RevokedSerial, c.Rollout,
+		c.RolloutTarget, c.Route, c.RouteHTTP, c.RouteHostname, c.RouteLimit,
+		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
+		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.TOTPCredential,
+		c.TrafficBaseline, c.User, c.Webhook, c.WebhookDelivery,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -628,6 +642,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AuditEntry.mutate(ctx, m)
 	case *AuditHeadMutation:
 		return c.AuditHead.mutate(ctx, m)
+	case *AuditSinkMutation:
+		return c.AuditSink.mutate(ctx, m)
+	case *AuditSinkCursorMutation:
+		return c.AuditSinkCursor.mutate(ctx, m)
 	case *CABundleMutation:
 		return c.CABundle.mutate(ctx, m)
 	case *CAKeyMutation:
@@ -2090,6 +2108,308 @@ func (c *AuditHeadClient) mutate(ctx context.Context, m *AuditHeadMutation) (Val
 		return (&AuditHeadDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AuditHead mutation op: %q", m.Op())
+	}
+}
+
+// AuditSinkClient is a client for the AuditSink schema.
+type AuditSinkClient struct {
+	config
+}
+
+// NewAuditSinkClient returns a client for the AuditSink from the given config.
+func NewAuditSinkClient(c config) *AuditSinkClient {
+	return &AuditSinkClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `auditsink.Hooks(f(g(h())))`.
+func (c *AuditSinkClient) Use(hooks ...Hook) {
+	c.hooks.AuditSink = append(c.hooks.AuditSink, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `auditsink.Intercept(f(g(h())))`.
+func (c *AuditSinkClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AuditSink = append(c.inters.AuditSink, interceptors...)
+}
+
+// Create returns a builder for creating a AuditSink entity.
+func (c *AuditSinkClient) Create() *AuditSinkCreate {
+	mutation := newAuditSinkMutation(c.config, OpCreate)
+	return &AuditSinkCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AuditSink entities.
+func (c *AuditSinkClient) CreateBulk(builders ...*AuditSinkCreate) *AuditSinkCreateBulk {
+	return &AuditSinkCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AuditSinkClient) MapCreateBulk(slice any, setFunc func(*AuditSinkCreate, int)) *AuditSinkCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AuditSinkCreateBulk{err: fmt.Errorf("calling to AuditSinkClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AuditSinkCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AuditSinkCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AuditSink.
+func (c *AuditSinkClient) Update() *AuditSinkUpdate {
+	mutation := newAuditSinkMutation(c.config, OpUpdate)
+	return &AuditSinkUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AuditSinkClient) UpdateOne(_m *AuditSink) *AuditSinkUpdateOne {
+	mutation := newAuditSinkMutation(c.config, OpUpdateOne, withAuditSink(_m))
+	return &AuditSinkUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AuditSinkClient) UpdateOneID(id string) *AuditSinkUpdateOne {
+	mutation := newAuditSinkMutation(c.config, OpUpdateOne, withAuditSinkID(id))
+	return &AuditSinkUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AuditSink.
+func (c *AuditSinkClient) Delete() *AuditSinkDelete {
+	mutation := newAuditSinkMutation(c.config, OpDelete)
+	return &AuditSinkDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AuditSinkClient) DeleteOne(_m *AuditSink) *AuditSinkDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AuditSinkClient) DeleteOneID(id string) *AuditSinkDeleteOne {
+	builder := c.Delete().Where(auditsink.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AuditSinkDeleteOne{builder}
+}
+
+// Query returns a query builder for AuditSink.
+func (c *AuditSinkClient) Query() *AuditSinkQuery {
+	return &AuditSinkQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAuditSink},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AuditSink entity by its id.
+func (c *AuditSinkClient) Get(ctx context.Context, id string) (*AuditSink, error) {
+	return c.Query().Where(auditsink.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AuditSinkClient) GetX(ctx context.Context, id string) *AuditSink {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryCursors queries the cursors edge of a AuditSink.
+func (c *AuditSinkClient) QueryCursors(_m *AuditSink) *AuditSinkCursorQuery {
+	query := (&AuditSinkCursorClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(auditsink.Table, auditsink.FieldID, id),
+			sqlgraph.To(auditsinkcursor.Table, auditsinkcursor.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, auditsink.CursorsTable, auditsink.CursorsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *AuditSinkClient) Hooks() []Hook {
+	hooks := c.hooks.AuditSink
+	return append(hooks[:len(hooks):len(hooks)], auditsink.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *AuditSinkClient) Interceptors() []Interceptor {
+	inters := c.inters.AuditSink
+	return append(inters[:len(inters):len(inters)], auditsink.Interceptors[:]...)
+}
+
+func (c *AuditSinkClient) mutate(ctx context.Context, m *AuditSinkMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AuditSinkCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AuditSinkUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AuditSinkUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AuditSinkDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AuditSink mutation op: %q", m.Op())
+	}
+}
+
+// AuditSinkCursorClient is a client for the AuditSinkCursor schema.
+type AuditSinkCursorClient struct {
+	config
+}
+
+// NewAuditSinkCursorClient returns a client for the AuditSinkCursor from the given config.
+func NewAuditSinkCursorClient(c config) *AuditSinkCursorClient {
+	return &AuditSinkCursorClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `auditsinkcursor.Hooks(f(g(h())))`.
+func (c *AuditSinkCursorClient) Use(hooks ...Hook) {
+	c.hooks.AuditSinkCursor = append(c.hooks.AuditSinkCursor, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `auditsinkcursor.Intercept(f(g(h())))`.
+func (c *AuditSinkCursorClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AuditSinkCursor = append(c.inters.AuditSinkCursor, interceptors...)
+}
+
+// Create returns a builder for creating a AuditSinkCursor entity.
+func (c *AuditSinkCursorClient) Create() *AuditSinkCursorCreate {
+	mutation := newAuditSinkCursorMutation(c.config, OpCreate)
+	return &AuditSinkCursorCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AuditSinkCursor entities.
+func (c *AuditSinkCursorClient) CreateBulk(builders ...*AuditSinkCursorCreate) *AuditSinkCursorCreateBulk {
+	return &AuditSinkCursorCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AuditSinkCursorClient) MapCreateBulk(slice any, setFunc func(*AuditSinkCursorCreate, int)) *AuditSinkCursorCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AuditSinkCursorCreateBulk{err: fmt.Errorf("calling to AuditSinkCursorClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AuditSinkCursorCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AuditSinkCursorCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AuditSinkCursor.
+func (c *AuditSinkCursorClient) Update() *AuditSinkCursorUpdate {
+	mutation := newAuditSinkCursorMutation(c.config, OpUpdate)
+	return &AuditSinkCursorUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AuditSinkCursorClient) UpdateOne(_m *AuditSinkCursor) *AuditSinkCursorUpdateOne {
+	mutation := newAuditSinkCursorMutation(c.config, OpUpdateOne, withAuditSinkCursor(_m))
+	return &AuditSinkCursorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AuditSinkCursorClient) UpdateOneID(id string) *AuditSinkCursorUpdateOne {
+	mutation := newAuditSinkCursorMutation(c.config, OpUpdateOne, withAuditSinkCursorID(id))
+	return &AuditSinkCursorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AuditSinkCursor.
+func (c *AuditSinkCursorClient) Delete() *AuditSinkCursorDelete {
+	mutation := newAuditSinkCursorMutation(c.config, OpDelete)
+	return &AuditSinkCursorDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AuditSinkCursorClient) DeleteOne(_m *AuditSinkCursor) *AuditSinkCursorDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AuditSinkCursorClient) DeleteOneID(id string) *AuditSinkCursorDeleteOne {
+	builder := c.Delete().Where(auditsinkcursor.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AuditSinkCursorDeleteOne{builder}
+}
+
+// Query returns a query builder for AuditSinkCursor.
+func (c *AuditSinkCursorClient) Query() *AuditSinkCursorQuery {
+	return &AuditSinkCursorQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAuditSinkCursor},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AuditSinkCursor entity by its id.
+func (c *AuditSinkCursorClient) Get(ctx context.Context, id string) (*AuditSinkCursor, error) {
+	return c.Query().Where(auditsinkcursor.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AuditSinkCursorClient) GetX(ctx context.Context, id string) *AuditSinkCursor {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QuerySink queries the sink edge of a AuditSinkCursor.
+func (c *AuditSinkCursorClient) QuerySink(_m *AuditSinkCursor) *AuditSinkQuery {
+	query := (&AuditSinkClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(auditsinkcursor.Table, auditsinkcursor.FieldID, id),
+			sqlgraph.To(auditsink.Table, auditsink.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, auditsinkcursor.SinkTable, auditsinkcursor.SinkColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *AuditSinkCursorClient) Hooks() []Hook {
+	hooks := c.hooks.AuditSinkCursor
+	return append(hooks[:len(hooks):len(hooks)], auditsinkcursor.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *AuditSinkCursorClient) Interceptors() []Interceptor {
+	inters := c.inters.AuditSinkCursor
+	return append(inters[:len(inters):len(inters)], auditsinkcursor.Interceptors[:]...)
+}
+
+func (c *AuditSinkCursorClient) mutate(ctx context.Context, m *AuditSinkCursorMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AuditSinkCursorCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AuditSinkCursorUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AuditSinkCursorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AuditSinkCursorDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AuditSinkCursor mutation op: %q", m.Op())
 	}
 }
 
@@ -10173,31 +10493,31 @@ func (c *WebhookDeliveryClient) mutate(ctx context.Context, m *WebhookDeliveryMu
 type (
 	hooks struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
-		Alert, AuditCheckpoint, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
-		CompiledSnapshot, ConfigRevision, ConfigSeq, ConnectAuthority, ConnectListener,
-		Connector, DataSession, Domain, EnrollmentToken, Event, Gateway, GatewayGroup,
-		GatewayPage, HealthCheck, Instance, InstanceSecret, InstanceSetting,
-		Invitation, IssuedCertificate, Lease, Membership, Org, OrgSetting,
-		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode,
-		Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,
-		RolloutTarget, Route, RouteHTTP, RouteHostname, RouteLimit, RoutePolicy,
-		RouteTCP, RouteTarget, RouteTrafficDaily, RouteTrafficHourly, RouteUDP,
-		SecretMeta, Session, TOTPCredential, TrafficBaseline, User, Webhook,
-		WebhookDelivery []ent.Hook
+		Alert, AuditCheckpoint, AuditEntry, AuditHead, AuditSink, AuditSinkCursor,
+		CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq,
+		ConnectAuthority, ConnectListener, Connector, DataSession, Domain,
+		EnrollmentToken, Event, Gateway, GatewayGroup, GatewayPage, HealthCheck,
+		Instance, InstanceSecret, InstanceSetting, Invitation, IssuedCertificate,
+		Lease, Membership, Org, OrgSetting, PasswordReset, PolicyRule, PortAllocation,
+		PortPool, PortQuota, RecoveryCode, Release, ResourceStatus, RevokedIdentity,
+		RevokedSerial, Rollout, RolloutTarget, Route, RouteHTTP, RouteHostname,
+		RouteLimit, RoutePolicy, RouteTCP, RouteTarget, RouteTrafficDaily,
+		RouteTrafficHourly, RouteUDP, SecretMeta, Session, TOTPCredential,
+		TrafficBaseline, User, Webhook, WebhookDelivery []ent.Hook
 	}
 	inters struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
-		Alert, AuditCheckpoint, AuditEntry, AuditHead, CABundle, CAKey, Certificate,
-		CompiledSnapshot, ConfigRevision, ConfigSeq, ConnectAuthority, ConnectListener,
-		Connector, DataSession, Domain, EnrollmentToken, Event, Gateway, GatewayGroup,
-		GatewayPage, HealthCheck, Instance, InstanceSecret, InstanceSetting,
-		Invitation, IssuedCertificate, Lease, Membership, Org, OrgSetting,
-		PasswordReset, PolicyRule, PortAllocation, PortPool, PortQuota, RecoveryCode,
-		Release, ResourceStatus, RevokedIdentity, RevokedSerial, Rollout,
-		RolloutTarget, Route, RouteHTTP, RouteHostname, RouteLimit, RoutePolicy,
-		RouteTCP, RouteTarget, RouteTrafficDaily, RouteTrafficHourly, RouteUDP,
-		SecretMeta, Session, TOTPCredential, TrafficBaseline, User, Webhook,
-		WebhookDelivery []ent.Interceptor
+		Alert, AuditCheckpoint, AuditEntry, AuditHead, AuditSink, AuditSinkCursor,
+		CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq,
+		ConnectAuthority, ConnectListener, Connector, DataSession, Domain,
+		EnrollmentToken, Event, Gateway, GatewayGroup, GatewayPage, HealthCheck,
+		Instance, InstanceSecret, InstanceSetting, Invitation, IssuedCertificate,
+		Lease, Membership, Org, OrgSetting, PasswordReset, PolicyRule, PortAllocation,
+		PortPool, PortQuota, RecoveryCode, Release, ResourceStatus, RevokedIdentity,
+		RevokedSerial, Rollout, RolloutTarget, Route, RouteHTTP, RouteHostname,
+		RouteLimit, RoutePolicy, RouteTCP, RouteTarget, RouteTrafficDaily,
+		RouteTrafficHourly, RouteUDP, SecretMeta, Session, TOTPCredential,
+		TrafficBaseline, User, Webhook, WebhookDelivery []ent.Interceptor
 	}
 )
 
