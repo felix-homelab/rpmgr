@@ -471,3 +471,22 @@ func (v *routeStatuses) linked(gateway string, connectors map[string]bool) bool 
 	}
 	return false
 }
+
+// RouteStates are the status of every route of org, as the route status derives it, for the status
+// events (docs/07-api.md, "Webhooks (Phase 2)"): the route and the lower-case name of its state,
+// such as ready or degraded.
+func RouteStates(ctx context.Context, c *ent.Client, org string, now time.Time) (map[*ent.Route]string, error) {
+	rows, err := c.Route.Query().Where(route.OrgID(org)).All(ctx)
+	if err != nil || len(rows) == 0 {
+		return nil, err
+	}
+	st, err := newRouteStatuses(ctx, ctx, c, org, rows, now)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[*ent.Route]string, len(rows))
+	for _, r := range rows {
+		out[r] = strings.ToLower(strings.TrimPrefix(st.of(r).State.String(), "ROUTE_STATE_"))
+	}
+	return out, nil
+}

@@ -43,6 +43,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/invitation"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/issuedcertificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/lease"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/mailjob"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/orgsetting"
@@ -71,6 +72,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/session"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/statusmark"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/trafficbaseline"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
@@ -1079,6 +1081,33 @@ func (f TraverseLease) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.LeaseQuery", q)
 }
 
+// The MailJobFunc type is an adapter to allow the use of ordinary function as a Querier.
+type MailJobFunc func(context.Context, *ent.MailJobQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f MailJobFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.MailJobQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.MailJobQuery", q)
+}
+
+// The TraverseMailJob type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseMailJob func(context.Context, *ent.MailJobQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseMailJob) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseMailJob) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.MailJobQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.MailJobQuery", q)
+}
+
 // The MembershipFunc type is an adapter to allow the use of ordinary function as a Querier.
 type MembershipFunc func(context.Context, *ent.MembershipQuery) (ent.Value, error)
 
@@ -1808,6 +1837,33 @@ func (f TraverseSession) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.SessionQuery", q)
 }
 
+// The StatusMarkFunc type is an adapter to allow the use of ordinary function as a Querier.
+type StatusMarkFunc func(context.Context, *ent.StatusMarkQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f StatusMarkFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.StatusMarkQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.StatusMarkQuery", q)
+}
+
+// The TraverseStatusMark type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseStatusMark func(context.Context, *ent.StatusMarkQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseStatusMark) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseStatusMark) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.StatusMarkQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.StatusMarkQuery", q)
+}
+
 // The TOTPCredentialFunc type is an adapter to allow the use of ordinary function as a Querier.
 type TOTPCredentialFunc func(context.Context, *ent.TOTPCredentialQuery) (ent.Value, error)
 
@@ -2016,6 +2072,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.IssuedCertificateQuery, predicate.IssuedCertificate, issuedcertificate.OrderOption]{typ: ent.TypeIssuedCertificate, tq: q}, nil
 	case *ent.LeaseQuery:
 		return &query[*ent.LeaseQuery, predicate.Lease, lease.OrderOption]{typ: ent.TypeLease, tq: q}, nil
+	case *ent.MailJobQuery:
+		return &query[*ent.MailJobQuery, predicate.MailJob, mailjob.OrderOption]{typ: ent.TypeMailJob, tq: q}, nil
 	case *ent.MembershipQuery:
 		return &query[*ent.MembershipQuery, predicate.Membership, membership.OrderOption]{typ: ent.TypeMembership, tq: q}, nil
 	case *ent.OrgQuery:
@@ -2070,6 +2128,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.SecretMetaQuery, predicate.SecretMeta, secretmeta.OrderOption]{typ: ent.TypeSecretMeta, tq: q}, nil
 	case *ent.SessionQuery:
 		return &query[*ent.SessionQuery, predicate.Session, session.OrderOption]{typ: ent.TypeSession, tq: q}, nil
+	case *ent.StatusMarkQuery:
+		return &query[*ent.StatusMarkQuery, predicate.StatusMark, statusmark.OrderOption]{typ: ent.TypeStatusMark, tq: q}, nil
 	case *ent.TOTPCredentialQuery:
 		return &query[*ent.TOTPCredentialQuery, predicate.TOTPCredential, totpcredential.OrderOption]{typ: ent.TypeTOTPCredential, tq: q}, nil
 	case *ent.TrafficBaselineQuery:

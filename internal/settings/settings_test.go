@@ -195,3 +195,36 @@ func TestOrgSettingsAreScoped(t *testing.T) {
 		}
 	})
 }
+
+// TestOrgAlertSettings (#959): alert e-mails are on by default and every alert type is chosen; an
+// org chooses types by their names and turns the e-mails off; an unknown or repeated type, or
+// more than there are, is refused and changes nothing.
+func TestOrgAlertSettings(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		storetest.Init(t, db)
+		a := storetest.Org(t, db, "org-a")
+		ctx := storetest.OrgCtx(t, a)
+		if s, _, err := settings.Org(ctx, db.Client(), a); err != nil || !s.GetAlertEmail() || len(s.GetAlertTypes()) != 0 {
+			t.Fatalf("defaults %v, %v", s, err)
+		}
+		for _, bad := range [][]string{{"disk_full"}, {"clock_skew", "clock_skew"}, {""}} {
+			if _, err := settings.UpdateOrg(ctx, db, a, &rpmgrv1.OrgSettings{AlertTypes: bad}, mask("alert_types"), 0); err == nil {
+				t.Errorf("alert types %q accepted", bad)
+			}
+		}
+		upd := &rpmgrv1.OrgSettings{AlertEmail: proto.Bool(false), AlertTypes: []string{"agent_offline", "clock_skew"}}
+		if _, err := settings.UpdateOrg(ctx, db, a, upd, mask("alert_email", "alert_types"), 0); err != nil {
+			t.Fatal(err)
+		}
+		s, _, err := settings.Org(ctx, db.Client(), a)
+		if err != nil || s.GetAlertEmail() || !slices.Equal(s.GetAlertTypes(), []string{"agent_offline", "clock_skew"}) {
+			t.Fatalf("stored %v, %v", s, err)
+		}
+		if _, err := settings.UpdateOrg(ctx, db, a, &rpmgrv1.OrgSettings{}, mask("alert_email", "alert_types"), 0); err != nil {
+			t.Fatal(err)
+		}
+		if s, _, _ := settings.Org(ctx, db.Client(), a); !s.GetAlertEmail() || len(s.GetAlertTypes()) != 0 {
+			t.Fatalf("not back to the defaults: %v", s)
+		}
+	})
+}
