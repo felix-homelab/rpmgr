@@ -166,7 +166,11 @@ The hostnames' DNS records must point at the group's gateways; rpmgr does not pu
 - A **UDP** flow without datagrams for the flow idle timeout is forgotten; the next datagram of the
   client starts a new flow. The value is 1 to 86 400 seconds, one day.
 - Left empty in the web UI, or not set when the route is created, a timeout takes its default
-  ([03](../../03-connections.md#timeouts-keepalive-and-backoff)).
+  ([03](../../03-connections.md#timeouts-keepalive-and-backoff)). The TCP default is short enough
+  that a connection which stalls, or whose client vanished, does not hold the target's connection
+  for long; a route whose clients stay quiet for longer sets its own value, or `0`. Routes created
+  before release 0.3 keep the value they have; set one to change it
+  ([D161](../../14-open-decisions.md#engineering)).
 
 ### Access policies
 

@@ -658,7 +658,7 @@ func TestPortRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	pg, err := createRoute(ada, org, tcpRoute("pg", group, 20005), "")
-	if err != nil || pg.GetTcp().GetPort() != 20005 || pg.GetTcp().GetIdleTimeoutSeconds() != 3600 {
+	if err != nil || pg.GetTcp().GetPort() != 20005 || pg.GetTcp().GetIdleTimeoutSeconds() != 900 {
 		t.Fatalf("an explicit tcp port: %v %v", pg, err)
 	}
 	random, err := createRoute(ada, org, tcpRoute("redis", group, 0), "")
@@ -726,8 +726,15 @@ func TestPortRoutes(t *testing.T) {
 	}
 	// A cleared timeout is the default again, as on create; a zero flow idle time stays refused.
 	if up, err := update(pg.GetId(), []string{"tcp.idle_timeout_seconds"}, tcpRoute("", "", 0)); err != nil ||
-		up.GetTcp().GetIdleTimeoutSeconds() != 3600 || up.GetTcp().GetPort() != free {
+		up.GetTcp().GetIdleTimeoutSeconds() != 900 || up.GetTcp().GetPort() != free {
 		t.Fatalf("a cleared idle timeout: %v %v", up, err)
+	}
+	// A value the route sets wins over the default, a longer one than the old default included.
+	for _, secs := range []uint32{120, 7200} {
+		if up, err := update(pg.GetId(), []string{"tcp.idle_timeout_seconds"}, &rpmgrv1.Route{Spec: &rpmgrv1.Route_Tcp{Tcp: &rpmgrv1.TCPRouteSpec{
+			IdleTimeoutSeconds: &secs}}}); err != nil || up.GetTcp().GetIdleTimeoutSeconds() != secs {
+			t.Fatalf("an explicit idle timeout of %d: %v %v", secs, up, err)
+		}
 	}
 	flowIdle := func(s uint32) *rpmgrv1.Route {
 		r := udpRoute("", "", 0)
