@@ -64,13 +64,16 @@ type AuditSinkServiceClient interface {
 	// ListAuditSinks lists the sinks, the oldest first, each with its status.
 	ListAuditSinks(context.Context, *connect.Request[v1.ListAuditSinksRequest]) (*connect.Response[v1.ListAuditSinksResponse], error)
 	// UpdateAuditSink changes the fields the mask names: name, url, secret, address, ca_bundle,
-	// entries, enabled. The kind never changes.
+	// endpoint, region, bucket, access_key_id, retention_days, entries, enabled. The kind never
+	// changes. An object-storage sink whose settings or secret change is checked against its bucket
+	// first.
 	UpdateAuditSink(context.Context, *connect.Request[v1.UpdateAuditSinkRequest]) (*connect.Response[v1.UpdateAuditSinkResponse], error)
 	// DeleteAuditSink deletes a sink and its cursors. What it shipped stays with the receiver.
 	DeleteAuditSink(context.Context, *connect.Request[v1.DeleteAuditSinkRequest]) (*connect.Response[v1.DeleteAuditSinkResponse], error)
 	// TestAuditSink sends the sink a test item at once, outside its cursors, and returns the
-	// receiver's answer. A step-up is required because the controller opens a connection to an
-	// address of the Instance Admin's choosing.
+	// receiver's answer; for an object-storage sink it checks the bucket instead. A step-up is
+	// required because the controller opens a connection to an address of the Instance Admin's
+	// choosing.
 	TestAuditSink(context.Context, *connect.Request[v1.TestAuditSinkRequest]) (*connect.Response[v1.TestAuditSinkResponse], error)
 }
 
@@ -175,13 +178,16 @@ type AuditSinkServiceHandler interface {
 	// ListAuditSinks lists the sinks, the oldest first, each with its status.
 	ListAuditSinks(context.Context, *connect.Request[v1.ListAuditSinksRequest]) (*connect.Response[v1.ListAuditSinksResponse], error)
 	// UpdateAuditSink changes the fields the mask names: name, url, secret, address, ca_bundle,
-	// entries, enabled. The kind never changes.
+	// endpoint, region, bucket, access_key_id, retention_days, entries, enabled. The kind never
+	// changes. An object-storage sink whose settings or secret change is checked against its bucket
+	// first.
 	UpdateAuditSink(context.Context, *connect.Request[v1.UpdateAuditSinkRequest]) (*connect.Response[v1.UpdateAuditSinkResponse], error)
 	// DeleteAuditSink deletes a sink and its cursors. What it shipped stays with the receiver.
 	DeleteAuditSink(context.Context, *connect.Request[v1.DeleteAuditSinkRequest]) (*connect.Response[v1.DeleteAuditSinkResponse], error)
 	// TestAuditSink sends the sink a test item at once, outside its cursors, and returns the
-	// receiver's answer. A step-up is required because the controller opens a connection to an
-	// address of the Instance Admin's choosing.
+	// receiver's answer; for an object-storage sink it checks the bucket instead. A step-up is
+	// required because the controller opens a connection to an address of the Instance Admin's
+	// choosing.
 	TestAuditSink(context.Context, *connect.Request[v1.TestAuditSinkRequest]) (*connect.Response[v1.TestAuditSinkResponse], error)
 }
 
