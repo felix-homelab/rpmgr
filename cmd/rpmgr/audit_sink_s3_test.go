@@ -66,7 +66,7 @@ func TestAuditSinkCommands_S3(t *testing.T) {
 	code, out, errOut := run(append(slices.Clone(base), "--retention-days", "90", "--entries")...)
 	got := a.created.GetAuditSink()
 	if code != cli.ExitOK || got.GetKind() != rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_S3 || got.GetEndpoint() != "https://s3.example.com" ||
-		got.GetRegion() != "eu-central-1" || got.GetBucket() != "rpmgr-audit" || got.GetAccessKeyId() != "AKIAIOSFODNN7EXAMPLE" ||
+		got.GetRegion() != "eu-central-1" || got.GetBucket() != "rpmgr-audit" || got.GetAccessKeyId() != "AKIAIOSFODNN7EXAMPLE" || //nolint:gosec // G101: AWS documentation example credentials, not secrets
 		got.GetRetentionDays() != 90 || got.GetSecret() != key || !got.GetEntries() || strings.Contains(out+errOut, key) {
 		t.Fatalf("create: %d %q %q %v", code, out, errOut, a.created)
 	}

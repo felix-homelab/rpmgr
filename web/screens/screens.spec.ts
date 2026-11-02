@@ -44,6 +44,15 @@ async function signIn(page: Page, email: string) {
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
+// confirmStepUp confirms the step-up that a change asked for, if the page asks within a moment.
+async function confirmStepUp(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Confirm it is you" });
+  if (await dialog.waitFor({ timeout: 3000 }).then(() => true, () => false)) {
+    await dialog.getByLabel("Password").fill(password);
+    await dialog.getByRole("button", { name: "Confirm" }).click();
+  }
+}
+
 // call is an API call with the page's session, as the UI makes it.
 async function call(page: Page, method: string, body: object) {
   return page.evaluate(async ([method, body]) => {
@@ -103,8 +112,27 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await shot(page, "sign-in-code");
   await signIn(page, "ada@example.com");
   await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
+  // The seeded installation fires no alert and disabled no endpoint, so the overview is given made-up
+  // answers for the alerts and the endpoints, then loaded again.
+  const fake = async (method: string, json: object) => page.route(`**/rpmgr.v1.${method}`, (route) => route.fulfill({ json }));
+  const alert = { state: "ALERT_STATE_FIRING", firedAt: "2026-10-29T10:05:00Z" };
+  await fake("StatusService/ListAlerts", { alerts: [
+    { ...alert, id: "alr_1", kind: "agent_offline", subjectType: "gateway", subjectId: "gw_1", subjectName: "gw-eu-1", since: "2026-10-29T10:00:00Z" },
+    { ...alert, id: "alr_2", kind: "clock_skew", subjectType: "gateway", subjectId: "gw_1", subjectName: "gw-eu-1", since: "2026-10-29T08:40:00Z" },
+  ] });
+  await fake("StatusService/ListInstanceAlerts", { alerts: [
+    { ...alert, id: "alr_3", kind: "revocation_log_on_host", subjectType: "instance", subjectId: "instance", subjectName: "instance", since: "2026-10-28T16:20:00Z" },
+  ] });
+  await fake("WebhookService/ListWebhooks", { webhooks: [
+    { id: "whk_1", url: "https://ops.example.com/events", enabled: false, disabledReason: "WEBHOOK_DISABLED_REASON_FAILING", secretSet: true },
+  ] });
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Alerts" }).getByRole("list", { name: "Instance" })).toBeVisible();
   await page.waitForTimeout(1500);
   await shot(page, "overview", true);
+  for (const method of ["StatusService/ListAlerts", "StatusService/ListInstanceAlerts", "WebhookService/ListWebhooks"]) {
+    await page.unroute(`**/rpmgr.v1.${method}`);
+  }
 
   await page.keyboard.press("Control+k");
   await page.getByRole("combobox", { name: "Page, resource or action" }).fill("gr");
@@ -268,6 +296,27 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await expect(page.getByText("Saved.")).toBeVisible();
   await page.waitForTimeout(800);
   await shot(page, "settings-webhooks", true);
+  // The audit sinks, a webhook and a syslog server; each change asks for a step-up, which is
+  // confirmed when it is asked for.
+  await page.getByRole("navigation", { name: "Instance pages" }).getByRole("link", { name: "Audit sinks" }).click();
+  await expect(page.getByRole("heading", { name: "Audit sinks", level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: "New audit sink…" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("siem");
+  await page.getByLabel("URL").fill("https://siem.example.com/rpmgr");
+  await page.getByLabel(/^Signing secret/).fill("rpmgr_whs_SECRET1");
+  await page.getByRole("button", { name: "Create the sink" }).click();
+  await confirmStepUp(page);
+  await expect(page.getByText("siem", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "New audit sink…" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("syslog");
+  await page.getByLabel("Kind").selectOption({ label: "Syslog over TLS" });
+  await page.getByLabel("Address").fill("logs.example.com:6514");
+  await shot(page, "settings-audit-sinks-form", true);
+  await page.getByRole("button", { name: "Create the sink" }).click();
+  await confirmStepUp(page);
+  await expect(page.getByText("syslog", { exact: true })).toBeVisible();
+  await page.waitForTimeout(800);
+  await shot(page, "settings-audit-sinks", true);
   await page.getByRole("link", { name: "Users" }).click();
   await expect(page.getByRole("heading", { name: "Users", level: 1 })).toBeVisible();
   await page.waitForTimeout(800);

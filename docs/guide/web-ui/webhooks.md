@@ -18,7 +18,8 @@ Each endpoint is a row with its URL, its **state**, its event types and when it 
 - **Disabled:** a person switched it off.
 - **Disabled: failing since …:** rpmgr switched it off after the endpoint failed for the period
   in [03](../../03-connections.md#timeouts-keepalive-and-backoff). **Enable again** starts it
-  again; events count from then on.
+  again; events count from then on. The [overview](overview.md#a-disabled-webhook-endpoint) tells
+  Owners and Admins of such an endpoint and links here.
 
 `No webhook yet` says that the organisation has none.
 

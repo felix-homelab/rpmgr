@@ -12,6 +12,16 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- The web UI shows the alerts that fire on the Overview, the instance's too for the Instance Admin,
+  and tells Owners and Admins of a webhook endpoint that rpmgr disabled for failing, with a link to
+  enable it again. The organisation settings gain the alert e-mails on or off and the alert types
+  the organisation is e-mailed about. (#960)
+
+- The alerts the controller evaluates can be read through the API: `ListAlerts` lists an
+  organisation's alerts, the ones that fire unless the request asks for pending or resolved ones,
+  for every member of the organisation, and `ListInstanceAlerts` lists the instance alerts for the
+  Instance Admin. (#960)
+
 - Live logs are useful on a healthy agent. A new live log starts with the agent's latest lines, up
   to 200 lines and 64 KiB after redaction, marked as earlier lines in the web UI and in `rpmgr
   logs`, with how many older lines are gone. Connectors and gateways now log what they do: the
@@ -65,6 +75,10 @@ Changes to the design documents are not recorded here: see the git history and t
   conditional writes is refused. `rpmgr verify audit --sink <name>` reads the bucket back, reports
   a gap or a chain rewritten under a checkpoint the bucket holds, and the sink's status shows the
   last verification. (#656)
+- An Audit sinks page under Settings, for the Instance Admin, manages the audit sinks: it lists
+  each with its state, target, last success, backlog and last error, creates and edits webhook and
+  syslog sinks in a form with a section per kind, enables, disables, tests and deletes them. The
+  signing secret is write-only in the page. (#657)
 - Instance webhooks and private receivers: the Instance Admin manages the endpoints that receive
   instance events through `InstanceWebhookService`, and lists in the new instance setting
   `webhook_private_ranges` the private networks that organisations' receivers may use; a refused
@@ -246,6 +260,11 @@ Changes to the design documents are not recorded here: see the git history and t
   another target of its priority is healthy, and the route's status and the web UI show it as
   unknown. The first result decides either way, so a new target that fails shows its failure at
   once. (#996)
+- Data sessions: a session no longer stays frozen when a peer stops reading several streams. The
+  rule that resets streams without read progress for 30 s, once they hold more than half of the
+  session's connection window, was written but never ran; it now runs on every QUIC and HTTP/2
+  data session, so the other routes on the session flow again. A reader that merely pauses is left
+  alone. (#1044)
 
 ## [0.2.0] - 2026-10-24
 

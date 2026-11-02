@@ -24,7 +24,7 @@ import (
 const (
 	Bucket      = "audit-bucket"
 	Region      = "eu-test-1"
-	AccessKeyID = "AKIAIOSFODNN7EXAMPLE"
+	AccessKeyID = "AKIAIOSFODNN7EXAMPLE" //nolint:gosec // G101: AWS documentation example credentials, not secrets
 )
 
 // Server is the store. Set its switches before the first request.
