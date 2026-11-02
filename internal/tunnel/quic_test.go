@@ -542,7 +542,7 @@ func TestQUIC_SameAddressHandshakesKeepTheirOwnAdmission(t *testing.T) {
 		got[tunnel.SessionWindows(gw).Conn] = gw
 		t.Cleanup(func() { _ = gw.Close() })
 	}
-	big, small := 4*mib, 60*mib/16 // a sixteenth of the budget, then of what was left
+	big, small := 4*mib, 2*mib // a sixteenth of the budget, then half of what the prefix has left of its 8 MiB
 	if got[big] == nil || got[small] == nil {
 		t.Fatalf("the sessions hold windows %v, want one of %d and one of %d", got, big, small)
 	}
@@ -557,8 +557,9 @@ func TestQUIC_SameAddressHandshakesKeepTheirOwnAdmission(t *testing.T) {
 }
 
 // TestQUIC_HalfOpenHandshakesAreCapped: handshakes whose session nobody accepted yet hold their
-// reservations only up to a per-IP count: the ninth from one IP is refused, another IP is still
-// admitted, and accepting (claiming) lets the IP dial again.
+// reservations only up to a share of the budget per source prefix: further handshakes from that
+// /24 are refused, another prefix is still admitted, and accepting (claiming) lets the first
+// prefix dial again.
 func TestQUIC_HalfOpenHandshakesAreCapped(t *testing.T) {
 	q := newQUICPair(t, tunnel.DefaultWindowBudget)
 	cpc, err := net.ListenPacket("udp", "127.0.0.2:0")
@@ -567,26 +568,30 @@ func TestQUIC_HalfOpenHandshakesAreCapped(t *testing.T) {
 	}
 	ctr := &quic.Transport{Conn: cpc}
 	t.Cleanup(func() { _ = ctr.Close() })
-	for i := range 8 { // a real source address, validated by Retry
+	held := 0
+	for ; held < 16; held++ { // a real source address, validated by Retry
 		c, err := q.dialOn(ctr)
 		if err != nil {
-			t.Fatalf("handshake %d: %v", i, err)
+			break
 		}
 		t.Cleanup(func() { _ = c.Close() })
 	}
+	if held == 0 || held == 16 {
+		t.Fatalf("%d handshakes of one prefix were admitted, want the cap to stop them", held)
+	}
 	before := q.budget.Used()
-	if _, err := q.dialOn(ctr); err == nil {
-		t.Fatal("a ninth unclaimed handshake from one IP was admitted")
+	if _, err := q.dialFrom(t, "127.0.0.9"); err == nil { // the same /24
+		t.Fatal("another host of the same /24 got past the prefix's share")
 	}
 	if q.budget.Used() != before {
 		t.Fatalf("the refused handshake changed the budget from %d to %d", before, q.budget.Used())
 	}
-	other, err := q.dialFrom(t, "127.0.0.3") // a legitimate connector during the flood
+	other, err := q.dialFrom(t, "127.1.0.3") // a legitimate connector of another prefix
 	if err != nil {
-		t.Fatalf("another IP while the first holds its reservations: %v", err)
+		t.Fatalf("another prefix while the first holds its share: %v", err)
 	}
 	t.Cleanup(func() { _ = other.Close() })
-	for range 9 { // accepting claims
+	for range held + 1 { // accepting claims
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		gw, err := q.ln.Accept(ctx)
 		cancel()
@@ -605,60 +610,177 @@ func TestQUIC_HalfOpenHandshakesAreCapped(t *testing.T) {
 	_ = again.Close()
 }
 
+// TestQUIC_ConnectorOpensSessionsInParallel: a connector that opens eight sessions at once from one
+// address gets all eight, with shrinking windows, each session held to the windows it was admitted
+// with.
+func TestQUIC_ConnectorOpensSessionsInParallel(t *testing.T) {
+	q := newQUICPair(t, tunnel.DefaultWindowBudget)
+	cpc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctr := &quic.Transport{Conn: cpc}
+	t.Cleanup(func() { _ = ctr.Close() })
+	errs := make(chan error, 8)
+	for range 8 {
+		go func() {
+			c, err := q.dialOn(ctr)
+			if err == nil {
+				t.Cleanup(func() { _ = c.Close() })
+			}
+			errs <- err
+		}()
+	}
+	for range 8 {
+		if err := <-errs; err != nil {
+			t.Fatalf("a session of eight in parallel: %v", err)
+		}
+	}
+	var total uint64
+	for range 8 {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		gw, err := q.ln.Accept(ctx)
+		cancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = gw.Close() })
+		w := tunnel.SessionWindows(gw)
+		if w.Conn < 1<<20 || w.Stream != w.Conn/16 {
+			t.Fatalf("windows %+v", w)
+		}
+		total += uint64(w.Conn) //nolint:gosec // G115: a window is positive
+	}
+	if total != q.budget.Used() || total > tunnel.DefaultWindowBudget/8 {
+		t.Fatalf("the sessions hold %d, the budget %d", total, q.budget.Used())
+	}
+}
+
 // TestQUIC_AdmissionCapsAndUnverified: the listener refuses an address that is not verified, caps
-// the unclaimed reservations of one IP by number and of all together at half of the budget, and
-// gives a reservation back when its connection ends.
+// the unclaimed reservations of one source prefix at an eighth of the budget and of all together at
+// half of it, sizes an admission to what its prefix has left, and gives a reservation back when its
+// connection ends.
 func TestQUIC_AdmissionCapsAndUnverified(t *testing.T) {
 	const mib = 1 << 20
-	q := newQUICPair(t, 64*mib) // all unclaimed together: at most 32 MiB
+	q := newQUICPair(t, 64*mib) // per prefix 8 MiB, all together 32 MiB
 	if _, err := q.ln.Admit("203.0.113.1:1000", false); !errors.Is(err, tunnel.ErrUnverified) {
 		t.Fatalf("an unverified address: %v", err)
 	}
 	if q.budget.Used() != 0 || q.ln.PendingBytes() != 0 {
 		t.Fatal("a refused connection took a reservation")
 	}
-	var ends []func()
-	for i := range 8 { // one IP, eight ports
-		end, err := q.ln.Admit("203.0.113.1:"+strconv.Itoa(1000+i), true)
-		if err != nil {
-			t.Fatalf("admission %d of one IP: %v", i, err)
+	fill := func(prefix string) (ends []func()) { // 4 + 2 + 1 + 1 MiB: the whole share of the prefix
+		for i := range 4 {
+			end, err := q.ln.Admit(prefix+strconv.Itoa(1+i)+":1000", true) // different hosts of the /24
+			if err != nil {
+				t.Fatalf("%s admission %d: %v", prefix, i, err)
+			}
+			ends = append(ends, end)
 		}
-		ends = append(ends, end)
+		return ends
 	}
-	used := q.budget.Used()
-	for _, port := range []string{"1008", "2000"} { // another port, and a spoofed one
-		if _, err := q.ln.Admit("203.0.113.1:"+port, true); !errors.Is(err, tunnel.ErrBudget) {
-			t.Fatalf("a ninth connection of one IP, port %s: %v", port, err)
+	a := fill("203.0.113.")
+	if q.budget.Used() != 8*mib {
+		t.Fatalf("the budget holds %d after the first prefix, want 8 MiB", q.budget.Used())
+	}
+	for _, addr := range []string{"203.0.113.9:1000", "203.0.113.1:2000", "203.0.113.200:1000"} {
+		if _, err := q.ln.Admit(addr, true); !errors.Is(err, tunnel.ErrBudget) {
+			t.Fatalf("%s beyond its prefix's share: %v", addr, err)
 		}
 	}
-	if q.budget.Used() != used {
+	if q.budget.Used() != 8*mib {
 		t.Fatal("a capped admission kept a share of the budget")
 	}
-	// Other IPs are admitted until all unclaimed reservations together reach half of the budget.
-	n := 0
-	for ; n < 50; n++ {
-		end, err := q.ln.Admit("203.0.113."+strconv.Itoa(10+n)+":1000", true)
-		if errors.Is(err, tunnel.ErrBudget) {
-			break
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		ends = append(ends, end)
+	b := fill("198.51.100.") // a second flooding prefix at its maximum
+	// A third prefix is still admitted, with what the budget leaves it.
+	c, err := q.ln.Admit("192.0.2.1:1000", true)
+	if err != nil {
+		t.Fatalf("a third prefix beside two flooding ones: %v", err)
 	}
-	if n == 50 || n == 0 {
-		t.Fatalf("%d further IPs admitted, want the total cap to stop them", n)
+	// IPv6 hosts of one /64 share an allowance; another /64 does not.
+	var v6 []func()
+	for i := range 4 {
+		end, err := q.ln.Admit("[2001:db8:1:1::"+strconv.Itoa(1+i)+"]:1000", true)
+		if err != nil {
+			t.Fatalf("IPv6 admission %d: %v", i, err)
+		}
+		v6 = append(v6, end)
+	}
+	if _, err := q.ln.Admit("[2001:db8:1:1::99]:1000", true); !errors.Is(err, tunnel.ErrBudget) {
+		t.Fatalf("a fifth host of one /64: %v", err)
+	}
+	if _, err := q.ln.Admit("[2001:db8:1:2::1]:1000", true); err != nil {
+		t.Fatalf("another /64: %v", err)
 	}
 	if got := q.ln.PendingBytes(); got > 32*mib {
 		t.Fatalf("%d bytes unclaimed, above half of the budget", got)
 	}
-	used = q.budget.Used()
-	ends[0]() // a connection ends: its reservation and its place count again
+	used := q.budget.Used()
+	a[0]() // a connection ends: its reservation and its place count again
 	eventuallyUsed(t, q.budget, used-4*mib, "after a connection ended")
 	if _, err := q.ln.Admit("203.0.113.1:3000", true); err != nil {
 		t.Fatalf("after a connection ended: %v", err)
 	}
-	for _, e := range ends[1:] {
+	for _, e := range append(append(append(a[1:], b...), c), v6...) {
 		e()
 	}
+}
+
+// TestQUIC_ListenerEdges: a transport that is configured already is refused; a connection nobody
+// accepted gives its admission back when it ends, or when the listener closes with it queued; and
+// an Accept that is cancelled while it waits loses nothing.
+func TestQUIC_ListenerEdges(t *testing.T) {
+	p := newPeers(t)
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	busy := &quic.Transport{Conn: pc, VerifySourceAddress: func(net.Addr) bool { return false }}
+	if _, err := tunnel.ListenQUIC(busy, p.gateway, tunnel.NewBudget(tunnel.DefaultWindowBudget)); err == nil {
+		t.Fatal("a transport with its own source address check was taken over")
+	}
+	_ = busy.Close()
+
+	q := newQUICPair(t, tunnel.DefaultWindowBudget)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	if _, err := q.ln.Accept(ctx); err == nil {
+		t.Fatal("Accept returned a session from nothing")
+	}
+	cancel()
+	// A connection that ends before it is accepted returns its reservation and its place.
+	con, err := q.dialFrom(t, "127.0.0.5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = con.Close()
+	eventuallyUsed(t, q.budget, 0, "a connection that ended unaccepted")
+	if q.ln.PendingBytes() != 0 {
+		t.Fatalf("%d bytes still count as unclaimed", q.ln.PendingBytes())
+	}
+	// The cancelled Accept lost nothing: the next session is accepted with its windows.
+	con, err = q.dialFrom(t, "127.0.0.5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = con.Close() })
+	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	gw, err := q.ln.Accept(ctx)
+	cancel()
+	if err != nil || tunnel.SessionWindows(gw).Conn == 0 {
+		t.Fatalf("the session after a cancelled Accept: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+	// Closing the listener with sessions queued closes them and returns their admissions.
+	for range 3 {
+		c, err := q.dialFrom(t, "127.0.0.6")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = c.Close() })
+	}
+	_ = gw.Close()
+	if err := q.ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+	eventuallyUsed(t, q.budget, 0, "a listener closed with queued sessions")
 }

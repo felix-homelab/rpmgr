@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"net"
 	"os"
 	"sync"
@@ -88,6 +89,12 @@ func (b *Budget) AdmitQUIC() (H2Windows, func(), error) {
 // few taking all of it, and at least 1 MiB, or ErrBudget. The stream window is at most a sixteenth
 // of the connection window. release returns the reservation; call it when the session ends.
 func (b *Budget) AdmitH2(want H2Windows) (H2Windows, func(), error) {
+	return b.admit(want, math.MaxUint64)
+}
+
+// admit is AdmitH2 with an upper bound on the connection window, which a caller sets lower than
+// the budget would (never below the 1 MiB floor).
+func (b *Budget) admit(want H2Windows, ceiling uint64) (H2Windows, func(), error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	free := uint64(0)
@@ -97,7 +104,7 @@ func (b *Budget) AdmitH2(want H2Windows) (H2Windows, func(), error) {
 	if free < minConnWindow {
 		return H2Windows{}, nil, ErrBudget
 	}
-	conn := min(uint64(want.Conn), maxConnWindow, max(minConnWindow, free/budgetShare)) //nolint:gosec // G115: a window is positive
+	conn := min(uint64(want.Conn), maxConnWindow, max(minConnWindow, min(free/budgetShare, ceiling))) //nolint:gosec // G115: a window is positive
 	got := want
 	got.Conn = int(conn) //nolint:gosec // G115: conn <= want.Conn
 	got.Stream = min(want.Stream, got.Conn/16)
@@ -196,9 +203,14 @@ func DialQUIC(ctx context.Context, tr *quic.Transport, addr net.Addr, cfg *tls.C
 // has claimed yet. These bound what unclaimed handshakes can take from the budget, so that
 // half-open handshakes cannot exhaust it (03, "QUIC parameters").
 const (
-	// maxPendingPerIP is how many unclaimed admissions one source IP may hold: a connector opens
-	// its sessions to a gateway together, up to MaxConnectorSessions of the gateway's over time.
-	maxPendingPerIP = 8
+	// pendingPrefixShare: the unclaimed admissions of one source prefix (an IPv4 /24, an IPv6 /64)
+	// hold at most an eighth of the budget together; an admission is sized to what is left of
+	// that, and takes at most half of it, so that a connector that opens several sessions at
+	// once gets all of them, with smaller windows.
+	pendingPrefixShare = 8
+	// maxPendingPerPrefix is how many unclaimed admissions one prefix may hold, as the smallest
+	// windows add up.
+	maxPendingPerPrefix = 16
 	// pendingShare: all unclaimed admissions hold at most half of the budget.
 	pendingShare = 2
 )
@@ -208,10 +220,11 @@ type QUICListener struct {
 	ln     *quic.Listener
 	budget *Budget
 
-	mu           sync.Mutex
-	admitted     map[*quic.ClientInfo]*admission // between GetConfigForClient and ConnContext
-	pendingBytes uint64                          // of the unclaimed admissions
-	pendingByIP  map[string]int                  // by source IP, in admissions
+	mu            sync.Mutex
+	admitted      map[*quic.ClientInfo]*admission // between GetConfigForClient and ConnContext
+	pendingBytes  uint64                          // of the unclaimed admissions
+	prefixBytes   map[string]uint64               // by source prefix
+	prefixPending map[string]int
 }
 
 // admission is the window reserved for one incoming connection. It travels in the connection's
@@ -221,7 +234,7 @@ type admission struct {
 	l       *QUICListener
 	w       H2Windows
 	release func() // the budget share; once
-	ip      string
+	prefix  string
 	pending sync.Once // leaves the unclaimed count
 }
 
@@ -230,10 +243,14 @@ type admissionKey struct{}
 // settle takes the admission out of the unclaimed count: it was claimed or its connection ended.
 func (a *admission) settle() {
 	a.pending.Do(func() {
+		n := uint64(a.w.Conn) //nolint:gosec // G115: a window is positive
 		a.l.mu.Lock()
-		a.l.pendingBytes -= uint64(a.w.Conn) //nolint:gosec // G115: a window is positive
-		if a.l.pendingByIP[a.ip]--; a.l.pendingByIP[a.ip] == 0 {
-			delete(a.l.pendingByIP, a.ip)
+		a.l.pendingBytes -= n
+		if a.l.prefixBytes[a.prefix] -= n; a.l.prefixBytes[a.prefix] == 0 {
+			delete(a.l.prefixBytes, a.prefix)
+		}
+		if a.l.prefixPending[a.prefix]--; a.l.prefixPending[a.prefix] <= 0 {
+			delete(a.l.prefixPending, a.prefix)
 		}
 		a.l.mu.Unlock()
 	})
@@ -244,14 +261,19 @@ var ErrUnverified = errors.New("tunnel: the connection's source address is not v
 
 // ListenQUIC starts the gateway's QUIC listener for data sessions on tr. It sets
 // tr.VerifySourceAddress, which makes every new connection prove its source address with a Retry
-// (one extra round trip), and tr.ConnContext, before it starts the listener; a transport must not
-// be in use yet. Each connection is then admitted against budget before its handshake (quic-go's
-// GetConfigForClient), with its own windows, or refused: for an unverified address, when the
-// source IP or all unclaimed handshakes together hold their share, or when the budget has no room.
+// (one extra round trip), and tr.ConnContext, before it starts the listener, and returns an error
+// if either is set already or the transport is in use. Each connection is then admitted against
+// budget before its handshake (quic-go's GetConfigForClient), with its own windows, or refused:
+// for an unverified address, when its source prefix or all unclaimed handshakes together hold
+// their share, or when the budget has no room.
 func ListenQUIC(tr *quic.Transport, cfg *tls.Config, budget *Budget) (*QUICListener, error) {
+	if tr.VerifySourceAddress != nil || tr.ConnContext != nil {
+		return nil, errors.New("tunnel: the transport has a source address check or connection context already")
+	}
 	cfg = cfg.Clone()
 	cfg.NextProtos = []string{ALPNQUIC}
-	l := &QUICListener{budget: budget, admitted: map[*quic.ClientInfo]*admission{}, pendingByIP: map[string]int{}}
+	l := &QUICListener{budget: budget, admitted: map[*quic.ClientInfo]*admission{},
+		prefixBytes: map[string]uint64{}, prefixPending: map[string]int{}}
 	tr.VerifySourceAddress = func(net.Addr) bool { return true }
 	tr.ConnContext = l.connContext
 	qc := QUICConfig(false, H2Windows{Stream: quicStreamWindowMax, Conn: quicConnWindowMax})
@@ -264,47 +286,64 @@ func ListenQUIC(tr *quic.Transport, cfg *tls.Config, budget *Budget) (*QUICListe
 	return l, nil
 }
 
-func hostOf(a net.Addr) string {
+// prefixOf is the source prefix an address counts under: its IPv4 /24 or IPv6 /64.
+func prefixOf(a net.Addr) string {
+	var ip net.IP
 	if u, ok := a.(*net.UDPAddr); ok {
-		return u.IP.String()
+		ip = u.IP
+	} else if h, _, err := net.SplitHostPort(a.String()); err == nil {
+		ip = net.ParseIP(h)
 	}
-	h, _, err := net.SplitHostPort(a.String())
-	if err != nil {
+	if ip == nil {
 		return a.String()
 	}
-	return h
+	if v4 := ip.To4(); v4 != nil {
+		return v4.Mask(net.CIDRMask(24, 32)).String() + "/24"
+	}
+	return ip.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }
 
-// totalCap is the share above, at least one smallest window so that a small budget still admits
-// one handshake at a time.
+// totalCap and prefixCap are the shares above, at least one smallest window so that a small budget
+// still admits one handshake at a time.
 func (l *QUICListener) totalCap() uint64 { return max(l.budget.limit/pendingShare, minConnWindow) }
+
+func (l *QUICListener) prefixCap() uint64 {
+	return max(l.budget.limit/pendingPrefixShare, minConnWindow)
+}
 
 // admit reserves the windows of a new connection.
 func (l *QUICListener) admit(info *quic.ClientInfo) (*quic.Config, error) {
 	if !info.AddrVerified {
 		return nil, ErrUnverified
 	}
-	ip := hostOf(info.RemoteAddr)
+	prefix := prefixOf(info.RemoteAddr)
 	l.mu.Lock()
-	full := l.pendingByIP[ip] >= maxPendingPerIP
+	var allowance uint64
+	if held := l.prefixBytes[prefix]; held < l.prefixCap() {
+		allowance = l.prefixCap() - held
+	}
+	count := l.prefixPending[prefix]
 	l.mu.Unlock()
-	if full {
+	if count >= maxPendingPerPrefix || allowance < minConnWindow {
 		return nil, ErrBudget
 	}
-	w, release, err := l.budget.AdmitQUIC()
+	// The window the connection gets is the one admitted here: at most half of what the prefix has
+	// left, so that the next handshake of the same connector still fits.
+	w, release, err := l.budget.admit(H2Windows{Stream: quicStreamWindowMax, Conn: quicConnWindowMax}, allowance/2)
 	if err != nil {
 		return nil, err
 	}
 	l.mu.Lock()
 	n := uint64(w.Conn) //nolint:gosec // G115: a window is positive
-	if l.pendingByIP[ip] >= maxPendingPerIP || l.pendingBytes+n > l.totalCap() {
+	if l.prefixPending[prefix] >= maxPendingPerPrefix || l.prefixBytes[prefix]+n > l.prefixCap() || l.pendingBytes+n > l.totalCap() {
 		l.mu.Unlock()
 		release()
 		return nil, ErrBudget
 	}
-	a := &admission{l: l, w: w, release: release, ip: ip}
+	a := &admission{l: l, w: w, release: release, prefix: prefix}
 	l.pendingBytes += n
-	l.pendingByIP[ip]++
+	l.prefixBytes[prefix] += n
+	l.prefixPending[prefix]++
 	l.admitted[info] = a
 	l.mu.Unlock()
 	return QUICConfig(false, w), nil
@@ -345,7 +384,19 @@ func (l *QUICListener) Accept(ctx context.Context) (*QUICSession, error) {
 }
 
 // Close stops accepting sessions.
-func (l *QUICListener) Close() error { return l.ln.Close() }
+func (l *QUICListener) Close() error {
+	err := l.ln.Close()
+	// quic-go leaves connections whose handshake completed but that nobody accepted in its queue;
+	// closing them ends their contexts, which returns their admissions. After Close, Accept never
+	// blocks: it drains the queue, then fails.
+	for {
+		conn, aerr := l.ln.Accept(context.Background())
+		if aerr != nil {
+			return err
+		}
+		_ = conn.CloseWithError(0, "")
+	}
+}
 
 // QUICSession is a data session over QUIC.
 type QUICSession struct {
