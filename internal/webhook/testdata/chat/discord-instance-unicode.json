@@ -18,12 +18,12 @@
         {
           "inline": true,
           "name": "Actor",
-          "value": "user usr_2"
+          "value": "user usr\\_2"
         },
         {
           "inline": true,
           "name": "Subject",
-          "value": "release Größe 日本語 🚀 (rel_1)"
+          "value": "release Größe 日本語 🚀 \\(rel\\_1\\)"
         },
         {
           "inline": true,

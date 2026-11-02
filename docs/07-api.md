@@ -480,8 +480,10 @@ spec:
   `FAILED_PRECONDITION`. An update changes `format` only together with a new `secret_url`
   (from `rpmgr` to a chat format, or between chat formats); a chat endpoint does not become
   `rpmgr`, which is `FAILED_PRECONDITION`. A `429` from a chat service with `Retry-After` or
-  Discord's `retry_after` delays the next attempt, within the bounds in 03, and does not count
-  towards the disabling of the endpoint ([D143](14-open-decisions.md#engineering)). The event
+  Discord's `retry_after` delays the next attempt, within the bounds in 03 and never faster than the ordinary retries,
+  and does not count towards the disabling of the endpoint
+  ([D143](14-open-decisions.md#engineering)) until the attempt in 03 from which a 429 is a
+  failure. The event
   filter, retries, deliveries, test and disabling are those of every endpoint.
 - **Deliveries** are listed per endpoint: event, attempt, time, status code or error, and the
   next retry.

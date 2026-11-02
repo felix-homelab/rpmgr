@@ -6,7 +6,7 @@
         "body": [
           {
             "size": "Medium",
-            "text": "route.create \u003c!channel\u003e \u0026 @everyone \u003c@U123\u003e",
+            "text": "route.create \\\u003c!channel\\\u003e \u0026 @everyone \\\u003c@U123\\\u003e",
             "type": "TextBlock",
             "weight": "Bolder",
             "wrap": true
@@ -19,15 +19,15 @@
               },
               {
                 "title": "Organisation",
-                "value": "org_1"
+                "value": "org\\_1"
               },
               {
                 "title": "Actor",
-                "value": "user usr_1"
+                "value": "user usr\\_1"
               },
               {
                 "title": "Subject",
-                "value": "route \u003c!channel\u003e \u0026 @everyone (rt_2)"
+                "value": "route \\\u003c!channel\\\u003e \u0026 @everyone \\(rt\\_2\\)"
               },
               {
                 "title": "Time",

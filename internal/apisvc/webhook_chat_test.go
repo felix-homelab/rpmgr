@@ -369,3 +369,26 @@ func TestInstanceWebhooks_Chat(t *testing.T) {
 		t.Errorf("the org's service reads the instance's endpoint: %v (org %s)", err, org)
 	}
 }
+
+// TestWebhooks_ChatURLBoundToItsRow: a sealed URL copied to another endpoint's row does not open
+// there, so a webhooks.write holder with database access cannot redirect one endpoint's token to
+// another; the test send fails without naming either URL.
+func TestWebhooks_ChatURLBoundToItsRow(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	ctx := context.Background()
+	e.webhooks.Sender = &webhook.Sender{}
+	a, err := newChat(t, e, ada, org, rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_DISCORD, discordURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := newChat(t, e, ada, org, rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_SLACK, slackURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := e.db.Client().Webhook.GetX(e.sys, a.GetWebhook().GetId())
+	e.db.Client().Webhook.UpdateOneID(b.GetWebhook().GetId()).SetURLEnc(*from.URLEnc).ExecX(e.sys)
+	_, err = ada.wh.TestWebhook(ctx, connect.NewRequest(&rpmgrv1.TestWebhookRequest{WebhookId: b.GetWebhook().GetId()}))
+	if code(err) != connect.CodeInternal || strings.Contains(err.Error(), "TOKEN") {
+		t.Fatalf("a URL sealed for another row: %v", err)
+	}
+}
