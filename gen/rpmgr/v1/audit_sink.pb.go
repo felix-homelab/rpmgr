@@ -35,6 +35,9 @@ const (
 	AuditSinkKind_AUDIT_SINK_KIND_WEBHOOK AuditSinkKind = 1
 	// RFC 5424 messages over TLS (RFC 5425 framing) to address; never UDP or plain TCP.
 	AuditSinkKind_AUDIT_SINK_KIND_SYSLOG AuditSinkKind = 2
+	// One object per checkpoint or entry in an S3-compatible bucket with Object Lock in compliance
+	// mode.
+	AuditSinkKind_AUDIT_SINK_KIND_S3 AuditSinkKind = 3
 )
 
 // Enum value maps for AuditSinkKind.
@@ -43,11 +46,13 @@ var (
 		0: "AUDIT_SINK_KIND_UNSPECIFIED",
 		1: "AUDIT_SINK_KIND_WEBHOOK",
 		2: "AUDIT_SINK_KIND_SYSLOG",
+		3: "AUDIT_SINK_KIND_S3",
 	}
 	AuditSinkKind_value = map[string]int32{
 		"AUDIT_SINK_KIND_UNSPECIFIED": 0,
 		"AUDIT_SINK_KIND_WEBHOOK":     1,
 		"AUDIT_SINK_KIND_SYSLOG":      2,
+		"AUDIT_SINK_KIND_S3":          3,
 	}
 )
 
@@ -90,9 +95,9 @@ type AuditSink struct {
 	Kind AuditSinkKind `protobuf:"varint,3,opt,name=kind,proto3,enum=rpmgr.v1.AuditSinkKind" json:"kind,omitempty"`
 	// The receiver of a webhook sink: an https:// URL without credentials; empty for a syslog sink.
 	Url string `protobuf:"bytes,4,opt,name=url,proto3" json:"url,omitempty"`
-	// The secret that signs a webhook sink's deliveries (a syslog sink has none), which the receiver verifies. Write-only:
-	// it is stored under the KEK, never returned and redacted in the audit log; empty in every
-	// answer.
+	// The secret that signs a webhook sink's deliveries, which the receiver verifies, or an
+	// object-storage sink's secret key (a syslog sink has none). Write-only: it is stored under the
+	// KEK, never returned and redacted in the audit log; empty in every answer.
 	Secret string `protobuf:"bytes,5,opt,name=secret,proto3" json:"secret,omitempty"`
 	// Whether a secret is stored; output only.
 	SecretSet bool `protobuf:"varint,6,opt,name=secret_set,json=secretSet,proto3" json:"secret_set,omitempty"`
@@ -112,7 +117,18 @@ type AuditSink struct {
 	Address string `protobuf:"bytes,12,opt,name=address,proto3" json:"address,omitempty"`
 	// The CA certificates, in PEM form, that the syslog server's certificate must chain to; empty
 	// means the system roots. Certificates are public, so it is returned.
-	CaBundle      string `protobuf:"bytes,13,opt,name=ca_bundle,json=caBundle,proto3" json:"ca_bundle,omitempty"`
+	CaBundle string `protobuf:"bytes,13,opt,name=ca_bundle,json=caBundle,proto3" json:"ca_bundle,omitempty"`
+	// The store of an object-storage sink: an https:// URL, or http:// on a loopback address, with
+	// no credentials, path or query.
+	Endpoint string `protobuf:"bytes,14,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	// The region the store's requests are signed for.
+	Region string `protobuf:"bytes,15,opt,name=region,proto3" json:"region,omitempty"`
+	// The bucket; it needs Object Lock and versioning.
+	Bucket string `protobuf:"bytes,16,opt,name=bucket,proto3" json:"bucket,omitempty"`
+	// The access key's ID; its secret key is the write-only secret.
+	AccessKeyId string `protobuf:"bytes,17,opt,name=access_key_id,json=accessKeyId,proto3" json:"access_key_id,omitempty"`
+	// How long, in days, each object stays locked: 30 to 3650, 365 if not set.
+	RetentionDays int32 `protobuf:"varint,18,opt,name=retention_days,json=retentionDays,proto3" json:"retention_days,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -238,6 +254,41 @@ func (x *AuditSink) GetCaBundle() string {
 	return ""
 }
 
+func (x *AuditSink) GetEndpoint() string {
+	if x != nil {
+		return x.Endpoint
+	}
+	return ""
+}
+
+func (x *AuditSink) GetRegion() string {
+	if x != nil {
+		return x.Region
+	}
+	return ""
+}
+
+func (x *AuditSink) GetBucket() string {
+	if x != nil {
+		return x.Bucket
+	}
+	return ""
+}
+
+func (x *AuditSink) GetAccessKeyId() string {
+	if x != nil {
+		return x.AccessKeyId
+	}
+	return ""
+}
+
+func (x *AuditSink) GetRetentionDays() int32 {
+	if x != nil {
+		return x.RetentionDays
+	}
+	return 0
+}
+
 // AuditSinkStatus is how far a sink is behind and why, from the audit tables and the sink's
 // cursors, so it is current even while no controller replica ships.
 type AuditSinkStatus struct {
@@ -253,7 +304,9 @@ type AuditSinkStatus struct {
 	// When the oldest of them was appended; unset when there is none.
 	OldestUnshippedTime *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=oldest_unshipped_time,json=oldestUnshippedTime,proto3" json:"oldest_unshipped_time,omitempty"`
 	// The same per chain that has entries.
-	Chains        []*AuditSinkChainStatus `protobuf:"bytes,5,rep,name=chains,proto3" json:"chains,omitempty"`
+	Chains []*AuditSinkChainStatus `protobuf:"bytes,5,rep,name=chains,proto3" json:"chains,omitempty"`
+	// The outcome of the last read-back of an object-storage sink; unset before the first.
+	Verification  *AuditSinkVerification `protobuf:"bytes,6,opt,name=verification,proto3" json:"verification,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -323,6 +376,180 @@ func (x *AuditSinkStatus) GetChains() []*AuditSinkChainStatus {
 	return nil
 }
 
+func (x *AuditSinkStatus) GetVerification() *AuditSinkVerification {
+	if x != nil {
+		return x.Verification
+	}
+	return nil
+}
+
+// AuditSinkVerification is the outcome of reading an object-storage sink back
+// (docs/04-security.md, "Audit log").
+type AuditSinkVerification struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// When it ran.
+	Time *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=time,proto3" json:"time,omitempty"`
+	// Whether every chain is intact: no gap and no problem.
+	Intact bool `protobuf:"varint,2,opt,name=intact,proto3" json:"intact,omitempty"`
+	// The outcome per chain that has entries.
+	Chains        []*AuditSinkChainVerification `protobuf:"bytes,3,rep,name=chains,proto3" json:"chains,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuditSinkVerification) Reset() {
+	*x = AuditSinkVerification{}
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuditSinkVerification) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuditSinkVerification) ProtoMessage() {}
+
+func (x *AuditSinkVerification) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuditSinkVerification.ProtoReflect.Descriptor instead.
+func (*AuditSinkVerification) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *AuditSinkVerification) GetTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Time
+	}
+	return nil
+}
+
+func (x *AuditSinkVerification) GetIntact() bool {
+	if x != nil {
+		return x.Intact
+	}
+	return false
+}
+
+func (x *AuditSinkVerification) GetChains() []*AuditSinkChainVerification {
+	if x != nil {
+		return x.Chains
+	}
+	return nil
+}
+
+// AuditSinkChainVerification is one chain's part of a read-back.
+type AuditSinkChainVerification struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The chain: an org ID, or "instance".
+	Chain string `protobuf:"bytes,1,opt,name=chain,proto3" json:"chain,omitempty"`
+	// How many of the sink's checkpoints were read this time.
+	Checked int32 `protobuf:"varint,2,opt,name=checked,proto3" json:"checked,omitempty"`
+	// The seq of the last checkpoint of the sink that verified; 0 if none has.
+	CheckpointSeq int64 `protobuf:"varint,3,opt,name=checkpoint_seq,json=checkpointSeq,proto3" json:"checkpoint_seq,omitempty"`
+	// When it was signed; unset if none has verified.
+	CheckpointTime *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=checkpoint_time,json=checkpointTime,proto3" json:"checkpoint_time,omitempty"`
+	// What the database shipped and the sink lacks; empty if nothing.
+	Gap string `protobuf:"bytes,5,opt,name=gap,proto3" json:"gap,omitempty"`
+	// What is wrong: a chain that does not verify, a checkpoint that is not what its key says or
+	// not signed by a certified key, or a chain that does not match a checkpoint the sink holds;
+	// empty if nothing.
+	Problem string `protobuf:"bytes,6,opt,name=problem,proto3" json:"problem,omitempty"`
+	// Whether the chain is intact: no gap and no problem.
+	Intact        bool `protobuf:"varint,7,opt,name=intact,proto3" json:"intact,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuditSinkChainVerification) Reset() {
+	*x = AuditSinkChainVerification{}
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuditSinkChainVerification) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuditSinkChainVerification) ProtoMessage() {}
+
+func (x *AuditSinkChainVerification) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuditSinkChainVerification.ProtoReflect.Descriptor instead.
+func (*AuditSinkChainVerification) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *AuditSinkChainVerification) GetChain() string {
+	if x != nil {
+		return x.Chain
+	}
+	return ""
+}
+
+func (x *AuditSinkChainVerification) GetChecked() int32 {
+	if x != nil {
+		return x.Checked
+	}
+	return 0
+}
+
+func (x *AuditSinkChainVerification) GetCheckpointSeq() int64 {
+	if x != nil {
+		return x.CheckpointSeq
+	}
+	return 0
+}
+
+func (x *AuditSinkChainVerification) GetCheckpointTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CheckpointTime
+	}
+	return nil
+}
+
+func (x *AuditSinkChainVerification) GetGap() string {
+	if x != nil {
+		return x.Gap
+	}
+	return ""
+}
+
+func (x *AuditSinkChainVerification) GetProblem() string {
+	if x != nil {
+		return x.Problem
+	}
+	return ""
+}
+
+func (x *AuditSinkChainVerification) GetIntact() bool {
+	if x != nil {
+		return x.Intact
+	}
+	return false
+}
+
 // AuditSinkChainStatus is a sink's position on one chain.
 type AuditSinkChainStatus struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -342,7 +569,7 @@ type AuditSinkChainStatus struct {
 
 func (x *AuditSinkChainStatus) Reset() {
 	*x = AuditSinkChainStatus{}
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[2]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -354,7 +581,7 @@ func (x *AuditSinkChainStatus) String() string {
 func (*AuditSinkChainStatus) ProtoMessage() {}
 
 func (x *AuditSinkChainStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[2]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -367,7 +594,7 @@ func (x *AuditSinkChainStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditSinkChainStatus.ProtoReflect.Descriptor instead.
 func (*AuditSinkChainStatus) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{2}
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *AuditSinkChainStatus) GetChain() string {
@@ -408,7 +635,10 @@ func (x *AuditSinkChainStatus) GetOldestUnshippedTime() *timestamppb.Timestamp {
 // CreateAuditSinkRequest creates a sink.
 type CreateAuditSinkRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The sink: name, kind, url and secret are required for a webhook sink.
+	// The sink: name, kind, url and secret are required for a webhook sink; name, kind, address for
+	// a syslog sink; name, kind, endpoint, region, bucket, access_key_id and secret for an
+	// object-storage sink, whose bucket is checked first: one without Object Lock or conditional
+	// create is refused.
 	AuditSink     *AuditSink `protobuf:"bytes,1,opt,name=audit_sink,json=auditSink,proto3" json:"audit_sink,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -416,7 +646,7 @@ type CreateAuditSinkRequest struct {
 
 func (x *CreateAuditSinkRequest) Reset() {
 	*x = CreateAuditSinkRequest{}
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[3]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -428,7 +658,7 @@ func (x *CreateAuditSinkRequest) String() string {
 func (*CreateAuditSinkRequest) ProtoMessage() {}
 
 func (x *CreateAuditSinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[3]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -441,7 +671,7 @@ func (x *CreateAuditSinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAuditSinkRequest.ProtoReflect.Descriptor instead.
 func (*CreateAuditSinkRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{3}
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CreateAuditSinkRequest) GetAuditSink() *AuditSink {
@@ -462,7 +692,7 @@ type CreateAuditSinkResponse struct {
 
 func (x *CreateAuditSinkResponse) Reset() {
 	*x = CreateAuditSinkResponse{}
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[4]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -474,7 +704,7 @@ func (x *CreateAuditSinkResponse) String() string {
 func (*CreateAuditSinkResponse) ProtoMessage() {}
 
 func (x *CreateAuditSinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[4]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -487,7 +717,7 @@ func (x *CreateAuditSinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAuditSinkResponse.ProtoReflect.Descriptor instead.
 func (*CreateAuditSinkResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{4}
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *CreateAuditSinkResponse) GetAuditSink() *AuditSink {
@@ -508,7 +738,7 @@ type GetAuditSinkRequest struct {
 
 func (x *GetAuditSinkRequest) Reset() {
 	*x = GetAuditSinkRequest{}
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[5]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -520,7 +750,7 @@ func (x *GetAuditSinkRequest) String() string {
 func (*GetAuditSinkRequest) ProtoMessage() {}
 
 func (x *GetAuditSinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[5]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -533,7 +763,7 @@ func (x *GetAuditSinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuditSinkRequest.ProtoReflect.Descriptor instead.
 func (*GetAuditSinkRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{5}
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetAuditSinkRequest) GetAuditSinkId() string {
@@ -554,7 +784,7 @@ type GetAuditSinkResponse struct {
 
 func (x *GetAuditSinkResponse) Reset() {
 	*x = GetAuditSinkResponse{}
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[6]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -566,7 +796,7 @@ func (x *GetAuditSinkResponse) String() string {
 func (*GetAuditSinkResponse) ProtoMessage() {}
 
 func (x *GetAuditSinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[6]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -579,7 +809,7 @@ func (x *GetAuditSinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAuditSinkResponse.ProtoReflect.Descriptor instead.
 func (*GetAuditSinkResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{6}
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetAuditSinkResponse) GetAuditSink() *AuditSink {
@@ -602,7 +832,7 @@ type ListAuditSinksRequest struct {
 
 func (x *ListAuditSinksRequest) Reset() {
 	*x = ListAuditSinksRequest{}
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[7]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -614,7 +844,7 @@ func (x *ListAuditSinksRequest) String() string {
 func (*ListAuditSinksRequest) ProtoMessage() {}
 
 func (x *ListAuditSinksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[7]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -627,7 +857,7 @@ func (x *ListAuditSinksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAuditSinksRequest.ProtoReflect.Descriptor instead.
 func (*ListAuditSinksRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{7}
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListAuditSinksRequest) GetPageSize() int32 {
@@ -657,7 +887,7 @@ type ListAuditSinksResponse struct {
 
 func (x *ListAuditSinksResponse) Reset() {
 	*x = ListAuditSinksResponse{}
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -669,7 +899,7 @@ func (x *ListAuditSinksResponse) String() string {
 func (*ListAuditSinksResponse) ProtoMessage() {}
 
 func (x *ListAuditSinksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[8]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -682,7 +912,7 @@ func (x *ListAuditSinksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAuditSinksResponse.ProtoReflect.Descriptor instead.
 func (*ListAuditSinksResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{8}
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListAuditSinksResponse) GetAuditSinks() []*AuditSink {
@@ -704,7 +934,7 @@ type UpdateAuditSinkRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The sink, with its ID and the fields to change.
 	AuditSink *AuditSink `protobuf:"bytes,1,opt,name=audit_sink,json=auditSink,proto3" json:"audit_sink,omitempty"`
-	// The fields to change: name, url, secret, entries, enabled.
+	// The fields to change, as the method lists them.
 	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	// The etag the caller read; empty skips the check.
 	Etag          string `protobuf:"bytes,3,opt,name=etag,proto3" json:"etag,omitempty"`
@@ -714,7 +944,7 @@ type UpdateAuditSinkRequest struct {
 
 func (x *UpdateAuditSinkRequest) Reset() {
 	*x = UpdateAuditSinkRequest{}
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[9]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -726,7 +956,7 @@ func (x *UpdateAuditSinkRequest) String() string {
 func (*UpdateAuditSinkRequest) ProtoMessage() {}
 
 func (x *UpdateAuditSinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[9]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -739,7 +969,7 @@ func (x *UpdateAuditSinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAuditSinkRequest.ProtoReflect.Descriptor instead.
 func (*UpdateAuditSinkRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{9}
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *UpdateAuditSinkRequest) GetAuditSink() *AuditSink {
@@ -774,7 +1004,7 @@ type UpdateAuditSinkResponse struct {
 
 func (x *UpdateAuditSinkResponse) Reset() {
 	*x = UpdateAuditSinkResponse{}
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -786,7 +1016,7 @@ func (x *UpdateAuditSinkResponse) String() string {
 func (*UpdateAuditSinkResponse) ProtoMessage() {}
 
 func (x *UpdateAuditSinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[10]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -799,7 +1029,7 @@ func (x *UpdateAuditSinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAuditSinkResponse.ProtoReflect.Descriptor instead.
 func (*UpdateAuditSinkResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{10}
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *UpdateAuditSinkResponse) GetAuditSink() *AuditSink {
@@ -822,7 +1052,7 @@ type DeleteAuditSinkRequest struct {
 
 func (x *DeleteAuditSinkRequest) Reset() {
 	*x = DeleteAuditSinkRequest{}
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[11]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -834,7 +1064,7 @@ func (x *DeleteAuditSinkRequest) String() string {
 func (*DeleteAuditSinkRequest) ProtoMessage() {}
 
 func (x *DeleteAuditSinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[11]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -847,7 +1077,7 @@ func (x *DeleteAuditSinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAuditSinkRequest.ProtoReflect.Descriptor instead.
 func (*DeleteAuditSinkRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{11}
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DeleteAuditSinkRequest) GetAuditSinkId() string {
@@ -873,7 +1103,7 @@ type DeleteAuditSinkResponse struct {
 
 func (x *DeleteAuditSinkResponse) Reset() {
 	*x = DeleteAuditSinkResponse{}
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[12]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -885,7 +1115,7 @@ func (x *DeleteAuditSinkResponse) String() string {
 func (*DeleteAuditSinkResponse) ProtoMessage() {}
 
 func (x *DeleteAuditSinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[12]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -898,7 +1128,7 @@ func (x *DeleteAuditSinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAuditSinkResponse.ProtoReflect.Descriptor instead.
 func (*DeleteAuditSinkResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{12}
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{14}
 }
 
 // TestAuditSinkRequest names a sink.
@@ -912,7 +1142,7 @@ type TestAuditSinkRequest struct {
 
 func (x *TestAuditSinkRequest) Reset() {
 	*x = TestAuditSinkRequest{}
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[13]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -924,7 +1154,7 @@ func (x *TestAuditSinkRequest) String() string {
 func (*TestAuditSinkRequest) ProtoMessage() {}
 
 func (x *TestAuditSinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[13]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -937,7 +1167,7 @@ func (x *TestAuditSinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestAuditSinkRequest.ProtoReflect.Descriptor instead.
 func (*TestAuditSinkRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{13}
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *TestAuditSinkRequest) GetAuditSinkId() string {
@@ -960,7 +1190,7 @@ type TestAuditSinkResponse struct {
 
 func (x *TestAuditSinkResponse) Reset() {
 	*x = TestAuditSinkResponse{}
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[14]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -972,7 +1202,7 @@ func (x *TestAuditSinkResponse) String() string {
 func (*TestAuditSinkResponse) ProtoMessage() {}
 
 func (x *TestAuditSinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[14]
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -985,7 +1215,7 @@ func (x *TestAuditSinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestAuditSinkResponse.ProtoReflect.Descriptor instead.
 func (*TestAuditSinkResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{14}
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *TestAuditSinkResponse) GetOk() bool {
@@ -1002,11 +1232,103 @@ func (x *TestAuditSinkResponse) GetError() string {
 	return ""
 }
 
+// VerifyAuditSinkRequest names a sink.
+type VerifyAuditSinkRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The sink's ID.
+	AuditSinkId   string `protobuf:"bytes,1,opt,name=audit_sink_id,json=auditSinkId,proto3" json:"audit_sink_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VerifyAuditSinkRequest) Reset() {
+	*x = VerifyAuditSinkRequest{}
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifyAuditSinkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifyAuditSinkRequest) ProtoMessage() {}
+
+func (x *VerifyAuditSinkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifyAuditSinkRequest.ProtoReflect.Descriptor instead.
+func (*VerifyAuditSinkRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *VerifyAuditSinkRequest) GetAuditSinkId() string {
+	if x != nil {
+		return x.AuditSinkId
+	}
+	return ""
+}
+
+// VerifyAuditSinkResponse is the outcome of the read-back.
+type VerifyAuditSinkResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The outcome.
+	Verification  *AuditSinkVerification `protobuf:"bytes,1,opt,name=verification,proto3" json:"verification,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VerifyAuditSinkResponse) Reset() {
+	*x = VerifyAuditSinkResponse{}
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifyAuditSinkResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifyAuditSinkResponse) ProtoMessage() {}
+
+func (x *VerifyAuditSinkResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_audit_sink_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifyAuditSinkResponse.ProtoReflect.Descriptor instead.
+func (*VerifyAuditSinkResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_audit_sink_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *VerifyAuditSinkResponse) GetVerification() *AuditSinkVerification {
+	if x != nil {
+		return x.Verification
+	}
+	return nil
+}
+
 var File_rpmgr_v1_audit_sink_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_audit_sink_proto_rawDesc = "" +
 	"\n" +
-	"\x19rpmgr/v1/audit_sink.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"\xfb\x03\n" +
+	"\x19rpmgr/v1/audit_sink.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"\xc4\x05\n" +
 	"\tAuditSink\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12B\n" +
 	"\x04name\x18\x02 \x01(\tB.\xbaH+\xd8\x01\x01r&2$^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$R\x04name\x125\n" +
@@ -1023,14 +1345,33 @@ const file_rpmgr_v1_audit_sink_proto_rawDesc = "" +
 	"createTime\x12\x12\n" +
 	"\x04etag\x18\v \x01(\tR\x04etag\x12\"\n" +
 	"\aaddress\x18\f \x01(\tB\b\xbaH\x05r\x03\x18\xac\x02R\aaddress\x12&\n" +
-	"\tca_bundle\x18\r \x01(\tB\t\xbaH\x06r\x04\x18\x80\x80\x04R\bcaBundle\"\x9a\x02\n" +
+	"\tca_bundle\x18\r \x01(\tB\t\xbaH\x06r\x04\x18\x80\x80\x04R\bcaBundle\x12$\n" +
+	"\bendpoint\x18\x0e \x01(\tB\b\xbaH\x05r\x03\x18\x80\x10R\bendpoint\x12\x1f\n" +
+	"\x06region\x18\x0f \x01(\tB\a\xbaH\x04r\x02\x18@R\x06region\x12\x1f\n" +
+	"\x06bucket\x18\x10 \x01(\tB\a\xbaH\x04r\x02\x18?R\x06bucket\x12,\n" +
+	"\raccess_key_id\x18\x11 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x01R\vaccessKeyId\x121\n" +
+	"\x0eretention_days\x18\x12 \x01(\x05B\n" +
+	"\xbaH\a\x1a\x05\x18\xc2\x1c(\x00R\rretentionDays\"\xdf\x02\n" +
 	"\x0fAuditSinkStatus\x12F\n" +
 	"\x11last_success_time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x0flastSuccessTime\x12\x1d\n" +
 	"\n" +
 	"last_error\x18\x02 \x01(\tR\tlastError\x12\x18\n" +
 	"\abacklog\x18\x03 \x01(\x03R\abacklog\x12N\n" +
 	"\x15oldest_unshipped_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x13oldestUnshippedTime\x126\n" +
-	"\x06chains\x18\x05 \x03(\v2\x1e.rpmgr.v1.AuditSinkChainStatusR\x06chains\"\xda\x01\n" +
+	"\x06chains\x18\x05 \x03(\v2\x1e.rpmgr.v1.AuditSinkChainStatusR\x06chains\x12C\n" +
+	"\fverification\x18\x06 \x01(\v2\x1f.rpmgr.v1.AuditSinkVerificationR\fverification\"\x9d\x01\n" +
+	"\x15AuditSinkVerification\x12.\n" +
+	"\x04time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x16\n" +
+	"\x06intact\x18\x02 \x01(\bR\x06intact\x12<\n" +
+	"\x06chains\x18\x03 \x03(\v2$.rpmgr.v1.AuditSinkChainVerificationR\x06chains\"\xfc\x01\n" +
+	"\x1aAuditSinkChainVerification\x12\x14\n" +
+	"\x05chain\x18\x01 \x01(\tR\x05chain\x12\x18\n" +
+	"\achecked\x18\x02 \x01(\x05R\achecked\x12%\n" +
+	"\x0echeckpoint_seq\x18\x03 \x01(\x03R\rcheckpointSeq\x12C\n" +
+	"\x0fcheckpoint_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x0echeckpointTime\x12\x10\n" +
+	"\x03gap\x18\x05 \x01(\tR\x03gap\x12\x18\n" +
+	"\aproblem\x18\x06 \x01(\tR\aproblem\x12\x16\n" +
+	"\x06intact\x18\a \x01(\bR\x06intact\"\xda\x01\n" +
 	"\x14AuditSinkChainStatus\x12\x14\n" +
 	"\x05chain\x18\x01 \x01(\tR\x05chain\x12%\n" +
 	"\x0echeckpoint_seq\x18\x02 \x01(\x03R\rcheckpointSeq\x12\x1b\n" +
@@ -1073,11 +1414,16 @@ const file_rpmgr_v1_audit_sink_proto_rawDesc = "" +
 	"\raudit_sink_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vauditSinkId\"=\n" +
 	"\x15TestAuditSinkResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error*i\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"E\n" +
+	"\x16VerifyAuditSinkRequest\x12+\n" +
+	"\raudit_sink_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vauditSinkId\"^\n" +
+	"\x17VerifyAuditSinkResponse\x12C\n" +
+	"\fverification\x18\x01 \x01(\v2\x1f.rpmgr.v1.AuditSinkVerificationR\fverification*\x81\x01\n" +
 	"\rAuditSinkKind\x12\x1f\n" +
 	"\x1bAUDIT_SINK_KIND_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17AUDIT_SINK_KIND_WEBHOOK\x10\x01\x12\x1a\n" +
-	"\x16AUDIT_SINK_KIND_SYSLOG\x10\x022\xa2\x05\n" +
+	"\x16AUDIT_SINK_KIND_SYSLOG\x10\x02\x12\x16\n" +
+	"\x12AUDIT_SINK_KIND_S3\x10\x032\x92\x06\n" +
 	"\x10AuditSinkService\x12n\n" +
 	"\x0fCreateAuditSink\x12 .rpmgr.v1.CreateAuditSinkRequest\x1a!.rpmgr.v1.CreateAuditSinkResponse\"\x16\x8a\xb5\x18\x12\n" +
 	"\x0einstance.admin\x18\x01\x12f\n" +
@@ -1090,6 +1436,8 @@ const file_rpmgr_v1_audit_sink_proto_rawDesc = "" +
 	"\x0fDeleteAuditSink\x12 .rpmgr.v1.DeleteAuditSinkRequest\x1a!.rpmgr.v1.DeleteAuditSinkResponse\"\x16\x8a\xb5\x18\x12\n" +
 	"\x0einstance.admin\x18\x01\x12h\n" +
 	"\rTestAuditSink\x12\x1e.rpmgr.v1.TestAuditSinkRequest\x1a\x1f.rpmgr.v1.TestAuditSinkResponse\"\x16\x8a\xb5\x18\x12\n" +
+	"\x0einstance.admin\x18\x01\x12n\n" +
+	"\x0fVerifyAuditSink\x12 .rpmgr.v1.VerifyAuditSinkRequest\x1a!.rpmgr.v1.VerifyAuditSinkResponse\"\x16\x8a\xb5\x18\x12\n" +
 	"\x0einstance.admin\x18\x01B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
@@ -1105,59 +1453,70 @@ func file_rpmgr_v1_audit_sink_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_audit_sink_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_rpmgr_v1_audit_sink_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_rpmgr_v1_audit_sink_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_rpmgr_v1_audit_sink_proto_goTypes = []any{
-	(AuditSinkKind)(0),              // 0: rpmgr.v1.AuditSinkKind
-	(*AuditSink)(nil),               // 1: rpmgr.v1.AuditSink
-	(*AuditSinkStatus)(nil),         // 2: rpmgr.v1.AuditSinkStatus
-	(*AuditSinkChainStatus)(nil),    // 3: rpmgr.v1.AuditSinkChainStatus
-	(*CreateAuditSinkRequest)(nil),  // 4: rpmgr.v1.CreateAuditSinkRequest
-	(*CreateAuditSinkResponse)(nil), // 5: rpmgr.v1.CreateAuditSinkResponse
-	(*GetAuditSinkRequest)(nil),     // 6: rpmgr.v1.GetAuditSinkRequest
-	(*GetAuditSinkResponse)(nil),    // 7: rpmgr.v1.GetAuditSinkResponse
-	(*ListAuditSinksRequest)(nil),   // 8: rpmgr.v1.ListAuditSinksRequest
-	(*ListAuditSinksResponse)(nil),  // 9: rpmgr.v1.ListAuditSinksResponse
-	(*UpdateAuditSinkRequest)(nil),  // 10: rpmgr.v1.UpdateAuditSinkRequest
-	(*UpdateAuditSinkResponse)(nil), // 11: rpmgr.v1.UpdateAuditSinkResponse
-	(*DeleteAuditSinkRequest)(nil),  // 12: rpmgr.v1.DeleteAuditSinkRequest
-	(*DeleteAuditSinkResponse)(nil), // 13: rpmgr.v1.DeleteAuditSinkResponse
-	(*TestAuditSinkRequest)(nil),    // 14: rpmgr.v1.TestAuditSinkRequest
-	(*TestAuditSinkResponse)(nil),   // 15: rpmgr.v1.TestAuditSinkResponse
-	(*timestamppb.Timestamp)(nil),   // 16: google.protobuf.Timestamp
-	(*fieldmaskpb.FieldMask)(nil),   // 17: google.protobuf.FieldMask
+	(AuditSinkKind)(0),                 // 0: rpmgr.v1.AuditSinkKind
+	(*AuditSink)(nil),                  // 1: rpmgr.v1.AuditSink
+	(*AuditSinkStatus)(nil),            // 2: rpmgr.v1.AuditSinkStatus
+	(*AuditSinkVerification)(nil),      // 3: rpmgr.v1.AuditSinkVerification
+	(*AuditSinkChainVerification)(nil), // 4: rpmgr.v1.AuditSinkChainVerification
+	(*AuditSinkChainStatus)(nil),       // 5: rpmgr.v1.AuditSinkChainStatus
+	(*CreateAuditSinkRequest)(nil),     // 6: rpmgr.v1.CreateAuditSinkRequest
+	(*CreateAuditSinkResponse)(nil),    // 7: rpmgr.v1.CreateAuditSinkResponse
+	(*GetAuditSinkRequest)(nil),        // 8: rpmgr.v1.GetAuditSinkRequest
+	(*GetAuditSinkResponse)(nil),       // 9: rpmgr.v1.GetAuditSinkResponse
+	(*ListAuditSinksRequest)(nil),      // 10: rpmgr.v1.ListAuditSinksRequest
+	(*ListAuditSinksResponse)(nil),     // 11: rpmgr.v1.ListAuditSinksResponse
+	(*UpdateAuditSinkRequest)(nil),     // 12: rpmgr.v1.UpdateAuditSinkRequest
+	(*UpdateAuditSinkResponse)(nil),    // 13: rpmgr.v1.UpdateAuditSinkResponse
+	(*DeleteAuditSinkRequest)(nil),     // 14: rpmgr.v1.DeleteAuditSinkRequest
+	(*DeleteAuditSinkResponse)(nil),    // 15: rpmgr.v1.DeleteAuditSinkResponse
+	(*TestAuditSinkRequest)(nil),       // 16: rpmgr.v1.TestAuditSinkRequest
+	(*TestAuditSinkResponse)(nil),      // 17: rpmgr.v1.TestAuditSinkResponse
+	(*VerifyAuditSinkRequest)(nil),     // 18: rpmgr.v1.VerifyAuditSinkRequest
+	(*VerifyAuditSinkResponse)(nil),    // 19: rpmgr.v1.VerifyAuditSinkResponse
+	(*timestamppb.Timestamp)(nil),      // 20: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),      // 21: google.protobuf.FieldMask
 }
 var file_rpmgr_v1_audit_sink_proto_depIdxs = []int32{
 	0,  // 0: rpmgr.v1.AuditSink.kind:type_name -> rpmgr.v1.AuditSinkKind
 	2,  // 1: rpmgr.v1.AuditSink.status:type_name -> rpmgr.v1.AuditSinkStatus
-	16, // 2: rpmgr.v1.AuditSink.create_time:type_name -> google.protobuf.Timestamp
-	16, // 3: rpmgr.v1.AuditSinkStatus.last_success_time:type_name -> google.protobuf.Timestamp
-	16, // 4: rpmgr.v1.AuditSinkStatus.oldest_unshipped_time:type_name -> google.protobuf.Timestamp
-	3,  // 5: rpmgr.v1.AuditSinkStatus.chains:type_name -> rpmgr.v1.AuditSinkChainStatus
-	16, // 6: rpmgr.v1.AuditSinkChainStatus.oldest_unshipped_time:type_name -> google.protobuf.Timestamp
-	1,  // 7: rpmgr.v1.CreateAuditSinkRequest.audit_sink:type_name -> rpmgr.v1.AuditSink
-	1,  // 8: rpmgr.v1.CreateAuditSinkResponse.audit_sink:type_name -> rpmgr.v1.AuditSink
-	1,  // 9: rpmgr.v1.GetAuditSinkResponse.audit_sink:type_name -> rpmgr.v1.AuditSink
-	1,  // 10: rpmgr.v1.ListAuditSinksResponse.audit_sinks:type_name -> rpmgr.v1.AuditSink
-	1,  // 11: rpmgr.v1.UpdateAuditSinkRequest.audit_sink:type_name -> rpmgr.v1.AuditSink
-	17, // 12: rpmgr.v1.UpdateAuditSinkRequest.update_mask:type_name -> google.protobuf.FieldMask
-	1,  // 13: rpmgr.v1.UpdateAuditSinkResponse.audit_sink:type_name -> rpmgr.v1.AuditSink
-	4,  // 14: rpmgr.v1.AuditSinkService.CreateAuditSink:input_type -> rpmgr.v1.CreateAuditSinkRequest
-	6,  // 15: rpmgr.v1.AuditSinkService.GetAuditSink:input_type -> rpmgr.v1.GetAuditSinkRequest
-	8,  // 16: rpmgr.v1.AuditSinkService.ListAuditSinks:input_type -> rpmgr.v1.ListAuditSinksRequest
-	10, // 17: rpmgr.v1.AuditSinkService.UpdateAuditSink:input_type -> rpmgr.v1.UpdateAuditSinkRequest
-	12, // 18: rpmgr.v1.AuditSinkService.DeleteAuditSink:input_type -> rpmgr.v1.DeleteAuditSinkRequest
-	14, // 19: rpmgr.v1.AuditSinkService.TestAuditSink:input_type -> rpmgr.v1.TestAuditSinkRequest
-	5,  // 20: rpmgr.v1.AuditSinkService.CreateAuditSink:output_type -> rpmgr.v1.CreateAuditSinkResponse
-	7,  // 21: rpmgr.v1.AuditSinkService.GetAuditSink:output_type -> rpmgr.v1.GetAuditSinkResponse
-	9,  // 22: rpmgr.v1.AuditSinkService.ListAuditSinks:output_type -> rpmgr.v1.ListAuditSinksResponse
-	11, // 23: rpmgr.v1.AuditSinkService.UpdateAuditSink:output_type -> rpmgr.v1.UpdateAuditSinkResponse
-	13, // 24: rpmgr.v1.AuditSinkService.DeleteAuditSink:output_type -> rpmgr.v1.DeleteAuditSinkResponse
-	15, // 25: rpmgr.v1.AuditSinkService.TestAuditSink:output_type -> rpmgr.v1.TestAuditSinkResponse
-	20, // [20:26] is the sub-list for method output_type
-	14, // [14:20] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	20, // 2: rpmgr.v1.AuditSink.create_time:type_name -> google.protobuf.Timestamp
+	20, // 3: rpmgr.v1.AuditSinkStatus.last_success_time:type_name -> google.protobuf.Timestamp
+	20, // 4: rpmgr.v1.AuditSinkStatus.oldest_unshipped_time:type_name -> google.protobuf.Timestamp
+	5,  // 5: rpmgr.v1.AuditSinkStatus.chains:type_name -> rpmgr.v1.AuditSinkChainStatus
+	3,  // 6: rpmgr.v1.AuditSinkStatus.verification:type_name -> rpmgr.v1.AuditSinkVerification
+	20, // 7: rpmgr.v1.AuditSinkVerification.time:type_name -> google.protobuf.Timestamp
+	4,  // 8: rpmgr.v1.AuditSinkVerification.chains:type_name -> rpmgr.v1.AuditSinkChainVerification
+	20, // 9: rpmgr.v1.AuditSinkChainVerification.checkpoint_time:type_name -> google.protobuf.Timestamp
+	20, // 10: rpmgr.v1.AuditSinkChainStatus.oldest_unshipped_time:type_name -> google.protobuf.Timestamp
+	1,  // 11: rpmgr.v1.CreateAuditSinkRequest.audit_sink:type_name -> rpmgr.v1.AuditSink
+	1,  // 12: rpmgr.v1.CreateAuditSinkResponse.audit_sink:type_name -> rpmgr.v1.AuditSink
+	1,  // 13: rpmgr.v1.GetAuditSinkResponse.audit_sink:type_name -> rpmgr.v1.AuditSink
+	1,  // 14: rpmgr.v1.ListAuditSinksResponse.audit_sinks:type_name -> rpmgr.v1.AuditSink
+	1,  // 15: rpmgr.v1.UpdateAuditSinkRequest.audit_sink:type_name -> rpmgr.v1.AuditSink
+	21, // 16: rpmgr.v1.UpdateAuditSinkRequest.update_mask:type_name -> google.protobuf.FieldMask
+	1,  // 17: rpmgr.v1.UpdateAuditSinkResponse.audit_sink:type_name -> rpmgr.v1.AuditSink
+	3,  // 18: rpmgr.v1.VerifyAuditSinkResponse.verification:type_name -> rpmgr.v1.AuditSinkVerification
+	6,  // 19: rpmgr.v1.AuditSinkService.CreateAuditSink:input_type -> rpmgr.v1.CreateAuditSinkRequest
+	8,  // 20: rpmgr.v1.AuditSinkService.GetAuditSink:input_type -> rpmgr.v1.GetAuditSinkRequest
+	10, // 21: rpmgr.v1.AuditSinkService.ListAuditSinks:input_type -> rpmgr.v1.ListAuditSinksRequest
+	12, // 22: rpmgr.v1.AuditSinkService.UpdateAuditSink:input_type -> rpmgr.v1.UpdateAuditSinkRequest
+	14, // 23: rpmgr.v1.AuditSinkService.DeleteAuditSink:input_type -> rpmgr.v1.DeleteAuditSinkRequest
+	16, // 24: rpmgr.v1.AuditSinkService.TestAuditSink:input_type -> rpmgr.v1.TestAuditSinkRequest
+	18, // 25: rpmgr.v1.AuditSinkService.VerifyAuditSink:input_type -> rpmgr.v1.VerifyAuditSinkRequest
+	7,  // 26: rpmgr.v1.AuditSinkService.CreateAuditSink:output_type -> rpmgr.v1.CreateAuditSinkResponse
+	9,  // 27: rpmgr.v1.AuditSinkService.GetAuditSink:output_type -> rpmgr.v1.GetAuditSinkResponse
+	11, // 28: rpmgr.v1.AuditSinkService.ListAuditSinks:output_type -> rpmgr.v1.ListAuditSinksResponse
+	13, // 29: rpmgr.v1.AuditSinkService.UpdateAuditSink:output_type -> rpmgr.v1.UpdateAuditSinkResponse
+	15, // 30: rpmgr.v1.AuditSinkService.DeleteAuditSink:output_type -> rpmgr.v1.DeleteAuditSinkResponse
+	17, // 31: rpmgr.v1.AuditSinkService.TestAuditSink:output_type -> rpmgr.v1.TestAuditSinkResponse
+	19, // 32: rpmgr.v1.AuditSinkService.VerifyAuditSink:output_type -> rpmgr.v1.VerifyAuditSinkResponse
+	26, // [26:33] is the sub-list for method output_type
+	19, // [19:26] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_audit_sink_proto_init() }
@@ -1172,7 +1531,7 @@ func file_rpmgr_v1_audit_sink_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_audit_sink_proto_rawDesc), len(file_rpmgr_v1_audit_sink_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   15,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

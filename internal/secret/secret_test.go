@@ -116,3 +116,17 @@ func TestSlog(t *testing.T) {
 		}
 	}
 }
+
+func TestLenAndEqualString(t *testing.T) {
+	var zero Value
+	if zero.Len() != 0 || !zero.EqualString("") || zero.EqualString("x") {
+		t.Error("the zero Value is an empty secret")
+	}
+	v := New("s3cret")
+	if v.Len() != 6 {
+		t.Errorf("Len = %d, want 6", v.Len())
+	}
+	if !v.EqualString("s3cret") || v.EqualString("s3cre") || v.EqualString("s3cretx") || v.EqualString("") {
+		t.Error("EqualString must match the whole secret only")
+	}
+}

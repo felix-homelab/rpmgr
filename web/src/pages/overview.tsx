@@ -19,6 +19,7 @@ import { RouteState } from "@/gen/rpmgr/v1/route_pb";
 import { i18n } from "@/i18n";
 import { soon, useCertificates } from "@/pages/certificates";
 import { useDomains } from "@/pages/domains";
+import { Alerts, DisabledWebhooks } from "@/pages/overview-alerts";
 import { Health } from "@/pages/overview-health";
 import { useConnectors, useGateways, useRoutes } from "@/routes-data";
 import { useOrg } from "@/session";
@@ -35,7 +36,9 @@ export function Overview() {
         description={session.data && t("overview.signedIn", { name: session.data.displayName || session.data.email })} />
       {org && (
         <>
+          <DisabledWebhooks orgId={org.orgId} role={org.role} instanceAdmin={org.instanceAdmin} />
           <Summary orgId={org.orgId} />
+          <Alerts orgId={org.orgId} instanceAdmin={org.instanceAdmin} />
           <Restarting orgId={org.orgId} />
           <div className="grid items-start gap-6 xl:grid-cols-3">
             <Traffic orgId={org.orgId} className="xl:col-span-2" />

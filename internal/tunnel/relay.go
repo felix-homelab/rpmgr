@@ -40,6 +40,12 @@ func Relay(st Stream, c net.Conn) (toConn, toStream int64) {
 			_ = c.Close()
 		})
 	}
+	if n, ok := onReset(st); ok {
+		// The stalled-stream rule resets a stream whose relay is blocked writing to a target that
+		// does not read; closing the connection is what wakes that write.
+		stop := n.OnReset(fail)
+		defer stop()
+	}
 	wg.Go(func() {
 		var err error
 		toConn, err = copyHalf(c, st)

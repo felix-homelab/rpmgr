@@ -92,6 +92,9 @@ Alerts that pay off, with their conditions, are in
   attention** the agents without a control session, the routes that do not serve fully or were
   rejected, certificates that failed or expire soon, unverified domains and your API tokens that
   expire soon. Disabled connectors and drained gateways are left out.
+- The **Overview** also lists the **Alerts** that fire now, the Instance Admin's with the
+  instance's, and tells Owners and Admins of a webhook endpoint that rpmgr disabled for failing
+  ([Overview](../web-ui/overview.md#alerts)).
 - A route's page shows its state per target and gateway, and its traffic
   ([Preview and apply](../routes/preview-and-apply.md#route-states)).
 - A connector's page shows its sessions and the routes it reports not ready

@@ -1,8 +1,8 @@
 # Overview
 
-The overview is the first page after you sign in: your organisation at a glance, what needs
-attention, and the traffic of the last 24 hours. Every member sees it; nothing on it changes
-anything. Open it with **Overview** in the sidebar or with the product's mark at the top.
+The overview is the first page after you sign in: your organisation at a glance, the alerts that
+fire, what needs attention, and the traffic of the last 24 hours. Every member sees it; nothing on
+it changes anything. Open it with **Overview** in the sidebar or with the product's mark at the top.
 
 ![The overview of the organisation "Example Lab"](../images/web/overview.png)
 
@@ -28,6 +28,28 @@ area has nothing yet.
   says how many there are, such as `1 in maintenance`
   ([D88](../../14-open-decisions.md#engineering);
   [Maintenance and error pages](../routes/maintenance-and-pages.md)).
+
+## Alerts
+
+A card under the summary lists the alerts that fire now, for every member. Each line has the
+kind of the alert, such as `Agent offline`, what it is about, linked to its page where there is one
+(a route or a connector), and `since` when. Without one the card says `No alert is firing.` The
+list reads again by itself, so an alert whose condition has passed disappears without a reload.
+
+The Instance Admin sees a second list, **Instance**, with the alerts of the whole installation,
+and the organisation's under **Organisation**. The kinds of alert and when each fires are in
+[Monitoring](../operations/monitoring.md#in-the-web-ui) and, for the conditions, in
+[10](../../10-operations.md#suggested-alerts). Alerts are also sent as events to
+[webhooks](webhooks.md) and, with a mail relay, by e-mail; which kinds of alert your organisation
+is mailed about is a setting ([Settings](settings.md#organisation-settings)).
+
+## A disabled webhook endpoint
+
+If rpmgr switched an endpoint off because it kept failing, a red notice above the summary names its
+URL and offers **Enable it again**, which opens the [Webhooks](webhooks.md) page. Only Owners and
+Admins see it, as only they may read the endpoints; the Instance Admin sees one for the
+instance's endpoints too, which leads to **Settings → Webhooks**. An endpoint a person switched off
+is not announced. The notice is gone once the endpoint is enabled.
 
 ## Traffic, last 24 hours
 
@@ -73,6 +95,8 @@ disabled routes and routes in maintenance out of **Routes**.
 
 ## What to do next
 
+- An alert: open the page its subject links to, or follow the alert's kind in
+  [10](../../10-operations.md#suggested-alerts).
 - An agent that is not connected: check it on its host with `rpmgr status`
   ([Status and diagnostics](../connectors/status-and-diagnostics.md)).
 - A route that does not serve fully: open it; its page says which target or gateway does not serve

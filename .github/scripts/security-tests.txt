@@ -36,8 +36,9 @@ TestEnrollReplace_TokenBoundToConnector	done	8.2	#116
 TestBasicAuth_HashOncePerTTL	done	5.11	#97
 TestBasicAuth_CacheScopedToPolicy	done	5.11	#97
 TestPrivateUDP_GatewaySeesCiphertextOnly	p2	-	-	private services
-TestFlowControl_StalledStreamsDoNotFreezeSession	done	4.5	#75
-TestFlowControl_PausedClientNotResetWithoutPressure	done	4.5	#75
+TestFlowControl_StalledStreamsDoNotFreezeSession	done	4.5	#75	session level on HTTP/2 and QUIC since #1044 (internal/tunnel)
+TestFlowControl_PausedClientNotResetWithoutPressure	done	4.5	#75	session level on HTTP/2 and QUIC since #1044 (internal/tunnel)
+TestFlowControl_ResetStreamEndsRelayOnBothEnds	done	4.5	#1044	internal/tunnel
 TestH2_AdmissionUnderBudget	done	4.5	#75	h3-share clause in P3 (HTTP/3 ingress)
 TestGateway_PerGatewayTunnelEndpoints	done	4.10	#80	WSS clause done in P2 4.10 (#638, internal/connector)
 TestOpenRequest_Semantics	done	4.4	#74
@@ -100,7 +101,7 @@ TestWebhook_SecretWriteOnly	done	5.10	#650	webhooks
 TestAuditExport_StepUpAndOrgScoped	done	5.12	#652	internal/apisvc; the export is audited as audit.export, a failed one twice
 TestAuditExport_TamperDetectedOffline	done	5.13	#653	internal/audit (VerifyExport) and rpmgr audit verify-export
 TestAuditSink_BacklogNeverBlocksAppend	done	5.14	#654	audit sinks (D141); syslog clause in 5.20 (#936)
-TestAuditSink_RewriteDetectedAgainstSink	pending	5.16	#656	audit sinks (D141)
+TestAuditSink_RewriteDetectedAgainstSink	done	5.16	#656	internal/audit/sinkverify_test.go; the object-storage sink (D141)
 TestHandoff_OnlyVerifiedBinaryGetsSockets	done	17.3	#881	internal/handoff; the roles use it from 17.10 on
 TestHandoff_UnexpectedDescriptorsRefused	done	17.3	#881	internal/handoff; the roles use it from 17.10 on
 TestFirewall_OnlyBoundedPortsOpened	done	-	#968	internal/firewall

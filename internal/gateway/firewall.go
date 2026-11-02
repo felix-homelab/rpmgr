@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/firewall"
 )
 
@@ -179,33 +180,12 @@ func (f *Firewall) write(now time.Time) {
 		return
 	}
 	f.wroteAt = now
-	if err := writeAtomic(path, raw); err != nil {
+	if err := agent.WriteAtomic(path, raw, 0o644); err != nil {
 		f.writeErr = err
 		f.o.Logger.Warn("cannot write the firewall helper's desired file", "path", path, "error", err)
 		return
 	}
 	f.written, f.writeErr = raw, nil
-}
-
-// writeAtomic writes path through a new file in its directory, renamed over it, readable by the
-// helper.
-func writeAtomic(path string, data []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.Remove(tmp.Name()) }() // a no-op after the rename
-	_, err = tmp.Write(data)
-	if err == nil {
-		err = tmp.Chmod(0o644)
-	}
-	if cerr := tmp.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Rename(tmp.Name(), path)
-	}
-	return err
 }
 
 // state is what the gateway reports now: a failed write first, then the helper's status. nil says

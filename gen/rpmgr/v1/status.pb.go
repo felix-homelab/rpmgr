@@ -86,6 +86,63 @@ func (ApplyState) EnumDescriptor() ([]byte, []int) {
 	return file_rpmgr_v1_status_proto_rawDescGZIP(), []int{0}
 }
 
+// AlertState is where an alert stands.
+type AlertState int32
+
+const (
+	// Not set: the alerts that fire.
+	AlertState_ALERT_STATE_UNSPECIFIED AlertState = 0
+	// The condition holds, but not for as long as the alert needs to fire.
+	AlertState_ALERT_STATE_PENDING AlertState = 1
+	// The alert fires.
+	AlertState_ALERT_STATE_FIRING AlertState = 2
+	// The condition no longer holds.
+	AlertState_ALERT_STATE_RESOLVED AlertState = 3
+)
+
+// Enum value maps for AlertState.
+var (
+	AlertState_name = map[int32]string{
+		0: "ALERT_STATE_UNSPECIFIED",
+		1: "ALERT_STATE_PENDING",
+		2: "ALERT_STATE_FIRING",
+		3: "ALERT_STATE_RESOLVED",
+	}
+	AlertState_value = map[string]int32{
+		"ALERT_STATE_UNSPECIFIED": 0,
+		"ALERT_STATE_PENDING":     1,
+		"ALERT_STATE_FIRING":      2,
+		"ALERT_STATE_RESOLVED":    3,
+	}
+)
+
+func (x AlertState) Enum() *AlertState {
+	p := new(AlertState)
+	*p = x
+	return p
+}
+
+func (x AlertState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AlertState) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_v1_status_proto_enumTypes[1].Descriptor()
+}
+
+func (AlertState) Type() protoreflect.EnumType {
+	return &file_rpmgr_v1_status_proto_enumTypes[1]
+}
+
+func (x AlertState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AlertState.Descriptor instead.
+func (AlertState) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_v1_status_proto_rawDescGZIP(), []int{1}
+}
+
 // ApplyStatus is how far the org's agents are with a revision. Offline agents are listed apart and
 // do not hold the state at PENDING.
 type ApplyStatus struct {
@@ -704,6 +761,371 @@ func (x *WatchEventsResponse) GetStatusChanged() []string {
 	return nil
 }
 
+// Alert is one alert about one subject.
+type Alert struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The alert's ID.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// The kind, such as "agent_offline"; the names alert_types takes.
+	Kind string `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	// What the alert is about: "gateway", "connector", "route", "certificate" and so on.
+	SubjectType string `protobuf:"bytes,3,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`
+	// The subject's ID.
+	SubjectId string `protobuf:"bytes,4,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
+	// The subject's name when the alert was first seen.
+	SubjectName string `protobuf:"bytes,5,opt,name=subject_name,json=subjectName,proto3" json:"subject_name,omitempty"`
+	// Where the alert stands.
+	State AlertState `protobuf:"varint,6,opt,name=state,proto3,enum=rpmgr.v1.AlertState" json:"state,omitempty"`
+	// When the condition began.
+	Since *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=since,proto3" json:"since,omitempty"`
+	// When the alert fired; unset while it is pending.
+	FiredAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=fired_at,json=firedAt,proto3" json:"fired_at,omitempty"`
+	// When it resolved; unset while it has not.
+	ResolvedAt    *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=resolved_at,json=resolvedAt,proto3" json:"resolved_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Alert) Reset() {
+	*x = Alert{}
+	mi := &file_rpmgr_v1_status_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Alert) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Alert) ProtoMessage() {}
+
+func (x *Alert) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_status_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Alert.ProtoReflect.Descriptor instead.
+func (*Alert) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_status_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *Alert) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Alert) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *Alert) GetSubjectType() string {
+	if x != nil {
+		return x.SubjectType
+	}
+	return ""
+}
+
+func (x *Alert) GetSubjectId() string {
+	if x != nil {
+		return x.SubjectId
+	}
+	return ""
+}
+
+func (x *Alert) GetSubjectName() string {
+	if x != nil {
+		return x.SubjectName
+	}
+	return ""
+}
+
+func (x *Alert) GetState() AlertState {
+	if x != nil {
+		return x.State
+	}
+	return AlertState_ALERT_STATE_UNSPECIFIED
+}
+
+func (x *Alert) GetSince() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Since
+	}
+	return nil
+}
+
+func (x *Alert) GetFiredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FiredAt
+	}
+	return nil
+}
+
+func (x *Alert) GetResolvedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ResolvedAt
+	}
+	return nil
+}
+
+// ListAlertsRequest asks for a page of an org's alerts.
+type ListAlertsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The org.
+	OrgId string `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	// Only alerts in this state; unset is firing.
+	State AlertState `protobuf:"varint,2,opt,name=state,proto3,enum=rpmgr.v1.AlertState" json:"state,omitempty"`
+	// At most this many, 50 by default, 500 at most.
+	PageSize int32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// The page_token of the previous page.
+	PageToken     string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAlertsRequest) Reset() {
+	*x = ListAlertsRequest{}
+	mi := &file_rpmgr_v1_status_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAlertsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAlertsRequest) ProtoMessage() {}
+
+func (x *ListAlertsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_status_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAlertsRequest.ProtoReflect.Descriptor instead.
+func (*ListAlertsRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_status_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ListAlertsRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *ListAlertsRequest) GetState() AlertState {
+	if x != nil {
+		return x.State
+	}
+	return AlertState_ALERT_STATE_UNSPECIFIED
+}
+
+func (x *ListAlertsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListAlertsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+// ListAlertsResponse is one page of alerts.
+type ListAlertsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The alerts.
+	Alerts []*Alert `protobuf:"bytes,1,rep,name=alerts,proto3" json:"alerts,omitempty"`
+	// The token of the next page; empty on the last.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAlertsResponse) Reset() {
+	*x = ListAlertsResponse{}
+	mi := &file_rpmgr_v1_status_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAlertsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAlertsResponse) ProtoMessage() {}
+
+func (x *ListAlertsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_status_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAlertsResponse.ProtoReflect.Descriptor instead.
+func (*ListAlertsResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_status_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListAlertsResponse) GetAlerts() []*Alert {
+	if x != nil {
+		return x.Alerts
+	}
+	return nil
+}
+
+func (x *ListAlertsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+// ListInstanceAlertsRequest asks for a page of the instance alerts.
+type ListInstanceAlertsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Only alerts in this state; unset is firing.
+	State AlertState `protobuf:"varint,1,opt,name=state,proto3,enum=rpmgr.v1.AlertState" json:"state,omitempty"`
+	// At most this many, 50 by default, 500 at most.
+	PageSize int32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// The page_token of the previous page.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListInstanceAlertsRequest) Reset() {
+	*x = ListInstanceAlertsRequest{}
+	mi := &file_rpmgr_v1_status_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListInstanceAlertsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListInstanceAlertsRequest) ProtoMessage() {}
+
+func (x *ListInstanceAlertsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_status_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListInstanceAlertsRequest.ProtoReflect.Descriptor instead.
+func (*ListInstanceAlertsRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_status_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ListInstanceAlertsRequest) GetState() AlertState {
+	if x != nil {
+		return x.State
+	}
+	return AlertState_ALERT_STATE_UNSPECIFIED
+}
+
+func (x *ListInstanceAlertsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListInstanceAlertsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+// ListInstanceAlertsResponse is one page of instance alerts.
+type ListInstanceAlertsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The alerts.
+	Alerts []*Alert `protobuf:"bytes,1,rep,name=alerts,proto3" json:"alerts,omitempty"`
+	// The token of the next page; empty on the last.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListInstanceAlertsResponse) Reset() {
+	*x = ListInstanceAlertsResponse{}
+	mi := &file_rpmgr_v1_status_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListInstanceAlertsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListInstanceAlertsResponse) ProtoMessage() {}
+
+func (x *ListInstanceAlertsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_status_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListInstanceAlertsResponse.ProtoReflect.Descriptor instead.
+func (*ListInstanceAlertsResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_status_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListInstanceAlertsResponse) GetAlerts() []*Alert {
+	if x != nil {
+		return x.Alerts
+	}
+	return nil
+}
+
+func (x *ListInstanceAlertsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
 var File_rpmgr_v1_status_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_status_proto_rawDesc = "" +
@@ -747,21 +1169,63 @@ const file_rpmgr_v1_status_proto_rawDesc = "" +
 	"\x04time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12!\n" +
 	"\fresume_token\x18\x05 \x01(\tR\vresumeToken\x12\x14\n" +
 	"\x05reset\x18\x06 \x01(\bR\x05reset\x12%\n" +
-	"\x0estatus_changed\x18\a \x03(\tR\rstatusChanged*\x94\x01\n" +
+	"\x0estatus_changed\x18\a \x03(\tR\rstatusChanged\"\xe2\x02\n" +
+	"\x05Alert\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12!\n" +
+	"\fsubject_type\x18\x03 \x01(\tR\vsubjectType\x12\x1d\n" +
+	"\n" +
+	"subject_id\x18\x04 \x01(\tR\tsubjectId\x12!\n" +
+	"\fsubject_name\x18\x05 \x01(\tR\vsubjectName\x12*\n" +
+	"\x05state\x18\x06 \x01(\x0e2\x14.rpmgr.v1.AlertStateR\x05state\x120\n" +
+	"\x05since\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\x05since\x125\n" +
+	"\bfired_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\afiredAt\x12;\n" +
+	"\vresolved_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"resolvedAt\"\xbb\x01\n" +
+	"\x11ListAlertsRequest\x12\x1e\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x124\n" +
+	"\x05state\x18\x02 \x01(\x0e2\x14.rpmgr.v1.AlertStateB\b\xbaH\x05\x82\x01\x02\x10\x01R\x05state\x12'\n" +
+	"\tpage_size\x18\x03 \x01(\x05B\n" +
+	"\xbaH\a\x1a\x05\x18\xf4\x03(\x00R\bpageSize\x12'\n" +
+	"\n" +
+	"page_token\x18\x04 \x01(\tB\b\xbaH\x05r\x03\x18\x80\bR\tpageToken\"e\n" +
+	"\x12ListAlertsResponse\x12'\n" +
+	"\x06alerts\x18\x01 \x03(\v2\x0f.rpmgr.v1.AlertR\x06alerts\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xa3\x01\n" +
+	"\x19ListInstanceAlertsRequest\x124\n" +
+	"\x05state\x18\x01 \x01(\x0e2\x14.rpmgr.v1.AlertStateB\b\xbaH\x05\x82\x01\x02\x10\x01R\x05state\x12'\n" +
+	"\tpage_size\x18\x02 \x01(\x05B\n" +
+	"\xbaH\a\x1a\x05\x18\xf4\x03(\x00R\bpageSize\x12'\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\x80\bR\tpageToken\"m\n" +
+	"\x1aListInstanceAlertsResponse\x12'\n" +
+	"\x06alerts\x18\x01 \x03(\v2\x0f.rpmgr.v1.AlertR\x06alerts\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken*\x94\x01\n" +
 	"\n" +
 	"ApplyState\x12\x1b\n" +
 	"\x17APPLY_STATE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13APPLY_STATE_PENDING\x10\x01\x12\x17\n" +
 	"\x13APPLY_STATE_APPLIED\x10\x02\x12\x18\n" +
 	"\x14APPLY_STATE_REJECTED\x10\x03\x12\x1d\n" +
-	"\x19APPLY_STATE_APPLY_TIMEOUT\x10\x042\xe0\x02\n" +
+	"\x19APPLY_STATE_APPLY_TIMEOUT\x10\x04*t\n" +
+	"\n" +
+	"AlertState\x12\x1b\n" +
+	"\x17ALERT_STATE_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13ALERT_STATE_PENDING\x10\x01\x12\x16\n" +
+	"\x12ALERT_STATE_FIRING\x10\x02\x12\x18\n" +
+	"\x14ALERT_STATE_RESOLVED\x10\x032\xbe\x04\n" +
 	"\rStatusService\x12n\n" +
 	"\x0eGetApplyStatus\x12\x1f.rpmgr.v1.GetApplyStatusRequest\x1a .rpmgr.v1.GetApplyStatusResponse\"\x19\x8a\xb5\x18\x12\n" +
 	"\borg.read\x12\x06org_id\x90\x02\x01\x12v\n" +
 	"\x10WatchApplyStatus\x12!.rpmgr.v1.WatchApplyStatusRequest\x1a\".rpmgr.v1.WatchApplyStatusResponse\"\x19\x8a\xb5\x18\x12\n" +
 	"\borg.read\x12\x06org_id\x90\x02\x010\x01\x12g\n" +
 	"\vWatchEvents\x12\x1c.rpmgr.v1.WatchEventsRequest\x1a\x1d.rpmgr.v1.WatchEventsResponse\"\x19\x8a\xb5\x18\x12\n" +
-	"\borg.read\x12\x06org_id\x90\x02\x010\x01B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
+	"\borg.read\x12\x06org_id\x90\x02\x010\x01\x12b\n" +
+	"\n" +
+	"ListAlerts\x12\x1b.rpmgr.v1.ListAlertsRequest\x1a\x1c.rpmgr.v1.ListAlertsResponse\"\x19\x8a\xb5\x18\x12\n" +
+	"\borg.read\x12\x06org_id\x90\x02\x01\x12x\n" +
+	"\x12ListInstanceAlerts\x12#.rpmgr.v1.ListInstanceAlertsRequest\x1a$.rpmgr.v1.ListInstanceAlertsResponse\"\x17\x8a\xb5\x18\x10\n" +
+	"\x0einstance.admin\x90\x02\x01B5Z3github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1b\x06proto3"
 
 var (
 	file_rpmgr_v1_status_proto_rawDescOnce sync.Once
@@ -775,47 +1239,65 @@ func file_rpmgr_v1_status_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_status_proto_rawDescData
 }
 
-var file_rpmgr_v1_status_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_rpmgr_v1_status_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_rpmgr_v1_status_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_rpmgr_v1_status_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_rpmgr_v1_status_proto_goTypes = []any{
-	(ApplyState)(0),                  // 0: rpmgr.v1.ApplyState
-	(*ApplyStatus)(nil),              // 1: rpmgr.v1.ApplyStatus
-	(*AgentApplyStatus)(nil),         // 2: rpmgr.v1.AgentApplyStatus
-	(*ApplyError)(nil),               // 3: rpmgr.v1.ApplyError
-	(*OfflineAgent)(nil),             // 4: rpmgr.v1.OfflineAgent
-	(*GetApplyStatusRequest)(nil),    // 5: rpmgr.v1.GetApplyStatusRequest
-	(*GetApplyStatusResponse)(nil),   // 6: rpmgr.v1.GetApplyStatusResponse
-	(*WatchApplyStatusRequest)(nil),  // 7: rpmgr.v1.WatchApplyStatusRequest
-	(*WatchApplyStatusResponse)(nil), // 8: rpmgr.v1.WatchApplyStatusResponse
-	(*WatchEventsRequest)(nil),       // 9: rpmgr.v1.WatchEventsRequest
-	(*WatchEventsResponse)(nil),      // 10: rpmgr.v1.WatchEventsResponse
-	(*timestamppb.Timestamp)(nil),    // 11: google.protobuf.Timestamp
-	(*Revision)(nil),                 // 12: rpmgr.v1.Revision
+	(ApplyState)(0),                    // 0: rpmgr.v1.ApplyState
+	(AlertState)(0),                    // 1: rpmgr.v1.AlertState
+	(*ApplyStatus)(nil),                // 2: rpmgr.v1.ApplyStatus
+	(*AgentApplyStatus)(nil),           // 3: rpmgr.v1.AgentApplyStatus
+	(*ApplyError)(nil),                 // 4: rpmgr.v1.ApplyError
+	(*OfflineAgent)(nil),               // 5: rpmgr.v1.OfflineAgent
+	(*GetApplyStatusRequest)(nil),      // 6: rpmgr.v1.GetApplyStatusRequest
+	(*GetApplyStatusResponse)(nil),     // 7: rpmgr.v1.GetApplyStatusResponse
+	(*WatchApplyStatusRequest)(nil),    // 8: rpmgr.v1.WatchApplyStatusRequest
+	(*WatchApplyStatusResponse)(nil),   // 9: rpmgr.v1.WatchApplyStatusResponse
+	(*WatchEventsRequest)(nil),         // 10: rpmgr.v1.WatchEventsRequest
+	(*WatchEventsResponse)(nil),        // 11: rpmgr.v1.WatchEventsResponse
+	(*Alert)(nil),                      // 12: rpmgr.v1.Alert
+	(*ListAlertsRequest)(nil),          // 13: rpmgr.v1.ListAlertsRequest
+	(*ListAlertsResponse)(nil),         // 14: rpmgr.v1.ListAlertsResponse
+	(*ListInstanceAlertsRequest)(nil),  // 15: rpmgr.v1.ListInstanceAlertsRequest
+	(*ListInstanceAlertsResponse)(nil), // 16: rpmgr.v1.ListInstanceAlertsResponse
+	(*timestamppb.Timestamp)(nil),      // 17: google.protobuf.Timestamp
+	(*Revision)(nil),                   // 18: rpmgr.v1.Revision
 }
 var file_rpmgr_v1_status_proto_depIdxs = []int32{
 	0,  // 0: rpmgr.v1.ApplyStatus.state:type_name -> rpmgr.v1.ApplyState
-	2,  // 1: rpmgr.v1.ApplyStatus.agents:type_name -> rpmgr.v1.AgentApplyStatus
-	4,  // 2: rpmgr.v1.ApplyStatus.offline:type_name -> rpmgr.v1.OfflineAgent
+	3,  // 1: rpmgr.v1.ApplyStatus.agents:type_name -> rpmgr.v1.AgentApplyStatus
+	5,  // 2: rpmgr.v1.ApplyStatus.offline:type_name -> rpmgr.v1.OfflineAgent
 	0,  // 3: rpmgr.v1.AgentApplyStatus.state:type_name -> rpmgr.v1.ApplyState
-	3,  // 4: rpmgr.v1.AgentApplyStatus.errors:type_name -> rpmgr.v1.ApplyError
-	11, // 5: rpmgr.v1.OfflineAgent.last_seen_time:type_name -> google.protobuf.Timestamp
-	12, // 6: rpmgr.v1.GetApplyStatusRequest.revision:type_name -> rpmgr.v1.Revision
-	1,  // 7: rpmgr.v1.GetApplyStatusResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	12, // 8: rpmgr.v1.WatchApplyStatusRequest.revision:type_name -> rpmgr.v1.Revision
-	1,  // 9: rpmgr.v1.WatchApplyStatusResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	12, // 10: rpmgr.v1.WatchEventsResponse.revision:type_name -> rpmgr.v1.Revision
-	11, // 11: rpmgr.v1.WatchEventsResponse.time:type_name -> google.protobuf.Timestamp
-	5,  // 12: rpmgr.v1.StatusService.GetApplyStatus:input_type -> rpmgr.v1.GetApplyStatusRequest
-	7,  // 13: rpmgr.v1.StatusService.WatchApplyStatus:input_type -> rpmgr.v1.WatchApplyStatusRequest
-	9,  // 14: rpmgr.v1.StatusService.WatchEvents:input_type -> rpmgr.v1.WatchEventsRequest
-	6,  // 15: rpmgr.v1.StatusService.GetApplyStatus:output_type -> rpmgr.v1.GetApplyStatusResponse
-	8,  // 16: rpmgr.v1.StatusService.WatchApplyStatus:output_type -> rpmgr.v1.WatchApplyStatusResponse
-	10, // 17: rpmgr.v1.StatusService.WatchEvents:output_type -> rpmgr.v1.WatchEventsResponse
-	15, // [15:18] is the sub-list for method output_type
-	12, // [12:15] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	4,  // 4: rpmgr.v1.AgentApplyStatus.errors:type_name -> rpmgr.v1.ApplyError
+	17, // 5: rpmgr.v1.OfflineAgent.last_seen_time:type_name -> google.protobuf.Timestamp
+	18, // 6: rpmgr.v1.GetApplyStatusRequest.revision:type_name -> rpmgr.v1.Revision
+	2,  // 7: rpmgr.v1.GetApplyStatusResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	18, // 8: rpmgr.v1.WatchApplyStatusRequest.revision:type_name -> rpmgr.v1.Revision
+	2,  // 9: rpmgr.v1.WatchApplyStatusResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	18, // 10: rpmgr.v1.WatchEventsResponse.revision:type_name -> rpmgr.v1.Revision
+	17, // 11: rpmgr.v1.WatchEventsResponse.time:type_name -> google.protobuf.Timestamp
+	1,  // 12: rpmgr.v1.Alert.state:type_name -> rpmgr.v1.AlertState
+	17, // 13: rpmgr.v1.Alert.since:type_name -> google.protobuf.Timestamp
+	17, // 14: rpmgr.v1.Alert.fired_at:type_name -> google.protobuf.Timestamp
+	17, // 15: rpmgr.v1.Alert.resolved_at:type_name -> google.protobuf.Timestamp
+	1,  // 16: rpmgr.v1.ListAlertsRequest.state:type_name -> rpmgr.v1.AlertState
+	12, // 17: rpmgr.v1.ListAlertsResponse.alerts:type_name -> rpmgr.v1.Alert
+	1,  // 18: rpmgr.v1.ListInstanceAlertsRequest.state:type_name -> rpmgr.v1.AlertState
+	12, // 19: rpmgr.v1.ListInstanceAlertsResponse.alerts:type_name -> rpmgr.v1.Alert
+	6,  // 20: rpmgr.v1.StatusService.GetApplyStatus:input_type -> rpmgr.v1.GetApplyStatusRequest
+	8,  // 21: rpmgr.v1.StatusService.WatchApplyStatus:input_type -> rpmgr.v1.WatchApplyStatusRequest
+	10, // 22: rpmgr.v1.StatusService.WatchEvents:input_type -> rpmgr.v1.WatchEventsRequest
+	13, // 23: rpmgr.v1.StatusService.ListAlerts:input_type -> rpmgr.v1.ListAlertsRequest
+	15, // 24: rpmgr.v1.StatusService.ListInstanceAlerts:input_type -> rpmgr.v1.ListInstanceAlertsRequest
+	7,  // 25: rpmgr.v1.StatusService.GetApplyStatus:output_type -> rpmgr.v1.GetApplyStatusResponse
+	9,  // 26: rpmgr.v1.StatusService.WatchApplyStatus:output_type -> rpmgr.v1.WatchApplyStatusResponse
+	11, // 27: rpmgr.v1.StatusService.WatchEvents:output_type -> rpmgr.v1.WatchEventsResponse
+	14, // 28: rpmgr.v1.StatusService.ListAlerts:output_type -> rpmgr.v1.ListAlertsResponse
+	16, // 29: rpmgr.v1.StatusService.ListInstanceAlerts:output_type -> rpmgr.v1.ListInstanceAlertsResponse
+	25, // [25:30] is the sub-list for method output_type
+	20, // [20:25] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_status_proto_init() }
@@ -830,8 +1312,8 @@ func file_rpmgr_v1_status_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_status_proto_rawDesc), len(file_rpmgr_v1_status_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   10,
+			NumEnums:      2,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
