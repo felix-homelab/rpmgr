@@ -19,7 +19,8 @@ Changes to the design documents are not recorded here: see the git history and t
   or the API's `format` and `secretUrl`. The service's URL holds its token, so it is stored
   encrypted, can be entered but never read back, and is shown as its scheme and host only; such an
   endpoint has no signing secret and cannot be rotated. A `429` from the service delays the next
-  attempt by what it asks, and is no failure of the endpoint. (#1060)
+  attempt by what it asks, never less than the ordinary retry delay, and is no failure of the
+  endpoint until the fifth attempt of an event. (#1060)
 
 - A stalled `tcp` stream leaves evidence. At debug level the gateway logs a stream that has copied
   no byte in either direction for a while once, as `stream stalled`, with its route, target,

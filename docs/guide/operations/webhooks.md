@@ -42,8 +42,9 @@ as the services check none, and cannot be rotated. An endpoint of a chat format 
 an rpmgr one: make a new endpoint.
 
 When a service answers that it is rate limiting, rpmgr waits as long as it asks, within the
-limits in [03](../../03-connections.md#timeouts-keepalive-and-backoff), and does not count that
-as a failure of the endpoint. Messages longer than a service allows are cut with an ellipsis.
+limits in [03](../../03-connections.md#timeouts-keepalive-and-backoff), and never faster than
+the ordinary retries, and does not count that as a failure of the endpoint, unless the service
+answers with a rate limit again and again: from the fifth attempt of one event it counts as any failure. Messages longer than a service allows are cut with an ellipsis.
 
 ## Rotate the secret
 

@@ -7,7 +7,7 @@
           {
             "color": "Good",
             "size": "Medium",
-            "text": "agent_offline: Agent offline resolved, gw1",
+            "text": "agent\\_offline: Agent offline resolved, gw1",
             "type": "TextBlock",
             "weight": "Bolder",
             "wrap": true
@@ -20,7 +20,7 @@
               },
               {
                 "title": "Organisation",
-                "value": "org_1"
+                "value": "org\\_1"
               },
               {
                 "title": "Actor",
@@ -28,7 +28,7 @@
               },
               {
                 "title": "Subject",
-                "value": "agent gw1 (gw_1)"
+                "value": "agent gw1 \\(gw\\_1\\)"
               },
               {
                 "title": "Time",

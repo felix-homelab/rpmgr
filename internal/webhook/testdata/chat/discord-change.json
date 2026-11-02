@@ -13,17 +13,17 @@
         {
           "inline": true,
           "name": "Organisation",
-          "value": "org_1"
+          "value": "org\\_1"
         },
         {
           "inline": true,
           "name": "Actor",
-          "value": "user usr_1"
+          "value": "user usr\\_1"
         },
         {
           "inline": true,
           "name": "Subject",
-          "value": "route web (rt_1)"
+          "value": "route web \\(rt\\_1\\)"
         },
         {
           "inline": true,

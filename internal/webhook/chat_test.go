@@ -369,3 +369,37 @@ func TestSend_RateLimited(t *testing.T) {
 		}
 	}
 }
+
+// TestChatBody_MarkdownInjection: a name or summary with Markdown shows as text in Discord and
+// Teams: every Markdown character in what a person can set is escaped, whichever field holds it.
+func TestChatBody_MarkdownInjection(t *testing.T) {
+	evil := "[x](https://evil.example) **b** `c` _i_ ~~s~~ ||spoiler|| > quote # head <https://e.example> \\ end"
+	e := events.Event{ID: "evt_1", OrgID: "org_1", Type: "route.update", Time: at, ActorType: "user", ActorID: "usr_1",
+		SubjectType: "route", SubjectID: "rt_1", SubjectName: evil, Summary: evil}
+	for _, f := range []webhook.Format{webhook.FormatDiscord, webhook.FormatTeams} {
+		b, _ := webhook.ChatBody(f, e)
+		var texts []string
+		collect(t, "", mustJSON(t, b), &texts)
+		shown := 0
+		for _, s := range texts {
+			if !strings.Contains(s, "evil") && !strings.Contains(s, "spoiler") {
+				continue
+			}
+			shown++
+			escaped := false
+			for _, r := range s {
+				switch {
+				case escaped:
+					escaped = false
+				case r == '\\':
+					escaped = true
+				case strings.ContainsRune("*_~`|>#[]()<", r):
+					t.Errorf("%s: %q holds an unescaped %q", f, s, r)
+				}
+			}
+		}
+		if shown < 2 { // the title or summary, and the subject
+			t.Errorf("%s: %d texts carried the name: %v", f, shown, texts)
+		}
+	}
+}

@@ -128,12 +128,25 @@ func cut(s string, n int, esc func(string) string) string {
 	return b.String()
 }
 
+// mdEscape escapes the characters Discord and Teams read as Markdown, so that a name such as
+// [x](https://evil) or **bold** is shown as text. A backslash before each one is the escape of both.
+func mdEscape(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if strings.ContainsRune("\\*_~`|>#[]()<", r) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 func discord(e events.Event, facts []fact) ([]byte, error) {
 	var fs []map[string]any
 	for _, f := range facts {
-		fs = append(fs, map[string]any{"name": f.Name, "value": cut(f.Value, DiscordFieldValue, nil), "inline": true})
+		fs = append(fs, map[string]any{"name": f.Name, "value": cut(f.Value, DiscordFieldValue, mdEscape), "inline": true})
 	}
-	embed := map[string]any{"title": cut(e.Summary, DiscordTitle, nil), "timestamp": e.Time.UTC().Format(time.RFC3339), "fields": fs}
+	embed := map[string]any{"title": cut(e.Summary, DiscordTitle, mdEscape), "timestamp": e.Time.UTC().Format(time.RFC3339), "fields": fs}
 	switch colourOf(e) {
 	case colourRed:
 		embed["color"] = 0xED4245
@@ -173,9 +186,9 @@ func slack(e events.Event, facts []fact) ([]byte, error) {
 func teams(e events.Event, facts []fact) ([]byte, error) {
 	var fs []map[string]any
 	for _, f := range facts {
-		fs = append(fs, map[string]any{"title": f.Name, "value": cut(f.Value, TeamsFactValue, nil)})
+		fs = append(fs, map[string]any{"title": f.Name, "value": cut(f.Value, TeamsFactValue, mdEscape)})
 	}
-	title := map[string]any{"type": "TextBlock", "text": cut(e.Summary, TeamsTitle, nil), "weight": "Bolder", "size": "Medium", "wrap": true}
+	title := map[string]any{"type": "TextBlock", "text": cut(e.Summary, TeamsTitle, mdEscape), "weight": "Bolder", "size": "Medium", "wrap": true}
 	switch colourOf(e) {
 	case colourRed:
 		title["color"] = "Attention"

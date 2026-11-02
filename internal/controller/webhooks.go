@@ -257,8 +257,10 @@ func record(ctx context.Context, tx *ent.Tx, work []*attempt, now time.Time) err
 		}
 		// A chat service's 429 is no failure of the endpoint: it neither starts its failing period
 		// nor counts towards its disabling, and the next attempt waits as long as the service asked.
+		// A service that keeps answering 429 is retried on the ordinary backoff at the latest, and
+		// from the attempt webhook.RateLimitFailAfter on it counts as a failure like any other.
 		var limited *webhook.RateLimitedError
-		isLimited := errors.As(a.err, &limited)
+		isLimited := errors.As(a.err, &limited) && a.n < webhook.RateLimitFailAfter
 		if !isLimited {
 			byHook[a.hook.ID] = append(byHook[a.hook.ID], a)
 		}
@@ -269,8 +271,8 @@ func record(ctx context.Context, tx *ent.Tx, work []*attempt, now time.Time) err
 		if a.err != nil {
 			cr.SetError(webhook.Describe(a.err))
 			next, ok := webhook.Next(a.n, a.sent, e.Ts)
-			if isLimited && limited.After > 0 {
-				next = a.sent.Add(limited.After)
+			if want := a.sent.Add(limitedAfter(a.err)); want.After(next) {
+				next = want
 				ok = !next.After(e.Ts.Add(webhook.GiveUp))
 			}
 			if ok {
@@ -305,6 +307,15 @@ func record(ctx context.Context, tx *ent.Tx, work []*attempt, now time.Time) err
 		}
 	}
 	return nil
+}
+
+// limitedAfter is how long a chat service asked to wait, or 0.
+func limitedAfter(err error) time.Duration {
+	var l *webhook.RateLimitedError
+	if errors.As(err, &l) {
+		return l.After
+	}
+	return 0
 }
 
 // PurgeDeliveries deletes the deliveries older than webhook.KeepFor and, of an endpoint with more

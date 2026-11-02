@@ -14,7 +14,7 @@
         {
           "inline": true,
           "name": "Organisation",
-          "value": "org_1"
+          "value": "org\\_1"
         },
         {
           "inline": true,
@@ -24,7 +24,7 @@
         {
           "inline": true,
           "name": "Subject",
-          "value": "agent gw1 (gw_1)"
+          "value": "agent gw1 \\(gw\\_1\\)"
         },
         {
           "inline": true,
@@ -33,7 +33,7 @@
         }
       ],
       "timestamp": "2026-11-02T09:30:00Z",
-      "title": "agent_offline: Agent offline resolved, gw1"
+      "title": "agent\\_offline: Agent offline resolved, gw1"
     }
   ]
 }

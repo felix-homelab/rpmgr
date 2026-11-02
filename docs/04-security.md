@@ -1593,7 +1593,8 @@ Security regression tests ([12](12-testing-and-quality.md#security-testing)):
   command line never fill it in. The services verify no signature, so such an endpoint has no
   `rpmgr_whs_` secret and sends no `Rpmgr-Signature`; it cannot be rotated. TLS, the egress guard,
   the refusal of a redirect and the caps of a delivery apply as to any receiver. The message holds
-  the envelope's fields and nothing more, cut to the limits in
+  the envelope's fields and nothing more, Markdown escaped in Discord and Teams as Slack's markup is,
+  cut to the limits in
   [03](03-connections.md#timeouts-keepalive-and-backoff).
 - **Egress guard** ([D138](14-open-decisions.md#engineering)). The controller dials every receiver
   through one guard, which checks each address the name resolves to at the moment it dials, so a

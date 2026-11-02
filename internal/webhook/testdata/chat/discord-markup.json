@@ -13,17 +13,17 @@
         {
           "inline": true,
           "name": "Organisation",
-          "value": "org_1"
+          "value": "org\\_1"
         },
         {
           "inline": true,
           "name": "Actor",
-          "value": "user usr_1"
+          "value": "user usr\\_1"
         },
         {
           "inline": true,
           "name": "Subject",
-          "value": "route \u003c!channel\u003e \u0026 @everyone (rt_2)"
+          "value": "route \\\u003c!channel\\\u003e \u0026 @everyone \\(rt\\_2\\)"
         },
         {
           "inline": true,
@@ -32,7 +32,7 @@
         }
       ],
       "timestamp": "2026-11-02T09:30:00Z",
-      "title": "route.create \u003c!channel\u003e \u0026 @everyone \u003c@U123\u003e"
+      "title": "route.create \\\u003c!channel\\\u003e \u0026 @everyone \\\u003c@U123\\\u003e"
     }
   ]
 }
