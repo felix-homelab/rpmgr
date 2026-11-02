@@ -4,7 +4,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
-import { WebhookService, type CreateWebhookRequest, type UpdateWebhookRequest } from "@/gen/rpmgr/v1/webhook_pb";
+import { WebhookFormat, WebhookService, type CreateWebhookRequest, type UpdateWebhookRequest } from "@/gen/rpmgr/v1/webhook_pb";
 import { apiError, auth, show } from "@/testing/api";
 import { marked, unmatched } from "@/testing/required";
 
@@ -12,6 +12,7 @@ afterEach(cleanup);
 
 const ts = (s: number) => ({ seconds: BigInt(s) });
 const live = { id: "whk_1", orgId: "org_1", url: "https://hooks.example.com/a", eventTypes: ["route.*"], enabled: true, secretSet: true, etag: "e1", lastSuccessTime: ts(1_700_000_000) };
+const chat = { id: "whk_3", orgId: "org_1", url: "https://discord.com", format: WebhookFormat.DISCORD, eventTypes: ["alert.*"], enabled: true, secretSet: false, etag: "e3" };
 const dead = { id: "whk_2", orgId: "org_1", url: "https://hooks.example.com/b", eventTypes: [], enabled: false, secretSet: true, etag: "e2", failingSinceTime: ts(1_700_000_000) };
 
 interface Calls { creates: CreateWebhookRequest[]; updates: UpdateWebhookRequest[]; rotated: string[]; deleted: string[]; tested: string[]; listed: number; deliveryPages: string[] }
@@ -31,14 +32,16 @@ function webhooks(role = "owner", opts: { hooks?: object[]; create?: ConnectErro
         if (opts.create) {
           throw opts.create;
         }
-        hooks = [...hooks, { ...req.webhook, id: "whk_new", orgId: "org_1", secretSet: true }];
-        return { webhook: hooks.at(-1), secret: "rpmgr_whs_SECRET1" };
+        const isChat = req.webhook!.format !== WebhookFormat.UNSPECIFIED && req.webhook!.format !== WebhookFormat.RPMGR;
+        // A chat endpoint shows its host only and has no signing secret.
+        hooks = [...hooks, { ...req.webhook, id: "whk_new", orgId: "org_1", secretSet: !isChat, secretUrl: "", url: isChat ? new URL(req.webhook!.secretUrl).origin : req.webhook!.url }];
+        return { webhook: hooks.at(-1), secret: isChat ? "" : "rpmgr_whs_SECRET1" };
       },
       updateWebhook: (req) => {
         c.updates.push(req);
         const w = req.webhook!;
         const camel = (k: string) => k.replace(/_(\w)/g, (_m, ch: string) => ch.toUpperCase());
-        const set: Record<string, unknown> = { url: w.url, eventTypes: w.eventTypes, enabled: w.enabled };
+        const set: Record<string, unknown> = { url: w.url, eventTypes: w.eventTypes, enabled: w.enabled, format: w.format };
         const patch = Object.fromEntries((req.updateMask?.paths ?? []).map((k) => [camel(k), set[camel(k)]]));
         hooks = hooks.map((h) => ((h as { id: string }).id === w.id ? { ...h, ...patch } : h));
         return {};
@@ -137,6 +140,83 @@ describe("Webhooks", () => {
     fireEvent.click(a.getByRole("button", { name: "Save" }));
     expect(await screen.findByText(/audit\.\*/)).toBeTruthy();
     expect(c.updates.map((u) => [u.webhook?.id, u.webhook?.eventTypes, u.updateMask?.paths, u.etag])).toEqual([["whk_1", ["audit.*"], ["url", "event_types", "enabled"], "e1"]]);
+  });
+
+  it("creates a chat endpoint with the service's URL in secretUrl and shows no secret", async () => {
+    const c = webhooks();
+    const s = await page();
+    fireEvent.click(await s.findByRole("button", { name: "New webhook…" }));
+    fireEvent.change(s.getByLabelText("Format"), { target: { value: String(WebhookFormat.SLACK) } });
+    expect(s.getByText(/has no signing secret/)).toBeTruthy();
+    fireEvent.change(s.getByLabelText("Webhook URL of the service"), { target: { value: "https://hooks.slack.com/services/T/B/TOKEN" } });
+    fireEvent.click(s.getByRole("button", { name: "Create the webhook" }));
+    const row = await rowOf("https://hooks.slack.com");
+    expect(row.getByText("Slack")).toBeTruthy();
+    expect(row.queryByRole("button", { name: "Rotate secret…" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Signing secret" })).toBeNull();
+    expect(c.creates.map((r) => [r.webhook?.format, r.webhook?.url, r.webhook?.secretUrl])).toEqual([[WebhookFormat.SLACK, "", "https://hooks.slack.com/services/T/B/TOKEN"]]);
+    expect(document.body.textContent).not.toContain("TOKEN");
+  });
+
+  it("refuses a chat URL that is not https before it sends anything", async () => {
+    const c = webhooks();
+    const s = await page();
+    fireEvent.click(await s.findByRole("button", { name: "New webhook…" }));
+    fireEvent.change(s.getByLabelText("Format"), { target: { value: String(WebhookFormat.DISCORD) } });
+    fireEvent.change(s.getByLabelText("Webhook URL of the service"), { target: { value: "http://discord.com/api/webhooks/1/x" } });
+    fireEvent.click(s.getByRole("button", { name: "Create the webhook" }));
+    expect(await s.findByText("The URL must start with https://.")).toBeTruthy();
+    expect(c.creates).toEqual([]);
+  });
+
+  it("edits a chat endpoint without its URL: nothing of the URL is sent, and it cannot be rotated", async () => {
+    const c = webhooks("owner", { hooks: [chat] });
+    const d = await rowOf("https://discord.com");
+    expect(d.getByText("Discord")).toBeTruthy();
+    expect(d.queryByRole("button", { name: "Rotate secret…" })).toBeNull();
+    fireEvent.click(d.getByRole("button", { name: "Edit" }));
+    expect((d.getByLabelText("Webhook URL of the service") as HTMLInputElement).value).toBe("");
+    expect(d.queryByRole("option", { name: "rpmgr (signed JSON)" })).toBeNull();
+    fireEvent.change(d.getByLabelText("Event types"), { target: { value: "route.*" } });
+    fireEvent.click(d.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(c.updates).toHaveLength(1));
+    expect(c.updates.map((u) => [u.updateMask?.paths, u.webhook?.secretUrl, u.etag])).toEqual([[["event_types", "enabled"], "", "e3"]]);
+  });
+
+  it("changes a chat endpoint's URL, and its format only with a new URL", async () => {
+    const c = webhooks("owner", { hooks: [chat] });
+    const d = await rowOf("https://discord.com");
+    fireEvent.click(d.getByRole("button", { name: "Edit" }));
+    fireEvent.change(d.getByLabelText("Format"), { target: { value: String(WebhookFormat.TEAMS) } });
+    // A new format needs a new URL: a URL belongs to its service.
+    expect((d.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(c.updates).toEqual([]);
+    fireEvent.change(d.getByLabelText("Webhook URL of the service"), { target: { value: "https://prod-1.logic.azure.com/workflows/x?sig=y" } });
+    fireEvent.click(d.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(c.updates).toHaveLength(1));
+    expect(c.updates.map((u) => [u.updateMask?.paths, u.webhook?.format, u.webhook?.secretUrl])).toEqual([
+      [["event_types", "enabled", "format", "secret_url"], WebhookFormat.TEAMS, "https://prod-1.logic.azure.com/workflows/x?sig=y"]]);
+  });
+
+  it("turns an rpmgr endpoint into a chat one with a new URL", async () => {
+    const c = webhooks();
+    const a = await rowOf("https://hooks.example.com/a");
+    fireEvent.click(a.getByRole("button", { name: "Edit" }));
+    fireEvent.change(a.getByLabelText("Format"), { target: { value: String(WebhookFormat.DISCORD) } });
+    fireEvent.change(a.getByLabelText("Webhook URL of the service"), { target: { value: "https://discord.com/api/webhooks/1/x" } });
+    fireEvent.click(a.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(c.updates).toHaveLength(1));
+    expect(c.updates[0]!.updateMask?.paths).toEqual(["event_types", "enabled", "format", "secret_url"]);
+  });
+
+  it("shows why the server refused a chat endpoint", async () => {
+    webhooks("owner", { create: new ConnectError("api: the url of a chat service has a path that holds its token, and this has none", Code.InvalidArgument) });
+    const s = await page();
+    fireEvent.click(await s.findByRole("button", { name: "New webhook…" }));
+    fireEvent.change(s.getByLabelText("Format"), { target: { value: String(WebhookFormat.DISCORD) } });
+    fireEvent.change(s.getByLabelText("Webhook URL of the service"), { target: { value: "https://discord.com" } });
+    fireEvent.click(s.getByRole("button", { name: "Create the webhook" }));
+    expect((await s.findByRole("alert")).textContent).toContain("holds its token");
   });
 
   it("enables a disabled endpoint again", async () => {
