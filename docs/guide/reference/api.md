@@ -326,6 +326,13 @@ events, the headers and the limits are in [07](../../07-api.md#webhooks-phase-2)
 [04](../../04-security.md#webhooks-and-the-egress-guard-phase-2) and
 [03](../../03-connections.md#timeouts-keepalive-and-backoff).
 
+To post to Discord, Slack or Microsoft Teams instead, set `format` to `WEBHOOK_FORMAT_DISCORD`,
+`WEBHOOK_FORMAT_SLACK` or `WEBHOOK_FORMAT_TEAMS` and give the service's webhook URL in
+`secretUrl`, not in `url`. The URL holds the service's token, so it is write-only: no call reads
+it back, `url` answers its scheme and host only, and there is no `secret` to store or rotate. An
+update that changes `format` names `format` and `secretUrl` in its mask. See
+[Webhooks](../operations/webhooks.md#chat-services).
+
 ## Change a resource: etags and update masks
 
 An `Update…` method changes only the fields its **update mask** names, under the resource's
