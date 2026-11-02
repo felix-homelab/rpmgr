@@ -3,6 +3,7 @@
 package agentcmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -11,7 +12,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/cli"
+	"github.com/felix-homelab/rpmgr/internal/connector"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 )
 
@@ -99,5 +103,33 @@ func TestLoadAgentBoot(t *testing.T) {
 	}
 	if b, err := loadAgentBoot("", func(k string) string { return map[string]string{"RPMGR_CONFIG": bad}[k] }); err == nil {
 		t.Errorf("$RPMGR_CONFIG: read %+v", b)
+	}
+}
+
+// TestWriteDiagnosis: the RTT column shows the round-trip time of any probe that has one, h2 too,
+// and "-" for one that has none, as a probe that failed or got no Pong has not.
+func TestWriteDiagnosis(t *testing.T) {
+	var out bytes.Buffer
+	err := writeDiagnosis(&cli.Env{Stdout: &out}, connector.Diagnosis{Probes: []connector.Probe{
+		{Gateway: "gw_1", Endpoint: "gw.example.com:443", Transport: connector.TransportQUIC, Handshake: 41 * time.Millisecond, RTT: 18 * time.Millisecond},
+		{Gateway: "gw_1", Endpoint: "gw.example.com:443", Transport: connector.TransportH2, Handshake: 58 * time.Millisecond, RTT: 21400 * time.Microsecond},
+		{Gateway: "gw_2", Endpoint: "gw2.example.com:443", Transport: connector.TransportH2, Handshake: 58 * time.Millisecond},
+		{Gateway: "gw_2", Endpoint: "gw2.example.com:443", Transport: connector.TransportQUIC, Err: errors.New("timeout")},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rtt := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 3 && strings.HasPrefix(f[0], "gw_") {
+			rtt[f[0]+" "+f[2]] = f[len(f)-1]
+		}
+	}
+	want := map[string]string{"gw_1 quic": "18ms", "gw_1 h2": "21ms", "gw_2 h2": "-", "gw_2 quic": "-"}
+	for k, v := range want {
+		if rtt[k] != v {
+			t.Errorf("%s: RTT %q, want %q\n%s", k, rtt[k], v, out.String())
+		}
 	}
 }

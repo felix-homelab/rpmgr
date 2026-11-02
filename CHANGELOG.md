@@ -12,6 +12,12 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- A stalled `tcp` stream leaves evidence. At debug level the gateway logs a stream that has copied
+  no byte in either direction for a while once, as `stream stalled`, with its route, target,
+  connector and byte counts. `rpmgr diag transport` shows a round-trip time for the TCP transport
+  too, not only for QUIC. The operations guide gains a runbook, "A tcp route accepts a connection
+  but no data flows", that tells whether the bytes reached the gateway host. (#1053)
+
 - A gateway host can hand its `ufw` to rpmgr, so that the ports of the port pools no longer need a
   manual `ufw allow`. It is off unless you switch it on per host, with `rpmgr setup --firewall ufw`
   (and `--firewall-max-range <from>-<to>`), the controller's install script with the same options,
@@ -250,6 +256,10 @@ Changes to the design documents are not recorded here: see the git history and t
   rollout --easy --release <version> --agent <agent>…`, or **Update** on the agent's page. (#966)
 
 ### Fixed
+
+- `rpmgr_route_bytes_total` counts the bytes a stream carries, no longer the few bytes of the
+  messages that open it, so a route that accepted a connection and moved nothing shows no bytes.
+  (#1053)
 
 - Web UI: a form no longer shows only "the request is not valid" when the API refuses a value. The
   policy, gateway group, gateway, API token and organisation forms check the name before they send

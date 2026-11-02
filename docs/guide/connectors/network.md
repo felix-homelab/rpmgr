@@ -203,7 +203,7 @@ An all-in-one runs a built-in connector, `local`, next to its gateway
 ## Check the network
 
 On the connector's host, `sudo rpmgr diag transport` opens a QUIC and a TCP session to each tunnel
-endpoint of the connector's gateways and reports each handshake, the round trip, the UDP socket's
+endpoint of the connector's gateways and reports each handshake, the round trip of each transport, the UDP socket's
 buffers and the MTU towards the gateway
 ([Status and diagnostics](status-and-diagnostics.md#rpmgr-diag-transport)).
 

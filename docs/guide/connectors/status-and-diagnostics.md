@@ -104,7 +104,7 @@ sudo rpmgr diag transport
 ```text
 GATEWAY                        ENDPOINT             TRANSPORT  RESULT  HANDSHAKE  RTT
 gw_01M4ZEJPH7EHCT1XTFPV3MFHPH  gw1.example.com:443  quic       ok      41ms       18ms
-gw_01M4ZEJPH7EHCT1XTFPV3MFHPH  gw1.example.com:443  h2         ok      58ms       -
+gw_01M4ZEJPH7EHCT1XTFPV3MFHPH  gw1.example.com:443  h2         ok      58ms       21ms
 
 UDP socket: receive buffer … bytes, send buffer … bytes, GSO on.
 MTU towards the gateway: 1500 on eth0.
@@ -113,13 +113,16 @@ MTU towards the gateway: 1500 on eth0.
 - **RESULT** is `ok`, or `failed:` and the error. A QUIC failure while `h2` works means UDP is
   blocked on the way, in one direction or both; a failure of both points at the address, a
   firewall for TCP as well, or a proxy ([Connector networking](network.md)).
-- **HANDSHAKE** is the time until the session was up; **RTT** QUIC's round-trip time after it.
+- **HANDSHAKE** is the time until the session was up; **RTT** the round-trip time after it: QUIC's
+  own, and for `h2` that of one `Ping` sent over the session once it was up. It shows `-` when none
+  could be measured, for a failed session or a gateway that did not answer the `Ping`.
 - **UDP socket** shows the buffers of the UDP socket QUIC uses, and whether the kernel splits large
   sends for it (GSO). Below what QUIC asks for, it adds: `The UDP buffers are below what QUIC asks
   for: apply the installer's /etc/sysctl.d/60-rpmgr.conf.`
 - **MTU** is that of the interface towards the first endpoint; it bounds QUIC's packet size.
 
-The sessions are its own: a running connector is not disturbed. The command needs the connector's
+The sessions are its own, and each ends right after the measurement: a running connector is not
+disturbed. The command needs the connector's
 stored configuration, which names the gateways, so start the connector once first. It runs on
 connector hosts only; on a gateway's it says so. The runbook for UDP problems is
 [UDP blocked or degraded](../../10-operations.md#udp-blocked-or-degraded).
