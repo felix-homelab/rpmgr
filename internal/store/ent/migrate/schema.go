@@ -305,6 +305,7 @@ var (
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "last_error", Type: field.TypeString, Default: ""},
 		{Name: "last_success_at", Type: field.TypeTime, Nullable: true},
+		{Name: "verification", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 	}
 	// AuditSinksTable holds the schema information for the "audit_sinks" table.
