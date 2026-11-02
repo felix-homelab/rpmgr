@@ -83,11 +83,7 @@ func Backlogs(ctx context.Context, db *store.DB) ([]Backlog, error) {
 				cb.Items, cb.Oldest = st.Count, st.Oldest
 				if s.Entries && heads[chain] > cb.EntrySeq {
 					cb.Items += heads[chain] - cb.EntrySeq
-					org := chain
-					if chain == audit.InstanceChain {
-						org = ""
-					}
-					t, ok, err := audit.EntryTimeAfter(ctx, tx, org, cb.EntrySeq)
+					t, ok, err := audit.EntryTimeAfter(ctx, tx, orgOfChain(chain), cb.EntrySeq)
 					if err != nil {
 						return err
 					}

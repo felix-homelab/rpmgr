@@ -227,10 +227,7 @@ func (r *Runner) backoff(id string, failure error, now time.Time) {
 // cursor to the last one the sink acknowledged, in a transaction fenced by the job's lease. It
 // returns how many items were acknowledged, the sink's failure and the database's failure apart.
 func (r *Runner) shipChain(ctx context.Context, s *ent.AuditSink, sink Sink, chain string, fence func(*ent.Tx) error) (n int, sinkErr, dbErr error) {
-	org := chain
-	if chain == audit.InstanceChain {
-		org = ""
-	}
+	org := orgOfChain(chain)
 	var cur *ent.AuditSinkCursor
 	var items []Item
 	dbErr = store.ReadTx(ctx, r.o.DB, func(tx *ent.Tx, _ store.Revision) error {
@@ -335,6 +332,8 @@ func (r *Runner) open(s *ent.AuditSink) (Sink, error) {
 		return openWebhook(r.o, s)
 	case auditsink.KindSyslog:
 		return openSyslog(s)
+	case auditsink.KindS3:
+		return openS3(r.o, s)
 	default:
 		return nil, fmt.Errorf("the %s sink is not available yet", s.Kind)
 	}
@@ -350,6 +349,9 @@ const EventTest = "audit.test"
 // Test sends s a test item at once, outside its cursors, and returns the sink's failure; nil
 // means the receiver acknowledged it.
 func (r *Runner) Test(ctx context.Context, s *ent.AuditSink) error {
+	if s.Kind == auditsink.KindS3 {
+		return r.checkS3(ctx, s)
+	}
 	sink, err := r.open(s)
 	if err != nil {
 		return err

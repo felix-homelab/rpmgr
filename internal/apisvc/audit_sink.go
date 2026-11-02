@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"math"
 	"net/url"
 	"slices"
 	"time"
@@ -59,7 +61,8 @@ func sinkSecretContext(id string) secret.Context {
 // carries; the secret counts through its sealed bytes, which differ at every seal.
 func sinkVersion(r *ent.AuditSink) int64 {
 	h := sha256.New()
-	for _, s := range []string{r.ID, r.Name, r.Settings["url"], r.Settings["address"], r.Settings["ca"], fmt.Sprint(r.Entries, r.Enabled)} {
+	for _, s := range []string{r.ID, r.Name, r.Settings["url"], r.Settings["address"], r.Settings["ca"], r.Settings["endpoint"], r.Settings["region"],
+		r.Settings["bucket"], r.Settings["access_key_id"], r.Settings["lock_days"], fmt.Sprint(r.Entries, r.Enabled)} {
 		_, _ = fmt.Fprintf(h, "%d:%s", len(s), s)
 	}
 	if r.SecretEnc != nil {
@@ -71,11 +74,16 @@ func sinkVersion(r *ent.AuditSink) int64 {
 // sinkOf is the API's sink: the secret never leaves the row.
 func sinkOf(r *ent.AuditSink, b *auditsink.Backlog) *rpmgrv1.AuditSink {
 	kind := rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_WEBHOOK
-	if r.Kind == eauditsink.KindSyslog {
+	switch r.Kind {
+	case eauditsink.KindSyslog:
 		kind = rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_SYSLOG
+	case eauditsink.KindS3:
+		kind = rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_S3
 	}
+	s3 := auditsink.S3SettingsOf(r.Settings)
 	out := &rpmgrv1.AuditSink{Id: r.ID, Name: r.Name, Kind: kind, Url: r.Settings["url"], Address: r.Settings["address"],
-		CaBundle: r.Settings["ca"], SecretSet: r.SecretEnc != nil && len(*r.SecretEnc) > 0, Entries: r.Entries, Enabled: r.Enabled,
+		CaBundle: r.Settings["ca"], Endpoint: s3.Endpoint, Region: s3.Region, Bucket: s3.Bucket, AccessKeyId: s3.AccessKeyID,
+		RetentionDays: lockDays(s3.LockDays), SecretSet: r.SecretEnc != nil && len(*r.SecretEnc) > 0, Entries: r.Entries, Enabled: r.Enabled,
 		CreateTime: timestamppb.New(r.CreatedAt), Etag: etagOf(sinkVersion(r))}
 	st := &rpmgrv1.AuditSinkStatus{LastError: r.LastError}
 	if r.LastSuccessAt != nil {
@@ -96,6 +104,15 @@ func sinkOf(r *ent.AuditSink, b *auditsink.Backlog) *rpmgrv1.AuditSink {
 	}
 	out.Status = st
 	return out
+}
+
+// lockDays is a retention in days for the API; a value outside the int32 range, which the lock
+// rules never allow, shows as zero.
+func lockDays(n int) int32 {
+	if n < 0 || n > math.MaxInt32 {
+		return 0
+	}
+	return int32(n)
 }
 
 func badSink(format string, args ...any) error {
@@ -129,9 +146,40 @@ func checkSyslog(address, ca, url, secret string) error {
 	return nil
 }
 
+// s3Fields reports whether a request sets a field only an object-storage sink has.
+func s3Fields(in *rpmgrv1.AuditSink) bool {
+	return in.GetEndpoint() != "" || in.GetRegion() != "" || in.GetBucket() != "" || in.GetAccessKeyId() != "" || in.GetRetentionDays() != 0
+}
+
+// s3SettingsOf is the object-storage settings a message holds.
+func s3SettingsOf(in *rpmgrv1.AuditSink) auditsink.S3Settings {
+	return auditsink.S3Settings{Endpoint: in.GetEndpoint(), Region: in.GetRegion(), Bucket: in.GetBucket(), AccessKeyID: in.GetAccessKeyId(),
+		CA: in.GetCaBundle(), LockDays: int(in.GetRetentionDays())}
+}
+
+// checkS3 refuses what an object-storage sink cannot use, then checks the bucket: one without Object
+// Lock or without conditional create is refused and nothing is saved. A store that cannot be
+// reached is Unavailable, not a verdict on the settings.
+func (a *AuditSinks) checkS3(ctx context.Context, set auditsink.S3Settings, key secret.Value) error {
+	if err := checkSecretLen(key.Len()); err != nil {
+		return err
+	}
+	err := auditsink.CheckSettingsAndBucket(ctx, set, key, a.now)
+	var unreachable *auditsink.UnreachableError
+	switch {
+	case err == nil:
+		return nil
+	case errors.As(err, &unreachable) || ctx.Err() != nil:
+		return connect.NewError(connect.CodeUnavailable, fmt.Errorf("apisvc: the sink was not saved: %s", auditsink.Describe(err)))
+	}
+	return badSink("%s", auditsink.Describe(err))
+}
+
 // checkSecret refuses a secret too short to sign with.
-func checkSecret(s string) error {
-	if len(s) < 16 {
+func checkSecret(s string) error { return checkSecretLen(len(s)) }
+
+func checkSecretLen(n int) error {
+	if n < 16 {
 		return badSink("the secret must be at least 16 bytes")
 	}
 	return nil
@@ -161,6 +209,9 @@ func (a *AuditSinks) CreateAuditSink(ctx context.Context, req *connect.Request[r
 	var sealed []byte
 	var kind eauditsink.Kind
 	settings := map[string]string{}
+	if in.GetKind() != rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_S3 && s3Fields(in) {
+		return nil, badSink("only an object-storage sink has an endpoint, region, bucket, access key ID and lock period")
+	}
 	switch in.GetKind() {
 	case rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_WEBHOOK:
 		if err := checkWebhookURL(in.GetUrl()); err != nil {
@@ -185,8 +236,21 @@ func (a *AuditSinks) CreateAuditSink(ctx context.Context, req *connect.Request[r
 		if in.GetCaBundle() != "" {
 			settings["ca"] = in.GetCaBundle()
 		}
+	case rpmgrv1.AuditSinkKind_AUDIT_SINK_KIND_S3:
+		if in.GetUrl() != "" || in.GetAddress() != "" {
+			return nil, badSink("an object-storage sink has no url and no address")
+		}
+		set := s3SettingsOf(in)
+		if err := a.checkS3(ctx, set, secret.New(in.GetSecret())); err != nil {
+			return nil, err
+		}
+		var err error
+		if sealed, err = a.Sealer.Seal(sinkSecretContext(id), secret.New(in.GetSecret())); err != nil {
+			return nil, err
+		}
+		kind, settings = eauditsink.KindS3, set.Map()
 	default:
-		return nil, badSink("the kind must be a sink kind this controller offers: webhook or syslog")
+		return nil, badSink("the kind must be a sink kind this controller offers: webhook, syslog or s3")
 	}
 	sys := store.CarryTxHook(a.Sys, ctx)
 	var row *ent.AuditSink
@@ -255,58 +319,105 @@ func (a *AuditSinks) ListAuditSinks(ctx context.Context, req *connect.Request[rp
 	return connect.NewResponse(out), nil
 }
 
+// sinkMask is the fields an update may name.
+var sinkMask = []string{"name", "url", "secret", "address", "ca_bundle", "entries", "enabled", "endpoint", "region", "bucket", "access_key_id", "retention_days"}
+
+// mergeSink applies the update to the sink as it is and returns the result with the settings the
+// row keeps; the checks that need no store are made here.
+func mergeSink(cur *ent.AuditSink, m *rpmgrv1.UpdateAuditSinkRequest) (*rpmgrv1.AuditSink, map[string]string, error) {
+	in := m.GetAuditSink()
+	if err := api.CheckEtag(m.GetEtag(), sinkVersion(cur), api.Redact(sinkOf(cur, nil))); err != nil {
+		return nil, nil, err
+	}
+	next := sinkOf(cur, nil)
+	if err := api.ApplyMask(next, in, m.GetUpdateMask(), sinkMask...); err != nil {
+		return nil, nil, err
+	}
+	if next.GetName() == "" {
+		return nil, nil, badSink("a sink needs a name")
+	}
+	paths := m.GetUpdateMask().GetPaths()
+	has := func(fields ...string) bool {
+		return slices.ContainsFunc(fields, func(f string) bool { return slices.Contains(paths, f) })
+	}
+	settings := map[string]string{}
+	switch cur.Kind {
+	case eauditsink.KindSyslog:
+		if has("url", "secret") || has("endpoint", "region", "bucket", "access_key_id", "retention_days") {
+			return nil, nil, badSink("a syslog sink has only an address and a CA bundle")
+		}
+		if err := checkSyslog(next.GetAddress(), next.GetCaBundle(), "", ""); err != nil {
+			return nil, nil, err
+		}
+		settings["address"] = next.GetAddress()
+		if next.GetCaBundle() != "" {
+			settings["ca"] = next.GetCaBundle()
+		}
+	case eauditsink.KindS3:
+		if has("url", "address") {
+			return nil, nil, badSink("an object-storage sink has no url and no address")
+		}
+		settings = s3SettingsOf(next).Map()
+	default:
+		if has("address", "ca_bundle", "endpoint", "region", "bucket", "access_key_id", "retention_days") {
+			return nil, nil, badSink("a webhook sink has only a url and a secret")
+		}
+		if err := checkWebhookURL(next.GetUrl()); err != nil {
+			return nil, nil, err
+		}
+		settings["url"] = next.GetUrl()
+	}
+	return next, settings, nil
+}
+
 // UpdateAuditSink implements AuditSinkService. A new secret replaces the stored one; the etag is
-// checked in the transaction that writes.
+// checked in the transaction that writes. An object-storage sink whose settings or secret key
+// change is checked against its bucket first, outside the transaction, which must then find the
+// sink as it was checked.
 func (a *AuditSinks) UpdateAuditSink(ctx context.Context, req *connect.Request[rpmgrv1.UpdateAuditSinkRequest]) (
 	*connect.Response[rpmgrv1.UpdateAuditSinkResponse], error) {
 	m := req.Msg
 	in := m.GetAuditSink()
 	sys := store.CarryTxHook(a.Sys, ctx)
+	paths := m.GetUpdateMask().GetPaths()
+	var checked int64
+	if pre, err := a.DB.ReadClient().AuditSink.Get(sys, in.GetId()); err == nil && pre.Kind == eauditsink.KindS3 {
+		next, settings, err := mergeSink(pre, m)
+		if err != nil {
+			return nil, err
+		}
+		newSecret := slices.Contains(paths, "secret")
+		if newSecret || !maps.Equal(settings, pre.Settings) {
+			key := secret.New(in.GetSecret())
+			if !newSecret {
+				v, err := a.Sealer.Open(sinkSecretContext(pre.ID), *pre.SecretEnc)
+				if err != nil {
+					return nil, badSink("the stored secret key cannot be opened; set it again")
+				}
+				key = v
+			}
+			if err := a.checkS3(ctx, s3SettingsOf(next), key); err != nil {
+				return nil, err
+			}
+			checked = sinkVersion(pre)
+		}
+	}
 	var row *ent.AuditSink
 	err := store.WriteTx(sys, a.DB, func(tx *ent.Tx) error {
 		cur, err := tx.AuditSink.Get(sys, in.GetId())
 		if err != nil {
 			return err
 		}
-		curMsg := sinkOf(cur, nil)
-		if err := api.CheckEtag(m.GetEtag(), sinkVersion(cur), api.Redact(curMsg)); err != nil {
+		if checked != 0 && sinkVersion(cur) != checked {
+			return connect.NewError(connect.CodeAborted, errors.New("apisvc: the sink changed while its bucket was checked; try again"))
+		}
+		next, settings, err := mergeSink(cur, m)
+		if err != nil {
 			return err
-		}
-		next := sinkOf(cur, nil)
-		if err := api.ApplyMask(next, in, m.GetUpdateMask(), "name", "url", "secret", "address", "ca_bundle", "entries", "enabled"); err != nil {
-			return err
-		}
-		if next.GetName() == "" {
-			return badSink("a sink needs a name")
-		}
-		settings := map[string]string{}
-		paths := m.GetUpdateMask().GetPaths()
-		if cur.Kind == eauditsink.KindSyslog {
-			if slices.Contains(paths, "url") || slices.Contains(paths, "secret") {
-				return badSink("a syslog sink has no url and no secret")
-			}
-			if err := checkSyslog(next.GetAddress(), next.GetCaBundle(), "", ""); err != nil {
-				return err
-			}
-			settings["address"] = next.GetAddress()
-			if next.GetCaBundle() != "" {
-				settings["ca"] = next.GetCaBundle()
-			}
-		} else {
-			if slices.Contains(paths, "address") || slices.Contains(paths, "ca_bundle") {
-				return badSink("a webhook sink has no address and no CA bundle")
-			}
-			if err := checkWebhookURL(next.GetUrl()); err != nil {
-				return err
-			}
-			settings["url"] = next.GetUrl()
 		}
 		u := tx.AuditSink.UpdateOneID(cur.ID).SetName(next.GetName()).SetSettings(settings).
 			SetEntries(next.GetEntries()).SetEnabled(next.GetEnabled())
-		for _, p := range paths {
-			if p != "secret" {
-				continue
-			}
+		if slices.Contains(paths, "secret") {
 			if err := checkSecret(in.GetSecret()); err != nil {
 				return err
 			}

@@ -1029,13 +1029,18 @@ rpmgr create audit-sink [flags]
 
 | Flag | Default | Description |
 |---|---|---|
+| `--access-key-id string` |  | the access key's ID (s3 sinks) |
 | `--address string` |  | the syslog server as host:port; its certificate is checked against the host |
-| `--ca-file string` |  | a file of PEM CA certificates the syslog server's certificate must chain to; without it the system roots |
+| `--bucket string` |  | the bucket, which needs Object Lock and versioning (s3 sinks) |
+| `--ca-file string` |  | a file of PEM CA certificates the syslog server's or the object store's certificate must chain to; without it the system roots |
+| `--endpoint string` |  | the object store's https:// URL, or http:// on a loopback address (s3 sinks) |
 | `--entries` |  | send the entries too; the checkpoints always go |
-| `--kind string` |  | how it delivers: webhook or syslog (RFC 5424 over TLS) |
+| `--kind string` |  | how it delivers: webhook, syslog (RFC 5424 over TLS) or s3 (object storage with Object Lock) |
 | `--name string` |  | the sink's name, unique among the sinks |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
-| `--secret-file string` |  | a file holding the secret that signs the deliveries, at least 16 bytes; write-only |
+| `--region string` |  | the region the store's requests are signed for (s3 sinks) |
+| `--retention-days string` |  | how long each object stays locked, 30 to 3650 days, 365 if not set (s3 sinks) |
+| `--secret-file string` |  | a file holding the secret that signs the deliveries, or the object store's secret key, at least 16 bytes; write-only |
 | `--url string` |  | the webhook's https:// URL, without credentials (webhook sinks) |
 
 ## rpmgr create invitation
@@ -1318,14 +1323,19 @@ rpmgr update audit-sink [flags] <id or name>
 
 | Flag | Default | Description |
 |---|---|---|
+| `--access-key-id string` |  | the access key's ID (s3 sinks) |
 | `--address string` |  | the syslog server as host:port; its certificate is checked against the host |
-| `--ca-file string` |  | a file of PEM CA certificates the syslog server's certificate must chain to; without it the system roots |
+| `--bucket string` |  | the bucket, which needs Object Lock and versioning (s3 sinks) |
+| `--ca-file string` |  | a file of PEM CA certificates the syslog server's or the object store's certificate must chain to; without it the system roots |
 | `--enabled` |  | ship to it (false stops shipping; it catches up when enabled again) |
+| `--endpoint string` |  | the object store's https:// URL, or http:// on a loopback address (s3 sinks) |
 | `--entries` |  | send the entries too; the checkpoints always go |
 | `--force` |  | update without checking that it is unchanged since this command read it |
 | `--name string` |  | the sink's name, unique among the sinks |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
-| `--secret-file string` |  | a file holding the secret that signs the deliveries, at least 16 bytes; write-only |
+| `--region string` |  | the region the store's requests are signed for (s3 sinks) |
+| `--retention-days string` |  | how long each object stays locked, 30 to 3650 days, 365 if not set (s3 sinks) |
+| `--secret-file string` |  | a file holding the secret that signs the deliveries, or the object store's secret key, at least 16 bytes; write-only |
 | `--url string` |  | the webhook's https:// URL, without credentials (webhook sinks) |
 
 ## rpmgr update member

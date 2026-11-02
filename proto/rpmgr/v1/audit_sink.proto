@@ -33,7 +33,9 @@ service AuditSinkService {
     option (rpmgr.v1.authz) = {permission: "instance.admin"};
   }
   // UpdateAuditSink changes the fields the mask names: name, url, secret, address, ca_bundle,
-  // entries, enabled. The kind never changes.
+  // endpoint, region, bucket, access_key_id, retention_days, entries, enabled. The kind never
+  // changes. An object-storage sink whose settings or secret change is checked against its bucket
+  // first.
   rpc UpdateAuditSink(UpdateAuditSinkRequest) returns (UpdateAuditSinkResponse) {
     option (rpmgr.v1.authz) = {
       permission: "instance.admin"
@@ -48,8 +50,9 @@ service AuditSinkService {
     };
   }
   // TestAuditSink sends the sink a test item at once, outside its cursors, and returns the
-  // receiver's answer. A step-up is required because the controller opens a connection to an
-  // address of the Instance Admin's choosing.
+  // receiver's answer; for an object-storage sink it checks the bucket instead. A step-up is
+  // required because the controller opens a connection to an address of the Instance Admin's
+  // choosing.
   rpc TestAuditSink(TestAuditSinkRequest) returns (TestAuditSinkResponse) {
     option (rpmgr.v1.authz) = {
       permission: "instance.admin"
@@ -65,6 +68,9 @@ enum AuditSinkKind {
   AUDIT_SINK_KIND_WEBHOOK = 1;
   // RFC 5424 messages over TLS (RFC 5425 framing) to address; never UDP or plain TCP.
   AUDIT_SINK_KIND_SYSLOG = 2;
+  // One object per checkpoint or entry in an S3-compatible bucket with Object Lock in compliance
+  // mode.
+  AUDIT_SINK_KIND_S3 = 3;
 }
 
 // AuditSink is an external destination of the audit log. Every sink gets every chain's
@@ -81,9 +87,9 @@ message AuditSink {
   AuditSinkKind kind = 3 [(buf.validate.field).enum.defined_only = true];
   // The receiver of a webhook sink: an https:// URL without credentials; empty for a syslog sink.
   string url = 4 [(buf.validate.field).string.max_len = 2048];
-  // The secret that signs a webhook sink's deliveries (a syslog sink has none), which the receiver verifies. Write-only:
-  // it is stored under the KEK, never returned and redacted in the audit log; empty in every
-  // answer.
+  // The secret that signs a webhook sink's deliveries, which the receiver verifies, or an
+  // object-storage sink's secret key (a syslog sink has none). Write-only: it is stored under the
+  // KEK, never returned and redacted in the audit log; empty in every answer.
   string secret = 5 [
     (rpmgr.v1.sensitive) = true,
     (buf.validate.field).string.max_len = 1024
@@ -107,6 +113,20 @@ message AuditSink {
   // The CA certificates, in PEM form, that the syslog server's certificate must chain to; empty
   // means the system roots. Certificates are public, so it is returned.
   string ca_bundle = 13 [(buf.validate.field).string.max_len = 65536];
+  // The store of an object-storage sink: an https:// URL, or http:// on a loopback address, with
+  // no credentials, path or query.
+  string endpoint = 14 [(buf.validate.field).string.max_len = 2048];
+  // The region the store's requests are signed for.
+  string region = 15 [(buf.validate.field).string.max_len = 64];
+  // The bucket; it needs Object Lock and versioning.
+  string bucket = 16 [(buf.validate.field).string.max_len = 63];
+  // The access key's ID; its secret key is the write-only secret.
+  string access_key_id = 17 [(buf.validate.field).string.max_len = 128];
+  // How long, in days, each object stays locked: 30 to 3650, 365 if not set.
+  int32 retention_days = 18 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 3650
+  }];
 }
 
 // AuditSinkStatus is how far a sink is behind and why, from the audit tables and the sink's
@@ -142,7 +162,10 @@ message AuditSinkChainStatus {
 
 // CreateAuditSinkRequest creates a sink.
 message CreateAuditSinkRequest {
-  // The sink: name, kind, url and secret are required for a webhook sink.
+  // The sink: name, kind, url and secret are required for a webhook sink; name, kind, address for
+  // a syslog sink; name, kind, endpoint, region, bucket, access_key_id and secret for an
+  // object-storage sink, whose bucket is checked first: one without Object Lock or conditional
+  // create is refused.
   AuditSink audit_sink = 1 [(buf.validate.field).required = true];
 }
 
@@ -184,7 +207,7 @@ message ListAuditSinksResponse {
 message UpdateAuditSinkRequest {
   // The sink, with its ID and the fields to change.
   AuditSink audit_sink = 1 [(buf.validate.field).required = true];
-  // The fields to change: name, url, secret, entries, enabled.
+  // The fields to change, as the method lists them.
   google.protobuf.FieldMask update_mask = 2;
   // The etag the caller read; empty skips the check.
   string etag = 3;
