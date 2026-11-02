@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/felix-homelab/rpmgr/internal/sinkverify"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsink"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsinkcursor"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
@@ -126,6 +127,18 @@ func (_u *AuditSinkUpdate) SetNillableLastSuccessAt(v *time.Time) *AuditSinkUpda
 // ClearLastSuccessAt clears the value of the "last_success_at" field.
 func (_u *AuditSinkUpdate) ClearLastSuccessAt() *AuditSinkUpdate {
 	_u.mutation.ClearLastSuccessAt()
+	return _u
+}
+
+// SetVerification sets the "verification" field.
+func (_u *AuditSinkUpdate) SetVerification(v *sinkverify.Verification) *AuditSinkUpdate {
+	_u.mutation.SetVerification(v)
+	return _u
+}
+
+// ClearVerification clears the value of the "verification" field.
+func (_u *AuditSinkUpdate) ClearVerification() *AuditSinkUpdate {
+	_u.mutation.ClearVerification()
 	return _u
 }
 
@@ -248,6 +261,12 @@ func (_u *AuditSinkUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.LastSuccessAtCleared() {
 		_spec.ClearField(auditsink.FieldLastSuccessAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Verification(); ok {
+		_spec.SetField(auditsink.FieldVerification, field.TypeJSON, value)
+	}
+	if _u.mutation.VerificationCleared() {
+		_spec.ClearField(auditsink.FieldVerification, field.TypeJSON)
 	}
 	if _u.mutation.CursorsCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -414,6 +433,18 @@ func (_u *AuditSinkUpdateOne) ClearLastSuccessAt() *AuditSinkUpdateOne {
 	return _u
 }
 
+// SetVerification sets the "verification" field.
+func (_u *AuditSinkUpdateOne) SetVerification(v *sinkverify.Verification) *AuditSinkUpdateOne {
+	_u.mutation.SetVerification(v)
+	return _u
+}
+
+// ClearVerification clears the value of the "verification" field.
+func (_u *AuditSinkUpdateOne) ClearVerification() *AuditSinkUpdateOne {
+	_u.mutation.ClearVerification()
+	return _u
+}
+
 // AddCursorIDs adds the "cursors" edge to the AuditSinkCursor entity by IDs.
 func (_u *AuditSinkUpdateOne) AddCursorIDs(ids ...string) *AuditSinkUpdateOne {
 	_u.mutation.AddCursorIDs(ids...)
@@ -563,6 +594,12 @@ func (_u *AuditSinkUpdateOne) sqlSave(ctx context.Context) (_node *AuditSink, er
 	}
 	if _u.mutation.LastSuccessAtCleared() {
 		_spec.ClearField(auditsink.FieldLastSuccessAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Verification(); ok {
+		_spec.SetField(auditsink.FieldVerification, field.TypeJSON, value)
+	}
+	if _u.mutation.VerificationCleared() {
+		_spec.ClearField(auditsink.FieldVerification, field.TypeJSON)
 	}
 	if _u.mutation.CursorsCleared() {
 		edge := &sqlgraph.EdgeSpec{
