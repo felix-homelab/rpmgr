@@ -72,7 +72,9 @@ Changes to the design documents are not recorded here: see the git history and t
   --endpoint <url> --region <region> --bucket <bucket> --access-key-id <id> --secret-file <file>`.
   Every checkpoint, and with `--entries` every entry, is written as an object that the bucket's
   Object Lock in compliance mode keeps unchangeable; a bucket without Object Lock or a store without
-  conditional writes is refused. (#656)
+  conditional writes is refused. `rpmgr verify audit --sink <name>` reads the bucket back, reports
+  a gap or a chain rewritten under a checkpoint the bucket holds, and the sink's status shows the
+  last verification. (#656)
 - An Audit sinks page under Settings, for the Instance Admin, manages the audit sinks: it lists
   each with its state, target, last success, backlog and last error, creates and edits webhook and
   syslog sinks in a form with a section per kind, enables, disables, tests and deletes them. The

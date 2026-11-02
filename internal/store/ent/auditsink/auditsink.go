@@ -32,6 +32,8 @@ const (
 	FieldLastError = "last_error"
 	// FieldLastSuccessAt holds the string denoting the last_success_at field in the database.
 	FieldLastSuccessAt = "last_success_at"
+	// FieldVerification holds the string denoting the verification field in the database.
+	FieldVerification = "verification"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeCursors holds the string denoting the cursors edge name in mutations.
@@ -58,6 +60,7 @@ var Columns = []string{
 	FieldEnabled,
 	FieldLastError,
 	FieldLastSuccessAt,
+	FieldVerification,
 	FieldCreatedAt,
 }
 
