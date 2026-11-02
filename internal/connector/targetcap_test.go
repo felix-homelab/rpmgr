@@ -463,3 +463,30 @@ func TestTargetBound_OpenStreamDoesNotKeepDeadTargetHealthy(t *testing.T) {
 		t.Errorf("the status %q does not name the open stream", st.GetDetail())
 	}
 }
+
+// Past maxUndecided the failures count in a row: a target that needs several failures to turn
+// unhealthy does so after maxUndecided plus that many checks, not after their product.
+func TestTargetBound_FailuresPastUndecidedCountInARow(t *testing.T) {
+	const undecided, unhealthy = 3, 3
+	connector.SetMaxUndecided(t, undecided)
+	svc := startPerSourceTarget(t, 1)
+	tg := svc.target("tg_one")
+	e := newTargets(allowLoopback(t, tg.Port))
+	t.Cleanup(e.Close)
+	check := capCheck()
+	check.Unhealthy = unhealthy
+	e.Set([]connector.Route{{ID: "rt_x", Targets: []connector.Target{tg}, Check: check, MaxTargetConns: 100}})
+	e.healthy(t, tg.ID)
+	held := e.stall(t, "rt_x", 1)
+	t.Cleanup(func() {
+		for _, gw := range held {
+			_ = gw.Close()
+		}
+	})
+	before := svc.refused.Load()
+	eventually(t, "the target never turned unhealthy", func() bool { return e.unhealthy(tg.ID) })
+	// maxUndecided checks are not decided, then unhealthy ones count; one more may be under way.
+	if n, want := svc.refused.Load()-before, int64(undecided+unhealthy+1); n > want {
+		t.Errorf("%d refused checks before the target turned unhealthy, want at most %d", n, want)
+	}
+}

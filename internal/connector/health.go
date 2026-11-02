@@ -247,7 +247,7 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 				if held.ran && held.undecided {
 					hs[tg.ID].undecided++
 				}
-				if held.undecided && (!held.ran || hs[tg.ID].undecided < maxUndecided) {
+				if held.undecided && (!held.ran || hs[tg.ID].undecided <= maxUndecided) {
 					// Not decided: the streak, the state and the last failure stay (D161); only what
 					// the status says of an unknown or unhealthy target may change. After maxUndecided
 					// such checks in a row the failure counts, so a stream that stays open cannot keep
@@ -260,7 +260,11 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 			} else {
 				hs[tg.ID].note = ""
 			}
-			hs[tg.ID].undecided = 0
+			if held == nil || !held.undecided {
+				// A decided result ends the run; failures past maxUndecided keep counting, so that
+				// they reach the unhealthy threshold in a row.
+				hs[tg.ID].undecided = 0
+			}
 			var b *checkBlocked
 			blocked := ""
 			if errors.As(results[i], &b) {

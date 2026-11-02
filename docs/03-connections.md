@@ -1046,13 +1046,14 @@ and streams that stall hold it until they end ([D161](14-open-decisions.md#engin
   taken is not run and is **not decided**: it changes no state and no count, and the target stays as
   it was (healthy, unhealthy, or unknown). A check that does run but fails with a refusal, a reset,
   a closed connection or a timeout while streams hold connections to the target is not decided
-  either, because such a target may be refusing the check because of them. Only streams count as held: another check's slot, as when two routes check one address, never makes a check
-  undecided. Any other failure, such as a status outside the range, counts as before. With no
-  stream held, every failure counts, so a target that refuses everything is unhealthy. Not
-  deciding must not hide a dead target from a client that keeps a stream open, so after **6 such
-  checks in a row** that ran and failed, the next failure counts as any other; a check that was
-  not run for want of a slot neither adds to that count nor resets it, and a result that decides
-  resets it.
+  either, because such a target may be refusing the check because of them. Only streams count as
+  held: another check's slot, as when two routes check one address, never makes a check undecided.
+  Any other failure, such as a status outside the range, counts as before. With no stream held,
+  every failure counts, so a target that refuses everything is unhealthy. Not deciding must not
+  hide a dead target from a client that keeps a stream open, so after **6 such checks in a row**
+  that ran and failed, every further failure counts as any other until a result decides; a check
+  that was not run for want of a slot neither adds to that run nor ends it, and a result that
+  decides ends it.
 - **What the status says.** When a check fails or is not decided while streams hold connections to
   the target, the target's status and the route's `not_ready(targets_unhealthy)` detail add that
   the connector holds that many connections to the target for streams, which may use up the
