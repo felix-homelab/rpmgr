@@ -509,6 +509,11 @@ message ConnectorRoute {
   // Phase 2: the route's health check, which the connector runs against each of its targets of the
   // route (docs/03-connections.md, "Target health"); unset, every target counts as healthy.
   HealthCheck health_check = 4;
+  // The most connections the connector holds open to one target address for this route's streams
+  // and checks together: the route's max_connections, 0 for the connector's default
+  // (docs/03-connections.md, "Target connection bound"). TCP streams count; a stream over it gets
+  // OVERLOADED.
+  uint32 max_target_connections = 5;
 }
 
 // HealthCheck is a route's active health check as connectors run it. A value of 0 takes the

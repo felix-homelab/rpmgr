@@ -97,3 +97,14 @@ func DialWSS(ctx context.Context, m *Sessions, host string, cfg *tls.Config) err
 func UpgradeWSS(ctx context.Context, m *Sessions, host string) (net.Conn, error) {
 	return m.upgradeWSS(ctx, host)
 }
+
+// HeldConns is how many connections the connector holds to the target address, streams and checks.
+func (t *Targets) HeldConns(addr string) int { return t.conns.held(addr) }
+
+// SetMaxUndecided changes how many undecided checks in a row turn into a failure, for one test that
+// must not run in parallel with others.
+func SetMaxUndecided(tb testing.TB, n int) {
+	old := maxUndecided
+	maxUndecided = n
+	tb.Cleanup(func() { maxUndecided = old })
+}

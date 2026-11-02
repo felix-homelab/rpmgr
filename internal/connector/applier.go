@@ -184,13 +184,14 @@ func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Chang
 	for _, res := range snap.GetResources() {
 		if r := res.GetConnectorRoute(); r != nil {
 			transport[res.GetId()], _ = transportOf(r.GetTransport())
-			route := Route{ID: res.GetId(), UDP: r.GetType() == "udp", Both: r.GetType() == "tcp_udp"}
+			route := Route{ID: res.GetId(), UDP: r.GetType() == "udp", Both: r.GetType() == "tcp_udp", HTTP: r.GetType() == "http"}
 			for _, t := range r.GetTargets() {
 				route.Targets = append(route.Targets, Target{ID: t.GetId(), Host: t.GetHost(), Port: uint16(t.GetPort()), //nolint:gosec // G115: Validate bounds the port
 					UnixPath: t.GetUnixPath(), ProxyProtocol: t.GetProxyProtocol(), Weight: t.GetWeight(), Priority: t.GetPriority(),
 					TLS: tlsOf(t.GetTls())})
 			}
 			route.Check = healthCheckOf(r.GetHealthCheck())
+			route.MaxTargetConns = int(r.GetMaxTargetConnections())
 			routes = append(routes, route)
 		}
 	}

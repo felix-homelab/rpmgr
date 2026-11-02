@@ -21,6 +21,18 @@ down keeps its part, so while it is down the route gets less than its limit; dis
 take down for longer. 0 means no limit. The smallest and largest values are in
 [03](../../03-connections.md#route-limits-phase-2).
 
+### Connections to the target
+
+On a TCP, TCP and UDP or TLS passthrough route, the connection limit also bounds how many
+connections each connector holds open to one of the route's targets, with its health checks
+counted: a connection over it is refused at the connector, the gateway tries another session of the route
+and then resets the visitor. A route without a connection limit takes the connector's
+default ([03](../../03-connections.md#target-connection-bound-phase-2)). Set the limit to what the
+service allows one client address: a service that accepts only a few connections per address, as a
+remote desktop server does, is then never locked out by connections that stall, and the connector's
+health checks never take the last one ([D161](../../14-open-decisions.md#engineering)). A UDP flow
+and an HTTP route are not bounded this way.
+
 ## Set limits
 
 ### With the command line
@@ -56,5 +68,10 @@ capability `route.limits` ([Preview and apply](preview-and-apply.md)). Update th
 - **Visitors get 503 or 429 although the service is idle.** The limit is shared by the group's
   gateways: with four gateways, each takes a quarter. A gateway that is down still holds its part;
   disable it, or raise the limit.
+- **A target refuses new connections after a few stalled ones.** The target limits connections per
+  client address and stalled connections hold them. Set the route's connection limit to what the
+  target allows, and a shorter idle timeout
+  ([TCP and UDP routes](tcp-and-udp.md#idle-timeouts)). The route's status then shows the target as
+  unknown or unhealthy with the connections the connector holds to it, not only the failure.
 - **A route is not served on one gateway.** See the route's status: a gateway of an earlier release
   lacks `route.limits`.
