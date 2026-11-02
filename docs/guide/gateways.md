@@ -248,8 +248,31 @@ sudo rpmgr setup --role gateway --controller https://rpmgr.example.com --ca-pin 
   --firewall ufw --firewall-max-range 20000-29999
 ```
 
+The controller's install script takes the same options
+([The install scripts](install/install-script.md#options)):
+`sudo sh install.sh --role gateway … --firewall ufw --firewall-max-range 20000-29999`.
+
+On a gateway host that exists already, add the section to `/etc/rpmgr/gateway.yaml`, then let the
+binary write the helper's files and enable its units:
+
+```yaml
+firewall:
+  backend: ufw
+  max_range: 20000-29999
+```
+
+```sh
+sudo rpmgr firewall install
+sudo systemctl daemon-reload
+sudo systemctl enable rpmgr-firewall.service
+sudo systemctl enable --now rpmgr-firewall.path
+sudo systemctl restart rpmgr-gateway
+```
+
 Without `--firewall-max-range` rpmgr opens only the gateway's listeners and no pool. A pool that
 reaches outside the range is opened only inside it, and the gateway reports the rest as refused.
+A listener you change in the boot file later is not opened until you run `rpmgr firewall install`
+or setup again: the helper trusts the root-owned file, not the boot file.
 
 ### What it does
 
@@ -266,7 +289,10 @@ reaches outside the range is opened only inside it, and the gateway reports the 
   rpmgr does not touch it, so open the same ports there.
 
 The gateway shows the state of the helper in its status: **off**, **applied**, or **failed** with
-the reason, such as `ufw` being inactive or a range outside the bounds.
+the reason, such as `ufw` being inactive or a range outside the bounds. The web UI shows it in the
+**Firewall** column of the group's page ([Gateways in the web UI](web-ui/gateways.md#gateways)),
+and the API in the gateway's `status.firewall`. A change of a pool reaches the firewall shortly
+after the gateway has applied it.
 
 ### Switch it off
 

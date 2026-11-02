@@ -60,10 +60,11 @@ func boundsOf(g config.Gateway) firewall.Bounds {
 }
 
 // installFirewall writes the root-owned bounds file, makes the directory the gateway writes the
-// desired file in, and unless noUnit installs and enables the helper's units. It changes nothing a
+// desired file in, and unless noUnit writes the helper's units and, with enable, enables them. It
+// changes nothing a
 // second run does not write again the same. A host without ufw is no error: the helper reports it
 // as failed until ufw is installed and active, and the result says so.
-func installFirewall(ctx context.Context, h Host, b firewall.Bounds, noUnit bool, r *Result) error {
+func installFirewall(ctx context.Context, h Host, b firewall.Bounds, noUnit, enable bool, r *Result) error {
 	raw, err := json.MarshalIndent(b, "", "  ")
 	if err != nil {
 		return err
@@ -97,6 +98,9 @@ func installFirewall(ctx context.Context, h Host, b firewall.Bounds, noUnit bool
 	if _, err := update.WriteFirewallUnits(h.Paths.Units, h.Paths.Bin); err != nil {
 		return err
 	}
+	if !enable { // the install script enables them with its own systemctl calls
+		return nil
+	}
 	if err := h.Run(ctx, "systemctl", "daemon-reload"); err != nil {
 		return err
 	}
@@ -118,7 +122,7 @@ func (p *Plan) firewallSteps() {
 		title += ", install its units rpmgr-firewall.path and rpmgr-firewall.service: systemctl enable rpmgr-firewall.service, enable --now rpmgr-firewall.path"
 	}
 	p.add(title, func(ctx context.Context, r *Result) error {
-		return installFirewall(ctx, h, p.bounds, p.v.NoUnit, r)
+		return installFirewall(ctx, h, p.bounds, p.v.NoUnit, true, r)
 	})
 }
 

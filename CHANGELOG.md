@@ -12,6 +12,16 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- A gateway host can hand its `ufw` to rpmgr, so that the ports of the port pools no longer need a
+  manual `ufw allow`. It is off unless you switch it on per host, with `rpmgr setup --firewall ufw`
+  (and `--firewall-max-range <from>-<to>`), the controller's install script with the same options,
+  or the `firewall:` section of the boot file. A root helper, which the gateway cannot steer beyond
+  one list of ports, opens the gateway's listeners and the pools' ranges inside the range you set,
+  marks its rules with the comment `rpmgr`, and never touches yours. The gateway's page shows the
+  firewall state of each gateway (off, applied, or failed with the reason) and in how many
+  gateways each pool is open; the API has it as `GatewayStatus.firewall`. The provider's firewall
+  in front of the host stays yours. (#968)
+
 - The web UI shows the alerts that fire on the Overview, the instance's too for the Instance Admin,
   and tells Owners and Admins of a webhook endpoint that rpmgr disabled for failing, with a link to
   enable it again. The organisation settings gain the alert e-mails on or off and the alert types
