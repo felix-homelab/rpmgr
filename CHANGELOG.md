@@ -12,6 +12,16 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- A gateway host can hand its `ufw` to rpmgr, so that the ports of the port pools no longer need a
+  manual `ufw allow`. It is off unless you switch it on per host, with `rpmgr setup --firewall ufw`
+  (and `--firewall-max-range <from>-<to>`), the controller's install script with the same options,
+  or the `firewall:` section of the boot file. A root helper, which the gateway cannot steer beyond
+  one list of ports, opens the gateway's listeners and the pools' ranges inside the range you set,
+  marks its rules with the comment `rpmgr`, and never touches yours. The gateway's page shows the
+  firewall state of each gateway (off, applied, or failed with the reason) and in how many
+  gateways each pool is open; the API has it as `GatewayStatus.firewall`. The provider's firewall
+  in front of the host stays yours. (#968)
+
 - The web UI shows the alerts that fire on the Overview, the instance's too for the Instance Admin,
   and tells Owners and Admins of a webhook endpoint that rpmgr disabled for failing, with a link to
   enable it again. The organisation settings gain the alert e-mails on or off and the alert types
@@ -72,7 +82,9 @@ Changes to the design documents are not recorded here: see the git history and t
   --endpoint <url> --region <region> --bucket <bucket> --access-key-id <id> --secret-file <file>`.
   Every checkpoint, and with `--entries` every entry, is written as an object that the bucket's
   Object Lock in compliance mode keeps unchangeable; a bucket without Object Lock or a store without
-  conditional writes is refused. (#656)
+  conditional writes is refused. `rpmgr verify audit --sink <name>` reads the bucket back, reports
+  a gap or a chain rewritten under a checkpoint the bucket holds, and the sink's status shows the
+  last verification. (#656)
 - An Audit sinks page under Settings, for the Instance Admin, manages the audit sinks: it lists
   each with its state, target, last success, backlog and last error, creates and edits webhook and
   syslog sinks in a form with a section per kind, enables, disables, tests and deletes them. The
@@ -263,6 +275,12 @@ Changes to the design documents are not recorded here: see the git history and t
   session's connection window, was written but never ran; it now runs on every QUIC and HTTP/2
   data session, so the other routes on the session flow again. A reader that merely pauses is left
   alone. (#1044)
+- Data sessions: on QUIC, the stalled-stream rule acts when a session's window is full. Each QUIC
+  session now gets a connection window of its own from the memory budget, as an h2 session does,
+  at most 64 MiB with a stream window of at most a sixteenth of it, so that a few stalled streams
+  of an internet client can no longer freeze a session. The window of a session is fixed when it
+  starts; with many sessions the later ones get smaller windows, and a single stream on a long
+  path can carry less than with the former 16 MiB stream window. (#1049)
 
 ## [0.2.0] - 2026-10-24
 

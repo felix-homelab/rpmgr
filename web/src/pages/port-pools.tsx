@@ -8,9 +8,10 @@ import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/public-page";
 import { Button } from "@/components/ui/button";
+import { PoolFirewall } from "@/components/firewall";
 import { Card } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
-import { GatewayService, PortPoolSchema, PortProtocol, type PortPool, type PortQuota } from "@/gen/rpmgr/v1/gateway_pb";
+import { GatewayService, PortPoolSchema, PortProtocol, type Gateway, type PortPool, type PortQuota } from "@/gen/rpmgr/v1/gateway_pb";
 import { apiError } from "@/lib/api-error";
 
 const protocols = [PortProtocol.TCP, PortProtocol.UDP];
@@ -18,7 +19,7 @@ const protocols = [PortProtocol.TCP, PortProtocol.UDP];
 // PortPools shows a group's port pools, from which TCP and UDP routes get their public ports, and
 // the org's port quotas in the group; it adds, changes and removes them (docs/09-web-ui.md,
 // "Gateways"). Without a quota, the pools alone limit the org.
-export function PortPools({ orgId, groupId }: { orgId: string; groupId: string }) {
+export function PortPools({ orgId, groupId, gateways = [] }: { orgId: string; groupId: string; gateways?: readonly Gateway[] }) {
   const { t } = useTranslation();
   const pools = useQuery(GatewayService.method.listPortPools, { orgId, gatewayGroupId: groupId, pageSize: 500 });
   const quotas = useQuery(GatewayService.method.listPortQuotas, { orgId, gatewayGroupId: groupId, pageSize: 500 });
@@ -27,7 +28,7 @@ export function PortPools({ orgId, groupId }: { orgId: string; groupId: string }
     <Card title={t("pools.title")}>
       {(pools.data?.portPools.length ?? 0) > 0 && (
         <ul className="-mx-5 divide-y divide-border border-y border-border">
-          {(pools.data?.portPools ?? []).map((p) => <PoolRow key={p.id} pool={p} />)}
+          {(pools.data?.portPools ?? []).map((p) => <PoolRow key={p.id} pool={p} gateways={gateways} />)}
         </ul>
       )}
       {pools.data?.portPools.length === 0 && <p className="text-sm text-muted-foreground">{t("pools.none")}</p>}
@@ -98,7 +99,7 @@ function PoolForm({ orgId, groupId, pool, onDone }: { orgId: string; groupId: st
   );
 }
 
-function PoolRow({ pool: p }: { pool: PortPool }) {
+function PoolRow({ pool: p, gateways }: { pool: PortPool; gateways: readonly Gateway[] }) {
   const { t } = useTranslation();
   const remove = useMutation(GatewayService.method.deletePortPool);
   const queryClient = useQueryClient();
@@ -110,7 +111,10 @@ function PoolRow({ pool: p }: { pool: PortPool }) {
   }
   return (
     <li className="flex flex-wrap items-center gap-2 px-5 py-3 text-sm">
-      <span className="mr-auto font-medium tabular-nums">{name}</span>
+      <span className="mr-auto flex flex-wrap items-baseline gap-x-3">
+        <span className="font-medium tabular-nums">{name}</span>
+        <PoolFirewall protocol={p.protocol === PortProtocol.UDP ? "udp" : "tcp"} from={p.portFrom} to={p.portTo} gateways={gateways} />
+      </span>
       {mode === "ask" ? (
         <>
           {t("pools.ask", { name })}

@@ -286,6 +286,37 @@ message Status {
   // it is; the controller drops it when the session ends. A Status that carries only this leaves
   // a gateway's data sessions and counters as they are.
   DrainingProcess draining = 6;
+  // Gateways with the capability firewall.ranges: what the root firewall helper last reported,
+  // in the first Status of a session and whenever it changes (docs/04-security.md, "Host
+  // firewall for port pools"). A Status that carries only this leaves a gateway's data sessions
+  // and counters as they are.
+  FirewallState firewall = 7;
+}
+
+// FirewallState is what the gateway reads from the root firewall helper's status file.
+message FirewallState {
+  // The state: off, applied or failed.
+  FirewallPhase phase = 1;
+  // For the operator: why the firewall is off or failed; empty when applied.
+  string reason = 2;
+  // The rules the helper holds, as ufw names them.
+  repeated string rules = 3;
+  // Desired ports outside the helper's bounds, which it never opened.
+  repeated string refused = 4;
+  // When the helper reported.
+  google.protobuf.Timestamp reported = 5;
+}
+
+// FirewallPhase is the state of a gateway host's firewall management.
+enum FirewallPhase {
+  // Not set.
+  FIREWALL_PHASE_UNSPECIFIED = 0;
+  // Switched off, or ufw is not installed or not active while it is not asked for.
+  FIREWALL_PHASE_OFF = 1;
+  // Every rule is in place.
+  FIREWALL_PHASE_APPLIED = 2;
+  // The helper failed, refused a range, did not answer, or its status cannot be read.
+  FIREWALL_PHASE_FAILED = 3;
 }
 
 // DrainingProcess is the old process of a socket hand-off, which keeps its open connections for

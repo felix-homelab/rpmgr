@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/felix-homelab/rpmgr/internal/sinkverify"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsink"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditsinkcursor"
 )
@@ -98,6 +99,12 @@ func (_c *AuditSinkCreate) SetNillableLastSuccessAt(v *time.Time) *AuditSinkCrea
 	if v != nil {
 		_c.SetLastSuccessAt(*v)
 	}
+	return _c
+}
+
+// SetVerification sets the "verification" field.
+func (_c *AuditSinkCreate) SetVerification(v *sinkverify.Verification) *AuditSinkCreate {
+	_c.mutation.SetVerification(v)
 	return _c
 }
 
@@ -311,6 +318,10 @@ func (_c *AuditSinkCreate) createSpec() (*AuditSink, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.LastSuccessAt(); ok {
 		_spec.SetField(auditsink.FieldLastSuccessAt, field.TypeTime, value)
 		_node.LastSuccessAt = &value
+	}
+	if value, ok := _c.mutation.Verification(); ok {
+		_spec.SetField(auditsink.FieldVerification, field.TypeJSON, value)
+		_node.Verification = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(auditsink.FieldCreatedAt, field.TypeTime, value)

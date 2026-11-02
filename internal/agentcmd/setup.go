@@ -73,6 +73,8 @@ func setupCommand() *cli.Command {
 			fs.Var(&denied, "deny-target", "connector: a target the connector-local policy denies, whatever allows it; the same form")
 			fs.StringVar(&v.Proxy, "proxy", "", "connector: the proxy of its enrollment and its service, http://, socks5:// or socks5h://, without credentials")
 			fs.StringVar(&proxyFile, "proxy-file", "", "connector: file with the proxy URL instead of --proxy, for one with a user name or password")
+			fs.StringVar(&v.Firewall, "firewall", "", "gateway, all-in-one: ufw, to hand the host's ufw to rpmgr, which opens the listeners and the port pools' ranges (off by default)")
+			fs.StringVar(&v.FirewallRange, "firewall-max-range", "", "gateway, all-in-one: with --firewall, the largest range of port pools rpmgr may open, <from>-<to> (default none)")
 			fs.BoolVar(&v.NoUnit, "no-unit", false, "install no systemd unit and start nothing")
 			fs.BoolVar(&v.Force, "force", false, "replace an existing boot file (kept beside it) or an agent's identity")
 			fs.BoolVar(&yes, "yes", false, "ask nothing: take every value from the flags and run the plan")
@@ -188,6 +190,9 @@ func printSetup(w io.Writer, v setup.Values, r setup.Result) error {
 		if r.NoUpdaterState {
 			b.WriteString("Over-the-air updates stay off: this development build has no release version.\n")
 		}
+	}
+	if r.FirewallNote != "" {
+		b.WriteString("Warning: " + r.FirewallNote + ".\n")
 	}
 	_, err := io.WriteString(w, b.String())
 	return err

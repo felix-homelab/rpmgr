@@ -220,7 +220,7 @@ with a release milestone that holds its release issue:
 | Release | Milestones | Note |
 |---|---|---|
 | v0.2.0 | P2-M01, P2-M02 | Installed by hand; its release candidate runs `TestUpgrade` from v0.1.0 |
-| v0.3.0 | P2-M03 to P2-M05, P2-M17 | The first release delivered over the air; the first whose gateways and all-in-ones hand their sockets over on a restart ([D127](14-open-decisions.md#project-and-process)) |
+| v0.3.0 | P2-M03 to P2-M05, P2-M17, #968 | The first release delivered over the air; the first whose gateway hosts may hand their `ufw` to rpmgr for the port pools ([D152](14-open-decisions.md#engineering)); the first whose gateways and all-in-ones hand their sockets over on a restart ([D127](14-open-decisions.md#project-and-process)) |
 | v0.4.0 | P2-M06, P2-M07 | The first release with DNS-01; all of VB-19 runs before it ([D98](14-open-decisions.md#project-and-process)) |
 | v0.5.0 | P2-M08, P2-M09 | |
 | v0.6.0 | P2-M10, P2-M11 | |
@@ -335,6 +335,7 @@ implemented, and the result recorded in the PR.
 | VB-22 | ~~`buf breaking` in its FILE mode accepts `Open` on a new field number of `ControllerMessage` while 3 stays reserved, and refuses a reuse of 3 (Phase 2, slice 5.2)~~ **Resolved** (2026-10-25, slice 5.2): with buf v1.73.0 a new field `open_operation = 9` passes; dropping the reserved name `open` fails ("Previously present reserved name"), and so does reusing 3 ("reserved range [3] is missing values") [F buf v1.73.0 `buf breaking --against .git#ref=origin/main`, run 2026-10-25]; so the name `open` stays reserved too | [03](03-connections.md#control-session) |
 | VB-23 | The syslog sink against a real syslog server (rsyslog or syslog-ng) over TLS: RFC 5425 octet counting, the server's certificate checked, a reconnect without a gap (Phase 2, slice 5.20) | [04](04-security.md#audit-log) |
 | VB-24 | Conditional create (`If-None-Match: *`) and Object Lock in compliance mode on common S3-compatible stores (AWS S3, Cloudflare R2, Backblaze B2) and the SILO container CI uses: a second create refused with 412, a locked object neither overwritten nor deleted (Phase 2, slices 5.15, 5.16, 9.1) | [04](04-security.md#audit-log), [04](04-security.md#revocation-log) |
+| VB-25 | The firewall helper's units against a real `ufw` on Debian 13, Ubuntu 22.04 and 24.04 (Phase 2, slice 2 of D152): the sandbox of `rpmgr-firewall.service` (writable paths, `CapabilityBoundingSet=`, `RestrictAddressFamilies=`, the creation of `/run/ufw.lock`), the output of `ufw status numbered`, and the start and trigger limits under a flood of writes of the desired file (`TriggerLimitIntervalSec=` on systemd 249) | [10](10-operations.md#host-firewall-helper-phase-2), [04](04-security.md#host-firewall-for-port-pools-phase-2) |
 
 ## Risks
 

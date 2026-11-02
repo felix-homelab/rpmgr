@@ -80,6 +80,10 @@ type Values struct {
 	DenyTargets   []string // connector: its deny_targets, which win over allow_targets (D84)
 	Proxy         string   // connector: HTTPS_PROXY of its service
 
+	// Firewall is "ufw" to hand the host's ufw to rpmgr for the port pools (a gateway or
+	// all-in-one); FirewallRange is the largest range of pools it may open, "<from>-<to>".
+	Firewall, FirewallRange string
+
 	NoUnit bool // install no systemd unit and start nothing
 	Force  bool // replace an existing boot file, or an agent's identity
 }
@@ -243,6 +247,7 @@ func (v *Values) check(h Host) error {
 	if v.Role == Controller && (v.ListenTCP != "" || v.ListenUDP != "") {
 		errs = append(errs, errors.New("listen.tcp and listen.udp are an all-in-one's or a gateway's; a controller has listen.https"))
 	}
+	add("firewall", v.checkFirewall())
 	if v.Role.Initialises() {
 		v.checkController(h, add)
 		return errors.Join(errs...)
