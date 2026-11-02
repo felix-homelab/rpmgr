@@ -64,29 +64,24 @@ func newPlaneWith(t *testing.T, target, proxy string, routeIDs ...string) *plane
 // planeWith is newPlaneWith whose sessions record metrics.
 func planeWith(t *testing.T, target, proxy string, metrics *gateway.Metrics, routeIDs ...string) *plane {
 	t.Helper()
+	return planeOn(t, conn.TransportQUIC, target, proxy, metrics, routeIDs...)
+}
+
+// planeOn is planeWith over transport, conn.TransportQUIC, conn.TransportH2 or conn.TransportWSS.
+func planeOn(t *testing.T, transport, target, proxy string, metrics *gateway.Metrics, routeIDs ...string) *plane {
+	t.Helper()
 	w := newWorld(t)
 	p := &plane{connector: w.con.ID, sessions: gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: w.gw.ID,
 		Assignment: routeAssignment{w.con.ID}, Metrics: metrics})}
 	t.Cleanup(p.sessions.Close)
-	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	gw := conn.Gateway{ID: w.gw.ID, Routes: map[string]string{}}
+	var copts func(*conn.Options)
+	switch transport {
+	case conn.TransportQUIC:
+		gw.Endpoints = []string{serveQUICPlane(t, w, p.sessions)}
+	default:
+		gw.Endpoints, gw.WSSHostname, copts = serveTCPPlane(t, w, p.sessions, transport == conn.TransportWSS)
 	}
-	tr := &quic.Transport{Conn: pc}
-	ln, err := tunnel.ListenQUIC(tr, gateway.QUICTLS(td, w.gw.ID, w.tunnelTLS), tunnel.NewBudget(tunnel.DefaultWindowBudget))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = ln.Close(); _ = tr.Close() })
-	go func() {
-		for {
-			s, err := ln.Accept(context.Background())
-			if err != nil {
-				return
-			}
-			go func() { _ = p.sessions.Serve(context.Background(), s, s.PeerCertificate()) }()
-		}
-	}()
 	p.routes = gateway.NewTCPRoutes(gateway.TCPOptions{Host: "127.0.0.1", Sessions: p.sessions,
 		Revision: func() *agentv1.Revision { return &agentv1.Revision{Seq: 7} }, OnChange: func() { p.changes.Add(1) }})
 	t.Cleanup(p.routes.Close)
@@ -105,21 +100,99 @@ func planeWith(t *testing.T, target, proxy string, metrics *gateway.Metrics, rou
 	var con *conn.Sessions
 	p.targets = conn.NewTargets(conn.TargetsOptions{Policy: func() *policy.Policy { return allow },
 		OnHealth: func(h *tunnelv1.RouteHealth) { con.SetReady(h) }})
-	con = conn.New(conn.Options{QUIC: ctr, Streams: p.targets.Handle, TLS: func(string) (*tls.Config, error) {
+	copt := conn.Options{QUIC: ctr, Streams: p.targets.Handle, TLS: func(string) (*tls.Config, error) {
 		return w.conTLS(w.gw.DNSName()), nil
-	}})
+	}}
+	if copts != nil {
+		copts(&copt)
+	}
+	con = conn.New(copt)
 	t.Cleanup(func() { con.Close(); _ = ctr.Close() })
 	var crs []conn.Route
-	gws := map[string]string{}
 	for _, id := range routeIDs {
 		crs = append(crs, conn.Route{ID: id, Targets: []conn.Target{{ID: "tg_" + id, Host: host, Port: uint16(port), //nolint:gosec // G115: a port
 			ProxyProtocol: proxy}}})
-		gws[id] = conn.TransportQUIC
+		gw.Routes[id] = transport
 	}
 	p.targets.Set(crs)
-	con.Set([]conn.Gateway{{ID: w.gw.ID, Endpoints: []string{pc.LocalAddr().String()}, Routes: gws}})
-	eventually(t, "no data session", func() bool { return p.sessions.Count()["quic"] >= 1 })
+	con.Set([]conn.Gateway{gw})
+	eventually(t, "no data session", func() bool { return p.sessions.Count()[transport] >= 1 })
 	return p
+}
+
+// serveQUICPlane serves data sessions over QUIC to sessions and returns the UDP address.
+func serveQUICPlane(t *testing.T, w *world, sessions *gateway.Sessions) string {
+	t.Helper()
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := &quic.Transport{Conn: pc}
+	ln, err := tunnel.ListenQUIC(tr, gateway.QUICTLS(td, w.gw.ID, w.tunnelTLS), tunnel.NewBudget(tunnel.DefaultWindowBudget))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close(); _ = tr.Close() })
+	go func() {
+		for {
+			s, err := ln.Accept(context.Background())
+			if err != nil {
+				return
+			}
+			go func() { _ = sessions.Serve(context.Background(), s, s.PeerCertificate()) }()
+		}
+	}()
+	return pc.LocalAddr().String()
+}
+
+// serveTCPPlane serves data sessions over reverse HTTP/2 to sessions on a router as the gateway
+// runs it, and returns the endpoints of the connector's gateway entry; with wss, the connector
+// reaches the router through the WebSocket of a WSS hostname instead, and the returned options
+// make it dial that name at the router and trust the public CA of its certificate.
+func serveTCPPlane(t *testing.T, w *world, sessions *gateway.Sessions, wss bool) (endpoints []string, wssName string, opts func(*conn.Options)) {
+	t.Helper()
+	def, err := gateway.DefaultTLS()
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := w.tunnelTLS.Clone()
+	inner.NextProtos = []string{tunnel.ALPNH2}
+	tunnelConn := func(c *tls.Conn) {
+		defer func() { _ = c.Close() }()
+		if err := c.HandshakeContext(context.Background()); err != nil {
+			return
+		}
+		s, err := tunnel.NewH2Gateway(c, tunnel.DefaultH2Windows())
+		if err != nil {
+			return
+		}
+		_ = sessions.Serve(context.Background(), s, c.ConnectionState().PeerCertificates[0])
+	}
+	r := &gateway.Router{TrustDomain: td, GatewayID: w.gw.ID, TunnelTLS: inner, DefaultTLS: def, Tunnel: tunnelConn}
+	var ca *publicCA
+	if wss {
+		ca = newPublicCA(t, "public root")
+		var name gateway.WSSHostname
+		name.Set(wssHost)
+		r.WSSHostname = name.Get
+		r.WSS = func(c *tls.Conn) { gateway.ServeWSS(c, inner, tunnelConn) }
+		r.WSSTLS = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{ca.leaf(t, wssHost)},
+			NextProtos: []string{"http/1.1"}}
+	}
+	addr := serve(t, r)
+	if !wss {
+		return []string{addr}, "", nil
+	}
+	return []string{addr}, wssHost, func(o *conn.Options) {
+		o.PublicRoots = ca.pool
+		o.Dial = func(ctx context.Context, a string) (net.Conn, error) {
+			if a == wssHost+":443" {
+				a = addr
+			}
+			var d net.Dialer
+			return d.DialContext(ctx, "tcp", a)
+		}
+	}
 }
 
 // freePort returns a port that was free a moment ago.
