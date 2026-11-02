@@ -15,11 +15,11 @@ import (
 // Firewall is `rpmgr firewall`: the root-owned helper that rpmgr-firewall.service runs, which
 // applies a gateway's port-pool ranges to ufw within the bounds of a root-owned file (docs/04-
 // security.md, "Host firewall for port pools"; D152). Like `rpmgr updater` it is plumbing for the
-// units and not listed in help (D151).
+// units and the install scripts, and not listed in help (D151).
 func Firewall() *cli.Command {
 	a := firewall.Applier{}
 	return &cli.Command{Name: "firewall", Summary: "the root-owned firewall helper of a gateway host", Hidden: true,
-		Sub: []*cli.Command{{
+		Sub: []*cli.Command{firewallInstall(), {
 			Name:    "apply",
 			Summary: "open the gateway's port ranges in ufw, inside the bounds, as root, and report the outcome",
 			Flags: func(fs *flag.FlagSet) {

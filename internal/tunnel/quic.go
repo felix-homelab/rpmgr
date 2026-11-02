@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"net"
 	"os"
 	"sync"
@@ -47,75 +48,63 @@ const (
 var ErrStreamLimit = errors.New("tunnel: the session's stream limit is reached")
 
 // Budget bounds the connection receive windows of all sessions of one ALPN in this process: a
-// window grows only while the budget has room, so many sessions cannot exhaust memory.
+// session is admitted with its windows or refused (AdmitQUIC, AdmitH2), so many sessions cannot
+// exhaust memory.
 type Budget struct {
 	mu    sync.Mutex
 	limit uint64
 	used  uint64
-	conns map[*quic.Conn]uint64
 
-	stall *stallParams // tests only; nil is the maxima below
-}
-
-// stallParams are the windows and the age the stalled-stream rule of a QUIC session assumes.
-type stallParams struct {
-	stream, conn int
-	age          time.Duration
+	stallAge time.Duration // tests only; 0 is StallAge
 }
 
 // NewBudget returns a budget of limit bytes.
 func NewBudget(limit uint64) *Budget {
-	return &Budget{limit: limit, conns: map[*quic.Conn]uint64{}}
+	return &Budget{limit: limit}
 }
 
-// allow is quic.Config.AllowConnectionWindowIncrease. It must not call the connection.
-func (b *Budget) allow(conn *quic.Conn, delta uint64) bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.used+delta > b.limit {
-		return false
-	}
-	b.used += delta
-	b.conns[conn] += delta
-	return true
-}
-
-// release returns what conn took from the budget; it runs when the session ends.
-func (b *Budget) release(conn *quic.Conn) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.used -= b.conns[conn]
-	delete(b.conns, conn)
-}
-
-// The connection windows of reverse-HTTP/2 sessions (03, "Memory bound"; D124): at most
-// h2MaxConnWindow each, a sixteenth of the free budget once that is less, and never less than
-// h2MinConnWindow; a session that would get less is refused.
+// The connection windows of sessions (03, "Memory bound"; D124): at most
+// maxConnWindow each, a sixteenth of the free budget once that is less, and never less than
+// minConnWindow; a session that would get less is refused.
 const (
-	h2MaxConnWindow = 64 << 20
-	h2MinConnWindow = 1 << 20
-	h2BudgetShare   = 16
+	maxConnWindow = 64 << 20
+	minConnWindow = 1 << 20
+	budgetShare   = 16
 )
 
 // ErrBudget is returned when the window budget has no room for another session.
 var ErrBudget = errors.New("tunnel: the window budget is exhausted")
 
-// AdmitH2 reserves the connection window of a new reverse-HTTP/2 session, which has no hook like
-// quic-go's and advertises its whole window at once: at most 64 MiB, a sixteenth of the free
+// AdmitQUIC reserves the connection window of a new QUIC session, as AdmitH2 does for a
+// reverse-HTTP/2 session, from the maxima of 03: the connection window is set to what is admitted
+// from the start and never grows, so the stalled-stream rule knows it and the budget bounds the
+// memory the session can hold.
+func (b *Budget) AdmitQUIC() (H2Windows, func(), error) {
+	return b.AdmitH2(H2Windows{Stream: quicStreamWindowMax, Conn: quicConnWindowMax})
+}
+
+// AdmitH2 reserves the connection window of a new reverse-HTTP/2 session, which advertises its
+// whole window at once: at most 64 MiB, a sixteenth of the free
 // budget once that is less, so that many sessions fit with shrinking windows rather than the first
 // few taking all of it, and at least 1 MiB, or ErrBudget. The stream window is at most a sixteenth
 // of the connection window. release returns the reservation; call it when the session ends.
 func (b *Budget) AdmitH2(want H2Windows) (H2Windows, func(), error) {
+	return b.admit(want, math.MaxUint64)
+}
+
+// admit is AdmitH2 with an upper bound on the connection window, which a caller sets lower than
+// the budget would (never below the 1 MiB floor).
+func (b *Budget) admit(want H2Windows, ceiling uint64) (H2Windows, func(), error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	free := uint64(0)
 	if b.limit > b.used {
 		free = b.limit - b.used
 	}
-	if free < h2MinConnWindow {
+	if free < minConnWindow {
 		return H2Windows{}, nil, ErrBudget
 	}
-	conn := min(uint64(want.Conn), h2MaxConnWindow, max(h2MinConnWindow, free/h2BudgetShare)) //nolint:gosec // G115: a window is positive
+	conn := min(uint64(want.Conn), maxConnWindow, max(minConnWindow, min(free/budgetShare, ceiling))) //nolint:gosec // G115: a window is positive
 	got := want
 	got.Conn = int(conn) //nolint:gosec // G115: conn <= want.Conn
 	got.Stream = min(want.Stream, got.Conn/16)
@@ -137,21 +126,23 @@ func (b *Budget) Used() uint64 {
 	return b.used
 }
 
-// QUICConfig returns the QUIC configuration of the connector (connector true) or the gateway,
-// with the connection windows bounded by budget. 0-RTT stays off.
-func QUICConfig(connector bool, budget *Budget) *quic.Config {
+// QUICConfig returns the QUIC configuration of the connector (connector true) or the gateway for
+// a session admitted with the windows w (Budget.AdmitQUIC). The connection window is w.Conn from the
+// start and its maximum, so it never grows. 0-RTT stays off.
+func QUICConfig(connector bool, w H2Windows) *quic.Config {
 	incoming := int64(GatewayIncomingStreams)
 	if connector {
 		incoming = ConnectorIncomingStreams
 	}
+	win := func(n int) uint64 { return uint64(max(n, 0)) } //nolint:gosec // G115: clamped to positive
 	return &quic.Config{
 		HandshakeIdleTimeout:             quicHandshakeIdle,
 		MaxIdleTimeout:                   quicIdle,
 		KeepAlivePeriod:                  quicKeepAlive,
-		InitialStreamReceiveWindow:       quicStreamWindow,
-		MaxStreamReceiveWindow:           quicStreamWindowMax,
-		MaxConnectionReceiveWindow:       quicConnWindowMax,
-		AllowConnectionWindowIncrease:    budget.allow,
+		InitialStreamReceiveWindow:       win(min(quicStreamWindow, w.Stream)),
+		MaxStreamReceiveWindow:           win(w.Stream),
+		InitialConnectionReceiveWindow:   win(w.Conn),
+		MaxConnectionReceiveWindow:       win(w.Conn),
 		MaxIncomingStreams:               incoming,
 		EnableDatagrams:                  true,
 		EnableStreamResetPartialDelivery: true,
@@ -196,41 +187,216 @@ func LoadResetKey(path string) (*quic.StatelessResetKey, error) {
 func DialQUIC(ctx context.Context, tr *quic.Transport, addr net.Addr, cfg *tls.Config, budget *Budget) (*QUICSession, error) {
 	cfg = cfg.Clone()
 	cfg.NextProtos = []string{ALPNQUIC}
-	conn, err := tr.Dial(ctx, addr, cfg, QUICConfig(true, budget))
+	w, release, err := budget.AdmitQUIC()
 	if err != nil {
 		return nil, err
 	}
-	return newQUICSession(conn, budget, true), nil
+	conn, err := tr.Dial(ctx, addr, cfg, QUICConfig(true, w))
+	if err != nil {
+		release()
+		return nil, err
+	}
+	return newQUICSession(conn, w, release, budget, true), nil
 }
+
+// A connector that has not completed its handshake holds a reservation (admission) that nobody
+// has claimed yet. These bound what unclaimed handshakes can take from the budget, so that
+// half-open handshakes cannot exhaust it (03, "QUIC parameters").
+const (
+	// pendingPrefixShare: the unclaimed admissions of one source prefix (an IPv4 /24, an IPv6 /64)
+	// hold at most an eighth of the budget together; an admission is sized to what is left of
+	// that, and takes at most half of it, so that a connector that opens several sessions at
+	// once gets all of them, with smaller windows.
+	pendingPrefixShare = 8
+	// maxPendingPerPrefix is how many unclaimed admissions one prefix may hold, as the smallest
+	// windows add up.
+	maxPendingPerPrefix = 16
+	// pendingShare: all unclaimed admissions hold at most half of the budget.
+	pendingShare = 2
+)
 
 // QUICListener accepts connectors' QUIC data sessions on a gateway.
 type QUICListener struct {
 	ln     *quic.Listener
 	budget *Budget
+
+	mu            sync.Mutex
+	admitted      map[*quic.ClientInfo]*admission // between GetConfigForClient and ConnContext
+	pendingBytes  uint64                          // of the unclaimed admissions
+	prefixBytes   map[string]uint64               // by source prefix
+	prefixPending map[string]int
 }
 
-// ListenQUIC starts the gateway's QUIC listener for data sessions on tr.
+// admission is the window reserved for one incoming connection. It travels in the connection's
+// context, so that Accept finds exactly the reservation of the connection it returns, whatever the
+// connections' addresses are.
+type admission struct {
+	l       *QUICListener
+	w       H2Windows
+	release func() // the budget share; once
+	prefix  string
+	pending sync.Once // leaves the unclaimed count
+}
+
+type admissionKey struct{}
+
+// settle takes the admission out of the unclaimed count: it was claimed or its connection ended.
+func (a *admission) settle() {
+	a.pending.Do(func() {
+		n := uint64(a.w.Conn) //nolint:gosec // G115: a window is positive
+		a.l.mu.Lock()
+		a.l.pendingBytes -= n
+		if a.l.prefixBytes[a.prefix] -= n; a.l.prefixBytes[a.prefix] == 0 {
+			delete(a.l.prefixBytes, a.prefix)
+		}
+		if a.l.prefixPending[a.prefix]--; a.l.prefixPending[a.prefix] <= 0 {
+			delete(a.l.prefixPending, a.prefix)
+		}
+		a.l.mu.Unlock()
+	})
+}
+
+// ErrUnverified is returned for a connection whose source address is not validated.
+var ErrUnverified = errors.New("tunnel: the connection's source address is not verified")
+
+// ListenQUIC starts the gateway's QUIC listener for data sessions on tr. It sets
+// tr.VerifySourceAddress, which makes every new connection prove its source address with a Retry
+// (one extra round trip), and tr.ConnContext, before it starts the listener, and returns an error
+// if either is set already or the transport is in use. Each connection is then admitted against
+// budget before its handshake (quic-go's GetConfigForClient), with its own windows, or refused:
+// for an unverified address, when its source prefix or all unclaimed handshakes together hold
+// their share, or when the budget has no room.
 func ListenQUIC(tr *quic.Transport, cfg *tls.Config, budget *Budget) (*QUICListener, error) {
+	if tr.VerifySourceAddress != nil || tr.ConnContext != nil {
+		return nil, errors.New("tunnel: the transport has a source address check or connection context already")
+	}
 	cfg = cfg.Clone()
 	cfg.NextProtos = []string{ALPNQUIC}
-	ln, err := tr.Listen(cfg, QUICConfig(false, budget))
+	l := &QUICListener{budget: budget, admitted: map[*quic.ClientInfo]*admission{},
+		prefixBytes: map[string]uint64{}, prefixPending: map[string]int{}}
+	tr.VerifySourceAddress = func(net.Addr) bool { return true }
+	tr.ConnContext = l.connContext
+	qc := QUICConfig(false, H2Windows{Stream: quicStreamWindowMax, Conn: quicConnWindowMax})
+	qc.GetConfigForClient = l.admit
+	ln, err := tr.Listen(cfg, qc)
 	if err != nil {
 		return nil, err
 	}
-	return &QUICListener{ln: ln, budget: budget}, nil
+	l.ln = ln
+	return l, nil
+}
+
+// prefixOf is the source prefix an address counts under: its IPv4 /24 or IPv6 /64.
+func prefixOf(a net.Addr) string {
+	var ip net.IP
+	if u, ok := a.(*net.UDPAddr); ok {
+		ip = u.IP
+	} else if h, _, err := net.SplitHostPort(a.String()); err == nil {
+		ip = net.ParseIP(h)
+	}
+	if ip == nil {
+		return a.String()
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return v4.Mask(net.CIDRMask(24, 32)).String() + "/24"
+	}
+	return ip.Mask(net.CIDRMask(64, 128)).String() + "/64"
+}
+
+// totalCap and prefixCap are the shares above, at least one smallest window so that a small budget
+// still admits one handshake at a time.
+func (l *QUICListener) totalCap() uint64 { return max(l.budget.limit/pendingShare, minConnWindow) }
+
+func (l *QUICListener) prefixCap() uint64 {
+	return max(l.budget.limit/pendingPrefixShare, minConnWindow)
+}
+
+// admit reserves the windows of a new connection.
+func (l *QUICListener) admit(info *quic.ClientInfo) (*quic.Config, error) {
+	if !info.AddrVerified {
+		return nil, ErrUnverified
+	}
+	prefix := prefixOf(info.RemoteAddr)
+	l.mu.Lock()
+	var allowance uint64
+	if held := l.prefixBytes[prefix]; held < l.prefixCap() {
+		allowance = l.prefixCap() - held
+	}
+	count := l.prefixPending[prefix]
+	l.mu.Unlock()
+	if count >= maxPendingPerPrefix || allowance < minConnWindow {
+		return nil, ErrBudget
+	}
+	// The window the connection gets is the one admitted here: at most half of what the prefix has
+	// left, so that the next handshake of the same connector still fits.
+	w, release, err := l.budget.admit(H2Windows{Stream: quicStreamWindowMax, Conn: quicConnWindowMax}, allowance/2)
+	if err != nil {
+		return nil, err
+	}
+	l.mu.Lock()
+	n := uint64(w.Conn) //nolint:gosec // G115: a window is positive
+	if l.prefixPending[prefix] >= maxPendingPerPrefix || l.prefixBytes[prefix]+n > l.prefixCap() || l.pendingBytes+n > l.totalCap() {
+		l.mu.Unlock()
+		release()
+		return nil, ErrBudget
+	}
+	a := &admission{l: l, w: w, release: release, prefix: prefix}
+	l.pendingBytes += n
+	l.prefixBytes[prefix] += n
+	l.prefixPending[prefix]++
+	l.admitted[info] = a
+	l.mu.Unlock()
+	return QUICConfig(false, w), nil
+}
+
+// connContext runs for the same ClientInfo right after admit [F quic-go v0.64.1 server.go:777-800]
+// and attaches the admission to the connection. The connection's context ends when the connection
+// does, at the latest when quic-go gives up on the handshake, at twice HandshakeIdleTimeout
+// [F quic-go v0.64.1 config.go:17-19, connection.go:695]; that returns the reservation, so a
+// handshake that fails or is refused afterwards holds it no longer.
+func (l *QUICListener) connContext(ctx context.Context, info *quic.ClientInfo) (context.Context, error) {
+	l.mu.Lock()
+	a := l.admitted[info]
+	delete(l.admitted, info)
+	l.mu.Unlock()
+	if a == nil {
+		return nil, errors.New("tunnel: a connection without admission")
+	}
+	context.AfterFunc(ctx, func() { a.settle(); a.release() })
+	return context.WithValue(ctx, admissionKey{}, a), nil
 }
 
 // Accept returns the next connector session.
 func (l *QUICListener) Accept(ctx context.Context) (*QUICSession, error) {
-	conn, err := l.ln.Accept(ctx)
-	if err != nil {
-		return nil, err
+	for {
+		conn, err := l.ln.Accept(ctx)
+		if err != nil {
+			return nil, err
+		}
+		a, _ := conn.Context().Value(admissionKey{}).(*admission)
+		if a == nil { // not made by this listener's admission: not held to any window
+			_ = conn.CloseWithError(0, "")
+			continue
+		}
+		a.settle()
+		return newQUICSession(conn, a.w, a.release, l.budget, false), nil
 	}
-	return newQUICSession(conn, l.budget, false), nil
 }
 
 // Close stops accepting sessions.
-func (l *QUICListener) Close() error { return l.ln.Close() }
+func (l *QUICListener) Close() error {
+	err := l.ln.Close()
+	// quic-go leaves connections whose handshake completed but that nobody accepted in its queue;
+	// closing them ends their contexts, which returns their admissions. After Close, Accept never
+	// blocks: it drains the queue, then fails.
+	for {
+		conn, aerr := l.ln.Accept(context.Background())
+		if aerr != nil {
+			return err
+		}
+		_ = conn.CloseWithError(0, "")
+	}
+}
 
 // QUICSession is a data session over QUIC.
 type QUICSession struct {
@@ -238,22 +404,16 @@ type QUICSession struct {
 	connector bool // the side that dialled
 	control   atomic.Bool
 	stalls    *Stalls
+	windows   H2Windows
 	dgOnce    sync.Once
 	dg        *Datagrams
 }
 
-func newQUICSession(conn *quic.Conn, budget *Budget, connector bool) *QUICSession {
-	context.AfterFunc(conn.Context(), func() { budget.release(conn) })
-	// quic-go does not tell a stream's or the connection's current receive window, so the rule
-	// assumes the maxima, the upper bounds of what a stalled stream can hold: it counts every
-	// stalled stream with the most it could hold, and acts early rather than late. (A window that
-	// has not grown, as on streams that never read fast, is then freed by a reset of the oldest
-	// stream above the threshold, not before.)
-	p := stallParams{stream: quicStreamWindowMax, conn: quicConnWindowMax}
-	if budget.stall != nil {
-		p = *budget.stall
-	}
-	s := &QUICSession{conn: conn, connector: connector, stalls: NewStalls(p.stream, p.conn, p.age)}
+func newQUICSession(conn *quic.Conn, w H2Windows, release func(), budget *Budget, connector bool) *QUICSession {
+	context.AfterFunc(conn.Context(), release)
+	// The windows are the admitted ones and never grow, so the rule knows how much a stalled
+	// stream can hold.
+	s := &QUICSession{conn: conn, connector: connector, stalls: NewStalls(w.Stream, w.Conn, budget.stallAge), windows: w}
 	go s.stalls.Run(conn.Context()) // ends with the connection
 	return s
 }

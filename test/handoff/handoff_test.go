@@ -118,8 +118,13 @@ func (l *lab) handoff(s scenario) (oldPID, newPID int) {
 	var out string
 	l.eventually(100*time.Second, "the outcome of the hand-off", func() error {
 		out = l.exec("lab", "cat", "/run/rpmgr/"+s.role+"/handoff.json")
-		if strings.Contains(out, `"running"`) {
-			return fmt.Errorf("still running: %s", out)
+		// The file still holds the previous hand-off's outcome until the signal is handled.
+		var o struct {
+			State  string `json:"state"`
+			OldPID int    `json:"old_pid"`
+		}
+		if err := json.Unmarshal([]byte(out), &o); err != nil || o.OldPID != oldPID || o.State == "running" {
+			return fmt.Errorf("no outcome of the hand-off from %d yet: %s", oldPID, out)
 		}
 		return nil
 	})

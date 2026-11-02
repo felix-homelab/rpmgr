@@ -20,3 +20,17 @@ func TestLockDays(t *testing.T) {
 		}
 	}
 }
+
+// TestCount32: a count outside the int32 range is held at its edge instead of wrapping.
+func TestCount32(t *testing.T) {
+	for in, want := range map[int]int32{0: 0, 7: 7, -1: 0, math.MaxInt32: math.MaxInt32} {
+		if got := count32(in); got != want {
+			t.Errorf("count32(%d) = %d, want %d", in, got, want)
+		}
+	}
+	if big := int64(math.MaxInt32) + 1; int64(int(big)) == big {
+		if got := count32(int(big)); got != math.MaxInt32 {
+			t.Errorf("count32(MaxInt32+1) = %d, want MaxInt32", got)
+		}
+	}
+}

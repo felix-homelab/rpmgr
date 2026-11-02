@@ -21,6 +21,21 @@ type Drains interface {
 	EndDrain(ctx context.Context, agentID string) (*rpmgrv1.DrainingProcess, error)
 }
 
+// Firewalls shows the state of a gateway host's firewall management as the gateway reported it,
+// normally the controller's Sessions (D152).
+type Firewalls interface {
+	// Firewall returns the state the gateway reported, nil for none.
+	Firewall(agentID string) *rpmgrv1.FirewallStatus
+}
+
+// firewallOf is the firewall state of a gateway for its status; nil without Firewalls.
+func firewallOf(f Firewalls, agentID string) *rpmgrv1.FirewallStatus {
+	if f == nil {
+		return nil
+	}
+	return f.Firewall(agentID)
+}
+
 // The errors of Drains.EndDrain.
 var (
 	ErrNoDrain           = errors.New("no old process drains")

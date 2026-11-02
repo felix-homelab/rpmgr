@@ -34,6 +34,10 @@ type stallEnv struct {
 	gc, cc  tunnel.Stream // the session control stream, at the gateway and at the connector
 	// open opens a stream whose gateway end g is watched and whose connector end c writes to it.
 	open func(t *testing.T) (g, c tunnel.Stream)
+	// half is how many stalled streams hold half the connection window as the rule counts them
+	// (the stream window is a sixteenth of the connection window on QUIC, and set by the test on
+	// h2, where one stalled stream is enough in the tests that need it).
+	half int
 }
 
 type stallTransport struct {
@@ -48,7 +52,7 @@ var stallTransports = []stallTransport{
 		w := tunnel.H2Windows{Stream: stream, Conn: conn}
 		gw, con, gc, cc := h2SessionWindows(t, tunnel.WithStallAge(w, stallAge), tunnel.WithStallAge(w, peerAge))
 		return stallEnv{gw: gw, con: con, gc: gc, cc: cc,
-			open: func(t *testing.T) (tunnel.Stream, tunnel.Stream) { return h2Open(t, gw, con) }}
+			open: func(t *testing.T) (tunnel.Stream, tunnel.Stream) { return h2Open(t, gw, con) }, half: 0}
 	}},
 	{"quic", func(t *testing.T, stream, conn int) stallEnv {
 		p := newPeers(t)
@@ -57,7 +61,12 @@ var stallTransports = []stallTransport{
 			t.Fatal(err)
 		}
 		tr := &quic.Transport{Conn: pc}
-		ln, err := tunnel.ListenQUIC(tr, p.gateway, tunnel.WithStalls(tunnel.NewBudget(tunnel.DefaultWindowBudget), stream, conn, stallAge))
+		// The session is admitted with window conn and a stream window of a sixteenth of it, from a
+		// budget of sixteen times that (the stream window argument is that sixteenth).
+		budget := func(age time.Duration) *tunnel.Budget {
+			return tunnel.BudgetWithStallAge(tunnel.NewBudget(uint64(conn)*16), age) //nolint:gosec // G115: a test window
+		}
+		ln, err := tunnel.ListenQUIC(tr, p.gateway, budget(stallAge))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -68,7 +77,7 @@ var stallTransports = []stallTransport{
 		ctr := &quic.Transport{Conn: cpc}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		con, err := tunnel.DialQUIC(ctx, ctr, pc.LocalAddr(), p.connector, tunnel.WithStalls(tunnel.NewBudget(tunnel.DefaultWindowBudget), stream, conn, peerAge))
+		con, err := tunnel.DialQUIC(ctx, ctr, pc.LocalAddr(), p.connector, budget(peerAge))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -91,7 +100,7 @@ var stallTransports = []stallTransport{
 		if _, err := io.ReadFull(gc, make([]byte, 5)); err != nil {
 			t.Fatal(err)
 		}
-		return stallEnv{gw: gw, con: con, gc: gc, cc: cc, open: func(t *testing.T) (tunnel.Stream, tunnel.Stream) {
+		return stallEnv{gw: gw, con: con, gc: gc, cc: cc, half: 8, open: func(t *testing.T) (tunnel.Stream, tunnel.Stream) {
 			t.Helper()
 			c, err := con.OpenStream(context.Background())
 			if err != nil {
@@ -152,11 +161,11 @@ func TestFlowControl_StalledStreamsDoNotFreezeSession(t *testing.T) {
 	for _, tr := range stallTransports {
 		t.Run(tr.name, func(t *testing.T) {
 			// h2: four streams of 900 KiB fill the 3 MiB window, whose threshold is 1.5 MiB: three are reset.
-			// QUIC: three of 256 KiB fill the 768 KiB window quic-go starts with, threshold 384 KiB:
-			// two are reset.
+			// QUIC: a 2 MiB connection window with 128 KiB stream windows; sixteen streams fill it,
+			// the threshold is 1 MiB: eight are reset.
 			n, each, stream, conn, wantResets := 4, 900<<10, 1<<20, 3<<20, 3
 			if tr.name == "quic" {
-				n, each, stream, conn, wantResets = 3, 256<<10, 256<<10, 768<<10, 2
+				n, each, stream, conn, wantResets = 16, 128<<10, 0, 2<<20, 8
 			}
 			env := tr.new(t, stream, conn)
 			// The probe stream waits in Read, as a healthy relay does: it holds nothing and is
@@ -248,7 +257,13 @@ func TestFlowControl_PausedClientNotResetWithoutPressure(t *testing.T) {
 func TestFlowControl_ResetStreamEndsRelayOnBothEnds(t *testing.T) {
 	for _, tr := range stallTransports {
 		t.Run(tr.name, func(t *testing.T) {
-			env := tr.new(t, 256<<10, 256<<10) // one stalled stream is above half the window
+			env := tr.new(t, 256<<10, 256<<10) // h2: one stalled stream is above half the window; QUIC: the 1 MiB floor
+			// On QUIC the rule resets only once more streams are stalled than fit into half the
+			// window. The relay's stream is younger than the first batch and older than the second,
+			// so it is among the oldest streams above that count.
+			for range env.half {
+				env.open(t)
+			}
 			g, c := env.open(t)
 
 			ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -279,13 +294,17 @@ func TestFlowControl_ResetStreamEndsRelayOnBothEnds(t *testing.T) {
 					}
 				}
 			}()
+			time.Sleep(500 * time.Millisecond) // the target's buffers fill and the relay blocks
+			for range env.half {
+				env.open(t)
+			}
 			select {
 			case <-relayed:
 			case <-time.After(20 * time.Second):
 				t.Fatal("the relay of a stalled, reset stream never ended")
 			}
-			if got := tunnel.StallResets(env.gw); got != 1 {
-				t.Fatalf("%d streams reset, want 1", got)
+			if got := tunnel.StallResets(env.gw); got == 0 {
+				t.Fatal("no stream was reset")
 			}
 			_ = target.SetReadDeadline(time.Now().Add(5 * time.Second))
 			if _, err := io.Copy(io.Discard, target); err == nil || errors.Is(err, io.EOF) {

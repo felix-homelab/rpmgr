@@ -90,7 +90,7 @@ func writeIdentity(dir string, key *ecdsa.PrivateKey, chain, roots, signing []*x
 		{KeyFile, keyPEM, 0o600},
 		{AgentFile, append(agentJSON, '\n'), 0o644},
 	} {
-		if err := writeAtomic(filepath.Join(dir, f.name), f.data, f.mode); err != nil {
+		if err := WriteAtomic(filepath.Join(dir, f.name), f.data, f.mode); err != nil {
 			return err
 		}
 	}
@@ -105,9 +105,9 @@ func certsPEM(certs []*x509.Certificate) []byte {
 	return out
 }
 
-// writeAtomic writes data to a temporary file in path's directory with mode, syncs it and renames
+// WriteAtomic writes data to a temporary file in path's directory with mode, syncs it and renames
 // it over path.
-func writeAtomic(path string, data []byte, mode os.FileMode) error {
+func WriteAtomic(path string, data []byte, mode os.FileMode) error {
 	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
 		return err
@@ -244,10 +244,10 @@ func SaveCertificate(dir string, key *ecdsa.PrivateKey, chain [][]byte) error {
 		chainPEM = append(chainPEM, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c})...)
 	}
 	keyPath, chainPath := filepath.Join(dir, KeyFile), filepath.Join(dir, ChainFile)
-	if err := writeAtomic(keyPath+pending, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600); err != nil {
+	if err := WriteAtomic(keyPath+pending, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600); err != nil {
 		return err
 	}
-	if err := writeAtomic(chainPath+pending, chainPEM, 0o644); err != nil {
+	if err := WriteAtomic(chainPath+pending, chainPEM, 0o644); err != nil {
 		return err
 	}
 	if err := os.Rename(keyPath+pending, keyPath); err != nil {

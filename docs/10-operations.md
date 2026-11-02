@@ -392,7 +392,7 @@ off by default.
 
 | Item | Value |
 |---|---|
-| Units | `rpmgr-firewall.path` (watches `/var/lib/rpmgr/firewall/desired.json`) and the oneshot `rpmgr-firewall.service`, printed by `rpmgr systemd-unit firewall`, written and enabled by `rpmgr setup --firewall ufw` and the install scripts' flag (slice 3) |
+| Units | `rpmgr-firewall.path` (watches `/var/lib/rpmgr/firewall/desired.json`) and the oneshot `rpmgr-firewall.service`, printed by `rpmgr systemd-unit firewall`, written and enabled by `rpmgr setup --firewall ufw` and the install scripts' flag |
 | Command | `rpmgr firewall apply --desired /var/lib/rpmgr/firewall/desired.json --bounds /etc/rpmgr/firewall.json --status /run/rpmgr-firewall/status.json`; hidden from `--help` like `rpmgr updater` ([D151](14-open-decisions.md#engineering)) |
 | Desired file | `{"version": 1, "ranges": [{"protocol": "tcp", "from": 20000, "to": 20999}]}`, written by the gateway; the helper merges overlapping and adjacent ranges of a protocol |
 | Bounds file | `{"version": 1, "backend": "ufw", "listeners": [{"protocol": "tcp", "port": 80}, {"protocol": "tcp", "port": 443}, {"protocol": "udp", "port": 443}], "max_range": {"from": 20000, "to": 29999}}`; `backend` `""` or `off`, or a missing file, switches the helper off and removes its rules; `max_range` may be left out, which allows no pool |
@@ -425,18 +425,46 @@ off by default.
   the status lists the rule as applied. [V] Whether `ufw` treats the comment as part of a rule's
   identity is to be checked.
 
-What slices 3 and 4 change:
+The gateway's side and `rpmgr setup`:
 
 - **Boot file** ([Boot files](#boot-files), the gateway's and the all-in-one's, and the guide's
   [boot-file reference](guide/reference/boot-files.md)): a `firewall:` block with `backend` (`""`
-  or `ufw`) and `max_range`, which `rpmgr setup --firewall ufw` turns into the bounds file.
-- **Guide pages:** [gateways](guide/gateways.md) (the pools' ports need no manual step when the
-  firewall is switched on; the provider's firewall stays the operator's), the
-  [quick start](guide/quick-start.md) (its `ufw allow` lines), the web UI's
-  [gateways page](guide/web-ui/gateways.md) (the firewall state of a gateway and of its pools),
-  the [setup](guide/install/setup.md) and [install script](guide/install/install-script.md) pages
-  (the flag), [troubleshooting](guide/operations/troubleshooting.md) (a failed firewall), the
-  [CLI](guide/reference/cli.md) and [files](guide/install/manual.md) references, and the CHANGELOG.
+  or `ufw`) and `max_range` (`<from>-<to>`, none by default). With `backend: ufw` the gateway
+  announces the capability `firewall.ranges`, so that its snapshot holds the port pools of its group
+  ([03](03-connections.md#versioning-and-capabilities)); it writes their ranges, merged, to
+  `desired.json` in `<state_dir>/firewall/` (for an all-in-one, the state directory of the
+  all-in-one, not the gateway's own) at most once per 5 s and only when they changed, and reports
+  the helper's status, read every 5 s, in its status: `off`, `applied`, or `failed` with the
+  reason, shown by the API and the web UI. Without the key the gateway writes and reports nothing.
+- **`rpmgr setup --firewall ufw [--firewall-max-range <from>-<to>]`** (a gateway or an
+  all-in-one): puts the `firewall:` block into the boot file, writes `/etc/rpmgr/firewall.json` as
+  root from the boot file's listeners (`listen.tcp`, `listen.http`, `listen.udp`, and
+  `listen.tunnel_udp` if set) and the range, makes `<state_dir>/firewall/` (0750, the service
+  user's), and unless `--no-unit` writes the units and runs `systemctl enable
+  rpmgr-firewall.service` and `enable --now rpmgr-firewall.path`, as it does for the updater's.
+  A second run writes the same files again. A host without `ufw` is no failure: setup says the
+  firewall shows as failed until `ufw` is installed and active.
+
+The install script and the web UI:
+
+- **`/install.sh --firewall ufw [--firewall-max-range <from>-<to>]`** (a gateway): adds the
+  `firewall:` section to the boot file unless it has one, runs `rpmgr firewall install` (hidden,
+  [D151](14-open-decisions.md#engineering); it writes the bounds file from the boot file, makes the
+  directory and writes the units, and enables nothing, as `rpmgr updater install` does) and
+  enables `rpmgr-firewall.service` and `rpmgr-firewall.path` after the updater's. Run again, the
+  script keeps the section it finds. An existing gateway host switches the firewall on by adding
+  the section to its boot file and running `rpmgr firewall install`, then enabling the two units.
+- **Web UI:** the gateway group's page shows the firewall state of each gateway (`Off`, `Applied`
+  with the number of rules, or `Failed` with the reason and the ports the helper refused; a gateway
+  that reports nothing is `Off`, an offline one a dash), and each port pool of the group shows in
+  how many of the gateways that manage their firewall its range is open
+  ([09](09-web-ui.md#gateways)).
+- **Guide pages:** [gateways](guide/gateways.md), the [quick start](guide/quick-start.md) (no
+  `ufw allow` for a host that has handed its `ufw` over), the web UI's
+  [gateways page](guide/web-ui/gateways.md), the [setup](guide/install/setup.md) and
+  [install script](guide/install/install-script.md) pages,
+  [troubleshooting](guide/operations/troubleshooting.md) (a failed firewall), and the
+  [CLI](guide/reference/cli.md) and [files](guide/install/manual.md) references.
 
 ### Windows and macOS connectors (Phase 2)
 
@@ -547,6 +575,7 @@ listen:
   http: ":80"
   admin: "127.0.0.1:7382"
 # handoff: { drain: 10m }                   # Phase 2: how long an old process drains after a hand-off (03)
+# firewall: { backend: ufw, max_range: 20000-29999 }   # Phase 2, off by default (04, D152)
 log: { level: info, format: json }
 tracing: { otlp_endpoint: "", sample_ratio: 0.01 }
 ```
@@ -588,6 +617,7 @@ tls: { cert_file: /etc/rpmgr/tls/panel.crt, key_file: /etc/rpmgr/tls/panel.key }
 state_dir: /var/lib/rpmgr     # the gateway's identity in gateway/identity, its state in gateway/;
                               # the connector's in connector/identity and connector/
 policy_file: /etc/rpmgr/policy.yaml   # the connector's local policy (04)
+# firewall: { backend: ufw, max_range: 20000-29999 }   # the gateway's ufw; off by default (04)
 log: { level: info, format: json }
 ```
 
@@ -1071,7 +1101,8 @@ the replica that evaluates the alerts.
 - [ ] MFA required for the org; WebAuthn for Owners and Instance Admins.
 - [ ] SSO configured with a break-glass local Owner whose credentials are stored offline.
 - [ ] External audit sink configured (Phase 2: object storage with Object Lock resists tampering
-      best); revocation-log sink configured (required for more than one controller replica).
+      best, and `rpmgr verify audit --sink <name>` reports a chain rewritten under a checkpoint the
+      sink holds); revocation-log sink configured (required for more than one controller replica).
 - [ ] Webhook receivers on private networks: only the ranges they need listed in
       `webhook_private_ranges` (Phase 2).
 - [ ] Every connector's `policy.yaml` reviewed: `allow_targets` as narrow as possible (the default
@@ -1250,7 +1281,8 @@ Each runbook: **symptoms → steps → done when**.
   and the credentials). Appends go on meanwhile; nothing is lost, as the sink's cursor holds its
   place. Fix the sink; it catches up by itself. An object-storage sink whose last error names a key
   that holds other bytes has found an object that is not the item: that is a sign of tampering or of
-  two controllers sharing a bucket, so look at the object before anything else.
+  two controllers sharing a bucket, so run `rpmgr verify audit --sink <name>` and look at the object
+  before anything else.
 - **Done when**: the backlog is 0 and the alert resolved.
 
 ### A restart with hand-off failed
