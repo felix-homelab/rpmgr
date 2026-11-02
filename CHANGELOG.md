@@ -231,6 +231,10 @@ Changes to the design documents are not recorded here: see the git history and t
   and Session, and `rpmgr help updates` and `rpmgr help hand-off` list the commands of one task
   in the order they are used. `rpmgr updater install` and `apply`, which the install scripts and
   `rpmgr-update.service` run, no longer appear in the help; they work as before. (#966)
+- TCP routes: the default idle timeout of a connection is now shorter, so that a connection that
+  stalls does not hold a target's connection for an hour. It applies to routes created from this
+  release and when a route's timeout is cleared; a route keeps the value it has, and `0` still
+  means none. (#1052)
 
 ### Removed
 
@@ -239,6 +243,15 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Fixed
 
+- Connectors: a target that allows each client address only a few connections, as a remote desktop
+  server does, is no longer locked out by stalled connections and by the connector's own health
+  checks. A connector holds at most a bound of connections to one target address, for streams and
+  checks together: the route's connection limit on a TCP, TCP and UDP or TLS passthrough route,
+  else a default; a connection over it is refused with `OVERLOADED`, and the gateway tries another
+  session and then resets the visitor. A check that cannot run for that reason, or that the target
+  refuses while streams hold its connections, no longer makes the target unhealthy, and a target or
+  route that is unhealthy then says how many connections the streams hold as the likely cause.
+  Set the route's connection limit to what the target allows one address. (#1052)
 - Web UI: a form no longer shows only "the request is not valid" when the API refuses a value. The
   policy, gateway group, gateway, API token and organisation forms check the name before they send
   it and show what is wrong beside the field, such as the rule for a resource name (1 to 63

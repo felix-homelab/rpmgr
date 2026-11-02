@@ -2547,9 +2547,14 @@ type ConnectorRoute struct {
 	Transport TransportPolicy `protobuf:"varint,3,opt,name=transport,proto3,enum=rpmgr.agent.v1.TransportPolicy" json:"transport,omitempty"`
 	// Phase 2: the route's health check, which the connector runs against each of its targets of the
 	// route (docs/03-connections.md, "Target health"); unset, every target counts as healthy.
-	HealthCheck   *HealthCheck `protobuf:"bytes,4,opt,name=health_check,json=healthCheck,proto3" json:"health_check,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	HealthCheck *HealthCheck `protobuf:"bytes,4,opt,name=health_check,json=healthCheck,proto3" json:"health_check,omitempty"`
+	// The most connections the connector holds open to one target address for this route's streams
+	// and checks together: the route's max_connections, 0 for the connector's default
+	// (docs/03-connections.md, "Target connection bound"). TCP streams count; a stream over it gets
+	// OVERLOADED.
+	MaxTargetConnections uint32 `protobuf:"varint,5,opt,name=max_target_connections,json=maxTargetConnections,proto3" json:"max_target_connections,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *ConnectorRoute) Reset() {
@@ -2608,6 +2613,13 @@ func (x *ConnectorRoute) GetHealthCheck() *HealthCheck {
 		return x.HealthCheck
 	}
 	return nil
+}
+
+func (x *ConnectorRoute) GetMaxTargetConnections() uint32 {
+	if x != nil {
+		return x.MaxTargetConnections
+	}
+	return 0
 }
 
 // HealthCheck is a route's active health check as connectors run it. A value of 0 takes the
@@ -3319,12 +3331,13 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"connectors\x123\n" +
 	"\x06access\x18\x03 \x01(\v2\x1b.rpmgr.agent.v1.RouteAccessR\x06access\x12K\n" +
 	"\x11ranked_connectors\x18\x04 \x03(\v2\x1e.rpmgr.agent.v1.RouteConnectorR\x10rankedConnectors\x123\n" +
-	"\x06limits\x18\x05 \x01(\v2\x1b.rpmgr.agent.v1.RouteLimitsR\x06limits\"\xd5\x01\n" +
+	"\x06limits\x18\x05 \x01(\v2\x1b.rpmgr.agent.v1.RouteLimitsR\x06limits\"\x8b\x02\n" +
 	"\x0eConnectorRoute\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x120\n" +
 	"\atargets\x18\x02 \x03(\v2\x16.rpmgr.agent.v1.TargetR\atargets\x12=\n" +
 	"\ttransport\x18\x03 \x01(\x0e2\x1f.rpmgr.agent.v1.TransportPolicyR\ttransport\x12>\n" +
-	"\fhealth_check\x18\x04 \x01(\v2\x1b.rpmgr.agent.v1.HealthCheckR\vhealthCheck\"\xcf\x02\n" +
+	"\fhealth_check\x18\x04 \x01(\v2\x1b.rpmgr.agent.v1.HealthCheckR\vhealthCheck\x124\n" +
+	"\x16max_target_connections\x18\x05 \x01(\rR\x14maxTargetConnections\"\xcf\x02\n" +
 	"\vHealthCheck\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\rR\x04port\x12\x12\n" +

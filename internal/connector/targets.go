@@ -51,6 +51,9 @@ type Route struct {
 	Targets []Target
 	// Check is the route's health check; nil counts every target as healthy.
 	Check *HealthCheck
+	// MaxTargetConns bounds the connections held to one target address for the route's streams and
+	// checks; 0 is the default (docs/03-connections.md, "Target connection bound").
+	MaxTargetConns int
 }
 
 // Target is one destination of a route on the connector's host.
@@ -140,6 +143,7 @@ type Targets struct {
 	checkers     map[string]*checker
 	targetHealth map[string]map[string]*targetHealth
 	checks       chan struct{} // the checks running, at most maxChecks
+	conns        *targetConns  // the connections held to each target address
 	reportMu     sync.Mutex    // orders OnTargetHealth after Set's replaced checkers
 	ctx          context.Context
 	cancel       context.CancelFunc
@@ -161,7 +165,7 @@ func NewTargets(o TargetsOptions) *Targets {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Targets{o: o, routes: map[string]Route{}, draining: map[string]drainingRoute{}, health: map[string]*tunnelv1.RouteHealth{},
 		refused: map[string]map[string]string{}, live: map[net.Conn]struct{}{}, probes: make(chan struct{}, maxProbes),
-		checkers: map[string]*checker{}, targetHealth: map[string]map[string]*targetHealth{}, checks: make(chan struct{}, maxChecks),
+		checkers: map[string]*checker{}, targetHealth: map[string]map[string]*targetHealth{}, checks: make(chan struct{}, maxChecks), conns: newTargetConns(),
 		ctx: ctx, cancel: cancel}
 }
 
@@ -255,7 +259,7 @@ func (t *Targets) Recheck() {
 	t.gen++
 	var changed []*tunnelv1.RouteHealth
 	for _, id := range slices.Sorted(maps.Keys(t.routes)) {
-		if h := t.updateHealthLocked(id, readiness(t.routes[id], p, nil, t.unhealthyLocked(id))); h != nil {
+		if h := t.updateHealthLocked(id, readiness(t.routes[id], p, nil, t.unhealthyLocked(id), t.notesLocked(id))); h != nil {
 			changed = append(changed, h)
 		}
 	}
@@ -316,14 +320,14 @@ func connAllowed(c net.Conn, p *policy.Policy) bool {
 // not among refused, the targets whose dial the policy refused on the resolved address, and not
 // among unhealthy, those the route's health check failed. A route with a health check names the
 // priorities that have such a target, which gateways pass over the others for (D133).
-func readiness(r Route, p *policy.Policy, refused map[string]string, unhealthy map[string]string) *tunnelv1.RouteHealth {
+func readiness(r Route, p *policy.Policy, refused map[string]string, unhealthy map[string]string, notes map[string]string) *tunnelv1.RouteHealth {
 	h := &tunnelv1.RouteHealth{RouteId: r.ID}
 	if p == nil || p.Invalid != nil {
 		h.Reason = agentv1.NotReadyReason_NOT_READY_REASON_POLICY_INVALID
 		return h
 	}
 	var prios []uint32
-	sick := ""
+	sick, cause := "", ""
 	for _, tg := range r.Targets {
 		detail, wasRefused := refused[tg.ID]
 		blockedCheck, isUnhealthy := unhealthy[tg.ID]
@@ -331,7 +335,7 @@ func readiness(r Route, p *policy.Policy, refused map[string]string, unhealthy m
 		case tg.allowed(p) && !wasRefused && !isUnhealthy:
 			prios = append(prios, tg.Priority)
 		case tg.allowed(p) && !wasRefused && blockedCheck == "":
-			sick = cmp.Or(sick, tg.String())
+			sick, cause = cmp.Or(sick, tg.String()), cmp.Or(cause, notes[tg.ID])
 		case h.Detail != "":
 		case blockedCheck != "":
 			h.Detail = blockedCheck // its checks dial what the policy refuses
@@ -352,6 +356,9 @@ func readiness(r Route, p *policy.Policy, refused map[string]string, unhealthy m
 		return ready
 	case sick != "":
 		h.Reason, h.Detail = agentv1.NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY, "every target failed its health check, "+sick+" too"
+		if cause != "" {
+			h.Detail += "; " + cause // likely why: streams hold the target's connections
+		}
 		return h
 	}
 	h.Reason = agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY
@@ -418,7 +425,7 @@ func (t *Targets) blocked(route, target, detail string, gen uint64) {
 			t.refused[route] = map[string]string{}
 		}
 		t.refused[route][target] = detail
-		h = t.updateHealthLocked(route, readiness(r, p, t.refused[route], t.unhealthyLocked(route)))
+		h = t.updateHealthLocked(route, readiness(r, p, t.refused[route], t.unhealthyLocked(route), t.notesLocked(route)))
 	}
 	t.mu.Unlock()
 	t.reportRoute(h)
@@ -433,7 +440,7 @@ func (t *Targets) dialled(route, target string, gen uint64) {
 	if _, was := t.refused[route][target]; was && gen == t.gen {
 		delete(t.refused[route], target)
 		if r, active := t.routes[route]; active {
-			h = t.updateHealthLocked(route, readiness(r, t.o.Policy(), t.refused[route], t.unhealthyLocked(route)))
+			h = t.updateHealthLocked(route, readiness(r, t.o.Policy(), t.refused[route], t.unhealthyLocked(route), t.notesLocked(route)))
 		}
 	}
 	t.mu.Unlock()
@@ -479,6 +486,9 @@ func (t *Targets) Handle(ctx context.Context, gatewayID string, st tunnel.Stream
 	_, span := otel.Tracer("github.com/felix-homelab/rpmgr/internal/connector").Start(tunnel.TraceContext(ctx, open), "rpmgr.connector.dial",
 		trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(attribute.String("rpmgr.route", open.GetRouteId())))
 	code, conn, target := t.open(ctx, open)
+	if conn != nil {
+		defer t.conns.releaseConn(conn) // the slot of the target address, however the stream ends
+	}
 	// The connection is recorded before the answer and checked against the policy in force then,
 	// so a reload either finds it or refuses it here (#525).
 	untrack := func() {}
@@ -557,13 +567,22 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 	defer cancel()
 	d := &net.Dialer{KeepAlive: tcpKeepAlive, Control: policy.Control(t.o.Policy)}
 	code := tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_REFUSED
+	dialled, capped := false, false
 	for _, tg := range order(t.healthy(r.ID, targetsFor(r, open))) {
 		network := "tcp"
 		if tg.UnixPath != "" {
 			network = "unix"
 		}
+		// A slot of the target address, for as long as the connection lives: the bound keeps stalled
+		// streams from taking every connection the target allows its peer (D161).
+		if !t.conns.acquire(tg.String(), r.maxTargetConns()) {
+			capped = true
+			continue
+		}
+		dialled = true
 		conn, err := t.o.Metrics.dial(ctx, d, r.ID, network, tg.String(), isBlocked)
 		if err != nil {
+			t.conns.release(tg.String())
 			var b *policy.BlockedError
 			if errors.As(err, &b) {
 				t.blocked(r.ID, tg.ID, b.Detail(), gen)
@@ -579,11 +598,19 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 		if h := proxyHeader(tg, open); h != nil {
 			if _, err := h.WriteTo(conn); err != nil {
 				_ = conn.Close()
+				t.conns.release(tg.String())
 				code = tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_RESET
 				continue
 			}
 		}
+		t.conns.bind(conn, tg.String()) // Handle gives the slot back when the stream ends
 		return tunnelv1.ResultCode_RESULT_CODE_NO_ERROR, conn, tg.ID
+	}
+	if capped && !dialled {
+		// Every target is at the route's bound: a stream that waited would hold its gateway's
+		// slot as the stalled ones do; the gateway tries another session, then answers 503.
+		t.o.Logger.Debug("stream refused: every target is at its connection bound", "route", r.ID, "bound", r.maxTargetConns())
+		return tunnelv1.ResultCode_RESULT_CODE_OVERLOADED, nil, ""
 	}
 	return code, nil, ""
 }

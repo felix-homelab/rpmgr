@@ -191,6 +191,7 @@ func (a *Applier) Apply(_ context.Context, snap *agentv1.Snapshot, _ agent.Chang
 					TLS: tlsOf(t.GetTls())})
 			}
 			route.Check = healthCheckOf(r.GetHealthCheck())
+			route.MaxTargetConns = int(r.GetMaxTargetConnections())
 			routes = append(routes, route)
 		}
 	}

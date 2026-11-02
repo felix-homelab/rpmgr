@@ -32,6 +32,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routelimit"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetarget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routetcp"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routeudp"
@@ -571,6 +572,16 @@ func ConnectorRoutes(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agen
 		cr := byRoute[id]
 		if err := addHealthCheck(ctx, tx, id, cr, https[id]); err != nil {
 			return nil, err
+		}
+		// The route's connection limit, whole and not a gateway's share, bounds what this connector
+		// holds open to each target (docs/03-connections.md, "Target connection bound"); an http
+		// route's counts requests, and its pooled streams outlast them, so it keeps the default.
+		switch l, err := tx.RouteLimit.Query().Where(routelimit.RouteID(id)).Only(ctx); {
+		case cr.Type == string(route.TypeHTTP) || ent.IsNotFound(err):
+		case err != nil:
+			return nil, err
+		default:
+			cr.MaxTargetConnections = uint32(l.MaxConnections) //nolint:gosec // G115: the API bounds it
 		}
 		slices.SortFunc(cr.Targets, func(x, y *agentv1.Target) int {
 			if x.Priority != y.Priority {
