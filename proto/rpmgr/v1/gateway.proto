@@ -263,6 +263,36 @@ message GatewayStatus {
   // The old process of its last hand-off while it drains; not set when none does, or when the
   // gateway is a release without the report (D160).
   DrainingProcess draining = 9;
+  // The state of the gateway host's firewall management (D152); not set when the gateway does not
+  // manage it, or is a release without it.
+  FirewallStatus firewall = 10;
+}
+
+// FirewallStatus is what the gateway last reported of the root helper that opens its port pools'
+// ranges in the host's ufw (docs/04-security.md, "Host firewall for port pools").
+message FirewallStatus {
+  // The state: off, applied or failed.
+  FirewallState state = 1;
+  // For the operator: why the firewall is off or failed; empty when applied.
+  string reason = 2;
+  // The rules the helper holds, as ufw names them, for example 20000:20999/tcp.
+  repeated string rules = 3;
+  // Desired ports outside the helper's bounds, which it never opened.
+  repeated string refused = 4;
+  // When the helper reported.
+  google.protobuf.Timestamp report_time = 5;
+}
+
+// FirewallState is the state of a gateway host's firewall management.
+enum FirewallState {
+  // Not set.
+  FIREWALL_STATE_UNSPECIFIED = 0;
+  // Switched off: the helper holds no rule.
+  FIREWALL_STATE_OFF = 1;
+  // Every rule is in place.
+  FIREWALL_STATE_APPLIED = 2;
+  // The helper failed, refused a range or did not answer; the reason says which.
+  FIREWALL_STATE_FAILED = 3;
 }
 
 // EndGatewayDrainRequest names a gateway.

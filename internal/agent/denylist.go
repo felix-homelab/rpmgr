@@ -175,7 +175,7 @@ func (d *DenyList) store(kept []keptList) error {
 		buf.Write(binary.AppendUvarint(nil, uint64(len(b))))
 		buf.Write(b)
 	}
-	if err := writeAtomic(filepath.Join(d.o.StateDir, DenyListFile), buf.Bytes(), 0o600); err != nil {
+	if err := WriteAtomic(filepath.Join(d.o.StateDir, DenyListFile), buf.Bytes(), 0o600); err != nil {
 		return err
 	}
 	return syncDir(d.o.StateDir)

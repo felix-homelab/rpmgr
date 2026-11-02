@@ -156,7 +156,7 @@ func (r *Runtime) Welcome(w *agentv1.Welcome) {
 	}
 	r.mu.Unlock()
 	if changed && r.o.Identity.Dir != "" {
-		if err := writeAtomic(filepath.Join(r.o.Identity.Dir, SigningFile), certsPEM(certs), 0o644); err != nil {
+		if err := WriteAtomic(filepath.Join(r.o.Identity.Dir, SigningFile), certsPEM(certs), 0o644); err != nil {
 			r.o.Logger.Error("cannot store the signing certificates", "error", err)
 		}
 	}
@@ -379,7 +379,7 @@ func (r *Runtime) persist(signed *agentv1.Signed) error {
 		return err
 	}
 	path := filepath.Join(r.o.StateDir, LastKnownGoodFile)
-	if err := writeAtomic(path, b, 0o600); err != nil {
+	if err := WriteAtomic(path, b, 0o600); err != nil {
 		return err
 	}
 	return syncDir(r.o.StateDir)

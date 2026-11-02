@@ -206,6 +206,8 @@ rpmgr setup [flags]
 | `--cert-file string` |  | controller, all-in-one: the certificate chain with --tls files |
 | `--controller string` |  | gateway, connector: the controller URL, https://\<host>[:\<port>] |
 | `--deny-target value` |  | connector: a target the connector-local policy denies, whatever allows it; the same form |
+| `--firewall string` |  | gateway, all-in-one: ufw, to hand the host's ufw to rpmgr, which opens the listeners and the port pools' ranges (off by default) |
+| `--firewall-max-range string` |  | gateway, all-in-one: with --firewall, the largest range of port pools rpmgr may open, \<from>-\<to> (default none) |
 | `--force` |  | replace an existing boot file (kept beside it) or an agent's identity |
 | `--kek-path string` |  | controller, all-in-one: the KEK file with --kek-source file (default /etc/rpmgr/kek) |
 | `--kek-source string` |  | controller, all-in-one: systemd-credential or file (default by the systemd version) |

@@ -1549,6 +1549,11 @@ updater's agent does ([Over-the-air updates](#over-the-air-updates)).
 - **Absent or inactive.** Without `ufw` installed or active the helper changes nothing and writes
   the reason to its status file `/run/rpmgr-firewall/status.json` (`off`, `applied`, `failed`),
   which the gateway reads and shows ([10](10-operations.md#host-firewall-helper-phase-2)).
+- **Reporting.** The gateway reads the status file and reports it in its `Status` to the controller,
+  which shows it in the gateway's status. It trusts the file for display only, as it never acts on
+  it: an unreadable or oversized file, one the helper has not refreshed for a changed desired file,
+  and a missing one are reported as `failed` with that reason, so that a stopped or removed helper
+  is seen, not mistaken for `applied` ([03](03-connections.md#timeouts-keepalive-and-backoff)).
 - **Out of scope.** The provider's firewall in front of the host, rules for the gateway's admin
   listener (which never listens on a public address) and firewalls other than `ufw`.
 

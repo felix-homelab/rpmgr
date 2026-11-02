@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +27,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
@@ -75,6 +77,7 @@ type Sessions struct {
 	active   map[string]*session                 // by agent ID
 	ops      map[string]*op                      // operations waiting for their OpResult, by ID
 	drains   map[string]*agentv1.DrainingProcess // the old process a hand-off left draining, by agent ID
+	firewall map[string]*agentv1.FirewallState   // the firewall helper's state a gateway reported, by agent ID
 	pending  map[string]*pendingOp               // operations waiting for their Attach, by ID
 	draining *time.Time
 	// restarting is set by Restart: the controller hands over to a new process.
@@ -271,7 +274,12 @@ func (s *Sessions) receive(ctx context.Context, st grpc.BidiStreamingServer[agen
 			if st.GetDraining() != nil {
 				s.recordDraining(id.ID, st.GetDraining())
 			}
-			// A Status with only the update state (OTA) or the draining old process leaves a
+			// Only a gateway that announced firewall.ranges has a firewall to report; from any other
+			// agent the message is ignored.
+			if st.GetFirewall() != nil && id.Kind == pki.KindGateway && slices.Contains(sess.caps, agentproto.CapFirewallRanges) {
+				s.recordFirewall(id.ID, st.GetFirewall())
+			}
+			// A Status with only the update state (OTA), the draining old process or the firewall state leaves a
 			// gateway's data sessions and counters as they are: it lists none of them.
 			if id.Kind == pki.KindGateway && !updateOnly(st) {
 				s.dataSessions(id, st.GetDataSessions())
@@ -284,7 +292,7 @@ func (s *Sessions) receive(ctx context.Context, st grpc.BidiStreamingServer[agen
 // updateOnly reports whether a Status carries the update state or the draining old process, and
 // nothing else.
 func updateOnly(st *agentv1.Status) bool {
-	return (st.GetUpdate() != nil || st.GetDraining() != nil) && !st.GetReadinessComplete() && len(st.GetReadiness()) == 0 &&
+	return (st.GetUpdate() != nil || st.GetDraining() != nil || st.GetFirewall() != nil) && !st.GetReadinessComplete() && len(st.GetReadiness()) == 0 &&
 		len(st.GetDataSessions()) == 0 && len(st.GetCounters()) == 0
 }
 
@@ -394,6 +402,7 @@ func (s *Sessions) add(sess *session) {
 	old := s.active[sess.agent.Identity.ID]
 	s.active[sess.agent.Identity.ID] = sess
 	delete(s.drains, sess.agent.Identity.ID) // the new session reports it again
+	delete(s.firewall, sess.agent.Identity.ID)
 	s.mu.Unlock()
 	if old != nil {
 		old.end(agentv1.GoodbyeReason_GOODBYE_REASON_SUPERSEDED, 0)
@@ -406,6 +415,7 @@ func (s *Sessions) remove(sess *session) {
 	if s.active[sess.agent.Identity.ID] == sess {
 		delete(s.active, sess.agent.Identity.ID)
 		delete(s.drains, sess.agent.Identity.ID)
+		delete(s.firewall, sess.agent.Identity.ID)
 	}
 }
 
