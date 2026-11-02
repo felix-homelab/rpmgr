@@ -65,9 +65,15 @@ func permanentStatus(code int) bool {
 type PermanentError struct {
 	Status int
 	Err    error
+	// Msg, if set, is the text instead of the receiver's refusal: a sink that is not a receiver
+	// of requests says in its own words why it waits.
+	Msg string
 }
 
 func (e *PermanentError) Error() string {
+	if e.Msg != "" {
+		return e.Msg
+	}
 	return fmt.Sprintf("the receiver refused an item with %d; the sink ships nothing more of that chain until the receiver accepts it", e.Status)
 }
 

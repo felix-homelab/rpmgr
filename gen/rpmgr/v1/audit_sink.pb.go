@@ -35,6 +35,9 @@ const (
 	AuditSinkKind_AUDIT_SINK_KIND_WEBHOOK AuditSinkKind = 1
 	// RFC 5424 messages over TLS (RFC 5425 framing) to address; never UDP or plain TCP.
 	AuditSinkKind_AUDIT_SINK_KIND_SYSLOG AuditSinkKind = 2
+	// One object per checkpoint or entry in an S3-compatible bucket with Object Lock in compliance
+	// mode.
+	AuditSinkKind_AUDIT_SINK_KIND_S3 AuditSinkKind = 3
 )
 
 // Enum value maps for AuditSinkKind.
@@ -43,11 +46,13 @@ var (
 		0: "AUDIT_SINK_KIND_UNSPECIFIED",
 		1: "AUDIT_SINK_KIND_WEBHOOK",
 		2: "AUDIT_SINK_KIND_SYSLOG",
+		3: "AUDIT_SINK_KIND_S3",
 	}
 	AuditSinkKind_value = map[string]int32{
 		"AUDIT_SINK_KIND_UNSPECIFIED": 0,
 		"AUDIT_SINK_KIND_WEBHOOK":     1,
 		"AUDIT_SINK_KIND_SYSLOG":      2,
+		"AUDIT_SINK_KIND_S3":          3,
 	}
 )
 
@@ -90,9 +95,9 @@ type AuditSink struct {
 	Kind AuditSinkKind `protobuf:"varint,3,opt,name=kind,proto3,enum=rpmgr.v1.AuditSinkKind" json:"kind,omitempty"`
 	// The receiver of a webhook sink: an https:// URL without credentials; empty for a syslog sink.
 	Url string `protobuf:"bytes,4,opt,name=url,proto3" json:"url,omitempty"`
-	// The secret that signs a webhook sink's deliveries (a syslog sink has none), which the receiver verifies. Write-only:
-	// it is stored under the KEK, never returned and redacted in the audit log; empty in every
-	// answer.
+	// The secret that signs a webhook sink's deliveries, which the receiver verifies, or an
+	// object-storage sink's secret key (a syslog sink has none). Write-only: it is stored under the
+	// KEK, never returned and redacted in the audit log; empty in every answer.
 	Secret string `protobuf:"bytes,5,opt,name=secret,proto3" json:"secret,omitempty"`
 	// Whether a secret is stored; output only.
 	SecretSet bool `protobuf:"varint,6,opt,name=secret_set,json=secretSet,proto3" json:"secret_set,omitempty"`
@@ -112,7 +117,18 @@ type AuditSink struct {
 	Address string `protobuf:"bytes,12,opt,name=address,proto3" json:"address,omitempty"`
 	// The CA certificates, in PEM form, that the syslog server's certificate must chain to; empty
 	// means the system roots. Certificates are public, so it is returned.
-	CaBundle      string `protobuf:"bytes,13,opt,name=ca_bundle,json=caBundle,proto3" json:"ca_bundle,omitempty"`
+	CaBundle string `protobuf:"bytes,13,opt,name=ca_bundle,json=caBundle,proto3" json:"ca_bundle,omitempty"`
+	// The store of an object-storage sink: an https:// URL, or http:// on a loopback address, with
+	// no credentials, path or query.
+	Endpoint string `protobuf:"bytes,14,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	// The region the store's requests are signed for.
+	Region string `protobuf:"bytes,15,opt,name=region,proto3" json:"region,omitempty"`
+	// The bucket; it needs Object Lock and versioning.
+	Bucket string `protobuf:"bytes,16,opt,name=bucket,proto3" json:"bucket,omitempty"`
+	// The access key's ID; its secret key is the write-only secret.
+	AccessKeyId string `protobuf:"bytes,17,opt,name=access_key_id,json=accessKeyId,proto3" json:"access_key_id,omitempty"`
+	// How long, in days, each object stays locked: 30 to 3650, 365 if not set.
+	RetentionDays int32 `protobuf:"varint,18,opt,name=retention_days,json=retentionDays,proto3" json:"retention_days,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -236,6 +252,41 @@ func (x *AuditSink) GetCaBundle() string {
 		return x.CaBundle
 	}
 	return ""
+}
+
+func (x *AuditSink) GetEndpoint() string {
+	if x != nil {
+		return x.Endpoint
+	}
+	return ""
+}
+
+func (x *AuditSink) GetRegion() string {
+	if x != nil {
+		return x.Region
+	}
+	return ""
+}
+
+func (x *AuditSink) GetBucket() string {
+	if x != nil {
+		return x.Bucket
+	}
+	return ""
+}
+
+func (x *AuditSink) GetAccessKeyId() string {
+	if x != nil {
+		return x.AccessKeyId
+	}
+	return ""
+}
+
+func (x *AuditSink) GetRetentionDays() int32 {
+	if x != nil {
+		return x.RetentionDays
+	}
+	return 0
 }
 
 // AuditSinkStatus is how far a sink is behind and why, from the audit tables and the sink's
@@ -408,7 +459,10 @@ func (x *AuditSinkChainStatus) GetOldestUnshippedTime() *timestamppb.Timestamp {
 // CreateAuditSinkRequest creates a sink.
 type CreateAuditSinkRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The sink: name, kind, url and secret are required for a webhook sink.
+	// The sink: name, kind, url and secret are required for a webhook sink; name, kind, address for
+	// a syslog sink; name, kind, endpoint, region, bucket, access_key_id and secret for an
+	// object-storage sink, whose bucket is checked first: one without Object Lock or conditional
+	// create is refused.
 	AuditSink     *AuditSink `protobuf:"bytes,1,opt,name=audit_sink,json=auditSink,proto3" json:"audit_sink,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -704,7 +758,7 @@ type UpdateAuditSinkRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The sink, with its ID and the fields to change.
 	AuditSink *AuditSink `protobuf:"bytes,1,opt,name=audit_sink,json=auditSink,proto3" json:"audit_sink,omitempty"`
-	// The fields to change: name, url, secret, entries, enabled.
+	// The fields to change, as the method lists them.
 	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	// The etag the caller read; empty skips the check.
 	Etag          string `protobuf:"bytes,3,opt,name=etag,proto3" json:"etag,omitempty"`
@@ -1006,7 +1060,7 @@ var File_rpmgr_v1_audit_sink_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_audit_sink_proto_rawDesc = "" +
 	"\n" +
-	"\x19rpmgr/v1/audit_sink.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"\xfb\x03\n" +
+	"\x19rpmgr/v1/audit_sink.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"\xc4\x05\n" +
 	"\tAuditSink\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12B\n" +
 	"\x04name\x18\x02 \x01(\tB.\xbaH+\xd8\x01\x01r&2$^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$R\x04name\x125\n" +
@@ -1023,7 +1077,13 @@ const file_rpmgr_v1_audit_sink_proto_rawDesc = "" +
 	"createTime\x12\x12\n" +
 	"\x04etag\x18\v \x01(\tR\x04etag\x12\"\n" +
 	"\aaddress\x18\f \x01(\tB\b\xbaH\x05r\x03\x18\xac\x02R\aaddress\x12&\n" +
-	"\tca_bundle\x18\r \x01(\tB\t\xbaH\x06r\x04\x18\x80\x80\x04R\bcaBundle\"\x9a\x02\n" +
+	"\tca_bundle\x18\r \x01(\tB\t\xbaH\x06r\x04\x18\x80\x80\x04R\bcaBundle\x12$\n" +
+	"\bendpoint\x18\x0e \x01(\tB\b\xbaH\x05r\x03\x18\x80\x10R\bendpoint\x12\x1f\n" +
+	"\x06region\x18\x0f \x01(\tB\a\xbaH\x04r\x02\x18@R\x06region\x12\x1f\n" +
+	"\x06bucket\x18\x10 \x01(\tB\a\xbaH\x04r\x02\x18?R\x06bucket\x12,\n" +
+	"\raccess_key_id\x18\x11 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x01R\vaccessKeyId\x121\n" +
+	"\x0eretention_days\x18\x12 \x01(\x05B\n" +
+	"\xbaH\a\x1a\x05\x18\xc2\x1c(\x00R\rretentionDays\"\x9a\x02\n" +
 	"\x0fAuditSinkStatus\x12F\n" +
 	"\x11last_success_time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x0flastSuccessTime\x12\x1d\n" +
 	"\n" +
@@ -1073,11 +1133,12 @@ const file_rpmgr_v1_audit_sink_proto_rawDesc = "" +
 	"\raudit_sink_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vauditSinkId\"=\n" +
 	"\x15TestAuditSinkResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error*i\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error*\x81\x01\n" +
 	"\rAuditSinkKind\x12\x1f\n" +
 	"\x1bAUDIT_SINK_KIND_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17AUDIT_SINK_KIND_WEBHOOK\x10\x01\x12\x1a\n" +
-	"\x16AUDIT_SINK_KIND_SYSLOG\x10\x022\xa2\x05\n" +
+	"\x16AUDIT_SINK_KIND_SYSLOG\x10\x02\x12\x16\n" +
+	"\x12AUDIT_SINK_KIND_S3\x10\x032\xa2\x05\n" +
 	"\x10AuditSinkService\x12n\n" +
 	"\x0fCreateAuditSink\x12 .rpmgr.v1.CreateAuditSinkRequest\x1a!.rpmgr.v1.CreateAuditSinkResponse\"\x16\x8a\xb5\x18\x12\n" +
 	"\x0einstance.admin\x18\x01\x12f\n" +

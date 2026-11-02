@@ -20,13 +20,18 @@ import (
 func auditSinkCommands() map[string][]*cli.Command {
 	create, update := resourceCommands("audit-sink", []field{
 		{flag: "name", name: "name", usage: "the sink's name, unique among the sinks", update: true},
-		{flag: "kind", name: "kind", usage: "how it delivers: webhook or syslog (RFC 5424 over TLS)"},
+		{flag: "kind", name: "kind", usage: "how it delivers: webhook, syslog (RFC 5424 over TLS) or s3 (object storage with Object Lock)"},
 		{flag: "url", name: "url", usage: "the webhook's https:// URL, without credentials (webhook sinks)", update: true},
 		{flag: "address", name: "address", usage: "the syslog server as host:port; its certificate is checked against the host", update: true},
-		{flag: "ca-file", name: "ca_bundle", usage: "a file of PEM CA certificates the syslog server's certificate must chain to; " +
+		{flag: "endpoint", name: "endpoint", usage: "the object store's https:// URL, or http:// on a loopback address (s3 sinks)", update: true},
+		{flag: "region", name: "region", usage: "the region the store's requests are signed for (s3 sinks)", update: true},
+		{flag: "bucket", name: "bucket", usage: "the bucket, which needs Object Lock and versioning (s3 sinks)", update: true},
+		{flag: "access-key-id", name: "access_key_id", usage: "the access key's ID (s3 sinks)", update: true},
+		{flag: "retention-days", name: "retention_days", usage: "how long each object stays locked, 30 to 3650 days, 365 if not set (s3 sinks)", update: true},
+		{flag: "ca-file", name: "ca_bundle", usage: "a file of PEM CA certificates the syslog server's or the object store's certificate must chain to; " +
 			"without it the system roots", update: true, file: true},
-		{flag: "secret-file", name: "secret", usage: "a file holding the secret that signs the deliveries, at least 16 bytes; " +
-			"write-only", update: true, file: true, trim: true},
+		{flag: "secret-file", name: "secret", usage: "a file holding the secret that signs the deliveries, or the object store's secret key, " +
+			"at least 16 bytes; write-only", update: true, file: true, trim: true},
 		{flag: "entries", name: "entries", usage: "send the entries too; the checkpoints always go", update: true},
 		{flag: "enabled", name: "enabled", usage: "ship to it (false stops shipping; it catches up when enabled again)", update: true, updateOnly: true},
 	})

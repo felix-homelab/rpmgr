@@ -53,6 +53,14 @@ type Budget struct {
 	limit uint64
 	used  uint64
 	conns map[*quic.Conn]uint64
+
+	stall *stallParams // tests only; nil is the maxima below
+}
+
+// stallParams are the windows and the age the stalled-stream rule of a QUIC session assumes.
+type stallParams struct {
+	stream, conn int
+	age          time.Duration
 }
 
 // NewBudget returns a budget of limit bytes.
@@ -229,13 +237,25 @@ type QUICSession struct {
 	conn      *quic.Conn
 	connector bool // the side that dialled
 	control   atomic.Bool
+	stalls    *Stalls
 	dgOnce    sync.Once
 	dg        *Datagrams
 }
 
 func newQUICSession(conn *quic.Conn, budget *Budget, connector bool) *QUICSession {
 	context.AfterFunc(conn.Context(), func() { budget.release(conn) })
-	return &QUICSession{conn: conn, connector: connector}
+	// quic-go does not tell a stream's or the connection's current receive window, so the rule
+	// assumes the maxima, the upper bounds of what a stalled stream can hold: it counts every
+	// stalled stream with the most it could hold, and acts early rather than late. (A window that
+	// has not grown, as on streams that never read fast, is then freed by a reset of the oldest
+	// stream above the threshold, not before.)
+	p := stallParams{stream: quicStreamWindowMax, conn: quicConnWindowMax}
+	if budget.stall != nil {
+		p = *budget.stall
+	}
+	s := &QUICSession{conn: conn, connector: connector, stalls: NewStalls(p.stream, p.conn, p.age)}
+	go s.stalls.Run(conn.Context()) // ends with the connection
+	return s
 }
 
 // Control returns the session control stream: the connector opens it as the first stream
@@ -244,15 +264,26 @@ func (s *QUICSession) Control(ctx context.Context) (Stream, error) {
 	if s.control.Swap(true) {
 		return nil, errors.New("tunnel: the session control stream is already open")
 	}
+	// The control stream is not watched: the stalled-stream rule resets a stream, and a reset
+	// control stream ends the session, which would turn a rule that frees the session into one that
+	// kills it. It carries little, and its reader waits in Read for the session's life.
 	if s.connector {
-		return s.OpenStream(ctx)
+		return s.open()
 	}
-	return s.AcceptStream(ctx)
+	return s.accept(ctx)
 }
 
 // OpenStream opens a stream without blocking; at the peer's stream limit it returns
 // ErrStreamLimit at once.
 func (s *QUICSession) OpenStream(context.Context) (Stream, error) {
+	st, err := s.open()
+	if err != nil {
+		return nil, err
+	}
+	return s.stalls.Watch(st), nil
+}
+
+func (s *QUICSession) open() (Stream, error) {
 	st, err := s.conn.OpenStream()
 	var limit *quic.StreamLimitReachedError
 	if errors.As(err, &limit) {
@@ -266,6 +297,14 @@ func (s *QUICSession) OpenStream(context.Context) (Stream, error) {
 
 // AcceptStream returns the next stream the peer opened.
 func (s *QUICSession) AcceptStream(ctx context.Context) (Stream, error) {
+	st, err := s.accept(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.stalls.Watch(st), nil
+}
+
+func (s *QUICSession) accept(ctx context.Context) (Stream, error) {
 	st, err := s.conn.AcceptStream(ctx)
 	if err != nil {
 		return nil, err

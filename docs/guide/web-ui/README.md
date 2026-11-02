@@ -25,7 +25,7 @@ organisation, "Example Lab"; they are taken with the tool that
 | [Organisation](organisation.md) | Rename the organisation, manage members and invitations | Owner, Admin; renaming: Owner |
 | [Webhooks](webhooks.md) | Send the organisation's events to your own endpoints | Owner, Admin (`webhooks.write`) |
 | [Audit log](audit.md) | Read and verify who changed what | Owner, Admin can read it |
-| [Settings](settings.md) | The organisation's settings, and the instance's settings, PKI and updates | Owner; Instance Admin |
+| [Settings](settings.md) | The organisation's settings, and the instance's settings, PKI, updates and audit sinks | Owner; Instance Admin |
 | [Account](account.md) | Your profile, password, authenticator, sessions and API tokens | Every user, for themselves |
 
 Every member of an organisation sees every page of it. Most pages show the same buttons to every
