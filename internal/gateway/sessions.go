@@ -804,7 +804,7 @@ func (m *Sessions) open(ctx context.Context, open *tunnelv1.StreamOpen, skip pas
 			}
 			return nil, err
 		}
-		ts.open, ts.in, ts.out = m.o.Metrics.stream(open.GetRouteId(), d.s.Transport())
+		ts.open = m.o.Metrics.stream(open.GetRouteId(), d.s.Transport())
 		return ts, nil
 	}
 	return nil, ErrNoSession
@@ -898,6 +898,10 @@ func (m *Sessions) openStreamResult(ctx context.Context, open *tunnelv1.StreamOp
 		last = res
 		switch res.GetCode() {
 		case tunnelv1.ResultCode_RESULT_CODE_NO_ERROR:
+			// From here on the stream carries the user's bytes, which are what the counters count.
+			st.nIn.Store(0)
+			st.nOut.Store(0)
+			st.in, st.out = m.o.Metrics.payload(open.GetRouteId())
 			return st, res, nil
 		case tunnelv1.ResultCode_RESULT_CODE_DRAINING, tunnelv1.ResultCode_RESULT_CODE_OVERLOADED:
 			skip.sessions[st.d] = true
@@ -1094,6 +1098,8 @@ type trackedStream struct {
 	once    sync.Once
 	open    prometheus.Gauge   // nil without metrics
 	in, out prometheus.Counter // bytes towards the service and back
+	// nIn and nOut count the same bytes for this stream alone, for the stall line.
+	nIn, nOut atomic.Int64
 }
 
 func (t *trackedStream) Write(p []byte) (int, error) {
@@ -1104,6 +1110,7 @@ func (t *trackedStream) Write(p []byte) (int, error) {
 	if n > 0 {
 		t.last.Store(start)
 	}
+	t.nIn.Add(int64(n))
 	if t.in != nil {
 		t.in.Add(float64(n))
 	}
@@ -1115,6 +1122,7 @@ func (t *trackedStream) Read(p []byte) (int, error) {
 	if n > 0 {
 		t.last.Store(t.d.now().UnixNano())
 	}
+	t.nOut.Add(int64(n))
 	if t.out != nil {
 		t.out.Add(float64(n))
 	}

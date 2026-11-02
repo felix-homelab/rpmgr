@@ -159,3 +159,11 @@ func (c *Cuts) Attach(send func(typ, reason string) error) { c.c.attach(send) }
 
 // WithGeneration is the generation label of a gateway's registry.
 var WithGeneration = withGeneration
+
+// SetStallAfter shortens how long a stream may move nothing before it is logged as stalled, for one
+// test.
+func SetStallAfter(t testing.TB, d time.Duration) {
+	old := stallAfter
+	stallAfter = d
+	t.Cleanup(func() { stallAfter = old })
+}

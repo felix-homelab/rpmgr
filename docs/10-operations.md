@@ -862,6 +862,10 @@ service that still runs the previous binary, with the command that restarts it.
 - Structured JSON via `log/slog`, one line per event, with `trace_id` where available.
 - Secrets are redacted by type and by field annotation; whole requests are never logged
   ([04](04-security.md#secrets-at-rest-and-in-logs)).
+- At debug level the gateway logs each `tcp` and TLS passthrough stream when it opens and closes,
+  with its duration and bytes, and once more, as `stream stalled`, for a stream that has copied no
+  byte in either direction for the stall time, with its route, target, connector and the bytes it
+  has carried so far ([03](03-connections.md#timeouts-keepalive-and-backoff)).
 - Live logs of a connector or gateway can be streamed to the UI and the CLI (Phase 2: an
   imperative operation with a deadline and limits, redacted on the agent, for `agents.logs`;
   [03](03-connections.md#control-session), [04](04-security.md#secrets-at-rest-and-in-logs)).
@@ -886,7 +890,7 @@ gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection))
 | `rpmgr_gateway_sessions{transport}` | gauge | gateway | 1 | Data sessions from connectors, by transport (`quic`, `h2`, `wss`) |
 | `rpmgr_gateway_streams_open{route,transport}` | gauge | gateway | 1 | Open user streams |
 | `rpmgr_route_connections_total{route,result}` | counter | gateway | 1 | User connections, and streams of HTTP routes, by `StreamResult` code name in lower case ([03](03-connections.md#framing)), or `no_session`, `draining`, `timeout` or `error` without one |
-| `rpmgr_route_bytes_total{route,direction}` | counter | gateway | 1 | Bytes, `direction` = `in` (public → service) or `out` |
+| `rpmgr_route_bytes_total{route,direction}` | counter | gateway | 1 | Bytes the streams carried, `direction` = `in` (public → service) or `out`, counted as they move and not the framing of the stream's first messages; a route that accepted a connection and moved nothing shows the connection in `rpmgr_gateway_streams_open` and no bytes ([runbook](#a-tcp-route-accepts-a-connection-but-no-data-flows)) |
 | `rpmgr_route_connection_setup_seconds{route}` | histogram | gateway | 1 | Asking a connector for a stream → its `StreamResult` |
 | `rpmgr_http_requests_total{route,code}` | counter | gateway | 1 | Requests of HTTP routes by status, the route's refusals included |
 | `rpmgr_gateway_page_log_lines_dropped_total` | counter | gateway | 2 | Log lines of custom pages' request IDs not written over their bound ([03](03-connections.md#timeouts-keepalive-and-backoff), [D136](14-open-decisions.md#engineering)) |
@@ -1257,9 +1261,49 @@ Each runbook: **symptoms → steps → done when**.
 
 - **Symptoms**: connectors on `auto` use `h2` instead of `quic`; UDP routes flagged as served over
   TCP; routes pinned to `quic` are `not_ready(transport_unavailable: quic)`.
-- **Steps**: `rpmgr diag transport --gateway <id>` reports the QUIC handshake result, UDP buffer
-  sizes, GSO status and MTU estimate; check firewalls for UDP/443 in both directions; check NAT
+- **Steps**: `rpmgr diag transport --gateway <id>` reports the handshake result of both transports
+  and the round-trip time of each (QUIC's own, TCP's from one `Ping`), UDP buffer sizes, GSO status
+  and MTU estimate; check firewalls for UDP/443 in both directions; check NAT
   timeouts against the QUIC keepalive ([03](03-connections.md#quic-parameters)). If UDP is known to
   be unreliable on that network, set the connector's transport to `h2`, or the instance default
   if it holds for every connector ([03](03-connections.md#transport-selection)).
 - **Done when**: the intended transport is in use, or the TCP transport is pinned deliberately.
+
+### A tcp route accepts a connection but no data flows
+
+- **Symptoms**: a client connects to a `tcp` route's port and the connection opens, but a request
+  gets no answer, or only the first one does: a TLS handshake that never finishes, a protocol whose
+  second client message is never answered. The client's side shows no reset, only silence.
+- **What the kernel does**: **the kernel acknowledges received bytes whether or not the
+  application reads them.** A client's "not acknowledged" therefore never means that the relay
+  stopped reading; it means the bytes did not reach the gateway host. A relay that stops reading
+  shows as a receive window that closes, not as missing acknowledgements.
+- **Steps**: decide which of three signatures you see, on the client host (or any host that can
+  run `ss` on the connection) and on the gateway.
+  1. **Client, `ss -tmi` on the connection**: the send window `snd_wnd` is not zero, `bytes_acked`
+     stays frozen and `bytes_retrans` and `rto` grow. **The bytes never reached the gateway
+     host**: the path, a host firewall, a full connection-tracking table or an upstream filter.
+     This is not rpmgr. Check on the gateway host:
+     - `iptables -S`, `nft list ruleset` and `ufw status numbered`: a `recent`, `connlimit` or
+       `--limit` rule on the public port drops data packets as well, after the handshake went
+       through;
+     - `conntrack -C` against `cat /proc/sys/net/netfilter/nf_conntrack_max`: a table at its limit
+       drops packets of connections it cannot track;
+     - `dmesg -T | grep -i conntrack`: `nf_conntrack: table full, dropping packet`.
+  2. **Client**: `snd_wnd` falls to 0 and stays there. **The gateway's kernel holds the bytes
+     unread**: the gateway's process does not read the socket, or reads it and cannot pass the
+     bytes on. Go to 3, then to the relay and what is behind it.
+  3. **Gateway, `ss -tmi` on the route's socket**: `Recv-Q` grows. **The process is not reading.**
+     Compare with the metrics and the log:
+     - `rpmgr_gateway_streams_open{route}` above 0 with `rpmgr_route_bytes_total{route}` not
+       moving in either direction is a stream that carries nothing; the stall line in the debug log
+       names the route, target, connector and the bytes it did carry (the time is in
+       [03](03-connections.md#timeouts-keepalive-and-backoff));
+     - bytes `in` that grow while `out` stays flat: the target does not answer, or the connector
+       cannot reach it (`rpmgr diag transport` on the connector's host, the target's own log);
+     - no `in` growth although the client sent: the stream is blocked behind the data session's
+       flow control, so look at `rpmgr_gateway_sessions` and the connector's session RTT
+       (`rpmgr_connector_session_rtt_seconds`, `rpmgr diag transport`).
+- **Done when**: you know whether the bytes reached the gateway host (signature 1: no, fix the
+  network), or reached the process and stopped there (signatures 2 and 3: open an issue with the
+  `ss` output, the stall line and the two byte counters).

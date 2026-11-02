@@ -169,7 +169,7 @@ func TestDiagClock(t *testing.T) {
 }
 
 // TestDiagTransport: `rpmgr diag transport` completes a QUIC and a TCP handshake to the gateway of
-// the connector's configuration and closes them, and the route keeps working; a gateway the
+// the connector's configuration, reports a round-trip time for both, and closes them, and the route keeps working; a gateway the
 // configuration does not name, a connector without configuration and a gateway host are refused.
 func TestDiagTransport(t *testing.T) {
 	p := newDataPlane(t)
@@ -191,7 +191,7 @@ func TestDiagTransport(t *testing.T) {
 		t.Fatalf("probes %+v", d.Probes)
 	}
 	for _, pr := range d.Probes {
-		if pr.Err != nil || pr.Gateway != p.gatewayID || pr.Handshake <= 0 || pr.Transport == connector.TransportQUIC && pr.RTT <= 0 {
+		if pr.Err != nil || pr.Gateway != p.gatewayID || pr.Handshake <= 0 || pr.RTT <= 0 {
 			t.Errorf("probe %+v", pr)
 		}
 	}

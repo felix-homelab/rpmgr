@@ -127,6 +127,17 @@ Instance Admin ([Audit log](audit-log.md)). More on tokens is in
 | The connector does not start: `HTTPS_PROXY is not an http://, socks5:// or socks5h:// URL with a host` | The proxy variable holds something the connector cannot use | Fix the variable in the service's drop-in ([Environment variables](../reference/environment.md#proxies)) |
 | Sessions fail behind a proxy that inspects TLS | The proxy replaces rpmgr's certificates | Exempt the gateways and the controller from inspection ([Connector networking](../connectors/network.md#proxies)) |
 
+## A tcp route accepts a connection but nothing comes back
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| The client connects, sends its first message and gets no answer, and `ss` on the client shows its bytes **not acknowledged** | The bytes never reached the gateway host: a firewall rule, a full connection-tracking table or a filter on the path. The kernel acknowledges what it receives whether or not rpmgr reads it, so this is not rpmgr | Check the gateway host's firewall and connection tracking as the runbook lists |
+| The client's send window falls to 0 and stays there | The gateway's kernel holds bytes that nobody reads | Compare `rpmgr_gateway_streams_open` and `rpmgr_route_bytes_total` for the route, and read the gateway's debug log for `stream stalled` ([Monitoring](monitoring.md)) |
+| The route's open streams stay above 0 and its bytes `in` or `out` do not move | The stream carries nothing: the target does not answer, or the connector cannot reach it | `sudo rpmgr diag transport` on the connector's host, and the target's own log |
+
+The steps, with the `ss` fields to read, are in
+[A tcp route accepts a connection but no data flows](../../10-operations.md#a-tcp-route-accepts-a-connection-but-no-data-flows).
+
 ## The API or the command line refuses
 
 | Message | Cause | Fix |
