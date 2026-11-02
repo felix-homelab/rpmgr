@@ -309,6 +309,9 @@ Changes to the design documents are not recorded here: see the git history and t
   of an internet client can no longer freeze a session. The window of a session is fixed when it
   starts; with many sessions the later ones get smaller windows, and a single stream on a long
   path can carry less than with the former 16 MiB stream window. (#1049)
+- Restarts with socket hand-off: a visitor can no longer get the gateway's default certificate
+  (`default.invalid`) while the new process takes over. The new process now accepts connections on
+  ports 443 and 80 only once its first snapshot is applied; the old one serves until then. (#1061)
 
 ## [0.2.0] - 2026-10-24
 

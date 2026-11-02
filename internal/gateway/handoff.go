@@ -184,8 +184,8 @@ const readyEvery = 100 * time.Millisecond
 // listener is up. A process a hand-off started waits until its control session is up and its
 // first snapshot applied, so that it holds the route ports the snapshot needs: the old process
 // stops sending it new connections only once it is told it can take over. What the old process
-// handed over and the snapshot did not need is closed and logged. It returns nil if ctx ends first.
-func (l *listeners) ready(ctx context.Context, link *handoff.Link, rest func() []handoff.Entry, controlReady func(context.Context) error) error {
+// handed over and the snapshot did not need is closed and logged. applied runs once the snapshot is applied, just before the old process is told; the process serves the handed-over sockets only from then on. It returns nil if ctx ends first.
+func (l *listeners) ready(ctx context.Context, link *handoff.Link, rest func() []handoff.Entry, controlReady func(context.Context) error, applied func()) error {
 	if rest != nil {
 		t := time.NewTicker(readyEvery)
 		defer t.Stop()
@@ -199,6 +199,9 @@ func (l *listeners) ready(ctx context.Context, link *handoff.Link, rest func() [
 		for _, e := range rest() {
 			l.log.Warn("closed a handed-over socket nothing needs", "name", e.Name, "net", e.Net, "addr", e.Addr.String())
 		}
+	}
+	if applied != nil {
+		applied() // the snapshot is applied: the handed-over sockets may be read from now on
 	}
 	if err := link.Ready(); err != nil {
 		return fmt.Errorf("gateway: hand-off: %w", err)
