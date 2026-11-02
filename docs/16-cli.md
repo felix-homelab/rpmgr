@@ -76,7 +76,8 @@ the controller, easy and staged rollouts) and `hand-off` (`rpmgr handoff`, `syst
 A command may be hidden: it is not listed in its parent's help, but it runs, its own help
 works and the generated CLI reference lists it. `rpmgr updater`, with `install` and `apply`, is
 hidden: it is plumbing for the install scripts and `rpmgr-update.service`, and units on deployed
-hosts call `updater apply`. A removed command answers `unknown command "<name>"` with the command
+hosts call `updater apply`. `rpmgr firewall apply` is hidden the same way: it is the helper of
+`rpmgr-firewall.service` ([10](10-operations.md#host-firewall-helper-phase-2)). A removed command answers `unknown command "<name>"` with the command
 that replaces it, and exit code 2.
 
 ## Commands

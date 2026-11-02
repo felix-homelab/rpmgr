@@ -44,6 +44,25 @@ func RenderUpdater(bin string) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
+//go:embed rpmgr-firewall.tmpl
+var firewallText string
+
+var firewall = template.Must(template.New("firewall").Parse(firewallText))
+
+// RenderFirewall returns the root-owned firewall helper's pair of units, rpmgr-firewall.path and
+// rpmgr-firewall.service, each after a comment line that names its file (D152). bin is the
+// installed binary.
+func RenderFirewall(bin string) ([]byte, error) {
+	if !binRe.MatchString(bin) || path.Clean(bin) != bin {
+		return nil, fmt.Errorf("units: the binary path %q must be absolute and clean, without spaces, %%, $ or \\", bin)
+	}
+	var b bytes.Buffer
+	if err := firewall.Execute(&b, struct{ Bin string }{bin}); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
 // HandoffSince is the first release whose gateway, all-in-one and connector restart with socket
 // hand-off and tell systemd when they are ready (Type=notify).
 const HandoffSince = "0.3.0"
