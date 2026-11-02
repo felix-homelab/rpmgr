@@ -59,6 +59,15 @@ service AuditSinkService {
       step_up: true
     };
   }
+  // VerifyAuditSink reads an object-storage sink back and returns, per chain, the last checkpoint
+  // that verified and any gap or problem; the outcome is also kept as the sink's status. A step-up
+  // is required for the same reason as for a test.
+  rpc VerifyAuditSink(VerifyAuditSinkRequest) returns (VerifyAuditSinkResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
 }
 
 // AuditSinkKind is how a sink delivers.
@@ -144,6 +153,39 @@ message AuditSinkStatus {
   google.protobuf.Timestamp oldest_unshipped_time = 4;
   // The same per chain that has entries.
   repeated AuditSinkChainStatus chains = 5;
+  // The outcome of the last read-back of an object-storage sink; unset before the first.
+  AuditSinkVerification verification = 6;
+}
+
+// AuditSinkVerification is the outcome of reading an object-storage sink back
+// (docs/04-security.md, "Audit log").
+message AuditSinkVerification {
+  // When it ran.
+  google.protobuf.Timestamp time = 1;
+  // Whether every chain is intact: no gap and no problem.
+  bool intact = 2;
+  // The outcome per chain that has entries.
+  repeated AuditSinkChainVerification chains = 3;
+}
+
+// AuditSinkChainVerification is one chain's part of a read-back.
+message AuditSinkChainVerification {
+  // The chain: an org ID, or "instance".
+  string chain = 1;
+  // How many of the sink's checkpoints were read this time.
+  int32 checked = 2;
+  // The seq of the last checkpoint of the sink that verified; 0 if none has.
+  int64 checkpoint_seq = 3;
+  // When it was signed; unset if none has verified.
+  google.protobuf.Timestamp checkpoint_time = 4;
+  // What the database shipped and the sink lacks; empty if nothing.
+  string gap = 5;
+  // What is wrong: a chain that does not verify, a checkpoint that is not what its key says or
+  // not signed by a certified key, or a chain that does not match a checkpoint the sink holds;
+  // empty if nothing.
+  string problem = 6;
+  // Whether the chain is intact: no gap and no problem.
+  bool intact = 7;
 }
 
 // AuditSinkChainStatus is a sink's position on one chain.
@@ -242,4 +284,16 @@ message TestAuditSinkResponse {
   bool ok = 1;
   // Why not, as in the sink's last_error; empty when ok.
   string error = 2;
+}
+
+// VerifyAuditSinkRequest names a sink.
+message VerifyAuditSinkRequest {
+  // The sink's ID.
+  string audit_sink_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// VerifyAuditSinkResponse is the outcome of the read-back.
+message VerifyAuditSinkResponse {
+  // The outcome.
+  AuditSinkVerification verification = 1;
 }

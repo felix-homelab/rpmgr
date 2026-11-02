@@ -280,13 +280,21 @@ func call(ctx context.Context, c *http.Client, base string, sd protoreflect.Serv
 	return 0, strings.Join(out, "\n")
 }
 
-// orgRows is every row of an org in the org-owned tables, as text.
+// derivedTables are written by the controller's own periodic jobs (the alert evaluation runs every
+// alerts.Every) from the seeded rows, whoever calls it: a slow runner lets one run during the suite
+// and org A's rows then change without any request of Bob's.
+var derivedTables = map[string]bool{"alerts": true, "status_marks": true}
+
+// orgRows is every row of an org in the org-owned tables but the derived ones, as text.
 func orgRows(t *testing.T, db *store.DB, orgID string) string {
 	t.Helper()
 	var b strings.Builder
 	err := store.ReadTx(storetest.SystemCtx(t), db, func(tx *ent.Tx, _ store.Revision) error {
 		for _, table := range migrate.Tables {
 			if !slices.ContainsFunc(table.Columns, func(c *entschema.Column) bool { return c.Name == "org_id" }) {
+				continue
+			}
+			if derivedTables[table.Name] {
 				continue
 			}
 			rows, err := tx.QueryContext(storetest.SystemCtx(t), "SELECT * FROM "+table.Name+" WHERE org_id = $1 ORDER BY 1", orgID)

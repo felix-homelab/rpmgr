@@ -111,15 +111,25 @@ func (m *Metrics) opened(route string, start time.Time, res *tunnelv1.StreamResu
 	m.conns.WithLabelValues(route, result).Inc()
 }
 
-// stream returns the counters of a stream of route on transport and counts it open.
-func (m *Metrics) stream(route, transport string) (open prometheus.Gauge, in, out prometheus.Counter) {
+// stream counts a stream of route on transport open and returns its gauge.
+func (m *Metrics) stream(route, transport string) prometheus.Gauge {
 	if m == nil {
-		return nil, nil, nil
+		return nil
 	}
 	m.routes.Store(route, true)
-	open = m.streams.WithLabelValues(route, transport)
+	open := m.streams.WithLabelValues(route, transport)
 	open.Inc()
-	return open, m.bytes.WithLabelValues(route, "in"), m.bytes.WithLabelValues(route, "out")
+	return open
+}
+
+// payload returns the byte counters of route's streams: they count a stream's bytes from its
+// StreamResult with NO_ERROR on, not the framing of StreamOpen and StreamResult, so that a stream
+// that moved nothing shows zero.
+func (m *Metrics) payload(route string) (in, out prometheus.Counter) {
+	if m == nil {
+		return nil, nil
+	}
+	return m.bytes.WithLabelValues(route, "in"), m.bytes.WithLabelValues(route, "out")
 }
 
 // request counts an HTTP request of route answered with code.

@@ -87,6 +87,25 @@ connected**; a gateway that was created but not enrolled shows **not enrolled ye
 A controller that is down does not stop traffic: agents keep running their last configuration, and
 reconnect when it is back ([03](../../03-connections.md#failure-modes)).
 
+## The firewall of a gateway host
+
+Only for a gateway host that handed its `ufw` to rpmgr
+([Gateways](../gateways.md#the-hosts-firewall)). The group's page shows `Failed` in the **Firewall** column of a gateway, with the reason. On the
+host, `sudo systemctl status rpmgr-firewall.service rpmgr-firewall.path` and
+`sudo journalctl -u rpmgr-firewall.service` show what the helper did.
+
+| What the column says | Cause | Fix |
+|---|---|---|
+| `ufw is not installed; nothing was changed`, or `ufw is inactive; nothing was changed` | The host has no `ufw`, or it is not enabled | Install and enable `ufw`, then `sudo systemctl start rpmgr-firewall.service`; or switch the firewall off ([Gateways](../gateways.md#switch-it-off)) |
+| `outside the bounds, so never opened: …` | A pool reaches outside the range of `--firewall-max-range` (or the listeners) | Make the pool smaller, or raise the range in the boot file and in `/etc/rpmgr/firewall.json` together (run `rpmgr setup` or `rpmgr firewall install` again) and start the helper again |
+| `the firewall helper has not reported: is rpmgr-firewall.path enabled?` or `has not answered the ranges written at …` | The units are missing, disabled or stopped | `sudo systemctl enable --now rpmgr-firewall.path`, then `sudo systemctl start rpmgr-firewall.service` |
+| `the gateway cannot write the ranges it wants open to …` | The directory `/var/lib/rpmgr/firewall` is missing or not the service user's | `sudo rpmgr firewall install`, or `sudo mkdir -m 0750 /var/lib/rpmgr/firewall` and `sudo chown rpmgr:rpmgr /var/lib/rpmgr/firewall` |
+| `the bounds file is refused, so nothing was changed: …` | `/etc/rpmgr/firewall.json` is not root's, is writable by others, or is malformed | Write it again with `sudo rpmgr firewall install` |
+| `the group's port pools make … ranges, more than …` | More ranges than the helper reads | Join adjacent pools or delete pools you do not use |
+
+A host that is `Applied` can still be unreachable: the provider's firewall in front of the host is
+yours ([Gateways](../gateways.md#the-hosts-firewall)).
+
 ## Enrollment fails
 
 | Message or symptom | Cause | Fix |
@@ -126,6 +145,17 @@ Instance Admin ([Audit log](audit-log.md)). More on tokens is in
 | `The UDP buffers are below what QUIC asks for` | The host's UDP buffers were not raised | Apply `/etc/sysctl.d/60-rpmgr.conf` as the installer writes it ([Connector networking](../connectors/network.md#check-the-network)) |
 | The connector does not start: `HTTPS_PROXY is not an http://, socks5:// or socks5h:// URL with a host` | The proxy variable holds something the connector cannot use | Fix the variable in the service's drop-in ([Environment variables](../reference/environment.md#proxies)) |
 | Sessions fail behind a proxy that inspects TLS | The proxy replaces rpmgr's certificates | Exempt the gateways and the controller from inspection ([Connector networking](../connectors/network.md#proxies)) |
+
+## A tcp route accepts a connection but nothing comes back
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| The client connects, sends its first message and gets no answer, and `ss` on the client shows its bytes **not acknowledged** | The bytes never reached the gateway host: a firewall rule, a full connection-tracking table or a filter on the path. The kernel acknowledges what it receives whether or not rpmgr reads it, so this is not rpmgr | Check the gateway host's firewall and connection tracking as the runbook lists |
+| The client's send window falls to 0 and stays there | The gateway's kernel holds bytes that nobody reads | Compare `rpmgr_gateway_streams_open` and `rpmgr_route_bytes_total` for the route, and read the gateway's debug log for `stream stalled` ([Monitoring](monitoring.md)) |
+| The route's open streams stay above 0 and its bytes `in` or `out` do not move | The stream carries nothing: the target does not answer, or the connector cannot reach it | `sudo rpmgr diag transport` on the connector's host, and the target's own log |
+
+The steps, with the `ss` fields to read, are in
+[A tcp route accepts a connection but no data flows](../../10-operations.md#a-tcp-route-accepts-a-connection-but-no-data-flows).
 
 ## The API or the command line refuses
 

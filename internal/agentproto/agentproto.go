@@ -73,6 +73,10 @@ const (
 	// CapDrainEnd: the agent reports the old process of a hand-off (Status.draining) and ends its
 	// drain when asked (EndDrain), D160.
 	CapDrainEnd = "drain.end"
+	// CapFirewallRanges: the gateway hands the ranges of its group's port pools to the root
+	// firewall helper of its host and reports the helper's state (D152). Only a gateway whose
+	// boot file asks for it announces it; one without it gets no pool in its snapshot.
+	CapFirewallRanges = "firewall.ranges"
 )
 
 // Phase1 lists every capability of Phase 1 agents.

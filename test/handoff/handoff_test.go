@@ -118,8 +118,13 @@ func (l *lab) handoff(s scenario) (oldPID, newPID int) {
 	var out string
 	l.eventually(100*time.Second, "the outcome of the hand-off", func() error {
 		out = l.exec("lab", "cat", "/run/rpmgr/"+s.role+"/handoff.json")
-		if strings.Contains(out, `"running"`) {
-			return fmt.Errorf("still running: %s", out)
+		// The file still holds the previous hand-off's outcome until the signal is handled.
+		var o struct {
+			State  string `json:"state"`
+			OldPID int    `json:"old_pid"`
+		}
+		if err := json.Unmarshal([]byte(out), &o); err != nil || o.OldPID != oldPID || o.State == "running" {
+			return fmt.Errorf("no outcome of the hand-off from %d yet: %s", oldPID, out)
 		}
 		return nil
 	})
@@ -390,9 +395,29 @@ func (l *lab) backoff(t *testing.T) {
 	if len(at) < 3 || len(at) > 25 {
 		t.Fatalf("%d attempts in 80 s, want between 3 and 25", len(at))
 	}
-	if first, last := at[1]-at[0], at[len(at)-1]-at[len(at)-2]; last <= first {
+	if first, last := delaysGrew(at); last <= first {
 		t.Errorf("the delay between attempts did not grow: %d ms first, %d ms last", first, last)
 	}
+}
+
+// delaysGrew returns the longest delay between attempts in the first and in the second half of
+// the attempts. Several connectors redial the same gateway and the attempts are merged, so two
+// neighbouring attempts may come from two connectors; one delay is noise, the longest delay of a
+// half is not. Needs at least three attempts.
+func delaysGrew(at []int64) (first, last int64) {
+	gaps := make([]int64, len(at)-1)
+	for i := range gaps {
+		gaps[i] = at[i+1] - at[i]
+	}
+	half := len(gaps) / 2
+	for i, g := range gaps {
+		if i < half {
+			first = max(first, g)
+		} else {
+			last = max(last, g)
+		}
+	}
+	return first, last
 }
 
 func grep(text, what string) string {

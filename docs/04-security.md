@@ -1510,6 +1510,57 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
 - **Containers** restart without a hand-off: the process is the container's first process
   ([D149](14-open-decisions.md#engineering)).
 
+### Host firewall for port pools (Phase 2)
+
+A gateway host may hand its `ufw` to rpmgr, so that the ports of the group's pools are opened and
+closed without a manual step ([D152](14-open-decisions.md#engineering)). Switching it on gives rpmgr
+no new power over the host beyond one list of ports: the gateway stays unprivileged, as the
+updater's agent does ([Over-the-air updates](#over-the-air-updates)).
+
+- **The gateway only writes a file.** It writes the ranges it wants open, derived from the pools of
+  its group in the snapshot, to `/var/lib/rpmgr/firewall/desired.json`, which the service user
+  owns. The file is a request, never an instruction: it names no command, no rule text and no
+  action other than "these ranges, tcp or udp".
+- **A root-owned helper applies it.** A path unit starts the oneshot `rpmgr-firewall.service`,
+  which runs `rpmgr firewall apply` as root. The helper reads the desired file without following a
+  symbolic link, as a regular file of at most the size limit of
+  [03](03-connections.md#timeouts-keepalive-and-backoff), parses it strictly (no unknown field, no
+  second value, ports 1 to 65535, protocol `tcp` or `udp` only), and refuses anything else. A file
+  it refuses changes no rule.
+- **Bounds the gateway cannot change.** The helper opens only ports inside the bounds in
+  `/etc/rpmgr/firewall.json`, which root owns: the listeners of the gateway's boot file
+  (80/tcp, 443/tcp and 443/udp by default) and an operator-set maximum range for pools. The file is
+  written by `rpmgr setup --firewall ufw` and is refused unless it is a regular file, owned by
+  root, that neither its group nor other users may write, in a directory, and in every directory above it up to `/`, that follows the same
+  rule (no sticky-bit exception), as `install.json` and the policy file are. A range, or the part of a range, outside the
+  maximum range is never opened; it is reported as refused. So a compromised gateway, which can
+  write only the desired file, cannot open SSH, a database or any port outside the maximum range.
+  Nor can it stop the helper by rewriting the file in a flood: the units have no start or trigger
+  limit, and a run that changes nothing is cheap ([10](10-operations.md#host-firewall-helper-phase-2)).
+- **Rules it owns.** Every rule the helper adds carries the comment `rpmgr`. It lists the rules of
+  `ufw`, adds the missing ones, and deletes only a rule that carries that comment, by its number
+  and after listing the rules again, never by its text, so an identical rule of the operator's
+  without the comment is never deleted. Rules of others are never changed. It removes all its own
+  rules when it is switched off (the bounds file names no backend, or is gone) and at
+  decommission (`rpmgr leave` on a gateway). A comment is no secret and no authorisation: only
+  root can write `ufw`'s rules, and the marker only tells the helper which are its own.
+- **No shell, no free text.** The helper runs `ufw` with an argument vector built from integers
+  and the two protocol names; nothing from the desired file reaches a command line as text.
+- **Absent or inactive.** Without `ufw` installed or active the helper changes nothing and writes
+  the reason to its status file `/run/rpmgr-firewall/status.json` (`off`, `applied`, `failed`),
+  which the gateway reads and shows ([10](10-operations.md#host-firewall-helper-phase-2)).
+- **Reporting.** The gateway reads the status file and reports it in its `Status` to the controller,
+  which shows it in the gateway's status. It trusts the file for display only, as it never acts on
+  it: an unreadable or oversized file, one the helper has not refreshed for a changed desired file,
+  and a missing one are reported as `failed` with that reason, so that a stopped or removed helper
+  is seen, not mistaken for `applied` ([03](03-connections.md#timeouts-keepalive-and-backoff)).
+- **Out of scope.** The provider's firewall in front of the host, rules for the gateway's admin
+  listener (which never listens on a public address) and firewalls other than `ufw`.
+
+Security regression tests ([12](12-testing-and-quality.md#security-testing)):
+`TestFirewall_OnlyBoundedPortsOpened`, `TestFirewall_BoundsFileMustBeRootOwned` and
+`TestFirewall_OnlyOwnRulesTouched` (slice 2) and `TestFirewall_GatewayWritesRangesOnly` (slice 3).
+
 ## Webhooks and the egress guard (Phase 2)
 
 - **Who.** An org's endpoints are managed by its Owners and Admins (`webhooks.write`); instance
@@ -1693,14 +1744,34 @@ the running process to a new one ([03](03-connections.md#restarts-with-socket-ha
     returns no version ID (the bucket is not versioned, so it cannot lock), a second write that
     succeeds, and a delete that succeeds, each refuse the sink with the reason; a store that cannot
     be reached refuses it as well, and saves nothing. Each save, update and test leaves one probe
-    object, which stays in the bucket until its lock has ended. A sink whose settings and secret key did not change is not checked again
-    when it is saved. Verification can read the sink back and finds a chain rewritten under a
-    checkpoint it holds. The client (`internal/objstore`) signs with AWS Signature Version 4 and
+    object, which stays in the bucket until its lock has ended. A sink whose settings and secret
+    key did not change is not checked again when it is saved. **Verification** reads the sink back: `VerifyAuditSink`, for the Instance
+    Admin with a step-up, or `rpmgr verify audit --sink <name>`. For each chain it verifies the
+    chain locally as for any verification, lists the sink's objects, and reports a **gap**: a
+    checkpoint the database holds, up to the sink's cursor, that the sink does not, and entry seqs
+    missing between the sink's first and last entry or below the cursor, or below the newest
+    checkpoint the sink holds. It then reads every checkpoint the sink holds, every time, and checks
+    that each names a chain and seq that its key says, carries a valid signature of a key the CA
+    certified for audit checkpoints at its time, and has the head hash of the entry the database
+    holds at its seq. A checkpoint that fails any of these is reported with its seq, so a chain that
+    was rewritten under a checkpoint the sink holds, or cut below one, is found even if the
+    database's own checkpoints were removed with it. A checkpoint older than the entries the
+    retention left is counted as checked, not compared. A sink that gets entries is also read for
+    the entries after the newest checkpoint it holds, which no checkpoint covers: each object must
+    hold the bytes the database's entry ships as, and each object needs an entry in the database;
+    entries before that checkpoint are covered by it through the hash chain. An entry that was not
+    shipped yet is covered by nothing outside the database until it is. Each sink's status keeps the
+    outcome of the last verification, when it ran and, per chain, the last checkpoint that verified
+    and any gap or problem, as output only: a verification never takes its starting point or any
+    trust from it, as whoever can write the database can write it too, and each one starts from the
+    first checkpoint. A verification that does not reach the sink, or runs past its limit
+    ([03](03-connections.md#timeouts-keepalive-and-backoff)), is an error of the call and replaces
+    nothing. The client (`internal/objstore`) signs with AWS Signature Version 4 and
     reads the access key from a file that neither group nor others can read, or from memory
     (unsealed from the KEK by the caller); the secret key never appears in a log line or an error.
     The endpoint is `https` (TLS 1.2 or later, certificate verified against the system roots or the
     sink's CA bundle), or `http` on a loopback address only; a redirect is never followed, so a
-    signature does not leave for another host; `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` apply. A
+    signature does not leave for another host; a sink's client uses no proxy from the environment. A
     conditional create that finds the key taken is not an error of the store but the answer `exists`
     (412), and a refusal of Object Lock is any 4xx (AWS answers 403, SILO 400). Limits are in
     [03](03-connections.md#timeouts-keepalive-and-backoff).

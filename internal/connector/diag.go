@@ -13,6 +13,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 
+	tunnelv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/tunnel/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/tunnel"
@@ -23,8 +24,10 @@ type Probe struct {
 	Gateway, Endpoint string
 	Transport         string        // TransportQUIC or TransportH2
 	Handshake         time.Duration // until the session was up
-	RTT               time.Duration // QUIC's smoothed round-trip time after the handshake
-	Err               error
+	// RTT is QUIC's smoothed round-trip time after the handshake; on the TCP transport the round
+	// trip of one Ping and its Pong. Zero when it could not be measured.
+	RTT time.Duration
+	Err error
 }
 
 // Diagnosis is what `rpmgr diag transport` found (docs/10-operations.md, "UDP blocked or
@@ -107,10 +110,46 @@ func probe(ctx context.Context, gw, ep, transport string, dial func(context.Cont
 	if err == nil {
 		if q, ok := s.(*tunnel.QUICSession); ok {
 			p.RTT = q.RTT()
+		} else {
+			p.RTT = pingRTT(ctx, s, now)
 		}
 		_ = s.Close()
 	}
 	return p
+}
+
+// pingRTT measures a session that has no round-trip time of its own, as reverse HTTP/2 has none
+// before the first Ping of a running session goes round, 15 s in: it opens the control stream with
+// an empty SessionHello, as a connector without ready routes does, waits for the SessionWelcome,
+// and times one Ping against its Pong. The session is the diagnosis's own and ends right after. It
+// returns 0 when any step fails or ctx ends first.
+func pingRTT(ctx context.Context, s tunnel.Session, now func() time.Time) time.Duration {
+	control, err := s.Control(ctx)
+	if err != nil {
+		return 0
+	}
+	stop := context.AfterFunc(ctx, control.Abort)
+	defer stop()
+	if err := tunnel.WriteMessage(control, &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Hello{Hello: &tunnelv1.SessionHello{}}}); err != nil {
+		return 0
+	}
+	if _, err := readWelcome(ctx, control); err != nil {
+		return 0
+	}
+	const seq = 1
+	start := now()
+	if err := tunnel.WriteMessage(control, &tunnelv1.SessionMessage{Msg: &tunnelv1.SessionMessage_Ping{Ping: &tunnelv1.Ping{Seq: seq}}}); err != nil {
+		return 0
+	}
+	for {
+		msg := &tunnelv1.SessionMessage{}
+		if err := tunnel.ReadMessage(control, msg); err != nil {
+			return 0
+		}
+		if pong := msg.GetPong(); pong != nil && pong.GetSeq() == seq {
+			return now().Sub(start)
+		}
+	}
 }
 
 // interfaceTowards returns the interface the kernel picks to reach ep and its MTU.

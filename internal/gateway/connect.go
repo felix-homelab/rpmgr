@@ -177,7 +177,7 @@ func (t *TCPRoutes) handleConnect(c net.Conn, pl *portListener, table *connectTa
 		return
 	}
 	defer release()
-	st, err := openStream(ctx, t.o.Sessions, t.o.Revision, c, r.ID, "")
+	st, _, err := openStream(ctx, t.o.Sessions, t.o.Revision, c, r.ID, "")
 	if err != nil {
 		t.o.Logger.Debug("no stream for a CONNECT", "route", r.ID, "error", err)
 		refuseConnect(conn, connectRefusal{status: http.StatusServiceUnavailable, header: "Retry-After: " + strconv.Itoa(httpRetryAfter) + "\r\n"})

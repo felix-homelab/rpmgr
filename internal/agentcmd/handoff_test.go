@@ -148,19 +148,7 @@ func TestHandoffCommand(t *testing.T) {
 	})
 	t.Run("timeout", func(t *testing.T) {
 		// The signal is taken but the hand-off never ends.
-		hung := func(t *testing.T) {
-			// Its own trigger, ended with the subtest: the hand-off hangs until then.
-			ctx, cancel := context.WithCancel(context.Background())
-			stop := (&handoff.Trigger{Dir: dir, Handoff: func(ctx context.Context) (*handoff.Child, error) {
-				<-ctx.Done()
-				return nil, ctx.Err()
-			}}).Start(ctx)
-			t.Cleanup(func() {
-				cancel()
-				stop()
-				time.Sleep(100 * time.Millisecond) // the outcome of the ended hand-off
-			})
-		}
+		hung := func(t *testing.T) { hangingTrigger(t, dir) }
 		hung(t)
 		began := time.Now()
 		_, err := cmd(200 * time.Millisecond)
@@ -169,19 +157,7 @@ func TestHandoffCommand(t *testing.T) {
 		}
 	})
 	t.Run("cancelled", func(t *testing.T) {
-		hung := func(t *testing.T) {
-			// Its own trigger, ended with the subtest: the hand-off hangs until then.
-			ctx, cancel := context.WithCancel(context.Background())
-			stop := (&handoff.Trigger{Dir: dir, Handoff: func(ctx context.Context) (*handoff.Child, error) {
-				<-ctx.Done()
-				return nil, ctx.Err()
-			}}).Start(ctx)
-			t.Cleanup(func() {
-				cancel()
-				stop()
-				time.Sleep(100 * time.Millisecond) // the outcome of the ended hand-off
-			})
-		}
+		hung := func(t *testing.T) { hangingTrigger(t, dir) }
 		hung(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		time.AfterFunc(100*time.Millisecond, cancel)
@@ -279,4 +255,35 @@ func TestStartHandoffs(t *testing.T) {
 		}
 		finish(nil)
 	}
+}
+
+// hangingTrigger starts a trigger whose hand-off hangs until the subtest ends. Its cleanup
+// waits for the outcome of the ended hand-off: a fixed sleep let the write land in the
+// temporary directory while it was removed, on a slow runner.
+func hangingTrigger(t *testing.T, dir string) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{}, 1)
+	stop := (&handoff.Trigger{Dir: dir, Handoff: func(ctx context.Context) (*handoff.Child, error) {
+		started <- struct{}{}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}}).Start(ctx)
+	t.Cleanup(func() {
+		cancel()
+		stop()
+		select {
+		case <-started:
+		case <-time.After(250 * time.Millisecond): // the signal never came: nothing runs
+			return
+		}
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if o, err := handoff.ReadOutcome(dir); err == nil && o.State != handoff.StateRunning {
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		t.Error("the ended hand-off recorded no outcome")
+	})
 }

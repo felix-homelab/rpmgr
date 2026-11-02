@@ -14,6 +14,7 @@ import { Field } from "@/components/field";
 import { LinesField, trimmed } from "@/components/lines-field";
 import { canStreamLogs, LiveLogButton } from "@/components/live-log";
 import { DrainingLine } from "@/components/draining";
+import { FirewallChip } from "@/components/firewall";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
@@ -193,7 +194,7 @@ export function GatewayGroupPage() {
         {members.length === 0 ? <p className="text-sm text-muted-foreground">{t("gateways.noGateways")}</p> : (
           <Table framed={false}>
             <THead>
-              <tr>{["name", "slot", "endpoints", "state", "version", "update", "lastSeen", "actions"].map((c) => <TH key={c}>{t(`gateways.gw.${c}`)}</TH>)}</tr>
+              <tr>{["name", "slot", "endpoints", "state", "firewall", "version", "update", "lastSeen", "actions"].map((c) => <TH key={c}>{t(`gateways.gw.${c}`)}</TH>)}</tr>
             </THead>
             <tbody>
               {members.map((g) => (
@@ -205,6 +206,7 @@ export function GatewayGroupPage() {
                     {g.wssHostname && <div className="text-muted-foreground">{t("gateways.gw.wssValue", { name: g.wssHostname })}</div>}
                   </TD>
                   <TD><GatewayChip gateway={g} /></TD>
+                  <TD><FirewallChip gateway={g} /></TD>
                   <TD>{g.status?.version}</TD>
                   <TD>
                     <span className="flex flex-wrap items-center gap-2">
@@ -238,7 +240,7 @@ export function GatewayGroupPage() {
           <Button size="sm" variant="outline" className="justify-self-start" onClick={() => setEditing("new")}><Plus aria-hidden="true" />{t("gwActions.addButton")}</Button>
         )}
       </Card>
-      <PortPools orgId={org.orgId} groupId={group.id} />
+      <PortPools orgId={org.orgId} groupId={group.id} gateways={members} />
       <GatewayPages groupId={group.id} onDone={(w) => void done(w)} />
       <Card title={t("gateways.settings")}>
         <GroupForm key={group.etag} orgId={org.orgId} group={group} />

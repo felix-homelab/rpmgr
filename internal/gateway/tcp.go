@@ -427,7 +427,7 @@ func (t *TCPRoutes) handle(c net.Conn, r *TCPRoute) {
 // bandwidth.
 func carry(ctx context.Context, s *Sessions, rev func() *agentv1.Revision, logger *slog.Logger, c net.Conn, routeID, sni string,
 	idle time.Duration, lim *RouteLimit) {
-	st, err := openStream(ctx, s, rev, c, routeID, sni)
+	st, res, err := openStream(ctx, s, rev, c, routeID, sni)
 	if err != nil {
 		logger.Debug("no stream for a connection", "route", routeID, "error", err)
 		abort(c)
@@ -435,15 +435,18 @@ func carry(ctx context.Context, s *Sessions, rev func() *agentv1.Revision, logge
 	}
 	started := time.Now()
 	logger.Debug("stream opened", "route", routeID)
+	stopWatch := watchStall(ctx, logger, st, routeID, res.GetTargetId(), stallAfter)
 	toClient, fromClient := relayConn(st, c, idle, lim)
+	stopWatch()
 	if logger.Enabled(ctx, slog.LevelDebug) {
 		logger.Debug("stream closed", "route", routeID, "duration", time.Since(started).Round(time.Millisecond),
 			"bytes_from_client", fromClient, "bytes_to_client", toClient)
 	}
 }
 
-// openStream opens a stream for a route on one of its connectors' sessions, for the connection c.
-func openStream(ctx context.Context, s *Sessions, rev func() *agentv1.Revision, c net.Conn, routeID, sni string) (tunnel.Stream, error) {
+// openStream opens a stream for a route on one of its connectors' sessions, for the connection c,
+// and returns it with its StreamResult.
+func openStream(ctx context.Context, s *Sessions, rev func() *agentv1.Revision, c net.Conn, routeID, sni string) (tunnel.Stream, *tunnelv1.StreamResult, error) {
 	open := &tunnelv1.StreamOpen{Kind: tunnelv1.StreamKind_STREAM_KIND_TCP, RouteId: routeID, Sni: sni}
 	if rev != nil {
 		open.SnapshotRev = rev()
@@ -456,11 +459,11 @@ func openStream(ctx context.Context, s *Sessions, rev func() *agentv1.Revision, 
 		ap := a.AddrPort()
 		open.DstIp, open.DstPort = ap.Addr().Unmap().AsSlice(), uint32(ap.Port())
 	}
-	st, code, err := s.OpenStream(ctx, open)
-	if err == nil && code != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
-		err = fmt.Errorf("gateway: stream refused: %v", code)
+	st, res, err := s.OpenStreamResult(ctx, open)
+	if err == nil && res.GetCode() != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
+		err = fmt.Errorf("gateway: stream refused: %v", res.GetCode())
 	}
-	return st, err
+	return st, res, err
 }
 
 // relayConn relays c over the stream st, within the route's bandwidth lim, closing c after the
