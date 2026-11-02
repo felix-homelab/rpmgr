@@ -1029,8 +1029,9 @@ and streams that stall hold it until they end ([D161](14-open-decisions.md#engin
 - **The bound.** A connector holds at most a bound of open connections to one target address, for
   TCP streams and health checks together. The bound is the route's `max_connections`, the whole of
   it and not a gateway's share, on `tcp`, `tcp_udp` and `tls_passthrough` routes; a route without
-  that limit, and an `http` route, whose limit counts requests while its streams are pooled, take
-  the connector's default in the timeout table. A UDP flow is not counted. A route that serves a
+  that limit takes the connector's default in the timeout table. The streams of an `http` route
+  are counted, so that checks and the status see them, but never refused: its limit counts
+  requests while its streams are pooled, so no bound applies to them. A UDP flow is not counted. A route that serves a
   service with a lower allowance than the default sets `max_connections` to it. The bound is per
   address, so a second target of the route has its own, and routes that name one address share the
   count, each judging it by its own bound.
@@ -1045,11 +1046,13 @@ and streams that stall hold it until they end ([D161](14-open-decisions.md#engin
   taken is not run and is **not decided**: it changes no state and no count, and the target stays as
   it was (healthy, unhealthy, or unknown). A check that does run but fails with a refusal, a reset,
   a closed connection or a timeout while streams hold connections to the target is not decided
-  either, because such a target may be refusing the check because of them. Any other failure, such
-  as a status outside the range, counts as before. With no stream held, every failure counts, so a
-  target that refuses everything is unhealthy. Not deciding while streams are held has a cost: a
-  target that went away and kept half-open connections is found unhealthy only once they end, which
-  the idle timeout bounds ([Timeouts](#timeouts-keepalive-and-backoff)).
+  either, because such a target may be refusing the check because of them. Only streams count as held: another check's slot, as when two routes check one address, never makes a check
+  undecided. Any other failure, such as a status outside the range, counts as before. With no
+  stream held, every failure counts, so a target that refuses everything is unhealthy. Not
+  deciding must not hide a dead target from a client that keeps a stream open, so after **6 such
+  checks in a row** that ran and failed, the next failure counts as any other; a check that was
+  not run for want of a slot neither adds to that count nor resets it, and a result that decides
+  resets it.
 - **What the status says.** When a check fails or is not decided while streams hold connections to
   the target, the target's status and the route's `not_ready(targets_unhealthy)` detail add that
   the connector holds that many connections to the target for streams, which may use up the
@@ -1541,7 +1544,7 @@ sequenceDiagram
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |
 | Per-route HTTP timeouts (Phase 2) | upstream response header 1 s to 1 h; upstream idle 1 s to 1 h; 0 = the HTTP server row above | [R] Slow reports and long polls fit; a pooled connection outliving a backend's keep-alive is avoided ([HTTP routes](#http-routes)) |
 | Active health check (Phase 2) | interval 10 s by default, from 2 s to 1 h; timeout 5 s by default, or 1 s below a shorter interval, below the interval and at most 1 min; unhealthy after 3 failures in a row, healthy after 2 passes, each threshold from 1 to 10; an HTTP check reads at most 16 KiB of status line and header and 64 KiB of the body; a connector runs at most 64 checks at once, over all its routes, the others waiting their turn | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
-| Target connection bound (Phase 2, [D161](14-open-decisions.md#engineering)) | open connections a connector holds to one target address for TCP streams and checks together: the route's `max_connections` on a `tcp`, `tcp_udp` or `tls_passthrough` route that sets one, else **1 024**; a stream over it gets `OVERLOADED`, a check over it is not run and not decided | [R] A service that allows each peer a handful of connections cannot be locked out by stalled streams or by the connector's own checks; 1 024 is far above what one target serves in practice, so the default refuses only a runaway ([Target connection bound](#target-connection-bound-phase-2)) |
+| Target connection bound (Phase 2, [D161](14-open-decisions.md#engineering)) | open connections a connector holds to one target address for TCP streams and checks together: the route's `max_connections` on a `tcp`, `tcp_udp` or `tls_passthrough` route that sets one, else **1 024**, never for an `http` route; a stream over it gets `OVERLOADED`, a check over it is not run and not decided; **6** undecided checks in a row, run and failed with streams held, and the next failure counts | [R] A service that allows each peer a handful of connections cannot be locked out by stalled streams or by the connector's own checks; 1 024 is far above what one target serves in practice, so the default refuses only a runaway ([Target connection bound](#target-connection-bound-phase-2)) |
 | TCP route idle timeout (Phase 2, [D161](14-open-decisions.md#engineering)) | **900 s** by default for a `tcp` or `tcp_udp` route's TCP connections, set per route from 1 s to 604 800 s, 0 for none; the default applies when a route is created or its timeout is cleared, and a route keeps the value it has | [R] A connection that never sends a byte, or whose peer vanished, no longer holds a target's connection for an hour; 15 minutes outlasts a typical quiet interactive session, and a route with longer quiet periods sets its own value (D161) |
 | Passive health (Phase 2) | 3 refused or timed-out stream opens in a row; back-off 10 s, doubling to 60 s; one half-open try after it | [R] A target that refuses is passed over at once and tried again soon |
 | Route limits (Phase 2) | an HTTP request over the connection limit gets **503** with `Retry-After: 1`, one over a request rate **429** with `Retry-After` the seconds until it may come again, at least 1; the route's total rate allows a second's worth of requests at once; a bandwidth bucket holds 100 ms of the rate, at least 64 KiB, the largest UDP payload, and a connection moves at most 100 ms of the rate, at least 512 bytes, at a time | [R] A client tries again soon, as a slot frees when a request ends; a datagram always fits the bucket, and a connection under a low limit moves on in small steps rather than stalling ([Route limits](#route-limits-phase-2)) |

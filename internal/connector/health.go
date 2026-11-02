@@ -112,6 +112,8 @@ type targetHealth struct {
 	// note names the likely cause when streams hold connections to the target: set by a check that
 	// failed or was not decided while they did, cleared by the next that does neither.
 	note string
+	// undecided counts the checks in a row that ran and were not decided because of held streams.
+	undecided int
 }
 
 // observe records one check of the target and reports whether its health changed.
@@ -242,9 +244,14 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 			if errors.As(results[i], &held) {
 				changed := hs[tg.ID].note != held.note()
 				hs[tg.ID].note = held.note()
-				if held.undecided {
+				if held.ran && held.undecided {
+					hs[tg.ID].undecided++
+				}
+				if held.undecided && (!held.ran || hs[tg.ID].undecided < maxUndecided) {
 					// Not decided: the streak, the state and the last failure stay (D161); only what
-					// the status says of an unknown or unhealthy target may change.
+					// the status says of an unknown or unhealthy target may change. After maxUndecided
+					// such checks in a row the failure counts, so a stream that stays open cannot keep
+					// a dead target healthy.
 					if changed && (hs[tg.ID].unknown || hs[tg.ID].unhealthy) {
 						targets = append(targets, targetStatus(tg.ID, hs[tg.ID]))
 					}
@@ -253,6 +260,7 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 			} else {
 				hs[tg.ID].note = ""
 			}
+			hs[tg.ID].undecided = 0
 			var b *checkBlocked
 			blocked := ""
 			if errors.As(results[i], &b) {
@@ -397,17 +405,17 @@ func (t *Targets) check(ctx context.Context, r Route, tg Target) error {
 	} else if c.Port != 0 {
 		addr = net.JoinHostPort(tg.Host, strconv.Itoa(int(c.Port)))
 	}
-	if !t.conns.acquire(addr, r.maxTargetConns()) {
-		return &checkHeld{err: errTargetAtBound, held: t.conns.held(addr), undecided: true}
+	if !t.conns.acquire(addr, r.maxTargetConns(), false) {
+		return &checkHeld{err: errTargetAtBound, held: t.conns.streams(addr), undecided: true}
 	}
-	defer t.conns.release(addr)
+	defer t.conns.release(addr, false)
 	err := t.checkTarget(ctx, r, tg, network, addr)
 	var blocked *checkBlocked
 	if err == nil || errors.As(err, &blocked) {
 		return err
 	}
-	if streams := t.conns.held(addr) - 1; streams > 0 { // the check's own slot is not a stream
-		return &checkHeld{err: err, held: streams, undecided: connFailure(err)}
+	if streams := t.conns.streams(addr); streams > 0 { // other checks' slots are not streams
+		return &checkHeld{err: err, held: streams, undecided: connFailure(err), ran: true}
 	}
 	return err
 }

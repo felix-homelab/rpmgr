@@ -4,9 +4,12 @@ package connector_test
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -150,6 +153,7 @@ func TestTargetBound_StalledStreamsKeepRouteReady(t *testing.T) {
 // closed connection, which decides nothing; the target stays healthy and its checks go on.
 func TestTargetBound_RefusedCheckWhileStreamsHeldIsNotDecided(t *testing.T) {
 	const limit = 3
+	connector.SetMaxUndecided(t, 1000) // this test is about the undecided results themselves
 	svc := startPerSourceTarget(t, limit)
 	tg := svc.target("tg_grd")
 	e := newTargets(allowLoopback(t, tg.Port))
@@ -307,5 +311,155 @@ func TestApplier_RouteBoundReachesTargets(t *testing.T) {
 	}
 	if c1, c2 := open("rt_free"), open("rt_free"); c1 != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR || c2 != tunnelv1.ResultCode_RESULT_CODE_NO_ERROR {
 		t.Errorf("two streams of a route without a bound: %s, %s", c1, c2)
+	}
+}
+
+// failingStream is a stream whose writes fail, as one whose gateway went away before the answer.
+type failingStream struct{ tunnel.Stream }
+
+func (failingStream) Write([]byte) (int, error) { return 0, errors.New("the gateway is gone") }
+
+// TestTargetBound_ReleasePaths: the slot of a stream goes back however the stream ends: when the
+// answer cannot be written, when the PROXY header cannot be written, and when the stream ends
+// after its route was changed or removed.
+func TestTargetBound_ReleasePaths(t *testing.T) {
+	svc := startService(t, echoService)
+	tg := target("127.0.0.1", svc.port())
+	addr := tg.String()
+	e := newTargets(allowLoopback(t, svc.port()))
+	t.Cleanup(e.Close)
+	e.Set([]connector.Route{{ID: "rt_a", Targets: []connector.Target{tg}, MaxTargetConns: 1}})
+
+	st, gw := streamPair(t)
+	_ = gw.Close()
+	e.Handle(context.Background(), "gw_test", failingStream{st}, tcpOpen("rt_a")) // returns once the stream is done
+	if n := e.HeldConns(addr); n != 0 {
+		t.Fatalf("held %d after the answer could not be written, want 0", n)
+	}
+
+	// A target that resets at once: the PROXY header write, or the relay after it, fails; no slot stays.
+	rst := startService(t, func(c net.Conn) {
+		_ = c.(*net.TCPConn).SetLinger(0)
+		_ = c.Close()
+	})
+	proxied := target("127.0.0.1", rst.port())
+	proxied.ProxyProtocol = "v2"
+	e.Set([]connector.Route{{ID: "rt_a", Targets: []connector.Target{tg}, MaxTargetConns: 1},
+		{ID: "rt_p", Targets: []connector.Target{proxied}, MaxTargetConns: 1}})
+	e.cur.Store(allowLoopback(t, svc.port(), rst.port()))
+	for range 10 {
+		_, gw := e.handleResult(t, tcpOpen("rt_p"))
+		_ = gw.Close()
+	}
+	eventually(t, "a slot stayed taken after a target reset", func() bool { return e.HeldConns(proxied.String()) == 0 })
+
+	// Streams that run while the route is changed and then removed keep the count right.
+	held := e.stall(t, "rt_a", 1)
+	e.Set([]connector.Route{{ID: "rt_a", Targets: []connector.Target{tg}, MaxTargetConns: 2}})
+	if n := e.HeldConns(addr); n != 1 {
+		t.Fatalf("held %d after a reload with a stream running, want 1", n)
+	}
+	held = append(held, e.stall(t, "rt_a", 1)...)
+	if code, gw := e.handle(t, tcpOpen("rt_a")); code != tunnelv1.ResultCode_RESULT_CODE_OVERLOADED {
+		_ = gw.Close()
+		t.Fatalf("a third stream under the new bound of 2: %s", code)
+	}
+	e.Set(nil) // the route is removed; its streams run on
+	if n := e.HeldConns(addr); n != 2 {
+		t.Fatalf("held %d after the route was removed with two streams running, want 2", n)
+	}
+	for _, gw := range held {
+		_ = gw.Close()
+	}
+	eventually(t, "the slots stayed taken after the streams of a removed route ended", func() bool { return e.HeldConns(addr) == 0 })
+}
+
+// TestTargetBound_HTTPStreamsCountedNotRefused: an http route's streams are pooled and its limit
+// counts requests, so the bound never refuses them, however low the route's value; a tcp route
+// with the same value refuses.
+func TestTargetBound_HTTPStreamsCountedNotRefused(t *testing.T) {
+	svc := startService(t, echoService)
+	tg := target("127.0.0.1", svc.port())
+	e := newTargets(allowLoopback(t, svc.port()))
+	t.Cleanup(e.Close)
+	e.Set([]connector.Route{{ID: "rt_web", HTTP: true, Targets: []connector.Target{tg}, MaxTargetConns: 1},
+		{ID: "rt_tcp", Targets: []connector.Target{tg}, MaxTargetConns: 1}})
+	held := e.stall(t, "rt_web", 3)
+	t.Cleanup(func() {
+		for _, gw := range held {
+			_ = gw.Close()
+		}
+	})
+	if n := e.HeldConns(tg.String()); n != 3 {
+		t.Errorf("the connector counts %d http streams, want 3", n)
+	}
+	if code, gw := e.handle(t, tcpOpen("rt_tcp")); code != tunnelv1.ResultCode_RESULT_CODE_OVERLOADED {
+		_ = gw.Close()
+		t.Errorf("a tcp stream beside the http ones: %s, want OVERLOADED", code)
+	}
+}
+
+// TestTargetBound_OverlappingChecksOfDeadTargetCount: two routes check one address that does not
+// answer, in step; each check's slot is not a stream, so neither makes the other undecided and the
+// target becomes unhealthy on both.
+func TestTargetBound_OverlappingChecksOfDeadTargetCount(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	var conns []net.Conn
+	var mu sync.Mutex
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			conns = append(conns, c) // accepted and never answered: a host that went away
+			mu.Unlock()
+		}
+	}()
+	t.Cleanup(func() {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, c := range conns {
+			_ = c.Close()
+		}
+	})
+	port := uint16(ln.Addr().(*net.TCPAddr).Port) //nolint:gosec // G115: a port
+	a := connector.Target{ID: "tg_a", Host: "127.0.0.1", Port: port}
+	b := connector.Target{ID: "tg_b", Host: "127.0.0.1", Port: port}
+	check := &connector.HealthCheck{HTTP: true, Path: "/", StatusMin: 200, StatusMax: 399, Interval: 30 * time.Millisecond,
+		Timeout: 150 * time.Millisecond, Unhealthy: 2, Healthy: 1}
+	e := newTargets(allowLoopback(t, port))
+	t.Cleanup(e.Close)
+	e.Set([]connector.Route{{ID: "rt_1", Targets: []connector.Target{a}, Check: check}, {ID: "rt_2", Targets: []connector.Target{b}, Check: check}})
+	eventually(t, "a dead target checked by two routes never became unhealthy", func() bool { return e.unhealthy(a.ID) && e.unhealthy(b.ID) })
+}
+
+// TestTargetBound_OpenStreamDoesNotKeepDeadTargetHealthy: a stream that stays open, as a client
+// sending a byte now and then does, makes the checks a target refuses undecided only for so long: the
+// maxUndecided-th in a row counts, and the target is unhealthy.
+func TestTargetBound_OpenStreamDoesNotKeepDeadTargetHealthy(t *testing.T) {
+	connector.SetMaxUndecided(t, 3)
+	svc := startPerSourceTarget(t, 1)
+	tg := svc.target("tg_one")
+	e := newTargets(allowLoopback(t, tg.Port))
+	t.Cleanup(e.Close)
+	check := capCheck()
+	check.Unhealthy = 1 // the check interval stays long, so that a check rarely meets the stream opening
+	e.Set([]connector.Route{{ID: "rt_x", Targets: []connector.Target{tg}, Check: check, MaxTargetConns: 100}})
+	e.healthy(t, tg.ID)
+	held := e.stall(t, "rt_x", 1) // the target now refuses every other connection, its checks'
+	t.Cleanup(func() {
+		for _, gw := range held {
+			_ = gw.Close()
+		}
+	})
+	eventually(t, "refused checks never counted while a stream stayed open", func() bool { return e.unhealthy(tg.ID) })
+	if st := e.statusOf(tg.ID); !strings.Contains(st.GetDetail(), "holds 1 connections") {
+		t.Errorf("the status %q does not name the open stream", st.GetDetail())
 	}
 }

@@ -25,19 +25,19 @@ func TestTargetConns_BoundAndRelease(t *testing.T) {
 	c := newTargetConns()
 	var admitted []bool
 	for range 3 {
-		admitted = append(admitted, c.acquire("a:1", 2))
+		admitted = append(admitted, c.acquire("a:1", 2, true))
 	}
 	if !slices.Equal(admitted, []bool{true, true, false}) {
 		t.Fatalf("a bound of 2 admitted %v, want exactly the first two", admitted)
 	}
-	if !c.acquire("b:1", 2) {
+	if !c.acquire("b:1", 2, true) {
 		t.Error("another address shares the bound")
 	}
-	if c.acquire("a:1", 0) {
+	if c.acquire("a:1", 0, true) {
 		t.Error("a bound of 0 admitted")
 	}
-	c.release("a:1")
-	if c.held("a:1") != 1 || !c.acquire("a:1", 2) {
+	c.release("a:1", true)
+	if c.held("a:1") != 1 || !c.acquire("a:1", 2, true) {
 		t.Errorf("a released slot was not free again, held %d", c.held("a:1"))
 	}
 	server, client := net.Pipe()
@@ -49,9 +49,9 @@ func TestTargetConns_BoundAndRelease(t *testing.T) {
 	if c.held("a:1") != 1 {
 		t.Errorf("held %d after the connection's slot was given back twice, want 1", c.held("a:1"))
 	}
-	c.release("a:1")
-	c.release("a:1") // more releases than slots never go below zero
-	if c.held("a:1") != 0 || c.acquire("a:1", 1) != true {
+	c.release("a:1", true)
+	c.release("a:1", true) // more releases than slots never go below zero
+	if c.held("a:1") != 0 || c.acquire("a:1", 1, true) != true {
 		t.Errorf("held %d after the last release", c.held("a:1"))
 	}
 }
@@ -106,14 +106,14 @@ func TestCheck_AtBoundIsNotRun(t *testing.T) {
 	targets := checking(t, loopbackPolicy(t, int(tg.Port)))
 	r := Route{ID: "rt_1", MaxTargetConns: 2, Check: &HealthCheck{HTTP: true, Path: "/", StatusMin: 200, StatusMax: 399, Timeout: 2 * time.Second}}
 	addr := tg.String()
-	targets.conns.acquire(addr, 2)
-	targets.conns.acquire(addr, 2)
+	targets.conns.acquire(addr, 2, true)
+	targets.conns.acquire(addr, 2, true)
 	err := targets.check(context.Background(), r, tg)
 	var held *checkHeld
 	if !errors.As(err, &held) || !held.undecided || held.held != 2 || !errors.Is(err, errTargetAtBound) || dials.Load() != 0 {
 		t.Fatalf("a check with every slot taken: %v (dials %d), want undecided with 2 held, undialled", err, dials.Load())
 	}
-	targets.conns.release(addr)
+	targets.conns.release(addr, true)
 	if err := targets.check(context.Background(), r, tg); err != nil {
 		t.Errorf("a check with a slot free: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestCheck_FailureWhileStreamsHeld(t *testing.T) {
 	if err == nil || errors.As(err, &held) {
 		t.Fatalf("a refused check with no stream held: %v, want the plain error", err)
 	}
-	targets.conns.acquire(down.String(), 10)
+	targets.conns.acquire(down.String(), 10, true)
 	err = targets.check(context.Background(), r, down)
 	if !errors.As(err, &held) || !held.undecided || held.held != 1 || !errors.Is(err, syscall.ECONNREFUSED) {
 		t.Fatalf("a refused check with a stream held: %v, want undecided", err)
@@ -150,7 +150,7 @@ func TestCheck_FailureWhileStreamsHeld(t *testing.T) {
 		t.Errorf("the note %q", held.note())
 	}
 
-	targets.conns.acquire(unavailable.String(), 10)
+	targets.conns.acquire(unavailable.String(), 10, true)
 	err = targets.check(context.Background(), r, unavailable)
 	if !errors.As(err, &held) || held.undecided || held.held != 1 {
 		t.Fatalf("a 503 with a stream held: %v, want a failure that counts, naming the stream", err)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"sync"
 	"syscall"
@@ -16,8 +17,17 @@ import (
 // "Target connection bound").
 const defaultTargetConns = 1024
 
-// maxTargetConns is the route's bound on connections to one target address.
+// maxUndecided is how many checks in a row that ran and failed like a target over its limit, with
+// streams held, stay undecided before the failure counts: a visitor that keeps one stream open
+// must not keep a dead target healthy (docs/03-connections.md, "Target connection bound").
+var maxUndecided = 6
+
+// maxTargetConns is the route's bound on connections to one target address; an http route has none,
+// as its streams are pooled and its limit counts requests, but its streams are still counted.
 func (r Route) maxTargetConns() int {
+	if r.HTTP {
+		return math.MaxInt
+	}
 	if r.MaxTargetConns > 0 {
 		return r.MaxTargetConns
 	}
@@ -29,34 +39,52 @@ func (r Route) maxTargetConns() int {
 // one peer. The bound is the route's, checked on each acquire.
 type targetConns struct {
 	mu    sync.Mutex
-	n     map[string]int
+	n     map[string]int      // slots taken, streams and checks
+	s     map[string]int      // of them, streams'
 	slots map[net.Conn]string // a stream's connection and the address it holds a slot of
 }
 
 func newTargetConns() *targetConns {
-	return &targetConns{n: map[string]int{}, slots: map[net.Conn]string{}}
+	return &targetConns{n: map[string]int{}, s: map[string]int{}, slots: map[net.Conn]string{}}
 }
 
-// acquire takes a slot of addr unless limit are held.
-func (c *targetConns) acquire(addr string, limit int) bool {
+// acquire takes a slot of addr unless limit are held; a stream's slot is counted as one.
+func (c *targetConns) acquire(addr string, limit int, stream bool) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.n[addr] >= limit {
 		return false
 	}
 	c.n[addr]++
+	if stream {
+		c.s[addr]++
+	}
 	return true
 }
 
-// release gives back a slot of addr.
-func (c *targetConns) release(addr string) {
+// release gives back a slot of addr taken as a stream's or a check's.
+func (c *targetConns) release(addr string, stream bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.n[addr] <= 1 {
-		delete(c.n, addr)
-		return
+	dec := func(m map[string]int) {
+		if m[addr] <= 1 {
+			delete(m, addr)
+			return
+		}
+		m[addr]--
 	}
-	c.n[addr]--
+	dec(c.n)
+	if stream {
+		dec(c.s)
+	}
+}
+
+// streams returns how many of addr's slots streams hold: other checks' slots say nothing of what
+// holds the target's connections.
+func (c *targetConns) streams(addr string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.s[addr]
 }
 
 // held returns how many slots of addr are taken.
@@ -81,7 +109,7 @@ func (c *targetConns) releaseConn(conn net.Conn) {
 	delete(c.slots, conn)
 	c.mu.Unlock()
 	if ok {
-		c.release(addr)
+		c.release(addr, true)
 	}
 }
 
@@ -92,11 +120,13 @@ var errTargetAtBound = errors.New("the connector holds its limit of connections 
 // checkHeld is a failed check of a target the connector holds streams to. Undecided says the failure
 // is one a target at its connections per source gives (a refusal, a reset, a timeout, or no
 // check at all), which decides nothing about the target's health; otherwise the failure counts, with
-// Held named as the likely cause in the target's status.
+// Held named as the likely cause in the target's status. Ran is false for a check that was not
+// dialled for want of a slot, which says nothing either way and is not counted against maxUndecided.
 type checkHeld struct {
 	err       error
 	held      int
 	undecided bool
+	ran       bool
 }
 
 func (e *checkHeld) Error() string { return e.err.Error() }

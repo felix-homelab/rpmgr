@@ -54,6 +54,8 @@ type Route struct {
 	// MaxTargetConns bounds the connections held to one target address for the route's streams and
 	// checks; 0 is the default (docs/03-connections.md, "Target connection bound").
 	MaxTargetConns int
+	// HTTP marks an http route, whose streams the bound counts but never refuses.
+	HTTP bool
 }
 
 // Target is one destination of a route on the connector's host.
@@ -575,14 +577,14 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 		}
 		// A slot of the target address, for as long as the connection lives: the bound keeps stalled
 		// streams from taking every connection the target allows its peer (D161).
-		if !t.conns.acquire(tg.String(), r.maxTargetConns()) {
+		if !t.conns.acquire(tg.String(), r.maxTargetConns(), true) {
 			capped = true
 			continue
 		}
 		dialled = true
 		conn, err := t.o.Metrics.dial(ctx, d, r.ID, network, tg.String(), isBlocked)
 		if err != nil {
-			t.conns.release(tg.String())
+			t.conns.release(tg.String(), true)
 			var b *policy.BlockedError
 			if errors.As(err, &b) {
 				t.blocked(r.ID, tg.ID, b.Detail(), gen)
@@ -598,7 +600,7 @@ func (t *Targets) open(ctx context.Context, open *tunnelv1.StreamOpen) (tunnelv1
 		if h := proxyHeader(tg, open); h != nil {
 			if _, err := h.WriteTo(conn); err != nil {
 				_ = conn.Close()
-				t.conns.release(tg.String())
+				t.conns.release(tg.String(), true)
 				code = tunnelv1.ResultCode_RESULT_CODE_UPSTREAM_RESET
 				continue
 			}
