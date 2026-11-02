@@ -47,6 +47,7 @@ The **Gateways** card lists the group's gateways by slot:
 | **Slot** | Its number within the group |
 | **Tunnel endpoints** | The `host:port` addresses where connectors reach this gateway, and below them `WSS:` and its WSS hostname if it has one ([Gateways](../gateways.md#wss-hostnames)) |
 | **State** | `not enrolled`, `connected` or `offline`; also `drained` for a drained gateway and `built in` for the all-in-one's own gateway |
+| **Firewall** | Whether rpmgr manages the host's `ufw` for this gateway and how that stands: `Off` (not switched on, or the helper says it is off; a gateway that reports nothing is `Off` while it is connected, and an offline one shows a dash), `Applied` with the number of rules, or `Failed` with the reason and the ports the helper refused as outside its bounds ([Gateways](../gateways.md#the-hosts-firewall)). Hover over the number of rules to read them |
 | **Version** | The rpmgr version the gateway runs |
 | **Update** | Its state in the running rollout, or that it is below the oldest version the controller accepts; for an Instance Admin also **Update to …**, or why it cannot be updated now ([Updates](../operations/updates.md#update-one-agent)) |
 | **Last seen** | When the controller last heard from it |
@@ -88,6 +89,10 @@ TCP and UDP routes get their public ports. Without a pool, such routes get no pu
   **Add the pool** adds it. Ports are 1 to 65535, the first no larger than the last.
 - **Edit…** changes a pool's range; its protocol stays.
 - **Remove…** asks `Remove the pool …?`; **Remove it** removes it.
+- Beside each pool, `Open in the firewall of 1 of 2 gateways` says in how many of the group's
+  gateways that hand their `ufw` to rpmgr the pool's range is open now. It is left out while no
+  gateway of the group does, and a pool that is open in fewer than all of them points at the
+  gateway whose **Firewall** column says why.
 
 ### Port quotas
 

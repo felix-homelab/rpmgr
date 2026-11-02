@@ -65,6 +65,7 @@ rpmgr <command>
 | [`rpmgr diag`](#rpmgr-diag) | Diagnose this host |
 | [`rpmgr policy`](#rpmgr-policy) | Show or change the connector-local policy of this host |
 | [`rpmgr updater`](#rpmgr-updater) | The root-owned updater of a Linux host |
+| [`rpmgr firewall`](#rpmgr-firewall) | The root-owned firewall helper of a gateway host |
 | [`rpmgr backup`](#rpmgr-backup) | Write a consistent backup of the controller |
 | [`rpmgr restore`](#rpmgr-restore) | Restore the controller from a backup |
 | [`rpmgr migrate`](#rpmgr-migrate) | Apply database migrations |
@@ -205,6 +206,8 @@ rpmgr setup [flags]
 | `--cert-file string` |  | controller, all-in-one: the certificate chain with --tls files |
 | `--controller string` |  | gateway, connector: the controller URL, https://\<host>[:\<port>] |
 | `--deny-target value` |  | connector: a target the connector-local policy denies, whatever allows it; the same form |
+| `--firewall string` |  | gateway, all-in-one: ufw, to hand the host's ufw to rpmgr, which opens the listeners and the port pools' ranges (off by default) |
+| `--firewall-max-range string` |  | gateway, all-in-one: with --firewall, the largest range of port pools rpmgr may open, \<from>-\<to> (default none) |
 | `--force` |  | replace an existing boot file (kept beside it) or an agent's identity |
 | `--kek-path string` |  | controller, all-in-one: the KEK file with --kek-source file (default /etc/rpmgr/kek) |
 | `--kek-source string` |  | controller, all-in-one: systemd-credential or file (default by the systemd version) |
@@ -487,6 +490,50 @@ rpmgr updater install [flags]
 | `--state string` | `/var/lib/rpmgr-update` | the updater's own directory: install.json, state.json |
 | `--units string` | `/etc/systemd/system` | where the units rpmgr-update.path and rpmgr-update.service go |
 
+## rpmgr firewall
+
+The root-owned firewall helper of a gateway host.
+
+```text
+rpmgr firewall <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr firewall install`](#rpmgr-firewall-install) | Write the firewall helper's bounds from the boot file, its directory and its units, as root |
+| [`rpmgr firewall apply`](#rpmgr-firewall-apply) | Open the gateway's port ranges in ufw, inside the bounds, as root, and report the outcome |
+
+## rpmgr firewall install
+
+Write the firewall helper's bounds from the boot file, its directory and its units, as root.
+
+```text
+rpmgr firewall install [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--bin string` | `/usr/local/bin/rpmgr` | the installed binary |
+| `--etc string` | `/etc/rpmgr` | the boot files; the bounds file goes here |
+| `--lib string` | `/var/lib/rpmgr` | the state directory, whose firewall/ the gateway writes the desired file in |
+| `--no-units` |  | write no units, as on a host without systemd |
+| `--role string` | `gateway` | the role whose boot file names the firewall: gateway or all-in-one |
+| `--units string` | `/etc/systemd/system` | where the units rpmgr-firewall.path and rpmgr-firewall.service go |
+
+## rpmgr firewall apply
+
+Open the gateway's port ranges in ufw, inside the bounds, as root, and report the outcome.
+
+```text
+rpmgr firewall apply [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--bounds string` | `/etc/rpmgr/firewall.json` | the bounds: the listeners and the maximum range; it must be owned by root and not writable by group or others |
+| `--desired string` | `/var/lib/rpmgr/firewall/desired.json` | the ranges the gateway wants open, written by the gateway |
+| `--status string` | `/run/rpmgr-firewall/status.json` | where the outcome is written for the gateway |
+
 ## rpmgr backup
 
 Write a consistent backup of the controller.
@@ -674,7 +721,7 @@ rpmgr release import [flags] <dir>
 Print the hardened systemd unit of a role.
 
 ```text
-rpmgr systemd-unit [flags] controller | gateway | connector | all-in-one | update
+rpmgr systemd-unit [flags] controller | gateway | connector | all-in-one | update | firewall
 ```
 
 | Flag | Default | Description |
@@ -1703,6 +1750,7 @@ rpmgr verify <command>
 | Command | What it does |
 |---|---|
 | [`rpmgr verify domain`](#rpmgr-verify-domain) | Check a domain claim's proof now |
+| [`rpmgr verify audit`](#rpmgr-verify-audit) | Read an object-storage audit sink back and report a gap or a chain rewritten under a checkpoint it holds |
 
 ## rpmgr verify domain
 
@@ -1711,6 +1759,18 @@ Check a domain claim's proof now.
 ```text
 rpmgr verify domain <id>
 ```
+
+## rpmgr verify audit
+
+Read an object-storage audit sink back and report a gap or a chain rewritten under a checkpoint it holds.
+
+```text
+rpmgr verify audit [flags] --sink <id or name>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--sink string` |  | the object-storage sink to read back (required) |
 
 ## rpmgr check
 

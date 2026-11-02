@@ -87,6 +87,25 @@ connected**; a gateway that was created but not enrolled shows **not enrolled ye
 A controller that is down does not stop traffic: agents keep running their last configuration, and
 reconnect when it is back ([03](../../03-connections.md#failure-modes)).
 
+## The firewall of a gateway host
+
+Only for a gateway host that handed its `ufw` to rpmgr
+([Gateways](../gateways.md#the-hosts-firewall)). The group's page shows `Failed` in the **Firewall** column of a gateway, with the reason. On the
+host, `sudo systemctl status rpmgr-firewall.service rpmgr-firewall.path` and
+`sudo journalctl -u rpmgr-firewall.service` show what the helper did.
+
+| What the column says | Cause | Fix |
+|---|---|---|
+| `ufw is not installed; nothing was changed`, or `ufw is inactive; nothing was changed` | The host has no `ufw`, or it is not enabled | Install and enable `ufw`, then `sudo systemctl start rpmgr-firewall.service`; or switch the firewall off ([Gateways](../gateways.md#switch-it-off)) |
+| `outside the bounds, so never opened: …` | A pool reaches outside the range of `--firewall-max-range` (or the listeners) | Make the pool smaller, or raise the range in the boot file and in `/etc/rpmgr/firewall.json` together (run `rpmgr setup` or `rpmgr firewall install` again) and start the helper again |
+| `the firewall helper has not reported: is rpmgr-firewall.path enabled?` or `has not answered the ranges written at …` | The units are missing, disabled or stopped | `sudo systemctl enable --now rpmgr-firewall.path`, then `sudo systemctl start rpmgr-firewall.service` |
+| `the gateway cannot write the ranges it wants open to …` | The directory `/var/lib/rpmgr/firewall` is missing or not the service user's | `sudo rpmgr firewall install`, or `sudo mkdir -m 0750 /var/lib/rpmgr/firewall` and `sudo chown rpmgr:rpmgr /var/lib/rpmgr/firewall` |
+| `the bounds file is refused, so nothing was changed: …` | `/etc/rpmgr/firewall.json` is not root's, is writable by others, or is malformed | Write it again with `sudo rpmgr firewall install` |
+| `the group's port pools make … ranges, more than …` | More ranges than the helper reads | Join adjacent pools or delete pools you do not use |
+
+A host that is `Applied` can still be unreachable: the provider's firewall in front of the host is
+yours ([Gateways](../gateways.md#the-hosts-firewall)).
+
 ## Enrollment fails
 
 | Message or symptom | Cause | Fix |

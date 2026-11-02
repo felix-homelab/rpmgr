@@ -35,6 +35,10 @@ type sinkAPI struct {
 	deleted *rpmgrv1.DeleteAuditSinkRequest
 	tests   []string
 	refuse  string // the receiver's refusal of a test, if any
+
+	verification *rpmgrv1.AuditSinkVerification // the answer to a verification
+	verifyErr    error                          // or its failure
+	verified     []string                       // the sinks read back
 }
 
 func (a *sinkAPI) needStepUp() error {
@@ -100,6 +104,19 @@ func (a *sinkAPI) TestAuditSink(_ context.Context, req *connect.Request[rpmgrv1.
 	defer a.mu.Unlock()
 	a.tests = append(a.tests, req.Msg.GetAuditSinkId())
 	return connect.NewResponse(&rpmgrv1.TestAuditSinkResponse{Ok: a.refuse == "", Error: a.refuse}), nil
+}
+
+func (a *sinkAPI) VerifyAuditSink(_ context.Context, req *connect.Request[rpmgrv1.VerifyAuditSinkRequest]) (*connect.Response[rpmgrv1.VerifyAuditSinkResponse], error) {
+	if err := a.needStepUp(); err != nil {
+		return nil, err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.verified = append(a.verified, req.Msg.GetAuditSinkId())
+	if a.verifyErr != nil {
+		return nil, a.verifyErr
+	}
+	return connect.NewResponse(&rpmgrv1.VerifyAuditSinkResponse{Verification: a.verification}), nil
 }
 
 // TestAuditSinkCommands (docs/16-cli.md): create, get, list, update, delete and test an audit sink;

@@ -38,7 +38,7 @@ while IFS=$'\t' read -r test status slice issue _; do
       [[ $exists == yes ]] || fail "$test is marked done but no test function $test exists"
       ;;
     pending)
-      [[ $slice =~ ^[0-9]+\.[0-9]+[a-z]?$ && $issue =~ ^#[0-9]+$ ]] ||
+      [[ $slice =~ ^(D?[0-9]+)\.[0-9]+[a-z]?$ && $issue =~ ^#[0-9]+$ ]] ||
         fail "$test is pending without a slice and an issue"
       [[ $exists == no ]] || fail "$test exists now; mark it done in security-tests.txt"
       pending=$((pending + 1))
