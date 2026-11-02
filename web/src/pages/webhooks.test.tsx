@@ -180,7 +180,17 @@ describe("Webhooks", () => {
     fireEvent.change(d.getByLabelText("Event types"), { target: { value: "route.*" } });
     fireEvent.click(d.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(c.updates).toHaveLength(1));
-    expect(c.updates.map((u) => [u.updateMask?.paths, u.webhook?.secretUrl, u.etag])).toEqual([[["event_types", "enabled"], "", "e3"]]);
+    expect(c.updates.map((u) => [u.updateMask?.paths, u.webhook?.secretUrl, u.webhook?.url, u.etag])).toEqual([[["event_types", "enabled"], "", "", "e3"]]);
+  });
+
+  it("keeps the browser from remembering a chat URL, which holds a token", async () => {
+    webhooks();
+    const s = await page();
+    fireEvent.click(await s.findByRole("button", { name: "New webhook…" }));
+    expect((s.getByLabelText("URL") as HTMLInputElement).autocomplete).not.toBe("off");
+    fireEvent.change(s.getByLabelText("Format"), { target: { value: String(WebhookFormat.TEAMS) } });
+    const input = s.getByLabelText("Webhook URL of the service") as HTMLInputElement;
+    expect([input.autocomplete, input.getAttribute("spellcheck"), input.getAttribute("autocorrect")]).toEqual(["off", "false", "off"]);
   });
 
   it("changes a chat endpoint's URL, and its format only with a new URL", async () => {

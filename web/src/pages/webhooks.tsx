@@ -230,7 +230,7 @@ function Form({ api, webhook, onCancel, onDone }: { api: Api; webhook?: Webhook;
         if (chat && url !== "") {
           paths.push("secret_url");
         }
-        await api.update({ id: webhook.id, ...(chat ? { secretUrl: url } : { url }), format, eventTypes, enabled }, paths, webhook.etag);
+        await api.update({ id: webhook.id, ...(chat ? (url !== "" ? { secretUrl: url } : {}) : { url }), format, eventTypes, enabled }, paths, webhook.etag);
         await queryClient.invalidateQueries();
         onDone(webhook, "");
       } else {
@@ -256,7 +256,8 @@ function Form({ api, webhook, onCancel, onDone }: { api: Api; webhook?: Webhook;
         <p className="text-xs text-muted-foreground">{t(isChat(format) ? "webhooks.formatChatHint" : "webhooks.formatRpmgrHint")}</p>
       </div>
       <Field label={t(isChat(format) ? "webhooks.chatUrl" : "webhooks.url")} hint={t(isChat(format) ? (webhook && format === webhook.format ? "webhooks.chatUrlKeep" : "webhooks.chatUrlHint") : "webhooks.urlHint")}
-        type="url" required={urlRequired} maxLength={2048} error={problems.url ?? problems.secret_url} value={url} onChange={(e) => setUrl(e.target.value)} />
+        type="url" required={urlRequired} maxLength={2048}
+        {...(isChat(format) ? { autoComplete: "off", autoCorrect: "off", autoCapitalize: "off", spellCheck: false } : {})} error={problems.url ?? problems.secret_url} value={url} onChange={(e) => setUrl(e.target.value)} />
       <Field label={t("webhooks.events")} hint={t("webhooks.eventsHint")} error={problems.event_types} value={types} onChange={(e) => setTypes(e.target.value)} />
       <Switch checked={enabled} onClick={() => setEnabled(!enabled)} className="justify-self-start">{t("webhooks.enabled")}</Switch>
       {error && <Alert>{error}</Alert>}
