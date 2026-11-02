@@ -9,6 +9,7 @@ import (
 	"errors"
 	"log/slog"
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -173,11 +174,11 @@ func objectGets(srv *objstoretest.Server) int {
 }
 
 func (w *sinkWorld) cpKey(seq int) string {
-	return "audit/" + w.e.a + "/checkpoints/" + strings.Repeat("0", 19) + string(rune('0'+seq))
+	return "audit/" + w.e.a + "/checkpoints/" + strings.Repeat("0", 19) + strconv.Itoa(seq)
 }
 
 func (w *sinkWorld) entryKey(seq int) string {
-	return "audit/" + w.e.a + "/entries/" + strings.Repeat("0", 19) + string(rune('0'+seq))
+	return "audit/" + w.e.a + "/entries/" + strings.Repeat("0", 19) + strconv.Itoa(seq)
 }
 
 // TestAuditSink_RewriteDetectedAgainstSink (#656; docs/04-security.md, "Audit log"): someone with

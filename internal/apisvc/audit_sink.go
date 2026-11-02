@@ -118,7 +118,7 @@ func sinkVerificationOf(v *sinkverify.Verification) *rpmgrv1.AuditSinkVerificati
 	}
 	out := &rpmgrv1.AuditSinkVerification{Time: timestamppb.New(v.Time), Intact: true}
 	for _, c := range v.Chains {
-		cv := &rpmgrv1.AuditSinkChainVerification{Chain: c.Chain, Checked: int32(c.Checked), CheckpointSeq: c.CheckpointSeq, Gap: c.Gap,
+		cv := &rpmgrv1.AuditSinkChainVerification{Chain: c.Chain, Checked: count32(c.Checked), CheckpointSeq: c.CheckpointSeq, Gap: c.Gap,
 			Problem: c.Problem, Intact: c.Intact()}
 		if !c.CheckpointTime.IsZero() {
 			cv.CheckpointTime = timestamppb.New(c.CheckpointTime)
@@ -127,6 +127,11 @@ func sinkVerificationOf(v *sinkverify.Verification) *rpmgrv1.AuditSinkVerificati
 		out.Chains = append(out.Chains, cv)
 	}
 	return out
+}
+
+// count32 is a count for the API, held at the int32 range.
+func count32(n int) int32 {
+	return int32(min(max(n, 0), math.MaxInt32)) //nolint:gosec // G115: held in range by min and max
 }
 
 // lockDays is a retention in days for the API; a value outside the int32 range, which the lock
