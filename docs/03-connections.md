@@ -1762,7 +1762,9 @@ sequenceDiagram
    new process opens them once the old one has exited (**UDP and QUIC** below).
 3. **Ready.** The new process starts from the stored last-known-good snapshot, opens its control
    session, which supersedes the old process's, applies the snapshot it receives and reports ready
-   over the pipe. The old process takes the `Goodbye{superseded}` this causes without ending and
+   over the pipe. It accepts on the handed-over public listeners, ports 443 and 80, only once its
+   snapshot is applied, just before it reports ready, so that the old process, which accepts on the
+   same sockets meanwhile, serves every visitor until then. The old process takes the `Goodbye{superseded}` this causes without ending and
    opens no further control session, so the two never supersede each other in turn; an agent
    redials after any `Goodbye` today [F rpmgr `internal/agent/control.go:161`, `:238-245`]. It
    opens one again if the hand-off fails. The controller records the old session's end only for
