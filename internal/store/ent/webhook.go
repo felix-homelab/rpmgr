@@ -43,7 +43,11 @@ type Webhook struct {
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Version holds the value of the "version" field.
-	Version      int64 `json:"version,omitempty"`
+	Version int64 `json:"version,omitempty"`
+	// Format holds the value of the "format" field.
+	Format webhook.Format `json:"format,omitempty"`
+	// URLEnc holds the value of the "url_enc" field.
+	URLEnc       *[]byte `json:"-"`
 	selectValues sql.SelectValues
 }
 
@@ -52,13 +56,13 @@ func (*Webhook) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case webhook.FieldSecretEnc, webhook.FieldPreviousSecretEnc, webhook.FieldEventTypes:
+		case webhook.FieldSecretEnc, webhook.FieldPreviousSecretEnc, webhook.FieldEventTypes, webhook.FieldURLEnc:
 			values[i] = new([]byte)
 		case webhook.FieldEnabled:
 			values[i] = new(sql.NullBool)
 		case webhook.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case webhook.FieldID, webhook.FieldOrgID, webhook.FieldURL, webhook.FieldDisabledReason:
+		case webhook.FieldID, webhook.FieldOrgID, webhook.FieldURL, webhook.FieldDisabledReason, webhook.FieldFormat:
 			values[i] = new(sql.NullString)
 		case webhook.FieldPreviousUntil, webhook.FieldEnabledAt, webhook.FieldLastSuccessAt, webhook.FieldFailingSince, webhook.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -168,6 +172,18 @@ func (_m *Webhook) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Version = value.Int64
 			}
+		case webhook.FieldFormat:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field format", values[i])
+			} else if value.Valid {
+				_m.Format = webhook.Format(value.String)
+			}
+		case webhook.FieldURLEnc:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field url_enc", values[i])
+			} else if value != nil {
+				_m.URLEnc = value
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -250,6 +266,11 @@ func (_m *Webhook) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("version=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Version))
+	builder.WriteString(", ")
+	builder.WriteString("format=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Format))
+	builder.WriteString(", ")
+	builder.WriteString("url_enc=<sensitive>")
 	builder.WriteByte(')')
 	return builder.String()
 }

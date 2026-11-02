@@ -2209,6 +2209,8 @@ var (
 		{Name: "failing_since", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "format", Type: field.TypeEnum, Enums: []string{"rpmgr", "discord", "slack", "teams"}, Default: "rpmgr"},
+		{Name: "url_enc", Type: field.TypeBytes, Nullable: true},
 	}
 	// WebhooksTable holds the schema information for the "webhooks" table.
 	WebhooksTable = &schema.Table{
