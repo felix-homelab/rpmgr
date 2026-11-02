@@ -1,0 +1,38 @@
+{
+  "allowed_mentions": {
+    "parse": []
+  },
+  "embeds": [
+    {
+      "fields": [
+        {
+          "inline": true,
+          "name": "Type",
+          "value": "route.create"
+        },
+        {
+          "inline": true,
+          "name": "Organisation",
+          "value": "org_1"
+        },
+        {
+          "inline": true,
+          "name": "Actor",
+          "value": "user usr_1"
+        },
+        {
+          "inline": true,
+          "name": "Subject",
+          "value": "route \u003c!channel\u003e \u0026 @everyone (rt_2)"
+        },
+        {
+          "inline": true,
+          "name": "Time",
+          "value": "2026-11-02T09:30:00Z"
+        }
+      ],
+      "timestamp": "2026-11-02T09:30:00Z",
+      "title": "route.create \u003c!channel\u003e \u0026 @everyone \u003c@U123\u003e"
+    }
+  ]
+}

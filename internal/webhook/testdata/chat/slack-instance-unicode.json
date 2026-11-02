@@ -1,0 +1,41 @@
+{
+  "attachments": [
+    {
+      "blocks": [
+        {
+          "text": {
+            "text": "*release.create Größe 日本語 🚀*",
+            "type": "mrkdwn"
+          },
+          "type": "section"
+        },
+        {
+          "fields": [
+            {
+              "text": "*Type*\nrelease.create",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Organisation*\ninstance",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Actor*\nuser usr_2",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Subject*\nrelease Größe 日本語 🚀 (rel_1)",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Time*\n2026-11-02T09:30:00Z",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "section"
+        }
+      ]
+    }
+  ],
+  "text": "release.create Größe 日本語 🚀"
+}

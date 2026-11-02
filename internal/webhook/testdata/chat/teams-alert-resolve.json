@@ -1,0 +1,48 @@
+{
+  "attachments": [
+    {
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "body": [
+          {
+            "color": "Good",
+            "size": "Medium",
+            "text": "agent_offline: Agent offline resolved, gw1",
+            "type": "TextBlock",
+            "weight": "Bolder",
+            "wrap": true
+          },
+          {
+            "facts": [
+              {
+                "title": "Type",
+                "value": "alert.resolve"
+              },
+              {
+                "title": "Organisation",
+                "value": "org_1"
+              },
+              {
+                "title": "Actor",
+                "value": "system"
+              },
+              {
+                "title": "Subject",
+                "value": "agent gw1 (gw_1)"
+              },
+              {
+                "title": "Time",
+                "value": "2026-11-02T09:30:00Z"
+              }
+            ],
+            "type": "FactSet"
+          }
+        ],
+        "type": "AdaptiveCard",
+        "version": "1.4"
+      },
+      "contentType": "application/vnd.microsoft.card.adaptive"
+    }
+  ],
+  "type": "message"
+}

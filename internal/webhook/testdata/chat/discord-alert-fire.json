@@ -1,0 +1,39 @@
+{
+  "allowed_mentions": {
+    "parse": []
+  },
+  "embeds": [
+    {
+      "color": 15548997,
+      "fields": [
+        {
+          "inline": true,
+          "name": "Type",
+          "value": "alert.fire"
+        },
+        {
+          "inline": true,
+          "name": "Organisation",
+          "value": "org_1"
+        },
+        {
+          "inline": true,
+          "name": "Actor",
+          "value": "system"
+        },
+        {
+          "inline": true,
+          "name": "Subject",
+          "value": "agent gw1 (gw_1)"
+        },
+        {
+          "inline": true,
+          "name": "Time",
+          "value": "2026-11-02T09:30:00Z"
+        }
+      ],
+      "timestamp": "2026-11-02T09:30:00Z",
+      "title": "agent_offline: Agent offline fires, gw1"
+    }
+  ]
+}

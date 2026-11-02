@@ -1,0 +1,42 @@
+{
+  "attachments": [
+    {
+      "blocks": [
+        {
+          "text": {
+            "text": "*agent_offline: Agent offline resolved, gw1*",
+            "type": "mrkdwn"
+          },
+          "type": "section"
+        },
+        {
+          "fields": [
+            {
+              "text": "*Type*\nalert.resolve",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Organisation*\norg_1",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Actor*\nsystem",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Subject*\nagent gw1 (gw_1)",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Time*\n2026-11-02T09:30:00Z",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "section"
+        }
+      ],
+      "color": "#1A7F37"
+    }
+  ],
+  "text": "agent_offline: Agent offline resolved, gw1"
+}
