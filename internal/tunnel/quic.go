@@ -192,33 +192,68 @@ func DialQUIC(ctx context.Context, tr *quic.Transport, addr net.Addr, cfg *tls.C
 	return newQUICSession(conn, w, release, budget, true), nil
 }
 
+// A connector that has not completed its handshake holds a reservation (admission) that nobody
+// has claimed yet. These bound what unclaimed handshakes can take from the budget, so that
+// half-open handshakes cannot exhaust it (03, "QUIC parameters").
+const (
+	// maxPendingPerIP is how many unclaimed admissions one source IP may hold: a connector opens
+	// its sessions to a gateway together, up to MaxConnectorSessions of the gateway's over time.
+	maxPendingPerIP = 8
+	// pendingShare: all unclaimed admissions hold at most half of the budget.
+	pendingShare = 2
+)
+
 // QUICListener accepts connectors' QUIC data sessions on a gateway.
 type QUICListener struct {
 	ln     *quic.Listener
 	budget *Budget
 
-	mu      sync.Mutex
-	pending map[string]*admission // by the remote address of the first packet
+	mu           sync.Mutex
+	admitted     map[*quic.ClientInfo]*admission // between GetConfigForClient and ConnContext
+	pendingBytes uint64                          // of the unclaimed admissions
+	pendingByIP  map[string]int                  // by source IP, in admissions
 }
 
-// admissionExpiry is how long a reservation waits for its handshake: quic-go gives up on a
-// connection at twice the handshake idle timeout.
-var admissionExpiry = 2*quicHandshakeIdle + time.Second
-
-// admission is a window reserved for a connection that has not completed its handshake.
+// admission is the window reserved for one incoming connection. It travels in the connection's
+// context, so that Accept finds exactly the reservation of the connection it returns, whatever the
+// connections' addresses are.
 type admission struct {
+	l       *QUICListener
 	w       H2Windows
-	release func()
-	timer   *time.Timer
+	release func() // the budget share; once
+	ip      string
+	pending sync.Once // leaves the unclaimed count
 }
 
-// ListenQUIC starts the gateway's QUIC listener for data sessions on tr. Each incoming connection
-// is admitted against budget before its handshake (quic-go's GetConfigForClient), with its own
-// windows, or refused when the budget has no room.
+type admissionKey struct{}
+
+// settle takes the admission out of the unclaimed count: it was claimed or its connection ended.
+func (a *admission) settle() {
+	a.pending.Do(func() {
+		a.l.mu.Lock()
+		a.l.pendingBytes -= uint64(a.w.Conn) //nolint:gosec // G115: a window is positive
+		if a.l.pendingByIP[a.ip]--; a.l.pendingByIP[a.ip] == 0 {
+			delete(a.l.pendingByIP, a.ip)
+		}
+		a.l.mu.Unlock()
+	})
+}
+
+// ErrUnverified is returned for a connection whose source address is not validated.
+var ErrUnverified = errors.New("tunnel: the connection's source address is not verified")
+
+// ListenQUIC starts the gateway's QUIC listener for data sessions on tr. It sets
+// tr.VerifySourceAddress, which makes every new connection prove its source address with a Retry
+// (one extra round trip), and tr.ConnContext, before it starts the listener; a transport must not
+// be in use yet. Each connection is then admitted against budget before its handshake (quic-go's
+// GetConfigForClient), with its own windows, or refused: for an unverified address, when the
+// source IP or all unclaimed handshakes together hold their share, or when the budget has no room.
 func ListenQUIC(tr *quic.Transport, cfg *tls.Config, budget *Budget) (*QUICListener, error) {
 	cfg = cfg.Clone()
 	cfg.NextProtos = []string{ALPNQUIC}
-	l := &QUICListener{budget: budget, pending: map[string]*admission{}}
+	l := &QUICListener{budget: budget, admitted: map[*quic.ClientInfo]*admission{}, pendingByIP: map[string]int{}}
+	tr.VerifySourceAddress = func(net.Addr) bool { return true }
+	tr.ConnContext = l.connContext
 	qc := QUICConfig(false, H2Windows{Stream: quicStreamWindowMax, Conn: quicConnWindowMax})
 	qc.GetConfigForClient = l.admit
 	ln, err := tr.Listen(cfg, qc)
@@ -229,46 +264,67 @@ func ListenQUIC(tr *quic.Transport, cfg *tls.Config, budget *Budget) (*QUICListe
 	return l, nil
 }
 
-// admit reserves the windows of a new connection. A connection that never completes its
-// handshake gives them back when quic-go gives up on it, at twice the handshake idle timeout.
+func hostOf(a net.Addr) string {
+	if u, ok := a.(*net.UDPAddr); ok {
+		return u.IP.String()
+	}
+	h, _, err := net.SplitHostPort(a.String())
+	if err != nil {
+		return a.String()
+	}
+	return h
+}
+
+// totalCap is the share above, at least one smallest window so that a small budget still admits
+// one handshake at a time.
+func (l *QUICListener) totalCap() uint64 { return max(l.budget.limit/pendingShare, minConnWindow) }
+
+// admit reserves the windows of a new connection.
 func (l *QUICListener) admit(info *quic.ClientInfo) (*quic.Config, error) {
+	if !info.AddrVerified {
+		return nil, ErrUnverified
+	}
+	ip := hostOf(info.RemoteAddr)
+	l.mu.Lock()
+	full := l.pendingByIP[ip] >= maxPendingPerIP
+	l.mu.Unlock()
+	if full {
+		return nil, ErrBudget
+	}
 	w, release, err := l.budget.AdmitQUIC()
 	if err != nil {
 		return nil, err
 	}
-	key := info.RemoteAddr.String()
-	a := &admission{w: w, release: release}
-	a.timer = time.AfterFunc(admissionExpiry, func() { l.drop(key, a) })
 	l.mu.Lock()
-	old := l.pending[key]
-	l.pending[key] = a
-	l.mu.Unlock()
-	if old != nil {
-		old.timer.Stop()
-		old.release()
+	n := uint64(w.Conn) //nolint:gosec // G115: a window is positive
+	if l.pendingByIP[ip] >= maxPendingPerIP || l.pendingBytes+n > l.totalCap() {
+		l.mu.Unlock()
+		release()
+		return nil, ErrBudget
 	}
+	a := &admission{l: l, w: w, release: release, ip: ip}
+	l.pendingBytes += n
+	l.pendingByIP[ip]++
+	l.admitted[info] = a
+	l.mu.Unlock()
 	return QUICConfig(false, w), nil
 }
 
-func (l *QUICListener) drop(key string, a *admission) {
+// connContext runs for the same ClientInfo right after admit [F quic-go v0.64.1 server.go:777-800]
+// and attaches the admission to the connection. The connection's context ends when the connection
+// does, at the latest when quic-go gives up on the handshake, at twice HandshakeIdleTimeout
+// [F quic-go v0.64.1 config.go:17-19, connection.go:695]; that returns the reservation, so a
+// handshake that fails or is refused afterwards holds it no longer.
+func (l *QUICListener) connContext(ctx context.Context, info *quic.ClientInfo) (context.Context, error) {
 	l.mu.Lock()
-	if l.pending[key] == a {
-		delete(l.pending, key)
-	}
+	a := l.admitted[info]
+	delete(l.admitted, info)
 	l.mu.Unlock()
-	a.release()
-}
-
-// claim takes the admission of a connection whose handshake completed.
-func (l *QUICListener) claim(key string) *admission {
-	l.mu.Lock()
-	a := l.pending[key]
-	delete(l.pending, key)
-	l.mu.Unlock()
-	if a != nil {
-		a.timer.Stop()
+	if a == nil {
+		return nil, errors.New("tunnel: a connection without admission")
 	}
-	return a
+	context.AfterFunc(ctx, func() { a.settle(); a.release() })
+	return context.WithValue(ctx, admissionKey{}, a), nil
 }
 
 // Accept returns the next connector session.
@@ -278,12 +334,12 @@ func (l *QUICListener) Accept(ctx context.Context) (*QUICSession, error) {
 		if err != nil {
 			return nil, err
 		}
-		a := l.claim(conn.RemoteAddr().String())
-		if a == nil {
-			// Its reservation expired before the connection was taken: it cannot be held to a window.
+		a, _ := conn.Context().Value(admissionKey{}).(*admission)
+		if a == nil { // not made by this listener's admission: not held to any window
 			_ = conn.CloseWithError(0, "")
 			continue
 		}
+		a.settle()
 		return newQUICSession(conn, a.w, a.release, l.budget, false), nil
 	}
 }
@@ -297,6 +353,7 @@ type QUICSession struct {
 	connector bool // the side that dialled
 	control   atomic.Bool
 	stalls    *Stalls
+	windows   H2Windows
 	dgOnce    sync.Once
 	dg        *Datagrams
 }
@@ -305,7 +362,7 @@ func newQUICSession(conn *quic.Conn, w H2Windows, release func(), budget *Budget
 	context.AfterFunc(conn.Context(), release)
 	// The windows are the admitted ones and never grow, so the rule knows how much a stalled
 	// stream can hold.
-	s := &QUICSession{conn: conn, connector: connector, stalls: NewStalls(w.Stream, w.Conn, budget.stallAge)}
+	s := &QUICSession{conn: conn, connector: connector, stalls: NewStalls(w.Stream, w.Conn, budget.stallAge), windows: w}
 	go s.stalls.Run(conn.Context()) // ends with the connection
 	return s
 }

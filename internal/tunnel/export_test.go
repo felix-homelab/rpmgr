@@ -2,7 +2,13 @@
 
 package tunnel
 
-import "time"
+import (
+	"context"
+	"net"
+	"time"
+
+	"github.com/quic-go/quic-go"
+)
 
 // WithMaxStreams lowers the connector's stream limit, for tests.
 func WithMaxStreams(w H2Windows, n int) H2Windows {
@@ -55,10 +61,31 @@ func StallWatched(s Session) int {
 	return len(st.streams)
 }
 
-// SetAdmissionExpiry shortens how long a QUIC reservation waits for its handshake, for tests; the
-// returned function restores it.
-func SetAdmissionExpiry(d time.Duration) func() {
-	old := admissionExpiry
-	admissionExpiry = d
-	return func() { admissionExpiry = old }
+// SessionWindows are the windows a QUIC session was admitted with.
+func SessionWindows(s *QUICSession) H2Windows { return s.windows }
+
+// Admit makes the listener admit a connection from addr as if quic-go had called its
+// GetConfigForClient and ConnContext, and returns how the connection ends.
+func (l *QUICListener) Admit(addr string, verified bool) (end func(), err error) {
+	ua, perr := net.ResolveUDPAddr("udp", addr)
+	if perr != nil {
+		return nil, perr
+	}
+	info := &quic.ClientInfo{RemoteAddr: ua, AddrVerified: verified}
+	if _, err := l.admit(info); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	if _, err := l.connContext(ctx, info); err != nil {
+		cancel()
+		return nil, err
+	}
+	return cancel, nil
+}
+
+// PendingBytes is what the listener's unclaimed admissions hold.
+func (l *QUICListener) PendingBytes() uint64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.pendingBytes
 }

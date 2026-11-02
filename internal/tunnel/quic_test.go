@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -421,10 +422,8 @@ func TestQUIC_SessionAdmission(t *testing.T) {
 }
 
 // TestQUIC_FailedHandshakeReleasesAdmission: a connection admitted before its handshake whose
-// handshake fails gives its reservation back, so failed or spoofed handshakes cannot hold the
-// budget for ever.
+// handshake fails gives its reservation back when the connection ends, not after a timer.
 func TestQUIC_FailedHandshakeReleasesAdmission(t *testing.T) {
-	defer tunnel.SetAdmissionExpiry(300 * time.Millisecond)()
 	p := newPeers(t)
 	other := newPeers(t) // another CA: the connector does not trust this gateway
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
@@ -455,5 +454,211 @@ func TestQUIC_FailedHandshakeReleasesAdmission(t *testing.T) {
 			t.Fatalf("the budget holds %d after the handshake failed", budget.Used())
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// quicPair is a gateway listener on one UDP socket and a connector transport on another.
+type quicPair struct {
+	p      peers
+	ln     *tunnel.QUICListener
+	addr   net.Addr
+	budget *tunnel.Budget
+}
+
+func newQUICPair(t *testing.T, limit uint64) quicPair {
+	t.Helper()
+	p := newPeers(t)
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := &quic.Transport{Conn: pc}
+	b := tunnel.NewBudget(limit)
+	ln, err := tunnel.ListenQUIC(tr, p.gateway, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close(); _ = tr.Close() })
+	return quicPair{p: p, ln: ln, addr: pc.LocalAddr(), budget: b}
+}
+
+// dialFrom dials the gateway from a new transport on the local address ip.
+func (q quicPair) dialFrom(t *testing.T, ip string) (*tunnel.QUICSession, error) {
+	t.Helper()
+	cpc, err := net.ListenPacket("udp", ip+":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctr := &quic.Transport{Conn: cpc}
+	t.Cleanup(func() { _ = ctr.Close() })
+	return q.dialOn(ctr)
+}
+
+func (q quicPair) dialOn(ctr *quic.Transport) (*tunnel.QUICSession, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return tunnel.DialQUIC(ctx, ctr, q.addr, q.p.connector, tunnel.NewBudget(tunnel.DefaultWindowBudget))
+}
+
+func eventuallyUsed(t *testing.T, b *tunnel.Budget, want uint64, what string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for b.Used() != want {
+		if time.Now().After(deadline) {
+			t.Fatalf("%s: the budget holds %d, want %d", what, b.Used(), want)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestQUIC_SameAddressHandshakesKeepTheirOwnAdmission: a connector redials from the same UDP socket
+// before the gateway accepted the first session. Each accepted session is held to the windows and
+// the budget share of its own handshake, whichever is accepted first, and ending one returns
+// exactly its share.
+func TestQUIC_SameAddressHandshakesKeepTheirOwnAdmission(t *testing.T) {
+	const mib = 1 << 20
+	q := newQUICPair(t, 64*mib)
+	cpc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctr := &quic.Transport{Conn: cpc}
+	t.Cleanup(func() { _ = ctr.Close() })
+	for range 2 {
+		con, err := q.dialOn(ctr) // the same ip:port, the first not yet accepted
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = con.Close() })
+	}
+	got := map[int]*tunnel.QUICSession{}
+	for range 2 {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		gw, err := q.ln.Accept(ctx)
+		cancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+		got[tunnel.SessionWindows(gw).Conn] = gw
+		t.Cleanup(func() { _ = gw.Close() })
+	}
+	big, small := 4*mib, 60*mib/16 // a sixteenth of the budget, then of what was left
+	if got[big] == nil || got[small] == nil {
+		t.Fatalf("the sessions hold windows %v, want one of %d and one of %d", got, big, small)
+	}
+	if want := uint64(big + small); q.budget.Used() != want { //nolint:gosec // G115: test windows
+		t.Fatalf("the budget holds %d, want %d", q.budget.Used(), want)
+	}
+	if q.ln.PendingBytes() != 0 {
+		t.Fatalf("%d bytes still count as unclaimed", q.ln.PendingBytes())
+	}
+	_ = got[small].Close()
+	eventuallyUsed(t, q.budget, uint64(big), "after the smaller session ended") //nolint:gosec // G115: test windows
+}
+
+// TestQUIC_HalfOpenHandshakesAreCapped: handshakes whose session nobody accepted yet hold their
+// reservations only up to a per-IP count: the ninth from one IP is refused, another IP is still
+// admitted, and accepting (claiming) lets the IP dial again.
+func TestQUIC_HalfOpenHandshakesAreCapped(t *testing.T) {
+	q := newQUICPair(t, tunnel.DefaultWindowBudget)
+	cpc, err := net.ListenPacket("udp", "127.0.0.2:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctr := &quic.Transport{Conn: cpc}
+	t.Cleanup(func() { _ = ctr.Close() })
+	for i := range 8 { // a real source address, validated by Retry
+		c, err := q.dialOn(ctr)
+		if err != nil {
+			t.Fatalf("handshake %d: %v", i, err)
+		}
+		t.Cleanup(func() { _ = c.Close() })
+	}
+	before := q.budget.Used()
+	if _, err := q.dialOn(ctr); err == nil {
+		t.Fatal("a ninth unclaimed handshake from one IP was admitted")
+	}
+	if q.budget.Used() != before {
+		t.Fatalf("the refused handshake changed the budget from %d to %d", before, q.budget.Used())
+	}
+	other, err := q.dialFrom(t, "127.0.0.3") // a legitimate connector during the flood
+	if err != nil {
+		t.Fatalf("another IP while the first holds its reservations: %v", err)
+	}
+	t.Cleanup(func() { _ = other.Close() })
+	for range 9 { // accepting claims
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		gw, err := q.ln.Accept(ctx)
+		cancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = gw.Close() })
+	}
+	if q.ln.PendingBytes() != 0 {
+		t.Fatalf("%d bytes still count as unclaimed", q.ln.PendingBytes())
+	}
+	again, err := q.dialOn(ctr)
+	if err != nil {
+		t.Fatalf("after the claims: %v", err)
+	}
+	_ = again.Close()
+}
+
+// TestQUIC_AdmissionCapsAndUnverified: the listener refuses an address that is not verified, caps
+// the unclaimed reservations of one IP by number and of all together at half of the budget, and
+// gives a reservation back when its connection ends.
+func TestQUIC_AdmissionCapsAndUnverified(t *testing.T) {
+	const mib = 1 << 20
+	q := newQUICPair(t, 64*mib) // all unclaimed together: at most 32 MiB
+	if _, err := q.ln.Admit("203.0.113.1:1000", false); !errors.Is(err, tunnel.ErrUnverified) {
+		t.Fatalf("an unverified address: %v", err)
+	}
+	if q.budget.Used() != 0 || q.ln.PendingBytes() != 0 {
+		t.Fatal("a refused connection took a reservation")
+	}
+	var ends []func()
+	for i := range 8 { // one IP, eight ports
+		end, err := q.ln.Admit("203.0.113.1:"+strconv.Itoa(1000+i), true)
+		if err != nil {
+			t.Fatalf("admission %d of one IP: %v", i, err)
+		}
+		ends = append(ends, end)
+	}
+	used := q.budget.Used()
+	for _, port := range []string{"1008", "2000"} { // another port, and a spoofed one
+		if _, err := q.ln.Admit("203.0.113.1:"+port, true); !errors.Is(err, tunnel.ErrBudget) {
+			t.Fatalf("a ninth connection of one IP, port %s: %v", port, err)
+		}
+	}
+	if q.budget.Used() != used {
+		t.Fatal("a capped admission kept a share of the budget")
+	}
+	// Other IPs are admitted until all unclaimed reservations together reach half of the budget.
+	n := 0
+	for ; n < 50; n++ {
+		end, err := q.ln.Admit("203.0.113."+strconv.Itoa(10+n)+":1000", true)
+		if errors.Is(err, tunnel.ErrBudget) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		ends = append(ends, end)
+	}
+	if n == 50 || n == 0 {
+		t.Fatalf("%d further IPs admitted, want the total cap to stop them", n)
+	}
+	if got := q.ln.PendingBytes(); got > 32*mib {
+		t.Fatalf("%d bytes unclaimed, above half of the budget", got)
+	}
+	used = q.budget.Used()
+	ends[0]() // a connection ends: its reservation and its place count again
+	eventuallyUsed(t, q.budget, used-4*mib, "after a connection ended")
+	if _, err := q.ln.Admit("203.0.113.1:3000", true); err != nil {
+		t.Fatalf("after a connection ended: %v", err)
+	}
+	for _, e := range ends[1:] {
+		e()
 	}
 }
