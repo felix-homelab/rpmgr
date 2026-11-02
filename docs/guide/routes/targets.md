@@ -313,6 +313,12 @@ targets of the route, and new connections pass over a target that fails it
 - The connector's [local policy](../connectors/local-policy.md) applies to checks as to traffic: a
   target or check port it does not allow is never checked, and shows as **blocked by the
   connector's local policy**, not as unhealthy.
+- A check counts as one of the connector's connections to the target, with the route's streams, and
+  never takes a target over the route's [connection limit](limits.md#connections-to-the-target). A
+  check that cannot run for that reason, or that the target refuses, resets or leaves unanswered
+  while streams hold connections to it, is **not decided**: the target keeps its state. When a
+  check does fail while streams hold connections to the target, its status says how many, as the
+  likely cause ([03](../../03-connections.md#target-connection-bound-phase-2)).
 
 What the route then does:
 

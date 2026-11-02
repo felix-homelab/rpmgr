@@ -21,7 +21,7 @@ const (
 	ReasonPortNotInPool  = "PORT_NOT_IN_POOL"
 	ReasonPoolExhausted  = "POOL_EXHAUSTED"
 	ReasonQuotaReached   = "QUOTA_REACHED"
-	defaultIdleTimeout   = 3600
+	defaultIdleTimeout   = 900
 	defaultFlowIdleTimer = 60
 )
 

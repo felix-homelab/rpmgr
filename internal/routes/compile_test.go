@@ -311,6 +311,37 @@ func TestCompile_ConnectorRoutes(t *testing.T) {
 	})
 }
 
+// TestCompile_ConnectorRoutes_TargetBound: a connector's route carries the route's whole
+// max_connections, not a gateway's share, as the bound on its connections to each target; a route
+// without a limit, one whose limit leaves connections unbounded (0) and an http route, whose limit
+// counts requests, carry none.
+func TestCompile_ConnectorRoutes_TargetBound(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		c := db.Client()
+		c.RouteLimit.Create().SetOrgID(f.orgA).SetRouteID(f.r1).SetMaxConnections(5).ExecX(f.sys)
+		c.RouteLimit.Create().SetOrgID(f.orgA).SetRouteID(f.rOther).SetRequestsPerSec(7).ExecX(f.sys)
+		bound := func() map[string]uint32 {
+			t.Helper()
+			out := map[string]uint32{}
+			for _, r := range routesOf(f.compile(t, pki.KindConnector, f.c1)) {
+				out[r.GetId()] = r.GetConnectorRoute().GetMaxTargetConnections()
+			}
+			return out
+		}
+		if got := bound(); got[f.r1] != 5 || got[f.rOther] != 0 || len(got) != 2 {
+			t.Fatalf("bounds %v, want 5 for the route with a limit and 0 for the other", got)
+		}
+		web := c.Route.Create().SetOrgID(f.orgA).SetName("web-limited").SetType("http").SetGatewayGroupID(f.groupA).SaveX(f.sys).ID
+		c.RouteTarget.Create().SetOrgID(f.orgA).SetRouteID(web).SetConnectorID(f.c1).SetKind("address").SetHost("10.0.0.7").SetPort(80).ExecX(f.sys)
+		c.RouteLimit.Create().SetOrgID(f.orgA).SetRouteID(web).SetMaxConnections(9).ExecX(f.sys)
+		got := bound()
+		if v, present := got[web]; !present || v != 0 || got[f.r1] != 5 {
+			t.Errorf("bounds %v, want the http route present with 0, whose limit counts requests", got)
+		}
+	})
+}
+
 // TestCompile_TargetOrder: a connector's targets of a route come by priority, then ID.
 func TestCompile_TargetOrder(t *testing.T) {
 	db := storetest.Migrated(t, store.SQLite)

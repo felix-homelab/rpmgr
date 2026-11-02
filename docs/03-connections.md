@@ -662,7 +662,7 @@ sequenceDiagram
 | 4 | `UPSTREAM_TIMEOUT` | Retry on a session of another connector of the route; then TCP: reset client, HTTP: 504 |
 | 5 | `UPSTREAM_RESET` | Reset client |
 | 6 | `DRAINING` | Retry on another session |
-| 7 | `OVERLOADED` | Retry on another session; then 503 |
+| 7 | `OVERLOADED` | Retry on another session; then 503. A connector sends it for a session at its stream limit and for a stream whose targets are all at the [target connection bound](#target-connection-bound-phase-2) |
 | 8 | `PROTOCOL` | Close; log |
 | 9 | `INTERNAL` | Close; log |
 
@@ -1019,6 +1019,47 @@ the capability `route.limits`:
   drain, so the route, added back meanwhile, never admits more than its limit. The per-client
   `rate_limit` rule of a policy comes on top ([Access policies](#access-policies)).
 
+### Target connection bound (Phase 2)
+
+A service may allow each peer only a few connections, by source address alone, as a remote desktop
+server does with 5. Every connection a connector opens to the service comes from one address, so the
+route's streams, other routes' streams and the connector's own health checks share that allowance,
+and streams that stall hold it until they end ([D161](14-open-decisions.md#engineering), #1052).
+
+- **The bound.** A connector holds at most a bound of open connections to one target address, for
+  TCP streams and health checks together. The bound is the route's `max_connections`, the whole of
+  it and not a gateway's share, on `tcp`, `tcp_udp` and `tls_passthrough` routes; a route without
+  that limit takes the connector's default in the timeout table. The streams of an `http` route
+  are counted, so that checks and the status see them, but never refused: its limit counts
+  requests while its streams are pooled, so no bound applies to them. A UDP flow is not counted. A route that serves a
+  service with a lower allowance than the default sets `max_connections` to it. The bound is per
+  address, so a second target of the route has its own, and routes that name one address share the
+  count, each judging it by its own bound.
+- **Over the bound.** A stream whose every target is at the bound is refused with `OVERLOADED`, at
+  once and without a dial: the gateway tries another session of the route and then answers as for
+  an overloaded connector (reset, **503**). `OVERLOADED` is the existing code for a connector that
+  cannot take another stream, so gateways of an earlier release treat it correctly. A stream
+  takes its slot before it dials and gives it back when it ends, however it ends. A target of the
+  route that is below the bound takes the stream instead.
+- **Headroom for checks.** A health check takes a slot of its target address like a stream, so a
+  check is never the connection that takes a target over the bound. A check that finds every slot
+  taken is not run and is **not decided**: it changes no state and no count, and the target stays as
+  it was (healthy, unhealthy, or unknown). A check that does run but fails with a refusal, a reset,
+  a closed connection or a timeout while streams hold connections to the target is not decided
+  either, because such a target may be refusing the check because of them. Only streams count as
+  held: another check's slot, as when two routes check one address, never makes a check undecided.
+  Any other failure, such as a status outside the range, counts as before. With no stream held,
+  every failure counts, so a target that refuses everything is unhealthy. Not deciding must not
+  hide a dead target from a client that keeps a stream open, so after **6 such checks in a row**
+  that ran and failed, every further failure counts as any other until a result decides; a check
+  that was not run for want of a slot neither adds to that run nor ends it, and a result that
+  decides ends it.
+- **What the status says.** When a check fails or is not decided while streams hold connections to
+  the target, the target's status and the route's `not_ready(targets_unhealthy)` detail add that
+  the connector holds that many connections to the target for streams, which may use up the
+  connections the target allows per source, after the failure; an unknown target's status carries
+  it too. It is the likely cause, not a diagnosis.
+
 ### Target health (Phase 2)
 
 - **Active checks** ([D133](14-open-decisions.md#engineering)). A route has at most one health
@@ -1034,7 +1075,9 @@ the capability `route.limits`:
   capped part of the body is read. A target that expects a PROXY header gets a `LOCAL` one when the
   check dials its own port. A `udp` route allows only a `tcp` check on a port it names; a
   `tls_passthrough` route, whose targets expect TLS, and a route with an `h2c` target, which speaks
-  no HTTP/1.1, only a `tcp` check. A target is **unknown** until its first check decides: a pass
+  no HTTP/1.1, only a `tcp` check. A check shares the target's connection bound with the streams,
+  and one the target refuses while streams hold its connections is not decided ([Target connection
+  bound](#target-connection-bound-phase-2)). A target is **unknown** until its first check decides: a pass
   makes it healthy and a failure unhealthy, with the failure or the local policy's refusal
   ([D157](14-open-decisions.md#engineering)); the thresholds apply from then on. A
   healthy target becomes unhealthy after the unhealthy threshold of failed checks in a row and an
@@ -1505,6 +1548,8 @@ sequenceDiagram
 | Stream stall line (Phase 2) | a `tcp` or TLS passthrough stream that has copied no byte in either direction for 30 s gets one debug line from the gateway, with its route, target, connector and byte counts, once per stream; it takes nothing from the stream and does not end it, the idle timeout above does ([10](10-operations.md#a-tcp-route-accepts-a-connection-but-no-data-flows)) | [R] A stream that carries 19 bytes and then nothing is visible in the log long before the idle timeout reclaims it; the line is debug level, so a gateway at the default level pays nothing |
 | Per-route HTTP timeouts (Phase 2) | upstream response header 1 s to 1 h; upstream idle 1 s to 1 h; 0 = the HTTP server row above | [R] Slow reports and long polls fit; a pooled connection outliving a backend's keep-alive is avoided ([HTTP routes](#http-routes)) |
 | Active health check (Phase 2) | interval 10 s by default, from 2 s to 1 h; timeout 5 s by default, or 1 s below a shorter interval, below the interval and at most 1 min; unhealthy after 3 failures in a row, healthy after 2 passes, each threshold from 1 to 10; an HTTP check reads at most 16 KiB of status line and header and 64 KiB of the body; a connector runs at most 64 checks at once, over all its routes, the others waiting their turn | [R] A dead target leaves within about 30 s without flapping ([Target health](#target-health-phase-2)) |
+| Target connection bound (Phase 2, [D161](14-open-decisions.md#engineering)) | open connections a connector holds to one target address for TCP streams and checks together: the route's `max_connections` on a `tcp`, `tcp_udp` or `tls_passthrough` route that sets one, else **1 024**, never for an `http` route; a stream over it gets `OVERLOADED`, a check over it is not run and not decided; **6** undecided checks in a row, run and failed with streams held, and the next failure counts | [R] A service that allows each peer a handful of connections cannot be locked out by stalled streams or by the connector's own checks; 1 024 is far above what one target serves in practice, so the default refuses only a runaway ([Target connection bound](#target-connection-bound-phase-2)) |
+| TCP route idle timeout (Phase 2, [D161](14-open-decisions.md#engineering)) | **900 s** by default for a `tcp` or `tcp_udp` route's TCP connections, set per route from 1 s to 604 800 s, 0 for none; the default applies when a route is created or its timeout is cleared, and a route keeps the value it has | [R] A connection that never sends a byte, or whose peer vanished, no longer holds a target's connection for an hour; 15 minutes outlasts a typical quiet interactive session, and a route with longer quiet periods sets its own value (D161) |
 | Passive health (Phase 2) | 3 refused or timed-out stream opens in a row; back-off 10 s, doubling to 60 s; one half-open try after it | [R] A target that refuses is passed over at once and tried again soon |
 | Route limits (Phase 2) | an HTTP request over the connection limit gets **503** with `Retry-After: 1`, one over a request rate **429** with `Retry-After` the seconds until it may come again, at least 1; the route's total rate allows a second's worth of requests at once; a bandwidth bucket holds 100 ms of the rate, at least 64 KiB, the largest UDP payload, and a connection moves at most 100 ms of the rate, at least 512 bytes, at a time | [R] A client tries again soon, as a slot frees when a request ends; a datagram always fits the bucket, and a connection under a low limit moves on in small steps rather than stalling ([Route limits](#route-limits-phase-2)) |
 | Per-client rate limit (Phase 2) | a rule allows 1 to 10 000 requests, new connections or new flows a second, and a burst of 1 to 10 000, at most one rule a policy; at most 4 rate_limit rules a route on a gateway; each rule has a table for udp flows and one for the rest, which every route whose policies carry the rule shares, each of at most 65 536 client addresses, and all tables of a gateway together hold at most 262 144, about 28 MiB; when a table or the gateway is full, the addresses whose bucket is full again are dropped, at most once a second, and a new address that still finds no room passes uncounted (D137); every minute the idle addresses are dropped and each table is made anew, which gives its memory back | [R] A flood of addresses costs a gateway at most about 28 MiB, whatever the number of routes and rules, never locks real clients out and never makes it forget the clients it limits ([Access policies](#access-policies)) |

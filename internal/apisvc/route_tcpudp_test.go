@@ -52,7 +52,7 @@ func TestTCPUDPRoutes(t *testing.T) {
 		return out
 	}
 	dns, err := createRoute(ada, org, tcpUDPRoute("dns", group, 20005), "")
-	if s := dns.GetTcpUdp(); err != nil || s.GetPort() != 20005 || s.GetIdleTimeoutSeconds() != 3600 || s.GetFlowIdleTimeoutSeconds() != 60 {
+	if s := dns.GetTcpUdp(); err != nil || s.GetPort() != 20005 || s.GetIdleTimeoutSeconds() != 900 || s.GetFlowIdleTimeoutSeconds() != 60 {
 		t.Fatalf("an explicit port: %v %v", dns, err)
 	}
 	if got := strings.Join(held(dns.GetId()), " "); got != "tcp:20005 udp:20005" {
@@ -117,7 +117,7 @@ func TestTCPUDPRoutes(t *testing.T) {
 		t.Fatalf("a refused move changed the ports: %s", got)
 	}
 	up, err = update(dns.GetId(), []string{"tcp_udp.idle_timeout_seconds", "tcp_udp.flow_idle_timeout_seconds"}, tcpUDPRoute("", "", 0))
-	if s := up.GetTcpUdp(); err != nil || s.GetIdleTimeoutSeconds() != 3600 || s.GetFlowIdleTimeoutSeconds() != 60 || s.GetPort() != free {
+	if s := up.GetTcpUdp(); err != nil || s.GetIdleTimeoutSeconds() != 900 || s.GetFlowIdleTimeoutSeconds() != 60 || s.GetPort() != free {
 		t.Fatalf("cleared timeouts: %v %v", up, err)
 	}
 	if _, err := update(dns.GetId(), []string{"tcp.port"}, tcpRoute("", "", 20002)); code(err) != connect.CodeInvalidArgument {

@@ -109,6 +109,11 @@ type targetHealth struct {
 	streak    int    // passes in a row if positive, failures in a row if negative
 	blocked   string // the local policy's refusal of the last check, which made it fail, or ""
 	err       string // why the last check failed
+	// note names the likely cause when streams hold connections to the target: set by a check that
+	// failed or was not decided while they did, cleared by the next that does neither.
+	note string
+	// undecided counts the checks in a row that ran and were not decided because of held streams.
+	undecided int
 }
 
 // observe records one check of the target and reports whether its health changed.
@@ -235,6 +240,31 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 			if hs[tg.ID] == nil {
 				continue // not a target of the route any more
 			}
+			var held *checkHeld
+			if errors.As(results[i], &held) {
+				changed := hs[tg.ID].note != held.note()
+				hs[tg.ID].note = held.note()
+				if held.ran && held.undecided {
+					hs[tg.ID].undecided++
+				}
+				if held.undecided && (!held.ran || hs[tg.ID].undecided <= maxUndecided) {
+					// Not decided: the streak, the state and the last failure stay (D161); only what
+					// the status says of an unknown or unhealthy target may change. After maxUndecided
+					// such checks in a row the failure counts, so a stream that stays open cannot keep
+					// a dead target healthy.
+					if changed && (hs[tg.ID].unknown || hs[tg.ID].unhealthy) {
+						targets = append(targets, targetStatus(tg.ID, hs[tg.ID]))
+					}
+					continue
+				}
+			} else {
+				hs[tg.ID].note = ""
+			}
+			if held == nil || !held.undecided {
+				// A decided result ends the run; failures past maxUndecided keep counting, so that
+				// they reach the unhealthy threshold in a row.
+				hs[tg.ID].undecided = 0
+			}
 			var b *checkBlocked
 			blocked := ""
 			if errors.As(results[i], &b) {
@@ -254,7 +284,7 @@ func (t *Targets) checkRound(ctx context.Context, c *checker) {
 			}
 		}
 		if cur, ok := t.routes[r.ID]; ok && len(targets) > 0 {
-			h = t.updateHealthLocked(r.ID, readiness(cur, p, t.refused[r.ID], t.unhealthyLocked(r.ID)))
+			h = t.updateHealthLocked(r.ID, readiness(cur, p, t.refused[r.ID], t.unhealthyLocked(r.ID), t.notesLocked(r.ID)))
 		}
 	}
 	t.mu.Unlock()
@@ -293,13 +323,17 @@ func (t *Targets) logHealth(route, target string, h *targetHealth) {
 func targetStatus(id string, h *targetHealth) *agentv1.ResourceStatus {
 	switch {
 	case h.unknown:
-		return &agentv1.ResourceStatus{ResourceId: id, Reason: agentv1.NotReadyReason_NOT_READY_REASON_TARGET_UNKNOWN}
+		return &agentv1.ResourceStatus{ResourceId: id, Reason: agentv1.NotReadyReason_NOT_READY_REASON_TARGET_UNKNOWN, Detail: h.note}
 	case !h.unhealthy:
 		return &agentv1.ResourceStatus{ResourceId: id}
 	case h.blocked != "":
 		return &agentv1.ResourceStatus{ResourceId: id, Reason: agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY, Detail: h.blocked}
 	}
-	return &agentv1.ResourceStatus{ResourceId: id, Reason: agentv1.NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY, Detail: h.err}
+	detail := h.err
+	if h.note != "" {
+		detail += "; " + h.note
+	}
+	return &agentv1.ResourceStatus{ResourceId: id, Reason: agentv1.NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY, Detail: detail}
 }
 
 // boundedCheck is check, waiting for one of the maxChecks places first.
@@ -320,6 +354,18 @@ func (t *Targets) unhealthyLocked(route string) map[string]string {
 	for id, h := range t.targetHealth[route] {
 		if h.unhealthy {
 			out[id] = h.blocked
+		}
+	}
+	return out
+}
+
+// notesLocked returns, for the route's unhealthy targets, what their checks name as the likely
+// cause (targetHealth.note). Under t.mu.
+func (t *Targets) notesLocked(route string) map[string]string {
+	out := map[string]string{}
+	for id, h := range t.targetHealth[route] {
+		if h.unhealthy && h.note != "" {
+			out[id] = h.note
 		}
 	}
 	return out
@@ -346,19 +392,43 @@ func (e *checkBlocked) Error() string { return "the local policy does not allow 
 // policy, which a target it blocks fails without being dialled; for an http check it then sends a
 // GET, over TLS verified by the target's settings if the check is https, follows no redirect and
 // reads at most checkBody of the answer's body.
+//
+// The check takes a slot of the target address like a stream does, so that it is never the
+// connection that takes a target over its bound; with every slot taken it is not run and its
+// result is not decided (D161). A check that fails while streams hold connections to the target,
+// with a refusal, a reset or a timeout, is not decided either, as such a target may be refusing the
+// check because of them; any other failure counts and names them as the likely cause.
 func (t *Targets) check(ctx context.Context, r Route, tg Target) error {
 	c := r.Check
 	if p := t.o.Policy(); !tg.allowed(p) {
 		return &checkBlocked{detail: tg.blockDetail(p)}
 	}
-	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
-	defer cancel()
 	network, addr := "tcp", tg.String()
 	if tg.UnixPath != "" {
 		network = "unix"
 	} else if c.Port != 0 {
 		addr = net.JoinHostPort(tg.Host, strconv.Itoa(int(c.Port)))
 	}
+	if !t.conns.acquire(addr, r.maxTargetConns(), false) {
+		return &checkHeld{err: errTargetAtBound, held: t.conns.streams(addr), undecided: true}
+	}
+	defer t.conns.release(addr, false)
+	err := t.checkTarget(ctx, r, tg, network, addr)
+	var blocked *checkBlocked
+	if err == nil || errors.As(err, &blocked) {
+		return err
+	}
+	if streams := t.conns.streams(addr); streams > 0 { // other checks' slots are not streams
+		return &checkHeld{err: err, held: streams, undecided: connFailure(err), ran: true}
+	}
+	return err
+}
+
+// checkTarget dials addr and checks the target as r's check says.
+func (t *Targets) checkTarget(ctx context.Context, r Route, tg Target, network, addr string) error {
+	c := r.Check
+	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
+	defer cancel()
 	d := &net.Dialer{Control: policy.Control(t.o.Policy)}
 	conn, err := d.DialContext(ctx, network, addr)
 	if err != nil {
