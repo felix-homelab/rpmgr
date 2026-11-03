@@ -53,7 +53,7 @@ work, so a controller on an earlier release is **updated by hand once** (`instal
 controller by hand once (install.sh --upgrade --restart); later updates can start here" instead
 of offering the button. The
 controller goes first, as in every upgrade: no agent runs ahead of it. A controller on
-**PostgreSQL** is refused until its backup method exists (P2-M08); upgrade it by hand
+**PostgreSQL** is refused until it has a backup method; upgrade it by hand
 ([Upgrades](../install/upgrades.md)).
 
 1. Open **Settings → Updates**. A release newer than the controller, which the mirror holds, has
@@ -200,10 +200,11 @@ controller host.
 
 ## From the command line
 
-```
+```sh
 rpmgr list release
 rpmgr create rollout --controller --release 1.5.0
 rpmgr get controller-update
+rpmgr create rollout --easy --release 1.5.0 --agent db-host-1 --agent nas --agent edge
 rpmgr create rollout --release 1.5.0 --canary db-host-1
 rpmgr get rollout rol_…
 rpmgr list rollout-target rol_…
@@ -218,41 +219,14 @@ Each change but a pause is audited and asks for the step-up
 ([04](../../04-security.md#over-the-air-updates)). `rpmgr help updates` lists the commands of
 this page in the order they are used.
 
-An **easy rollout** updates the agents you name one after another, in the order you give, with no
-stages to approve. An agent that rolls back, refuses the release or stalls is marked and skipped,
-and the next one takes its turn; after a few failures in a row the rollout pauses, so that a
-broken release stops early. **Update** on an agent's page adds that agent to the end of the easy
-rollout of the controller's own version, or starts one, and says the agent's place in the queue.
-It is refused while a staged rollout, or a rollout of another release, runs
-([04](../../04-security.md#easy-rollouts)).
-
-```
-rpmgr create rollout --easy --release 1.5.0 --agent db-host-1 --agent nas --agent edge
-rpmgr list rollout-target rol_…
-rpmgr advance rollout --percent 25 rol_…
-rpmgr advance rollout --all rol_…
-rpmgr pause rollout rol_…
-rpmgr resume rollout rol_…
-rpmgr cancel rollout rol_…
-```
-
-Each change but a pause is audited and asks for the step-up
-([04](../../04-security.md#over-the-air-updates)).
-
-An **easy rollout** updates the agents you name one after another, in the order you give, with no
-stages to approve. An agent that rolls back, refuses the release or stalls is marked and skipped,
-and the next one takes its turn; after a few failures in a row the rollout pauses, so that a
-broken release stops early. `rpmgr upgrade connector` and `rpmgr upgrade gateway` add agents to the
-end of the easy rollout of the controller's version, or start one, and say each agent's place in
-the queue. They are refused while a staged rollout, or a rollout of another release, runs
-([04](../../04-security.md#easy-rollouts)).
-
-```
-rpmgr create rollout --easy --release 1.5.0 --agent db-host-1 --agent nas --agent edge
-rpmgr upgrade connector db-host-2
-rpmgr upgrade gateway edge-2
-rpmgr list rollout-target rol_…
-```
+An **easy rollout** updates the agents you name with `--agent`, one after another, in the order you
+give, with no stages to approve; `rpmgr advance rollout` is for staged rollouts only. An agent that
+rolls back, refuses the release or stalls is marked and skipped, and the next one takes its turn;
+after a few failures in a row the rollout pauses, so that a broken release stops early. **Update**
+on an agent's page adds that agent to the end of the easy rollout of the controller's own version,
+or starts one, and says the agent's place in the queue; from the command line, start an easy
+rollout with that one `--agent`. **Update** is refused while a staged rollout, or a rollout of
+another release, runs ([04](../../04-security.md#easy-rollouts)).
 
 ## Restart a connector without cutting connections
 

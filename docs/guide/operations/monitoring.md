@@ -81,6 +81,7 @@ The full table of metrics is in [10](../../10-operations.md#metrics). Those most
 | Hosts whose UDP buffers are too small for QUIC | `rpmgr_quic_udp_buffer_warning` |
 | Audit entries not yet covered by a signed checkpoint | `rpmgr_audit_checkpoint_age_seconds` |
 | Revocations not yet copied off the host | `rpmgr_revocation_log_unshipped` |
+| Audit items an external sink has not acknowledged, and the age of the oldest | `rpmgr_audit_sink_backlog`, `rpmgr_audit_sink_oldest_unshipped_timestamp_seconds` |
 | Sign-ins and enrollments a rate limit refused | `rpmgr_ratelimit_refused_total` |
 
 Alerts that pay off, with their conditions, are in
@@ -171,5 +172,5 @@ Useful lines to know, by their `msg`:
 | `the local policy does not load: every target is blocked` | The connector's policy file is invalid ([The local policy](../connectors/local-policy.md)) |
 | `the public URL has a self-signed certificate` | The controller has no certificate a browser trusts yet ([Domains and certificates](../domains-and-certificates.md)) |
 
-Live logs of an agent in the web UI are planned for Phase 2
-([05](../../05-features.md#observability)).
+For what an agent logged right now, follow its live log
+([Live logs](../connectors/status-and-diagnostics.md#live-logs)).

@@ -103,9 +103,10 @@ until it is back.
 
 ### 3. The connectors
 
-Through the rollout: offer the release to the test agents you choose, then to a percentage, then
-to all, and approve each stage ([Updates](../operations/updates.md)). A connector whose updater
-rolls back pauses the rollout, and the page says which one and why. A connector on
+Through a rollout ([Updates](../operations/updates.md)): an easy one takes the connectors you tick
+one after another and skips one that fails, and a staged one offers the release to the test agents
+you choose, then to a percentage, then to all, and you approve each stage. A connector whose updater
+rolls back or fails is marked, and the page says which one and why. A connector on
 `auto_update: off` or `notify` is skipped and is upgraded by hand:
 
 Run the install script with `--upgrade --restart` on each connector's host, and check it with
@@ -128,8 +129,8 @@ others while one restarts.
 **`--restart`** restarts every rpmgr service that runs, in the upgrade order: `rpmgr-controller`,
 `rpmgr-all-in-one`, `rpmgr-gateway`, `rpmgr-connector`.
 
-- After each restart it checks that the service stays active for 5 s without systemd restarting
-  it, and reports `restarted <unit> with rpmgr <version>`.
+- After each restart it checks that the service stays active for a few seconds without systemd
+  restarting it, and reports `restarted <unit> with rpmgr <version>`.
 - A service that does not stay up stops the script with exit code 1:
   `<unit> does not stay up with rpmgr <version>; see: journalctl -u <unit> -n 50`.
 - With no service running, it says `no rpmgr service runs; nothing to restart`.
