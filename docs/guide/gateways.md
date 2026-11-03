@@ -269,6 +269,21 @@ sudo systemctl enable --now rpmgr-firewall.path
 sudo systemctl restart rpmgr-gateway
 ```
 
+On an all-in-one the section goes into `/etc/rpmgr/all-in-one.yaml`, and the helper is installed
+for that role; `rpmgr setup --role all-in-one` takes the same two options:
+
+```sh
+sudo rpmgr firewall install --role all-in-one
+sudo systemctl daemon-reload
+sudo systemctl enable rpmgr-firewall.service
+sudo systemctl enable --now rpmgr-firewall.path
+sudo systemctl restart rpmgr-all-in-one
+```
+
+rpmgr changes nothing while `ufw` is inactive. Before you enable it (`sudo ufw enable`), allow the
+port you reach the host's SSH on, such as `sudo ufw allow 22/tcp`: rpmgr opens only its own ports,
+and enabling `ufw` without that rule locks a remote session out.
+
 Without `--firewall-max-range` rpmgr opens only the gateway's listeners and no pool. A pool that
 reaches outside the range is opened only inside it, and the gateway reports the rest as refused.
 A listener you change in the boot file later is not opened until you run `rpmgr firewall install`
