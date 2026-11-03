@@ -57,8 +57,10 @@ controller goes first, as in every upgrade: no agent runs ahead of it. A control
 ([Upgrades](../install/upgrades.md)).
 
 1. Open **Settings → Updates**. A release newer than the controller, which the mirror holds, has
-   **Update controller to 1.5.0**. It is off, with the reason beside it, while the mirror does not
-   hold the release, a rollout runs, an update of the controller is under way, the host has no
+   **Update controller to 1.5.0**. The controller fetches the newest such release at its next
+   release check, or at once with **Check now**; on an air-gapped install, where the release check
+   is off, it never does, so upgrade by hand. The button is off, with the reason beside it, while
+   the mirror does not hold the release, a rollout runs, an update of the controller is under way, the host has no
    root updater, or the database is PostgreSQL. Choose it and confirm your identity. From the
    command line: `rpmgr create rollout --controller --release 1.5.0`.
 
@@ -336,7 +338,8 @@ one that other users may write; fix its owner or mode first
   ([Upgrades](../install/upgrades.md)). To repair it by hand, see
   [Repair the updater on a host](#repair-the-updater-on-a-host).
 - **The controller's update is refused.** The page and `rpmgr get controller-update` give
-  the reason: the mirror does not hold the release, a rollout runs, the host has no root updater
+  the reason: the mirror does not hold the release (it fetches the newest release at the next
+  release check; on an air-gapped install it never does, so upgrade by hand), a rollout runs, the host has no root updater
   or its state directory is not `/var/lib/rpmgr`, the database is PostgreSQL, the release is not
   newer than the controller, or its backup failed (the status says why; the backup is written next
   to the binary, so that directory needs room, and the updater's unit writes `/var/lib/rpmgr`, so
