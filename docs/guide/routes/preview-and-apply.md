@@ -63,7 +63,8 @@ reasons, or "did not answer in time".
 ### On the command line
 
 The commands that create, change, enable, disable or delete routes, targets, access policies and
-the other resources take `--wait <duration>`, at most 30 s. Such a command then answers once the
+the other resources take `--wait <duration>`, up to a bound
+([07](../../07-api.md#writes-and-apply-status)). Such a command then answers once the
 change is applied, rejected or timed out, or once the time is up, and says how far the agents got:
 
 ```sh

@@ -65,7 +65,7 @@ rpmgr create route-target --route wiki --connector home \
 | `--proxy-protocol none\|v1\|v2` | The PROXY protocol header ([PROXY protocol](#proxy-protocol)) |
 | `--weight`, `--priority` | Its share and its rank ([Weight, priority and failover](#weight-priority-and-failover)) |
 | `--disabled` | With `rpmgr update route-target` only: the target gets no connections; `--disabled=false` enables it again. A new target is always enabled |
-| `--wait <duration>`, `-o table\|yaml\|json` | Wait for the agents, at most 30 s; the output format |
+| `--wait <duration>`, `-o table\|yaml\|json` | Wait for the agents, up to a bound; the output format |
 
 To change a target, give its ID and only the flags you change. The IDs are in the route's JSON:
 

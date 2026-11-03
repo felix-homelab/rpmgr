@@ -81,8 +81,9 @@ curl -sS https://panel.example.com/rpmgr.v1.AuditService/ListAuditEntries \
 ```
 
 `ListInstanceAuditEntries` reads the instance chain, for a token of the Instance Admin with the
-scope `instance.admin`. Both page with `pageToken`, newest first. Exporting the log is planned for
-Phase 2 ([05](../../05-features.md#observability)).
+scope `instance.admin`. Both page with `pageToken`, newest first.
+To take a chain off the controller with its proofs, see
+[Export a chain with its proofs](#export-a-chain-with-its-proofs).
 
 ## Verify a chain
 
@@ -161,9 +162,9 @@ line of that file carries the signer's certificate, so it can be checked with th
 certificates alone.
 
 The metric `rpmgr_audit_checkpoint_age_seconds` tells how long the oldest entry has waited for a
-checkpoint. For now both copies are on the controller's host, so the protection reaches only an
-attacker who can change the database but not the host. Sending checkpoints to an external sink is
-planned for Phase 2 ([04](../../04-security.md#audit-log)).
+checkpoint. Both copies are on the controller's host, so on their own they protect only against an
+attacker who can change the database but not the host. An external sink keeps a copy elsewhere
+([below](#ship-the-log-to-an-external-sink); [04](../../04-security.md#audit-log)).
 
 ## Ship the log to an external sink
 

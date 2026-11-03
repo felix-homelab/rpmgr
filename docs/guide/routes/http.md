@@ -67,7 +67,7 @@ rpmgr create route-target --route wiki --connector home \
   --address 192.168.10.20:8080 --wait 30s
 ```
 
-`--wait` lets each command wait, at most 30 s, until the gateways and connectors have applied the
+`--wait` lets each command wait, up to a bound, until the gateways and connectors have applied the
 change, and print how far they got ([Preview and apply](preview-and-apply.md)). `--group`,
 `--route`, `--connector` and `--policy` take a name or an ID. A flag of another route type, and a
 value the API's rules refuse, are refused before anything is sent.
@@ -270,10 +270,9 @@ streamed answers keep no idle timeout. Gateways of release 0.2 and earlier keep 
 - With a request body limit, a larger body gets 413, whether its `Content-Length` announces it or
   it is streamed.
 
-The gateway's HTTP timeouts, such as for reading a request's headers and for the upstream's
-response headers, are fixed
-([03](../../03-connections.md#timeouts-keepalive-and-backoff)); timeouts per route are planned for
-Phase 2 ([13](../../13-roadmap.md#phase-2--production)).
+The gateway's other HTTP timeouts, such as for reading a request's headers, are fixed
+([03](../../03-connections.md#timeouts-keepalive-and-backoff)); a route sets its own upstream
+timeouts as described above.
 
 ## What clients see
 
@@ -303,6 +302,7 @@ clients get plain text. The pages and their rules are in
 - The sizes and timeouts that apply to every route are fixed, but for the two upstream timeouts
   a route may set ([03](../../03-connections.md#timeouts-keepalive-and-backoff)). A route has at most 100
   hostnames, and 32 request and 32 response headers to set.
-- OIDC sign-in in front of a route, per-route rate and connection
-  limits and custom error pages are planned for Phase 2, public HTTP/3 for Phase 3
-  ([05](../../05-features.md#http-features)).
+- OIDC sign-in in front of a route is planned for Phase 2 and public HTTP/3 for Phase 3
+  ([05](../../05-features.md#http-features)). Limits per route are on
+  [Route limits](limits.md), custom error pages on
+  [Maintenance and pages](maintenance-and-pages.md).
