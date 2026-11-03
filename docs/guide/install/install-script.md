@@ -50,12 +50,12 @@ terminal would reach a later prompt ([04](../../04-security.md#join-command)).
 What you see on a first installation (abbreviated):
 
 ```text
-rpmgr install: downloading rpmgr 0.2.0 for linux/amd64 from https://github.com/felix-homelab/rpmgr
-rpmgr install: verified rpmgr 0.2.0 (manifest …)
-rpmgr 0.2.0 (commit …, go…, linux/amd64)
+rpmgr install: downloading rpmgr 0.3.0 for linux/amd64 from https://github.com/felix-homelab/rpmgr
+rpmgr install: verified rpmgr 0.3.0 (manifest …)
+rpmgr 0.3.0 (commit …, go…, linux/amd64)
 release root keys:
   …
-rpmgr install: installed rpmgr 0.2.0 to /usr/local/bin/rpmgr
+rpmgr install: installed rpmgr 0.3.0 to /usr/local/bin/rpmgr
 Run rpmgr setup now? [Y/n]
 ```
 
@@ -234,7 +234,7 @@ the global script needs, and `systemctl`, `useradd` and `install`.
 It ends with a line such as:
 
 ```text
-rpmgr install: rpmgr 0.2.0 runs as rpmgr-connector; admin listener 127.0.0.1:7383
+rpmgr install: rpmgr 0.3.0 runs as rpmgr-connector; admin listener 127.0.0.1:7383
 ```
 
 Check the agent with `sudo rpmgr status`. Its last line, `Service:`, says `running and ready` once
