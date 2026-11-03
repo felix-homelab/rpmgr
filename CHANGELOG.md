@@ -283,6 +283,10 @@ Changes to the design documents are not recorded here: see the git history and t
 - Web UI: the route page marks a target as the HTTP/2 fallback for QUIC only when it serves, its
   connector has only HTTP/2 sessions, and neither the route nor the connector pins a transport.
   (#976, #977)
+- The controller's update was never offered for a release found by the release check: the button
+  stayed off with "The mirror does not hold it yet". With the release check on, the controller now
+  also downloads the newest release of its channel that is newer than itself, at the next check or
+  with "Check now". On an air-gapped install, upgrade by hand. (#1067)
 - Connectors: a target that allows each client address only a few connections, as a remote desktop
   server does, is no longer locked out by stalled connections and by the connector's own health
   checks. A connector holds at most a bound of connections to one target address, for streams and

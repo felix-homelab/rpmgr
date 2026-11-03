@@ -1117,10 +1117,16 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
      exist; an instance on `stable` lists stable releases only, one on `prerelease` both, and a
      manifest signed for `prerelease` counts as a pre-release whatever the listing says. A listed
      release is recorded without its artifacts, which are downloaded once the mirror keeps it.
+     The newest of them that is newer than the controller is kept at once (below).
    - **What it keeps** ([D119](14-open-decisions.md#engineering)): the controller's own version,
      the target of every rollout that is running or paused, and the version the controller ran
-     before its last upgrade, each with all its artifacts: both variants (`full` and `connector`)
-     for every OS and architecture the manifest names. Phase 1 kept only the controller's own
+     before its last upgrade, and, while the release check is on, the newest release of the
+     instance's channel newer than the controller ([D163](14-open-decisions.md#engineering)), so
+     that the controller can update to it, each with all its artifacts: both variants (`full` and
+     `connector`) for every OS and architecture the manifest names. A newer release kept earlier
+     goes once a still newer one is kept, and one that cannot be fetched is tried again at the
+     next check. With the release check off nothing newer is fetched, so on an air-gapped
+     installation the controller is upgraded by hand. Phase 1 kept only the controller's own
      version ([D59](14-open-decisions.md#security-defaults)).
    - **What it serves:** `/dl/<version>/` serves `signing-key.json`, `manifest.json`, their
      `.minisig` files and the release's artifacts, and nothing else. A development build serves

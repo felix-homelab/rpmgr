@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -256,8 +257,9 @@ func nextReleaseCheck(err error, retry time.Duration, now time.Time) (wait, next
 
 // CheckRelease runs one release check and logs its outcome; a check that ctx ends is no failure.
 // With the release check on, it keeps the controller's own release and the version it ran before,
-// and lists the releases of the instance's channel newer than the oldest kept version, verifying
-// their manifests without their artifacts. Always, it keeps the target of each running or paused
+// lists the releases of the instance's channel newer than the oldest kept version, verifying
+// their manifests, and keeps the newest release of the channel newer than the controller with its
+// artifacts, so the controller can update to it (D163). Always, it keeps the target of each running or paused
 // rollout, also one the mirror does not hold yet (D125), and removes the versions nothing keeps
 // (docs/04-security.md, "Over-the-air updates").
 func CheckRelease(ctx context.Context, o ReleaseCheckOptions) (err error) {
@@ -284,7 +286,13 @@ func CheckRelease(ctx context.Context, o ReleaseCheckOptions) (err error) {
 	}
 	var errs []error
 	if checked = set.GetReleaseCheck(); checked {
-		errs = append(errs, o.check(ctx, set.GetUpdateChannel() == rpmgrv1.UpdateChannel_UPDATE_CHANNEL_PRERELEASE, keep))
+		newer, err := o.check(ctx, set.GetUpdateChannel() == rpmgrv1.UpdateChannel_UPDATE_CHANNEL_PRERELEASE, keep)
+		errs = append(errs, err)
+		for _, v := range newer {
+			if !contains(keep, v) {
+				keep = append(keep, v)
+			}
+		}
 	} else {
 		errs = append(errs, o.sync(ctx, targets))
 	}
@@ -336,22 +344,57 @@ func (o *ReleaseCheckOptions) syncSource(ctx context.Context, v string) release.
 		ManifestJSON: row.Manifest, ManifestSig: row.Signature})
 }
 
-// check keeps every version of keep and lists the newer releases.
-func (o *ReleaseCheckOptions) check(ctx context.Context, prerelease bool, keep []string) error {
+// check keeps every version of keep, lists the newer releases and records them, and mirrors the
+// newest release of the channel newer than the controller's own, which it returns to keep (D163).
+// When that release cannot be fetched, it also returns the newest one mirrored before, so the
+// mirror still offers an update. A failed listing does not stop the mirroring of a recorded one.
+func (o *ReleaseCheckOptions) check(ctx context.Context, prerelease bool, keep []string) ([]string, error) {
 	errs := []error{o.sync(ctx, keep)}
 	listed, err := o.lister().List(ctx)
 	if err != nil {
-		return errors.Join(append(errs, err)...)
+		errs = append(errs, err)
+	} else {
+		errs = append(errs, o.record(ctx, prerelease, oldestVersion(keep), listed))
 	}
-	oldest := oldestVersion(keep)
+	rows, err := o.DB.ReadClient().Release.Query().All(ctx)
+	if err != nil {
+		return nil, errors.Join(append(errs, err)...)
+	}
+	var newer []*ent.Release
+	for _, r := range rows {
+		if (r.Channel == entrelease.ChannelStable || prerelease) && release.Releasable(r.Version) &&
+			semver.Compare("v"+r.Version, "v"+o.Mirror.Version) > 0 {
+			newer = append(newer, r)
+		}
+	}
+	sort.Slice(newer, func(i, j int) bool { return semver.Compare("v"+newer[i].Version, "v"+newer[j].Version) > 0 })
+	if len(newer) == 0 || contains(keep, newer[0].Version) { // a rollout's target is synced above
+		return nil, errors.Join(errs...)
+	}
+	err = o.sync(ctx, []string{newer[0].Version})
+	if err == nil {
+		return []string{newer[0].Version}, errors.Join(errs...)
+	}
+	errs = append(errs, err)
+	for _, r := range newer {
+		if o.Mirror.Complete(r.Version) {
+			return []string{r.Version}, errors.Join(errs...)
+		}
+	}
+	return nil, errors.Join(errs...)
+}
+
+// record records the listed releases of the channel newer than oldest, verified, not mirrored.
+func (o *ReleaseCheckOptions) record(ctx context.Context, prerelease bool, oldest string, listed []release.Listed) error {
 	known, err := o.DB.ReadClient().Release.Query().Select(entrelease.FieldVersion).Strings(ctx)
 	if err != nil {
-		return errors.Join(append(errs, err)...)
+		return err
 	}
 	have := map[string]bool{}
 	for _, v := range known {
 		have[v] = true
 	}
+	var errs []error
 	for _, l := range listed {
 		pre := l.Prerelease || semver.Prerelease("v"+l.Version) != ""
 		if have[l.Version] || (pre && !prerelease) || semver.Compare("v"+l.Version, "v"+oldest) <= 0 {
