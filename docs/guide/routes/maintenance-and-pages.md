@@ -148,7 +148,7 @@ a route that starts in maintenance.
 
 ### The message
 
-- Plain text of at most 500 characters. Line breaks are kept; no other control characters are
+- Plain text, as long as the field's label says. Line breaks are kept; no other control characters are
   allowed.
 - Characters that change the direction of text (U+202A to U+202E and U+2066 to U+2069) are refused,
   as they could turn the text around where it is shown.

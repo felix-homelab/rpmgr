@@ -162,9 +162,11 @@ The hostnames' DNS records must point at the group's gateways; rpmgr does not pu
 ### Idle timeouts
 
 - A **TCP** connection without traffic for the idle timeout is closed. `0` never closes it, for
-  long-lived quiet connections. The largest value is 604 800 seconds, seven days.
+  long-lived quiet connections. The largest value is in
+  [03](../../03-connections.md#timeouts-keepalive-and-backoff).
 - A **UDP** flow without datagrams for the flow idle timeout is forgotten; the next datagram of the
-  client starts a new flow. The value is 1 to 86 400 seconds, one day.
+  client starts a new flow. The bounds of the value are in
+  [03](../../03-connections.md#timeouts-keepalive-and-backoff).
 - Left empty in the web UI, or not set when the route is created, a timeout takes its default
   ([03](../../03-connections.md#timeouts-keepalive-and-backoff)). The TCP default is short enough
   that a connection which stalls, or whose client vanished, does not hold the target's connection
@@ -255,6 +257,3 @@ the connections and ends the flows of the clients it now refuses at once.
 - **UDP works only partly.** Large datagrams may not fit one QUIC packet, and over the TCP fallback
   every flow waits for lost packets. The route's page has a note on the sizes
   ([03](../../03-connections.md#udp-routes)).
-
-TCP routes behind an HTTP CONNECT multiplexer on one port are planned for Phase 2
-([05](../../05-features.md#publishing-services-routes)).
