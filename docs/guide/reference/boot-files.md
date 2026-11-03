@@ -44,7 +44,8 @@ restart ([10](../../10-operations.md#boot-files)).
 
 ## Rules for every boot file
 
-- **Strict parsing.** A boot file is one YAML document of at most 64 KiB. A key the role does not
+- **Strict parsing.** A boot file is one YAML document of a bounded size
+  ([10](../../10-operations.md#boot-files)). A key the role does not
   know, a value of the wrong type, a second document or an empty file stops the role at start, with
   the line at fault. So does a key of another role: a connector refuses `listen.tcp`, for example.
 - **Version.** `version: 1` is required. A file of another version is refused.

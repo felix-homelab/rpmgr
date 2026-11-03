@@ -20,6 +20,12 @@ receiver must reject a request are in [07](../../07-api.md#webhooks-phase-2) and
 [04](../../04-security.md#webhooks-and-the-egress-guard-phase-2). A receiver answers with a 2xx
 status; anything else, or no answer, is a failure and is retried.
 
+Besides the events of changes, an endpoint can receive status events: `agent.connect` and
+`agent.disconnect`, `apply.reject` when an agent rejects a configuration, and `route.status` when a
+route's state changes. Each is written once per change of state, and a flapping agent or route
+sends at most a bounded number of them per minute
+([07](../../07-api.md#webhooks-phase-2)).
+
 ## Rotate the secret
 
 Choose **Rotate secret…** on the endpoint and confirm. The new secret is shown once. Both the old

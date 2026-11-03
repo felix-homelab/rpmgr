@@ -222,7 +222,7 @@ organisation also with the revision's `applyStatus`.
 
 Saving a change and the gateways and connectors running it are two events. Add the header
 `Rpmgr-Wait-Applied` with a duration to any write, and the answer comes once every online agent
-applied the revision, one rejected it or did not answer in time, or the wait is over, at most 30 s
+applied the revision, one rejected it or did not answer in time, or the wait is over, which is bounded
 ([07](../../07-api.md#writes-and-apply-status)):
 
 ```sh
@@ -354,7 +354,7 @@ rpc RouteService/UpdateRoute '{"route":{"id":"rt_01M4ZEM8WFF24VT354JQBHZSZ2","de
 ## Retry safely: request IDs
 
 The methods that create something, those that mint tokens included, take a `requestId` (its
-request message has the field), any string of at most 128 characters, such as a UUID. Within the
+request message has the field), any string, such as a UUID, within the length [07](../../07-api.md) sets. Within the
 deduplication window ([03](../../03-connections.md#timeouts-keepalive-and-backoff)) the controller
 runs each request ID once per user and method:
 
@@ -385,8 +385,8 @@ polling ([07](../../07-api.md#events-and-streaming)):
   you miss none. After a restore of the controller, a token of the old database gets one event
   with `"reset": true`: read everything again.
 
-`StatusService.WatchApplyStatus` streams a revision's apply status until it is final, or for at
-most 60 s.
+`StatusService.WatchApplyStatus` streams a revision's apply status until it is final, or until a
+bound ([07](../../07-api.md#writes-and-apply-status)).
 
 A stream uses the Connect streaming format: `Content-Type: application/connect+json`, and every
 message, the request too, is preceded by five bytes, a flag byte and the message's length as a
@@ -510,15 +510,17 @@ once, in the answer that makes it.
 | `OrgService` | [org.proto](../../../proto/rpmgr/v1/org.proto) | The organisation, its members and invitations; the restore review |
 | `TokenService` | [token.proto](../../../proto/rpmgr/v1/token.proto) | Your personal API tokens |
 | `EnrollmentService` | [enrollment.proto](../../../proto/rpmgr/v1/enrollment.proto) | Enrollment tokens for connectors and gateways, the install command |
-| `ConnectorService` | [connector.proto](../../../proto/rpmgr/v1/connector.proto) | Connectors, their status, switching them off, decommissioning |
-| `GatewayService` | [gateway.proto](../../../proto/rpmgr/v1/gateway.proto) | Gateway groups, gateways, port pools and port quotas |
+| `ConnectorService` | [connector.proto](../../../proto/rpmgr/v1/connector.proto) | Connectors, their status, switching them off, decommissioning, ending a draining old process |
+| `GatewayService` | [gateway.proto](../../../proto/rpmgr/v1/gateway.proto) | Gateway groups, gateways, port pools and port quotas, a group's own error pages, and ending a draining old process |
 | `RouteService` | [route.proto](../../../proto/rpmgr/v1/route.proto) | Routes, their targets, preview, and reading a target's certificate |
 | `DomainService` | [domain.proto](../../../proto/rpmgr/v1/domain.proto) | Domain claims and their proofs |
 | `CertificateService` | [certificate.proto](../../../proto/rpmgr/v1/certificate.proto) | Uploaded and ACME certificates, CA bundles |
 | `PolicyService` | [policy.proto](../../../proto/rpmgr/v1/policy.proto) | Access policies |
-| `StatusService` | [status.proto](../../../proto/rpmgr/v1/status.proto) | Apply status of revisions, the event stream |
+| `StatusService` | [status.proto](../../../proto/rpmgr/v1/status.proto) | Apply status of revisions, the event stream, and the alerts that fire (`ListAlerts` for an organisation, `ListInstanceAlerts` for the Instance Admin) |
 | `MetricsService` | [metrics.proto](../../../proto/rpmgr/v1/metrics.proto) | Traffic of a route, and the org's overview |
 | `AuditService` | [audit.proto](../../../proto/rpmgr/v1/audit.proto) | The audit log, and verifying its chains |
+| `LogService` | [log.proto](../../../proto/rpmgr/v1/log.proto) | The live log of a connector or gateway, as a server stream |
+| `ReleaseService` | [release.proto](../../../proto/rpmgr/v1/release.proto) | Releases and the release check, rollouts, and updating the controller |
 | `AuditSinkService` | [audit_sink.proto](../../../proto/rpmgr/v1/audit_sink.proto) | The external sinks of the audit log, for the Instance Admin |
 | `SettingsService` | [settings.proto](../../../proto/rpmgr/v1/settings.proto) | Instance and organisation settings, the mail relay's password |
 | `PkiService` | [pki.proto](../../../proto/rpmgr/v1/pki.proto) | The internal CA's keys and the intermediate's rotation |

@@ -107,8 +107,8 @@ The install script of v0.1.0-rc.7 and earlier has neither `--upgrade` nor `--res
    v0.1.0 gets the updater: run the script with `--upgrade`. A release from before the updater gets
    only the record of how it was installed.
 7. **Services:** with `--restart`, it restarts each rpmgr service that runs and checks that it
-   stays active for 5 s without systemd restarting it. Without, it names each service that still
-   runs the previous binary and the command that restarts it.
+   stays active for a few seconds without systemd restarting it. Without, it names each service
+   that still runs the previous binary and the command that restarts it.
 8. **Setup:** unless `--no-setup` or `--upgrade` is given, it asks on the terminal whether to run
    `rpmgr setup`. Without a terminal it asks nothing and prints the next step.
 
