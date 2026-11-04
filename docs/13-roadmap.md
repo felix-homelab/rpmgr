@@ -271,7 +271,7 @@ How each criterion is shown:
 | Importers against real sources | Fixtures in CI; the maintainer's real configurations and databases, on SQLite, MySQL and PostgreSQL, run locally and the results recorded | P2-M14, P2-M16 |
 | HA failover drops no tunnelled connection | S9; a test in the nightly end-to-end run that kills a replica | P2-M01, P2-M09 |
 | Cross-tenant leak suite | Each new API service brings its fixtures; a sweep over every kind of principal before v1.0.0 | every milestone, P2-M16 |
-| DNS automation | The fake Cloudflare API in CI; the run sheets of [D110](14-open-decisions.md#project-and-process) for VB-09 to VB-12, and again on the 1.0 release candidate | P2-M06, P2-M07, P2-M16 |
+| DNS automation | The fake Cloudflare API in CI; the run sheets of [D110](14-open-decisions.md#project-and-process) for VB-09 to VB-12 (the probe and its sheet: [test/cfprobe](../test/cfprobe/README.md)), and again on the 1.0 release candidate | P2-M06, P2-M07, P2-M16 |
 | Self-review | The threat model checked against the code; review records that together cover every security-sensitive package; the fuzzing campaign of [D117](14-open-decisions.md#project-and-process); an external review sought early ([D109](14-open-decisions.md#project-and-process)) | P2-M16 |
 
 Besides the criteria: VB-19 before v0.4.0 ([D98](14-open-decisions.md#project-and-process));
