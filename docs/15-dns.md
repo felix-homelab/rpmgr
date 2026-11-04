@@ -183,12 +183,26 @@ controller-managed durable state: it is never rebuilt from the provider.
   - The pass reports its orphans, corrections and `drifted` records to the controller, which logs
     them; the alert `dns.drifted` fires for a `drifted` record
     ([10](10-operations.md#suggested-alerts)). Orphans are shown in the zone's plan.
-- **Adopt.** Turns a foreign record at a desired name into an owned one. Its original content is
-  stored in the ledger (`adopted_from`), and the next pass rewrites it. Adopt is how the migration
+- **Adopt.** Turns a foreign record at a desired name into an owned one. An Owner or Admin, after a
+  step-up, because it hands rpmgr control of the record, whatever its content, names
+  the records; a name is desired if a source of the zone's own org publishes it, so a record at a
+  name that only another org wants, or that nothing publishes, is not adopted. The call is all or
+  none, and only A, AAAA, CNAME and TXT records are adopted. Its original content is stored in the
+  ledger (`adopted_from`), and the next pass, which the adoption asks for, rewrites it to what the
+  sources want and puts the marker on it; that first write is no drift. Adopt is how the migration
   cutover switches names from an old server to rpmgr ([11](11-migration.md#cutover-plan)).
-- **Release.** Removes a record from the ledger. Either the record stays as it is, or it is
-  restored to its adopted original. A restore warns when the original is older than the staleness
-  limit, because an old address may now belong to someone else.
+- **Release.** Removes a record from the ledger; the CLI calls it `disown`
+  ([D169](14-open-decisions.md#engineering)). Either the record stays as it is, with rpmgr's marker
+  taken off, by a patch with an empty comment [V VB-27], so that it is not reported as an orphan, or it is restored to its adopted original,
+  which needs the record to be of the type it was adopted with. Both are written to the provider
+  before the row is dropped, by the DNS job under its lease and not by the API call: the call, which
+  also needs a step-up, records the request on the row, and the job carries it out at its next pass
+  of an active zone, so a held zone writes nothing. A restore of a record whose type changed since,
+  or that was not adopted, is not carried out and the row says why. A restore warns when the original
+  is older than the staleness limit, because an old address may now belong to someone else.
+- **Who sees what.** Every member of the org lists a zone's owned records. The records of the zone
+  that rpmgr does not own, read live, and the orphans are for an Owner or Admin: an Operator or
+  Viewer who asks for them is refused, so one learns nothing of what else is in the zone.
 
 A provider without record comments (none in Phase 2) has no marker, so the crash repair is
 unavailable. The crashed record then shows as a `conflict` at its own name and is adopted.
@@ -344,7 +358,7 @@ flowchart LR
   ([10](10-operations.md#backup-and-restore)), and every zone starts held. The plan shows:
   - records created after the backup as `orphaned` (delete, or re-link);
   - records deleted after the backup as creates;
-  - adopted records whose original content changed since.
+  - adopted records whose original content changed since (not shown yet, [#1113](https://github.com/felix-homelab/rpmgr/issues/1113)).
 
   `rpmgr restore --dns-disabled` sets every zone to `disabled`, for a clone restored into staging
   with the same trust domain and KEK. Otherwise approving there would fight production.

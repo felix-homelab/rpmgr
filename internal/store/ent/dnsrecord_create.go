@@ -169,6 +169,20 @@ func (_c *DNSRecordCreate) SetNillableCorrectedAt(v *time.Time) *DNSRecordCreate
 	return _c
 }
 
+// SetReleaseRequested sets the "release_requested" field.
+func (_c *DNSRecordCreate) SetReleaseRequested(v string) *DNSRecordCreate {
+	_c.mutation.SetReleaseRequested(v)
+	return _c
+}
+
+// SetNillableReleaseRequested sets the "release_requested" field if the given value is not nil.
+func (_c *DNSRecordCreate) SetNillableReleaseRequested(v *string) *DNSRecordCreate {
+	if v != nil {
+		_c.SetReleaseRequested(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *DNSRecordCreate) SetID(v string) *DNSRecordCreate {
 	_c.mutation.SetID(v)
@@ -246,6 +260,10 @@ func (_c *DNSRecordCreate) defaults() error {
 	if _, ok := _c.mutation.AdoptedFrom(); !ok {
 		v := dnsrecord.DefaultAdoptedFrom
 		_c.mutation.SetAdoptedFrom(v)
+	}
+	if _, ok := _c.mutation.ReleaseRequested(); !ok {
+		v := dnsrecord.DefaultReleaseRequested
+		_c.mutation.SetReleaseRequested(v)
 	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if dnsrecord.DefaultID == nil {
@@ -337,6 +355,14 @@ func (_c *DNSRecordCreate) check() error {
 	if v, ok := _c.mutation.AdoptedFrom(); ok {
 		if err := dnsrecord.AdoptedFromValidator(v); err != nil {
 			return &ValidationError{Name: "adopted_from", err: fmt.Errorf(`ent: validator failed for field "DNSRecord.adopted_from": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ReleaseRequested(); !ok {
+		return &ValidationError{Name: "release_requested", err: errors.New(`ent: missing required field "DNSRecord.release_requested"`)}
+	}
+	if v, ok := _c.mutation.ReleaseRequested(); ok {
+		if err := dnsrecord.ReleaseRequestedValidator(v); err != nil {
+			return &ValidationError{Name: "release_requested", err: fmt.Errorf(`ent: validator failed for field "DNSRecord.release_requested": %w`, err)}
 		}
 	}
 	if v, ok := _c.mutation.ID(); ok {
@@ -433,6 +459,10 @@ func (_c *DNSRecordCreate) createSpec() (*DNSRecord, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CorrectedAt(); ok {
 		_spec.SetField(dnsrecord.FieldCorrectedAt, field.TypeTime, value)
 		_node.CorrectedAt = &value
+	}
+	if value, ok := _c.mutation.ReleaseRequested(); ok {
+		_spec.SetField(dnsrecord.FieldReleaseRequested, field.TypeString, value)
+		_node.ReleaseRequested = value
 	}
 	if nodes := _c.mutation.ZoneIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

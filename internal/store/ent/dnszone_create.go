@@ -205,6 +205,20 @@ func (_c *DNSZoneCreate) SetNillableLastSyncedAt(v *time.Time) *DNSZoneCreate {
 	return _c
 }
 
+// SetSyncRequestedAt sets the "sync_requested_at" field.
+func (_c *DNSZoneCreate) SetSyncRequestedAt(v time.Time) *DNSZoneCreate {
+	_c.mutation.SetSyncRequestedAt(v)
+	return _c
+}
+
+// SetNillableSyncRequestedAt sets the "sync_requested_at" field if the given value is not nil.
+func (_c *DNSZoneCreate) SetNillableSyncRequestedAt(v *time.Time) *DNSZoneCreate {
+	if v != nil {
+		_c.SetSyncRequestedAt(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *DNSZoneCreate) SetCreatedAt(v time.Time) *DNSZoneCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -536,6 +550,10 @@ func (_c *DNSZoneCreate) createSpec() (*DNSZone, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.LastSyncedAt(); ok {
 		_spec.SetField(dnszone.FieldLastSyncedAt, field.TypeTime, value)
 		_node.LastSyncedAt = &value
+	}
+	if value, ok := _c.mutation.SyncRequestedAt(); ok {
+		_spec.SetField(dnszone.FieldSyncRequestedAt, field.TypeTime, value)
+		_node.SyncRequestedAt = &value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(dnszone.FieldCreatedAt, field.TypeTime, value)

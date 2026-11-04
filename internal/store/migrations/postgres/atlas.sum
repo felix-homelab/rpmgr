@@ -1,4 +1,4 @@
-h1:NYu2ZBua2npVE026j7GlJzJzkyD7nmAvCJqeSRhDcTk=
+h1:TB/1aBmj7/YTP+Iwt9/h2wjDLVP3cOlYsXFXfih7GJM=
 20261009220804_baseline.sql h1:3YnrznDnj07R9ghUsKGrAaoH81vUNv9tKMjohnF7NbI=
 20261013061722_agent_names_active.sql h1:YBZGGRxkqNhw3g8AAlmxBulLeHSa0HXuN/5hA2EuZJc=
 20261014071550_target_tls_verification.sql h1:7FaM1r92ArAAXb64nJni/M6AAFUGjjZdTOQm0iSFORw=
@@ -34,3 +34,5 @@ h1:NYu2ZBua2npVE026j7GlJzJzkyD7nmAvCJqeSRhDcTk=
 20261104110202_webhook_chat_options.sql h1:X5pNyiUDdKjQmwL4eJTwmxJe4PNZHqu0+QNYIYvZF0s=
 20261104112031_dns_rate_budgets.sql h1:K62khS33tRaf/yH035pQs93s3Xh4gMJnHkrALVet+ec=
 20261104113750_dns_zones_pending_plan.sql h1:Mt37Np7zH8410b7SO+qLRxVIZB7i029NpJt+sKD2bT4=
+20261104115857_dns_zones_sync_requested.sql h1:OtHa9CCOzOZDcxxU/X2colTEW+9PRjyETYZKH6TV7KE=
+20261104124154_dns_records_release_requested.sql h1:5vKcVWvgnhTByKjhNXBhGDAgLPuWb8zJET3BODJa7zo=
