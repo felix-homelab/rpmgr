@@ -43,7 +43,10 @@ type Env struct {
 type Command struct {
 	Name    string
 	Summary string // one line, lower-case start, no trailing period
-	Args    string // synopsis of the positional arguments, e.g. "<dir>"; empty for none
+	// NoArgEcho keeps the message of an unexpected argument from repeating it, for a command that
+	// takes a secret from a file: an argument given by mistake may be that secret.
+	NoArgEcho bool
+	Args      string // synopsis of the positional arguments, e.g. "<dir>"; empty for none
 	// Flags registers the command's flags on fs; nil if the command has none.
 	Flags func(fs *flag.FlagSet)
 	// Run executes the command with its positional arguments, in their order, without the flags.
@@ -156,6 +159,9 @@ func Main(ctx context.Context, root *Command, args []string, env *Env) int {
 		return usageFail(env, cmd, path, fs, Usagef("a command is required"))
 	}
 	if cmd.Args == "" && len(pos) > 0 {
+		if cmd.NoArgEcho {
+			return usageFail(env, cmd, path, fs, Usagef("unexpected argument; this command takes no argument"))
+		}
 		return usageFail(env, cmd, path, fs, Usagef("unexpected argument %q", pos[0]))
 	}
 

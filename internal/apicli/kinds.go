@@ -36,6 +36,17 @@ type Kind struct {
 	// Message names the response's message that holds a resource when it is not Resource, as
 	// the instance's webhooks' Webhook does; empty for Resource.
 	Message string
+	// Stem is the stem of Get, Update and Delete methods when it is not Resource, as the zones'
+	// GetZone and ListZones are of a DnsZone; empty for Resource.
+	Stem string
+}
+
+// MethodStem is the stem of the kind's Create, Get and Update methods.
+func (k Kind) MethodStem() string {
+	if k.Stem != "" {
+		return k.Stem
+	}
+	return k.Resource
 }
 
 // Kinds are the kinds of the public API's resources, by name.
@@ -79,6 +90,16 @@ var Kinds = []Kind{
 		Columns: []string{"attempt", "statusCode", "error", "sendTime", "nextAttemptTime"}, NoGet: true},
 	{Name: "instance-webhook-delivery", Service: "rpmgr.v1.InstanceWebhookService", Resource: "InstanceWebhookDelivery", Message: "WebhookDelivery",
 		Plural: "InstanceWebhookDeliveries", Parent: "webhook_id", Columns: []string{"attempt", "statusCode", "error", "sendTime", "nextAttemptTime"}, NoGet: true},
+	// DNS automation (docs/15-dns.md): providers, the zones imported from them and the names that
+	// point at a gateway group. A provider's zones are listed with the provider, what it offers.
+	{Name: "dns-provider", Prefix: "dnp_", Service: "rpmgr.v1.DnsProviderService", Resource: "DnsProvider", Plural: "DnsProviders",
+		IDField: "dns_provider_id", Columns: []string{"status", "tokenExpiresAt", "tokenExpiring", "lastCheckTime", "lastError"}, Delete: true},
+	{Name: "provider-zone", Service: "rpmgr.v1.DnsProviderService", Resource: "ProviderZone", Plural: "ProviderZones", Parent: "dns_provider_id",
+		Columns: []string{"status", "type"}, NoGet: true},
+	{Name: "zone", Prefix: "dnz_", Service: "rpmgr.v1.DnsZoneService", Resource: "DnsZone", Stem: "Zone", Plural: "Zones", IDField: "dns_zone_id",
+		Columns: []string{"syncState", "heldReason", "providerStatus", "lastSyncedTime"}},
+	{Name: "dns-name", Prefix: "dnn_", Service: "rpmgr.v1.DnsNameService", Resource: "DnsName", Plural: "DnsNames", IDField: "dns_name_id",
+		Columns: []string{"gatewayGroupId", "ttl"}, Delete: true},
 	{Name: "release", Prefix: "rel_", Service: "rpmgr.v1.ReleaseService", Resource: "Release", Plural: "Releases",
 		Columns: []string{"channel", "source", "mirrored", "controllerVersion", "newerThanController"}, NoGet: true},
 	{Name: "audit-sink", Prefix: "ask_", Service: "rpmgr.v1.AuditSinkService", Resource: "AuditSink", Plural: "AuditSinks", IDField: "audit_sink_id",
@@ -211,8 +232,10 @@ func (k Kind) Resolve(ctx context.Context, hc *http.Client, base, org, ref strin
 		l := resp.Get(fd).List()
 		for i := range l.Len() {
 			m := l.Get(i).Message()
-			if name := m.Descriptor().Fields().ByName("name"); name != nil && m.Get(name).String() == ref {
-				return m.Get(m.Descriptor().Fields().ByName("id")).String(), nil
+			for _, n := range []protoreflect.Name{"name", "fqdn"} {
+				if name := m.Descriptor().Fields().ByName(n); name != nil && m.Get(name).String() == ref {
+					return m.Get(m.Descriptor().Fields().ByName("id")).String(), nil
+				}
 			}
 		}
 		if page = resp.Get(resp.Descriptor().Fields().ByName("next_page_token")).String(); page == "" {
