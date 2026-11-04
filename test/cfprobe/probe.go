@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -71,6 +72,7 @@ type config struct {
 	accountToken secret.Value
 	accountID    string
 	apexCNAME    bool
+	burst        int
 }
 
 // env holds what tests replace.
@@ -199,7 +201,11 @@ func run(ctx context.Context, cfg config, e env, rep *report) int {
 		p.checkCNAME(ctx)
 		p.checkForeignUntouched(ctx, before)
 		p.cleanup(ctx, false)
-		rep.add(info, "VB-09", "the rate-limit burst is not part of this version of cfprobe")
+		if cfg.burst > 0 {
+			p.checkRateLimit(ctx, cfg.burst)
+		} else {
+			rep.add(info, "VB-09", "rate-limit burst not run; pass -burst N and -confirm-burst to run it")
+		}
 	}
 	p.cleanup(ctx, true)
 	p.finished = true
@@ -609,6 +615,86 @@ func (p *probe) cleanup(ctx context.Context, final bool) {
 		return
 	}
 	p.left = nil
+}
+
+// checkRateLimit is VB-09: a bounded burst of cheap reads, stopped at the first 429.
+func (p *probe) checkRateLimit(ctx context.Context, n int) {
+	const vb = "VB-09"
+	path := "/zones/" + p.zone.ID + "/dns_records?per_page=5"
+	p.rep.add(info, vb, "burst of at most %d read requests starts; it stops at the first 429", n)
+	start := p.env.now()
+	var hit *rawAnswer
+	sent := 0
+	for sent < n && ctx.Err() == nil {
+		ans, err := p.env.raw.get(ctx, p.cfg.token, path)
+		sent++
+		if err != nil {
+			p.rep.add(fail, vb, "request %d failed: %v", sent, err)
+			return
+		}
+		if ans.status == http.StatusTooManyRequests {
+			hit = &ans
+			break
+		}
+		if ans.status != http.StatusOK {
+			p.rep.add(fail, vb, "request %d answered HTTP %d %s; the burst stops", sent, ans.status, ans.errorText())
+			return
+		}
+	}
+	elapsed := p.env.now().Sub(start).Round(time.Second)
+	if hit == nil {
+		p.rep.add(info, vb, "no 429 after %d requests in %s; the limit was not reached (compare 15)", sent, elapsed)
+		return
+	}
+	p.rep.add(pass, vb, "HTTP 429 after %d requests in %s: %s", sent, elapsed, hit.errorText())
+	ra := hit.header.Get("Retry-After")
+	switch secs, err := strconv.Atoi(strings.TrimSpace(ra)); {
+	case ra == "":
+		p.rep.add(info, vb, "the 429 has no Retry-After header; the client assumes the default block")
+	case err == nil && secs >= 0:
+		p.rep.add(pass, vb, "Retry-After is delta-seconds: %d", secs)
+	default:
+		if t, err := http.ParseTime(ra); err == nil {
+			p.rep.add(pass, vb, "Retry-After is an HTTP date, %s from now", time.Until(t).Round(time.Second))
+		} else {
+			p.rep.add(info, vb, "Retry-After has an unreadable shape: %.40q", ra)
+		}
+	}
+	var names []string
+	for k, v := range hit.header {
+		if lk := strings.ToLower(k); strings.Contains(lk, "ratelimit") || strings.Contains(lk, "retry") {
+			names = append(names, k+"="+strings.Join(v, ","))
+		}
+	}
+	sort.Strings(names)
+	p.rep.add(info, vb, "rate-limit related headers of the 429: %s", strings.Join(names, "; "))
+	// The product client maps the same answer.
+	_, err := p.prov.ListRecords(ctx, p.zone.ID)
+	var rl dns.RateLimited
+	if errors.As(err, &rl) {
+		p.rep.add(pass, vb, "the client maps the 429 to dns.RateLimited, blocked until %s", rl.Until.UTC().Format(time.RFC3339))
+	} else {
+		p.rep.add(fail, vb, "the client did not map the next request to dns.RateLimited: %s", outcome(err))
+	}
+	// Other tokens of the same user: own budget or shared?
+	for _, o := range []struct {
+		what string
+		tok  secret.Value
+	}{{"account-owned token", p.cfg.accountToken}, {"under-scoped token", p.cfg.underScoped}} {
+		if o.tok.IsZero() {
+			continue
+		}
+		ans, err := p.env.raw.get(ctx, o.tok, path)
+		switch {
+		case err != nil:
+			p.rep.add(info, vb, "%s: request failed: %v", o.what, err)
+		case ans.status == http.StatusTooManyRequests:
+			p.rep.add(info, vb, "%s is blocked as well: it shares the user's budget", o.what)
+		default:
+			p.rep.add(info, vb, "%s answers HTTP %d while the user token is blocked: its own budget (or no access)", o.what, ans.status)
+		}
+	}
+	p.rep.add(info, vb, "NOW open the Cloudflare dashboard in a browser and note whether it is blocked too; the probe cannot see it")
 }
 
 // notCovered lists what the probe cannot check, so the run sheet is not read as covering it.

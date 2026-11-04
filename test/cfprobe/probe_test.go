@@ -110,7 +110,7 @@ func TestProbeAgainstFake(t *testing.T) {
 		"PASS VB-11 CNAME with proxied=true",
 		"PASS VB-11 CNAME with proxied=false",
 		"INFO VB-11 apex CNAME not probed",
-		"INFO VB-09 the rate-limit burst is not part of this version",
+		"INFO VB-09 rate-limit burst not run",
 		"PASS VB-26 all ",
 		"INFO CLEANUP deleted ",
 		"leftover-records=0")
@@ -300,4 +300,73 @@ func (r *rateLimitOnce) Apply(ctx context.Context, zone string, b dns.Batch) err
 		return &dns.ProviderError{Status: 429, Err: dns.RateLimited{Until: time.Now().Add(time.Minute)}}
 	}
 	return r.Provider.Apply(ctx, zone, b)
+}
+
+func burstProbe(t *testing.T, f *fixture) (*probe, *bytes.Buffer) {
+	t.Helper()
+	var out bytes.Buffer
+	cfg := f.cfg()
+	p := &probe{cfg: cfg, env: f.env, rep: &report{w: &out}, zone: dns.Zone{ID: f.zone.ID, Name: f.zone.Name},
+		created: map[string]bool{}}
+	var err error
+	if p.prov, err = f.env.newProvider(cfg.token, ""); err != nil {
+		t.Fatal(err)
+	}
+	return p, &out
+}
+
+func TestRateLimitShapes(t *testing.T) {
+	date := time.Now().Add(90 * time.Second).UTC().Format(http.TimeFormat)
+	for _, c := range []struct{ retryAfter, want string }{
+		{"7", "PASS VB-09 Retry-After is delta-seconds: 7"},
+		{date, "PASS VB-09 Retry-After is an HTTP date"},
+		{"", "INFO VB-09 the 429 has no Retry-After header"},
+		{"soon", `INFO VB-09 Retry-After has an unreadable shape: "soon"`},
+	} {
+		f := newFixture(t)
+		p, out := burstProbe(t, f)
+		// One answer for the burst, one for the client's own request that follows.
+		f.fake.Fail(cftest.Fault{Status: 429, RetryAfter: c.retryAfter}, cftest.Fault{Status: 429, RetryAfter: c.retryAfter})
+		p.checkRateLimit(context.Background(), 5)
+		wantLines(t, out.String(), "PASS VB-09 HTTP 429 after 1 requests", c.want,
+			"PASS VB-09 the client maps the 429 to dns.RateLimited",
+			"under-scoped token answers HTTP 401", "NOW open the Cloudflare dashboard")
+		if p.rep.fails != 0 {
+			t.Errorf("%q: %d FAIL lines:\n%s", c.retryAfter, p.rep.fails, out)
+		}
+	}
+}
+
+// The burst is bounded: without a 429 it stops after the requests it was allowed.
+func TestRateLimitBurstIsBounded(t *testing.T) {
+	f := newFixture(t)
+	p, out := burstProbe(t, f)
+	p.checkRateLimit(context.Background(), 4)
+	wantLines(t, out.String(), "INFO VB-09 no 429 after 4 requests")
+	if n := f.fake.Count("GET /client/v4/zones/" + f.zone.ID + "/dns_records"); n != 4 {
+		t.Fatalf("%d requests sent, want 4", n)
+	}
+}
+
+func TestRateLimitBurstStopsOnOtherErrors(t *testing.T) {
+	f := newFixture(t)
+	p, out := burstProbe(t, f)
+	f.fake.Fail(cftest.Fault{Status: 500})
+	p.checkRateLimit(context.Background(), 10)
+	wantLines(t, out.String(), "FAIL VB-09 request 1 answered HTTP 500")
+	if n := f.fake.Count("GET /client/v4/zones/" + f.zone.ID + "/dns_records"); n != 1 {
+		t.Fatalf("%d requests sent after a 500, want 1", n)
+	}
+}
+
+func TestProbeBurstThroughRun(t *testing.T) {
+	f := newFixture(t)
+	cfg := f.cfg()
+	cfg.burst = 3
+	code, out := runProbe(t, f, cfg)
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	wantLines(t, out, "INFO VB-09 no 429 after 3 requests")
+	f.unchanged(t)
 }
