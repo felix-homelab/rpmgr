@@ -17,6 +17,13 @@ import (
 func init() {
 	Register(Gate{Capability: agentproto.CapTCPHTTPConnect, Kind: pki.KindGateway, Uses: usesHTTPConnect})
 	Register(Gate{Capability: agentproto.CapHTTPHeaderMatch, Kind: pki.KindGateway, Uses: usesHeaderMatches})
+	Register(Gate{Capability: agentproto.CapHTTPCFConnectingIP, Kind: pki.KindGateway, Uses: usesDNSProxied})
+}
+
+// usesDNSProxied reports whether an http route is proxied by Cloudflare: a gateway that does not
+// know it would judge the route's IP rules and limits by Cloudflare's addresses (D168).
+func usesDNSProxied(ctx context.Context, c *ent.Client, routeID string) (bool, error) {
+	return c.RouteHTTP.Query().Where(routehttp.RouteID(routeID), routehttp.DNSProxied(true)).Exist(ctx)
 }
 
 // usesHTTPConnect reports whether a tcp route is in http_connect mode: an older gateway would bind

@@ -18,6 +18,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/certs"
+	"github.com/felix-homelab/rpmgr/internal/cfranges"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/headermatch"
 	"github.com/felix-homelab/rpmgr/internal/pki"
@@ -334,6 +335,7 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 	if err != nil {
 		return nil, err
 	}
+	var ranges []string // Cloudflare's, read once, for the proxied routes
 	var out []*agentv1.Resource
 	for _, r := range routes {
 		h, err := tx.RouteHTTP.Query().Where(routehttp.RouteID(r.ID)).Only(ctx)
@@ -386,7 +388,17 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 		if err != nil {
 			return nil, err
 		}
+		var cloudflare []string
+		if h.DNSProxied {
+			if ranges == nil {
+				if ranges, err = cloudflareRanges(ctx, tx); err != nil {
+					return nil, err
+				}
+			}
+			cloudflare = ranges
+		}
 		out = append(out, &agentv1.Resource{Id: r.ID, Kind: &agentv1.Resource_GatewayHttpRoute{GatewayHttpRoute: &agentv1.GatewayHTTPRoute{
+			DnsProxied: h.DNSProxied, CloudflareRanges: cloudflare,
 			Hosts: hosts, UpstreamProtocol: upstream, Connectors: connectors, Websocket: h.Websocket, UpstreamTls: upstreamTLS,
 			HostHeader: hostHeader, RequestHeaders: headersOf(h.RequestHeadersSet), ResponseHeaders: headersOf(h.ResponseHeadersSet),
 			MaxBodyBytes: uint64(h.MaxBodyBytes), TrustedProxies: group.TrustedProxyCidrs, //nolint:gosec // G115: the schema keeps it non-negative
@@ -396,6 +408,21 @@ func GatewayHTTP(ctx context.Context, tx *ent.Tx, a snapshot.Agent) ([]*agentv1.
 			UpstreamResponseHeaderTimeoutSeconds: uint32(h.UpstreamResponseHeaderTimeoutSeconds), //nolint:gosec // G115: the API bounds it
 			UpstreamIdleTimeoutSeconds:           uint32(h.UpstreamIdleTimeoutSeconds)}}})        //nolint:gosec // G115: the API bounds it
 	}
+	return out, nil
+}
+
+// cloudflareRanges returns the Cloudflare ranges in use, sorted, for the snapshot of a gateway
+// that serves a proxied route: the list the refresh job stored, or the one built into the binary.
+func cloudflareRanges(ctx context.Context, tx *ent.Tx) ([]string, error) {
+	inst, _, err := settings.Instance(ctx, tx.Client())
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, p := range cfranges.FromSettings(inst).Prefixes() {
+		out = append(out, p.String())
+	}
+	slices.Sort(out)
 	return out, nil
 }
 

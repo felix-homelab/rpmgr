@@ -43,6 +43,9 @@ const (
 	// ReasonCertificateNotCovering: the uploaded certificate a route names does not cover each of
 	// its hostnames.
 	ReasonCertificateNotCovering = "CERTIFICATE_NOT_COVERING"
+	// ReasonProxyNotAllowed: dns_proxied on a route that is not an http route, whose names
+	// Cloudflare cannot proxy (docs/15-dns.md, "Publication rules").
+	ReasonProxyNotAllowed = "PROXY_NOT_ALLOWED"
 )
 
 // maxHostnames is how many hostnames a route has at most.
@@ -113,7 +116,7 @@ func createHTTP(ctx context.Context, tx *ent.Tx, row *ent.Route, h *rpmgrv1.HTTP
 		SetMaxBodyBytes(int64(min(h.GetMaxBodyBytes(), 1<<62))). //nolint:gosec // G115: bounded above
 		SetMaintenance(h.GetMaintenance()).SetMaintenanceMessage(h.GetMaintenanceMessage()).
 		SetUpstreamResponseHeaderTimeoutSeconds(int(h.GetUpstreamResponseHeaderTimeoutSeconds())).
-		SetUpstreamIdleTimeoutSeconds(int(h.GetUpstreamIdleTimeoutSeconds()))
+		SetUpstreamIdleTimeoutSeconds(int(h.GetUpstreamIdleTimeoutSeconds())).SetDNSProxied(h.GetDnsProxied())
 	if ms := headerMatchesOf(h); len(ms) > 0 {
 		c.SetHeaderMatches(headermatch.Canonical(ms)).SetMatchKey(headermatch.Key(ms))
 	}
@@ -278,7 +281,7 @@ func routeFields(t route.Type) []string {
 	case route.TypeHTTP:
 		for _, f := range []string{"hostnames", "path_prefix", "tls_mode", "certificate_id", "port80", "hsts_max_age_seconds", "host_header",
 			"request_headers_set", "response_headers_set", "websocket", "max_body_bytes", "maintenance", "maintenance_message", "header_matches",
-			"upstream_response_header_timeout_seconds", "upstream_idle_timeout_seconds"} {
+			"upstream_response_header_timeout_seconds", "upstream_idle_timeout_seconds", "dns_proxied"} {
 			fields = append(fields, "http."+f)
 		}
 	case route.TypeTLSPassthrough:
@@ -423,6 +426,12 @@ func (r *Routes) updateRouteTx(ctx context.Context, tx *ent.Tx, m *rpmgrv1.Updat
 	}
 	if err := api.CheckEtag(m.GetEtag(), cur.Version, was); err != nil {
 		return nil, err
+	}
+	// Only an http route's names can be proxied; the mask path is refused for any other type with
+	// the reason that names the rule, not as a field that cannot be changed.
+	if cur.Type != route.TypeHTTP && slices.Contains(m.GetUpdateMask().GetPaths(), "http.dns_proxied") {
+		return nil, withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"apisvc: dns_proxied is for http routes; a %s route's names are never proxied", cur.Type)), ReasonProxyNotAllowed)
 	}
 	next := proto.Clone(was).(*rpmgrv1.Route)
 	if err := api.ApplyMask(next, m.GetRoute(), m.GetUpdateMask(), routeFields(cur.Type)...); err != nil {
@@ -665,7 +674,8 @@ func routeOf(ctx context.Context, c *ent.Client, row *ent.Route) (*rpmgrv1.Route
 			ResponseHeadersSet: h.ResponseHeadersSet, Websocket: &h.Websocket, MaxBodyBytes: uint64(h.MaxBodyBytes), //nolint:gosec // G115: non-negative
 			Maintenance: h.Maintenance, MaintenanceMessage: h.MaintenanceMessage, HeaderMatches: apiHeaderMatches(h.HeaderMatches),
 			UpstreamResponseHeaderTimeoutSeconds: uint32(h.UpstreamResponseHeaderTimeoutSeconds), //nolint:gosec // G115: bounded
-			UpstreamIdleTimeoutSeconds:           uint32(h.UpstreamIdleTimeoutSeconds)}           //nolint:gosec // G115: bounded
+			UpstreamIdleTimeoutSeconds:           uint32(h.UpstreamIdleTimeoutSeconds),           //nolint:gosec // G115: bounded
+			DnsProxied:                           h.DNSProxied}
 		if h.TLSMode == routehttp.TLSModeCertificate {
 			spec.TlsMode = rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE
 			if h.CertificateID != nil {

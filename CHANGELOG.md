@@ -12,6 +12,17 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- An HTTP route has a **Cloudflare proxy** switch (`rpmgr create route --http --dns-proxied`, `rpmgr
+  update route --dns-proxied=false`, `dnsProxied` in the API and in manifests). With it on, the
+  gateway takes the client address for access policies, limits and the forwarding headers from
+  `CF-Connecting-IP`, but only for a request whose connection comes from one of Cloudflare's
+  published addresses; `X-Forwarded-For` and `Forwarded` from those addresses are ignored, and any
+  other address is judged by its own, whatever header it sends. The switch is refused for routes
+  that are not HTTP routes (`PROXY_NOT_ALLOWED`). The controller refreshes Cloudflare's address
+  list once a day, with a list built into the binary until then, and can be told not to
+  (`rpmgr update settings --instance --set cloudflare_ip_refresh=false`); an alert fires when the
+  list is old while a route is proxied. A gateway that predates the switch is not sent a proxied
+  route. (#682)
 - A webhook endpoint has a format: `rpmgr`, as before, or `discord`, `slack` or `teams`, which posts
   each event as a message people read in the chat service, with the summary as the title, the
   event's type, organisation, actor, subject and time as fields, and an alert red when it fires

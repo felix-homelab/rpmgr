@@ -440,6 +440,72 @@ func TestHTTPRoutes_Timeouts(t *testing.T) {
 	}
 }
 
+// TestDNS_ProxiedOnlyForHttp_RouteAPI (docs/12-testing-and-quality.md, "Security testing"; the
+// route API's clause of TestDNS_ProxiedOnlyForHttp, whose zone clauses come with managed zones):
+// dns_proxied is stored on an http route, read back and changed by an update that names it, and
+// refused with PROXY_NOT_ALLOWED for a route that is not an http route, whose names Cloudflare
+// cannot proxy. (The capability gate is tested with the compiler, TestCompile_DNSProxied.)
+func TestDNS_ProxiedOnlyForHttp_RouteAPI(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	e.verified(t, org, "example.com", true)
+	for _, p := range []*rpmgrv1.PortPool{{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009}} {
+		if _, err := ada.gw.CreatePortPool(ctx, connect.NewRequest(&rpmgrv1.CreatePortPoolRequest{OrgId: org, PortPool: p})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	proxied := httpRoute("proxied", group, "cf.example.com")
+	proxied.GetHttp().DnsProxied = true
+	got, err := createRoute(ada, org, proxied, "")
+	if err != nil || !got.GetHttp().GetDnsProxied() {
+		t.Fatalf("a proxied http route: %v %v", got, err)
+	}
+	plain, err := createRoute(ada, org, httpRoute("plain", group, "plain.example.com"), "")
+	if err != nil || plain.GetHttp().GetDnsProxied() {
+		t.Fatalf("an http route that is not proxied: %v %v", plain, err)
+	}
+	setProxied := func(r *rpmgrv1.Route, on bool) (*rpmgrv1.UpdateRouteResponse, error) {
+		upd := proto.Clone(r).(*rpmgrv1.Route)
+		upd.GetHttp().DnsProxied = on
+		res, err := ada.rt.UpdateRoute(ctx, connect.NewRequest(&rpmgrv1.UpdateRouteRequest{Route: upd, Etag: r.GetEtag(),
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"http.dns_proxied"}}}))
+		if err != nil {
+			return nil, err
+		}
+		return res.Msg, nil
+	}
+	on, err := setProxied(plain, true)
+	if err != nil || !on.GetRoute().GetHttp().GetDnsProxied() {
+		t.Fatalf("proxying an http route: %v %v", on, err)
+	}
+	off, err := setProxied(on.GetRoute(), false)
+	if err != nil || off.GetRoute().GetHttp().GetDnsProxied() {
+		t.Fatalf("un-proxying it: %v %v", off, err)
+	}
+
+	// A route that is not an http route is never proxied, in whatever way a client asks.
+	for name, r := range map[string]*rpmgrv1.Route{
+		"tcp":             tcpRoute("pg", group, 20001),
+		"tls_passthrough": {Name: "pt", GatewayGroupId: group, Spec: &rpmgrv1.Route_TlsPassthrough{TlsPassthrough: &rpmgrv1.TLSPassthroughRouteSpec{Hostnames: []string{"pt.example.com"}}}},
+	} {
+		made, err := createRoute(ada, org, r, "")
+		if err != nil {
+			t.Fatalf("%s route: %v", name, err)
+		}
+		upd := proto.Clone(made).(*rpmgrv1.Route)
+		upd.Spec = &rpmgrv1.Route_Http{Http: &rpmgrv1.HTTPRouteSpec{Hostnames: []string{"cf.example.com"}, DnsProxied: true}}
+		_, err = ada.rt.UpdateRoute(ctx, connect.NewRequest(&rpmgrv1.UpdateRouteRequest{Route: upd, Etag: made.GetEtag(),
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"http.dns_proxied"}}}))
+		if code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonProxyNotAllowed {
+			t.Errorf("%s route: update naming http.dns_proxied: %v (reason %q), want PROXY_NOT_ALLOWED", name, err, reason(err))
+		}
+		if after, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: made.GetId()})); err != nil ||
+			after.Msg.GetRoute().GetHttp() != nil || after.Msg.GetRoute().GetEtag() != made.GetEtag() {
+			t.Errorf("%s route after the refused update: %v %v", name, after, err)
+		}
+	}
+}
+
 // TestRoutes_GatewayAcceptsThem: routes the API accepts, with every http setting, access
 // policies and a target each, an HTTPS one verified by a pin, compile into a snapshot the gateway
 // validates without an error.

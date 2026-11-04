@@ -783,8 +783,15 @@ sequenceDiagram
   `Content-Length` announces it or it is streamed.
 - For a route with `dns_proxied` (Phase 2), the client address is taken from `CF-Connecting-IP`,
   and only when the TCP peer is in Cloudflare's published ranges, which reach the gateway in its
-  snapshot. `X-Forwarded-*` from those peers is not trusted. Access policies, rate limits and the
-  `Forwarded` headers sent upstream use that address ([15](15-dns.md#proxied-http-routes)).
+  snapshot. `X-Forwarded-*` and `Forwarded` from those peers are not trusted. A `CF-Connecting-IP`
+  that is missing, sent twice or no address (a port, a zone or the unspecified address included)
+  leaves the Cloudflare peer as the client. From any other peer `CF-Connecting-IP` is ignored and
+  the gateway group's trusted-proxy CIDRs apply as for any route, so a peer in both lists is
+  Cloudflare. Access policies, rate limits and the `Forwarded` headers sent upstream use that
+  address, and the upstream gets `CF-Connecting-IP` only as that address, never a client's own
+  value ([15](15-dns.md#proxied-http-routes)). A gateway without the capability
+  `http.cf-connecting-ip` is sent no proxied route ([Versioning and
+  capabilities](#versioning-and-capabilities)).
 - **Routing.** A request goes to the route of its `Host` and the longest path prefix that matches
   at a segment boundary (`/api` matches `/api` and `/api/x`, not `/apix`). A hostname a route names
   exactly comes before a wildcard hostname one label up, which serves a name only if no route

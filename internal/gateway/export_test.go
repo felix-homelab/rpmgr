@@ -5,6 +5,7 @@ package gateway
 import (
 	"maps"
 	"net/http"
+	"net/netip"
 	"slices"
 	"testing"
 	"time"
@@ -80,6 +81,14 @@ func RouteTimeouts(h *HTTPRoutes, id string) (header, idle time.Duration) {
 	defer h.mu.Unlock()
 	rt := h.transports[id]
 	return rt.tr.ResponseHeaderTimeout, rt.tr.IdleConnTimeout
+}
+
+// RouteCloudflare returns whether http route id is proxied and the Cloudflare ranges it holds.
+func RouteCloudflare(h *HTTPRoutes, id string) (bool, []netip.Prefix) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	r := h.transports[id].route.Load()
+	return r.DNSProxied, r.CloudflareRanges
 }
 
 // LimitOf returns the limit state the applier keeps for a route, nil if none.

@@ -127,6 +127,10 @@ const http: RouteField[] = [
     get: (s) => String(s.maintenance), set: (s, v) => (s.maintenance = v === "true") }),
   spec("http", { key: "maintenanceMessage", path: "http.maintenance_message", kind: "longtext", get: (s) => s.maintenanceMessage,
     set: (s, v) => (s.maintenanceMessage = v) }),
+  // Cloudflare proxies the route's names: its gateways take the client address from CF-Connecting-IP,
+  // only from Cloudflare's own addresses (docs/15-dns.md, "Proxied HTTP routes").
+  spec("http", { key: "dnsProxied", path: "http.dns_proxied", kind: "select", hint: "dnsProxied", options: [["false", "off"], ["true", "on"]],
+    get: (s) => String(s.dnsProxied), set: (s, v) => (s.dnsProxied = v === "true") }),
   // Header matches and the route's own upstream timeouts (Phase 2); empty is none, or the gateway's.
   spec("http", { key: "headerMatches", path: "http.header_matches", kind: "pairs", format: matchFormat,
     get: (s) => showMatches(s.headerMatches), set: (s, v) => (s.headerMatches = matchesOf(v)) }),

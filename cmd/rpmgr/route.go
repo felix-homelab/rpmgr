@@ -71,7 +71,7 @@ type routeFlags struct {
 	port                                           uint
 	idleTimeout, flowIdleTimeout                   time.Duration
 	upstreamHeaderTimeout, upstreamIdleTimeout     time.Duration
-	websocket, maintenance                         bool
+	websocket, maintenance, dnsProxied             bool
 	maintenanceMessage                             string
 	maxBody                                        uint64
 	httpConnect                                    bool
@@ -125,6 +125,7 @@ func (f *routeFlags) flags(fs *flag.FlagSet, create bool) {
 	fs.BoolVar(&f.websocket, "websocket", true, "http: whether WebSocket upgrades pass")
 	fs.Uint64Var(&f.maxBody, "max-body", 0, "http: the largest request body in bytes; 0 is no limit")
 	fs.BoolVar(&f.maintenance, "maintenance", false, "http: answer every request with the maintenance page, 503")
+	fs.BoolVar(&f.dnsProxied, "dns-proxied", false, "http: the route's names are proxied by Cloudflare, which the gateway believes for the client address only from Cloudflare's own addresses")
 	fs.StringVar(&f.maintenanceMessage, "maintenance-message", "", "http: plain text the maintenance page shows, at most 500 characters")
 	fs.UintVar(&f.port, "port", 0, "tcp, udp, tcp-udp: the public port; 0 on create picks a free one")
 	fs.BoolVar(&f.httpConnect, "http-connect", false, "tcp: share a CONNECT listener with other routes of the org; set only on create")
@@ -248,7 +249,7 @@ func enumOf(flagName, v string) (int32, error) {
 func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Route) (*rpmgrv1.Route, []string, error) {
 	for flagName, types := range map[string]string{"hostname": "http tls_passthrough", "path-prefix": "http", "tls-mode": "http",
 		"certificate": "http", "port80": "http", "hsts": "http", "host-header": "http", "set-request-header": "http",
-		"set-response-header": "http", "websocket": "http", "max-body": "http", "maintenance": "http", "maintenance-message": "http",
+		"set-response-header": "http", "websocket": "http", "max-body": "http", "maintenance": "http", "maintenance-message": "http", "dns-proxied": "http",
 		"match-header": "http", "upstream-header-timeout": "http", "upstream-idle-timeout": "http", "port": "tcp udp tcp_udp",
 		"http-connect": "tcp", "authority": "tcp", "connect-auth": "tcp", "connect-hostname": "tcp",
 		"connect-certificate": "tcp", "idle-timeout": "tcp udp tcp_udp", "flow-idle-timeout": "tcp_udp"} {
@@ -316,6 +317,7 @@ func (f *routeFlags) routeOf(set map[string]bool, typ string, base *rpmgrv1.Rout
 		do("max-body", "http.max_body_bytes", func() { h.MaxBodyBytes = f.maxBody })
 		do("maintenance", "http.maintenance", func() { h.Maintenance = f.maintenance })
 		do("maintenance-message", "http.maintenance_message", func() { h.MaintenanceMessage = f.maintenanceMessage })
+		do("dns-proxied", "http.dns_proxied", func() { h.DnsProxied = f.dnsProxied })
 		do("match-header", "http.header_matches", func() { h.HeaderMatches = f.matches })
 		do("upstream-header-timeout", "http.upstream_response_header_timeout_seconds", func() {
 			h.UpstreamResponseHeaderTimeoutSeconds = uint32(f.upstreamHeaderTimeout / time.Second) //nolint:gosec // G115: protovalidate bounds it

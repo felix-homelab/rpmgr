@@ -343,6 +343,10 @@ message HTTPRouteSpec {
   // How long a pooled keep-alive connection to the upstream may stay unused, 1 to 3600 seconds;
   // 0 keeps the gateway's.
   uint32 upstream_idle_timeout_seconds = 16 [(buf.validate.field).uint32.lte = 3600];
+  // Whether the route's names are proxied by Cloudflare: the gateway then takes the client address
+  // from CF-Connecting-IP, only from a peer in Cloudflare's ranges (docs/15-dns.md, "Proxied HTTP
+  // routes"). A gateway without the capability http.cf-connecting-ip does not serve the route.
+  bool dns_proxied = 17;
 }
 
 // HeaderMatch is a request header an http route matches on: its name, with an exact value or
