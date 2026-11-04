@@ -103,6 +103,11 @@ rpmgr <command>
 | [`rpmgr connect`](#rpmgr-connect) | Connect a DNS provider |
 | [`rpmgr rotate`](#rpmgr-rotate) | Replace a DNS provider's token |
 | [`rpmgr import`](#rpmgr-import) | Import a DNS provider's zone as managed |
+| [`rpmgr plan`](#rpmgr-plan) | Show the plan of a managed DNS zone |
+| [`rpmgr approve`](#rpmgr-approve) | Approve the plan of a held DNS zone |
+| [`rpmgr sync`](#rpmgr-sync) | Ask for a full pass over a DNS zone |
+| [`rpmgr adopt`](#rpmgr-adopt) | Adopt foreign DNS records at names the org publishes |
+| [`rpmgr disown`](#rpmgr-disown) | Release an owned DNS record, so that rpmgr never changes it again |
 
 ## rpmgr controller
 
@@ -767,14 +772,16 @@ rpmgr get [flags] install-command | settings | controller-update | <route|connec
 List the resources of a kind in the org, or of the instance.
 
 ```text
-rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|enrollment-token|access-policy|member|token|webhook|webhook-delivery|dns-provider|provider-zone|zone|dns-name|release|audit-sink|rollout|rollout-target> [<what they belong to>]
+rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|enrollment-token|access-policy|member|token|webhook|webhook-delivery|dns-provider|provider-zone|zone|dns-record|dns-name|release|audit-sink|rollout|rollout-target> [<what they belong to>]
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--all` |  | also the decommissioned agents, and the used-up, expired and revoked enrollment tokens |
+| `--foreign` |  | dns-record: also the records rpmgr does not own, read live from the provider, for an Owner or Admin |
 | `--instance` |  | webhook, webhook-delivery: the instance's endpoints, for an Instance Admin, instead of the org's |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+| `--zone string` |  | dns-record: the managed zone, by name or ID (required) |
 
 ## rpmgr delete
 
@@ -1976,7 +1983,7 @@ rpmgr remove <command>
 | [`rpmgr remove gateway-page`](#rpmgr-remove-gateway-page) | Go back to the built-in page of a gateway group |
 | [`rpmgr remove member`](#rpmgr-remove-member) | End a membership; the user's tokens lose their access to the org |
 | [`rpmgr remove second-factor`](#rpmgr-remove-second-factor) | Remove a user's authenticator and recovery codes, for one who lost both, and end their sessions; takes a step-up |
-| [`rpmgr remove zone`](#rpmgr-remove-zone) | Stop managing a zone: the records stay at the provider and only the ledger is dropped |
+| [`rpmgr remove zone`](#rpmgr-remove-zone) | Stop managing a zone: the records stay at the provider and only the ledger is dropped, or with --delete-records they are deleted too |
 
 ## rpmgr remove gateway-page
 
@@ -2010,15 +2017,17 @@ rpmgr remove second-factor <user ID or e-mail address>
 
 ## rpmgr remove zone
 
-Stop managing a zone: the records stay at the provider and only the ledger is dropped.
+Stop managing a zone: the records stay at the provider and only the ledger is dropped, or with --delete-records they are deleted too.
 
 ```text
-rpmgr remove zone [flags] <id or name>
+rpmgr remove zone [flags] [--delete-records --plan-hash <hash>] <id or name>
 ```
 
 | Flag | Default | Description |
 |---|---|---|
+| `--delete-records` |  | also delete the records rpmgr owns in the zone at the provider; needs --plan-hash and a step-up |
 | `--force` |  | remove without checking that the zone is unchanged since this command read it |
+| `--plan-hash string` |  | with --delete-records: the hash of the plan you read with rpmgr plan zone --delete-records |
 
 ## rpmgr advance
 
@@ -2271,3 +2280,121 @@ rpmgr import zone [flags] --provider <id or name> <zone name or provider zone ID
 | Flag | Default | Description |
 |---|---|---|
 | `--provider string` |  | the provider that offers the zone, by name or ID (required) |
+
+## rpmgr plan
+
+Show the plan of a managed DNS zone.
+
+```text
+rpmgr plan <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr plan zone`](#rpmgr-plan-zone) | Show the plan of a managed zone: what a pass would create, change and delete, and the hash to approve it by |
+
+## rpmgr plan zone
+
+Show the plan of a managed zone: what a pass would create, change and delete, and the hash to approve it by.
+
+```text
+rpmgr plan zone [flags] <id or name>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--delete-records` |  | show the plan of removing the zone with its records instead: it deletes every record rpmgr owns in it |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+
+## rpmgr approve
+
+Approve the plan of a held DNS zone.
+
+```text
+rpmgr approve <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr approve zone`](#rpmgr-approve-zone) | Approve the plan of a held zone, by the hash you read, with a step-up; the next pass applies that plan and no other |
+
+## rpmgr approve zone
+
+Approve the plan of a held zone, by the hash you read, with a step-up; the next pass applies that plan and no other.
+
+```text
+rpmgr approve zone [flags] --plan-hash <hash> <id or name>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--plan-hash string` |  | the hash of the plan you read with rpmgr plan zone (required) |
+
+## rpmgr sync
+
+Ask for a full pass over a DNS zone.
+
+```text
+rpmgr sync <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr sync zone`](#rpmgr-sync-zone) | Ask for a full pass over a zone now |
+
+## rpmgr sync zone
+
+Ask for a full pass over a zone now.
+
+```text
+rpmgr sync zone <id or name>
+```
+
+## rpmgr adopt
+
+Adopt foreign DNS records at names the org publishes.
+
+```text
+rpmgr adopt <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr adopt dns-record`](#rpmgr-adopt-dns-record) | Adopt foreign records at names the org publishes: rpmgr owns them from now on and rewrites them at its next pass |
+
+## rpmgr adopt dns-record
+
+Adopt foreign records at names the org publishes: rpmgr owns them from now on and rewrites them at its next pass.
+
+```text
+rpmgr adopt dns-record [flags] --zone <zone> <provider record id>…
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--zone string` |  | the managed zone, by name or ID (required) |
+
+## rpmgr disown
+
+Release an owned DNS record, so that rpmgr never changes it again.
+
+```text
+rpmgr disown <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr disown dns-record`](#rpmgr-disown-dns-record) | Release an owned record: it stays at the provider without rpmgr's marker, or with --restore as it was adopted |
+
+## rpmgr disown dns-record
+
+Release an owned record: it stays at the provider without rpmgr's marker, or with --restore as it was adopted.
+
+```text
+rpmgr disown dns-record [flags] --zone <zone> <record id>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--restore` |  | put the record back to the content it had when it was adopted |
+| `--zone string` |  | the managed zone, by name or ID (required) |

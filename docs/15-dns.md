@@ -419,7 +419,10 @@ and lost rows.
 3. **Disconnect or remove a zone.**
    - By default the records stay at the provider and the ledger rows are dropped, so nothing that
      works stops working.
-   - Removing the records instead goes through a plan and approval.
+   - Removing the records instead goes through a plan and approval: the plan deletes every record
+     rpmgr owns in the zone and no others, and the removal needs its hash and a step-up. The zone is
+     disabled before the first record is deleted, so that the job does not write it again, and
+     stays disabled if the provider fails on the way; the removal is then planned again.
    - Rotating the token keeps everything: the new token is checked first and replaces the old one in
      the same provider. Deleting a provider needs a step-up and is refused while zones are imported
      from it.

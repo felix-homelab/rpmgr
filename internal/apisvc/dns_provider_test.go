@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -42,12 +43,13 @@ const (
 // fakeDNS is the provider side of DnsProviderService: it knows tokens, and answers as Cloudflare
 // would for each. dial is the service's Dialer.
 type fakeDNS struct {
-	mu      sync.Mutex
-	tokens  map[string]*fakeDNSToken
-	zones   []dns.Zone
-	records []dns.Record // what ListRecords returns for every zone
-	dialed  []string     // the token of each client made
-	batches []dns.Batch  // what Apply was sent
+	mu        sync.Mutex
+	tokens    map[string]*fakeDNSToken
+	zones     []dns.Zone
+	records   []dns.Record // what ListRecords returns for every zone
+	dialed    []string     // the token of each client made
+	batches   []dns.Batch  // what Apply was sent
+	failApply error        // what Apply answers instead, if set
 }
 
 type fakeDNSToken struct {
@@ -140,7 +142,15 @@ func (p fakeProvider) Apply(_ context.Context, _ string, b dns.Batch) error {
 	}
 	p.f.mu.Lock()
 	defer p.f.mu.Unlock()
+	if p.f.failApply != nil {
+		return p.f.failApply
+	}
 	p.f.batches = append(p.f.batches, b)
+	deleted := map[string]bool{}
+	for _, id := range b.Deletes {
+		deleted[id] = true
+	}
+	p.f.records = slices.DeleteFunc(p.f.records, func(r dns.Record) bool { return deleted[r.ID] })
 	for _, r := range b.Patches {
 		for i := range p.f.records {
 			if p.f.records[i].ID == r.ID {

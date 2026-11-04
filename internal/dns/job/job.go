@@ -343,6 +343,9 @@ type Inspection struct {
 	Live []dns.Record
 	// Plan is the plan a pass would carry out, and its hash.
 	Plan plan.Plan
+	// Removal is the plan that deletes every record rpmgr owns in the zone, which removing the
+	// zone with its records is bound to.
+	Removal plan.Plan
 	// Wanted are the names that the zone publishes records for: names with a source in the zone's
 	// org that the compiler accepts. Only a record at one of them is adopted.
 	Wanted []string
@@ -365,7 +368,11 @@ func (j *Job) Inspect(ctx context.Context, zoneID string, p dns.Provider) (Inspe
 	if err != nil {
 		return Inspection{}, err
 	}
-	out := Inspection{Live: live, Plan: pl}
+	rm, err := j.engine(lease.Lease{}, false).PlanOf(ctx, live, applyZone(z), apply.Wanted{})
+	if err != nil {
+		return Inspection{}, err
+	}
+	out := Inspection{Live: live, Plan: pl, Removal: rm}
 	for _, n := range cr.Names {
 		if n.Status == compile.StatusOk && !n.Claim {
 			out.Wanted = append(out.Wanted, n.Name)

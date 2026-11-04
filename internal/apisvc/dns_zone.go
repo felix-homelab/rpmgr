@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/dns"
 	"github.com/felix-homelab/rpmgr/internal/dns/apply"
+	"github.com/felix-homelab/rpmgr/internal/dns/cloudflare"
 	"github.com/felix-homelab/rpmgr/internal/dns/job"
 	"github.com/felix-homelab/rpmgr/internal/dns/plan"
 	"github.com/felix-homelab/rpmgr/internal/domains"
@@ -303,31 +306,91 @@ func (z *DnsZones) UpdateZone(ctx context.Context, req *connect.Request[rpmgrv1.
 }
 
 // RemoveZone implements DnsZoneService: the zone is no longer managed. Its records stay at the
-// provider, and so does the claim on its apex.
+// provider, and so does the claim on its apex, unless delete_records asks for the records to be
+// deleted: that takes a step-up and the hash of the removal plan the caller read.
 func (z *DnsZones) RemoveZone(ctx context.Context, req *connect.Request[rpmgrv1.RemoveZoneRequest]) (
 	*connect.Response[rpmgrv1.RemoveZoneResponse], error) {
+	m := req.Msg
+	if m.GetDeleteRecords() != (m.GetPlanHash() != "") {
+		return nil, invalid(errors.New("apisvc: delete_records and plan_hash go together"))
+	}
+	check := true
+	if m.GetDeleteRecords() {
+		if err := api.RequireStepUp(ctx, z.now()); err != nil {
+			return nil, err
+		}
+		cur, err := z.DB.ReadClient().DNSZone.Get(ctx, m.GetDnsZoneId())
+		if err != nil {
+			return nil, storeError(err)
+		}
+		if err := api.CheckEtag(m.GetEtag(), cur.Version, zoneOf(cur)); err != nil {
+			return nil, err
+		}
+		if err := z.deleteRecords(ctx, cur, m.GetPlanHash()); err != nil {
+			return nil, err
+		}
+		check = false // the zone changed on the way: it was disabled
+	}
 	_, err := store.ConfigTx(ctx, z.DB, func(tx *ent.Tx) ([]string, error) {
-		cur, err := tx.DNSZone.Get(ctx, req.Msg.GetDnsZoneId())
+		cur, err := tx.DNSZone.Get(ctx, m.GetDnsZoneId())
 		if err != nil {
 			return nil, err
 		}
-		if err := api.CheckEtag(req.Msg.GetEtag(), cur.Version, zoneOf(cur)); err != nil {
-			return nil, err
+		if check {
+			if err := api.CheckEtag(m.GetEtag(), cur.Version, zoneOf(cur)); err != nil {
+				return nil, err
+			}
 		}
-		// The records stay at the provider, and the ledger rows and name statuses go with the zone
-		// (docs/15-dns.md, "Connecting, importing and disconnecting").
+		// The ledger rows and name statuses go with the zone (docs/15-dns.md, "Connecting,
+		// importing and disconnecting").
 		if _, err := tx.DNSRecord.Delete().Where(dnsrecord.DNSZoneID(cur.ID)).Exec(ctx); err != nil {
 			return nil, err
 		}
 		if _, err := tx.DNSNameStatus.Delete().Where(dnsnamestatus.DNSZoneID(cur.ID)).Exec(ctx); err != nil {
 			return nil, err
 		}
-		return []string{cur.ID}, tx.DNSZone.DeleteOneID(cur.ID).Where(dnszone.Version(cur.Version)).Exec(ctx)
+		return []string{cur.ID}, tx.DNSZone.DeleteOneID(cur.ID).Exec(ctx)
 	})
 	if err != nil {
 		return nil, storeError(err)
 	}
 	return connect.NewResponse(&rpmgrv1.RemoveZoneResponse{}), nil
+}
+
+// deleteRecords deletes the records rpmgr owns in a zone at the provider, if the removal plan has
+// the hash the caller read. The zone is disabled first, so that the DNS job does not write the
+// records again, and stays disabled if the provider fails on the way.
+func (z *DnsZones) deleteRecords(ctx context.Context, cur *ent.DNSZone, hash string) error {
+	_, in, err := z.inspectZone(ctx, cur.ID)
+	if err != nil {
+		return err
+	}
+	if in.Removal.Hash != hash {
+		return withReason(connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("apisvc: the removal plan changed since it was shown; read it again")), ReasonPlanChanged)
+	}
+	api.AuditReason(ctx, fmt.Sprintf("delete %d records of dns zone %s at the provider", len(in.Removal.Deletes), cur.ID)) // before the transaction, which appends the entry
+	_, err = store.ConfigTx(ctx, z.DB, func(tx *ent.Tx) ([]string, error) {
+		return []string{cur.ID}, tx.DNSZone.UpdateOneID(cur.ID).SetSyncState(dnszone.SyncStateDisabled).SetHeldReason("").
+			ClearPendingPlan().SetPendingPlanHash("").Exec(ctx)
+	})
+	if err != nil {
+		return storeError(err)
+	}
+	p, err := z.providerOf(ctx, cur)
+	if err != nil {
+		return err
+	}
+	var ids []string
+	for _, r := range in.Removal.Deletes {
+		ids = append(ids, r.ID)
+	}
+	for chunk := range slices.Chunk(ids, cloudflare.MaxBatchOps) {
+		if err := p.Apply(ctx, cur.ProviderZoneID, dns.Batch{Deletes: chunk}); err != nil {
+			return providerError(err)
+		}
+	}
+	return nil
 }
 
 // providerOf makes the client of a zone's provider account, taking its requests from the
@@ -392,6 +455,9 @@ func (z *DnsZones) PlanZoneSync(ctx context.Context, req *connect.Request[rpmgrv
 	row, in, err := z.inspectZone(ctx, req.Msg.GetDnsZoneId())
 	if err != nil {
 		return nil, err
+	}
+	if req.Msg.GetDeleteRecords() {
+		return connect.NewResponse(&rpmgrv1.PlanZoneSyncResponse{DnsZone: zoneOf(row), Plan: planOf(in.Removal)}), nil
 	}
 	return connect.NewResponse(&rpmgrv1.PlanZoneSyncResponse{DnsZone: zoneOf(row), Plan: planOf(in.Plan)}), nil
 }
