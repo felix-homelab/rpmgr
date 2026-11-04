@@ -127,6 +127,7 @@ describe("Settings", () => {
     expect(calls.org[0]!.settings?.alertTypes).toEqual([
       "config_not_applied", "agent_certificate_expiring", "public_certificate_expiring", "route_no_ready_connector",
       "audit_checkpoints_behind", "revocation_log_on_host", "webhook_failing",
+      "dns_conflict", "dns_zone_held", "dns_sync_failing", "dns_record_drifted", "dns_provider_token",
     ]);
     expect(await screen.findByText("Saved.")).toBeTruthy();
 

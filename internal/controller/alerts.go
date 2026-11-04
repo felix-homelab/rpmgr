@@ -256,6 +256,9 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 	if cloudflareRangesStale(inst, proxied, now) {
 		add("", alerts.CloudflareRangesStale, "instance", "cloudflare_ip_ranges", "Cloudflare IP ranges", time.Time{})
 	}
+	if err := observeDNS(ctx, c, now, add); err != nil {
+		return nil, nil, err
+	}
 	backlogs, err := auditsink.Backlogs(ctx, o.DB)
 	if err != nil {
 		return nil, nil, err

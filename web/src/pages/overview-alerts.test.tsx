@@ -92,8 +92,8 @@ describe("Overview alerts", () => {
   });
 
   it("shows an alert of a kind it does not know as it is", async () => {
-    overview({ alerts: [{ ...offline, kind: "dns_sync_failing" }] });
-    expect(await (await alertsCard()).findByText("dns_sync_failing")).toBeTruthy();
+    overview({ alerts: [{ ...offline, kind: "dns_a_kind_of_the_future" }] });
+    expect(await (await alertsCard()).findByText("dns_a_kind_of_the_future")).toBeTruthy();
   });
 
   it("lists the instance's alerts apart, for the Instance Admin only", async () => {
