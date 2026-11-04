@@ -179,6 +179,13 @@ func TestRestore(t *testing.T) {
 	if code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
 		t.Errorf("a missing boot file: exit %d, %q", code, stderr)
 	}
+	// --dns-disabled is a flag of restore, and takes no value.
+	if code, _, stderr := runRpmgr("restore", "--in", "x.backup", "--dns-disabled", "--config", missing); code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
+		t.Errorf("restore --dns-disabled with a missing boot file: exit %d, %q", code, stderr)
+	}
+	if code, _, _ := runRpmgr("restore", "--in", "x.backup", "--dns-disabled=maybe", "--config", missing); code != cli.ExitUsage {
+		t.Errorf("a value that is no bool: exit %d", code)
+	}
 	if code, _, stderr := runRpmgr("restore", "confirm", "--org", "acme", "--config", missing); code != cli.ExitError || !strings.Contains(stderr, "none.yaml") {
 		t.Errorf("restore confirm with a missing boot file: exit %d, %q", code, stderr)
 	}

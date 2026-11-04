@@ -18,6 +18,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
+	"github.com/felix-homelab/rpmgr/internal/dns/apply"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
@@ -50,7 +51,11 @@ type RestoreOptions struct {
 	// RevocationLogs are where the revocations since the backup are: sink directories and local
 	// revocations.log files. None means the state directory's revocations.log.
 	RevocationLogs []string
-	Now            func() time.Time
+	// DNSDisabled sets every managed DNS zone to disabled, for a copy that must never touch
+	// production DNS (docs/15-dns.md, "Held zones and plan approval"). Otherwise every zone starts
+	// held.
+	DNSDisabled bool
+	Now         func() time.Time
 }
 
 // RestoreResult is what a restore reports.
@@ -60,6 +65,7 @@ type RestoreResult struct {
 	OldEpoch    string    // the backup's
 	NewEpoch    string
 	Reapplied   int // revocation log entries newer than the backup, applied again
+	DNSZones    int // managed DNS zones, all held, or with RestoreOptions.DNSDisabled all disabled
 	// Unknown counts those of them whose subject the backup does not hold, as one created after
 	// it; a revoked certificate or identity among them stays on the deny-list all the same.
 	Unknown  int
@@ -199,7 +205,7 @@ func Restore(ctx context.Context, o RestoreOptions) (RestoreResult, error) {
 		return RestoreResult{}, err
 	}
 	res := RestoreResult{TrustDomain: a.info.TrustDomain, Backup: a.info.Created, OldEpoch: a.info.DBEpoch, Review: review}
-	if err := prepare(ctx, staged(live[0]), staged(BackupRevocations), a.info, newer, o.Now, &res); err != nil {
+	if err := prepare(ctx, staged(live[0]), staged(BackupRevocations), a.info, newer, o.Now, o.DNSDisabled, &res); err != nil {
 		return RestoreResult{}, err
 	}
 
@@ -438,7 +444,7 @@ func readSource(path string) ([]revlog.Entry, error) {
 // prepare brings the staged database up to date and secures it: migrations, a new epoch, the
 // invalidations and the revocations since the backup, which also go into the staged log, and the
 // restore review when res.Review says why they may be incomplete.
-func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer []revlog.Entry, now func() time.Time, res *RestoreResult) error {
+func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer []revlog.Entry, now func() time.Time, dnsDisabled bool, res *RestoreResult) error {
 	db, err := store.OpenSQLite(ctx, dbPath, store.SQLiteOptions{})
 	if err != nil {
 		return err
@@ -466,6 +472,13 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 		if err := invalidate(sys, tx, now().UTC()); err != nil {
 			return err
 		}
+		// The zones are held for review, or disabled: what the backup held is not what the provider
+		// holds now (docs/15-dns.md, "Held zones and plan approval").
+		n, err := apply.HoldAll(sys, tx, dnsDisabled)
+		if err != nil {
+			return err
+		}
+		res.DNSZones = n
 		for _, e := range newer {
 			known, err := reapply(sys, tx, info.TrustDomain, e)
 			if errors.Is(err, errKeptInstanceAdmin) {
@@ -490,10 +503,10 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 				return err
 			}
 		}
-		_, err := audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: "instance.restore",
+		_, err = audit.Append(sys, tx, audit.Entry{ActorType: audit.ActorSystem, ActorID: "local-cli", Action: "instance.restore",
 			TargetType: "instance", TargetID: res.NewEpoch, Result: audit.Success,
-			Reason: fmt.Sprintf("backup of %s, epoch %s; %d revocations since applied again, %d of them to subjects the backup does not hold%s",
-				info.Created.UTC().Format(time.RFC3339), info.DBEpoch, res.Reapplied, res.Unknown, keptReason(res.Kept))})
+			Reason: fmt.Sprintf("backup of %s, epoch %s; %d revocations since applied again, %d of them to subjects the backup does not hold%s; %d dns zones %s",
+				info.Created.UTC().Format(time.RFC3339), info.DBEpoch, res.Reapplied, res.Unknown, keptReason(res.Kept), res.DNSZones, dnsState(dnsDisabled))})
 		return err
 	})
 	if err != nil {
@@ -508,6 +521,13 @@ func prepare(ctx context.Context, dbPath, logPath string, info BackupInfo, newer
 		}
 	}
 	return nil
+}
+
+func dnsState(disabled bool) string {
+	if disabled {
+		return "disabled"
+	}
+	return "held"
 }
 
 // failClosed is the restore review after a restore whose revocations since the backup may be

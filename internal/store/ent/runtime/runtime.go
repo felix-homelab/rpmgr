@@ -1786,32 +1786,38 @@ func init() {
 	dnszone.DefaultHeldReason = dnszoneDescHeldReason.Default.(string)
 	// dnszone.HeldReasonValidator is a validator for the "held_reason" field. It is called by the builders before save.
 	dnszone.HeldReasonValidator = dnszoneDescHeldReason.Validators[0].(func(string) error)
+	// dnszoneDescPendingPlanHash is the schema descriptor for pending_plan_hash field.
+	dnszoneDescPendingPlanHash := dnszoneFields[7].Descriptor()
+	// dnszone.DefaultPendingPlanHash holds the default value on creation for the pending_plan_hash field.
+	dnszone.DefaultPendingPlanHash = dnszoneDescPendingPlanHash.Default.(string)
+	// dnszone.PendingPlanHashValidator is a validator for the "pending_plan_hash" field. It is called by the builders before save.
+	dnszone.PendingPlanHashValidator = dnszoneDescPendingPlanHash.Validators[0].(func(string) error)
 	// dnszoneDescPublishRouteHostnames is the schema descriptor for publish_route_hostnames field.
-	dnszoneDescPublishRouteHostnames := dnszoneFields[7].Descriptor()
+	dnszoneDescPublishRouteHostnames := dnszoneFields[9].Descriptor()
 	// dnszone.DefaultPublishRouteHostnames holds the default value on creation for the publish_route_hostnames field.
 	dnszone.DefaultPublishRouteHostnames = dnszoneDescPublishRouteHostnames.Default.(bool)
 	// dnszoneDescAllowProxied is the schema descriptor for allow_proxied field.
-	dnszoneDescAllowProxied := dnszoneFields[8].Descriptor()
+	dnszoneDescAllowProxied := dnszoneFields[10].Descriptor()
 	// dnszone.DefaultAllowProxied holds the default value on creation for the allow_proxied field.
 	dnszone.DefaultAllowProxied = dnszoneDescAllowProxied.Default.(bool)
 	// dnszoneDescAllowWildcards is the schema descriptor for allow_wildcards field.
-	dnszoneDescAllowWildcards := dnszoneFields[9].Descriptor()
+	dnszoneDescAllowWildcards := dnszoneFields[11].Descriptor()
 	// dnszone.DefaultAllowWildcards holds the default value on creation for the allow_wildcards field.
 	dnszone.DefaultAllowWildcards = dnszoneDescAllowWildcards.Default.(bool)
 	// dnszoneDescDeleteThreshold is the schema descriptor for delete_threshold field.
-	dnszoneDescDeleteThreshold := dnszoneFields[10].Descriptor()
+	dnszoneDescDeleteThreshold := dnszoneFields[12].Descriptor()
 	// dnszone.DefaultDeleteThreshold holds the default value on creation for the delete_threshold field.
 	dnszone.DefaultDeleteThreshold = dnszoneDescDeleteThreshold.Default.(int)
 	// dnszone.DeleteThresholdValidator is a validator for the "delete_threshold" field. It is called by the builders before save.
 	dnszone.DeleteThresholdValidator = dnszoneDescDeleteThreshold.Validators[0].(func(int) error)
 	// dnszoneDescDefaultTTL is the schema descriptor for default_ttl field.
-	dnszoneDescDefaultTTL := dnszoneFields[11].Descriptor()
+	dnszoneDescDefaultTTL := dnszoneFields[13].Descriptor()
 	// dnszone.DefaultDefaultTTL holds the default value on creation for the default_ttl field.
 	dnszone.DefaultDefaultTTL = dnszoneDescDefaultTTL.Default.(int)
 	// dnszone.DefaultTTLValidator is a validator for the "default_ttl" field. It is called by the builders before save.
 	dnszone.DefaultTTLValidator = dnszoneDescDefaultTTL.Validators[0].(func(int) error)
 	// dnszoneDescCreatedAt is the schema descriptor for created_at field.
-	dnszoneDescCreatedAt := dnszoneFields[13].Descriptor()
+	dnszoneDescCreatedAt := dnszoneFields[15].Descriptor()
 	// dnszone.DefaultCreatedAt holds the default value on creation for the created_at field.
 	dnszone.DefaultCreatedAt = dnszoneDescCreatedAt.Default.(func() time.Time)
 	// dnszoneDescID is the schema descriptor for id field.

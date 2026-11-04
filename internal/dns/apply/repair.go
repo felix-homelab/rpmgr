@@ -277,6 +277,10 @@ type Wanted struct {
 	Desired  []dns.Record // compile.Result.Desired
 	Keep     []string     // compile.Result.Keep()
 	Reserved []string
+	// Gate, if set, is asked about the plan before anything is written: a reason (HeldDeletionGuard,
+	// HeldPlanChanged) holds the zone, and the pass writes nothing; approved says that the plan is
+	// the one an Owner or Admin approved.
+	Gate func(plan.Plan) (hold string, approved bool)
 }
 
 // Outcome is what a pass planned and did.
@@ -286,6 +290,10 @@ type Outcome struct {
 	Plan   plan.Plan
 	Result Result
 	Report Report
+	// Held is why the pass wrote nothing and the zone must be held, if Wanted.Gate said so.
+	Held string
+	// Approved: the plan applied was the approved one, so the approval is used up.
+	Approved bool
 }
 
 // Reconcile is one pass over a zone: list the provider's records, repair the ledger after a crash
@@ -306,6 +314,12 @@ func (e *Engine) Reconcile(ctx context.Context, l lease.Lease, p dns.Provider, z
 	}
 	pl := plan.Diff(plan.Input{Zone: z.Name, Desired: w.Desired, Keep: w.Keep, Reserved: w.Reserved, Live: live, Owned: owned, TrustDomain: e.TrustDomain})
 	out.Report.Orphans = pl.Orphans
+	if w.Gate != nil {
+		if out.Held, out.Approved = w.Gate(pl); out.Held != "" {
+			out.Plan = pl
+			return out, nil
+		}
+	}
 	var corr Correction
 	var rep Report
 	if pl, corr, rep, err = e.Correct(ctx, l, z, live, pl); err != nil {

@@ -11,6 +11,7 @@ package job
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -247,25 +248,17 @@ type outcome struct {
 	// report is what the pass found that a person should know of: orphans, drift, a repair.
 	report apply.Report
 	stop   error // the pass stopped: the provider failed, or the lease ends
+	// held is why the zone is held after this pass: the gate refused to apply the plan, which is
+	// stored with the zone for review. planned: a held zone's plan was computed, and is stored.
+	held     string
+	planned  bool
+	approved bool // the plan was the approved one: the approval is used up
 }
 
 // pass reconciles one zone. A failure of the provider or the lease is recorded and not returned;
 // only a lost lease and database errors are.
 func (j *Job) pass(ctx context.Context, l lease.Lease, z *ent.DNSZone, full bool) error {
-	var in compile.Input
-	reserved := []string(nil)
-	if j.o.Reserved != nil {
-		reserved = j.o.Reserved(ctx)
-	}
-	err := store.ReadTx(ctx, j.o.DB, func(tx *ent.Tx, _ store.Revision) error {
-		cur, err := tx.DNSZone.Get(ctx, z.ID)
-		if err != nil {
-			return err
-		}
-		z = cur
-		in, err = sources(ctx, tx, z, reserved)
-		return err
-	})
+	z, in, reserved, err := j.read(ctx, z.ID)
 	if ent.IsNotFound(err) {
 		return nil // removed since it was listed
 	}
@@ -280,10 +273,14 @@ func (j *Job) pass(ctx context.Context, l lease.Lease, z *ent.DNSZone, full bool
 	if !full && same {
 		return nil // a revision that changed nothing this zone publishes
 	}
-	if z.SyncState == dnszone.SyncStateActive {
+	switch z.SyncState {
+	case dnszone.SyncStateActive:
 		if err := j.sync(ctx, l, z, reserved, &o); err != nil {
 			return err
 		}
+	case dnszone.SyncStateHeld:
+		j.plan(ctx, z, reserved, &o)
+	case dnszone.SyncStateDisabled: // the job does nothing in the zone
 	}
 	if err := j.record(ctx, l, z, o); err != nil {
 		return err
@@ -296,6 +293,62 @@ func (j *Job) pass(ctx context.Context, l lease.Lease, z *ent.DNSZone, full bool
 	return nil
 }
 
+// read returns the zone, as it is now, and what its sources compile from, in one snapshot.
+func (j *Job) read(ctx context.Context, zoneID string) (z *ent.DNSZone, in compile.Input, reserved []string, err error) {
+	if j.o.Reserved != nil {
+		reserved = j.o.Reserved(ctx)
+	}
+	err = store.ReadTx(ctx, j.o.DB, func(tx *ent.Tx, _ store.Revision) error {
+		var err error
+		if z, err = tx.DNSZone.Get(ctx, zoneID); err != nil {
+			return err
+		}
+		in, err = sources(ctx, tx, z, reserved)
+		return err
+	})
+	return z, in, reserved, err
+}
+
+func (j *Job) engine(l lease.Lease, guard bool) *apply.Engine {
+	e := &apply.Engine{DB: j.o.DB, Leases: j.o.Leases, TrustDomain: j.o.TrustDomain, Now: j.o.Now}
+	if guard {
+		e.Guard = j.guard(l)
+	}
+	return e
+}
+
+func applyZone(z *ent.DNSZone) apply.Zone {
+	return apply.Zone{ID: z.ID, OrgID: z.OrgID, Name: z.Name, ProviderID: z.ProviderZoneID}
+}
+
+// Preview is the plan of a zone as a pass computes it now, for the review of a held zone and for
+// the approval, which is bound to its hash. It lists the provider's records through p, which the
+// caller makes from the zone's provider, and writes nothing.
+func (j *Job) Preview(ctx context.Context, zoneID string, p dns.Provider) (plan.Plan, error) {
+	z, in, reserved, err := j.read(ctx, zoneID)
+	if err != nil {
+		return plan.Plan{}, err
+	}
+	cr := compile.Compile(in)
+	return j.engine(lease.Lease{}, false).Plan(ctx, p, applyZone(z), apply.Wanted{Desired: cr.Desired, Keep: cr.Keep(), Reserved: reserved})
+}
+
+// plan computes the plan of a held zone and writes nothing to the provider. Its failures go to
+// o.stop; a plan that could not be computed leaves the stored one as it is.
+func (j *Job) plan(ctx context.Context, z *ent.DNSZone, reserved []string, o *outcome) {
+	prov, err := j.provider(ctx, z)
+	if err != nil {
+		o.stop = err
+		return
+	}
+	pl, err := j.engine(lease.Lease{}, false).Plan(ctx, prov, applyZone(z), apply.Wanted{Desired: o.cr.Desired, Keep: o.cr.Keep(), Reserved: reserved})
+	if err != nil {
+		o.stop = err
+		return
+	}
+	o.pl, o.planned = pl, true
+}
+
 // sync lists the provider, plans and applies. Its failures go to o.stop.
 func (j *Job) sync(ctx context.Context, l lease.Lease, z *ent.DNSZone, reserved []string, o *outcome) error {
 	prov, err := j.provider(ctx, z)
@@ -303,10 +356,9 @@ func (j *Job) sync(ctx context.Context, l lease.Lease, z *ent.DNSZone, reserved 
 		o.stop = err
 		return nil
 	}
-	eng := &apply.Engine{DB: j.o.DB, Leases: j.o.Leases, TrustDomain: j.o.TrustDomain, Guard: j.guard(l), Now: j.o.Now}
-	out, err := eng.Reconcile(ctx, l, prov, apply.Zone{ID: z.ID, OrgID: z.OrgID, Name: z.Name, ProviderID: z.ProviderZoneID},
-		apply.Wanted{Desired: o.cr.Desired, Keep: o.cr.Keep(), Reserved: reserved})
-	o.pl, o.res, o.report = out.Plan, out.Result, out.Report
+	out, err := j.engine(l, true).Reconcile(ctx, l, prov, applyZone(z), apply.Wanted{Desired: o.cr.Desired, Keep: o.cr.Keep(),
+		Reserved: reserved, Gate: apply.Guard(z.DeleteThreshold, z.PendingPlanHash)})
+	o.pl, o.res, o.report, o.held, o.approved = out.Plan, out.Result, out.Report, out.Held, out.Approved
 	switch {
 	case errors.Is(err, lease.ErrLost):
 		return err
@@ -358,13 +410,28 @@ func (j *Job) record(ctx context.Context, l lease.Lease, z *ent.DNSZone, o outco
 		if err := j.o.Leases.Fence(ctx, tx, l); err != nil {
 			return err
 		}
-		if z.SyncState == dnszone.SyncStateActive {
+		if z.SyncState != dnszone.SyncStateDisabled {
 			u := tx.DNSZone.Update().Where(dnszone.ID(z.ID))
 			if st, ok := providerStatus(o.stop); ok {
 				u.SetProviderStatus(st)
 			}
-			if o.stop == nil {
+			if o.stop == nil && z.SyncState == dnszone.SyncStateActive {
 				u.SetLastSyncedAt(now)
+			}
+			// What a person decides, a hold, an approval, the plan under review, is written only
+			// if the zone is still as the pass found it: an approval that came in meanwhile stays.
+			switch {
+			case o.held != "" || o.planned:
+				plan, err := json.Marshal(o.pl)
+				if err != nil {
+					return err
+				}
+				u.Where(dnszone.Version(z.Version)).SetPendingPlan(plan).SetPendingPlanHash(o.pl.Hash)
+				if o.held != "" {
+					u.SetSyncState(dnszone.SyncStateHeld).SetHeldReason(o.held)
+				}
+			case o.approved:
+				u.Where(dnszone.Version(z.Version)).ClearPendingPlan().SetPendingPlanHash("")
 			}
 			if err := u.Exec(ctx); err != nil {
 				return err
@@ -450,7 +517,7 @@ func statuses(o outcome) []nameStatus {
 		switch n.Status {
 		case compile.StatusOk:
 			switch reason, isConflict := conflicts[n.Name]; {
-			case o.cr.Held:
+			case o.cr.Held, o.held != "":
 				s.status = dnsnamestatus.StatusHeld
 			case isConflict:
 				s.status, s.reason = dnsnamestatus.StatusConflict, reason
