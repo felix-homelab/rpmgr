@@ -19,6 +19,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/secret"
 )
 
+const acct32 = "0123456789abcdef0123456789abcdef"
+
 const testToken = "test-token-for-the-fake-api"
 
 // setup starts the fake and returns it with a client that trusts its test CA.
@@ -48,13 +50,13 @@ func TestVerify_UserAndAccountTokens(t *testing.T) {
 		t.Fatalf("requests %v", got)
 	}
 
-	fake, acct := setup(t, "acc/1")
+	fake, acct := setup(t, acct32)
 	info, err = acct.Verify(ctx)
 	if err != nil || !info.Active() || !info.ExpiresAt.IsZero() {
 		t.Fatalf("account token: %+v, %v", info, err)
 	}
-	if got := fake.Requests(); got[0] != "GET /client/v4/accounts/acc%2F1/tokens/verify" {
-		t.Fatalf("the account id is not escaped: %v", got)
+	if got := fake.Requests(); got[0] != "GET /client/v4/accounts/"+acct32+"/tokens/verify" {
+		t.Fatalf("unexpected verify path: %v", got)
 	}
 
 	// An account-owned token is not a user token, and the other way round.
@@ -126,7 +128,7 @@ func TestListRecords_Paging(t *testing.T) {
 
 func TestListRecords_UnknownZone(t *testing.T) {
 	_, c := setup(t, "")
-	_, err := c.ListRecords(context.Background(), "nope")
+	_, err := c.ListRecords(context.Background(), strings.Repeat("0", 32))
 	var pe *dns.ProviderError
 	if !errors.Is(err, dns.ErrNotFound) || !errors.As(err, &pe) || pe.Status != 404 {
 		t.Fatalf("%v", err)
@@ -173,7 +175,7 @@ func TestApply_AllOrNothingAndErrors(t *testing.T) {
 	if got := fake.Records(z.ID); len(got) != 1 || got[0].ID != r.ID {
 		t.Fatalf("a failed batch changed the zone: %+v", got)
 	}
-	if err := c.Apply(ctx, "nope", dns.Batch{Deletes: []string{"x"}}); !errors.Is(err, dns.ErrNotFound) {
+	if err := c.Apply(ctx, strings.Repeat("0", 32), dns.Batch{Deletes: []string{strings.Repeat("1", 32)}}); !errors.Is(err, dns.ErrNotFound) {
 		t.Fatalf("%v", err)
 	}
 }
@@ -185,7 +187,7 @@ func TestApply_RefusedBeforeSending(t *testing.T) {
 	ops := func(n int) dns.Batch {
 		b := dns.Batch{}
 		for range n {
-			b.Deletes = append(b.Deletes, "id")
+			b.Deletes = append(b.Deletes, strings.Repeat("1", 32))
 		}
 		return b
 	}
@@ -201,8 +203,8 @@ func TestApply_RefusedBeforeSending(t *testing.T) {
 		{"comment with a line break", post("a\nb"), true},
 		{"200 operations", ops(200), false},
 		{"201 operations", ops(201), true},
-		{"long comment in a patch", dns.Batch{Patches: []dns.Record{{ID: "i", Comment: strings.Repeat("a", 101)}}}, true},
-		{"long comment in a put", dns.Batch{Puts: []dns.Record{{ID: "i", Comment: strings.Repeat("a", 101)}}}, true},
+		{"long comment in a patch", dns.Batch{Patches: []dns.Record{{ID: strings.Repeat("1", 32), Comment: strings.Repeat("a", 101)}}}, true},
+		{"long comment in a put", dns.Batch{Puts: []dns.Record{{ID: strings.Repeat("1", 32), Comment: strings.Repeat("a", 101)}}}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake, c := setup(t, "")
@@ -355,7 +357,7 @@ func TestToken_NeverInErrorsOrFormattedValues(t *testing.T) {
 	c.base = "https://127.0.0.1:1/" + "client/v4"
 	_, err := c.Verify(ctx)
 	texts = append(texts, fmt.Sprint(err))
-	cfg := Config{Token: secret.New(testToken), AccountID: "acc"}
+	cfg := Config{Token: secret.New(testToken), AccountID: acct32}
 	for _, v := range []any{c, *c, cfg, &cfg, c.token} {
 		texts = append(texts, fmt.Sprint(v), fmt.Sprintf("%v", v), fmt.Sprintf("%+v", v), fmt.Sprintf("%#v", v),
 			fmt.Sprintf("%s", v), fmt.Sprintf("%q", v), fmt.Sprintf("%x", v))
@@ -413,7 +415,7 @@ func TestDNS_TokenWriteOnlyAndBaseURLFixed_BaseURL(t *testing.T) {
 	}
 	// A request of the production client goes to api.cloudflare.com, whatever else is set; its
 	// transport is replaced by one that records and refuses to connect.
-	c, err := New(Config{Token: secret.New(testToken), AccountID: "acc"})
+	c, err := New(Config{Token: secret.New(testToken), AccountID: acct32})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,8 +427,8 @@ func TestDNS_TokenWriteOnlyAndBaseURLFixed_BaseURL(t *testing.T) {
 	ctx := context.Background()
 	_, _ = c.Verify(ctx)
 	_, _ = c.ListZones(ctx)
-	_, _ = c.ListRecords(ctx, "z")
-	_ = c.Apply(ctx, "z", dns.Batch{Deletes: []string{"i"}})
+	_, _ = c.ListRecords(ctx, acct32)
+	_ = c.Apply(ctx, acct32, dns.Batch{Deletes: []string{acct32}})
 	if len(urls) != 4 {
 		t.Fatalf("%v", urls)
 	}
@@ -440,3 +442,43 @@ func TestDNS_TokenWriteOnlyAndBaseURLFixed_BaseURL(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestIDs_ValidatedBeforeAnyPathIsBuilt(t *testing.T) {
+	ok := strings.Repeat("a", 32)
+	bad := map[string]string{
+		"dotdot": "..", "dot": ".", "empty": "", "slash": "a/" + ok[:30], "traversal": "../" + ok[:29],
+		"31 characters": ok[:31], "33 characters": ok + "0", "uppercase": strings.ToUpper(ok),
+		"non-hex": strings.Repeat("g", 32), "query": ok[:30] + "?x", "space": ok[:31] + " ", "newline": ok[:31] + "\n",
+		"percent": ok[:29] + "%2f", "multibyte": ok[:30] + "é",
+	}
+	for name, id := range bad {
+		t.Run(name, func(t *testing.T) {
+			fake, c := setup(t, "")
+			ctx := context.Background()
+			put := dns.Batch{Puts: []dns.Record{{ID: id, Type: "A", Name: "a", Content: "b"}}}
+			patch := dns.Batch{Patches: []dns.Record{{ID: id, Type: "A", Name: "a", Content: "b"}}}
+			errs := []error{
+				func() error { _, err := c.ListRecords(ctx, id); return err }(),
+				c.Apply(ctx, id, dns.Batch{Deletes: []string{ok}}),
+				c.Apply(ctx, ok, dns.Batch{Deletes: []string{id}}),
+				c.Apply(ctx, ok, patch), c.Apply(ctx, ok, put),
+			}
+			ac, _ := newClient(Config{Token: secret.New(testToken), AccountID: id}, fake.URL(), nil)
+			if id != "" { // an empty account id is a user token
+				_, err := ac.Verify(ctx)
+				errs = append(errs, err)
+			}
+			for i, err := range errs {
+				if !errors.Is(err, dns.ErrInvalid) {
+					t.Fatalf("call %d: %v", i, err)
+				}
+			}
+			if len(fake.Requests()) != 0 {
+				t.Fatalf("sent %v", fake.Requests())
+			}
+		})
+	}
+	if !validID(ok) || !validID("0123456789abcdef0123456789abcdef") {
+		t.Fatal("a valid id is refused")
+	}
+}

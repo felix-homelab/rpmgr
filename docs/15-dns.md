@@ -359,7 +359,9 @@ build tag ([D60](14-open-decisions.md#engineering)); there is no runtime setting
 Instance Admin can point rpmgr at a server that collects other orgs' tokens. The client honours
 `HTTPS_PROXY` ([10](10-operations.md#ports)), connects over TLS 1.2 or later against the system
 roots as for other third-party servers ([04](04-security.md)), and follows no redirect, so the
-token never goes elsewhere. It refuses a batch above the limit below, and a record comment above
+token never goes elsewhere. It sends an identifier (zone, account, record) only if it is 32 lower-case hex characters
+[V VB-26], and refuses any other before it sends anything. On a 429 without a usable `retry-after`
+it waits the 5 minutes that Cloudflare blocks for. It refuses a batch above the limit below, and a record comment above
 100 characters or with a line break, before it sends anything.
 
 ## Provider interface

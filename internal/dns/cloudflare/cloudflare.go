@@ -19,6 +19,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -212,11 +213,32 @@ type tokenResult struct {
 	ExpiresOn *time.Time `json:"expires_on"`
 }
 
+// validID reports whether s is a Cloudflare identifier, 32 lowercase hex characters [V VB-26]; one
+// that is not never reaches a URL path, where "." and ".." would walk out of it.
+func validID(s string) bool {
+	if len(s) != 32 {
+		return false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func badID(what string) error {
+	return fmt.Errorf("%w: the %s is not a 32-character lower-case hex identifier", dns.ErrInvalid, what)
+}
+
 // Verify checks the token: GET /user/tokens/verify, or /accounts/{id}/tokens/verify for an
 // account-owned token. A token that is expired or disabled comes back with that Status.
 func (c *Client) Verify(ctx context.Context) (dns.TokenInfo, error) {
 	path := "/user/tokens/verify"
 	if c.account != "" {
+		if !validID(c.account) {
+			return dns.TokenInfo{}, badID("account id")
+		}
 		path = "/accounts/" + url.PathEscape(c.account) + "/tokens/verify"
 	}
 	var r tokenResult
@@ -267,6 +289,9 @@ func toRecord(r dns.Record) record { return record(r) }
 
 // ListRecords returns every record of a zone, page by page.
 func (c *Client) ListRecords(ctx context.Context, zoneID string) ([]dns.Record, error) {
+	if !validID(zoneID) {
+		return nil, badID("zone id")
+	}
 	var all []dns.Record
 	err := c.pages(ctx, "/zones/"+url.PathEscape(zoneID)+"/dns_records?", func(raw json.RawMessage) (int, error) {
 		var rs []record
@@ -305,8 +330,20 @@ func (c *Client) pages(ctx context.Context, path string, add func(json.RawMessag
 // than MaxCommentLen characters or has a line break, is refused (dns.ErrInvalid) before anything is
 // sent. An empty batch sends nothing.
 func (c *Client) Apply(ctx context.Context, zoneID string, b dns.Batch) error {
+	if !validID(zoneID) {
+		return badID("zone id")
+	}
 	if b.Len() == 0 {
 		return nil
+	}
+	ids := slices.Clone(b.Deletes)
+	for _, g := range [][]dns.Record{b.Patches, b.Puts} {
+		for _, r := range g {
+			ids = append(ids, r.ID)
+		}
+	}
+	if slices.ContainsFunc(ids, func(id string) bool { return !validID(id) }) {
+		return badID("record id")
 	}
 	if b.Len() > MaxBatchOps {
 		return fmt.Errorf("%w: a batch has %d operations, at most %d", dns.ErrInvalid, b.Len(), MaxBatchOps)

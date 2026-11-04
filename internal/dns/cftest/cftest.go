@@ -153,7 +153,7 @@ func (s *Server) Count(prefix string) int {
 
 func (s *Server) lock(f func()) { s.mu.Lock(); defer s.mu.Unlock(); f() }
 
-func (s *Server) id(kind string) string { s.next++; return fmt.Sprintf("%s-%04d", kind, s.next) }
+func (s *Server) id(string) string { s.next++; return fmt.Sprintf("%032x", s.next) }
 
 type message struct {
 	Code    int    `json:"code"`
@@ -365,7 +365,7 @@ func (s *Server) batch(w http.ResponseWriter, r *http.Request) {
 			rec.Name, rec.ZoneID, rec.TTL = strings.ToLower(rec.Name), zone, max(rec.TTL, 1)
 			if list.create {
 				s.next++
-				rec.ID = fmt.Sprintf("rec-%04d", s.next)
+				rec.ID = fmt.Sprintf("%032x", s.next)
 				work = append(work, rec)
 			} else if i := find(rec.ID); i < 0 {
 				bad(81044, "Record does not exist.")

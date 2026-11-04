@@ -336,6 +336,7 @@ implemented, and the result recorded in the PR.
 | VB-23 | The syslog sink against a real syslog server (rsyslog or syslog-ng) over TLS: RFC 5425 octet counting, the server's certificate checked, a reconnect without a gap (Phase 2, slice 5.20) | [04](04-security.md#audit-log) |
 | VB-24 | Conditional create (`If-None-Match: *`) and Object Lock in compliance mode on common S3-compatible stores (AWS S3, Cloudflare R2, Backblaze B2) and the SILO container CI uses: a second create refused with 412, a locked object neither overwritten nor deleted (Phase 2, slices 5.15, 5.16, 9.1) | [04](04-security.md#audit-log), [04](04-security.md#revocation-log) |
 | VB-25 | The firewall helper's units against a real `ufw` on Debian 13, Ubuntu 22.04 and 24.04 (Phase 2, slice 2 of D152): the sandbox of `rpmgr-firewall.service` (writable paths, `CapabilityBoundingSet=`, `RestrictAddressFamilies=`, the creation of `/run/ufw.lock`), the output of `ufw status numbered`, and the start and trigger limits under a flood of writes of the desired file (`TriggerLimitIntervalSec=` on systemd 249) | [10](10-operations.md#host-firewall-helper-phase-2), [04](04-security.md#host-firewall-for-port-pools-phase-2) |
+| VB-26 | The format of Cloudflare identifiers (zone, account, record, token): 32 lower-case hex characters in every response of a real account, which the client's check relies on (Phase 2, slice 6.2) | [15](15-dns.md#cloudflare-specifics) |
 
 ## Risks
 
