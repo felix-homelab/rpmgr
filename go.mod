@@ -24,6 +24,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/letsencrypt/pebble/v2 v2.10.1
+	github.com/libdns/libdns v1.1.1
 	github.com/mholt/acmez/v3 v3.1.7
 	github.com/miekg/dns v1.1.73
 	github.com/pires/go-proxyproto v0.16.0
@@ -88,7 +89,6 @@ require (
 	github.com/jackc/puddle/v2 v2.2.3 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/letsencrypt/challtestsrv v1.4.2 // indirect
-	github.com/libdns/libdns v1.1.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect

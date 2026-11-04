@@ -513,9 +513,20 @@ Rules of the adapter ([D166](14-open-decisions.md#engineering),
   `rpmgr <trust-domain> acme`. The adapter deletes a record only if its type, name, content and
   comment all equal what it wrote. A TXT of a `tls_passthrough` backend that runs its own DNS-01,
   or one added by hand, is never deleted. The record has no ledger row; it lives for one order,
-  and the next order of the name removes a leftover of a crash by the same exact match.
+  and the next order of the name removes a leftover of a crash: a TXT at the name with the same
+  type and marker, found when the order writes its own. An order that overlaps another order of
+  the same name loses its TXT then, fails and is retried.
 - **Budget.** Its requests come from the provider's budget row, at most half of the window
-  ([Batches, failures and the rate budget](#batches-failures-and-the-rate-budget)).
+  ([Batches, failures and the rate budget](#batches-failures-and-the-rate-budget)). A write takes
+  one listing of the zone and one batch, a delete likewise. An order that the budget refuses, or
+  that the provider answers with a 429, fails with the reason; its retry waits until the block
+  ends, if that is later than the retry's own wait ([03](03-connections.md#timeouts-keepalive-and-backoff)).
+- **Choice per name.** The job takes DNS-01 for a name that lies in a managed zone of the route's
+  org, and HTTP-01 and TLS-ALPN-01 for every other. It makes the choice again on every order, so
+  a zone that is removed takes its names back to HTTP-01, and its wildcard names, which have no
+  other challenge, to `failed`; the certificate in use keeps serving. The zone of a hostname is
+  the longest managed zone of the org that holds it, and the provider must name that zone as the
+  one that holds the name; if the name lies in a delegated sub-zone elsewhere, the order fails.
 
 ## Proxied HTTP routes
 

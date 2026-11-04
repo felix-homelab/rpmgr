@@ -151,9 +151,10 @@ The transport decides how the route's streams travel between gateways and connec
 - A hostname is a DNS name of at least two labels; an IP address is not one. Upper-case letters
   and internationalised names are stored in their lower-case ASCII form.
 - A hostname `*.example.com` serves every name one label below `example.com` that no route names
-  exactly. Its certificate must be uploaded: ACME gives no wildcard certificates yet, so a wildcard
-  hostname with **From ACME** is refused with `WILDCARD_NEEDS_CERTIFICATE` (DNS-01, which they
-  need, is planned for Phase 2, [05](../../05-features.md#tls-and-domains)).
+  exactly. Its certificate must be uploaded unless the hostname lies in a managed DNS zone of the
+  route's org, where ACME issues it by DNS-01
+  ([Domains and certificates](../domains-and-certificates.md#acme-certificates)); elsewhere a
+  wildcard hostname with **From ACME** is refused with `WILDCARD_NEEDS_CERTIFICATE`.
 - Several HTTP routes of one gateway group may share a hostname if their path prefixes differ.
   A request goes to the route with the longest prefix that matches at a segment boundary: `/api`
   matches `/api` and `/api/users`, not `/apix`. A prefix starts with `/`; empty serves every path.

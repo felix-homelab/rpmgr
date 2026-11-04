@@ -67,8 +67,8 @@ type failing struct {
 }
 
 // ErrWildcard is the reason a wildcard hostname of an acme route gets no certificate (R42): its
-// certificate needs DNS-01, which comes with managed DNS in Phase 2.
-var ErrWildcard = errors.New("acme: a wildcard needs DNS-01 (Phase 2); upload a certificate for it")
+// certificate needs DNS-01, which only a managed zone of the org offers (D166).
+var ErrWildcard = errors.New("acme: a wildcard needs a managed DNS zone for DNS-01; upload a certificate for it")
 
 // ErrNotWanted is returned by Renew for a hostname of no enabled http route in acme mode.
 var ErrNotWanted = errors.New("acme: no enabled http route in acme mode, gateway or CONNECT listener has the hostname")
@@ -94,6 +94,9 @@ type ManagerOptions struct {
 	TrustedRoots *x509.CertPool
 	// DisableARI renews by the renewal window only (tests whose certificates live minutes).
 	DisableARI bool
+	// DNS, if set, issues the certificates of hostnames in a managed zone by DNS-01; nil leaves
+	// every hostname on HTTP-01 and TLS-ALPN-01.
+	DNS *DNS01
 	// RenewalWindowRatio is the part of a certificate's lifetime left when it is renewed; 0 is
 	// certmagic's default (a third).
 	RenewalWindowRatio float64
@@ -176,13 +179,13 @@ func (m *Manager) Sync(ctx context.Context) error {
 	if len(due) == 0 {
 		return errors.Join(errs...)
 	}
-	cfg, stop, err := m.config()
+	cfgs, stop, err := m.config()
 	if err != nil {
 		return err
 	}
 	defer stop()
 	for _, w := range due {
-		if err := m.attempt(ctx, cfg, w, false); err != nil {
+		if err := m.attempt(ctx, cfgs, w, false); err != nil {
 			m.o.Logger.Warn("route certificate not obtained", "hostname", w.name, "error", err)
 			errs = append(errs, fmt.Errorf("%s: %w", w.name, err))
 		}
@@ -240,7 +243,7 @@ func (m *Manager) waiting(w wanted, now time.Time) bool {
 // certificates"). A retry tells certmagic that it is one, so that it rehearses at the test CA first
 // and orders at the CA only once the test CA validated the name; an attempt that fails waits as
 // retryWait says.
-func (m *Manager) attempt(ctx context.Context, cfg *certmagic.Config, w wanted, force bool) error {
+func (m *Manager) attempt(ctx context.Context, cfg *configs, w wanted, force bool) error {
 	m.mu.Lock()
 	failures := m.failing[w].failures
 	m.mu.Unlock()
@@ -256,7 +259,11 @@ func (m *Manager) attempt(ctx context.Context, cfg *certmagic.Config, w wanted, 
 		return nil
 	}
 	failures++
-	m.failing[w] = failing{failures: failures, next: m.o.Now().Add(retryWait(failures, m.o.RetryFirst))}
+	next := m.o.Now().Add(retryWait(failures, m.o.RetryFirst))
+	if until, ok := rateLimitedUntil(err); ok && until.After(next) {
+		next = until // the provider's block, which an earlier retry would only run into
+	}
+	m.failing[w] = failing{failures: failures, next: next}
 	return err
 }
 
@@ -281,10 +288,10 @@ func (m *Manager) RenewAsync(ctx context.Context, org, name string) (bool, error
 	}
 	go func() {
 		defer m.renewing.Delete(w)
-		cfg, stop, err := m.config()
+		cfgs, stop, err := m.config()
 		if err == nil {
 			defer stop()
-			err = m.attempt(ctx, cfg, w, true)
+			err = m.attempt(ctx, cfgs, w, true)
 		}
 		if err != nil {
 			m.o.Logger.Warn("route certificate not renewed", "hostname", name, "error", err)
@@ -361,9 +368,9 @@ func (m *Manager) wanted() (out []wanted, blocked map[wanted]error, err error) {
 	return out, blocked, err
 }
 
-// config returns a certmagic configuration on the storage, with the CA and account of the
+// config returns the certmagic configurations on the storage, with the CA and account of the
 // instance settings.
-func (m *Manager) config() (*certmagic.Config, func(), error) {
+func (m *Manager) config() (*configs, func(), error) {
 	inst, _, err := settings.Instance(m.o.Sys, m.o.DB.Client())
 	if err != nil {
 		return nil, nil, err
@@ -372,14 +379,9 @@ func (m *Manager) config() (*certmagic.Config, func(), error) {
 		GetConfigForCert: func(certmagic.Certificate) (*certmagic.Config, error) {
 			return nil, errors.New("acme: the cache does not renew; the job does")
 		}})
-	cfg := certmagic.New(cache, certmagic.Config{Storage: m.o.Storage, Logger: zap.NewNop(), DisableARI: m.o.DisableARI,
-		RenewalWindowRatio: m.o.RenewalWindowRatio})
-	iss := newIssuer(cfg, inst, m.o.TrustedRoots, m.o.Proxy, false, false)
-	if m.o.TestCA != "" {
-		iss.TestCA = m.o.TestCA
-	}
-	cfg.Issuers = []certmagic.Issuer{iss}
-	return cfg, cache.Stop, nil
+	c := &configs{m: m, inst: inst, cache: cache}
+	c.http = c.newConfig(nil)
+	return c, cache.Stop, nil
 }
 
 // newIssuer returns certmagic's ACME issuer for cfg with the CA and account of the instance
@@ -404,9 +406,10 @@ func newIssuer(cfg *certmagic.Config, inst *rpmgrv1.InstanceSettings, roots *x50
 
 // one obtains or renews the certificate of one hostname and records it. With force, a certificate
 // that was there before is renewed even if it is not due.
-func (m *Manager) one(ctx context.Context, cfg *certmagic.Config, w wanted, force bool) error {
-	if strings.HasPrefix(w.name, "*.") {
-		return m.record(w, nil, ErrWildcard)
+func (m *Manager) one(ctx context.Context, cfgs *configs, w wanted, force bool) error {
+	cfg, err := cfgs.pick(ctx, w)
+	if err != nil {
+		return m.record(w, nil, err)
 	}
 	had := cfg.Storage.Exists(ctx, certmagic.StorageKeys.SiteCert(cfg.Issuers[0].IssuerKey(), w.name))
 	if err := cfg.ObtainCertSync(ctx, w.name); err != nil {
