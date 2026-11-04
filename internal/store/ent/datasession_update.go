@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
@@ -46,6 +47,24 @@ func (_u *DataSessionUpdate) SetNillableRttMs(v *int64) *DataSessionUpdate {
 // AddRttMs adds value to the "rtt_ms" field.
 func (_u *DataSessionUpdate) AddRttMs(v int64) *DataSessionUpdate {
 	_u.mutation.AddRttMs(v)
+	return _u
+}
+
+// SetReadyRoutes sets the "ready_routes" field.
+func (_u *DataSessionUpdate) SetReadyRoutes(v []string) *DataSessionUpdate {
+	_u.mutation.SetReadyRoutes(v)
+	return _u
+}
+
+// AppendReadyRoutes appends value to the "ready_routes" field.
+func (_u *DataSessionUpdate) AppendReadyRoutes(v []string) *DataSessionUpdate {
+	_u.mutation.AppendReadyRoutes(v)
+	return _u
+}
+
+// ClearReadyRoutes clears the value of the "ready_routes" field.
+func (_u *DataSessionUpdate) ClearReadyRoutes() *DataSessionUpdate {
+	_u.mutation.ClearReadyRoutes()
 	return _u
 }
 
@@ -123,6 +142,17 @@ func (_u *DataSessionUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.AddedRttMs(); ok {
 		_spec.AddField(datasession.FieldRttMs, field.TypeInt64, value)
 	}
+	if value, ok := _u.mutation.ReadyRoutes(); ok {
+		_spec.SetField(datasession.FieldReadyRoutes, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedReadyRoutes(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, datasession.FieldReadyRoutes, value)
+		})
+	}
+	if _u.mutation.ReadyRoutesCleared() {
+		_spec.ClearField(datasession.FieldReadyRoutes, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.ReportedAt(); ok {
 		_spec.SetField(datasession.FieldReportedAt, field.TypeTime, value)
 	}
@@ -164,6 +194,24 @@ func (_u *DataSessionUpdateOne) SetNillableRttMs(v *int64) *DataSessionUpdateOne
 // AddRttMs adds value to the "rtt_ms" field.
 func (_u *DataSessionUpdateOne) AddRttMs(v int64) *DataSessionUpdateOne {
 	_u.mutation.AddRttMs(v)
+	return _u
+}
+
+// SetReadyRoutes sets the "ready_routes" field.
+func (_u *DataSessionUpdateOne) SetReadyRoutes(v []string) *DataSessionUpdateOne {
+	_u.mutation.SetReadyRoutes(v)
+	return _u
+}
+
+// AppendReadyRoutes appends value to the "ready_routes" field.
+func (_u *DataSessionUpdateOne) AppendReadyRoutes(v []string) *DataSessionUpdateOne {
+	_u.mutation.AppendReadyRoutes(v)
+	return _u
+}
+
+// ClearReadyRoutes clears the value of the "ready_routes" field.
+func (_u *DataSessionUpdateOne) ClearReadyRoutes() *DataSessionUpdateOne {
+	_u.mutation.ClearReadyRoutes()
 	return _u
 }
 
@@ -270,6 +318,17 @@ func (_u *DataSessionUpdateOne) sqlSave(ctx context.Context) (_node *DataSession
 	}
 	if value, ok := _u.mutation.AddedRttMs(); ok {
 		_spec.AddField(datasession.FieldRttMs, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.ReadyRoutes(); ok {
+		_spec.SetField(datasession.FieldReadyRoutes, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedReadyRoutes(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, datasession.FieldReadyRoutes, value)
+		})
+	}
+	if _u.mutation.ReadyRoutesCleared() {
+		_spec.ClearField(datasession.FieldReadyRoutes, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ReportedAt(); ok {
 		_spec.SetField(datasession.FieldReportedAt, field.TypeTime, value)

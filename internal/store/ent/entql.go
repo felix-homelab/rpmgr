@@ -566,6 +566,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			datasession.FieldConnectorID:   {Type: field.TypeString, Column: datasession.FieldConnectorID},
 			datasession.FieldTransport:     {Type: field.TypeEnum, Column: datasession.FieldTransport},
 			datasession.FieldRttMs:         {Type: field.TypeInt64, Column: datasession.FieldRttMs},
+			datasession.FieldReadyRoutes:   {Type: field.TypeJSON, Column: datasession.FieldReadyRoutes},
 			datasession.FieldEstablishedAt: {Type: field.TypeTime, Column: datasession.FieldEstablishedAt},
 			datasession.FieldReportedAt:    {Type: field.TypeTime, Column: datasession.FieldReportedAt},
 		},
@@ -4028,6 +4029,11 @@ func (f *DataSessionFilter) WhereTransport(p entql.StringP) {
 // WhereRttMs applies the entql int64 predicate on the rtt_ms field.
 func (f *DataSessionFilter) WhereRttMs(p entql.Int64P) {
 	f.Where(p.Field(datasession.FieldRttMs))
+}
+
+// WhereReadyRoutes applies the entql json.RawMessage predicate on the ready_routes field.
+func (f *DataSessionFilter) WhereReadyRoutes(p entql.BytesP) {
+	f.Where(p.Field(datasession.FieldReadyRoutes))
 }
 
 // WhereEstablishedAt applies the entql time.Time predicate on the established_at field.

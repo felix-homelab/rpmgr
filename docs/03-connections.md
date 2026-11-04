@@ -419,9 +419,11 @@ Rules:
     as ready. It records an `Applied` only for a snapshot the same session was sent
     ([06](06-data-model.md#desired-vs-observed-state)). A gateway's every `Status` lists its
     connectors' data sessions, one per connector and transport with the lowest round-trip time a
-    session measures (QUIC does; h2 does not), at the report interval of the timeout table and at
-    the start of each control session; the controller keeps the last report, at most 4 096 per
-    gateway. The same `Status` carries the gateway's route counters, cumulative since it started:
+    session measures (QUIC does; h2 does not), and the routes the connector reports ready on
+    them (at most 4 096 per connector and transport), at the report interval of the timeout table,
+    when a route's readiness on a session changes, and at the start of each control session; the
+    controller keeps the last report, at most 4 096 data sessions per gateway
+    ([Transport selection](#transport-selection)). The same `Status` carries the gateway's route counters, cumulative since it started:
     bytes both ways, connections, those that reached no target, and the open ones. The controller
     rolls them up for the traffic charts ([06](06-data-model.md#desired-vs-observed-state)). It
     takes both only for what the gateway serves: counters of routes of the gateway's own group,
@@ -1270,6 +1272,16 @@ Which transport a connector uses is a setting
   route's effective transport; for `auto`, on the transport the race chose. The connector achieves
   this by reporting a route ready (`SessionHello`, `RouteHealth`) only on those sessions, so the
   gateway needs no transport in its snapshot.
+- **What is reported.** The gateway knows each session's transport and the routes the connector
+  reports ready on it, so its report of the data sessions names, per connector and transport, the
+  routes ready there. From it the controller derives, for each enabled target of a route, the
+  transport its streams take through each online gateway of the route's group, and the level
+  that pins it, the route's, the connector's or the instance default. Nothing more is asked of
+  the connector. A gateway of an earlier release does not name the routes: its transport for the
+  route is *unknown*, which is not an error. A target that does not serve, one whose connector
+  is offline and a gateway that is offline have none, so what an offline gateway reported last is
+  never shown. A route's own readiness on a connector, not the sessions, decides whether a target
+  serves; a pin that cannot be established is the reason below and has no transport.
 - **A pin never falls back.** If a pinned transport cannot be established, the routes that need it
   are `not_ready(transport_unavailable: quic)` (or `h2`) on that connector, and the UI shows the
   reason. Only `auto` changes transport by itself.

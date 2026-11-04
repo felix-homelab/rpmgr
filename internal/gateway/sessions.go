@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math/big"
 	"slices"
 	"sync"
@@ -309,9 +310,14 @@ func (m *Sessions) Serve(ctx context.Context, s tunnel.Session, peer *x509.Certi
 		case msg.GetRouteHealth() != nil:
 			h := msg.GetRouteHealth()
 			d.readyMu.Lock()
+			changed := d.ready[h.GetRouteId()] != h.GetReady()
 			d.ready[h.GetRouteId()] = h.GetReady()
 			d.prios[h.GetRouteId()] = slices.Clone(h.GetReadyPriorities())
 			d.readyMu.Unlock()
+			if changed && m.o.OnChange != nil {
+				// The controller shows the transport each route's streams take (docs/03).
+				m.o.OnChange()
+			}
 		case msg.GetOpenRequest() != nil:
 			go func(r *tunnelv1.OpenRequest) {
 				if err := resp.Handle(ctx, r); err != nil {
@@ -553,6 +559,9 @@ func (m *Sessions) remove(d *dataSession) {
 	}
 }
 
+// MaxReportedRoutes is how many ready routes of one connector and transport Report names.
+const MaxReportedRoutes = 4096
+
 // Report returns the gateway's data sessions for the controller (docs/03-connections.md,
 // "Configuration reconciliation"): one per connector and transport, with the lowest smoothed
 // round-trip time any of them knows, 0 if none does.
@@ -561,9 +570,20 @@ func (m *Sessions) Report() []*agentv1.DataSession {
 	defer m.mu.Unlock()
 	type key struct{ connector, transport string }
 	best := map[key]time.Duration{}
+	ready := map[key]map[string]bool{}
 	for con, ds := range m.byConnector {
 		for _, d := range ds {
 			k := key{con, d.s.Transport()}
+			if ready[k] == nil {
+				ready[k] = map[string]bool{}
+			}
+			d.readyMu.Lock()
+			for r, ok := range d.ready {
+				if ok {
+					ready[k][r] = true
+				}
+			}
+			d.readyMu.Unlock()
 			rtt, known := best[k]
 			if r, ok := d.s.(interface{ RTT() time.Duration }); ok && r.RTT() > 0 && (!known || rtt == 0 || r.RTT() < rtt) {
 				rtt = r.RTT()
@@ -573,7 +593,11 @@ func (m *Sessions) Report() []*agentv1.DataSession {
 	}
 	out := make([]*agentv1.DataSession, 0, len(best))
 	for k, rtt := range best {
-		ds := &agentv1.DataSession{ConnectorId: k.connector, Transport: agentv1.Transport_TRANSPORT_H2}
+		ds := &agentv1.DataSession{ConnectorId: k.connector, Transport: agentv1.Transport_TRANSPORT_H2, ReadyRoutesKnown: true}
+		ds.ReadyRoutes = slices.Sorted(maps.Keys(ready[k]))
+		if len(ds.ReadyRoutes) > MaxReportedRoutes {
+			ds.ReadyRoutes = ds.ReadyRoutes[:MaxReportedRoutes]
+		}
 		switch k.transport {
 		case "quic":
 			ds.Transport = agentv1.Transport_TRANSPORT_QUIC

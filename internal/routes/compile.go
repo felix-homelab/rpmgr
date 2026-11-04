@@ -732,6 +732,26 @@ func effective(r *ent.Route, con *ent.Connector, inst *rpmgrv1.InstanceSettings)
 	return agentv1.TransportPolicy_TRANSPORT_POLICY_AUTO
 }
 
+// PinnedBy is the level that pins the effective transport of route r on connector con: the route's,
+// else the connector's, else the instance default. It is unset where the effective transport is
+// auto, which no level pins and which may fall back (docs/03-connections.md, "Transport
+// selection").
+func PinnedBy(r *ent.Route, con *ent.Connector, inst *rpmgrv1.InstanceSettings) rpmgrv1.TransportPin {
+	switch {
+	case r.Transport != nil:
+		if policyOf(string(*r.Transport)) != agentv1.TransportPolicy_TRANSPORT_POLICY_AUTO {
+			return rpmgrv1.TransportPin_TRANSPORT_PIN_ROUTE
+		}
+	case con.Transport != nil:
+		if policyOf(string(*con.Transport)) != agentv1.TransportPolicy_TRANSPORT_POLICY_AUTO {
+			return rpmgrv1.TransportPin_TRANSPORT_PIN_CONNECTOR
+		}
+	case effective(r, con, inst) != agentv1.TransportPolicy_TRANSPORT_POLICY_AUTO:
+		return rpmgrv1.TransportPin_TRANSPORT_PIN_INSTANCE
+	}
+	return rpmgrv1.TransportPin_TRANSPORT_PIN_UNSPECIFIED
+}
+
 // wssUnavailable reports whether route r's effective transport on connector con is wss while the
 // connector, a, lacks the capability tunnel.wss: it cannot serve the route, whose status says
 // transport_unavailable: wss for it (docs/03-connections.md, "Transport selection").

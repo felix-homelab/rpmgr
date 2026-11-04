@@ -420,6 +420,13 @@ message DataSession {
   Transport transport = 2;
   // The smoothed round-trip time.
   google.protobuf.Duration rtt = 3;
+  // Phase 2, with ready_routes_known: the routes the connector reports ready on its sessions of
+  // this transport to the gateway, so that the controller can tell the transport each route's
+  // streams take (docs/03-connections.md, "Transport selection"). Sorted, at most 4096.
+  repeated string ready_routes = 4;
+  // Whether the gateway reports ready_routes: a gateway of an earlier release does not, and an
+  // empty list is then no answer.
+  bool ready_routes_known = 5;
 }
 
 // Transport is a data-session transport (docs/03-connections.md, "Transports and fallback").

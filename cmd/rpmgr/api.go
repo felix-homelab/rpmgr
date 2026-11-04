@@ -508,6 +508,9 @@ func idOf(m protoreflect.Message) string {
 
 // cell is the value at a dotted JSON path, a list joined by commas, or "-" if it is not set.
 func cell(v map[string]any, path string) string {
+	if path == "status.transport" {
+		return transportSummary(v)
+	}
 	var cur any = v
 	for _, key := range strings.Split(path, ".") {
 		m, ok := cur.(map[string]any)
@@ -561,3 +564,42 @@ func apiError(err error) error {
 	}
 	return fmt.Errorf("%s: %s", strings.ToLower(strings.ReplaceAll(cerr.Code().String(), "_", " ")), msg)
 }
+
+// transportSummary is a route's column TRANSPORT: how many of its targets are served over each
+// transport, "QUIC 1, HTTP/2 1", from the status's per-target, per-gateway transports. A target
+// served over several count under each; "unknown" is a gateway that does not report it; a route
+// with no serving target has "-".
+func transportSummary(route map[string]any) string {
+	status, _ := route["status"].(map[string]any)
+	targets, _ := status["targetTransports"].([]any)
+	count := map[string]int{}
+	for _, t := range targets {
+		tm, _ := t.(map[string]any)
+		gateways, _ := tm["gateways"].([]any)
+		seen := map[string]bool{}
+		for _, g := range gateways {
+			gm, _ := g.(map[string]any)
+			name := "unknown"
+			if tr, _ := gm["transport"].(string); tr != "" {
+				name = transportNames[tr]
+			}
+			if !seen[name] {
+				seen[name] = true
+				count[name]++
+			}
+		}
+	}
+	var parts []string
+	for _, name := range []string{"QUIC", "HTTP/2", "WSS", "unknown"} {
+		if count[name] > 0 {
+			parts = append(parts, fmt.Sprintf("%s %d", name, count[name]))
+		}
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, ", ")
+}
+
+// transportNames are the names of the data transports in the JSON mapping.
+var transportNames = map[string]string{"DATA_TRANSPORT_QUIC": "QUIC", "DATA_TRANSPORT_H2": "HTTP/2", "DATA_TRANSPORT_WSS": "WSS"}
