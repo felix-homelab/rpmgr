@@ -30,6 +30,10 @@ const (
 	FieldSyncState = "sync_state"
 	// FieldHeldReason holds the string denoting the held_reason field in the database.
 	FieldHeldReason = "held_reason"
+	// FieldPendingPlan holds the string denoting the pending_plan field in the database.
+	FieldPendingPlan = "pending_plan"
+	// FieldPendingPlanHash holds the string denoting the pending_plan_hash field in the database.
+	FieldPendingPlanHash = "pending_plan_hash"
 	// FieldProviderStatus holds the string denoting the provider_status field in the database.
 	FieldProviderStatus = "provider_status"
 	// FieldPublishRouteHostnames holds the string denoting the publish_route_hostnames field in the database.
@@ -69,6 +73,8 @@ var Columns = []string{
 	FieldName,
 	FieldSyncState,
 	FieldHeldReason,
+	FieldPendingPlan,
+	FieldPendingPlanHash,
 	FieldProviderStatus,
 	FieldPublishRouteHostnames,
 	FieldAllowProxied,
@@ -114,6 +120,10 @@ var (
 	DefaultHeldReason string
 	// HeldReasonValidator is a validator for the "held_reason" field. It is called by the builders before save.
 	HeldReasonValidator func(string) error
+	// DefaultPendingPlanHash holds the default value on creation for the "pending_plan_hash" field.
+	DefaultPendingPlanHash string
+	// PendingPlanHashValidator is a validator for the "pending_plan_hash" field. It is called by the builders before save.
+	PendingPlanHashValidator func(string) error
 	// DefaultPublishRouteHostnames holds the default value on creation for the "publish_route_hostnames" field.
 	DefaultPublishRouteHostnames bool
 	// DefaultAllowProxied holds the default value on creation for the "allow_proxied" field.
@@ -232,6 +242,11 @@ func BySyncState(opts ...sql.OrderTermOption) OrderOption {
 // ByHeldReason orders the results by the held_reason field.
 func ByHeldReason(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldHeldReason, opts...).ToFunc()
+}
+
+// ByPendingPlanHash orders the results by the pending_plan_hash field.
+func ByPendingPlanHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPendingPlanHash, opts...).ToFunc()
 }
 
 // ByProviderStatus orders the results by the provider_status field.

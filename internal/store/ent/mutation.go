@@ -21672,6 +21672,8 @@ type DNSZoneMutation struct {
 	name                    *string
 	sync_state              *dnszone.SyncState
 	held_reason             *string
+	pending_plan            *[]byte
+	pending_plan_hash       *string
 	provider_status         *dnszone.ProviderStatus
 	publish_route_hostnames *bool
 	allow_proxied           *bool
@@ -22064,6 +22066,91 @@ func (m *DNSZoneMutation) OldHeldReason(ctx context.Context) (v string, err erro
 // ResetHeldReason resets all changes to the "held_reason" field.
 func (m *DNSZoneMutation) ResetHeldReason() {
 	m.held_reason = nil
+}
+
+// SetPendingPlan sets the "pending_plan" field.
+func (m *DNSZoneMutation) SetPendingPlan(b []byte) {
+	m.pending_plan = &b
+}
+
+// PendingPlan returns the value of the "pending_plan" field in the mutation.
+func (m *DNSZoneMutation) PendingPlan() (r []byte, exists bool) {
+	v := m.pending_plan
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPendingPlan returns the old "pending_plan" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldPendingPlan(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPendingPlan is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPendingPlan requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPendingPlan: %w", err)
+	}
+	return oldValue.PendingPlan, nil
+}
+
+// ClearPendingPlan clears the value of the "pending_plan" field.
+func (m *DNSZoneMutation) ClearPendingPlan() {
+	m.pending_plan = nil
+	m.clearedFields[dnszone.FieldPendingPlan] = struct{}{}
+}
+
+// PendingPlanCleared returns if the "pending_plan" field was cleared in this mutation.
+func (m *DNSZoneMutation) PendingPlanCleared() bool {
+	_, ok := m.clearedFields[dnszone.FieldPendingPlan]
+	return ok
+}
+
+// ResetPendingPlan resets all changes to the "pending_plan" field.
+func (m *DNSZoneMutation) ResetPendingPlan() {
+	m.pending_plan = nil
+	delete(m.clearedFields, dnszone.FieldPendingPlan)
+}
+
+// SetPendingPlanHash sets the "pending_plan_hash" field.
+func (m *DNSZoneMutation) SetPendingPlanHash(s string) {
+	m.pending_plan_hash = &s
+}
+
+// PendingPlanHash returns the value of the "pending_plan_hash" field in the mutation.
+func (m *DNSZoneMutation) PendingPlanHash() (r string, exists bool) {
+	v := m.pending_plan_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPendingPlanHash returns the old "pending_plan_hash" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldPendingPlanHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPendingPlanHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPendingPlanHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPendingPlanHash: %w", err)
+	}
+	return oldValue.PendingPlanHash, nil
+}
+
+// ResetPendingPlanHash resets all changes to the "pending_plan_hash" field.
+func (m *DNSZoneMutation) ResetPendingPlanHash() {
+	m.pending_plan_hash = nil
 }
 
 // SetProviderStatus sets the "provider_status" field.
@@ -22468,7 +22555,7 @@ func (m *DNSZoneMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DNSZoneMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 17)
 	if m.org_id != nil {
 		fields = append(fields, dnszone.FieldOrgID)
 	}
@@ -22489,6 +22576,12 @@ func (m *DNSZoneMutation) Fields() []string {
 	}
 	if m.held_reason != nil {
 		fields = append(fields, dnszone.FieldHeldReason)
+	}
+	if m.pending_plan != nil {
+		fields = append(fields, dnszone.FieldPendingPlan)
+	}
+	if m.pending_plan_hash != nil {
+		fields = append(fields, dnszone.FieldPendingPlanHash)
 	}
 	if m.provider_status != nil {
 		fields = append(fields, dnszone.FieldProviderStatus)
@@ -22536,6 +22629,10 @@ func (m *DNSZoneMutation) Field(name string) (ent.Value, bool) {
 		return m.SyncState()
 	case dnszone.FieldHeldReason:
 		return m.HeldReason()
+	case dnszone.FieldPendingPlan:
+		return m.PendingPlan()
+	case dnszone.FieldPendingPlanHash:
+		return m.PendingPlanHash()
 	case dnszone.FieldProviderStatus:
 		return m.ProviderStatus()
 	case dnszone.FieldPublishRouteHostnames:
@@ -22575,6 +22672,10 @@ func (m *DNSZoneMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldSyncState(ctx)
 	case dnszone.FieldHeldReason:
 		return m.OldHeldReason(ctx)
+	case dnszone.FieldPendingPlan:
+		return m.OldPendingPlan(ctx)
+	case dnszone.FieldPendingPlanHash:
+		return m.OldPendingPlanHash(ctx)
 	case dnszone.FieldProviderStatus:
 		return m.OldProviderStatus(ctx)
 	case dnszone.FieldPublishRouteHostnames:
@@ -22648,6 +22749,20 @@ func (m *DNSZoneMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetHeldReason(v)
+		return nil
+	case dnszone.FieldPendingPlan:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPendingPlan(v)
+		return nil
+	case dnszone.FieldPendingPlanHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPendingPlanHash(v)
 		return nil
 	case dnszone.FieldProviderStatus:
 		v, ok := value.(dnszone.ProviderStatus)
@@ -22774,6 +22889,9 @@ func (m *DNSZoneMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *DNSZoneMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(dnszone.FieldPendingPlan) {
+		fields = append(fields, dnszone.FieldPendingPlan)
+	}
 	if m.FieldCleared(dnszone.FieldLastSyncedAt) {
 		fields = append(fields, dnszone.FieldLastSyncedAt)
 	}
@@ -22791,6 +22909,9 @@ func (m *DNSZoneMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *DNSZoneMutation) ClearField(name string) error {
 	switch name {
+	case dnszone.FieldPendingPlan:
+		m.ClearPendingPlan()
+		return nil
 	case dnszone.FieldLastSyncedAt:
 		m.ClearLastSyncedAt()
 		return nil
@@ -22822,6 +22943,12 @@ func (m *DNSZoneMutation) ResetField(name string) error {
 		return nil
 	case dnszone.FieldHeldReason:
 		m.ResetHeldReason()
+		return nil
+	case dnszone.FieldPendingPlan:
+		m.ResetPendingPlan()
+		return nil
+	case dnszone.FieldPendingPlanHash:
+		m.ResetPendingPlanHash()
 		return nil
 	case dnszone.FieldProviderStatus:
 		m.ResetProviderStatus()

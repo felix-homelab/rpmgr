@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,12 +21,15 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/accounts"
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/dns/apply"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/membership"
 	entorg "github.com/felix-homelab/rpmgr/internal/store/ent/org"
 	entsession "github.com/felix-homelab/rpmgr/internal/store/ent/session"
@@ -489,5 +493,49 @@ func TestRestore_IncompleteLogFailsClosed(t *testing.T) {
 		if tc.applied != (removed && revoked) {
 			t.Errorf("%s: the local log's entries applied %v, member removed %v, token revoked %v", tc.name, tc.applied, removed, revoked)
 		}
+	}
+}
+
+// TestRestore_DNSZonesHeld (the controller's clauses of TestDNS_RestoreStartsHeld): after a restore
+// every managed zone is held, whatever state the backup had, with no plan or approval carried over;
+// with DNSDisabled every zone is disabled and nothing is held; the audit entry says which.
+func TestRestore_DNSZonesHeld(t *testing.T) {
+	ctx := context.Background()
+	x := startRestoreEnv(t, storetest.Migrated(t, store.SQLite))
+	c := x.db.Client()
+	prov := c.DNSProvider.Create().SetOrgID(x.org).SetKind("cloudflare").SetName("cf").SetCredentialEnc([]byte("sealed")).SaveX(x.sys)
+	for i, st := range []dnszone.SyncState{dnszone.SyncStateActive, dnszone.SyncStateHeld, dnszone.SyncStateDisabled} {
+		c.DNSZone.Create().SetOrgID(x.org).SetDNSProviderID(prov.ID).SetProviderZoneID(fmt.Sprintf("%032x", i+1)).SetName(fmt.Sprintf("z%d.example.com", i)).
+			SetSyncState(st).SetPendingPlan([]byte(`{}`)).SetPendingPlanHash(strings.Repeat("a", 64)).ExecX(x.sys)
+	}
+	archive := x.backup(t)
+
+	for _, disabled := range []bool{false, true} {
+		res, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: x.cfg, Archive: archive, DNSDisabled: disabled})
+		if err != nil {
+			t.Fatal(err)
+		}
+		db, err := store.OpenSQLite(ctx, x.db.Path, store.SQLiteOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		zones := db.Client().DNSZone.Query().AllX(x.sys)
+		if res.DNSZones != 3 || len(zones) != 3 {
+			t.Fatalf("disabled %v: %d zones reported, %d in the database", disabled, res.DNSZones, len(zones))
+		}
+		for _, z := range zones {
+			want, reason := dnszone.SyncStateHeld, apply.HeldRestored
+			if disabled {
+				want, reason = dnszone.SyncStateDisabled, ""
+			}
+			if z.SyncState != want || z.HeldReason != reason || z.PendingPlanHash != "" || len(z.PendingPlan) != 0 {
+				t.Errorf("disabled %v: zone %+v", disabled, z)
+			}
+		}
+		entry := db.Client().AuditEntry.Query().Where(auditentry.Action("instance.restore")).Order(ent.Desc(auditentry.FieldID)).FirstX(x.sys)
+		if want := "3 dns zones " + map[bool]string{false: "held", true: "disabled"}[disabled]; !strings.Contains(entry.Reason, want) {
+			t.Errorf("disabled %v: audit reason %q lacks %q", disabled, entry.Reason, want)
+		}
+		_ = db.Close()
 	}
 }

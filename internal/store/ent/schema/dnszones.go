@@ -38,6 +38,11 @@ func (DNSZone) Fields() []ent.Field {
 		field.String("name").NotEmpty().MaxLen(253).Immutable(),
 		field.Enum("sync_state").Values("active", "held", "disabled").Default("held"),
 		field.String("held_reason").Default("").MaxLen(64),
+		// pending_plan is the plan of the last pass of a held zone, as JSON, and its hash. On an
+		// active zone the hash is the one an Owner or Admin approved: the next pass applies that
+		// plan only (docs/15-dns.md, "Held zones and plan approval").
+		field.Bytes("pending_plan").Optional(),
+		field.String("pending_plan_hash").Default("").MaxLen(64),
 		field.Enum("provider_status").Values("ok", "permission_denied", "unreachable", "rate_limited").Default("ok"),
 		field.Bool("publish_route_hostnames").Default(true),
 		field.Bool("allow_proxied").Default(false),

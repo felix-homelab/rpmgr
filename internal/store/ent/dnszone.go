@@ -32,6 +32,10 @@ type DNSZone struct {
 	SyncState dnszone.SyncState `json:"sync_state,omitempty"`
 	// HeldReason holds the value of the "held_reason" field.
 	HeldReason string `json:"held_reason,omitempty"`
+	// PendingPlan holds the value of the "pending_plan" field.
+	PendingPlan []byte `json:"pending_plan,omitempty"`
+	// PendingPlanHash holds the value of the "pending_plan_hash" field.
+	PendingPlanHash string `json:"pending_plan_hash,omitempty"`
 	// ProviderStatus holds the value of the "provider_status" field.
 	ProviderStatus dnszone.ProviderStatus `json:"provider_status,omitempty"`
 	// PublishRouteHostnames holds the value of the "publish_route_hostnames" field.
@@ -79,11 +83,13 @@ func (*DNSZone) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case dnszone.FieldPendingPlan:
+			values[i] = new([]byte)
 		case dnszone.FieldPublishRouteHostnames, dnszone.FieldAllowProxied, dnszone.FieldAllowWildcards:
 			values[i] = new(sql.NullBool)
 		case dnszone.FieldVersion, dnszone.FieldDeleteThreshold, dnszone.FieldDefaultTTL:
 			values[i] = new(sql.NullInt64)
-		case dnszone.FieldID, dnszone.FieldOrgID, dnszone.FieldDNSProviderID, dnszone.FieldProviderZoneID, dnszone.FieldName, dnszone.FieldSyncState, dnszone.FieldHeldReason, dnszone.FieldProviderStatus:
+		case dnszone.FieldID, dnszone.FieldOrgID, dnszone.FieldDNSProviderID, dnszone.FieldProviderZoneID, dnszone.FieldName, dnszone.FieldSyncState, dnszone.FieldHeldReason, dnszone.FieldPendingPlanHash, dnszone.FieldProviderStatus:
 			values[i] = new(sql.NullString)
 		case dnszone.FieldLastSyncedAt, dnszone.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -149,6 +155,18 @@ func (_m *DNSZone) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field held_reason", values[i])
 			} else if value.Valid {
 				_m.HeldReason = value.String
+			}
+		case dnszone.FieldPendingPlan:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field pending_plan", values[i])
+			} else if value != nil {
+				_m.PendingPlan = *value
+			}
+		case dnszone.FieldPendingPlanHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field pending_plan_hash", values[i])
+			} else if value.Valid {
+				_m.PendingPlanHash = value.String
 			}
 		case dnszone.FieldProviderStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -260,6 +278,12 @@ func (_m *DNSZone) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("held_reason=")
 	builder.WriteString(_m.HeldReason)
+	builder.WriteString(", ")
+	builder.WriteString("pending_plan=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PendingPlan))
+	builder.WriteString(", ")
+	builder.WriteString("pending_plan_hash=")
+	builder.WriteString(_m.PendingPlanHash)
 	builder.WriteString(", ")
 	builder.WriteString("provider_status=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ProviderStatus))

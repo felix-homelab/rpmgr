@@ -4,6 +4,7 @@ package apisvc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -16,6 +17,8 @@ import (
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/dns"
+	"github.com/felix-homelab/rpmgr/internal/dns/apply"
+	"github.com/felix-homelab/rpmgr/internal/dns/plan"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -33,8 +36,16 @@ const (
 	ReasonZoneClaimNotWildcard = "ZONE_CLAIM_NOT_WILDCARD"
 )
 
+// The reasons of the refusals of a plan's approval (docs/07-api.md, "Errors"): the plan has
+// another hash now, or the zone is not held.
+const (
+	ReasonPlanChanged     = "PLAN_CHANGED"
+	ReasonZoneNotHeld     = "ZONE_NOT_HELD"
+	ReasonZoneNotDisabled = "ZONE_NOT_DISABLED"
+)
+
 // HeldImported is the held_reason of a zone that was imported and has no approved plan yet.
-const HeldImported = "imported"
+const HeldImported = apply.HeldImported
 
 // The bounds of the numbers a caller sets on a zone (docs/15-dns.md, "Timers and limits").
 const (
@@ -54,7 +65,15 @@ type DnsZones struct {
 	API *api.Server
 	// Providers makes the client of a zone's provider account.
 	Providers *DnsProviders
-	Now       func() time.Time
+	// Planner computes the plan of a zone now: the DNS job's Preview. The API and the job must
+	// share it, so that a plan is approved as the job computes it.
+	Planner Planner
+	Now     func() time.Time
+}
+
+// Planner computes the plan of a zone as the DNS job would now, with p as the zone's provider.
+type Planner interface {
+	Preview(ctx context.Context, zoneID string, p dns.Provider) (plan.Plan, error)
 }
 
 // zoneOf is the API's view of a row.
@@ -62,7 +81,7 @@ func zoneOf(r *ent.DNSZone) *rpmgrv1.DnsZone {
 	z := &rpmgrv1.DnsZone{Id: r.ID, Name: r.Name, DnsProviderId: r.DNSProviderID, ProviderZoneId: r.ProviderZoneID,
 		HeldReason: r.HeldReason, PublishRouteHostnames: r.PublishRouteHostnames, AllowProxied: r.AllowProxied,
 		AllowWildcards: r.AllowWildcards, DeleteThreshold: int32(r.DeleteThreshold), DefaultTtl: int32(r.DefaultTTL), //nolint:gosec // G115: bounded on write
-		Etag: etagOf(r.Version)}
+		Etag: etagOf(r.Version), PendingPlanHash: r.PendingPlanHash}
 	switch r.SyncState {
 	case dnszone.SyncStateActive:
 		z.SyncState = rpmgrv1.ZoneSyncState_ZONE_SYNC_STATE_ACTIVE
@@ -308,4 +327,132 @@ func (z *DnsZones) RemoveZone(ctx context.Context, req *connect.Request[rpmgrv1.
 		return nil, storeError(err)
 	}
 	return connect.NewResponse(&rpmgrv1.RemoveZoneResponse{}), nil
+}
+
+// previewZone is the live plan of a zone: the provider's records are read through its client, and
+// the plan is what the DNS job would compute now.
+func (z *DnsZones) previewZone(ctx context.Context, zoneID string) (*ent.DNSZone, plan.Plan, error) {
+	row, err := z.DB.ReadClient().DNSZone.Get(ctx, zoneID)
+	if err != nil {
+		return nil, plan.Plan{}, storeError(err)
+	}
+	if z.Planner == nil {
+		return nil, plan.Plan{}, connect.NewError(connect.CodeInternal, errors.New("apisvc: no planner"))
+	}
+	prov, err := z.DB.ReadClient().DNSProvider.Get(ctx, row.DNSProviderID)
+	if err != nil {
+		return nil, plan.Plan{}, storeError(err)
+	}
+	p, err := z.Providers.client(ctx, prov)
+	if err != nil {
+		return nil, plan.Plan{}, err
+	}
+	pl, err := z.Planner.Preview(ctx, row.ID, p)
+	if err != nil {
+		return nil, plan.Plan{}, providerError(err)
+	}
+	return row, pl, nil
+}
+
+func planRecord(r dns.Record) *rpmgrv1.PlanRecord {
+	return &rpmgrv1.PlanRecord{Id: r.ID, Name: r.Name, Type: r.Type, Content: r.Content, Ttl: int32(r.TTL), Proxied: r.Proxied} //nolint:gosec // G115: a TTL is at most a day
+}
+
+func planRecords(rs []dns.Record) []*rpmgrv1.PlanRecord {
+	var out []*rpmgrv1.PlanRecord
+	for _, r := range rs {
+		out = append(out, planRecord(r))
+	}
+	return out
+}
+
+// planOf is the API's view of a plan.
+func planOf(p plan.Plan) *rpmgrv1.ZonePlan {
+	out := &rpmgrv1.ZonePlan{Creates: planRecords(p.Creates), Updates: planRecords(p.Updates), Deletes: planRecords(p.Deletes),
+		Orphans: planRecords(p.Orphans), Shadows: p.Shadows, Hash: p.Hash}
+	for _, c := range p.Conflicts {
+		out.Conflicts = append(out.Conflicts, &rpmgrv1.PlanConflict{Name: c.Name, Kind: string(c.Kind), Records: planRecords(c.Records)})
+	}
+	for _, l := range p.Lost {
+		out.Lost = append(out.Lost, l.RecordID)
+	}
+	return out
+}
+
+// PlanZoneSync implements DnsZoneService: the plan a pass would carry out now, read live.
+func (z *DnsZones) PlanZoneSync(ctx context.Context, req *connect.Request[rpmgrv1.PlanZoneSyncRequest]) (
+	*connect.Response[rpmgrv1.PlanZoneSyncResponse], error) {
+	row, pl, err := z.previewZone(ctx, req.Msg.GetDnsZoneId())
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&rpmgrv1.PlanZoneSyncResponse{DnsZone: zoneOf(row), Plan: planOf(pl)}), nil
+}
+
+// ApproveZonePlan implements DnsZoneService: the Owner or Admin approves the plan they read, by
+// its hash. The plan is computed again now; if it has another hash, nothing changes and the answer
+// is PLAN_CHANGED, so that no one approves what they have not seen. The zone becomes active, and
+// the next pass applies this plan and no other (docs/15-dns.md, "Held zones and plan approval").
+func (z *DnsZones) ApproveZonePlan(ctx context.Context, req *connect.Request[rpmgrv1.ApproveZonePlanRequest]) (
+	*connect.Response[rpmgrv1.ApproveZonePlanResponse], error) {
+	notHeld := func() error {
+		return withReason(connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: the zone is not held")), ReasonZoneNotHeld)
+	}
+	cur, err := z.DB.ReadClient().DNSZone.Get(ctx, req.Msg.GetDnsZoneId())
+	if err != nil {
+		return nil, storeError(err)
+	}
+	if cur.SyncState != dnszone.SyncStateHeld {
+		return nil, notHeld()
+	}
+	_, pl, err := z.previewZone(ctx, cur.ID)
+	if err != nil {
+		return nil, err
+	}
+	if pl.Hash != req.Msg.GetPlanHash() {
+		return nil, withReason(connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("apisvc: the plan changed since it was shown; read it again")), ReasonPlanChanged)
+	}
+	stored, err := json.Marshal(pl)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	var row *ent.DNSZone
+	_, err = store.ConfigTx(ctx, z.DB, func(tx *ent.Tx) ([]string, error) {
+		var err error
+		row, err = tx.DNSZone.UpdateOneID(cur.ID).Where(dnszone.SyncStateEQ(dnszone.SyncStateHeld)).
+			SetSyncState(dnszone.SyncStateActive).SetHeldReason("").SetPendingPlan(stored).SetPendingPlanHash(pl.Hash).Save(ctx)
+		return []string{cur.ID}, err
+	})
+	if ent.IsNotFound(err) {
+		return nil, notHeld() // changed since it was read
+	}
+	if err != nil {
+		return nil, storeError(err)
+	}
+	api.AuditReason(ctx, "approved plan "+pl.Hash)
+	return connect.NewResponse(&rpmgrv1.ApproveZonePlanResponse{DnsZone: zoneOf(row)}), nil
+}
+
+// EnableZone implements DnsZoneService: a disabled zone becomes held. Nothing is written to the
+// provider; the zone needs an approved plan like any held zone.
+func (z *DnsZones) EnableZone(ctx context.Context, req *connect.Request[rpmgrv1.EnableZoneRequest]) (
+	*connect.Response[rpmgrv1.EnableZoneResponse], error) {
+	var row *ent.DNSZone
+	_, err := store.ConfigTx(ctx, z.DB, func(tx *ent.Tx) ([]string, error) {
+		cur, err := tx.DNSZone.Get(ctx, req.Msg.GetDnsZoneId())
+		if err != nil {
+			return nil, err
+		}
+		if cur.SyncState != dnszone.SyncStateDisabled {
+			return nil, withReason(connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: the zone is not disabled")), ReasonZoneNotDisabled)
+		}
+		row, err = tx.DNSZone.UpdateOneID(cur.ID).SetSyncState(dnszone.SyncStateHeld).SetHeldReason(apply.HeldEnabled).
+			ClearPendingPlan().SetPendingPlanHash("").Save(ctx)
+		return []string{cur.ID}, err
+	})
+	if err != nil {
+		return nil, storeError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.EnableZoneResponse{DnsZone: zoneOf(row)}), nil
 }

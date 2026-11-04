@@ -14,8 +14,10 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/dns"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -49,6 +51,19 @@ func updateZone(b *browser, z *rpmgrv1.DnsZone, etag string, paths ...string) (*
 
 func removeZone(b *browser, id, etag string) error {
 	_, err := b.dnsz.RemoveZone(context.Background(), connect.NewRequest(&rpmgrv1.RemoveZoneRequest{DnsZoneId: id, Etag: etag}))
+	return err
+}
+
+func planZone(b *browser, id string) (*rpmgrv1.PlanZoneSyncResponse, error) {
+	r, err := b.dnsz.PlanZoneSync(context.Background(), connect.NewRequest(&rpmgrv1.PlanZoneSyncRequest{DnsZoneId: id}))
+	if err != nil {
+		return nil, err
+	}
+	return r.Msg, nil
+}
+
+func approveZone(b *browser, id, hash string) error {
+	_, err := b.dnsz.ApproveZonePlan(context.Background(), connect.NewRequest(&rpmgrv1.ApproveZonePlanRequest{DnsZoneId: id, PlanHash: hash}))
 	return err
 }
 
@@ -316,6 +331,8 @@ func TestDnsZones_OtherOrg(t *testing.T) {
 			return err
 		},
 		"remove":                 func() error { return removeZone(bob, id, "") },
+		"plan":                   func() error { _, err := planZone(bob, id); return err },
+		"approve":                func() error { return approveZone(bob, id, strings.Repeat("a", 64)) },
 		"import with a provider": func() error { _, err := importZone(bob, p.GetId(), "z1"); return err },
 		"list org a": func() error {
 			_, err := bob.dnsz.ListZones(ctx, connect.NewRequest(&rpmgrv1.ListZonesRequest{OrgId: org}))
@@ -363,7 +380,9 @@ func TestDnsZones_Roles(t *testing.T) {
 				_, err := updateZone(u, &rpmgrv1.DnsZone{Id: id, AllowProxied: true}, "", "allow_proxied")
 				return err
 			},
-			"remove": func() error { return removeZone(u, id, "") },
+			"remove":  func() error { return removeZone(u, id, "") },
+			"plan":    func() error { _, err := planZone(u, id); return err },
+			"approve": func() error { return approveZone(u, id, strings.Repeat("a", 64)) },
 		}
 		for name, call := range calls {
 			if c := code(call()); c != connect.CodePermissionDenied {
@@ -507,5 +526,206 @@ func TestDnsZones_ListPages(t *testing.T) {
 	}
 	if _, err := ada.dnsz.ListZones(ctx, connect.NewRequest(&rpmgrv1.ListZonesRequest{OrgId: org, PageSize: -1})); code(err) != connect.CodeInvalidArgument {
 		t.Errorf("a negative page size: %v", err)
+	}
+}
+
+// TestDnsZones_PlanAndApprove: the plan is read live with its hash; an approval is bound to that
+// hash, needs a step-up and an Owner or Admin, and fails with PLAN_CHANGED, changing nothing, when
+// the provider's records or the zone changed since the plan was shown; a zone that is not held
+// cannot be approved.
+func TestDnsZones_PlanAndApprove(t *testing.T) {
+	e, ada, org, p := zoneEnv(t)
+	e.dns.zones = []dns.Zone{{ID: "z1", Name: "example.com", Status: "active", Type: "full"}, {ID: "z2", Name: "other.example", Status: "active", Type: "full"}}
+	r, err := importZone(ada, p.GetId(), "z1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := r.GetDnsZone().GetId()
+	row := func() *ent.DNSZone { return e.db.Client().DNSZone.GetX(e.sys, id) }
+
+	// A record of this instance's marker that no ledger row owns is an orphan in the plan.
+	e.dns.records = []dns.Record{{ID: "0000000000000000000000000000000a", Type: "A", Name: "old.example.com", Content: "192.0.2.1", TTL: 300, Comment: "rpmgr apitest dnr_gone"}}
+	pl, err := planZone(ada, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := pl.GetPlan().GetHash()
+	if len(hash) != 64 || len(pl.GetPlan().GetOrphans()) != 1 || pl.GetPlan().GetOrphans()[0].GetName() != "old.example.com" ||
+		pl.GetDnsZone().GetSyncState() != rpmgrv1.ZoneSyncState_ZONE_SYNC_STATE_HELD {
+		t.Fatalf("plan %v", pl)
+	}
+	if again, err := planZone(ada, id); err != nil || again.GetPlan().GetHash() != hash {
+		t.Fatalf("the same input gave another hash: %v %v", again, err)
+	}
+	if row().SyncState != "held" || row().Version != 1 {
+		t.Fatal("reading a plan changed the zone")
+	}
+
+	// Refused, and nothing changes: a hash of the wrong shape or content, a user without a step-up.
+	for name, c := range map[string]struct {
+		hash string
+		code connect.Code
+		why  string
+	}{
+		"short":       {"abc", connect.CodeInvalidArgument, ""},
+		"empty":       {"", connect.CodeInvalidArgument, ""},
+		"stale":       {strings.Repeat("a", 64), connect.CodeFailedPrecondition, apisvc.ReasonPlanChanged},
+		"upper case":  {strings.ToUpper(hash), connect.CodeFailedPrecondition, apisvc.ReasonPlanChanged},
+		"with space":  {hash[:63] + " ", connect.CodeFailedPrecondition, apisvc.ReasonPlanChanged},
+		"hash of nil": {strings.Repeat("0", 64), connect.CodeFailedPrecondition, apisvc.ReasonPlanChanged},
+	} {
+		err := approveZone(ada, id, c.hash)
+		if code(err) != c.code || reason(err) != c.why {
+			t.Errorf("%s: %v (reason %q)", name, err, reason(err))
+		}
+	}
+	adm, _ := e.join(t, ada, org, "adm@example.com", "admin")
+	if err := approveZone(adm, id, hash); reason(err) != api.ReasonStepUpRequired {
+		t.Errorf("without a step-up: %v", err)
+	}
+	if row().SyncState != "held" || row().PendingPlanHash != "" {
+		t.Fatalf("a refused approval changed the zone: %+v", row())
+	}
+
+	// The provider's records change after the plan was shown: the approval of the old plan fails.
+	e.dns.records = append(e.dns.records, dns.Record{ID: "0000000000000000000000000000000b", Type: "A", Name: "new.example.com", Content: "192.0.2.2", TTL: 300, Comment: "rpmgr apitest dnr_new"})
+	if err := approveZone(ada, id, hash); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonPlanChanged {
+		t.Fatalf("a plan that changed: %v", err)
+	}
+	if row().SyncState != "held" {
+		t.Fatal("a stale approval activated the zone")
+	}
+	pl, err = planZone(ada, id)
+	if err != nil || pl.GetPlan().GetHash() == hash || len(pl.GetPlan().GetOrphans()) != 2 {
+		t.Fatalf("the new plan: %v %v", pl, err)
+	}
+	hash = pl.GetPlan().GetHash()
+
+	// An Admin, stepped up, approves the plan they read.
+	if err := adm.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	revBefore := e.db.Client().ConfigRevision.Query().CountX(e.sys)
+	if err := approveZone(adm, id, hash); err != nil {
+		t.Fatal(err)
+	}
+	got := row()
+	if got.SyncState != "active" || got.HeldReason != "" || got.PendingPlanHash != hash || len(got.PendingPlan) == 0 {
+		t.Fatalf("approved zone %+v", got)
+	}
+	if e.db.Client().ConfigRevision.Query().CountX(e.sys) != revBefore+1 {
+		t.Error("an approval is a configuration change with a revision: the job looks for it")
+	}
+	// Not held any more, so there is nothing to approve; the plan can still be read.
+	if err := approveZone(ada, id, hash); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonZoneNotHeld {
+		t.Errorf("a second approval: %v", err)
+	}
+	if _, err := planZone(ada, id); err != nil {
+		t.Errorf("the plan of an active zone: %v", err)
+	}
+	// A disabled zone, as after restore --dns-disabled, cannot be approved either.
+	e.db.Client().DNSZone.UpdateOneID(id).SetSyncState("disabled").ExecX(e.sys)
+	if err := approveZone(ada, id, hash); reason(err) != apisvc.ReasonZoneNotHeld {
+		t.Errorf("a disabled zone: %v", err)
+	}
+	if row().SyncState != "disabled" {
+		t.Error("an approval enabled a disabled zone")
+	}
+	if err := approveZone(ada, "dnz_missing", hash); code(err) != connect.CodeNotFound {
+		t.Errorf("a missing zone: %v", err)
+	}
+}
+
+// A provider that fails fails the plan and the approval with the status of the failure, and
+// leaves the zone held.
+func TestDnsZones_PlanProviderFailures(t *testing.T) {
+	e, ada, _, p := zoneEnv(t)
+	e.dns.zones = []dns.Zone{{ID: "z1", Name: "example.com", Status: "active", Type: "full"}}
+	r, err := importZone(ada, p.GetId(), "z1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := r.GetDnsZone().GetId()
+	for name, c := range map[string]struct {
+		err  error
+		want connect.Code
+	}{
+		"revoked":      {&dns.ProviderError{Status: 401, Err: dns.ErrUnauthorized}, connect.CodeFailedPrecondition},
+		"rate limited": {dns.RateLimited{Until: e.clock.Add(time.Minute)}, connect.CodeResourceExhausted},
+		"unreachable":  {errors.New("dial tcp 198.51.100.1:443: i/o timeout"), connect.CodeUnavailable},
+	} {
+		e.dns.know(dnsToken1, fakeDNSToken{err: c.err})
+		if _, err := planZone(ada, id); code(err) != c.want || strings.Contains(fmt.Sprint(err), "198.51.100.1") {
+			t.Errorf("plan, %s: %v", name, err)
+		}
+		if err := approveZone(ada, id, strings.Repeat("a", 64)); code(err) != c.want {
+			t.Errorf("approve, %s: %v", name, err)
+		}
+	}
+	if z := e.db.Client().DNSZone.GetX(e.sys, id); z.SyncState != "held" {
+		t.Errorf("zone %+v", z)
+	}
+}
+
+// TestDnsZones_EnableZone: a disabled zone becomes held and nothing else; it needs a step-up and an
+// Owner or Admin; a zone that is not disabled and another org's are refused; the enabled zone still
+// needs an approved plan.
+func TestDnsZones_EnableZone(t *testing.T) {
+	e, ada, org, p := zoneEnv(t)
+	e.dns.zones = []dns.Zone{{ID: "z1", Name: "example.com", Status: "active", Type: "full"}}
+	r, err := importZone(ada, p.GetId(), "z1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := r.GetDnsZone().GetId()
+	enable := func(b *browser, zone string) error {
+		_, err := b.dnsz.EnableZone(context.Background(), connect.NewRequest(&rpmgrv1.EnableZoneRequest{DnsZoneId: zone}))
+		return err
+	}
+	if err := enable(ada, id); reason(err) != apisvc.ReasonZoneNotDisabled {
+		t.Errorf("a held zone: %v", err)
+	}
+	e.db.Client().DNSZone.UpdateOneID(id).SetSyncState("disabled").SetPendingPlanHash("x").ExecX(e.sys)
+	adm, _ := e.join(t, ada, org, "adm@example.com", "admin")
+	op, _ := e.join(t, ada, org, "op@example.com", "operator")
+	if err := op.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	if err := bob.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := enable(adm, id); reason(err) != api.ReasonStepUpRequired {
+		t.Errorf("without a step-up: %v", err)
+	}
+	if err := enable(op, id); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an Operator: %v", err)
+	}
+	if err := enable(bob, id); code(err) != connect.CodeNotFound {
+		t.Errorf("another org: %v", err)
+	}
+	if err := enable(ada, "dnz_missing"); code(err) != connect.CodeNotFound {
+		t.Errorf("a missing zone: %v", err)
+	}
+	if e.db.Client().DNSZone.GetX(e.sys, id).SyncState != "disabled" {
+		t.Fatal("a refused call enabled the zone")
+	}
+	if err := enable(ada, id); err != nil {
+		t.Fatal(err)
+	}
+	if z := e.db.Client().DNSZone.GetX(e.sys, id); z.SyncState != "held" || z.HeldReason != "enabled" || z.PendingPlanHash != "" {
+		t.Fatalf("zone %+v", z)
+	}
+	// A hash that was never approved activates nothing: approval is still needed.
+	if err := approveZone(ada, id, strings.Repeat("a", 64)); reason(err) != apisvc.ReasonPlanChanged {
+		t.Errorf("approval after enabling: %v", err)
+	}
+	pl, err := planZone(ada, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := approveZone(ada, id, pl.GetPlan().GetHash()); err != nil {
+		t.Errorf("approving the plan read: %v", err)
 	}
 }

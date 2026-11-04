@@ -87,6 +87,26 @@ func (_c *DNSZoneCreate) SetNillableHeldReason(v *string) *DNSZoneCreate {
 	return _c
 }
 
+// SetPendingPlan sets the "pending_plan" field.
+func (_c *DNSZoneCreate) SetPendingPlan(v []byte) *DNSZoneCreate {
+	_c.mutation.SetPendingPlan(v)
+	return _c
+}
+
+// SetPendingPlanHash sets the "pending_plan_hash" field.
+func (_c *DNSZoneCreate) SetPendingPlanHash(v string) *DNSZoneCreate {
+	_c.mutation.SetPendingPlanHash(v)
+	return _c
+}
+
+// SetNillablePendingPlanHash sets the "pending_plan_hash" field if the given value is not nil.
+func (_c *DNSZoneCreate) SetNillablePendingPlanHash(v *string) *DNSZoneCreate {
+	if v != nil {
+		_c.SetPendingPlanHash(*v)
+	}
+	return _c
+}
+
 // SetProviderStatus sets the "provider_status" field.
 func (_c *DNSZoneCreate) SetProviderStatus(v dnszone.ProviderStatus) *DNSZoneCreate {
 	_c.mutation.SetProviderStatus(v)
@@ -267,6 +287,10 @@ func (_c *DNSZoneCreate) defaults() error {
 		v := dnszone.DefaultHeldReason
 		_c.mutation.SetHeldReason(v)
 	}
+	if _, ok := _c.mutation.PendingPlanHash(); !ok {
+		v := dnszone.DefaultPendingPlanHash
+		_c.mutation.SetPendingPlanHash(v)
+	}
 	if _, ok := _c.mutation.ProviderStatus(); !ok {
 		v := dnszone.DefaultProviderStatus
 		_c.mutation.SetProviderStatus(v)
@@ -364,6 +388,14 @@ func (_c *DNSZoneCreate) check() error {
 	if v, ok := _c.mutation.HeldReason(); ok {
 		if err := dnszone.HeldReasonValidator(v); err != nil {
 			return &ValidationError{Name: "held_reason", err: fmt.Errorf(`ent: validator failed for field "DNSZone.held_reason": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.PendingPlanHash(); !ok {
+		return &ValidationError{Name: "pending_plan_hash", err: errors.New(`ent: missing required field "DNSZone.pending_plan_hash"`)}
+	}
+	if v, ok := _c.mutation.PendingPlanHash(); ok {
+		if err := dnszone.PendingPlanHashValidator(v); err != nil {
+			return &ValidationError{Name: "pending_plan_hash", err: fmt.Errorf(`ent: validator failed for field "DNSZone.pending_plan_hash": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.ProviderStatus(); !ok {
@@ -468,6 +500,14 @@ func (_c *DNSZoneCreate) createSpec() (*DNSZone, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.HeldReason(); ok {
 		_spec.SetField(dnszone.FieldHeldReason, field.TypeString, value)
 		_node.HeldReason = value
+	}
+	if value, ok := _c.mutation.PendingPlan(); ok {
+		_spec.SetField(dnszone.FieldPendingPlan, field.TypeBytes, value)
+		_node.PendingPlan = value
+	}
+	if value, ok := _c.mutation.PendingPlanHash(); ok {
+		_spec.SetField(dnszone.FieldPendingPlanHash, field.TypeString, value)
+		_node.PendingPlanHash = value
 	}
 	if value, ok := _c.mutation.ProviderStatus(); ok {
 		_spec.SetField(dnszone.FieldProviderStatus, field.TypeEnum, value)
