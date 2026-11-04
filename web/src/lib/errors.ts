@@ -10,6 +10,7 @@ export const Reason = {
   permissionMissing: "PERMISSION_MISSING",
   restoreReview: "RESTORE_REVIEW",
   etagMismatch: "ETAG_MISMATCH",
+  planChanged: "PLAN_CHANGED",
 } as const;
 
 // reasonOf returns the reason of an API error, from its google.rpc.ErrorInfo of domain rpmgr.v1.

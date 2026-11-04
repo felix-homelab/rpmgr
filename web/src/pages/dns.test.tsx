@@ -61,7 +61,7 @@ function page(opts: { connectFails?: boolean } = {}) {
           throw apiError(Code.FailedPrecondition, "TOKEN_REFUSED");
         }
         calls.connect.push(req);
-        return { dnsProvider: { ...req.dnsProvider, id: "dnp_3" } };
+        return { dnsProvider: { name: req.dnsProvider?.name, id: "dnp_3" } };
       },
       updateDnsProvider: (req) => (needStepUp(), calls.update.push(req), { dnsProvider: providers[0] }),
       deleteDnsProvider: (req) => (needStepUp(), calls.remove.push(req), {}),

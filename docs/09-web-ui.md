@@ -1017,6 +1017,19 @@ one page, with a section list beside them that jumps to each section
   lacks permission for one zone shows `permission denied` on that zone, with what to do. **Remove**
   keeps the records at the provider. The sidebar links to the page when the controller serves the
   DNS services; until then the page is reachable by its address only.
+- **The zone page** (`/dns/<zone>`, linked from the zone's name on the DNS page and loaded lazily)
+  differs from the mock-up in these ways. The gates are shown and not yet edited there, and there
+  is no **Discard**: a plan is read live and is replaced by the next one. The plan lists what a pass
+  would create (`+`), update (`~`) and delete (`−`), the orphans (`?`), the shadowed wildcards and
+  the conflicts, each conflict with the hint of U4 and, for a foreign address record, **Adopt**.
+  **Enable zone** takes a disabled zone to held, and **Sync now** asks for a pass; both are in the
+  heading. **Approve plan**, **Adopt**, **Release** and **Remove** each ask for a confirmation that
+  names the object and then for a step-up. **Release** offers to keep the record or, for an adopted
+  record, to restore its original content. **Remove the zone** keeps the records at the provider or,
+  after listing the records under the plan's hash, deletes the ones rpmgr owns; the zone then shows
+  `removal pending` until the DNS job has finished. The records table lists the records rpmgr owns
+  and, for Owners and Admins only, the others. An Operator or Viewer sees the owned records and
+  nothing else: no plan, no approval, no foreign records and no actions.
 - **Approve** is bound to the plan's hash. If anything changed since the plan was shown, the new
   plan replaces it and the approval has to be repeated.
 - **Foreign records** are shown only to Owners and Admins, read live from Cloudflare and never
