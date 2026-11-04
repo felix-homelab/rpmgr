@@ -6,7 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"slices"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -17,6 +20,7 @@ import (
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/dnstarget"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
@@ -46,11 +50,15 @@ type Gateways struct {
 	Drains Drains
 	// Firewalls shows the state of a gateway host's firewall management; nil shows none.
 	Firewalls Firewalls
-	Now       func() time.Time
+	// ControllerNames are the names of the controller, its public URL and the endpoints it
+	// advertises; a DNS target never points at them (docs/15-dns.md, "Publication rules"). It may
+	// be nil.
+	ControllerNames func(ctx context.Context, tx *ent.Tx) ([]string, error)
+	Now             func() time.Time
 }
 
 // groupFields are the fields of a gateway group a client may change.
-var groupFields = []string{"name", "region", "public_hostnames", "trusted_proxy_cidrs"}
+var groupFields = []string{"name", "region", "public_hostnames", "trusted_proxy_cidrs", "dns_target"}
 
 // CreateGatewayGroup implements GatewayService.
 func (g *Gateways) CreateGatewayGroup(ctx context.Context, req *connect.Request[rpmgrv1.CreateGatewayGroupRequest]) (
@@ -60,9 +68,13 @@ func (g *Gateways) CreateGatewayGroup(ctx context.Context, req *connect.Request[
 		in := m.GetGatewayGroup()
 		var row *ent.GatewayGroup
 		rev, err := store.ConfigTx(ctx, g.DB, func(tx *ent.Tx) ([]string, error) {
-			var err error
+			target, err := g.checkTarget(ctx, tx, in.GetDnsTarget())
+			if err != nil {
+				return nil, err
+			}
 			row, err = tx.GatewayGroup.Create().SetOrgID(m.GetOrgId()).SetName(in.GetName()).SetRegion(in.GetRegion()).
-				SetPublicHostnames(in.GetPublicHostnames()).SetTrustedProxyCidrs(in.GetTrustedProxyCidrs()).Save(ctx)
+				SetPublicHostnames(in.GetPublicHostnames()).SetTrustedProxyCidrs(in.GetTrustedProxyCidrs()).
+				SetDNSCname(target.CNAME).SetDNSAddresses(target.Addresses).Save(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -136,8 +148,15 @@ func (g *Gateways) UpdateGatewayGroup(ctx context.Context, req *connect.Request[
 		if err := api.ApplyMask(next, m.GetGatewayGroup(), m.GetUpdateMask(), groupFields...); err != nil {
 			return nil, err
 		}
+		target := dnstarget.Target{CNAME: cur.DNSCname, Addresses: cur.DNSAddresses}
+		if slices.Contains(m.GetUpdateMask().GetPaths(), "dns_target") {
+			if target, err = g.checkTarget(ctx, tx, next.GetDnsTarget()); err != nil {
+				return nil, err
+			}
+		}
 		row, err = tx.GatewayGroup.UpdateOneID(cur.ID).Where(gatewaygroup.Version(cur.Version)).SetName(next.GetName()).
-			SetRegion(next.GetRegion()).SetPublicHostnames(next.GetPublicHostnames()).SetTrustedProxyCidrs(next.GetTrustedProxyCidrs()).Save(ctx)
+			SetRegion(next.GetRegion()).SetPublicHostnames(next.GetPublicHostnames()).SetTrustedProxyCidrs(next.GetTrustedProxyCidrs()).
+			SetDNSCname(target.CNAME).SetDNSAddresses(target.Addresses).Save(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -196,7 +215,62 @@ func (g *Gateways) DeleteGatewayGroup(ctx context.Context, req *connect.Request[
 
 func groupOf(r *ent.GatewayGroup) *rpmgrv1.GatewayGroup {
 	return &rpmgrv1.GatewayGroup{Id: r.ID, Name: r.Name, Region: r.Region, PublicHostnames: r.PublicHostnames,
-		TrustedProxyCidrs: r.TrustedProxyCidrs, Etag: etagOf(r.Version)}
+		TrustedProxyCidrs: r.TrustedProxyCidrs, DnsTarget: dnstarget.Target{CNAME: r.DNSCname, Addresses: r.DNSAddresses}.Message(),
+		Etag: etagOf(r.Version)}
+}
+
+// checkTarget validates a DNS target against the rules of docs/15-dns.md and the names it may not
+// point at: the controller's and those of the gateways.
+func (g *Gateways) checkTarget(ctx context.Context, tx *ent.Tx, m *rpmgrv1.DnsTarget) (dnstarget.Target, error) {
+	var reserved []string
+	if m.GetCname() != "" {
+		var err error
+		if reserved, err = g.reservedNames(ctx, tx); err != nil {
+			return dnstarget.Target{}, err
+		}
+	}
+	t, err := dnstarget.Check(m, reserved)
+	if err != nil {
+		return t, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return t, nil
+}
+
+// reservedNames are the names a CNAME target may not name: the controller's, and the tunnel and
+// WSS hostnames of the gateways.
+func (g *Gateways) reservedNames(ctx context.Context, tx *ent.Tx) ([]string, error) {
+	var out []string
+	if g.ControllerNames != nil {
+		names, err := g.ControllerNames(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, names...)
+	}
+	rows, err := tx.Gateway.Query().Where(gateway.DecommissionedAtIsNil()).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		for _, ep := range r.TunnelEndpoints {
+			out = append(out, HostOf(ep))
+		}
+		if r.WssHostname != nil {
+			out = append(out, *r.WssHostname)
+		}
+	}
+	return out, nil
+}
+
+// HostOf is the host of an endpoint given as a URL or as host:port.
+func HostOf(endpoint string) string {
+	if u, err := url.Parse(endpoint); err == nil && u.Host != "" {
+		return u.Hostname()
+	}
+	if h, _, err := net.SplitHostPort(endpoint); err == nil {
+		return h
+	}
+	return strings.TrimSpace(endpoint)
 }
 
 // gatewayFields are the fields of a gateway a client may change.

@@ -214,6 +214,43 @@ message RouteStatus {
   // Phase 2, a route with a health check: its targets whose connector runs no checks, as it is of
   // an earlier release, so they count as healthy without being checked (D133).
   repeated string health_not_checked = 8;
+  // Phase 2: the transport each enabled target is served over, per gateway (docs/03-connections.md,
+  // "Transport selection"). Targets that are not ready have an entry without gateways.
+  repeated TargetTransport target_transports = 9;
+}
+
+// TargetTransport is the transport the streams to a route target take, as the gateways of the
+// route's group report it.
+message TargetTransport {
+  // The route target's ID.
+  string target_id = 1;
+  // The gateways, online and in the route's group, whose session with the target's connector has
+  // the route ready, each with that session's transport. None while the target does not serve.
+  repeated GatewayTransport gateways = 2;
+  // The level that pins the transport, among the route's, the connector's and the instance
+  // default; unset on auto, where the connector races and may fall back.
+  TransportPin pinned_by = 3;
+}
+
+// GatewayTransport is the transport of the sessions that serve a target through one gateway.
+message GatewayTransport {
+  // The gateway.
+  string gateway_id = 1;
+  // DATA_TRANSPORT_QUIC, DATA_TRANSPORT_H2 or DATA_TRANSPORT_WSS; DATA_TRANSPORT_UNSPECIFIED where
+  // the gateway is of a release that does not report it: unknown, not an error.
+  DataTransport transport = 2;
+}
+
+// TransportPin is the level at which a transport is pinned.
+enum TransportPin {
+  // Not pinned: the effective transport is auto.
+  TRANSPORT_PIN_UNSPECIFIED = 0;
+  // The route's transport.
+  TRANSPORT_PIN_ROUTE = 1;
+  // The connector's transport.
+  TRANSPORT_PIN_CONNECTOR = 2;
+  // The instance default.
+  TRANSPORT_PIN_INSTANCE = 3;
 }
 
 // HealthCheck is a route's active health check (docs/03-connections.md, "Target health"). A value

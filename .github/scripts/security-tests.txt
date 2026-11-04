@@ -60,7 +60,7 @@ TestDNS_BatchFallbackPerRecord	p2	-	-	DNS automation
 TestDNS_LeaseCheckedBeforeBatch	p2	-	-	DNS automation
 TestDNS_ProxiedOnlyForHttp	p2	-	-	DNS automation
 TestDNS_ReservedNamesNeverWritten	p2	-	-	DNS automation
-TestDNS_TokenWriteOnlyAndBaseURLFixed	p2	-	-	DNS automation
+TestDNS_TokenWriteOnlyAndBaseURLFixed	done	6.4	#662	base-URL clause 6.2 (internal/dns/cloudflare), API, export and log clause 6.4
 TestGateway_CFConnectingIPOnlyForProxiedFromCloudflare	p2	-	-	proxied http routes
 TestTransport_PinnedRouteUsesPinnedSessions	done	4.14	#84	precedence clause (route over connector over instance) in internal/routes (4.12)
 TestTransport_PinNeverFallsBack	done	4.14	#84

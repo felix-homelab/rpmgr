@@ -58,6 +58,12 @@ func (_c *DataSessionCreate) SetNillableRttMs(v *int64) *DataSessionCreate {
 	return _c
 }
 
+// SetReadyRoutes sets the "ready_routes" field.
+func (_c *DataSessionCreate) SetReadyRoutes(v []string) *DataSessionCreate {
+	_c.mutation.SetReadyRoutes(v)
+	return _c
+}
+
 // SetEstablishedAt sets the "established_at" field.
 func (_c *DataSessionCreate) SetEstablishedAt(v time.Time) *DataSessionCreate {
 	_c.mutation.SetEstablishedAt(v)
@@ -242,6 +248,10 @@ func (_c *DataSessionCreate) createSpec() (*DataSession, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RttMs(); ok {
 		_spec.SetField(datasession.FieldRttMs, field.TypeInt64, value)
 		_node.RttMs = value
+	}
+	if value, ok := _c.mutation.ReadyRoutes(); ok {
+		_spec.SetField(datasession.FieldReadyRoutes, field.TypeJSON, value)
+		_node.ReadyRoutes = value
 	}
 	if value, ok := _c.mutation.EstablishedAt(); ok {
 		_spec.SetField(datasession.FieldEstablishedAt, field.TypeTime, value)

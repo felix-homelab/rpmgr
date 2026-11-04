@@ -164,6 +164,9 @@ flowchart LR
   certificates arrive in snapshots, revocations in separate deny-list updates; the gateway keeps the
   last-known-good snapshot **and the deny-list** on disk, signed, and loads both before accepting
   sessions, so it can restart while the Controller is down without forgetting revocations.
+- The gateway reports its connectors' data sessions, with the routes ready on each, so the
+  controller can show every target the transport its streams take
+  ([03](03-connections.md#transport-selection)).
 - The gateway authorises every data session against its snapshot: a connector may serve a route
   only if the route lists that connector's identity ([04](04-security.md#authorization)).
 - From Phase 2 a gateway restarts, for an update too, by **handing its listening sockets** to a

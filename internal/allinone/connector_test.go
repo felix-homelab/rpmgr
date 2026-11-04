@@ -197,7 +197,7 @@ func TestAllInOne_StartsFromAnOlderSchema(t *testing.T) {
 	ctx := context.Background()
 	// The migration that added built_in, and every later one, are not applied yet; the later ones
 	// apply again over what they made, as SQLite migrations rebuild their tables, except the
-	// tables a later migration creates, which go first.
+	// tables a later migration creates and the columns it adds, which go first.
 	var builtIn string
 	if err := db.Writer.QueryRowContext(ctx, "SELECT version FROM "+store.RevisionTable+" WHERE description = 'agents_built_in'").Scan(&builtIn); err != nil {
 		t.Fatal(err)
@@ -213,6 +213,9 @@ func TestAllInOne_StartsFromAnOlderSchema(t *testing.T) {
 		"DELETE FROM enrollment_tokens WHERE built_in", "DELETE FROM connectors",
 		"ALTER TABLE gateways DROP COLUMN built_in", "ALTER TABLE connectors DROP COLUMN built_in",
 		"ALTER TABLE enrollment_tokens DROP COLUMN built_in",
+		"ALTER TABLE data_sessions DROP COLUMN ready_routes",
+		"ALTER TABLE gateway_groups DROP COLUMN dns_cname", "ALTER TABLE gateway_groups DROP COLUMN dns_addresses",
+		"DROP TABLE dns_providers",
 		"DROP TABLE audit_sink_cursors", "DROP TABLE audit_sinks", "DROP TABLE mail_jobs", "DROP TABLE status_marks", "DROP TABLE webhook_deliveries", "DROP TABLE webhooks", "DROP TABLE alerts", "DROP TABLE events", "DROP TABLE health_checks", "DROP TABLE route_limits", "DROP TABLE gateway_pages", "DROP TABLE connect_authorities", "DROP TABLE connect_listeners", "DROP TABLE rollout_targets", "DROP TABLE rollouts", "DROP TABLE releases",
 		"DELETE FROM " + store.RevisionTable + " WHERE version >= '" + builtIn + "'",
 		"PRAGMA foreign_keys = ON",

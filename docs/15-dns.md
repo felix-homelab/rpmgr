@@ -50,6 +50,12 @@ removed by rpmgr. The same credential lets ACME use DNS-01.
      gateway group. A group without a DNS target publishes nothing.
    - The DNS target is either `cname` (one CNAME record) or `addresses` (one A record per IPv4 and
      one AAAA record per IPv6 address).
+   - The API refuses a target that mixes both, a `cname` that is not a fully qualified name or is
+     reserved (rule 6), an address list that is empty, over the limit
+     ([Timers and limits](#timers-and-limits)) or holding a duplicate, and an address that others
+     cannot reach or that is no plain address: IPv4-mapped IPv6 (the IPv4 form is asked for
+     instead), loopback, unspecified, multicast, link-local, or with a zone. Names and addresses
+     are stored in their canonical form.
    - A DNS name takes precedence over route hostnames with the same name.
    - If routes in two gateway groups use the same hostname, which the data model allows
      ([06](06-data-model.md#routing)), and no DNS name decides, the name is `ambiguous` and its
@@ -94,6 +100,25 @@ The result is shown per hostname as `dns_status`:
 `dns_status` never changes the route status, which describes whether gateways can serve the route
 ([06](06-data-model.md#desired-vs-observed-state)).
 
+### Compile result
+
+The compiler (`internal/dns/compile`) is a pure function of the sources of one zone. It lists the
+desired records and one result per name that has a source in the zone. Sources of another org, names
+outside the zone, and tcp and udp routes (which have no published hostname) leave no trace.
+
+- A name is `ok`, or it has the reason it publishes nothing: `not_managed`, `ambiguous`, `held`,
+  `no_target` (its gateway group has no DNS target), `reserved` (rule 6) or `not_verified` (no
+  verified domain of the org covers it, rule 2). `no_target`, `reserved` and `not_verified` are
+  shown as `not_managed` with their reason.
+- Records already at a name that is `not_managed`, `ambiguous`, `held`, `no_target` or `reserved`
+  stay as they are: the plan neither changes nor deletes them. A name that is `not_verified`, or has
+  no source any more, has its owned records deleted. In a `disabled` zone every name is
+  `not_managed`.
+- A route that is not `http` makes its name DNS-only, even if `http` routes on the name set
+  `dns_proxied`, because the provider would end the TLS that the route needs.
+- The result carries a warning `proxy_disagrees` for a name that keeps its published proxy state
+  (rule 7).
+
 ## Conflicts
 
 The address record set at a name — A, AAAA and CNAME — is owned as one unit.
@@ -120,7 +145,8 @@ controller-managed durable state: it is never rebuilt from the provider.
 - **Marker.** Each owned record carries the comment `rpmgr <trust-domain> <ledger ID>`, e.g.
   `rpmgr rpmgr-7f3k2q9m dnr_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R` (51 characters). Comments are available on
   all plans, up to 100 characters on Free [F cf:dns/manage-dns-records/reference/record-attributes];
-  that the comment round-trips unchanged through the API is checked at implementation [V VB-10].
+  that the comment round-trips unchanged through the API, also at 100 characters, was checked
+  against a Free-plan zone [F VB-10, run 2026-11-04].
 - **The ledger decides, the marker helps.**
   - A record whose marker names a ledger row in state `creating` is linked to it. This repairs a
     crash between the provider call and the database commit.
@@ -245,6 +271,30 @@ flowchart LR
   `rpmgr restore --dns-disabled` sets every zone to `disabled`, for a clone restored into staging
   with the same trust domain and KEK. Otherwise approving there would fight production.
 
+### The plan and its hash
+
+The planner (`internal/dns/plan`) is a pure function of the desired records, the provider's records
+and the ledger rows. The plan lists creates, updates, deletes, conflicts, orphans, wildcard shadows
+and lost rows.
+
+- **Only owned records are written.** An update or delete names a record that has a ledger row. A
+  foreign record is never in a write list; where it is in the way, the name is a conflict and
+  nothing is written at it ([Conflicts](#conflicts)). Names the compiler keeps
+  ([Compile result](#compile-result)), reserved names and names at or below an NS delegation
+  are left alone, including their owned records.
+- **Lost rows** are ledger rows whose record is gone at the provider. A desired record is created
+  again.
+- **Matching.** Records are equal by type and content: addresses by value, a CNAME without case and
+  trailing dot, a TXT without the quotes a provider may add. A changed TTL or proxy flag is an
+  update. Unmatched records of one type are paired into updates; a change of type is a delete and a
+  create. An update keeps the record's marker comment.
+- **The hash** is the SHA-256, in lower-case hex, of the plan's canonical text: the line
+  `rpmgr-dns-plan/1`, then one line per item (creates, updates, deletes, conflicts with their
+  records, orphans, shadows, lost rows), each field written as a Go-quoted string, in the order name,
+  type, content, ID. The same input in any order gives the same hash, and any change of a desired or
+  provider record the plan shows changes it. The field list is in the package documentation of
+  `plan.Plan.Encode`.
+
 ## Connecting, importing and disconnecting
 
 1. **Connect.** An Owner or Admin (Instance Admin for the system org) enters an API token, with
@@ -255,7 +305,14 @@ flowchart LR
    - [R] Restrict it to the zones rpmgr manages and to the controller's egress addresses, and give
      it an expiry [F cf:fundamentals/api/get-started/create-token].
    - The token is stored write-only, encrypted under the KEK
-     ([04](04-security.md#secrets-at-rest-and-in-logs)).
+     ([04](04-security.md#secrets-at-rest-and-in-logs)). It is checked first, and a token the provider
+     refuses, or reports as expired or disabled, is not stored.
+   - [R] A value shaped like a Global API Key (37 hexadecimal characters) is refused before anything
+     is sent, so that such a key never reaches the provider's API from rpmgr.
+   - A token that expires within the warning period of [Timers and limits](#timers-and-limits) is
+     flagged in the provider's view. The hourly token check records whether the provider still
+     accepts the token and when it expires; a provider that cannot be reached or rate-limits the
+     check gives no verdict and changes nothing.
 2. **Import.**
    - rpmgr lists the account's zones, all pages (at most 50 per page)
      [F cf-api:openapi.json `GET /zones`].
@@ -273,7 +330,9 @@ flowchart LR
    - By default the records stay at the provider and the ledger rows are dropped, so nothing that
      works stops working.
    - Removing the records instead goes through a plan and approval.
-   - Rotating the token keeps everything.
+   - Rotating the token keeps everything: the new token is checked first and replaces the old one in
+     the same provider. Deleting a provider needs a step-up and is refused while zones are imported
+     from it.
 
 Permission errors are per zone, because one token can have different rights per zone and the
 verify call does not list permissions: a zone where the provider refuses access shows
@@ -390,7 +449,7 @@ A proxied name resolves to Cloudflare. Cloudflare terminates TLS and connects to
 | Topic | Fact | How rpmgr uses it |
 |---|---|---|
 | Authentication | Bearer API tokens; the Global API Key is legacy and carries all of the user's permissions [F cf:fundamentals/api/get-started/keys] | API tokens only |
-| Token scope | Zone resources, client-IP filter and expiry are configurable [F cf:fundamentals/api/get-started/create-token]; narrowest scope is a zone [V VB-12] | Recommended in the connect form; expiry shown and alerted |
+| Token scope | Zone resources, client-IP filter and expiry are configurable [F cf:fundamentals/api/get-started/create-token]; narrowest scope is a zone: a token scoped to one zone sees exactly that zone, and an under-scoped token gets HTTP 403 (code 10000) on reads and writes [F VB-12, run 2026-11-04] | Recommended in the connect form; expiry shown and alerted |
 | Zones | Status `initializing`, `pending`, `active`, `moved`; types `full`, `partial`, `secondary`, `internal`; `per_page` ≤ 50 [F cf-api:openapi.json `GET /zones`] | Import `active` + `full` only; all pages |
 | Batch | All-or-nothing; deletes, patches, puts, posts in that order; 200 records per batch on Free, 3 500 on paid plans [F cf:dns/manage-dns-records/how-to/batch-record-changes] | One batch per pass, ≤ 200 operations; per-record retry on failure |
 | Comments, tags | Comments on all plans, ≤ 100 characters on Free, no line breaks; tags only Pro and above [F cf:dns/manage-dns-records/reference/record-attributes] | Marker in the comment; tags unused |
@@ -399,9 +458,15 @@ A proxied name resolves to Cloudflare. Cloudflare terminates TLS and connects to
 | CNAME across accounts | A proxied CNAME to a name in another Cloudflare account may be refused [V VB-11] | Use an `addresses` target for shared gateway groups if so |
 | Rate limit | 1 200 requests / 5 min per user; 429 blocks for 5 min [F cf:fundamentals/api/reference/limits] | Budget per provider, `retry-after` honoured |
 
-The API base URL is compiled in. A test-only build tag can override it; there is no runtime setting,
-so not even an Instance Admin can point rpmgr at a server that collects other orgs' tokens. The
-client honours `HTTPS_PROXY` ([10](10-operations.md#ports)).
+The API base URL is compiled in. Only tests override it, through a constructor of the `rpmgrtest`
+build tag ([D60](14-open-decisions.md#engineering)); there is no runtime setting, so not even an
+Instance Admin can point rpmgr at a server that collects other orgs' tokens. The client honours
+`HTTPS_PROXY` ([10](10-operations.md#ports)), connects over TLS 1.2 or later against the system
+roots as for other third-party servers ([04](04-security.md)), and follows no redirect, so the
+token never goes elsewhere. It sends an identifier (zone, account, record) only if it is 32 lower-case hex characters
+[V VB-26], and refuses any other before it sends anything. On a 429 without a usable `retry-after`
+it waits the 5 minutes that Cloudflare blocks for. It refuses a batch above the limit below, and a record comment above
+100 characters or with a line break, before it sends anything.
 
 ## Provider interface
 
@@ -433,6 +498,8 @@ type Provider interface {
 | [R] Rate budget per provider | 300 requests / 5 min (Cloudflare allows 1 200 per user) |
 | DNS-01 share of the budget | at most half |
 | Operations per batch | ≤ 200 (Cloudflare Free limit) |
+| Addresses in a DNS target | ≤ 16 |
+| [R] Cloudflare API request | 30 s; answer at most 4 MiB; zones listed 50 per page |
 | `delete_threshold` default | 10 names per pass and zone; 0 = every removal needs approval |
 | Drift stop window | a record corrected twice within 1 h is no longer corrected |
 | Adopted-original staleness warning | 30 days |

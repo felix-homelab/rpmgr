@@ -1270,7 +1270,10 @@ type GatewayGroup struct {
 	// The proxies in front of it whose forwarding headers its gateways keep, as CIDRs.
 	TrustedProxyCidrs []string `protobuf:"bytes,5,rep,name=trusted_proxy_cidrs,json=trustedProxyCidrs,proto3" json:"trusted_proxy_cidrs,omitempty"`
 	// The version to send back with an update or delete; output only.
-	Etag          string `protobuf:"bytes,6,opt,name=etag,proto3" json:"etag,omitempty"`
+	Etag string `protobuf:"bytes,6,opt,name=etag,proto3" json:"etag,omitempty"`
+	// Where the DNS records of the group's names point; unset publishes nothing (docs/15-dns.md,
+	// "Publication rules").
+	DnsTarget     *DnsTarget `protobuf:"bytes,7,opt,name=dns_target,json=dnsTarget,proto3" json:"dns_target,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1347,6 +1350,145 @@ func (x *GatewayGroup) GetEtag() string {
 	return ""
 }
 
+func (x *GatewayGroup) GetDnsTarget() *DnsTarget {
+	if x != nil {
+		return x.DnsTarget
+	}
+	return nil
+}
+
+// DnsTarget is where a gateway group's names point: a CNAME or a list of addresses, never both.
+type DnsTarget struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Kind:
+	//
+	//	*DnsTarget_Cname
+	//	*DnsTarget_Addresses
+	Kind          isDnsTarget_Kind `protobuf_oneof:"kind"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DnsTarget) Reset() {
+	*x = DnsTarget{}
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DnsTarget) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DnsTarget) ProtoMessage() {}
+
+func (x *DnsTarget) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DnsTarget.ProtoReflect.Descriptor instead.
+func (*DnsTarget) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *DnsTarget) GetKind() isDnsTarget_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return nil
+}
+
+func (x *DnsTarget) GetCname() string {
+	if x != nil {
+		if x, ok := x.Kind.(*DnsTarget_Cname); ok {
+			return x.Cname
+		}
+	}
+	return ""
+}
+
+func (x *DnsTarget) GetAddresses() *DnsAddresses {
+	if x != nil {
+		if x, ok := x.Kind.(*DnsTarget_Addresses); ok {
+			return x.Addresses
+		}
+	}
+	return nil
+}
+
+type isDnsTarget_Kind interface {
+	isDnsTarget_Kind()
+}
+
+type DnsTarget_Cname struct {
+	// The canonical name, a fully qualified name that is not reserved (docs/15-dns.md).
+	Cname string `protobuf:"bytes,1,opt,name=cname,proto3,oneof"`
+}
+
+type DnsTarget_Addresses struct {
+	// The addresses, one A record per IPv4 and one AAAA record per IPv6 address.
+	Addresses *DnsAddresses `protobuf:"bytes,2,opt,name=addresses,proto3,oneof"`
+}
+
+func (*DnsTarget_Cname) isDnsTarget_Kind() {}
+
+func (*DnsTarget_Addresses) isDnsTarget_Kind() {}
+
+// DnsAddresses are the addresses of an address target.
+type DnsAddresses struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// IPv4 and IPv6 addresses in their canonical text form, without duplicates; the controller
+	// checks them against the limit of docs/15-dns.md ("Timers and limits").
+	Addresses     []string `protobuf:"bytes,1,rep,name=addresses,proto3" json:"addresses,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DnsAddresses) Reset() {
+	*x = DnsAddresses{}
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DnsAddresses) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DnsAddresses) ProtoMessage() {}
+
+func (x *DnsAddresses) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DnsAddresses.ProtoReflect.Descriptor instead.
+func (*DnsAddresses) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *DnsAddresses) GetAddresses() []string {
+	if x != nil {
+		return x.Addresses
+	}
+	return nil
+}
+
 // CreateGatewayGroupRequest is a new gateway group.
 type CreateGatewayGroupRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1362,7 +1504,7 @@ type CreateGatewayGroupRequest struct {
 
 func (x *CreateGatewayGroupRequest) Reset() {
 	*x = CreateGatewayGroupRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[16]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1374,7 +1516,7 @@ func (x *CreateGatewayGroupRequest) String() string {
 func (*CreateGatewayGroupRequest) ProtoMessage() {}
 
 func (x *CreateGatewayGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[16]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1387,7 +1529,7 @@ func (x *CreateGatewayGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGatewayGroupRequest.ProtoReflect.Descriptor instead.
 func (*CreateGatewayGroupRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{16}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *CreateGatewayGroupRequest) GetOrgId() string {
@@ -1427,7 +1569,7 @@ type CreateGatewayGroupResponse struct {
 
 func (x *CreateGatewayGroupResponse) Reset() {
 	*x = CreateGatewayGroupResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[17]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1439,7 +1581,7 @@ func (x *CreateGatewayGroupResponse) String() string {
 func (*CreateGatewayGroupResponse) ProtoMessage() {}
 
 func (x *CreateGatewayGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[17]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1452,7 +1594,7 @@ func (x *CreateGatewayGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGatewayGroupResponse.ProtoReflect.Descriptor instead.
 func (*CreateGatewayGroupResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{17}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *CreateGatewayGroupResponse) GetGatewayGroup() *GatewayGroup {
@@ -1487,7 +1629,7 @@ type GetGatewayGroupRequest struct {
 
 func (x *GetGatewayGroupRequest) Reset() {
 	*x = GetGatewayGroupRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[18]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1499,7 +1641,7 @@ func (x *GetGatewayGroupRequest) String() string {
 func (*GetGatewayGroupRequest) ProtoMessage() {}
 
 func (x *GetGatewayGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[18]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1512,7 +1654,7 @@ func (x *GetGatewayGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGatewayGroupRequest.ProtoReflect.Descriptor instead.
 func (*GetGatewayGroupRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{18}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *GetGatewayGroupRequest) GetGatewayGroupId() string {
@@ -1533,7 +1675,7 @@ type GetGatewayGroupResponse struct {
 
 func (x *GetGatewayGroupResponse) Reset() {
 	*x = GetGatewayGroupResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[19]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1545,7 +1687,7 @@ func (x *GetGatewayGroupResponse) String() string {
 func (*GetGatewayGroupResponse) ProtoMessage() {}
 
 func (x *GetGatewayGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[19]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1558,7 +1700,7 @@ func (x *GetGatewayGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGatewayGroupResponse.ProtoReflect.Descriptor instead.
 func (*GetGatewayGroupResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{19}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetGatewayGroupResponse) GetGatewayGroup() *GatewayGroup {
@@ -1583,7 +1725,7 @@ type ListGatewayGroupsRequest struct {
 
 func (x *ListGatewayGroupsRequest) Reset() {
 	*x = ListGatewayGroupsRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[20]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1595,7 +1737,7 @@ func (x *ListGatewayGroupsRequest) String() string {
 func (*ListGatewayGroupsRequest) ProtoMessage() {}
 
 func (x *ListGatewayGroupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[20]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1608,7 +1750,7 @@ func (x *ListGatewayGroupsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGatewayGroupsRequest.ProtoReflect.Descriptor instead.
 func (*ListGatewayGroupsRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{20}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListGatewayGroupsRequest) GetOrgId() string {
@@ -1645,7 +1787,7 @@ type ListGatewayGroupsResponse struct {
 
 func (x *ListGatewayGroupsResponse) Reset() {
 	*x = ListGatewayGroupsResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[21]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1657,7 +1799,7 @@ func (x *ListGatewayGroupsResponse) String() string {
 func (*ListGatewayGroupsResponse) ProtoMessage() {}
 
 func (x *ListGatewayGroupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[21]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1670,7 +1812,7 @@ func (x *ListGatewayGroupsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGatewayGroupsResponse.ProtoReflect.Descriptor instead.
 func (*ListGatewayGroupsResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{21}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ListGatewayGroupsResponse) GetGatewayGroups() []*GatewayGroup {
@@ -1702,7 +1844,7 @@ type UpdateGatewayGroupRequest struct {
 
 func (x *UpdateGatewayGroupRequest) Reset() {
 	*x = UpdateGatewayGroupRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[22]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1714,7 +1856,7 @@ func (x *UpdateGatewayGroupRequest) String() string {
 func (*UpdateGatewayGroupRequest) ProtoMessage() {}
 
 func (x *UpdateGatewayGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[22]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1727,7 +1869,7 @@ func (x *UpdateGatewayGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGatewayGroupRequest.ProtoReflect.Descriptor instead.
 func (*UpdateGatewayGroupRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{22}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *UpdateGatewayGroupRequest) GetGatewayGroup() *GatewayGroup {
@@ -1767,7 +1909,7 @@ type UpdateGatewayGroupResponse struct {
 
 func (x *UpdateGatewayGroupResponse) Reset() {
 	*x = UpdateGatewayGroupResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[23]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1779,7 +1921,7 @@ func (x *UpdateGatewayGroupResponse) String() string {
 func (*UpdateGatewayGroupResponse) ProtoMessage() {}
 
 func (x *UpdateGatewayGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[23]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1792,7 +1934,7 @@ func (x *UpdateGatewayGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGatewayGroupResponse.ProtoReflect.Descriptor instead.
 func (*UpdateGatewayGroupResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{23}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *UpdateGatewayGroupResponse) GetGatewayGroup() *GatewayGroup {
@@ -1829,7 +1971,7 @@ type DeleteGatewayGroupRequest struct {
 
 func (x *DeleteGatewayGroupRequest) Reset() {
 	*x = DeleteGatewayGroupRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[24]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1841,7 +1983,7 @@ func (x *DeleteGatewayGroupRequest) String() string {
 func (*DeleteGatewayGroupRequest) ProtoMessage() {}
 
 func (x *DeleteGatewayGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[24]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1854,7 +1996,7 @@ func (x *DeleteGatewayGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteGatewayGroupRequest.ProtoReflect.Descriptor instead.
 func (*DeleteGatewayGroupRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{24}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *DeleteGatewayGroupRequest) GetGatewayGroupId() string {
@@ -1885,7 +2027,7 @@ type DeleteGatewayGroupResponse struct {
 
 func (x *DeleteGatewayGroupResponse) Reset() {
 	*x = DeleteGatewayGroupResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[25]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1897,7 +2039,7 @@ func (x *DeleteGatewayGroupResponse) String() string {
 func (*DeleteGatewayGroupResponse) ProtoMessage() {}
 
 func (x *DeleteGatewayGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[25]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1910,7 +2052,7 @@ func (x *DeleteGatewayGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteGatewayGroupResponse.ProtoReflect.Descriptor instead.
 func (*DeleteGatewayGroupResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{25}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *DeleteGatewayGroupResponse) GetRevision() *Revision {
@@ -1950,7 +2092,7 @@ type PortPool struct {
 
 func (x *PortPool) Reset() {
 	*x = PortPool{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[26]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1962,7 +2104,7 @@ func (x *PortPool) String() string {
 func (*PortPool) ProtoMessage() {}
 
 func (x *PortPool) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[26]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1975,7 +2117,7 @@ func (x *PortPool) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PortPool.ProtoReflect.Descriptor instead.
 func (*PortPool) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{26}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *PortPool) GetId() string {
@@ -2042,7 +2184,7 @@ type CreatePortPoolRequest struct {
 
 func (x *CreatePortPoolRequest) Reset() {
 	*x = CreatePortPoolRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[27]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2054,7 +2196,7 @@ func (x *CreatePortPoolRequest) String() string {
 func (*CreatePortPoolRequest) ProtoMessage() {}
 
 func (x *CreatePortPoolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[27]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2067,7 +2209,7 @@ func (x *CreatePortPoolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePortPoolRequest.ProtoReflect.Descriptor instead.
 func (*CreatePortPoolRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{27}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *CreatePortPoolRequest) GetOrgId() string {
@@ -2107,7 +2249,7 @@ type CreatePortPoolResponse struct {
 
 func (x *CreatePortPoolResponse) Reset() {
 	*x = CreatePortPoolResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[28]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2119,7 +2261,7 @@ func (x *CreatePortPoolResponse) String() string {
 func (*CreatePortPoolResponse) ProtoMessage() {}
 
 func (x *CreatePortPoolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[28]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2132,7 +2274,7 @@ func (x *CreatePortPoolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePortPoolResponse.ProtoReflect.Descriptor instead.
 func (*CreatePortPoolResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{28}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *CreatePortPoolResponse) GetPortPool() *PortPool {
@@ -2167,7 +2309,7 @@ type GetPortPoolRequest struct {
 
 func (x *GetPortPoolRequest) Reset() {
 	*x = GetPortPoolRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[29]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2179,7 +2321,7 @@ func (x *GetPortPoolRequest) String() string {
 func (*GetPortPoolRequest) ProtoMessage() {}
 
 func (x *GetPortPoolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[29]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2192,7 +2334,7 @@ func (x *GetPortPoolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPortPoolRequest.ProtoReflect.Descriptor instead.
 func (*GetPortPoolRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{29}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *GetPortPoolRequest) GetPortPoolId() string {
@@ -2213,7 +2355,7 @@ type GetPortPoolResponse struct {
 
 func (x *GetPortPoolResponse) Reset() {
 	*x = GetPortPoolResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[30]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2225,7 +2367,7 @@ func (x *GetPortPoolResponse) String() string {
 func (*GetPortPoolResponse) ProtoMessage() {}
 
 func (x *GetPortPoolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[30]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2238,7 +2380,7 @@ func (x *GetPortPoolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPortPoolResponse.ProtoReflect.Descriptor instead.
 func (*GetPortPoolResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{30}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *GetPortPoolResponse) GetPortPool() *PortPool {
@@ -2265,7 +2407,7 @@ type ListPortPoolsRequest struct {
 
 func (x *ListPortPoolsRequest) Reset() {
 	*x = ListPortPoolsRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[31]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2277,7 +2419,7 @@ func (x *ListPortPoolsRequest) String() string {
 func (*ListPortPoolsRequest) ProtoMessage() {}
 
 func (x *ListPortPoolsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[31]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2290,7 +2432,7 @@ func (x *ListPortPoolsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPortPoolsRequest.ProtoReflect.Descriptor instead.
 func (*ListPortPoolsRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{31}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ListPortPoolsRequest) GetOrgId() string {
@@ -2334,7 +2476,7 @@ type ListPortPoolsResponse struct {
 
 func (x *ListPortPoolsResponse) Reset() {
 	*x = ListPortPoolsResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[32]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2346,7 +2488,7 @@ func (x *ListPortPoolsResponse) String() string {
 func (*ListPortPoolsResponse) ProtoMessage() {}
 
 func (x *ListPortPoolsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[32]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2359,7 +2501,7 @@ func (x *ListPortPoolsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPortPoolsResponse.ProtoReflect.Descriptor instead.
 func (*ListPortPoolsResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{32}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ListPortPoolsResponse) GetPortPools() []*PortPool {
@@ -2391,7 +2533,7 @@ type UpdatePortPoolRequest struct {
 
 func (x *UpdatePortPoolRequest) Reset() {
 	*x = UpdatePortPoolRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[33]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2403,7 +2545,7 @@ func (x *UpdatePortPoolRequest) String() string {
 func (*UpdatePortPoolRequest) ProtoMessage() {}
 
 func (x *UpdatePortPoolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[33]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2416,7 +2558,7 @@ func (x *UpdatePortPoolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePortPoolRequest.ProtoReflect.Descriptor instead.
 func (*UpdatePortPoolRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{33}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *UpdatePortPoolRequest) GetPortPool() *PortPool {
@@ -2456,7 +2598,7 @@ type UpdatePortPoolResponse struct {
 
 func (x *UpdatePortPoolResponse) Reset() {
 	*x = UpdatePortPoolResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[34]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2468,7 +2610,7 @@ func (x *UpdatePortPoolResponse) String() string {
 func (*UpdatePortPoolResponse) ProtoMessage() {}
 
 func (x *UpdatePortPoolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[34]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2481,7 +2623,7 @@ func (x *UpdatePortPoolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePortPoolResponse.ProtoReflect.Descriptor instead.
 func (*UpdatePortPoolResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{34}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *UpdatePortPoolResponse) GetPortPool() *PortPool {
@@ -2518,7 +2660,7 @@ type DeletePortPoolRequest struct {
 
 func (x *DeletePortPoolRequest) Reset() {
 	*x = DeletePortPoolRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[35]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2530,7 +2672,7 @@ func (x *DeletePortPoolRequest) String() string {
 func (*DeletePortPoolRequest) ProtoMessage() {}
 
 func (x *DeletePortPoolRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[35]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2543,7 +2685,7 @@ func (x *DeletePortPoolRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePortPoolRequest.ProtoReflect.Descriptor instead.
 func (*DeletePortPoolRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{35}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *DeletePortPoolRequest) GetPortPoolId() string {
@@ -2574,7 +2716,7 @@ type DeletePortPoolResponse struct {
 
 func (x *DeletePortPoolResponse) Reset() {
 	*x = DeletePortPoolResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[36]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2586,7 +2728,7 @@ func (x *DeletePortPoolResponse) String() string {
 func (*DeletePortPoolResponse) ProtoMessage() {}
 
 func (x *DeletePortPoolResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[36]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2599,7 +2741,7 @@ func (x *DeletePortPoolResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePortPoolResponse.ProtoReflect.Descriptor instead.
 func (*DeletePortPoolResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{36}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *DeletePortPoolResponse) GetRevision() *Revision {
@@ -2636,7 +2778,7 @@ type PortQuota struct {
 
 func (x *PortQuota) Reset() {
 	*x = PortQuota{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[37]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2648,7 +2790,7 @@ func (x *PortQuota) String() string {
 func (*PortQuota) ProtoMessage() {}
 
 func (x *PortQuota) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[37]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2661,7 +2803,7 @@ func (x *PortQuota) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PortQuota.ProtoReflect.Descriptor instead.
 func (*PortQuota) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{37}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *PortQuota) GetId() string {
@@ -2716,7 +2858,7 @@ type SetPortQuotaRequest struct {
 
 func (x *SetPortQuotaRequest) Reset() {
 	*x = SetPortQuotaRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[38]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2728,7 +2870,7 @@ func (x *SetPortQuotaRequest) String() string {
 func (*SetPortQuotaRequest) ProtoMessage() {}
 
 func (x *SetPortQuotaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[38]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2741,7 +2883,7 @@ func (x *SetPortQuotaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetPortQuotaRequest.ProtoReflect.Descriptor instead.
 func (*SetPortQuotaRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{38}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *SetPortQuotaRequest) GetOrgId() string {
@@ -2788,7 +2930,7 @@ type SetPortQuotaResponse struct {
 
 func (x *SetPortQuotaResponse) Reset() {
 	*x = SetPortQuotaResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[39]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2800,7 +2942,7 @@ func (x *SetPortQuotaResponse) String() string {
 func (*SetPortQuotaResponse) ProtoMessage() {}
 
 func (x *SetPortQuotaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[39]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2813,7 +2955,7 @@ func (x *SetPortQuotaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetPortQuotaResponse.ProtoReflect.Descriptor instead.
 func (*SetPortQuotaResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{39}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *SetPortQuotaResponse) GetPortQuota() *PortQuota {
@@ -2854,7 +2996,7 @@ type ListPortQuotasRequest struct {
 
 func (x *ListPortQuotasRequest) Reset() {
 	*x = ListPortQuotasRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[40]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2866,7 +3008,7 @@ func (x *ListPortQuotasRequest) String() string {
 func (*ListPortQuotasRequest) ProtoMessage() {}
 
 func (x *ListPortQuotasRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[40]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2879,7 +3021,7 @@ func (x *ListPortQuotasRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPortQuotasRequest.ProtoReflect.Descriptor instead.
 func (*ListPortQuotasRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{40}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ListPortQuotasRequest) GetOrgId() string {
@@ -2923,7 +3065,7 @@ type ListPortQuotasResponse struct {
 
 func (x *ListPortQuotasResponse) Reset() {
 	*x = ListPortQuotasResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[41]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2935,7 +3077,7 @@ func (x *ListPortQuotasResponse) String() string {
 func (*ListPortQuotasResponse) ProtoMessage() {}
 
 func (x *ListPortQuotasResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[41]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2948,7 +3090,7 @@ func (x *ListPortQuotasResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPortQuotasResponse.ProtoReflect.Descriptor instead.
 func (*ListPortQuotasResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{41}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ListPortQuotasResponse) GetPortQuotas() []*PortQuota {
@@ -2976,7 +3118,7 @@ type DeletePortQuotaRequest struct {
 
 func (x *DeletePortQuotaRequest) Reset() {
 	*x = DeletePortQuotaRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[42]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2988,7 +3130,7 @@ func (x *DeletePortQuotaRequest) String() string {
 func (*DeletePortQuotaRequest) ProtoMessage() {}
 
 func (x *DeletePortQuotaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[42]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3001,7 +3143,7 @@ func (x *DeletePortQuotaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePortQuotaRequest.ProtoReflect.Descriptor instead.
 func (*DeletePortQuotaRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{42}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *DeletePortQuotaRequest) GetPortQuotaId() string {
@@ -3025,7 +3167,7 @@ type DeletePortQuotaResponse struct {
 
 func (x *DeletePortQuotaResponse) Reset() {
 	*x = DeletePortQuotaResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[43]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3037,7 +3179,7 @@ func (x *DeletePortQuotaResponse) String() string {
 func (*DeletePortQuotaResponse) ProtoMessage() {}
 
 func (x *DeletePortQuotaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[43]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3050,7 +3192,7 @@ func (x *DeletePortQuotaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePortQuotaResponse.ProtoReflect.Descriptor instead.
 func (*DeletePortQuotaResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{43}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *DeletePortQuotaResponse) GetRevision() *Revision {
@@ -3088,7 +3230,7 @@ type GatewayPage struct {
 
 func (x *GatewayPage) Reset() {
 	*x = GatewayPage{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[44]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3100,7 +3242,7 @@ func (x *GatewayPage) String() string {
 func (*GatewayPage) ProtoMessage() {}
 
 func (x *GatewayPage) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[44]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3113,7 +3255,7 @@ func (x *GatewayPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayPage.ProtoReflect.Descriptor instead.
 func (*GatewayPage) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{44}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *GatewayPage) GetGatewayGroupId() string {
@@ -3162,7 +3304,7 @@ type SetGatewayPageRequest struct {
 
 func (x *SetGatewayPageRequest) Reset() {
 	*x = SetGatewayPageRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[45]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3174,7 +3316,7 @@ func (x *SetGatewayPageRequest) String() string {
 func (*SetGatewayPageRequest) ProtoMessage() {}
 
 func (x *SetGatewayPageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[45]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3187,7 +3329,7 @@ func (x *SetGatewayPageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetGatewayPageRequest.ProtoReflect.Descriptor instead.
 func (*SetGatewayPageRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{45}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *SetGatewayPageRequest) GetGatewayPage() *GatewayPage {
@@ -3213,7 +3355,7 @@ type SetGatewayPageResponse struct {
 
 func (x *SetGatewayPageResponse) Reset() {
 	*x = SetGatewayPageResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[46]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3225,7 +3367,7 @@ func (x *SetGatewayPageResponse) String() string {
 func (*SetGatewayPageResponse) ProtoMessage() {}
 
 func (x *SetGatewayPageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[46]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3238,7 +3380,7 @@ func (x *SetGatewayPageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetGatewayPageResponse.ProtoReflect.Descriptor instead.
 func (*SetGatewayPageResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{46}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *SetGatewayPageResponse) GetGatewayPage() *GatewayPage {
@@ -3273,7 +3415,7 @@ type ListGatewayPagesRequest struct {
 
 func (x *ListGatewayPagesRequest) Reset() {
 	*x = ListGatewayPagesRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[47]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3285,7 +3427,7 @@ func (x *ListGatewayPagesRequest) String() string {
 func (*ListGatewayPagesRequest) ProtoMessage() {}
 
 func (x *ListGatewayPagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[47]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3298,7 +3440,7 @@ func (x *ListGatewayPagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGatewayPagesRequest.ProtoReflect.Descriptor instead.
 func (*ListGatewayPagesRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{47}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ListGatewayPagesRequest) GetGatewayGroupId() string {
@@ -3319,7 +3461,7 @@ type ListGatewayPagesResponse struct {
 
 func (x *ListGatewayPagesResponse) Reset() {
 	*x = ListGatewayPagesResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[48]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3331,7 +3473,7 @@ func (x *ListGatewayPagesResponse) String() string {
 func (*ListGatewayPagesResponse) ProtoMessage() {}
 
 func (x *ListGatewayPagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[48]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3344,7 +3486,7 @@ func (x *ListGatewayPagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGatewayPagesResponse.ProtoReflect.Descriptor instead.
 func (*ListGatewayPagesResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{48}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ListGatewayPagesResponse) GetGatewayPages() []*GatewayPage {
@@ -3367,7 +3509,7 @@ type DeleteGatewayPageRequest struct {
 
 func (x *DeleteGatewayPageRequest) Reset() {
 	*x = DeleteGatewayPageRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[49]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3379,7 +3521,7 @@ func (x *DeleteGatewayPageRequest) String() string {
 func (*DeleteGatewayPageRequest) ProtoMessage() {}
 
 func (x *DeleteGatewayPageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[49]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3392,7 +3534,7 @@ func (x *DeleteGatewayPageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteGatewayPageRequest.ProtoReflect.Descriptor instead.
 func (*DeleteGatewayPageRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{49}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *DeleteGatewayPageRequest) GetGatewayGroupId() string {
@@ -3423,7 +3565,7 @@ type DeleteGatewayPageResponse struct {
 
 func (x *DeleteGatewayPageResponse) Reset() {
 	*x = DeleteGatewayPageResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[50]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3435,7 +3577,7 @@ func (x *DeleteGatewayPageResponse) String() string {
 func (*DeleteGatewayPageResponse) ProtoMessage() {}
 
 func (x *DeleteGatewayPageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[50]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3448,7 +3590,7 @@ func (x *DeleteGatewayPageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteGatewayPageResponse.ProtoReflect.Descriptor instead.
 func (*DeleteGatewayPageResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{50}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *DeleteGatewayPageResponse) GetRevision() *Revision {
@@ -3478,7 +3620,7 @@ type PreviewGatewayPageRequest struct {
 
 func (x *PreviewGatewayPageRequest) Reset() {
 	*x = PreviewGatewayPageRequest{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[51]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3490,7 +3632,7 @@ func (x *PreviewGatewayPageRequest) String() string {
 func (*PreviewGatewayPageRequest) ProtoMessage() {}
 
 func (x *PreviewGatewayPageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[51]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3503,7 +3645,7 @@ func (x *PreviewGatewayPageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewGatewayPageRequest.ProtoReflect.Descriptor instead.
 func (*PreviewGatewayPageRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{51}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *PreviewGatewayPageRequest) GetGatewayGroupId() string {
@@ -3534,7 +3676,7 @@ type PreviewGatewayPageResponse struct {
 
 func (x *PreviewGatewayPageResponse) Reset() {
 	*x = PreviewGatewayPageResponse{}
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[52]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3546,7 +3688,7 @@ func (x *PreviewGatewayPageResponse) String() string {
 func (*PreviewGatewayPageResponse) ProtoMessage() {}
 
 func (x *PreviewGatewayPageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_gateway_proto_msgTypes[52]
+	mi := &file_rpmgr_v1_gateway_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3559,7 +3701,7 @@ func (x *PreviewGatewayPageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewGatewayPageResponse.ProtoReflect.Descriptor instead.
 func (*PreviewGatewayPageResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{52}
+	return file_rpmgr_v1_gateway_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *PreviewGatewayPageResponse) GetUrl() string {
@@ -3662,14 +3804,22 @@ const file_rpmgr_v1_gateway_proto_rawDesc = "" +
 	"\x1bDecommissionGatewayResponse\x12+\n" +
 	"\agateway\x18\x01 \x01(\v2\x11.rpmgr.v1.GatewayR\agateway\x12.\n" +
 	"\brevision\x18\x02 \x01(\v2\x12.rpmgr.v1.RevisionR\brevision\x128\n" +
-	"\fapply_status\x18\x03 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"\x86\x02\n" +
+	"\fapply_status\x18\x03 \x01(\v2\x15.rpmgr.v1.ApplyStatusR\vapplyStatus\"\xba\x02\n" +
 	"\fGatewayGroup\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12B\n" +
 	"\x04name\x18\x02 \x01(\tB.\xbaH+\xd8\x01\x01r&2$^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$R\x04name\x12\x1f\n" +
 	"\x06region\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x18dR\x06region\x123\n" +
 	"\x10public_hostnames\x18\x04 \x03(\tB\b\xbaH\x05\x92\x01\x02\x10 R\x0fpublicHostnames\x128\n" +
 	"\x13trusted_proxy_cidrs\x18\x05 \x03(\tB\b\xbaH\x05\x92\x01\x02\x10@R\x11trustedProxyCidrs\x12\x12\n" +
-	"\x04etag\x18\x06 \x01(\tR\x04etag\"\xa9\x01\n" +
+	"\x04etag\x18\x06 \x01(\tR\x04etag\x122\n" +
+	"\n" +
+	"dns_target\x18\a \x01(\v2\x13.rpmgr.v1.DnsTargetR\tdnsTarget\"m\n" +
+	"\tDnsTarget\x12 \n" +
+	"\x05cname\x18\x01 \x01(\tB\b\xbaH\x05r\x03\x18\xfd\x01H\x00R\x05cname\x126\n" +
+	"\taddresses\x18\x02 \x01(\v2\x16.rpmgr.v1.DnsAddressesH\x00R\taddressesB\x06\n" +
+	"\x04kind\",\n" +
+	"\fDnsAddresses\x12\x1c\n" +
+	"\taddresses\x18\x01 \x03(\tR\taddresses\"\xa9\x01\n" +
 	"\x19CreateGatewayGroupRequest\x12\x1e\n" +
 	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x12C\n" +
 	"\rgateway_group\x18\x02 \x01(\v2\x16.rpmgr.v1.GatewayGroupB\x06\xbaH\x03\xc8\x01\x01R\fgatewayGroup\x12'\n" +
@@ -3899,7 +4049,7 @@ func file_rpmgr_v1_gateway_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_gateway_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_rpmgr_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
+var file_rpmgr_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_rpmgr_v1_gateway_proto_goTypes = []any{
 	(FirewallState)(0),                  // 0: rpmgr.v1.FirewallState
 	(PortProtocol)(0),                   // 1: rpmgr.v1.PortProtocol
@@ -3920,171 +4070,175 @@ var file_rpmgr_v1_gateway_proto_goTypes = []any{
 	(*DecommissionGatewayRequest)(nil),  // 16: rpmgr.v1.DecommissionGatewayRequest
 	(*DecommissionGatewayResponse)(nil), // 17: rpmgr.v1.DecommissionGatewayResponse
 	(*GatewayGroup)(nil),                // 18: rpmgr.v1.GatewayGroup
-	(*CreateGatewayGroupRequest)(nil),   // 19: rpmgr.v1.CreateGatewayGroupRequest
-	(*CreateGatewayGroupResponse)(nil),  // 20: rpmgr.v1.CreateGatewayGroupResponse
-	(*GetGatewayGroupRequest)(nil),      // 21: rpmgr.v1.GetGatewayGroupRequest
-	(*GetGatewayGroupResponse)(nil),     // 22: rpmgr.v1.GetGatewayGroupResponse
-	(*ListGatewayGroupsRequest)(nil),    // 23: rpmgr.v1.ListGatewayGroupsRequest
-	(*ListGatewayGroupsResponse)(nil),   // 24: rpmgr.v1.ListGatewayGroupsResponse
-	(*UpdateGatewayGroupRequest)(nil),   // 25: rpmgr.v1.UpdateGatewayGroupRequest
-	(*UpdateGatewayGroupResponse)(nil),  // 26: rpmgr.v1.UpdateGatewayGroupResponse
-	(*DeleteGatewayGroupRequest)(nil),   // 27: rpmgr.v1.DeleteGatewayGroupRequest
-	(*DeleteGatewayGroupResponse)(nil),  // 28: rpmgr.v1.DeleteGatewayGroupResponse
-	(*PortPool)(nil),                    // 29: rpmgr.v1.PortPool
-	(*CreatePortPoolRequest)(nil),       // 30: rpmgr.v1.CreatePortPoolRequest
-	(*CreatePortPoolResponse)(nil),      // 31: rpmgr.v1.CreatePortPoolResponse
-	(*GetPortPoolRequest)(nil),          // 32: rpmgr.v1.GetPortPoolRequest
-	(*GetPortPoolResponse)(nil),         // 33: rpmgr.v1.GetPortPoolResponse
-	(*ListPortPoolsRequest)(nil),        // 34: rpmgr.v1.ListPortPoolsRequest
-	(*ListPortPoolsResponse)(nil),       // 35: rpmgr.v1.ListPortPoolsResponse
-	(*UpdatePortPoolRequest)(nil),       // 36: rpmgr.v1.UpdatePortPoolRequest
-	(*UpdatePortPoolResponse)(nil),      // 37: rpmgr.v1.UpdatePortPoolResponse
-	(*DeletePortPoolRequest)(nil),       // 38: rpmgr.v1.DeletePortPoolRequest
-	(*DeletePortPoolResponse)(nil),      // 39: rpmgr.v1.DeletePortPoolResponse
-	(*PortQuota)(nil),                   // 40: rpmgr.v1.PortQuota
-	(*SetPortQuotaRequest)(nil),         // 41: rpmgr.v1.SetPortQuotaRequest
-	(*SetPortQuotaResponse)(nil),        // 42: rpmgr.v1.SetPortQuotaResponse
-	(*ListPortQuotasRequest)(nil),       // 43: rpmgr.v1.ListPortQuotasRequest
-	(*ListPortQuotasResponse)(nil),      // 44: rpmgr.v1.ListPortQuotasResponse
-	(*DeletePortQuotaRequest)(nil),      // 45: rpmgr.v1.DeletePortQuotaRequest
-	(*DeletePortQuotaResponse)(nil),     // 46: rpmgr.v1.DeletePortQuotaResponse
-	(*GatewayPage)(nil),                 // 47: rpmgr.v1.GatewayPage
-	(*SetGatewayPageRequest)(nil),       // 48: rpmgr.v1.SetGatewayPageRequest
-	(*SetGatewayPageResponse)(nil),      // 49: rpmgr.v1.SetGatewayPageResponse
-	(*ListGatewayPagesRequest)(nil),     // 50: rpmgr.v1.ListGatewayPagesRequest
-	(*ListGatewayPagesResponse)(nil),    // 51: rpmgr.v1.ListGatewayPagesResponse
-	(*DeleteGatewayPageRequest)(nil),    // 52: rpmgr.v1.DeleteGatewayPageRequest
-	(*DeleteGatewayPageResponse)(nil),   // 53: rpmgr.v1.DeleteGatewayPageResponse
-	(*PreviewGatewayPageRequest)(nil),   // 54: rpmgr.v1.PreviewGatewayPageRequest
-	(*PreviewGatewayPageResponse)(nil),  // 55: rpmgr.v1.PreviewGatewayPageResponse
-	(*timestamppb.Timestamp)(nil),       // 56: google.protobuf.Timestamp
-	(*DrainingProcess)(nil),             // 57: rpmgr.v1.DrainingProcess
-	(*Revision)(nil),                    // 58: rpmgr.v1.Revision
-	(*ApplyStatus)(nil),                 // 59: rpmgr.v1.ApplyStatus
-	(*fieldmaskpb.FieldMask)(nil),       // 60: google.protobuf.FieldMask
+	(*DnsTarget)(nil),                   // 19: rpmgr.v1.DnsTarget
+	(*DnsAddresses)(nil),                // 20: rpmgr.v1.DnsAddresses
+	(*CreateGatewayGroupRequest)(nil),   // 21: rpmgr.v1.CreateGatewayGroupRequest
+	(*CreateGatewayGroupResponse)(nil),  // 22: rpmgr.v1.CreateGatewayGroupResponse
+	(*GetGatewayGroupRequest)(nil),      // 23: rpmgr.v1.GetGatewayGroupRequest
+	(*GetGatewayGroupResponse)(nil),     // 24: rpmgr.v1.GetGatewayGroupResponse
+	(*ListGatewayGroupsRequest)(nil),    // 25: rpmgr.v1.ListGatewayGroupsRequest
+	(*ListGatewayGroupsResponse)(nil),   // 26: rpmgr.v1.ListGatewayGroupsResponse
+	(*UpdateGatewayGroupRequest)(nil),   // 27: rpmgr.v1.UpdateGatewayGroupRequest
+	(*UpdateGatewayGroupResponse)(nil),  // 28: rpmgr.v1.UpdateGatewayGroupResponse
+	(*DeleteGatewayGroupRequest)(nil),   // 29: rpmgr.v1.DeleteGatewayGroupRequest
+	(*DeleteGatewayGroupResponse)(nil),  // 30: rpmgr.v1.DeleteGatewayGroupResponse
+	(*PortPool)(nil),                    // 31: rpmgr.v1.PortPool
+	(*CreatePortPoolRequest)(nil),       // 32: rpmgr.v1.CreatePortPoolRequest
+	(*CreatePortPoolResponse)(nil),      // 33: rpmgr.v1.CreatePortPoolResponse
+	(*GetPortPoolRequest)(nil),          // 34: rpmgr.v1.GetPortPoolRequest
+	(*GetPortPoolResponse)(nil),         // 35: rpmgr.v1.GetPortPoolResponse
+	(*ListPortPoolsRequest)(nil),        // 36: rpmgr.v1.ListPortPoolsRequest
+	(*ListPortPoolsResponse)(nil),       // 37: rpmgr.v1.ListPortPoolsResponse
+	(*UpdatePortPoolRequest)(nil),       // 38: rpmgr.v1.UpdatePortPoolRequest
+	(*UpdatePortPoolResponse)(nil),      // 39: rpmgr.v1.UpdatePortPoolResponse
+	(*DeletePortPoolRequest)(nil),       // 40: rpmgr.v1.DeletePortPoolRequest
+	(*DeletePortPoolResponse)(nil),      // 41: rpmgr.v1.DeletePortPoolResponse
+	(*PortQuota)(nil),                   // 42: rpmgr.v1.PortQuota
+	(*SetPortQuotaRequest)(nil),         // 43: rpmgr.v1.SetPortQuotaRequest
+	(*SetPortQuotaResponse)(nil),        // 44: rpmgr.v1.SetPortQuotaResponse
+	(*ListPortQuotasRequest)(nil),       // 45: rpmgr.v1.ListPortQuotasRequest
+	(*ListPortQuotasResponse)(nil),      // 46: rpmgr.v1.ListPortQuotasResponse
+	(*DeletePortQuotaRequest)(nil),      // 47: rpmgr.v1.DeletePortQuotaRequest
+	(*DeletePortQuotaResponse)(nil),     // 48: rpmgr.v1.DeletePortQuotaResponse
+	(*GatewayPage)(nil),                 // 49: rpmgr.v1.GatewayPage
+	(*SetGatewayPageRequest)(nil),       // 50: rpmgr.v1.SetGatewayPageRequest
+	(*SetGatewayPageResponse)(nil),      // 51: rpmgr.v1.SetGatewayPageResponse
+	(*ListGatewayPagesRequest)(nil),     // 52: rpmgr.v1.ListGatewayPagesRequest
+	(*ListGatewayPagesResponse)(nil),    // 53: rpmgr.v1.ListGatewayPagesResponse
+	(*DeleteGatewayPageRequest)(nil),    // 54: rpmgr.v1.DeleteGatewayPageRequest
+	(*DeleteGatewayPageResponse)(nil),   // 55: rpmgr.v1.DeleteGatewayPageResponse
+	(*PreviewGatewayPageRequest)(nil),   // 56: rpmgr.v1.PreviewGatewayPageRequest
+	(*PreviewGatewayPageResponse)(nil),  // 57: rpmgr.v1.PreviewGatewayPageResponse
+	(*timestamppb.Timestamp)(nil),       // 58: google.protobuf.Timestamp
+	(*DrainingProcess)(nil),             // 59: rpmgr.v1.DrainingProcess
+	(*Revision)(nil),                    // 60: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),                 // 61: rpmgr.v1.ApplyStatus
+	(*fieldmaskpb.FieldMask)(nil),       // 62: google.protobuf.FieldMask
 }
 var file_rpmgr_v1_gateway_proto_depIdxs = []int32{
 	4,  // 0: rpmgr.v1.Gateway.status:type_name -> rpmgr.v1.GatewayStatus
-	56, // 1: rpmgr.v1.Gateway.decommission_time:type_name -> google.protobuf.Timestamp
-	56, // 2: rpmgr.v1.Gateway.create_time:type_name -> google.protobuf.Timestamp
-	56, // 3: rpmgr.v1.GatewayStatus.last_seen_time:type_name -> google.protobuf.Timestamp
-	57, // 4: rpmgr.v1.GatewayStatus.draining:type_name -> rpmgr.v1.DrainingProcess
+	58, // 1: rpmgr.v1.Gateway.decommission_time:type_name -> google.protobuf.Timestamp
+	58, // 2: rpmgr.v1.Gateway.create_time:type_name -> google.protobuf.Timestamp
+	58, // 3: rpmgr.v1.GatewayStatus.last_seen_time:type_name -> google.protobuf.Timestamp
+	59, // 4: rpmgr.v1.GatewayStatus.draining:type_name -> rpmgr.v1.DrainingProcess
 	5,  // 5: rpmgr.v1.GatewayStatus.firewall:type_name -> rpmgr.v1.FirewallStatus
 	0,  // 6: rpmgr.v1.FirewallStatus.state:type_name -> rpmgr.v1.FirewallState
-	56, // 7: rpmgr.v1.FirewallStatus.report_time:type_name -> google.protobuf.Timestamp
-	57, // 8: rpmgr.v1.EndGatewayDrainResponse.ended:type_name -> rpmgr.v1.DrainingProcess
+	58, // 7: rpmgr.v1.FirewallStatus.report_time:type_name -> google.protobuf.Timestamp
+	59, // 8: rpmgr.v1.EndGatewayDrainResponse.ended:type_name -> rpmgr.v1.DrainingProcess
 	3,  // 9: rpmgr.v1.CreateGatewayRequest.gateway:type_name -> rpmgr.v1.Gateway
 	3,  // 10: rpmgr.v1.CreateGatewayResponse.gateway:type_name -> rpmgr.v1.Gateway
-	58, // 11: rpmgr.v1.CreateGatewayResponse.revision:type_name -> rpmgr.v1.Revision
-	59, // 12: rpmgr.v1.CreateGatewayResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	60, // 11: rpmgr.v1.CreateGatewayResponse.revision:type_name -> rpmgr.v1.Revision
+	61, // 12: rpmgr.v1.CreateGatewayResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	3,  // 13: rpmgr.v1.GetGatewayResponse.gateway:type_name -> rpmgr.v1.Gateway
 	3,  // 14: rpmgr.v1.ListGatewaysResponse.gateways:type_name -> rpmgr.v1.Gateway
 	3,  // 15: rpmgr.v1.UpdateGatewayRequest.gateway:type_name -> rpmgr.v1.Gateway
-	60, // 16: rpmgr.v1.UpdateGatewayRequest.update_mask:type_name -> google.protobuf.FieldMask
+	62, // 16: rpmgr.v1.UpdateGatewayRequest.update_mask:type_name -> google.protobuf.FieldMask
 	3,  // 17: rpmgr.v1.UpdateGatewayResponse.gateway:type_name -> rpmgr.v1.Gateway
-	58, // 18: rpmgr.v1.UpdateGatewayResponse.revision:type_name -> rpmgr.v1.Revision
-	59, // 19: rpmgr.v1.UpdateGatewayResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	60, // 18: rpmgr.v1.UpdateGatewayResponse.revision:type_name -> rpmgr.v1.Revision
+	61, // 19: rpmgr.v1.UpdateGatewayResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
 	3,  // 20: rpmgr.v1.DecommissionGatewayResponse.gateway:type_name -> rpmgr.v1.Gateway
-	58, // 21: rpmgr.v1.DecommissionGatewayResponse.revision:type_name -> rpmgr.v1.Revision
-	59, // 22: rpmgr.v1.DecommissionGatewayResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	18, // 23: rpmgr.v1.CreateGatewayGroupRequest.gateway_group:type_name -> rpmgr.v1.GatewayGroup
-	18, // 24: rpmgr.v1.CreateGatewayGroupResponse.gateway_group:type_name -> rpmgr.v1.GatewayGroup
-	58, // 25: rpmgr.v1.CreateGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
-	59, // 26: rpmgr.v1.CreateGatewayGroupResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	18, // 27: rpmgr.v1.GetGatewayGroupResponse.gateway_group:type_name -> rpmgr.v1.GatewayGroup
-	18, // 28: rpmgr.v1.ListGatewayGroupsResponse.gateway_groups:type_name -> rpmgr.v1.GatewayGroup
-	18, // 29: rpmgr.v1.UpdateGatewayGroupRequest.gateway_group:type_name -> rpmgr.v1.GatewayGroup
-	60, // 30: rpmgr.v1.UpdateGatewayGroupRequest.update_mask:type_name -> google.protobuf.FieldMask
-	18, // 31: rpmgr.v1.UpdateGatewayGroupResponse.gateway_group:type_name -> rpmgr.v1.GatewayGroup
-	58, // 32: rpmgr.v1.UpdateGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
-	59, // 33: rpmgr.v1.UpdateGatewayGroupResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	58, // 34: rpmgr.v1.DeleteGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
-	59, // 35: rpmgr.v1.DeleteGatewayGroupResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	1,  // 36: rpmgr.v1.PortPool.protocol:type_name -> rpmgr.v1.PortProtocol
-	29, // 37: rpmgr.v1.CreatePortPoolRequest.port_pool:type_name -> rpmgr.v1.PortPool
-	29, // 38: rpmgr.v1.CreatePortPoolResponse.port_pool:type_name -> rpmgr.v1.PortPool
-	58, // 39: rpmgr.v1.CreatePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
-	59, // 40: rpmgr.v1.CreatePortPoolResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	29, // 41: rpmgr.v1.GetPortPoolResponse.port_pool:type_name -> rpmgr.v1.PortPool
-	29, // 42: rpmgr.v1.ListPortPoolsResponse.port_pools:type_name -> rpmgr.v1.PortPool
-	29, // 43: rpmgr.v1.UpdatePortPoolRequest.port_pool:type_name -> rpmgr.v1.PortPool
-	60, // 44: rpmgr.v1.UpdatePortPoolRequest.update_mask:type_name -> google.protobuf.FieldMask
-	29, // 45: rpmgr.v1.UpdatePortPoolResponse.port_pool:type_name -> rpmgr.v1.PortPool
-	58, // 46: rpmgr.v1.UpdatePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
-	59, // 47: rpmgr.v1.UpdatePortPoolResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	58, // 48: rpmgr.v1.DeletePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
-	59, // 49: rpmgr.v1.DeletePortPoolResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	1,  // 50: rpmgr.v1.PortQuota.protocol:type_name -> rpmgr.v1.PortProtocol
-	1,  // 51: rpmgr.v1.SetPortQuotaRequest.protocol:type_name -> rpmgr.v1.PortProtocol
-	40, // 52: rpmgr.v1.SetPortQuotaResponse.port_quota:type_name -> rpmgr.v1.PortQuota
-	58, // 53: rpmgr.v1.SetPortQuotaResponse.revision:type_name -> rpmgr.v1.Revision
-	59, // 54: rpmgr.v1.SetPortQuotaResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	40, // 55: rpmgr.v1.ListPortQuotasResponse.port_quotas:type_name -> rpmgr.v1.PortQuota
-	58, // 56: rpmgr.v1.DeletePortQuotaResponse.revision:type_name -> rpmgr.v1.Revision
-	59, // 57: rpmgr.v1.DeletePortQuotaResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	2,  // 58: rpmgr.v1.GatewayPage.kind:type_name -> rpmgr.v1.GatewayPageKind
-	56, // 59: rpmgr.v1.GatewayPage.update_time:type_name -> google.protobuf.Timestamp
-	47, // 60: rpmgr.v1.SetGatewayPageRequest.gateway_page:type_name -> rpmgr.v1.GatewayPage
-	47, // 61: rpmgr.v1.SetGatewayPageResponse.gateway_page:type_name -> rpmgr.v1.GatewayPage
-	58, // 62: rpmgr.v1.SetGatewayPageResponse.revision:type_name -> rpmgr.v1.Revision
-	59, // 63: rpmgr.v1.SetGatewayPageResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	47, // 64: rpmgr.v1.ListGatewayPagesResponse.gateway_pages:type_name -> rpmgr.v1.GatewayPage
-	2,  // 65: rpmgr.v1.DeleteGatewayPageRequest.kind:type_name -> rpmgr.v1.GatewayPageKind
-	58, // 66: rpmgr.v1.DeleteGatewayPageResponse.revision:type_name -> rpmgr.v1.Revision
-	59, // 67: rpmgr.v1.DeleteGatewayPageResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	2,  // 68: rpmgr.v1.PreviewGatewayPageRequest.kind:type_name -> rpmgr.v1.GatewayPageKind
-	56, // 69: rpmgr.v1.PreviewGatewayPageResponse.expire_time:type_name -> google.protobuf.Timestamp
-	19, // 70: rpmgr.v1.GatewayService.CreateGatewayGroup:input_type -> rpmgr.v1.CreateGatewayGroupRequest
-	21, // 71: rpmgr.v1.GatewayService.GetGatewayGroup:input_type -> rpmgr.v1.GetGatewayGroupRequest
-	23, // 72: rpmgr.v1.GatewayService.ListGatewayGroups:input_type -> rpmgr.v1.ListGatewayGroupsRequest
-	25, // 73: rpmgr.v1.GatewayService.UpdateGatewayGroup:input_type -> rpmgr.v1.UpdateGatewayGroupRequest
-	27, // 74: rpmgr.v1.GatewayService.DeleteGatewayGroup:input_type -> rpmgr.v1.DeleteGatewayGroupRequest
-	8,  // 75: rpmgr.v1.GatewayService.CreateGateway:input_type -> rpmgr.v1.CreateGatewayRequest
-	10, // 76: rpmgr.v1.GatewayService.GetGateway:input_type -> rpmgr.v1.GetGatewayRequest
-	12, // 77: rpmgr.v1.GatewayService.ListGateways:input_type -> rpmgr.v1.ListGatewaysRequest
-	14, // 78: rpmgr.v1.GatewayService.UpdateGateway:input_type -> rpmgr.v1.UpdateGatewayRequest
-	16, // 79: rpmgr.v1.GatewayService.DecommissionGateway:input_type -> rpmgr.v1.DecommissionGatewayRequest
-	6,  // 80: rpmgr.v1.GatewayService.EndGatewayDrain:input_type -> rpmgr.v1.EndGatewayDrainRequest
-	30, // 81: rpmgr.v1.GatewayService.CreatePortPool:input_type -> rpmgr.v1.CreatePortPoolRequest
-	32, // 82: rpmgr.v1.GatewayService.GetPortPool:input_type -> rpmgr.v1.GetPortPoolRequest
-	34, // 83: rpmgr.v1.GatewayService.ListPortPools:input_type -> rpmgr.v1.ListPortPoolsRequest
-	36, // 84: rpmgr.v1.GatewayService.UpdatePortPool:input_type -> rpmgr.v1.UpdatePortPoolRequest
-	38, // 85: rpmgr.v1.GatewayService.DeletePortPool:input_type -> rpmgr.v1.DeletePortPoolRequest
-	41, // 86: rpmgr.v1.GatewayService.SetPortQuota:input_type -> rpmgr.v1.SetPortQuotaRequest
-	43, // 87: rpmgr.v1.GatewayService.ListPortQuotas:input_type -> rpmgr.v1.ListPortQuotasRequest
-	45, // 88: rpmgr.v1.GatewayService.DeletePortQuota:input_type -> rpmgr.v1.DeletePortQuotaRequest
-	48, // 89: rpmgr.v1.GatewayService.SetGatewayPage:input_type -> rpmgr.v1.SetGatewayPageRequest
-	50, // 90: rpmgr.v1.GatewayService.ListGatewayPages:input_type -> rpmgr.v1.ListGatewayPagesRequest
-	54, // 91: rpmgr.v1.GatewayService.PreviewGatewayPage:input_type -> rpmgr.v1.PreviewGatewayPageRequest
-	52, // 92: rpmgr.v1.GatewayService.DeleteGatewayPage:input_type -> rpmgr.v1.DeleteGatewayPageRequest
-	20, // 93: rpmgr.v1.GatewayService.CreateGatewayGroup:output_type -> rpmgr.v1.CreateGatewayGroupResponse
-	22, // 94: rpmgr.v1.GatewayService.GetGatewayGroup:output_type -> rpmgr.v1.GetGatewayGroupResponse
-	24, // 95: rpmgr.v1.GatewayService.ListGatewayGroups:output_type -> rpmgr.v1.ListGatewayGroupsResponse
-	26, // 96: rpmgr.v1.GatewayService.UpdateGatewayGroup:output_type -> rpmgr.v1.UpdateGatewayGroupResponse
-	28, // 97: rpmgr.v1.GatewayService.DeleteGatewayGroup:output_type -> rpmgr.v1.DeleteGatewayGroupResponse
-	9,  // 98: rpmgr.v1.GatewayService.CreateGateway:output_type -> rpmgr.v1.CreateGatewayResponse
-	11, // 99: rpmgr.v1.GatewayService.GetGateway:output_type -> rpmgr.v1.GetGatewayResponse
-	13, // 100: rpmgr.v1.GatewayService.ListGateways:output_type -> rpmgr.v1.ListGatewaysResponse
-	15, // 101: rpmgr.v1.GatewayService.UpdateGateway:output_type -> rpmgr.v1.UpdateGatewayResponse
-	17, // 102: rpmgr.v1.GatewayService.DecommissionGateway:output_type -> rpmgr.v1.DecommissionGatewayResponse
-	7,  // 103: rpmgr.v1.GatewayService.EndGatewayDrain:output_type -> rpmgr.v1.EndGatewayDrainResponse
-	31, // 104: rpmgr.v1.GatewayService.CreatePortPool:output_type -> rpmgr.v1.CreatePortPoolResponse
-	33, // 105: rpmgr.v1.GatewayService.GetPortPool:output_type -> rpmgr.v1.GetPortPoolResponse
-	35, // 106: rpmgr.v1.GatewayService.ListPortPools:output_type -> rpmgr.v1.ListPortPoolsResponse
-	37, // 107: rpmgr.v1.GatewayService.UpdatePortPool:output_type -> rpmgr.v1.UpdatePortPoolResponse
-	39, // 108: rpmgr.v1.GatewayService.DeletePortPool:output_type -> rpmgr.v1.DeletePortPoolResponse
-	42, // 109: rpmgr.v1.GatewayService.SetPortQuota:output_type -> rpmgr.v1.SetPortQuotaResponse
-	44, // 110: rpmgr.v1.GatewayService.ListPortQuotas:output_type -> rpmgr.v1.ListPortQuotasResponse
-	46, // 111: rpmgr.v1.GatewayService.DeletePortQuota:output_type -> rpmgr.v1.DeletePortQuotaResponse
-	49, // 112: rpmgr.v1.GatewayService.SetGatewayPage:output_type -> rpmgr.v1.SetGatewayPageResponse
-	51, // 113: rpmgr.v1.GatewayService.ListGatewayPages:output_type -> rpmgr.v1.ListGatewayPagesResponse
-	55, // 114: rpmgr.v1.GatewayService.PreviewGatewayPage:output_type -> rpmgr.v1.PreviewGatewayPageResponse
-	53, // 115: rpmgr.v1.GatewayService.DeleteGatewayPage:output_type -> rpmgr.v1.DeleteGatewayPageResponse
-	93, // [93:116] is the sub-list for method output_type
-	70, // [70:93] is the sub-list for method input_type
-	70, // [70:70] is the sub-list for extension type_name
-	70, // [70:70] is the sub-list for extension extendee
-	0,  // [0:70] is the sub-list for field type_name
+	60, // 21: rpmgr.v1.DecommissionGatewayResponse.revision:type_name -> rpmgr.v1.Revision
+	61, // 22: rpmgr.v1.DecommissionGatewayResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	19, // 23: rpmgr.v1.GatewayGroup.dns_target:type_name -> rpmgr.v1.DnsTarget
+	20, // 24: rpmgr.v1.DnsTarget.addresses:type_name -> rpmgr.v1.DnsAddresses
+	18, // 25: rpmgr.v1.CreateGatewayGroupRequest.gateway_group:type_name -> rpmgr.v1.GatewayGroup
+	18, // 26: rpmgr.v1.CreateGatewayGroupResponse.gateway_group:type_name -> rpmgr.v1.GatewayGroup
+	60, // 27: rpmgr.v1.CreateGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
+	61, // 28: rpmgr.v1.CreateGatewayGroupResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	18, // 29: rpmgr.v1.GetGatewayGroupResponse.gateway_group:type_name -> rpmgr.v1.GatewayGroup
+	18, // 30: rpmgr.v1.ListGatewayGroupsResponse.gateway_groups:type_name -> rpmgr.v1.GatewayGroup
+	18, // 31: rpmgr.v1.UpdateGatewayGroupRequest.gateway_group:type_name -> rpmgr.v1.GatewayGroup
+	62, // 32: rpmgr.v1.UpdateGatewayGroupRequest.update_mask:type_name -> google.protobuf.FieldMask
+	18, // 33: rpmgr.v1.UpdateGatewayGroupResponse.gateway_group:type_name -> rpmgr.v1.GatewayGroup
+	60, // 34: rpmgr.v1.UpdateGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
+	61, // 35: rpmgr.v1.UpdateGatewayGroupResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	60, // 36: rpmgr.v1.DeleteGatewayGroupResponse.revision:type_name -> rpmgr.v1.Revision
+	61, // 37: rpmgr.v1.DeleteGatewayGroupResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	1,  // 38: rpmgr.v1.PortPool.protocol:type_name -> rpmgr.v1.PortProtocol
+	31, // 39: rpmgr.v1.CreatePortPoolRequest.port_pool:type_name -> rpmgr.v1.PortPool
+	31, // 40: rpmgr.v1.CreatePortPoolResponse.port_pool:type_name -> rpmgr.v1.PortPool
+	60, // 41: rpmgr.v1.CreatePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
+	61, // 42: rpmgr.v1.CreatePortPoolResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	31, // 43: rpmgr.v1.GetPortPoolResponse.port_pool:type_name -> rpmgr.v1.PortPool
+	31, // 44: rpmgr.v1.ListPortPoolsResponse.port_pools:type_name -> rpmgr.v1.PortPool
+	31, // 45: rpmgr.v1.UpdatePortPoolRequest.port_pool:type_name -> rpmgr.v1.PortPool
+	62, // 46: rpmgr.v1.UpdatePortPoolRequest.update_mask:type_name -> google.protobuf.FieldMask
+	31, // 47: rpmgr.v1.UpdatePortPoolResponse.port_pool:type_name -> rpmgr.v1.PortPool
+	60, // 48: rpmgr.v1.UpdatePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
+	61, // 49: rpmgr.v1.UpdatePortPoolResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	60, // 50: rpmgr.v1.DeletePortPoolResponse.revision:type_name -> rpmgr.v1.Revision
+	61, // 51: rpmgr.v1.DeletePortPoolResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	1,  // 52: rpmgr.v1.PortQuota.protocol:type_name -> rpmgr.v1.PortProtocol
+	1,  // 53: rpmgr.v1.SetPortQuotaRequest.protocol:type_name -> rpmgr.v1.PortProtocol
+	42, // 54: rpmgr.v1.SetPortQuotaResponse.port_quota:type_name -> rpmgr.v1.PortQuota
+	60, // 55: rpmgr.v1.SetPortQuotaResponse.revision:type_name -> rpmgr.v1.Revision
+	61, // 56: rpmgr.v1.SetPortQuotaResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	42, // 57: rpmgr.v1.ListPortQuotasResponse.port_quotas:type_name -> rpmgr.v1.PortQuota
+	60, // 58: rpmgr.v1.DeletePortQuotaResponse.revision:type_name -> rpmgr.v1.Revision
+	61, // 59: rpmgr.v1.DeletePortQuotaResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	2,  // 60: rpmgr.v1.GatewayPage.kind:type_name -> rpmgr.v1.GatewayPageKind
+	58, // 61: rpmgr.v1.GatewayPage.update_time:type_name -> google.protobuf.Timestamp
+	49, // 62: rpmgr.v1.SetGatewayPageRequest.gateway_page:type_name -> rpmgr.v1.GatewayPage
+	49, // 63: rpmgr.v1.SetGatewayPageResponse.gateway_page:type_name -> rpmgr.v1.GatewayPage
+	60, // 64: rpmgr.v1.SetGatewayPageResponse.revision:type_name -> rpmgr.v1.Revision
+	61, // 65: rpmgr.v1.SetGatewayPageResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	49, // 66: rpmgr.v1.ListGatewayPagesResponse.gateway_pages:type_name -> rpmgr.v1.GatewayPage
+	2,  // 67: rpmgr.v1.DeleteGatewayPageRequest.kind:type_name -> rpmgr.v1.GatewayPageKind
+	60, // 68: rpmgr.v1.DeleteGatewayPageResponse.revision:type_name -> rpmgr.v1.Revision
+	61, // 69: rpmgr.v1.DeleteGatewayPageResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	2,  // 70: rpmgr.v1.PreviewGatewayPageRequest.kind:type_name -> rpmgr.v1.GatewayPageKind
+	58, // 71: rpmgr.v1.PreviewGatewayPageResponse.expire_time:type_name -> google.protobuf.Timestamp
+	21, // 72: rpmgr.v1.GatewayService.CreateGatewayGroup:input_type -> rpmgr.v1.CreateGatewayGroupRequest
+	23, // 73: rpmgr.v1.GatewayService.GetGatewayGroup:input_type -> rpmgr.v1.GetGatewayGroupRequest
+	25, // 74: rpmgr.v1.GatewayService.ListGatewayGroups:input_type -> rpmgr.v1.ListGatewayGroupsRequest
+	27, // 75: rpmgr.v1.GatewayService.UpdateGatewayGroup:input_type -> rpmgr.v1.UpdateGatewayGroupRequest
+	29, // 76: rpmgr.v1.GatewayService.DeleteGatewayGroup:input_type -> rpmgr.v1.DeleteGatewayGroupRequest
+	8,  // 77: rpmgr.v1.GatewayService.CreateGateway:input_type -> rpmgr.v1.CreateGatewayRequest
+	10, // 78: rpmgr.v1.GatewayService.GetGateway:input_type -> rpmgr.v1.GetGatewayRequest
+	12, // 79: rpmgr.v1.GatewayService.ListGateways:input_type -> rpmgr.v1.ListGatewaysRequest
+	14, // 80: rpmgr.v1.GatewayService.UpdateGateway:input_type -> rpmgr.v1.UpdateGatewayRequest
+	16, // 81: rpmgr.v1.GatewayService.DecommissionGateway:input_type -> rpmgr.v1.DecommissionGatewayRequest
+	6,  // 82: rpmgr.v1.GatewayService.EndGatewayDrain:input_type -> rpmgr.v1.EndGatewayDrainRequest
+	32, // 83: rpmgr.v1.GatewayService.CreatePortPool:input_type -> rpmgr.v1.CreatePortPoolRequest
+	34, // 84: rpmgr.v1.GatewayService.GetPortPool:input_type -> rpmgr.v1.GetPortPoolRequest
+	36, // 85: rpmgr.v1.GatewayService.ListPortPools:input_type -> rpmgr.v1.ListPortPoolsRequest
+	38, // 86: rpmgr.v1.GatewayService.UpdatePortPool:input_type -> rpmgr.v1.UpdatePortPoolRequest
+	40, // 87: rpmgr.v1.GatewayService.DeletePortPool:input_type -> rpmgr.v1.DeletePortPoolRequest
+	43, // 88: rpmgr.v1.GatewayService.SetPortQuota:input_type -> rpmgr.v1.SetPortQuotaRequest
+	45, // 89: rpmgr.v1.GatewayService.ListPortQuotas:input_type -> rpmgr.v1.ListPortQuotasRequest
+	47, // 90: rpmgr.v1.GatewayService.DeletePortQuota:input_type -> rpmgr.v1.DeletePortQuotaRequest
+	50, // 91: rpmgr.v1.GatewayService.SetGatewayPage:input_type -> rpmgr.v1.SetGatewayPageRequest
+	52, // 92: rpmgr.v1.GatewayService.ListGatewayPages:input_type -> rpmgr.v1.ListGatewayPagesRequest
+	56, // 93: rpmgr.v1.GatewayService.PreviewGatewayPage:input_type -> rpmgr.v1.PreviewGatewayPageRequest
+	54, // 94: rpmgr.v1.GatewayService.DeleteGatewayPage:input_type -> rpmgr.v1.DeleteGatewayPageRequest
+	22, // 95: rpmgr.v1.GatewayService.CreateGatewayGroup:output_type -> rpmgr.v1.CreateGatewayGroupResponse
+	24, // 96: rpmgr.v1.GatewayService.GetGatewayGroup:output_type -> rpmgr.v1.GetGatewayGroupResponse
+	26, // 97: rpmgr.v1.GatewayService.ListGatewayGroups:output_type -> rpmgr.v1.ListGatewayGroupsResponse
+	28, // 98: rpmgr.v1.GatewayService.UpdateGatewayGroup:output_type -> rpmgr.v1.UpdateGatewayGroupResponse
+	30, // 99: rpmgr.v1.GatewayService.DeleteGatewayGroup:output_type -> rpmgr.v1.DeleteGatewayGroupResponse
+	9,  // 100: rpmgr.v1.GatewayService.CreateGateway:output_type -> rpmgr.v1.CreateGatewayResponse
+	11, // 101: rpmgr.v1.GatewayService.GetGateway:output_type -> rpmgr.v1.GetGatewayResponse
+	13, // 102: rpmgr.v1.GatewayService.ListGateways:output_type -> rpmgr.v1.ListGatewaysResponse
+	15, // 103: rpmgr.v1.GatewayService.UpdateGateway:output_type -> rpmgr.v1.UpdateGatewayResponse
+	17, // 104: rpmgr.v1.GatewayService.DecommissionGateway:output_type -> rpmgr.v1.DecommissionGatewayResponse
+	7,  // 105: rpmgr.v1.GatewayService.EndGatewayDrain:output_type -> rpmgr.v1.EndGatewayDrainResponse
+	33, // 106: rpmgr.v1.GatewayService.CreatePortPool:output_type -> rpmgr.v1.CreatePortPoolResponse
+	35, // 107: rpmgr.v1.GatewayService.GetPortPool:output_type -> rpmgr.v1.GetPortPoolResponse
+	37, // 108: rpmgr.v1.GatewayService.ListPortPools:output_type -> rpmgr.v1.ListPortPoolsResponse
+	39, // 109: rpmgr.v1.GatewayService.UpdatePortPool:output_type -> rpmgr.v1.UpdatePortPoolResponse
+	41, // 110: rpmgr.v1.GatewayService.DeletePortPool:output_type -> rpmgr.v1.DeletePortPoolResponse
+	44, // 111: rpmgr.v1.GatewayService.SetPortQuota:output_type -> rpmgr.v1.SetPortQuotaResponse
+	46, // 112: rpmgr.v1.GatewayService.ListPortQuotas:output_type -> rpmgr.v1.ListPortQuotasResponse
+	48, // 113: rpmgr.v1.GatewayService.DeletePortQuota:output_type -> rpmgr.v1.DeletePortQuotaResponse
+	51, // 114: rpmgr.v1.GatewayService.SetGatewayPage:output_type -> rpmgr.v1.SetGatewayPageResponse
+	53, // 115: rpmgr.v1.GatewayService.ListGatewayPages:output_type -> rpmgr.v1.ListGatewayPagesResponse
+	57, // 116: rpmgr.v1.GatewayService.PreviewGatewayPage:output_type -> rpmgr.v1.PreviewGatewayPageResponse
+	55, // 117: rpmgr.v1.GatewayService.DeleteGatewayPage:output_type -> rpmgr.v1.DeleteGatewayPageResponse
+	95, // [95:118] is the sub-list for method output_type
+	72, // [72:95] is the sub-list for method input_type
+	72, // [72:72] is the sub-list for extension type_name
+	72, // [72:72] is the sub-list for extension extendee
+	0,  // [0:72] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_gateway_proto_init() }
@@ -4095,13 +4249,17 @@ func file_rpmgr_v1_gateway_proto_init() {
 	file_rpmgr_v1_common_proto_init()
 	file_rpmgr_v1_options_proto_init()
 	file_rpmgr_v1_status_proto_init()
+	file_rpmgr_v1_gateway_proto_msgTypes[16].OneofWrappers = []any{
+		(*DnsTarget_Cname)(nil),
+		(*DnsTarget_Addresses)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_gateway_proto_rawDesc), len(file_rpmgr_v1_gateway_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   53,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

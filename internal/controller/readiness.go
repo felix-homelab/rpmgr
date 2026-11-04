@@ -127,15 +127,30 @@ func (s *Sessions) dataSessions(id pki.Identity, list []*agentv1.DataSession) {
 			return cmp.Or(cmp.Compare(a.connector, b.connector), cmp.Compare(a.transport, b.transport))
 		}) {
 			rtt := next[k].GetRtt().AsDuration().Milliseconds()
+			// The routes ready on the sessions; unset from a gateway of a release that does not report them.
+			var routes []string
+			known := next[k].GetReadyRoutesKnown()
+			if known {
+				routes = readyRoutes(next[k].GetReadyRoutes())
+			}
 			if row, ok := held[k]; ok {
-				if err := tx.DataSession.UpdateOne(row).SetRttMs(max(rtt, 0)).SetReportedAt(now).Exec(s.sys); err != nil {
+				u := tx.DataSession.UpdateOne(row).SetRttMs(max(rtt, 0)).SetReportedAt(now)
+				if known {
+					u.SetReadyRoutes(routes)
+				} else {
+					u.ClearReadyRoutes()
+				}
+				if err := u.Exec(s.sys); err != nil {
 					return err
 				}
 				continue
 			}
-			if err := tx.DataSession.Create().SetOrgID(id.Org).SetGatewayID(id.ID).SetConnectorID(k.connector).
-				SetTransport(datasession.Transport(k.transport)).SetRttMs(max(rtt, 0)).SetEstablishedAt(now).SetReportedAt(now).
-				Exec(s.sys); err != nil {
+			c := tx.DataSession.Create().SetOrgID(id.Org).SetGatewayID(id.ID).SetConnectorID(k.connector).
+				SetTransport(datasession.Transport(k.transport)).SetRttMs(max(rtt, 0)).SetEstablishedAt(now).SetReportedAt(now)
+			if known {
+				c.SetReadyRoutes(routes)
+			}
+			if err := c.Exec(s.sys); err != nil {
 				return err
 			}
 		}
@@ -145,6 +160,22 @@ func (s *Sessions) dataSessions(id pki.Identity, list []*agentv1.DataSession) {
 		s.log.Error("cannot record a gateway's data sessions", "gateway", id.ID, "error", err)
 	}
 }
+
+// readyRoutes is the list of route IDs a gateway reported ready, clipped and without more than
+// maxReadyRoutes of them; never nil, as nil would mean the gateway did not report.
+func readyRoutes(list []string) []string {
+	out := make([]string, 0, min(len(list), maxReadyRoutes))
+	for _, r := range list {
+		if len(out) == maxReadyRoutes {
+			break
+		}
+		out = append(out, clip(r))
+	}
+	return out
+}
+
+// maxReadyRoutes is how many ready routes of one connector and transport the controller keeps.
+const maxReadyRoutes = 4096
 
 // keepServing removes from next the data sessions of connectors that serve no route of the
 // reporting gateway's group, and all of them when the gateway is not an active one of its org.

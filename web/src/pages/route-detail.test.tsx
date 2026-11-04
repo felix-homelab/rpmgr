@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
 import { MetricsService, TrafficResolution, type GetRouteTrafficRequest } from "@/gen/rpmgr/v1/metrics_pb";
-import { HealthCheckType, RouteService, RouteState, type DeleteRouteRequest, type UpdateRouteRequest } from "@/gen/rpmgr/v1/route_pb";
+import { HealthCheckType, RouteService, RouteState, TransportPin, type DeleteRouteRequest, type UpdateRouteRequest } from "@/gen/rpmgr/v1/route_pb";
 import { ApplyState } from "@/gen/rpmgr/v1/status_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { policyCommand, shellArg } from "@/routes-data";
@@ -31,11 +31,10 @@ const postgres = {
   },
 };
 
-// detail renders the route's page; the connectors' data sessions use the transports given, the
-// route's traffic is recorded in traffic, deleteRoute answers a deletion, updateRoute an update,
+// detail renders the route's page; the route's traffic is recorded in traffic, deleteRoute answers a deletion, updateRoute an update,
 // and the gateway group eu has the public hostnames given; with null, the gateway groups cannot be
 // read.
-function detail(r: object, transports: Record<string, DataTransport[]> = {}, traffic: GetRouteTrafficRequest[] = [],
+function detail(r: object, traffic: GetRouteTrafficRequest[] = [],
   deleteRoute: (req: DeleteRouteRequest) => object = () => { throw apiError(Code.Unimplemented); }, publicHostnames: string[] | null = [],
   updateRoute: (req: UpdateRouteRequest) => object = () => { throw apiError(Code.Unimplemented); }) {
   return show("/routes/rte_2", auth({
@@ -53,8 +52,6 @@ function detail(r: object, transports: Record<string, DataTransport[]> = {}, tra
     });
     router.service(ConnectorService, {
       listConnectors: () => ({ connectors: [{ id: "con_db", name: "db-host-1" }, { id: "con_app", name: "app-host" }] }),
-      getConnectorStatus: (req) => ({ status: { dataSessions: (transports[req.connectorId] ?? []).map((transport) => ({ transport })) } }),
-      getConnector: (req) => ({ connector: { id: req.connectorId, name: req.connectorId, transport: connectorPins[req.connectorId] ?? DataTransport.UNSPECIFIED } }),
     });
     router.service(MetricsService, {
       getRouteTraffic: (req) => (traffic.push(req), {
@@ -80,13 +77,7 @@ function detail(r: object, transports: Record<string, DataTransport[]> = {}, tra
 const stats = (section: ReturnType<typeof within>) =>
   section.getAllByRole("term").map((dt: HTMLElement) => [dt.textContent, dt.nextElementSibling?.textContent]);
 
-// connectorPins is each connector's own transport setting, as getConnector returns it.
-let connectorPins: Record<string, DataTransport> = {};
-
 describe("RouteDetail", () => {
-  afterEach(() => {
-    connectorPins = {};
-  });
   it("shows the desired settings next to the observed state, and the gateways and agents that do not serve", async () => {
     detail(postgres);
     expect(await screen.findByRole("heading", { name: "Route postgres (TCP)" })).toBeTruthy();
@@ -103,13 +94,13 @@ describe("RouteDetail", () => {
   });
 
   it("shows a TCP route's port at each public hostname of its gateway group, an IPv6 address in brackets", async () => {
-    detail(postgres, {}, [], undefined, ["edge.example.com", "2001:db8::7"]);
+    detail(postgres, [], undefined, ["edge.example.com", "2001:db8::7"]);
     await waitFor(() => expect(screen.getByText("enabled · gateway group eu · edge.example.com:25432 · [2001:db8::7]:25432")).toBeTruthy());
     expect(screen.queryByText(/has no public hostname/)).toBeNull();
   });
 
   it("shows only the port, and no hint, while the gateway groups cannot be read", async () => {
-    detail(postgres, {}, [], undefined, null);
+    detail(postgres, [], undefined, null);
     expect(await screen.findByText(/:25432$/)).toBeTruthy();
     await new Promise((r) => setTimeout(r, 50)); // the groups' request has failed by now
     expect(screen.queryByText(/has no public hostname/)).toBeNull();
@@ -159,7 +150,7 @@ describe("RouteDetail", () => {
     await waitFor(() => expect(rows[1]!.textContent).toContain("db-host-1"));
     const cells = within(rows[2]!).getAllByRole("cell");
     expect(cells[3]!.textContent).toBe("unknownIts first health check has not finished. It gets traffic once it passed, or while no other target of its priority is healthy.");
-    expect(cells[4]!.textContent).toContain("ready"); // not a problem: it serves when no other target does
+    expect(cells[5]!.textContent).toContain("ready"); // not a problem: it serves when no other target does
     expect(within(rows[2]!).queryByText("its health check has not decided yet")).toBeNull();
   });
 
@@ -193,38 +184,77 @@ describe("RouteDetail", () => {
     expect(within(rows[2]!).getByText("ready")).toBeTruthy();
   });
 
-  it("flags a target served over the HTTP/2 fallback", async () => {
-    detail(postgres, { con_app: [DataTransport.H2], con_db: [DataTransport.QUIC, DataTransport.H2] });
-    expect(await screen.findByText("served over TLS and HTTP/2, the fallback for QUIC")).toBeTruthy();
-    expect(screen.getAllByText(/the fallback for QUIC/)).toHaveLength(1); // con_db has a QUIC session too
-    cleanup();
-    detail({ ...postgres, transport: DataTransport.H2 }, { con_app: [DataTransport.H2] }); // pinned, not a fallback
+  // withTransports is postgres with the transports its status reports per target.
+  const withTransports = (targetTransports: object[], targetsReady = 2) =>
+    ({ ...postgres, status: { ...postgres.status, notServing: [{ id: "gtw_2", reason: "OFFLINE" }], targetsReady, targetTransports } });
+  const transportCells = async () => {
     await screen.findByRole("heading", { name: "Route postgres (TCP)" });
     await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(3));
-    expect(screen.queryByText(/the fallback for QUIC/)).toBeNull();
+    // the Transport column is the fifth of a target's row
+    return screen.getAllByRole("row").slice(1).map((r) => r.querySelectorAll("td")[4]!.textContent);
+  };
+
+  it("shows each target the transport its streams take, the raced and the fallback ones told apart", async () => {
+    detail(withTransports([
+      { targetId: "tgt_1", gateways: [{ gatewayId: "gtw_1", transport: DataTransport.QUIC }, { gatewayId: "gtw_2", transport: DataTransport.QUIC }] },
+      { targetId: "tgt_2", gateways: [{ gatewayId: "gtw_1", transport: DataTransport.H2 }, { gatewayId: "gtw_2", transport: DataTransport.H2 }] },
+    ]));
+    expect(await transportCells()).toEqual(["QUIC", "HTTP/2 (fallback for QUIC)"]);
+    // The route header summarises the targets per transport.
+    expect(screen.getByText("Transport: QUIC 1 · HTTP/2 1")).toBeTruthy();
+    cleanup();
+    detail(withTransports([
+      { targetId: "tgt_1", gateways: [{ gatewayId: "gtw_1", transport: DataTransport.WSS }] },
+      { targetId: "tgt_2", gateways: [{ gatewayId: "gtw_1", transport: DataTransport.H2 }] },
+    ]));
+    expect(await transportCells()).toEqual(["WSS (fallback)", "HTTP/2 (fallback for QUIC)"]);
   });
 
-  it("marks no fallback where a pin chose the transport or the target does not serve", async () => {
-    const rows = async () => {
-      await screen.findByRole("heading", { name: "Route postgres (TCP)" });
-      await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(3));
-    };
-    // The route pinned to QUIC: never served over HTTP/2.
-    detail({ ...postgres, transport: DataTransport.QUIC }, { con_app: [DataTransport.H2] });
-    await rows();
-    expect(screen.queryByText(/the fallback for QUIC/)).toBeNull();
+  it("says where a pin is set, and never calls a pinned transport a fallback", async () => {
+    const on = (pinnedBy: TransportPin, transport: DataTransport) => ({ pinnedBy, gateways: [{ gatewayId: "gtw_1", transport }] });
+    detail(withTransports([
+      { targetId: "tgt_1", ...on(TransportPin.ROUTE, DataTransport.H2) },
+      { targetId: "tgt_2", ...on(TransportPin.CONNECTOR, DataTransport.QUIC) },
+    ]));
+    expect(await transportCells()).toEqual(["HTTP/2 (pinned on the route)", "QUIC (pinned on the connector)"]);
     cleanup();
-    // The connector pinned to HTTP/2: chosen, not a fallback.
-    connectorPins = { con_app: DataTransport.H2 };
-    detail(postgres, { con_app: [DataTransport.H2] });
-    await rows();
-    expect(screen.queryByText(/the fallback for QUIC/)).toBeNull();
+    detail(withTransports([
+      { targetId: "tgt_1", ...on(TransportPin.INSTANCE, DataTransport.WSS) },
+      { targetId: "tgt_2", ...on(TransportPin.ROUTE, DataTransport.WSS) },
+    ]));
+    expect(await transportCells()).toEqual(["WSS (pinned by the instance default)", "WSS (pinned on the route)"]);
+  });
+
+  it("shows a target served over different transports through different gateways one by one", async () => {
+    detail(withTransports([
+      { targetId: "tgt_1", gateways: [{ gatewayId: "gtw_1", transport: DataTransport.QUIC }, { gatewayId: "gtw_2", transport: DataTransport.QUIC },
+        { gatewayId: "gtw_3", transport: DataTransport.H2 }] },
+      { targetId: "tgt_2", gateways: [{ gatewayId: "gtw_1", transport: DataTransport.QUIC }, { gatewayId: "gtw_2", transport: DataTransport.H2 }] },
+    ]));
+    expect(await transportCells()).toEqual(["QUIC on 2 gatewaysHTTP/2 (fallback for QUIC) on gtw_3", "QUIC on gw-eu-1HTTP/2 (fallback for QUIC) on gw-eu-2"]);
+    // The gateways of a group are named on hover.
+    expect(screen.getByText("QUIC on 2 gateways").getAttribute("title")).toBe("gw-eu-1, gw-eu-2");
+    expect(screen.getByText("Transport: QUIC 2 · HTTP/2 2")).toBeTruthy();
+  });
+
+  it("shows unknown where a gateway does not report the transport, and nothing for a target that does not serve", async () => {
+    // tgt_1 is blocked by the local policy, so it has none. tgt_2 is served through a gateway of an
+    // earlier release.
+    detail({ ...postgres, status: { ...postgres.status, targetTransports: [
+      { targetId: "tgt_1" },
+      { targetId: "tgt_2", gateways: [{ gatewayId: "gtw_1" }] },
+    ] } });
+    expect(await transportCells()).toEqual(["—", "unknown"]);
+    expect(screen.getByText("Transport: unknown 1")).toBeTruthy();
     cleanup();
-    // A target that does not serve, here blocked by the local policy, is served over nothing.
-    connectorPins = {};
-    detail(postgres, { con_db: [DataTransport.H2] });
-    await rows();
-    expect(screen.queryByText(/the fallback for QUIC/)).toBeNull();
+    // A status without transports (a target not served, an offline connector, an older controller):
+    // a dash, and no summary in the header.
+    detail(withTransports([{ targetId: "tgt_1" }, { targetId: "tgt_2" }]));
+    expect(await transportCells()).toEqual(["—", "—"]);
+    expect(screen.queryByText(/^Transport:/)).toBeNull();
+    cleanup();
+    detail(postgres);
+    expect(await transportCells()).toEqual(["—", "—"]);
   });
 
   it("shows UDP routes without a hint about datagram sizes", async () => {
@@ -243,7 +273,7 @@ describe("RouteDetail", () => {
 
   it("shows the route's traffic of the last 24 hours, or per day of the last 30 days", async () => {
     const traffic: GetRouteTrafficRequest[] = [];
-    detail(postgres, {}, traffic);
+    detail(postgres, traffic);
     const section = within(await screen.findByRole("region", { name: "Traffic" }));
     await section.findByText("1 kB");
     expect(stats(section)).toEqual([["In", "1 kB"], ["Out", "5 B"], ["Connections", "2"], ["Errors", "0"]]);
@@ -271,7 +301,7 @@ describe("RouteDetail", () => {
 
   it("deletes the route under its etag after a confirmation that names it, and follows the deletion", async () => {
     const deletes: DeleteRouteRequest[] = [];
-    detail({ ...postgres, etag: "4" }, {}, [], (req) => (deletes.push(req),
+    detail({ ...postgres, etag: "4" }, [], (req) => (deletes.push(req),
       { revision: { dbEpoch: "e", seq: 12n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 3, agentsApplied: 3 } }));
     await screen.findByRole("heading", { name: "Route postgres (TCP)" });
     fireEvent.click(screen.getByRole("button", { name: "Delete…" }));
@@ -294,7 +324,7 @@ describe("RouteDetail", () => {
     const updates: UpdateRouteRequest[] = [];
     const web = { ...postgres, etag: "4", spec: { case: "http" as const, value: { hostnames: ["app.example.com"], maintenanceMessage: "Back at 18:00." } },
       status: { state: RouteState.READY } };
-    detail(web, {}, [], undefined, [], (req) => (updates.push(req),
+    detail(web, [], undefined, [], (req) => (updates.push(req),
       { route: req.route, revision: { dbEpoch: "e", seq: 13n }, applyStatus: { state: ApplyState.APPLIED, agentsTotal: 2, agentsApplied: 2 } }));
     const toggle = await screen.findByRole("switch", { name: "Maintenance" });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
@@ -322,7 +352,7 @@ describe("RouteDetail", () => {
 
   it("keeps the route and says why when the deletion is refused", async () => {
     let refusal = apiError(Code.FailedPrecondition, "ETAG_MISMATCH");
-    detail({ ...postgres, etag: "4" }, {}, [], () => { throw refusal; });
+    detail({ ...postgres, etag: "4" }, [], () => { throw refusal; });
     await screen.findByRole("heading", { name: "Route postgres (TCP)" });
     fireEvent.click(screen.getByRole("button", { name: "Delete…" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete it" }));

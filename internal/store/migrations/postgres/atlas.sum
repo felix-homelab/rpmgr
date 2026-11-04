@@ -1,4 +1,4 @@
-h1:MTy0cdD9VnMAkN1vF2ELHzz7RW2GJ8xoCMlr5u38yto=
+h1:1yVUsPVbG0CSWjoVGoE1fJT8Uf4xhhoxR1NkHR6kW/A=
 20261009220804_baseline.sql h1:3YnrznDnj07R9ghUsKGrAaoH81vUNv9tKMjohnF7NbI=
 20261013061722_agent_names_active.sql h1:YBZGGRxkqNhw3g8AAlmxBulLeHSa0HXuN/5hA2EuZJc=
 20261014071550_target_tls_verification.sql h1:7FaM1r92ArAAXb64nJni/M6AAFUGjjZdTOQm0iSFORw=
@@ -23,3 +23,6 @@ h1:MTy0cdD9VnMAkN1vF2ELHzz7RW2GJ8xoCMlr5u38yto=
 20261030073000_mail_jobs.sql h1:ifG0E3385vDE2ScRAkB2ZGPfVqFttv0z8r++vPewGZg=
 20261030174700_audit_sink_verification.sql h1:+NqhFB7C9+FTEfVmrjoj8HPt1JSJ2YXDYyWpqjWQ1oc=
 20261102103301_webhook_formats.sql h1:OY8yVluMhpolqZFdBu98bSj3NYaZZt06bAb7aHbfjYk=
+20261104081702_data_session_ready_routes.sql h1:P6So+6N4tJCObu3dwYS3HfG3cAV24XhCylPD9VA1lcA=
+20261104081745_gateway_group_dns_target.sql h1:IxY9HXpWwcUUgBP7kdNQWVPfoNixnWgp+TK/a8HZV0Q=
+20261104082908_dns_providers.sql h1:aTMxB4wxbAe/V8mfRe62U3yAep6vyTrJJ49ovGwCrf8=
