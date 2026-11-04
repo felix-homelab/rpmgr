@@ -860,6 +860,8 @@ var (
 		{Name: "region", Type: field.TypeString, Nullable: true},
 		{Name: "public_hostnames", Type: field.TypeJSON, Nullable: true},
 		{Name: "trusted_proxy_cidrs", Type: field.TypeJSON, Nullable: true},
+		{Name: "dns_cname", Type: field.TypeString, Nullable: true},
+		{Name: "dns_addresses", Type: field.TypeJSON, Nullable: true},
 	}
 	// GatewayGroupsTable holds the schema information for the "gateway_groups" table.
 	GatewayGroupsTable = &schema.Table{

@@ -22535,6 +22535,9 @@ type GatewayGroupMutation struct {
 	appendpublic_hostnames    []string
 	trusted_proxy_cidrs       *[]string
 	appendtrusted_proxy_cidrs []string
+	dns_cname                 *string
+	dns_addresses             *[]string
+	appenddns_addresses       []string
 	clearedFields             map[string]struct{}
 	done                      bool
 	oldValue                  func(context.Context) (*GatewayGroup, error)
@@ -22952,6 +22955,120 @@ func (m *GatewayGroupMutation) ResetTrustedProxyCidrs() {
 	delete(m.clearedFields, gatewaygroup.FieldTrustedProxyCidrs)
 }
 
+// SetDNSCname sets the "dns_cname" field.
+func (m *GatewayGroupMutation) SetDNSCname(s string) {
+	m.dns_cname = &s
+}
+
+// DNSCname returns the value of the "dns_cname" field in the mutation.
+func (m *GatewayGroupMutation) DNSCname() (r string, exists bool) {
+	v := m.dns_cname
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDNSCname returns the old "dns_cname" field's value of the GatewayGroup entity.
+// If the GatewayGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayGroupMutation) OldDNSCname(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDNSCname is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDNSCname requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDNSCname: %w", err)
+	}
+	return oldValue.DNSCname, nil
+}
+
+// ClearDNSCname clears the value of the "dns_cname" field.
+func (m *GatewayGroupMutation) ClearDNSCname() {
+	m.dns_cname = nil
+	m.clearedFields[gatewaygroup.FieldDNSCname] = struct{}{}
+}
+
+// DNSCnameCleared returns if the "dns_cname" field was cleared in this mutation.
+func (m *GatewayGroupMutation) DNSCnameCleared() bool {
+	_, ok := m.clearedFields[gatewaygroup.FieldDNSCname]
+	return ok
+}
+
+// ResetDNSCname resets all changes to the "dns_cname" field.
+func (m *GatewayGroupMutation) ResetDNSCname() {
+	m.dns_cname = nil
+	delete(m.clearedFields, gatewaygroup.FieldDNSCname)
+}
+
+// SetDNSAddresses sets the "dns_addresses" field.
+func (m *GatewayGroupMutation) SetDNSAddresses(s []string) {
+	m.dns_addresses = &s
+	m.appenddns_addresses = nil
+}
+
+// DNSAddresses returns the value of the "dns_addresses" field in the mutation.
+func (m *GatewayGroupMutation) DNSAddresses() (r []string, exists bool) {
+	v := m.dns_addresses
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDNSAddresses returns the old "dns_addresses" field's value of the GatewayGroup entity.
+// If the GatewayGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayGroupMutation) OldDNSAddresses(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDNSAddresses is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDNSAddresses requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDNSAddresses: %w", err)
+	}
+	return oldValue.DNSAddresses, nil
+}
+
+// AppendDNSAddresses adds s to the "dns_addresses" field.
+func (m *GatewayGroupMutation) AppendDNSAddresses(s []string) {
+	m.appenddns_addresses = append(m.appenddns_addresses, s...)
+}
+
+// AppendedDNSAddresses returns the list of values that were appended to the "dns_addresses" field in this mutation.
+func (m *GatewayGroupMutation) AppendedDNSAddresses() ([]string, bool) {
+	if len(m.appenddns_addresses) == 0 {
+		return nil, false
+	}
+	return m.appenddns_addresses, true
+}
+
+// ClearDNSAddresses clears the value of the "dns_addresses" field.
+func (m *GatewayGroupMutation) ClearDNSAddresses() {
+	m.dns_addresses = nil
+	m.appenddns_addresses = nil
+	m.clearedFields[gatewaygroup.FieldDNSAddresses] = struct{}{}
+}
+
+// DNSAddressesCleared returns if the "dns_addresses" field was cleared in this mutation.
+func (m *GatewayGroupMutation) DNSAddressesCleared() bool {
+	_, ok := m.clearedFields[gatewaygroup.FieldDNSAddresses]
+	return ok
+}
+
+// ResetDNSAddresses resets all changes to the "dns_addresses" field.
+func (m *GatewayGroupMutation) ResetDNSAddresses() {
+	m.dns_addresses = nil
+	m.appenddns_addresses = nil
+	delete(m.clearedFields, gatewaygroup.FieldDNSAddresses)
+}
+
 // Where appends a list predicates to the GatewayGroupMutation builder.
 func (m *GatewayGroupMutation) Where(ps ...predicate.GatewayGroup) {
 	m.predicates = append(m.predicates, ps...)
@@ -22986,7 +23103,7 @@ func (m *GatewayGroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GatewayGroupMutation) Fields() []string {
-	fields := make([]string, 0, 6)
+	fields := make([]string, 0, 8)
 	if m.org_id != nil {
 		fields = append(fields, gatewaygroup.FieldOrgID)
 	}
@@ -23004,6 +23121,12 @@ func (m *GatewayGroupMutation) Fields() []string {
 	}
 	if m.trusted_proxy_cidrs != nil {
 		fields = append(fields, gatewaygroup.FieldTrustedProxyCidrs)
+	}
+	if m.dns_cname != nil {
+		fields = append(fields, gatewaygroup.FieldDNSCname)
+	}
+	if m.dns_addresses != nil {
+		fields = append(fields, gatewaygroup.FieldDNSAddresses)
 	}
 	return fields
 }
@@ -23025,6 +23148,10 @@ func (m *GatewayGroupMutation) Field(name string) (ent.Value, bool) {
 		return m.PublicHostnames()
 	case gatewaygroup.FieldTrustedProxyCidrs:
 		return m.TrustedProxyCidrs()
+	case gatewaygroup.FieldDNSCname:
+		return m.DNSCname()
+	case gatewaygroup.FieldDNSAddresses:
+		return m.DNSAddresses()
 	}
 	return nil, false
 }
@@ -23046,6 +23173,10 @@ func (m *GatewayGroupMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldPublicHostnames(ctx)
 	case gatewaygroup.FieldTrustedProxyCidrs:
 		return m.OldTrustedProxyCidrs(ctx)
+	case gatewaygroup.FieldDNSCname:
+		return m.OldDNSCname(ctx)
+	case gatewaygroup.FieldDNSAddresses:
+		return m.OldDNSAddresses(ctx)
 	}
 	return nil, fmt.Errorf("unknown GatewayGroup field %s", name)
 }
@@ -23096,6 +23227,20 @@ func (m *GatewayGroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTrustedProxyCidrs(v)
+		return nil
+	case gatewaygroup.FieldDNSCname:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDNSCname(v)
+		return nil
+	case gatewaygroup.FieldDNSAddresses:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDNSAddresses(v)
 		return nil
 	}
 	return fmt.Errorf("unknown GatewayGroup field %s", name)
@@ -23151,6 +23296,12 @@ func (m *GatewayGroupMutation) ClearedFields() []string {
 	if m.FieldCleared(gatewaygroup.FieldTrustedProxyCidrs) {
 		fields = append(fields, gatewaygroup.FieldTrustedProxyCidrs)
 	}
+	if m.FieldCleared(gatewaygroup.FieldDNSCname) {
+		fields = append(fields, gatewaygroup.FieldDNSCname)
+	}
+	if m.FieldCleared(gatewaygroup.FieldDNSAddresses) {
+		fields = append(fields, gatewaygroup.FieldDNSAddresses)
+	}
 	return fields
 }
 
@@ -23173,6 +23324,12 @@ func (m *GatewayGroupMutation) ClearField(name string) error {
 		return nil
 	case gatewaygroup.FieldTrustedProxyCidrs:
 		m.ClearTrustedProxyCidrs()
+		return nil
+	case gatewaygroup.FieldDNSCname:
+		m.ClearDNSCname()
+		return nil
+	case gatewaygroup.FieldDNSAddresses:
+		m.ClearDNSAddresses()
 		return nil
 	}
 	return fmt.Errorf("unknown GatewayGroup nullable field %s", name)
@@ -23199,6 +23356,12 @@ func (m *GatewayGroupMutation) ResetField(name string) error {
 		return nil
 	case gatewaygroup.FieldTrustedProxyCidrs:
 		m.ResetTrustedProxyCidrs()
+		return nil
+	case gatewaygroup.FieldDNSCname:
+		m.ResetDNSCname()
+		return nil
+	case gatewaygroup.FieldDNSAddresses:
+		m.ResetDNSAddresses()
 		return nil
 	}
 	return fmt.Errorf("unknown GatewayGroup field %s", name)

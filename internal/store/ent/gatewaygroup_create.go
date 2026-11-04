@@ -71,6 +71,26 @@ func (_c *GatewayGroupCreate) SetTrustedProxyCidrs(v []string) *GatewayGroupCrea
 	return _c
 }
 
+// SetDNSCname sets the "dns_cname" field.
+func (_c *GatewayGroupCreate) SetDNSCname(v string) *GatewayGroupCreate {
+	_c.mutation.SetDNSCname(v)
+	return _c
+}
+
+// SetNillableDNSCname sets the "dns_cname" field if the given value is not nil.
+func (_c *GatewayGroupCreate) SetNillableDNSCname(v *string) *GatewayGroupCreate {
+	if v != nil {
+		_c.SetDNSCname(*v)
+	}
+	return _c
+}
+
+// SetDNSAddresses sets the "dns_addresses" field.
+func (_c *GatewayGroupCreate) SetDNSAddresses(v []string) *GatewayGroupCreate {
+	_c.mutation.SetDNSAddresses(v)
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *GatewayGroupCreate) SetID(v string) *GatewayGroupCreate {
 	_c.mutation.SetID(v)
@@ -235,6 +255,14 @@ func (_c *GatewayGroupCreate) createSpec() (*GatewayGroup, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.TrustedProxyCidrs(); ok {
 		_spec.SetField(gatewaygroup.FieldTrustedProxyCidrs, field.TypeJSON, value)
 		_node.TrustedProxyCidrs = value
+	}
+	if value, ok := _c.mutation.DNSCname(); ok {
+		_spec.SetField(gatewaygroup.FieldDNSCname, field.TypeString, value)
+		_node.DNSCname = value
+	}
+	if value, ok := _c.mutation.DNSAddresses(); ok {
+		_spec.SetField(gatewaygroup.FieldDNSAddresses, field.TypeJSON, value)
+		_node.DNSAddresses = value
 	}
 	return _node, _spec
 }
