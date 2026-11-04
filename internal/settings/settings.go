@@ -51,6 +51,7 @@ func InstanceDefaults() *rpmgrv1.InstanceSettings {
 		AuditRetention:          durationpb.New(365 * day),
 		AcmeDirectoryUrl:        proto.String(LetsEncrypt),
 		RolloutMode:             rpmgrv1.RolloutMode_ROLLOUT_MODE_EASY.Enum(),
+		CloudflareIpRefresh:     proto.Bool(true),
 	}
 }
 
@@ -118,7 +119,30 @@ func InitInstanceTx(ctx context.Context, tx *ent.Tx, initial *rpmgrv1.InstanceSe
 // UpdateInstance applies the fields of upd that mask names; a named field that upd does not set
 // returns to its default. etag must be the version the caller read, or 0 to skip the check.
 func UpdateInstance(ctx context.Context, db *store.DB, upd *rpmgrv1.InstanceSettings, mask *fieldmaskpb.FieldMask, etag int64) (store.Revision, error) {
+	if slices.Contains(mask.GetPaths(), controllerKept) {
+		return store.Revision{}, fmt.Errorf("%w: %s is kept by the controller's refresh job", ErrInvalid, controllerKept)
+	}
+	return updateInstance(ctx, db, upd, mask, etag, nil)
+}
+
+// controllerKept is the instance setting only the controller's refresh job writes.
+const controllerKept = "cloudflare_ip_ranges"
+
+// RecordCloudflareRanges stores the Cloudflare IP ranges an accepted refresh took, in a
+// configuration transaction, so gateways get them in their next snapshots. fence runs first in
+// the transaction and fails if the job's lease is lost.
+func RecordCloudflareRanges(ctx context.Context, db *store.DB, ranges *rpmgrv1.CloudflareIpRanges, fence func(*ent.Tx) error) (store.Revision, error) {
+	return updateInstance(ctx, db, &rpmgrv1.InstanceSettings{CloudflareIpRanges: ranges},
+		&fieldmaskpb.FieldMask{Paths: []string{controllerKept}}, 0, fence)
+}
+
+func updateInstance(ctx context.Context, db *store.DB, upd *rpmgrv1.InstanceSettings, mask *fieldmaskpb.FieldMask, etag int64, fence func(*ent.Tx) error) (store.Revision, error) {
 	return store.ConfigTx(ctx, db, func(tx *ent.Tx) ([]string, error) {
+		if fence != nil {
+			if err := fence(tx); err != nil {
+				return nil, err
+			}
+		}
 		stored := &rpmgrv1.InstanceSettings{}
 		var version int64
 		row, err := tx.InstanceSetting.Get(ctx, 1)

@@ -54,7 +54,8 @@
       "audit_checkpoints_behind": "Audit checkpoints behind",
       "revocation_log_on_host": "Revocation log not yet off-host",
       "webhook_failing": "Webhook endpoint failing",
-      "audit_sink_backlog": "Audit sink backlog"
+      "audit_sink_backlog": "Audit sink backlog",
+      "cloudflare_ranges_stale": "Cloudflare IP ranges stale"
     }
   },
   "draining": {

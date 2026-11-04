@@ -432,11 +432,23 @@ A proxied name resolves to Cloudflare. Cloudflare terminates TLS and connects to
   route the gateway's trusted-proxy CIDRs apply as before.
 - **Ranges.**
   - A daily job reads `GET https://api.cloudflare.com/client/v4/ips`
-    [F cf:fundamentals/concepts/cloudflare-ip-addresses]. It stores the ranges as an instance
-    setting in a configuration transaction, so snapshots stay deterministic across HA replicas.
+    [F cf:fundamentals/concepts/cloudflare-ip-addresses] under the lease `cloudflare-ranges`,
+    through the proxy the environment names ([10](10-operations.md#ports)).
+    It stores the ranges as the instance setting `cloudflare_ip_ranges` in a configuration
+    transaction fenced by the lease, so snapshots stay deterministic across HA replicas. Only the
+    job writes the setting; an update that names it is refused, and `rpmgr update settings` does
+    not list it.
   - A fetched list is accepted only within sanity bounds ([Timers and limits](#timers-and-limits)).
-    Otherwise the last accepted list stays, and an alert fires.
-  - The binary embeds a fallback list for installations without egress.
+    Otherwise the last accepted list stays, the refresh is tried again after an hour, the metric
+    counts the result and the alert "Cloudflare IP ranges stale" fires once the list has been
+    old for too long while a route is proxied
+    ([10](10-operations.md#suggested-alerts)).
+  - The binary embeds a fallback list with the date it was retrieved
+    (`internal/cfranges/fallback.json`). It is used until a refresh succeeds and by
+    installations without egress; a release carries the list of its build day.
+  - The instance setting `cloudflare_ip_refresh` (default on) switches the refresh off, for
+    installations that must not reach Cloudflare or that keep the list by other means. The list
+    in use then stays as it is, and the alert does not fire.
 - **What the operator must know:**
   - Cloudflare sees the plaintext of proxied routes ([04](04-security.md#threat-model)).
   - Set the zone's SSL/TLS mode to **Full (strict)**. The gateway's ACME certificates satisfy it
@@ -515,5 +527,6 @@ type Provider interface {
 | [R] TXT proof query | 5 s per nameserver address, over UDP and again over TCP when truncated; at most 8 nameservers of a zone |
 | [R] HTTP token fetch | 10 s; no redirect followed; at most 256 bytes; through the proxy the environment names |
 | Token check | every 1 h; expiry warning 14 days ahead |
-| Cloudflare IP ranges | refreshed every 24 h; accepted only if non-empty and at most half of the entries changed |
+| Cloudflare IP ranges | refreshed every 24 h, tried again every 1 h after a failure or a rejected list; accepted only if both families are non-empty, no IPv4 prefix is shorter than /8 and no IPv6 prefix shorter than /16, at most 512 entries, and at most half of the entries in use are gone and at most half of the new entries are new (exactly half passes); the stale alert fires 15 min after the list in use is older than 72 h while a route is proxied |
+| [R] Cloudflare IP ranges fetch | 10 s; no redirect followed; at most 64 KiB; through the proxy the environment names |
 | DNS-01 propagation timeout | 2 min (certmagic default [F certmagic:solvers.go:532]) |

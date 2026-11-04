@@ -20,6 +20,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
@@ -79,7 +80,10 @@ func (a *settingsAPI) GetInstanceSettings(_ context.Context, req *connect.Reques
 		DefaultTransport:        rpmgrv1.TransportPolicy_TRANSPORT_POLICY_AUTO.Enum(),
 		LeafCertificateLifetime: durationpb.New(7 * 24 * time.Hour), ExpiredCertificateGrace: durationpb.New(90 * time.Minute),
 		PasswordHashProfile: rpmgrv1.PasswordHashProfile_PASSWORD_HASH_PROFILE_DEFAULT.Enum(), AcmeEmail: proto.String("ops@example.com"),
-		Smtp: &rpmgrv1.SmtpSettings{Server: "mail.example.com:587", From: "rpmgr@example.com", Security: rpmgrv1.SmtpSecurity_SMTP_SECURITY_STARTTLS},
+		Smtp:                &rpmgrv1.SmtpSettings{Server: "mail.example.com:587", From: "rpmgr@example.com", Security: rpmgrv1.SmtpSecurity_SMTP_SECURITY_STARTTLS},
+		CloudflareIpRefresh: proto.Bool(true),
+		CloudflareIpRanges: &rpmgrv1.CloudflareIpRanges{Ipv4Cidrs: []string{"192.0.2.0/24"}, Ipv6Cidrs: []string{"2001:db8::/32", "2001:db9::/32"},
+			RefreshedAt: timestamppb.New(time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC))},
 	}}), nil
 }
 
@@ -152,7 +156,8 @@ func TestSettings(t *testing.T) {
 	for setting, want := range map[string]string{"leaf_certificate_lifetime": "7d", "expired_certificate_grace": "1h30m0s",
 		"password_hash_profile": "default", "default_transport": "auto", "update_channel": "-", "public_url_aliases": "-",
 		"acme_email": "ops@example.com", "smtp.server": "mail.example.com:587", "smtp.security": "starttls", "smtp.username": "-",
-		"smtp password": "set"} {
+		"smtp password": "set", "cloudflare_ip_refresh": "true",
+		"cloudflare_ip_ranges": "1 IPv4 and 2 IPv6 ranges, refreshed 2026-11-04T12:00:00Z"} {
 		if got := rows(out)[setting]; code != cli.ExitOK || got != want {
 			t.Errorf("the instance's %s: %q, want %q (%d)", setting, got, want, code)
 		}
@@ -201,6 +206,7 @@ func TestSettings(t *testing.T) {
 		"an unknown setting":  {"--set", "colour=blue"},
 		"not a bool":          {"--set", "require_mfa=maybe"},
 		"an unknown part":     {"--instance", "--set", "smtp.port=25"},
+		"the kept ranges":     {"--instance", "--set", "cloudflare_ip_ranges.ipv4_cidrs=0.0.0.0/0"},
 		"a group as a value":  {"--instance", "--set", "smtp=relay"},
 		"not a duration":      {"--instance", "--set", "leaf_certificate_lifetime=forever"},
 		"too long":            {"--instance", "--set", "leaf_certificate_lifetime=31d"},

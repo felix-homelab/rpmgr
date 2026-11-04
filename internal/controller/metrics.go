@@ -11,6 +11,8 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/auditsink"
+	"github.com/felix-homelab/rpmgr/internal/cfranges"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 )
@@ -27,6 +29,7 @@ const (
 // limits' refusals (docs/10-operations.md, "Metrics").
 type Metrics struct {
 	refused *prometheus.CounterVec
+	ranges  *prometheus.CounterVec
 }
 
 // NewMetrics registers the controller's metrics with reg: the ACME certificates' expiry, how long
@@ -35,10 +38,15 @@ type Metrics struct {
 func NewMetrics(reg prometheus.Registerer, db *store.DB, sys context.Context, now func() time.Time) (*Metrics, error) {
 	m := &Metrics{refused: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "rpmgr_ratelimit_refused_total",
 		Help: "Requests a rate limit refused; they are not in the audit log."}, []string{"limit"})}
+	m.ranges = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "rpmgr_dns_cloudflare_ranges_refresh_total",
+		Help: "Refresh attempts of the Cloudflare IP ranges by this controller: ok, rejected, failed."}, []string{"result"})
+	for _, r := range []string{RangesOK, RangesRejected, RangesFailed} {
+		m.ranges.WithLabelValues(r)
+	}
 	for _, l := range []string{LimitLogin, LimitAccount, LimitPasswordReset, LimitEnrollment} {
 		m.refused.WithLabelValues(l)
 	}
-	return m, errors.Join(reg.Register(m.refused), reg.Register(dbCollector{db: db, sys: sys, now: now}))
+	return m, errors.Join(reg.Register(m.refused), reg.Register(m.ranges), reg.Register(dbCollector{db: db, sys: sys, now: now}))
 }
 
 // Refused returns the function that counts a refusal of limit.
@@ -47,7 +55,14 @@ func (m *Metrics) Refused(limit string) func() {
 	return c.Inc
 }
 
+// RangesResult returns the function that counts the result of a Cloudflare range refresh.
+func (m *Metrics) RangesResult() func(string) {
+	return func(result string) { m.ranges.WithLabelValues(result).Inc() }
+}
+
 var (
+	rangesAgeDesc = prometheus.NewDesc("rpmgr_dns_cloudflare_ranges_age_seconds",
+		"Age of the Cloudflare IP ranges in use: since the last accepted refresh, or since the built-in list was retrieved.", nil, nil)
 	acmeExpiryDesc = prometheus.NewDesc("rpmgr_acme_cert_expiry_timestamp_seconds", "When each hostname's ACME certificate expires.",
 		[]string{"hostname"}, nil)
 	checkpointAgeDesc = prometheus.NewDesc("rpmgr_audit_checkpoint_age_seconds",
@@ -70,6 +85,7 @@ func (c dbCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- checkpointAgeDesc
 	ch <- sinkBacklogDesc
 	ch <- sinkOldestDesc
+	ch <- rangesAgeDesc
 }
 
 func (c dbCollector) Collect(ch chan<- prometheus.Metric) {
@@ -88,6 +104,11 @@ func (c dbCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 	for name, at := range expiry {
 		ch <- prometheus.MustNewConstMetric(acmeExpiryDesc, prometheus.GaugeValue, float64(at.Unix()), name)
+	}
+	if inst, _, err := settings.Instance(c.sys, c.db.ReadClient()); err != nil {
+		ch <- prometheus.NewInvalidMetric(rangesAgeDesc, err)
+	} else {
+		ch <- prometheus.MustNewConstMetric(rangesAgeDesc, prometheus.GaugeValue, cfranges.FromSettings(inst).Age(c.now()).Seconds())
 	}
 	oldest, pending, err := audit.Uncovered(c.sys, c.db)
 	switch {

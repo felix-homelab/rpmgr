@@ -23,43 +23,48 @@ const Every = 30 * time.Second
 
 // The kinds of alert the controller evaluates (D142), the names alert_types chooses the e-mails from.
 const (
-	AgentOffline         = "agent_offline"
-	ConfigNotApplied     = "config_not_applied"
-	AgentCertExpiring    = "agent_certificate_expiring"
-	PublicCertExpiring   = "public_certificate_expiring"
-	RouteNoReadyTarget   = "route_no_ready_connector"
-	ClockSkew            = "clock_skew"
-	CheckpointsBehind    = "audit_checkpoints_behind"
-	RevocationLogOnHost  = "revocation_log_on_host"
-	WebhookFailing       = "webhook_failing"
-	AuditSinkBacklog     = "audit_sink_backlog"
-	offlineFor           = 5 * time.Minute
-	routeNoReadyFor      = 2 * time.Minute
-	AgentCertWithin      = 48 * time.Hour
-	PublicCertWithin     = 14 * 24 * time.Hour
-	ClockSkewOver        = 30 * time.Second
-	CheckpointsBehindFor = time.Hour
-	WebhookFailingFor    = time.Hour
+	AgentOffline          = "agent_offline"
+	ConfigNotApplied      = "config_not_applied"
+	AgentCertExpiring     = "agent_certificate_expiring"
+	PublicCertExpiring    = "public_certificate_expiring"
+	RouteNoReadyTarget    = "route_no_ready_connector"
+	ClockSkew             = "clock_skew"
+	CheckpointsBehind     = "audit_checkpoints_behind"
+	RevocationLogOnHost   = "revocation_log_on_host"
+	WebhookFailing        = "webhook_failing"
+	AuditSinkBacklog      = "audit_sink_backlog"
+	CloudflareRangesStale = "cloudflare_ranges_stale"
+	offlineFor            = 5 * time.Minute
+	routeNoReadyFor       = 2 * time.Minute
+	AgentCertWithin       = 48 * time.Hour
+	PublicCertWithin      = 14 * 24 * time.Hour
+	ClockSkewOver         = 30 * time.Second
+	CheckpointsBehindFor  = time.Hour
+	WebhookFailingFor     = time.Hour
 	// AuditSinkBacklogFor is how long a sink's oldest unshipped item waits before the alert fires.
 	AuditSinkBacklogFor = 15 * time.Minute
+	// CloudflareRangesStaleFor is how long the condition holds before the alert fires, so that a
+	// controller that has just started can refresh the list first.
+	CloudflareRangesStaleFor = 15 * time.Minute
 )
 
 // For is how long a kind's condition must hold before its alert fires; the conditions with a
 // threshold of their own fire as soon as they are seen.
-var For = map[string]time.Duration{AgentOffline: offlineFor, RouteNoReadyTarget: routeNoReadyFor}
+var For = map[string]time.Duration{AgentOffline: offlineFor, RouteNoReadyTarget: routeNoReadyFor, CloudflareRangesStale: CloudflareRangesStaleFor}
 
 // titles name each kind for people, in summaries and e-mails.
 var titles = map[string]string{
-	AgentOffline:        "Agent offline",
-	ConfigNotApplied:    "Configuration not applied",
-	AgentCertExpiring:   "Certificate renewal failing",
-	PublicCertExpiring:  "Public certificate expiring",
-	RouteNoReadyTarget:  "Route has no ready connector",
-	ClockSkew:           "Clock skew",
-	CheckpointsBehind:   "Audit checkpoints behind",
-	RevocationLogOnHost: "Revocation log not yet off-host",
-	WebhookFailing:      "Webhook endpoint failing",
-	AuditSinkBacklog:    "Audit sink backlog",
+	AgentOffline:          "Agent offline",
+	ConfigNotApplied:      "Configuration not applied",
+	AgentCertExpiring:     "Certificate renewal failing",
+	PublicCertExpiring:    "Public certificate expiring",
+	RouteNoReadyTarget:    "Route has no ready connector",
+	ClockSkew:             "Clock skew",
+	CheckpointsBehind:     "Audit checkpoints behind",
+	RevocationLogOnHost:   "Revocation log not yet off-host",
+	WebhookFailing:        "Webhook endpoint failing",
+	AuditSinkBacklog:      "Audit sink backlog",
+	CloudflareRangesStale: "Cloudflare IP ranges stale",
 }
 
 // Observation is a condition that holds now for one subject. Since is when it began, where the
