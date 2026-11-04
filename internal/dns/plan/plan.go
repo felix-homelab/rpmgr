@@ -102,6 +102,11 @@ func canon(r dns.Record) string {
 	return c
 }
 
+// SameContent reports whether two records hold the same data by the planner's matching: the same
+// type and content, addresses by value, a CNAME without case and trailing dot, a TXT without the
+// quotes a provider may add. TTL, proxy flag, name and comment are not looked at.
+func SameContent(a, b dns.Record) bool { return a.Type == b.Type && canon(a) == canon(b) }
+
 func compare(a, b dns.Record) int {
 	return cmp.Or(cmp.Compare(a.Name, b.Name), cmp.Compare(a.Type, b.Type), cmp.Compare(canon(a), canon(b)), cmp.Compare(a.ID, b.ID), cmp.Compare(a.Content, b.Content), cmp.Compare(a.TTL, b.TTL), cmp.Compare(a.Comment, b.Comment), boolCmp(a.Proxied, b.Proxied))
 }

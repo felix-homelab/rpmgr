@@ -66,7 +66,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 	if err != nil || !ok {
 		t.Fatal("no lease", err)
 	}
-	return &env{t: t, db: db, sys: sys, fake: fake, prov: prov, zone: apply.Zone{ID: z.ID, OrgID: org, ProviderID: cz.ID},
+	return &env{t: t, db: db, sys: sys, fake: fake, prov: prov, zone: apply.Zone{ID: z.ID, OrgID: org, Name: apex, ProviderID: cz.ID},
 		leases: leases, lease: l, eng: &apply.Engine{DB: db, Leases: leases, TrustDomain: td}}
 }
 

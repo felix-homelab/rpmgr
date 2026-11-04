@@ -141,7 +141,7 @@ func (e *env) addZone(name string) apply.Zone {
 	cz := e.fake.AddZone(name)
 	prov := e.db.Client().DNSProvider.Query().OnlyX(e.sys)
 	z := e.db.Client().DNSZone.Create().SetOrgID(e.zone.OrgID).SetDNSProviderID(prov.ID).SetProviderZoneID(cz.ID).SetName(name).SaveX(e.sys)
-	return apply.Zone{ID: z.ID, OrgID: e.zone.OrgID, ProviderID: cz.ID}
+	return apply.Zone{ID: z.ID, OrgID: e.zone.OrgID, Name: name, ProviderID: cz.ID}
 }
 
 var _ dns.Record

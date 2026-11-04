@@ -51,7 +51,7 @@ TestStatelessReset_DetectedWithinPingInterval	done	4.2	#72
 TestDNS_ForeignRecordNeverModified	done	6.10	#668	plan clause (internal/dns/plan, 6.9) and end-to-end clause with the fake provider (internal/dns/apply)
 TestDNS_CrossOrgPublishRefused	p2	-	-	DNS automation; nested clause (held claims are not found by Covering) in TestDNS_CrossOrgPublishRefused_Nested (7.2, #681)
 TestDNS_PendingZoneIsNotProof	done	6.6	#664	import and no-proof-by-provider-API clauses (internal/apisvc); the nameserver clause is TestTXTVerifier
-TestDNS_CrashRelinksByMarker	p2	-	-	DNS automation
+TestDNS_CrashRelinksByMarker	done	6.12	#670	internal/dns/apply; the job's use in internal/dns/job
 TestDNS_RestoreStartsHeld	p2	-	-	DNS automation
 TestDNS_DeletionGuard	p2	-	-	DNS automation
 TestDNS_FailStatic	done	6.10	#668	internal/dns/apply

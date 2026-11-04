@@ -41,6 +41,8 @@ const (
 	FieldAdoptedAt = "adopted_at"
 	// FieldLastSyncedAt holds the string denoting the last_synced_at field in the database.
 	FieldLastSyncedAt = "last_synced_at"
+	// FieldCorrectedAt holds the string denoting the corrected_at field in the database.
+	FieldCorrectedAt = "corrected_at"
 	// EdgeZone holds the string denoting the zone edge name in mutations.
 	EdgeZone = "zone"
 	// Table holds the table name of the dnsrecord in the database.
@@ -70,6 +72,7 @@ var Columns = []string{
 	FieldAdoptedFrom,
 	FieldAdoptedAt,
 	FieldLastSyncedAt,
+	FieldCorrectedAt,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -245,6 +248,11 @@ func ByAdoptedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByLastSyncedAt orders the results by the last_synced_at field.
 func ByLastSyncedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastSyncedAt, opts...).ToFunc()
+}
+
+// ByCorrectedAt orders the results by the corrected_at field.
+func ByCorrectedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCorrectedAt, opts...).ToFunc()
 }
 
 // ByZoneField orders the results by zone field.

@@ -1066,6 +1066,7 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 | DNS conflict | A name in a managed zone is `conflict` or `ambiguous` for > 15 min |
 | DNS zone held | A managed zone is `held` (after import, restore or the deletion guard) |
 | DNS sync failing | No successful pass of a managed zone for > 30 min, or the provider status is not `ok` |
+| DNS record drifted | An owned record is `drifted`: it changed again within the stop window and is no longer corrected ([15](15-dns.md#ownership-ledger)) |
 | DNS-provider token invalid or expiring | The provider rejects the token, or it expires within the warning period ([15](15-dns.md#timers-and-limits)) |
 | Cloudflare IP ranges stale | The daily refresh was rejected by the sanity bounds or failed for > 3 days, while proxied routes exist and the refresh is on; fires 15 min after the condition begins |
 

@@ -207,6 +207,26 @@ func (_u *DNSRecordUpdate) ClearLastSyncedAt() *DNSRecordUpdate {
 	return _u
 }
 
+// SetCorrectedAt sets the "corrected_at" field.
+func (_u *DNSRecordUpdate) SetCorrectedAt(v time.Time) *DNSRecordUpdate {
+	_u.mutation.SetCorrectedAt(v)
+	return _u
+}
+
+// SetNillableCorrectedAt sets the "corrected_at" field if the given value is not nil.
+func (_u *DNSRecordUpdate) SetNillableCorrectedAt(v *time.Time) *DNSRecordUpdate {
+	if v != nil {
+		_u.SetCorrectedAt(*v)
+	}
+	return _u
+}
+
+// ClearCorrectedAt clears the value of the "corrected_at" field.
+func (_u *DNSRecordUpdate) ClearCorrectedAt() *DNSRecordUpdate {
+	_u.mutation.ClearCorrectedAt()
+	return _u
+}
+
 // Mutation returns the DNSRecordMutation object of the builder.
 func (_u *DNSRecordUpdate) Mutation() *DNSRecordMutation {
 	return _u.mutation
@@ -343,6 +363,12 @@ func (_u *DNSRecordUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.LastSyncedAtCleared() {
 		_spec.ClearField(dnsrecord.FieldLastSyncedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.CorrectedAt(); ok {
+		_spec.SetField(dnsrecord.FieldCorrectedAt, field.TypeTime, value)
+	}
+	if _u.mutation.CorrectedAtCleared() {
+		_spec.ClearField(dnsrecord.FieldCorrectedAt, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -543,6 +569,26 @@ func (_u *DNSRecordUpdateOne) ClearLastSyncedAt() *DNSRecordUpdateOne {
 	return _u
 }
 
+// SetCorrectedAt sets the "corrected_at" field.
+func (_u *DNSRecordUpdateOne) SetCorrectedAt(v time.Time) *DNSRecordUpdateOne {
+	_u.mutation.SetCorrectedAt(v)
+	return _u
+}
+
+// SetNillableCorrectedAt sets the "corrected_at" field if the given value is not nil.
+func (_u *DNSRecordUpdateOne) SetNillableCorrectedAt(v *time.Time) *DNSRecordUpdateOne {
+	if v != nil {
+		_u.SetCorrectedAt(*v)
+	}
+	return _u
+}
+
+// ClearCorrectedAt clears the value of the "corrected_at" field.
+func (_u *DNSRecordUpdateOne) ClearCorrectedAt() *DNSRecordUpdateOne {
+	_u.mutation.ClearCorrectedAt()
+	return _u
+}
+
 // Mutation returns the DNSRecordMutation object of the builder.
 func (_u *DNSRecordUpdateOne) Mutation() *DNSRecordMutation {
 	return _u.mutation
@@ -709,6 +755,12 @@ func (_u *DNSRecordUpdateOne) sqlSave(ctx context.Context) (_node *DNSRecord, er
 	}
 	if _u.mutation.LastSyncedAtCleared() {
 		_spec.ClearField(dnsrecord.FieldLastSyncedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.CorrectedAt(); ok {
+		_spec.SetField(dnsrecord.FieldCorrectedAt, field.TypeTime, value)
+	}
+	if _u.mutation.CorrectedAtCleared() {
+		_spec.ClearField(dnsrecord.FieldCorrectedAt, field.TypeTime)
 	}
 	_node = &DNSRecord{config: _u.config}
 	_spec.Assign = _node.assignValues

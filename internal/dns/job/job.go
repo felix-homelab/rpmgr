@@ -72,6 +72,11 @@ type Options struct {
 	// Now is the clock; it must be the lease's. Nil is time.Now.
 	Now    func() time.Time
 	Logger *slog.Logger
+	// Report, if set, is called after a pass of a zone that found something to report: records
+	// that carry this instance's marker without a ledger row (orphans, never deleted), records
+	// someone else changed, and records that are no longer corrected because they changed again
+	// within the stop window. The alerts of docs/10 are raised from it.
+	Report func(ctx context.Context, zone *ent.DNSZone, r apply.Report)
 	// Debounce and Full override the timing, for tests; zero is the default.
 	Debounce, Full time.Duration
 }
@@ -231,10 +236,12 @@ func (j *Job) guard(l lease.Lease) func(context.Context) error {
 
 // outcome is what a pass found, for the statuses.
 type outcome struct {
-	cr   compile.Result
-	pl   plan.Plan // empty, with no hash, when the provider's records could not be listed
-	res  apply.Result
-	stop error // the pass stopped: the provider failed, or the lease ends
+	cr  compile.Result
+	pl  plan.Plan // empty, with no hash, when the provider's records could not be listed
+	res apply.Result
+	// report is what the pass found that a person should know of: orphans, drift, a repair.
+	report apply.Report
+	stop   error // the pass stopped: the provider failed, or the lease ends
 }
 
 // pass reconciles one zone. A failure of the provider or the lease is recorded and not returned;
@@ -291,18 +298,10 @@ func (j *Job) sync(ctx context.Context, l lease.Lease, z *ent.DNSZone, reserved 
 		o.stop = err
 		return nil
 	}
-	live, err := prov.ListRecords(ctx, z.ProviderZoneID)
-	if err != nil {
-		o.stop = err
-		return nil
-	}
-	owned, err := apply.Owned(ctx, j.o.DB, z.ID)
-	if err != nil {
-		return err
-	}
-	o.pl = plan.Diff(plan.Input{Zone: z.Name, Desired: o.cr.Desired, Keep: o.cr.Keep(), Reserved: reserved, Live: live, Owned: owned, TrustDomain: j.o.TrustDomain})
 	eng := &apply.Engine{DB: j.o.DB, Leases: j.o.Leases, TrustDomain: j.o.TrustDomain, Guard: j.guard(l), Now: j.o.Now}
-	o.res, err = eng.Apply(ctx, l, prov, apply.Zone{ID: z.ID, OrgID: z.OrgID, ProviderID: z.ProviderZoneID}, o.pl)
+	out, err := eng.Reconcile(ctx, l, prov, apply.Zone{ID: z.ID, OrgID: z.OrgID, Name: z.Name, ProviderID: z.ProviderZoneID},
+		apply.Wanted{Desired: o.cr.Desired, Keep: o.cr.Keep(), Reserved: reserved})
+	o.pl, o.res, o.report = out.Plan, out.Result, out.Report
 	switch {
 	case errors.Is(err, lease.ErrLost):
 		return err
@@ -392,10 +391,22 @@ func (j *Job) record(ctx context.Context, l lease.Lease, z *ent.DNSZone, o outco
 		}
 		return nil
 	})
-	if o.stop != nil && err == nil && j.o.Logger != nil {
+	if err != nil {
+		return err
+	}
+	if o.stop != nil && j.o.Logger != nil {
 		j.o.Logger.WarnContext(ctx, "a dns zone was left as it is", "dns_zone", z.ID, "err", o.stop)
 	}
-	return err
+	if r := o.report; len(r.Orphans)+len(r.Corrected)+len(r.Drifted)+r.Relinked > 0 {
+		if j.o.Logger != nil {
+			j.o.Logger.WarnContext(ctx, "a dns zone needs a look", "dns_zone", z.ID, "orphans", len(r.Orphans),
+				"corrected", len(r.Corrected), "drifted", len(r.Drifted), "relinked", r.Relinked)
+		}
+		if j.o.Report != nil {
+			j.o.Report(ctx, z, r)
+		}
+	}
+	return nil
 }
 
 type nameStatus struct {

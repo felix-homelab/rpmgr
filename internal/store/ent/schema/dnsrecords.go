@@ -47,6 +47,9 @@ func (DNSRecord) Fields() []ent.Field {
 		field.String("adopted_from").Default("").MaxLen(4096),
 		field.Time("adopted_at").Optional().Nillable(),
 		field.Time("last_synced_at").Optional().Nillable(),
+		// corrected_at is when the job last corrected a change someone else made to the record; a
+		// second change within the stop window is not corrected (docs/15-dns.md, "Ownership ledger").
+		field.Time("corrected_at").Optional().Nillable(),
 	}
 }
 
