@@ -27,7 +27,7 @@ import (
 )
 
 // theToken is a made-up provider token the tests look for in every output.
-const theToken = "cf-token-of-the-test-0001"
+const theToken = "cf-token-of-the-test-0001" //nolint:gosec // G101: a made-up test token, not a credential
 
 // dnsAPI is the three DNS services with one provider, one zone and one name; connecting, rotating
 // and deleting a provider need a step-up, as the API's rules say.
