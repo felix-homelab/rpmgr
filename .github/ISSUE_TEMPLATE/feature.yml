@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest something rpmgr should do, or do differently
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The task or situation, and what you do today instead.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What rpmgr could do
+      description: How it would work for you. Alternatives you considered are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Design impact (optional, for contributors)
+      description: |
+        Documents that would change (CONTRIBUTING.md, "Where each fact goes"), whether an ADR is
+        needed, security impact, and the phase you suggest.

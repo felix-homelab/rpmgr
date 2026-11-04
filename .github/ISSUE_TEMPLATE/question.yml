@@ -1,0 +1,27 @@
+name: Question or help
+description: Ask how to do something with rpmgr, or get help with a setup that does not work yet
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The [user guide](https://github.com/felix-homelab/rpmgr/blob/main/docs/guide/README.md)
+        may already answer it. If rpmgr behaves wrongly, the *Bug report* form asks the right
+        questions.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What you want to do
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried and what happened
+      description: Commands, settings and messages. Remove tokens, keys and passwords.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: rpmgr version and setup
+      placeholder: "0.3.0, all-in-one with the install script on Ubuntu 24.04"
