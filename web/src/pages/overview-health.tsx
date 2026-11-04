@@ -6,6 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { CircleCheck, TriangleAlert } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { DnsHint } from "@/components/dns-status";
 import { RouteStateChip } from "@/components/route-state";
 import { Card } from "@/components/ui/card";
 import { CertificateStatus } from "@/gen/rpmgr/v1/certificate_pb";
@@ -15,7 +16,9 @@ import { TokenService } from "@/gen/rpmgr/v1/token_pb";
 import { when } from "@/lib/format";
 import { soon, useCertificates } from "@/pages/certificates";
 import { DomainStatusLabel, useDomains } from "@/pages/domains";
+import { useDnsProblems } from "@/pages/overview-dns";
 import { useConnectors, useGateways, useRoutes } from "@/routes-data";
+import { useOrg } from "@/session";
 
 // Health lists what in the org needs attention: agents without a control session, routes that do
 // not serve fully, failed or expiring certificates, unverified domains, and the user's expiring API
@@ -29,6 +32,7 @@ export function Health({ orgId }: { orgId: string }) {
         <Routes orgId={orgId} />
         <Certificates orgId={orgId} />
         <Domains orgId={orgId} />
+        <Dns orgId={orgId} />
         <Tokens orgId={orgId} />
       </div>
     </Card>
@@ -132,4 +136,23 @@ function Tokens({ orgId }: { orgId: string }) {
     </li>
   ));
   return <Area id="health-tokens" title={t("health.tokens")} fine={t("health.tokensFine")}>{items}</Area>;
+}
+
+// Dns lists what needs attention in DNS (U4): a hostname with a conflict, that two gateway groups
+// claim, or that the provider refused or rate-limits, a record that keeps drifting and, for an Owner
+// or Admin, a held zone or a zone whose token the provider refuses.
+function Dns({ orgId }: { orgId: string }) {
+  const { t } = useTranslation();
+  const role = useOrg()?.role;
+  const items = useDnsProblems(orgId, role === "owner" || role === "admin").map((p) => (
+    <li key={p.key} className="grid gap-0.5">
+      <span>
+        {p.route ? <Link to="/routes/$routeId" params={{ routeId: p.route }} className="font-medium hover:underline">{p.subject}</Link>
+          : <Link to="/dns/$zoneId" params={{ zoneId: p.zone! }} className="font-medium hover:underline">{p.subject}</Link>}
+        <span className="ml-2">{t(`dnsProblem.${p.kind}`)}</span>
+      </span>
+      {p.route ? <DnsHint status={{ status: p.kind, reason: p.reason ?? "" }} /> : <span className="text-muted-foreground">{t(`dnsProblem.hint.${p.kind}`, { reason: p.reason ?? "" })}</span>}
+    </li>
+  ));
+  return <Area id="health-dns" title={t("health.dns")} fine={t("health.dnsFine")}>{items}</Area>;
 }
