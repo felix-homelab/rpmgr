@@ -52,8 +52,8 @@ TestDNS_ForeignRecordNeverModified	done	6.10	#668	plan clause (internal/dns/plan
 TestDNS_CrossOrgPublishRefused	p2	-	-	DNS automation
 TestDNS_PendingZoneIsNotProof	done	6.6	#664	import and no-proof-by-provider-API clauses (internal/apisvc); the nameserver clause is TestTXTVerifier
 TestDNS_CrashRelinksByMarker	done	6.12	#670	internal/dns/apply; the job's use in internal/dns/job
-TestDNS_RestoreStartsHeld	p2	-	-	DNS automation
-TestDNS_DeletionGuard	p2	-	-	DNS automation
+TestDNS_RestoreStartsHeld	done	6.14	#672	internal/controller (restore), internal/dns/job (plan and no writes)
+TestDNS_DeletionGuard	done	6.14	#672	internal/dns/job and internal/dns/apply (guard); PLAN_CHANGED clause in internal/apisvc
 TestDNS_FailStatic	done	6.10	#668	internal/dns/apply
 TestDNS_RateBudgetAndRetryAfter	p2	-	-	job clause done in 6.13 (#671; internal/dns/budget, internal/dns/job); the DNS-01 clause follows in 7.1
 TestDNS_BatchFallbackPerRecord	done	6.11	#669	internal/dns/apply (fallback, ledger) and TestDNS_BatchFallbackPerRecord_NameStatus in internal/dns/job (name error, 6.11)

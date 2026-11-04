@@ -659,6 +659,8 @@ var schemaGraph = func() *sqlgraph.Schema {
 			dnszone.FieldName:                  {Type: field.TypeString, Column: dnszone.FieldName},
 			dnszone.FieldSyncState:             {Type: field.TypeEnum, Column: dnszone.FieldSyncState},
 			dnszone.FieldHeldReason:            {Type: field.TypeString, Column: dnszone.FieldHeldReason},
+			dnszone.FieldPendingPlan:           {Type: field.TypeBytes, Column: dnszone.FieldPendingPlan},
+			dnszone.FieldPendingPlanHash:       {Type: field.TypeString, Column: dnszone.FieldPendingPlanHash},
 			dnszone.FieldProviderStatus:        {Type: field.TypeEnum, Column: dnszone.FieldProviderStatus},
 			dnszone.FieldPublishRouteHostnames: {Type: field.TypeBool, Column: dnszone.FieldPublishRouteHostnames},
 			dnszone.FieldAllowProxied:          {Type: field.TypeBool, Column: dnszone.FieldAllowProxied},
@@ -4630,6 +4632,16 @@ func (f *DNSZoneFilter) WhereSyncState(p entql.StringP) {
 // WhereHeldReason applies the entql string predicate on the held_reason field.
 func (f *DNSZoneFilter) WhereHeldReason(p entql.StringP) {
 	f.Where(p.Field(dnszone.FieldHeldReason))
+}
+
+// WherePendingPlan applies the entql []byte predicate on the pending_plan field.
+func (f *DNSZoneFilter) WherePendingPlan(p entql.BytesP) {
+	f.Where(p.Field(dnszone.FieldPendingPlan))
+}
+
+// WherePendingPlanHash applies the entql string predicate on the pending_plan_hash field.
+func (f *DNSZoneFilter) WherePendingPlanHash(p entql.StringP) {
+	f.Where(p.Field(dnszone.FieldPendingPlanHash))
 }
 
 // WhereProviderStatus applies the entql string predicate on the provider_status field.

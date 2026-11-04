@@ -71,6 +71,12 @@ const (
 	// DnsZoneServiceRemoveZoneProcedure is the fully-qualified name of the DnsZoneService's RemoveZone
 	// RPC.
 	DnsZoneServiceRemoveZoneProcedure = "/rpmgr.v1.DnsZoneService/RemoveZone"
+	// DnsZoneServicePlanZoneSyncProcedure is the fully-qualified name of the DnsZoneService's
+	// PlanZoneSync RPC.
+	DnsZoneServicePlanZoneSyncProcedure = "/rpmgr.v1.DnsZoneService/PlanZoneSync"
+	// DnsZoneServiceApproveZonePlanProcedure is the fully-qualified name of the DnsZoneService's
+	// ApproveZonePlan RPC.
+	DnsZoneServiceApproveZonePlanProcedure = "/rpmgr.v1.DnsZoneService/ApproveZonePlan"
 	// DnsNameServiceCreateDnsNameProcedure is the fully-qualified name of the DnsNameService's
 	// CreateDnsName RPC.
 	DnsNameServiceCreateDnsNameProcedure = "/rpmgr.v1.DnsNameService/CreateDnsName"
@@ -332,6 +338,15 @@ type DnsZoneServiceClient interface {
 	UpdateZone(context.Context, *connect.Request[v1.UpdateZoneRequest]) (*connect.Response[v1.UpdateZoneResponse], error)
 	// RemoveZone stops managing a zone. The records stay at the provider, and the apex claim stays.
 	RemoveZone(context.Context, *connect.Request[v1.RemoveZoneRequest]) (*connect.Response[v1.RemoveZoneResponse], error)
+	// PlanZoneSync computes the plan of a zone now: what a pass would create, change and delete, the
+	// conflicts it found, the records that carry this instance's marker without a ledger row, and the
+	// hash an approval is bound to. The provider's records are read live and nothing is written.
+	PlanZoneSync(context.Context, *connect.Request[v1.PlanZoneSyncRequest]) (*connect.Response[v1.PlanZoneSyncResponse], error)
+	// ApproveZonePlan approves the plan with the hash: the zone becomes active and the next pass
+	// applies that plan and no other. It fails with PLAN_CHANGED, and nothing changes, if the plan
+	// now has another hash. A zone that is not held, such as one that a restore disabled, is
+	// FAILED_PRECONDITION with ZONE_NOT_HELD. It needs a step-up.
+	ApproveZonePlan(context.Context, *connect.Request[v1.ApproveZonePlanRequest]) (*connect.Response[v1.ApproveZonePlanResponse], error)
 }
 
 // NewDnsZoneServiceClient constructs a client for the rpmgr.v1.DnsZoneService service. By default,
@@ -377,16 +392,31 @@ func NewDnsZoneServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(dnsZoneServiceMethods.ByName("RemoveZone")),
 			connect.WithClientOptions(opts...),
 		),
+		planZoneSync: connect.NewClient[v1.PlanZoneSyncRequest, v1.PlanZoneSyncResponse](
+			httpClient,
+			baseURL+DnsZoneServicePlanZoneSyncProcedure,
+			connect.WithSchema(dnsZoneServiceMethods.ByName("PlanZoneSync")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		approveZonePlan: connect.NewClient[v1.ApproveZonePlanRequest, v1.ApproveZonePlanResponse](
+			httpClient,
+			baseURL+DnsZoneServiceApproveZonePlanProcedure,
+			connect.WithSchema(dnsZoneServiceMethods.ByName("ApproveZonePlan")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // dnsZoneServiceClient implements DnsZoneServiceClient.
 type dnsZoneServiceClient struct {
-	importZone *connect.Client[v1.ImportZoneRequest, v1.ImportZoneResponse]
-	getZone    *connect.Client[v1.GetZoneRequest, v1.GetZoneResponse]
-	listZones  *connect.Client[v1.ListZonesRequest, v1.ListZonesResponse]
-	updateZone *connect.Client[v1.UpdateZoneRequest, v1.UpdateZoneResponse]
-	removeZone *connect.Client[v1.RemoveZoneRequest, v1.RemoveZoneResponse]
+	importZone      *connect.Client[v1.ImportZoneRequest, v1.ImportZoneResponse]
+	getZone         *connect.Client[v1.GetZoneRequest, v1.GetZoneResponse]
+	listZones       *connect.Client[v1.ListZonesRequest, v1.ListZonesResponse]
+	updateZone      *connect.Client[v1.UpdateZoneRequest, v1.UpdateZoneResponse]
+	removeZone      *connect.Client[v1.RemoveZoneRequest, v1.RemoveZoneResponse]
+	planZoneSync    *connect.Client[v1.PlanZoneSyncRequest, v1.PlanZoneSyncResponse]
+	approveZonePlan *connect.Client[v1.ApproveZonePlanRequest, v1.ApproveZonePlanResponse]
 }
 
 // ImportZone calls rpmgr.v1.DnsZoneService.ImportZone.
@@ -414,6 +444,16 @@ func (c *dnsZoneServiceClient) RemoveZone(ctx context.Context, req *connect.Requ
 	return c.removeZone.CallUnary(ctx, req)
 }
 
+// PlanZoneSync calls rpmgr.v1.DnsZoneService.PlanZoneSync.
+func (c *dnsZoneServiceClient) PlanZoneSync(ctx context.Context, req *connect.Request[v1.PlanZoneSyncRequest]) (*connect.Response[v1.PlanZoneSyncResponse], error) {
+	return c.planZoneSync.CallUnary(ctx, req)
+}
+
+// ApproveZonePlan calls rpmgr.v1.DnsZoneService.ApproveZonePlan.
+func (c *dnsZoneServiceClient) ApproveZonePlan(ctx context.Context, req *connect.Request[v1.ApproveZonePlanRequest]) (*connect.Response[v1.ApproveZonePlanResponse], error) {
+	return c.approveZonePlan.CallUnary(ctx, req)
+}
+
 // DnsZoneServiceHandler is an implementation of the rpmgr.v1.DnsZoneService service.
 type DnsZoneServiceHandler interface {
 	// ImportZone imports a zone of a connected provider as a managed zone, held. Only a zone that
@@ -430,6 +470,15 @@ type DnsZoneServiceHandler interface {
 	UpdateZone(context.Context, *connect.Request[v1.UpdateZoneRequest]) (*connect.Response[v1.UpdateZoneResponse], error)
 	// RemoveZone stops managing a zone. The records stay at the provider, and the apex claim stays.
 	RemoveZone(context.Context, *connect.Request[v1.RemoveZoneRequest]) (*connect.Response[v1.RemoveZoneResponse], error)
+	// PlanZoneSync computes the plan of a zone now: what a pass would create, change and delete, the
+	// conflicts it found, the records that carry this instance's marker without a ledger row, and the
+	// hash an approval is bound to. The provider's records are read live and nothing is written.
+	PlanZoneSync(context.Context, *connect.Request[v1.PlanZoneSyncRequest]) (*connect.Response[v1.PlanZoneSyncResponse], error)
+	// ApproveZonePlan approves the plan with the hash: the zone becomes active and the next pass
+	// applies that plan and no other. It fails with PLAN_CHANGED, and nothing changes, if the plan
+	// now has another hash. A zone that is not held, such as one that a restore disabled, is
+	// FAILED_PRECONDITION with ZONE_NOT_HELD. It needs a step-up.
+	ApproveZonePlan(context.Context, *connect.Request[v1.ApproveZonePlanRequest]) (*connect.Response[v1.ApproveZonePlanResponse], error)
 }
 
 // NewDnsZoneServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -471,6 +520,19 @@ func NewDnsZoneServiceHandler(svc DnsZoneServiceHandler, opts ...connect.Handler
 		connect.WithSchema(dnsZoneServiceMethods.ByName("RemoveZone")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dnsZoneServicePlanZoneSyncHandler := connect.NewUnaryHandler(
+		DnsZoneServicePlanZoneSyncProcedure,
+		svc.PlanZoneSync,
+		connect.WithSchema(dnsZoneServiceMethods.ByName("PlanZoneSync")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	dnsZoneServiceApproveZonePlanHandler := connect.NewUnaryHandler(
+		DnsZoneServiceApproveZonePlanProcedure,
+		svc.ApproveZonePlan,
+		connect.WithSchema(dnsZoneServiceMethods.ByName("ApproveZonePlan")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.DnsZoneService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DnsZoneServiceImportZoneProcedure:
@@ -483,6 +545,10 @@ func NewDnsZoneServiceHandler(svc DnsZoneServiceHandler, opts ...connect.Handler
 			dnsZoneServiceUpdateZoneHandler.ServeHTTP(w, r)
 		case DnsZoneServiceRemoveZoneProcedure:
 			dnsZoneServiceRemoveZoneHandler.ServeHTTP(w, r)
+		case DnsZoneServicePlanZoneSyncProcedure:
+			dnsZoneServicePlanZoneSyncHandler.ServeHTTP(w, r)
+		case DnsZoneServiceApproveZonePlanProcedure:
+			dnsZoneServiceApproveZonePlanHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -510,6 +576,14 @@ func (UnimplementedDnsZoneServiceHandler) UpdateZone(context.Context, *connect.R
 
 func (UnimplementedDnsZoneServiceHandler) RemoveZone(context.Context, *connect.Request[v1.RemoveZoneRequest]) (*connect.Response[v1.RemoveZoneResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.RemoveZone is not implemented"))
+}
+
+func (UnimplementedDnsZoneServiceHandler) PlanZoneSync(context.Context, *connect.Request[v1.PlanZoneSyncRequest]) (*connect.Response[v1.PlanZoneSyncResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.PlanZoneSync is not implemented"))
+}
+
+func (UnimplementedDnsZoneServiceHandler) ApproveZonePlan(context.Context, *connect.Request[v1.ApproveZonePlanRequest]) (*connect.Response[v1.ApproveZonePlanResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.ApproveZonePlan is not implemented"))
 }
 
 // DnsNameServiceClient is a client for the rpmgr.v1.DnsNameService service.

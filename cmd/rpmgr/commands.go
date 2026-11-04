@@ -280,6 +280,7 @@ func backupCommand() *cli.Command {
 func restoreCommand() *cli.Command {
 	var configPath, in, stage string
 	var logs []string
+	var dnsDisabled bool
 	return &cli.Command{
 		Name:    "restore",
 		Summary: "restore the controller from a backup",
@@ -288,6 +289,7 @@ func restoreCommand() *cli.Command {
 			fs.Func("revocation-log", "the revocation-log sink directory, or a replica's revocations.log; repeat for each (default the state directory's revocations.log)",
 				func(s string) error { logs = append(logs, s); return nil })
 			fs.StringVar(&stage, "stage-dir", "", "where the restore does its SQLite work: a directory you own with mode 0700 that no one else can write (default a new private directory under the temporary one); the root updater passes /var/lib/rpmgr-update/restore")
+			fs.BoolVar(&dnsDisabled, "dns-disabled", false, "set every managed DNS zone to disabled instead of held, for a copy that must never touch production DNS")
 			fs.StringVar(&configPath, "config", "", bootFlagHelp)
 		},
 		Run: func(ctx context.Context, env *cli.Env, _ []string) error {
@@ -295,16 +297,17 @@ func restoreCommand() *cli.Command {
 				return cli.Usagef("restore needs --in")
 			}
 			r, err := controller.Restore(ctx, controller.RestoreOptions{ConfigPath: controllerBoot(configPath, env.Getenv),
-				Archive: in, RevocationLogs: logs, StageDir: stage})
+				Archive: in, RevocationLogs: logs, StageDir: stage, DNSDisabled: dnsDisabled})
 			if err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(env.Stdout, "Restored the backup of %s taken %s: new epoch %s (was %s).\n"+
 				"Applied %d revocations since the backup again; %d of them name something the backup does not hold.\n"+
 				"Every session, enrollment token, reset link and open invitation of the backup is invalidated.\n"+
+				"%s"+
 				"The replaced files are kept with the suffix %s. Start one controller, check /readyz, then the others;\n"+
 				"re-enroll agents enrolled after the backup.\n",
-				r.TrustDomain, r.Backup.UTC().Format(time.RFC3339), r.NewEpoch, r.OldEpoch, r.Reapplied, r.Unknown, r.Previous)
+				r.TrustDomain, r.Backup.UTC().Format(time.RFC3339), r.NewEpoch, r.OldEpoch, r.Reapplied, r.Unknown, dnsNote(r, dnsDisabled), r.Previous)
 			if err == nil && len(r.Kept) > 0 {
 				_, err = fmt.Fprintf(env.Stdout, "\nNot applied again, check these on the Users page:\n  - %s\n", strings.Join(r.Kept, "\n  - "))
 			}
@@ -320,6 +323,17 @@ func restoreCommand() *cli.Command {
 		},
 		Sub: []*cli.Command{restoreConfirm()},
 	}
+}
+
+// dnsNote says what became of the managed DNS zones, if there are any.
+func dnsNote(r controller.RestoreResult, disabled bool) string {
+	switch {
+	case r.DNSZones == 0:
+		return ""
+	case disabled:
+		return fmt.Sprintf("%d managed DNS zones are disabled: nothing is written to their providers.\n", r.DNSZones)
+	}
+	return fmt.Sprintf("%d managed DNS zones are held: nothing is written to their providers until an Owner or Admin approves each zone's plan.\n", r.DNSZones)
 }
 
 // restoreConfirm is `rpmgr restore confirm`: the Instance Admin ends the restore review on the

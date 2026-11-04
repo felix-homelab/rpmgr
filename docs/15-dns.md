@@ -305,7 +305,10 @@ pass catches up.
 
 ## Held zones and plan approval
 
-A held zone computes plans but writes nothing until a plan is approved.
+A held zone computes plans but writes nothing until a plan is approved. Each pass of a held zone
+reads the provider's records, plans, and stores the plan and its hash with the zone; the zone's
+`held_reason` says why it is held: `imported`, `restored`, `deletion_guard` (below) or
+`plan_changed`.
 
 ```mermaid
 flowchart LR
@@ -319,14 +322,22 @@ flowchart LR
 
 - **Who approves.** An Owner or Admin of the zone's org, with step-up; the Instance Admin for
   system-org zones ([04](04-security.md#human-authentication-and-sessions)).
-- **Approval is bound to the plan hash.** If sources or provider records changed since the plan was
-  shown, approval fails with `PLAN_CHANGED` and the new plan is shown
-  ([07](07-api.md#errors)).
+- **Approval is bound to the plan hash.** The plan is computed again when the approval comes in. If
+  sources or provider records changed since the plan was shown, approval fails with `PLAN_CHANGED`,
+  nothing changes and the new plan is shown ([07](07-api.md#errors)).
+- **An approval is used once.** It makes the zone `active` and stores the approved hash. The next
+  pass applies the plan only if it has that hash, whatever it removes, and then the approval is
+  used up. A pass whose plan has another hash holds the zone again with `plan_changed` and the new
+  plan. Later passes are subject to the deletion guard again.
+- **Only a held zone is approved.** A `disabled` zone, such as after `restore --dns-disabled`, is
+  refused with `ZONE_NOT_HELD`: approving there would fight production.
 - **After import.** The first plan shows what rpmgr will create, the conflicts it found and which
   foreign wildcards it will shadow.
 - **Deletion guard.** A pass that would remove all address records of more than the zone's
-  `delete_threshold` names holds the zone. Replacing records is not counted. `delete_threshold = 0`
-  makes every removal need approval.
+  `delete_threshold` names holds the zone with `deletion_guard`, writes nothing and stores the
+  plan. Replacing records is not counted: a name that keeps an address record, or whose address
+  record is replaced by another, is no removal. `delete_threshold = 0` makes every removal need
+  approval.
 - **After a restore.** A restore creates a new `db_epoch`
   ([10](10-operations.md#backup-and-restore)), and every zone starts held. The plan shows:
   - records created after the backup as `orphaned` (delete, or re-link);

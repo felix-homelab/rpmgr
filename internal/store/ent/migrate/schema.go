@@ -855,6 +855,8 @@ var (
 		{Name: "name", Type: field.TypeString, Size: 253},
 		{Name: "sync_state", Type: field.TypeEnum, Enums: []string{"active", "held", "disabled"}, Default: "held"},
 		{Name: "held_reason", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "pending_plan", Type: field.TypeBytes, Nullable: true},
+		{Name: "pending_plan_hash", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "provider_status", Type: field.TypeEnum, Enums: []string{"ok", "permission_denied", "unreachable", "rate_limited"}, Default: "ok"},
 		{Name: "publish_route_hostnames", Type: field.TypeBool, Default: true},
 		{Name: "allow_proxied", Type: field.TypeBool, Default: false},
@@ -873,7 +875,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "dns_zones_dns_providers_dns_provider",
-				Columns:    []*schema.Column{DNSZonesColumns[15]},
+				Columns:    []*schema.Column{DNSZonesColumns[17]},
 				RefColumns: []*schema.Column{DNSProvidersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -892,7 +894,7 @@ var (
 			{
 				Name:    "dnszone_dns_provider_id_provider_zone_id",
 				Unique:  true,
-				Columns: []*schema.Column{DNSZonesColumns[15], DNSZonesColumns[3]},
+				Columns: []*schema.Column{DNSZonesColumns[17], DNSZonesColumns[3]},
 			},
 		},
 	}

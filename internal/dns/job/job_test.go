@@ -6,6 +6,7 @@ package job_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -19,12 +20,14 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/dns/cftest"
 	"github.com/felix-homelab/rpmgr/internal/dns/cloudflare"
 	"github.com/felix-homelab/rpmgr/internal/dns/job"
+	"github.com/felix-homelab/rpmgr/internal/dns/plan"
 	"github.com/felix-homelab/rpmgr/internal/dns/providers"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -436,7 +439,9 @@ func TestRun_NameStatuses(t *testing.T) {
 		if err := j.Run(e.sys, ls); err != nil {
 			t.Fatal(err)
 		}
-		if e.requests() != n || e.fake.Count("POST") != writes {
+		// A held zone reads the provider to compute its plan, and writes nothing; a disabled one
+		// does not read either.
+		if e.fake.Count("POST") != writes || (state == dnszone.SyncStateDisabled && e.requests() != n) {
 			t.Fatalf("%s zone: a request was made", state)
 		}
 		want := "held"
@@ -760,4 +765,243 @@ func TestDNS_RateBudget_Job429WithoutHeaderAndSpentWindow(t *testing.T) {
 	if !slices.Equal(e.names(), []string{"a.example.com"}) {
 		t.Fatalf("records %v", e.names())
 	}
+}
+
+// removeName deletes a DNS name in a configuration transaction.
+func (e *env) removeName(fqdn string) {
+	e.t.Helper()
+	_, err := store.ConfigTx(e.sys, e.db, func(tx *ent.Tx) ([]string, error) {
+		n, err := tx.DNSName.Query().Where(dnsname.Fqdn(fqdn)).Only(e.sys)
+		if err != nil {
+			return nil, err
+		}
+		return []string{n.ID}, tx.DNSName.DeleteOneID(n.ID).Exec(e.sys)
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func (e *env) setThreshold(n int) {
+	e.t.Helper()
+	e.db.Client().DNSZone.UpdateOneID(e.zone.ID).SetDeleteThreshold(n).ExecX(e.sys)
+}
+
+// approve is what ApproveZonePlan does to the row, after it has compared the hash.
+func (e *env) approve(j *job.Job, hash string) {
+	e.t.Helper()
+	e.db.Client().DNSZone.UpdateOneID(e.zone.ID).SetSyncState(dnszone.SyncStateActive).SetHeldReason("").SetPendingPlanHash(hash).ExecX(e.sys)
+}
+
+// preview is the plan an approval would be bound to.
+func (e *env) preview(j *job.Job) plan.Plan {
+	e.t.Helper()
+	p, err := e.dial("cloudflare", "", secret.New(token))
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	pl, err := j.Preview(e.sys, e.zone.ID, p)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return pl
+}
+
+// pass runs one forced pass of the zone, renewing the lease.
+func (e *env) pass(j *job.Job, l *lease.Leases, ls lease.Lease) {
+	e.t.Helper()
+	j.Sync(e.zone.ID)
+	e.advance(l, ls, time.Second)
+	if err := j.Run(e.sys, ls); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// TestDNS_DeletionGuard (docs/12-testing-and-quality.md): a pass that removes the address records
+// of more names than delete_threshold holds the zone and writes nothing; replacements do not count;
+// threshold 0 holds on every removal; the plan is stored with its hash; an approved plan is applied
+// once and the approval is used up; a plan that is not the approved one holds the zone again.
+func TestDNS_DeletionGuard(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		for _, n := range []string{"a", "b", "c", "d"} {
+			e.addName(n + ".example.com")
+		}
+		j, l := e.replica("ctn_a")
+		ls := e.take(l)
+		e.setThreshold(2)
+		if err := j.Run(e.sys, ls); err != nil {
+			t.Fatal(err)
+		}
+		if len(e.names()) != 4 {
+			t.Fatalf("records %v", e.names())
+		}
+		// Two removals are the threshold: they go through.
+		e.removeName("a.example.com")
+		e.removeName("b.example.com")
+		e.pass(j, l, ls)
+		if !slices.Equal(e.names(), []string{"c.example.com", "d.example.com"}) {
+			t.Fatalf("two removals at threshold 2: %v", e.names())
+		}
+		if z := e.zoneRow(); z.SyncState != dnszone.SyncStateActive {
+			t.Fatalf("zone %+v", z)
+		}
+
+		// A third name makes two removals again, and one more is above the threshold.
+		e.setThreshold(1)
+		e.removeName("c.example.com")
+		e.removeName("d.example.com")
+		writes := e.fake.Count("POST")
+		e.pass(j, l, ls)
+		z := e.zoneRow()
+		if z.SyncState != dnszone.SyncStateHeld || z.HeldReason != apply.HeldDeletionGuard || z.PendingPlanHash == "" || len(z.PendingPlan) == 0 {
+			t.Fatalf("zone %+v", z)
+		}
+		if e.fake.Count("POST") != writes || len(e.names()) != 2 {
+			t.Fatalf("a held zone was written to: %v", e.names())
+		}
+		var stored plan.Plan
+		if err := json.Unmarshal(z.PendingPlan, &stored); err != nil || stored.Hash != z.PendingPlanHash || len(stored.Deletes) != 2 {
+			t.Fatalf("stored plan %+v, %v", stored, err)
+		}
+		eqStatuses(t, e.statuses(), map[string]string{})
+		// The held zone keeps planning, and writes nothing, however often the job looks.
+		e.pass(j, l, ls)
+		if e.fake.Count("POST") != writes || len(e.names()) != 2 {
+			t.Fatal("a held zone was written to")
+		}
+
+		// The approval of a plan whose hash is not the current one is the API's to refuse
+		// (PLAN_CHANGED); here the row is approved with the current one.
+		pl := e.preview(j)
+		if pl.Hash != z.PendingPlanHash || len(pl.Deletes) != 2 {
+			t.Fatalf("preview %+v is not the stored plan %s", pl, z.PendingPlanHash)
+		}
+		e.approve(j, pl.Hash)
+		e.pass(j, l, ls)
+		if len(e.names()) != 0 {
+			t.Fatalf("the approved plan was not applied: %v", e.names())
+		}
+		if z := e.zoneRow(); z.SyncState != dnszone.SyncStateActive || z.PendingPlanHash != "" || len(z.PendingPlan) != 0 {
+			t.Fatalf("the approval is not used up: %+v", z)
+		}
+
+		// Threshold 0: every removal needs approval; a replacement does not.
+		e.setThreshold(0)
+		e.addName("e.example.com")
+		e.addName("f.example.com")
+		e.pass(j, l, ls)
+		if len(e.names()) != 2 {
+			t.Fatalf("creates need no approval: %v", e.names())
+		}
+		e.db.Client().GatewayGroup.UpdateOneID(e.group).ClearDNSCname().SetDNSAddresses([]string{"192.0.2.7"}).ExecX(e.sys)
+		e.revision("gwg_x")
+		e.pass(j, l, ls)
+		if z := e.zoneRow(); z.SyncState != dnszone.SyncStateActive {
+			t.Fatalf("a replacement (CNAME to address) held the zone at threshold 0: %+v", z)
+		}
+		var types []string
+		for _, r := range e.fake.Records(e.zone.ProviderZoneID) {
+			types = append(types, r.Type)
+		}
+		if !slices.Equal(types, []string{"A", "A"}) {
+			t.Fatalf("records %v", e.fake.Records(e.zone.ProviderZoneID))
+		}
+		e.removeName("e.example.com")
+		e.pass(j, l, ls)
+		if z := e.zoneRow(); z.SyncState != dnszone.SyncStateHeld || z.HeldReason != apply.HeldDeletionGuard || len(e.names()) != 2 {
+			t.Fatalf("threshold 0 and one removal: %+v, %v", z, e.names())
+		}
+		hash := e.zoneRow().PendingPlanHash
+
+		// What changed after the approval is not approved: the zone is held again, with the new plan.
+		e.approve(j, hash)
+		e.removeName("f.example.com")
+		e.pass(j, l, ls)
+		z = e.zoneRow()
+		if z.SyncState != dnszone.SyncStateHeld || z.HeldReason != apply.HeldPlanChanged || z.PendingPlanHash == hash || len(e.names()) != 2 {
+			t.Fatalf("a changed plan was applied or not held: %+v %v", z, e.names())
+		}
+	})
+}
+
+// TestDNS_RestoreStartsHeld, the job's clauses (docs/12-testing-and-quality.md): after a restore
+// every zone is held; the plan lists the records created after the backup as orphaned and the ones
+// deleted after it as creates; nothing is written before approval; with --dns-disabled the job does
+// not even read the provider.
+func TestDNS_RestoreStartsHeld(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		e.addName("a.example.com")
+		e.addName("b.example.com")
+		j, l := e.replica("ctn_a")
+		ls := e.take(l)
+		if err := j.Run(e.sys, ls); err != nil {
+			t.Fatal(err)
+		}
+		// The backup had the ledger row of a and of c, and not of b: b was created after it. The
+		// record of c was deleted at the provider after the backup.
+		recs := e.db.Client().DNSRecord.Query().AllX(e.sys)
+		for _, r := range recs {
+			if r.Name == "b.example.com" {
+				e.db.Client().DNSRecord.DeleteOneID(r.ID).ExecX(e.sys)
+			}
+		}
+		e.db.Client().DNSRecord.Create().SetOrgID(e.org).SetDNSZoneID(e.zone.ID).SetID(ids.New("dnr")).SetName("c.example.com").SetType("CNAME").
+			SetContent("gw.example.net").SetTTL(300).SetProviderRecordID("0000000000000000000000000000dead").SetState(dnsrecord.StateSynced).ExecX(e.sys)
+		e.addName("c.example.com")
+
+		held, err := holdAll(e, false)
+		if err != nil || held != 1 {
+			t.Fatalf("held %d zones, %v", held, err)
+		}
+		z := e.zoneRow()
+		if z.SyncState != dnszone.SyncStateHeld || z.HeldReason != apply.HeldRestored {
+			t.Fatalf("zone %+v", z)
+		}
+		writes := e.fake.Count("POST") + e.fake.Count("DELETE") + e.fake.Count("PUT") + e.fake.Count("PATCH")
+		e.pass(j, l, ls)
+		if w := e.fake.Count("POST") + e.fake.Count("DELETE") + e.fake.Count("PUT") + e.fake.Count("PATCH"); w != writes {
+			t.Fatalf("%d writes to a held zone", w-writes)
+		}
+		z = e.zoneRow()
+		var pl plan.Plan
+		if err := json.Unmarshal(z.PendingPlan, &pl); err != nil || pl.Hash == "" || pl.Hash != z.PendingPlanHash {
+			t.Fatalf("stored plan %+v, %v", pl, err)
+		}
+		if len(pl.Orphans) != 1 || pl.Orphans[0].Name != "b.example.com" {
+			t.Errorf("orphans %+v, want the record of b, created after the backup", pl.Orphans)
+		}
+		if len(pl.Creates) != 1 || pl.Creates[0].Name != "c.example.com" {
+			t.Errorf("creates %+v, want c, deleted after the backup", pl.Creates)
+		}
+		if len(pl.Deletes) != 0 || len(pl.Updates) != 0 {
+			t.Errorf("plan %+v", pl)
+		}
+		eqStatuses(t, e.statuses(), map[string]string{"a.example.com": "held", "b.example.com": "held", "c.example.com": "held"})
+
+		// --dns-disabled: the job does nothing in the zone, not even a listing.
+		if _, err := holdAll(e, true); err != nil {
+			t.Fatal(err)
+		}
+		z = e.zoneRow()
+		if z.SyncState != dnszone.SyncStateDisabled || z.HeldReason != "" || z.PendingPlanHash != "" || len(z.PendingPlan) != 0 {
+			t.Fatalf("zone %+v", z)
+		}
+		seen := e.requests()
+		e.pass(j, l, ls)
+		if e.requests() != seen {
+			t.Fatalf("%d requests to the provider of a disabled zone", e.requests()-seen)
+		}
+		// The approval of a held zone is the API's; a disabled zone cannot be approved there.
+	})
+}
+
+func holdAll(e *env, disabled bool) (n int, err error) {
+	err = store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+		var err error
+		n, err = apply.HoldAll(e.sys, tx, disabled)
+		return err
+	})
+	return n, err
 }
