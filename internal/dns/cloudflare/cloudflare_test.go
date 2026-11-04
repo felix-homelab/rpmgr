@@ -482,3 +482,32 @@ func TestIDs_ValidatedBeforeAnyPathIsBuilt(t *testing.T) {
 		t.Fatal("a valid id is refused")
 	}
 }
+
+// TestCheckToken: a Global API Key (37 hexadecimal characters) is refused, as are an empty, an
+// over-long and a malformed value; a 40-character API token passes; no message holds the value.
+func TestCheckToken(t *testing.T) {
+	key := strings.Repeat("0123456789abcdef", 3)[:37]
+	for _, c := range []struct {
+		name, tok string
+		ok        bool
+	}{
+		{"api token", "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-Aa", true},
+		{"global key", key, false},
+		{"global key upper case", strings.ToUpper(key), false},
+		{"hex of another length", key[:36], true},
+		{"empty", "", false},
+		{"space", "has a space", false},
+		{"newline", "line\nbreak", false},
+		{"non-ASCII", "tökentökentökentöken", false},
+		{"too long", strings.Repeat("a", MaxTokenLen+1), false},
+		{"longest", strings.Repeat("a", MaxTokenLen), true},
+	} {
+		err := CheckToken(c.tok)
+		if (err == nil) != c.ok {
+			t.Errorf("%s: %v", c.name, err)
+		}
+		if err != nil && c.tok != "" && strings.Contains(err.Error(), c.tok) {
+			t.Errorf("%s: the message holds the value", c.name)
+		}
+	}
+}

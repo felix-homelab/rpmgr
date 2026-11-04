@@ -15,6 +15,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
@@ -51,6 +52,9 @@ var owners = map[string]ownerFunc{
 	},
 	"dom": func(ctx context.Context, c *ent.Client, id string) (string, error) {
 		return c.Domain.Query().Where(domain.ID(id)).Select(domain.FieldOrgID).String(ctx)
+	},
+	"dnp": func(ctx context.Context, c *ent.Client, id string) (string, error) {
+		return c.DNSProvider.Query().Where(dnsprovider.ID(id)).Select(dnsprovider.FieldOrgID).String(ctx)
 	},
 	"enr": func(ctx context.Context, c *ent.Client, id string) (string, error) {
 		return c.EnrollmentToken.Query().Where(enrollmenttoken.ID(id)).Select(enrollmenttoken.FieldOrgID).String(ctx)

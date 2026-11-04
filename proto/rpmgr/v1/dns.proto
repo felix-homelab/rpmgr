@@ -1,0 +1,202 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package rpmgr.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/options.proto";
+
+option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
+
+// DnsProviderService is an org's connected DNS provider accounts (docs/07-api.md;
+// docs/15-dns.md, "Connecting, importing and disconnecting"). Every method needs
+// infrastructure.write, so Owners and Admins only. The provider's API token is write-only: it goes
+// in with ConnectDnsProvider or a rotation by UpdateDnsProvider and no response, export, audit
+// entry or log shows it again. Connecting, rotating and deleting need a step-up.
+service DnsProviderService {
+  // ConnectDnsProvider checks the token at the provider and stores it sealed. A token the
+  // provider does not accept is not stored; a Global API Key is refused.
+  rpc ConnectDnsProvider(ConnectDnsProviderRequest) returns (ConnectDnsProviderResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "org_id"
+      step_up: true
+    };
+  }
+  // GetDnsProvider returns a provider without its token.
+  rpc GetDnsProvider(GetDnsProviderRequest) returns (GetDnsProviderResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_provider_id"
+    };
+  }
+  // ListDnsProviders lists an org's providers by ID, without their tokens.
+  rpc ListDnsProviders(ListDnsProvidersRequest) returns (ListDnsProvidersResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "org_id"
+    };
+  }
+  // UpdateDnsProvider renames a provider or rotates its token. The new token is checked first and
+  // replaces the old one only if the provider accepts it; the provider's zones and everything
+  // that depends on it stay. A rotation needs a step-up.
+  rpc UpdateDnsProvider(UpdateDnsProviderRequest) returns (UpdateDnsProviderResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_provider.id"
+    };
+  }
+  // DeleteDnsProvider removes a provider and its token. It is refused while zones are imported
+  // from it. The records at the provider stay.
+  rpc DeleteDnsProvider(DeleteDnsProviderRequest) returns (DeleteDnsProviderResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_provider_id"
+      step_up: true
+    };
+  }
+  // ListProviderZones lists the zones the token can see, read live from the provider.
+  // UNAVAILABLE if the provider cannot be reached.
+  rpc ListProviderZones(ListProviderZonesRequest) returns (ListProviderZonesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_provider_id"
+    };
+  }
+}
+
+// ProviderStatus is what the last check of a provider's token found.
+enum ProviderStatus {
+  // Not set.
+  PROVIDER_STATUS_UNSPECIFIED = 0;
+  // The provider accepted the token.
+  PROVIDER_STATUS_OK = 1;
+  // The provider refuses the token, or it is expired or disabled.
+  PROVIDER_STATUS_INVALID = 2;
+}
+
+// CloudflareProvider is a Cloudflare account.
+message CloudflareProvider {
+  // The API token. Write-only: it is never returned.
+  string api_token = 1 [(rpmgr.v1.sensitive) = true];
+  // Set only for an account-owned token, which is checked at the account.
+  string account_id = 2 [(buf.validate.field).string.max_len = 64];
+}
+
+// DnsProvider is a connected provider account. It never carries the token.
+message DnsProvider {
+  // The provider's ID, dnp_…; output only.
+  string id = 1;
+  // The name, unique in the org.
+  string name = 2 [(buf.validate.field).string.max_len = 64];
+  // The kind and its settings.
+  oneof kind {
+    // A Cloudflare account.
+    CloudflareProvider cloudflare = 10;
+  }
+  // What the last check of the token found; output only.
+  ProviderStatus status = 30;
+  // When the token expires; output only. Unset for a token that does not expire.
+  google.protobuf.Timestamp token_expires_at = 31;
+  // The version to send back with an update or a deletion; output only.
+  string etag = 32;
+  // When the token was last checked; output only.
+  google.protobuf.Timestamp last_check_time = 33;
+  // Why the token is invalid; output only, empty while it is ok.
+  string last_error = 34;
+  // Whether the token expires within the warning period of docs/15-dns.md; output only.
+  bool token_expiring = 35;
+}
+
+// ProviderZone is a zone the provider lists, before it is imported: the provider's ID, the apex,
+// and the provider's status (such as active or pending) and type (such as full or partial).
+message ProviderZone {
+  string id = 1;
+  string name = 2;
+  string status = 3;
+  string type = 4;
+}
+
+// ConnectDnsProviderRequest is a new provider.
+message ConnectDnsProviderRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The provider: name and cloudflare (api_token, account_id).
+  DnsProvider dns_provider = 2 [(buf.validate.field).required = true];
+}
+
+// ConnectDnsProviderResponse is the provider, without its token.
+message ConnectDnsProviderResponse {
+  DnsProvider dns_provider = 1;
+}
+
+// GetDnsProviderRequest names a provider.
+message GetDnsProviderRequest {
+  // The provider's ID.
+  string dns_provider_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetDnsProviderResponse is the provider, without its token.
+message GetDnsProviderResponse {
+  DnsProvider dns_provider = 1;
+}
+
+// ListDnsProvidersRequest asks for a page of an org's providers.
+message ListDnsProvidersRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 2;
+  // The page after the one that returned it.
+  string page_token = 3;
+}
+
+// ListDnsProvidersResponse is one page of providers; the page token is empty on the last.
+message ListDnsProvidersResponse {
+  repeated DnsProvider dns_providers = 1;
+  string next_page_token = 2;
+}
+
+// UpdateDnsProviderRequest changes a provider.
+message UpdateDnsProviderRequest {
+  // The provider with its ID and the new values of the fields the mask names.
+  DnsProvider dns_provider = 1 [(buf.validate.field).required = true];
+  // The fields to change: name, cloudflare.api_token (a rotation, with an optional
+  // cloudflare.account_id of the new token).
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateDnsProviderResponse is the changed provider, without its token.
+message UpdateDnsProviderResponse {
+  DnsProvider dns_provider = 1;
+}
+
+// DeleteDnsProviderRequest names a provider.
+message DeleteDnsProviderRequest {
+  // The provider's ID.
+  string dns_provider_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DeleteDnsProviderResponse is empty.
+message DeleteDnsProviderResponse {}
+
+// ListProviderZonesRequest names a provider.
+message ListProviderZonesRequest {
+  // The provider's ID.
+  string dns_provider_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// ListProviderZonesResponse is every zone the token can see, by name.
+message ListProviderZonesResponse {
+  repeated ProviderZone zones = 1;
+}

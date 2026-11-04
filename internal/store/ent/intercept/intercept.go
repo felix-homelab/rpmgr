@@ -30,6 +30,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/event"
@@ -701,6 +702,33 @@ func (f TraverseConnector) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.ConnectorQuery", q)
+}
+
+// The DNSProviderFunc type is an adapter to allow the use of ordinary function as a Querier.
+type DNSProviderFunc func(context.Context, *ent.DNSProviderQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f DNSProviderFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.DNSProviderQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.DNSProviderQuery", q)
+}
+
+// The TraverseDNSProvider type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseDNSProvider func(context.Context, *ent.DNSProviderQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseDNSProvider) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseDNSProvider) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.DNSProviderQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.DNSProviderQuery", q)
 }
 
 // The DataSessionFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -2044,6 +2072,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ConnectListenerQuery, predicate.ConnectListener, connectlistener.OrderOption]{typ: ent.TypeConnectListener, tq: q}, nil
 	case *ent.ConnectorQuery:
 		return &query[*ent.ConnectorQuery, predicate.Connector, connector.OrderOption]{typ: ent.TypeConnector, tq: q}, nil
+	case *ent.DNSProviderQuery:
+		return &query[*ent.DNSProviderQuery, predicate.DNSProvider, dnsprovider.OrderOption]{typ: ent.TypeDNSProvider, tq: q}, nil
 	case *ent.DataSessionQuery:
 		return &query[*ent.DataSessionQuery, predicate.DataSession, datasession.OrderOption]{typ: ent.TypeDataSession, tq: q}, nil
 	case *ent.DomainQuery:

@@ -376,3 +376,29 @@ func (c *Client) Apply(ctx context.Context, zoneID string, b dns.Batch) error {
 	_, err := c.do(ctx, http.MethodPost, "/zones/"+url.PathEscape(zoneID)+"/dns_records/batch", body, nil)
 	return err
 }
+
+// MaxTokenLen bounds a token; Cloudflare's API tokens are 40 characters.
+const MaxTokenLen = 256
+
+// CheckToken refuses what cannot be an API token before anything is sent: an empty or over-long
+// value, one with a character outside the printable ASCII of tokens, and one shaped like a Global
+// API Key, 37 hexadecimal characters (docs/15-dns.md, "Connecting, importing and disconnecting").
+// rpmgr accepts API tokens only: a Global API Key carries all of the user's permissions. The
+// message never holds the value.
+func CheckToken(tok string) error {
+	switch {
+	case tok == "":
+		return errors.New("cloudflare: no token")
+	case len(tok) > MaxTokenLen:
+		return errors.New("cloudflare: the token is too long")
+	}
+	for _, r := range tok {
+		if r <= ' ' || r >= 0x7f {
+			return errors.New("cloudflare: the token has a character an API token does not have")
+		}
+	}
+	if len(tok) == 37 && strings.Trim(tok, "0123456789abcdefABCDEF") == "" {
+		return errors.New("cloudflare: this looks like a Global API Key; create an API token instead")
+	}
+	return nil
+}
