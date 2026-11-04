@@ -321,8 +321,7 @@ func TestExpiry(t *testing.T) {
 		if want := clk.now().Add(lease.TTL); !la.Expires().Equal(want) || la.Left(clk.now()) != lease.TTL {
 			t.Fatalf("expiry %v, left %v; want %v", la.Expires(), la.Left(clk.now()), want)
 		}
-		var stored int64
-		stored = db.Client().Lease.Query().Where(entlease.ID("dns")).OnlyX(storetest.SystemCtx(t)).ExpiresAt
+		stored := db.Client().Lease.Query().Where(entlease.ID("dns")).OnlyX(storetest.SystemCtx(t)).ExpiresAt
 		if stored != la.Expires().UnixMilli() {
 			t.Fatalf("row expiry %d, handle %v", stored, la.Expires())
 		}

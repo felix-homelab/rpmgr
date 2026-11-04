@@ -5,6 +5,7 @@ package apply
 import (
 	"context"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/dns"
@@ -29,6 +30,9 @@ type Report struct {
 	// Drifted are the names of owned records that changed again within the stop window, or that
 	// stay changed after it: they are no longer corrected, and an alert is due.
 	Drifted []string
+	// Ambiguous are records that carry the marker of a row that cannot link them: at another name
+	// or type, or more than one. They are never linked, so they stay foreign; the row is `error`.
+	Ambiguous []dns.Record
 	// Relinked counts the ledger rows that a crash left without their record's ID and that were
 	// linked again by the marker.
 	Relinked int
@@ -42,10 +46,20 @@ type Report struct {
 // stays and the next create reuses it. A record that carries a marker of this instance and no row
 // is not touched here: it is an orphan.
 func (e *Engine) Relink(ctx context.Context, l lease.Lease, z Zone, live []dns.Record, desired []dns.Record) (int, error) {
-	byMarker := map[string]dns.Record{}
+	n, _, err := e.relink(ctx, l, z, live, desired)
+	return n, err
+}
+
+func sameName(a, b string) bool {
+	return strings.EqualFold(strings.TrimSuffix(a, "."), strings.TrimSuffix(b, "."))
+}
+
+func (e *Engine) relink(ctx context.Context, l lease.Lease, z Zone, live []dns.Record, desired []dns.Record) (int, []dns.Record, error) {
+	var rep Report
+	byMarker := map[string][]dns.Record{}
 	liveIDs := map[string]bool{}
 	for _, r := range live {
-		byMarker[r.Comment] = r
+		byMarker[r.Comment] = append(byMarker[r.Comment], r)
 		liveIDs[r.ID] = true
 	}
 	wanted := map[string]bool{}
@@ -54,7 +68,7 @@ func (e *Engine) Relink(ctx context.Context, l lease.Lease, z Zone, live []dns.R
 	}
 	n := 0
 	err := store.WriteTx(ctx, e.DB, func(tx *ent.Tx) error {
-		n = 0
+		n, rep = 0, Report{}
 		rows, err := tx.DNSRecord.Query().Where(dnsrecord.DNSZoneID(z.ID)).All(ctx)
 		if err != nil {
 			return err
@@ -77,7 +91,34 @@ func (e *Engine) Relink(ctx context.Context, l lease.Lease, z Zone, live []dns.R
 		for _, r := range rows {
 			switch {
 			case r.ProviderRecordID == nil && (r.State == dnsrecord.StateCreating || r.State == dnsrecord.StateError):
-				rec, ok := byMarker[Marker(e.TrustDomain, r.ID)]
+				// Only a record at the row's own name and of its type is linked: anything else that
+				// carries the marker was written by someone else, and stays foreign. Two records with
+				// the marker are ambiguous: none is linked.
+				cands := byMarker[Marker(e.TrustDomain, r.ID)]
+				var same []dns.Record
+				for _, c := range cands {
+					if sameName(c.Name, r.Name) && c.Type == string(r.Type) {
+						same = append(same, c)
+					}
+				}
+				if len(cands) > 1 || (len(cands) == 1 && len(same) == 0) {
+					const reason = "a record carries this row's marker but is not unique or not at the row's name and type; not linked"
+					if r.State != dnsrecord.StateError || r.Reason != reason {
+						if err := fence(); err != nil {
+							return err
+						}
+						if err := tx.DNSRecord.UpdateOneID(r.ID).SetState(dnsrecord.StateError).SetReason(reason).Exec(ctx); err != nil {
+							return err
+						}
+					}
+					rep.Ambiguous = append(rep.Ambiguous, cands...)
+					continue
+				}
+				var rec dns.Record
+				ok := len(same) == 1
+				if ok {
+					rec = same[0]
+				}
 				switch {
 				case ok && !linked[rec.ID]:
 					if err := fence(); err != nil {
@@ -115,7 +156,7 @@ func (e *Engine) Relink(ctx context.Context, l lease.Lease, z Zone, live []dns.R
 		}
 		return nil
 	})
-	return n, err
+	return n, rep.Ambiguous, err
 }
 
 // Correction marks the records whose update puts back a change someone else made, so that the
@@ -256,7 +297,7 @@ func (e *Engine) Reconcile(ctx context.Context, l lease.Lease, p dns.Provider, z
 	if err != nil {
 		return out, err
 	}
-	if out.Report.Relinked, err = e.Relink(ctx, l, z, live, w.Desired); err != nil {
+	if out.Report.Relinked, out.Report.Ambiguous, err = e.relink(ctx, l, z, live, w.Desired); err != nil {
 		return out, err
 	}
 	owned, err := Owned(ctx, e.DB, z.ID)

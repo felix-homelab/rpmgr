@@ -343,3 +343,77 @@ func TestDNS_DriftIsNotASourceChange(t *testing.T) {
 func planOf(want, live []dns.Record, owned []plan.Owned) plan.Plan {
 	return plan.Diff(plan.Input{Zone: apex, Desired: want, Live: live, Owned: owned, TrustDomain: td})
 }
+
+// TestApply_RelinkRefusesWrongMarkers: a record that carries a creating row's marker at another
+// name, of another type, or twice, is not linked: it stays foreign (and so is never changed or
+// deleted), the row is error, and the pass reports it. The record at the row's own name and type is
+// linked even when it is written in another case.
+func TestApply_RelinkRefusesWrongMarkers(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		records func(marker string) []cftest.Record
+		linked  bool
+	}{
+		{"other name", func(m string) []cftest.Record {
+			return []cftest.Record{{Type: "A", Name: "example.com", Content: "192.0.2.9", TTL: 300, Comment: m}}
+		}, false},
+		{"other type", func(m string) []cftest.Record {
+			return []cftest.Record{{Type: "MX", Name: "a.example.com", Content: "mail.example.net", TTL: 300, Comment: m}}
+		}, false},
+		{"duplicate", func(m string) []cftest.Record {
+			return []cftest.Record{{Type: "A", Name: "a.example.com", Content: "192.0.2.1", TTL: 300, Comment: m}, {Type: "A", Name: "a.example.com", Content: "192.0.2.2", TTL: 300, Comment: m}}
+		}, false},
+		{"own name and type, other case", func(m string) []cftest.Record {
+			return []cftest.Record{{Type: "A", Name: "A.Example.com.", Content: "192.0.2.1", TTL: 300, Comment: m}}
+		}, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newEnv(t, storetest.Migrated(t, store.SQLite))
+			row := e.db.Client().DNSRecord.Create().SetOrgID(e.zone.OrgID).SetDNSZoneID(e.zone.ID).SetName("a.example.com").SetType("A").
+				SetContent("192.0.2.1").SetTTL(300).SaveX(e.sys)
+			var before []cftest.Record
+			for _, r := range c.records(apply.Marker(td, row.ID)) {
+				before = append(before, e.fake.AddRecord(e.zone.ProviderID, r))
+			}
+			out, err := e.reconcile(a("a.example.com", "192.0.2.1"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := e.db.Client().DNSRecord.GetX(e.sys, row.ID)
+			if c.linked {
+				if out.Report.Relinked != 1 || got.State != dnsrecord.StateSynced || got.ProviderRecordID == nil {
+					t.Fatalf("not linked: %+v %+v", out.Report, got)
+				}
+				return
+			}
+			if out.Report.Relinked != 0 || len(out.Report.Ambiguous) != len(before) {
+				t.Fatalf("linked or not reported: %+v", out.Report)
+			}
+			// The row never owns a record it was refused: it is error, or, where the name is free, it
+			// was reused for a record of its own that the pass created.
+			for _, b := range before {
+				if got.ProviderRecordID != nil && *got.ProviderRecordID == b.ID {
+					t.Fatalf("row %+v owns the foreign record %+v", got, b)
+				}
+			}
+			if got.State == dnsrecord.StateError && got.Reason == "" {
+				t.Fatalf("row %+v", got)
+			}
+			now := e.snapshot()
+			for _, b := range before {
+				if !slices.Contains(now, b) {
+					t.Fatalf("a foreign record changed or was deleted: %+v", b)
+				}
+			}
+			// Passes with no sources never delete them either.
+			if _, err := e.reconcile(); err != nil {
+				t.Fatal(err)
+			}
+			for _, b := range before {
+				if !slices.Contains(e.snapshot(), b) {
+					t.Fatalf("a foreign record was deleted: %+v", b)
+				}
+			}
+		})
+	}
+}
