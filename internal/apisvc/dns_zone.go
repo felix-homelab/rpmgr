@@ -191,7 +191,10 @@ func (z *DnsZones) ImportZone(ctx context.Context, req *connect.Request[rpmgrv1.
 		}
 		row, err = tx.DNSZone.Create().SetOrgID(cur.OrgID).SetDNSProviderID(cur.ID).SetProviderZoneID(found.ID).SetName(name).
 			SetHeldReason(HeldImported).Save(ctx)
-		return []string{row.ID, claim.ID}, err
+		if err != nil {
+			return nil, err
+		}
+		return []string{row.ID, claim.ID}, nil
 	})
 	if err != nil {
 		return nil, storeError(err)
