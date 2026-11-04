@@ -60,6 +60,8 @@ type Tx struct {
 	DNSName *DNSNameClient
 	// DNSProvider is the client for interacting with the DNSProvider builders.
 	DNSProvider *DNSProviderClient
+	// DNSRecord is the client for interacting with the DNSRecord builders.
+	DNSRecord *DNSRecordClient
 	// DNSZone is the client for interacting with the DNSZone builders.
 	DNSZone *DNSZoneClient
 	// DataSession is the client for interacting with the DataSession builders.
@@ -312,6 +314,7 @@ func (tx *Tx) init() {
 	tx.Connector = NewConnectorClient(tx.config)
 	tx.DNSName = NewDNSNameClient(tx.config)
 	tx.DNSProvider = NewDNSProviderClient(tx.config)
+	tx.DNSRecord = NewDNSRecordClient(tx.config)
 	tx.DNSZone = NewDNSZoneClient(tx.config)
 	tx.DataSession = NewDataSessionClient(tx.config)
 	tx.Domain = NewDomainClient(tx.config)

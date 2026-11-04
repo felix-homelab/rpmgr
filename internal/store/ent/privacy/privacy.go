@@ -663,6 +663,30 @@ func (f DNSProviderMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mut
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.DNSProviderMutation", m)
 }
 
+// The DNSRecordQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type DNSRecordQueryRuleFunc func(context.Context, *ent.DNSRecordQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f DNSRecordQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.DNSRecordQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.DNSRecordQuery", q)
+}
+
+// The DNSRecordMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type DNSRecordMutationRuleFunc func(context.Context, *ent.DNSRecordMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f DNSRecordMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.DNSRecordMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.DNSRecordMutation", m)
+}
+
 // The DNSZoneQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type DNSZoneQueryRuleFunc func(context.Context, *ent.DNSZoneQuery) error
@@ -1920,6 +1944,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.DNSProviderQuery:
 		return q.Filter(), nil
+	case *ent.DNSRecordQuery:
+		return q.Filter(), nil
 	case *ent.DNSZoneQuery:
 		return q.Filter(), nil
 	case *ent.DataSessionQuery:
@@ -2070,6 +2096,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.DNSNameMutation:
 		return m.Filter(), nil
 	case *ent.DNSProviderMutation:
+		return m.Filter(), nil
+	case *ent.DNSRecordMutation:
 		return m.Filter(), nil
 	case *ent.DNSZoneMutation:
 		return m.Filter(), nil

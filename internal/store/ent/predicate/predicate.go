@@ -75,6 +75,9 @@ type DNSName func(*sql.Selector)
 // DNSProvider is the predicate function for dnsprovider builders.
 type DNSProvider func(*sql.Selector)
 
+// DNSRecord is the predicate function for dnsrecord builders.
+type DNSRecord func(*sql.Selector)
+
 // DNSZone is the predicate function for dnszone builders.
 type DNSZone func(*sql.Selector)
 

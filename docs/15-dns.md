@@ -144,7 +144,18 @@ Cloudflare itself refuses A/AAAA and CNAME at the same name
 Every owned record has one row in `dns_records` ([06](06-data-model.md#dns)). The ledger is
 controller-managed durable state: it is never rebuilt from the provider.
 
-- **Write-ahead.** The ledger row is written in state `creating` **before** the provider call.
+- **Write-ahead.** The ledger row is written in state `creating` **before** the provider call. A
+  record about to be deleted has its row set to `deleting` first. The rows are committed in a
+  transaction that checks the lease's fencing token, so a replica that lost the lease writes none.
+  A `creating` row whose record was never written (the provider refused it, or the pass stopped) is
+  reused by the next create of the same name and type, never duplicated.
+- **Commit.** The provider's answer to a batch carries no record IDs, so after a pass that created
+  records the job lists the zone and links each created record to its row by its marker. The row
+  becomes `synced` with the provider's ID and `last_synced_at`, in one transaction that first checks
+  the fencing token, with one audit entry per write: `dns_record.create`, `dns_record.update` or
+  `dns_record.delete`, actor `dns`, in the chain of the zone's org, with the record before and
+  after ([04](04-security.md#audit-log)). A write whose commit is lost (a crash, a lost lease)
+  leaves its row `creating` or `deleting`, which the next pass repairs.
 - **Marker.** Each owned record carries the comment `rpmgr <trust-domain> <ledger ID>`, e.g.
   `rpmgr rpmgr-7f3k2q9m dnr_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R` (51 characters). Comments are available on
   all plans, up to 100 characters on Free [F cf:dns/manage-dns-records/reference/record-attributes];
@@ -220,9 +231,14 @@ sequenceDiagram
 - Changes are sent through the batch endpoint. Cloudflare applies a batch all-or-nothing, in the
   order deletes, patches, puts, posts; it propagates the records individually
   [F cf:dns/manage-dns-records/how-to/batch-record-changes].
-- If a batch fails, the job retries its operations one by one, so one bad record does not block the
-  others — the same rule as for agents ([03](03-connections.md#configuration-reconciliation)). The
-  failing name gets `dns_status = error` with the provider's reason.
+- A plan of more than the limit in [Timers and limits](#timers-and-limits) is sent as several
+  batches in order, deletes first.
+- If the provider refuses a batch because of a record (an HTTP 4xx other than 401, 403, 404 and
+  429, or a request the client refused before sending), the job retries its operations one by one,
+  so one bad record does not block the others — the same rule as for agents
+  ([03](03-connections.md#configuration-reconciliation)). The failing name gets `dns_status = error`
+  with the provider's reason, and its ledger row `error` with the same reason; the next pass tries
+  it again and reuses the row. Any other failure is [fail-static](#fail-static).
 - **Rate budget.** Cloudflare allows 1 200 requests per 5 minutes **per Cloudflare user**, counting
   dashboard and API together; a 429 blocks all API calls of that user for the next 5 minutes, and
   the response carries `retry-after` [F cf:fundamentals/api/reference/limits]. rpmgr cannot see
@@ -240,6 +256,12 @@ If the provider is unreachable, rate-limited or rejects the token, the job **del
 changes nothing**. Published records keep serving; names show `pending`; the zone shows the
 provider status, and an alert fires ([10](10-operations.md#suggested-alerts)). The next successful
 pass catches up.
+
+- **What counts.** A transport error, a timeout, an HTTP 5xx, 401, 403, 404 and 429 stop the pass
+  at once, also in the middle of a batch series or of the retry record by record: the request
+  after it is never sent. What was written before it is recorded in the ledger; the rows of the
+  rest stay `creating` or `deleting`, and the provider's records stay as they are. A lost lease or a
+  lease that will not outlast the next batch stops it the same way.
 
 ## Held zones and plan approval
 
