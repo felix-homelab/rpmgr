@@ -59,6 +59,16 @@ service DomainService {
       step_up: true
     };
   }
+  // ApproveDomainClaim verifies a claim held as pending_approval: it is nested under, or contains,
+  // a verified domain of another org, and its proof was shown (docs/04-security.md, "Route and
+  // hostname ownership"). Only an Instance Admin, after a step-up. To refuse a held claim, its org
+  // deletes it.
+  rpc ApproveDomainClaim(ApproveDomainClaimRequest) returns (ApproveDomainClaimResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "instance.admin"
+      step_up: true
+    };
+  }
 }
 
 // DomainStatus is where a claim stands.
@@ -205,6 +215,18 @@ message DeleteDomainResponse {}
 message MarkDomainTrustedRequest {
   // The claim's ID, of any org.
   string domain_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// ApproveDomainClaimRequest names a held claim.
+message ApproveDomainClaimRequest {
+  // The claim's ID, of any org.
+  string domain_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// ApproveDomainClaimResponse is the verified claim.
+message ApproveDomainClaimResponse {
+  // The claim.
+  Domain domain = 1;
 }
 
 // MarkDomainTrustedResponse is the verified claim.

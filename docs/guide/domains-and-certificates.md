@@ -105,7 +105,7 @@ wrong value. The domain commands take the claim's ID, which `rpmgr list domain` 
 | **pending** | Waiting for its proof; checked on a schedule and with **Check now** |
 | **verified** | Proved, or trusted by the Instance Admin; routes may use names under it |
 | **failed** | Not proved in time; **Check now** may still verify a TXT claim; claim an HTTP one again |
-| **waiting for approval** | A claim that needs the Instance Admin's approval; such claims come with Phase 2 ([05](../05-features.md#tls-and-domains)) |
+| **waiting for approval** | Proved, but nested under, or containing, a verified domain of another organisation; no route may use it until the Instance Admin approves it ([Nested claims](#nested-claims)) |
 
 ### Trusted domains
 
@@ -115,6 +115,18 @@ such as an internal domain without public DNS: **Mark as trusted** on the claim,
 the Instance Admin**. A trusted name is still claimed once in the instance: a later claim by another
 organisation is refused, and the Instance Admin decides
 ([D13](../14-open-decisions.md#tenancy-and-data)).
+
+### Nested claims
+
+A name is nested with another when one lies below the other, such as `app.example.com` and
+`example.com`. When the proof of a claim succeeds and the name is nested under, or contains, a
+verified domain of **another** organisation, the claim is not verified: it waits for approval, and
+no route, certificate or DNS record uses it meanwhile. The Instance Admin approves it with
+`rpmgr approve domain <id>`, which asks for a step-up first; an Owner cannot approve their own
+organisation's claim. To refuse, remove the claim. A claim stays waiting if the other
+organisation's domain is removed later, until the Instance Admin approves it or it is removed.
+Nested claims of one organisation are verified as usual. The rule and its reasons are in
+[04](../04-security.md#route-and-hostname-ownership).
 
 ### Remove a claim
 

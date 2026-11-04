@@ -108,3 +108,29 @@ func TestDomainChecks(t *testing.T) {
 		}
 	})
 }
+
+// TestDomainChecks_NestedClaimHeld: the schedule holds a proved claim nested under another org's
+// verified domain for an Instance Admin's approval, and verifies a proved one that is not.
+func TestDomainChecks_NestedClaimHeld(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		storetest.Init(t, db)
+		sys := storetest.SystemCtx(t)
+		orgA, orgB := storetest.Org(t, db, "org-a"), storetest.Org(t, db, "org-b")
+		now := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+		db.Client().Domain.Create().SetOrgID(orgA).SetFqdn("example.com").SetChallengeValue("v").SetStatus(domain.StatusVerified).ExecX(sys)
+		db.Client().Domain.Create().SetOrgID(orgB).SetFqdn("app.example.com").SetChallengeValue("v").ExecX(sys)
+		db.Client().Domain.Create().SetOrgID(orgB).SetFqdn("other.example.org").SetChallengeValue("v").ExecX(sys)
+		v := &recordingVerifier{ok: map[string]bool{"app.example.com": true, "other.example.org": true}}
+		job := controller.DomainCheckJob(controller.DomainCheckOptions{DB: db, TXT: v, Now: func() time.Time { return now }})
+		if err := job.Run(context.WithoutCancel(sys), lease.Lease{}); err != nil {
+			t.Fatal(err)
+		}
+		get := func(fqdn string) *ent.Domain { return db.Client().Domain.Query().Where(domain.Fqdn(fqdn)).OnlyX(sys) }
+		if d := get("app.example.com"); d.Status != domain.StatusPendingApproval || d.VerifiedAt != nil {
+			t.Errorf("a nested claim: %v %v", d.Status, d.VerifiedAt)
+		}
+		if d := get("other.example.org"); d.Status != domain.StatusVerified || d.VerifiedAt == nil {
+			t.Errorf("an unrelated claim: %v %v", d.Status, d.VerifiedAt)
+		}
+	})
+}

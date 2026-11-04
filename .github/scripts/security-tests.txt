@@ -49,7 +49,7 @@ TestReauth_ExpiredWithinGrace	done	3.12	#67	internal/controller, with the revoke
 TestReauth_SupersededSerialRefused	done	3.12	#67	internal/controller, with the after-restore clause (11.6)
 TestStatelessReset_DetectedWithinPingInterval	done	4.2	#72
 TestDNS_ForeignRecordNeverModified	p2	-	-	DNS automation
-TestDNS_CrossOrgPublishRefused	p2	-	-	DNS automation
+TestDNS_CrossOrgPublishRefused	p2	-	-	DNS automation; nested clause (held claims are not found by Covering) in TestDNS_CrossOrgPublishRefused_Nested (7.2, #681)
 TestDNS_PendingZoneIsNotProof	p2	-	-	DNS automation
 TestDNS_CrashRelinksByMarker	p2	-	-	DNS automation
 TestDNS_RestoreStartsHeld	p2	-	-	DNS automation

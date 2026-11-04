@@ -70,6 +70,20 @@ func Claim(ctx context.Context, tx *ent.Tx, org, fqdn string, wildcard bool) (*e
 	return d, err
 }
 
+// Conflicts reports whether fqdn, a normalised name claimed by org, is nested under, or contains,
+// a verified domain of another org, whatever either claim's wildcard flag says. Such a claim needs
+// an Instance Admin's approval; the same org's nested claims never do. Only verified domains
+// count: a held or pending claim is unusable and holds nothing. ctx must see every org's claims.
+func Conflicts(ctx context.Context, tx *ent.Tx, org, fqdn string) (bool, error) {
+	labels := strings.Split(fqdn, ".")
+	var parents []string
+	for i := 1; i < len(labels)-1; i++ {
+		parents = append(parents, strings.Join(labels[i:], "."))
+	}
+	return tx.Domain.Query().Where(domain.OrgIDNEQ(org), domain.StatusEQ(domain.StatusVerified),
+		domain.Or(domain.FqdnIn(parents...), domain.FqdnHasSuffix("."+fqdn))).Exist(ctx)
+}
+
 // Covering returns the verified domain of org that covers hostname, the most specific one when
 // several do: an exact claim before a wildcard, a longer name before a shorter one.
 func Covering(ctx context.Context, tx *ent.Tx, org, hostname string) (*ent.Domain, error) {
