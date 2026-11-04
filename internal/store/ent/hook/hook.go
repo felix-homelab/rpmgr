@@ -273,6 +273,18 @@ func (f DNSNameFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DNSNameMutation", m)
 }
 
+// The DNSNameStatusFunc type is an adapter to allow the use of ordinary
+// function as DNSNameStatus mutator.
+type DNSNameStatusFunc func(context.Context, *ent.DNSNameStatusMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f DNSNameStatusFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.DNSNameStatusMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DNSNameStatusMutation", m)
+}
+
 // The DNSProviderFunc type is an adapter to allow the use of ordinary
 // function as DNSProvider mutator.
 type DNSProviderFunc func(context.Context, *ent.DNSProviderMutation) (ent.Value, error)

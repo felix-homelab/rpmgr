@@ -691,6 +691,42 @@ var (
 			},
 		},
 	}
+	// DNSNameStatusColumns holds the columns for the "dns_name_status" table.
+	DNSNameStatusColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString, Size: 253},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"not_managed", "pending", "published", "conflict", "ambiguous", "held", "error"}},
+		{Name: "reason", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "since", Type: field.TypeTime},
+		{Name: "dns_zone_id", Type: field.TypeString},
+	}
+	// DNSNameStatusTable holds the schema information for the "dns_name_status" table.
+	DNSNameStatusTable = &schema.Table{
+		Name:       "dns_name_status",
+		Columns:    DNSNameStatusColumns,
+		PrimaryKey: []*schema.Column{DNSNameStatusColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "dns_name_status_dns_zones_zone",
+				Columns:    []*schema.Column{DNSNameStatusColumns[6]},
+				RefColumns: []*schema.Column{DNSZonesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "dnsnamestatus_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{DNSNameStatusColumns[1], DNSNameStatusColumns[0]},
+			},
+			{
+				Name:    "dnsnamestatus_dns_zone_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{DNSNameStatusColumns[6], DNSNameStatusColumns[2]},
+			},
+		},
+	}
 	// DNSProvidersColumns holds the columns for the "dns_providers" table.
 	DNSProvidersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -2477,6 +2513,7 @@ var (
 		ConnectListenersTable,
 		ConnectorsTable,
 		DNSNamesTable,
+		DNSNameStatusTable,
 		DNSProvidersTable,
 		DNSRecordsTable,
 		DNSZonesTable,
@@ -2599,6 +2636,10 @@ func init() {
 	DNSNamesTable.ForeignKeys[1].RefTable = DomainsTable
 	DNSNamesTable.Annotation = &entsql.Annotation{
 		Table: "dns_names",
+	}
+	DNSNameStatusTable.ForeignKeys[0].RefTable = DNSZonesTable
+	DNSNameStatusTable.Annotation = &entsql.Annotation{
+		Table: "dns_name_status",
 	}
 	DNSProvidersTable.Annotation = &entsql.Annotation{
 		Table: "dns_providers",

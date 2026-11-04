@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
@@ -29,10 +30,39 @@ const (
 // ErrLost is returned when a lease is no longer held: it expired, or another holder took it.
 var ErrLost = errors.New("lease: not held any more")
 
-// Lease is one held lease.
+// Lease is one held lease. The handle carries the time the lease ends (Expires): set when the
+// lease is taken and moved on at every renewal, as read back from the database row, so a job can
+// refuse work the lease will not outlast. Copies of a handle share it. A handle whose renewal
+// failed keeps its old expiry, so it runs out (docs/15-dns.md, "The DNS job"; D164).
 type Lease struct {
 	Name  string
 	Token int64
+	ttl   time.Duration // the job's own TTL; zero is TTL
+	ends  *atomic.Int64 // expires_at, Unix milliseconds; nil for a handle that was not taken
+}
+
+// Expires returns when the lease ends. It is the zero time for a handle that was not taken from
+// the database, which no job may rely on.
+func (l Lease) Expires() time.Time {
+	if l.ends == nil {
+		return time.Time{}
+	}
+	return time.UnixMilli(l.ends.Load())
+}
+
+// Left returns how long the lease still holds at now; zero or less once it ended.
+func (l Lease) Left(now time.Time) time.Duration {
+	if l.ends == nil {
+		return 0
+	}
+	return time.UnixMilli(l.ends.Load()).Sub(now)
+}
+
+func (l Lease) ttlOr(d time.Duration) time.Duration {
+	if l.ttl > 0 {
+		return l.ttl
+	}
+	return d
 }
 
 // Leases takes and keeps leases for one holder, the controller node.
@@ -55,19 +85,34 @@ func New(db *store.DB, holder string, now func() time.Time) *Leases {
 // TryAcquire takes the lease name if it is free or expired, raising its fencing token. ok is false
 // if another holder has it.
 func (l *Leases) TryAcquire(ctx context.Context, name string) (lease Lease, ok bool, err error) {
+	return l.tryAcquire(ctx, name, l.ttl)
+}
+
+// TryAcquireFor is TryAcquire for a lease of its own TTL, which Renew keeps.
+func (l *Leases) TryAcquireFor(ctx context.Context, name string, ttl time.Duration) (Lease, bool, error) {
+	if ttl <= 0 {
+		return Lease{}, false, errors.New("lease: a TTL must be positive")
+	}
+	lease, ok, err := l.tryAcquire(ctx, name, ttl)
+	lease.ttl = ttl
+	return lease, ok, err
+}
+
+func (l *Leases) tryAcquire(ctx context.Context, name string, ttl time.Duration) (lease Lease, ok bool, err error) {
 	now := l.now().UnixMilli()
+	var ends int64
 	err = store.WriteTx(ctx, l.db, func(tx *ent.Tx) error {
 		rows, err := tx.QueryContext(ctx, `INSERT INTO leases (name, holder, fencing_token, expires_at)
 			VALUES ($1, $2, 1, $3) ON CONFLICT (name) DO UPDATE SET holder = excluded.holder,
 			fencing_token = leases.fencing_token + 1, expires_at = excluded.expires_at
-			WHERE leases.expires_at <= $4 RETURNING fencing_token`,
-			name, l.holder, now+l.ttl.Milliseconds(), now)
+			WHERE leases.expires_at <= $4 RETURNING fencing_token, expires_at`,
+			name, l.holder, now+ttl.Milliseconds(), now)
 		if err != nil {
 			return err
 		}
 		defer func() { _ = rows.Close() }()
 		if ok = rows.Next(); ok {
-			if err := rows.Scan(&lease.Token); err != nil {
+			if err := rows.Scan(&lease.Token, &ends); err != nil {
 				return err
 			}
 		}
@@ -77,16 +122,37 @@ func (l *Leases) TryAcquire(ctx context.Context, name string) (lease Lease, ok b
 		return Lease{}, false, err
 	}
 	lease.Name = name
+	lease.ends = new(atomic.Int64)
+	lease.ends.Store(ends)
 	return lease, true, nil
 }
 
 // Renew extends a held lease by the TTL. It fails with ErrLost once the lease expired or another
 // holder took it, even if this holder took it again in between.
+// The handle's expiry moves to the one the database row now holds; after a failed renewal it stays.
 func (l *Leases) Renew(ctx context.Context, lease Lease) error {
 	now := l.now().UnixMilli()
-	return l.exec(ctx, `UPDATE leases SET expires_at = $1
-		WHERE name = $2 AND holder = $3 AND fencing_token = $4 AND expires_at > $5`,
-		lease, now+l.ttl.Milliseconds(), lease.Name, l.holder, lease.Token, now)
+	var ends int64
+	err := store.WriteTx(ctx, l.db, func(tx *ent.Tx) error {
+		rows, err := tx.QueryContext(ctx, `UPDATE leases SET expires_at = $1
+			WHERE name = $2 AND holder = $3 AND fencing_token = $4 AND expires_at > $5 RETURNING expires_at`,
+			now+lease.ttlOr(l.ttl).Milliseconds(), lease.Name, l.holder, lease.Token, now)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rows.Close() }()
+		if !rows.Next() {
+			if err := rows.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("%w: %s (token %d)", ErrLost, lease.Name, lease.Token)
+		}
+		return rows.Scan(&ends)
+	})
+	if err == nil && lease.ends != nil {
+		lease.ends.Store(ends)
+	}
+	return err
 }
 
 // Release gives a held lease up, so another replica can take it at once.
@@ -132,7 +198,11 @@ type Job struct {
 	Name   string        // the lease name
 	Reason string        // the audited reason of its system scope
 	Every  time.Duration // how often Run is called while the lease is held
-	Run    func(ctx context.Context, lease Lease) error
+	// TTL is the lease's own time to live, renewed every third of it; zero is the package's TTL. A
+	// job that must not act in the last moments of its lease, such as one that calls a provider,
+	// takes a longer one.
+	TTL time.Duration
+	Run func(ctx context.Context, lease Lease) error
 }
 
 // Run runs job until ctx ends: it takes the lease when it can, renews it, calls job.Run while it
@@ -143,7 +213,14 @@ func (l *Leases) Run(ctx context.Context, job Job, onErr func(error)) {
 		onErr = func(error) {}
 	}
 	for ctx.Err() == nil {
-		lease, ok, err := l.TryAcquire(ctx, job.Name)
+		var lease Lease
+		var ok bool
+		var err error
+		if job.TTL > 0 {
+			lease, ok, err = l.TryAcquireFor(ctx, job.Name, job.TTL)
+		} else {
+			lease, ok, err = l.TryAcquire(ctx, job.Name)
+		}
 		switch {
 		case err != nil && ctx.Err() != nil: // a shutdown, not a failure
 		case err != nil:
@@ -168,7 +245,7 @@ func (l *Leases) hold(ctx context.Context, job Job, lease Lease, onErr func(erro
 	case err != nil:
 		return err
 	}
-	renew := time.NewTicker(RenewEvery)
+	renew := time.NewTicker(lease.ttlOr(TTL) / 3)
 	defer renew.Stop()
 	run := time.NewTimer(0)
 	defer run.Stop()

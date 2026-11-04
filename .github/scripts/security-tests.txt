@@ -56,8 +56,8 @@ TestDNS_RestoreStartsHeld	p2	-	-	DNS automation
 TestDNS_DeletionGuard	p2	-	-	DNS automation
 TestDNS_FailStatic	done	6.10	#668	internal/dns/apply
 TestDNS_RateBudgetAndRetryAfter	p2	-	-	DNS automation
-TestDNS_BatchFallbackPerRecord	p2	-	-	DNS automation
-TestDNS_LeaseCheckedBeforeBatch	p2	-	-	DNS automation
+TestDNS_BatchFallbackPerRecord	done	6.11	#669	internal/dns/apply (fallback, ledger) and TestDNS_BatchFallbackPerRecord_NameStatus in internal/dns/job (name error, 6.11)
+TestDNS_LeaseCheckedBeforeBatch	done	6.11	#669	internal/dns/job
 TestDNS_ProxiedOnlyForHttp	p2	-	-	DNS automation
 TestDNS_ReservedNamesNeverWritten	p2	-	-	DNS automation
 TestDNS_TokenWriteOnlyAndBaseURLFixed	done	6.4	#662	base-URL clause 6.2 (internal/dns/cloudflare), API, export and log clause 6.4

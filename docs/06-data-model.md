@@ -51,6 +51,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 | `psv_` | private service (Phase 2) | `vgr_` | visitor grant (Phase 2) |
 | `dnp_` | DNS provider (Phase 2) | `dnz_` | managed DNS zone (Phase 2) |
 | `dnn_` | DNS name (Phase 2) | `dnr_` | owned DNS record (Phase 2) |
+| `dnt_` | DNS name status (Phase 2) | | |
 | `cak_` | CA key | `cab_` | CA bundle |
 | `pwr_` | password reset | `whk_` | webhook |
 | `rel_` | release | `rol_` | rollout |
@@ -251,7 +252,7 @@ flowchart LR
 | `data_sessions` | gateway_id, connector_id, transport (`quic`, `h2`, `wss`), rtt_ms (0 where the transport does not measure it), ready_routes (the routes the connector reports ready on its sessions of this transport; unset where the gateway does not report them, an earlier release), established_at (first reported), reported_at: one row per gateway, connector and transport, replaced by each report of the gateway ([03](03-connections.md#configuration-reconciliation)) |
 | `route_traffic_hourly`, `route_traffic_daily` | org_id, route_id, bucket, bytes_in, bytes_out, connections, errors | One row per route and hour or day; `bucket` is its start in UTC. No foreign key to the route: retention removes a deleted route's rows |
 | `traffic_baselines` | org_id, gateway_id, route_id, boot_id, bytes_in, bytes_out, connections, errors, reported_at | A gateway's last reported route counters, which the next report's increase is taken over |
-| `dns_name_status` | dns_zone_id, org_id, name, status, reason, since |
+| `dns_name_status` | id, dns_zone_id, org_id, name, status (`not_managed`, `pending`, `published`, `conflict`, `ambiguous`, `held`, `error`), reason, since: one row per name with a source in the zone, unique per zone and name, written in the DNS job's fenced transaction and dropped with the zone. `reason` is the conflict kind, why a name is `not_managed`, or the provider's words for `error` ([15](15-dns.md#publication-rules)) |
 
 **Derived route status** (computed, never stored as desired state):
 

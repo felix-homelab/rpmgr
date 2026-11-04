@@ -36,6 +36,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsnamestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
@@ -120,6 +121,7 @@ const (
 	TypeConnectListener    = "ConnectListener"
 	TypeConnector          = "Connector"
 	TypeDNSName            = "DNSName"
+	TypeDNSNameStatus      = "DNSNameStatus"
 	TypeDNSProvider        = "DNSProvider"
 	TypeDNSRecord          = "DNSRecord"
 	TypeDNSZone            = "DNSZone"
@@ -17983,6 +17985,675 @@ func (m *DNSNameMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown DNSName edge %s", name)
+}
+
+// DNSNameStatusMutation represents an operation that mutates the DNSNameStatus nodes in the graph.
+type DNSNameStatusMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	org_id        *string
+	name          *string
+	status        *dnsnamestatus.Status
+	reason        *string
+	since         *time.Time
+	clearedFields map[string]struct{}
+	zone          *string
+	clearedzone   bool
+	done          bool
+	oldValue      func(context.Context) (*DNSNameStatus, error)
+	predicates    []predicate.DNSNameStatus
+}
+
+var _ ent.Mutation = (*DNSNameStatusMutation)(nil)
+
+// dnsnamestatusOption allows management of the mutation configuration using functional options.
+type dnsnamestatusOption func(*DNSNameStatusMutation)
+
+// newDNSNameStatusMutation creates new mutation for the DNSNameStatus entity.
+func newDNSNameStatusMutation(c config, op Op, opts ...dnsnamestatusOption) *DNSNameStatusMutation {
+	m := &DNSNameStatusMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeDNSNameStatus,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withDNSNameStatusID sets the ID field of the mutation.
+func withDNSNameStatusID(id string) dnsnamestatusOption {
+	return func(m *DNSNameStatusMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *DNSNameStatus
+		)
+		m.oldValue = func(ctx context.Context) (*DNSNameStatus, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().DNSNameStatus.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withDNSNameStatus sets the old DNSNameStatus of the mutation.
+func withDNSNameStatus(node *DNSNameStatus) dnsnamestatusOption {
+	return func(m *DNSNameStatusMutation) {
+		m.oldValue = func(context.Context) (*DNSNameStatus, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m DNSNameStatusMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m DNSNameStatusMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of DNSNameStatus entities.
+func (m *DNSNameStatusMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *DNSNameStatusMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *DNSNameStatusMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().DNSNameStatus.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *DNSNameStatusMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *DNSNameStatusMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the DNSNameStatus entity.
+// If the DNSNameStatus object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSNameStatusMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *DNSNameStatusMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetDNSZoneID sets the "dns_zone_id" field.
+func (m *DNSNameStatusMutation) SetDNSZoneID(s string) {
+	m.zone = &s
+}
+
+// DNSZoneID returns the value of the "dns_zone_id" field in the mutation.
+func (m *DNSNameStatusMutation) DNSZoneID() (r string, exists bool) {
+	v := m.zone
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDNSZoneID returns the old "dns_zone_id" field's value of the DNSNameStatus entity.
+// If the DNSNameStatus object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSNameStatusMutation) OldDNSZoneID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDNSZoneID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDNSZoneID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDNSZoneID: %w", err)
+	}
+	return oldValue.DNSZoneID, nil
+}
+
+// ResetDNSZoneID resets all changes to the "dns_zone_id" field.
+func (m *DNSNameStatusMutation) ResetDNSZoneID() {
+	m.zone = nil
+}
+
+// SetName sets the "name" field.
+func (m *DNSNameStatusMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *DNSNameStatusMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the DNSNameStatus entity.
+// If the DNSNameStatus object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSNameStatusMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *DNSNameStatusMutation) ResetName() {
+	m.name = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *DNSNameStatusMutation) SetStatus(d dnsnamestatus.Status) {
+	m.status = &d
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *DNSNameStatusMutation) Status() (r dnsnamestatus.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the DNSNameStatus entity.
+// If the DNSNameStatus object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSNameStatusMutation) OldStatus(ctx context.Context) (v dnsnamestatus.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *DNSNameStatusMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetReason sets the "reason" field.
+func (m *DNSNameStatusMutation) SetReason(s string) {
+	m.reason = &s
+}
+
+// Reason returns the value of the "reason" field in the mutation.
+func (m *DNSNameStatusMutation) Reason() (r string, exists bool) {
+	v := m.reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReason returns the old "reason" field's value of the DNSNameStatus entity.
+// If the DNSNameStatus object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSNameStatusMutation) OldReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReason: %w", err)
+	}
+	return oldValue.Reason, nil
+}
+
+// ResetReason resets all changes to the "reason" field.
+func (m *DNSNameStatusMutation) ResetReason() {
+	m.reason = nil
+}
+
+// SetSince sets the "since" field.
+func (m *DNSNameStatusMutation) SetSince(t time.Time) {
+	m.since = &t
+}
+
+// Since returns the value of the "since" field in the mutation.
+func (m *DNSNameStatusMutation) Since() (r time.Time, exists bool) {
+	v := m.since
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSince returns the old "since" field's value of the DNSNameStatus entity.
+// If the DNSNameStatus object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSNameStatusMutation) OldSince(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSince is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSince requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSince: %w", err)
+	}
+	return oldValue.Since, nil
+}
+
+// ResetSince resets all changes to the "since" field.
+func (m *DNSNameStatusMutation) ResetSince() {
+	m.since = nil
+}
+
+// SetZoneID sets the "zone" edge to the DNSZone entity by id.
+func (m *DNSNameStatusMutation) SetZoneID(id string) {
+	m.zone = &id
+}
+
+// ClearZone clears the "zone" edge to the DNSZone entity.
+func (m *DNSNameStatusMutation) ClearZone() {
+	m.clearedzone = true
+	m.clearedFields[dnsnamestatus.FieldDNSZoneID] = struct{}{}
+}
+
+// ZoneCleared reports if the "zone" edge to the DNSZone entity was cleared.
+func (m *DNSNameStatusMutation) ZoneCleared() bool {
+	return m.clearedzone
+}
+
+// ZoneID returns the "zone" edge ID in the mutation.
+func (m *DNSNameStatusMutation) ZoneID() (id string, exists bool) {
+	if m.zone != nil {
+		return *m.zone, true
+	}
+	return
+}
+
+// ZoneIDs returns the "zone" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ZoneID instead. It exists only for internal usage by the builders.
+func (m *DNSNameStatusMutation) ZoneIDs() (ids []string) {
+	if id := m.zone; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetZone resets all changes to the "zone" edge.
+func (m *DNSNameStatusMutation) ResetZone() {
+	m.zone = nil
+	m.clearedzone = false
+}
+
+// Where appends a list predicates to the DNSNameStatusMutation builder.
+func (m *DNSNameStatusMutation) Where(ps ...predicate.DNSNameStatus) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the DNSNameStatusMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *DNSNameStatusMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.DNSNameStatus, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *DNSNameStatusMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *DNSNameStatusMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (DNSNameStatus).
+func (m *DNSNameStatusMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *DNSNameStatusMutation) Fields() []string {
+	fields := make([]string, 0, 6)
+	if m.org_id != nil {
+		fields = append(fields, dnsnamestatus.FieldOrgID)
+	}
+	if m.zone != nil {
+		fields = append(fields, dnsnamestatus.FieldDNSZoneID)
+	}
+	if m.name != nil {
+		fields = append(fields, dnsnamestatus.FieldName)
+	}
+	if m.status != nil {
+		fields = append(fields, dnsnamestatus.FieldStatus)
+	}
+	if m.reason != nil {
+		fields = append(fields, dnsnamestatus.FieldReason)
+	}
+	if m.since != nil {
+		fields = append(fields, dnsnamestatus.FieldSince)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *DNSNameStatusMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case dnsnamestatus.FieldOrgID:
+		return m.OrgID()
+	case dnsnamestatus.FieldDNSZoneID:
+		return m.DNSZoneID()
+	case dnsnamestatus.FieldName:
+		return m.Name()
+	case dnsnamestatus.FieldStatus:
+		return m.Status()
+	case dnsnamestatus.FieldReason:
+		return m.Reason()
+	case dnsnamestatus.FieldSince:
+		return m.Since()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *DNSNameStatusMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case dnsnamestatus.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case dnsnamestatus.FieldDNSZoneID:
+		return m.OldDNSZoneID(ctx)
+	case dnsnamestatus.FieldName:
+		return m.OldName(ctx)
+	case dnsnamestatus.FieldStatus:
+		return m.OldStatus(ctx)
+	case dnsnamestatus.FieldReason:
+		return m.OldReason(ctx)
+	case dnsnamestatus.FieldSince:
+		return m.OldSince(ctx)
+	}
+	return nil, fmt.Errorf("unknown DNSNameStatus field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DNSNameStatusMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case dnsnamestatus.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case dnsnamestatus.FieldDNSZoneID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDNSZoneID(v)
+		return nil
+	case dnsnamestatus.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case dnsnamestatus.FieldStatus:
+		v, ok := value.(dnsnamestatus.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case dnsnamestatus.FieldReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReason(v)
+		return nil
+	case dnsnamestatus.FieldSince:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSince(v)
+		return nil
+	}
+	return fmt.Errorf("unknown DNSNameStatus field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *DNSNameStatusMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *DNSNameStatusMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DNSNameStatusMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown DNSNameStatus numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *DNSNameStatusMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *DNSNameStatusMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *DNSNameStatusMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown DNSNameStatus nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *DNSNameStatusMutation) ResetField(name string) error {
+	switch name {
+	case dnsnamestatus.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case dnsnamestatus.FieldDNSZoneID:
+		m.ResetDNSZoneID()
+		return nil
+	case dnsnamestatus.FieldName:
+		m.ResetName()
+		return nil
+	case dnsnamestatus.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case dnsnamestatus.FieldReason:
+		m.ResetReason()
+		return nil
+	case dnsnamestatus.FieldSince:
+		m.ResetSince()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSNameStatus field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *DNSNameStatusMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.zone != nil {
+		edges = append(edges, dnsnamestatus.EdgeZone)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *DNSNameStatusMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case dnsnamestatus.EdgeZone:
+		if id := m.zone; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *DNSNameStatusMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *DNSNameStatusMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *DNSNameStatusMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedzone {
+		edges = append(edges, dnsnamestatus.EdgeZone)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *DNSNameStatusMutation) EdgeCleared(name string) bool {
+	switch name {
+	case dnsnamestatus.EdgeZone:
+		return m.clearedzone
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *DNSNameStatusMutation) ClearEdge(name string) error {
+	switch name {
+	case dnsnamestatus.EdgeZone:
+		m.ClearZone()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSNameStatus unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *DNSNameStatusMutation) ResetEdge(name string) error {
+	switch name {
+	case dnsnamestatus.EdgeZone:
+		m.ResetZone()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSNameStatus edge %s", name)
 }
 
 // DNSProviderMutation represents an operation that mutates the DNSProvider nodes in the graph.
