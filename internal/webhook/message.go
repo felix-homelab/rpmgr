@@ -28,6 +28,8 @@ type Context struct {
 	PublicURL string
 	// TrustDomain and Version are the footer.
 	TrustDomain, Version string
+	// Options are the endpoint's own, which only an endpoint has: they are not part of Instance.
+	Options Options
 }
 
 // Resolve fills the names of ctx for e from the store: the organisation's, the user's and, for a
@@ -278,4 +280,14 @@ func subjectPath(e events.Event) string {
 		return "/"
 	}
 	return "/audit"
+}
+
+// AlertKey identifies the alert of an alert.fire or alert.resolve event, the same for both: its
+// kind and subject. It is "" for any other event.
+func AlertKey(e events.Event) string {
+	if e.Type != "alert.fire" && e.Type != "alert.resolve" {
+		return ""
+	}
+	kind, _, _ := strings.Cut(e.Summary, ":")
+	return kind + "|" + e.SubjectType + "|" + e.SubjectID
 }

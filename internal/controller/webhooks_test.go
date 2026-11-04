@@ -59,6 +59,7 @@ type hookEnv struct {
 type received struct {
 	path, id, typ, sig string
 	body               []byte
+	method, query      string
 }
 
 func newHookEnv(t *testing.T, guarded bool) *hookEnv {
@@ -82,7 +83,7 @@ func newHookEnv(t *testing.T, guarded bool) *hookEnv {
 			}
 		}
 		e.got = append(e.got, received{r.URL.Path, r.Header.Get(webhook.HeaderEventID), r.Header.Get(webhook.HeaderEventType),
-			r.Header.Get(webhook.HeaderSignature), b})
+			r.Header.Get(webhook.HeaderSignature), b, r.Method, r.URL.RawQuery})
 		code := e.answer(r.URL.Path, n)
 		reply, replyBody := e.reply.Clone(), e.replyBody
 		e.mu.Unlock()

@@ -24,6 +24,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
 	ewebhook "github.com/felix-homelab/rpmgr/internal/store/ent/webhook"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookdelivery"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookmessage"
 	"github.com/felix-homelab/rpmgr/internal/webhook"
 )
 
@@ -68,6 +69,9 @@ type attempt struct {
 	code  int
 	err   error
 	sent  time.Time
+	// res is what a Discord post or edit answered (D170); key is the alert's, "" for another event.
+	res webhook.Result
+	key string
 }
 
 func deliverWebhooks(ctx context.Context, o WebhookOptions, l lease.Lease) error {
@@ -218,11 +222,20 @@ func delivery(ctx context.Context, c *ent.Client, o WebhookOptions, a *attempt, 
 		// Names are looked up now, never cached; a lookup that fails leaves the ID in the message.
 		mc := o.Instance
 		mc.Resolve(ctx, c, ev)
+		mc.Options = webhook.OptionsOf(h)
 		body, err := webhook.ChatBody(f, ev, mc)
 		if err != nil {
 			return webhook.Delivery{}, err
 		}
-		return webhook.Delivery{URL: h.URL, Target: target, EventID: e.ID, EventType: e.Type, Body: body, Policy: p}, nil
+		d := webhook.Delivery{URL: h.URL, Target: target, EventID: e.ID, EventType: e.Type, Body: body, Policy: p}
+		if f == webhook.FormatDiscord {
+			if a.key = webhook.AlertKey(ev); a.key != "" {
+				if err := discordMessage(ctx, c, a, &d, ev, mc); err != nil {
+					return webhook.Delivery{}, err
+				}
+			}
+		}
+		return d, nil
 	}
 	cur, err := o.Sealer.Open(secret.Context{Table: "webhooks", Column: "secret_enc", RowID: h.ID}, h.SecretEnc)
 	if err != nil {
@@ -241,6 +254,30 @@ func delivery(ctx context.Context, c *ent.Client, o WebhookOptions, a *attempt, 
 		return webhook.Delivery{}, err
 	}
 	return webhook.Delivery{URL: h.URL, EventID: e.ID, EventType: e.Type, Body: body, Secrets: secrets, Policy: p}, nil
+}
+
+// discordMessage makes a Discord alert's delivery remember its message (D170): a firing alert is
+// posted with ?wait=true and the answer's message ID is kept, and a resolve edits that message,
+// and posts a new one only if Discord no longer has it. An alert whose firing was not posted
+// through this endpoint, or whose message is not stored, is posted as a new message.
+func discordMessage(ctx context.Context, c *ent.Client, a *attempt, d *webhook.Delivery, ev events.Event, mc webhook.Context) error {
+	d.Result = &a.res
+	if ev.Type == "alert.fire" {
+		d.Wait, d.Threaded = true, mc.Options.ThreadName != ""
+		return nil
+	}
+	m, err := c.WebhookMessage.Query().Where(webhookmessage.WebhookID(a.hook.ID), webhookmessage.AlertKey(a.key)).Only(ctx)
+	if ent.IsNotFound(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	edit, err := webhook.DiscordEditBody(ev, mc)
+	if err != nil {
+		return err
+	}
+	d.Edit = &webhook.Edit{MessageID: m.MessageID, ThreadID: m.ThreadID, Body: edit}
+	return nil
 }
 
 // errDropped marks a retry whose event is gone or predates the endpoint's enabling.
@@ -271,6 +308,9 @@ func record(ctx context.Context, tx *ent.Tx, work []*attempt, now time.Time) err
 			byHook[a.hook.ID] = append(byHook[a.hook.ID], a)
 		}
 		e := a.event
+		if err := keepMessage(ctx, tx, a); err != nil {
+			return err
+		}
 
 		cr := tx.WebhookDelivery.Create().SetWebhookID(a.hook.ID).SetNillableOrgID(a.hook.OrgID).SetEventID(e.ID).SetEventType(e.Type).
 			SetAttempt(a.n).SetStatusCode(a.code).SetSentAt(a.sent)
@@ -315,6 +355,30 @@ func record(ctx context.Context, tx *ent.Tx, work []*attempt, now time.Time) err
 	return nil
 }
 
+// keepMessage stores the message a Discord alert was posted as, and forgets it once the resolve was
+// delivered, as an edit or as a new message.
+func keepMessage(ctx context.Context, tx *ent.Tx, a *attempt) error {
+	if a.key == "" || a.err != nil {
+		return nil
+	}
+	forget := func() error {
+		_, err := tx.WebhookMessage.Delete().Where(webhookmessage.WebhookID(a.hook.ID), webhookmessage.AlertKey(a.key)).Exec(ctx)
+		return err
+	}
+	if a.event.Type == "alert.resolve" {
+		return forget()
+	}
+	if a.res.MessageID == "" {
+		return nil
+	}
+	// A firing that is delivered again replaces the message it made before.
+	if err := forget(); err != nil {
+		return err
+	}
+	return tx.WebhookMessage.Create().SetWebhookID(a.hook.ID).SetNillableOrgID(a.hook.OrgID).SetAlertKey(a.key).
+		SetMessageID(a.res.MessageID).SetThreadID(a.res.ThreadID).Exec(ctx)
+}
+
 // limitedAfter is how long a chat service asked to wait, or 0.
 func limitedAfter(err error) time.Duration {
 	var l *webhook.RateLimitedError
@@ -328,6 +392,9 @@ func limitedAfter(err error) time.Duration {
 // than webhook.KeepAtMost, the oldest ones past the give-up window that no retry waits on.
 func PurgeDeliveries(ctx context.Context, tx *ent.Tx, now time.Time) error {
 	if _, err := tx.WebhookDelivery.Delete().Where(webhookdelivery.SentAtLT(now.Add(-webhook.KeepFor))).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := tx.WebhookMessage.Delete().Where(webhookmessage.CreatedAtLT(now.Add(-webhook.KeepFor))).Exec(ctx); err != nil {
 		return err
 	}
 	var over []struct {

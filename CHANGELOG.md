@@ -38,6 +38,11 @@ Changes to the design documents are not recorded here: see the git history and t
   (`rpmgr update settings --instance --set cloudflare_ip_refresh=false`); an alert fires when the
   list is old while a route is proxied. A gateway that predates the switch is not sent a proxied
   route. (#1096)
+- A Discord, Slack or Microsoft Teams webhook endpoint can mention a role, user group or user when
+  an alert fires: set `mention` and `mention_when` (never, critical alerts or all alerts), through
+  the API's fields of the same names. A Discord endpoint also takes a username, an avatar URL and a
+  thread name, and a Discord alert's message is edited to green when the alert resolves, instead
+  of a second message; Discord's rate-limit header is honoured. (#1102)
 - A webhook endpoint has a format: `rpmgr`, as before, or `discord`, `slack` or `teams`, which posts
   each event as a message people read in the chat service, with the summary as the title, the
   event's type, organisation, actor, subject and time as fields, and an alert red when it fires

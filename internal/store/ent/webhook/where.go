@@ -124,6 +124,26 @@ func URLEnc(v []byte) predicate.Webhook {
 	return predicate.Webhook(sql.FieldEQ(FieldURLEnc, v))
 }
 
+// Mention applies equality check predicate on the "mention" field. It's identical to MentionEQ.
+func Mention(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEQ(FieldMention, v))
+}
+
+// DiscordUsername applies equality check predicate on the "discord_username" field. It's identical to DiscordUsernameEQ.
+func DiscordUsername(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEQ(FieldDiscordUsername, v))
+}
+
+// DiscordAvatarURL applies equality check predicate on the "discord_avatar_url" field. It's identical to DiscordAvatarURLEQ.
+func DiscordAvatarURL(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEQ(FieldDiscordAvatarURL, v))
+}
+
+// ThreadName applies equality check predicate on the "thread_name" field. It's identical to ThreadNameEQ.
+func ThreadName(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEQ(FieldThreadName, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.Webhook {
 	return predicate.Webhook(sql.FieldEQ(FieldOrgID, v))
@@ -742,6 +762,286 @@ func URLEncIsNil() predicate.Webhook {
 // URLEncNotNil applies the NotNil predicate on the "url_enc" field.
 func URLEncNotNil() predicate.Webhook {
 	return predicate.Webhook(sql.FieldNotNull(FieldURLEnc))
+}
+
+// MentionEQ applies the EQ predicate on the "mention" field.
+func MentionEQ(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEQ(FieldMention, v))
+}
+
+// MentionNEQ applies the NEQ predicate on the "mention" field.
+func MentionNEQ(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNEQ(FieldMention, v))
+}
+
+// MentionIn applies the In predicate on the "mention" field.
+func MentionIn(vs ...string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldIn(FieldMention, vs...))
+}
+
+// MentionNotIn applies the NotIn predicate on the "mention" field.
+func MentionNotIn(vs ...string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNotIn(FieldMention, vs...))
+}
+
+// MentionGT applies the GT predicate on the "mention" field.
+func MentionGT(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldGT(FieldMention, v))
+}
+
+// MentionGTE applies the GTE predicate on the "mention" field.
+func MentionGTE(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldGTE(FieldMention, v))
+}
+
+// MentionLT applies the LT predicate on the "mention" field.
+func MentionLT(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldLT(FieldMention, v))
+}
+
+// MentionLTE applies the LTE predicate on the "mention" field.
+func MentionLTE(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldLTE(FieldMention, v))
+}
+
+// MentionContains applies the Contains predicate on the "mention" field.
+func MentionContains(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldContains(FieldMention, v))
+}
+
+// MentionHasPrefix applies the HasPrefix predicate on the "mention" field.
+func MentionHasPrefix(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldHasPrefix(FieldMention, v))
+}
+
+// MentionHasSuffix applies the HasSuffix predicate on the "mention" field.
+func MentionHasSuffix(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldHasSuffix(FieldMention, v))
+}
+
+// MentionEqualFold applies the EqualFold predicate on the "mention" field.
+func MentionEqualFold(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEqualFold(FieldMention, v))
+}
+
+// MentionContainsFold applies the ContainsFold predicate on the "mention" field.
+func MentionContainsFold(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldContainsFold(FieldMention, v))
+}
+
+// MentionWhenEQ applies the EQ predicate on the "mention_when" field.
+func MentionWhenEQ(v MentionWhen) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEQ(FieldMentionWhen, v))
+}
+
+// MentionWhenNEQ applies the NEQ predicate on the "mention_when" field.
+func MentionWhenNEQ(v MentionWhen) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNEQ(FieldMentionWhen, v))
+}
+
+// MentionWhenIn applies the In predicate on the "mention_when" field.
+func MentionWhenIn(vs ...MentionWhen) predicate.Webhook {
+	return predicate.Webhook(sql.FieldIn(FieldMentionWhen, vs...))
+}
+
+// MentionWhenNotIn applies the NotIn predicate on the "mention_when" field.
+func MentionWhenNotIn(vs ...MentionWhen) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNotIn(FieldMentionWhen, vs...))
+}
+
+// DiscordUsernameEQ applies the EQ predicate on the "discord_username" field.
+func DiscordUsernameEQ(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEQ(FieldDiscordUsername, v))
+}
+
+// DiscordUsernameNEQ applies the NEQ predicate on the "discord_username" field.
+func DiscordUsernameNEQ(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNEQ(FieldDiscordUsername, v))
+}
+
+// DiscordUsernameIn applies the In predicate on the "discord_username" field.
+func DiscordUsernameIn(vs ...string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldIn(FieldDiscordUsername, vs...))
+}
+
+// DiscordUsernameNotIn applies the NotIn predicate on the "discord_username" field.
+func DiscordUsernameNotIn(vs ...string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNotIn(FieldDiscordUsername, vs...))
+}
+
+// DiscordUsernameGT applies the GT predicate on the "discord_username" field.
+func DiscordUsernameGT(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldGT(FieldDiscordUsername, v))
+}
+
+// DiscordUsernameGTE applies the GTE predicate on the "discord_username" field.
+func DiscordUsernameGTE(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldGTE(FieldDiscordUsername, v))
+}
+
+// DiscordUsernameLT applies the LT predicate on the "discord_username" field.
+func DiscordUsernameLT(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldLT(FieldDiscordUsername, v))
+}
+
+// DiscordUsernameLTE applies the LTE predicate on the "discord_username" field.
+func DiscordUsernameLTE(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldLTE(FieldDiscordUsername, v))
+}
+
+// DiscordUsernameContains applies the Contains predicate on the "discord_username" field.
+func DiscordUsernameContains(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldContains(FieldDiscordUsername, v))
+}
+
+// DiscordUsernameHasPrefix applies the HasPrefix predicate on the "discord_username" field.
+func DiscordUsernameHasPrefix(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldHasPrefix(FieldDiscordUsername, v))
+}
+
+// DiscordUsernameHasSuffix applies the HasSuffix predicate on the "discord_username" field.
+func DiscordUsernameHasSuffix(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldHasSuffix(FieldDiscordUsername, v))
+}
+
+// DiscordUsernameEqualFold applies the EqualFold predicate on the "discord_username" field.
+func DiscordUsernameEqualFold(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEqualFold(FieldDiscordUsername, v))
+}
+
+// DiscordUsernameContainsFold applies the ContainsFold predicate on the "discord_username" field.
+func DiscordUsernameContainsFold(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldContainsFold(FieldDiscordUsername, v))
+}
+
+// DiscordAvatarURLEQ applies the EQ predicate on the "discord_avatar_url" field.
+func DiscordAvatarURLEQ(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEQ(FieldDiscordAvatarURL, v))
+}
+
+// DiscordAvatarURLNEQ applies the NEQ predicate on the "discord_avatar_url" field.
+func DiscordAvatarURLNEQ(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNEQ(FieldDiscordAvatarURL, v))
+}
+
+// DiscordAvatarURLIn applies the In predicate on the "discord_avatar_url" field.
+func DiscordAvatarURLIn(vs ...string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldIn(FieldDiscordAvatarURL, vs...))
+}
+
+// DiscordAvatarURLNotIn applies the NotIn predicate on the "discord_avatar_url" field.
+func DiscordAvatarURLNotIn(vs ...string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNotIn(FieldDiscordAvatarURL, vs...))
+}
+
+// DiscordAvatarURLGT applies the GT predicate on the "discord_avatar_url" field.
+func DiscordAvatarURLGT(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldGT(FieldDiscordAvatarURL, v))
+}
+
+// DiscordAvatarURLGTE applies the GTE predicate on the "discord_avatar_url" field.
+func DiscordAvatarURLGTE(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldGTE(FieldDiscordAvatarURL, v))
+}
+
+// DiscordAvatarURLLT applies the LT predicate on the "discord_avatar_url" field.
+func DiscordAvatarURLLT(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldLT(FieldDiscordAvatarURL, v))
+}
+
+// DiscordAvatarURLLTE applies the LTE predicate on the "discord_avatar_url" field.
+func DiscordAvatarURLLTE(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldLTE(FieldDiscordAvatarURL, v))
+}
+
+// DiscordAvatarURLContains applies the Contains predicate on the "discord_avatar_url" field.
+func DiscordAvatarURLContains(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldContains(FieldDiscordAvatarURL, v))
+}
+
+// DiscordAvatarURLHasPrefix applies the HasPrefix predicate on the "discord_avatar_url" field.
+func DiscordAvatarURLHasPrefix(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldHasPrefix(FieldDiscordAvatarURL, v))
+}
+
+// DiscordAvatarURLHasSuffix applies the HasSuffix predicate on the "discord_avatar_url" field.
+func DiscordAvatarURLHasSuffix(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldHasSuffix(FieldDiscordAvatarURL, v))
+}
+
+// DiscordAvatarURLEqualFold applies the EqualFold predicate on the "discord_avatar_url" field.
+func DiscordAvatarURLEqualFold(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEqualFold(FieldDiscordAvatarURL, v))
+}
+
+// DiscordAvatarURLContainsFold applies the ContainsFold predicate on the "discord_avatar_url" field.
+func DiscordAvatarURLContainsFold(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldContainsFold(FieldDiscordAvatarURL, v))
+}
+
+// ThreadNameEQ applies the EQ predicate on the "thread_name" field.
+func ThreadNameEQ(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEQ(FieldThreadName, v))
+}
+
+// ThreadNameNEQ applies the NEQ predicate on the "thread_name" field.
+func ThreadNameNEQ(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNEQ(FieldThreadName, v))
+}
+
+// ThreadNameIn applies the In predicate on the "thread_name" field.
+func ThreadNameIn(vs ...string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldIn(FieldThreadName, vs...))
+}
+
+// ThreadNameNotIn applies the NotIn predicate on the "thread_name" field.
+func ThreadNameNotIn(vs ...string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNotIn(FieldThreadName, vs...))
+}
+
+// ThreadNameGT applies the GT predicate on the "thread_name" field.
+func ThreadNameGT(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldGT(FieldThreadName, v))
+}
+
+// ThreadNameGTE applies the GTE predicate on the "thread_name" field.
+func ThreadNameGTE(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldGTE(FieldThreadName, v))
+}
+
+// ThreadNameLT applies the LT predicate on the "thread_name" field.
+func ThreadNameLT(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldLT(FieldThreadName, v))
+}
+
+// ThreadNameLTE applies the LTE predicate on the "thread_name" field.
+func ThreadNameLTE(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldLTE(FieldThreadName, v))
+}
+
+// ThreadNameContains applies the Contains predicate on the "thread_name" field.
+func ThreadNameContains(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldContains(FieldThreadName, v))
+}
+
+// ThreadNameHasPrefix applies the HasPrefix predicate on the "thread_name" field.
+func ThreadNameHasPrefix(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldHasPrefix(FieldThreadName, v))
+}
+
+// ThreadNameHasSuffix applies the HasSuffix predicate on the "thread_name" field.
+func ThreadNameHasSuffix(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldHasSuffix(FieldThreadName, v))
+}
+
+// ThreadNameEqualFold applies the EqualFold predicate on the "thread_name" field.
+func ThreadNameEqualFold(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEqualFold(FieldThreadName, v))
+}
+
+// ThreadNameContainsFold applies the ContainsFold predicate on the "thread_name" field.
+func ThreadNameContainsFold(v string) predicate.Webhook {
+	return predicate.Webhook(sql.FieldContainsFold(FieldThreadName, v))
 }
 
 // And groups predicates with the AND operator between them.

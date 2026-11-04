@@ -72,7 +72,7 @@ func newSinkEnv(t *testing.T, db *store.DB) *sinkEnv {
 		b, _ := io.ReadAll(r.Body)
 		e.mu.Lock()
 		e.got = append(e.got, received{r.URL.Path, r.Header.Get(webhook.HeaderEventID), r.Header.Get(webhook.HeaderEventType),
-			r.Header.Get(webhook.HeaderSignature), b})
+			r.Header.Get(webhook.HeaderSignature), b, r.Method, r.URL.RawQuery})
 		code, block := e.answer(len(e.got)), e.block
 		e.mu.Unlock()
 		if block != nil {

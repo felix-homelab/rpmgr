@@ -2435,6 +2435,11 @@ var (
 		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "format", Type: field.TypeEnum, Enums: []string{"rpmgr", "discord", "slack", "teams"}, Default: "rpmgr"},
 		{Name: "url_enc", Type: field.TypeBytes, Nullable: true},
+		{Name: "mention", Type: field.TypeString, Default: ""},
+		{Name: "mention_when", Type: field.TypeEnum, Enums: []string{"never", "critical", "all"}, Default: "never"},
+		{Name: "discord_username", Type: field.TypeString, Default: ""},
+		{Name: "discord_avatar_url", Type: field.TypeString, Default: ""},
+		{Name: "thread_name", Type: field.TypeString, Default: ""},
 	}
 	// WebhooksTable holds the schema information for the "webhooks" table.
 	WebhooksTable = &schema.Table{
@@ -2487,6 +2492,34 @@ var (
 				Name:    "webhookdelivery_webhook_id_sent_at",
 				Unique:  false,
 				Columns: []*schema.Column{WebhookDeliveriesColumns[1], WebhookDeliveriesColumns[8]},
+			},
+		},
+	}
+	// WebhookMessagesColumns holds the columns for the "webhook_messages" table.
+	WebhookMessagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "webhook_id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "alert_key", Type: field.TypeString},
+		{Name: "message_id", Type: field.TypeString},
+		{Name: "thread_id", Type: field.TypeString, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// WebhookMessagesTable holds the schema information for the "webhook_messages" table.
+	WebhookMessagesTable = &schema.Table{
+		Name:       "webhook_messages",
+		Columns:    WebhookMessagesColumns,
+		PrimaryKey: []*schema.Column{WebhookMessagesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "webhookmessage_webhook_id_alert_key",
+				Unique:  true,
+				Columns: []*schema.Column{WebhookMessagesColumns[1], WebhookMessagesColumns[3]},
+			},
+			{
+				Name:    "webhookmessage_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{WebhookMessagesColumns[6]},
 			},
 		},
 	}
@@ -2566,6 +2599,7 @@ var (
 		UsersTable,
 		WebhooksTable,
 		WebhookDeliveriesTable,
+		WebhookMessagesTable,
 	}
 )
 
@@ -2797,5 +2831,8 @@ func init() {
 	}
 	WebhookDeliveriesTable.Annotation = &entsql.Annotation{
 		Table: "webhook_deliveries",
+	}
+	WebhookMessagesTable.Annotation = &entsql.Annotation{
+		Table: "webhook_messages",
 	}
 }

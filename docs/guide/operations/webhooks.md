@@ -58,6 +58,22 @@ What each service shows:
    `Slack` or `Microsoft Teams` and paste the URL, or use the command line (see below).
 3. Send a test event and check the channel.
 
+### Mentions and Discord options
+
+An endpoint can mention someone when an alert fires, so that a critical alert gets noticed. Set the
+**mention** and **when**: never (the default), for alerts of a critical kind, or for all alerts.
+The mention is made when the alert fires and never when it resolves, and nothing in an event can
+add one. What you enter depends on the service:
+
+- Discord: `role:<id>` or `user:<id>`, the numeric ID of the role or user.
+- Slack: `here`, `subteam:<id>` for a user group, or `user:<id>` for a user.
+- Teams: `user:` and the user's address (UPN) or Microsoft Entra object ID.
+
+A Discord endpoint can also post under its own **username** and **avatar URL** (`https` only), and
+a **thread name**, which makes every message start a thread in a forum channel. The alert's message
+is edited when it resolves: it turns green and says how long the alert lasted, instead of a second
+message appearing. If you deleted the message in Discord, a new one is posted.
+
 The URL holds the service's token, so rpmgr treats it as a secret: it is stored encrypted, never
 shown again, and appears only as its scheme and host, such as `https://discord.com`, in the API,
 the command line, logs and the audit log. To change it, enter it again; to move an endpoint to

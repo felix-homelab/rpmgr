@@ -45,6 +45,16 @@ const (
 	FieldFormat = "format"
 	// FieldURLEnc holds the string denoting the url_enc field in the database.
 	FieldURLEnc = "url_enc"
+	// FieldMention holds the string denoting the mention field in the database.
+	FieldMention = "mention"
+	// FieldMentionWhen holds the string denoting the mention_when field in the database.
+	FieldMentionWhen = "mention_when"
+	// FieldDiscordUsername holds the string denoting the discord_username field in the database.
+	FieldDiscordUsername = "discord_username"
+	// FieldDiscordAvatarURL holds the string denoting the discord_avatar_url field in the database.
+	FieldDiscordAvatarURL = "discord_avatar_url"
+	// FieldThreadName holds the string denoting the thread_name field in the database.
+	FieldThreadName = "thread_name"
 	// Table holds the table name of the webhook in the database.
 	Table = "webhooks"
 )
@@ -67,6 +77,11 @@ var Columns = []string{
 	FieldVersion,
 	FieldFormat,
 	FieldURLEnc,
+	FieldMention,
+	FieldMentionWhen,
+	FieldDiscordUsername,
+	FieldDiscordAvatarURL,
+	FieldThreadName,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -100,6 +115,14 @@ var (
 	DefaultVersion int64
 	// VersionValidator is a validator for the "version" field. It is called by the builders before save.
 	VersionValidator func(int64) error
+	// DefaultMention holds the default value on creation for the "mention" field.
+	DefaultMention string
+	// DefaultDiscordUsername holds the default value on creation for the "discord_username" field.
+	DefaultDiscordUsername string
+	// DefaultDiscordAvatarURL holds the default value on creation for the "discord_avatar_url" field.
+	DefaultDiscordAvatarURL string
+	// DefaultThreadName holds the default value on creation for the "thread_name" field.
+	DefaultThreadName string
 	// DefaultID holds the default value on creation for the "id" field.
 	DefaultID func() string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -154,6 +177,33 @@ func FormatValidator(f Format) error {
 		return nil
 	default:
 		return fmt.Errorf("webhook: invalid enum value for format field: %q", f)
+	}
+}
+
+// MentionWhen defines the type for the "mention_when" enum field.
+type MentionWhen string
+
+// MentionWhenNever is the default value of the MentionWhen enum.
+const DefaultMentionWhen = MentionWhenNever
+
+// MentionWhen values.
+const (
+	MentionWhenNever    MentionWhen = "never"
+	MentionWhenCritical MentionWhen = "critical"
+	MentionWhenAll      MentionWhen = "all"
+)
+
+func (mw MentionWhen) String() string {
+	return string(mw)
+}
+
+// MentionWhenValidator is a validator for the "mention_when" field enum values. It is called by the builders before save.
+func MentionWhenValidator(mw MentionWhen) error {
+	switch mw {
+	case MentionWhenNever, MentionWhenCritical, MentionWhenAll:
+		return nil
+	default:
+		return fmt.Errorf("webhook: invalid enum value for mention_when field: %q", mw)
 	}
 }
 
@@ -218,4 +268,29 @@ func ByVersion(opts ...sql.OrderTermOption) OrderOption {
 // ByFormat orders the results by the format field.
 func ByFormat(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFormat, opts...).ToFunc()
+}
+
+// ByMention orders the results by the mention field.
+func ByMention(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMention, opts...).ToFunc()
+}
+
+// ByMentionWhen orders the results by the mention_when field.
+func ByMentionWhen(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMentionWhen, opts...).ToFunc()
+}
+
+// ByDiscordUsername orders the results by the discord_username field.
+func ByDiscordUsername(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDiscordUsername, opts...).ToFunc()
+}
+
+// ByDiscordAvatarURL orders the results by the discord_avatar_url field.
+func ByDiscordAvatarURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDiscordAvatarURL, opts...).ToFunc()
+}
+
+// ByThreadName orders the results by the thread_name field.
+func ByThreadName(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldThreadName, opts...).ToFunc()
 }
