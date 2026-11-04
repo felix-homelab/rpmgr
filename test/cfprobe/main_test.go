@@ -72,6 +72,7 @@ func TestUsageErrors(t *testing.T) {
 		"no arguments":           {},
 		"missing under-scoped":   {"-zone", "z.example", "-token-file", tok},
 		"token as argument":      {"-zone", "z.example", "-token-file", tok, "-under-scoped-token-file", under, "secret-main-value"},
+		"zone given as its ID":   {"-zone", strings.Repeat("ab", 16), "-token-file", tok, "-under-scoped-token-file", under},
 		"unknown flag":           {"-zone", "z.example", "-token", "secret-main-value"},
 		"account token only":     {"-zone", "z.example", "-token-file", tok, "-under-scoped-token-file", under, "-account-token-file", tok},
 		"account id only":        {"-zone", "z.example", "-token-file", tok, "-under-scoped-token-file", under, "-account-id", strings.Repeat("a", 32)},
