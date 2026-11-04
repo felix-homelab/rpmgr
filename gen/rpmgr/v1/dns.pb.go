@@ -2185,6 +2185,97 @@ func (x *PlanZoneSyncResponse) GetPlan() *ZonePlan {
 	return nil
 }
 
+// EnableZoneRequest names a zone.
+type EnableZoneRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The zone's ID.
+	DnsZoneId     string `protobuf:"bytes,1,opt,name=dns_zone_id,json=dnsZoneId,proto3" json:"dns_zone_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnableZoneRequest) Reset() {
+	*x = EnableZoneRequest{}
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnableZoneRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnableZoneRequest) ProtoMessage() {}
+
+func (x *EnableZoneRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnableZoneRequest.ProtoReflect.Descriptor instead.
+func (*EnableZoneRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *EnableZoneRequest) GetDnsZoneId() string {
+	if x != nil {
+		return x.DnsZoneId
+	}
+	return ""
+}
+
+// EnableZoneResponse is the zone, held.
+type EnableZoneResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DnsZone       *DnsZone               `protobuf:"bytes,1,opt,name=dns_zone,json=dnsZone,proto3" json:"dns_zone,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnableZoneResponse) Reset() {
+	*x = EnableZoneResponse{}
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnableZoneResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnableZoneResponse) ProtoMessage() {}
+
+func (x *EnableZoneResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnableZoneResponse.ProtoReflect.Descriptor instead.
+func (*EnableZoneResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *EnableZoneResponse) GetDnsZone() *DnsZone {
+	if x != nil {
+		return x.DnsZone
+	}
+	return nil
+}
+
 // ApproveZonePlanRequest names a zone and the plan the caller read.
 type ApproveZonePlanRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2198,7 +2289,7 @@ type ApproveZonePlanRequest struct {
 
 func (x *ApproveZonePlanRequest) Reset() {
 	*x = ApproveZonePlanRequest{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[31]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2210,7 +2301,7 @@ func (x *ApproveZonePlanRequest) String() string {
 func (*ApproveZonePlanRequest) ProtoMessage() {}
 
 func (x *ApproveZonePlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[31]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2223,7 +2314,7 @@ func (x *ApproveZonePlanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveZonePlanRequest.ProtoReflect.Descriptor instead.
 func (*ApproveZonePlanRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{31}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ApproveZonePlanRequest) GetDnsZoneId() string {
@@ -2250,7 +2341,7 @@ type ApproveZonePlanResponse struct {
 
 func (x *ApproveZonePlanResponse) Reset() {
 	*x = ApproveZonePlanResponse{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[32]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2262,7 +2353,7 @@ func (x *ApproveZonePlanResponse) String() string {
 func (*ApproveZonePlanResponse) ProtoMessage() {}
 
 func (x *ApproveZonePlanResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[32]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2275,7 +2366,7 @@ func (x *ApproveZonePlanResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveZonePlanResponse.ProtoReflect.Descriptor instead.
 func (*ApproveZonePlanResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{32}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ApproveZonePlanResponse) GetDnsZone() *DnsZone {
@@ -3548,7 +3639,11 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\vdns_zone_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tdnsZoneId\"l\n" +
 	"\x14PlanZoneSyncResponse\x12,\n" +
 	"\bdns_zone\x18\x01 \x01(\v2\x11.rpmgr.v1.DnsZoneR\adnsZone\x12&\n" +
-	"\x04plan\x18\x02 \x01(\v2\x12.rpmgr.v1.ZonePlanR\x04plan\"h\n" +
+	"\x04plan\x18\x02 \x01(\v2\x12.rpmgr.v1.ZonePlanR\x04plan\"<\n" +
+	"\x11EnableZoneRequest\x12'\n" +
+	"\vdns_zone_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tdnsZoneId\"B\n" +
+	"\x12EnableZoneResponse\x12,\n" +
+	"\bdns_zone\x18\x01 \x01(\v2\x11.rpmgr.v1.DnsZoneR\adnsZone\"h\n" +
 	"\x16ApproveZonePlanRequest\x12'\n" +
 	"\vdns_zone_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tdnsZoneId\x12%\n" +
 	"\tplan_hash\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x98\x01@R\bplanHash\"G\n" +

@@ -341,6 +341,8 @@ flowchart LR
   plan. Later passes are subject to the deletion guard again.
 - **Only a held zone is approved.** A `disabled` zone, such as after `restore --dns-disabled`, is
   refused with `ZONE_NOT_HELD`: approving there would fight production.
+- **Enabling.** An Owner or Admin, with a step-up, moves a `disabled` zone to `held` (`enabled`).
+  That writes nothing: the zone plans again and needs an approved plan like any held zone.
 - **After import.** The first plan shows what rpmgr will create, the conflicts it found and which
   foreign wildcards it will shadow.
 - **Deletion guard.** A pass that would remove all address records of more than the zone's

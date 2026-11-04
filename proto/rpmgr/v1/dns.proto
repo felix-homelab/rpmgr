@@ -489,6 +489,17 @@ message PlanZoneSyncResponse {
   ZonePlan plan = 2;
 }
 
+// EnableZoneRequest names a zone.
+message EnableZoneRequest {
+  // The zone's ID.
+  string dns_zone_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// EnableZoneResponse is the zone, held.
+message EnableZoneResponse {
+  DnsZone dns_zone = 1;
+}
+
 // ApproveZonePlanRequest names a zone and the plan the caller read.
 message ApproveZonePlanRequest {
   // The zone's ID.
