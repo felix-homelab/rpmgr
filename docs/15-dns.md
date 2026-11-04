@@ -425,7 +425,14 @@ and lost rows.
 3. **Disconnect or remove a zone.**
    - By default the records stay at the provider and the ledger rows are dropped, so nothing that
      works stops working.
-   - Removing the records instead goes through a plan and approval.
+   - Removing the records instead goes through a plan and approval: the plan deletes every record
+     rpmgr owns in the zone and no others, and the removal needs its hash and a step-up. The zone is
+     disabled when the removal is approved, so that the job does not write it again. The API call
+     writes nothing to the provider: the DNS job, under its lease, deletes the records of the
+     approved plan and only those, then removes the zone, and the zone shows the removal as
+     pending until then. If the provider fails, the next full pass or "Sync now" goes on; if a
+     record the plan did not name is owned by then, the job deletes nothing and the zone stays
+     disabled.
    - Rotating the token keeps everything: the new token is checked first and replaces the old one in
      the same provider. Deleting a provider needs a step-up and is refused while zones are imported
      from it.

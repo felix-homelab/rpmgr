@@ -52,6 +52,10 @@ func (DNSZone) Fields() []ent.Field {
 		field.Time("last_synced_at").Optional().Nillable(),
 		// sync_requested_at is when someone last asked for a full pass ("Sync now"). The DNS job
 		// runs on one replica, which the request may not have reached: it reads the time from here.
+		// removal_requested: removing the zone with its records was approved (the approved removal
+		// plan is in pending_plan); the DNS job, under its lease, deletes the owned records and then
+		// the zone.
+		field.Bool("removal_requested").Default(false),
 		field.Time("sync_requested_at").Optional().Nillable(),
 		field.Time("created_at").Immutable().Default(time.Now),
 	}

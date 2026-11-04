@@ -1217,3 +1217,96 @@ func TestRun_ReleaseRequestedIsCarriedOutUnderTheLease(t *testing.T) {
 		}
 	})
 }
+
+// requestRemoval is what RemoveZone with delete_records writes, on whichever replica it ran: the
+// zone is disabled, the removal is pending, and the approved plan is stored.
+func (e *env) requestRemoval(j *job.Job) plan.Plan {
+	e.t.Helper()
+	p, err := e.dial("cloudflare", "", secret.New(token))
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	in, err := j.Inspect(e.sys, e.zone.ID, p)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	b, _ := json.Marshal(in.Removal)
+	e.db.Client().DNSZone.UpdateOneID(e.zone.ID).SetSyncState(dnszone.SyncStateDisabled).SetRemovalRequested(true).SetPendingPlan(b).
+		SetPendingPlanHash(in.Removal.Hash).SetSyncRequestedAt(e.clk.now()).ExecX(e.sys)
+	return in.Removal
+}
+
+// An approved removal of a zone with its records is carried out by the replica that holds the lease:
+// only the records of the approved plan are deleted, foreign ones stay, then the rows, the statuses
+// and the zone go. A lease that will not outlast a batch stops it before the batch; a record the
+// plan did not name drops the request and deletes nothing.
+func TestRun_ApprovedRemovalIsCarriedOutUnderTheLease(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		e.addName("a.example.com")
+		e.addName("b.example.com")
+		e.fake.AddRecord(e.zone.ProviderZoneID, cftest.Record{Type: "TXT", Name: "mine.example.com", Content: "foreign"})
+		ja, la := e.replica("ctn_a")
+		lease1 := e.take(la)
+		if err := ja.Run(e.sys, lease1); err != nil {
+			t.Fatal(err)
+		}
+		plan1 := e.requestRemoval(ja)
+		if len(plan1.Deletes) != 2 {
+			t.Fatalf("plan %+v", plan1)
+		}
+		// The lease will not outlast the batch: nothing is deleted.
+		e.clk.add(job.LeaseTTL - job.Margin + time.Second)
+		before := len(e.names())
+		if err := ja.Run(e.sys, lease1); err != nil {
+			t.Fatal(err)
+		}
+		if len(e.names()) != before || e.db.Client().DNSZone.Query().CountX(e.sys) != 1 {
+			t.Fatalf("a lease that ends deleted: %v", e.names())
+		}
+		// The next holder carries it out; the old one cannot.
+		jb, lb := e.replica("ctn_b")
+		e.clk.add(job.Margin)
+		lease2 := e.take(lb)
+		ja.Sync(e.zone.ID)
+		if err := ja.Run(e.sys, lease1); err != nil && !errors.Is(err, lease.ErrLost) {
+			t.Fatalf("the old holder: %v", err)
+		}
+		if len(e.names()) != before {
+			t.Fatal("the old holder deleted")
+		}
+		if err := jb.Run(e.sys, lease2); err != nil {
+			t.Fatal(err)
+		}
+		if left := e.fake.Records(e.zone.ProviderZoneID); len(left) != 1 || left[0].Name != "mine.example.com" {
+			t.Fatalf("records left %+v", left)
+		}
+		if e.db.Client().DNSZone.Query().CountX(e.sys) != 0 || e.db.Client().DNSRecord.Query().CountX(e.sys) != 0 {
+			t.Fatal("the zone or its rows are still there")
+		}
+		if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("dns_zone.remove")).CountX(e.sys); n != 1 {
+			t.Errorf("%d removal entries", n)
+		}
+	})
+}
+
+func TestRun_ApprovedRemovalWithAnUnnamedRecordIsDropped(t *testing.T) {
+	e := newEnv(t, storetest.Migrated(t, store.SQLite))
+	e.addName("a.example.com")
+	j, l := e.replica("ctn_a")
+	ls := e.take(l)
+	if err := j.Run(e.sys, ls); err != nil {
+		t.Fatal(err)
+	}
+	e.requestRemoval(j)
+	// Another record became owned after the approval.
+	r := e.fake.AddRecord(e.zone.ProviderZoneID, cftest.Record{Type: "A", Name: "late.example.com", Content: "192.0.2.1"})
+	e.db.Client().DNSRecord.Create().SetOrgID(e.org).SetDNSZoneID(e.zone.ID).SetName("late.example.com").SetType("A").SetContent("192.0.2.1").SetTTL(300).
+		SetProviderRecordID(r.ID).SetState(dnsrecord.StateSynced).ExecX(e.sys)
+	writes := e.fake.Count("POST")
+	e.pass(j, l, ls)
+	z := e.zoneRow()
+	if z.RemovalRequested || z.SyncState != dnszone.SyncStateDisabled || z.HeldReason != "removal_dropped" || e.fake.Count("POST") != writes || len(e.names()) != 2 {
+		t.Fatalf("zone %+v, records %v", z, e.names())
+	}
+}
