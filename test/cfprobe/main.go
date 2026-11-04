@@ -127,9 +127,9 @@ func runMain(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 
 // readToken reads a token from path, or from stdin for "-". The error never holds the content.
 func readToken(path string, stdin io.Reader, rep *report) (secret.Value, error) {
-	var r io.Reader = stdin
+	r := stdin
 	if path != "-" {
-		f, err := os.Open(path)
+		f, err := os.Open(path) //nolint:gosec // G304: the token file the operator names
 		if err != nil {
 			var pe *os.PathError
 			if errors.As(err, &pe) {

@@ -54,7 +54,7 @@ func TestReadToken(t *testing.T) {
 func TestReadTokenWarnsAboutOpenPermissions(t *testing.T) {
 	var out bytes.Buffer
 	p := tokenFile(t, "abc", 0o644)
-	if err := os.Chmod(p, 0o644); err != nil {
+	if err := os.Chmod(p, 0o644); err != nil { //nolint:gosec // G302: the test needs a token file others can read
 		t.Fatal(err)
 	}
 	if _, err := readToken(p, nil, &report{w: &out}); err != nil {
