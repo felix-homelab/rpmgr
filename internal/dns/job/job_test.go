@@ -1310,3 +1310,66 @@ func TestRun_ApprovedRemovalWithAnUnnamedRecordIsDropped(t *testing.T) {
 		t.Fatalf("zone %+v, records %v", z, e.names())
 	}
 }
+
+// TestRun_ResultOfEachPass: Options.Result hears how each pass of an enabled zone ended: ok, failed
+// (the provider refused the token), rate_limited (it blocks) and held (a held zone is planned, not
+// applied); a disabled zone is not heard of.
+func TestRun_ResultOfEachPass(t *testing.T) {
+	e := newEnv(t, storetest.Migrated(t, store.SQLite))
+	e.addName("a.example.com")
+	leases := lease.New(e.db, "ctn_a", e.clk.now)
+	var got []string
+	j := job.New(job.Options{DB: e.db, Leases: leases, Sealer: e.sealer, Dial: e.dial, TrustDomain: td, Now: e.clk.now,
+		Budget: &budget.Budget{DB: e.db, Now: e.clk.now},
+		Result: func(zone, result string) { got = append(got, zone+" "+result) }})
+	ls := e.take(leases)
+	step := func(want string) {
+		t.Helper()
+		got = nil
+		j.Sync(e.zone.ID)
+		if err := j.Run(e.sys, ls); err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 1 || got[0] != apex+" "+want {
+			t.Fatalf("heard %v, want %s %s", got, apex, want)
+		}
+	}
+	step(job.ResultOK)
+	e.failApply(&dns.ProviderError{Status: 401, Err: dns.ErrUnauthorized})
+	e.addName("b.example.com")
+	step(job.ResultFailed)
+	e.failApply(dns.RateLimited{Until: e.clk.now().Add(time.Minute)})
+	step(job.ResultRateLimited)
+	e.db.Client().DNSZone.UpdateOneID(e.zone.ID).SetSyncState(dnszone.SyncStateHeld).ExecX(e.sys)
+	e.advance(leases, ls, 2*time.Minute)
+	step(job.ResultHeld)
+	e.db.Client().DNSZone.UpdateOneID(e.zone.ID).SetSyncState(dnszone.SyncStateDisabled).ExecX(e.sys)
+	got = nil
+	j.Sync(e.zone.ID)
+	if err := j.Run(e.sys, ls); err != nil || len(got) != 0 {
+		t.Fatalf("a disabled zone: %v, heard %v", err, got)
+	}
+}
+
+// TestRun_RevisionAfterAnEmptyFirstLook: a controller that has made no revision when the job takes
+// the lease (the first look finds revision 0) still sees the first revisions that touch a source:
+// a name added afterwards is published after the debounce, without waiting for the timer.
+func TestRun_RevisionAfterAnEmptyFirstLook(t *testing.T) {
+	e := newEnv(t, storetest.Migrated(t, store.SQLite))
+	j, l := e.replica("ctn_a")
+	ls := e.take(l)
+	if err := j.Run(e.sys, ls); err != nil { // the full pass on takeover: nothing to publish
+		t.Fatal(err)
+	}
+	e.addName("a.example.com")
+	if err := j.Run(e.sys, ls); err != nil { // sees the revision: marks the zone, inside the debounce
+		t.Fatal(err)
+	}
+	e.advance(l, ls, job.Debounce)
+	if err := j.Run(e.sys, ls); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(e.names(), []string{"a.example.com"}) {
+		t.Fatalf("records %v: the revision after the first look was missed", e.names())
+	}
+}
