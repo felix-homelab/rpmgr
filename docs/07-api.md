@@ -463,6 +463,28 @@ spec:
   outbox event, so no other endpoint gets it. Enabling a disabled endpoint, whatever the reason,
   clears the disable and its failing period; events count from then on. Deleting an endpoint deletes
   its deliveries.
+- **Formats** ([D162](14-open-decisions.md#engineering)). An endpoint's `format` is `rpmgr` (the
+  default: the envelope above, signed) or a chat format, `discord`, `slack` or `teams`, which
+  posts the event as a message the service shows to people, without a signature or `Rpmgr-*`
+  headers. The message has the event's summary as its title; its type, organisation (`instance`
+  for an instance event), actor, subject and time as fields; and an alert (`alert.fire`,
+  `alert.resolve`) coloured red or green where the service supports it: Discord is an embed, Slack
+  a message of text and blocks with a coloured attachment, Teams a workflows webhook with an
+  Adaptive Card. Texts are cut to the limits in
+  [03](03-connections.md#timeouts-keepalive-and-backoff). A chat endpoint's URL is given in
+  `secret_url`, not in `url`: it is write-only and sealed, and `url` shows only its scheme and
+  host ([04](04-security.md#webhooks-and-the-egress-guard-phase-2)). `secret_url` is an
+  `https://` URL with a host and a path, without credentials or a fragment, and `url` must be
+  empty; an `rpmgr` endpoint has a `url` and no `secret_url`. A chat endpoint has no signing
+  secret: `CreateWebhook` returns none, `secret_set` is false, and `RotateWebhookSecret` is
+  `FAILED_PRECONDITION`. An update changes `format` only together with a new `secret_url`
+  (from `rpmgr` to a chat format, or between chat formats); a chat endpoint does not become
+  `rpmgr`, which is `FAILED_PRECONDITION`. A `429` from a chat service with `Retry-After` or
+  Discord's `retry_after` delays the next attempt, within the bounds in 03 and never faster than the ordinary retries,
+  and does not count towards the disabling of the endpoint
+  ([D143](14-open-decisions.md#engineering)) until the attempt in 03 from which a 429 is a
+  failure. The event
+  filter, retries, deliveries, test and disabling are those of every endpoint.
 - **Deliveries** are listed per endpoint: event, attempt, time, status code or error, and the
   next retry.
 - **Alert e-mails** ([D139](14-open-decisions.md#engineering)): with SMTP configured, an alert's

@@ -1495,6 +1495,8 @@ var schemaGraph = func() *sqlgraph.Schema {
 			webhook.FieldFailingSince:      {Type: field.TypeTime, Column: webhook.FieldFailingSince},
 			webhook.FieldCreatedAt:         {Type: field.TypeTime, Column: webhook.FieldCreatedAt},
 			webhook.FieldVersion:           {Type: field.TypeInt64, Column: webhook.FieldVersion},
+			webhook.FieldFormat:            {Type: field.TypeEnum, Column: webhook.FieldFormat},
+			webhook.FieldURLEnc:            {Type: field.TypeBytes, Column: webhook.FieldURLEnc},
 		},
 	}
 	graph.Nodes[68] = &sqlgraph.Node{
@@ -8014,6 +8016,16 @@ func (f *WebhookFilter) WhereCreatedAt(p entql.TimeP) {
 // WhereVersion applies the entql int64 predicate on the version field.
 func (f *WebhookFilter) WhereVersion(p entql.Int64P) {
 	f.Where(p.Field(webhook.FieldVersion))
+}
+
+// WhereFormat applies the entql string predicate on the format field.
+func (f *WebhookFilter) WhereFormat(p entql.StringP) {
+	f.Where(p.Field(webhook.FieldFormat))
+}
+
+// WhereURLEnc applies the entql []byte predicate on the url_enc field.
+func (f *WebhookFilter) WhereURLEnc(p entql.BytesP) {
+	f.Where(p.Field(webhook.FieldURLEnc))
 }
 
 // addPredicate implements the predicateAdder interface.

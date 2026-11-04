@@ -208,6 +208,32 @@ func (_u *WebhookUpdate) AddVersion(v int64) *WebhookUpdate {
 	return _u
 }
 
+// SetFormat sets the "format" field.
+func (_u *WebhookUpdate) SetFormat(v webhook.Format) *WebhookUpdate {
+	_u.mutation.SetFormat(v)
+	return _u
+}
+
+// SetNillableFormat sets the "format" field if the given value is not nil.
+func (_u *WebhookUpdate) SetNillableFormat(v *webhook.Format) *WebhookUpdate {
+	if v != nil {
+		_u.SetFormat(*v)
+	}
+	return _u
+}
+
+// SetURLEnc sets the "url_enc" field.
+func (_u *WebhookUpdate) SetURLEnc(v []byte) *WebhookUpdate {
+	_u.mutation.SetURLEnc(v)
+	return _u
+}
+
+// ClearURLEnc clears the value of the "url_enc" field.
+func (_u *WebhookUpdate) ClearURLEnc() *WebhookUpdate {
+	_u.mutation.ClearURLEnc()
+	return _u
+}
+
 // Mutation returns the WebhookMutation object of the builder.
 func (_u *WebhookUpdate) Mutation() *WebhookMutation {
 	return _u.mutation
@@ -247,11 +273,6 @@ func (_u *WebhookUpdate) check() error {
 			return &ValidationError{Name: "url", err: fmt.Errorf(`ent: validator failed for field "Webhook.url": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.SecretEnc(); ok {
-		if err := webhook.SecretEncValidator(v); err != nil {
-			return &ValidationError{Name: "secret_enc", err: fmt.Errorf(`ent: validator failed for field "Webhook.secret_enc": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.DisabledReason(); ok {
 		if err := webhook.DisabledReasonValidator(v); err != nil {
 			return &ValidationError{Name: "disabled_reason", err: fmt.Errorf(`ent: validator failed for field "Webhook.disabled_reason": %w`, err)}
@@ -260,6 +281,11 @@ func (_u *WebhookUpdate) check() error {
 	if v, ok := _u.mutation.Version(); ok {
 		if err := webhook.VersionValidator(v); err != nil {
 			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Webhook.version": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Format(); ok {
+		if err := webhook.FormatValidator(v); err != nil {
+			return &ValidationError{Name: "format", err: fmt.Errorf(`ent: validator failed for field "Webhook.format": %w`, err)}
 		}
 	}
 	return nil
@@ -338,6 +364,15 @@ func (_u *WebhookUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedVersion(); ok {
 		_spec.AddField(webhook.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.Format(); ok {
+		_spec.SetField(webhook.FieldFormat, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.URLEnc(); ok {
+		_spec.SetField(webhook.FieldURLEnc, field.TypeBytes, value)
+	}
+	if _u.mutation.URLEncCleared() {
+		_spec.ClearField(webhook.FieldURLEnc, field.TypeBytes)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -538,6 +573,32 @@ func (_u *WebhookUpdateOne) AddVersion(v int64) *WebhookUpdateOne {
 	return _u
 }
 
+// SetFormat sets the "format" field.
+func (_u *WebhookUpdateOne) SetFormat(v webhook.Format) *WebhookUpdateOne {
+	_u.mutation.SetFormat(v)
+	return _u
+}
+
+// SetNillableFormat sets the "format" field if the given value is not nil.
+func (_u *WebhookUpdateOne) SetNillableFormat(v *webhook.Format) *WebhookUpdateOne {
+	if v != nil {
+		_u.SetFormat(*v)
+	}
+	return _u
+}
+
+// SetURLEnc sets the "url_enc" field.
+func (_u *WebhookUpdateOne) SetURLEnc(v []byte) *WebhookUpdateOne {
+	_u.mutation.SetURLEnc(v)
+	return _u
+}
+
+// ClearURLEnc clears the value of the "url_enc" field.
+func (_u *WebhookUpdateOne) ClearURLEnc() *WebhookUpdateOne {
+	_u.mutation.ClearURLEnc()
+	return _u
+}
+
 // Mutation returns the WebhookMutation object of the builder.
 func (_u *WebhookUpdateOne) Mutation() *WebhookMutation {
 	return _u.mutation
@@ -590,11 +651,6 @@ func (_u *WebhookUpdateOne) check() error {
 			return &ValidationError{Name: "url", err: fmt.Errorf(`ent: validator failed for field "Webhook.url": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.SecretEnc(); ok {
-		if err := webhook.SecretEncValidator(v); err != nil {
-			return &ValidationError{Name: "secret_enc", err: fmt.Errorf(`ent: validator failed for field "Webhook.secret_enc": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.DisabledReason(); ok {
 		if err := webhook.DisabledReasonValidator(v); err != nil {
 			return &ValidationError{Name: "disabled_reason", err: fmt.Errorf(`ent: validator failed for field "Webhook.disabled_reason": %w`, err)}
@@ -603,6 +659,11 @@ func (_u *WebhookUpdateOne) check() error {
 	if v, ok := _u.mutation.Version(); ok {
 		if err := webhook.VersionValidator(v); err != nil {
 			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Webhook.version": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Format(); ok {
+		if err := webhook.FormatValidator(v); err != nil {
+			return &ValidationError{Name: "format", err: fmt.Errorf(`ent: validator failed for field "Webhook.format": %w`, err)}
 		}
 	}
 	return nil
@@ -698,6 +759,15 @@ func (_u *WebhookUpdateOne) sqlSave(ctx context.Context) (_node *Webhook, err er
 	}
 	if value, ok := _u.mutation.AddedVersion(); ok {
 		_spec.AddField(webhook.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.Format(); ok {
+		_spec.SetField(webhook.FieldFormat, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.URLEnc(); ok {
+		_spec.SetField(webhook.FieldURLEnc, field.TypeBytes, value)
+	}
+	if _u.mutation.URLEncCleared() {
+		_spec.ClearField(webhook.FieldURLEnc, field.TypeBytes)
 	}
 	_node = &Webhook{config: _u.config}
 	_spec.Assign = _node.assignValues

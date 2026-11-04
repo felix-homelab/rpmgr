@@ -1588,6 +1588,20 @@ Security regression tests ([12](12-testing-and-quality.md#security-testing)):
   `Rpmgr-Event-Id` so a receiver drops duplicates. An endpoint without a successful delivery for the period in 03 is
   disabled, with an event, an e-mail to the org's Owners and Admins and a notice in the UI; only a
   person enables it again ([D143](14-open-decisions.md#engineering)).
+- **Chat formats** ([D162](14-open-decisions.md#engineering)). Discord, Slack and Microsoft Teams
+  put the token of their incoming webhook in its URL, so the URL of an endpoint of the format
+  `discord`, `slack` or `teams` is a credential. It is set in the write-only field `secret_url`,
+  stored sealed under the KEK with the endpoint and the column as context, opened only by the
+  delivery job and the test, and shown as its scheme and host everywhere else: the API, the web UI,
+  the command line, logs, events, audit entries (the field is marked sensitive, so a diff shows
+  `[REDACTED]`) and the error of a delivery. A transport error that embeds the URL is rewritten
+  before it is stored or logged. Changing the URL means entering it again, and the web UI and the
+  command line never fill it in. The services verify no signature, so such an endpoint has no
+  `rpmgr_whs_` secret and sends no `Rpmgr-Signature`; it cannot be rotated. TLS, the egress guard,
+  the refusal of a redirect and the caps of a delivery apply as to any receiver. The message holds
+  the envelope's fields and nothing more, Markdown escaped in Discord and Teams as Slack's markup is,
+  cut to the limits in
+  [03](03-connections.md#timeouts-keepalive-and-backoff).
 - **Egress guard** ([D138](14-open-decisions.md#engineering)). The controller dials every receiver
   through one guard, which checks each address the name resolves to at the moment it dials, so a
   name that changes its answer (DNS rebinding) gains nothing:

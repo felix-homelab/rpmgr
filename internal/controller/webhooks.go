@@ -193,6 +193,31 @@ func delivery(o WebhookOptions, a *attempt, now time.Time, private []netip.Prefi
 	if a.event == nil || a.event.Ts.Before(h.EnabledAt) {
 		return webhook.Delivery{}, errDropped
 	}
+	e := a.event
+	ev := events.Event{ID: e.ID, OrgID: deref(e.OrgID), Type: e.Type, Time: e.Ts, ActorType: string(e.ActorType),
+		ActorID: e.ActorID, SubjectType: e.SubjectType, SubjectID: e.SubjectID, SubjectName: e.SubjectName, Summary: e.Summary, Changed: e.Changed}
+	p := egress.Policy{Internal: h.OrgID == nil}
+	if h.OrgID != nil {
+		p.Private, p.Own = private, own
+	}
+	if o.policy != nil {
+		p = o.policy(h)
+	}
+	if f := webhook.Format(h.Format); f.Chat() {
+		// A chat endpoint's URL, which holds the service's token, is opened for the request only.
+		if h.URLEnc == nil || len(*h.URLEnc) == 0 {
+			return webhook.Delivery{}, errors.New("a chat endpoint without its URL")
+		}
+		target, err := o.Sealer.Open(secret.Context{Table: "webhooks", Column: "url_enc", RowID: h.ID}, *h.URLEnc)
+		if err != nil {
+			return webhook.Delivery{}, err
+		}
+		body, err := webhook.ChatBody(f, ev)
+		if err != nil {
+			return webhook.Delivery{}, err
+		}
+		return webhook.Delivery{URL: h.URL, Target: target, EventID: e.ID, EventType: e.Type, Body: body, Policy: p}, nil
+	}
 	cur, err := o.Sealer.Open(secret.Context{Table: "webhooks", Column: "secret_enc", RowID: h.ID}, h.SecretEnc)
 	if err != nil {
 		return webhook.Delivery{}, err
@@ -205,18 +230,9 @@ func delivery(o WebhookOptions, a *attempt, now time.Time, private []netip.Prefi
 		}
 		secrets = append(secrets, prev)
 	}
-	e := a.event
-	body, err := webhook.Body(events.Event{ID: e.ID, OrgID: deref(e.OrgID), Type: e.Type, Time: e.Ts, ActorType: string(e.ActorType),
-		ActorID: e.ActorID, SubjectType: e.SubjectType, SubjectID: e.SubjectID, SubjectName: e.SubjectName, Summary: e.Summary, Changed: e.Changed})
+	body, err := webhook.Body(ev)
 	if err != nil {
 		return webhook.Delivery{}, err
-	}
-	p := egress.Policy{Internal: h.OrgID == nil}
-	if h.OrgID != nil {
-		p.Private, p.Own = private, own
-	}
-	if o.policy != nil {
-		p = o.policy(h)
 	}
 	return webhook.Delivery{URL: h.URL, EventID: e.ID, EventType: e.Type, Body: body, Secrets: secrets, Policy: p}, nil
 }
@@ -239,14 +255,27 @@ func record(ctx context.Context, tx *ent.Tx, work []*attempt, now time.Time) err
 		if errors.Is(a.err, errDropped) {
 			continue
 		}
-		byHook[a.hook.ID] = append(byHook[a.hook.ID], a)
+		// A chat service's 429 is no failure of the endpoint: it neither starts its failing period
+		// nor counts towards its disabling, and the next attempt waits as long as the service asked.
+		// A service that keeps answering 429 is retried on the ordinary backoff at the latest, and
+		// from the attempt webhook.RateLimitFailAfter on it counts as a failure like any other.
+		var limited *webhook.RateLimitedError
+		isLimited := errors.As(a.err, &limited) && a.n < webhook.RateLimitFailAfter
+		if !isLimited {
+			byHook[a.hook.ID] = append(byHook[a.hook.ID], a)
+		}
 		e := a.event
 
 		cr := tx.WebhookDelivery.Create().SetWebhookID(a.hook.ID).SetNillableOrgID(a.hook.OrgID).SetEventID(e.ID).SetEventType(e.Type).
 			SetAttempt(a.n).SetStatusCode(a.code).SetSentAt(a.sent)
 		if a.err != nil {
 			cr.SetError(webhook.Describe(a.err))
-			if next, ok := webhook.Next(a.n, a.sent, e.Ts); ok {
+			next, ok := webhook.Next(a.n, a.sent, e.Ts)
+			if want := a.sent.Add(limitedAfter(a.err)); want.After(next) {
+				next = want
+				ok = !next.After(e.Ts.Add(webhook.GiveUp))
+			}
+			if ok {
 				cr.SetNextAttemptAt(next)
 			}
 		}
@@ -278,6 +307,15 @@ func record(ctx context.Context, tx *ent.Tx, work []*attempt, now time.Time) err
 		}
 	}
 	return nil
+}
+
+// limitedAfter is how long a chat service asked to wait, or 0.
+func limitedAfter(err error) time.Duration {
+	var l *webhook.RateLimitedError
+	if errors.As(err, &l) {
+		return l.After
+	}
+	return 0
 }
 
 // PurgeDeliveries deletes the deliveries older than webhook.KeepFor and, of an endpoint with more

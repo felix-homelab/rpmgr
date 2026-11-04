@@ -119,6 +119,11 @@ func Version(v int64) predicate.Webhook {
 	return predicate.Webhook(sql.FieldEQ(FieldVersion, v))
 }
 
+// URLEnc applies equality check predicate on the "url_enc" field. It's identical to URLEncEQ.
+func URLEnc(v []byte) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEQ(FieldURLEnc, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.Webhook {
 	return predicate.Webhook(sql.FieldEQ(FieldOrgID, v))
@@ -667,6 +672,76 @@ func VersionLT(v int64) predicate.Webhook {
 // VersionLTE applies the LTE predicate on the "version" field.
 func VersionLTE(v int64) predicate.Webhook {
 	return predicate.Webhook(sql.FieldLTE(FieldVersion, v))
+}
+
+// FormatEQ applies the EQ predicate on the "format" field.
+func FormatEQ(v Format) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEQ(FieldFormat, v))
+}
+
+// FormatNEQ applies the NEQ predicate on the "format" field.
+func FormatNEQ(v Format) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNEQ(FieldFormat, v))
+}
+
+// FormatIn applies the In predicate on the "format" field.
+func FormatIn(vs ...Format) predicate.Webhook {
+	return predicate.Webhook(sql.FieldIn(FieldFormat, vs...))
+}
+
+// FormatNotIn applies the NotIn predicate on the "format" field.
+func FormatNotIn(vs ...Format) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNotIn(FieldFormat, vs...))
+}
+
+// URLEncEQ applies the EQ predicate on the "url_enc" field.
+func URLEncEQ(v []byte) predicate.Webhook {
+	return predicate.Webhook(sql.FieldEQ(FieldURLEnc, v))
+}
+
+// URLEncNEQ applies the NEQ predicate on the "url_enc" field.
+func URLEncNEQ(v []byte) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNEQ(FieldURLEnc, v))
+}
+
+// URLEncIn applies the In predicate on the "url_enc" field.
+func URLEncIn(vs ...[]byte) predicate.Webhook {
+	return predicate.Webhook(sql.FieldIn(FieldURLEnc, vs...))
+}
+
+// URLEncNotIn applies the NotIn predicate on the "url_enc" field.
+func URLEncNotIn(vs ...[]byte) predicate.Webhook {
+	return predicate.Webhook(sql.FieldNotIn(FieldURLEnc, vs...))
+}
+
+// URLEncGT applies the GT predicate on the "url_enc" field.
+func URLEncGT(v []byte) predicate.Webhook {
+	return predicate.Webhook(sql.FieldGT(FieldURLEnc, v))
+}
+
+// URLEncGTE applies the GTE predicate on the "url_enc" field.
+func URLEncGTE(v []byte) predicate.Webhook {
+	return predicate.Webhook(sql.FieldGTE(FieldURLEnc, v))
+}
+
+// URLEncLT applies the LT predicate on the "url_enc" field.
+func URLEncLT(v []byte) predicate.Webhook {
+	return predicate.Webhook(sql.FieldLT(FieldURLEnc, v))
+}
+
+// URLEncLTE applies the LTE predicate on the "url_enc" field.
+func URLEncLTE(v []byte) predicate.Webhook {
+	return predicate.Webhook(sql.FieldLTE(FieldURLEnc, v))
+}
+
+// URLEncIsNil applies the IsNil predicate on the "url_enc" field.
+func URLEncIsNil() predicate.Webhook {
+	return predicate.Webhook(sql.FieldIsNull(FieldURLEnc))
+}
+
+// URLEncNotNil applies the NotNil predicate on the "url_enc" field.
+func URLEncNotNil() predicate.Webhook {
+	return predicate.Webhook(sql.FieldNotNull(FieldURLEnc))
 }
 
 // And groups predicates with the AND operator between them.

@@ -53968,6 +53968,8 @@ type WebhookMutation struct {
 	created_at          *time.Time
 	version             *int64
 	addversion          *int64
+	format              *webhook.Format
+	url_enc             *[]byte
 	clearedFields       map[string]struct{}
 	done                bool
 	oldValue            func(context.Context) (*Webhook, error)
@@ -54673,6 +54675,91 @@ func (m *WebhookMutation) ResetVersion() {
 	m.addversion = nil
 }
 
+// SetFormat sets the "format" field.
+func (m *WebhookMutation) SetFormat(w webhook.Format) {
+	m.format = &w
+}
+
+// Format returns the value of the "format" field in the mutation.
+func (m *WebhookMutation) Format() (r webhook.Format, exists bool) {
+	v := m.format
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFormat returns the old "format" field's value of the Webhook entity.
+// If the Webhook object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WebhookMutation) OldFormat(ctx context.Context) (v webhook.Format, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFormat is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFormat requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFormat: %w", err)
+	}
+	return oldValue.Format, nil
+}
+
+// ResetFormat resets all changes to the "format" field.
+func (m *WebhookMutation) ResetFormat() {
+	m.format = nil
+}
+
+// SetURLEnc sets the "url_enc" field.
+func (m *WebhookMutation) SetURLEnc(b []byte) {
+	m.url_enc = &b
+}
+
+// URLEnc returns the value of the "url_enc" field in the mutation.
+func (m *WebhookMutation) URLEnc() (r []byte, exists bool) {
+	v := m.url_enc
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldURLEnc returns the old "url_enc" field's value of the Webhook entity.
+// If the Webhook object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WebhookMutation) OldURLEnc(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldURLEnc is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldURLEnc requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldURLEnc: %w", err)
+	}
+	return oldValue.URLEnc, nil
+}
+
+// ClearURLEnc clears the value of the "url_enc" field.
+func (m *WebhookMutation) ClearURLEnc() {
+	m.url_enc = nil
+	m.clearedFields[webhook.FieldURLEnc] = struct{}{}
+}
+
+// URLEncCleared returns if the "url_enc" field was cleared in this mutation.
+func (m *WebhookMutation) URLEncCleared() bool {
+	_, ok := m.clearedFields[webhook.FieldURLEnc]
+	return ok
+}
+
+// ResetURLEnc resets all changes to the "url_enc" field.
+func (m *WebhookMutation) ResetURLEnc() {
+	m.url_enc = nil
+	delete(m.clearedFields, webhook.FieldURLEnc)
+}
+
 // Where appends a list predicates to the WebhookMutation builder.
 func (m *WebhookMutation) Where(ps ...predicate.Webhook) {
 	m.predicates = append(m.predicates, ps...)
@@ -54707,7 +54794,7 @@ func (m *WebhookMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WebhookMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 15)
 	if m.org_id != nil {
 		fields = append(fields, webhook.FieldOrgID)
 	}
@@ -54747,6 +54834,12 @@ func (m *WebhookMutation) Fields() []string {
 	if m.version != nil {
 		fields = append(fields, webhook.FieldVersion)
 	}
+	if m.format != nil {
+		fields = append(fields, webhook.FieldFormat)
+	}
+	if m.url_enc != nil {
+		fields = append(fields, webhook.FieldURLEnc)
+	}
 	return fields
 }
 
@@ -54781,6 +54874,10 @@ func (m *WebhookMutation) Field(name string) (ent.Value, bool) {
 		return m.CreatedAt()
 	case webhook.FieldVersion:
 		return m.Version()
+	case webhook.FieldFormat:
+		return m.Format()
+	case webhook.FieldURLEnc:
+		return m.URLEnc()
 	}
 	return nil, false
 }
@@ -54816,6 +54913,10 @@ func (m *WebhookMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldCreatedAt(ctx)
 	case webhook.FieldVersion:
 		return m.OldVersion(ctx)
+	case webhook.FieldFormat:
+		return m.OldFormat(ctx)
+	case webhook.FieldURLEnc:
+		return m.OldURLEnc(ctx)
 	}
 	return nil, fmt.Errorf("unknown Webhook field %s", name)
 }
@@ -54916,6 +55017,20 @@ func (m *WebhookMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetVersion(v)
 		return nil
+	case webhook.FieldFormat:
+		v, ok := value.(webhook.Format)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFormat(v)
+		return nil
+	case webhook.FieldURLEnc:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetURLEnc(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Webhook field %s", name)
 }
@@ -54982,6 +55097,9 @@ func (m *WebhookMutation) ClearedFields() []string {
 	if m.FieldCleared(webhook.FieldFailingSince) {
 		fields = append(fields, webhook.FieldFailingSince)
 	}
+	if m.FieldCleared(webhook.FieldURLEnc) {
+		fields = append(fields, webhook.FieldURLEnc)
+	}
 	return fields
 }
 
@@ -55016,6 +55134,9 @@ func (m *WebhookMutation) ClearField(name string) error {
 		return nil
 	case webhook.FieldFailingSince:
 		m.ClearFailingSince()
+		return nil
+	case webhook.FieldURLEnc:
+		m.ClearURLEnc()
 		return nil
 	}
 	return fmt.Errorf("unknown Webhook nullable field %s", name)
@@ -55063,6 +55184,12 @@ func (m *WebhookMutation) ResetField(name string) error {
 		return nil
 	case webhook.FieldVersion:
 		m.ResetVersion()
+		return nil
+	case webhook.FieldFormat:
+		m.ResetFormat()
+		return nil
+	case webhook.FieldURLEnc:
+		m.ResetURLEnc()
 		return nil
 	}
 	return fmt.Errorf("unknown Webhook field %s", name)
