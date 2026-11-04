@@ -235,7 +235,7 @@ func TestPlanHash(t *testing.T) {
 	if len(want.Hash) != 64 || len(want.Creates) == 0 || len(want.Updates) == 0 || len(want.Deletes) == 0 || len(want.Conflicts) != 3 || len(want.Orphans) != 1 {
 		t.Fatalf("the fixture must exercise every list: %+v", want)
 	}
-	rng := rand.New(rand.NewSource(3))
+	rng := rand.New(rand.NewSource(3)) //nolint:gosec // G404: a seeded, reproducible property test
 	for i := 0; i < 200; i++ {
 		got := plan.Diff(shuffled(rng, in))
 		if got.Hash != want.Hash || string(got.Encode()) != string(want.Encode()) {
@@ -284,7 +284,7 @@ func TestPlanEncode_Golden(t *testing.T) {
 // desired CNAME, below a delegation, at a kept or reserved name, and no plan creates a CNAME beside
 // other data.
 func TestDNS_ForeignRecordNeverModified(t *testing.T) {
-	rng := rand.New(rand.NewSource(20261104))
+	rng := rand.New(rand.NewSource(20261104)) //nolint:gosec // G404: a seeded, reproducible property test
 	hosts := []string{"a.example.com", "b.example.com", "*.example.com", "sub.example.com", "x.sub.example.com", "ctl.example.com", "k.example.com", "_acme-challenge.a.example.com", "example.com"}
 	types := []string{"A", "AAAA", "CNAME", "TXT", "MX", "NS"}
 	for i := 0; i < 5000; i++ {

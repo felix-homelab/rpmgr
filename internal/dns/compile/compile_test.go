@@ -329,7 +329,7 @@ func TestCompile_Deterministic(t *testing.T) {
 	in.Routes = []compile.Route{route("b.example.com", "g2", compile.HTTP, false), route("a.example.com", "g1", compile.HTTP, false), route("*.c.example.com", "g1", compile.HTTP, false)}
 	in.Claims = []compile.Claim{{OrgID: "orgA", FQDN: "z.example.com", Value: "v"}}
 	want := compile.Compile(in)
-	rng := rand.New(rand.NewSource(1))
+	rng := rand.New(rand.NewSource(1)) //nolint:gosec // G404: a seeded, reproducible property test
 	for i := 0; i < 20; i++ {
 		rng.Shuffle(len(in.Routes), func(a, b int) { in.Routes[a], in.Routes[b] = in.Routes[b], in.Routes[a] })
 		in.Groups[1].Target.Addresses = []netip.Addr{in.Groups[1].Target.Addresses[1], in.Groups[1].Target.Addresses[0]}
@@ -383,7 +383,7 @@ func randomInput(rng *rand.Rand, reserved []string) compile.Input {
 
 func TestDNS_ReservedNamesNeverWritten(t *testing.T) {
 	reserved := []string{"ctl.example.com", "alias.example.com", "agents.example.com"}
-	rng := rand.New(rand.NewSource(20261104))
+	rng := rand.New(rand.NewSource(20261104)) //nolint:gosec // G404: a seeded, reproducible property test
 	for i := 0; i < 5000; i++ {
 		in := randomInput(rng, reserved)
 		for _, r := range []string{"ctl.example.com", "alias.example.com", "CTL.Example.com.", "agents.example.com"} {
@@ -414,7 +414,7 @@ func TestDNS_ReservedNamesNeverWritten(t *testing.T) {
 // Every record of every random input is for the zone's org, under the zone, and an address
 // record is never proxied unless the zone allows it.
 func TestCompile_Invariants(t *testing.T) {
-	rng := rand.New(rand.NewSource(7))
+	rng := rand.New(rand.NewSource(7)) //nolint:gosec // G404: a seeded, reproducible property test
 	for i := 0; i < 3000; i++ {
 		in := randomInput(rng, nil)
 		res := compile.Compile(in)
