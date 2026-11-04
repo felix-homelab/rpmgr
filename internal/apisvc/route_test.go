@@ -17,11 +17,13 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
+	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/routes"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
@@ -1109,5 +1111,41 @@ func TestPreviewRoute_Capabilities(t *testing.T) {
 	// This release announces neither test capability, so gw3 and c3 are left out too.
 	if p := preview(); !slices.Equal(p.GetGatewayIds(), gws[:1]) || !slices.Equal(p.GetConnectorIds(), cons[:1]) {
 		t.Fatalf("with gates: gateways %v, connectors %v; want %v and %v", p.GetGatewayIds(), p.GetConnectorIds(), gws[:1], cons[:1])
+	}
+}
+
+// TestHTTPRoutes_WildcardACMEInManagedZone: ACME may serve a wildcard hostname only in a managed
+// DNS zone of the route's own org, whatever the zone's state or allow_wildcards; a zone of another
+// org, a zone that does not hold the name and a name outside every zone keep the refusal; an
+// uploaded certificate is not asked about zones (D166).
+func TestHTTPRoutes_WildcardACMEInManagedZone(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := e.sys
+	c := e.db.Client()
+	other := storetest.Org(t, e.db, "wild-other")
+	zone := func(org, name string, state dnszone.SyncState) {
+		p := c.DNSProvider.Create().SetID(ids.New("dnp")).SetOrgID(org).SetKind("cloudflare").SetName("cf-" + name).SetCredentialEnc([]byte("x")).SaveX(ctx)
+		c.DNSZone.Create().SetOrgID(org).SetDNSProviderID(p.ID).SetProviderZoneID("pz-" + name).SetName(name).SetSyncState(state).ExecX(ctx)
+	}
+	e.verified(t, org, "example.com", true)
+	e.verified(t, org, "example.net", true)
+	e.verified(t, org, "example.org", true)
+	zone(other, "example.net", dnszone.SyncStateActive) // another org's
+	zone(org, "example.com", dnszone.SyncStateHeld)
+	zone(org, "sub.example.org", dnszone.SyncStateActive) // does not hold *.example.org
+	for name, c := range map[string]struct {
+		host   string
+		reason string
+	}{
+		"in a held zone of the org":  {"*.example.com", ""},
+		"deeper in the zone":         {"*.a.example.com", ""},
+		"in another org's zone":      {"*.example.net", apisvc.ReasonWildcardACME},
+		"above the org's zone":       {"*.example.org", apisvc.ReasonWildcardACME},
+		"in the zone below the name": {"*.sub.example.org", ""},
+	} {
+		_, err := createRoute(ada, org, httpRoute("w-"+strings.NewReplacer("*", "s", ".", "-").Replace(c.host), group, c.host), "")
+		if c.reason == "" && err != nil || c.reason != "" && reason(err) != c.reason {
+			t.Errorf("%s: %v, want reason %q", name, err, c.reason)
+		}
 	}
 }

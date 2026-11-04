@@ -12,6 +12,14 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- ACME certificates for hostnames in a managed DNS zone are issued by DNS-01: the controller writes
+  the CA's challenge as a TXT record through the zone's provider, marks it, and deletes it after
+  the order, never touching a record that someone else put at the same name. A zone on hold still
+  serves certificates, a disabled one does not, and a zone of another org is never used. A route in
+  ACME mode may now have a wildcard hostname when it lies in a managed zone of the route's org;
+  elsewhere it is still refused with `WILDCARD_NEEDS_CERTIFICATE`. The challenge's requests take at
+  most half of the provider's request budget, and a retry waits until a provider's block ends. The
+  controller's own certificate keeps HTTP-01 and TLS-ALPN-01. (#680)
 - A webhook endpoint has a format: `rpmgr`, as before, or `discord`, `slack` or `teams`, which posts
   each event as a message people read in the chat service, with the summary as the title, the
   event's type, organisation, actor, subject and time as fields, and an alert red when it fires

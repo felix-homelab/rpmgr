@@ -455,7 +455,7 @@ Messages never hold secrets or other orgs' data. An error that the method did no
 | `failed_precondition` | The resource changed since you read it | `ETAG_MISMATCH` |
 | `failed_precondition` | Something still depends on what you delete, such as a gateway group that has gateways | `DEPENDANTS_EXIST` |
 | `failed_precondition` | A hostname under no verified domain of the org | `DOMAIN_NOT_VERIFIED` |
-| `failed_precondition` | ACME for a wildcard hostname, which needs an uploaded certificate | `WILDCARD_NEEDS_CERTIFICATE` |
+| `failed_precondition` | ACME for a wildcard hostname outside every managed DNS zone of the org, which needs an uploaded certificate | `WILDCARD_NEEDS_CERTIFICATE` |
 | `failed_precondition` | An uploaded certificate that does not cover each of the route's hostnames | `CERTIFICATE_NOT_COVERING` |
 | `failed_precondition` | A port outside the gateway group's pools | `PORT_NOT_IN_POOL` |
 | `failed_precondition` | An access policy with basic auth on a route that is not HTTP | `BASIC_AUTH_NOT_HTTP` |

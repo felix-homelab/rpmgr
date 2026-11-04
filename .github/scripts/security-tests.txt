@@ -55,7 +55,7 @@ TestDNS_CrashRelinksByMarker	done	6.12	#670	internal/dns/apply; the job's use in
 TestDNS_RestoreStartsHeld	done	6.14	#672	internal/controller (restore), internal/dns/job (plan and no writes)
 TestDNS_DeletionGuard	done	6.14	#672	internal/dns/job and internal/dns/apply (guard); PLAN_CHANGED clause in internal/apisvc
 TestDNS_FailStatic	done	6.10	#668	internal/dns/apply
-TestDNS_RateBudgetAndRetryAfter	p2	-	-	job clause done in 6.13 (#671; internal/dns/budget, internal/dns/job); the DNS-01 clause follows in 7.1
+TestDNS_RateBudgetAndRetryAfter	done	6.13	#671	job clause 6.13 (internal/dns/budget, internal/dns/job), DNS-01 clause 7.1 (#680, internal/acme)
 TestDNS_BatchFallbackPerRecord	done	6.11	#669	internal/dns/apply (fallback, ledger) and TestDNS_BatchFallbackPerRecord_NameStatus in internal/dns/job (name error, 6.11)
 TestDNS_LeaseCheckedBeforeBatch	done	6.11	#669	internal/dns/job
 TestDNS_ProxiedOnlyForHttp	p2	-	-	DNS automation
@@ -66,7 +66,7 @@ TestTransport_PinnedRouteUsesPinnedSessions	done	4.14	#84	precedence clause (rou
 TestTransport_PinNeverFallsBack	done	4.14	#84
 TestTransport_ChangeKeepsOpenConnections	done	4.14	#84
 TestACME_ValidationWaitsForEveryGateway	done	6.2	#103
-TestACME_DNS01OnlyManagedZones	p2	-	-	ACME DNS-01
+TestACME_DNS01OnlyManagedZones	done	7.1	#680	internal/acme, internal/dns/dnsadapter, internal/apisvc
 TestPolicy_MetadataAlwaysDenied	done	4.6	#76
 TestOTA_ChannelAndVariantEnforced	done	2.2	#603	OTA
 TestPolicy_AutoUpdateAndChannelDefaults	done	4.6	#76	installer clause in 11.4 (test/installsh: the policy file with explicit auto_update and update_channel); root-updater clause done in 2.3 (#604, internal/update)

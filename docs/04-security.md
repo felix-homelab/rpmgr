@@ -244,10 +244,10 @@ later.
   into the certificates of the route's org and from there to the gateways. A hostname that gets
   none has a `failed` row with the CA's error, and one whose renewal fails keeps serving its
   certificate with the error recorded. A wildcard hostname in `acme` mode is refused with that
-  reason, as its certificate needs DNS-01 (Phase 2, R42). With DNS automation (Phase 2) the refusal
-  applies only to a hostname outside every managed zone of the org: in a managed zone the wildcard
-  hostname gets a certificate by DNS-01, whatever the zone's `allow_wildcards`, which governs
-  published records ([D166](14-open-decisions.md#engineering),
+  reason, as its certificate needs DNS-01 (R42). The refusal applies only to a hostname outside
+  every managed zone of the org: the API refuses such a route with `WILDCARD_NEEDS_CERTIFICATE`,
+  and in a managed zone the wildcard hostname gets a certificate by DNS-01, whatever the zone's
+  `allow_wildcards`, which governs published records ([D166](14-open-decisions.md#engineering),
   [15](15-dns.md#acme-dns-01)). The ACME client honours `HTTPS_PROXY`,
   else `ALL_PROXY`, and `NO_PROXY` (R44, [D93](14-open-decisions.md#engineering)).
 - **ACME DNS-01 in managed zones** (Phase 2) [R] ([D166](14-open-decisions.md#engineering)): the

@@ -142,6 +142,14 @@ gateways.
 3. The CA connects to the hostname and finds the answer at whichever gateway it reaches.
 4. The certificate goes to the gateways, which serve it from then on.
 
+A hostname that lies in a managed DNS zone of the route's org gets its certificate differently: the
+controller writes the CA's challenge as a TXT record through the zone's DNS provider and deletes it
+afterwards, so the hostname need not point at a gateway yet. The same holds for a wildcard
+hostname, which only a managed zone can have an ACME certificate for. A zone you put on hold still
+serves certificates, a disabled zone does not, and a zone of another org is never used. The
+controller writes only its own challenge records and never removes a record that someone else put
+at the same name ([15](../15-dns.md#acme-dns-01), [04](../04-security.md#controller-certificates)).
+
 A new certificate shows **being obtained**, then **active**. One that could not be obtained shows
 **failed** with the CA's error; one whose renewal failed stays **active**, keeps serving, and shows
 the error. **Renew now** on an ACME certificate, or `rpmgr renew certificate <id>`, renews it at
@@ -184,9 +192,13 @@ for its public URL comes from the same CA and account, and takes a change at its
 - **A gateway that cannot take the challenge.** Every enabled gateway of the group must
   acknowledge the challenge before the CA validates. A gateway that is offline, or created but not
   enrolled yet, makes each attempt fail. Bring it online, or drain it ([Gateways](gateways.md)).
-- **A wildcard hostname.** ACME wildcard certificates need DNS-01, which comes with DNS automation
-  in Phase 2; until then such a route needs an uploaded certificate, and is refused with **From
-  ACME** ([05](../05-features.md#tls-and-domains)).
+- **A wildcard hostname.** An ACME certificate for a wildcard hostname needs DNS-01, so the
+  hostname must lie in a managed DNS zone of the route's org. Outside one, the route is refused
+  with **From ACME** (`WILDCARD_NEEDS_CERTIFICATE`) and needs an uploaded certificate.
+- **A managed zone that cannot take the challenge.** For a name in a managed zone the certificate
+  shows **failed** with the reason when the zone is disabled or was removed, when the provider
+  refuses the token, or while the provider's request budget is spent or blocked; the controller
+  tries again once the block ends ([15](../15-dns.md#batches-failures-and-the-rate-budget)).
 - **The controller cannot reach the CA.** The controller dials the CA directly, or through the proxy
   that `HTTPS_PROXY`, else `ALL_PROXY`, names, unless `NO_PROXY` exempts the CA
   ([Environment variables](reference/environment.md)).
