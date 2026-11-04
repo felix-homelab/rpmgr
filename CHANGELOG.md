@@ -10,6 +10,20 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-04
+
+**Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
+
+- A host on v0.2.0 restarts plainly when you upgrade it; the restart without refusing connections
+  applies from the next upgrade on.
+- The controller or all-in-one is upgraded by hand once, to v0.3.0; after that it updates itself
+  from Settings → Updates (SQLite only).
+- A connector refuses a stream over a new bound of connections to one target address
+  ([03](docs/03-connections.md#timeouts-keepalive-and-backoff)); a route whose target serves more
+  concurrent connections sets a connection limit above it.
+- The default idle timeout of `tcp` routes is shorter
+  ([03](docs/03-connections.md#timeouts-keepalive-and-backoff)).
+
 ### Added
 
 - A stalled `tcp` stream leaves evidence. At debug level the gateway logs a stream that has copied
@@ -204,7 +218,7 @@ Changes to the design documents are not recorded here: see the git history and t
   rollout of the controller's version or starts one. **Rollouts** switches to the staged rollouts
   of v0.2.0 (instance setting `rollout_mode`, `easy` unless set). `ReleaseService.CreateRollout`
   takes the mode and the queue (`rpmgr create rollout --easy --agent …`), and
-  `ReleaseService.UpgradeAgents` (`rpmgr upgrade connector|gateway <agent>…`) updates single agents.
+  `ReleaseService.UpgradeAgents` updates single agents.
   Connectors and gateways report whether they take over-the-air updates (`over_the_air`). (#892,
   #893, #894, #895, #896)
 
@@ -254,8 +268,9 @@ Changes to the design documents are not recorded here: see the git history and t
   `OVERLOADED`; before, there was no bound. A route whose target serves more concurrent connections
   than that must set a connection limit above it. HTTP routes are not bounded. (#1052)
 - TCP routes: the default idle timeout of a connection is now shorter, so that a connection that
-  stalls does not hold a target's connection for an hour. It applies to routes created from this
-  release and when a route's timeout is cleared; a route keeps the value it has, and `0` still
+  stalls does not hold a target's connection for an hour; the value is in
+  [03](docs/03-connections.md#timeouts-keepalive-and-backoff). It applies to routes created from
+  this release and when a route's timeout is cleared; a route keeps the value it has, and `0` still
   means none. (#1052)
 
 ### Removed
@@ -265,11 +280,13 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Fixed
 
+- Web UI: the route page marks a target as the HTTP/2 fallback for QUIC only when it serves, its
+  connector has only HTTP/2 sessions, and neither the route nor the connector pins a transport.
+  (#976, #977)
 - The controller's update was never offered for a release found by the release check: the button
   stayed off with "The mirror does not hold it yet". With the release check on, the controller now
   also downloads the newest release of its channel that is newer than itself, at the next check or
   with "Check now". On an air-gapped install, upgrade by hand. (#1067)
-
 - Connectors: a target that allows each client address only a few connections, as a remote desktop
   server does, is no longer locked out by stalled connections and by the connector's own health
   checks. A connector holds at most a bound of connections to one target address, for streams and
@@ -662,6 +679,7 @@ Changes to the design documents are not recorded here: see the git history and t
   command line (generated from the binary), the boot files, the local policy file, the environment
   and the API. (#565)
 
-[Unreleased]: https://github.com/felix-homelab/rpmgr/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/felix-homelab/rpmgr/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/felix-homelab/rpmgr/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/felix-homelab/rpmgr/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/felix-homelab/rpmgr/releases/tag/v0.1.0

@@ -8,9 +8,10 @@ you own, and that server passes the traffic through. You need no port forwarding
 public IP address at home and no inbound firewall rule.
 
 > [!NOTE]
-> v0.2.0 is rpmgr's second release ([Releases](https://github.com/felix-homelab/rpmgr/releases)):
-> the minimum viable product of its first phase, now with signed updates over the air. Try it out,
-> expect rough edges, and [report what you find](https://github.com/felix-homelab/rpmgr/issues).
+> v0.3.0 is rpmgr's third release ([Releases](https://github.com/felix-homelab/rpmgr/releases)):
+> the minimum viable product of its first phase, with signed updates over the air and restarts
+> without interrupting visitors. Try it out, expect rough edges, and
+> [report what you find](https://github.com/felix-homelab/rpmgr/issues).
 
 ## Why rpmgr
 
@@ -59,7 +60,7 @@ configuration ([02](docs/02-architecture.md)).
 
 ## Features
 
-What v0.2.0 brings; the full catalogue, with what comes later, is in [05](docs/05-features.md).
+What v0.3.0 brings; the full catalogue, with what comes later, is in [05](docs/05-features.md).
 
 **Publishing services**
 
@@ -331,12 +332,12 @@ A controller works with agents of its own minor version and of the one before
 
 ## Roadmap
 
-The first phase is complete with v0.1.0, and v0.2.0 starts the second one with signed updates
-over the air. The rest of it brings DNS records managed in Cloudflare, wildcard certificates
-through DNS-01, single sign-on and passkeys, private services between connectors, health checks
-and passive health for targets, rate and bandwidth limits, restarts without interrupting
-visitors, Windows and macOS connectors installed as services, and PostgreSQL with several
-controllers. Virtual networks, HTTP/3, a Helm chart and a Terraform provider follow after that
+The first phase is complete with v0.1.0, and v0.2.0 and v0.3.0 start the second one with signed
+updates over the air and restarts without interrupting visitors. The rest of it brings DNS records
+managed in Cloudflare, wildcard certificates through DNS-01, single sign-on and passkeys, private
+services between connectors, health checks and passive health for targets, rate and bandwidth
+limits, Windows and macOS connectors installed as services, and PostgreSQL with several controllers.
+Virtual networks, HTTP/3, a Helm chart and a Terraform provider follow after that
 ([13](docs/13-roadmap.md)).
 
 ## Documentation
