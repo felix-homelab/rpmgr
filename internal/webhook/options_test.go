@@ -5,6 +5,7 @@ package webhook_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"regexp"
@@ -63,7 +64,7 @@ func TestValidateOptions(t *testing.T) {
 		"username control":      {webhook.FormatDiscord, webhook.Options{Username: "a\nb"}, false},
 		"avatar https":          {webhook.FormatDiscord, webhook.Options{AvatarURL: "https://cdn.example/a.png"}, true},
 		"avatar http":           {webhook.FormatDiscord, webhook.Options{AvatarURL: "http://cdn.example/a.png"}, false},
-		"avatar credentials":    {webhook.FormatDiscord, webhook.Options{AvatarURL: "https://u:p@cdn.example/a.png"}, false},
+		"avatar credentials":    {webhook.FormatDiscord, webhook.Options{AvatarURL: "https://u:p@cdn.example/a.png"}, false}, //nolint:gosec // G101: a URL with credentials is the rejected input
 		"avatar fragment":       {webhook.FormatDiscord, webhook.Options{AvatarURL: "https://cdn.example/a.png#x"}, false},
 		"avatar no host":        {webhook.FormatDiscord, webhook.Options{AvatarURL: "https:///a.png"}, false},
 		"avatar javascript":     {webhook.FormatDiscord, webhook.Options{AvatarURL: "javascript:alert(1)"}, false},
@@ -231,11 +232,10 @@ func TestChatBody_DiscordOptions(t *testing.T) {
 
 // fakeDiscord is a Discord webhook endpoint that records what it is asked.
 type fakeDiscord struct {
-	mu       sync.Mutex
-	reqs     []string // METHOD path?query
-	bodies   [][]byte
-	answer   func(n int, r *http.Request) (int, string)
-	editCode int
+	mu     sync.Mutex
+	reqs   []string // METHOD path?query
+	bodies [][]byte
+	answer func(n int, r *http.Request) (int, string)
 }
 
 func (f *fakeDiscord) handler(w http.ResponseWriter, r *http.Request) {
@@ -382,16 +382,5 @@ func TestSend_DiscordResetAfterHeader(t *testing.T) {
 }
 
 func asRateLimited(err error, rl **webhook.RateLimitedError) bool {
-	for e := err; e != nil; {
-		if r, ok := e.(*webhook.RateLimitedError); ok {
-			*rl = r
-			return true
-		}
-		u, ok := e.(interface{ Unwrap() error })
-		if !ok {
-			return false
-		}
-		e = u.Unwrap()
-	}
-	return false
+	return errors.As(err, rl)
 }
