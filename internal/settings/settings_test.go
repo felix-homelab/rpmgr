@@ -18,6 +18,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -225,6 +226,56 @@ func TestOrgAlertSettings(t *testing.T) {
 		}
 		if s, _, _ := settings.Org(ctx, db.Client(), a); !s.GetAlertEmail() || len(s.GetAlertTypes()) != 0 {
 			t.Fatalf("not back to the defaults: %v", s)
+		}
+	})
+}
+
+func TestCloudflareRanges(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		storetest.Init(t, db)
+		ctx := storetest.SystemCtx(t)
+		if s, _, _ := settings.Instance(ctx, db.Client()); !s.GetCloudflareIpRefresh() || s.GetCloudflareIpRanges() != nil {
+			t.Fatalf("default: refresh %v, ranges %v; want on and none stored", s.GetCloudflareIpRefresh(), s.GetCloudflareIpRanges())
+		}
+		if _, err := settings.UpdateInstance(ctx, db, &rpmgrv1.InstanceSettings{DefaultTransport: rpmgrv1.TransportPolicy_TRANSPORT_POLICY_H2.Enum()},
+			mask("default_transport"), 0); err != nil {
+			t.Fatal(err)
+		}
+		ranges := &rpmgrv1.CloudflareIpRanges{Ipv4Cidrs: []string{"192.0.2.0/24"}, Ipv6Cidrs: []string{"2001:db8::/32"}}
+		rev, err := settings.RecordCloudflareRanges(ctx, db, ranges, nil)
+		if err != nil || rev.Seq != 2 {
+			t.Fatalf("RecordCloudflareRanges: %+v, %v", rev, err)
+		}
+		s, etag, _ := settings.Instance(ctx, db.Client())
+		if !proto.Equal(s.GetCloudflareIpRanges(), ranges) || s.GetDefaultTransport() != rpmgrv1.TransportPolicy_TRANSPORT_POLICY_H2 || etag != 2 {
+			t.Errorf("after the record: %v, etag %d; want the ranges and the other settings kept", s, etag)
+		}
+		// Another update leaves the ranges alone; one that names them is refused without a revision.
+		if _, err := settings.UpdateInstance(ctx, db, &rpmgrv1.InstanceSettings{CloudflareIpRefresh: proto.Bool(false)}, mask("cloudflare_ip_refresh"), 0); err != nil {
+			t.Fatal(err)
+		}
+		if s, _, _ = settings.Instance(ctx, db.Client()); s.GetCloudflareIpRefresh() || !proto.Equal(s.GetCloudflareIpRanges(), ranges) {
+			t.Errorf("after switching the refresh off: %v", s)
+		}
+		_, err = settings.UpdateInstance(ctx, db, &rpmgrv1.InstanceSettings{CloudflareIpRanges: &rpmgrv1.CloudflareIpRanges{Ipv4Cidrs: []string{"0.0.0.0/0"}}},
+			mask("cloudflare_ip_ranges"), 0)
+		if !errors.Is(err, settings.ErrInvalid) {
+			t.Errorf("an update naming the ranges: %v, want ErrInvalid", err)
+		}
+		if n := db.Client().ConfigRevision.Query().CountX(ctx); n != 3 {
+			t.Errorf("%d revisions, want 3", n)
+		}
+		// A list that does not pass validation is not stored, and a lost fence stops the write.
+		bad := &rpmgrv1.CloudflareIpRanges{Ipv4Cidrs: []string{"not a prefix"}}
+		if _, err := settings.RecordCloudflareRanges(ctx, db, bad, nil); !errors.Is(err, settings.ErrInvalid) {
+			t.Errorf("invalid ranges: %v, want ErrInvalid", err)
+		}
+		lost := errors.New("lease lost")
+		if _, err := settings.RecordCloudflareRanges(ctx, db, ranges, func(*ent.Tx) error { return lost }); !errors.Is(err, lost) {
+			t.Errorf("lost fence: %v, want its error", err)
+		}
+		if n := db.Client().ConfigRevision.Query().CountX(ctx); n != 3 {
+			t.Errorf("%d revisions, want 3: a refused record must not create one", n)
 		}
 	})
 }

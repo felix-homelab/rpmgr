@@ -15,6 +15,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/password"
+	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
@@ -252,5 +254,144 @@ func TestVerifyDomain(t *testing.T) {
 	}
 	if _, err := verify(ada, "dom_missing"); code(err) != connect.CodeNotFound {
 		t.Fatalf("a missing claim: %v", err)
+	}
+}
+
+// TestDomain_NestedClaimsHeldForApproval (docs/04-security.md, "Route and hostname ownership"): a
+// proved claim nested under, or containing, another org's verified domain is held as
+// pending_approval and covers no hostname; only the Instance Admin, after a step-up, approves it;
+// the same org's nested claims are not held; a held claim stays held when the domain it clashed
+// with is deleted.
+func TestDomain_NestedClaimsHeldForApproval(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	ctx := context.Background()
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	// prove claims name for org, shows the proof and returns the claim after the check.
+	prove := func(b *browser, o, name string) *rpmgrv1.Domain {
+		t.Helper()
+		d, err := claim(b, o, name, false, 0)
+		if err != nil {
+			t.Fatalf("claim %s: %v", name, err)
+		}
+		e.txt.prove(name)
+		r, err := b.dom.VerifyDomain(ctx, connect.NewRequest(&rpmgrv1.VerifyDomainRequest{DomainId: d.GetId()}))
+		if err != nil {
+			t.Fatalf("verify %s: %v", name, err)
+		}
+		return r.Msg.GetDomain()
+	}
+	covers := func(o, host string) bool {
+		t.Helper()
+		err := store.ReadTx(e.sys, e.db, func(tx *ent.Tx, _ store.Revision) error {
+			_, err := domains.Covering(e.sys, tx, o, host)
+			return err
+		})
+		return err == nil
+	}
+	const (
+		verified = rpmgrv1.DomainStatus_DOMAIN_STATUS_VERIFIED
+		held     = rpmgrv1.DomainStatus_DOMAIN_STATUS_PENDING_APPROVAL
+	)
+	parent := prove(ada, org, "example.com")
+	if parent.GetStatus() != verified {
+		t.Fatalf("the first claim: %v", parent)
+	}
+	nested := prove(bob, orgB, "app.example.com")
+	if nested.GetStatus() != held || nested.GetVerifyTime() != nil || nested.GetChallenge() != nil || nested.GetLastError() != "" {
+		t.Fatalf("a claim nested under another org's domain: %v", nested)
+	}
+	if covers(orgB, "app.example.com") || covers(orgB, "x.app.example.com") {
+		t.Error("a held claim covers a hostname")
+	}
+	if r, err := bob.dom.VerifyDomain(ctx, connect.NewRequest(&rpmgrv1.VerifyDomainRequest{DomainId: nested.GetId()})); err != nil || r.Msg.GetDomain().GetStatus() != held {
+		t.Fatalf("a held claim checked again: %v %v", r, err)
+	}
+	// A claim that contains another org's domain: bob's name is verified first, then ada claims its parent.
+	if d := prove(bob, orgB, "x.bob.example"); d.GetStatus() != verified {
+		t.Fatalf("bob's own name: %v", d)
+	}
+	containing := prove(ada, org, "bob.example")
+	if containing.GetStatus() != held || covers(org, "bob.example") {
+		t.Fatalf("a claim containing another org's domain: %v", containing)
+	}
+	// The same org's nested claims need no approval.
+	if d := prove(ada, org, "sub.example.com"); d.GetStatus() != verified || !covers(org, "sub.example.com") {
+		t.Fatalf("the same org's nested claim: %v", d)
+	}
+
+	approve := func(b *browser, id string) (*rpmgrv1.Domain, error) {
+		r, err := b.dom.ApproveDomainClaim(ctx, connect.NewRequest(&rpmgrv1.ApproveDomainClaimRequest{DomainId: id}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg.GetDomain(), nil
+	}
+	if _, err := approve(ada, nested.GetId()); reason(err) != api.ReasonStepUpRequired {
+		t.Fatalf("the Instance Admin without a step-up: %v", err)
+	}
+	if err := bob.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := approve(bob, nested.GetId()); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("the claim's own Owner approves it: %v", err)
+	}
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	own, _ := e.join(t, ada, org, "own@example.com", "owner")
+	if err := own.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := approve(own, nested.GetId()); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("the other org's Owner approves it: %v", err)
+	}
+	if covers(orgB, "app.example.com") {
+		t.Fatal("a refused approval verified the claim")
+	}
+	got, err := approve(ada, nested.GetId())
+	if err != nil || got.GetStatus() != verified || got.GetVerifyTime() == nil || !covers(orgB, "app.example.com") {
+		t.Fatalf("the Instance Admin approves: %v %v", got, err)
+	}
+	if again, err := approve(ada, nested.GetId()); err != nil || !again.GetVerifyTime().AsTime().Equal(got.GetVerifyTime().AsTime()) {
+		t.Fatalf("a second approval: %v %v", again, err)
+	}
+	if _, err := approve(ada, "dom_missing"); code(err) != connect.CodeNotFound {
+		t.Fatalf("a missing claim: %v", err)
+	}
+	unproved, err := claim(bob, orgB, "unproved.example.org", false, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := approve(ada, unproved.GetId()); code(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("a claim that is not held: %v", err)
+	}
+
+	// Deleted parent: the clashing domain is given up; the held claim stays held until approved.
+	if _, err := ada.dom.DeleteDomain(ctx, connect.NewRequest(&rpmgrv1.DeleteDomainRequest{DomainId: containing.GetId()})); err != nil {
+		t.Fatal(err)
+	}
+	p2 := prove(ada, org, "parent.example.net")
+	child := prove(bob, orgB, "child.parent.example.net")
+	if p2.GetStatus() != verified || child.GetStatus() != held {
+		t.Fatalf("parent %v child %v", p2, child)
+	}
+	if _, err := ada.dom.DeleteDomain(ctx, connect.NewRequest(&rpmgrv1.DeleteDomainRequest{DomainId: p2.GetId()})); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := bob.dom.GetDomain(ctx, connect.NewRequest(&rpmgrv1.GetDomainRequest{DomainId: child.GetId()})); err != nil ||
+		r.Msg.GetDomain().GetStatus() != held || covers(orgB, "child.parent.example.net") {
+		t.Fatalf("the held claim after its parent is deleted: %v %v", r, err)
+	}
+	if got, err := approve(ada, child.GetId()); err != nil || got.GetStatus() != verified {
+		t.Fatalf("approving after the parent is gone: %v %v", got, err)
+	}
+	// The claimant gives a held claim up: the refusal path.
+	h := prove(bob, orgB, "y.example.com")
+	if h.GetStatus() != held {
+		t.Fatalf("a second nested claim: %v", h)
+	}
+	if _, err := bob.dom.DeleteDomain(ctx, connect.NewRequest(&rpmgrv1.DeleteDomainRequest{DomainId: h.GetId()})); err != nil {
+		t.Fatalf("deleting a held claim: %v", err)
 	}
 }

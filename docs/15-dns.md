@@ -56,7 +56,10 @@ removed by rpmgr. The same credential lets ACME use DNS-01.
      cannot reach or that is no plain address: IPv4-mapped IPv6 (the IPv4 form is asked for
      instead), loopback, unspecified, multicast, link-local, or with a zone. Names and addresses
      are stored in their canonical form.
-   - A DNS name takes precedence over route hostnames with the same name.
+   - A DNS name takes precedence over route hostnames with the same name. It is created only for
+     a gateway group of its own org, and only under a verified domain of the org that covers it; a
+     wildcard name needs a domain with the wildcard. Its `ttl` is 0, which is the zone's
+     `default_ttl`, or lies within the bounds of that ([Timers and limits](#timers-and-limits)).
    - If routes in two gateway groups use the same hostname, which the data model allows
      ([06](06-data-model.md#routing)), and no DNS name decides, the name is `ambiguous` and its
      records stay as they are.
@@ -322,7 +325,11 @@ and lost rows.
      [V VB-12]. In a partial (CNAME) setup, Cloudflare is not authoritative
      [F cf:dns/zone-setups/partial-setup] [V VB-12].
    - Import creates the managed zone (held) and, unless the org already has a verified domain
-     covering it, a domain claim for the apex with `wildcard = true`.
+     covering it, a domain claim for the apex with `wildcard = true`. A claim the org already made
+     for the apex is reused if it has the wildcard and refused if it has not, because a claim's
+     wildcard cannot change. The claim stays `pending` until it is verified like any other: a zone
+     at the provider is no proof of ownership, and neither is a record that only the provider's API
+     shows ([12](12-testing-and-quality.md#security-testing)).
    - The existing rules apply: global uniqueness, and Instance-Admin approval for nested claims
      ([04](04-security.md#route-and-hostname-ownership)). A zone claimed by another org cannot be
      imported.
@@ -422,14 +429,32 @@ A proxied name resolves to Cloudflare. Cloudflare terminates TLS and connects to
   `CF-Connecting-IP` [F cf:fundamentals/reference/http-headers], but only when the TCP peer is in
   Cloudflare's published ranges. `X-Forwarded-*` from these peers is not trusted. IP rules and
   rate limits then see the real client ([03](03-connections.md#http-routes)). For every other
-  route the gateway's trusted-proxy CIDRs apply as before.
+  route, and for a peer outside the ranges on a proxied route, the gateway's trusted-proxy CIDRs
+  apply as before and `CF-Connecting-IP` is ignored. The capability `http.cf-connecting-ip` gates
+  the route: a gateway without it is sent no proxied route, as it would judge IP rules by
+  Cloudflare's addresses ([D168](14-open-decisions.md#engineering)).
+- **Switch.** `dns_proxied` is a field of `http` routes only (`--dns-proxied`, the route form's
+  **Cloudflare proxy**). An update that names it on another type is refused with
+  `PROXY_NOT_ALLOWED` ([07](07-api.md#errors)).
 - **Ranges.**
   - A daily job reads `GET https://api.cloudflare.com/client/v4/ips`
-    [F cf:fundamentals/concepts/cloudflare-ip-addresses]. It stores the ranges as an instance
-    setting in a configuration transaction, so snapshots stay deterministic across HA replicas.
+    [F cf:fundamentals/concepts/cloudflare-ip-addresses] under the lease `cloudflare-ranges`,
+    through the proxy the environment names ([10](10-operations.md#ports)).
+    It stores the ranges as the instance setting `cloudflare_ip_ranges` in a configuration
+    transaction fenced by the lease, so snapshots stay deterministic across HA replicas. Only the
+    job writes the setting; an update that names it is refused, and `rpmgr update settings` does
+    not list it.
   - A fetched list is accepted only within sanity bounds ([Timers and limits](#timers-and-limits)).
-    Otherwise the last accepted list stays, and an alert fires.
-  - The binary embeds a fallback list for installations without egress.
+    Otherwise the last accepted list stays, the refresh is tried again after an hour, the metric
+    counts the result and the alert "Cloudflare IP ranges stale" fires once the list has been
+    old for too long while a route is proxied
+    ([10](10-operations.md#suggested-alerts)).
+  - The binary embeds a fallback list with the date it was retrieved
+    (`internal/cfranges/fallback.json`). It is used until a refresh succeeds and by
+    installations without egress; a release carries the list of its build day.
+  - The instance setting `cloudflare_ip_refresh` (default on) switches the refresh off, for
+    installations that must not reach Cloudflare or that keep the list by other means. The list
+    in use then stays as it is, and the alert does not fire.
 - **What the operator must know:**
   - Cloudflare sees the plaintext of proxied routes ([04](04-security.md#threat-model)).
   - Set the zone's SSL/TLS mode to **Full (strict)**. The gateway's ACME certificates satisfy it
@@ -500,13 +525,14 @@ type Provider interface {
 | Operations per batch | ≤ 200 (Cloudflare Free limit) |
 | Addresses in a DNS target | ≤ 16 |
 | [R] Cloudflare API request | 30 s; answer at most 4 MiB; zones listed 50 per page |
-| `delete_threshold` default | 10 names per pass and zone; 0 = every removal needs approval |
+| `delete_threshold` default | 10 names per pass and zone; 0 = every removal needs approval; [R] at most 1 000 |
 | Drift stop window | a record corrected twice within 1 h is no longer corrected |
 | Adopted-original staleness warning | 30 days |
-| `default_ttl` | 300 s; proxied records: automatic |
+| `default_ttl` | 300 s; [R] at least 60 s and at most 1 day; proxied records: automatic |
 | Pending-claim checks | every 1 min for 15 min, then every 15 min; `failed` after 7 days; [R] by one controller node, 8 checks at once |
 | [R] TXT proof query | 5 s per nameserver address, over UDP and again over TCP when truncated; at most 8 nameservers of a zone |
 | [R] HTTP token fetch | 10 s; no redirect followed; at most 256 bytes; through the proxy the environment names |
 | Token check | every 1 h; expiry warning 14 days ahead |
-| Cloudflare IP ranges | refreshed every 24 h; accepted only if non-empty and at most half of the entries changed |
+| Cloudflare IP ranges | refreshed every 24 h, tried again every 1 h after a failure or a rejected list; accepted only if both families are non-empty, no IPv4 prefix is shorter than /8 and no IPv6 prefix shorter than /16, at most 512 entries, and at most half of the entries in use are gone and at most half of the new entries are new (exactly half passes); the stale alert fires 15 min after the list in use is older than 72 h while a route is proxied |
+| [R] Cloudflare IP ranges fetch | 10 s; no redirect followed; at most 64 KiB; through the proxy the environment names |
 | DNS-01 propagation timeout | 2 min (certmagic default [F certmagic:solvers.go:532]) |

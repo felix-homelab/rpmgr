@@ -91,6 +91,7 @@ rpmgr <command>
 | [`rpmgr verify`](#rpmgr-verify) | Check a proof now |
 | [`rpmgr check`](#rpmgr-check) | Check for new releases now |
 | [`rpmgr trust`](#rpmgr-trust) | Trust something without a proof |
+| [`rpmgr approve`](#rpmgr-approve) | Approve a domain claim that is held for approval |
 | [`rpmgr upload`](#rpmgr-upload) | Upload a file to the controller |
 | [`rpmgr renew`](#rpmgr-renew) | Renew a certificate now |
 | [`rpmgr remove`](#rpmgr-remove) | Remove a member from the org, a user's second factor, or a gateway group's own page |
@@ -869,6 +870,7 @@ rpmgr create route [flags]
 | `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
+| `--dns-proxied` |  | http: the route's names are proxied by Cloudflare, which the gateway believes for the client address only from Cloudflare's own addresses |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--group string` |  | the gateway group, by name or ID |
 | `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
@@ -1197,6 +1199,7 @@ rpmgr update route [flags] <id or name>
 | `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
+| `--dns-proxied` |  | http: the route's names are proxied by Cloudflare, which the gateway believes for the client address only from Cloudflare's own addresses |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--force` |  | update without checking that the route is unchanged since this command read it |
 | `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
@@ -1704,6 +1707,7 @@ rpmgr preview route [flags]
 | `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
+| `--dns-proxied` |  | http: the route's names are proxied by Cloudflare, which the gateway believes for the client address only from Cloudflare's own addresses |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--group string` |  | the gateway group, by name or ID |
 | `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
@@ -1818,6 +1822,26 @@ Mark a domain claim verified without a proof (Instance Admin).
 
 ```text
 rpmgr trust domain <id>
+```
+
+## rpmgr approve
+
+Approve a domain claim that is held for approval.
+
+```text
+rpmgr approve <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr approve domain`](#rpmgr-approve-domain) | Approve a domain claim held because another org's domain is nested with it (Instance Admin) |
+
+## rpmgr approve domain
+
+Approve a domain claim held because another org's domain is nested with it (Instance Admin).
+
+```text
+rpmgr approve domain <id>
 ```
 
 ## rpmgr upload

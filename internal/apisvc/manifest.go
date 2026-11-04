@@ -19,6 +19,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/accesspolicy"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cabundle"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
@@ -33,7 +34,7 @@ type Manifests struct {
 }
 
 // manifestKinds are the kinds ExportManifests writes, in this order when the request names none.
-var manifestKinds = []string{"GatewayGroup", "Gateway", "PortPool", "Domain", "CABundle", "AccessPolicy", "Connector", "Route"}
+var manifestKinds = []string{"GatewayGroup", "Gateway", "PortPool", "Domain", "DnsName", "CABundle", "AccessPolicy", "Connector", "Route"}
 
 // ExportManifests implements ManifestService. Decommissioned gateways and connectors are not
 // configuration and are left out. A request that names resources gets exactly those; one it names
@@ -116,6 +117,9 @@ func exportKind(ctx context.Context, db *store.DB, org, kind string, add func(st
 	case "Domain":
 		rows, err := c.Domain.Query().Where(domain.OrgID(org)).Order(ent.Asc(domain.FieldID)).All(ctx)
 		return each(idsOf(rows, func(r *ent.Domain) string { return r.ID }), err, func(i int) (proto.Message, error) { return domainOf(rows[i]), nil })
+	case "DnsName":
+		rows, err := c.DNSName.Query().Where(dnsname.OrgID(org)).Order(ent.Asc(dnsname.FieldID)).All(ctx)
+		return each(idsOf(rows, func(r *ent.DNSName) string { return r.ID }), err, func(i int) (proto.Message, error) { return dnsNameOf(rows[i]), nil })
 	case "CABundle":
 		rows, err := c.CABundle.Query().Where(cabundle.OrgID(org)).Order(ent.Asc(cabundle.FieldID)).All(ctx)
 		return each(idsOf(rows, func(r *ent.CABundle) string { return r.ID }), err, func(i int) (proto.Message, error) { return caBundleOf(ctx, c, rows[i]) })

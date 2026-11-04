@@ -88,6 +88,6 @@ A target's **CA bundle** offers the bundles by name and ID ([Routes](routes.md#t
 
 ## On the command line
 
-`rpmgr create domain`, `rpmgr verify domain`, `rpmgr trust domain`, `rpmgr upload certificate`,
+`rpmgr create domain`, `rpmgr verify domain`, `rpmgr trust domain`, `rpmgr approve domain`, `rpmgr upload certificate`,
 `rpmgr renew certificate`, `rpmgr create ca-bundle`, `rpmgr list domain` and their siblings do the
 same ([Command line](../reference/cli.md)).

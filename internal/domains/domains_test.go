@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -148,6 +149,109 @@ func TestClaimAndCovering(t *testing.T) {
 		}
 		if _, err := covering(orgA, "under_score.example.com"); !errors.Is(err, domains.ErrInvalid) {
 			t.Errorf("an invalid hostname: %v", err)
+		}
+	})
+}
+
+// TestConflicts: a name conflicts with another org's verified domain above or below it, whatever
+// the wildcard flags, and with nothing else: not the same org's, not a pending or held claim, not
+// a sibling or a name that merely ends alike.
+func TestConflicts(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		storetest.Init(t, db)
+		sys := storetest.SystemCtx(t)
+		orgA, orgB := storetest.Org(t, db, "org-a"), storetest.Org(t, db, "org-b")
+		add := func(org, name string, status domain.Status) {
+			t.Helper()
+			err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+				d, err := domains.Claim(sys, tx, org, name, false)
+				if err != nil {
+					return err
+				}
+				return tx.Domain.UpdateOne(d).SetStatus(status).Exec(sys)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		add(orgA, "example.com", domain.StatusVerified)
+		add(orgA, "deep.a.b.test", domain.StatusVerified)
+		add(orgA, "held.example", domain.StatusPendingApproval)
+		add(orgA, "waiting.example", domain.StatusPending)
+		for name, want := range map[string]bool{
+			"app.example.com": true, "x.y.example.com": true, // nested under
+			"b.test": true, "a.b.test": true, // containing
+			"badexample.com": false, "example.org": false, "other.test": false, "deep.a.b.tes": false,
+			"sub.held.example": false, "waiting.example": false, "x.waiting.example": false, // not verified
+		} {
+			var got bool
+			err := store.ReadTx(sys, db, func(tx *ent.Tx, _ store.Revision) error {
+				var err error
+				got, err = domains.Conflicts(sys, tx, orgB, name)
+				return err
+			})
+			if err != nil || got != want {
+				t.Errorf("%s: %v %v, want %v", name, got, err, want)
+			}
+		}
+		err := store.ReadTx(sys, db, func(tx *ent.Tx, _ store.Revision) error {
+			if got, err := domains.Conflicts(sys, tx, orgA, "app.example.com"); err != nil || got {
+				t.Errorf("the same org's nested name: %v %v", got, err)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// TestDNS_CrossOrgPublishRefused_Nested is the nested clause of TestDNS_CrossOrgPublishRefused
+// (docs/12-testing-and-quality.md, "Security testing"): the DNS publication helpers act only for a
+// verified claim, found by Covering, and a claim nested under another org's domain is not one
+// until the Instance Admin approves it; approved, it covers names for its own org only. The
+// publication clause, that no record reaches the other org's zone, comes with the DNS automation.
+func TestDNS_CrossOrgPublishRefused_Nested(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		storetest.Init(t, db)
+		sys := storetest.SystemCtx(t)
+		orgA, orgB := storetest.Org(t, db, "org-a"), storetest.Org(t, db, "org-b")
+		var parent, nested *ent.Domain
+		err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+			var err error
+			if parent, err = domains.Claim(sys, tx, orgA, "zone.example", true); err != nil {
+				return err
+			}
+			if parent, err = domains.Record(sys, tx, parent, nil, time.Now()); err != nil {
+				return err
+			}
+			if nested, err = domains.Claim(sys, tx, orgB, "app.zone.example", false); err != nil {
+				return err
+			}
+			nested, err = domains.Record(sys, tx, nested, nil, time.Now())
+			return err
+		})
+		if err != nil || parent.Status != domain.StatusVerified || nested.Status != domain.StatusPendingApproval || nested.VerifiedAt != nil {
+			t.Fatalf("parent %v nested %v: %v", parent, nested, err)
+		}
+		covering := func(org, host string) error {
+			return store.ReadTx(sys, db, func(tx *ent.Tx, _ store.Revision) error {
+				_, err := domains.Covering(sys, tx, org, host)
+				return err
+			})
+		}
+		if err := covering(orgB, "app.zone.example"); !errors.Is(err, domains.ErrNotOwned) {
+			t.Fatalf("a held claim covers: %v", err)
+		}
+		db.Client().Domain.UpdateOneID(nested.ID).SetStatus(domain.StatusVerified).ExecX(sys)
+		if err := covering(orgB, "app.zone.example"); err != nil {
+			t.Fatalf("an approved claim: %v", err)
+		}
+		if err := covering(orgB, "other.zone.example"); !errors.Is(err, domains.ErrNotOwned) {
+			t.Fatalf("an approved claim covers more than its name: %v", err)
+		}
+		if err := covering(orgA, "zone.example"); err != nil {
+			t.Fatalf("the parent's own org: %v", err)
 		}
 	})
 }

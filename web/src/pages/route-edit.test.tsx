@@ -112,6 +112,18 @@ describe("RouteEdit", () => {
     expect(updates[0]!.updateMask?.paths).toEqual(expect.arrayContaining(["http.maintenance", "http.maintenance_message"]));
   });
 
+  it("switches the Cloudflare proxy of an http route on, and only then", async () => {
+    const updates = edit(routes.http!);
+    const proxy = await screen.findByLabelText("Cloudflare proxy");
+    expect((proxy as HTMLSelectElement).value).toBe("false");
+    fireEvent.change(proxy, { target: { value: "true" } });
+    save();
+    await waitFor(() => expect(updates).toHaveLength(1));
+    const spec = updates[0]!.route?.spec;
+    expect(spec?.case === "http" && spec.value.dnsProxied).toBe(true);
+    expect(updates[0]!.updateMask?.paths).toContain("http.dns_proxied");
+  });
+
   it.each([["above 500 characters", "x".repeat(501)], ["with a tab", "back\tsoon"], ["with a C1 control", "back \u009b31msoon"]])(
     "refuses a maintenance message %s before sending", async (_, bad) => {
       const updates = edit(routes.http!);

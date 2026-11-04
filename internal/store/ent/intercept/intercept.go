@@ -30,7 +30,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/event"
@@ -704,6 +706,33 @@ func (f TraverseConnector) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.ConnectorQuery", q)
 }
 
+// The DNSNameFunc type is an adapter to allow the use of ordinary function as a Querier.
+type DNSNameFunc func(context.Context, *ent.DNSNameQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f DNSNameFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.DNSNameQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.DNSNameQuery", q)
+}
+
+// The TraverseDNSName type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseDNSName func(context.Context, *ent.DNSNameQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseDNSName) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseDNSName) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.DNSNameQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.DNSNameQuery", q)
+}
+
 // The DNSProviderFunc type is an adapter to allow the use of ordinary function as a Querier.
 type DNSProviderFunc func(context.Context, *ent.DNSProviderQuery) (ent.Value, error)
 
@@ -729,6 +758,33 @@ func (f TraverseDNSProvider) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.DNSProviderQuery", q)
+}
+
+// The DNSZoneFunc type is an adapter to allow the use of ordinary function as a Querier.
+type DNSZoneFunc func(context.Context, *ent.DNSZoneQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f DNSZoneFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.DNSZoneQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.DNSZoneQuery", q)
+}
+
+// The TraverseDNSZone type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseDNSZone func(context.Context, *ent.DNSZoneQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseDNSZone) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseDNSZone) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.DNSZoneQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.DNSZoneQuery", q)
 }
 
 // The DataSessionFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -2072,8 +2128,12 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ConnectListenerQuery, predicate.ConnectListener, connectlistener.OrderOption]{typ: ent.TypeConnectListener, tq: q}, nil
 	case *ent.ConnectorQuery:
 		return &query[*ent.ConnectorQuery, predicate.Connector, connector.OrderOption]{typ: ent.TypeConnector, tq: q}, nil
+	case *ent.DNSNameQuery:
+		return &query[*ent.DNSNameQuery, predicate.DNSName, dnsname.OrderOption]{typ: ent.TypeDNSName, tq: q}, nil
 	case *ent.DNSProviderQuery:
 		return &query[*ent.DNSProviderQuery, predicate.DNSProvider, dnsprovider.OrderOption]{typ: ent.TypeDNSProvider, tq: q}, nil
+	case *ent.DNSZoneQuery:
+		return &query[*ent.DNSZoneQuery, predicate.DNSZone, dnszone.OrderOption]{typ: ent.TypeDNSZone, tq: q}, nil
 	case *ent.DataSessionQuery:
 		return &query[*ent.DataSessionQuery, predicate.DataSession, datasession.OrderOption]{typ: ent.TypeDataSession, tq: q}, nil
 	case *ent.DomainQuery:

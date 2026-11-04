@@ -17,7 +17,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/cli"
 )
 
-// domainCommands are create domain, verify domain and trust domain, upload and renew certificate,
+// domainCommands are create domain, verify domain, trust domain and approve domain, upload and renew certificate,
 // and create and update ca-bundle.
 func domainCommands() (create, update, more map[string][]*cli.Command) {
 	createDomain, _ := resourceCommands("domain", []field{
@@ -32,10 +32,11 @@ func domainCommands() (create, update, more map[string][]*cli.Command) {
 	create = map[string][]*cli.Command{"create": {createDomain, createBundle}}
 	update = map[string][]*cli.Command{"update": {updateBundle}}
 	more = map[string][]*cli.Command{
-		"verify": {domainAction("verify", "check a domain claim's proof now", false)},
-		"trust":  {domainAction("trust", "mark a domain claim verified without a proof (Instance Admin)", true)},
-		"upload": {uploadCertificate()},
-		"renew":  {renewCertificate()},
+		"verify":  {domainAction("verify", "check a domain claim's proof now", false)},
+		"trust":   {domainAction("trust", "mark a domain claim verified without a proof (Instance Admin)", true)},
+		"approve": {approveDomain()},
+		"upload":  {uploadCertificate()},
+		"renew":   {renewCertificate()},
 	}
 	return create, update, more
 }
@@ -99,6 +100,37 @@ func domainAction(verb, summary string, trust bool) *cli.Command {
 				msg += ": " + d.GetLastError()
 			}
 			_, err = fmt.Fprintln(env.Stdout, msg+".")
+			return err
+		},
+	}
+}
+
+// approveDomain is approve domain: an Instance Admin, after a step-up, verifies a claim held for
+// approval because it is nested under, or contains, another org's domain.
+func approveDomain() *cli.Command {
+	return &cli.Command{
+		Name: "domain", Summary: "approve a domain claim held because another org's domain is nested with it (Instance Admin)", Args: "<id>",
+		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			if len(args) != 1 {
+				return cli.Usagef("expected the domain's ID")
+			}
+			s, err := newAPISession(env)
+			if err != nil {
+				return err
+			}
+			dc := rpmgrv1connect.NewDomainServiceClient(s.hc, s.creds.Controller)
+			var d *rpmgrv1.Domain
+			err = s.withStepUp(ctx, func() error {
+				r, err := dc.ApproveDomainClaim(ctx, connect.NewRequest(&rpmgrv1.ApproveDomainClaimRequest{DomainId: args[0]}))
+				if err == nil {
+					d = r.Msg.GetDomain()
+				}
+				return err
+			})
+			if err != nil {
+				return apiError(err)
+			}
+			_, err = fmt.Fprintf(env.Stdout, "Domain %s (%s) is %s.\n", d.GetId(), d.GetFqdn(), d.GetStatus().String()[len("DOMAIN_STATUS_"):])
 			return err
 		},
 	}

@@ -114,6 +114,23 @@ The form names the range each takes.
 and the controller's own certificate at its next start
 ([Domains and certificates](../domains-and-certificates.md#the-acme-ca-and-account)).
 
+### Cloudflare IP ranges
+
+| Web UI | Name | What it does |
+|---|---|---|
+| none yet | `cloudflare_ip_refresh` | On by default. The controller fetches Cloudflare's published address ranges once a day, through the proxy its environment names, and sends them to the gateways of [proxied routes](../routes/http.md#cloudflare-proxy). Off, the last list stays, or the one built into the binary: for an installation that must not reach Cloudflare, or that accepts the age of the list |
+
+```sh
+rpmgr update settings --instance --set cloudflare_ip_refresh=false
+```
+
+`rpmgr get settings --instance` shows `cloudflare_ip_ranges`, how many ranges the list holds and when
+the last accepted refresh was, or `built in`; only the refresh writes it. A list that is empty or
+that differs from the one in use by more than half of its entries is rejected and the old one
+stays; the bounds are in [15](../../15-dns.md#timers-and-limits). While a route is proxied and the
+list is old, the alert **Cloudflare IP ranges stale** fires
+([10](../../10-operations.md#suggested-alerts)).
+
 ### Mail relay
 
 Without a mail relay, the controller sends no e-mail: Owners and Admins pass invitation and

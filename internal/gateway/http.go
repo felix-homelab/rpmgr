@@ -86,6 +86,13 @@ type HTTPRoute struct {
 	MaxBody int64
 	// TrustedProxies are the clients whose forwarding headers the gateway keeps.
 	TrustedProxies []netip.Prefix
+	// DNSProxied says that Cloudflare proxies the route's names: a TCP peer in CloudflareRanges
+	// names the client in CF-Connecting-IP, and its X-Forwarded-For and Forwarded are ignored; any
+	// other peer's CF-Connecting-IP is ignored and TrustedProxies applies (docs/15-dns.md,
+	// "Proxied HTTP routes", D168).
+	DNSProxied bool
+	// CloudflareRanges are Cloudflare's published ranges, from the snapshot.
+	CloudflareRanges []netip.Prefix
 	// Port80 is what plain HTTP does: "redirect" (also ""), "serve" or "off".
 	Port80 string
 	// HSTS is the max-age, in seconds, of Strict-Transport-Security over HTTPS; 0 sends none.
@@ -832,7 +839,7 @@ func (h *HTTPRoutes) newTransport(r HTTPRoute) *routeTransport {
 			if route.HostHeader != "" {
 				pr.Out.Host = route.HostHeader
 			}
-			forward(pr, route.TrustedProxies)
+			forward(pr, route)
 			// The upstream continues the trace: the gateway's span, or the client's without one.
 			otel.GetTextMapPropagator().Inject(pr.Out.Context(), propagation.HeaderCarrier(pr.Out.Header))
 			if len(route.BasicAuth) > 0 {
@@ -891,23 +898,62 @@ func clientOf(r *http.Request, trusted []netip.Prefix) netip.Addr {
 	return ip
 }
 
+// requestClient is who a request's client is, and what the gateway believes of its headers.
+type requestClient struct {
+	addr netip.Addr
+	// cloudflare says that the TCP peer is Cloudflare on a proxied route: the forwarding headers
+	// it sent are ignored. viaHeader says that addr came from its CF-Connecting-IP.
+	cloudflare, viaHeader bool
+}
+
+// routeClient returns the client of a request to route. On a proxied route whose TCP peer is in
+// Cloudflare's ranges it is the address in the request's one CF-Connecting-IP, or the peer itself
+// if the header is missing, repeated or no address: Cloudflare sets it on every request, so
+// anything else is a fault that must not name a client of the attacker's choosing. X-Forwarded-For
+// and Forwarded from such a peer are never read. For every other request, a proxied route's
+// included, the peer's CF-Connecting-IP is ignored and the trusted-proxy rule of clientOf applies
+// (D168).
+func routeClient(r *http.Request, route *HTTPRoute) requestClient {
+	if route.DNSProxied {
+		if ap, err := netip.ParseAddrPort(r.RemoteAddr); err == nil {
+			peer := ap.Addr().Unmap()
+			if slices.ContainsFunc(route.CloudflareRanges, func(p netip.Prefix) bool { return p.Contains(peer) }) {
+				c := requestClient{addr: peer, cloudflare: true}
+				if v := r.Header.Values("CF-Connecting-IP"); len(v) == 1 {
+					if a, err := netip.ParseAddr(strings.TrimSpace(v[0])); err == nil && a.Zone() == "" && !a.IsUnspecified() {
+						c.addr, c.viaHeader = a.Unmap(), true
+					}
+				}
+				return c
+			}
+		}
+	}
+	return requestClient{addr: clientOf(r, route.TrustedProxies)}
+}
+
 // forward sets the forwarding headers of a proxied request (docs/03-connections.md, "HTTP
 // routes"): X-Forwarded-For, -Proto and -Host and Forwarded. The client's own are dropped unless
 // the client is a trusted proxy, whose chain the gateway extends and whose protocol and host it
-// keeps.
-func forward(pr *httputil.ProxyRequest, trusted []netip.Prefix) {
+// keeps. Cloudflare's, on a proxied route, are dropped too: the chain is the client CF-Connecting-IP
+// names. On a proxied route CF-Connecting-IP goes upstream only as that address; a request from
+// any other peer carries none.
+func forward(pr *httputil.ProxyRequest, route *HTTPRoute) {
 	client, err := netip.ParseAddrPort(pr.In.RemoteAddr)
 	if err != nil {
 		return
 	}
 	ip := client.Addr().Unmap()
+	cf := routeClient(pr.In, route)
+	if cf.cloudflare {
+		ip = cf.addr
+	}
 	scheme := "https"
 	if pr.In.TLS == nil {
 		scheme = "http"
 	}
 	proto, host := scheme, pr.In.Host
 	var chain, prior []string
-	if slices.ContainsFunc(trusted, func(p netip.Prefix) bool { return p.Contains(ip) }) {
+	if !cf.cloudflare && slices.ContainsFunc(route.TrustedProxies, func(p netip.Prefix) bool { return p.Contains(ip) }) {
 		chain = pr.In.Header.Values("X-Forwarded-For")
 		prior = pr.In.Header.Values("Forwarded")
 		if p := pr.In.Header.Get("X-Forwarded-Proto"); p == "http" || p == "https" {
@@ -915,6 +961,12 @@ func forward(pr *httputil.ProxyRequest, trusted []netip.Prefix) {
 		}
 		if hh := pr.In.Header.Get("X-Forwarded-Host"); hh != "" {
 			host = hh
+		}
+	}
+	if route.DNSProxied {
+		pr.Out.Header.Del("Cf-Connecting-Ip")
+		if cf.viaHeader {
+			pr.Out.Header.Set("Cf-Connecting-Ip", ip.String())
 		}
 	}
 	pr.Out.Header.Del("Forwarded") // Rewrite already drops X-Forwarded-*, not Forwarded
@@ -1162,7 +1214,7 @@ func (h *HTTPRoutes) proxy(rw http.ResponseWriter, r *http.Request, rt *routeTra
 		}
 		span.End()
 	}()
-	client := clientOf(r, route.TrustedProxies)
+	client := routeClient(r, route).addr
 	if !route.Access.Allows(client) || !requireHeaderPasses(route.RequireHeader, r.Header) {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return

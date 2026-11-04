@@ -32,7 +32,7 @@ const routes: Record<string, Route> = {
 const want: Record<string, Record<string, string[]>> = {
   http: {
     general: ["name", "description", "labels"],
-    matching: ["hostnames", "pathPrefix", "headerMatches"],
+    matching: ["hostnames", "pathPrefix", "headerMatches", "dnsProxied"],
     tls: ["tlsMode", "certificateId", "port80", "hsts"],
     requests: ["hostHeader", "requestHeaders", "responseHeaders", "websocket", "maxBody"],
     upstream: ["transport", "upstreamHeaderTimeout", "upstreamIdleTimeout", "maxConnections", "requestsPerSecond", "bandwidth"],

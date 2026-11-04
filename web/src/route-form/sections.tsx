@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 // route's public port, a TCP route's listener mode and, in http_connect mode, its CONNECT fields.
 const order = [
   ["general", ["group", "name", "description", "labels"]],
-  ["matching", ["hostnames", "pathPrefix", "headerMatches"]],
+  ["matching", ["hostnames", "pathPrefix", "headerMatches", "dnsProxied"]],
   ["tls", ["tlsMode", "certificateId", "port80", "hsts"]],
   ["requests", ["hostHeader", "requestHeaders", "responseHeaders", "websocket", "maxBody"]],
   ["upstream", ["transport", "upstreamHeaderTimeout", "upstreamIdleTimeout", "idleTimeout", "flowIdleTimeout", "tcpIdleTimeout",

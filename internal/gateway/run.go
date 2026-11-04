@@ -45,7 +45,7 @@ const tunnelHandshake = 10 * time.Second
 // capabilities").
 var Capabilities = []string{agentproto.CapTunnelQUIC, agentproto.CapTunnelH2, agentproto.CapHTTPHeaderMatch, agentproto.CapRouteLimits,
 	agentproto.CapHTTPRequireHeader, agentproto.CapPagesCustom, agentproto.CapTCPHTTPConnect, agentproto.CapTunnelWSS,
-	agentproto.CapSessionHandoff}
+	agentproto.CapSessionHandoff, agentproto.CapHTTPCFConnectingIP}
 
 // RunOptions configure Run.
 type RunOptions struct {

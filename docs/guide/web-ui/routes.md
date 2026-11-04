@@ -91,6 +91,7 @@ field that the form or the controller refuses is marked in the list in red, with
 |---|---|
 | **Hostnames** | HTTP and TLS passthrough: one per line. Each must be a verified domain of the organisation, or a name below one claimed with **Also every name below it**, which also allows a `*.` name ([Domains & certificates](domains.md)). A `*.` name needs **Uploaded**: ACME issues no certificate for it |
 | **Path prefix** | HTTP: serve only paths below it; empty for all |
+| **Cloudflare proxy** | HTTP: **Off: clients reach the gateway directly** or **On: Cloudflare proxies the route's names**. On, the gateway takes the client address from `CF-Connecting-IP` for requests from Cloudflare's addresses only ([Cloudflare proxy](../routes/http.md#cloudflare-proxy)) |
 | **Serve only requests with these headers** | HTTP: header matches, one per line: `Name: value` for that exact value, or `Name` alone for any value. Where routes share a hostname and path prefix, the one with more matching headers wins ([Header matches](../routes/http.md#header-matches)). Empty matches every request |
 
 **TLS**, on HTTP routes:

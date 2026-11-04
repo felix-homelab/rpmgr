@@ -49,8 +49,8 @@ TestReauth_ExpiredWithinGrace	done	3.12	#67	internal/controller, with the revoke
 TestReauth_SupersededSerialRefused	done	3.12	#67	internal/controller, with the after-restore clause (11.6)
 TestStatelessReset_DetectedWithinPingInterval	done	4.2	#72
 TestDNS_ForeignRecordNeverModified	p2	-	-	DNS automation
-TestDNS_CrossOrgPublishRefused	p2	-	-	DNS automation
-TestDNS_PendingZoneIsNotProof	p2	-	-	DNS automation
+TestDNS_CrossOrgPublishRefused	p2	-	-	DNS automation; nested clause (held claims are not found by Covering) in TestDNS_CrossOrgPublishRefused_Nested (7.2, #681)
+TestDNS_PendingZoneIsNotProof	done	6.6	#664	import and no-proof-by-provider-API clauses (internal/apisvc); the nameserver clause is TestTXTVerifier
 TestDNS_CrashRelinksByMarker	p2	-	-	DNS automation
 TestDNS_RestoreStartsHeld	p2	-	-	DNS automation
 TestDNS_DeletionGuard	p2	-	-	DNS automation
@@ -58,10 +58,10 @@ TestDNS_FailStatic	p2	-	-	DNS automation
 TestDNS_RateBudgetAndRetryAfter	p2	-	-	DNS automation
 TestDNS_BatchFallbackPerRecord	p2	-	-	DNS automation
 TestDNS_LeaseCheckedBeforeBatch	p2	-	-	DNS automation
-TestDNS_ProxiedOnlyForHttp	p2	-	-	DNS automation
+TestDNS_ProxiedOnlyForHttp	p2	-	-	DNS automation; the route API's clause (PROXY_NOT_ALLOWED for a route that is not http) is TestDNS_ProxiedOnlyForHttp_RouteAPI in internal/apisvc (7.3), the zone clauses come with managed zones
 TestDNS_ReservedNamesNeverWritten	p2	-	-	DNS automation
 TestDNS_TokenWriteOnlyAndBaseURLFixed	done	6.4	#662	base-URL clause 6.2 (internal/dns/cloudflare), API, export and log clause 6.4
-TestGateway_CFConnectingIPOnlyForProxiedFromCloudflare	p2	-	-	proxied http routes
+TestGateway_CFConnectingIPOnlyForProxiedFromCloudflare	done	7.3	#682	internal/gateway/cfip_test.go
 TestTransport_PinnedRouteUsesPinnedSessions	done	4.14	#84	precedence clause (route over connector over instance) in internal/routes (4.12)
 TestTransport_PinNeverFallsBack	done	4.14	#84
 TestTransport_ChangeKeepsOpenConnections	done	4.14	#84

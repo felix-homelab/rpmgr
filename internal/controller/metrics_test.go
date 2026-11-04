@@ -11,6 +11,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
+	"github.com/felix-homelab/rpmgr/internal/cfranges"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
@@ -47,6 +48,23 @@ func TestMetrics(t *testing.T) {
 	f := families(t, reg)
 	if len(f["rpmgr_ratelimit_refused_total"].GetMetric()) != 4 || f["rpmgr_audit_checkpoint_age_seconds"].GetMetric()[0].GetGauge().GetValue() != 0 {
 		t.Fatalf("at start: %v %v", f["rpmgr_ratelimit_refused_total"], f["rpmgr_audit_checkpoint_age_seconds"])
+	}
+	// The Cloudflare IP ranges' age starts at the built-in list's, and each refresh result at 0.
+	if age := f["rpmgr_dns_cloudflare_ranges_age_seconds"].GetMetric()[0].GetGauge().GetValue(); age != now.Sub(cfranges.Fallback().At).Seconds() {
+		t.Fatalf("ranges age %v at start", age)
+	}
+	if len(f["rpmgr_dns_cloudflare_ranges_refresh_total"].GetMetric()) != 3 {
+		t.Fatalf("refresh results at start: %v", f["rpmgr_dns_cloudflare_ranges_refresh_total"])
+	}
+	m.RangesResult()(controller.RangesRejected)
+	rejected := 0.0
+	for _, mt := range families(t, reg)["rpmgr_dns_cloudflare_ranges_refresh_total"].GetMetric() {
+		if mt.GetLabel()[0].GetValue() == controller.RangesRejected {
+			rejected = mt.GetCounter().GetValue()
+		}
+	}
+	if rejected != 1 {
+		t.Fatalf("rejected count %v, want 1", rejected)
 	}
 	if _, ok := f["rpmgr_acme_cert_expiry_timestamp_seconds"]; ok {
 		t.Fatal("an expiry without a certificate")
