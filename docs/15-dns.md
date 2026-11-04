@@ -120,7 +120,8 @@ controller-managed durable state: it is never rebuilt from the provider.
 - **Marker.** Each owned record carries the comment `rpmgr <trust-domain> <ledger ID>`, e.g.
   `rpmgr rpmgr-7f3k2q9m dnr_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R` (51 characters). Comments are available on
   all plans, up to 100 characters on Free [F cf:dns/manage-dns-records/reference/record-attributes];
-  that the comment round-trips unchanged through the API is checked at implementation [V VB-10].
+  that the comment round-trips unchanged through the API, also at 100 characters, was checked
+  against a Free-plan zone [F VB-10, run 2026-11-04].
 - **The ledger decides, the marker helps.**
   - A record whose marker names a ledger row in state `creating` is linked to it. This repairs a
     crash between the provider call and the database commit.
@@ -390,7 +391,7 @@ A proxied name resolves to Cloudflare. Cloudflare terminates TLS and connects to
 | Topic | Fact | How rpmgr uses it |
 |---|---|---|
 | Authentication | Bearer API tokens; the Global API Key is legacy and carries all of the user's permissions [F cf:fundamentals/api/get-started/keys] | API tokens only |
-| Token scope | Zone resources, client-IP filter and expiry are configurable [F cf:fundamentals/api/get-started/create-token]; narrowest scope is a zone [V VB-12] | Recommended in the connect form; expiry shown and alerted |
+| Token scope | Zone resources, client-IP filter and expiry are configurable [F cf:fundamentals/api/get-started/create-token]; narrowest scope is a zone: a token scoped to one zone sees exactly that zone, and an under-scoped token gets HTTP 403 (code 10000) on reads and writes [F VB-12, run 2026-11-04] | Recommended in the connect form; expiry shown and alerted |
 | Zones | Status `initializing`, `pending`, `active`, `moved`; types `full`, `partial`, `secondary`, `internal`; `per_page` ≤ 50 [F cf-api:openapi.json `GET /zones`] | Import `active` + `full` only; all pages |
 | Batch | All-or-nothing; deletes, patches, puts, posts in that order; 200 records per batch on Free, 3 500 on paid plans [F cf:dns/manage-dns-records/how-to/batch-record-changes] | One batch per pass, ≤ 200 operations; per-record retry on failure |
 | Comments, tags | Comments on all plans, ≤ 100 characters on Free, no line breaks; tags only Pro and above [F cf:dns/manage-dns-records/reference/record-attributes] | Marker in the comment; tags unused |
