@@ -43,6 +43,9 @@ type WebhookOptions struct {
 	Own func() []netip.Addr
 	// Private returns the ranges org endpoints may reach (webhook_private_ranges); nil is none.
 	Private func(ctx context.Context) ([]netip.Prefix, error)
+	// Instance is what a chat message shows of the instance: the public URL its links start at,
+	// the trust domain and the version of its footer. Its names are resolved per message.
+	Instance webhook.Context
 	// policy replaces the endpoints' egress policies; only tests set it.
 	policy func(*ent.Webhook) egress.Policy
 }
@@ -97,7 +100,7 @@ func deliverWebhooks(ctx context.Context, o WebhookOptions, l lease.Lease) error
 	}
 	var wg sync.WaitGroup
 	for _, a := range work {
-		d, err := delivery(o, a, now, private, own)
+		d, err := delivery(ctx, c, o, a, now, private, own)
 		if err != nil {
 			a.err, a.sent = err, now
 			if o.Logger != nil && !errors.Is(err, errDropped) {
@@ -188,7 +191,7 @@ func notDelivered(id string) predicate.Event {
 
 // delivery is the request of a: the envelope, signed with the endpoint's secret and, during a
 // rotation, its previous one, under the endpoint's egress policy.
-func delivery(o WebhookOptions, a *attempt, now time.Time, private []netip.Prefix, own []netip.Addr) (webhook.Delivery, error) {
+func delivery(ctx context.Context, c *ent.Client, o WebhookOptions, a *attempt, now time.Time, private []netip.Prefix, own []netip.Addr) (webhook.Delivery, error) {
 	h := a.hook
 	if a.event == nil || a.event.Ts.Before(h.EnabledAt) {
 		return webhook.Delivery{}, errDropped
@@ -212,7 +215,10 @@ func delivery(o WebhookOptions, a *attempt, now time.Time, private []netip.Prefi
 		if err != nil {
 			return webhook.Delivery{}, err
 		}
-		body, err := webhook.ChatBody(f, ev)
+		// Names are looked up now, never cached; a lookup that fails leaves the ID in the message.
+		mc := o.Instance
+		mc.Resolve(ctx, c, ev)
+		body, err := webhook.ChatBody(f, ev, mc)
 		if err != nil {
 			return webhook.Delivery{}, err
 		}

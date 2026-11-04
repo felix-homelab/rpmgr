@@ -34,74 +34,47 @@ func (f Format) Chat() bool {
 	return f == FormatDiscord || f == FormatSlack || f == FormatTeams
 }
 
-// The limits of a chat message, in characters (docs/03-connections.md, "Timeouts, keepalive and
-// backoff").
+// The cuts of a chat message, in characters (docs/03-connections.md, "Timeouts, keepalive and
+// backoff"): each is at most the service's limit, and together they keep a maximal message within
+// the service's total.
 const (
-	DiscordTitle      = 256
-	DiscordFieldValue = 1024
-	SlackText         = 3000
-	SlackFieldValue   = 2000
-	TeamsTitle        = 500
-	TeamsFactValue    = 500
+	DiscordTitle       = 256
+	DiscordDescription = 1000
+	DiscordFieldValue  = 256
+	DiscordFooter      = 256
+	SlackHeader        = 150
+	SlackText          = 1000
+	SlackFieldValue    = 300
+	SlackFallback      = 300
+	TeamsTitle         = 300
+	TeamsText          = 1000
+	TeamsFactValue     = 300
 	// RetryAfterMin and RetryAfterMax bound how long a 429 delays the next attempt.
 	RetryAfterMin = time.Second
 	RetryAfterMax = 15 * time.Minute
 )
 
-// ChatBody is the message of e in the chat format f.
-func ChatBody(f Format, e events.Event) ([]byte, error) {
-	fields := factsOf(e)
+// ChatBody is the message of e in the chat format f; c is what it shows besides the event.
+func ChatBody(f Format, e events.Event, c Context) ([]byte, error) {
+	m := compose(e, c)
 	switch f {
 	case FormatDiscord:
-		return discord(e, fields)
+		return discord(m)
 	case FormatSlack:
-		return slack(e, fields)
+		return slack(m)
 	case FormatTeams:
-		return teams(e, fields)
+		return teams(m)
 	}
 	return nil, fmt.Errorf("webhook: %q is not a chat format", f)
 }
 
-type fact struct{ Name, Value string }
-
-// factsOf are the fields every chat message shows: the event's type, organisation, actor, subject
-// and time. The envelope's fields and nothing more (D144).
-func factsOf(e events.Event) []fact {
-	org := e.OrgID
-	if org == "" {
-		org = "instance"
-	}
-	actor := e.ActorType
-	if e.ActorID != "" {
-		actor += " " + e.ActorID
-	}
-	subject := e.SubjectType
-	switch {
-	case e.SubjectName != "" && e.SubjectID != "":
-		subject += " " + e.SubjectName + " (" + e.SubjectID + ")"
-	case e.SubjectName != "" || e.SubjectID != "":
-		subject += " " + e.SubjectName + e.SubjectID
-	}
-	return []fact{{"Type", e.Type}, {"Organisation", org}, {"Actor", actor}, {"Subject", subject},
-		{"Time", e.Time.UTC().Format(time.RFC3339)}}
-}
-
-// Alert colours: an alert firing is red and resolving green; no other event is coloured.
-const (
-	colourNone = iota
-	colourRed
-	colourGreen
+// The colours of a severity, by service.
+var (
+	discordColours = map[severity]int{sevNeutral: 0x99AAB5, sevInfo: 0x3498DB, sevWarning: 0xFAA61A, sevCritical: 0xED4245, sevResolved: 0x57F287}
+	slackColours   = map[severity]string{sevNeutral: "#6E7781", sevInfo: "#0969DA", sevWarning: "#BF8700", sevCritical: "#D1242F", sevResolved: "#1A7F37"}
+	teamsStyles    = map[severity]string{sevNeutral: "emphasis", sevInfo: "accent", sevWarning: "warning", sevCritical: "attention", sevResolved: "good"}
+	teamsColours   = map[severity]string{sevNeutral: "Default", sevInfo: "Accent", sevWarning: "Warning", sevCritical: "Attention", sevResolved: "Good"}
 )
-
-func colourOf(e events.Event) int {
-	switch e.Type {
-	case "alert.fire":
-		return colourRed
-	case "alert.resolve":
-		return colourGreen
-	}
-	return colourNone
-}
 
 // cut returns s, escaped by esc if not nil, in at most n characters: a longer text is cut at a
 // character and ends in "…". It never cuts an escape sequence, and returns valid UTF-8.
@@ -141,20 +114,31 @@ func mdEscape(s string) string {
 	return b.String()
 }
 
-func discord(e events.Event, facts []fact) ([]byte, error) {
+func discord(m message) ([]byte, error) {
 	var fs []map[string]any
-	for _, f := range facts {
+	for _, f := range m.facts {
 		fs = append(fs, map[string]any{"name": f.Name, "value": cut(f.Value, DiscordFieldValue, mdEscape), "inline": true})
 	}
-	embed := map[string]any{"title": cut(e.Summary, DiscordTitle, mdEscape), "timestamp": e.Time.UTC().Format(time.RFC3339), "fields": fs}
-	switch colourOf(e) {
-	case colourRed:
-		embed["color"] = 0xED4245
-	case colourGreen:
-		embed["color"] = 0x57F287
+	embed := map[string]any{"title": cut(m.title, DiscordTitle, mdEscape), "description": cut(m.text, DiscordDescription, mdEscape),
+		"color": discordColours[m.sev], "timestamp": m.at.Format(time.RFC3339), "fields": fs}
+	if m.link != "" {
+		embed["url"] = m.link
+	}
+	if foot := strings.Join(nonEmpty(m.footer, m.ids), " · "); foot != "" {
+		embed["footer"] = map[string]any{"text": cut(foot, DiscordFooter, mdEscape)}
 	}
 	// No mention in a summary or a name pings anyone.
 	return json.Marshal(map[string]any{"embeds": []any{embed}, "allowed_mentions": map[string]any{"parse": []string{}}})
+}
+
+func nonEmpty(s ...string) []string {
+	var out []string
+	for _, v := range s {
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // slackEscape escapes the characters Slack reads as markup, so that <!channel> or <@U1> in a
@@ -163,40 +147,61 @@ func slackEscape(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
 }
 
-func slack(e events.Event, facts []fact) ([]byte, error) {
+func angle(s string) string { return strings.NewReplacer("<", "‹", ">", "›").Replace(s) }
+
+func slack(m message) ([]byte, error) {
 	var fs []map[string]any
-	for _, f := range facts {
-		fs = append(fs, map[string]any{"type": "mrkdwn", "text": "*" + f.Name + "*\n" + cut(f.Value, SlackFieldValue-len(f.Name)-3, slackEscape)})
+	for _, f := range m.facts {
+		fs = append(fs, map[string]any{"type": "mrkdwn", "text": "*" + f.Name + "*\n" + cut(f.Value, SlackFieldValue, slackEscape)})
 	}
+	// The unix time makes Slack show the time in the reader's zone; the fallback is for old clients.
+	when := fmt.Sprintf("<!date^%d^{date_short_pretty} {time_secs}|%s>", m.at.Unix(), m.at.Format(time.RFC3339))
+	ctx := []any{map[string]any{"type": "mrkdwn", "text": when}}
+	if foot := strings.Join(nonEmpty(m.footer, m.ids), " · "); foot != "" {
+		ctx = append(ctx, map[string]any{"type": "mrkdwn", "text": cut(foot, SlackText, slackEscape)})
+	}
+	// A header is plain text, which Slack is not documented to parse, so it takes no entities; its
+	// angle brackets, which start a mention, are shown as guillemets instead.
 	blocks := []any{
-		map[string]any{"type": "section", "text": map[string]any{"type": "mrkdwn", "text": "*" + cut(e.Summary, SlackText-2, slackEscape) + "*"}},
+		map[string]any{"type": "header", "text": map[string]any{"type": "plain_text", "text": cut(m.title, SlackHeader, angle)}},
+		map[string]any{"type": "section", "text": map[string]any{"type": "mrkdwn", "text": cut(m.text, SlackText, slackEscape)}},
 		map[string]any{"type": "section", "fields": fs},
+		map[string]any{"type": "context", "elements": ctx},
 	}
-	att := map[string]any{"blocks": blocks}
-	switch colourOf(e) {
-	case colourRed:
-		att["color"] = "#D1242F"
-	case colourGreen:
-		att["color"] = "#1A7F37"
+	if m.link != "" {
+		blocks = append(blocks, map[string]any{"type": "actions", "elements": []any{map[string]any{"type": "button",
+			"text": map[string]any{"type": "plain_text", "text": "Open in rpmgr"}, "url": m.link}}})
 	}
-	// text is what a notification shows; it is plain, so it is escaped too.
-	return json.Marshal(map[string]any{"text": cut(e.Summary, SlackText, slackEscape), "attachments": []any{att}})
+	att := map[string]any{"color": slackColours[m.sev], "blocks": blocks}
+	// text is what a notification shows; it is escaped like any mrkdwn.
+	return json.Marshal(map[string]any{"text": cut(m.title, SlackFallback, slackEscape), "attachments": []any{att}})
 }
 
-func teams(e events.Event, facts []fact) ([]byte, error) {
+func teams(m message) ([]byte, error) {
 	var fs []map[string]any
-	for _, f := range facts {
+	for _, f := range m.facts {
 		fs = append(fs, map[string]any{"title": f.Name, "value": cut(f.Value, TeamsFactValue, mdEscape)})
 	}
-	title := map[string]any{"type": "TextBlock", "text": cut(e.Summary, TeamsTitle, mdEscape), "weight": "Bolder", "size": "Medium", "wrap": true}
-	switch colourOf(e) {
-	case colourRed:
-		title["color"] = "Attention"
-	case colourGreen:
-		title["color"] = "Good"
+	// The card's own time function shows the time in the reader's zone; its argument is plain text
+	// when a client does not know it.
+	ts := m.at.Format(time.RFC3339)
+	fs = append(fs, map[string]any{"title": "Time", "value": "{{DATE(" + ts + ", SHORT)}} {{TIME(" + ts + ")}}"})
+	items := []any{
+		map[string]any{"type": "TextBlock", "text": cut(m.title, TeamsTitle, mdEscape), "weight": "Bolder", "size": "Medium", "wrap": true,
+			"color": teamsColours[m.sev]},
+		map[string]any{"type": "TextBlock", "text": cut(m.text, TeamsText, mdEscape), "wrap": true, "spacing": "Small"},
+		map[string]any{"type": "FactSet", "facts": fs},
 	}
-	card := map[string]any{"$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "type": "AdaptiveCard", "version": "1.4",
-		"body": []any{title, map[string]any{"type": "FactSet", "facts": fs}}}
+	if foot := strings.Join(nonEmpty(m.footer, m.ids), " · "); foot != "" {
+		items = append(items, map[string]any{"type": "TextBlock", "text": cut(foot, TeamsText, mdEscape), "wrap": true, "size": "Small",
+			"isSubtle": true})
+	}
+	card := map[string]any{"$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "type": "AdaptiveCard", "version": "1.5",
+		"msteams": map[string]any{"width": "Full"},
+		"body":    []any{map[string]any{"type": "Container", "style": teamsStyles[m.sev], "items": items}}}
+	if m.link != "" {
+		card["actions"] = []any{map[string]any{"type": "Action.OpenUrl", "title": "Open in rpmgr", "url": m.link}}
+	}
 	return json.Marshal(map[string]any{"type": "message", "attachments": []any{
 		map[string]any{"contentType": "application/vnd.microsoft.card.adaptive", "content": card}}})
 }

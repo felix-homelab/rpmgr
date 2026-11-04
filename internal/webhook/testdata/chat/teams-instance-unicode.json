@@ -3,42 +3,68 @@
     {
       "content": {
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-        "body": [
+        "actions": [
           {
-            "size": "Medium",
-            "text": "release.create Größe 日本語 🚀",
-            "type": "TextBlock",
-            "weight": "Bolder",
-            "wrap": true
-          },
-          {
-            "facts": [
-              {
-                "title": "Type",
-                "value": "release.create"
-              },
-              {
-                "title": "Organisation",
-                "value": "instance"
-              },
-              {
-                "title": "Actor",
-                "value": "user usr\\_2"
-              },
-              {
-                "title": "Subject",
-                "value": "release Größe 日本語 🚀 \\(rel\\_1\\)"
-              },
-              {
-                "title": "Time",
-                "value": "2026-11-02T09:30:00Z"
-              }
-            ],
-            "type": "FactSet"
+            "title": "Open in rpmgr",
+            "type": "Action.OpenUrl",
+            "url": "https://rpmgr.example.com/audit"
           }
         ],
+        "body": [
+          {
+            "items": [
+              {
+                "color": "Default",
+                "size": "Medium",
+                "text": "Release Größe 日本語 🚀 created",
+                "type": "TextBlock",
+                "weight": "Bolder",
+                "wrap": true
+              },
+              {
+                "spacing": "Small",
+                "text": "release.create Größe 日本語 🚀",
+                "type": "TextBlock",
+                "wrap": true
+              },
+              {
+                "facts": [
+                  {
+                    "title": "Organisation",
+                    "value": "Acme"
+                  },
+                  {
+                    "title": "Actor",
+                    "value": "Ada Admin"
+                  },
+                  {
+                    "title": "Subject",
+                    "value": "release Größe 日本語 🚀"
+                  },
+                  {
+                    "title": "Time",
+                    "value": "{{DATE(2026-11-02T09:30:00Z, SHORT)}} {{TIME(2026-11-02T09:30:00Z)}}"
+                  }
+                ],
+                "type": "FactSet"
+              },
+              {
+                "isSubtle": true,
+                "size": "Small",
+                "text": "td.example · rpmgr 0.4.0 · rel\\_1 · evt\\_4",
+                "type": "TextBlock",
+                "wrap": true
+              }
+            ],
+            "style": "emphasis",
+            "type": "Container"
+          }
+        ],
+        "msteams": {
+          "width": "Full"
+        },
         "type": "AdaptiveCard",
-        "version": "1.4"
+        "version": "1.5"
       },
       "contentType": "application/vnd.microsoft.card.adaptive"
     }

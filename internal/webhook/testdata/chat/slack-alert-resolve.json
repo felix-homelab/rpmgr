@@ -4,7 +4,14 @@
       "blocks": [
         {
           "text": {
-            "text": "*agent_offline: Agent offline resolved, gw1*",
+            "text": "Resolved: Agent gw1 is offline",
+            "type": "plain_text"
+          },
+          "type": "header"
+        },
+        {
+          "text": {
+            "text": "Resolved after 5 m 3 s.",
             "type": "mrkdwn"
           },
           "type": "section"
@@ -12,31 +19,53 @@
         {
           "fields": [
             {
-              "text": "*Type*\nalert.resolve",
+              "text": "*Organisation*\nAcme",
               "type": "mrkdwn"
             },
             {
-              "text": "*Organisation*\norg_1",
+              "text": "*Subject*\nagent gw1",
               "type": "mrkdwn"
             },
             {
-              "text": "*Actor*\nsystem",
+              "text": "*Alert*\nagent_offline",
               "type": "mrkdwn"
             },
             {
-              "text": "*Subject*\nagent gw1 (gw_1)",
-              "type": "mrkdwn"
-            },
-            {
-              "text": "*Time*\n2026-11-02T09:30:00Z",
+              "text": "*Lasted*\n5 m 3 s",
               "type": "mrkdwn"
             }
           ],
           "type": "section"
+        },
+        {
+          "elements": [
+            {
+              "text": "\u003c!date^1793611800^{date_short_pretty} {time_secs}|2026-11-02T09:30:00Z\u003e",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "td.example · rpmgr 0.4.0 · org_1 · gw_1 · evt_2",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "context"
+        },
+        {
+          "elements": [
+            {
+              "text": {
+                "text": "Open in rpmgr",
+                "type": "plain_text"
+              },
+              "type": "button",
+              "url": "https://rpmgr.example.com/gateways"
+            }
+          ],
+          "type": "actions"
         }
       ],
       "color": "#1A7F37"
     }
   ],
-  "text": "agent_offline: Agent offline resolved, gw1"
+  "text": "Resolved: Agent gw1 is offline"
 }

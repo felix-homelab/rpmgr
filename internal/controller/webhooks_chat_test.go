@@ -70,6 +70,12 @@ func TestWebhookJob_Chat(t *testing.T) {
 		if g.path != "/plain" && !strings.Contains(string(g.body), "route.update route rte") {
 			t.Errorf("%s: the message lacks the summary: %s", g.path, g.body)
 		}
+		// The names are looked up at delivery and the instance's link and footer are shown (D170).
+		for _, want := range []string{"org-a", "https://rpmgr.example.com/routes/rte_1", "td.test", "rpmgr 1.2.3"} {
+			if g.path != "/plain" && !strings.Contains(string(g.body), want) {
+				t.Errorf("%s: the message lacks %q: %s", g.path, want, g.body)
+			}
+		}
 	}
 	for _, d := range e.db.Client().WebhookDelivery.Query().AllX(e.sys) {
 		if d.StatusCode != 204 || d.Error != "" {

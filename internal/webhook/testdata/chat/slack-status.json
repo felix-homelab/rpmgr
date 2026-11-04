@@ -1,0 +1,67 @@
+{
+  "attachments": [
+    {
+      "blocks": [
+        {
+          "text": {
+            "text": "Agent gw1 disconnected",
+            "type": "plain_text"
+          },
+          "type": "header"
+        },
+        {
+          "text": {
+            "text": "agent.disconnect agent gw1",
+            "type": "mrkdwn"
+          },
+          "type": "section"
+        },
+        {
+          "fields": [
+            {
+              "text": "*Organisation*\nAcme",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Actor*\nAda Admin",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Subject*\nagent gw1",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "section"
+        },
+        {
+          "elements": [
+            {
+              "text": "\u003c!date^1793611800^{date_short_pretty} {time_secs}|2026-11-02T09:30:00Z\u003e",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "td.example · rpmgr 0.4.0 · org_1 · gw_1 · evt_6",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "context"
+        },
+        {
+          "elements": [
+            {
+              "text": {
+                "text": "Open in rpmgr",
+                "type": "plain_text"
+              },
+              "type": "button",
+              "url": "https://rpmgr.example.com/gateways"
+            }
+          ],
+          "type": "actions"
+        }
+      ],
+      "color": "#BF8700"
+    }
+  ],
+  "text": "Agent gw1 disconnected"
+}

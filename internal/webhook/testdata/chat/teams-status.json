@@ -1,0 +1,73 @@
+{
+  "attachments": [
+    {
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "actions": [
+          {
+            "title": "Open in rpmgr",
+            "type": "Action.OpenUrl",
+            "url": "https://rpmgr.example.com/gateways"
+          }
+        ],
+        "body": [
+          {
+            "items": [
+              {
+                "color": "Warning",
+                "size": "Medium",
+                "text": "Agent gw1 disconnected",
+                "type": "TextBlock",
+                "weight": "Bolder",
+                "wrap": true
+              },
+              {
+                "spacing": "Small",
+                "text": "agent.disconnect agent gw1",
+                "type": "TextBlock",
+                "wrap": true
+              },
+              {
+                "facts": [
+                  {
+                    "title": "Organisation",
+                    "value": "Acme"
+                  },
+                  {
+                    "title": "Actor",
+                    "value": "Ada Admin"
+                  },
+                  {
+                    "title": "Subject",
+                    "value": "agent gw1"
+                  },
+                  {
+                    "title": "Time",
+                    "value": "{{DATE(2026-11-02T09:30:00Z, SHORT)}} {{TIME(2026-11-02T09:30:00Z)}}"
+                  }
+                ],
+                "type": "FactSet"
+              },
+              {
+                "isSubtle": true,
+                "size": "Small",
+                "text": "td.example · rpmgr 0.4.0 · org\\_1 · gw\\_1 · evt\\_6",
+                "type": "TextBlock",
+                "wrap": true
+              }
+            ],
+            "style": "warning",
+            "type": "Container"
+          }
+        ],
+        "msteams": {
+          "width": "Full"
+        },
+        "type": "AdaptiveCard",
+        "version": "1.5"
+      },
+      "contentType": "application/vnd.microsoft.card.adaptive"
+    }
+  ],
+  "type": "message"
+}

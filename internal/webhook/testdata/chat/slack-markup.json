@@ -4,7 +4,14 @@
       "blocks": [
         {
           "text": {
-            "text": "*route.create \u0026lt;!channel\u0026gt; \u0026amp; @everyone \u0026lt;@U123\u0026gt;*",
+            "text": "Route ‹!channel› \u0026 @everyone created",
+            "type": "plain_text"
+          },
+          "type": "header"
+        },
+        {
+          "text": {
+            "text": "route.create \u0026lt;!channel\u0026gt; \u0026amp; @everyone \u0026lt;@U123\u0026gt;",
             "type": "mrkdwn"
           },
           "type": "section"
@@ -12,30 +19,49 @@
         {
           "fields": [
             {
-              "text": "*Type*\nroute.create",
+              "text": "*Organisation*\nAcme",
               "type": "mrkdwn"
             },
             {
-              "text": "*Organisation*\norg_1",
+              "text": "*Actor*\nAda Admin",
               "type": "mrkdwn"
             },
             {
-              "text": "*Actor*\nuser usr_1",
-              "type": "mrkdwn"
-            },
-            {
-              "text": "*Subject*\nroute \u0026lt;!channel\u0026gt; \u0026amp; @everyone (rt_2)",
-              "type": "mrkdwn"
-            },
-            {
-              "text": "*Time*\n2026-11-02T09:30:00Z",
+              "text": "*Subject*\nroute \u0026lt;!channel\u0026gt; \u0026amp; @everyone",
               "type": "mrkdwn"
             }
           ],
           "type": "section"
+        },
+        {
+          "elements": [
+            {
+              "text": "\u003c!date^1793611800^{date_short_pretty} {time_secs}|2026-11-02T09:30:00Z\u003e",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "td.example · rpmgr 0.4.0 · org_1 · rt_2 · evt_5",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "context"
+        },
+        {
+          "elements": [
+            {
+              "text": {
+                "text": "Open in rpmgr",
+                "type": "plain_text"
+              },
+              "type": "button",
+              "url": "https://rpmgr.example.com/routes/rt_2"
+            }
+          ],
+          "type": "actions"
         }
-      ]
+      ],
+      "color": "#6E7781"
     }
   ],
-  "text": "route.create \u0026lt;!channel\u0026gt; \u0026amp; @everyone \u0026lt;@U123\u0026gt;"
+  "text": "Route \u0026lt;!channel\u0026gt; \u0026amp; @everyone created"
 }

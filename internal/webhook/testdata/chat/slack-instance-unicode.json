@@ -4,7 +4,14 @@
       "blocks": [
         {
           "text": {
-            "text": "*release.create Größe 日本語 🚀*",
+            "text": "Release Größe 日本語 🚀 created",
+            "type": "plain_text"
+          },
+          "type": "header"
+        },
+        {
+          "text": {
+            "text": "release.create Größe 日本語 🚀",
             "type": "mrkdwn"
           },
           "type": "section"
@@ -12,30 +19,49 @@
         {
           "fields": [
             {
-              "text": "*Type*\nrelease.create",
+              "text": "*Organisation*\nAcme",
               "type": "mrkdwn"
             },
             {
-              "text": "*Organisation*\ninstance",
+              "text": "*Actor*\nAda Admin",
               "type": "mrkdwn"
             },
             {
-              "text": "*Actor*\nuser usr_2",
-              "type": "mrkdwn"
-            },
-            {
-              "text": "*Subject*\nrelease Größe 日本語 🚀 (rel_1)",
-              "type": "mrkdwn"
-            },
-            {
-              "text": "*Time*\n2026-11-02T09:30:00Z",
+              "text": "*Subject*\nrelease Größe 日本語 🚀",
               "type": "mrkdwn"
             }
           ],
           "type": "section"
+        },
+        {
+          "elements": [
+            {
+              "text": "\u003c!date^1793611800^{date_short_pretty} {time_secs}|2026-11-02T09:30:00Z\u003e",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "td.example · rpmgr 0.4.0 · rel_1 · evt_4",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "context"
+        },
+        {
+          "elements": [
+            {
+              "text": {
+                "text": "Open in rpmgr",
+                "type": "plain_text"
+              },
+              "type": "button",
+              "url": "https://rpmgr.example.com/audit"
+            }
+          ],
+          "type": "actions"
         }
-      ]
+      ],
+      "color": "#6E7781"
     }
   ],
-  "text": "release.create Größe 日本語 🚀"
+  "text": "Release Größe 日本語 🚀 created"
 }
