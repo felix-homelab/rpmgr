@@ -23,6 +23,11 @@ Changes to the design documents are not recorded here: see the git history and t
   attempt by what it asks, never less than the ordinary retry delay, and is no failure of the
   endpoint until the fifth attempt of an event. (#1060)
 
+### Fixed
+
+- A `udp` or `tcp_udp` route no longer shows "the port is in use on the gateway" while the old
+  process of a restart with hand-off still serves its port. (#1076)
+
 ## [0.3.0] - 2026-11-04
 
 **Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
