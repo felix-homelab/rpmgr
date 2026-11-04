@@ -69,6 +69,14 @@ anycast address ([D79](../14-open-decisions.md#engineering)).
 - `rpmgr all-in-one init` gives the group `default` the host of the public URL, if it is a name or
   address a group accepts.
 
+## DNS target
+
+A group's **DNS target** is where the records that [DNS automation](dns.md) writes for the names
+of its routes and DNS names point: a name (a CNAME) or addresses. Without one nothing is
+published for the group. Set it in the group's settings, or with `--dns-target` or `--dns-address`
+on `rpmgr update gateway-group`; the target is never one of the controller's own names
+([15](../15-dns.md#publication-rules)).
+
 ## Trusted proxies
 
 If your gateways sit behind another proxy or load balancer that adds `X-Forwarded-For`, list its

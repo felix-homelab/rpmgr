@@ -1008,10 +1008,10 @@ gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection))
 | `rpmgr_events_pending` | gauge | controller | 2 | Events not yet delivered to every endpoint that wants them |
 | `rpmgr_live_log_operations` | gauge | controller | 2 | Open live-log operations |
 | `rpmgr_alerts_firing{kind}` | gauge | controller | 2 | Alerts the controller evaluates that fire now || `rpmgr_ratelimit_refused_total{limit}` | counter | controller | 1 | [R] Requests a rate limit refused: `login` and `password_reset` per address, `account` per account, `enrollment` per address; the audit log leaves them out ([04](04-security.md#audit-log)) |
-| `rpmgr_dns_sync_runs_total{zone,result}` | counter | controller | 2 | DNS passes per managed zone: `ok`, `held`, `failed`, `rate_limited` |
+| `rpmgr_dns_sync_runs_total{zone,result}` | counter | controller | 2 | DNS passes per managed zone (its name), counted by the replica that holds the `dns` lease: `ok`, `held`, `failed`, `rate_limited` |
 | `rpmgr_dns_names{zone,status}` | gauge | controller | 2 | Names per `dns_status` ([15](15-dns.md#publication-rules)) |
 | `rpmgr_dns_records{zone,state}` | gauge | controller | 2 | Owned records per ledger state |
-| `rpmgr_dns_provider_requests_total{provider,code}` | counter | controller | 2 | Provider API calls by HTTP status |
+| `rpmgr_dns_provider_requests_total{provider,code}` | counter | controller | 2 | Requests sent to providers, by the HTTP status of the answer (`error`: none); `provider` is the provider's ID here and in the gauges below; counted by the replica that sent them |
 | `rpmgr_dns_provider_token_expiry_timestamp_seconds{provider}` | gauge | controller | 2 | Expiry of the provider's token, if it has one |
 | `rpmgr_dns_rate_budget_used{provider}` | gauge | controller | 2 | Requests taken from the provider's shared budget in the current window, by the DNS job and DNS-01 together ([15](15-dns.md#batches-failures-and-the-rate-budget)) |
 | `rpmgr_dns_cloudflare_ranges_refresh_total{result}` | counter | controller | 2 | Refreshes of Cloudflare's IP ranges by this controller: `ok`, `rejected` (sanity bounds), `failed` ([15](15-dns.md#proxied-http-routes)) |
@@ -1063,19 +1063,22 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 | Audit sink backlog (Phase 2) | A sink's oldest unshipped item has waited longer than the period in [03](03-connections.md#timeouts-keepalive-and-backoff) |
 | Webhook endpoint failing (Phase 2) | An endpoint had no successful delivery for 1 h while deliveries were due; it is disabled after the period in 03 ([D143](14-open-decisions.md#engineering)) |
 | Revocation log not yet off-host | A revocation-log sink is configured and the controller replica that evaluates the alerts has entries not yet shipped to it for > 5 min: `rpmgr_revocation_log_unshipped > 0` and `time() - rpmgr_revocation_log_oldest_unshipped_timestamp_seconds > 300` (without a sink, the UI shows a standing hardening warning instead) |
-| DNS conflict | A name in a managed zone is `conflict` or `ambiguous` for > 15 min |
-| DNS zone held | A managed zone is `held` (after import, restore or the deletion guard) |
-| DNS sync failing | No successful pass of a managed zone for > 30 min, or the provider status is not `ok` |
-| DNS record drifted | An owned record is `drifted`: it changed again within the stop window and is no longer corrected ([15](15-dns.md#ownership-ledger)) |
-| DNS-provider token invalid or expiring | The provider rejects the token, or it expires within the warning period ([15](15-dns.md#timers-and-limits)) |
+| DNS conflict | A name in a managed zone is `conflict` or `ambiguous` for > 15 min (`dns_conflict`) |
+| DNS zone held | A managed zone is `held` (after import, restore or the deletion guard); `dns_zone_held` |
+| DNS sync failing | The provider status of a managed zone that is not disabled (`permission_denied`, `unreachable` or `rate_limited`) is not `ok` for > 30 min; `dns_sync_failing` |
+| DNS record drifted | An owned record is `drifted`: it changed again within the stop window and is no longer corrected ([15](15-dns.md#ownership-ledger)); `dns_record_drifted` |
+| DNS-provider token invalid or expiring | The provider rejects the token, or it expires within the warning period ([15](15-dns.md#timers-and-limits)); `dns_provider_token` |
 | Cloudflare IP ranges stale | The daily refresh was rejected by the sanity bounds or failed for > 3 days, while proxied routes exist and the refresh is on; fires 15 min after the condition begins |
 
 [R] **Alerts the controller evaluates** (Phase 2, [D142](14-open-decisions.md#engineering)): the
 conditions above stay fixed; they are not configured per org. The controller evaluates, from its
 own state: agent offline, configuration not applied, certificate renewal failing, public
 certificate expiring, route has no ready connector, clock skew and webhook endpoint failing for
-each org; audit checkpoints behind, revocation log not yet off-host and audit sink backlog for the
-instance; and, with DNS automation, the DNS alerts. "UDP payloads too large" stays a Prometheus
+each org; audit checkpoints behind, revocation log not yet off-host, audit sink backlog and
+Cloudflare IP ranges stale for the instance; and, with DNS automation, the DNS alerts for each org:
+conflict, zone held, sync failing, record drifted and provider token invalid or expiring. A zone
+that is disabled raises none of the zone alerts; the conflict alert counts from when the name's
+status began. "UDP payloads too large" stays a Prometheus
 alert. A firing or resolved alert is an event (`alert.fire`, `alert.resolve`) for the webhooks
 that want it, and an e-mail to the org's Owners and Admins, or the Instance Admins for an instance
 alert, when SMTP is configured; an org chooses the alert types it is mailed about and can turn the e-mails off
@@ -1096,7 +1099,8 @@ first time and a route's first status are no events.
 event's summary begins with: `agent_offline`, `config_not_applied`, `agent_certificate_expiring`,
 `public_certificate_expiring`, `route_no_ready_connector`, `clock_skew`,
 `audit_checkpoints_behind`, `revocation_log_on_host`, `webhook_failing`,
-`audit_sink_backlog` and `cloudflare_ranges_stale`, and, with their slices, the other DNS alerts. An agent counts once it has connected,
+`audit_sink_backlog`, `cloudflare_ranges_stale`, `dns_conflict`, `dns_zone_held`, `dns_sync_failing`,
+`dns_record_drifted` and `dns_provider_token`. An agent counts once it has connected,
 while it is enabled and not ephemeral; agent offline counts from its disconnection, configuration
 not applied and clock skew only while it is online, an alert of either keeping its state while the
 agent is offline, and certificate renewal failing looks at its

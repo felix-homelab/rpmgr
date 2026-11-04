@@ -39,6 +39,7 @@ New to rpmgr? Read [Concepts](concepts.md), then follow the [Quick start](quick-
 | [Maintenance and error pages](routes/maintenance-and-pages.md) | Take a service down for maintenance, and see what visitors get when a service is down |
 | [Preview and apply](routes/preview-and-apply.md) | Preview a change, follow it to every gateway and connector, and read a route's state |
 | [Domains and certificates](domains-and-certificates.md) | Prove your domains, get certificates from ACME or upload your own |
+| [DNS automation](dns.md) | Let rpmgr write the DNS records of your routes in a Cloudflare zone, and get certificates by DNS-01 |
 | [Access policies](access-policies.md) | Allow or deny clients by address, and require basic auth |
 
 ## Connectors and gateways

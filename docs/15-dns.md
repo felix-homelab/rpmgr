@@ -1,6 +1,7 @@
 # 15 — DNS automation
 
-> Status: design for Phase 2, not implemented. Tags: [F] fact · [R] recommendation · [T] target ·
+> Status: implemented for Cloudflare in Phase 2 (the controller serves it from v0.4.0; the run
+> against Let's Encrypt and a real zone, [VB-19](13-roadmap.md#verification-backlog), is open). Tags: [F] fact · [R] recommendation · [T] target ·
 > [V] verify at implementation ([README](README.md#how-to-read-these-documents)).
 >
 > **This document is the single source of truth for DNS automation timers and limits.** The

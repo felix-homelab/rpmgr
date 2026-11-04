@@ -22,6 +22,27 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- DNS automation with Cloudflare. An Owner or Admin connects a Cloudflare account with a scoped
+  API token (`rpmgr connect dns-provider`, or **DNS** in the web UI), which is checked at
+  Cloudflare, kept encrypted and shown nowhere again, and imports its zones
+  (`rpmgr import zone`). An imported zone is held: rpmgr writes nothing until the first plan is
+  read and approved by its hash (`rpmgr plan zone`, `rpmgr approve zone`, with a step-up). From
+  then on every hostname of an HTTP or TLS-passthrough route in the zone gets a record that points
+  at its gateway group's DNS target, and loses it with the route; DNS names
+  (`rpmgr create dns-name`) do the same for names and wildcards without a route. rpmgr changes only
+  records it created or that you adopted, never the controller's or a gateway's names, holds a
+  zone again after a restore or a pass that would delete many records, keeps published records
+  while Cloudflare is unreachable, and shares Cloudflare's request budget between its passes and
+  DNS-01. A route's page shows its names' DNS status and records. The **DNS** entry in the sidebar
+  opens the providers and zones, and a link on the page the DNS names. Alerts for a name in
+  conflict, a held zone, a provider that does not answer, a record that drifted and a token that
+  is invalid or about to expire, and the metrics `rpmgr_dns_names`, `rpmgr_dns_records`,
+  `rpmgr_dns_sync_runs_total`, `rpmgr_dns_provider_requests_total`,
+  `rpmgr_dns_provider_token_expiry_timestamp_seconds`, `rpmgr_dns_rate_budget_used` and
+  `rpmgr_dns_rate_blocked_seconds`, come with it. It joins the earlier steps: ACME certificates by
+  DNS-01 for names in a managed zone (#680), nested domain claims held for approval (#681) and the
+  Cloudflare proxy switch of HTTP routes with the daily refresh of Cloudflare's address list
+  (#1096). A new guide page, [DNS automation](docs/guide/dns.md), shows how. (#678)
 - ACME certificates for hostnames in a managed DNS zone are issued by DNS-01: the controller writes
   the CA's challenge as a TXT record through the zone's provider, marks it, and deletes it after
   the order, never touching a record that someone else put at the same name. A zone on hold still

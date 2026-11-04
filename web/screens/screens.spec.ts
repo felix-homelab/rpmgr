@@ -247,6 +247,55 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   // Security and administration.
   await open(page, "Domains & certificates", "Domains & certificates");
   await shot(page, "domains", true);
+
+  // DNS: the seeded installation has no provider, so the DNS pages are given made-up answers: a
+  // Cloudflare account with a token that expires soon, a held zone with its first plan, and two names.
+  const session = (await call(page, "AuthService/GetSession", {})).body;
+  const orgId = session.memberships[0].orgId as string;
+  const groupId = (await call(page, "GatewayService/ListGatewayGroups", { orgId })).body.gatewayGroups[0].id as string;
+  const planHash = "9f3c" + "0".repeat(56) + "e1a7";
+  const zone = { id: "dnz_01example", name: "example.com", dnsProviderId: "dnp_01example", syncState: "ZONE_SYNC_STATE_HELD", heldReason: "imported",
+    providerStatus: "ZONE_PROVIDER_STATUS_OK", publishRouteHostnames: true, deleteThreshold: 10, defaultTtl: 300, pendingPlanHash: planHash };
+  const dnsFakes: [string, object][] = [
+    ["DnsProviderService/ListDnsProviders", { dnsProviders: [{ id: "dnp_01example", name: "home", cloudflare: {}, status: "PROVIDER_STATUS_OK",
+      tokenExpiring: true, tokenExpiresAt: "2026-11-20T00:00:00Z", lastCheckTime: "2026-11-08T11:00:00Z" }] }],
+    ["DnsProviderService/ListProviderZones", { zones: [
+      { id: "0123456789abcdef0123456789abcde1", name: "example.com", status: "active", type: "full" },
+      { id: "0123456789abcdef0123456789abcde2", name: "example.net", status: "pending", type: "full" },
+    ] }],
+    ["DnsZoneService/ListZones", { dnsZones: [zone] }],
+    ["DnsZoneService/GetZone", { dnsZone: zone }],
+    ["DnsZoneService/PlanZoneSync", { dnsZone: zone, plan: { hash: planHash,
+      creates: [{ name: "wiki.example.com", type: "CNAME", content: "edge.example.net", ttl: 300 }, { name: "photos.example.com", type: "CNAME", content: "edge.example.net", ttl: 300 }],
+      conflicts: [{ name: "grafana.example.com", kind: "foreign_address", records: [{ name: "grafana.example.com", type: "A", content: "192.0.2.5", ttl: 300 }] }] } }],
+    ["DnsZoneService/ListZoneRecords", { records: [
+      { id: "dnr_4", providerRecordId: "p4", name: "nas.example.com", type: "CNAME", content: "edge.example.net", ttl: 300, state: "DNS_RECORD_STATE_SYNCED" },
+      { providerRecordId: "p1", name: "example.com", type: "A", content: "192.0.2.5", ttl: 300, state: "DNS_RECORD_STATE_FOREIGN" },
+      { providerRecordId: "p2", name: "grafana.example.com", type: "A", content: "192.0.2.5", ttl: 300, state: "DNS_RECORD_STATE_FOREIGN" },
+      { providerRecordId: "p3", name: "mail.example.com", type: "MX", content: "10 mx.example.net", ttl: 300, state: "DNS_RECORD_STATE_FOREIGN" },
+    ] }],
+    ["DnsNameService/ListDnsNames", { dnsNames: [
+      { id: "dnn_1", fqdn: "ssh.example.com", gatewayGroupId: groupId, ttl: 300 },
+      { id: "dnn_2", fqdn: "*.apps.example.com", gatewayGroupId: groupId, ttl: 0 },
+    ] }],
+  ];
+  for (const [method, json] of dnsFakes) {
+    await fake(method, json);
+  }
+  await open(page, "DNS", "DNS");
+  await expect(page.getByRole("link", { name: "example.com" }).first()).toBeVisible();
+  await shot(page, "dns", true);
+  await page.getByRole("link", { name: "example.com" }).first().click();
+  await expect(page.getByRole("heading", { name: "Zone example.com", level: 1 })).toBeVisible();
+  await expect(page.getByText("wiki.example.com").first()).toBeVisible();
+  await shot(page, "dns-zone", true);
+  await page.goto("/dns-names");
+  await expect(page.getByRole("heading", { name: "DNS names", level: 1 })).toBeVisible();
+  await expect(page.getByText("ssh.example.com")).toBeVisible();
+  await shot(page, "dns-names", true);
+  for (const [method] of dnsFakes) {
+    await page.unroute(`**/rpmgr.v1.${method}`);
+  }
   await open(page, "Access policies", "Access policies");
   await shot(page, "policies", true);
   await open(page, "Organisation", "Example Lab");

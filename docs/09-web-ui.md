@@ -34,6 +34,7 @@ flowchart LR
   ROOT --> CO[Connectors]
   ROOT --> GW[Gateways]
   ROOT --> DC[Domains & certificates]
+  ROOT --> DNS[DNS]
   ROOT --> AP[Access policies]
   ROOT --> AU[Audit log]
   ROOT --> ORG[Organisation]
@@ -46,7 +47,8 @@ flowchart LR
   CO --> CO1[List] & CO2[Enroll dialog] & CO3[Connector detail]
   CO3 --> CO3a[Sessions] & CO3b[Routes] & CO3c[Local-policy status] & CO3d[Live logs] & CO3e[Version & upgrade]
   GW --> GW1[Gateway groups] & GW2[Gateways] & GW3[Port pools]
-  DC --> DC1[Domains & verification] & DC2[Certificates & ACME status] & DC3[DNS providers & zones] & DC4[DNS names]
+  DC --> DC1[Domains & verification] & DC2[Certificates & ACME status]
+  DNS --> DNS1[DNS providers & zones] & DNS2[DNS names]
   ORG --> ORG1[Members & roles] & ORG2[Invitations] & ORG3[API tokens] & ORG4[Service accounts] & ORG5[SSO & MFA policy]
   SET --> SET1[Org settings] & SET2[Instance settings - Instance Admin] & SET4[PKI - Instance Admin] & SET5[Updates - Instance Admin] & SET6[Audit sinks and webhooks - Instance Admin, Phase 2] & SET3[Account]
   P3 --> P3a[Virtual networks] & P3b[Functions] & P3c[Shell - gated]
@@ -59,7 +61,8 @@ flowchart LR
 | **Private services** | Services, visitor grants, relay vs P2P state per grant | Viewer / Operator |
 | **Connectors** | List with status, version, transport, RTT, last seen; enroll dialog; detail with data and control sessions, served routes, local-policy status, transport override (`auto`, `quic`, `h2`, `wss` or the instance default), live logs, version and staged upgrade | Viewer / Admin to enroll or revoke (Operator if the org allows it) |
 | **Gateways** | Gateway groups (region, public hostnames for route traffic, DNS target for managed DNS records, port pools), gateways (own tunnel endpoints — address/port and, for WSS, the gateway's own hostname — status, version, sessions, listeners, live logs (Phase 2)), drain action. Connectors dial each gateway at its own tunnel endpoints; group-level DNS or anycast names are for public traffic only ([03](03-connections.md#establishment)) | Viewer / Admin |
-| **Domains & certificates** | Domain claims with the verification flow (TXT record or HTTP token, a "check now" button, status), certificates with source (ACME/uploaded), SANs, expiry, last ACME error. Phase 2: DNS providers (connect, rotate token, status, token expiry), managed zones (import, gates, plan approval, records, conflicts, adopt and release) and DNS names ([15](15-dns.md)) | Viewer / Admin; foreign records of a zone: Admin |
+| **Domains & certificates** | Domain claims with the verification flow (TXT record or HTTP token, a "check now" button, status), certificates with source (ACME/uploaded), SANs, expiry, last ACME error | Viewer / Admin |
+| **DNS** (Phase 2) | DNS providers (connect, rotate token, status, token expiry), managed zones (import, gates, plan approval, records, conflicts, adopt and release) and DNS names ([15](15-dns.md)) | Viewer / Admin; foreign records of a zone: Admin |
 | **Access policies** | IP allow/deny lists, basic auth, OIDC forward-auth, rate limits; where each policy is used | Viewer / Operator |
 | **Audit log** | Searchable by actor, action, target and time; entry detail with the redacted diff; chain-verification status; export with proofs (step-up), and how to verify it offline with `rpmgr audit verify-export` (Phase 2) | Admin |
 | **Organisation** | Members and roles; invitations as copyable one-time links, also e-mailed when SMTP is configured; API tokens (personal tokens in Phase 1, service accounts and their tokens in Phase 2: list, create with mandatory expiry, revoke); SSO and MFA policy; webhooks are on their own page | Admin; SSO and MFA policy are Owner-only |
@@ -100,7 +103,7 @@ flowchart LR
 ```
 
 - **The sidebar** lists the pages in groups, each with an icon and its name: Overview; *Network*
-  with Routes, Connectors and Gateways; *Security* with Domains & certificates and Access policies;
+  with Routes, Connectors and Gateways; *Security* with Domains & certificates, DNS and Access policies;
   *Administration* with Organisation, Audit log and Settings. The current page is marked, also for
   screen readers (`aria-current`).
 - **The version** the controller runs stands at the foot of the sidebar, as `rpmgr 0.1.0`, for
@@ -1052,8 +1055,9 @@ one page, with a section list beside them that jumps to each section
 - **Overview.** The "Needs attention" card has a DNS area: hostnames with a `conflict`, `ambiguous`,
   `error` or `rate_limited` status, which any member sees, and, for Owners and Admins, held zones,
   zones whose provider rate-limits or refuses the token, and records that drifted, each with its
-  hint. An instance that serves no DNS shows nothing there. The sidebar entries come with the slice
-  that makes DNS reachable; until then the pages are reachable by their addresses only.
+  hint. An instance that serves no DNS shows nothing there.
+- **The sidebar** has one entry for DNS, under *Security*, which opens `/dns`; the DNS names are a
+  link in its heading.
 
 ## Frontend architecture
 

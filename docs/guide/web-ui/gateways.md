@@ -129,6 +129,7 @@ The **Settings** card changes the group:
 | **Region** | Free text, such as a data centre |
 | **Public hostnames** | One per line: the names public traffic reaches the group's gateways by. The routes list shows a port route's address at each of them |
 | **Trusted proxies** | One CIDR per line: proxies in front of the gateways whose `X-Forwarded-For` header the gateways keep |
+| **DNS target** | Where the DNS records rpmgr writes for the group's names point: **None**, **A CNAME** (a fully qualified name) or **Addresses** (IPv4 and IPv6, one per line). Without a target nothing is published for the group ([DNS](dns.md)) |
 
 **Save** saves them and says `Saved.` If the group changed since the page loaded it, the card says
 `The gateway group changed since this page loaded it.`: reload the page and make the change again.
