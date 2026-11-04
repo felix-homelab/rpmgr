@@ -1008,6 +1008,15 @@ one page, with a section list beside them that jumps to each section
 - **Import** is a short flow: connect a Cloudflare account (API token, step-up), choose zones (only
   `active`, `full` zones can be selected; the others say why), review the first plan, approve it
   ([15](15-dns.md#connecting-importing-and-disconnecting)).
+- **The DNS page** (`/dns`, a lazily loaded chunk) lists the org's DNS providers and managed zones.
+  A provider shows its token status and expiry; **Connect** and **Replace token** take the API
+  token in a password field that starts empty, is never filled in from the API and is cleared once
+  sent, and both need a step-up, as deleting a provider does, after a confirmation that names it.
+  **Zones** lists what the provider offers, with a reason for each zone that cannot be imported. A
+  managed zone shows held or publishing and, per zone, what the provider answered: a token that
+  lacks permission for one zone shows `permission denied` on that zone, with what to do. **Remove**
+  keeps the records at the provider. The sidebar links to the page when the controller serves the
+  DNS services; until then the page is reachable by its address only.
 - **Approve** is bound to the plan's hash. If anything changed since the plan was shown, the new
   plan replaces it and the approval has to be repeated.
 - **Foreign records** are shown only to Owners and Admins, read live from Cloudflare and never
