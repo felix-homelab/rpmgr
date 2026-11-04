@@ -202,6 +202,12 @@ func newEnv(t *testing.T) *env {
 		}); err != nil {
 		t.Fatal(err)
 	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_dns_proto.Services().ByName("DnsNameService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewDnsNameServiceHandler(&apisvc.DnsNames{DB: db, API: srv}, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_route_proto.Services().ByName("RouteService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewRouteServiceHandler(&apisvc.Routes{DB: db, API: srv, Sys: sys, Prober: &e.probe, Now: now}, o...)
@@ -334,6 +340,7 @@ type browser struct {
 	iwh    rpmgrv1connect.InstanceWebhookServiceClient
 	dnsp   rpmgrv1connect.DnsProviderServiceClient
 	dnsz   rpmgrv1connect.DnsZoneServiceClient
+	dnsn   rpmgrv1connect.DnsNameServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -352,6 +359,7 @@ func (e *env) browser() *browser {
 	b.iwh = rpmgrv1connect.NewInstanceWebhookServiceClient(&http.Client{Transport: b}, e.url)
 	b.dnsp = rpmgrv1connect.NewDnsProviderServiceClient(&http.Client{Transport: b}, e.url)
 	b.dnsz = rpmgrv1connect.NewDnsZoneServiceClient(&http.Client{Transport: b}, e.url)
+	b.dnsn = rpmgrv1connect.NewDnsNameServiceClient(&http.Client{Transport: b}, e.url)
 	b.st = rpmgrv1connect.NewStatusServiceClient(&http.Client{Transport: b}, e.url)
 	b.pol = rpmgrv1connect.NewPolicyServiceClient(&http.Client{Transport: b}, e.url)
 	b.crt = rpmgrv1connect.NewCertificateServiceClient(&http.Client{Transport: b}, e.url)

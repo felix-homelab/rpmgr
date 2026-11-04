@@ -56,7 +56,10 @@ removed by rpmgr. The same credential lets ACME use DNS-01.
      cannot reach or that is no plain address: IPv4-mapped IPv6 (the IPv4 form is asked for
      instead), loopback, unspecified, multicast, link-local, or with a zone. Names and addresses
      are stored in their canonical form.
-   - A DNS name takes precedence over route hostnames with the same name.
+   - A DNS name takes precedence over route hostnames with the same name. It is created only for
+     a gateway group of its own org, and only under a verified domain of the org that covers it; a
+     wildcard name needs a domain with the wildcard. Its `ttl` is 0, which is the zone's
+     `default_ttl`, or lies within the bounds of that ([Timers and limits](#timers-and-limits)).
    - If routes in two gateway groups use the same hostname, which the data model allows
      ([06](06-data-model.md#routing)), and no DNS name decides, the name is `ambiguous` and its
      records stay as they are.
