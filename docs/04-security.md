@@ -663,9 +663,23 @@ provider and never stored.
   nested claim (next rule).
 - On **shared gateway groups**, only DNS TXT verification is accepted: an HTTP token would be
   answered by the shared gateway itself, so any org could "verify" a hostname that already points at
-  it. A claim nested under, or containing, another org's verified domain gets the status
-  `pending_approval` and stays unusable until an Instance Admin approves it (Phase 2, with step-up).
-  No hostname is ever handed out first-come-first-served.
+  it. No hostname is ever handed out first-come-first-served.
+- **Nested claims need approval** (Phase 2, slice 7.2). A claim whose name lies under, or above,
+  a verified domain of another org, whatever either claim's wildcard flag, is checked as any claim
+  is; when its proof succeeds it gets the status `pending_approval` instead of `verified`, with no
+  `verified_at`. Only verified domains count as the clash, so a pending or held claim holds nothing
+  of another org's, and the same org's nested claims are verified as usual. A held claim is unusable:
+  the checks that rely on verified claims (route and CONNECT hostnames, certificates and ACME, the
+  DNS automation's challenge and record publication) find only `verified` rows and skip it. The
+  Instance Admin approves it with `ApproveDomainClaim` (step-up, `instance.admin`, audited): the
+  claim becomes `verified` and keeps its method, since its proof was shown. An org Owner cannot
+  approve a claim, not even their own. A claim is refused by deleting it: the claimant's `DeleteDomain`;
+  an Instance Admin refusal comes with the approval list of the web UI (slice 11.8). **Deleted
+  parent:** a held claim is not re-evaluated when the domain it clashed with is deleted. It stays
+  `pending_approval` until the Instance Admin approves it or its org deletes it, because the
+  hold is an explicit decision for the Instance Admin, and a silent promotion would hand out the
+  name without anyone having decided. [R] The held claim reveals to its org that a clashing domain
+  of another org exists, not whose; that much is accepted.
 - **TXT proofs are read at the zone's authoritative nameservers**, never through the controller's
   resolver, so split-horizon DNS and negative caching cannot fake or delay a result. The host's
   own resolver, which finds the zone's nameservers and their addresses, is the operator's and is

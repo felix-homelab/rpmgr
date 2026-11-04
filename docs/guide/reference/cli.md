@@ -91,6 +91,7 @@ rpmgr <command>
 | [`rpmgr verify`](#rpmgr-verify) | Check a proof now |
 | [`rpmgr check`](#rpmgr-check) | Check for new releases now |
 | [`rpmgr trust`](#rpmgr-trust) | Trust something without a proof |
+| [`rpmgr approve`](#rpmgr-approve) | Approve a domain claim that is held for approval |
 | [`rpmgr upload`](#rpmgr-upload) | Upload a file to the controller |
 | [`rpmgr renew`](#rpmgr-renew) | Renew a certificate now |
 | [`rpmgr remove`](#rpmgr-remove) | Remove a member from the org, a user's second factor, or a gateway group's own page |
@@ -1818,6 +1819,26 @@ Mark a domain claim verified without a proof (Instance Admin).
 
 ```text
 rpmgr trust domain <id>
+```
+
+## rpmgr approve
+
+Approve a domain claim that is held for approval.
+
+```text
+rpmgr approve <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr approve domain`](#rpmgr-approve-domain) | Approve a domain claim held because another org's domain is nested with it (Instance Admin) |
+
+## rpmgr approve domain
+
+Approve a domain claim held because another org's domain is nested with it (Instance Admin).
+
+```text
+rpmgr approve domain <id>
 ```
 
 ## rpmgr upload

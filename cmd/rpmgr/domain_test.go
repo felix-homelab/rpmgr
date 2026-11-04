@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -62,6 +63,20 @@ func (a *domainAPI) MarkDomainTrusted(context.Context, *connect.Request[rpmgrv1.
 		return nil, stepUpError()
 	}
 	return connect.NewResponse(&rpmgrv1.MarkDomainTrustedResponse{Domain: &rpmgrv1.Domain{Id: "dom_1", Fqdn: "example.com",
+		Status: rpmgrv1.DomainStatus_DOMAIN_STATUS_VERIFIED}}), nil
+}
+
+func (a *domainAPI) ApproveDomainClaim(_ context.Context, req *connect.Request[rpmgrv1.ApproveDomainClaimRequest]) (*connect.Response[rpmgrv1.ApproveDomainClaimResponse], error) {
+	a.stepUpAPI.mu.Lock()
+	stepped := a.stepped
+	a.stepUpAPI.mu.Unlock()
+	if !stepped {
+		return nil, stepUpError()
+	}
+	if req.Msg.GetDomainId() == "dom_gone" {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("no such domain"))
+	}
+	return connect.NewResponse(&rpmgrv1.ApproveDomainClaimResponse{Domain: &rpmgrv1.Domain{Id: req.Msg.GetDomainId(), Fqdn: "app.example.com",
 		Status: rpmgrv1.DomainStatus_DOMAIN_STATUS_VERIFIED}}), nil
 }
 
@@ -155,6 +170,15 @@ func TestDomainsAndCertificates(t *testing.T) {
 	t.Cleanup(func() { stepUpPrompt = old })
 	if code, out, _ := run("trust", "domain", "dom_1"); code != cli.ExitOK || !strings.Contains(out, "is VERIFIED") || len(a.stepUps) != 1 {
 		t.Fatalf("trust: %d %q", code, out)
+	}
+	if code, out, _ := run("approve", "domain", "dom_2"); code != cli.ExitOK || !strings.Contains(out, "Domain dom_2 (app.example.com) is VERIFIED.") {
+		t.Fatalf("approve: %d %q", code, out)
+	}
+	if code, _, _ := run("approve", "domain"); code != cli.ExitUsage {
+		t.Errorf("approve without an ID: %d", code)
+	}
+	if code, _, errOut := run("approve", "domain", "dom_gone"); code == cli.ExitOK || !strings.Contains(errOut, "no such domain") {
+		t.Errorf("approve of a missing claim: %d %q", code, errOut)
 	}
 
 	chain := file("chain.pem", "CHAIN", 0o644)
