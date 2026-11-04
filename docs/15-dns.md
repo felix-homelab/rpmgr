@@ -275,8 +275,20 @@ sequenceDiagram
   database row per provider, holding the request window and the `retry-after` block. The DNS job
   and the DNS-01 adapter take each request from it in a transaction, on whichever replica they
   run, so replicas never add up past it. DNS-01 may use at most half of the window
-  ([D164](14-open-decisions.md#engineering)). [R] Use an account-owned token, or a dedicated
-  Cloudflare user, for rpmgr, so a burst never locks a human out of the dashboard.
+  ([D164](14-open-decisions.md#engineering)).
+  - The provider client takes one request from the budget before each HTTP request it sends, a page
+    of a listing as much as a batch. A request the budget does not lend is not sent: the call
+    fails as rate-limited, until the end of the window or of the block.
+  - A 429 sets the block for every replica and every taker from its `retry-after`, from the default
+    block when there is none, and never shortens a block that holds. A block is cut to the longest
+    block in [Timers and limits](#timers-and-limits).
+  - The replicas' clocks differ a little, and the row holds times that one replica wrote and
+    another reads. A window that started in the reader's future stays open, so the budget is never
+    wider than it says, and one that started more than a window ahead is not honoured, so a clock
+    far ahead never locks the others out.
+
+  [R] Use an account-owned token, or a dedicated Cloudflare user, for rpmgr, so a burst never locks
+  a human out of the dashboard.
 
 ### Fail-static
 
@@ -556,6 +568,8 @@ type Provider interface {
 | Look for new configuration revisions | every 1 s, by the replica that holds the lease |
 | [R] Rate budget per provider | 300 requests / 5 min (Cloudflare allows 1 200 per user) |
 | DNS-01 share of the budget | at most half |
+| Default block after a 429 without `retry-after` | 5 min, as Cloudflare blocks |
+| Longest block recorded | 1 h; a longer `retry-after` is cut to it |
 | Operations per batch | ≤ 200 (Cloudflare Free limit) |
 | Addresses in a DNS target | ≤ 16 |
 | [R] Cloudflare API request | 30 s; answer at most 4 MiB; zones listed 50 per page |

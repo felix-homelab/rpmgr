@@ -55,7 +55,7 @@ TestDNS_CrashRelinksByMarker	done	6.12	#670	internal/dns/apply; the job's use in
 TestDNS_RestoreStartsHeld	p2	-	-	DNS automation
 TestDNS_DeletionGuard	p2	-	-	DNS automation
 TestDNS_FailStatic	done	6.10	#668	internal/dns/apply
-TestDNS_RateBudgetAndRetryAfter	p2	-	-	DNS automation
+TestDNS_RateBudgetAndRetryAfter	p2	-	-	job clause done in 6.13 (#671; internal/dns/budget, internal/dns/job); the DNS-01 clause follows in 7.1
 TestDNS_BatchFallbackPerRecord	done	6.11	#669	internal/dns/apply (fallback, ledger) and TestDNS_BatchFallbackPerRecord_NameStatus in internal/dns/job (name error, 6.11)
 TestDNS_LeaseCheckedBeforeBatch	done	6.11	#669	internal/dns/job
 TestDNS_ProxiedOnlyForHttp	p2	-	-	DNS automation

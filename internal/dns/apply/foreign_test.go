@@ -28,7 +28,7 @@ import (
 // clause is the test of the same name in internal/dns/plan.
 func TestDNS_ForeignRecordNeverModified(t *testing.T) {
 	e := newEnv(t, storetest.Migrated(t, store.SQLite))
-	rng := rand.New(rand.NewSource(20261104))
+	rng := rand.New(rand.NewSource(20261104)) //nolint:gosec // G404: a seeded generator makes the shuffles of the test repeatable
 	pick := func(s []string) string { return s[rng.Intn(len(s))] }
 	conflicts, creates, updates, deletes := 0, 0, 0, 0
 	for i := range 40 {

@@ -38,6 +38,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsnamestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsratebudget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -123,6 +124,7 @@ const (
 	TypeDNSName            = "DNSName"
 	TypeDNSNameStatus      = "DNSNameStatus"
 	TypeDNSProvider        = "DNSProvider"
+	TypeDNSRateBudget      = "DNSRateBudget"
 	TypeDNSRecord          = "DNSRecord"
 	TypeDNSZone            = "DNSZone"
 	TypeDataSession        = "DataSession"
@@ -19603,6 +19605,840 @@ func (m *DNSProviderMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *DNSProviderMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown DNSProvider edge %s", name)
+}
+
+// DNSRateBudgetMutation represents an operation that mutates the DNSRateBudget nodes in the graph.
+type DNSRateBudgetMutation struct {
+	config
+	op                  Op
+	typ                 string
+	id                  *string
+	org_id              *string
+	version             *int64
+	addversion          *int64
+	window_started_at   *time.Time
+	used                *int
+	addused             *int
+	dns01_used          *int
+	adddns01_used       *int
+	blocked_until       *time.Time
+	clearedFields       map[string]struct{}
+	dns_provider        *string
+	cleareddns_provider bool
+	done                bool
+	oldValue            func(context.Context) (*DNSRateBudget, error)
+	predicates          []predicate.DNSRateBudget
+}
+
+var _ ent.Mutation = (*DNSRateBudgetMutation)(nil)
+
+// dnsratebudgetOption allows management of the mutation configuration using functional options.
+type dnsratebudgetOption func(*DNSRateBudgetMutation)
+
+// newDNSRateBudgetMutation creates new mutation for the DNSRateBudget entity.
+func newDNSRateBudgetMutation(c config, op Op, opts ...dnsratebudgetOption) *DNSRateBudgetMutation {
+	m := &DNSRateBudgetMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeDNSRateBudget,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withDNSRateBudgetID sets the ID field of the mutation.
+func withDNSRateBudgetID(id string) dnsratebudgetOption {
+	return func(m *DNSRateBudgetMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *DNSRateBudget
+		)
+		m.oldValue = func(ctx context.Context) (*DNSRateBudget, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().DNSRateBudget.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withDNSRateBudget sets the old DNSRateBudget of the mutation.
+func withDNSRateBudget(node *DNSRateBudget) dnsratebudgetOption {
+	return func(m *DNSRateBudgetMutation) {
+		m.oldValue = func(context.Context) (*DNSRateBudget, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m DNSRateBudgetMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m DNSRateBudgetMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of DNSRateBudget entities.
+func (m *DNSRateBudgetMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *DNSRateBudgetMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *DNSRateBudgetMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().DNSRateBudget.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *DNSRateBudgetMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *DNSRateBudgetMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the DNSRateBudget entity.
+// If the DNSRateBudget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSRateBudgetMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *DNSRateBudgetMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *DNSRateBudgetMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *DNSRateBudgetMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the DNSRateBudget entity.
+// If the DNSRateBudget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSRateBudgetMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *DNSRateBudgetMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *DNSRateBudgetMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *DNSRateBudgetMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
+// SetDNSProviderID sets the "dns_provider_id" field.
+func (m *DNSRateBudgetMutation) SetDNSProviderID(s string) {
+	m.dns_provider = &s
+}
+
+// DNSProviderID returns the value of the "dns_provider_id" field in the mutation.
+func (m *DNSRateBudgetMutation) DNSProviderID() (r string, exists bool) {
+	v := m.dns_provider
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDNSProviderID returns the old "dns_provider_id" field's value of the DNSRateBudget entity.
+// If the DNSRateBudget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSRateBudgetMutation) OldDNSProviderID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDNSProviderID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDNSProviderID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDNSProviderID: %w", err)
+	}
+	return oldValue.DNSProviderID, nil
+}
+
+// ResetDNSProviderID resets all changes to the "dns_provider_id" field.
+func (m *DNSRateBudgetMutation) ResetDNSProviderID() {
+	m.dns_provider = nil
+}
+
+// SetWindowStartedAt sets the "window_started_at" field.
+func (m *DNSRateBudgetMutation) SetWindowStartedAt(t time.Time) {
+	m.window_started_at = &t
+}
+
+// WindowStartedAt returns the value of the "window_started_at" field in the mutation.
+func (m *DNSRateBudgetMutation) WindowStartedAt() (r time.Time, exists bool) {
+	v := m.window_started_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWindowStartedAt returns the old "window_started_at" field's value of the DNSRateBudget entity.
+// If the DNSRateBudget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSRateBudgetMutation) OldWindowStartedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWindowStartedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWindowStartedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWindowStartedAt: %w", err)
+	}
+	return oldValue.WindowStartedAt, nil
+}
+
+// ResetWindowStartedAt resets all changes to the "window_started_at" field.
+func (m *DNSRateBudgetMutation) ResetWindowStartedAt() {
+	m.window_started_at = nil
+}
+
+// SetUsed sets the "used" field.
+func (m *DNSRateBudgetMutation) SetUsed(i int) {
+	m.used = &i
+	m.addused = nil
+}
+
+// Used returns the value of the "used" field in the mutation.
+func (m *DNSRateBudgetMutation) Used() (r int, exists bool) {
+	v := m.used
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsed returns the old "used" field's value of the DNSRateBudget entity.
+// If the DNSRateBudget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSRateBudgetMutation) OldUsed(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsed is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsed requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsed: %w", err)
+	}
+	return oldValue.Used, nil
+}
+
+// AddUsed adds i to the "used" field.
+func (m *DNSRateBudgetMutation) AddUsed(i int) {
+	if m.addused != nil {
+		*m.addused += i
+	} else {
+		m.addused = &i
+	}
+}
+
+// AddedUsed returns the value that was added to the "used" field in this mutation.
+func (m *DNSRateBudgetMutation) AddedUsed() (r int, exists bool) {
+	v := m.addused
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUsed resets all changes to the "used" field.
+func (m *DNSRateBudgetMutation) ResetUsed() {
+	m.used = nil
+	m.addused = nil
+}
+
+// SetDns01Used sets the "dns01_used" field.
+func (m *DNSRateBudgetMutation) SetDns01Used(i int) {
+	m.dns01_used = &i
+	m.adddns01_used = nil
+}
+
+// Dns01Used returns the value of the "dns01_used" field in the mutation.
+func (m *DNSRateBudgetMutation) Dns01Used() (r int, exists bool) {
+	v := m.dns01_used
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDns01Used returns the old "dns01_used" field's value of the DNSRateBudget entity.
+// If the DNSRateBudget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSRateBudgetMutation) OldDns01Used(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDns01Used is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDns01Used requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDns01Used: %w", err)
+	}
+	return oldValue.Dns01Used, nil
+}
+
+// AddDns01Used adds i to the "dns01_used" field.
+func (m *DNSRateBudgetMutation) AddDns01Used(i int) {
+	if m.adddns01_used != nil {
+		*m.adddns01_used += i
+	} else {
+		m.adddns01_used = &i
+	}
+}
+
+// AddedDns01Used returns the value that was added to the "dns01_used" field in this mutation.
+func (m *DNSRateBudgetMutation) AddedDns01Used() (r int, exists bool) {
+	v := m.adddns01_used
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDns01Used resets all changes to the "dns01_used" field.
+func (m *DNSRateBudgetMutation) ResetDns01Used() {
+	m.dns01_used = nil
+	m.adddns01_used = nil
+}
+
+// SetBlockedUntil sets the "blocked_until" field.
+func (m *DNSRateBudgetMutation) SetBlockedUntil(t time.Time) {
+	m.blocked_until = &t
+}
+
+// BlockedUntil returns the value of the "blocked_until" field in the mutation.
+func (m *DNSRateBudgetMutation) BlockedUntil() (r time.Time, exists bool) {
+	v := m.blocked_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBlockedUntil returns the old "blocked_until" field's value of the DNSRateBudget entity.
+// If the DNSRateBudget object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSRateBudgetMutation) OldBlockedUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBlockedUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBlockedUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBlockedUntil: %w", err)
+	}
+	return oldValue.BlockedUntil, nil
+}
+
+// ClearBlockedUntil clears the value of the "blocked_until" field.
+func (m *DNSRateBudgetMutation) ClearBlockedUntil() {
+	m.blocked_until = nil
+	m.clearedFields[dnsratebudget.FieldBlockedUntil] = struct{}{}
+}
+
+// BlockedUntilCleared returns if the "blocked_until" field was cleared in this mutation.
+func (m *DNSRateBudgetMutation) BlockedUntilCleared() bool {
+	_, ok := m.clearedFields[dnsratebudget.FieldBlockedUntil]
+	return ok
+}
+
+// ResetBlockedUntil resets all changes to the "blocked_until" field.
+func (m *DNSRateBudgetMutation) ResetBlockedUntil() {
+	m.blocked_until = nil
+	delete(m.clearedFields, dnsratebudget.FieldBlockedUntil)
+}
+
+// ClearDNSProvider clears the "dns_provider" edge to the DNSProvider entity.
+func (m *DNSRateBudgetMutation) ClearDNSProvider() {
+	m.cleareddns_provider = true
+	m.clearedFields[dnsratebudget.FieldDNSProviderID] = struct{}{}
+}
+
+// DNSProviderCleared reports if the "dns_provider" edge to the DNSProvider entity was cleared.
+func (m *DNSRateBudgetMutation) DNSProviderCleared() bool {
+	return m.cleareddns_provider
+}
+
+// DNSProviderIDs returns the "dns_provider" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// DNSProviderID instead. It exists only for internal usage by the builders.
+func (m *DNSRateBudgetMutation) DNSProviderIDs() (ids []string) {
+	if id := m.dns_provider; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetDNSProvider resets all changes to the "dns_provider" edge.
+func (m *DNSRateBudgetMutation) ResetDNSProvider() {
+	m.dns_provider = nil
+	m.cleareddns_provider = false
+}
+
+// Where appends a list predicates to the DNSRateBudgetMutation builder.
+func (m *DNSRateBudgetMutation) Where(ps ...predicate.DNSRateBudget) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the DNSRateBudgetMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *DNSRateBudgetMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.DNSRateBudget, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *DNSRateBudgetMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *DNSRateBudgetMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (DNSRateBudget).
+func (m *DNSRateBudgetMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *DNSRateBudgetMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.org_id != nil {
+		fields = append(fields, dnsratebudget.FieldOrgID)
+	}
+	if m.version != nil {
+		fields = append(fields, dnsratebudget.FieldVersion)
+	}
+	if m.dns_provider != nil {
+		fields = append(fields, dnsratebudget.FieldDNSProviderID)
+	}
+	if m.window_started_at != nil {
+		fields = append(fields, dnsratebudget.FieldWindowStartedAt)
+	}
+	if m.used != nil {
+		fields = append(fields, dnsratebudget.FieldUsed)
+	}
+	if m.dns01_used != nil {
+		fields = append(fields, dnsratebudget.FieldDns01Used)
+	}
+	if m.blocked_until != nil {
+		fields = append(fields, dnsratebudget.FieldBlockedUntil)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *DNSRateBudgetMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case dnsratebudget.FieldOrgID:
+		return m.OrgID()
+	case dnsratebudget.FieldVersion:
+		return m.Version()
+	case dnsratebudget.FieldDNSProviderID:
+		return m.DNSProviderID()
+	case dnsratebudget.FieldWindowStartedAt:
+		return m.WindowStartedAt()
+	case dnsratebudget.FieldUsed:
+		return m.Used()
+	case dnsratebudget.FieldDns01Used:
+		return m.Dns01Used()
+	case dnsratebudget.FieldBlockedUntil:
+		return m.BlockedUntil()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *DNSRateBudgetMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case dnsratebudget.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case dnsratebudget.FieldVersion:
+		return m.OldVersion(ctx)
+	case dnsratebudget.FieldDNSProviderID:
+		return m.OldDNSProviderID(ctx)
+	case dnsratebudget.FieldWindowStartedAt:
+		return m.OldWindowStartedAt(ctx)
+	case dnsratebudget.FieldUsed:
+		return m.OldUsed(ctx)
+	case dnsratebudget.FieldDns01Used:
+		return m.OldDns01Used(ctx)
+	case dnsratebudget.FieldBlockedUntil:
+		return m.OldBlockedUntil(ctx)
+	}
+	return nil, fmt.Errorf("unknown DNSRateBudget field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DNSRateBudgetMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case dnsratebudget.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case dnsratebudget.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case dnsratebudget.FieldDNSProviderID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDNSProviderID(v)
+		return nil
+	case dnsratebudget.FieldWindowStartedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWindowStartedAt(v)
+		return nil
+	case dnsratebudget.FieldUsed:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsed(v)
+		return nil
+	case dnsratebudget.FieldDns01Used:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDns01Used(v)
+		return nil
+	case dnsratebudget.FieldBlockedUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBlockedUntil(v)
+		return nil
+	}
+	return fmt.Errorf("unknown DNSRateBudget field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *DNSRateBudgetMutation) AddedFields() []string {
+	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, dnsratebudget.FieldVersion)
+	}
+	if m.addused != nil {
+		fields = append(fields, dnsratebudget.FieldUsed)
+	}
+	if m.adddns01_used != nil {
+		fields = append(fields, dnsratebudget.FieldDns01Used)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *DNSRateBudgetMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case dnsratebudget.FieldVersion:
+		return m.AddedVersion()
+	case dnsratebudget.FieldUsed:
+		return m.AddedUsed()
+	case dnsratebudget.FieldDns01Used:
+		return m.AddedDns01Used()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DNSRateBudgetMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case dnsratebudget.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
+	case dnsratebudget.FieldUsed:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUsed(v)
+		return nil
+	case dnsratebudget.FieldDns01Used:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDns01Used(v)
+		return nil
+	}
+	return fmt.Errorf("unknown DNSRateBudget numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *DNSRateBudgetMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(dnsratebudget.FieldBlockedUntil) {
+		fields = append(fields, dnsratebudget.FieldBlockedUntil)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *DNSRateBudgetMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *DNSRateBudgetMutation) ClearField(name string) error {
+	switch name {
+	case dnsratebudget.FieldBlockedUntil:
+		m.ClearBlockedUntil()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSRateBudget nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *DNSRateBudgetMutation) ResetField(name string) error {
+	switch name {
+	case dnsratebudget.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case dnsratebudget.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case dnsratebudget.FieldDNSProviderID:
+		m.ResetDNSProviderID()
+		return nil
+	case dnsratebudget.FieldWindowStartedAt:
+		m.ResetWindowStartedAt()
+		return nil
+	case dnsratebudget.FieldUsed:
+		m.ResetUsed()
+		return nil
+	case dnsratebudget.FieldDns01Used:
+		m.ResetDns01Used()
+		return nil
+	case dnsratebudget.FieldBlockedUntil:
+		m.ResetBlockedUntil()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSRateBudget field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *DNSRateBudgetMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.dns_provider != nil {
+		edges = append(edges, dnsratebudget.EdgeDNSProvider)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *DNSRateBudgetMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case dnsratebudget.EdgeDNSProvider:
+		if id := m.dns_provider; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *DNSRateBudgetMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *DNSRateBudgetMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *DNSRateBudgetMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.cleareddns_provider {
+		edges = append(edges, dnsratebudget.EdgeDNSProvider)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *DNSRateBudgetMutation) EdgeCleared(name string) bool {
+	switch name {
+	case dnsratebudget.EdgeDNSProvider:
+		return m.cleareddns_provider
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *DNSRateBudgetMutation) ClearEdge(name string) error {
+	switch name {
+	case dnsratebudget.EdgeDNSProvider:
+		m.ClearDNSProvider()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSRateBudget unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *DNSRateBudgetMutation) ResetEdge(name string) error {
+	switch name {
+	case dnsratebudget.EdgeDNSProvider:
+		m.ResetDNSProvider()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSRateBudget edge %s", name)
 }
 
 // DNSRecordMutation represents an operation that mutates the DNSRecord nodes in the graph.

@@ -297,6 +297,18 @@ func (f DNSProviderFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DNSProviderMutation", m)
 }
 
+// The DNSRateBudgetFunc type is an adapter to allow the use of ordinary
+// function as DNSRateBudget mutator.
+type DNSRateBudgetFunc func(context.Context, *ent.DNSRateBudgetMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f DNSRateBudgetFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.DNSRateBudgetMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DNSRateBudgetMutation", m)
+}
+
 // The DNSRecordFunc type is an adapter to allow the use of ordinary
 // function as DNSRecord mutator.
 type DNSRecordFunc func(context.Context, *ent.DNSRecordMutation) (ent.Value, error)

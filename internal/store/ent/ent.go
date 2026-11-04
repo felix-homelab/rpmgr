@@ -37,6 +37,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsnamestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsratebudget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -170,6 +171,7 @@ func checkColumn(t, c string) error {
 			dnsname.Table:            dnsname.ValidColumn,
 			dnsnamestatus.Table:      dnsnamestatus.ValidColumn,
 			dnsprovider.Table:        dnsprovider.ValidColumn,
+			dnsratebudget.Table:      dnsratebudget.ValidColumn,
 			dnsrecord.Table:          dnsrecord.ValidColumn,
 			dnszone.Table:            dnszone.ValidColumn,
 			datasession.Table:        datasession.ValidColumn,

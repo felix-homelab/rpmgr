@@ -78,6 +78,9 @@ type DNSNameStatus func(*sql.Selector)
 // DNSProvider is the predicate function for dnsprovider builders.
 type DNSProvider func(*sql.Selector)
 
+// DNSRateBudget is the predicate function for dnsratebudget builders.
+type DNSRateBudget func(*sql.Selector)
+
 // DNSRecord is the predicate function for dnsrecord builders.
 type DNSRecord func(*sql.Selector)
 
