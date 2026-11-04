@@ -566,6 +566,9 @@ func (r *Routes) GetRoute(ctx context.Context, req *connect.Request[rpmgrv1.GetR
 		return nil, storeError(err)
 	}
 	out.Status = st.of(row)
+	if err := fillDNSStatus(ctx, c, row.OrgID, []*rpmgrv1.Route{out}); err != nil {
+		return nil, storeError(err)
+	}
 	return connect.NewResponse(&rpmgrv1.GetRouteResponse{Route: out}), nil
 }
 
@@ -608,6 +611,9 @@ func (r *Routes) ListRoutes(ctx context.Context, req *connect.Request[rpmgrv1.Li
 		}
 		rt.Status = st.of(row)
 		out.Routes = append(out.Routes, rt)
+	}
+	if err := fillDNSStatus(ctx, c, m.GetOrgId(), out.Routes); err != nil {
+		return nil, storeError(err)
 	}
 	return connect.NewResponse(out), nil
 }
