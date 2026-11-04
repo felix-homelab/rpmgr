@@ -140,6 +140,13 @@ message Route {
   repeated HostnameDnsStatus dns_status = 32;  // Phase 2, output only; per hostname
 }
 
+message HostnameDnsStatus {            // Phase 2, output only
+  string hostname = 1;
+  string status = 2;                   // not_managed, pending, published, conflict, ambiguous, held, error, rate_limited (15-dns)
+  string reason = 3;                   // why a name publishes nothing, or the provider's refusal; may be empty
+  repeated string records = 4;         // what is published for the name, as "TYPE content"
+}
+
 message HTTPRouteSpec {
   repeated string hostnames = 1;       // 1 to 100
   string path_prefix = 2;              // longest prefix wins among routes sharing a hostname

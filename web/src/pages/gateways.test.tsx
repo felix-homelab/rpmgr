@@ -5,7 +5,7 @@ import { Code } from "@connectrpc/connect";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  GatewayGroupSchema, GatewayService, type CreateGatewayGroupRequest, type UpdateGatewayGroupRequest,
+  DnsTargetSchema, GatewayGroupSchema, GatewayService, type CreateGatewayGroupRequest, type UpdateGatewayGroupRequest,
 } from "@/gen/rpmgr/v1/gateway_pb";
 import { ManifestService, type ExportManifestsRequest } from "@/gen/rpmgr/v1/manifest_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
@@ -103,7 +103,7 @@ describe("Gateways", () => {
     const want = clone(GatewayGroupSchema, eu);
     want.trustedProxyCidrs = ["10.0.0.0/8", "192.168.0.0/16"];
     expect(equals(GatewayGroupSchema, updates[0]!.gatewayGroup!, want)).toBe(true);
-    expect([updates[0]!.updateMask?.paths, updates[0]!.etag]).toEqual([["name", "region", "public_hostnames", "trusted_proxy_cidrs"], "2"]);
+    expect([updates[0]!.updateMask?.paths, updates[0]!.etag]).toEqual([["name", "region", "public_hostnames", "trusted_proxy_cidrs", "dns_target"], "2"]);
   });
 
   it.each([
@@ -128,5 +128,74 @@ describe("Gateways", () => {
     fireEvent.click(form.getByRole("button", { name: "Save" }));
     expect((await form.findByRole("alert")).textContent).toBe(text);
     expect(updates.map((u) => u.etag)).toEqual(["2"]);
+  });
+});
+
+describe("Gateway group DNS target", () => {
+  it("sets a CNAME as the target of a new group", async () => {
+    const { creates } = page("/gateways");
+    fireEvent.click(await screen.findByRole("button", { name: "New gateway group" }));
+    const form = within(await screen.findByRole("form", { name: "New gateway group" }));
+    expect((form.getByLabelText("None") as HTMLInputElement).checked).toBe(true);
+    fireEvent.change(form.getByLabelText("Name"), { target: { value: "ap" } });
+    fireEvent.click(form.getByLabelText("A CNAME"));
+    fireEvent.change(form.getByLabelText("CNAME"), { target: { value: " lb.example.com " } });
+    fireEvent.click(form.getByRole("button", { name: "Create the group" }));
+    await waitFor(() => expect(creates).toHaveLength(1));
+    expect(creates[0]!.gatewayGroup?.dnsTarget?.kind).toEqual({ case: "cname", value: "lb.example.com" });
+  });
+
+  it("creates a group without a target when None stays chosen", async () => {
+    const { creates } = page("/gateways");
+    fireEvent.click(await screen.findByRole("button", { name: "New gateway group" }));
+    const form = within(await screen.findByRole("form", { name: "New gateway group" }));
+    fireEvent.change(form.getByLabelText("Name"), { target: { value: "ap" } });
+    fireEvent.click(form.getByRole("button", { name: "Create the group" }));
+    await waitFor(() => expect(creates).toHaveLength(1));
+    expect(creates[0]!.gatewayGroup?.dnsTarget).toBeUndefined();
+  });
+
+  it("changes a group's target to addresses, one per line, and clears it with None", async () => {
+    const withTarget = clone(GatewayGroupSchema, eu);
+    withTarget.dnsTarget = create(DnsTargetSchema, { kind: { case: "cname", value: "lb.example.com" } });
+    const { updates } = page("/gateways/ggr_eu", [us, withTarget]);
+    const form = within(await screen.findByRole("form", { name: "Settings" }));
+    expect((form.getByLabelText("A CNAME") as HTMLInputElement).checked).toBe(true);
+    expect((form.getByLabelText("CNAME") as HTMLInputElement).value).toBe("lb.example.com");
+    fireEvent.click(form.getByLabelText("Addresses"));
+    fireEvent.change(form.getByLabelText("Addresses", { selector: "textarea" }), { target: { value: "203.0.113.5\n2001:db8::5\n" } });
+    fireEvent.click(form.getByRole("button", { name: "Save" }));
+    expect(await form.findByText("Saved.")).toBeTruthy();
+    expect(updates[0]!.gatewayGroup?.dnsTarget?.kind).toMatchObject({ case: "addresses", value: { addresses: ["203.0.113.5", "2001:db8::5"] } });
+    expect(updates[0]!.updateMask?.paths).toContain("dns_target");
+    fireEvent.click(form.getByLabelText("None"));
+    fireEvent.click(form.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updates).toHaveLength(2));
+    expect(updates[1]!.gatewayGroup?.dnsTarget).toBeUndefined();
+  });
+
+  it("refuses a CNAME or address list that is empty before sending anything", async () => {
+    const { creates } = page("/gateways");
+    fireEvent.click(await screen.findByRole("button", { name: "New gateway group" }));
+    const form = within(await screen.findByRole("form", { name: "New gateway group" }));
+    fireEvent.change(form.getByLabelText("Name"), { target: { value: "ap" } });
+    fireEvent.click(form.getByLabelText("A CNAME"));
+    fireEvent.click(form.getByRole("button", { name: "Create the group" }));
+    expect(await form.findByText("Enter the CNAME, or choose None.")).toBeTruthy();
+    fireEvent.click(form.getByLabelText("Addresses"));
+    fireEvent.click(form.getByRole("button", { name: "Create the group" }));
+    expect(await form.findByText("Enter at least one address, or choose None.")).toBeTruthy();
+    expect(creates).toHaveLength(0);
+  });
+
+  it("shows the API's refusal of a target", async () => {
+    const refusal = apiError(Code.InvalidArgument);
+    const { updates } = page("/gateways/ggr_eu", [us, eu], refusal);
+    const form = within(await screen.findByRole("form", { name: "Settings" }));
+    fireEvent.click(form.getByLabelText("A CNAME"));
+    fireEvent.change(form.getByLabelText("CNAME"), { target: { value: "_acme-challenge.example.com" } });
+    fireEvent.click(form.getByRole("button", { name: "Save" }));
+    expect(await form.findByRole("alert")).toBeTruthy();
+    expect(updates).toHaveLength(1);
   });
 });

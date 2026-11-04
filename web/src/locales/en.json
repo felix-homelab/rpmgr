@@ -1054,6 +1054,94 @@
     "lost_one": "{{count}} owned record is gone at the provider; a pass creates it again.",
     "deletePlan_one": "The job deletes {{count}} record under plan {{hash}} and nothing else."
   },
+  "dnsStatus": {
+    "title": "DNS",
+    "intro": "Whether each hostname is published at the DNS provider. It never changes the route's own status.",
+    "zones": "Open the zones.",
+    "names": "Open the DNS names.",
+    "groups": "Open the gateway groups.",
+    "label": {
+      "not_managed": "not managed",
+      "pending": "pending",
+      "published": "published",
+      "conflict": "conflict",
+      "ambiguous": "ambiguous",
+      "held": "held",
+      "error": "error",
+      "rate_limited": "rate limited"
+    },
+    "hint": {
+      "pending": "The change is committed and waits for the next DNS pass.",
+      "conflict": "A record that rpmgr does not own occupies this name. Adopt it on the zone page, or remove it at the provider.",
+      "ambiguous": "Two gateway groups claim this name and no DNS name decides. Create a DNS name for it that points at the group you want.",
+      "held": "The zone is held, or a gate holds this name. Approve the zone's plan, or open the gate on the zone page.",
+      "error": "The provider refused the change. Fix the cause, such as the token's permission for the zone; the next pass tries again.",
+      "rate_limited": "The provider limits requests. The DNS job tries again by itself."
+    },
+    "reason": {
+      "no_target": "The gateway group has no DNS target, so nothing is published. Set one on the group.",
+      "reserved": "This name is reserved, for instance a name of the controller or of a gateway, and is never published.",
+      "not_verified": "No verified domain of the org covers this name. Verify the domain first."
+    }
+  },
+  "dnsProblem": {
+    "conflict": "has a DNS conflict",
+    "ambiguous": "is claimed by two gateway groups",
+    "error": "was refused by the DNS provider",
+    "rate_limited": "is rate limited by the provider",
+    "drifted": "keeps being changed at the provider",
+    "held": "is held",
+    "permission_denied": "is refused by the provider",
+    "hint": {
+      "held": "Review the zone's plan and approve it to publish.",
+      "rate_limited": "The provider limits requests. The DNS job tries again by itself.",
+      "permission_denied": "Give the token the zone's DNS edit permission at the provider, or replace the token.",
+      "drifted": "Someone else changes this record, so rpmgr no longer corrects it. Find out who, or release the record on the zone page. {{reason}}"
+    }
+  },
+  "dnsNames": {
+    "title": "DNS names",
+    "intro": "Names, and wildcards, that point at a gateway group without a route. A name lies under a verified domain of the org.",
+    "names": "Names",
+    "add": "Add a name",
+    "addTitle": "Add a DNS name",
+    "none": "The org has no DNS name.",
+    "wildcard": "wildcard",
+    "pointsAt": "points at {{group}}",
+    "defaultTtl": "TTL of the zone",
+    "ttl": "TTL {{seconds}} s",
+    "delete": "Delete…",
+    "deleteConfirm": "Delete it",
+    "askDelete": "Delete {{name}}? The records published for it go with it.",
+    "fqdn": "Name",
+    "fqdnHint": "A host name, or a wildcard such as *.example.com, which needs a verified domain with the wildcard.",
+    "group": "Gateway group",
+    "chooseGroup": "Choose a group",
+    "ttlLabel": "TTL in seconds",
+    "ttlHint": "Empty uses the zone's TTL.",
+    "create": "Add it",
+    "problem": {
+      "empty": "Enter a name.",
+      "wildcard": "Use * only as the whole first label, as in *.example.com.",
+      "group": "Choose the gateway group the name points at.",
+      "ttl": "Use a whole number of seconds, or leave it empty."
+    }
+  },
+  "dnsTarget": {
+    "title": "DNS target",
+    "hint": "Where the DNS records of the group's names point. Without a target nothing is published for the group.",
+    "kind": {
+      "none": "None",
+      "cname": "A CNAME",
+      "addresses": "Addresses"
+    },
+    "cname": "CNAME",
+    "cnameHint": "A fully qualified name, such as lb.example.com.",
+    "addresses": "Addresses",
+    "addressesHint": "IPv4 and IPv6 addresses, one per line; each gets an A or AAAA record.",
+    "cnameNeeded": "Enter the CNAME, or choose None.",
+    "addressesNeeded": "Enter at least one address, or choose None."
+  },
   "pem": {
     "file": "Or read it from a file:",
     "fileSecret": "Or read it from a file; it stays in this page until you send it:"
@@ -1569,6 +1657,8 @@
     "expires": "expires {{when}}",
     "expired": "expired {{when}}",
     "domains": "Domains",
+    "dns": "DNS",
+    "dnsFine": "No hostname has a DNS conflict, and no zone needs attention.",
     "domainsFine": "Every domain is verified.",
     "tokens": "Your API tokens",
     "tokensFine": "None of your API tokens expires within 21 days."

@@ -1037,6 +1037,23 @@ one page, with a section list beside them that jumps to each section
 - **Route detail** shows one DNS line per hostname: `dns_status`, the published records and, for
   `http` routes, the proxy toggle. When the zone does not allow proxied names the toggle is
   disabled and says so.
+  The line appears once the route has a `dns_status`, with the hint of U4 for the status: a
+  `conflict` says to adopt the record or remove it at the provider, an `ambiguous` name links to the
+  DNS names, a `held` one to the zones and a name that is `not_managed` says why, such as a gateway
+  group without a DNS target. A status the UI does not know is shown as it is. The proxy toggle
+  follows with the proxy setting of the route itself.
+- **DNS names** (`/dns-names`, lazily loaded) lists the org's explicit names with their gateway
+  group and TTL, marks wildcards, and lets Owners and Admins add a name with a group picker (a
+  wildcard has `*` as its whole first label) and delete one after a confirmation that names it; the
+  records published for it go with it. Any member may read the list.
+- **Gateway group DNS target.** The group's settings form has a DNS target: none, a CNAME or
+  addresses, one per line. An empty CNAME or address list is refused before anything is sent; the
+  API checks the rest ([15](15-dns.md#publication-rules)).
+- **Overview.** The "Needs attention" card has a DNS area: hostnames with a `conflict`, `ambiguous`,
+  `error` or `rate_limited` status, which any member sees, and, for Owners and Admins, held zones,
+  zones whose provider rate-limits or refuses the token, and records that drifted, each with its
+  hint. An instance that serves no DNS shows nothing there. The sidebar entries come with the slice
+  that makes DNS reachable; until then the pages are reachable by their addresses only.
 
 ## Frontend architecture
 
