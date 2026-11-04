@@ -100,6 +100,25 @@ The result is shown per hostname as `dns_status`:
 `dns_status` never changes the route status, which describes whether gateways can serve the route
 ([06](06-data-model.md#desired-vs-observed-state)).
 
+### Compile result
+
+The compiler (`internal/dns/compile`) is a pure function of the sources of one zone. It lists the
+desired records and one result per name that has a source in the zone. Sources of another org, names
+outside the zone, and tcp and udp routes (which have no published hostname) leave no trace.
+
+- A name is `ok`, or it has the reason it publishes nothing: `not_managed`, `ambiguous`, `held`,
+  `no_target` (its gateway group has no DNS target), `reserved` (rule 6) or `not_verified` (no
+  verified domain of the org covers it, rule 2). `no_target`, `reserved` and `not_verified` are
+  shown as `not_managed` with their reason.
+- Records already at a name that is `not_managed`, `ambiguous`, `held`, `no_target` or `reserved`
+  stay as they are: the plan neither changes nor deletes them. A name that is `not_verified`, or has
+  no source any more, has its owned records deleted. In a `disabled` zone every name is
+  `not_managed`.
+- A route that is not `http` makes its name DNS-only, even if `http` routes on the name set
+  `dns_proxied`, because the provider would end the TLS that the route needs.
+- The result carries a warning `proxy_disagrees` for a name that keeps its published proxy state
+  (rule 7).
+
 ## Conflicts
 
 The address record set at a name — A, AAAA and CNAME — is owned as one unit.
