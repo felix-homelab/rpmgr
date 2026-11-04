@@ -639,6 +639,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			dnsrecord.FieldAdoptedAt:        {Type: field.TypeTime, Column: dnsrecord.FieldAdoptedAt},
 			dnsrecord.FieldLastSyncedAt:     {Type: field.TypeTime, Column: dnsrecord.FieldLastSyncedAt},
 			dnsrecord.FieldCorrectedAt:      {Type: field.TypeTime, Column: dnsrecord.FieldCorrectedAt},
+			dnsrecord.FieldReleaseRequested: {Type: field.TypeString, Column: dnsrecord.FieldReleaseRequested},
 		},
 	}
 	graph.Nodes[26] = &sqlgraph.Node{
@@ -4544,6 +4545,11 @@ func (f *DNSRecordFilter) WhereLastSyncedAt(p entql.TimeP) {
 // WhereCorrectedAt applies the entql time.Time predicate on the corrected_at field.
 func (f *DNSRecordFilter) WhereCorrectedAt(p entql.TimeP) {
 	f.Where(p.Field(dnsrecord.FieldCorrectedAt))
+}
+
+// WhereReleaseRequested applies the entql string predicate on the release_requested field.
+func (f *DNSRecordFilter) WhereReleaseRequested(p entql.StringP) {
+	f.Where(p.Field(dnsrecord.FieldReleaseRequested))
 }
 
 // WhereHasZone applies a predicate to check if query has an edge zone.

@@ -43,6 +43,8 @@ const (
 	FieldLastSyncedAt = "last_synced_at"
 	// FieldCorrectedAt holds the string denoting the corrected_at field in the database.
 	FieldCorrectedAt = "corrected_at"
+	// FieldReleaseRequested holds the string denoting the release_requested field in the database.
+	FieldReleaseRequested = "release_requested"
 	// EdgeZone holds the string denoting the zone edge name in mutations.
 	EdgeZone = "zone"
 	// Table holds the table name of the dnsrecord in the database.
@@ -73,6 +75,7 @@ var Columns = []string{
 	FieldAdoptedAt,
 	FieldLastSyncedAt,
 	FieldCorrectedAt,
+	FieldReleaseRequested,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -116,6 +119,10 @@ var (
 	DefaultAdoptedFrom string
 	// AdoptedFromValidator is a validator for the "adopted_from" field. It is called by the builders before save.
 	AdoptedFromValidator func(string) error
+	// DefaultReleaseRequested holds the default value on creation for the "release_requested" field.
+	DefaultReleaseRequested string
+	// ReleaseRequestedValidator is a validator for the "release_requested" field. It is called by the builders before save.
+	ReleaseRequestedValidator func(string) error
 	// DefaultID holds the default value on creation for the "id" field.
 	DefaultID func() string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -253,6 +260,11 @@ func ByLastSyncedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByCorrectedAt orders the results by the corrected_at field.
 func ByCorrectedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCorrectedAt, opts...).ToFunc()
+}
+
+// ByReleaseRequested orders the results by the release_requested field.
+func ByReleaseRequested(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReleaseRequested, opts...).ToFunc()
 }
 
 // ByZoneField orders the results by zone field.

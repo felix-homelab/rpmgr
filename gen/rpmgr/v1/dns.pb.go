@@ -3753,7 +3753,7 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\x11DeleteDnsProvider\x12\".rpmgr.v1.DeleteDnsProviderRequest\x1a#.rpmgr.v1.DeleteDnsProviderResponse\"-\x8a\xb5\x18)\n" +
 	"\x14infrastructure.write\x12\x0fdns_provider_id\x18\x01\x12\x8c\x01\n" +
 	"\x11ListProviderZones\x12\".rpmgr.v1.ListProviderZonesRequest\x1a#.rpmgr.v1.ListProviderZonesResponse\".\x8a\xb5\x18'\n" +
-	"\x14infrastructure.write\x12\x0fdns_provider_id\x90\x02\x012\x8d\v\n" +
+	"\x14infrastructure.write\x12\x0fdns_provider_id\x90\x02\x012\x91\v\n" +
 	"\x0eDnsZoneService\x12t\n" +
 	"\n" +
 	"ImportZone\x12\x1b.rpmgr.v1.ImportZoneRequest\x1a\x1c.rpmgr.v1.ImportZoneResponse\"+\x8a\xb5\x18'\n" +
@@ -3773,11 +3773,11 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\bSyncZone\x12\x19.rpmgr.v1.SyncZoneRequest\x1a\x1a.rpmgr.v1.SyncZoneResponse\"'\x8a\xb5\x18#\n" +
 	"\x14infrastructure.write\x12\vdns_zone_id\x12v\n" +
 	"\x0fListZoneRecords\x12 .rpmgr.v1.ListZoneRecordsRequest\x1a!.rpmgr.v1.ListZoneRecordsResponse\"\x1e\x8a\xb5\x18\x17\n" +
-	"\borg.read\x12\vdns_zone_id\x90\x02\x01\x12v\n" +
-	"\fAdoptRecords\x12\x1d.rpmgr.v1.AdoptRecordsRequest\x1a\x1e.rpmgr.v1.AdoptRecordsResponse\"'\x8a\xb5\x18#\n" +
-	"\x14infrastructure.write\x12\vdns_zone_id\x12y\n" +
-	"\rReleaseRecord\x12\x1e.rpmgr.v1.ReleaseRecordRequest\x1a\x1f.rpmgr.v1.ReleaseRecordResponse\"'\x8a\xb5\x18#\n" +
-	"\x14infrastructure.write\x12\vdns_zone_id\x12r\n" +
+	"\borg.read\x12\vdns_zone_id\x90\x02\x01\x12x\n" +
+	"\fAdoptRecords\x12\x1d.rpmgr.v1.AdoptRecordsRequest\x1a\x1e.rpmgr.v1.AdoptRecordsResponse\")\x8a\xb5\x18%\n" +
+	"\x14infrastructure.write\x12\vdns_zone_id\x18\x01\x12{\n" +
+	"\rReleaseRecord\x12\x1e.rpmgr.v1.ReleaseRecordRequest\x1a\x1f.rpmgr.v1.ReleaseRecordResponse\")\x8a\xb5\x18%\n" +
+	"\x14infrastructure.write\x12\vdns_zone_id\x18\x01\x12r\n" +
 	"\n" +
 	"EnableZone\x12\x1b.rpmgr.v1.EnableZoneRequest\x1a\x1c.rpmgr.v1.EnableZoneResponse\")\x8a\xb5\x18%\n" +
 	"\x14infrastructure.write\x12\vdns_zone_id\x18\x01\x12\x81\x01\n" +

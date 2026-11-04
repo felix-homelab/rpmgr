@@ -20461,6 +20461,7 @@ type DNSRecordMutation struct {
 	adopted_at         *time.Time
 	last_synced_at     *time.Time
 	corrected_at       *time.Time
+	release_requested  *string
 	clearedFields      map[string]struct{}
 	zone               *string
 	clearedzone        bool
@@ -21149,6 +21150,42 @@ func (m *DNSRecordMutation) ResetCorrectedAt() {
 	delete(m.clearedFields, dnsrecord.FieldCorrectedAt)
 }
 
+// SetReleaseRequested sets the "release_requested" field.
+func (m *DNSRecordMutation) SetReleaseRequested(s string) {
+	m.release_requested = &s
+}
+
+// ReleaseRequested returns the value of the "release_requested" field in the mutation.
+func (m *DNSRecordMutation) ReleaseRequested() (r string, exists bool) {
+	v := m.release_requested
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReleaseRequested returns the old "release_requested" field's value of the DNSRecord entity.
+// If the DNSRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSRecordMutation) OldReleaseRequested(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReleaseRequested is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReleaseRequested requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReleaseRequested: %w", err)
+	}
+	return oldValue.ReleaseRequested, nil
+}
+
+// ResetReleaseRequested resets all changes to the "release_requested" field.
+func (m *DNSRecordMutation) ResetReleaseRequested() {
+	m.release_requested = nil
+}
+
 // SetZoneID sets the "zone" edge to the DNSZone entity by id.
 func (m *DNSRecordMutation) SetZoneID(id string) {
 	m.zone = &id
@@ -21223,7 +21260,7 @@ func (m *DNSRecordMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DNSRecordMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 15)
 	if m.org_id != nil {
 		fields = append(fields, dnsrecord.FieldOrgID)
 	}
@@ -21266,6 +21303,9 @@ func (m *DNSRecordMutation) Fields() []string {
 	if m.corrected_at != nil {
 		fields = append(fields, dnsrecord.FieldCorrectedAt)
 	}
+	if m.release_requested != nil {
+		fields = append(fields, dnsrecord.FieldReleaseRequested)
+	}
 	return fields
 }
 
@@ -21302,6 +21342,8 @@ func (m *DNSRecordMutation) Field(name string) (ent.Value, bool) {
 		return m.LastSyncedAt()
 	case dnsrecord.FieldCorrectedAt:
 		return m.CorrectedAt()
+	case dnsrecord.FieldReleaseRequested:
+		return m.ReleaseRequested()
 	}
 	return nil, false
 }
@@ -21339,6 +21381,8 @@ func (m *DNSRecordMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldLastSyncedAt(ctx)
 	case dnsrecord.FieldCorrectedAt:
 		return m.OldCorrectedAt(ctx)
+	case dnsrecord.FieldReleaseRequested:
+		return m.OldReleaseRequested(ctx)
 	}
 	return nil, fmt.Errorf("unknown DNSRecord field %s", name)
 }
@@ -21445,6 +21489,13 @@ func (m *DNSRecordMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCorrectedAt(v)
+		return nil
+	case dnsrecord.FieldReleaseRequested:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReleaseRequested(v)
 		return nil
 	}
 	return fmt.Errorf("unknown DNSRecord field %s", name)
@@ -21578,6 +21629,9 @@ func (m *DNSRecordMutation) ResetField(name string) error {
 		return nil
 	case dnsrecord.FieldCorrectedAt:
 		m.ResetCorrectedAt()
+		return nil
+	case dnsrecord.FieldReleaseRequested:
+		m.ResetReleaseRequested()
 		return nil
 	}
 	return fmt.Errorf("unknown DNSRecord field %s", name)
