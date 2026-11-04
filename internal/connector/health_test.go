@@ -121,12 +121,14 @@ func TestHealthCheck_ObeysLocalPolicy(t *testing.T) {
 	if d := e.lastOf("rt_port").GetDetail(); !strings.Contains(d, strconv.Itoa(int(blocked.port()))) {
 		t.Errorf("the blocked check port's detail %q", d)
 	}
-	// The controller hears of each target: blocked, with the policy's detail, not unhealthy.
+	// The controller hears of each target: blocked, with the policy's detail, not unhealthy. The
+	// change it is sent can trail the status by a round, so both are awaited.
 	for _, id := range []string{byAddress.ID, deniedName.ID} {
-		if st := e.statusOf(id); st.GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY || st.GetDetail() == "" ||
-			!proto.Equal(e.lastTarget(id), st) {
-			t.Errorf("target %s: status %v, last change %v", id, st, e.lastTarget(id))
-		}
+		eventually(t, "target "+id+" was not reported blocked by the local policy", func() bool {
+			st := e.statusOf(id)
+			return st.GetReason() == agentv1.NotReadyReason_NOT_READY_REASON_BLOCKED_BY_LOCAL_POLICY && st.GetDetail() != "" &&
+				proto.Equal(e.lastTarget(id), st)
+		})
 	}
 	time.Sleep(100 * time.Millisecond) // more rounds
 	if n := blocked.conns.Load() + denied.conns.Load(); n != 0 {
