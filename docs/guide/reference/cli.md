@@ -91,7 +91,7 @@ rpmgr <command>
 | [`rpmgr verify`](#rpmgr-verify) | Check a proof now |
 | [`rpmgr check`](#rpmgr-check) | Check for new releases now |
 | [`rpmgr trust`](#rpmgr-trust) | Trust something without a proof |
-| [`rpmgr approve`](#rpmgr-approve) | Approve a domain claim that is held for approval |
+| [`rpmgr approve`](#rpmgr-approve) | Approve a domain claim that is held for approval, or the plan of a held DNS zone |
 | [`rpmgr upload`](#rpmgr-upload) | Upload a file to the controller |
 | [`rpmgr renew`](#rpmgr-renew) | Renew a certificate now |
 | [`rpmgr remove`](#rpmgr-remove) | Remove a member from the org, a user's second factor, a gateway group's own page, or a managed DNS zone |
@@ -105,7 +105,6 @@ rpmgr <command>
 | [`rpmgr rotate`](#rpmgr-rotate) | Replace a DNS provider's token |
 | [`rpmgr import`](#rpmgr-import) | Import a DNS provider's zone as managed |
 | [`rpmgr plan`](#rpmgr-plan) | Show the plan of a managed DNS zone |
-| [`rpmgr approve`](#rpmgr-approve) | Approve the plan of a held DNS zone |
 | [`rpmgr sync`](#rpmgr-sync) | Ask for a full pass over a DNS zone |
 | [`rpmgr adopt`](#rpmgr-adopt) | Adopt foreign DNS records at names the org publishes |
 | [`rpmgr disown`](#rpmgr-disown) | Release an owned DNS record, so that rpmgr never changes it again |
@@ -1922,7 +1921,7 @@ rpmgr trust domain <id>
 
 ## rpmgr approve
 
-Approve a domain claim that is held for approval.
+Approve a domain claim that is held for approval, or the plan of a held DNS zone.
 
 ```text
 rpmgr approve <command>
@@ -2361,39 +2360,6 @@ rpmgr plan zone [flags] <id or name>
 |---|---|---|
 | `--delete-records` |  | show the plan of removing the zone with its records instead: it deletes every record rpmgr owns in it |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
-
-## rpmgr approve
-
-Approve the plan of a held DNS zone.
-
-```text
-rpmgr approve <command>
-```
-
-| Command | What it does |
-|---|---|
-| [`rpmgr approve domain`](#rpmgr-approve-domain) | Approve a domain claim held because another org's domain is nested with it (Instance Admin) |
-| [`rpmgr approve zone`](#rpmgr-approve-zone) | Approve the plan of a held zone, by the hash you read, with a step-up; the next pass applies that plan and no other |
-
-## rpmgr approve domain
-
-Approve a domain claim held because another org's domain is nested with it (Instance Admin).
-
-```text
-rpmgr approve domain <id>
-```
-
-## rpmgr approve zone
-
-Approve the plan of a held zone, by the hash you read, with a step-up; the next pass applies that plan and no other.
-
-```text
-rpmgr approve zone [flags] --plan-hash <hash> <id or name>
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--plan-hash string` |  | the hash of the plan you read with rpmgr plan zone (required) |
 
 ## rpmgr sync
 
