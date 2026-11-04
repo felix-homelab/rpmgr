@@ -38,7 +38,9 @@ removed by rpmgr. The same credential lets ACME use DNS-01.
 
 1. **Same org.** A record is published only in a managed zone of the same org as its source. The
    one exception: names under the instance base domain that the Instance Admin has delegated to an
-   org are published in the system org's zone ([D23](14-open-decisions.md#tenancy-and-data)).
+   org are published in the system org's zone ([D23](14-open-decisions.md#tenancy-and-data)). The
+   base domain is the instance setting `base_domain` ([Base domain](#base-domain)). DNS-01 follows
+   the same rule ([ACME DNS-01](#acme-dns-01)).
 2. **Verified coverage.** The name must lie under a verified domain of that org
    ([04](04-security.md#route-and-hostname-ownership)). The exception is the challenge TXT of a
    **pending** claim of the same org: it is published while the claim is pending and deleted once
@@ -176,7 +178,11 @@ sequenceDiagram
 - **One writer.** The job runs under the `dns` lease with a fencing token
   ([06](06-data-model.md#system)). The fencing token protects database commits, not Cloudflare. So
   the job checks right before every batch that its lease is valid for at least the safety margin.
-  All writes are idempotent, and the next pass converges.
+  For that the lease handle carries its expiry: the time the lease ends, set when the lease is
+  taken and moved on at every renewal, and read from the database row `leases.expires_at`
+  ([06](06-data-model.md#system)). A handle whose renewal failed keeps its old expiry, so it runs
+  out and the job sends no batch ([D164](14-open-decisions.md#engineering)). All writes are
+  idempotent, and the next pass converges.
 - **Type changes** (CNAME ↔ A/AAAA, e.g. after the DNS target changed) are a delete and a create
   in the same batch.
 
@@ -192,9 +198,12 @@ sequenceDiagram
   dashboard and API together; a 429 blocks all API calls of that user for the next 5 minutes, and
   the response carries `retry-after` [F cf:fundamentals/api/reference/limits]. rpmgr cannot see
   which Cloudflare user a token belongs to [V VB-09], so it budgets per provider well below the
-  limit, honours `retry-after`, and marks the zone `rate_limited` meanwhile. certmagic's DNS-01
-  writes use the same budget. [R] Use an account-owned token, or a dedicated Cloudflare user, for
-  rpmgr, so a burst never locks a human out of the dashboard.
+  limit, honours `retry-after`, and marks the zone `rate_limited` meanwhile. The budget is one
+  database row per provider, holding the request window and the `retry-after` block. The DNS job
+  and the DNS-01 adapter take each request from it in a transaction, on whichever replica they
+  run, so replicas never add up past it. DNS-01 may use at most half of the window
+  ([D164](14-open-decisions.md#engineering)). [R] Use an account-owned token, or a dedicated
+  Cloudflare user, for rpmgr, so a burst never locks a human out of the dashboard.
 
 ### Fail-static
 
@@ -270,6 +279,20 @@ Permission errors are per zone, because one token can have different rights per 
 verify call does not list permissions: a zone where the provider refuses access shows
 `permission_denied`.
 
+## Base domain
+
+The instance setting `base_domain` names the domain under which the Instance Admin hands out
+names to orgs ([D165](14-open-decisions.md#engineering)).
+
+- Only the Instance Admin changes it, with a step-up; the change is audited.
+- It must be a domain of the system org that is verified or marked trusted
+  ([04](04-security.md#route-and-hostname-ownership)); anything else is refused.
+- The Instance Admin delegates `<org-slug>.<base domain>` to an org as a claim with the method
+  `delegated` ([D23](14-open-decisions.md#tenancy-and-data)). The claim keeps its FQDN: renaming
+  the org's slug later changes neither the claim nor the names and certificates under it.
+- Records of delegated names are published in the system org's managed zone, by the same job and
+  rules as every other zone (publication rule 1).
+
 ## Domain verification
 
 - **Authoritative answers.** The `_rpmgr-challenge` TXT record is queried at the zone's
@@ -298,9 +321,10 @@ verify call does not list permissions: a zone where the provider refuses access 
 
 - Hostnames in managed zones get their certificates via DNS-01. Others keep HTTP-01 and
   TLS-ALPN-01 ([04](04-security.md#controller-certificates)).
-- certmagic's DNS-01 solver takes a provider implementing libdns `RecordAppender` and
-  `RecordDeleter` [F certmagic:solvers.go:589-592]. rpmgr implements both in an adapter that finds
-  the managed zone for the name and uses that zone's provider, rate budget and marker.
+- certmagic does not write DNS records itself. Its DNS-01 solver calls a provider that implements
+  libdns `RecordAppender` and `RecordDeleter` [F certmagic:solvers.go:589-592]. rpmgr implements
+  both in an adapter that finds the managed zone for the name and uses that zone's provider and
+  rate budget; the marker is the adapter's.
 - Enabling DNS-01 on a certmagic issuer disables its other challenge types
   [F certmagic:README.md:408-422]. rpmgr therefore runs two certmagic configurations on the same
   storage and picks one per name. One certificate cache serves both and picks the configuration
@@ -309,6 +333,27 @@ verify call does not list permissions: a zone where the provider refuses access 
 - This gives wildcard certificates, and certificates issued before DNS points at a gateway, which
   the cutover needs ([11](11-migration.md#cutover-plan)).
 - The DNS job ignores `_acme-challenge.*` names.
+
+Rules of the adapter ([D166](14-open-decisions.md#engineering),
+[D167](14-open-decisions.md#engineering)):
+
+| Case | Rule |
+|---|---|
+| Zone `active` | The challenge TXT is written |
+| Zone `held` | Written too. A hold stops the DNS job's records for routes and names, not the one-off challenge of a certificate; the TXT is deleted after the order and changes no name |
+| Zone `disabled` | Refused; the certificate shows `failed` with the reason. A disabled zone may be used by another installation of the trust domain |
+| Zone of another org | Never used. The hostname must lie under a verified domain of the route's org, and the zone must be that org's, or the system org's for a delegated name (publication rule 1) |
+| Wildcard hostname, `acme` mode | Accepted only in a managed zone, whatever its `allow_wildcards`: that gate governs published records, not certificates. Outside a managed zone Phase 1's refusal stands ([04](04-security.md#controller-certificates)) |
+| Zone removed or provider disconnected | New and renewing orders of its names fail with the reason; the certificate in use keeps serving |
+| The controller's own certificate | Stays on HTTP-01 and TLS-ALPN-01, never DNS-01, so the controller's name does not depend on a provider token |
+
+- **Marker.** The challenge TXT at `_acme-challenge.<name>` carries the comment
+  `rpmgr <trust-domain> acme`. The adapter deletes a record only if its type, name, content and
+  comment all equal what it wrote. A TXT of a `tls_passthrough` backend that runs its own DNS-01,
+  or one added by hand, is never deleted. The record has no ledger row; it lives for one order,
+  and the next order of the name removes a leftover of a crash by the same exact match.
+- **Budget.** Its requests come from the provider's budget row, at most half of the window
+  ([Batches, failures and the rate budget](#batches-failures-and-the-rate-budget)).
 
 ## Proxied HTTP routes
 

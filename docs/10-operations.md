@@ -650,7 +650,7 @@ the boot file.
 
 | Scope | Examples |
 |---|---|
-| Instance (Instance Admin) | Default data-session transport (`auto`, `quic`, `h2`, `wss`; shipped `auto`, [03](03-connections.md#transport-selection); [R] pin `h2` on routes or connectors that carry bulk transfers over high-delay paths, where it carried single streams faster in the Phase 1 measurements, [ADR-0004](adr/0004-quic-default-transport-policy.md#phase-1-measurements)), public URL aliases (each alias is also accepted as `Origin` by the CSRF check, [04](04-security.md#human-authentication-and-sessions)), ACME account, Cloudflare IP ranges (refreshed automatically), SMTP (optional: the relay's `host:port`, sender address, user name, and STARTTLS or TLS from the start, as the controller sends no mail in plain text; the password is write-only and kept under the KEK), retention (audit entries: 365 days by default, 30 to 3650 days; metric rollups), external audit sink (Phase 2), revocation-log sink ([Backup and restore](#backup-and-restore)), controller endpoints advertised to agents (each `https://<host>[:<port>]`, tried in order; agents get them at enrollment and in every snapshot, and the public URL alone while none are listed, [03](03-connections.md#reaching-a-private-controller)). **PKI** page: leaf-certificate lifetime and grace period ([D8](14-open-decisions.md#security-defaults), values and ranges in [04](04-security.md#leaf-certificates)), password-hash profile. **Updates** page: release check (on by default, [D4](14-open-decisions.md#product-and-project)), update channel (`stable` or `prerelease`), manifest upload for air-gapped installs, rollout policy (Phase 2); Phase 2: the audit sinks ([04](04-security.md#audit-log)) and the private ranges webhook receivers may use (`webhook_private_ranges`, a list of at most 32 prefixes such as `10.0.0.0/8`, none by default; [04](04-security.md#webhooks-and-the-egress-guard-phase-2)) |
+| Instance (Instance Admin) | Default data-session transport (`auto`, `quic`, `h2`, `wss`; shipped `auto`, [03](03-connections.md#transport-selection); [R] pin `h2` on routes or connectors that carry bulk transfers over high-delay paths, where it carried single streams faster in the Phase 1 measurements, [ADR-0004](adr/0004-quic-default-transport-policy.md#phase-1-measurements)), public URL aliases (each alias is also accepted as `Origin` by the CSRF check, [04](04-security.md#human-authentication-and-sessions)), ACME account, base domain (with DNS automation, a verified or trusted domain of the system org, step-up, [15](15-dns.md#base-domain)), Cloudflare IP ranges (refreshed automatically), SMTP (optional: the relay's `host:port`, sender address, user name, and STARTTLS or TLS from the start, as the controller sends no mail in plain text; the password is write-only and kept under the KEK), retention (audit entries: 365 days by default, 30 to 3650 days; metric rollups), external audit sink (Phase 2), revocation-log sink ([Backup and restore](#backup-and-restore)), controller endpoints advertised to agents (each `https://<host>[:<port>]`, tried in order; agents get them at enrollment and in every snapshot, and the public URL alone while none are listed, [03](03-connections.md#reaching-a-private-controller)). **PKI** page: leaf-certificate lifetime and grace period ([D8](14-open-decisions.md#security-defaults), values and ranges in [04](04-security.md#leaf-certificates)), password-hash profile. **Updates** page: release check (on by default, [D4](14-open-decisions.md#product-and-project)), update channel (`stable` or `prerelease`), manifest upload for air-gapped installs, rollout policy (Phase 2); Phase 2: the audit sinks ([04](04-security.md#audit-log)) and the private ranges webhook receivers may use (`webhook_private_ranges`, a list of at most 32 prefixes such as `10.0.0.0/8`, none by default; [04](04-security.md#webhooks-and-the-egress-guard-phase-2)) |
 | Org (Owner) | MFA requirement, OIDC providers and group→role mapping, default gateway group, Operator may enroll connectors, branding ([04](04-security.md#roles)); Phase 2: alert e-mails on or off (`alert_email`, on) and the alert types the org gets (`alert_types`, all) ([D139](14-open-decisions.md#engineering)) |
 | Gateway group (Admin) | Port pools, trusted-proxy CIDRs, DNS target for managed records, default TLS options, per-route limit defaults |
 | DNS (Owner/Admin; Instance Admin for the system org) | DNS providers and their tokens, managed zones and their gates. These are resources with their own pages, not settings ([15](15-dns.md)) |
@@ -844,7 +844,8 @@ service that still runs the previous binary, with the command that restarts it.
     Admin approves the zone's plan, which shows records created or deleted since the backup
     ([15](15-dns.md#held-zones-and-plan-approval)). `rpmgr restore --dns-disabled` disables DNS
     automation entirely, for a copy restored into a test environment that must never touch
-    production DNS.
+    production DNS; DNS-01 refuses a disabled zone as well, so the copy orders no certificate
+    through production's provider ([D166](14-open-decisions.md#engineering)).
 - **Fail closed** only when the sink's hash chain is broken, or a replica that reported an unshipped
   backlog has an unreachable local log. Without a sink, a single node's whole log is not off the
   host, so a restore without that log fails closed too; so does a log entry of a kind the restoring
@@ -934,8 +935,10 @@ service that still runs the previous binary, with the command that restarts it.
 - **DNS job** (Phase 2): configuration transactions that touch DNS sources send `dns_dirty` with the
   zone ID over `LISTEN/NOTIFY` to the replica holding the `dns` lease; a replica that takes over the
   lease starts with a full pass. The fencing token cannot stop a call to the provider, so the job
-  checks its lease before every batch. DNS-01 writes come from the ACME lease holder and share the
-  provider's rate budget ([15](15-dns.md#the-dns-job)).
+  checks its lease before every batch, against the expiry its lease handle carries. DNS-01 writes
+  come from the ACME lease holder and share the provider's rate budget with the DNS job: one
+  database row per provider, so the sum over replicas stays within it
+  ([15](15-dns.md#the-dns-job), [D164](14-open-decisions.md#engineering)).
 - **Load balancer**: layer-4 TLS passthrough for at least the agent hostnames `controller.<td>`
   and `reauth.controller.<td>`, because mutual TLS terminates at the controller. [R] Pass all of 443 through at
   layer 4 and let the controller terminate the UI as well; health checks use `/readyz` on a private
@@ -1010,6 +1013,8 @@ gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection))
 | `rpmgr_dns_records{zone,state}` | gauge | controller | 2 | Owned records per ledger state |
 | `rpmgr_dns_provider_requests_total{provider,code}` | counter | controller | 2 | Provider API calls by HTTP status |
 | `rpmgr_dns_provider_token_expiry_timestamp_seconds{provider}` | gauge | controller | 2 | Expiry of the provider's token, if it has one |
+| `rpmgr_dns_rate_budget_used{provider}` | gauge | controller | 2 | Requests taken from the provider's shared budget in the current window, by the DNS job and DNS-01 together ([15](15-dns.md#batches-failures-and-the-rate-budget)) |
+| `rpmgr_dns_rate_blocked_seconds{provider}` | gauge | controller | 2 | Seconds left of a `retry-after` block; 0 when none |
 
 ### Traces
 
@@ -1332,8 +1337,9 @@ Each runbook: **symptoms → steps → done when**.
 - **When**: many routes under one domain, or a CA limit on new certificates per domain is near
   (Let's Encrypt: 50 in 7 days for a registered domain [F le:docs/rate-limits]). Every hostname
   of a route in `acme` mode has a certificate of its own, so each new hostname orders one; ACME
-  wildcard certificates need DNS-01, which comes with DNS automation in Phase 2
-  ([15](15-dns.md#acme-dns-01)).
+  wildcard certificates need DNS-01, which comes with DNS automation in Phase 2: in a managed
+  zone a wildcard hostname gets its certificate that way, in `acme` mode, whatever the zone's
+  `allow_wildcards` ([15](15-dns.md#acme-dns-01)).
 - **Steps**:
   1. Obtain one certificate for `example.com` and `*.example.com` outside rpmgr, for example with
      certbot and the DNS plugin of the domain's DNS host.
