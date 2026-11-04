@@ -4,6 +4,7 @@ package controller_test
 
 import (
 	"context"
+	"github.com/felix-homelab/rpmgr/internal/events"
 	"os"
 	"path/filepath"
 
@@ -292,5 +293,155 @@ func TestKEK_RotateKeepsChatURLDeliverable(t *testing.T) {
 	}
 	if _, err := s1.Open(own, *row.URLEnc); err == nil {
 		t.Error("the URL still opens under the old KEK")
+	}
+}
+
+// alertEvent writes the event of an alert of kind firing or resolving, as the alert job does.
+func (e *hookEnv) alertEvent(org, typ, subject string) {
+	e.t.Helper()
+	err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+		_, err := events.Add(e.sys, tx, events.Event{OrgID: org, Type: typ, SubjectType: "agent", SubjectID: subject, SubjectName: subject,
+			Summary: "agent_offline: Agent offline, " + subject})
+		return err
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	time.Sleep(2 * time.Millisecond)
+}
+
+// TestWebhookJob_DiscordEditOnResolve (D170): an alert is posted to Discord with ?wait=true and its
+// message ID stored; the resolve patches that message instead of posting, and forgets it; when
+// Discord answers 404 to the edit the resolve is posted as a new message; an endpoint's mention,
+// username and avatar are sent with the post and the edit carries none of them; other formats are
+// posted as before, without wait.
+func TestWebhookJob_DiscordEditOnResolve(t *testing.T) {
+	e := newHookEnv(t, false)
+	org := storetest.Org(t, e.db, "org-a")
+	h := e.chatHook(org, "/discord", ewebhook.FormatDiscord)
+	e.db.Client().Webhook.UpdateOneID(h.ID).SetMention("role:123").SetMentionWhen(ewebhook.MentionWhenAll).SetDiscordUsername("rpmgr alerts").
+		SetDiscordAvatarURL("https://cdn.example/a.png").ExecX(e.sys)
+	slack := e.chatHook(org, "/slack", ewebhook.FormatSlack)
+	e.mu.Lock()
+	e.replyBody = `{"id":"111","channel_id":"222"}`
+	patch := http.StatusOK
+	e.answer = func(path string, _ int) int {
+		if strings.Contains(path, "/messages/") {
+			return patch
+		}
+		return http.StatusOK
+	}
+	e.mu.Unlock()
+	last := func() received {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		return e.got[len(e.got)-1]
+	}
+	count := func() int {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		return len(e.got)
+	}
+	messages := func() []*ent.WebhookMessage { return e.db.Client().WebhookMessage.Query().AllX(e.sys) }
+
+	// Firing: posted with wait, the ID kept.
+	e.alertEvent(org, "alert.fire", "gw_1")
+	e.mustRun()
+	var post received
+	e.mu.Lock()
+	for _, g := range e.got {
+		if g.path == "/discord/"+chatToken {
+			post = g
+		}
+		if g.path == "/slack/"+chatToken && g.query != "" {
+			t.Errorf("slack was posted with a query: %q", g.query)
+		}
+	}
+	e.mu.Unlock()
+	if post.method != http.MethodPost || post.query != "wait=true" || !strings.Contains(string(post.body), `"content":"\u003c@\u0026123\u003e"`) ||
+		!strings.Contains(string(post.body), `"username":"rpmgr alerts"`) || !strings.Contains(string(post.body), `"avatar_url":"https://cdn.example/a.png"`) {
+		t.Fatalf("the post: %s %q %s", post.method, post.query, post.body)
+	}
+	if ms := messages(); len(ms) != 1 || ms[0].MessageID != "111" || ms[0].AlertKey != "agent_offline|agent|gw_1" || ms[0].WebhookID != h.ID || ms[0].ThreadID != "" {
+		t.Fatalf("stored messages: %+v", ms)
+	}
+	_ = slack
+
+	// Resolve: the message is patched, not posted.
+	n := count()
+	e.alertEvent(org, "alert.resolve", "gw_1")
+	e.mustRun()
+	var edits []received
+	e.mu.Lock()
+	for _, g := range e.got[n:] {
+		if strings.HasPrefix(g.path, "/discord/") {
+			edits = append(edits, g)
+		}
+	}
+	e.mu.Unlock()
+	if len(edits) != 1 || edits[0].method != http.MethodPatch || edits[0].path != "/discord/"+chatToken+"/messages/111" || edits[0].query != "" {
+		t.Fatalf("the resolve: %+v", edits)
+	}
+	for _, bad := range []string{"username", "avatar_url", `\u003c@`, `"roles"`} {
+		if strings.Contains(string(edits[0].body), bad) {
+			t.Errorf("the edit holds %q: %s", bad, edits[0].body)
+		}
+	}
+	if !strings.Contains(string(edits[0].body), "Resolved") || !strings.Contains(string(edits[0].body), `"color":5763719`) {
+		t.Errorf("the edit is not the resolved message: %s", edits[0].body)
+	}
+	if ms := messages(); len(ms) != 0 {
+		t.Fatalf("the message is kept after the resolve: %+v", ms)
+	}
+
+	// A resolve whose message is gone (404) is posted as a new message, and forgotten.
+	e.alertEvent(org, "alert.fire", "gw_2")
+	e.mustRun()
+	patch = http.StatusNotFound
+	n = count()
+	e.alertEvent(org, "alert.resolve", "gw_2")
+	e.mustRun()
+	e.mu.Lock()
+	var seq []string
+	for _, g := range e.got[n:] {
+		if strings.HasPrefix(g.path, "/discord/") {
+			seq = append(seq, g.method+" "+g.path)
+		}
+	}
+	e.mu.Unlock()
+	if len(seq) != 2 || seq[0] != "PATCH /discord/"+chatToken+"/messages/111" || seq[1] != "POST /discord/"+chatToken {
+		t.Fatalf("the fallback: %v", seq)
+	}
+	if ms := messages(); len(ms) != 0 {
+		t.Fatalf("the message is kept after the fallback: %+v", ms)
+	}
+	if last().method != http.MethodPost && !strings.HasPrefix(last().path, "/slack") {
+		t.Errorf("last request %+v", last())
+	}
+
+	// A resolve with no stored message (the firing was before the endpoint, or purged) is posted.
+	patch = http.StatusOK
+	n = count()
+	e.alertEvent(org, "alert.resolve", "gw_3")
+	e.mustRun()
+	e.mu.Lock()
+	var posts int
+	for _, g := range e.got[n:] {
+		if g.path == "/discord/"+chatToken && g.method == http.MethodPost {
+			posts++
+		}
+	}
+	e.mu.Unlock()
+	if posts != 1 {
+		t.Errorf("a resolve with no message: %d posts", posts)
+	}
+	// Deleting the endpoint's messages goes with the retention: a message older than it is purged.
+	e.db.Client().WebhookMessage.Create().SetWebhookID(h.ID).SetOrgID(org).SetAlertKey("k|a|b").SetMessageID("5").
+		SetCreatedAt(e.clock.Add(-webhook.KeepFor - time.Hour)).ExecX(e.sys)
+	if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error { return controller.PurgeDeliveries(e.sys, tx, e.clock) }); err != nil {
+		t.Fatal(err)
+	}
+	if ms := messages(); len(ms) != 0 {
+		t.Errorf("an old message survives the purge: %+v", ms)
 	}
 }

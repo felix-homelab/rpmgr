@@ -81,6 +81,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/webhook"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookdelivery"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookmessage"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -210,6 +211,7 @@ func checkColumn(t, c string) error {
 			user.Table:               user.ValidColumn,
 			webhook.Table:            webhook.ValidColumn,
 			webhookdelivery.Table:    webhookdelivery.ValidColumn,
+			webhookmessage.Table:     webhookmessage.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

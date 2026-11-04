@@ -234,6 +234,76 @@ func (_u *WebhookUpdate) ClearURLEnc() *WebhookUpdate {
 	return _u
 }
 
+// SetMention sets the "mention" field.
+func (_u *WebhookUpdate) SetMention(v string) *WebhookUpdate {
+	_u.mutation.SetMention(v)
+	return _u
+}
+
+// SetNillableMention sets the "mention" field if the given value is not nil.
+func (_u *WebhookUpdate) SetNillableMention(v *string) *WebhookUpdate {
+	if v != nil {
+		_u.SetMention(*v)
+	}
+	return _u
+}
+
+// SetMentionWhen sets the "mention_when" field.
+func (_u *WebhookUpdate) SetMentionWhen(v webhook.MentionWhen) *WebhookUpdate {
+	_u.mutation.SetMentionWhen(v)
+	return _u
+}
+
+// SetNillableMentionWhen sets the "mention_when" field if the given value is not nil.
+func (_u *WebhookUpdate) SetNillableMentionWhen(v *webhook.MentionWhen) *WebhookUpdate {
+	if v != nil {
+		_u.SetMentionWhen(*v)
+	}
+	return _u
+}
+
+// SetDiscordUsername sets the "discord_username" field.
+func (_u *WebhookUpdate) SetDiscordUsername(v string) *WebhookUpdate {
+	_u.mutation.SetDiscordUsername(v)
+	return _u
+}
+
+// SetNillableDiscordUsername sets the "discord_username" field if the given value is not nil.
+func (_u *WebhookUpdate) SetNillableDiscordUsername(v *string) *WebhookUpdate {
+	if v != nil {
+		_u.SetDiscordUsername(*v)
+	}
+	return _u
+}
+
+// SetDiscordAvatarURL sets the "discord_avatar_url" field.
+func (_u *WebhookUpdate) SetDiscordAvatarURL(v string) *WebhookUpdate {
+	_u.mutation.SetDiscordAvatarURL(v)
+	return _u
+}
+
+// SetNillableDiscordAvatarURL sets the "discord_avatar_url" field if the given value is not nil.
+func (_u *WebhookUpdate) SetNillableDiscordAvatarURL(v *string) *WebhookUpdate {
+	if v != nil {
+		_u.SetDiscordAvatarURL(*v)
+	}
+	return _u
+}
+
+// SetThreadName sets the "thread_name" field.
+func (_u *WebhookUpdate) SetThreadName(v string) *WebhookUpdate {
+	_u.mutation.SetThreadName(v)
+	return _u
+}
+
+// SetNillableThreadName sets the "thread_name" field if the given value is not nil.
+func (_u *WebhookUpdate) SetNillableThreadName(v *string) *WebhookUpdate {
+	if v != nil {
+		_u.SetThreadName(*v)
+	}
+	return _u
+}
+
 // Mutation returns the WebhookMutation object of the builder.
 func (_u *WebhookUpdate) Mutation() *WebhookMutation {
 	return _u.mutation
@@ -286,6 +356,11 @@ func (_u *WebhookUpdate) check() error {
 	if v, ok := _u.mutation.Format(); ok {
 		if err := webhook.FormatValidator(v); err != nil {
 			return &ValidationError{Name: "format", err: fmt.Errorf(`ent: validator failed for field "Webhook.format": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.MentionWhen(); ok {
+		if err := webhook.MentionWhenValidator(v); err != nil {
+			return &ValidationError{Name: "mention_when", err: fmt.Errorf(`ent: validator failed for field "Webhook.mention_when": %w`, err)}
 		}
 	}
 	return nil
@@ -373,6 +448,21 @@ func (_u *WebhookUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.URLEncCleared() {
 		_spec.ClearField(webhook.FieldURLEnc, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.Mention(); ok {
+		_spec.SetField(webhook.FieldMention, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MentionWhen(); ok {
+		_spec.SetField(webhook.FieldMentionWhen, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.DiscordUsername(); ok {
+		_spec.SetField(webhook.FieldDiscordUsername, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DiscordAvatarURL(); ok {
+		_spec.SetField(webhook.FieldDiscordAvatarURL, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ThreadName(); ok {
+		_spec.SetField(webhook.FieldThreadName, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -599,6 +689,76 @@ func (_u *WebhookUpdateOne) ClearURLEnc() *WebhookUpdateOne {
 	return _u
 }
 
+// SetMention sets the "mention" field.
+func (_u *WebhookUpdateOne) SetMention(v string) *WebhookUpdateOne {
+	_u.mutation.SetMention(v)
+	return _u
+}
+
+// SetNillableMention sets the "mention" field if the given value is not nil.
+func (_u *WebhookUpdateOne) SetNillableMention(v *string) *WebhookUpdateOne {
+	if v != nil {
+		_u.SetMention(*v)
+	}
+	return _u
+}
+
+// SetMentionWhen sets the "mention_when" field.
+func (_u *WebhookUpdateOne) SetMentionWhen(v webhook.MentionWhen) *WebhookUpdateOne {
+	_u.mutation.SetMentionWhen(v)
+	return _u
+}
+
+// SetNillableMentionWhen sets the "mention_when" field if the given value is not nil.
+func (_u *WebhookUpdateOne) SetNillableMentionWhen(v *webhook.MentionWhen) *WebhookUpdateOne {
+	if v != nil {
+		_u.SetMentionWhen(*v)
+	}
+	return _u
+}
+
+// SetDiscordUsername sets the "discord_username" field.
+func (_u *WebhookUpdateOne) SetDiscordUsername(v string) *WebhookUpdateOne {
+	_u.mutation.SetDiscordUsername(v)
+	return _u
+}
+
+// SetNillableDiscordUsername sets the "discord_username" field if the given value is not nil.
+func (_u *WebhookUpdateOne) SetNillableDiscordUsername(v *string) *WebhookUpdateOne {
+	if v != nil {
+		_u.SetDiscordUsername(*v)
+	}
+	return _u
+}
+
+// SetDiscordAvatarURL sets the "discord_avatar_url" field.
+func (_u *WebhookUpdateOne) SetDiscordAvatarURL(v string) *WebhookUpdateOne {
+	_u.mutation.SetDiscordAvatarURL(v)
+	return _u
+}
+
+// SetNillableDiscordAvatarURL sets the "discord_avatar_url" field if the given value is not nil.
+func (_u *WebhookUpdateOne) SetNillableDiscordAvatarURL(v *string) *WebhookUpdateOne {
+	if v != nil {
+		_u.SetDiscordAvatarURL(*v)
+	}
+	return _u
+}
+
+// SetThreadName sets the "thread_name" field.
+func (_u *WebhookUpdateOne) SetThreadName(v string) *WebhookUpdateOne {
+	_u.mutation.SetThreadName(v)
+	return _u
+}
+
+// SetNillableThreadName sets the "thread_name" field if the given value is not nil.
+func (_u *WebhookUpdateOne) SetNillableThreadName(v *string) *WebhookUpdateOne {
+	if v != nil {
+		_u.SetThreadName(*v)
+	}
+	return _u
+}
+
 // Mutation returns the WebhookMutation object of the builder.
 func (_u *WebhookUpdateOne) Mutation() *WebhookMutation {
 	return _u.mutation
@@ -664,6 +824,11 @@ func (_u *WebhookUpdateOne) check() error {
 	if v, ok := _u.mutation.Format(); ok {
 		if err := webhook.FormatValidator(v); err != nil {
 			return &ValidationError{Name: "format", err: fmt.Errorf(`ent: validator failed for field "Webhook.format": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.MentionWhen(); ok {
+		if err := webhook.MentionWhenValidator(v); err != nil {
+			return &ValidationError{Name: "mention_when", err: fmt.Errorf(`ent: validator failed for field "Webhook.mention_when": %w`, err)}
 		}
 	}
 	return nil
@@ -768,6 +933,21 @@ func (_u *WebhookUpdateOne) sqlSave(ctx context.Context) (_node *Webhook, err er
 	}
 	if _u.mutation.URLEncCleared() {
 		_spec.ClearField(webhook.FieldURLEnc, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.Mention(); ok {
+		_spec.SetField(webhook.FieldMention, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MentionWhen(); ok {
+		_spec.SetField(webhook.FieldMentionWhen, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.DiscordUsername(); ok {
+		_spec.SetField(webhook.FieldDiscordUsername, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DiscordAvatarURL(); ok {
+		_spec.SetField(webhook.FieldDiscordAvatarURL, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ThreadName(); ok {
+		_spec.SetField(webhook.FieldThreadName, field.TypeString, value)
 	}
 	_node = &Webhook{config: _u.config}
 	_spec.Assign = _node.assignValues
