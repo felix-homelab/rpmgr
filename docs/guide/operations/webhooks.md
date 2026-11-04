@@ -142,7 +142,14 @@ standard input, never from an argument, which the shell history would keep:
 rpmgr create webhook --format slack --url-file slack-url.txt --event 'alert.*'
 rpmgr update webhook --url-file new-slack-url.txt whk_1
 rpmgr update webhook --format discord --url-file discord-url.txt whk_1
+rpmgr update webhook --mention role:123456789012345678 --mention-when critical whk_1
+rpmgr update webhook --discord-username "rpmgr alerts" --thread-name "" whk_1
 ```
+
+The options of [Mentions and Discord options](#mentions-and-discord-options) are
+`--mention`, `--mention-when never|critical|all`, `--discord-username`, `--discord-avatar-url`
+and `--thread-name`. On `update webhook` only a flag that is given changes its field, and an
+empty value, as in `--thread-name ""`, clears it.
 
 `create webhook` and `update webhook --rotate-secret` print the signing secret once, on standard
 output; nothing else shows it, and no command takes a secret as an argument. Capture it with a

@@ -900,7 +900,7 @@ one page, with a section list beside them that jumps to each section
   list it. The form has a **Format** ([D162](14-open-decisions.md#engineering)): rpmgr's signed
   JSON, or Discord, Slack or Microsoft Teams, whose URL field is write-only: it starts empty, a
   row shows the service's host only, an empty field when editing keeps the stored URL, and a new
-  format needs a new URL. A chat endpoint shows no signing secret and offers no **Rotate secret…**.
+  format needs a new URL. A chat endpoint shows no signing secret and offers no **Rotate secret…**. For a chat format the form also has **Mention** (a role, user group or user, with a hint of what the service takes) and **Mention when** (never, a critical alert fires, any alert fires), and for Discord a user name, an avatar URL and a thread name ([D170](14-open-decisions.md#engineering)); an edit sends only the options that changed, and moving to another service clears Discord's in the same update. **Preview the message** shows, in a part of the page that is loaded when it is first opened, the message the endpoint would post for a sample alert firing, resolving and a change, as the server makes it for the format and options typed so far; it asks again when the form has rested for a moment.
 - **Settings → Webhooks** (Instance Admin, a tab beside PKI, Updates and Users): the instance's
   endpoints as above, which receive instance events and may name a receiver on loopback or a
   private network; and the instance setting `webhook_private_ranges` as a list of ranges, one per

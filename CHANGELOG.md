@@ -38,6 +38,12 @@ Changes to the design documents are not recorded here: see the git history and t
   (`rpmgr update settings --instance --set cloudflare_ip_refresh=false`); an alert fires when the
   list is old while a route is proxied. A gateway that predates the switch is not sent a proxied
   route. (#1096)
+- The web form and the command line of a chat webhook endpoint have the mention and the Discord
+  options: **Mention**, **Mention when**, user name, avatar URL and thread name in the form, and
+  `--mention`, `--mention-when`, `--discord-username`, `--discord-avatar-url` and `--thread-name`
+  on `create webhook` and `update webhook`. **Preview the message** in the form shows the message
+  the endpoint would post, for an alert firing and resolving and for a change, as the server makes
+  it. (#1102)
 - A Discord, Slack or Microsoft Teams webhook endpoint can mention a role, user group or user when
   an alert fires: set `mention` and `mention_when` (never, critical alerts or all alerts), through
   the API's fields of the same names. A Discord endpoint also takes a username, an avatar URL and a

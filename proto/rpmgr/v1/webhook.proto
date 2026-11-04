@@ -79,6 +79,17 @@ service WebhookService {
       resource_field: "webhook_id"
     };
   }
+  // PreviewWebhookMessage returns the messages an endpoint of the given format and options would
+  // post, for a sample alert that fires, the same alert resolving and a configuration change, so
+  // that a form can show them before the endpoint is saved. It reads nothing, sends nothing and
+  // is not audited.
+  rpc PreviewWebhookMessage(PreviewWebhookMessageRequest) returns (PreviewWebhookMessageResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "webhooks.write"
+      resource_field: "org_id"
+    };
+  }
 }
 
 // InstanceWebhookService is the instance's webhook endpoints, which receive instance events:
@@ -123,6 +134,11 @@ service InstanceWebhookService {
   // TestInstanceWebhook sends a webhook.test event to an endpoint now and returns what the
   // receiver answered. It is audited.
   rpc TestInstanceWebhook(TestInstanceWebhookRequest) returns (TestInstanceWebhookResponse) {
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
+  // PreviewInstanceWebhookMessage is PreviewWebhookMessage for an instance endpoint.
+  rpc PreviewInstanceWebhookMessage(PreviewInstanceWebhookMessageRequest) returns (PreviewInstanceWebhookMessageResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
     option (rpmgr.v1.authz) = {permission: "instance.admin"};
   }
 }
@@ -476,4 +492,39 @@ message TestInstanceWebhookResponse {
   int32 status_code = 2;
   // Why it failed; empty on success.
   string error = 3;
+}
+
+// PreviewWebhookMessageRequest names the format and options to preview.
+message PreviewWebhookMessageRequest {
+  // The org; the preview shows its name.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The format, which must be a chat format, and the options of the endpoint; nothing else of it
+  // is read.
+  Webhook webhook = 2 [(buf.validate.field).required = true];
+}
+
+// PreviewInstanceWebhookMessageRequest names the format and options to preview.
+message PreviewInstanceWebhookMessageRequest {
+  // The format, which must be a chat format, and the options of the endpoint.
+  Webhook webhook = 1 [(buf.validate.field).required = true];
+}
+
+// PreviewWebhookMessageResponse is the sample messages.
+message PreviewWebhookMessageResponse {
+  // One message per sample event.
+  repeated WebhookPreview previews = 1;
+}
+
+// PreviewInstanceWebhookMessageResponse is the sample messages.
+message PreviewInstanceWebhookMessageResponse {
+  // One message per sample event.
+  repeated WebhookPreview previews = 1;
+}
+
+// WebhookPreview is the body one sample event is posted as.
+message WebhookPreview {
+  // The sample: alert.fire, alert.resolve or route.update.
+  string event_type = 1;
+  // The JSON body, formatted. It names no URL and holds no secret.
+  string body = 2;
 }
