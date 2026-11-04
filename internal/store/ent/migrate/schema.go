@@ -691,6 +691,42 @@ var (
 			},
 		},
 	}
+	// DNSNameStatusColumns holds the columns for the "dns_name_status" table.
+	DNSNameStatusColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString, Size: 253},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"not_managed", "pending", "published", "conflict", "ambiguous", "held", "error"}},
+		{Name: "reason", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "since", Type: field.TypeTime},
+		{Name: "dns_zone_id", Type: field.TypeString},
+	}
+	// DNSNameStatusTable holds the schema information for the "dns_name_status" table.
+	DNSNameStatusTable = &schema.Table{
+		Name:       "dns_name_status",
+		Columns:    DNSNameStatusColumns,
+		PrimaryKey: []*schema.Column{DNSNameStatusColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "dns_name_status_dns_zones_zone",
+				Columns:    []*schema.Column{DNSNameStatusColumns[6]},
+				RefColumns: []*schema.Column{DNSZonesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "dnsnamestatus_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{DNSNameStatusColumns[1], DNSNameStatusColumns[0]},
+			},
+			{
+				Name:    "dnsnamestatus_dns_zone_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{DNSNameStatusColumns[6], DNSNameStatusColumns[2]},
+			},
+		},
+	}
 	// DNSProvidersColumns holds the columns for the "dns_providers" table.
 	DNSProvidersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -721,6 +757,55 @@ var (
 				Name:    "dnsprovider_org_id_name",
 				Unique:  true,
 				Columns: []*schema.Column{DNSProvidersColumns[1], DNSProvidersColumns[4]},
+			},
+		},
+	}
+	// DNSRecordsColumns holds the columns for the "dns_records" table.
+	DNSRecordsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString, Size: 253},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"A", "AAAA", "CNAME", "TXT"}},
+		{Name: "content", Type: field.TypeString, Size: 4096},
+		{Name: "ttl", Type: field.TypeInt},
+		{Name: "proxied", Type: field.TypeBool, Default: false},
+		{Name: "provider_record_id", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "state", Type: field.TypeEnum, Enums: []string{"creating", "synced", "drifted", "orphaned", "error", "deleting"}, Default: "creating"},
+		{Name: "reason", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "adopted_from", Type: field.TypeString, Size: 4096, Default: ""},
+		{Name: "adopted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_synced_at", Type: field.TypeTime, Nullable: true},
+		{Name: "corrected_at", Type: field.TypeTime, Nullable: true},
+		{Name: "dns_zone_id", Type: field.TypeString},
+	}
+	// DNSRecordsTable holds the schema information for the "dns_records" table.
+	DNSRecordsTable = &schema.Table{
+		Name:       "dns_records",
+		Columns:    DNSRecordsColumns,
+		PrimaryKey: []*schema.Column{DNSRecordsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "dns_records_dns_zones_zone",
+				Columns:    []*schema.Column{DNSRecordsColumns[14]},
+				RefColumns: []*schema.Column{DNSZonesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "dnsrecord_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{DNSRecordsColumns[1], DNSRecordsColumns[0]},
+			},
+			{
+				Name:    "dnsrecord_dns_zone_id_provider_record_id",
+				Unique:  true,
+				Columns: []*schema.Column{DNSRecordsColumns[14], DNSRecordsColumns[7]},
+			},
+			{
+				Name:    "dnsrecord_dns_zone_id_name",
+				Unique:  false,
+				Columns: []*schema.Column{DNSRecordsColumns[14], DNSRecordsColumns[2]},
 			},
 		},
 	}
@@ -2429,7 +2514,9 @@ var (
 		ConnectListenersTable,
 		ConnectorsTable,
 		DNSNamesTable,
+		DNSNameStatusTable,
 		DNSProvidersTable,
+		DNSRecordsTable,
 		DNSZonesTable,
 		DataSessionsTable,
 		DomainsTable,
@@ -2551,8 +2638,16 @@ func init() {
 	DNSNamesTable.Annotation = &entsql.Annotation{
 		Table: "dns_names",
 	}
+	DNSNameStatusTable.ForeignKeys[0].RefTable = DNSZonesTable
+	DNSNameStatusTable.Annotation = &entsql.Annotation{
+		Table: "dns_name_status",
+	}
 	DNSProvidersTable.Annotation = &entsql.Annotation{
 		Table: "dns_providers",
+	}
+	DNSRecordsTable.ForeignKeys[0].RefTable = DNSZonesTable
+	DNSRecordsTable.Annotation = &entsql.Annotation{
+		Table: "dns_records",
 	}
 	DNSZonesTable.ForeignKeys[0].RefTable = DNSProvidersTable
 	DNSZonesTable.Annotation = &entsql.Annotation{

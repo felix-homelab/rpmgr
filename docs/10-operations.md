@@ -932,9 +932,9 @@ service that still runs the previous binary, with the command that restarts it.
   its lease cannot commit work started under it. Each time a replica takes a job's lease it is
   granted the job's system scope, which the audit log records; lease timing is in
   [03](03-connections.md#timeouts-keepalive-and-backoff).
-- **DNS job** (Phase 2): configuration transactions that touch DNS sources send `dns_dirty` with the
-  zone ID over `LISTEN/NOTIFY` to the replica holding the `dns` lease; a replica that takes over the
-  lease starts with a full pass. The fencing token cannot stop a call to the provider, so the job
+- **DNS job** (Phase 2): the replica holding the `dns` lease reads the configuration revisions each
+  second and runs a pass for the zones whose sources a revision changed, so it needs no
+  `LISTEN/NOTIFY` of its own; a replica that takes over the lease starts with a full pass. The fencing token cannot stop a call to the provider, so the job
   checks its lease before every batch, against the expiry its lease handle carries. DNS-01 writes
   come from the ACME lease holder and share the provider's rate budget with the DNS job: one
   database row per provider, so the sum over replicas stays within it
@@ -1066,6 +1066,7 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 | DNS conflict | A name in a managed zone is `conflict` or `ambiguous` for > 15 min |
 | DNS zone held | A managed zone is `held` (after import, restore or the deletion guard) |
 | DNS sync failing | No successful pass of a managed zone for > 30 min, or the provider status is not `ok` |
+| DNS record drifted | An owned record is `drifted`: it changed again within the stop window and is no longer corrected ([15](15-dns.md#ownership-ledger)) |
 | DNS-provider token invalid or expiring | The provider rejects the token, or it expires within the warning period ([15](15-dns.md#timers-and-limits)) |
 | Cloudflare IP ranges stale | The daily refresh was rejected by the sanity bounds or failed for > 3 days, while proxied routes exist and the refresh is on; fires 15 min after the condition begins |
 

@@ -19,6 +19,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsnamestatus"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 )
@@ -290,6 +292,14 @@ func (z *DnsZones) RemoveZone(ctx context.Context, req *connect.Request[rpmgrv1.
 			return nil, err
 		}
 		if err := api.CheckEtag(req.Msg.GetEtag(), cur.Version, zoneOf(cur)); err != nil {
+			return nil, err
+		}
+		// The records stay at the provider, and the ledger rows and name statuses go with the zone
+		// (docs/15-dns.md, "Connecting, importing and disconnecting").
+		if _, err := tx.DNSRecord.Delete().Where(dnsrecord.DNSZoneID(cur.ID)).Exec(ctx); err != nil {
+			return nil, err
+		}
+		if _, err := tx.DNSNameStatus.Delete().Where(dnsnamestatus.DNSZoneID(cur.ID)).Exec(ctx); err != nil {
 			return nil, err
 		}
 		return []string{cur.ID}, tx.DNSZone.DeleteOneID(cur.ID).Where(dnszone.Version(cur.Version)).Exec(ctx)

@@ -144,21 +144,45 @@ Cloudflare itself refuses A/AAAA and CNAME at the same name
 Every owned record has one row in `dns_records` ([06](06-data-model.md#dns)). The ledger is
 controller-managed durable state: it is never rebuilt from the provider.
 
-- **Write-ahead.** The ledger row is written in state `creating` **before** the provider call.
+- **Write-ahead.** The ledger row is written in state `creating` **before** the provider call. A
+  record about to be deleted has its row set to `deleting` first. The rows are committed in a
+  transaction that checks the lease's fencing token, so a replica that lost the lease writes none.
+  A `creating` row whose record was never written (the provider refused it, or the pass stopped) is
+  reused by the next create of the same name and type, never duplicated.
+- **Commit.** The provider's answer to a batch carries no record IDs, so after a pass that created
+  records the job lists the zone and links each created record to its row by its marker. The row
+  becomes `synced` with the provider's ID and `last_synced_at`, in one transaction that first checks
+  the fencing token, with one audit entry per write: `dns_record.create`, `dns_record.update` or
+  `dns_record.delete`, actor `dns`, in the chain of the zone's org, with the record before and
+  after ([04](04-security.md#audit-log)). A write whose commit is lost (a crash, a lost lease)
+  leaves its row `creating` or `deleting`, which the next pass repairs.
 - **Marker.** Each owned record carries the comment `rpmgr <trust-domain> <ledger ID>`, e.g.
   `rpmgr rpmgr-7f3k2q9m dnr_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R` (51 characters). Comments are available on
   all plans, up to 100 characters on Free [F cf:dns/manage-dns-records/reference/record-attributes];
   that the comment round-trips unchanged through the API, also at 100 characters, was checked
   against a Free-plan zone [F VB-10, run 2026-11-04].
 - **The ledger decides, the marker helps.**
-  - A record whose marker names a ledger row in state `creating` is linked to it. This repairs a
-    crash between the provider call and the database commit.
-  - A record with this instance's marker and no ledger row is `orphaned`: reported, never deleted
-    automatically. The zone's Owner or Admin can delete or re-link it.
-  - An owned record whose content or marker was edited at the provider has drifted. It is corrected
-    and the correction is audited. If the same record drifts again within the stop window
-    ([Timers and limits](#timers-and-limits)), rpmgr stops correcting it, marks it `drifted` and
-    alerts: another tool is probably writing it.
+  - A record whose marker names a ledger row in state `creating` is linked to it, before the pass
+    plans, so that it is not taken for a foreign record in the way. The row takes the record's
+    content, becomes `synced` and the link is audited (`dns_record.link`). This repairs a crash
+    between the provider call and the database commit. In the same step, a `deleting` row whose
+    record is gone is finished and removed, and a row that never got a record and that no desired
+    record asks for any more is removed.
+  - A record with this instance's marker and no ledger row is `orphaned`: reported by the pass,
+    never deleted automatically, not even when the sources would delete a record at its name. The
+    zone's Owner or Admin can delete or re-link it.
+  - An owned record whose content, TTL, proxy flag or marker was edited at the provider has
+    drifted: the provider's record differs from what the ledger says the job wrote. It is put back
+    (the marker too), and the correction is audited: `dns_record.drift` with the provider's record
+    and the ledger's, then the update. A change the sources made is no drift, and a record changed
+    to what the sources want needs no write; the ledger takes it over. If the same record drifts
+    again within the stop window ([Timers and limits](#timers-and-limits)), rpmgr stops correcting
+    it, marks it `drifted` (`dns_record.drifted`) and the pass reports it: another tool is probably
+    writing it. A `drifted` record is left alone, also after the window, until it matches the ledger
+    again or is adopted or released; the removal of its source still deletes it.
+  - The pass reports its orphans, corrections and `drifted` records to the controller, which logs
+    them; the alert `dns.drifted` fires for a `drifted` record
+    ([10](10-operations.md#suggested-alerts)). Orphans are shown in the zone's plan.
 - **Adopt.** Turns a foreign record at a desired name into an owned one. Its original content is
   stored in the ledger (`adopted_from`), and the next pass rewrites it. Adopt is how the migration
   cutover switches names from an old server to rpmgr ([11](11-migration.md#cutover-plan)).
@@ -198,10 +222,17 @@ sequenceDiagram
   end
 ```
 
-- **Triggers.** Configuration transactions that touch a source send `dns_dirty` with the zone ID:
-  in process on a single node, through PostgreSQL `LISTEN/NOTIFY` in HA
-  ([10](10-operations.md#high-availability)). Notifications are debounced. A full pass over every
-  zone runs on a timer, when a replica takes over the lease, and on "Sync now".
+- **Triggers.** A configuration revision that changed a source (a route, a gateway group and its
+  DNS target, a domain, a DNS name or a zone) marks the zones dirty. The replica that holds the
+  lease reads the new revisions from the database
+  ([Timers and limits](#timers-and-limits)), so no notification can be lost, in one process or in
+  HA ([10](10-operations.md#high-availability)); a call inside the process, `dns_dirty`, marks
+  zones the same way. Marks are debounced: the pass runs once the debounce has passed since the
+  first. A pass for a trigger first compiles the zone and ends there when the compiled records and
+  names equal those of its last clean pass, so a revision that changes nothing a zone publishes
+  costs no request to the provider. A full pass over every zone, which does list the provider,
+  runs on a timer, when a replica takes over the lease, and on "Sync now". A name's reserved
+  status follows the instance settings only at the next full pass.
 - **Determinism.** The desired set is a pure function of one read transaction, like a snapshot.
   Two replicas compute the same plan and the same plan hash.
 - **One writer.** The job runs under the `dns` lease with a fencing token
@@ -210,8 +241,16 @@ sequenceDiagram
   For that the lease handle carries its expiry: the time the lease ends, set when the lease is
   taken and moved on at every renewal, and read from the database row `leases.expires_at`
   ([06](06-data-model.md#system)). A handle whose renewal failed keeps its old expiry, so it runs
-  out and the job sends no batch ([D164](14-open-decisions.md#engineering)). All writes are
+  out and the job sends no batch ([D164](14-open-decisions.md#engineering)). A handle that was
+  not taken from the database has no expiry and sends none either. All writes are
   idempotent, and the next pass converges.
+- **Names.** The pass records each name's `dns_status` in the transaction that commits it: a name
+  is `published` once nothing is left to write at it, `pending` while a change is not sent or the
+  provider could not be reached (a published name stays as it was then), `conflict` with the kind
+  of conflict, `error` with the provider's reason, and `held`, `ambiguous` or `not_managed` as the
+  compiler says. The zone's `provider_status` and `last_synced_at` are recorded with it. A pass that
+  fails because the provider fails is not an error of the job: the zone is tried again at the next
+  trigger or full pass.
 - **Type changes** (CNAME ↔ A/AAAA, e.g. after the DNS target changed) are a delete and a create
   in the same batch.
 
@@ -220,9 +259,14 @@ sequenceDiagram
 - Changes are sent through the batch endpoint. Cloudflare applies a batch all-or-nothing, in the
   order deletes, patches, puts, posts; it propagates the records individually
   [F cf:dns/manage-dns-records/how-to/batch-record-changes].
-- If a batch fails, the job retries its operations one by one, so one bad record does not block the
-  others — the same rule as for agents ([03](03-connections.md#configuration-reconciliation)). The
-  failing name gets `dns_status = error` with the provider's reason.
+- A plan of more than the limit in [Timers and limits](#timers-and-limits) is sent as several
+  batches in order, deletes first.
+- If the provider refuses a batch because of a record (an HTTP 4xx other than 401, 403, 404 and
+  429, or a request the client refused before sending), the job retries its operations one by one,
+  so one bad record does not block the others — the same rule as for agents
+  ([03](03-connections.md#configuration-reconciliation)). The failing name gets `dns_status = error`
+  with the provider's reason, and its ledger row `error` with the same reason; the next pass tries
+  it again and reuses the row. Any other failure is [fail-static](#fail-static).
 - **Rate budget.** Cloudflare allows 1 200 requests per 5 minutes **per Cloudflare user**, counting
   dashboard and API together; a 429 blocks all API calls of that user for the next 5 minutes, and
   the response carries `retry-after` [F cf:fundamentals/api/reference/limits]. rpmgr cannot see
@@ -240,6 +284,12 @@ If the provider is unreachable, rate-limited or rejects the token, the job **del
 changes nothing**. Published records keep serving; names show `pending`; the zone shows the
 provider status, and an alert fires ([10](10-operations.md#suggested-alerts)). The next successful
 pass catches up.
+
+- **What counts.** A transport error, a timeout, an HTTP 5xx, 401, 403, 404 and 429 stop the pass
+  at once, also in the middle of a batch series or of the retry record by record: the request
+  after it is never sent. What was written before it is recorded in the ledger; the rows of the
+  rest stay `creating` or `deleting`, and the provider's records stay as they are. A lost lease or a
+  lease that will not outlast the next batch stops it the same way.
 
 ## Held zones and plan approval
 
@@ -520,6 +570,8 @@ type Provider interface {
 | Debounce of `dns_dirty` notifications | 2 s |
 | Full pass over every zone | 15 min, and on lease takeover |
 | Lease safety margin before a batch | 30 s |
+| Lease of the DNS job | TTL 90 s, renewed every 30 s: a lease of the default TTL ([03](03-connections.md#timeouts-keepalive-and-backoff)) could never outlast the margin, as the Cloudflare request timeout is as long |
+| Look for new configuration revisions | every 1 s, by the replica that holds the lease |
 | [R] Rate budget per provider | 300 requests / 5 min (Cloudflare allows 1 200 per user) |
 | DNS-01 share of the budget | at most half |
 | Operations per batch | ≤ 200 (Cloudflare Free limit) |

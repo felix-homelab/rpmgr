@@ -1662,7 +1662,8 @@ Security regression tests ([12](12-testing-and-quality.md#security-testing)):
   token, authentication method, IP, user agent, request ID, action, target and org, result, a
   **redacted** before/after diff, and an optional reason.
 - Every write the DNS job makes at a DNS provider is recorded as a system-actor entry in the
-  chain of the zone's org, with the record before and after
+  chain of the zone's org, with the record before and after: `dns_record.create`,
+  `dns_record.update` and `dns_record.delete`, actor `dns`, one per record written
   ([15](15-dns.md#ownership-ledger)).
 - Entries form a **per-org hash chain** (`hash = SHA-256(prev_hash ‖ canonical entry)`).
   Instance-level events (system-scope grants, local administration, the Instance Admin's changes to

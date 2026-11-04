@@ -29,7 +29,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsnamestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
@@ -1368,6 +1370,81 @@ func init() {
 			return nil
 		}
 	}()
+	dnsnamestatusMixin := schema.DNSNameStatus{}.Mixin()
+	dnsnamestatus.Policy = privacy.NewPolicies(dnsnamestatusMixin[0], schema.DNSNameStatus{})
+	dnsnamestatus.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := dnsnamestatus.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	dnsnamestatusMixinHooks0 := dnsnamestatusMixin[0].Hooks()
+
+	dnsnamestatus.Hooks[1] = dnsnamestatusMixinHooks0[0]
+	dnsnamestatusMixinInters0 := dnsnamestatusMixin[0].Interceptors()
+	dnsnamestatus.Interceptors[0] = dnsnamestatusMixinInters0[0]
+	dnsnamestatusMixinFields0 := dnsnamestatusMixin[0].Fields()
+	_ = dnsnamestatusMixinFields0
+	dnsnamestatusFields := schema.DNSNameStatus{}.Fields()
+	_ = dnsnamestatusFields
+	// dnsnamestatusDescOrgID is the schema descriptor for org_id field.
+	dnsnamestatusDescOrgID := dnsnamestatusMixinFields0[0].Descriptor()
+	// dnsnamestatus.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	dnsnamestatus.OrgIDValidator = dnsnamestatusDescOrgID.Validators[0].(func(string) error)
+	// dnsnamestatusDescDNSZoneID is the schema descriptor for dns_zone_id field.
+	dnsnamestatusDescDNSZoneID := dnsnamestatusFields[1].Descriptor()
+	// dnsnamestatus.DNSZoneIDValidator is a validator for the "dns_zone_id" field. It is called by the builders before save.
+	dnsnamestatus.DNSZoneIDValidator = dnsnamestatusDescDNSZoneID.Validators[0].(func(string) error)
+	// dnsnamestatusDescName is the schema descriptor for name field.
+	dnsnamestatusDescName := dnsnamestatusFields[2].Descriptor()
+	// dnsnamestatus.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	dnsnamestatus.NameValidator = func() func(string) error {
+		validators := dnsnamestatusDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// dnsnamestatusDescReason is the schema descriptor for reason field.
+	dnsnamestatusDescReason := dnsnamestatusFields[4].Descriptor()
+	// dnsnamestatus.DefaultReason holds the default value on creation for the reason field.
+	dnsnamestatus.DefaultReason = dnsnamestatusDescReason.Default.(string)
+	// dnsnamestatus.ReasonValidator is a validator for the "reason" field. It is called by the builders before save.
+	dnsnamestatus.ReasonValidator = dnsnamestatusDescReason.Validators[0].(func(string) error)
+	// dnsnamestatusDescSince is the schema descriptor for since field.
+	dnsnamestatusDescSince := dnsnamestatusFields[5].Descriptor()
+	// dnsnamestatus.DefaultSince holds the default value on creation for the since field.
+	dnsnamestatus.DefaultSince = dnsnamestatusDescSince.Default.(func() time.Time)
+	// dnsnamestatusDescID is the schema descriptor for id field.
+	dnsnamestatusDescID := dnsnamestatusFields[0].Descriptor()
+	// dnsnamestatus.DefaultID holds the default value on creation for the id field.
+	dnsnamestatus.DefaultID = dnsnamestatusDescID.Default.(func() string)
+	// dnsnamestatus.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	dnsnamestatus.IDValidator = func() func(string) error {
+		validators := dnsnamestatusDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	dnsproviderMixin := schema.DNSProvider{}.Mixin()
 	dnsprovider.Policy = privacy.NewPolicies(dnsproviderMixin[0], schema.DNSProvider{})
 	dnsprovider.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -1447,6 +1524,99 @@ func init() {
 	// dnsprovider.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	dnsprovider.IDValidator = func() func(string) error {
 		validators := dnsproviderDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	dnsrecordMixin := schema.DNSRecord{}.Mixin()
+	dnsrecord.Policy = privacy.NewPolicies(dnsrecordMixin[0], schema.DNSRecord{})
+	dnsrecord.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := dnsrecord.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	dnsrecordMixinHooks0 := dnsrecordMixin[0].Hooks()
+
+	dnsrecord.Hooks[1] = dnsrecordMixinHooks0[0]
+	dnsrecordMixinInters0 := dnsrecordMixin[0].Interceptors()
+	dnsrecord.Interceptors[0] = dnsrecordMixinInters0[0]
+	dnsrecordMixinFields0 := dnsrecordMixin[0].Fields()
+	_ = dnsrecordMixinFields0
+	dnsrecordFields := schema.DNSRecord{}.Fields()
+	_ = dnsrecordFields
+	// dnsrecordDescOrgID is the schema descriptor for org_id field.
+	dnsrecordDescOrgID := dnsrecordMixinFields0[0].Descriptor()
+	// dnsrecord.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	dnsrecord.OrgIDValidator = dnsrecordDescOrgID.Validators[0].(func(string) error)
+	// dnsrecordDescDNSZoneID is the schema descriptor for dns_zone_id field.
+	dnsrecordDescDNSZoneID := dnsrecordFields[1].Descriptor()
+	// dnsrecord.DNSZoneIDValidator is a validator for the "dns_zone_id" field. It is called by the builders before save.
+	dnsrecord.DNSZoneIDValidator = dnsrecordDescDNSZoneID.Validators[0].(func(string) error)
+	// dnsrecordDescName is the schema descriptor for name field.
+	dnsrecordDescName := dnsrecordFields[2].Descriptor()
+	// dnsrecord.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	dnsrecord.NameValidator = func() func(string) error {
+		validators := dnsrecordDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// dnsrecordDescContent is the schema descriptor for content field.
+	dnsrecordDescContent := dnsrecordFields[4].Descriptor()
+	// dnsrecord.ContentValidator is a validator for the "content" field. It is called by the builders before save.
+	dnsrecord.ContentValidator = dnsrecordDescContent.Validators[0].(func(string) error)
+	// dnsrecordDescTTL is the schema descriptor for ttl field.
+	dnsrecordDescTTL := dnsrecordFields[5].Descriptor()
+	// dnsrecord.TTLValidator is a validator for the "ttl" field. It is called by the builders before save.
+	dnsrecord.TTLValidator = dnsrecordDescTTL.Validators[0].(func(int) error)
+	// dnsrecordDescProxied is the schema descriptor for proxied field.
+	dnsrecordDescProxied := dnsrecordFields[6].Descriptor()
+	// dnsrecord.DefaultProxied holds the default value on creation for the proxied field.
+	dnsrecord.DefaultProxied = dnsrecordDescProxied.Default.(bool)
+	// dnsrecordDescProviderRecordID is the schema descriptor for provider_record_id field.
+	dnsrecordDescProviderRecordID := dnsrecordFields[7].Descriptor()
+	// dnsrecord.ProviderRecordIDValidator is a validator for the "provider_record_id" field. It is called by the builders before save.
+	dnsrecord.ProviderRecordIDValidator = dnsrecordDescProviderRecordID.Validators[0].(func(string) error)
+	// dnsrecordDescReason is the schema descriptor for reason field.
+	dnsrecordDescReason := dnsrecordFields[9].Descriptor()
+	// dnsrecord.DefaultReason holds the default value on creation for the reason field.
+	dnsrecord.DefaultReason = dnsrecordDescReason.Default.(string)
+	// dnsrecord.ReasonValidator is a validator for the "reason" field. It is called by the builders before save.
+	dnsrecord.ReasonValidator = dnsrecordDescReason.Validators[0].(func(string) error)
+	// dnsrecordDescAdoptedFrom is the schema descriptor for adopted_from field.
+	dnsrecordDescAdoptedFrom := dnsrecordFields[10].Descriptor()
+	// dnsrecord.DefaultAdoptedFrom holds the default value on creation for the adopted_from field.
+	dnsrecord.DefaultAdoptedFrom = dnsrecordDescAdoptedFrom.Default.(string)
+	// dnsrecord.AdoptedFromValidator is a validator for the "adopted_from" field. It is called by the builders before save.
+	dnsrecord.AdoptedFromValidator = dnsrecordDescAdoptedFrom.Validators[0].(func(string) error)
+	// dnsrecordDescID is the schema descriptor for id field.
+	dnsrecordDescID := dnsrecordFields[0].Descriptor()
+	// dnsrecord.DefaultID holds the default value on creation for the id field.
+	dnsrecord.DefaultID = dnsrecordDescID.Default.(func() string)
+	// dnsrecord.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	dnsrecord.IDValidator = func() func(string) error {
+		validators := dnsrecordDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

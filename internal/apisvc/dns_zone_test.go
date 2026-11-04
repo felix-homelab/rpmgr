@@ -449,8 +449,19 @@ func TestDnsZones_Remove(t *testing.T) {
 	if zoneCount(e) != 1 {
 		t.Fatal("a refused removal removed the zone")
 	}
+	// The ledger rows and name statuses of the zone go with it.
+	c := e.db.Client()
+	c.DNSRecord.Create().SetOrgID(org).SetDNSZoneID(id).SetName("a.example.com").SetType("A").SetContent("192.0.2.1").SetTTL(300).ExecX(e.sys)
+	c.DNSNameStatus.Create().SetOrgID(org).SetDNSZoneID(id).SetName("a.example.com").SetStatus("published").ExecX(e.sys)
+	c.DNSRecord.Create().SetOrgID(org).SetDNSZoneID(id).SetName("b.example.com").SetType("A").SetContent("192.0.2.2").SetTTL(300).SetState("deleting").ExecX(e.sys)
 	if err := removeZone(ada, id, "1"); err != nil {
 		t.Fatal(err)
+	}
+	if n := c.DNSRecord.Query().CountX(e.sys); n != 0 {
+		t.Errorf("%d ledger rows left after the removal", n)
+	}
+	if n := c.DNSNameStatus.Query().CountX(e.sys); n != 0 {
+		t.Errorf("%d name statuses left after the removal", n)
 	}
 	if zoneCount(e) != 0 || e.db.Client().Domain.Query().CountX(e.sys) != 1 {
 		t.Error("a removal must keep the claim and drop the zone")
