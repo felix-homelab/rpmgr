@@ -185,7 +185,7 @@ func TestCheckRelease_KeepsWhatRolloutsNeed(t *testing.T) {
 	if err := controller.CheckRelease(e.sys, e.o); err != nil {
 		t.Fatal(err)
 	}
-	if got := e.dirs(t); got != "1.3.0 1.4.2 1.5.0" {
+	if got := e.dirs(t); got != "1.3.0 1.4.2 1.5.0 1.6.0" {
 		t.Errorf("kept %s", got)
 	}
 	for _, v := range []string{"1.3.0", "1.4.2", "1.5.0"} {
@@ -196,7 +196,7 @@ func TestCheckRelease_KeepsWhatRolloutsNeed(t *testing.T) {
 		}
 	}
 	rows := e.rows(t)
-	for v, want := range map[string]string{"1.5.0": "check mirrored", "1.4.2": "check mirrored", "1.3.0": "upload mirrored", "1.6.0": "check listed"} {
+	for v, want := range map[string]string{"1.5.0": "check mirrored", "1.4.2": "check mirrored", "1.3.0": "upload mirrored", "1.6.0": "check mirrored"} {
 		r, ok := rows[v]
 		got := "missing"
 		if ok {
@@ -214,8 +214,8 @@ func TestCheckRelease_KeepsWhatRolloutsNeed(t *testing.T) {
 			t.Errorf("%s recorded on a stable instance or older than every kept version", v)
 		}
 	}
-	if n := e.releases["1.6.0"].opened["rpmgr-1.6.0-linux-amd64"]; n != 0 {
-		t.Errorf("a listed release downloaded its artifacts %d times", n)
+	if n := e.releases["1.6.0"].opened["rpmgr-1.6.0-linux-amd64"]; n == 0 {
+		t.Error("the newest release newer than the controller was not downloaded")
 	}
 
 	// The rollout completes, a higher seq of the own version appears, and the instance moves to
@@ -228,7 +228,7 @@ func TestCheckRelease_KeepsWhatRolloutsNeed(t *testing.T) {
 	if err := controller.CheckRelease(e.sys, e.o); err != nil {
 		t.Fatal(err)
 	}
-	if got := e.dirs(t); got != "1.4.2 1.5.0" {
+	if got := e.dirs(t); got != "1.4.2 1.5.0 1.7.0-rc.1" {
 		t.Errorf("kept %s after the rollout", got)
 	}
 	rows = e.rows(t)
@@ -238,10 +238,140 @@ func TestCheckRelease_KeepsWhatRolloutsNeed(t *testing.T) {
 	if rows["1.5.0"].ManifestSeq != 91 {
 		t.Errorf("seq %d, want the higher 91", rows["1.5.0"].ManifestSeq)
 	}
-	for _, v := range []string{"1.7.0-rc.1", "1.6.1"} {
-		if r, ok := rows[v]; !ok || r.MirroredAt != nil {
-			t.Errorf("%s on a prerelease instance: %+v", v, r)
+	if r, ok := rows["1.7.0-rc.1"]; !ok || r.MirroredAt == nil {
+		t.Errorf("the newest release on a prerelease instance is not mirrored: %v", ok)
+	}
+	if r, ok := rows["1.6.1"]; !ok || r.MirroredAt != nil {
+		t.Errorf("1.6.1 on a prerelease instance is recorded, not mirrored: %v", ok)
+	}
+}
+
+// newerEnv is an instance of 1.4.2 whose own version is mirrored and which lists the releases of
+// versions, stable unless they carry a prerelease.
+func newerEnv(t *testing.T, versions ...string) *mirrorEnv {
+	t.Helper()
+	e := newMirrorEnv(t, "1.4.2")
+	e.releases["1.4.2"] = signedRelease(t, "1.4.2", 87, release.Stable)
+	e.lister.listed = []release.Listed{{Version: "1.4.2"}}
+	for i, v := range versions {
+		ch, pre := release.Stable, strings.Contains(v, "-")
+		if pre {
+			ch = release.Prerelease
 		}
+		e.releases[v] = signedRelease(t, v, uint64(90+i), ch)
+		e.lister.listed = append(e.lister.listed, release.Listed{Version: v, Prerelease: pre})
+	}
+	return e
+}
+
+func (e *mirrorEnv) check(t *testing.T) {
+	t.Helper()
+	if err := controller.CheckRelease(e.sys, e.o); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (e *mirrorEnv) mirrored(t *testing.T, v string) bool {
+	t.Helper()
+	r, ok := e.rows(t)[v]
+	return ok && r.MirroredAt != nil
+}
+
+// TestCheckRelease_MirrorsNewerRelease: the release check mirrors the newest release of the
+// instance's channel newer than the controller, so that it can update to it (D163): a pre-release
+// on the pre-release channel, a stable release on either, not a pre-release on the stable channel.
+func TestCheckRelease_MirrorsNewerRelease(t *testing.T) {
+	e := newerEnv(t, "1.5.0-rc.1")
+	e.channel(t, rpmgrv1.UpdateChannel_UPDATE_CHANNEL_PRERELEASE)
+	e.check(t)
+	if !e.mirrored(t, "1.5.0-rc.1") || !e.o.Mirror.Complete("1.5.0-rc.1") {
+		t.Error("a newer pre-release is not mirrored on the pre-release channel")
+	}
+
+	e = newerEnv(t, "1.5.0-rc.1")
+	e.check(t)
+	if e.mirrored(t, "1.5.0-rc.1") || e.dirs(t) != "1.4.2" {
+		t.Errorf("a newer pre-release was mirrored on the stable channel: %s", e.dirs(t))
+	}
+
+	e = newerEnv(t, "1.5.0")
+	e.check(t)
+	if !e.mirrored(t, "1.5.0") || !e.o.Mirror.Complete("1.5.0") {
+		t.Error("a newer stable release is not mirrored")
+	}
+}
+
+// TestCheckRelease_MirrorsOnlyTheNewest: of two newer releases only the newest is downloaded, and a
+// newer release mirrored before is removed once a still newer one is mirrored.
+func TestCheckRelease_MirrorsOnlyTheNewest(t *testing.T) {
+	e := newerEnv(t, "1.5.0", "1.6.0")
+	e.check(t)
+	if e.mirrored(t, "1.5.0") || !e.mirrored(t, "1.6.0") || e.dirs(t) != "1.4.2 1.6.0" {
+		t.Errorf("mirrored %s", e.dirs(t))
+	}
+	if n := e.releases["1.5.0"].opened["rpmgr-1.5.0-linux-amd64"]; n != 0 {
+		t.Errorf("the older release was downloaded %d times", n)
+	}
+
+	e = newerEnv(t, "1.5.0")
+	e.check(t)
+	if e.dirs(t) != "1.4.2 1.5.0" {
+		t.Fatalf("mirrored %s", e.dirs(t))
+	}
+	e.releases["1.6.0"] = signedRelease(t, "1.6.0", 95, release.Stable)
+	e.lister.listed = append(e.lister.listed, release.Listed{Version: "1.6.0"})
+	e.check(t)
+	if e.dirs(t) != "1.4.2 1.6.0" || e.mirrored(t, "1.5.0") || !e.mirrored(t, "1.6.0") {
+		t.Errorf("after a newer release: %s", e.dirs(t))
+	}
+}
+
+// TestCheckRelease_MirrorsRecordedRelease: a release recorded before, not mirrored and no longer
+// listed as new, is mirrored at the next check; a failed fetch leaves it unmirrored, returns the
+// error and is retried; with the release check off nothing new is fetched.
+func TestCheckRelease_MirrorsRecordedRelease(t *testing.T) {
+	e := newerEnv(t, "1.5.0")
+	e.check(t) // mirrors 1.5.0
+	e.releases["1.5.0"].opened = map[string]int{}
+	if err := e.db.Client().Release.Update().Where(entrelease.Version("1.5.0")).ClearMirroredAt().Exec(e.sys); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(e.o.Mirror.Dir, "1.5.0")); err != nil {
+		t.Fatal(err)
+	}
+	e.releases["1.5.0"].fail = errors.New("dial tcp: no route to host")
+	if err := controller.CheckRelease(e.sys, e.o); err == nil || !strings.Contains(err.Error(), "no route to host") {
+		t.Errorf("a failing fetch: %v", err)
+	}
+	if e.mirrored(t, "1.5.0") || e.dirs(t) != "1.4.2" {
+		t.Errorf("a failed fetch left %s", e.dirs(t))
+	}
+
+	e.releases["1.5.0"].fail = nil
+	e.check(t)
+	if !e.mirrored(t, "1.5.0") || e.dirs(t) != "1.4.2 1.5.0" {
+		t.Errorf("the recorded release was not mirrored at the next check: %s", e.dirs(t))
+	}
+
+	// A failed fetch of a newer release keeps the one mirrored before.
+	e.releases["1.6.0"] = signedRelease(t, "1.6.0", 95, release.Stable)
+	e.releases["1.6.0"].fail = errors.New("connection reset")
+	e.lister.listed = append(e.lister.listed, release.Listed{Version: "1.6.0"})
+	if err := controller.CheckRelease(e.sys, e.o); err == nil {
+		t.Error("a failing fetch of a newer release returned no error")
+	}
+	if !e.o.Mirror.Complete("1.5.0") || !e.mirrored(t, "1.5.0") {
+		t.Errorf("the older newer release was lost: %s", e.dirs(t))
+	}
+
+	e = newerEnv(t, "1.5.0")
+	if _, err := settings.UpdateInstance(e.sys, e.db, &rpmgrv1.InstanceSettings{ReleaseCheck: new(false)},
+		&fieldmaskpb.FieldMask{Paths: []string{"release_check"}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	e.check(t)
+	if e.dirs(t) != "" || e.lister.asked != 0 || len(e.rows(t)) != 0 {
+		t.Errorf("with the release check off: %q, asked %d", e.dirs(t), e.lister.asked)
 	}
 }
 

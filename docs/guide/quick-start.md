@@ -66,11 +66,11 @@ The script downloads the release, verifies its signatures, and only then install
 `/var/lib/rpmgr` ([The install scripts](install/install-script.md)). It ends with (abbreviated):
 
 ```text
-rpmgr install: verified rpmgr 0.2.0 (manifest …)
-rpmgr 0.2.0 (commit …, go…, linux/amd64)
+rpmgr install: verified rpmgr 0.3.0 (manifest …)
+rpmgr 0.3.0 (commit …, go…, linux/amd64)
 release root keys:
   …
-rpmgr install: installed rpmgr 0.2.0 to /usr/local/bin/rpmgr
+rpmgr install: installed rpmgr 0.3.0 to /usr/local/bin/rpmgr
 rpmgr install: next: set up this host's role with: sudo rpmgr setup
 ```
 
@@ -197,7 +197,7 @@ The installer verifies the release, writes the connector's boot file and its loc
 ```text
 Enrolled connector con_… in trust domain rpmgr-…; identity written to /var/lib/rpmgr/identity.
 …
-rpmgr install: rpmgr 0.2.0 runs as rpmgr-connector; admin listener 127.0.0.1:7383
+rpmgr install: rpmgr 0.3.0 runs as rpmgr-connector; admin listener 127.0.0.1:7383
 ```
 
 Once the connector has connected, the web UI opens its page. It is named after the machine's host

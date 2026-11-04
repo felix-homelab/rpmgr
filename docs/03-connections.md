@@ -1543,7 +1543,7 @@ sequenceDiagram
 | Forwarding to the controller (private controller, carried control sessions) | dial 5 s; no idle timeout, the control session's keepalive keeps it alive | An unreachable controller fails fast, so the agent tries its next endpoint |
 | HTTP server | header read 10 s; idle 120 s; upstream response header 60 s; no total write timeout | Long downloads and streaming must work |
 | Controller web server (UI and public API) | header read 10 s, which applies to HTTP/1.1 only; idle 120 s; HTTP/2: at most 100 requests open at once per connection. An HTTP/2 header block that stalls is bounded by the idle timeout once no other request is open on its connection, which then closes; no total read or write timeout | [R] Server streams and downloads must work; one connection cannot hold more requests than a browser needs ([D92](14-open-decisions.md#engineering)) |
-| Idle TCP route connection | 1 h (per route; 0 disables) | Reclaim half-open connections |
+| Idle TCP route connection | per route, 0 disables; the default and range are in the TCP route idle timeout row below | Reclaim half-open connections |
 | Idle UDP flow | 60 s (per route) | Typical UDP NAT behaviour |
 | Stream stall line (Phase 2) | a `tcp` or TLS passthrough stream that has copied no byte in either direction for 30 s gets one debug line from the gateway, with its route, target, connector and byte counts, once per stream; it takes nothing from the stream and does not end it, the idle timeout above does ([10](10-operations.md#a-tcp-route-accepts-a-connection-but-no-data-flows)) | [R] A stream that carries 19 bytes and then nothing is visible in the log long before the idle timeout reclaims it; the line is debug level, so a gateway at the default level pays nothing |
 | Per-route HTTP timeouts (Phase 2) | upstream response header 1 s to 1 h; upstream idle 1 s to 1 h; 0 = the HTTP server row above | [R] Slow reports and long polls fit; a pooled connection outliving a backend's keep-alive is avoided ([HTTP routes](#http-routes)) |
@@ -1763,7 +1763,9 @@ sequenceDiagram
    new process opens them once the old one has exited (**UDP and QUIC** below).
 3. **Ready.** The new process starts from the stored last-known-good snapshot, opens its control
    session, which supersedes the old process's, applies the snapshot it receives and reports ready
-   over the pipe. The old process takes the `Goodbye{superseded}` this causes without ending and
+   over the pipe. It accepts on the handed-over public listeners, ports 443 and 80, only once its
+   snapshot is applied, just before it reports ready, so that the old process, which accepts on the
+   same sockets meanwhile, serves every visitor until then. The old process takes the `Goodbye{superseded}` this causes without ending and
    opens no further control session, so the two never supersede each other in turn; an agent
    redials after any `Goodbye` today [F rpmgr `internal/agent/control.go:161`, `:238-245`]. It
    opens one again if the hand-off fails. The controller records the old session's end only for

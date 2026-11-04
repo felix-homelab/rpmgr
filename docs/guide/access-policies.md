@@ -264,5 +264,6 @@ dropped and counted.
   ([Upgrades](install/upgrades.md)).
 
 A gateway of v0.1.0-rc.6 or earlier decides by the first matching rule until it is upgraded
-([Upgrades](install/upgrades.md)). Single sign-on with OIDC in front of a route and rate and
-connection limits are planned for Phase 2 ([05](../05-features.md#edge-access-control-and-limits)).
+([Upgrades](install/upgrades.md)). Single sign-on with OIDC in front of a route is planned for
+Phase 2 ([05](../05-features.md#edge-access-control-and-limits)); limits for a route as a whole are
+on [Route limits](routes/limits.md).

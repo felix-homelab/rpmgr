@@ -224,6 +224,10 @@ func TestHealthKeep_AllUnknownStillServes(t *testing.T) {
 	e.readyPriorities(t, "rt_a", 0)
 	eventually(t, "the checks never dialled", func() bool { return a.conns.Load() == 1 && b.conns.Load() == 1 })
 	e.streams(t, "rt_a", 40)
+	// A target counts a connection when its server accepts it, which may come after the stream.
+	eventually(t, "the targets never saw the streams' connections", func() bool {
+		return a.conns.Load()+b.conns.Load()-2 == 40
+	})
 	if a.conns.Load() == 1 || b.conns.Load() == 1 {
 		t.Fatalf("streams reached a %d, b %d connections, want both used while all are unknown", a.conns.Load(), b.conns.Load())
 	}
@@ -244,6 +248,10 @@ func TestHealthKeep_UnknownAmongUnhealthy(t *testing.T) {
 	eventually(t, "the new target was never checked", func() bool { return fresh.conns.Load() == 1 })
 	before := bad.conns.Load()
 	e.streams(t, "rt_a", 20)
+	// A target counts a connection when its server accepts it, which may come after the stream.
+	eventually(t, "the targets never saw the streams' connections", func() bool {
+		return bad.conns.Load()-before+fresh.conns.Load()-1 == 20
+	})
 	if bad.conns.Load() != before || fresh.conns.Load() == 1 {
 		t.Fatalf("streams: unhealthy took %d, unknown %d connections more; want only the unknown one", bad.conns.Load()-before, fresh.conns.Load()-1)
 	}

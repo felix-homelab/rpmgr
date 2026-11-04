@@ -320,7 +320,9 @@ jobs:
     if: ${{ needs.changes.outputs.go == 'true' }}
     name: build (${{ matrix.set }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Full runs build every platform of the set before vetting it; the four Linux platforms no
+    # longer fit in 15 minutes, which cancelled the nightly runs.
+    timeout-minutes: ${{ inputs.full && 45 || 15 }}
     strategy:
       fail-fast: false
       matrix:
