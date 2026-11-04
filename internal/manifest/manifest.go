@@ -64,7 +64,7 @@ type kindOf struct {
 
 var kinds = []kindOf{
 	{name: "Route", new: func() proto.Message { return &rpmgrv1.Route{} }, nameField: "name",
-		output: [][]string{{"etag"}, {"status"}, {"createTime"}, {"updateTime"}, {"updateUserId"}, {"targets", "*", "id"}, {"targets", "*", "etag"}},
+		output: [][]string{{"etag"}, {"status"}, {"dnsStatus"}, {"createTime"}, {"updateTime"}, {"updateUserId"}, {"targets", "*", "id"}, {"targets", "*", "etag"}},
 		refs: []ref{{[]string{"gatewayGroupId"}, "gatewayGroup", "GatewayGroup"}, {[]string{"policyIds"}, "policies", "AccessPolicy"},
 			{[]string{"targets", "*", "connectorId"}, "connector", "Connector"}, {[]string{"targets", "*", "tls", "caBundleId"}, "caBundle", "CABundle"}}},
 	{name: "AccessPolicy", new: func() proto.Message { return &rpmgrv1.AccessPolicy{} }, nameField: "name",

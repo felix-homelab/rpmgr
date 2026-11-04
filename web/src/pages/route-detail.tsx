@@ -9,6 +9,7 @@ import { ChevronLeft, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
+import { DnsLine } from "@/components/dns-status";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
 import { PolicyHint } from "@/components/policy-hint";
@@ -172,6 +173,12 @@ export function RouteDetail() {
           {t("route.noHostname")}{" "}
           <Link to="/gateways/$groupId" params={{ groupId: r.gatewayGroupId }} className="underline">{t("route.setHostname")}</Link>
         </p>
+      )}
+
+      {r.dnsStatus.length > 0 && (
+        <Card title={t("dnsStatus.title")} description={t("dnsStatus.intro")}>
+          <ul className="grid gap-3 text-sm">{r.dnsStatus.map((s) => <DnsLine key={s.hostname} status={s} />)}</ul>
+        </Card>
       )}
 
       {gatewayProblems.length > 0 && (
