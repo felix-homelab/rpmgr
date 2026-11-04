@@ -209,6 +209,40 @@ message InstanceSettings {
       }
     }
   }];
+  // Whether the controller refreshes the Cloudflare IP ranges once a day; default true. Off, the
+  // ranges stay as the last refresh or the list built into the binary left them (docs/15-dns.md,
+  // "Proxied HTTP routes").
+  optional bool cloudflare_ip_refresh = 18;
+  // The Cloudflare IP ranges the gateways believe on proxied routes. The controller's refresh job
+  // keeps them; an update cannot name this field. Unset, the list built into the binary applies.
+  CloudflareIpRanges cloudflare_ip_ranges = 19;
+}
+
+// CloudflareIpRanges are Cloudflare's published address ranges at the time of the last accepted
+// refresh (docs/15-dns.md, "Proxied HTTP routes").
+message CloudflareIpRanges {
+  // The IPv4 ranges, CIDR prefixes.
+  repeated string ipv4_cidrs = 1 [(buf.validate.field).repeated = {
+    max_items: 512
+    items: {
+      string: {
+        ipv4_with_prefixlen: true
+        max_len: 18
+      }
+    }
+  }];
+  // The IPv6 ranges, CIDR prefixes.
+  repeated string ipv6_cidrs = 2 [(buf.validate.field).repeated = {
+    max_items: 512
+    items: {
+      string: {
+        ipv6_with_prefixlen: true
+        max_len: 43
+      }
+    }
+  }];
+  // When the refresh job last accepted a list from Cloudflare.
+  google.protobuf.Timestamp refreshed_at = 3;
 }
 
 // SmtpSettings are a mail relay (docs/04-security.md, "Human authentication and sessions"). Its

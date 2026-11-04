@@ -30,6 +30,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/authz"
+	"github.com/felix-homelab/rpmgr/internal/cfranges"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/enroll"
@@ -505,6 +506,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	job(MailJob(MailOptions{DB: db, Leases: leases, Mailer: relay, PublicURL: cfg.PublicURL, Now: o.Now, Logger: o.Logger}), "mail job")
 	job(AuditSinkJob(AuditSinkOptions{DB: db, Leases: leases, Sealer: sealer, Sender: &webhook.Sender{Proxy: proxy, Now: o.Now}, Now: o.Now,
 		Logger: o.Logger}), "audit sink job")
+	job(CloudflareRangesJob(CloudflareRangesOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger,
+		Client: cfranges.Client(proxy), Result: metrics.RangesResult()}), "cloudflare ranges job")
 	job(RolloutJob(RolloutOptions{DB: db, Now: o.Now, Logger: o.Logger}), "rollout job")
 	bg.Go(func() { ReloadCA(jobs, caOpts) })
 	bg.Go(func() { shipper.Run(jobs) })

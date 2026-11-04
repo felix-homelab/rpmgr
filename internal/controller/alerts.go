@@ -16,6 +16,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/events"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -35,6 +36,9 @@ type AlertOptions struct {
 	Logger *slog.Logger
 	// RevocationLog is this replica's revocation-log status; nil without one.
 	RevocationLog func() revlog.Status
+	// ProxiedRoutes reports whether any route is proxied (dns_proxied), which makes the
+	// Cloudflare IP ranges matter; nil means none is.
+	ProxiedRoutes func(ctx context.Context, c *ent.Client) (bool, error)
 }
 
 // AlertJob is the singleton job that evaluates the alerts of docs/10-operations.md ("Suggested
@@ -238,6 +242,19 @@ func observe(ctx context.Context, o AlertOptions, now time.Time) ([]alerts.Obser
 	}
 	if o.RevocationLog != nil && o.RevocationLog().Alerting(now) {
 		add("", alerts.RevocationLogOnHost, "instance", "revocation_log", "revocation log", time.Time{})
+	}
+	inst, _, err := settings.Instance(ctx, c)
+	if err != nil {
+		return nil, nil, err
+	}
+	proxied := false
+	if o.ProxiedRoutes != nil {
+		if proxied, err = o.ProxiedRoutes(ctx, c); err != nil {
+			return nil, nil, err
+		}
+	}
+	if cloudflareRangesStale(inst, proxied, now) {
+		add("", alerts.CloudflareRangesStale, "instance", "cloudflare_ip_ranges", "Cloudflare IP ranges", time.Time{})
 	}
 	backlogs, err := auditsink.Backlogs(ctx, o.DB)
 	if err != nil {

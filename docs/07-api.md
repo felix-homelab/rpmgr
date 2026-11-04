@@ -108,7 +108,8 @@ The sketch follows `proto/rpmgr/v1/route.proto`, with its validation left out; f
 Phase 2 are planned and take the numbers shown. The numbers of the DNS messages, of
 `GatewayGroup.dns_target` and of `InstanceSettings.base_domain` were the next free ones in
 `proto/` when they were recorded ([D169](14-open-decisions.md#engineering)); a slice checks
-`proto/` again before it takes one.
+`proto/` again before it takes one. `InstanceSettings.cloudflare_ip_refresh` and
+`cloudflare_ip_ranges` took 18 and 19 in slice 6.21.
 
 ```protobuf
 // rpmgr/v1/route.proto (sketch)
@@ -276,6 +277,14 @@ message DnsTarget {
 
 message InstanceSettings {             // the fields Phase 2 adds to rpmgr/v1/settings.proto
   optional string base_domain = 17;    // 1 to 16 are taken; Instance Admin, step-up
+  optional bool cloudflare_ip_refresh = 18;     // default true; the daily refresh of 15's ranges
+  CloudflareIpRanges cloudflare_ip_ranges = 19; // kept by the refresh job; an update naming it is refused
+}
+
+message CloudflareIpRanges {           // the ranges of the last accepted refresh
+  repeated string ipv4_cidrs = 1;
+  repeated string ipv6_cidrs = 2;
+  google.protobuf.Timestamp refreshed_at = 3;
 }
 ```
 
