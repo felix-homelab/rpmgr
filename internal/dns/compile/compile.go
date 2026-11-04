@@ -202,12 +202,9 @@ func (r Result) Keep() []string {
 func Compile(in Input) Result {
 	z := in.Zone
 	res := Result{Held: z.State == StateHeld}
-	c := &compiler{in: in, groups: map[string]Target{}, reserved: map[string]bool{}}
+	c := &compiler{in: in, groups: map[string]Target{}}
 	for _, g := range in.Groups {
 		c.groups[g.ID] = g.Target
-	}
-	for _, n := range in.Reserved {
-		c.reserved[strings.ToLower(strings.TrimSuffix(n, "."))] = true
 	}
 	srcs := c.collect()
 	if z.State == StateDisabled {
@@ -238,9 +235,8 @@ func compareRecords(a, b dns.Record) int {
 }
 
 type compiler struct {
-	in       Input
-	groups   map[string]Target
-	reserved map[string]bool
+	in     Input
+	groups map[string]Target
 }
 
 // sources are what asks for one name.
@@ -287,7 +283,19 @@ func (c *compiler) collect() map[string]*sources {
 
 // isReserved reports whether name is never written (rule 6).
 func (c *compiler) isReserved(name string) bool {
-	return c.reserved[name] || slices.Contains(strings.Split(name, "."), acmeLabel)
+	return IsReserved(name, c.in.Reserved)
+}
+
+// IsReserved reports whether name is never written (rule 6): it is listed in reserved, or has a
+// `_acme-challenge` label. The plan applies it to deletions as well.
+func IsReserved(name string, reserved []string) bool {
+	name = strings.ToLower(strings.TrimSuffix(name, "."))
+	for _, r := range reserved {
+		if strings.ToLower(strings.TrimSuffix(r, ".")) == name {
+			return true
+		}
+	}
+	return slices.Contains(strings.Split(name, "."), acmeLabel)
 }
 
 // covered reports whether a verified domain of the zone's org covers name (rule 2).

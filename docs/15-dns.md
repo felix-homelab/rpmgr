@@ -270,6 +270,30 @@ flowchart LR
   `rpmgr restore --dns-disabled` sets every zone to `disabled`, for a clone restored into staging
   with the same trust domain and KEK. Otherwise approving there would fight production.
 
+### The plan and its hash
+
+The planner (`internal/dns/plan`) is a pure function of the desired records, the provider's records
+and the ledger rows. The plan lists creates, updates, deletes, conflicts, orphans, wildcard shadows
+and lost rows.
+
+- **Only owned records are written.** An update or delete names a record that has a ledger row. A
+  foreign record is never in a write list; where it is in the way, the name is a conflict and
+  nothing is written at it ([Conflicts](#conflicts)). Names the compiler keeps
+  ([Compile result](#compile-result)), reserved names and names at or below an NS delegation
+  are left alone, including their owned records.
+- **Lost rows** are ledger rows whose record is gone at the provider. A desired record is created
+  again.
+- **Matching.** Records are equal by type and content: addresses by value, a CNAME without case and
+  trailing dot, a TXT without the quotes a provider may add. A changed TTL or proxy flag is an
+  update. Unmatched records of one type are paired into updates; a change of type is a delete and a
+  create. An update keeps the record's marker comment.
+- **The hash** is the SHA-256, in lower-case hex, of the plan's canonical text: the line
+  `rpmgr-dns-plan/1`, then one line per item (creates, updates, deletes, conflicts with their
+  records, orphans, shadows, lost rows), each field written as a Go-quoted string, in the order name,
+  type, content, ID. The same input in any order gives the same hash, and any change of a desired or
+  provider record the plan shows changes it. The field list is in the package documentation of
+  `plan.Plan.Encode`.
+
 ## Connecting, importing and disconnecting
 
 1. **Connect.** An Owner or Admin (Instance Admin for the system org) enters an API token, with
