@@ -22,7 +22,7 @@ Changes to the design documents are not recorded here: see the git history and t
   list once a day, with a list built into the binary until then, and can be told not to
   (`rpmgr update settings --instance --set cloudflare_ip_refresh=false`); an alert fires when the
   list is old while a route is proxied. A gateway that predates the switch is not sent a proxied
-  route. (#682)
+  route. (#1096)
 - A webhook endpoint has a format: `rpmgr`, as before, or `discord`, `slack` or `teams`, which posts
   each event as a message people read in the chat service, with the summary as the title, the
   event's type, organisation, actor, subject and time as fields, and an alert red when it fires
