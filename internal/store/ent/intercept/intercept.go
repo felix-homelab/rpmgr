@@ -31,6 +31,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsnamestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
@@ -732,6 +733,33 @@ func (f TraverseDNSName) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.DNSNameQuery", q)
+}
+
+// The DNSNameStatusFunc type is an adapter to allow the use of ordinary function as a Querier.
+type DNSNameStatusFunc func(context.Context, *ent.DNSNameStatusQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f DNSNameStatusFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.DNSNameStatusQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.DNSNameStatusQuery", q)
+}
+
+// The TraverseDNSNameStatus type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseDNSNameStatus func(context.Context, *ent.DNSNameStatusQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseDNSNameStatus) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseDNSNameStatus) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.DNSNameStatusQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.DNSNameStatusQuery", q)
 }
 
 // The DNSProviderFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -2158,6 +2186,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ConnectorQuery, predicate.Connector, connector.OrderOption]{typ: ent.TypeConnector, tq: q}, nil
 	case *ent.DNSNameQuery:
 		return &query[*ent.DNSNameQuery, predicate.DNSName, dnsname.OrderOption]{typ: ent.TypeDNSName, tq: q}, nil
+	case *ent.DNSNameStatusQuery:
+		return &query[*ent.DNSNameStatusQuery, predicate.DNSNameStatus, dnsnamestatus.OrderOption]{typ: ent.TypeDNSNameStatus, tq: q}, nil
 	case *ent.DNSProviderQuery:
 		return &query[*ent.DNSProviderQuery, predicate.DNSProvider, dnsprovider.OrderOption]{typ: ent.TypeDNSProvider, tq: q}, nil
 	case *ent.DNSRecordQuery:

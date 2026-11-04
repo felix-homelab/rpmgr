@@ -209,10 +209,17 @@ sequenceDiagram
   end
 ```
 
-- **Triggers.** Configuration transactions that touch a source send `dns_dirty` with the zone ID:
-  in process on a single node, through PostgreSQL `LISTEN/NOTIFY` in HA
-  ([10](10-operations.md#high-availability)). Notifications are debounced. A full pass over every
-  zone runs on a timer, when a replica takes over the lease, and on "Sync now".
+- **Triggers.** A configuration revision that changed a source (a route, a gateway group and its
+  DNS target, a domain, a DNS name or a zone) marks the zones dirty. The replica that holds the
+  lease reads the new revisions from the database
+  ([Timers and limits](#timers-and-limits)), so no notification can be lost, in one process or in
+  HA ([10](10-operations.md#high-availability)); a call inside the process, `dns_dirty`, marks
+  zones the same way. Marks are debounced: the pass runs once the debounce has passed since the
+  first. A pass for a trigger first compiles the zone and ends there when the compiled records and
+  names equal those of its last clean pass, so a revision that changes nothing a zone publishes
+  costs no request to the provider. A full pass over every zone, which does list the provider,
+  runs on a timer, when a replica takes over the lease, and on "Sync now". A name's reserved
+  status follows the instance settings only at the next full pass.
 - **Determinism.** The desired set is a pure function of one read transaction, like a snapshot.
   Two replicas compute the same plan and the same plan hash.
 - **One writer.** The job runs under the `dns` lease with a fencing token
@@ -221,8 +228,16 @@ sequenceDiagram
   For that the lease handle carries its expiry: the time the lease ends, set when the lease is
   taken and moved on at every renewal, and read from the database row `leases.expires_at`
   ([06](06-data-model.md#system)). A handle whose renewal failed keeps its old expiry, so it runs
-  out and the job sends no batch ([D164](14-open-decisions.md#engineering)). All writes are
+  out and the job sends no batch ([D164](14-open-decisions.md#engineering)). A handle that was
+  not taken from the database has no expiry and sends none either. All writes are
   idempotent, and the next pass converges.
+- **Names.** The pass records each name's `dns_status` in the transaction that commits it: a name
+  is `published` once nothing is left to write at it, `pending` while a change is not sent or the
+  provider could not be reached (a published name stays as it was then), `conflict` with the kind
+  of conflict, `error` with the provider's reason, and `held`, `ambiguous` or `not_managed` as the
+  compiler says. The zone's `provider_status` and `last_synced_at` are recorded with it. A pass that
+  fails because the provider fails is not an error of the job: the zone is tried again at the next
+  trigger or full pass.
 - **Type changes** (CNAME ↔ A/AAAA, e.g. after the DNS target changed) are a delete and a create
   in the same batch.
 
@@ -542,6 +557,8 @@ type Provider interface {
 | Debounce of `dns_dirty` notifications | 2 s |
 | Full pass over every zone | 15 min, and on lease takeover |
 | Lease safety margin before a batch | 30 s |
+| Lease of the DNS job | TTL 90 s, renewed every 30 s: a lease of the default TTL ([03](03-connections.md#timeouts-keepalive-and-backoff)) could never outlast the margin, as the Cloudflare request timeout is as long |
+| Look for new configuration revisions | every 1 s, by the replica that holds the lease |
 | [R] Rate budget per provider | 300 requests / 5 min (Cloudflare allows 1 200 per user) |
 | DNS-01 share of the budget | at most half |
 | Operations per batch | ≤ 200 (Cloudflare Free limit) |

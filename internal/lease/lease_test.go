@@ -307,3 +307,56 @@ func TestRun_ShutdownDuringTheGrant(t *testing.T) {
 		}
 	}
 }
+
+// TestExpiry (D164): the handle carries the time its lease ends, as the database row holds it: set
+// when the lease is taken, moved on at every renewal and shared by copies; a renewal that fails
+// leaves the old expiry; a handle that was not taken has none; a job's own TTL is kept by Renew.
+func TestExpiry(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		ctx := context.Background()
+		clk := newClock()
+		a, b := lease.New(db, "ctn_a", clk.now), lease.New(db, "ctn_b", clk.now)
+		la := acquire(t, a, "dns")
+		copied := la
+		if want := clk.now().Add(lease.TTL); !la.Expires().Equal(want) || la.Left(clk.now()) != lease.TTL {
+			t.Fatalf("expiry %v, left %v; want %v", la.Expires(), la.Left(clk.now()), want)
+		}
+		var stored int64
+		stored = db.Client().Lease.Query().Where(entlease.ID("dns")).OnlyX(storetest.SystemCtx(t)).ExpiresAt
+		if stored != la.Expires().UnixMilli() {
+			t.Fatalf("row expiry %d, handle %v", stored, la.Expires())
+		}
+		clk.add(10 * time.Second)
+		if err := a.Renew(ctx, la); err != nil {
+			t.Fatal(err)
+		}
+		if want := clk.now().Add(lease.TTL); !la.Expires().Equal(want) || !copied.Expires().Equal(want) {
+			t.Fatalf("after a renewal: %v and %v, want %v", la.Expires(), copied.Expires(), want)
+		}
+		// A renewal that fails keeps the old expiry, so the handle runs out.
+		old := la.Expires()
+		clk.add(lease.TTL)
+		lb := acquire(t, b, "dns")
+		if err := a.Renew(ctx, la); !errors.Is(err, lease.ErrLost) || !la.Expires().Equal(old) {
+			t.Fatalf("a lost renewal: %v, expiry %v, want %v", err, la.Expires(), old)
+		}
+		if la.Left(clk.now()) > 0 || lb.Left(clk.now()) != lease.TTL {
+			t.Errorf("left: old %v, new %v", la.Left(clk.now()), lb.Left(clk.now()))
+		}
+		if (lease.Lease{Name: "dns", Token: 1}).Expires() != (time.Time{}) || (lease.Lease{}).Left(clk.now()) != 0 {
+			t.Error("a handle that was not taken has an expiry")
+		}
+		// A lease of its own TTL is renewed to that TTL.
+		own, ok, err := a.TryAcquireFor(ctx, "own", 90*time.Second)
+		if err != nil || !ok || own.Left(clk.now()) != 90*time.Second {
+			t.Fatalf("own TTL: %v %v %v", own.Left(clk.now()), ok, err)
+		}
+		clk.add(30 * time.Second)
+		if err := a.Renew(ctx, own); err != nil || own.Left(clk.now()) != 90*time.Second {
+			t.Fatalf("renewed own TTL: %v %v", own.Left(clk.now()), err)
+		}
+		if _, _, err := a.TryAcquireFor(ctx, "bad", 0); err == nil {
+			t.Error("a zero TTL was accepted")
+		}
+	})
+}

@@ -72,6 +72,9 @@ type Connector func(*sql.Selector)
 // DNSName is the predicate function for dnsname builders.
 type DNSName func(*sql.Selector)
 
+// DNSNameStatus is the predicate function for dnsnamestatus builders.
+type DNSNameStatus func(*sql.Selector)
+
 // DNSProvider is the predicate function for dnsprovider builders.
 type DNSProvider func(*sql.Selector)
 
