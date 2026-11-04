@@ -35,6 +35,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/config"
 	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/dns/providers"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -106,6 +107,7 @@ type running struct {
 	firstUserLink         string
 	logger                *slog.Logger
 	release               release.Source
+	dnsDial               providers.Dialer
 }
 
 // runSetup varies startRunWith.
@@ -118,6 +120,7 @@ type runSetup struct {
 	prepare     func(r *running) // after the initialisation, before Run
 	logger      *slog.Logger     // RunOptions.Logger
 	release     release.Source   // RunOptions.ReleaseSource
+	dnsDial     providers.Dialer // RunOptions.DNSDial
 }
 
 // startRun initialises a controller in a temporary directory and runs it.
@@ -128,7 +131,7 @@ func startRunWith(t *testing.T, o runSetup) *running {
 	controller.SetRunTimers(t, 500*time.Millisecond, 50*time.Millisecond)
 	h := newHost(t)
 	r := &running{h: h, https: o.https, http: o.http, admin: freeAddr(t), ca: newWebCA(t),
-		certFile: filepath.Join(h.dir, "ui.crt"), keyFile: filepath.Join(h.dir, "ui.key"), acmeRoots: o.acmeRoots, logger: o.logger, release: o.release}
+		certFile: filepath.Join(h.dir, "ui.crt"), keyFile: filepath.Join(h.dir, "ui.key"), acmeRoots: o.acmeRoots, logger: o.logger, release: o.release, dnsDial: o.dnsDial}
 	if r.https == "" {
 		r.https = freeAddr(t)
 	}
@@ -179,7 +182,7 @@ func (r *running) start(t *testing.T) {
 	listening := make(chan struct{})
 	go func() {
 		r.err = controller.Run(ctx, controller.RunOptions{Config: r.cfg, Version: "0.1.0", Getenv: func(string) string { return "" },
-			ACMERoots: r.acmeRoots, Logger: r.logger, ReleaseSource: r.release, Listening: func() { close(listening) }})
+			ACMERoots: r.acmeRoots, Logger: r.logger, ReleaseSource: r.release, DNSDial: r.dnsDial, Listening: func() { close(listening) }})
 		close(ended)
 	}()
 	t.Cleanup(func() { cancel(); <-ended })
