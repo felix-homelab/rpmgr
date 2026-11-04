@@ -80,7 +80,7 @@ func TestReport_ReadyRoutes(t *testing.T) {
 		if !d.GetReadyRoutesKnown() {
 			t.Errorf("%v does not say it names the routes", d)
 		}
-		k := d.GetConnectorId() + "/" + string(rune('0'+int(d.GetTransport())))
+		k := d.GetConnectorId() + "/" + string(rune('0'+int(d.GetTransport()))) //nolint:gosec // G115: transports are single digits
 		if got := d.GetReadyRoutes(); !slices.Equal(got, want[k]) {
 			t.Errorf("%s: routes %v, want %v", k, got, want[k])
 		}
