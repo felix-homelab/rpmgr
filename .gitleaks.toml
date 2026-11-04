@@ -62,3 +62,9 @@ paths = ['''(^|/)internal/store/migrations/[^/]+/atlas\.sum$''']
 [[allowlists]]
 description = "fake token in a commit of the closed PR #474"
 commits = ["4814e34e9c23151b1df339ff4f88dd3565bda486"]
+
+# The fake Cloudflare Global API Key of the DNS provider tests: a counting pattern in the key's
+# 37-character shape, which the API must refuse without sending it anywhere.
+[[allowlists]]
+description = "fake Global API Key shape in the DNS provider tests"
+regexes = ['''^0123456789ABCDEF0123456789ABCDEF01234$''']
