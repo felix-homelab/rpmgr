@@ -4,35 +4,31 @@
   },
   "embeds": [
     {
+      "color": 10070709,
+      "description": "release.create Größe 日本語 🚀",
       "fields": [
         {
           "inline": true,
-          "name": "Type",
-          "value": "release.create"
-        },
-        {
-          "inline": true,
           "name": "Organisation",
-          "value": "instance"
+          "value": "Acme"
         },
         {
           "inline": true,
           "name": "Actor",
-          "value": "user usr\\_2"
+          "value": "Ada Admin"
         },
         {
           "inline": true,
           "name": "Subject",
-          "value": "release Größe 日本語 🚀 \\(rel\\_1\\)"
-        },
-        {
-          "inline": true,
-          "name": "Time",
-          "value": "2026-11-02T09:30:00Z"
+          "value": "release Größe 日本語 🚀"
         }
       ],
+      "footer": {
+        "text": "td.example · rpmgr 0.4.0 · rel\\_1 · evt\\_4"
+      },
       "timestamp": "2026-11-02T09:30:00Z",
-      "title": "release.create Größe 日本語 🚀"
+      "title": "Release Größe 日本語 🚀 created",
+      "url": "https://rpmgr.example.com/audit"
     }
   ]
 }

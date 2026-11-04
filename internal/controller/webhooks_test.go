@@ -102,7 +102,8 @@ func newHookEnv(t *testing.T, guarded bool) *hookEnv {
 		Now: func() time.Time { return e.clock }}
 	e.leases = lease.New(db, "ctn_test", nil)
 	o := controller.WebhookOptions{DB: db, Leases: e.leases, Sealer: sealer, Sender: sender, Now: func() time.Time { return e.clock },
-		Logger: slog.New(slog.NewTextHandler(e.logs, nil))}
+		Logger:   slog.New(slog.NewTextHandler(e.logs, nil)),
+		Instance: webhook.Context{PublicURL: "https://rpmgr.example.com", TrustDomain: "td.test", Version: "1.2.3"}}
 	if !guarded {
 		o = controller.LoopbackWebhooks(o)
 	}

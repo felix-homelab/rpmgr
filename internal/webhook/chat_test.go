@@ -39,11 +39,16 @@ var chatEvents = map[string]events.Event{
 		SubjectName: "gw1", Summary: "agent_offline: Agent offline resolved, gw1"},
 	"change": {ID: "evt_3", OrgID: "org_1", Type: "route.update", Time: at, ActorType: "user", ActorID: "usr_1", SubjectType: "route",
 		SubjectID: "rt_1", SubjectName: "web", Summary: "route.update route web", Changed: []string{"enabled"}},
+	"status": {ID: "evt_6", OrgID: "org_1", Type: "agent.disconnect", Time: at, ActorType: "system", SubjectType: "agent", SubjectID: "gw_1",
+		SubjectName: "gw1", Summary: "agent.disconnect agent gw1"},
 	"instance-unicode": {ID: "evt_4", Type: "release.create", Time: at, ActorType: "user", ActorID: "usr_2", SubjectType: "release",
 		SubjectID: "rel_1", SubjectName: "Größe 日本語 🚀", Summary: "release.create Größe 日本語 🚀"},
 	"markup": {ID: "evt_5", OrgID: "org_1", Type: "route.create", Time: at, ActorType: "user", ActorID: "usr_1", SubjectType: "route",
 		SubjectID: "rt_2", SubjectName: "<!channel> & @everyone", Summary: "route.create <!channel> & @everyone <@U123>"},
 }
+
+// chatCtx is what the golden files show besides the event: names, a public URL and a footer.
+var chatCtx = webhook.Context{OrgName: "Acme", ActorName: "Ada Admin", PublicURL: "https://rpmgr.example.com", TrustDomain: "td.example", Version: "0.4.0"}
 
 // TestChatBody_Golden: each service gets its documented message shape for each event; run with
 // -update to rewrite the files after a deliberate change.
@@ -51,7 +56,11 @@ func TestChatBody_Golden(t *testing.T) {
 	for _, f := range []webhook.Format{webhook.FormatDiscord, webhook.FormatSlack, webhook.FormatTeams} {
 		for name, e := range chatEvents {
 			t.Run(string(f)+"/"+name, func(t *testing.T) {
-				b, err := webhook.ChatBody(f, e)
+				c := chatCtx
+				if e.Type == "alert.resolve" {
+					c.FiredAt = at.Add(-5*time.Minute - 3*time.Second)
+				}
+				b, err := webhook.ChatBody(f, e, c)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -81,22 +90,25 @@ func TestChatBody_Golden(t *testing.T) {
 	}
 }
 
-// TestChatBody_Colours: only an alert firing is red and an alert resolving green; other events
-// carry no colour, whichever service.
+// TestChatBody_Colours: a critical alert is red, a warning amber, a resolved alert green, a status
+// event blue and an audit event grey, whichever service.
 func TestChatBody_Colours(t *testing.T) {
-	for _, c := range []struct {
-		f         webhook.Format
-		fire, ok  string
-		neutralNo string
-	}{
-		{webhook.FormatDiscord, `"color":15548997`, `"color":5763719`, `"color"`},
-		{webhook.FormatSlack, `"color":"#D1242F"`, `"color":"#1A7F37"`, `"color"`},
-		{webhook.FormatTeams, `"color":"Attention"`, `"color":"Good"`, `"color"`},
-	} {
-		for name, want := range map[string]string{"alert-fire": c.fire, "alert-resolve": c.ok, "change": ""} {
-			b, _ := webhook.ChatBody(c.f, chatEvents[name])
-			if want != "" && !strings.Contains(string(b), want) || want == "" && strings.Contains(string(b), c.neutralNo) {
-				t.Errorf("%s %s: %s", c.f, name, b)
+	warn := chatEvents["alert-fire"]
+	warn.Summary = "clock_skew: Clock skew fires, gw1"
+	evs := map[string]events.Event{"critical": chatEvents["alert-fire"], "warning": warn, "resolved": chatEvents["alert-resolve"],
+		"info": {ID: "e", Type: "agent.connect", Time: at, SubjectType: "agent", SubjectID: "gw_1"}, "neutral": chatEvents["change"]}
+	want := map[string][3]string{ // discord, slack, teams
+		"critical": {`"color":15548997`, `"color":"#D1242F"`, `"style":"attention"`},
+		"warning":  {`"color":16426522`, `"color":"#BF8700"`, `"style":"warning"`},
+		"resolved": {`"color":5763719`, `"color":"#1A7F37"`, `"style":"good"`},
+		"info":     {`"color":3447003`, `"color":"#0969DA"`, `"style":"accent"`},
+		"neutral":  {`"color":10070709`, `"color":"#6E7781"`, `"style":"emphasis"`},
+	}
+	for name, e := range evs {
+		for i, f := range []webhook.Format{webhook.FormatDiscord, webhook.FormatSlack, webhook.FormatTeams} {
+			b, _ := webhook.ChatBody(f, e, chatCtx)
+			if !strings.Contains(string(b), want[name][i]) {
+				t.Errorf("%s %s: want %s in %s", f, name, want[name][i], b)
 			}
 		}
 	}
@@ -115,11 +127,11 @@ func TestChatBody_Limits(t *testing.T) {
 		e := events.Event{ID: "evt_1", OrgID: "org_1", Type: "route.update", Time: at, ActorType: "user", ActorID: "usr_1",
 			SubjectType: "route", SubjectID: "rt_1", SubjectName: text, Summary: text}
 		for f, limits := range map[webhook.Format]struct{ title, value int }{
-			webhook.FormatDiscord: {webhook.DiscordTitle, webhook.DiscordFieldValue},
+			webhook.FormatDiscord: {webhook.DiscordDescription, webhook.DiscordFieldValue},
 			webhook.FormatSlack:   {webhook.SlackText, webhook.SlackFieldValue},
-			webhook.FormatTeams:   {webhook.TeamsTitle, webhook.TeamsFactValue},
+			webhook.FormatTeams:   {webhook.TeamsText, webhook.TeamsFactValue},
 		} {
-			b, err := webhook.ChatBody(f, e)
+			b, err := webhook.ChatBody(f, e, chatCtx)
 			if err != nil || !utf8.Valid(b) || len(b) > webhook.MaxBody/2 {
 				t.Fatalf("%s %s: %d bytes, valid %v, %v", f, name, len(b), utf8.Valid(b), err)
 			}
@@ -138,13 +150,13 @@ func TestChatBody_Limits(t *testing.T) {
 		}
 	}
 	// A text at the limit is not cut.
-	e := events.Event{ID: "evt_1", Type: "route.update", Time: at, ActorType: "user", SubjectType: "route", Summary: strings.Repeat("é", webhook.DiscordTitle)}
-	if b, _ := webhook.ChatBody(webhook.FormatDiscord, e); strings.Contains(string(b), "…") {
-		t.Errorf("a title of exactly %d characters was cut", webhook.DiscordTitle)
+	e := events.Event{ID: "evt_1", Type: "route.update", Time: at, ActorType: "user", SubjectType: "route", Summary: strings.Repeat("é", webhook.DiscordDescription)}
+	if b, _ := webhook.ChatBody(webhook.FormatDiscord, e, chatCtx); strings.Contains(string(b), "…") {
+		t.Errorf("a description of exactly %d characters was cut", webhook.DiscordDescription)
 	}
 	// An escape sequence is never cut in half.
 	e.Summary = strings.Repeat("&", 5000)
-	b, _ := webhook.ChatBody(webhook.FormatSlack, e)
+	b, _ := webhook.ChatBody(webhook.FormatSlack, e, chatCtx)
 	var texts []string
 	collect(t, "", mustJSON(t, b), &texts)
 	for _, s := range texts {
@@ -185,11 +197,11 @@ func collect(t *testing.T, _ string, v any, out *[]string) {
 // TestChatBody_NoPings: a name or summary that holds a mention pings nobody: Discord is told to
 // parse none, and Slack's markup characters are escaped.
 func TestChatBody_NoPings(t *testing.T) {
-	b, _ := webhook.ChatBody(webhook.FormatDiscord, chatEvents["markup"])
+	b, _ := webhook.ChatBody(webhook.FormatDiscord, chatEvents["markup"], chatCtx)
 	if !strings.Contains(string(b), `"allowed_mentions":{"parse":[]}`) {
 		t.Errorf("discord: %s", b)
 	}
-	b, _ = webhook.ChatBody(webhook.FormatSlack, chatEvents["markup"])
+	b, _ = webhook.ChatBody(webhook.FormatSlack, chatEvents["markup"], chatCtx)
 	var texts []string
 	collect(t, "", mustJSON(t, b), &texts)
 	all := strings.Join(texts, "\n")
@@ -200,7 +212,7 @@ func TestChatBody_NoPings(t *testing.T) {
 
 func TestChatBody_NotAChatFormat(t *testing.T) {
 	for _, f := range []webhook.Format{webhook.FormatRPMgr, "", "mattermost"} {
-		if _, err := webhook.ChatBody(f, chatEvents["change"]); err == nil {
+		if _, err := webhook.ChatBody(f, chatEvents["change"], chatCtx); err == nil {
 			t.Errorf("format %q has a chat body", f)
 		}
 		if f.Chat() {
@@ -265,7 +277,7 @@ func TestSend_Chat(t *testing.T) {
 		body.Store(&b)
 		w.WriteHeader(http.StatusNoContent)
 	})
-	b, _ := webhook.ChatBody(webhook.FormatDiscord, chatEvents["alert-fire"])
+	b, _ := webhook.ChatBody(webhook.FormatDiscord, chatEvents["alert-fire"], chatCtx)
 	target := secret.New(strings.TrimSuffix(base, "/hook") + "/api/webhooks/1/" + chatToken + "?wait=true")
 	code, err := s.Send(context.Background(), webhook.Delivery{URL: "https://example.com", Target: target, EventID: "evt_1", EventType: "alert.fire", Body: b, Policy: internal})
 	if err != nil || code != http.StatusNoContent {
@@ -377,7 +389,7 @@ func TestChatBody_MarkdownInjection(t *testing.T) {
 	e := events.Event{ID: "evt_1", OrgID: "org_1", Type: "route.update", Time: at, ActorType: "user", ActorID: "usr_1",
 		SubjectType: "route", SubjectID: "rt_1", SubjectName: evil, Summary: evil}
 	for _, f := range []webhook.Format{webhook.FormatDiscord, webhook.FormatTeams} {
-		b, _ := webhook.ChatBody(f, e)
+		b, _ := webhook.ChatBody(f, e, chatCtx)
 		var texts []string
 		collect(t, "", mustJSON(t, b), &texts)
 		shown := 0

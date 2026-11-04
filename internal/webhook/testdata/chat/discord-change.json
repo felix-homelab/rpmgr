@@ -4,35 +4,36 @@
   },
   "embeds": [
     {
+      "color": 10070709,
+      "description": "route.update route web",
       "fields": [
         {
           "inline": true,
-          "name": "Type",
-          "value": "route.update"
-        },
-        {
-          "inline": true,
           "name": "Organisation",
-          "value": "org\\_1"
+          "value": "Acme"
         },
         {
           "inline": true,
           "name": "Actor",
-          "value": "user usr\\_1"
+          "value": "Ada Admin"
         },
         {
           "inline": true,
           "name": "Subject",
-          "value": "route web \\(rt\\_1\\)"
+          "value": "route web"
         },
         {
           "inline": true,
-          "name": "Time",
-          "value": "2026-11-02T09:30:00Z"
+          "name": "Changed",
+          "value": "enabled"
         }
       ],
+      "footer": {
+        "text": "td.example · rpmgr 0.4.0 · org\\_1 · rt\\_1 · evt\\_3"
+      },
       "timestamp": "2026-11-02T09:30:00Z",
-      "title": "route.update route web"
+      "title": "Route web updated",
+      "url": "https://rpmgr.example.com/routes/rt_1"
     }
   ]
 }

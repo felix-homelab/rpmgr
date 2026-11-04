@@ -4,35 +4,31 @@
   },
   "embeds": [
     {
+      "color": 10070709,
+      "description": "route.create \\\u003c!channel\\\u003e \u0026 @everyone \\\u003c@U123\\\u003e",
       "fields": [
         {
           "inline": true,
-          "name": "Type",
-          "value": "route.create"
-        },
-        {
-          "inline": true,
           "name": "Organisation",
-          "value": "org\\_1"
+          "value": "Acme"
         },
         {
           "inline": true,
           "name": "Actor",
-          "value": "user usr\\_1"
+          "value": "Ada Admin"
         },
         {
           "inline": true,
           "name": "Subject",
-          "value": "route \\\u003c!channel\\\u003e \u0026 @everyone \\(rt\\_2\\)"
-        },
-        {
-          "inline": true,
-          "name": "Time",
-          "value": "2026-11-02T09:30:00Z"
+          "value": "route \\\u003c!channel\\\u003e \u0026 @everyone"
         }
       ],
+      "footer": {
+        "text": "td.example · rpmgr 0.4.0 · org\\_1 · rt\\_2 · evt\\_5"
+      },
       "timestamp": "2026-11-02T09:30:00Z",
-      "title": "route.create \\\u003c!channel\\\u003e \u0026 @everyone \\\u003c@U123\\\u003e"
+      "title": "Route \\\u003c!channel\\\u003e \u0026 @everyone created",
+      "url": "https://rpmgr.example.com/routes/rt_2"
     }
   ]
 }
