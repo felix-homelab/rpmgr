@@ -10,7 +10,7 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-11-03
+## [0.3.0] - 2026-11-04
 
 **Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
 
