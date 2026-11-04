@@ -74,6 +74,8 @@ func runMain(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	switch {
 	case fs.NArg() > 0:
 		return fail("unexpected argument (not echoed: tokens are never passed as arguments)")
+	case idPattern.MatchString(zoneName):
+		return fail("-zone takes the zone name (e.g. example.org), not its ID")
 	case zoneName == "" || *tokenFile == "" || *underFile == "":
 		return fail("-zone, -token-file and -under-scoped-token-file are required\n%s", usage)
 	case (*acctFile == "") != (*acctID == ""):
