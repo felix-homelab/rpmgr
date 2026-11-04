@@ -48,13 +48,13 @@ TestH2_IdleStreamMemoryBounded	done	4.3	#73
 TestReauth_ExpiredWithinGrace	done	3.12	#67	internal/controller, with the revoked-identity clause (3.13) and the after-restore clause (11.6)
 TestReauth_SupersededSerialRefused	done	3.12	#67	internal/controller, with the after-restore clause (11.6)
 TestStatelessReset_DetectedWithinPingInterval	done	4.2	#72
-TestDNS_ForeignRecordNeverModified	p2	-	-	DNS automation
+TestDNS_ForeignRecordNeverModified	done	6.10	#668	plan clause (internal/dns/plan, 6.9) and end-to-end clause with the fake provider (internal/dns/apply)
 TestDNS_CrossOrgPublishRefused	p2	-	-	DNS automation; nested clause (held claims are not found by Covering) in TestDNS_CrossOrgPublishRefused_Nested (7.2, #681)
 TestDNS_PendingZoneIsNotProof	done	6.6	#664	import and no-proof-by-provider-API clauses (internal/apisvc); the nameserver clause is TestTXTVerifier
 TestDNS_CrashRelinksByMarker	p2	-	-	DNS automation
 TestDNS_RestoreStartsHeld	p2	-	-	DNS automation
 TestDNS_DeletionGuard	p2	-	-	DNS automation
-TestDNS_FailStatic	p2	-	-	DNS automation
+TestDNS_FailStatic	done	6.10	#668	internal/dns/apply
 TestDNS_RateBudgetAndRetryAfter	p2	-	-	DNS automation
 TestDNS_BatchFallbackPerRecord	p2	-	-	DNS automation
 TestDNS_LeaseCheckedBeforeBatch	p2	-	-	DNS automation
