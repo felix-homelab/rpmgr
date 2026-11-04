@@ -153,7 +153,7 @@ func TestChatBody_AlertDuration(t *testing.T) {
 
 // hostile are texts that would ping or format if they reached a service unescaped.
 var hostile = []string{"@everyone", "@here", "<!channel>", "<!here>", "<!everyone>", "<@123>", "<@&456>", "<!subteam^S1>", "<at>Admin</at>",
-	"[x](https://evil.example)", "**b**", "&amp;", "```", "‮"}
+	"[x](https://evil.example)", "**b**", "&amp;", "```", "\u202e"}
 
 // TestChatBody_Hostile: no text of an event, org or actor can mention anyone or break the markup,
 // in any field of any service.
