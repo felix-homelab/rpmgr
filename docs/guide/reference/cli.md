@@ -93,13 +93,16 @@ rpmgr <command>
 | [`rpmgr trust`](#rpmgr-trust) | Trust something without a proof |
 | [`rpmgr upload`](#rpmgr-upload) | Upload a file to the controller |
 | [`rpmgr renew`](#rpmgr-renew) | Renew a certificate now |
-| [`rpmgr remove`](#rpmgr-remove) | Remove a member from the org, a user's second factor, or a gateway group's own page |
+| [`rpmgr remove`](#rpmgr-remove) | Remove a member from the org, a user's second factor, a gateway group's own page, or a managed DNS zone |
 | [`rpmgr advance`](#rpmgr-advance) | Move a rollout to its next stage |
 | [`rpmgr pause`](#rpmgr-pause) | Pause a rollout |
 | [`rpmgr resume`](#rpmgr-resume) | Let a paused rollout run again |
 | [`rpmgr cancel`](#rpmgr-cancel) | End a rollout for good |
 | [`rpmgr test`](#rpmgr-test) | Send a test event to a webhook endpoint or a test item to an audit sink |
 | [`rpmgr logs`](#rpmgr-logs) | Follow the live log of a connector or gateway |
+| [`rpmgr connect`](#rpmgr-connect) | Connect a DNS provider |
+| [`rpmgr rotate`](#rpmgr-rotate) | Replace a DNS provider's token |
+| [`rpmgr import`](#rpmgr-import) | Import a DNS provider's zone as managed |
 
 ## rpmgr controller
 
@@ -747,7 +750,7 @@ rpmgr version [flags]
 Show a resource of the public API, the settings, or the install command of an agent.
 
 ```text
-rpmgr get [flags] install-command | settings | controller-update | <route|connector|gateway|gateway-group|port-pool|domain|certificate|ca-bundle|route-target|access-policy|webhook|audit-sink|rollout> <id or name>
+rpmgr get [flags] install-command | settings | controller-update | <route|connector|gateway|gateway-group|port-pool|domain|certificate|ca-bundle|route-target|access-policy|webhook|dns-provider|zone|dns-name|audit-sink|rollout> <id or name>
 ```
 
 | Flag | Default | Description |
@@ -763,7 +766,7 @@ rpmgr get [flags] install-command | settings | controller-update | <route|connec
 List the resources of a kind in the org, or of the instance.
 
 ```text
-rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|enrollment-token|access-policy|member|token|webhook|webhook-delivery|release|audit-sink|rollout|rollout-target> [<what they belong to>]
+rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|enrollment-token|access-policy|member|token|webhook|webhook-delivery|dns-provider|provider-zone|zone|dns-name|release|audit-sink|rollout|rollout-target> [<what they belong to>]
 ```
 
 | Flag | Default | Description |
@@ -777,7 +780,7 @@ rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|d
 Delete a resource of the public API.
 
 ```text
-rpmgr delete [flags] <route|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|route-target|access-policy|webhook|audit-sink> <id>
+rpmgr delete [flags] <route|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|route-target|access-policy|webhook|dns-provider|dns-name|audit-sink> <id>
 ```
 
 | Flag | Default | Description |
@@ -850,6 +853,7 @@ rpmgr create <command>
 | [`rpmgr create reset-link`](#rpmgr-create-reset-link) | Print a one-time link that sets a member's password, for one who forgot it; takes a step-up |
 | [`rpmgr create rollout`](#rpmgr-create-rollout) | Roll a release out to the connectors and gateways: staged, its canary agents first, or easy, one agent after another |
 | [`rpmgr create webhook`](#rpmgr-create-webhook) | Make a webhook endpoint and print its signing secret once |
+| [`rpmgr create dns-name`](#rpmgr-create-dns-name) | Create a dns name |
 
 ## rpmgr create route
 
@@ -1155,6 +1159,21 @@ rpmgr create webhook [flags]
 | `--url string` |  | the https:// URL the events are sent to, without a user name, a password or a fragment (format rpmgr) |
 | `--url-file string` |  | a file holding the chat service's webhook URL, which holds its token, or - for standard input; write-only |
 
+## rpmgr create dns-name
+
+Create a dns name.
+
+```text
+rpmgr create dns-name [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--group string` |  | the gateway group it points at, by name or ID |
+| `--name string` |  | the fully qualified name to publish, under a verified domain of the org |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+| `--ttl string` |  | its TTL as a duration (5m) or seconds; 0 is the zone's default |
+
 ## rpmgr update
 
 Change a resource of the public API.
@@ -1178,6 +1197,9 @@ rpmgr update <command>
 | [`rpmgr update user`](#rpmgr-update-user) | Grant or revoke the Instance Admin role; as Instance Admin, with a step-up |
 | [`rpmgr update settings`](#rpmgr-update-settings) | Change the org's settings, or with --instance the instance's |
 | [`rpmgr update webhook`](#rpmgr-update-webhook) | Change a webhook endpoint; with --rotate-secret replace its signing secret and print the new one once |
+| [`rpmgr update dns-provider`](#rpmgr-update-dns-provider) | Change the fields of a dns provider that the flags name |
+| [`rpmgr update zone`](#rpmgr-update-zone) | Change the fields of a zone that the flags name |
+| [`rpmgr update dns-name`](#rpmgr-update-dns-name) | Change the fields of a dns name that the flags name |
 
 ## rpmgr update route
 
@@ -1449,6 +1471,53 @@ rpmgr update webhook [flags] <id>
 | `--rotate-secret` |  | replace the signing secret; the old one keeps signing for 24 h |
 | `--url string` |  | the https:// URL the events are sent to, without a user name, a password or a fragment (format rpmgr) |
 | `--url-file string` |  | a file holding the chat service's webhook URL, which holds its token, or - for standard input; write-only |
+
+## rpmgr update dns-provider
+
+Change the fields of a dns provider that the flags name.
+
+```text
+rpmgr update dns-provider [flags] <id or name>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--force` |  | update without checking that it is unchanged since this command read it |
+| `--name string` |  | the provider's name, unique in the org |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+
+## rpmgr update zone
+
+Change the fields of a zone that the flags name.
+
+```text
+rpmgr update zone [flags] <id or name>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--allow-proxied` |  | allow Cloudflare-proxied records in the zone (true or false) |
+| `--allow-wildcards` |  | allow wildcard names in the zone (true or false) |
+| `--default-ttl string` |  | the TTL of records that name none, as a duration (5m) or seconds |
+| `--delete-threshold string` |  | the most records one pass may delete without an approval |
+| `--force` |  | update without checking that it is unchanged since this command read it |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+| `--publish-route-hostnames` |  | publish the hostnames of the org's routes in the zone (true or false) |
+
+## rpmgr update dns-name
+
+Change the fields of a dns name that the flags name.
+
+```text
+rpmgr update dns-name [flags] <id or name>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--force` |  | update without checking that it is unchanged since this command read it |
+| `--group string` |  | the gateway group it points at, by name or ID |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+| `--ttl string` |  | its TTL as a duration (5m) or seconds; 0 is the zone's default |
 
 ## rpmgr enable
 
@@ -1895,7 +1964,7 @@ rpmgr renew certificate <id>
 
 ## rpmgr remove
 
-Remove a member from the org, a user's second factor, or a gateway group's own page.
+Remove a member from the org, a user's second factor, a gateway group's own page, or a managed DNS zone.
 
 ```text
 rpmgr remove <command>
@@ -1906,6 +1975,7 @@ rpmgr remove <command>
 | [`rpmgr remove gateway-page`](#rpmgr-remove-gateway-page) | Go back to the built-in page of a gateway group |
 | [`rpmgr remove member`](#rpmgr-remove-member) | End a membership; the user's tokens lose their access to the org |
 | [`rpmgr remove second-factor`](#rpmgr-remove-second-factor) | Remove a user's authenticator and recovery codes, for one who lost both, and end their sessions; takes a step-up |
+| [`rpmgr remove zone`](#rpmgr-remove-zone) | Stop managing a zone: the records stay at the provider and only the ledger is dropped |
 
 ## rpmgr remove gateway-page
 
@@ -1936,6 +2006,18 @@ Remove a user's authenticator and recovery codes, for one who lost both, and end
 ```text
 rpmgr remove second-factor <user ID or e-mail address>
 ```
+
+## rpmgr remove zone
+
+Stop managing a zone: the records stay at the provider and only the ledger is dropped.
+
+```text
+rpmgr remove zone [flags] <id or name>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--force` |  | remove without checking that the zone is unchanged since this command read it |
 
 ## rpmgr advance
 
@@ -2112,3 +2194,79 @@ rpmgr logs gateway [flags] <gateway>
 | `--debug` |  | raise the gateway's level to debug while the log is followed; audited |
 | `--filter string` |  | show only lines that contain this text |
 | `--level string` | `info` | the lowest level shown: debug, info, warn or error |
+
+## rpmgr connect
+
+Connect a DNS provider.
+
+```text
+rpmgr connect <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr connect dns-provider`](#rpmgr-connect-dns-provider) | Connect a DNS provider of the org with a step-up; its token is read from a file or standard input |
+
+## rpmgr connect dns-provider
+
+Connect a DNS provider of the org with a step-up; its token is read from a file or standard input.
+
+```text
+rpmgr connect dns-provider [flags]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--account-id string` |  | the Cloudflare account, for a token that belongs to an account |
+| `--kind string` |  | the kind of provider: cloudflare (required) |
+| `--name string` |  | the provider's name, unique in the org (required) |
+| `--token-file string` |  | a file holding the provider's API token, or - for standard input (required); write-only, never an argument |
+
+## rpmgr rotate
+
+Replace a DNS provider's token.
+
+```text
+rpmgr rotate <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr rotate dns-provider-token`](#rpmgr-rotate-dns-provider-token) | Replace a provider's token with a step-up; its zones and records stay |
+
+## rpmgr rotate dns-provider-token
+
+Replace a provider's token with a step-up; its zones and records stay.
+
+```text
+rpmgr rotate dns-provider-token [flags] <id or name>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--account-id string` |  | the Cloudflare account, for a token that belongs to an account |
+| `--token-file string` |  | a file holding the provider's API token, or - for standard input (required); write-only, never an argument |
+
+## rpmgr import
+
+Import a DNS provider's zone as managed.
+
+```text
+rpmgr import <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr import zone`](#rpmgr-import-zone) | Import a zone of a provider as managed; it starts held, so nothing is published until a plan is approved |
+
+## rpmgr import zone
+
+Import a zone of a provider as managed; it starts held, so nothing is published until a plan is approved.
+
+```text
+rpmgr import zone [flags] --provider <id or name> <zone name or provider zone ID>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--provider string` |  | the provider that offers the zone, by name or ID (required) |
