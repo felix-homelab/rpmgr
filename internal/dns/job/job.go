@@ -403,7 +403,15 @@ func (j *Job) sync(ctx context.Context, l lease.Lease, z *ent.DNSZone, reserved 
 		o.stop = err
 		return nil
 	}
-	out, err := j.engine(l, true).Reconcile(ctx, l, prov, applyZone(z), apply.Wanted{Desired: o.cr.Desired, Keep: o.cr.Keep(),
+	eng := j.engine(l, true)
+	if _, err := eng.Release(ctx, l, prov, applyZone(z)); err != nil { // requested releases, before the plan
+		if errors.Is(err, lease.ErrLost) {
+			return err
+		}
+		o.stop = err
+		return nil
+	}
+	out, err := eng.Reconcile(ctx, l, prov, applyZone(z), apply.Wanted{Desired: o.cr.Desired, Keep: o.cr.Keep(),
 		Reserved: reserved, Gate: apply.Guard(z.DeleteThreshold, z.PendingPlanHash)})
 	o.pl, o.res, o.report, o.held, o.approved = out.Plan, out.Result, out.Report, out.Held, out.Approved
 	switch {

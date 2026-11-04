@@ -1685,6 +1685,12 @@ func init() {
 	dnsrecord.DefaultAdoptedFrom = dnsrecordDescAdoptedFrom.Default.(string)
 	// dnsrecord.AdoptedFromValidator is a validator for the "adopted_from" field. It is called by the builders before save.
 	dnsrecord.AdoptedFromValidator = dnsrecordDescAdoptedFrom.Validators[0].(func(string) error)
+	// dnsrecordDescReleaseRequested is the schema descriptor for release_requested field.
+	dnsrecordDescReleaseRequested := dnsrecordFields[14].Descriptor()
+	// dnsrecord.DefaultReleaseRequested holds the default value on creation for the release_requested field.
+	dnsrecord.DefaultReleaseRequested = dnsrecordDescReleaseRequested.Default.(string)
+	// dnsrecord.ReleaseRequestedValidator is a validator for the "release_requested" field. It is called by the builders before save.
+	dnsrecord.ReleaseRequestedValidator = dnsrecordDescReleaseRequested.Validators[0].(func(string) error)
 	// dnsrecordDescID is the schema descriptor for id field.
 	dnsrecordDescID := dnsrecordFields[0].Descriptor()
 	// dnsrecord.DefaultID holds the default value on creation for the id field.

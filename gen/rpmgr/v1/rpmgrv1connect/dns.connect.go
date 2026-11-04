@@ -370,9 +370,12 @@ type DnsZoneServiceClient interface {
 	// record that does not exist, is owned already, has a type rpmgr does not manage, or lies at a
 	// name no source of the org publishes fails the call.
 	AdoptRecords(context.Context, *connect.Request[v1.AdoptRecordsRequest]) (*connect.Response[v1.AdoptRecordsResponse], error)
-	// ReleaseRecord removes an owned record from the ledger, so that rpmgr never changes it again.
-	// The record stays at the provider, without rpmgr's marker, or with restore it is put back to
-	// the content it had when it was adopted.
+	// ReleaseRecord asks for an owned record to leave the ledger, so that rpmgr never changes it
+	// again. The DNS job carries it out under its lease, at its next pass of an active zone: the
+	// record stays at the provider, without rpmgr's marker, or with restore it is put back to the
+	// content it had when it was adopted. Until then the record shows the request in its reason.
+	// AdoptRecords and ReleaseRecord need a step-up: they hand rpmgr control of a record, or take
+	// it back.
 	ReleaseRecord(context.Context, *connect.Request[v1.ReleaseRecordRequest]) (*connect.Response[v1.ReleaseRecordResponse], error)
 	// EnableZone moves a disabled zone, such as one that restore --dns-disabled disabled, to held.
 	// It writes nothing: the zone computes plans again and needs an approved plan before the job
@@ -586,9 +589,12 @@ type DnsZoneServiceHandler interface {
 	// record that does not exist, is owned already, has a type rpmgr does not manage, or lies at a
 	// name no source of the org publishes fails the call.
 	AdoptRecords(context.Context, *connect.Request[v1.AdoptRecordsRequest]) (*connect.Response[v1.AdoptRecordsResponse], error)
-	// ReleaseRecord removes an owned record from the ledger, so that rpmgr never changes it again.
-	// The record stays at the provider, without rpmgr's marker, or with restore it is put back to
-	// the content it had when it was adopted.
+	// ReleaseRecord asks for an owned record to leave the ledger, so that rpmgr never changes it
+	// again. The DNS job carries it out under its lease, at its next pass of an active zone: the
+	// record stays at the provider, without rpmgr's marker, or with restore it is put back to the
+	// content it had when it was adopted. Until then the record shows the request in its reason.
+	// AdoptRecords and ReleaseRecord need a step-up: they hand rpmgr control of a record, or take
+	// it back.
 	ReleaseRecord(context.Context, *connect.Request[v1.ReleaseRecordRequest]) (*connect.Response[v1.ReleaseRecordResponse], error)
 	// EnableZone moves a disabled zone, such as one that restore --dns-disabled disabled, to held.
 	// It writes nothing: the zone computes plans again and needs an approved plan before the job

@@ -33,7 +33,6 @@ const (
 	ReasonRecordNotWanted       = "RECORD_NOT_WANTED"
 	ReasonRecordNotAdopted      = "RECORD_NOT_ADOPTED"
 	ReasonRecordBusy            = "RECORD_BUSY"
-	ReasonRecordNotRestorable   = "RECORD_NOT_RESTORABLE"
 	ReasonZoneDisabled          = "ZONE_DISABLED"
 )
 
@@ -63,6 +62,9 @@ func recordOf(r *ent.DNSRecord) *rpmgrv1.DnsRecord {
 		out.State = rpmgrv1.DnsRecordState_DNS_RECORD_STATE_ERROR
 	case dnsrecord.StateDeleting:
 		out.State = rpmgrv1.DnsRecordState_DNS_RECORD_STATE_DELETING
+	}
+	if r.ReleaseRequested != "" {
+		out.Reason = "release requested (" + r.ReleaseRequested + "), pending the DNS job"
 	}
 	if r.AdoptedAt != nil {
 		out.AdoptedTime = timestamppb.New(*r.AdoptedAt)
@@ -211,10 +213,9 @@ func (z *DnsZones) AdoptRecords(ctx context.Context, req *connect.Request[rpmgrv
 	return connect.NewResponse(out), nil
 }
 
-// ReleaseRecord implements DnsZoneService: an owned record leaves the ledger and stays at the
-// provider. It loses rpmgr's marker, so that it is not reported as an orphan, or with restore it
-// is put back to the content it was adopted with. Both are written to the provider before the row
-// is dropped; a call that fails in between is made again.
+// ReleaseRecord implements DnsZoneService: the request is written to the row, and the DNS job, which
+// alone writes the provider and does so under its lease, carries it out at its next pass of an
+// active zone. A call is asked again if it is repeated; the record shows the request meanwhile.
 func (z *DnsZones) ReleaseRecord(ctx context.Context, req *connect.Request[rpmgrv1.ReleaseRecordRequest]) (
 	*connect.Response[rpmgrv1.ReleaseRecordResponse], error) {
 	m := req.Msg
@@ -232,67 +233,34 @@ func (z *DnsZones) ReleaseRecord(ctx context.Context, req *connect.Request[rpmgr
 	if row.State == dnsrecord.StateCreating || row.State == dnsrecord.StateDeleting {
 		return nil, failed(connect.CodeFailedPrecondition, "the DNS job is writing the record; try again in a moment", ReasonRecordBusy)
 	}
-	orig, adopted := apply.OriginalOf(row)
-	if m.GetRestore() && !adopted {
+	if _, adopted := apply.OriginalOf(row); m.GetRestore() && !adopted {
 		return nil, failed(connect.CodeFailedPrecondition, "the record was not adopted, so it has no original to put back", ReasonRecordNotAdopted)
 	}
 	warning := ""
 	if m.GetRestore() && row.AdoptedAt != nil && z.now().Sub(*row.AdoptedAt) > apply.StalenessLimit {
 		warning = fmt.Sprintf("the original is older than %d days: its address may belong to someone else now", int(apply.StalenessLimit.Hours()/24))
 	}
+	what := "keep"
+	if m.GetRestore() {
+		what = "restore"
+	}
 	diff, _ := json.Marshal(map[string]any{"name": row.Name, "type": row.Type, "restore": m.GetRestore()})
 	api.AuditDiff(ctx, string(diff)) // before the transaction, which appends the entry
 	api.AuditReason(ctx, "release "+row.ID+" of dns zone "+zone.ID)
-	if row.ProviderRecordID != nil {
-		if err := z.unmark(ctx, zone, row, orig, m.GetRestore()); err != nil {
-			return nil, err
-		}
-	}
 	_, err = store.ConfigTx(ctx, z.DB, func(tx *ent.Tx) ([]string, error) {
-		if err := tx.DNSRecord.DeleteOneID(row.ID).Exec(ctx); err != nil {
+		if row.ProviderRecordID == nil { // nothing at the provider to write
+			if err := tx.DNSRecord.DeleteOneID(row.ID).Exec(ctx); err != nil {
+				return nil, err
+			}
+		} else if err := tx.DNSRecord.UpdateOneID(row.ID).SetReleaseRequested(what).Exec(ctx); err != nil {
 			return nil, err
 		}
-		// What the record now is to the zone, a conflict where a source wants its name, is for the
-		// next pass to find: a full one.
 		return []string{zone.ID}, tx.DNSZone.UpdateOneID(zone.ID).SetSyncRequestedAt(z.now().UTC()).Exec(ctx)
 	})
 	if err != nil {
 		return nil, storeError(err)
 	}
 	return connect.NewResponse(&rpmgrv1.ReleaseRecordResponse{Warning: warning}), nil
-}
-
-// unmark writes the record at the provider as a release leaves it: without rpmgr's marker, or with
-// restore as it was adopted. A record that is gone, or that someone else changed to carry no marker
-// of ours, needs nothing.
-func (z *DnsZones) unmark(ctx context.Context, zone *ent.DNSZone, row *ent.DNSRecord, orig apply.Original, restore bool) error {
-	p, err := z.providerOf(ctx, zone)
-	if err != nil {
-		return err
-	}
-	live, err := p.ListRecords(ctx, zone.ProviderZoneID)
-	if err != nil {
-		return providerError(err)
-	}
-	i := slices.IndexFunc(live, func(r dns.Record) bool { return r.ID == *row.ProviderRecordID })
-	if i < 0 {
-		return nil
-	}
-	rec := live[i]
-	switch {
-	case restore && rec.Type != orig.Type:
-		return failed(connect.CodeFailedPrecondition, "the type of the record changed since it was adopted, so its original cannot be put back", ReasonRecordNotRestorable)
-	case restore:
-		rec.Content, rec.TTL, rec.Proxied, rec.Comment = orig.Content, orig.TTL, orig.Proxied, orig.Comment
-	case strings.HasPrefix(rec.Comment, "rpmgr ") && strings.HasSuffix(rec.Comment, " "+row.ID):
-		rec.Comment = ""
-	default:
-		return nil
-	}
-	if err := p.Apply(ctx, zone.ProviderZoneID, dns.Batch{Patches: []dns.Record{rec}}); err != nil {
-		return providerError(err)
-	}
-	return nil
 }
 
 // SyncZone implements DnsZoneService: the request is written to the zone's row, where the DNS job,
