@@ -376,6 +376,13 @@ message GatewayHTTPRoute {
   // This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
   // route reaches only gateways with the capability route.limits when it sets one.
   RouteLimits limits = 20;
+  // Whether the route is proxied by Cloudflare: the client address is the CF-Connecting-IP of a
+  // request whose TCP peer is in cloudflare_ranges, and X-Forwarded-For and Forwarded from such a
+  // peer are ignored (docs/03-connections.md, "HTTP routes"). Only a gateway announcing the
+  // capability http.cf-connecting-ip gets a route that is proxied.
+  bool dns_proxied = 21;
+  // Cloudflare's published ranges, CIDRs sorted, for a proxied route.
+  repeated string cloudflare_ranges = 22;
 }
 
 // HTTPHeaderMatch is a request header an http route matches on.

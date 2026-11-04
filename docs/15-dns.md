@@ -429,7 +429,13 @@ A proxied name resolves to Cloudflare. Cloudflare terminates TLS and connects to
   `CF-Connecting-IP` [F cf:fundamentals/reference/http-headers], but only when the TCP peer is in
   Cloudflare's published ranges. `X-Forwarded-*` from these peers is not trusted. IP rules and
   rate limits then see the real client ([03](03-connections.md#http-routes)). For every other
-  route the gateway's trusted-proxy CIDRs apply as before.
+  route, and for a peer outside the ranges on a proxied route, the gateway's trusted-proxy CIDRs
+  apply as before and `CF-Connecting-IP` is ignored. The capability `http.cf-connecting-ip` gates
+  the route: a gateway without it is sent no proxied route, as it would judge IP rules by
+  Cloudflare's addresses ([D168](14-open-decisions.md#engineering)).
+- **Switch.** `dns_proxied` is a field of `http` routes only (`--dns-proxied`, the route form's
+  **Cloudflare proxy**). An update that names it on another type is refused with
+  `PROXY_NOT_ALLOWED` ([07](07-api.md#errors)).
 - **Ranges.**
   - A daily job reads `GET https://api.cloudflare.com/client/v4/ips`
     [F cf:fundamentals/concepts/cloudflare-ip-addresses] under the lease `cloudflare-ranges`,

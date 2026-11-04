@@ -15,6 +15,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/route"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/routehttp"
 )
 
 // The results the Cloudflare range refresh counts (rpmgr_dns_cloudflare_ranges_refresh_total).
@@ -98,6 +100,12 @@ func refreshCloudflareRanges(ctx context.Context, o CloudflareRangesOptions, l l
 	count(RangesOK)
 	o.Logger.Info("cloudflare ip ranges refreshed", "ipv4", len(next.IPv4), "ipv6", len(next.IPv6))
 	return nil
+}
+
+// ProxiedRoutes reports whether an enabled http route is proxied by Cloudflare (dns_proxied), which
+// makes the Cloudflare IP ranges matter: the stale alert is for installations that have one.
+func ProxiedRoutes(ctx context.Context, c *ent.Client) (bool, error) {
+	return c.RouteHTTP.Query().Where(routehttp.DNSProxied(true), routehttp.HasRouteWith(route.Enabled(true))).Exist(ctx)
 }
 
 // cloudflareRangesStale reports whether the stale alert's condition holds at now: the refresh is

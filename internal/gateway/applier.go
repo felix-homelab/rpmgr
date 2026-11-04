@@ -416,6 +416,14 @@ func (a *Applier) Validate(snap *agentv1.Snapshot) []*agentv1.SnapshotError {
 					bad(id, "trusted proxy %q is not a CIDR", c)
 				}
 			}
+			for _, c := range r.GetCloudflareRanges() {
+				if _, err := netip.ParsePrefix(c); err != nil {
+					bad(id, "Cloudflare range %q is not a CIDR", c)
+				}
+			}
+			if len(r.GetCloudflareRanges()) > 0 && !r.GetDnsProxied() {
+				bad(id, "Cloudflare ranges on a route that is not proxied")
+			}
 			if r.GetUpstreamResponseHeaderTimeoutSeconds() > maxRouteTimeout || r.GetUpstreamIdleTimeoutSeconds() > maxRouteTimeout {
 				bad(id, "an upstream timeout above %d seconds", maxRouteTimeout)
 			}
@@ -590,6 +598,13 @@ func (a *Applier) Apply(ctx context.Context, snap *agentv1.Snapshot, _ agent.Cha
 			for _, c := range r.GetTrustedProxies() {
 				if p, err := netip.ParsePrefix(c); err == nil {
 					hr.TrustedProxies = append(hr.TrustedProxies, p.Masked())
+				}
+			}
+			if hr.DNSProxied = r.GetDnsProxied(); hr.DNSProxied {
+				for _, c := range r.GetCloudflareRanges() {
+					if p, err := netip.ParsePrefix(c); err == nil {
+						hr.CloudflareRanges = append(hr.CloudflareRanges, p.Masked())
+					}
 				}
 			}
 			if len(r.GetUpstreamTls()) > 0 {

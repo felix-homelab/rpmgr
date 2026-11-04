@@ -870,6 +870,7 @@ rpmgr create route [flags]
 | `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
+| `--dns-proxied` |  | http: the route's names are proxied by Cloudflare, which the gateway believes for the client address only from Cloudflare's own addresses |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--group string` |  | the gateway group, by name or ID |
 | `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
@@ -1198,6 +1199,7 @@ rpmgr update route [flags] <id or name>
 | `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
+| `--dns-proxied` |  | http: the route's names are proxied by Cloudflare, which the gateway believes for the client address only from Cloudflare's own addresses |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--force` |  | update without checking that the route is unchanged since this command read it |
 | `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |
@@ -1705,6 +1707,7 @@ rpmgr preview route [flags]
 | `--connect-hostname string` |  | tcp --http-connect --connect-auth tls-basic: the listener's hostname |
 | `--description string` |  | a description for people |
 | `--disabled` |  | the route is not served |
+| `--dns-proxied` |  | http: the route's names are proxied by Cloudflare, which the gateway believes for the client address only from Cloudflare's own addresses |
 | `--flow-idle-timeout duration` |  | tcp-udp: forget a UDP flow idle this long |
 | `--group string` |  | the gateway group, by name or ID |
 | `--health-check string` |  | the health check each connector runs against its targets: tcp, http, or none to remove it |

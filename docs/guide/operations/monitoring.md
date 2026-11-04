@@ -83,6 +83,7 @@ The full table of metrics is in [10](../../10-operations.md#metrics). Those most
 | Revocations not yet copied off the host | `rpmgr_revocation_log_unshipped` |
 | Audit items an external sink has not acknowledged, and the age of the oldest | `rpmgr_audit_sink_backlog`, `rpmgr_audit_sink_oldest_unshipped_timestamp_seconds` |
 | Sign-ins and enrollments a rate limit refused | `rpmgr_ratelimit_refused_total` |
+| Refreshes of Cloudflare's IP ranges by result, and the age of the list in use | `rpmgr_dns_cloudflare_ranges_refresh_total`, `rpmgr_dns_cloudflare_ranges_age_seconds` |
 
 Alerts that pay off, with their conditions, are in
 [10](../../10-operations.md#suggested-alerts).

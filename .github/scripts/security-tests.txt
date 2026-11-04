@@ -58,10 +58,10 @@ TestDNS_FailStatic	p2	-	-	DNS automation
 TestDNS_RateBudgetAndRetryAfter	p2	-	-	DNS automation
 TestDNS_BatchFallbackPerRecord	p2	-	-	DNS automation
 TestDNS_LeaseCheckedBeforeBatch	p2	-	-	DNS automation
-TestDNS_ProxiedOnlyForHttp	p2	-	-	DNS automation
+TestDNS_ProxiedOnlyForHttp	p2	-	-	DNS automation; the route API's clause (PROXY_NOT_ALLOWED for a route that is not http) is TestDNS_ProxiedOnlyForHttp_RouteAPI in internal/apisvc (7.3), the zone clauses come with managed zones
 TestDNS_ReservedNamesNeverWritten	p2	-	-	DNS automation
 TestDNS_TokenWriteOnlyAndBaseURLFixed	done	6.4	#662	base-URL clause 6.2 (internal/dns/cloudflare), API, export and log clause 6.4
-TestGateway_CFConnectingIPOnlyForProxiedFromCloudflare	p2	-	-	proxied http routes
+TestGateway_CFConnectingIPOnlyForProxiedFromCloudflare	done	7.3	#682	internal/gateway/cfip_test.go
 TestTransport_PinnedRouteUsesPinnedSessions	done	4.14	#84	precedence clause (route over connector over instance) in internal/routes (4.12)
 TestTransport_PinNeverFallsBack	done	4.14	#84
 TestTransport_ChangeKeepsOpenConnections	done	4.14	#84

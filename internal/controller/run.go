@@ -500,7 +500,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	job(RetentionJob(cpOpts), "audit retention job")
 	job(RollupJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}), "traffic rollup job")
 	job(EventsJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}), "events job")
-	job(AlertJob(AlertOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger, RevocationLog: shipper.Status}), "alert job")
+	job(AlertJob(AlertOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger, RevocationLog: shipper.Status,
+		ProxiedRoutes: ProxiedRoutes}), "alert job")
 	job(WebhookJob(WebhookOptions{DB: db, Leases: leases, Sealer: sealer, Sender: webhookSender, Now: o.Now,
 		Logger: o.Logger, Own: ownAddresses, Private: privateRanges(db, sys)}), "webhook job")
 	job(MailJob(MailOptions{DB: db, Leases: leases, Mailer: relay, PublicURL: cfg.PublicURL, Now: o.Now, Logger: o.Logger}), "mail job")

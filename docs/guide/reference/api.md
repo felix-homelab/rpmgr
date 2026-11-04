@@ -460,6 +460,7 @@ Messages never hold secrets or other orgs' data. An error that the method did no
 | `failed_precondition` | A port outside the gateway group's pools | `PORT_NOT_IN_POOL` |
 | `failed_precondition` | An access policy with basic auth on a route that is not HTTP | `BASIC_AUTH_NOT_HTTP` |
 | `failed_precondition` | An access policy with a required header on a route that is not HTTP | `REQUIRE_HEADER_NOT_HTTP` |
+| `failed_precondition` | An update of `http.dns_proxied` on a route that is not HTTP | `PROXY_NOT_ALLOWED` |
 | `failed_precondition` | A change while the org or the instance is in restore review, read-only ([Backup and restore](../operations/backup-and-restore.md)) | `RESTORE_REVIEW` |
 | `failed_precondition` | Decommissioning the all-in-one's built-in gateway or connector, and other states that forbid the change; the message says which | — |
 | `resource_exhausted` | No free port is left in the pools | `POOL_EXHAUSTED` |

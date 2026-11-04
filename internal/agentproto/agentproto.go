@@ -39,6 +39,10 @@ const (
 	CapRouteLimits = "route.limits"
 	// CapTCPHTTPConnect: a gateway serves tcp routes in http_connect mode on CONNECT listeners.
 	CapTCPHTTPConnect = "tcp.http-connect"
+	// CapHTTPCFConnectingIP: a gateway takes the client address of a dns_proxied route from
+	// CF-Connecting-IP, when the TCP peer is in Cloudflare's ranges. An older gateway would judge
+	// the route's IP rules and rate limits by Cloudflare's addresses.
+	CapHTTPCFConnectingIP = "http.cf-connecting-ip"
 )
 
 // The capability strings of Phase 2 that are not route features, each checked where its feature

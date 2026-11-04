@@ -252,3 +252,37 @@ func TestCloudflareRangesStaleAlert(t *testing.T) {
 		t.Fatalf("%d open alerts with the refresh off, want none", n)
 	}
 }
+
+// TestProxiedRoutes: only an enabled http route with dns_proxied makes the Cloudflare ranges matter.
+func TestProxiedRoutes(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	storetest.Init(t, db)
+	sys := storetest.SystemCtx(t)
+	org := storetest.Org(t, db, "org-a")
+	c := db.Client()
+	group := c.GatewayGroup.Create().SetOrgID(org).SetName("eu").SaveX(sys)
+	add := func(name string, enabled, proxied bool) {
+		r := c.Route.Create().SetOrgID(org).SetName(name).SetType("http").SetGatewayGroupID(group.ID).SetEnabled(enabled).SaveX(sys)
+		c.RouteHTTP.Create().SetOrgID(org).SetRouteID(r.ID).SetDNSProxied(proxied).ExecX(sys)
+	}
+	got := func() bool {
+		t.Helper()
+		ok, err := controller.ProxiedRoutes(sys, c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	if got() {
+		t.Fatal("proxied routes without any route")
+	}
+	add("plain", true, false)
+	add("off", false, true)
+	if got() {
+		t.Fatal("a route that is not proxied, or not enabled, counted")
+	}
+	add("cf", true, true)
+	if !got() {
+		t.Fatal("an enabled proxied route did not count")
+	}
+}

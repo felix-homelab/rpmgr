@@ -112,6 +112,11 @@ func routeEnv(t *testing.T) (*routeAPI, map[string]string) {
 // TestCreateRoute (docs/16-cli.md): create route builds the route its flags describe, naming its
 // group and policies by name, and checks it with the API's own rules before sending it; a flag of
 // another route type, two types, an invalid name and a taken port are refused.
+func runOK(env map[string]string, args ...string) bool {
+	code, _, _ := runWith(env, "", args...)
+	return code == cli.ExitOK
+}
+
 func TestCreateRoute(t *testing.T) {
 	a, env := routeEnv(t)
 	code, out, errOut := runWith(env, "", "create", "route", "--http", "--name", "web", "--group", "eu", "--hostname", "web.example.com",
@@ -124,6 +129,13 @@ func TestCreateRoute(t *testing.T) {
 		r.GetHttp().GetHstsMaxAgeSeconds() != 31536000 || r.GetLabels()["site"] != "home" || !r.GetEnabled() ||
 		r.GetTransport() != rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC {
 		t.Fatalf("an http route: %d %q %q\n%v", code, out, errOut, a.created)
+	}
+	if code, _, errOut := runWith(env, "", "create", "route", "--http", "--name", "cf", "--group", "eu", "--hostname", "cf.example.com",
+		"--dns-proxied"); code != cli.ExitOK || !a.created.GetRoute().GetHttp().GetDnsProxied() {
+		t.Fatalf("a proxied http route: %d %q %v", code, errOut, a.created)
+	}
+	if !runOK(env, "create", "route", "--http", "--name", "web2", "--group", "eu", "--hostname", "web2.example.com") || a.created.GetRoute().GetHttp().GetDnsProxied() {
+		t.Fatalf("an http route is not proxied unless asked: %v", a.created)
 	}
 	// With -o json or yaml, standard output is the route alone and the confirmation goes to standard
 	// error, so that a script can parse it (yaml is the manifest, which this fake API does not export).
@@ -167,6 +179,8 @@ func TestCreateRoute(t *testing.T) {
 		"a hostname on tcp":       {"--tcp", "--name", "x", "--group", "eu", "--hostname", "a.example.com"},
 		"maintenance on tcp":      {"--tcp", "--name", "x", "--group", "eu", "--maintenance"},
 		"a header match on tcp":   {"--tcp", "--name", "x", "--group", "eu", "--match-header", "X-Env=a"},
+		"proxied on tcp":          {"--tcp", "--name", "x", "--group", "eu", "--dns-proxied"},
+		"proxied on passthrough":  {"--passthrough", "--name", "x", "--group", "eu", "--hostname", "a.example.com", "--dns-proxied"},
 		"a timeout on udp":        {"--udp", "--name", "x", "--group", "eu", "--upstream-idle-timeout", "1m"},
 		"a message on udp":        {"--udp", "--name", "x", "--group", "eu", "--maintenance-message", "back soon"},
 		"a port on http":          {"--http", "--name", "x", "--group", "eu", "--hostname", "a.example.com", "--port", "80"},
@@ -221,6 +235,15 @@ func TestUpdateRoute(t *testing.T) {
 	if code, _, errOut := runWith(env, "", "update", "route", "--maintenance=false", "rt_1"); code != cli.ExitOK ||
 		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"http.maintenance"}) || a.updated.GetRoute().GetHttp().GetMaintenance() {
 		t.Fatalf("out of maintenance: %d %q %v", code, errOut, a.updated)
+	}
+	// The Cloudflare proxy (D168): on and off, each alone in the mask.
+	if code, _, errOut := runWith(env, "", "update", "route", "--dns-proxied", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"http.dns_proxied"}) || !a.updated.GetRoute().GetHttp().GetDnsProxied() {
+		t.Fatalf("proxied: %d %q %v", code, errOut, a.updated)
+	}
+	if code, _, errOut := runWith(env, "", "update", "route", "--dns-proxied=false", "rt_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"http.dns_proxied"}) || a.updated.GetRoute().GetHttp().GetDnsProxied() {
+		t.Fatalf("not proxied: %d %q %v", code, errOut, a.updated)
 	}
 	// A message the API's rules refuse is refused before anything is sent.
 	calls := a.calls

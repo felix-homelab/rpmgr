@@ -457,7 +457,7 @@ one page, with a section list beside them that jumps to each section
   | Section | Fields | Types |
   |---|---|---|
   | General | the gateway group (new routes), name, description, labels | every type |
-  | Hostnames & matching | hostnames, path prefix, header matches | HTTP, TLS passthrough |
+  | Hostnames & matching | hostnames, path prefix, header matches, Cloudflare proxy (`dns_proxied`, a select of off and on) | HTTP, TLS passthrough |
   | TLS | TLS certificate, uploaded certificate, port 80, HSTS | HTTP |
   | Requests & headers | host header, request and response headers, WebSocket, largest request body | HTTP |
   | Upstream | transport, upstream response header and idle timeouts, idle and flow idle timeouts, limits | every type |

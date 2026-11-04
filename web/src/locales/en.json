@@ -449,6 +449,7 @@
       "responseHeaders": "Response headers to set",
       "websocket": "WebSocket",
       "maxBody": "Largest request body (bytes, 0 for no limit)",
+      "dnsProxied": "Cloudflare proxy",
       "maintenance": "Maintenance",
       "maintenanceMessage": "Maintenance message (plain text, at most 500 characters)",
       "port": "Public port",
@@ -486,6 +487,7 @@
       "healthPort": "Empty for each target's own port. A UDP route needs one; a route with a Unix socket target cannot have one.",
       "healthPath": "Starts with /, may have a query. Empty for /.",
       "healthStatus": "As 200-399. Empty for any success or redirect.",
+      "dnsProxied": "Set the zone's SSL/TLS mode to Full (strict) at Cloudflare. The gateway takes the client address for access rules and limits from CF-Connecting-IP, and only when the request comes from Cloudflare. Gateways older than this feature do not serve the route.",
       "fixed": "Set when the route is created; it cannot change.",
       "limit": "Empty for no limit. The group's enabled gateways share it."
     },
@@ -532,6 +534,10 @@
         "redirect": "Redirect to HTTPS",
         "serve": "Serve the route",
         "off": "Closed"
+      },
+      "dnsProxied": {
+        "off": "Off: clients reach the gateway directly",
+        "on": "On: Cloudflare proxies the route's names"
       },
       "maintenance": {
         "off": "Off: serve the route",
