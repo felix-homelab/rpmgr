@@ -79,6 +79,67 @@ func (WebhookDisabledReason) EnumDescriptor() ([]byte, []int) {
 	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{0}
 }
 
+// WebhookFormat is how an endpoint's events are posted (docs/07-api.md, "Webhooks (Phase 2)").
+type WebhookFormat int32
+
+const (
+	// On a request: the default, rpmgr. Never in an answer.
+	WebhookFormat_WEBHOOK_FORMAT_UNSPECIFIED WebhookFormat = 0
+	// The signed JSON envelope.
+	WebhookFormat_WEBHOOK_FORMAT_RPMGR WebhookFormat = 1
+	// A Discord incoming webhook: an embed.
+	WebhookFormat_WEBHOOK_FORMAT_DISCORD WebhookFormat = 2
+	// A Slack incoming webhook: text and blocks.
+	WebhookFormat_WEBHOOK_FORMAT_SLACK WebhookFormat = 3
+	// A Microsoft Teams workflows webhook: an Adaptive Card.
+	WebhookFormat_WEBHOOK_FORMAT_TEAMS WebhookFormat = 4
+)
+
+// Enum value maps for WebhookFormat.
+var (
+	WebhookFormat_name = map[int32]string{
+		0: "WEBHOOK_FORMAT_UNSPECIFIED",
+		1: "WEBHOOK_FORMAT_RPMGR",
+		2: "WEBHOOK_FORMAT_DISCORD",
+		3: "WEBHOOK_FORMAT_SLACK",
+		4: "WEBHOOK_FORMAT_TEAMS",
+	}
+	WebhookFormat_value = map[string]int32{
+		"WEBHOOK_FORMAT_UNSPECIFIED": 0,
+		"WEBHOOK_FORMAT_RPMGR":       1,
+		"WEBHOOK_FORMAT_DISCORD":     2,
+		"WEBHOOK_FORMAT_SLACK":       3,
+		"WEBHOOK_FORMAT_TEAMS":       4,
+	}
+)
+
+func (x WebhookFormat) Enum() *WebhookFormat {
+	p := new(WebhookFormat)
+	*p = x
+	return p
+}
+
+func (x WebhookFormat) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (WebhookFormat) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_v1_webhook_proto_enumTypes[1].Descriptor()
+}
+
+func (WebhookFormat) Type() protoreflect.EnumType {
+	return &file_rpmgr_v1_webhook_proto_enumTypes[1]
+}
+
+func (x WebhookFormat) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use WebhookFormat.Descriptor instead.
+func (WebhookFormat) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_v1_webhook_proto_rawDescGZIP(), []int{1}
+}
+
 // Webhook is one endpoint. It never carries the secret.
 type Webhook struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -86,7 +147,8 @@ type Webhook struct {
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// The org; output only. Empty for an instance endpoint.
 	OrgId string `protobuf:"bytes,2,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
-	// Where events are posted: an https:// URL without credentials.
+	// Where events are posted: an https:// URL without credentials. Of a chat format it is the
+	// scheme and host only, and is empty on a request; the URL is secret_url.
 	Url string `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
 	// The event types the endpoint wants, by name or by prefix such as route.*; none means all.
 	EventTypes []string `protobuf:"bytes,4,rep,name=event_types,json=eventTypes,proto3" json:"event_types,omitempty"`
@@ -94,7 +156,7 @@ type Webhook struct {
 	Enabled bool `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// Why it is disabled; output only.
 	DisabledReason WebhookDisabledReason `protobuf:"varint,6,opt,name=disabled_reason,json=disabledReason,proto3,enum=rpmgr.v1.WebhookDisabledReason" json:"disabled_reason,omitempty"`
-	// Whether the endpoint has a secret; output only, always true.
+	// Whether the endpoint has a signing secret; output only, false for a chat format.
 	SecretSet bool `protobuf:"varint,7,opt,name=secret_set,json=secretSet,proto3" json:"secret_set,omitempty"`
 	// Whether the previous secret still signs; output only.
 	PreviousSecretSigns bool `protobuf:"varint,8,opt,name=previous_secret_signs,json=previousSecretSigns,proto3" json:"previous_secret_signs,omitempty"`
@@ -107,7 +169,12 @@ type Webhook struct {
 	// When it was made; output only.
 	CreateTime *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	// The version to send back with an update or a deletion; output only.
-	Etag          string `protobuf:"bytes,13,opt,name=etag,proto3" json:"etag,omitempty"`
+	Etag string `protobuf:"bytes,13,opt,name=etag,proto3" json:"etag,omitempty"`
+	// How events are posted; rpmgr if not set on a request. Changing it needs a new secret_url.
+	Format WebhookFormat `protobuf:"varint,14,opt,name=format,proto3,enum=rpmgr.v1.WebhookFormat" json:"format,omitempty"`
+	// The URL of a chat format's incoming webhook, which holds the service's token. Write-only: it
+	// is stored under the KEK, never returned and redacted in the audit log; empty in every answer.
+	SecretUrl     string `protobuf:"bytes,15,opt,name=secret_url,json=secretUrl,proto3" json:"secret_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -229,6 +296,20 @@ func (x *Webhook) GetCreateTime() *timestamppb.Timestamp {
 func (x *Webhook) GetEtag() string {
 	if x != nil {
 		return x.Etag
+	}
+	return ""
+}
+
+func (x *Webhook) GetFormat() WebhookFormat {
+	if x != nil {
+		return x.Format
+	}
+	return WebhookFormat_WEBHOOK_FORMAT_UNSPECIFIED
+}
+
+func (x *Webhook) GetSecretUrl() string {
+	if x != nil {
+		return x.SecretUrl
 	}
 	return ""
 }
@@ -2061,7 +2142,7 @@ var File_rpmgr_v1_webhook_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_webhook_proto_rawDesc = "" +
 	"\n" +
-	"\x16rpmgr/v1/webhook.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"\xcd\x04\n" +
+	"\x16rpmgr/v1/webhook.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16rpmgr/v1/options.proto\"\xab\x05\n" +
 	"\aWebhook\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06org_id\x18\x02 \x01(\tR\x05orgId\x12\x10\n" +
@@ -2079,7 +2160,10 @@ const file_rpmgr_v1_webhook_proto_rawDesc = "" +
 	"\x12failing_since_time\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\x10failingSinceTime\x12;\n" +
 	"\vcreate_time\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"createTime\x12\x12\n" +
-	"\x04etag\x18\r \x01(\tR\x04etag\"\xcc\x02\n" +
+	"\x04etag\x18\r \x01(\tR\x04etag\x12/\n" +
+	"\x06format\x18\x0e \x01(\x0e2\x17.rpmgr.v1.WebhookFormatR\x06format\x12+\n" +
+	"\n" +
+	"secret_url\x18\x0f \x01(\tB\f\xbaH\x05r\x03\x18\x80\x10\x88\xb5\x18\x01R\tsecretUrl\"\xcc\x02\n" +
 	"\x0fWebhookDelivery\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -2210,7 +2294,13 @@ const file_rpmgr_v1_webhook_proto_rawDesc = "" +
 	"\x15WebhookDisabledReason\x12'\n" +
 	"#WEBHOOK_DISABLED_REASON_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fWEBHOOK_DISABLED_REASON_FAILING\x10\x01\x12\"\n" +
-	"\x1eWEBHOOK_DISABLED_REASON_PERSON\x10\x022\xcb\a\n" +
+	"\x1eWEBHOOK_DISABLED_REASON_PERSON\x10\x02*\x99\x01\n" +
+	"\rWebhookFormat\x12\x1e\n" +
+	"\x1aWEBHOOK_FORMAT_UNSPECIFIED\x10\x00\x12\x18\n" +
+	"\x14WEBHOOK_FORMAT_RPMGR\x10\x01\x12\x1a\n" +
+	"\x16WEBHOOK_FORMAT_DISCORD\x10\x02\x12\x18\n" +
+	"\x14WEBHOOK_FORMAT_SLACK\x10\x03\x12\x18\n" +
+	"\x14WEBHOOK_FORMAT_TEAMS\x10\x042\xcb\a\n" +
 	"\x0eWebhookService\x12n\n" +
 	"\rCreateWebhook\x12\x1e.rpmgr.v1.CreateWebhookRequest\x1a\x1f.rpmgr.v1.CreateWebhookResponse\"\x1c\x8a\xb5\x18\x18\n" +
 	"\x0ewebhooks.write\x12\x06org_id\x12l\n" +
@@ -2265,110 +2355,112 @@ func file_rpmgr_v1_webhook_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_webhook_proto_rawDescData
 }
 
-var file_rpmgr_v1_webhook_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_rpmgr_v1_webhook_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_rpmgr_v1_webhook_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_rpmgr_v1_webhook_proto_goTypes = []any{
 	(WebhookDisabledReason)(0),                    // 0: rpmgr.v1.WebhookDisabledReason
-	(*Webhook)(nil),                               // 1: rpmgr.v1.Webhook
-	(*WebhookDelivery)(nil),                       // 2: rpmgr.v1.WebhookDelivery
-	(*CreateWebhookRequest)(nil),                  // 3: rpmgr.v1.CreateWebhookRequest
-	(*CreateWebhookResponse)(nil),                 // 4: rpmgr.v1.CreateWebhookResponse
-	(*GetWebhookRequest)(nil),                     // 5: rpmgr.v1.GetWebhookRequest
-	(*GetWebhookResponse)(nil),                    // 6: rpmgr.v1.GetWebhookResponse
-	(*ListWebhooksRequest)(nil),                   // 7: rpmgr.v1.ListWebhooksRequest
-	(*ListWebhooksResponse)(nil),                  // 8: rpmgr.v1.ListWebhooksResponse
-	(*UpdateWebhookRequest)(nil),                  // 9: rpmgr.v1.UpdateWebhookRequest
-	(*UpdateWebhookResponse)(nil),                 // 10: rpmgr.v1.UpdateWebhookResponse
-	(*DeleteWebhookRequest)(nil),                  // 11: rpmgr.v1.DeleteWebhookRequest
-	(*DeleteWebhookResponse)(nil),                 // 12: rpmgr.v1.DeleteWebhookResponse
-	(*RotateWebhookSecretRequest)(nil),            // 13: rpmgr.v1.RotateWebhookSecretRequest
-	(*RotateWebhookSecretResponse)(nil),           // 14: rpmgr.v1.RotateWebhookSecretResponse
-	(*ListWebhookDeliveriesRequest)(nil),          // 15: rpmgr.v1.ListWebhookDeliveriesRequest
-	(*ListWebhookDeliveriesResponse)(nil),         // 16: rpmgr.v1.ListWebhookDeliveriesResponse
-	(*TestWebhookRequest)(nil),                    // 17: rpmgr.v1.TestWebhookRequest
-	(*TestWebhookResponse)(nil),                   // 18: rpmgr.v1.TestWebhookResponse
-	(*CreateInstanceWebhookRequest)(nil),          // 19: rpmgr.v1.CreateInstanceWebhookRequest
-	(*CreateInstanceWebhookResponse)(nil),         // 20: rpmgr.v1.CreateInstanceWebhookResponse
-	(*GetInstanceWebhookRequest)(nil),             // 21: rpmgr.v1.GetInstanceWebhookRequest
-	(*GetInstanceWebhookResponse)(nil),            // 22: rpmgr.v1.GetInstanceWebhookResponse
-	(*ListInstanceWebhooksRequest)(nil),           // 23: rpmgr.v1.ListInstanceWebhooksRequest
-	(*ListInstanceWebhooksResponse)(nil),          // 24: rpmgr.v1.ListInstanceWebhooksResponse
-	(*UpdateInstanceWebhookRequest)(nil),          // 25: rpmgr.v1.UpdateInstanceWebhookRequest
-	(*UpdateInstanceWebhookResponse)(nil),         // 26: rpmgr.v1.UpdateInstanceWebhookResponse
-	(*DeleteInstanceWebhookRequest)(nil),          // 27: rpmgr.v1.DeleteInstanceWebhookRequest
-	(*DeleteInstanceWebhookResponse)(nil),         // 28: rpmgr.v1.DeleteInstanceWebhookResponse
-	(*RotateInstanceWebhookSecretRequest)(nil),    // 29: rpmgr.v1.RotateInstanceWebhookSecretRequest
-	(*RotateInstanceWebhookSecretResponse)(nil),   // 30: rpmgr.v1.RotateInstanceWebhookSecretResponse
-	(*ListInstanceWebhookDeliveriesRequest)(nil),  // 31: rpmgr.v1.ListInstanceWebhookDeliveriesRequest
-	(*ListInstanceWebhookDeliveriesResponse)(nil), // 32: rpmgr.v1.ListInstanceWebhookDeliveriesResponse
-	(*TestInstanceWebhookRequest)(nil),            // 33: rpmgr.v1.TestInstanceWebhookRequest
-	(*TestInstanceWebhookResponse)(nil),           // 34: rpmgr.v1.TestInstanceWebhookResponse
-	(*timestamppb.Timestamp)(nil),                 // 35: google.protobuf.Timestamp
-	(*fieldmaskpb.FieldMask)(nil),                 // 36: google.protobuf.FieldMask
+	(WebhookFormat)(0),                            // 1: rpmgr.v1.WebhookFormat
+	(*Webhook)(nil),                               // 2: rpmgr.v1.Webhook
+	(*WebhookDelivery)(nil),                       // 3: rpmgr.v1.WebhookDelivery
+	(*CreateWebhookRequest)(nil),                  // 4: rpmgr.v1.CreateWebhookRequest
+	(*CreateWebhookResponse)(nil),                 // 5: rpmgr.v1.CreateWebhookResponse
+	(*GetWebhookRequest)(nil),                     // 6: rpmgr.v1.GetWebhookRequest
+	(*GetWebhookResponse)(nil),                    // 7: rpmgr.v1.GetWebhookResponse
+	(*ListWebhooksRequest)(nil),                   // 8: rpmgr.v1.ListWebhooksRequest
+	(*ListWebhooksResponse)(nil),                  // 9: rpmgr.v1.ListWebhooksResponse
+	(*UpdateWebhookRequest)(nil),                  // 10: rpmgr.v1.UpdateWebhookRequest
+	(*UpdateWebhookResponse)(nil),                 // 11: rpmgr.v1.UpdateWebhookResponse
+	(*DeleteWebhookRequest)(nil),                  // 12: rpmgr.v1.DeleteWebhookRequest
+	(*DeleteWebhookResponse)(nil),                 // 13: rpmgr.v1.DeleteWebhookResponse
+	(*RotateWebhookSecretRequest)(nil),            // 14: rpmgr.v1.RotateWebhookSecretRequest
+	(*RotateWebhookSecretResponse)(nil),           // 15: rpmgr.v1.RotateWebhookSecretResponse
+	(*ListWebhookDeliveriesRequest)(nil),          // 16: rpmgr.v1.ListWebhookDeliveriesRequest
+	(*ListWebhookDeliveriesResponse)(nil),         // 17: rpmgr.v1.ListWebhookDeliveriesResponse
+	(*TestWebhookRequest)(nil),                    // 18: rpmgr.v1.TestWebhookRequest
+	(*TestWebhookResponse)(nil),                   // 19: rpmgr.v1.TestWebhookResponse
+	(*CreateInstanceWebhookRequest)(nil),          // 20: rpmgr.v1.CreateInstanceWebhookRequest
+	(*CreateInstanceWebhookResponse)(nil),         // 21: rpmgr.v1.CreateInstanceWebhookResponse
+	(*GetInstanceWebhookRequest)(nil),             // 22: rpmgr.v1.GetInstanceWebhookRequest
+	(*GetInstanceWebhookResponse)(nil),            // 23: rpmgr.v1.GetInstanceWebhookResponse
+	(*ListInstanceWebhooksRequest)(nil),           // 24: rpmgr.v1.ListInstanceWebhooksRequest
+	(*ListInstanceWebhooksResponse)(nil),          // 25: rpmgr.v1.ListInstanceWebhooksResponse
+	(*UpdateInstanceWebhookRequest)(nil),          // 26: rpmgr.v1.UpdateInstanceWebhookRequest
+	(*UpdateInstanceWebhookResponse)(nil),         // 27: rpmgr.v1.UpdateInstanceWebhookResponse
+	(*DeleteInstanceWebhookRequest)(nil),          // 28: rpmgr.v1.DeleteInstanceWebhookRequest
+	(*DeleteInstanceWebhookResponse)(nil),         // 29: rpmgr.v1.DeleteInstanceWebhookResponse
+	(*RotateInstanceWebhookSecretRequest)(nil),    // 30: rpmgr.v1.RotateInstanceWebhookSecretRequest
+	(*RotateInstanceWebhookSecretResponse)(nil),   // 31: rpmgr.v1.RotateInstanceWebhookSecretResponse
+	(*ListInstanceWebhookDeliveriesRequest)(nil),  // 32: rpmgr.v1.ListInstanceWebhookDeliveriesRequest
+	(*ListInstanceWebhookDeliveriesResponse)(nil), // 33: rpmgr.v1.ListInstanceWebhookDeliveriesResponse
+	(*TestInstanceWebhookRequest)(nil),            // 34: rpmgr.v1.TestInstanceWebhookRequest
+	(*TestInstanceWebhookResponse)(nil),           // 35: rpmgr.v1.TestInstanceWebhookResponse
+	(*timestamppb.Timestamp)(nil),                 // 36: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),                 // 37: google.protobuf.FieldMask
 }
 var file_rpmgr_v1_webhook_proto_depIdxs = []int32{
 	0,  // 0: rpmgr.v1.Webhook.disabled_reason:type_name -> rpmgr.v1.WebhookDisabledReason
-	35, // 1: rpmgr.v1.Webhook.previous_secret_until:type_name -> google.protobuf.Timestamp
-	35, // 2: rpmgr.v1.Webhook.last_success_time:type_name -> google.protobuf.Timestamp
-	35, // 3: rpmgr.v1.Webhook.failing_since_time:type_name -> google.protobuf.Timestamp
-	35, // 4: rpmgr.v1.Webhook.create_time:type_name -> google.protobuf.Timestamp
-	35, // 5: rpmgr.v1.WebhookDelivery.send_time:type_name -> google.protobuf.Timestamp
-	35, // 6: rpmgr.v1.WebhookDelivery.next_attempt_time:type_name -> google.protobuf.Timestamp
-	1,  // 7: rpmgr.v1.CreateWebhookRequest.webhook:type_name -> rpmgr.v1.Webhook
-	1,  // 8: rpmgr.v1.CreateWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
-	1,  // 9: rpmgr.v1.GetWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
-	1,  // 10: rpmgr.v1.ListWebhooksResponse.webhooks:type_name -> rpmgr.v1.Webhook
-	1,  // 11: rpmgr.v1.UpdateWebhookRequest.webhook:type_name -> rpmgr.v1.Webhook
-	36, // 12: rpmgr.v1.UpdateWebhookRequest.update_mask:type_name -> google.protobuf.FieldMask
-	1,  // 13: rpmgr.v1.UpdateWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
-	1,  // 14: rpmgr.v1.RotateWebhookSecretResponse.webhook:type_name -> rpmgr.v1.Webhook
-	2,  // 15: rpmgr.v1.ListWebhookDeliveriesResponse.deliveries:type_name -> rpmgr.v1.WebhookDelivery
-	1,  // 16: rpmgr.v1.CreateInstanceWebhookRequest.webhook:type_name -> rpmgr.v1.Webhook
-	1,  // 17: rpmgr.v1.CreateInstanceWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
-	1,  // 18: rpmgr.v1.GetInstanceWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
-	1,  // 19: rpmgr.v1.ListInstanceWebhooksResponse.webhooks:type_name -> rpmgr.v1.Webhook
-	1,  // 20: rpmgr.v1.UpdateInstanceWebhookRequest.webhook:type_name -> rpmgr.v1.Webhook
-	36, // 21: rpmgr.v1.UpdateInstanceWebhookRequest.update_mask:type_name -> google.protobuf.FieldMask
-	1,  // 22: rpmgr.v1.UpdateInstanceWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
-	1,  // 23: rpmgr.v1.RotateInstanceWebhookSecretResponse.webhook:type_name -> rpmgr.v1.Webhook
-	2,  // 24: rpmgr.v1.ListInstanceWebhookDeliveriesResponse.deliveries:type_name -> rpmgr.v1.WebhookDelivery
-	3,  // 25: rpmgr.v1.WebhookService.CreateWebhook:input_type -> rpmgr.v1.CreateWebhookRequest
-	5,  // 26: rpmgr.v1.WebhookService.GetWebhook:input_type -> rpmgr.v1.GetWebhookRequest
-	7,  // 27: rpmgr.v1.WebhookService.ListWebhooks:input_type -> rpmgr.v1.ListWebhooksRequest
-	9,  // 28: rpmgr.v1.WebhookService.UpdateWebhook:input_type -> rpmgr.v1.UpdateWebhookRequest
-	11, // 29: rpmgr.v1.WebhookService.DeleteWebhook:input_type -> rpmgr.v1.DeleteWebhookRequest
-	13, // 30: rpmgr.v1.WebhookService.RotateWebhookSecret:input_type -> rpmgr.v1.RotateWebhookSecretRequest
-	15, // 31: rpmgr.v1.WebhookService.ListWebhookDeliveries:input_type -> rpmgr.v1.ListWebhookDeliveriesRequest
-	17, // 32: rpmgr.v1.WebhookService.TestWebhook:input_type -> rpmgr.v1.TestWebhookRequest
-	19, // 33: rpmgr.v1.InstanceWebhookService.CreateInstanceWebhook:input_type -> rpmgr.v1.CreateInstanceWebhookRequest
-	21, // 34: rpmgr.v1.InstanceWebhookService.GetInstanceWebhook:input_type -> rpmgr.v1.GetInstanceWebhookRequest
-	23, // 35: rpmgr.v1.InstanceWebhookService.ListInstanceWebhooks:input_type -> rpmgr.v1.ListInstanceWebhooksRequest
-	25, // 36: rpmgr.v1.InstanceWebhookService.UpdateInstanceWebhook:input_type -> rpmgr.v1.UpdateInstanceWebhookRequest
-	27, // 37: rpmgr.v1.InstanceWebhookService.DeleteInstanceWebhook:input_type -> rpmgr.v1.DeleteInstanceWebhookRequest
-	29, // 38: rpmgr.v1.InstanceWebhookService.RotateInstanceWebhookSecret:input_type -> rpmgr.v1.RotateInstanceWebhookSecretRequest
-	31, // 39: rpmgr.v1.InstanceWebhookService.ListInstanceWebhookDeliveries:input_type -> rpmgr.v1.ListInstanceWebhookDeliveriesRequest
-	33, // 40: rpmgr.v1.InstanceWebhookService.TestInstanceWebhook:input_type -> rpmgr.v1.TestInstanceWebhookRequest
-	4,  // 41: rpmgr.v1.WebhookService.CreateWebhook:output_type -> rpmgr.v1.CreateWebhookResponse
-	6,  // 42: rpmgr.v1.WebhookService.GetWebhook:output_type -> rpmgr.v1.GetWebhookResponse
-	8,  // 43: rpmgr.v1.WebhookService.ListWebhooks:output_type -> rpmgr.v1.ListWebhooksResponse
-	10, // 44: rpmgr.v1.WebhookService.UpdateWebhook:output_type -> rpmgr.v1.UpdateWebhookResponse
-	12, // 45: rpmgr.v1.WebhookService.DeleteWebhook:output_type -> rpmgr.v1.DeleteWebhookResponse
-	14, // 46: rpmgr.v1.WebhookService.RotateWebhookSecret:output_type -> rpmgr.v1.RotateWebhookSecretResponse
-	16, // 47: rpmgr.v1.WebhookService.ListWebhookDeliveries:output_type -> rpmgr.v1.ListWebhookDeliveriesResponse
-	18, // 48: rpmgr.v1.WebhookService.TestWebhook:output_type -> rpmgr.v1.TestWebhookResponse
-	20, // 49: rpmgr.v1.InstanceWebhookService.CreateInstanceWebhook:output_type -> rpmgr.v1.CreateInstanceWebhookResponse
-	22, // 50: rpmgr.v1.InstanceWebhookService.GetInstanceWebhook:output_type -> rpmgr.v1.GetInstanceWebhookResponse
-	24, // 51: rpmgr.v1.InstanceWebhookService.ListInstanceWebhooks:output_type -> rpmgr.v1.ListInstanceWebhooksResponse
-	26, // 52: rpmgr.v1.InstanceWebhookService.UpdateInstanceWebhook:output_type -> rpmgr.v1.UpdateInstanceWebhookResponse
-	28, // 53: rpmgr.v1.InstanceWebhookService.DeleteInstanceWebhook:output_type -> rpmgr.v1.DeleteInstanceWebhookResponse
-	30, // 54: rpmgr.v1.InstanceWebhookService.RotateInstanceWebhookSecret:output_type -> rpmgr.v1.RotateInstanceWebhookSecretResponse
-	32, // 55: rpmgr.v1.InstanceWebhookService.ListInstanceWebhookDeliveries:output_type -> rpmgr.v1.ListInstanceWebhookDeliveriesResponse
-	34, // 56: rpmgr.v1.InstanceWebhookService.TestInstanceWebhook:output_type -> rpmgr.v1.TestInstanceWebhookResponse
-	41, // [41:57] is the sub-list for method output_type
-	25, // [25:41] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	36, // 1: rpmgr.v1.Webhook.previous_secret_until:type_name -> google.protobuf.Timestamp
+	36, // 2: rpmgr.v1.Webhook.last_success_time:type_name -> google.protobuf.Timestamp
+	36, // 3: rpmgr.v1.Webhook.failing_since_time:type_name -> google.protobuf.Timestamp
+	36, // 4: rpmgr.v1.Webhook.create_time:type_name -> google.protobuf.Timestamp
+	1,  // 5: rpmgr.v1.Webhook.format:type_name -> rpmgr.v1.WebhookFormat
+	36, // 6: rpmgr.v1.WebhookDelivery.send_time:type_name -> google.protobuf.Timestamp
+	36, // 7: rpmgr.v1.WebhookDelivery.next_attempt_time:type_name -> google.protobuf.Timestamp
+	2,  // 8: rpmgr.v1.CreateWebhookRequest.webhook:type_name -> rpmgr.v1.Webhook
+	2,  // 9: rpmgr.v1.CreateWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
+	2,  // 10: rpmgr.v1.GetWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
+	2,  // 11: rpmgr.v1.ListWebhooksResponse.webhooks:type_name -> rpmgr.v1.Webhook
+	2,  // 12: rpmgr.v1.UpdateWebhookRequest.webhook:type_name -> rpmgr.v1.Webhook
+	37, // 13: rpmgr.v1.UpdateWebhookRequest.update_mask:type_name -> google.protobuf.FieldMask
+	2,  // 14: rpmgr.v1.UpdateWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
+	2,  // 15: rpmgr.v1.RotateWebhookSecretResponse.webhook:type_name -> rpmgr.v1.Webhook
+	3,  // 16: rpmgr.v1.ListWebhookDeliveriesResponse.deliveries:type_name -> rpmgr.v1.WebhookDelivery
+	2,  // 17: rpmgr.v1.CreateInstanceWebhookRequest.webhook:type_name -> rpmgr.v1.Webhook
+	2,  // 18: rpmgr.v1.CreateInstanceWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
+	2,  // 19: rpmgr.v1.GetInstanceWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
+	2,  // 20: rpmgr.v1.ListInstanceWebhooksResponse.webhooks:type_name -> rpmgr.v1.Webhook
+	2,  // 21: rpmgr.v1.UpdateInstanceWebhookRequest.webhook:type_name -> rpmgr.v1.Webhook
+	37, // 22: rpmgr.v1.UpdateInstanceWebhookRequest.update_mask:type_name -> google.protobuf.FieldMask
+	2,  // 23: rpmgr.v1.UpdateInstanceWebhookResponse.webhook:type_name -> rpmgr.v1.Webhook
+	2,  // 24: rpmgr.v1.RotateInstanceWebhookSecretResponse.webhook:type_name -> rpmgr.v1.Webhook
+	3,  // 25: rpmgr.v1.ListInstanceWebhookDeliveriesResponse.deliveries:type_name -> rpmgr.v1.WebhookDelivery
+	4,  // 26: rpmgr.v1.WebhookService.CreateWebhook:input_type -> rpmgr.v1.CreateWebhookRequest
+	6,  // 27: rpmgr.v1.WebhookService.GetWebhook:input_type -> rpmgr.v1.GetWebhookRequest
+	8,  // 28: rpmgr.v1.WebhookService.ListWebhooks:input_type -> rpmgr.v1.ListWebhooksRequest
+	10, // 29: rpmgr.v1.WebhookService.UpdateWebhook:input_type -> rpmgr.v1.UpdateWebhookRequest
+	12, // 30: rpmgr.v1.WebhookService.DeleteWebhook:input_type -> rpmgr.v1.DeleteWebhookRequest
+	14, // 31: rpmgr.v1.WebhookService.RotateWebhookSecret:input_type -> rpmgr.v1.RotateWebhookSecretRequest
+	16, // 32: rpmgr.v1.WebhookService.ListWebhookDeliveries:input_type -> rpmgr.v1.ListWebhookDeliveriesRequest
+	18, // 33: rpmgr.v1.WebhookService.TestWebhook:input_type -> rpmgr.v1.TestWebhookRequest
+	20, // 34: rpmgr.v1.InstanceWebhookService.CreateInstanceWebhook:input_type -> rpmgr.v1.CreateInstanceWebhookRequest
+	22, // 35: rpmgr.v1.InstanceWebhookService.GetInstanceWebhook:input_type -> rpmgr.v1.GetInstanceWebhookRequest
+	24, // 36: rpmgr.v1.InstanceWebhookService.ListInstanceWebhooks:input_type -> rpmgr.v1.ListInstanceWebhooksRequest
+	26, // 37: rpmgr.v1.InstanceWebhookService.UpdateInstanceWebhook:input_type -> rpmgr.v1.UpdateInstanceWebhookRequest
+	28, // 38: rpmgr.v1.InstanceWebhookService.DeleteInstanceWebhook:input_type -> rpmgr.v1.DeleteInstanceWebhookRequest
+	30, // 39: rpmgr.v1.InstanceWebhookService.RotateInstanceWebhookSecret:input_type -> rpmgr.v1.RotateInstanceWebhookSecretRequest
+	32, // 40: rpmgr.v1.InstanceWebhookService.ListInstanceWebhookDeliveries:input_type -> rpmgr.v1.ListInstanceWebhookDeliveriesRequest
+	34, // 41: rpmgr.v1.InstanceWebhookService.TestInstanceWebhook:input_type -> rpmgr.v1.TestInstanceWebhookRequest
+	5,  // 42: rpmgr.v1.WebhookService.CreateWebhook:output_type -> rpmgr.v1.CreateWebhookResponse
+	7,  // 43: rpmgr.v1.WebhookService.GetWebhook:output_type -> rpmgr.v1.GetWebhookResponse
+	9,  // 44: rpmgr.v1.WebhookService.ListWebhooks:output_type -> rpmgr.v1.ListWebhooksResponse
+	11, // 45: rpmgr.v1.WebhookService.UpdateWebhook:output_type -> rpmgr.v1.UpdateWebhookResponse
+	13, // 46: rpmgr.v1.WebhookService.DeleteWebhook:output_type -> rpmgr.v1.DeleteWebhookResponse
+	15, // 47: rpmgr.v1.WebhookService.RotateWebhookSecret:output_type -> rpmgr.v1.RotateWebhookSecretResponse
+	17, // 48: rpmgr.v1.WebhookService.ListWebhookDeliveries:output_type -> rpmgr.v1.ListWebhookDeliveriesResponse
+	19, // 49: rpmgr.v1.WebhookService.TestWebhook:output_type -> rpmgr.v1.TestWebhookResponse
+	21, // 50: rpmgr.v1.InstanceWebhookService.CreateInstanceWebhook:output_type -> rpmgr.v1.CreateInstanceWebhookResponse
+	23, // 51: rpmgr.v1.InstanceWebhookService.GetInstanceWebhook:output_type -> rpmgr.v1.GetInstanceWebhookResponse
+	25, // 52: rpmgr.v1.InstanceWebhookService.ListInstanceWebhooks:output_type -> rpmgr.v1.ListInstanceWebhooksResponse
+	27, // 53: rpmgr.v1.InstanceWebhookService.UpdateInstanceWebhook:output_type -> rpmgr.v1.UpdateInstanceWebhookResponse
+	29, // 54: rpmgr.v1.InstanceWebhookService.DeleteInstanceWebhook:output_type -> rpmgr.v1.DeleteInstanceWebhookResponse
+	31, // 55: rpmgr.v1.InstanceWebhookService.RotateInstanceWebhookSecret:output_type -> rpmgr.v1.RotateInstanceWebhookSecretResponse
+	33, // 56: rpmgr.v1.InstanceWebhookService.ListInstanceWebhookDeliveries:output_type -> rpmgr.v1.ListInstanceWebhookDeliveriesResponse
+	35, // 57: rpmgr.v1.InstanceWebhookService.TestInstanceWebhook:output_type -> rpmgr.v1.TestInstanceWebhookResponse
+	42, // [42:58] is the sub-list for method output_type
+	26, // [26:42] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_webhook_proto_init() }
@@ -2382,7 +2474,7 @@ func file_rpmgr_v1_webhook_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_webhook_proto_rawDesc), len(file_rpmgr_v1_webhook_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   2,

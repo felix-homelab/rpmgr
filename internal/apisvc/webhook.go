@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"sync"
 	"time"
 
@@ -61,7 +62,7 @@ type Webhooks struct {
 }
 
 // webhookFields are the fields UpdateWebhook may change.
-var webhookFields = []string{"url", "event_types", "enabled"}
+var webhookFields = []string{"url", "event_types", "enabled", "format", "secret_url"}
 
 type instanceKey struct{}
 
@@ -93,8 +94,32 @@ func (w *Webhooks) secretContext(id, column string) secret.Context {
 func invalid(err error) error { return connect.NewError(connect.CodeInvalidArgument, err) }
 
 // checkWebhook validates what a caller sets. An org's endpoint also names no host that only the
-// controller's own side can be (webhook.ValidateOrgURL); an instance endpoint may.
-func checkWebhook(url string, types []string, instance bool) error {
+// controller's own side can be (webhook.ValidateOrgURL); an instance endpoint may. A chat format
+// has its URL in secret_url and none in url, an rpmgr endpoint the other way round.
+func checkWebhook(f webhook.Format, url, secretURL string, types []string, instance bool) error {
+	if err := checkEndpointURL(f, url, secretURL, instance); err != nil {
+		return err
+	}
+	if err := webhook.ValidateEventTypes(types); err != nil {
+		return invalid(err)
+	}
+	return nil
+}
+
+// checkEndpointURL validates the URL of an endpoint of format f, naming neither URL in its error.
+func checkEndpointURL(f webhook.Format, url, secretURL string, instance bool) error {
+	if f.Chat() {
+		if url != "" {
+			return invalid(errors.New("apisvc: the URL of a chat endpoint is secret_url; url is output only"))
+		}
+		if err := webhook.ValidateChatURL(secretURL, instance); err != nil {
+			return invalid(err)
+		}
+		return nil
+	}
+	if secretURL != "" {
+		return invalid(errors.New("apisvc: secret_url is for a chat format; an rpmgr endpoint has a url"))
+	}
 	check := webhook.ValidateOrgURL
 	if instance {
 		check = webhook.ValidateURL
@@ -102,10 +127,39 @@ func checkWebhook(url string, types []string, instance bool) error {
 	if err := check(url); err != nil {
 		return invalid(err)
 	}
-	if err := webhook.ValidateEventTypes(types); err != nil {
-		return invalid(err)
-	}
 	return nil
+}
+
+// formatOf is the format a request names; none is rpmgr.
+func formatOf(f rpmgrv1.WebhookFormat) (webhook.Format, error) {
+	switch f {
+	case rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_UNSPECIFIED, rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_RPMGR:
+		return webhook.FormatRPMgr, nil
+	case rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_DISCORD:
+		return webhook.FormatDiscord, nil
+	case rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_SLACK:
+		return webhook.FormatSlack, nil
+	case rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_TEAMS:
+		return webhook.FormatTeams, nil
+	}
+	return "", invalid(errors.New("apisvc: format is not rpmgr, discord, slack or teams"))
+}
+
+// formatProto is the API's name of a stored format.
+func formatProto(f ewebhook.Format) rpmgrv1.WebhookFormat {
+	return map[ewebhook.Format]rpmgrv1.WebhookFormat{
+		ewebhook.FormatRpmgr:   rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_RPMGR,
+		ewebhook.FormatDiscord: rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_DISCORD,
+		ewebhook.FormatSlack:   rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_SLACK,
+		ewebhook.FormatTeams:   rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_TEAMS}[f]
+}
+
+// openURL opens the sealed URL of a chat endpoint, for the delivery job and the test only.
+func (w *Webhooks) openURL(h *ent.Webhook) (secret.Value, error) {
+	if h.URLEnc == nil || len(*h.URLEnc) == 0 { // NULL reads as an empty value
+		return secret.Value{}, errors.New("apisvc: a chat endpoint without its URL")
+	}
+	return w.Sealer.Open(w.secretContext(h.ID, "url_enc"), *h.URLEnc)
 }
 
 // CreateWebhook implements WebhookService.
@@ -125,21 +179,33 @@ func (w *Webhooks) CreateWebhook(ctx context.Context, req *connect.Request[rpmgr
 	return connect.NewResponse(resp), nil
 }
 
-// create makes an endpoint of org, or of the instance for "", and returns it with its secret. An
-// org, or the instance, has at most webhook.MaxPerOrg endpoints.
+// create makes an endpoint of org, or of the instance for "", and returns it with its secret, or
+// none for a chat format. An org, or the instance, has at most webhook.MaxPerOrg endpoints.
 func (w *Webhooks) create(ctx context.Context, org string, in *rpmgrv1.Webhook) (*ent.Webhook, string, error) {
 	ctx = w.scope(ctx)
-	if err := checkWebhook(in.GetUrl(), in.GetEventTypes(), org == ""); err != nil {
+	f, err := formatOf(in.GetFormat())
+	if err != nil {
 		return nil, "", err
 	}
-	sec, err := webhook.NewSecret()
-	if err != nil {
+	if err := checkWebhook(f, in.GetUrl(), in.GetSecretUrl(), in.GetEventTypes(), org == ""); err != nil {
 		return nil, "", err
 	}
 	id := ids.New("whk")
-	sealed, err := w.Sealer.Seal(w.secretContext(id, "secret_enc"), sec)
-	if err != nil {
-		return nil, "", err
+	var sec secret.Value
+	var sealed []byte
+	shown, urlEnc := in.GetUrl(), []byte(nil)
+	if f.Chat() {
+		if urlEnc, err = w.Sealer.Seal(w.secretContext(id, "url_enc"), secret.New(in.GetSecretUrl())); err != nil {
+			return nil, "", err
+		}
+		shown, sealed = webhook.RedactURL(in.GetSecretUrl()), []byte{}
+	} else {
+		if sec, err = webhook.NewSecret(); err != nil {
+			return nil, "", err
+		}
+		if sealed, err = w.Sealer.Seal(w.secretContext(id, "secret_enc"), sec); err != nil {
+			return nil, "", err
+		}
 	}
 	owner, scope := &org, ewebhook.OrgID(org)
 	if org == "" {
@@ -155,12 +221,19 @@ func (w *Webhooks) create(ctx context.Context, org string, in *rpmgrv1.Webhook) 
 			return connect.NewError(connect.CodeResourceExhausted,
 				fmt.Errorf("apisvc: at most %d webhook endpoints; delete one first", webhook.MaxPerOrg))
 		}
-		row, err = tx.Webhook.Create().SetID(id).SetNillableOrgID(owner).SetURL(in.GetUrl()).SetEventTypes(in.GetEventTypes()).
-			SetSecretEnc(sealed).Save(ctx)
+		c := tx.Webhook.Create().SetID(id).SetNillableOrgID(owner).SetURL(shown).SetEventTypes(in.GetEventTypes()).
+			SetFormat(ewebhook.Format(f)).SetSecretEnc(sealed)
+		if urlEnc != nil {
+			c.SetURLEnc(urlEnc)
+		}
+		row, err = c.Save(ctx)
 		return err
 	})
 	if err != nil {
 		return nil, "", storeError(err)
+	}
+	if f.Chat() {
+		return row, "", nil
 	}
 	return row, sec.Reveal(), nil
 }
@@ -237,16 +310,14 @@ func (w *Webhooks) UpdateWebhook(ctx context.Context, req *connect.Request[rpmgr
 		if err := api.ApplyMask(next, m.GetWebhook(), m.GetUpdateMask(), webhookFields...); err != nil {
 			return err
 		}
-		// A URL that is not changed is not checked again: endpoints from before a rule stay editable.
-		if next.GetUrl() == cur.URL {
-			if err := webhook.ValidateEventTypes(next.GetEventTypes()); err != nil {
-				return invalid(err)
-			}
-		} else if err := checkWebhook(next.GetUrl(), next.GetEventTypes(), cur.OrgID == nil); err != nil {
+		f, err := formatOf(next.GetFormat())
+		if err != nil {
 			return err
 		}
-		u := tx.Webhook.UpdateOneID(cur.ID).Where(ewebhook.Version(cur.Version)).SetURL(next.GetUrl()).
-			SetEventTypes(next.GetEventTypes()).AddVersion(1)
+		u := tx.Webhook.UpdateOneID(cur.ID).Where(ewebhook.Version(cur.Version)).SetEventTypes(next.GetEventTypes()).AddVersion(1)
+		if err := w.updateTarget(u, cur, next, f, slices.Contains(m.GetUpdateMask().GetPaths(), "url")); err != nil {
+			return err
+		}
 		switch {
 		case cur.Enabled && !next.GetEnabled():
 			u.SetEnabled(false).SetDisabledReason(ewebhook.DisabledReasonPerson)
@@ -260,6 +331,55 @@ func (w *Webhooks) UpdateWebhook(ctx context.Context, req *connect.Request[rpmgr
 		return nil, storeError(err)
 	}
 	return connect.NewResponse(&rpmgrv1.UpdateWebhookResponse{Webhook: w.webhookOf(row)}), nil
+}
+
+// updateTarget checks the format and URL of an update and sets them on u. A chat endpoint's URL,
+// which holds the service's token, changes only by a new secret_url, and a new format needs one: a
+// URL belongs to its service. An rpmgr endpoint does not become a chat one without its signing
+// secret going, and a chat one does not become rpmgr, which would need a secret to show once.
+func (w *Webhooks) updateTarget(u *ent.WebhookUpdateOne, cur *ent.Webhook, next *rpmgrv1.Webhook, f webhook.Format, urlInMask bool) error {
+	curFormat := webhook.Format(cur.Format)
+	secretURL := next.GetSecretUrl()
+	switch {
+	case !f.Chat():
+		if curFormat.Chat() {
+			return connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("apisvc: a chat endpoint does not become an rpmgr one, which has a signing secret; make a new endpoint"))
+		}
+		// A URL that is not changed is not checked again: endpoints from before a rule stay editable.
+		if next.GetUrl() == cur.URL && secretURL == "" {
+			if err := webhook.ValidateEventTypes(next.GetEventTypes()); err != nil {
+				return invalid(err)
+			}
+		} else if err := checkWebhook(f, next.GetUrl(), secretURL, next.GetEventTypes(), cur.OrgID == nil); err != nil {
+			return err
+		}
+		u.SetURL(next.GetUrl())
+		return nil
+	case urlInMask:
+		return invalid(errors.New("apisvc: the URL of a chat endpoint is secret_url; url is output only"))
+	case f != curFormat && secretURL == "":
+		return invalid(errors.New("apisvc: a new format needs a new secret_url: a URL belongs to its service"))
+	}
+	if err := webhook.ValidateEventTypes(next.GetEventTypes()); err != nil {
+		return invalid(err)
+	}
+	u.SetFormat(ewebhook.Format(f))
+	if secretURL == "" {
+		return nil
+	}
+	if err := webhook.ValidateChatURL(secretURL, cur.OrgID == nil); err != nil {
+		return invalid(err)
+	}
+	sealed, err := w.Sealer.Seal(w.secretContext(cur.ID, "url_enc"), secret.New(secretURL))
+	if err != nil {
+		return err
+	}
+	u.SetURL(webhook.RedactURL(secretURL)).SetURLEnc(sealed)
+	if !curFormat.Chat() {
+		u.SetSecretEnc([]byte{}).ClearPreviousSecretEnc().ClearPreviousUntil()
+	}
+	return nil
 }
 
 // DeleteWebhook implements WebhookService: the endpoint and its deliveries go together.
@@ -306,6 +426,9 @@ func (w *Webhooks) RotateWebhookSecret(ctx context.Context, req *connect.Request
 		cur, err := tx.Webhook.Get(ctx, id)
 		if err != nil {
 			return err
+		}
+		if webhook.Format(cur.Format).Chat() {
+			return connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: a chat endpoint has no signing secret to rotate"))
 		}
 		old, err := w.Sealer.Open(w.secretContext(id, "secret_enc"), cur.SecretEnc)
 		if err != nil {
@@ -408,13 +531,22 @@ func (w *Webhooks) test(ctx context.Context, id string) (*rpmgrv1.TestWebhookRes
 	if err := w.allowTest(caller); err != nil {
 		return nil, err
 	}
-	cur, err := w.Sealer.Open(w.secretContext(id, "secret_enc"), h.SecretEnc)
-	if err != nil {
-		return nil, w.unsealFailed(ctx, id, err)
-	}
-	secrets := []secret.Value{cur}
+	f := webhook.Format(h.Format)
+	var secrets []secret.Value
+	var target secret.Value
 	now := w.now().UTC()
-	if h.PreviousSecretEnc != nil && h.PreviousUntil != nil && now.Before(*h.PreviousUntil) {
+	if f.Chat() {
+		if target, err = w.openURL(h); err != nil {
+			return nil, w.unsealFailed(ctx, id, err)
+		}
+	} else {
+		cur, err := w.Sealer.Open(w.secretContext(id, "secret_enc"), h.SecretEnc)
+		if err != nil {
+			return nil, w.unsealFailed(ctx, id, err)
+		}
+		secrets = []secret.Value{cur}
+	}
+	if !f.Chat() && h.PreviousSecretEnc != nil && h.PreviousUntil != nil && now.Before(*h.PreviousUntil) {
 		prev, err := w.Sealer.Open(w.secretContext(id, "previous_secret_enc"), *h.PreviousSecretEnc)
 		if err != nil {
 			return nil, w.unsealFailed(ctx, id, err)
@@ -427,6 +559,9 @@ func (w *Webhooks) test(ctx context.Context, id string) (*rpmgrv1.TestWebhookRes
 		e.ActorID = caller.UserID
 	}
 	body, err := webhook.Body(e)
+	if f.Chat() {
+		body, err = webhook.ChatBody(f, e)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -444,7 +579,7 @@ func (w *Webhooks) test(ctx context.Context, id string) (*rpmgrv1.TestWebhookRes
 	if w.Policy != nil {
 		p = w.Policy(h)
 	}
-	code, err := w.Sender.Send(ctx, webhook.Delivery{URL: h.URL, EventID: e.ID, EventType: e.Type, Body: body, Secrets: secrets, Policy: p})
+	code, err := w.Sender.Send(ctx, webhook.Delivery{URL: h.URL, Target: target, EventID: e.ID, EventType: e.Type, Body: body, Secrets: secrets, Policy: p})
 	out := &rpmgrv1.TestWebhookResponse{Delivered: err == nil, StatusCode: int32(code)} //nolint:gosec // G115: an HTTP status
 	if err != nil {
 		out.Error = webhook.Describe(err)
@@ -468,9 +603,10 @@ func deref(s *string) string {
 	return *s
 }
 
-// webhookOf is the API's view of an endpoint: it has no secret, only whether one is set.
+// webhookOf is the API's view of an endpoint: it has no secret, only whether one is set, and of a
+// chat format only the scheme and host of its URL.
 func (w *Webhooks) webhookOf(r *ent.Webhook) *rpmgrv1.Webhook {
-	out := &rpmgrv1.Webhook{Id: r.ID, OrgId: deref(r.OrgID), Url: r.URL, EventTypes: r.EventTypes, Enabled: r.Enabled, SecretSet: true,
+	out := &rpmgrv1.Webhook{Id: r.ID, OrgId: deref(r.OrgID), Url: r.URL, EventTypes: r.EventTypes, Enabled: r.Enabled, SecretSet: len(r.SecretEnc) > 0, Format: formatProto(r.Format),
 		CreateTime: timestamppb.New(r.CreatedAt), Etag: etagOf(r.Version)}
 	if r.DisabledReason != nil {
 		out.DisabledReason = map[ewebhook.DisabledReason]rpmgrv1.WebhookDisabledReason{

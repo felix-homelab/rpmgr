@@ -170,6 +170,26 @@ func (_c *WebhookCreate) SetNillableVersion(v *int64) *WebhookCreate {
 	return _c
 }
 
+// SetFormat sets the "format" field.
+func (_c *WebhookCreate) SetFormat(v webhook.Format) *WebhookCreate {
+	_c.mutation.SetFormat(v)
+	return _c
+}
+
+// SetNillableFormat sets the "format" field if the given value is not nil.
+func (_c *WebhookCreate) SetNillableFormat(v *webhook.Format) *WebhookCreate {
+	if v != nil {
+		_c.SetFormat(*v)
+	}
+	return _c
+}
+
+// SetURLEnc sets the "url_enc" field.
+func (_c *WebhookCreate) SetURLEnc(v []byte) *WebhookCreate {
+	_c.mutation.SetURLEnc(v)
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *WebhookCreate) SetID(v string) *WebhookCreate {
 	_c.mutation.SetID(v)
@@ -243,6 +263,10 @@ func (_c *WebhookCreate) defaults() error {
 		v := webhook.DefaultVersion
 		_c.mutation.SetVersion(v)
 	}
+	if _, ok := _c.mutation.Format(); !ok {
+		v := webhook.DefaultFormat
+		_c.mutation.SetFormat(v)
+	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if webhook.DefaultID == nil {
 			return fmt.Errorf("ent: uninitialized webhook.DefaultID (forgotten import ent/runtime?)")
@@ -266,11 +290,6 @@ func (_c *WebhookCreate) check() error {
 	if _, ok := _c.mutation.SecretEnc(); !ok {
 		return &ValidationError{Name: "secret_enc", err: errors.New(`ent: missing required field "Webhook.secret_enc"`)}
 	}
-	if v, ok := _c.mutation.SecretEnc(); ok {
-		if err := webhook.SecretEncValidator(v); err != nil {
-			return &ValidationError{Name: "secret_enc", err: fmt.Errorf(`ent: validator failed for field "Webhook.secret_enc": %w`, err)}
-		}
-	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		return &ValidationError{Name: "enabled", err: errors.New(`ent: missing required field "Webhook.enabled"`)}
 	}
@@ -291,6 +310,14 @@ func (_c *WebhookCreate) check() error {
 	if v, ok := _c.mutation.Version(); ok {
 		if err := webhook.VersionValidator(v); err != nil {
 			return &ValidationError{Name: "version", err: fmt.Errorf(`ent: validator failed for field "Webhook.version": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Format(); !ok {
+		return &ValidationError{Name: "format", err: errors.New(`ent: missing required field "Webhook.format"`)}
+	}
+	if v, ok := _c.mutation.Format(); ok {
+		if err := webhook.FormatValidator(v); err != nil {
+			return &ValidationError{Name: "format", err: fmt.Errorf(`ent: validator failed for field "Webhook.format": %w`, err)}
 		}
 	}
 	if v, ok := _c.mutation.ID(); ok {
@@ -384,6 +411,14 @@ func (_c *WebhookCreate) createSpec() (*Webhook, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Version(); ok {
 		_spec.SetField(webhook.FieldVersion, field.TypeInt64, value)
 		_node.Version = value
+	}
+	if value, ok := _c.mutation.Format(); ok {
+		_spec.SetField(webhook.FieldFormat, field.TypeEnum, value)
+		_node.Format = value
+	}
+	if value, ok := _c.mutation.URLEnc(); ok {
+		_spec.SetField(webhook.FieldURLEnc, field.TypeBytes, value)
+		_node.URLEnc = &value
 	}
 	return _node, _spec
 }

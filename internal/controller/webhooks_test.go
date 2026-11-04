@@ -51,6 +51,9 @@ type hookEnv struct {
 	mu     sync.Mutex
 	got    []received
 	answer func(path string, n int) int // the status for the n-th request to path
+	// reply and replyBody are sent with every answer (a 429's Retry-After, Discord's JSON).
+	reply     http.Header
+	replyBody string
 }
 
 type received struct {
@@ -81,8 +84,13 @@ func newHookEnv(t *testing.T, guarded bool) *hookEnv {
 		e.got = append(e.got, received{r.URL.Path, r.Header.Get(webhook.HeaderEventID), r.Header.Get(webhook.HeaderEventType),
 			r.Header.Get(webhook.HeaderSignature), b})
 		code := e.answer(r.URL.Path, n)
+		reply, replyBody := e.reply.Clone(), e.replyBody
 		e.mu.Unlock()
+		for k, v := range reply {
+			w.Header()[k] = v
+		}
 		w.WriteHeader(code)
+		_, _ = io.WriteString(w, replyBody)
 	}))
 	t.Cleanup(srv.Close)
 	_, port, _ := net.SplitHostPort(srv.Listener.Addr().String())

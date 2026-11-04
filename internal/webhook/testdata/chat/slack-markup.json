@@ -1,0 +1,41 @@
+{
+  "attachments": [
+    {
+      "blocks": [
+        {
+          "text": {
+            "text": "*route.create \u0026lt;!channel\u0026gt; \u0026amp; @everyone \u0026lt;@U123\u0026gt;*",
+            "type": "mrkdwn"
+          },
+          "type": "section"
+        },
+        {
+          "fields": [
+            {
+              "text": "*Type*\nroute.create",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Organisation*\norg_1",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Actor*\nuser usr_1",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Subject*\nroute \u0026lt;!channel\u0026gt; \u0026amp; @everyone (rt_2)",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Time*\n2026-11-02T09:30:00Z",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "section"
+        }
+      ]
+    }
+  ],
+  "text": "route.create \u0026lt;!channel\u0026gt; \u0026amp; @everyone \u0026lt;@U123\u0026gt;"
+}
