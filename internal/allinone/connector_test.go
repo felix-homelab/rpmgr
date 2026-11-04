@@ -216,7 +216,7 @@ func TestAllInOne_StartsFromAnOlderSchema(t *testing.T) {
 		"ALTER TABLE data_sessions DROP COLUMN ready_routes",
 		"ALTER TABLE gateway_groups DROP COLUMN dns_cname", "ALTER TABLE gateway_groups DROP COLUMN dns_addresses",
 		"DROP TABLE dns_name_status", "DROP TABLE dns_records", "DROP TABLE dns_names", "DROP TABLE dns_zones", "DROP TABLE dns_rate_budgets", "DROP TABLE dns_providers",
-		"DROP TABLE audit_sink_cursors", "DROP TABLE audit_sinks", "DROP TABLE mail_jobs", "DROP TABLE status_marks", "DROP TABLE webhook_deliveries", "DROP TABLE webhooks", "DROP TABLE alerts", "DROP TABLE events", "DROP TABLE health_checks", "DROP TABLE route_limits", "DROP TABLE gateway_pages", "DROP TABLE connect_authorities", "DROP TABLE connect_listeners", "DROP TABLE rollout_targets", "DROP TABLE rollouts", "DROP TABLE releases",
+		"DROP TABLE audit_sink_cursors", "DROP TABLE audit_sinks", "DROP TABLE mail_jobs", "DROP TABLE status_marks", "DROP TABLE webhook_messages", "DROP TABLE webhook_deliveries", "DROP TABLE webhooks", "DROP TABLE alerts", "DROP TABLE events", "DROP TABLE health_checks", "DROP TABLE route_limits", "DROP TABLE gateway_pages", "DROP TABLE connect_authorities", "DROP TABLE connect_listeners", "DROP TABLE rollout_targets", "DROP TABLE rollouts", "DROP TABLE releases",
 		"DELETE FROM " + store.RevisionTable + " WHERE version >= '" + builtIn + "'",
 		"PRAGMA foreign_keys = ON",
 	} {
