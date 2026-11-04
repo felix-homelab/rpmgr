@@ -32,6 +32,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/cfranges"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/dns/budget"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/enroll"
 	"github.com/felix-homelab/rpmgr/internal/ids"
@@ -225,7 +226,10 @@ func Run(ctx context.Context, o RunOptions) error {
 	leases := lease.New(db, nodeID, o.Now)
 	acmeStore := acme.NewStorage(db, sys, sealer, leases, o.Now)
 	defer acmeStore.Close()
+	// DNS-01 serves only the hostnames that lie in a managed zone of the route's org, so it is
+	// reachable once a zone exists and changes nothing for an instance without one.
 	certManager := acme.NewManager(acme.ManagerOptions{DB: db, Sys: sys, Sealer: sealer, Proxy: proxy, TrustedRoots: o.ACMERoots, Logger: o.Logger,
+		DNS:     &acme.DNS01{Budget: &budget.Budget{DB: db}, TrustDomain: td},
 		Storage: acme.NewChallengeStorage(acmeStore, sessions, acme.GatewaysServing(db, sys))})
 	var own *acme.Own
 	if cfg.TLS.CertFile == "" && !o.NoACME && acme.Eligible(public.Hostname()) {

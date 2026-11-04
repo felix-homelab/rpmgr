@@ -22,6 +22,14 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- ACME certificates for hostnames in a managed DNS zone are issued by DNS-01: the controller writes
+  the CA's challenge as a TXT record through the zone's provider, marks it, and deletes it after
+  the order, never touching a record that someone else put at the same name. A zone on hold still
+  serves certificates, a disabled one does not, and a zone of another org is never used. A route in
+  ACME mode may now have a wildcard hostname when it lies in a managed zone of the route's org;
+  elsewhere it is still refused with `WILDCARD_NEEDS_CERTIFICATE`. The challenge's requests take at
+  most half of the provider's request budget, and a retry waits until a provider's block ends. The
+  controller's own certificate keeps HTTP-01 and TLS-ALPN-01. (#680)
 - A domain claim that is nested under, or contains, a verified domain of another organisation
   (`app.example.com` against `example.com`) no longer becomes verified when its proof succeeds: it
   waits for approval, and no route, certificate or DNS record uses it. The Instance Admin approves

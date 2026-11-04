@@ -40,3 +40,7 @@ func SetOwnHTTP01Only(t testing.TB, on bool) {
 	ownNoTLSALPN01 = on
 	t.Cleanup(func() { ownNoTLSALPN01 = false })
 }
+
+// OwnDNS01 reports whether the controller's own certificate has a DNS-01 solver, which it must
+// never have (D166).
+func OwnDNS01(o *Own) bool { return o.issuer.DNS01Solver != nil }
