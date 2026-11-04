@@ -138,6 +138,8 @@ func TestKinds(t *testing.T) {
 		{&rpmgrv1.Domain{Id: "dom_1", Fqdn: "example.com", Wildcard: true, Method: rpmgrv1.DomainMethod_DOMAIN_METHOD_HTTP,
 			Status: rpmgrv1.DomainStatus_DOMAIN_STATUS_VERIFIED, LastError: "x", VerifyTime: now, Etag: "3"},
 			&rpmgrv1.Domain{Fqdn: "example.com", Wildcard: true, Method: rpmgrv1.DomainMethod_DOMAIN_METHOD_HTTP}},
+		{&rpmgrv1.DnsName{Id: "dnn_1", Fqdn: "*.apps.example.com", GatewayGroupId: "gwg_1", Ttl: 300, Etag: "2"},
+			&rpmgrv1.DnsName{Fqdn: "*.apps.example.com", GatewayGroupId: "gwg_1", Ttl: 300}},
 		{&rpmgrv1.Connector{Id: "con_1", Name: "nas", Labels: map[string]string{"site": "home"}, Ephemeral: true, Enabled: true, CreateTime: now, Etag: "2", BuiltIn: true},
 			&rpmgrv1.Connector{Name: "nas", Labels: map[string]string{"site": "home"}, Enabled: true}},
 		{&rpmgrv1.CABundle{Id: "cab_1", Name: "internal", Pem: "-----BEGIN CERTIFICATE-----\n", TargetIds: []string{"rtt_1"},

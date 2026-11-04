@@ -41,10 +41,11 @@ const (
 // fakeDNS is the provider side of DnsProviderService: it knows tokens, and answers as Cloudflare
 // would for each. dial is the service's Dialer.
 type fakeDNS struct {
-	mu     sync.Mutex
-	tokens map[string]*fakeDNSToken
-	zones  []dns.Zone
-	dialed []string // the token of each client made
+	mu      sync.Mutex
+	tokens  map[string]*fakeDNSToken
+	zones   []dns.Zone
+	records []dns.Record // what ListRecords returns for every zone
+	dialed  []string     // the token of each client made
 }
 
 type fakeDNSToken struct {
@@ -120,9 +121,17 @@ func (p fakeProvider) ListZones(context.Context) ([]dns.Zone, error) {
 	return append([]dns.Zone(nil), p.f.zones...), nil
 }
 
-func (fakeProvider) ListRecords(context.Context, string) ([]dns.Record, error) { return nil, nil }
-func (fakeProvider) Apply(context.Context, string, dns.Batch) error            { return nil }
-func (fakeProvider) Caps() dns.Capabilities                                    { return dns.Capabilities{} }
+func (p fakeProvider) ListRecords(context.Context, string) ([]dns.Record, error) {
+	if _, err := p.token(); err != nil {
+		return nil, err
+	}
+	p.f.mu.Lock()
+	defer p.f.mu.Unlock()
+	return append([]dns.Record(nil), p.f.records...), nil
+}
+
+func (fakeProvider) Apply(context.Context, string, dns.Batch) error { return nil }
+func (fakeProvider) Caps() dns.Capabilities                         { return dns.Capabilities{} }
 
 func connectProvider(b *browser, org, name, tok, account string) (*rpmgrv1.DnsProvider, error) {
 	r, err := b.dnsp.ConnectDnsProvider(context.Background(), connect.NewRequest(&rpmgrv1.ConnectDnsProviderRequest{OrgId: org,

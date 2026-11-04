@@ -28,7 +28,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/event"
@@ -1276,6 +1278,96 @@ func init() {
 			return nil
 		}
 	}()
+	dnsnameMixin := schema.DNSName{}.Mixin()
+	dnsname.Policy = privacy.NewPolicies(dnsnameMixin[0], schema.DNSName{})
+	dnsname.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := dnsname.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	dnsnameMixinHooks0 := dnsnameMixin[0].Hooks()
+	dnsnameMixinHooks1 := dnsnameMixin[1].Hooks()
+
+	dnsname.Hooks[1] = dnsnameMixinHooks0[0]
+
+	dnsname.Hooks[2] = dnsnameMixinHooks1[0]
+	dnsnameMixinInters0 := dnsnameMixin[0].Interceptors()
+	dnsname.Interceptors[0] = dnsnameMixinInters0[0]
+	dnsnameMixinFields0 := dnsnameMixin[0].Fields()
+	_ = dnsnameMixinFields0
+	dnsnameMixinFields1 := dnsnameMixin[1].Fields()
+	_ = dnsnameMixinFields1
+	dnsnameFields := schema.DNSName{}.Fields()
+	_ = dnsnameFields
+	// dnsnameDescOrgID is the schema descriptor for org_id field.
+	dnsnameDescOrgID := dnsnameMixinFields0[0].Descriptor()
+	// dnsname.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	dnsname.OrgIDValidator = dnsnameDescOrgID.Validators[0].(func(string) error)
+	// dnsnameDescVersion is the schema descriptor for version field.
+	dnsnameDescVersion := dnsnameMixinFields1[0].Descriptor()
+	// dnsname.DefaultVersion holds the default value on creation for the version field.
+	dnsname.DefaultVersion = dnsnameDescVersion.Default.(int64)
+	// dnsname.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	dnsname.VersionValidator = dnsnameDescVersion.Validators[0].(func(int64) error)
+	// dnsnameDescFqdn is the schema descriptor for fqdn field.
+	dnsnameDescFqdn := dnsnameFields[1].Descriptor()
+	// dnsname.FqdnValidator is a validator for the "fqdn" field. It is called by the builders before save.
+	dnsname.FqdnValidator = func() func(string) error {
+		validators := dnsnameDescFqdn.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(fqdn string) error {
+			for _, fn := range fns {
+				if err := fn(fqdn); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// dnsnameDescGatewayGroupID is the schema descriptor for gateway_group_id field.
+	dnsnameDescGatewayGroupID := dnsnameFields[2].Descriptor()
+	// dnsname.GatewayGroupIDValidator is a validator for the "gateway_group_id" field. It is called by the builders before save.
+	dnsname.GatewayGroupIDValidator = dnsnameDescGatewayGroupID.Validators[0].(func(string) error)
+	// dnsnameDescDomainID is the schema descriptor for domain_id field.
+	dnsnameDescDomainID := dnsnameFields[3].Descriptor()
+	// dnsname.DomainIDValidator is a validator for the "domain_id" field. It is called by the builders before save.
+	dnsname.DomainIDValidator = dnsnameDescDomainID.Validators[0].(func(string) error)
+	// dnsnameDescTTL is the schema descriptor for ttl field.
+	dnsnameDescTTL := dnsnameFields[4].Descriptor()
+	// dnsname.DefaultTTL holds the default value on creation for the ttl field.
+	dnsname.DefaultTTL = dnsnameDescTTL.Default.(int)
+	// dnsname.TTLValidator is a validator for the "ttl" field. It is called by the builders before save.
+	dnsname.TTLValidator = dnsnameDescTTL.Validators[0].(func(int) error)
+	// dnsnameDescCreatedAt is the schema descriptor for created_at field.
+	dnsnameDescCreatedAt := dnsnameFields[5].Descriptor()
+	// dnsname.DefaultCreatedAt holds the default value on creation for the created_at field.
+	dnsname.DefaultCreatedAt = dnsnameDescCreatedAt.Default.(func() time.Time)
+	// dnsnameDescID is the schema descriptor for id field.
+	dnsnameDescID := dnsnameFields[0].Descriptor()
+	// dnsname.DefaultID holds the default value on creation for the id field.
+	dnsname.DefaultID = dnsnameDescID.Default.(func() string)
+	// dnsname.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	dnsname.IDValidator = func() func(string) error {
+		validators := dnsnameDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	dnsproviderMixin := schema.DNSProvider{}.Mixin()
 	dnsprovider.Policy = privacy.NewPolicies(dnsproviderMixin[0], schema.DNSProvider{})
 	dnsprovider.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -1355,6 +1447,134 @@ func init() {
 	// dnsprovider.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	dnsprovider.IDValidator = func() func(string) error {
 		validators := dnsproviderDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	dnszoneMixin := schema.DNSZone{}.Mixin()
+	dnszone.Policy = privacy.NewPolicies(dnszoneMixin[0], schema.DNSZone{})
+	dnszone.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := dnszone.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	dnszoneMixinHooks0 := dnszoneMixin[0].Hooks()
+	dnszoneMixinHooks1 := dnszoneMixin[1].Hooks()
+
+	dnszone.Hooks[1] = dnszoneMixinHooks0[0]
+
+	dnszone.Hooks[2] = dnszoneMixinHooks1[0]
+	dnszoneMixinInters0 := dnszoneMixin[0].Interceptors()
+	dnszone.Interceptors[0] = dnszoneMixinInters0[0]
+	dnszoneMixinFields0 := dnszoneMixin[0].Fields()
+	_ = dnszoneMixinFields0
+	dnszoneMixinFields1 := dnszoneMixin[1].Fields()
+	_ = dnszoneMixinFields1
+	dnszoneFields := schema.DNSZone{}.Fields()
+	_ = dnszoneFields
+	// dnszoneDescOrgID is the schema descriptor for org_id field.
+	dnszoneDescOrgID := dnszoneMixinFields0[0].Descriptor()
+	// dnszone.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	dnszone.OrgIDValidator = dnszoneDescOrgID.Validators[0].(func(string) error)
+	// dnszoneDescVersion is the schema descriptor for version field.
+	dnszoneDescVersion := dnszoneMixinFields1[0].Descriptor()
+	// dnszone.DefaultVersion holds the default value on creation for the version field.
+	dnszone.DefaultVersion = dnszoneDescVersion.Default.(int64)
+	// dnszone.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	dnszone.VersionValidator = dnszoneDescVersion.Validators[0].(func(int64) error)
+	// dnszoneDescDNSProviderID is the schema descriptor for dns_provider_id field.
+	dnszoneDescDNSProviderID := dnszoneFields[1].Descriptor()
+	// dnszone.DNSProviderIDValidator is a validator for the "dns_provider_id" field. It is called by the builders before save.
+	dnszone.DNSProviderIDValidator = dnszoneDescDNSProviderID.Validators[0].(func(string) error)
+	// dnszoneDescProviderZoneID is the schema descriptor for provider_zone_id field.
+	dnszoneDescProviderZoneID := dnszoneFields[2].Descriptor()
+	// dnszone.ProviderZoneIDValidator is a validator for the "provider_zone_id" field. It is called by the builders before save.
+	dnszone.ProviderZoneIDValidator = func() func(string) error {
+		validators := dnszoneDescProviderZoneID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(provider_zone_id string) error {
+			for _, fn := range fns {
+				if err := fn(provider_zone_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// dnszoneDescName is the schema descriptor for name field.
+	dnszoneDescName := dnszoneFields[3].Descriptor()
+	// dnszone.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	dnszone.NameValidator = func() func(string) error {
+		validators := dnszoneDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// dnszoneDescHeldReason is the schema descriptor for held_reason field.
+	dnszoneDescHeldReason := dnszoneFields[5].Descriptor()
+	// dnszone.DefaultHeldReason holds the default value on creation for the held_reason field.
+	dnszone.DefaultHeldReason = dnszoneDescHeldReason.Default.(string)
+	// dnszone.HeldReasonValidator is a validator for the "held_reason" field. It is called by the builders before save.
+	dnszone.HeldReasonValidator = dnszoneDescHeldReason.Validators[0].(func(string) error)
+	// dnszoneDescPublishRouteHostnames is the schema descriptor for publish_route_hostnames field.
+	dnszoneDescPublishRouteHostnames := dnszoneFields[7].Descriptor()
+	// dnszone.DefaultPublishRouteHostnames holds the default value on creation for the publish_route_hostnames field.
+	dnszone.DefaultPublishRouteHostnames = dnszoneDescPublishRouteHostnames.Default.(bool)
+	// dnszoneDescAllowProxied is the schema descriptor for allow_proxied field.
+	dnszoneDescAllowProxied := dnszoneFields[8].Descriptor()
+	// dnszone.DefaultAllowProxied holds the default value on creation for the allow_proxied field.
+	dnszone.DefaultAllowProxied = dnszoneDescAllowProxied.Default.(bool)
+	// dnszoneDescAllowWildcards is the schema descriptor for allow_wildcards field.
+	dnszoneDescAllowWildcards := dnszoneFields[9].Descriptor()
+	// dnszone.DefaultAllowWildcards holds the default value on creation for the allow_wildcards field.
+	dnszone.DefaultAllowWildcards = dnszoneDescAllowWildcards.Default.(bool)
+	// dnszoneDescDeleteThreshold is the schema descriptor for delete_threshold field.
+	dnszoneDescDeleteThreshold := dnszoneFields[10].Descriptor()
+	// dnszone.DefaultDeleteThreshold holds the default value on creation for the delete_threshold field.
+	dnszone.DefaultDeleteThreshold = dnszoneDescDeleteThreshold.Default.(int)
+	// dnszone.DeleteThresholdValidator is a validator for the "delete_threshold" field. It is called by the builders before save.
+	dnszone.DeleteThresholdValidator = dnszoneDescDeleteThreshold.Validators[0].(func(int) error)
+	// dnszoneDescDefaultTTL is the schema descriptor for default_ttl field.
+	dnszoneDescDefaultTTL := dnszoneFields[11].Descriptor()
+	// dnszone.DefaultDefaultTTL holds the default value on creation for the default_ttl field.
+	dnszone.DefaultDefaultTTL = dnszoneDescDefaultTTL.Default.(int)
+	// dnszone.DefaultTTLValidator is a validator for the "default_ttl" field. It is called by the builders before save.
+	dnszone.DefaultTTLValidator = dnszoneDescDefaultTTL.Validators[0].(func(int) error)
+	// dnszoneDescCreatedAt is the schema descriptor for created_at field.
+	dnszoneDescCreatedAt := dnszoneFields[13].Descriptor()
+	// dnszone.DefaultCreatedAt holds the default value on creation for the created_at field.
+	dnszone.DefaultCreatedAt = dnszoneDescCreatedAt.Default.(func() time.Time)
+	// dnszoneDescID is the schema descriptor for id field.
+	dnszoneDescID := dnszoneFields[0].Descriptor()
+	// dnszone.DefaultID holds the default value on creation for the id field.
+	dnszone.DefaultID = dnszoneDescID.Default.(func() string)
+	// dnszone.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	dnszone.IDValidator = func() func(string) error {
+		validators := dnszoneDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),
