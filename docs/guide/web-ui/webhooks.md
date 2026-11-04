@@ -37,6 +37,19 @@ Each endpoint is a row with its URL, its **state**, its event types and when it 
   `https://hooks.slack.com`, and when you edit the endpoint the field is empty. Leave it empty to
   keep the stored URL, or enter a new one. Changing the format needs a new URL, because a URL
   belongs to its service; a chat endpoint cannot be changed back to `rpmgr`, make a new one.
+- **Mention** and **Mention when** (chat formats) make the message mention a role, a user group or
+  a user when an alert fires: never, when a critical alert fires, or when any alert fires. Enter
+  what the hint under the field names for the service, such as `role:123456789012345678` for
+  Discord. **Discord user name**, **avatar URL** and **thread name** are for Discord only.
+  [Mentions and Discord options](../operations/webhooks.md#mentions-and-discord-options) explains
+  them. An edit sends only what you changed; moving to another service clears the Discord options.
+- **Preview the message** shows the message as the service would show it for an alert that fires,
+  the same alert resolving and a change, using the format and options in the form, before you save.
+  The preview is made by the server with the code that delivers, so it is the real layout. It is
+  not sent anywhere.
+
+![The form of a Slack endpoint with a mention and the preview of the message of an alert that fires](../images/web/webhooks-chat-form.png)
+
 - **Event types** are names or prefixes such as `route.*`, separated by commas. Empty means all
   events.
 - **Enabled** switches the endpoint on or off.

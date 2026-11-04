@@ -671,3 +671,32 @@ func (w *Webhooks) webhookOf(r *ent.Webhook) *rpmgrv1.Webhook {
 	}
 	return out
 }
+
+// PreviewWebhookMessage implements WebhookService: the messages a chat endpoint of the given
+// format and options would post. It reads the org's name only and sends nothing.
+func (w *Webhooks) PreviewWebhookMessage(ctx context.Context, req *connect.Request[rpmgrv1.PreviewWebhookMessageRequest]) (
+	*connect.Response[rpmgrv1.PreviewWebhookMessageResponse], error) {
+	mc := w.Instance
+	if o, err := w.DB.ReadClient().Org.Get(ctx, req.Msg.GetOrgId()); err == nil {
+		mc.OrgName = o.Name
+	}
+	return w.preview(req.Msg.GetWebhook(), mc)
+}
+
+// preview makes the sample messages of in, with the instance's footer and link.
+func (w *Webhooks) preview(in *rpmgrv1.Webhook, mc webhook.Context) (*connect.Response[rpmgrv1.PreviewWebhookMessageResponse], error) {
+	f, err := formatOf(in.GetFormat())
+	if err != nil {
+		return nil, err
+	}
+	mc.Options = optionsOfProto(in)
+	samples, err := webhook.Preview(f, mc, w.now())
+	if err != nil {
+		return nil, invalid(err)
+	}
+	out := &rpmgrv1.PreviewWebhookMessageResponse{}
+	for _, s := range samples {
+		out.Previews = append(out.Previews, &rpmgrv1.WebhookPreview{EventType: s.EventType, Body: s.Body})
+	}
+	return connect.NewResponse(out), nil
+}

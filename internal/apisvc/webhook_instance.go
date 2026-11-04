@@ -163,3 +163,15 @@ func (i *InstanceWebhooks) TestInstanceWebhook(ctx context.Context, req *connect
 	}
 	return connect.NewResponse(&rpmgrv1.TestInstanceWebhookResponse{Delivered: r.GetDelivered(), StatusCode: r.GetStatusCode(), Error: r.GetError()}), nil
 }
+
+// PreviewInstanceWebhookMessage implements InstanceWebhookService.
+func (i *InstanceWebhooks) PreviewInstanceWebhookMessage(_ context.Context, req *connect.Request[rpmgrv1.PreviewInstanceWebhookMessageRequest]) (
+	*connect.Response[rpmgrv1.PreviewInstanceWebhookMessageResponse], error) {
+	mc := i.W.Instance
+	mc.OrgName = "instance"
+	r, err := i.W.preview(req.Msg.GetWebhook(), mc)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&rpmgrv1.PreviewInstanceWebhookMessageResponse{Previews: r.Msg.GetPreviews()}), nil
+}

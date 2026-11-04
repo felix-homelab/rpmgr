@@ -330,8 +330,12 @@ To post to Discord, Slack or Microsoft Teams instead, set `format` to `WEBHOOK_F
 `WEBHOOK_FORMAT_SLACK` or `WEBHOOK_FORMAT_TEAMS` and give the service's webhook URL in
 `secretUrl`, not in `url`. The URL holds the service's token, so it is write-only: no call reads
 it back, `url` answers its scheme and host only, and there is no `secret` to store or rotate. An
-update that changes `format` names `format` and `secretUrl` in its mask. See
-[Webhooks](../operations/webhooks.md#chat-services).
+update that changes `format` names `format` and `secretUrl` in its mask. A chat endpoint also
+takes `mention` and `mentionWhen` (`WEBHOOK_MENTION_WHEN_CRITICAL` or `…_ALL`), and a Discord one
+`discordUsername`, `discordAvatarUrl` and `threadName`, all named in the update mask by their
+snake-case names. `PreviewWebhookMessage` (`PreviewInstanceWebhookMessage` for the instance's)
+answers the messages such an endpoint would post, for a sample alert firing and resolving and a
+change, without making it. See [Webhooks](../operations/webhooks.md#chat-services).
 
 ## Change a resource: etags and update masks
 

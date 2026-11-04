@@ -4,7 +4,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
-import { WebhookFormat, WebhookService, type CreateWebhookRequest, type UpdateWebhookRequest } from "@/gen/rpmgr/v1/webhook_pb";
+import { WebhookFormat, WebhookMentionWhen, WebhookService, type CreateWebhookRequest, type PreviewWebhookMessageRequest, type UpdateWebhookRequest } from "@/gen/rpmgr/v1/webhook_pb";
 import { apiError, auth, show } from "@/testing/api";
 import { marked, unmatched } from "@/testing/required";
 
@@ -15,11 +15,11 @@ const live = { id: "whk_1", orgId: "org_1", url: "https://hooks.example.com/a", 
 const chat = { id: "whk_3", orgId: "org_1", url: "https://discord.com", format: WebhookFormat.DISCORD, eventTypes: ["alert.*"], enabled: true, secretSet: false, etag: "e3" };
 const dead = { id: "whk_2", orgId: "org_1", url: "https://hooks.example.com/b", eventTypes: [], enabled: false, secretSet: true, etag: "e2", failingSinceTime: ts(1_700_000_000) };
 
-interface Calls { creates: CreateWebhookRequest[]; updates: UpdateWebhookRequest[]; rotated: string[]; deleted: string[]; tested: string[]; listed: number; deliveryPages: string[] }
+interface Calls { previews: PreviewWebhookMessageRequest[]; creates: CreateWebhookRequest[]; updates: UpdateWebhookRequest[]; rotated: string[]; deleted: string[]; tested: string[]; listed: number; deliveryPages: string[] }
 
 // webhooks renders /webhooks for a user with role in org_1; the options refuse or shape single calls.
-function webhooks(role = "owner", opts: { hooks?: object[]; create?: ConnectError; rotate?: ConnectError; test?: { delivered: boolean; statusCode: number; error: string }; deliveries?: object[][] } = {}) {
-  const c: Calls = { creates: [], updates: [], rotated: [], deleted: [], tested: [], listed: 0, deliveryPages: [] };
+function webhooks(role = "owner", opts: { hooks?: object[]; create?: ConnectError; rotate?: ConnectError; test?: { delivered: boolean; statusCode: number; error: string }; deliveries?: object[][]; preview?: ConnectError } = {}) {
+  const c: Calls = { previews: [], creates: [], updates: [], rotated: [], deleted: [], tested: [], listed: 0, deliveryPages: [] };
   let hooks = opts.hooks ?? [live, dead];
   show("/webhooks", auth({
     getSession: () => ({ userId: "usr_ada", displayName: "Ada", memberships: [{ orgId: "org_1", role }] }),
@@ -52,6 +52,14 @@ function webhooks(role = "owner", opts: { hooks?: object[]; create?: ConnectErro
           throw opts.rotate;
         }
         return { secret: "rpmgr_whs_SECRET2" };
+      },
+      previewWebhookMessage: (req) => {
+        c.previews.push(req);
+        if (opts.preview) {
+          throw opts.preview;
+        }
+        const w = req.webhook!;
+        return { previews: ["alert.fire", "alert.resolve", "route.update"].map((eventType) => ({ eventType, body: `{"sample":"${eventType}","mention":"${w.mention}","user":"${w.discordUsername}"}` })) };
       },
       deleteWebhook: (req) => (c.deleted.push(`${req.webhookId} ${req.etag}`), (hooks = hooks.filter((h) => (h as { id: string }).id !== req.webhookId)), {}),
       testWebhook: (req) => (c.tested.push(req.webhookId), opts.test ?? { delivered: true, statusCode: 204, error: "" }),
@@ -338,5 +346,115 @@ describe("Webhooks", () => {
       router.service(WebhookService, { listWebhooks: () => { throw apiError(Code.Internal); } });
     });
     expect((await (await page()).findByRole("alert")).textContent).toMatch(/failed|api error/i);
+  });
+
+  describe("chat options (D170)", () => {
+    const withOptions = { ...chat, mention: "role:1", mentionWhen: WebhookMentionWhen.ALL, discordUsername: "alerts", discordAvatarUrl: "https://cdn.example/a.png", threadName: "t" };
+
+    it("shows the options of a chat format and none for rpmgr, Discord's only for Discord", async () => {
+      webhooks();
+      const s = await page();
+      fireEvent.click(await s.findByRole("button", { name: "New webhook…" }));
+      expect(s.queryByLabelText("Mention")).toBeNull();
+      expect(s.queryByRole("button", { name: "Preview the message" })).toBeNull();
+      fireEvent.change(s.getByLabelText("Format"), { target: { value: String(WebhookFormat.SLACK) } });
+      expect(s.getByLabelText("Mention")).toBeTruthy();
+      expect(s.getByLabelText("Mention when")).toBeTruthy();
+      expect(s.getByText(/subteam:<id>/)).toBeTruthy();
+      expect(s.queryByLabelText("Discord user name")).toBeNull();
+      fireEvent.change(s.getByLabelText("Format"), { target: { value: String(WebhookFormat.DISCORD) } });
+      for (const l of ["Discord user name", "Discord avatar URL", "Discord thread name"]) {
+        expect(s.getByLabelText(l)).toBeTruthy();
+      }
+      fireEvent.change(s.getByLabelText("Format"), { target: { value: String(WebhookFormat.TEAMS) } });
+      expect(s.queryByLabelText("Discord user name")).toBeNull();
+      expect(s.getByText(/Microsoft Entra object ID/)).toBeTruthy();
+    });
+
+    it("creates a Discord endpoint with its options", async () => {
+      const c = webhooks();
+      const s = await page();
+      fireEvent.click(await s.findByRole("button", { name: "New webhook…" }));
+      fireEvent.change(s.getByLabelText("Format"), { target: { value: String(WebhookFormat.DISCORD) } });
+      fireEvent.change(s.getByLabelText("Webhook URL of the service"), { target: { value: "https://discord.com/api/webhooks/1/x" } });
+      fireEvent.change(s.getByLabelText("Mention"), { target: { value: " role:123 " } });
+      fireEvent.change(s.getByLabelText("Mention when"), { target: { value: String(WebhookMentionWhen.CRITICAL) } });
+      fireEvent.change(s.getByLabelText("Discord user name"), { target: { value: "rpmgr alerts" } });
+      fireEvent.change(s.getByLabelText("Discord avatar URL"), { target: { value: "https://cdn.example/a.png" } });
+      fireEvent.change(s.getByLabelText("Discord thread name"), { target: { value: "alerts" } });
+      fireEvent.click(s.getByRole("button", { name: "Create the webhook" }));
+      await waitFor(() => expect(c.creates).toHaveLength(1));
+      const w = c.creates[0]!.webhook!;
+      expect([w.mention, w.mentionWhen, w.discordUsername, w.discordAvatarUrl, w.threadName]).toEqual(["role:123", WebhookMentionWhen.CRITICAL, "rpmgr alerts", "https://cdn.example/a.png", "alerts"]);
+    });
+
+    it("sends no Discord option for another service, even one typed before the format changed", async () => {
+      const c = webhooks();
+      const s = await page();
+      fireEvent.click(await s.findByRole("button", { name: "New webhook…" }));
+      fireEvent.change(s.getByLabelText("Format"), { target: { value: String(WebhookFormat.DISCORD) } });
+      fireEvent.change(s.getByLabelText("Discord user name"), { target: { value: "typed" } });
+      fireEvent.change(s.getByLabelText("Format"), { target: { value: String(WebhookFormat.SLACK) } });
+      fireEvent.change(s.getByLabelText("Webhook URL of the service"), { target: { value: "https://hooks.slack.com/services/T/B/X" } });
+      fireEvent.click(s.getByRole("button", { name: "Create the webhook" }));
+      await waitFor(() => expect(c.creates).toHaveLength(1));
+      expect(c.creates[0]!.webhook!.discordUsername).toBe("");
+    });
+
+    it("an edit names only the options that changed, and starts from the stored ones", async () => {
+      const c = webhooks("owner", { hooks: [withOptions] });
+      const d = await rowOf("https://discord.com");
+      fireEvent.click(d.getByRole("button", { name: "Edit" }));
+      expect((d.getByLabelText("Mention") as HTMLInputElement).value).toBe("role:1");
+      expect((d.getByLabelText("Mention when") as HTMLSelectElement).value).toBe(String(WebhookMentionWhen.ALL));
+      expect((d.getByLabelText("Discord user name") as HTMLInputElement).value).toBe("alerts");
+      fireEvent.change(d.getByLabelText("Mention"), { target: { value: "" } });
+      fireEvent.click(d.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(c.updates).toHaveLength(1));
+      expect(c.updates[0]!.updateMask?.paths).toEqual(["event_types", "enabled", "mention"]);
+      expect(c.updates[0]!.webhook!.mention).toBe("");
+    });
+
+    it("moving to another service clears the Discord options in the same update", async () => {
+      const c = webhooks("owner", { hooks: [withOptions] });
+      const d = await rowOf("https://discord.com");
+      fireEvent.click(d.getByRole("button", { name: "Edit" }));
+      fireEvent.change(d.getByLabelText("Format"), { target: { value: String(WebhookFormat.SLACK) } });
+      fireEvent.change(d.getByLabelText("Webhook URL of the service"), { target: { value: "https://hooks.slack.com/services/T/B/X" } });
+      fireEvent.click(d.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(c.updates).toHaveLength(1));
+      expect(c.updates[0]!.updateMask?.paths).toEqual(["event_types", "enabled", "discord_username", "discord_avatar_url", "thread_name", "format", "secret_url"]);
+      const w = c.updates[0]!.webhook!;
+      expect([w.discordUsername, w.discordAvatarUrl, w.threadName, w.mention]).toEqual(["", "", "", "role:1"]);
+    });
+
+    it("previews the message as the server makes it, again when the options change", async () => {
+      const c = webhooks();
+      const s = await page();
+      fireEvent.click(await s.findByRole("button", { name: "New webhook…" }));
+      fireEvent.change(s.getByLabelText("Format"), { target: { value: String(WebhookFormat.DISCORD) } });
+      expect(c.previews).toEqual([]); // nothing is asked until the preview is
+      fireEvent.click(s.getByRole("button", { name: "Preview the message" }));
+      const box = within(await screen.findByRole("region", { name: "The message as the service would show it" }));
+      expect((await box.findByLabelText("alert.fire")).textContent).toContain('"sample":"alert.fire"');
+      expect(c.previews.map((p) => [p.orgId, p.webhook?.format])).toEqual([["org_1", WebhookFormat.DISCORD]]);
+      fireEvent.change(box.getByLabelText("Sample"), { target: { value: "alert.resolve" } });
+      expect(box.getByLabelText("alert.resolve").textContent).toContain("alert.resolve");
+      fireEvent.change(s.getByLabelText("Discord user name"), { target: { value: "bot" } });
+      await waitFor(() => expect(box.getByLabelText("alert.resolve").textContent).toContain('"user":"bot"'), { timeout: 3000 });
+      expect(c.previews).toHaveLength(2);
+      // Closing it hides the preview.
+      fireEvent.click(s.getByRole("button", { name: "Preview the message" }));
+      expect(screen.queryByRole("region", { name: "The message as the service would show it" })).toBeNull();
+    });
+
+    it("shows why a preview failed", async () => {
+      webhooks("owner", { preview: new ConnectError("webhook: mention is not valid for the discord format", Code.InvalidArgument) });
+      const s = await page();
+      fireEvent.click(await s.findByRole("button", { name: "New webhook…" }));
+      fireEvent.change(s.getByLabelText("Format"), { target: { value: String(WebhookFormat.DISCORD) } });
+      fireEvent.click(s.getByRole("button", { name: "Preview the message" }));
+      expect((await screen.findByText(/The preview failed: .*mention is not valid/)).textContent).toBeTruthy();
+    });
   });
 });
