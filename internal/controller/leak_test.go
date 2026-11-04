@@ -35,6 +35,12 @@ import (
 // which the suite needs to the end.
 var leakSkip = []string{"rpmgr.v1.AuthService.Logout"}
 
+// leakSkipServices are services the controller does not mount yet, so a call is not routed to the
+// interceptor that gives NOT_FOUND. DnsProviderService is mounted with the rest of DNS automation
+// (slice 6.20), which removes it here; its fixture is below, and internal/apisvc tests its
+// cross-org refusals meanwhile.
+var leakSkipServices = []string{"rpmgr.v1.DnsProviderService"}
+
 // TestCrossTenantLeaks (docs/12-testing-and-quality.md, "Security testing"): generated from the
 // service registry, so a new method is covered without changing it. A user who is Owner of org B,
 // stepped up, calls every method of every rpmgr.v1 service but the public ones, its request filled
@@ -129,6 +135,7 @@ func TestCrossTenantLeaks(t *testing.T) {
 	webhookA := db.Client().Webhook.Create().SetOrgID(orgA).SetURL("https://hooks.org-a.example/leak").SetSecretEnc([]byte("leak-secret")).SaveX(sys)
 	db.Client().WebhookDelivery.Create().SetWebhookID(webhookA.ID).SetOrgID(orgA).SetEventID("evt_leak").SetEventType("leak.event").
 		SetAttempt(1).SetSentAt(time.Now()).ExecX(sys)
+	dnsProviderA := db.Client().DNSProvider.Create().SetOrgID(orgA).SetKind("cloudflare").SetName("cf-a").SetCredentialEnc([]byte("leak-token")).SaveX(sys)
 	// An audit sink belongs to the instance too.
 	sinkA := db.Client().AuditSink.Create().SetKind("webhook").SetName("siem-a").SetSettings(map[string]string{"url": "https://siem-a.example/leak"}).
 		SetSecretEnc([]byte("leak")).SaveX(sys)
@@ -137,9 +144,9 @@ func TestCrossTenantLeaks(t *testing.T) {
 		"session_id": ada.GetSession().GetId(), "gateway_group_id": groupA.ID, "gateway_id": gatewayA.ID,
 		"port_pool_id": poolA.ID, "port_quota_id": quotaA.ID, "connector_id": connectorA.ID, "agent_id": connectorA.ID, "domain_id": domainA.ID, "route_id": routeA.ID, "route_target_id": targetA.ID, "target_id": targetA.ID, "enrollment_token_id": tokenA.ID,
 		"access_policy_id": policyA.ID, "certificate_id": certA.ID, "ca_bundle_id": bundleA.ID, "release_id": releaseA.ID, "rollout_id": rolloutA.ID, "webhook_id": webhookA.ID,
-		"audit_sink_id": sinkA.ID,
+		"audit_sink_id": sinkA.ID, "dns_provider_id": dnsProviderA.ID,
 	}
-	secrets := []string{webhookA.ID, "hooks.org-a.example", "leak.event", orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, quotaA.ID, connectorA.ID, domainA.ID, "org-a.example", routeA.ID, "web-a", "/leak-a", targetA.ID, "10.0.0.5", tokenA.ID, policyA.ID, "office-a", certA.ID, "shop.org-a.example", uploadedA.ID, portA.ID, listenerA.ID, proxyA.ID, "proxy-a", "db.org-a.internal", bundleA.ID, "internal-a", releaseA.ID, rolloutA.ID, sinkA.ID, "siem-a", "siem-a.example", ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
+	secrets := []string{dnsProviderA.ID, "cf-a", webhookA.ID, "hooks.org-a.example", "leak.event", orgA, groupA.ID, gatewayA.ID, "gw1.org-a.example", poolA.ID, quotaA.ID, connectorA.ID, domainA.ID, "org-a.example", routeA.ID, "web-a", "/leak-a", targetA.ID, "10.0.0.5", tokenA.ID, policyA.ID, "office-a", certA.ID, "shop.org-a.example", uploadedA.ID, portA.ID, listenerA.ID, proxyA.ID, "proxy-a", "db.org-a.internal", bundleA.ID, "internal-a", releaseA.ID, rolloutA.ID, sinkA.ID, "siem-a", "siem-a.example", ada.GetUserId(), "ada@example.com", adaToken.Msg.GetApiToken().GetId(), ada.GetSession().GetId(),
 		invitation.Msg.GetUrl()[strings.Index(invitation.Msg.GetUrl(), "#")+1:]}
 	before := orgRows(t, db, orgA)
 
@@ -148,6 +155,9 @@ func TestCrossTenantLeaks(t *testing.T) {
 		for i := range fd.Services().Len() {
 			sd := fd.Services().Get(i)
 			services++
+			if slices.Contains(leakSkipServices, string(sd.FullName())) {
+				continue
+			}
 			for j := range sd.Methods().Len() {
 				md := sd.Methods().Get(j)
 				a, _ := proto.GetExtension(md.Options(), rpmgrv1.E_Authz).(*rpmgrv1.Authz)

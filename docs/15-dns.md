@@ -261,7 +261,14 @@ flowchart LR
    - [R] Restrict it to the zones rpmgr manages and to the controller's egress addresses, and give
      it an expiry [F cf:fundamentals/api/get-started/create-token].
    - The token is stored write-only, encrypted under the KEK
-     ([04](04-security.md#secrets-at-rest-and-in-logs)).
+     ([04](04-security.md#secrets-at-rest-and-in-logs)). It is checked first, and a token the provider
+     refuses, or reports as expired or disabled, is not stored.
+   - [R] A value shaped like a Global API Key (37 hexadecimal characters) is refused before anything
+     is sent, so that such a key never reaches the provider's API from rpmgr.
+   - A token that expires within the warning period of [Timers and limits](#timers-and-limits) is
+     flagged in the provider's view. The hourly token check records whether the provider still
+     accepts the token and when it expires; a provider that cannot be reached or rate-limits the
+     check gives no verdict and changes nothing.
 2. **Import.**
    - rpmgr lists the account's zones, all pages (at most 50 per page)
      [F cf-api:openapi.json `GET /zones`].
@@ -279,7 +286,9 @@ flowchart LR
    - By default the records stay at the provider and the ledger rows are dropped, so nothing that
      works stops working.
    - Removing the records instead goes through a plan and approval.
-   - Rotating the token keeps everything.
+   - Rotating the token keeps everything: the new token is checked first and replaces the old one in
+     the same provider. Deleting a provider needs a step-up and is refused while zones are imported
+     from it.
 
 Permission errors are per zone, because one token can have different rights per zone and the
 verify call does not list permissions: a zone where the provider refuses access shows

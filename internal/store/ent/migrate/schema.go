@@ -638,6 +638,39 @@ var (
 			},
 		},
 	}
+	// DNSProvidersColumns holds the columns for the "dns_providers" table.
+	DNSProvidersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"cloudflare"}},
+		{Name: "name", Type: field.TypeString, Size: 64},
+		{Name: "credential_enc", Type: field.TypeBytes},
+		{Name: "account_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"ok", "invalid"}, Default: "ok"},
+		{Name: "token_expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// DNSProvidersTable holds the schema information for the "dns_providers" table.
+	DNSProvidersTable = &schema.Table{
+		Name:       "dns_providers",
+		Columns:    DNSProvidersColumns,
+		PrimaryKey: []*schema.Column{DNSProvidersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "dnsprovider_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{DNSProvidersColumns[1], DNSProvidersColumns[0]},
+			},
+			{
+				Name:    "dnsprovider_org_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{DNSProvidersColumns[1], DNSProvidersColumns[4]},
+			},
+		},
+	}
 	// DataSessionsColumns holds the columns for the "data_sessions" table.
 	DataSessionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -2291,6 +2324,7 @@ var (
 		ConnectAuthoritiesTable,
 		ConnectListenersTable,
 		ConnectorsTable,
+		DNSProvidersTable,
 		DataSessionsTable,
 		DomainsTable,
 		EnrollmentTokensTable,
@@ -2405,6 +2439,9 @@ func init() {
 	ConnectListenersTable.ForeignKeys[2].RefTable = DomainsTable
 	ConnectListenersTable.Annotation = &entsql.Annotation{
 		Table: "connect_listeners",
+	}
+	DNSProvidersTable.Annotation = &entsql.Annotation{
+		Table: "dns_providers",
 	}
 	DataSessionsTable.Annotation = &entsql.Annotation{
 		Table: "data_sessions",

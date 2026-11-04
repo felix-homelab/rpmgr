@@ -68,6 +68,8 @@ type env struct {
 	pki       *apisvc.Pki
 	rel       *apisvc.Releases
 	webhooks  *apisvc.Webhooks
+	dnsp      *apisvc.DnsProviders // DnsProviderService; its provider is e.dns
+	dns       fakeDNS
 	previews  *apisvc.PagePreviews // the previews of gateway pages
 	logs      *telemetrytest.Sink  // where every service logs; a secret in a line fails the test
 	// revlogStatus, if set, is where SettingsService finds the revocation log's status.
@@ -184,6 +186,13 @@ func newEnv(t *testing.T) *env {
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_webhook_proto.Services().ByName("InstanceWebhookService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewInstanceWebhookServiceHandler(&apisvc.InstanceWebhooks{W: e.webhooks}, o...)
+		}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_dns_proto.Services().ByName("DnsProviderService"),
+		func(o ...connect.HandlerOption) (string, http.Handler) {
+			e.dnsp = &apisvc.DnsProviders{DB: db, API: srv, Sealer: sealer, Dial: e.dns.dial, Logger: log, Now: now}
+			return rpmgrv1connect.NewDnsProviderServiceHandler(e.dnsp, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -317,6 +326,7 @@ type browser struct {
 	logs   rpmgrv1connect.LogServiceClient
 	wh     rpmgrv1connect.WebhookServiceClient
 	iwh    rpmgrv1connect.InstanceWebhookServiceClient
+	dnsp   rpmgrv1connect.DnsProviderServiceClient
 }
 
 func (e *env) browser() *browser {
@@ -333,6 +343,7 @@ func (e *env) browser() *browser {
 	b.logs = rpmgrv1connect.NewLogServiceClient(&http.Client{Transport: b}, e.url)
 	b.wh = rpmgrv1connect.NewWebhookServiceClient(&http.Client{Transport: b}, e.url)
 	b.iwh = rpmgrv1connect.NewInstanceWebhookServiceClient(&http.Client{Transport: b}, e.url)
+	b.dnsp = rpmgrv1connect.NewDnsProviderServiceClient(&http.Client{Transport: b}, e.url)
 	b.st = rpmgrv1connect.NewStatusServiceClient(&http.Client{Transport: b}, e.url)
 	b.pol = rpmgrv1connect.NewPolicyServiceClient(&http.Client{Transport: b}, e.url)
 	b.crt = rpmgrv1connect.NewCertificateServiceClient(&http.Client{Transport: b}, e.url)
