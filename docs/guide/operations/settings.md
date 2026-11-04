@@ -175,10 +175,11 @@ of the certificate settings are in [04](../../04-security.md#leaf-certificates).
 |---|---|---|
 | **Check for releases once a day** | `release_check` | On by default. The controller fetches the signed release manifest from GitHub, sending nothing about the installation, and mirrors the release files of its own version under `/dl/` for the install scripts ([10](../../10-operations.md#ports)) |
 | **Release channel** | `update_channel` | **Stable**, or **Pre-releases too** |
+| **Rollouts** | `rollout_mode` | What **Roll out…** starts: **Easy**, the default, updates the agents you choose one after another; **Advanced** runs staged rollouts, test agents first. In `--set`, `easy` or `advanced`. **Update** on a connector or gateway works in both |
 
 Turn the release check off for a controller without internet access, and import releases by hand
-instead ([Air-gapped installations](../install/air-gapped.md)). Updates rolled out to agents by the
-controller are planned for Phase 2 ([13](../../13-roadmap.md#phase-2--production)).
+instead ([Air-gapped installations](../install/air-gapped.md)). The page also rolls releases out to
+agents and updates the controller itself ([Updates](updates.md)).
 
 ## Warnings on the Settings page
 

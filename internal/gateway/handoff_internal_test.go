@@ -213,7 +213,7 @@ func TestListeners_Ready(t *testing.T) {
 	}, func() { begun++ })
 	l := &listeners{log: quiet(), link: link}
 	for range 2 {
-		if err := l.ready(context.Background(), link, nil, nil); err != nil {
+		if err := l.ready(context.Background(), link, nil, nil, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -238,7 +238,7 @@ func TestListeners_ReadyFails(t *testing.T) {
 		return ""
 	}, func() { t.Error("the trigger began after a failed notification") })
 	l := &listeners{log: quiet(), link: link}
-	if err := l.ready(context.Background(), link, nil, nil); err == nil || !strings.Contains(err.Error(), "hand-off") {
+	if err := l.ready(context.Background(), link, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "hand-off") {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -292,8 +292,57 @@ func TestListeners_ReadyWaitsForControlPlane(t *testing.T) {
 	err := l.ready(ctx, link, func() []handoff.Entry { rested = true; return nil }, func(context.Context) error {
 		polls++
 		return errors.New("no control session")
-	})
+	}, func() { t.Error("the sockets were opened for reading before the snapshot was applied") })
 	if err != nil || begun || rested || polls < 2 {
 		t.Fatalf("err %v, begun %v, rested %v, polls %d", err, begun, rested, polls)
+	}
+}
+
+// TestListeners_ReadyOpensSocketsAfterTheSnapshot: a process a hand-off started may read the
+// handed-over sockets only once its control session is up and its first snapshot applied, and
+// before the old process is told it can take over (#1061); one whose control plane never comes up
+// opens nothing and tells nobody.
+func TestListeners_ReadyOpensSocketsAfterTheSnapshot(t *testing.T) {
+	sock := filepath.Join(t.TempDir(), "notify")
+	srv, err := net.ListenPacket("unixgram", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	link := handoff.NewLink(nil, func(k string) string {
+		if k == "NOTIFY_SOCKET" {
+			return sock
+		}
+		return ""
+	}, func() {})
+	l := &listeners{log: quiet(), link: link}
+	var events []string
+	polls := 0
+	err = l.ready(context.Background(), link, func() []handoff.Entry { events = append(events, "rest"); return nil },
+		func(context.Context) error {
+			if polls++; polls < 3 {
+				events = append(events, "no snapshot yet")
+				return errors.New("no control session")
+			}
+			events = append(events, "snapshot applied")
+			return nil
+		}, func() {
+			// The old process is told after this: nothing has been sent yet.
+			_ = srv.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+			if n, _, err := srv.ReadFrom(make([]byte, 64)); err == nil {
+				t.Errorf("the old process was told (%d bytes) before the sockets were opened", n)
+			}
+			events = append(events, "open")
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "no snapshot yet,no snapshot yet,snapshot applied,rest,open"
+	if got := strings.Join(events, ","); got != want {
+		t.Fatalf("order %q, want %q", got, want)
+	}
+	_ = srv.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if n, _, err := srv.ReadFrom(make([]byte, 64)); err != nil || n == 0 {
+		t.Fatalf("the old process was not told after the sockets were opened: %v", err)
 	}
 }

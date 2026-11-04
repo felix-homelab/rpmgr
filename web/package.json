@@ -66,6 +66,7 @@
     "vitest": "5.0.5"
   },
   "overrides": {
+    "minimatch": "11.0.4",
     "playwright-core": "1.63.0"
   }
 }

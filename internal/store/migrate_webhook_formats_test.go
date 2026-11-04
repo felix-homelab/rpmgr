@@ -60,8 +60,8 @@ func TestMigrate_WebhookFormats(t *testing.T) {
 		}
 		for q, want := range map[string]int{
 			"SELECT count(*) FROM webhooks WHERE id = '" + hook + "' AND format = 'rpmgr' AND url_enc IS NULL AND version = 3 AND enabled AND secret_enc IS NOT NULL": 1,
-			"SELECT count(*) FROM webhooks WHERE id = '" + hook + "' AND url = 'https://hooks.example.com/a' AND org_id = '" + org + "'":                          1,
-			"SELECT count(*) FROM webhook_deliveries WHERE webhook_id = '" + hook + "'":                                                                         1,
+			"SELECT count(*) FROM webhooks WHERE id = '" + hook + "' AND url = 'https://hooks.example.com/a' AND org_id = '" + org + "'":                              1,
+			"SELECT count(*) FROM webhook_deliveries WHERE webhook_id = '" + hook + "'":                                                                               1,
 		} {
 			if got := count(t, db, q); got != want {
 				t.Errorf("%s: %d, want %d", q, got, want)

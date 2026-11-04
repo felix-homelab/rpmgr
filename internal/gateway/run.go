@@ -384,7 +384,27 @@ func Run(ctx context.Context, o RunOptions) error {
 	} else if o.Readiness != nil {
 		o.Readiness(ctl.Ready)
 	}
-	go func() { _ = router.Serve(tcp) }()
+	// A process a hand-off started shares the public sockets with the old one, which keeps
+	// accepting on them until this one is ready. It reads them only once its first snapshot is
+	// applied, so that no visitor reaches it before it has the routes and certificates: a
+	// connection it took earlier got the default certificate (#1061). A process that failed to get
+	// ready serves nothing and exits with the error, and the old one serves on.
+	accepting := make(chan struct{})
+	var acceptOnce sync.Once
+	openAccepting := func() { acceptOnce.Do(func() { close(accepting) }) }
+	if !adopted {
+		openAccepting()
+	}
+	whenAccepting := func(serve func()) {
+		go func() {
+			select {
+			case <-accepting:
+				serve()
+			case <-run.Done():
+			}
+		}()
+	}
+	whenAccepting(func() { _ = router.Serve(tcp) })
 	if o.Tunnels != nil {
 		go func() {
 			if err := router.ServeTunnels(o.Tunnels); err != nil {
@@ -393,11 +413,11 @@ func Run(ctx context.Context, o RunOptions) error {
 		}()
 	}
 	if plain != nil {
-		go func() {
+		whenAccepting(func() {
 			if err := httpRoutes.Serve80(plain); err != nil && !errors.Is(err, net.ErrClosed) {
 				o.Logger.Warn("port 80 stopped", "error", err)
 			}
-		}()
+		})
 	}
 	background.Go(func() { certificates.Run(run) })
 	background.Go(func() { pages.Run(run) })
@@ -434,7 +454,7 @@ func Run(ctx context.Context, o RunOptions) error {
 			return child, nil
 		})
 		background.Go(func() {
-			if err := held.ready(run, o.Handoff, rest, ctl.Ready); err != nil {
+			if err := held.ready(run, o.Handoff, rest, ctl.Ready, openAccepting); err != nil {
 				errs <- err
 				return
 			}

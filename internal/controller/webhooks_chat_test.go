@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/secret"
-	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	ewebhook "github.com/felix-homelab/rpmgr/internal/store/ent/webhook"

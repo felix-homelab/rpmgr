@@ -50,12 +50,12 @@ terminal would reach a later prompt ([04](../../04-security.md#join-command)).
 What you see on a first installation (abbreviated):
 
 ```text
-rpmgr install: downloading rpmgr 0.2.0 for linux/amd64 from https://github.com/felix-homelab/rpmgr
-rpmgr install: verified rpmgr 0.2.0 (manifest …)
-rpmgr 0.2.0 (commit …, go…, linux/amd64)
+rpmgr install: downloading rpmgr 0.3.0 for linux/amd64 from https://github.com/felix-homelab/rpmgr
+rpmgr install: verified rpmgr 0.3.0 (manifest …)
+rpmgr 0.3.0 (commit …, go…, linux/amd64)
 release root keys:
   …
-rpmgr install: installed rpmgr 0.2.0 to /usr/local/bin/rpmgr
+rpmgr install: installed rpmgr 0.3.0 to /usr/local/bin/rpmgr
 Run rpmgr setup now? [Y/n]
 ```
 
@@ -107,8 +107,8 @@ The install script of v0.1.0-rc.7 and earlier has neither `--upgrade` nor `--res
    v0.1.0 gets the updater: run the script with `--upgrade`. A release from before the updater gets
    only the record of how it was installed.
 7. **Services:** with `--restart`, it restarts each rpmgr service that runs and checks that it
-   stays active for 5 s without systemd restarting it. Without, it names each service that still
-   runs the previous binary and the command that restarts it.
+   stays active for a few seconds without systemd restarting it. Without, it names each service
+   that still runs the previous binary and the command that restarts it.
 8. **Setup:** unless `--no-setup` or `--upgrade` is given, it asks on the terminal whether to run
    `rpmgr setup`. Without a terminal it asks nothing and prints the next step.
 
@@ -234,7 +234,7 @@ the global script needs, and `systemctl`, `useradd` and `install`.
 It ends with a line such as:
 
 ```text
-rpmgr install: rpmgr 0.2.0 runs as rpmgr-connector; admin listener 127.0.0.1:7383
+rpmgr install: rpmgr 0.3.0 runs as rpmgr-connector; admin listener 127.0.0.1:7383
 ```
 
 Check the agent with `sudo rpmgr status`. Its last line, `Service:`, says `running and ready` once

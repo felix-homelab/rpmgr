@@ -126,6 +126,7 @@ func TestWebhook_ChatURLSealedAndRedacted(t *testing.T) {
 // TestWebhooks_ChatInvalid: a chat endpoint takes its URL in secret_url only, an rpmgr endpoint in
 // url only; a URL without a path, with http, credentials, a fragment or a loopback host, or a
 // format that does not exist, is refused, and no refusal names the URL.
+//
 //nolint:gosec // G101: test URLs
 func TestWebhooks_ChatInvalid(t *testing.T) {
 	e, ada, org, _ := gatewayEnv(t)
@@ -168,6 +169,7 @@ func TestWebhooks_ChatInvalid(t *testing.T) {
 // TestWebhooks_ChatUpdate: a chat endpoint's URL changes by a new secret_url only; a new format
 // needs one; an rpmgr endpoint becomes a chat one and loses its secrets; a chat endpoint does not
 // become rpmgr and cannot be rotated; the event filter and enabling work as for any endpoint.
+//
 //nolint:gosec // G101: test URLs
 func TestWebhooks_ChatUpdate(t *testing.T) {
 	e, ada, org, _ := gatewayEnv(t)
