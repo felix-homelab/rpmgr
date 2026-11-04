@@ -59,11 +59,11 @@ func ChatBody(f Format, e events.Event, c Context) ([]byte, error) {
 	m := compose(e, c)
 	switch f {
 	case FormatDiscord:
-		return discord(m)
+		return discord(m, c.Options)
 	case FormatSlack:
-		return slack(m)
+		return slack(m, c.Options)
 	case FormatTeams:
-		return teams(m)
+		return teams(m, c.Options)
 	}
 	return nil, fmt.Errorf("webhook: %q is not a chat format", f)
 }
@@ -114,7 +114,7 @@ func mdEscape(s string) string {
 	return b.String()
 }
 
-func discord(m message) ([]byte, error) {
+func discordEmbed(m message) map[string]any {
 	var fs []map[string]any
 	for _, f := range m.facts {
 		fs = append(fs, map[string]any{"name": f.Name, "value": cut(f.Value, DiscordFieldValue, mdEscape), "inline": true})
@@ -127,8 +127,40 @@ func discord(m message) ([]byte, error) {
 	if foot := strings.Join(nonEmpty(m.footer, m.ids), " · "); foot != "" {
 		embed["footer"] = map[string]any{"text": cut(foot, DiscordFooter, mdEscape)}
 	}
-	// No mention in a summary or a name pings anyone.
-	return json.Marshal(map[string]any{"embeds": []any{embed}, "allowed_mentions": map[string]any{"parse": []string{}}})
+	return embed
+}
+
+func discord(m message, o Options) ([]byte, error) {
+	body := map[string]any{"embeds": []any{discordEmbed(m)}}
+	// No mention in a summary or a name pings anyone: only the one the endpoint is set to make,
+	// which is in the content, is allowed.
+	allowed := map[string]any{"parse": []string{}}
+	if kind, id, _ := strings.Cut(o.Mention, ":"); o.mentioned(m) && (kind == "role" || kind == "user") {
+		if kind == "role" {
+			body["content"], allowed["roles"] = "<@&"+id+">", []string{id}
+		} else {
+			body["content"], allowed["users"] = "<@"+id+">", []string{id}
+		}
+	}
+	body["allowed_mentions"] = allowed
+	if o.Username != "" {
+		body["username"] = o.Username
+	}
+	if o.AvatarURL != "" {
+		body["avatar_url"] = o.AvatarURL
+	}
+	if o.ThreadName != "" {
+		body["thread_name"] = o.ThreadName
+	}
+	return json.Marshal(body)
+}
+
+// DiscordEditBody is the body that edits the message of an alert that fired into the message of e,
+// the resolve: the new embed, an empty content, which ends the mention's text, and no mention. The
+// username, avatar and thread of a message cannot be edited.
+func DiscordEditBody(e events.Event, c Context) ([]byte, error) {
+	return json.Marshal(map[string]any{"content": "", "embeds": []any{discordEmbed(compose(e, c))},
+		"allowed_mentions": map[string]any{"parse": []string{}}})
 }
 
 func nonEmpty(s ...string) []string {
@@ -149,7 +181,7 @@ func slackEscape(s string) string {
 
 func angle(s string) string { return strings.NewReplacer("<", "‹", ">", "›").Replace(s) }
 
-func slack(m message) ([]byte, error) {
+func slack(m message, o Options) ([]byte, error) {
 	var fs []map[string]any
 	for _, f := range m.facts {
 		fs = append(fs, map[string]any{"type": "mrkdwn", "text": "*" + f.Name + "*\n" + cut(f.Value, SlackFieldValue, slackEscape)})
@@ -168,16 +200,34 @@ func slack(m message) ([]byte, error) {
 		map[string]any{"type": "section", "fields": fs},
 		map[string]any{"type": "context", "elements": ctx},
 	}
+	ping := ""
+	if kind, id, _ := strings.Cut(o.Mention, ":"); o.mentioned(m) {
+		switch {
+		case o.Mention == "here":
+			ping = "<!here>"
+		case kind == "subteam":
+			ping = "<!subteam^" + id + ">"
+		case kind == "user":
+			ping = "<@" + id + ">"
+		}
+	}
+	if ping != "" {
+		blocks = append([]any{map[string]any{"type": "section", "text": map[string]any{"type": "mrkdwn", "text": ping}}}, blocks...)
+	}
 	if m.link != "" {
 		blocks = append(blocks, map[string]any{"type": "actions", "elements": []any{map[string]any{"type": "button",
 			"text": map[string]any{"type": "plain_text", "text": "Open in rpmgr"}, "url": m.link}}})
 	}
 	att := map[string]any{"color": slackColours[m.sev], "blocks": blocks}
 	// text is what a notification shows; it is escaped like any mrkdwn.
-	return json.Marshal(map[string]any{"text": cut(m.title, SlackFallback, slackEscape), "attachments": []any{att}})
+	text := cut(m.title, SlackFallback, slackEscape)
+	if ping != "" {
+		text = ping + " " + text
+	}
+	return json.Marshal(map[string]any{"text": text, "attachments": []any{att}})
 }
 
-func teams(m message) ([]byte, error) {
+func teams(m message, o Options) ([]byte, error) {
 	var fs []map[string]any
 	for _, f := range m.facts {
 		fs = append(fs, map[string]any{"title": f.Name, "value": cut(f.Value, TeamsFactValue, mdEscape)})
@@ -196,8 +246,16 @@ func teams(m message) ([]byte, error) {
 		items = append(items, map[string]any{"type": "TextBlock", "text": cut(foot, TeamsText, mdEscape), "wrap": true, "size": "Small",
 			"isSubtle": true})
 	}
+	msteams := map[string]any{"width": "Full"}
+	if _, id, _ := strings.Cut(o.Mention, ":"); o.mentioned(m) && o.Mention != "" {
+		// The mention is the one the endpoint is set to make: its text is <at>…</at> of a validated
+		// address, which no escaped event text can equal, and the entity names it.
+		items = append([]any{map[string]any{"type": "TextBlock", "text": "<at>" + id + "</at>", "wrap": true}}, items...)
+		msteams["entities"] = []any{map[string]any{"type": "mention", "text": "<at>" + id + "</at>",
+			"mentioned": map[string]any{"id": id, "name": id}}}
+	}
 	card := map[string]any{"$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "type": "AdaptiveCard", "version": "1.5",
-		"msteams": map[string]any{"width": "Full"},
+		"msteams": msteams,
 		"body":    []any{map[string]any{"type": "Container", "style": teamsStyles[m.sev], "items": items}}}
 	if m.link != "" {
 		card["actions"] = []any{map[string]any{"type": "Action.OpenUrl", "title": "Open in rpmgr", "url": m.link}}
@@ -247,7 +305,7 @@ func (e *RateLimitedError) Error() string {
 func (e *RateLimitedError) Unwrap() error { return ErrNotDelivered }
 
 // retryAfter reads how long a 429 asks to wait: the Retry-After header, seconds or an HTTP date,
-// else the retry_after of Discord's JSON answer, in seconds. 0 means it named no usable time.
+// else the retry_after of Discord's JSON answer, in seconds, else its X-RateLimit-Reset-After header. 0 means it named no usable time.
 func retryAfter(h http.Header, body []byte, now time.Time) time.Duration {
 	var secs float64
 	ok := false
@@ -264,6 +322,12 @@ func retryAfter(h http.Header, body []byte, now time.Time) time.Duration {
 		}
 		if json.Unmarshal(body, &d) == nil && d.RetryAfter > 0 {
 			secs, ok = d.RetryAfter, true
+		}
+	}
+	// Discord's own rate-limit header, the seconds, with decimals, until its bucket resets.
+	if !ok {
+		if n, err := strconv.ParseFloat(strings.TrimSpace(h.Get("X-RateLimit-Reset-After")), 64); err == nil && n > 0 {
+			secs, ok = n, true
 		}
 	}
 	if !ok || math.IsNaN(secs) || math.IsInf(secs, 0) {

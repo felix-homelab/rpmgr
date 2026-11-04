@@ -541,7 +541,17 @@ spec:
   `allowed_mentions` parses nothing, Slack a message of Block Kit blocks (header, sections, a
   context with a `<!date^…>` time and its fallback, a button) in a coloured attachment, with
   `&`, `<` and `>` escaped, and Teams a workflows webhook with an Adaptive Card 1.5 of full width
-  in a container styled by the severity. Texts are cut to the limits in
+  in a container styled by the severity. **Options** (D170), for a chat format only and refused
+  for `rpmgr`, are checked against the format: `mention`, who an alert's message mentions
+  (Discord `role:<id>` or `user:<id>`, Slack `here`, `subteam:<id>` or `user:<id>`, Teams
+  `user:<UPN or Entra object id>`), and `mention_when`, `never` (the default), `critical` (an
+  alert of a critical kind) or `all` alerts; the mention is made when an alert fires, never on a
+  resolve, and it is the only mention a message can carry, as Discord's `allowed_mentions` names
+  just it. For Discord also `discord_username`, `discord_avatar_url` (`https`) and `thread_name`,
+  which makes each message start a thread in a forum channel. A Discord alert is posted with
+  `?wait=true` and its message ID is stored; the resolve edits that message to green, and posts a
+  new one if Discord answers `404` to the edit. An update that changes the format must leave no
+  option the new format has no use for. Texts are cut to the limits in
   [03](03-connections.md#timeouts-keepalive-and-backoff). A chat endpoint's URL is given in
   `secret_url`, not in `url`: it is write-only and sealed, and `url` shows only its scheme and
   host ([04](04-security.md#webhooks-and-the-egress-guard-phase-2)). `secret_url` is an
@@ -551,7 +561,7 @@ spec:
   `FAILED_PRECONDITION`. An update changes `format` only together with a new `secret_url`
   (from `rpmgr` to a chat format, or between chat formats); a chat endpoint does not become
   `rpmgr`, which is `FAILED_PRECONDITION`. A `429` from a chat service with `Retry-After` or
-  Discord's `retry_after` delays the next attempt, within the bounds in 03 and never faster than the ordinary retries,
+  Discord's `retry_after` or `X-RateLimit-Reset-After` delays the next attempt, within the bounds in 03 and never faster than the ordinary retries,
   and does not count towards the disabling of the endpoint
   ([D143](14-open-decisions.md#engineering)) until the attempt in 03 from which a 429 is a
   failure. The event

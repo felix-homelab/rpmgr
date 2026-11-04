@@ -47,7 +47,17 @@ type Webhook struct {
 	// Format holds the value of the "format" field.
 	Format webhook.Format `json:"format,omitempty"`
 	// URLEnc holds the value of the "url_enc" field.
-	URLEnc       *[]byte `json:"-"`
+	URLEnc *[]byte `json:"-"`
+	// Mention holds the value of the "mention" field.
+	Mention string `json:"mention,omitempty"`
+	// MentionWhen holds the value of the "mention_when" field.
+	MentionWhen webhook.MentionWhen `json:"mention_when,omitempty"`
+	// DiscordUsername holds the value of the "discord_username" field.
+	DiscordUsername string `json:"discord_username,omitempty"`
+	// DiscordAvatarURL holds the value of the "discord_avatar_url" field.
+	DiscordAvatarURL string `json:"discord_avatar_url,omitempty"`
+	// ThreadName holds the value of the "thread_name" field.
+	ThreadName   string `json:"thread_name,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -62,7 +72,7 @@ func (*Webhook) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case webhook.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case webhook.FieldID, webhook.FieldOrgID, webhook.FieldURL, webhook.FieldDisabledReason, webhook.FieldFormat:
+		case webhook.FieldID, webhook.FieldOrgID, webhook.FieldURL, webhook.FieldDisabledReason, webhook.FieldFormat, webhook.FieldMention, webhook.FieldMentionWhen, webhook.FieldDiscordUsername, webhook.FieldDiscordAvatarURL, webhook.FieldThreadName:
 			values[i] = new(sql.NullString)
 		case webhook.FieldPreviousUntil, webhook.FieldEnabledAt, webhook.FieldLastSuccessAt, webhook.FieldFailingSince, webhook.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -184,6 +194,36 @@ func (_m *Webhook) assignValues(columns []string, values []any) error {
 			} else if value != nil {
 				_m.URLEnc = value
 			}
+		case webhook.FieldMention:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field mention", values[i])
+			} else if value.Valid {
+				_m.Mention = value.String
+			}
+		case webhook.FieldMentionWhen:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field mention_when", values[i])
+			} else if value.Valid {
+				_m.MentionWhen = webhook.MentionWhen(value.String)
+			}
+		case webhook.FieldDiscordUsername:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field discord_username", values[i])
+			} else if value.Valid {
+				_m.DiscordUsername = value.String
+			}
+		case webhook.FieldDiscordAvatarURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field discord_avatar_url", values[i])
+			} else if value.Valid {
+				_m.DiscordAvatarURL = value.String
+			}
+		case webhook.FieldThreadName:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field thread_name", values[i])
+			} else if value.Valid {
+				_m.ThreadName = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -271,6 +311,21 @@ func (_m *Webhook) String() string {
 	builder.WriteString(fmt.Sprintf("%v", _m.Format))
 	builder.WriteString(", ")
 	builder.WriteString("url_enc=<sensitive>")
+	builder.WriteString(", ")
+	builder.WriteString("mention=")
+	builder.WriteString(_m.Mention)
+	builder.WriteString(", ")
+	builder.WriteString("mention_when=")
+	builder.WriteString(fmt.Sprintf("%v", _m.MentionWhen))
+	builder.WriteString(", ")
+	builder.WriteString("discord_username=")
+	builder.WriteString(_m.DiscordUsername)
+	builder.WriteString(", ")
+	builder.WriteString("discord_avatar_url=")
+	builder.WriteString(_m.DiscordAvatarURL)
+	builder.WriteString(", ")
+	builder.WriteString("thread_name=")
+	builder.WriteString(_m.ThreadName)
 	builder.WriteByte(')')
 	return builder.String()
 }

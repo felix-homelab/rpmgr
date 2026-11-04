@@ -81,6 +81,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/webhook"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookdelivery"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookmessage"
 
 	"entgo.io/ent"
 	"entgo.io/ent/privacy"
@@ -4447,6 +4448,22 @@ func init() {
 	webhook.DefaultVersion = webhookDescVersion.Default.(int64)
 	// webhook.VersionValidator is a validator for the "version" field. It is called by the builders before save.
 	webhook.VersionValidator = webhookDescVersion.Validators[0].(func(int64) error)
+	// webhookDescMention is the schema descriptor for mention field.
+	webhookDescMention := webhookFields[16].Descriptor()
+	// webhook.DefaultMention holds the default value on creation for the mention field.
+	webhook.DefaultMention = webhookDescMention.Default.(string)
+	// webhookDescDiscordUsername is the schema descriptor for discord_username field.
+	webhookDescDiscordUsername := webhookFields[18].Descriptor()
+	// webhook.DefaultDiscordUsername holds the default value on creation for the discord_username field.
+	webhook.DefaultDiscordUsername = webhookDescDiscordUsername.Default.(string)
+	// webhookDescDiscordAvatarURL is the schema descriptor for discord_avatar_url field.
+	webhookDescDiscordAvatarURL := webhookFields[19].Descriptor()
+	// webhook.DefaultDiscordAvatarURL holds the default value on creation for the discord_avatar_url field.
+	webhook.DefaultDiscordAvatarURL = webhookDescDiscordAvatarURL.Default.(string)
+	// webhookDescThreadName is the schema descriptor for thread_name field.
+	webhookDescThreadName := webhookFields[20].Descriptor()
+	// webhook.DefaultThreadName holds the default value on creation for the thread_name field.
+	webhook.DefaultThreadName = webhookDescThreadName.Default.(string)
 	// webhookDescID is the schema descriptor for id field.
 	webhookDescID := webhookFields[0].Descriptor()
 	// webhook.DefaultID holds the default value on creation for the id field.
@@ -4514,6 +4531,62 @@ func init() {
 	// webhookdelivery.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	webhookdelivery.IDValidator = func() func(string) error {
 		validators := webhookdeliveryDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	webhookmessage.Policy = privacy.NewPolicies(schema.WebhookMessage{})
+	webhookmessage.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := webhookmessage.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	webhookmessageHooks := schema.WebhookMessage{}.Hooks()
+
+	webhookmessage.Hooks[1] = webhookmessageHooks[0]
+	webhookmessageInters := schema.WebhookMessage{}.Interceptors()
+	webhookmessage.Interceptors[0] = webhookmessageInters[0]
+	webhookmessageFields := schema.WebhookMessage{}.Fields()
+	_ = webhookmessageFields
+	// webhookmessageDescWebhookID is the schema descriptor for webhook_id field.
+	webhookmessageDescWebhookID := webhookmessageFields[1].Descriptor()
+	// webhookmessage.WebhookIDValidator is a validator for the "webhook_id" field. It is called by the builders before save.
+	webhookmessage.WebhookIDValidator = webhookmessageDescWebhookID.Validators[0].(func(string) error)
+	// webhookmessageDescAlertKey is the schema descriptor for alert_key field.
+	webhookmessageDescAlertKey := webhookmessageFields[3].Descriptor()
+	// webhookmessage.AlertKeyValidator is a validator for the "alert_key" field. It is called by the builders before save.
+	webhookmessage.AlertKeyValidator = webhookmessageDescAlertKey.Validators[0].(func(string) error)
+	// webhookmessageDescMessageID is the schema descriptor for message_id field.
+	webhookmessageDescMessageID := webhookmessageFields[4].Descriptor()
+	// webhookmessage.MessageIDValidator is a validator for the "message_id" field. It is called by the builders before save.
+	webhookmessage.MessageIDValidator = webhookmessageDescMessageID.Validators[0].(func(string) error)
+	// webhookmessageDescThreadID is the schema descriptor for thread_id field.
+	webhookmessageDescThreadID := webhookmessageFields[5].Descriptor()
+	// webhookmessage.DefaultThreadID holds the default value on creation for the thread_id field.
+	webhookmessage.DefaultThreadID = webhookmessageDescThreadID.Default.(string)
+	// webhookmessageDescCreatedAt is the schema descriptor for created_at field.
+	webhookmessageDescCreatedAt := webhookmessageFields[6].Descriptor()
+	// webhookmessage.DefaultCreatedAt holds the default value on creation for the created_at field.
+	webhookmessage.DefaultCreatedAt = webhookmessageDescCreatedAt.Default.(func() time.Time)
+	// webhookmessageDescID is the schema descriptor for id field.
+	webhookmessageDescID := webhookmessageFields[0].Descriptor()
+	// webhookmessage.DefaultID holds the default value on creation for the id field.
+	webhookmessage.DefaultID = webhookmessageDescID.Default.(func() string)
+	// webhookmessage.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	webhookmessage.IDValidator = func() func(string) error {
+		validators := webhookmessageDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

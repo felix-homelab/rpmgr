@@ -227,3 +227,6 @@ type Webhook func(*sql.Selector)
 
 // WebhookDelivery is the predicate function for webhookdelivery builders.
 type WebhookDelivery func(*sql.Selector)
+
+// WebhookMessage is the predicate function for webhookmessage builders.
+type WebhookMessage func(*sql.Selector)

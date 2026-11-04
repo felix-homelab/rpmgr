@@ -78,6 +78,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/webhook"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookdelivery"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookmessage"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
@@ -87,7 +88,7 @@ import (
 
 // schemaGraph holds a representation of ent/schema at runtime.
 var schemaGraph = func() *sqlgraph.Schema {
-	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 74)}
+	graph := &sqlgraph.Schema{Nodes: make([]*sqlgraph.Node, 75)}
 	graph.Nodes[0] = &sqlgraph.Node{
 		NodeSpec: sqlgraph.NodeSpec{
 			Table:   acmestorage.Table,
@@ -1623,6 +1624,11 @@ var schemaGraph = func() *sqlgraph.Schema {
 			webhook.FieldVersion:           {Type: field.TypeInt64, Column: webhook.FieldVersion},
 			webhook.FieldFormat:            {Type: field.TypeEnum, Column: webhook.FieldFormat},
 			webhook.FieldURLEnc:            {Type: field.TypeBytes, Column: webhook.FieldURLEnc},
+			webhook.FieldMention:           {Type: field.TypeString, Column: webhook.FieldMention},
+			webhook.FieldMentionWhen:       {Type: field.TypeEnum, Column: webhook.FieldMentionWhen},
+			webhook.FieldDiscordUsername:   {Type: field.TypeString, Column: webhook.FieldDiscordUsername},
+			webhook.FieldDiscordAvatarURL:  {Type: field.TypeString, Column: webhook.FieldDiscordAvatarURL},
+			webhook.FieldThreadName:        {Type: field.TypeString, Column: webhook.FieldThreadName},
 		},
 	}
 	graph.Nodes[73] = &sqlgraph.Node{
@@ -1645,6 +1651,25 @@ var schemaGraph = func() *sqlgraph.Schema {
 			webhookdelivery.FieldError:         {Type: field.TypeString, Column: webhookdelivery.FieldError},
 			webhookdelivery.FieldSentAt:        {Type: field.TypeTime, Column: webhookdelivery.FieldSentAt},
 			webhookdelivery.FieldNextAttemptAt: {Type: field.TypeTime, Column: webhookdelivery.FieldNextAttemptAt},
+		},
+	}
+	graph.Nodes[74] = &sqlgraph.Node{
+		NodeSpec: sqlgraph.NodeSpec{
+			Table:   webhookmessage.Table,
+			Columns: webhookmessage.Columns,
+			ID: &sqlgraph.FieldSpec{
+				Type:   field.TypeString,
+				Column: webhookmessage.FieldID,
+			},
+		},
+		Type: "WebhookMessage",
+		Fields: map[string]*sqlgraph.FieldSpec{
+			webhookmessage.FieldWebhookID: {Type: field.TypeString, Column: webhookmessage.FieldWebhookID},
+			webhookmessage.FieldOrgID:     {Type: field.TypeString, Column: webhookmessage.FieldOrgID},
+			webhookmessage.FieldAlertKey:  {Type: field.TypeString, Column: webhookmessage.FieldAlertKey},
+			webhookmessage.FieldMessageID: {Type: field.TypeString, Column: webhookmessage.FieldMessageID},
+			webhookmessage.FieldThreadID:  {Type: field.TypeString, Column: webhookmessage.FieldThreadID},
+			webhookmessage.FieldCreatedAt: {Type: field.TypeTime, Column: webhookmessage.FieldCreatedAt},
 		},
 	}
 	graph.MustAddE(
@@ -8764,6 +8789,31 @@ func (f *WebhookFilter) WhereURLEnc(p entql.BytesP) {
 	f.Where(p.Field(webhook.FieldURLEnc))
 }
 
+// WhereMention applies the entql string predicate on the mention field.
+func (f *WebhookFilter) WhereMention(p entql.StringP) {
+	f.Where(p.Field(webhook.FieldMention))
+}
+
+// WhereMentionWhen applies the entql string predicate on the mention_when field.
+func (f *WebhookFilter) WhereMentionWhen(p entql.StringP) {
+	f.Where(p.Field(webhook.FieldMentionWhen))
+}
+
+// WhereDiscordUsername applies the entql string predicate on the discord_username field.
+func (f *WebhookFilter) WhereDiscordUsername(p entql.StringP) {
+	f.Where(p.Field(webhook.FieldDiscordUsername))
+}
+
+// WhereDiscordAvatarURL applies the entql string predicate on the discord_avatar_url field.
+func (f *WebhookFilter) WhereDiscordAvatarURL(p entql.StringP) {
+	f.Where(p.Field(webhook.FieldDiscordAvatarURL))
+}
+
+// WhereThreadName applies the entql string predicate on the thread_name field.
+func (f *WebhookFilter) WhereThreadName(p entql.StringP) {
+	f.Where(p.Field(webhook.FieldThreadName))
+}
+
 // addPredicate implements the predicateAdder interface.
 func (_q *WebhookDeliveryQuery) addPredicate(pred func(s *sql.Selector)) {
 	_q.predicates = append(_q.predicates, pred)
@@ -8847,4 +8897,74 @@ func (f *WebhookDeliveryFilter) WhereSentAt(p entql.TimeP) {
 // WhereNextAttemptAt applies the entql time.Time predicate on the next_attempt_at field.
 func (f *WebhookDeliveryFilter) WhereNextAttemptAt(p entql.TimeP) {
 	f.Where(p.Field(webhookdelivery.FieldNextAttemptAt))
+}
+
+// addPredicate implements the predicateAdder interface.
+func (_q *WebhookMessageQuery) addPredicate(pred func(s *sql.Selector)) {
+	_q.predicates = append(_q.predicates, pred)
+}
+
+// Filter returns a Filter implementation to apply filters on the WebhookMessageQuery builder.
+func (_q *WebhookMessageQuery) Filter() *WebhookMessageFilter {
+	return &WebhookMessageFilter{config: _q.config, predicateAdder: _q}
+}
+
+// addPredicate implements the predicateAdder interface.
+func (m *WebhookMessageMutation) addPredicate(pred func(s *sql.Selector)) {
+	m.predicates = append(m.predicates, pred)
+}
+
+// Filter returns an entql.Where implementation to apply filters on the WebhookMessageMutation builder.
+func (m *WebhookMessageMutation) Filter() *WebhookMessageFilter {
+	return &WebhookMessageFilter{config: m.config, predicateAdder: m}
+}
+
+// WebhookMessageFilter provides a generic filtering capability at runtime for WebhookMessageQuery.
+type WebhookMessageFilter struct {
+	predicateAdder
+	config
+}
+
+// Where applies the entql predicate on the query filter.
+func (f *WebhookMessageFilter) Where(p entql.P) {
+	f.addPredicate(func(s *sql.Selector) {
+		if err := schemaGraph.EvalP(schemaGraph.Nodes[74].Type, p, s); err != nil {
+			s.AddError(err)
+		}
+	})
+}
+
+// WhereID applies the entql string predicate on the id field.
+func (f *WebhookMessageFilter) WhereID(p entql.StringP) {
+	f.Where(p.Field(webhookmessage.FieldID))
+}
+
+// WhereWebhookID applies the entql string predicate on the webhook_id field.
+func (f *WebhookMessageFilter) WhereWebhookID(p entql.StringP) {
+	f.Where(p.Field(webhookmessage.FieldWebhookID))
+}
+
+// WhereOrgID applies the entql string predicate on the org_id field.
+func (f *WebhookMessageFilter) WhereOrgID(p entql.StringP) {
+	f.Where(p.Field(webhookmessage.FieldOrgID))
+}
+
+// WhereAlertKey applies the entql string predicate on the alert_key field.
+func (f *WebhookMessageFilter) WhereAlertKey(p entql.StringP) {
+	f.Where(p.Field(webhookmessage.FieldAlertKey))
+}
+
+// WhereMessageID applies the entql string predicate on the message_id field.
+func (f *WebhookMessageFilter) WhereMessageID(p entql.StringP) {
+	f.Where(p.Field(webhookmessage.FieldMessageID))
+}
+
+// WhereThreadID applies the entql string predicate on the thread_id field.
+func (f *WebhookMessageFilter) WhereThreadID(p entql.StringP) {
+	f.Where(p.Field(webhookmessage.FieldThreadID))
+}
+
+// WhereCreatedAt applies the entql time.Time predicate on the created_at field.
+func (f *WebhookMessageFilter) WhereCreatedAt(p entql.TimeP) {
+	f.Where(p.Field(webhookmessage.FieldCreatedAt))
 }

@@ -45,6 +45,13 @@ func (Webhook) Fields() []ent.Field {
 		field.Int64("version").Positive().Default(1),
 		field.Enum("format").Values("rpmgr", "discord", "slack", "teams").Default("rpmgr"),
 		field.Bytes("url_enc").Optional().Nillable().Sensitive(),
+		// The options of a chat format (D170): the mention and when it is made, and Discord's
+		// username, avatar and thread name. None is a secret; "" is not set.
+		field.String("mention").Default(""),
+		field.Enum("mention_when").Values("never", "critical", "all").Default("never"),
+		field.String("discord_username").Default(""),
+		field.String("discord_avatar_url").Default(""),
+		field.String("thread_name").Default(""),
 	}
 }
 
@@ -110,3 +117,43 @@ func (WebhookDelivery) Interceptors() []ent.Interceptor {
 
 // Hooks scope writes to the scope's org; the delivery job writes as the system scope.
 func (WebhookDelivery) Hooks() []ent.Hook { return []ent.Hook{orgMutationHook} }
+
+// WebhookMessage is the chat message an alert was posted as, so that its resolve can edit it
+// (D170): one row per endpoint and alert, from the alert's firing until its resolve or the
+// delivery retention. alert_key is the alert's kind, subject type and subject ID. thread_id is the
+// Discord thread of a message made with a thread name, which an edit must name.
+type WebhookMessage struct{ ent.Schema }
+
+// Annotations name the table as docs/06-data-model.md does.
+func (WebhookMessage) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "webhook_messages"}}
+}
+
+// Fields of a posted message. org_id is the endpoint's (NULL for an instance endpoint).
+func (WebhookMessage) Fields() []ent.Field {
+	return []ent.Field{
+		idField("whm"),
+		field.String("webhook_id").NotEmpty().Immutable(),
+		field.String("org_id").Optional().Nillable().Immutable(),
+		field.String("alert_key").NotEmpty().Immutable(),
+		field.String("message_id").NotEmpty().Immutable(),
+		field.String("thread_id").Default("").Immutable(),
+		field.Time("created_at").Immutable().Default(time.Now),
+	}
+}
+
+// Indexes: one message per endpoint and alert, and the purge by age.
+func (WebhookMessage) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("webhook_id", "alert_key").Unique(), index.Fields("created_at")}
+}
+
+// Policy denies every query without a scope.
+func (WebhookMessage) Policy() ent.Policy { return scopePolicy() }
+
+// Interceptors show an org scope only its own org's messages.
+func (WebhookMessage) Interceptors() []ent.Interceptor {
+	return []ent.Interceptor{filterInterceptor("org_id")}
+}
+
+// Hooks scope writes to the scope's org; the delivery job writes as the system scope.
+func (WebhookMessage) Hooks() []ent.Hook { return []ent.Hook{orgMutationHook} }

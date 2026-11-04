@@ -162,6 +162,8 @@ type Tx struct {
 	Webhook *WebhookClient
 	// WebhookDelivery is the client for interacting with the WebhookDelivery builders.
 	WebhookDelivery *WebhookDeliveryClient
+	// WebhookMessage is the client for interacting with the WebhookMessage builders.
+	WebhookMessage *WebhookMessageClient
 
 	// lazily loaded.
 	client     *Client
@@ -367,6 +369,7 @@ func (tx *Tx) init() {
 	tx.User = NewUserClient(tx.config)
 	tx.Webhook = NewWebhookClient(tx.config)
 	tx.WebhookDelivery = NewWebhookDeliveryClient(tx.config)
+	tx.WebhookMessage = NewWebhookMessageClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.
