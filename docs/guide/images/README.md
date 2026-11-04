@@ -14,7 +14,7 @@ public pages, the dialogs and a few pages, such as `audit.png`, `gateways.png` a
 foot. `mobile-menu.png` alone shows a phone's screen, 390 × 844 pixels, as the menu exists only on
 small screens. The `rollout*.png` pictures show only the start dialog or the rollout's card, and
 `release-check.png` only the releases card; `controller-update.png` the same card with the button
-that updates the controller, and `updating.png` and `updating-failed.png` the Updating page, for
+that updates the controller, and `updating.png`, `updating-restarting.png` and `updating-failed.png` the Updating page, for
 which the browser is likewise given made-up answers about the update; the installation has no signed release, so the browser
 is given made-up answers about the releases, the release check, the rollout and the agents
 (`web/e2e/rollout-fakes.ts`). `settings-updates.png` shows the installation's empty list of

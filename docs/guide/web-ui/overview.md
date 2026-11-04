@@ -68,6 +68,8 @@ metrics behind it, and how long they are kept, are in [Monitoring](../operations
 
 ## Restarting
 
+![The Restarting card with the old processes of a gateway and a connector](../images/web/restarting.png)
+
 A card under the summary that appears only while an agent restarted without dropping connections
 and its old process is still draining: it holds the connections it had and exits when they end or
 the hand-off drain does ([Updates](../operations/updates.md#watch-and-end-a-draining-old-process)).
