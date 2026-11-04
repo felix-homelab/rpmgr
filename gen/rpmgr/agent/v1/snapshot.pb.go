@@ -1915,9 +1915,16 @@ type GatewayHTTPRoute struct {
 	UpstreamIdleTimeoutSeconds uint32 `protobuf:"varint,19,opt,name=upstream_idle_timeout_seconds,json=upstreamIdleTimeoutSeconds,proto3" json:"upstream_idle_timeout_seconds,omitempty"`
 	// This gateway's share of the route's limits (docs/03-connections.md, "Route limits"); the
 	// route reaches only gateways with the capability route.limits when it sets one.
-	Limits        *RouteLimits `protobuf:"bytes,20,opt,name=limits,proto3" json:"limits,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Limits *RouteLimits `protobuf:"bytes,20,opt,name=limits,proto3" json:"limits,omitempty"`
+	// Whether the route is proxied by Cloudflare: the client address is the CF-Connecting-IP of a
+	// request whose TCP peer is in cloudflare_ranges, and X-Forwarded-For and Forwarded from such a
+	// peer are ignored (docs/03-connections.md, "HTTP routes"). Only a gateway announcing the
+	// capability http.cf-connecting-ip gets a route that is proxied.
+	DnsProxied bool `protobuf:"varint,21,opt,name=dns_proxied,json=dnsProxied,proto3" json:"dns_proxied,omitempty"`
+	// Cloudflare's published ranges, CIDRs sorted, for a proxied route.
+	CloudflareRanges []string `protobuf:"bytes,22,rep,name=cloudflare_ranges,json=cloudflareRanges,proto3" json:"cloudflare_ranges,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *GatewayHTTPRoute) Reset() {
@@ -2086,6 +2093,20 @@ func (x *GatewayHTTPRoute) GetUpstreamIdleTimeoutSeconds() uint32 {
 func (x *GatewayHTTPRoute) GetLimits() *RouteLimits {
 	if x != nil {
 		return x.Limits
+	}
+	return nil
+}
+
+func (x *GatewayHTTPRoute) GetDnsProxied() bool {
+	if x != nil {
+		return x.DnsProxied
+	}
+	return false
+}
+
+func (x *GatewayHTTPRoute) GetCloudflareRanges() []string {
+	if x != nil {
+		return x.CloudflareRanges
 	}
 	return nil
 }
@@ -3356,7 +3377,7 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"connectors\x123\n" +
 	"\x06access\x18\x04 \x01(\v2\x1b.rpmgr.agent.v1.RouteAccessR\x06access\x12K\n" +
 	"\x11ranked_connectors\x18\x05 \x03(\v2\x1e.rpmgr.agent.v1.RouteConnectorR\x10rankedConnectors\x123\n" +
-	"\x06limits\x18\x06 \x01(\v2\x1b.rpmgr.agent.v1.RouteLimitsR\x06limits\"\x9f\b\n" +
+	"\x06limits\x18\x06 \x01(\v2\x1b.rpmgr.agent.v1.RouteLimitsR\x06limits\"\xed\b\n" +
 	"\x10GatewayHTTPRoute\x12.\n" +
 	"\x05hosts\x18\x01 \x03(\v2\x18.rpmgr.agent.v1.HTTPHostR\x05hosts\x12+\n" +
 	"\x11upstream_protocol\x18\x02 \x01(\tR\x10upstreamProtocol\x12\x1e\n" +
@@ -3381,7 +3402,10 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\x0eheader_matches\x18\x11 \x03(\v2\x1f.rpmgr.agent.v1.HTTPHeaderMatchR\rheaderMatches\x12V\n" +
 	"(upstream_response_header_timeout_seconds\x18\x12 \x01(\rR$upstreamResponseHeaderTimeoutSeconds\x12A\n" +
 	"\x1dupstream_idle_timeout_seconds\x18\x13 \x01(\rR\x1aupstreamIdleTimeoutSeconds\x123\n" +
-	"\x06limits\x18\x14 \x01(\v2\x1b.rpmgr.agent.v1.RouteLimitsR\x06limits\"U\n" +
+	"\x06limits\x18\x14 \x01(\v2\x1b.rpmgr.agent.v1.RouteLimitsR\x06limits\x12\x1f\n" +
+	"\vdns_proxied\x18\x15 \x01(\bR\n" +
+	"dnsProxied\x12+\n" +
+	"\x11cloudflare_ranges\x18\x16 \x03(\tR\x10cloudflareRanges\"U\n" +
 	"\x0fHTTPHeaderMatch\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\x12\x18\n" +

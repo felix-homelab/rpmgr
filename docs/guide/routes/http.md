@@ -117,6 +117,7 @@ type and its gateway group never change.
 | Hostnames, 1 to 100 | **Hostnames**, one per line | `--hostname`, repeated | required |
 | Path prefix | **Path prefix** | `--path-prefix` | every path |
 | Header matches | **Serve only requests with these headers**, `Name: value` or `Name` per line | `--match-header Name=value` or `--match-header Name`, repeated | none |
+| Cloudflare proxy | **Cloudflare proxy**: **Off** or **On** | `--dns-proxied`, `--dns-proxied=false` | off |
 | Certificate source | **TLS certificate**: **From ACME** or **Uploaded** | `--tls-mode acme\|certificate` | ACME |
 | Uploaded certificate | **Uploaded certificate**, one that covers every hostname | `--certificate <id>` | none |
 | Port 80 | **Port 80**: **Redirect to HTTPS**, **Serve the route**, **Closed** | `--port80 redirect\|serve\|off` | redirect |
@@ -171,6 +172,34 @@ The transport decides how the route's streams travel between gateways and connec
 - A hostname that a [TLS passthrough](tls-passthrough.md) route of the group uses cannot be an
   HTTP route's, and the reverse; the refusal names the other route. A hostname with a prefix that
   another HTTP route of the group holds already is refused as taken.
+
+### Cloudflare proxy
+
+Switch **Cloudflare proxy** on for a route whose hostnames Cloudflare proxies: clients then reach
+Cloudflare, and Cloudflare connects to the gateway, so every request arrives from one of
+Cloudflare's addresses. Without the switch the gateway would judge the route's
+[access policies](../access-policies.md) and [limits](limits.md) by those addresses, and one
+client could use up the limit of all.
+
+```sh
+rpmgr update route app --dns-proxied
+rpmgr update route app --dns-proxied=false
+```
+
+- With the switch on, the gateway takes the client's address from the `CF-Connecting-IP` header,
+  but only for a request that comes from one of Cloudflare's published addresses. The controller
+  keeps that list up to date ([15](../../15-dns.md#proxied-http-routes)). A request from any other
+  address is judged by its own address, whatever `CF-Connecting-IP` it carries, and so is a request
+  of Cloudflare's that has no usable `CF-Connecting-IP`.
+- `X-Forwarded-For` and `Forwarded` from Cloudflare's addresses are ignored. The target gets
+  the client's address in `X-Forwarded-For`, `Forwarded` and `CF-Connecting-IP`.
+- Only HTTP routes have the switch. The API refuses it for any other type with
+  `PROXY_NOT_ALLOWED`.
+- Gateways older than release 0.4 do not know the switch: they never get a proxied route, and the
+  route's status names them with `CAPABILITY_MISSING` until they are updated.
+- The switch changes what the gateway believes. It does not change your DNS records, and Cloudflare
+  sees the plaintext of a proxied route ([04](../../04-security.md#threat-model)). Set the zone's
+  SSL/TLS mode at Cloudflare as [15](../../15-dns.md#proxied-http-routes) says.
 
 ### Header matches
 

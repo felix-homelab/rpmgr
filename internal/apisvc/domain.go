@@ -18,6 +18,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 )
@@ -55,15 +56,18 @@ func (d *Domains) VerifyDomain(ctx context.Context, req *connect.Request[rpmgrv1
 	}
 	result := v.Verify(ctx, domains.ChallengeOf(cur))
 	var row *ent.Domain
-	err = store.WriteTx(ctx, d.DB, func(tx *ent.Tx) error {
-		latest, err := tx.Domain.Get(ctx, cur.ID)
+	// The system scope, as the check reads the claims of every org to hold a nested one; the read
+	// above has shown the claim is the caller's.
+	sys := store.CarryTxHook(d.Sys, ctx)
+	err = store.WriteTx(sys, d.DB, func(tx *ent.Tx) error {
+		latest, err := tx.Domain.Get(sys, cur.ID)
 		if err != nil {
 			return err
 		}
 		if latest.ChallengeValue != cur.ChallengeValue {
 			return connect.NewError(connect.CodeAborted, errors.New("apisvc: the claim changed during the check"))
 		}
-		row, err = domains.Record(ctx, tx, latest, result, d.now())
+		row, err = domains.Record(sys, tx, latest, result, d.now())
 		return err
 	})
 	if err != nil {
@@ -160,6 +164,9 @@ func (d *Domains) DeleteDomain(ctx context.Context, req *connect.Request[rpmgrv1
 		if n, err := tx.RouteHostname.Query().Where(routehostname.DomainID(cur.ID)).Count(ctx); err != nil || n > 0 {
 			return nil, errors.Join(err, errIf(n > 0, dependants(fmt.Sprintf("%d route hostnames lie under the domain", n))))
 		}
+		if n, err := tx.DNSName.Query().Where(dnsname.DomainID(cur.ID)).Count(ctx); err != nil || n > 0 {
+			return nil, errors.Join(err, errIf(n > 0, dependants(fmt.Sprintf("%d DNS names lie under the domain", n))))
+		}
 		if n, err := tx.ConnectListener.Query().Where(connectlistener.DomainID(cur.ID)).Count(ctx); err != nil || n > 0 {
 			return nil, errors.Join(err, errIf(n > 0, dependants(fmt.Sprintf("the hostnames of %d CONNECT listeners lie under the domain", n))))
 		}
@@ -192,6 +199,34 @@ func (d *Domains) MarkDomainTrusted(ctx context.Context, req *connect.Request[rp
 		return nil, storeError(err)
 	}
 	return connect.NewResponse(&rpmgrv1.MarkDomainTrustedResponse{Domain: domainOf(row)}), nil
+}
+
+// ApproveDomainClaim implements DomainService: it verifies a claim held as pending_approval, whose
+// proof was shown, in the system scope, as the claim is of any org. A verified claim is returned
+// as it is; a claim that was never proved or is not held is refused.
+func (d *Domains) ApproveDomainClaim(ctx context.Context, req *connect.Request[rpmgrv1.ApproveDomainClaimRequest]) (
+	*connect.Response[rpmgrv1.ApproveDomainClaimResponse], error) {
+	sys := store.CarryTxHook(d.Sys, ctx)
+	var row *ent.Domain
+	err := store.WriteTx(sys, d.DB, func(tx *ent.Tx) error {
+		cur, err := tx.Domain.Get(sys, req.Msg.GetDomainId())
+		if err != nil {
+			return err
+		}
+		switch row = cur; cur.Status {
+		case domain.StatusVerified:
+			return nil
+		case domain.StatusPendingApproval:
+			row, err = tx.Domain.UpdateOne(cur).SetStatus(domain.StatusVerified).SetVerifiedAt(d.now()).Save(sys)
+			return err
+		default:
+			return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("apisvc: the claim is %s, not held for approval", cur.Status))
+		}
+	})
+	if err != nil {
+		return nil, storeError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.ApproveDomainClaimResponse{Domain: domainOf(row)}), nil
 }
 
 func (d *Domains) now() time.Time {

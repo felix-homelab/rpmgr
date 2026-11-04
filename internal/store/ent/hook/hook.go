@@ -261,6 +261,18 @@ func (f ConnectorFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConnectorMutation", m)
 }
 
+// The DNSNameFunc type is an adapter to allow the use of ordinary
+// function as DNSName mutator.
+type DNSNameFunc func(context.Context, *ent.DNSNameMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f DNSNameFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.DNSNameMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DNSNameMutation", m)
+}
+
 // The DNSProviderFunc type is an adapter to allow the use of ordinary
 // function as DNSProvider mutator.
 type DNSProviderFunc func(context.Context, *ent.DNSProviderMutation) (ent.Value, error)
@@ -271,6 +283,18 @@ func (f DNSProviderFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DNSProviderMutation", m)
+}
+
+// The DNSZoneFunc type is an adapter to allow the use of ordinary
+// function as DNSZone mutator.
+type DNSZoneFunc func(context.Context, *ent.DNSZoneMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f DNSZoneFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.DNSZoneMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DNSZoneMutation", m)
 }
 
 // The DataSessionFunc type is an adapter to allow the use of ordinary

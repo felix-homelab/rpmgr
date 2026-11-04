@@ -25,6 +25,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 )
 
 // DnsProviders is DnsProviderService (docs/07-api.md; docs/15-dns.md, "Connecting, importing and
@@ -40,7 +41,7 @@ type DnsProviders struct {
 	// Dial makes the client of a provider account; nil is providers.Dial, the compiled-in API.
 	Dial providers.Dialer
 	// ZoneCount returns how many managed zones are imported from a provider, read in tx; nil
-	// means none. DeleteDnsProvider is refused while it is not zero.
+	// counts the rows of dns_zones. DeleteDnsProvider is refused while it is not zero.
 	ZoneCount func(ctx context.Context, tx *ent.Tx, providerID string) (int, error)
 	Logger    *slog.Logger
 	Now       func() time.Time
@@ -281,14 +282,18 @@ func (d *DnsProviders) DeleteDnsProvider(ctx context.Context, req *connect.Reque
 		if err := api.CheckEtag(req.Msg.GetEtag(), cur.Version, d.providerOf(cur)); err != nil {
 			return err
 		}
-		if d.ZoneCount != nil {
-			n, err := d.ZoneCount(ctx, tx, id)
-			if err != nil {
-				return err
+		count := d.ZoneCount
+		if count == nil {
+			count = func(ctx context.Context, tx *ent.Tx, id string) (int, error) {
+				return tx.DNSZone.Query().Where(dnszone.DNSProviderID(id)).Count(ctx)
 			}
-			if n > 0 {
-				return dependants("zones are imported from the provider; remove them first")
-			}
+		}
+		n, err := count(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			return dependants("zones are imported from the provider; remove them first")
 		}
 		if err := tx.DNSProvider.DeleteOneID(id).Where(dnsprovider.Version(cur.Version)).Exec(ctx); err != nil {
 			return err
@@ -302,13 +307,9 @@ func (d *DnsProviders) DeleteDnsProvider(ctx context.Context, req *connect.Reque
 	return connect.NewResponse(&rpmgrv1.DeleteDnsProviderResponse{}), nil
 }
 
-// ListProviderZones implements DnsProviderService: the zones the token sees, read live.
-func (d *DnsProviders) ListProviderZones(ctx context.Context, req *connect.Request[rpmgrv1.ListProviderZonesRequest]) (
-	*connect.Response[rpmgrv1.ListProviderZonesResponse], error) {
-	row, err := d.DB.ReadClient().DNSProvider.Get(ctx, req.Msg.GetDnsProviderId())
-	if err != nil {
-		return nil, storeError(err)
-	}
+// client opens the token of a stored provider and makes the client of its account. Its errors are
+// fixed words: none quotes the token.
+func (d *DnsProviders) client(ctx context.Context, row *ent.DNSProvider) (dns.Provider, error) {
 	tok, err := d.Sealer.Open(providers.SecretContext(row.ID), row.CredentialEnc)
 	if err != nil {
 		if d.Logger != nil {
@@ -319,6 +320,20 @@ func (d *DnsProviders) ListProviderZones(ctx context.Context, req *connect.Reque
 	p, err := d.dial(string(row.Kind), row.AccountID, tok)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.New("apisvc: the provider client cannot be made"))
+	}
+	return p, nil
+}
+
+// ListProviderZones implements DnsProviderService: the zones the token sees, read live.
+func (d *DnsProviders) ListProviderZones(ctx context.Context, req *connect.Request[rpmgrv1.ListProviderZonesRequest]) (
+	*connect.Response[rpmgrv1.ListProviderZonesResponse], error) {
+	row, err := d.DB.ReadClient().DNSProvider.Get(ctx, req.Msg.GetDnsProviderId())
+	if err != nil {
+		return nil, storeError(err)
+	}
+	p, err := d.client(ctx, row)
+	if err != nil {
+		return nil, err
 	}
 	zones, err := p.ListZones(ctx)
 	if err != nil {

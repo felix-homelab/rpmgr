@@ -18,6 +18,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
+	"github.com/felix-homelab/rpmgr/internal/cfranges"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/pki"
@@ -789,6 +790,54 @@ func TestCompile_RequireHeader(t *testing.T) {
 		if len(ta.GetRequireHeader()) != 0 || len(ta.GetIpRules()) != 1 || ta.GetIpRules()[0].GetAllow() ||
 			!slices.Equal(ta.GetIpRules()[0].GetCidrs(), []string{"0.0.0.0/0", "::/0"}) {
 			t.Fatalf("the tcp route's access %v, want everyone denied", ta)
+		}
+	})
+}
+
+// TestCompile_DNSProxied (D168): a proxied http route carries Cloudflare's ranges, the built-in ones
+// until a refresh stored others, and a gateway that does not announce http.cf-connecting-ip gets
+// the route not at all, as it would judge the route's IP rules by Cloudflare's addresses; a route
+// that is not proxied carries none and needs no capability.
+func TestCompile_DNSProxied(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		f := newFleet(t, db)
+		f.verifiedExample(t)
+		proxied := f.httpRoute(t, "proxied", true, true, func(c *ent.RouteHTTPCreate) { c.SetDNSProxied(true) }, "cf.example.com")
+		plain := f.httpRoute(t, "plain", true, true, nil, "plain.example.com")
+		without := slices.DeleteFunc(slices.Clone(gateway.Capabilities), func(c string) bool { return c == agentproto.CapHTTPCFConnectingIP })
+		old := ids(f.compileAs(t, pki.KindGateway, f.gateway, without...))
+		if slices.Contains(old, proxied) || !slices.Contains(old, plain) {
+			t.Fatalf("a gateway without the capability got %v; proxied %s, plain %s", old, proxied, plain)
+		}
+		rangesOf := func(id string) (bool, []string) {
+			for _, r := range f.compileAs(t, pki.KindGateway, f.gateway, gateway.Capabilities...) {
+				if r.GetId() == id {
+					return r.GetGatewayHttpRoute().GetDnsProxied(), r.GetGatewayHttpRoute().GetCloudflareRanges()
+				}
+			}
+			t.Fatalf("route %s is not in the snapshot", id)
+			return false, nil
+		}
+		on, got := rangesOf(proxied)
+		builtIn := cfranges.Fallback().Prefixes()
+		if !on || len(got) != len(builtIn) || !slices.IsSorted(got) || !slices.Contains(got, "104.16.0.0/13") {
+			t.Fatalf("the proxied route: %v %v, want the built-in ranges sorted", on, got)
+		}
+		if on, got := rangesOf(plain); on || len(got) != 0 {
+			t.Fatalf("the other route: %v %v", on, got)
+		}
+		// A refresh's ranges replace the built-in ones in the next snapshot.
+		stored := &rpmgrv1.CloudflareIpRanges{Ipv4Cidrs: []string{"192.0.2.0/24"}, Ipv6Cidrs: []string{"2001:db8::/32"}}
+		if _, err := settings.RecordCloudflareRanges(f.sys, db, stored, nil); err != nil {
+			t.Fatal(err)
+		}
+		if _, got := rangesOf(proxied); !slices.Equal(got, []string{"192.0.2.0/24", "2001:db8::/32"}) {
+			t.Fatalf("after a refresh: %v", got)
+		}
+		// Not proxied any more, the route is served by every gateway again.
+		db.Client().RouteHTTP.Update().SetDNSProxied(false).ExecX(f.sys)
+		if got := ids(f.compileAs(t, pki.KindGateway, f.gateway, without...)); !slices.Contains(got, proxied) {
+			t.Fatalf("a route that is not proxied any more is left out: %v", got)
 		}
 	})
 }

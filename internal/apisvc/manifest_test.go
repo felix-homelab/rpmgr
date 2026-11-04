@@ -35,6 +35,10 @@ func TestExportManifests(t *testing.T) {
 		PortPool: &rpmgrv1.PortPool{GatewayGroupId: group, Protocol: tcp, PortFrom: 20000, PortTo: 20009}})); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := ada.dnsn.CreateDnsName(ctx, connect.NewRequest(&rpmgrv1.CreateDnsNameRequest{OrgId: org,
+		DnsName: &rpmgrv1.DnsName{Fqdn: "ssh.example.com", GatewayGroupId: group, Ttl: 120}})); err != nil {
+		t.Fatal(err)
+	}
 	con := e.addConnector(t, org, "nas", func(c *ent.ConnectorCreate) { c.SetBuiltIn(true) }).ID
 	old := e.addConnector(t, org, "old", func(c *ent.ConnectorCreate) { c.SetDecommissionedAt(e.clock) }).ID
 	ca, _ := testCert(t, &x509.Certificate{Subject: pkix.Name{CommonName: "Upstream CA"}, IsCA: true, BasicConstraintsValid: true,
@@ -83,10 +87,10 @@ func TestExportManifests(t *testing.T) {
 		kinds = append(kinds, d.Kind+"/"+d.Metadata.Name)
 	}
 	if got := strings.Join(kinds, " "); !strings.HasPrefix(got, "GatewayGroup/eu Gateway/gw1 PortPool/pp_") ||
-		!strings.HasSuffix(got, "Domain/example.com CABundle/internal AccessPolicy/staff Connector/nas Route/web") {
+		!strings.HasSuffix(got, "Domain/example.com DnsName/ssh.example.com CABundle/internal AccessPolicy/staff Connector/nas Route/web") {
 		t.Fatalf("exported %s", got)
 	}
-	for _, want := range []string{"gatewayGroup: eu", "connector: nas", "caBundle: internal", "- staff", "name: alice"} {
+	for _, want := range []string{"gatewayGroup: eu", "ttl: 120", "connector: nas", "caBundle: internal", "- staff", "name: alice"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the manifests lack %q:\n%s", want, text)
 		}

@@ -225,10 +225,22 @@ type Verifier interface {
 const maxError = 512
 
 // Record writes the result of a check of d at now: verified, or still pending or failed with why.
+// A proof of a claim that is nested under, or contains, a verified domain of another org does not
+// verify it: the claim is held as pending_approval for an Instance Admin (docs/04-security.md,
+// "Route and hostname ownership"). ctx must be a scope that sees every org's claims, the system
+// scope; Record reads the other orgs' domains in it.
 func Record(ctx context.Context, tx *ent.Tx, d *ent.Domain, result error, now time.Time) (*ent.Domain, error) {
 	u := tx.Domain.UpdateOne(d).SetLastCheckedAt(now)
 	if result == nil {
-		u.SetStatus(domain.StatusVerified).SetVerifiedAt(now).SetLastError("")
+		held, err := Conflicts(ctx, tx, d.OrgID, d.Fqdn)
+		if err != nil {
+			return nil, err
+		}
+		if held {
+			u.SetStatus(domain.StatusPendingApproval).SetLastError("")
+		} else {
+			u.SetStatus(domain.StatusVerified).SetVerifiedAt(now).SetLastError("")
+		}
 	} else {
 		msg := result.Error()
 		u.SetLastError(strings.ToValidUTF8(msg[:min(len(msg), maxError)], ""))

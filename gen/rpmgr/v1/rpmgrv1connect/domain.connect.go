@@ -52,6 +52,9 @@ const (
 	// DomainServiceMarkDomainTrustedProcedure is the fully-qualified name of the DomainService's
 	// MarkDomainTrusted RPC.
 	DomainServiceMarkDomainTrustedProcedure = "/rpmgr.v1.DomainService/MarkDomainTrusted"
+	// DomainServiceApproveDomainClaimProcedure is the fully-qualified name of the DomainService's
+	// ApproveDomainClaim RPC.
+	DomainServiceApproveDomainClaimProcedure = "/rpmgr.v1.DomainService/ApproveDomainClaim"
 )
 
 // DomainServiceClient is a client for the rpmgr.v1.DomainService service.
@@ -69,6 +72,11 @@ type DomainServiceClient interface {
 	// MarkDomainTrusted verifies a claim without a proof (method trusted, D13). Only an Instance
 	// Admin, after a step-up.
 	MarkDomainTrusted(context.Context, *connect.Request[v1.MarkDomainTrustedRequest]) (*connect.Response[v1.MarkDomainTrustedResponse], error)
+	// ApproveDomainClaim verifies a claim held as pending_approval: it is nested under, or contains,
+	// a verified domain of another org, and its proof was shown (docs/04-security.md, "Route and
+	// hostname ownership"). Only an Instance Admin, after a step-up. To refuse a held claim, its org
+	// deletes it.
+	ApproveDomainClaim(context.Context, *connect.Request[v1.ApproveDomainClaimRequest]) (*connect.Response[v1.ApproveDomainClaimResponse], error)
 }
 
 // NewDomainServiceClient constructs a client for the rpmgr.v1.DomainService service. By default, it
@@ -120,17 +128,24 @@ func NewDomainServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(domainServiceMethods.ByName("MarkDomainTrusted")),
 			connect.WithClientOptions(opts...),
 		),
+		approveDomainClaim: connect.NewClient[v1.ApproveDomainClaimRequest, v1.ApproveDomainClaimResponse](
+			httpClient,
+			baseURL+DomainServiceApproveDomainClaimProcedure,
+			connect.WithSchema(domainServiceMethods.ByName("ApproveDomainClaim")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // domainServiceClient implements DomainServiceClient.
 type domainServiceClient struct {
-	createDomain      *connect.Client[v1.CreateDomainRequest, v1.CreateDomainResponse]
-	getDomain         *connect.Client[v1.GetDomainRequest, v1.GetDomainResponse]
-	listDomains       *connect.Client[v1.ListDomainsRequest, v1.ListDomainsResponse]
-	verifyDomain      *connect.Client[v1.VerifyDomainRequest, v1.VerifyDomainResponse]
-	deleteDomain      *connect.Client[v1.DeleteDomainRequest, v1.DeleteDomainResponse]
-	markDomainTrusted *connect.Client[v1.MarkDomainTrustedRequest, v1.MarkDomainTrustedResponse]
+	createDomain       *connect.Client[v1.CreateDomainRequest, v1.CreateDomainResponse]
+	getDomain          *connect.Client[v1.GetDomainRequest, v1.GetDomainResponse]
+	listDomains        *connect.Client[v1.ListDomainsRequest, v1.ListDomainsResponse]
+	verifyDomain       *connect.Client[v1.VerifyDomainRequest, v1.VerifyDomainResponse]
+	deleteDomain       *connect.Client[v1.DeleteDomainRequest, v1.DeleteDomainResponse]
+	markDomainTrusted  *connect.Client[v1.MarkDomainTrustedRequest, v1.MarkDomainTrustedResponse]
+	approveDomainClaim *connect.Client[v1.ApproveDomainClaimRequest, v1.ApproveDomainClaimResponse]
 }
 
 // CreateDomain calls rpmgr.v1.DomainService.CreateDomain.
@@ -163,6 +178,11 @@ func (c *domainServiceClient) MarkDomainTrusted(ctx context.Context, req *connec
 	return c.markDomainTrusted.CallUnary(ctx, req)
 }
 
+// ApproveDomainClaim calls rpmgr.v1.DomainService.ApproveDomainClaim.
+func (c *domainServiceClient) ApproveDomainClaim(ctx context.Context, req *connect.Request[v1.ApproveDomainClaimRequest]) (*connect.Response[v1.ApproveDomainClaimResponse], error) {
+	return c.approveDomainClaim.CallUnary(ctx, req)
+}
+
 // DomainServiceHandler is an implementation of the rpmgr.v1.DomainService service.
 type DomainServiceHandler interface {
 	// CreateDomain claims a domain for the org, pending its proof.
@@ -178,6 +198,11 @@ type DomainServiceHandler interface {
 	// MarkDomainTrusted verifies a claim without a proof (method trusted, D13). Only an Instance
 	// Admin, after a step-up.
 	MarkDomainTrusted(context.Context, *connect.Request[v1.MarkDomainTrustedRequest]) (*connect.Response[v1.MarkDomainTrustedResponse], error)
+	// ApproveDomainClaim verifies a claim held as pending_approval: it is nested under, or contains,
+	// a verified domain of another org, and its proof was shown (docs/04-security.md, "Route and
+	// hostname ownership"). Only an Instance Admin, after a step-up. To refuse a held claim, its org
+	// deletes it.
+	ApproveDomainClaim(context.Context, *connect.Request[v1.ApproveDomainClaimRequest]) (*connect.Response[v1.ApproveDomainClaimResponse], error)
 }
 
 // NewDomainServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -225,6 +250,12 @@ func NewDomainServiceHandler(svc DomainServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(domainServiceMethods.ByName("MarkDomainTrusted")),
 		connect.WithHandlerOptions(opts...),
 	)
+	domainServiceApproveDomainClaimHandler := connect.NewUnaryHandler(
+		DomainServiceApproveDomainClaimProcedure,
+		svc.ApproveDomainClaim,
+		connect.WithSchema(domainServiceMethods.ByName("ApproveDomainClaim")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.DomainService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DomainServiceCreateDomainProcedure:
@@ -239,6 +270,8 @@ func NewDomainServiceHandler(svc DomainServiceHandler, opts ...connect.HandlerOp
 			domainServiceDeleteDomainHandler.ServeHTTP(w, r)
 		case DomainServiceMarkDomainTrustedProcedure:
 			domainServiceMarkDomainTrustedHandler.ServeHTTP(w, r)
+		case DomainServiceApproveDomainClaimProcedure:
+			domainServiceApproveDomainClaimHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -270,4 +303,8 @@ func (UnimplementedDomainServiceHandler) DeleteDomain(context.Context, *connect.
 
 func (UnimplementedDomainServiceHandler) MarkDomainTrusted(context.Context, *connect.Request[v1.MarkDomainTrustedRequest]) (*connect.Response[v1.MarkDomainTrustedResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DomainService.MarkDomainTrusted is not implemented"))
+}
+
+func (UnimplementedDomainServiceHandler) ApproveDomainClaim(context.Context, *connect.Request[v1.ApproveDomainClaimRequest]) (*connect.Response[v1.ApproveDomainClaimResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DomainService.ApproveDomainClaim is not implemented"))
 }

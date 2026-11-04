@@ -318,6 +318,11 @@ func TestApplier_ValidateHTTP(t *testing.T) {
 		{"a trusted proxy that is no CIDR", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
 			r.TrustedProxies = []string{"10.0.0.1"}
 		})), "not a CIDR"},
+		{"a Cloudflare range that is no CIDR", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+			r.DnsProxied, r.CloudflareRanges = true, []string{"173.245.48.0/20", "cloudflare"}
+		})), "Cloudflare range"},
+		{"Cloudflare ranges on a route that is not proxied", gatewaySnapshot(1, withHTTP(httpResource("rt_1", "http", "app.example.com"),
+			func(r *agentv1.GatewayHTTPRoute) { r.CloudflareRanges = []string{"173.245.48.0/20"} })), "not proxied"},
 		{"a short pin", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
 			SpkiSha256: make([]byte, 16)})), "not a SHA-256"},
 		{"an unverified target with a pin", gatewaySnapshot(1, httpsResource("rt_1", &agentv1.UpstreamTLS{TargetId: "tg_1", ServerName: "a",
@@ -613,6 +618,30 @@ func TestApplier_RouteTimeouts(t *testing.T) {
 	}
 	if header, idle := gateway.RouteTimeouts(h, "rt_def"); header != time.Minute || idle != 2*time.Minute {
 		t.Errorf("the gateway's: %v %v", header, idle)
+	}
+}
+
+// TestApplier_CloudflareRanges (D168): a proxied route's snapshot carries Cloudflare's ranges to
+// the router, masked; a route that is not proxied holds none.
+func TestApplier_CloudflareRanges(t *testing.T) {
+	a, assign := gateway.NewApplier()
+	m := gateway.NewSessions(gateway.SessionsOptions{TrustDomain: td, GatewayID: "gw_01", Assignment: assign})
+	t.Cleanup(m.Close)
+	h := gateway.NewHTTPRoutes(gateway.HTTPOptions{Sessions: m})
+	t.Cleanup(h.Close)
+	a.Bind(gateway.Served{HTTP: h, Sessions: m})
+	proxied := withHTTP(httpResource("rt_cf", "http", "cf.example.com"), func(r *agentv1.GatewayHTTPRoute) {
+		r.DnsProxied, r.CloudflareRanges = true, []string{"173.245.48.0/20", "2400:cb00::/32", "104.16.1.0/13"}
+	})
+	if st := a.Apply(t.Context(), gatewaySnapshot(1, proxied, httpResource("rt_plain", "http", "plain.example.com")), agent.Changes{}); len(st) != 0 {
+		t.Fatal(st)
+	}
+	on, ranges := gateway.RouteCloudflare(h, "rt_cf")
+	if !on || len(ranges) != 3 || ranges[2].String() != "104.16.0.0/13" {
+		t.Errorf("the proxied route: %v %v", on, ranges)
+	}
+	if on, ranges := gateway.RouteCloudflare(h, "rt_plain"); on || len(ranges) != 0 {
+		t.Errorf("the other route: %v %v", on, ranges)
 	}
 }
 

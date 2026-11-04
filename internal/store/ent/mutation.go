@@ -35,7 +35,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/event"
@@ -116,7 +118,9 @@ const (
 	TypeConnectAuthority   = "ConnectAuthority"
 	TypeConnectListener    = "ConnectListener"
 	TypeConnector          = "Connector"
+	TypeDNSName            = "DNSName"
 	TypeDNSProvider        = "DNSProvider"
+	TypeDNSZone            = "DNSZone"
 	TypeDataSession        = "DataSession"
 	TypeDomain             = "Domain"
 	TypeEnrollmentToken    = "EnrollmentToken"
@@ -17141,6 +17145,844 @@ func (m *ConnectorMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Connector edge %s", name)
 }
 
+// DNSNameMutation represents an operation that mutates the DNSName nodes in the graph.
+type DNSNameMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	org_id        *string
+	version       *int64
+	addversion    *int64
+	fqdn          *string
+	ttl           *int
+	addttl        *int
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	group         *string
+	clearedgroup  bool
+	domain        *string
+	cleareddomain bool
+	done          bool
+	oldValue      func(context.Context) (*DNSName, error)
+	predicates    []predicate.DNSName
+}
+
+var _ ent.Mutation = (*DNSNameMutation)(nil)
+
+// dnsnameOption allows management of the mutation configuration using functional options.
+type dnsnameOption func(*DNSNameMutation)
+
+// newDNSNameMutation creates new mutation for the DNSName entity.
+func newDNSNameMutation(c config, op Op, opts ...dnsnameOption) *DNSNameMutation {
+	m := &DNSNameMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeDNSName,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withDNSNameID sets the ID field of the mutation.
+func withDNSNameID(id string) dnsnameOption {
+	return func(m *DNSNameMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *DNSName
+		)
+		m.oldValue = func(ctx context.Context) (*DNSName, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().DNSName.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withDNSName sets the old DNSName of the mutation.
+func withDNSName(node *DNSName) dnsnameOption {
+	return func(m *DNSNameMutation) {
+		m.oldValue = func(context.Context) (*DNSName, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m DNSNameMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m DNSNameMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of DNSName entities.
+func (m *DNSNameMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *DNSNameMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *DNSNameMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().DNSName.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *DNSNameMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *DNSNameMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the DNSName entity.
+// If the DNSName object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSNameMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *DNSNameMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *DNSNameMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *DNSNameMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the DNSName entity.
+// If the DNSName object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSNameMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *DNSNameMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *DNSNameMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *DNSNameMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
+// SetFqdn sets the "fqdn" field.
+func (m *DNSNameMutation) SetFqdn(s string) {
+	m.fqdn = &s
+}
+
+// Fqdn returns the value of the "fqdn" field in the mutation.
+func (m *DNSNameMutation) Fqdn() (r string, exists bool) {
+	v := m.fqdn
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFqdn returns the old "fqdn" field's value of the DNSName entity.
+// If the DNSName object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSNameMutation) OldFqdn(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFqdn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFqdn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFqdn: %w", err)
+	}
+	return oldValue.Fqdn, nil
+}
+
+// ResetFqdn resets all changes to the "fqdn" field.
+func (m *DNSNameMutation) ResetFqdn() {
+	m.fqdn = nil
+}
+
+// SetGatewayGroupID sets the "gateway_group_id" field.
+func (m *DNSNameMutation) SetGatewayGroupID(s string) {
+	m.group = &s
+}
+
+// GatewayGroupID returns the value of the "gateway_group_id" field in the mutation.
+func (m *DNSNameMutation) GatewayGroupID() (r string, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGatewayGroupID returns the old "gateway_group_id" field's value of the DNSName entity.
+// If the DNSName object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSNameMutation) OldGatewayGroupID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGatewayGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGatewayGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGatewayGroupID: %w", err)
+	}
+	return oldValue.GatewayGroupID, nil
+}
+
+// ResetGatewayGroupID resets all changes to the "gateway_group_id" field.
+func (m *DNSNameMutation) ResetGatewayGroupID() {
+	m.group = nil
+}
+
+// SetDomainID sets the "domain_id" field.
+func (m *DNSNameMutation) SetDomainID(s string) {
+	m.domain = &s
+}
+
+// DomainID returns the value of the "domain_id" field in the mutation.
+func (m *DNSNameMutation) DomainID() (r string, exists bool) {
+	v := m.domain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDomainID returns the old "domain_id" field's value of the DNSName entity.
+// If the DNSName object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSNameMutation) OldDomainID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDomainID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDomainID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDomainID: %w", err)
+	}
+	return oldValue.DomainID, nil
+}
+
+// ResetDomainID resets all changes to the "domain_id" field.
+func (m *DNSNameMutation) ResetDomainID() {
+	m.domain = nil
+}
+
+// SetTTL sets the "ttl" field.
+func (m *DNSNameMutation) SetTTL(i int) {
+	m.ttl = &i
+	m.addttl = nil
+}
+
+// TTL returns the value of the "ttl" field in the mutation.
+func (m *DNSNameMutation) TTL() (r int, exists bool) {
+	v := m.ttl
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTTL returns the old "ttl" field's value of the DNSName entity.
+// If the DNSName object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSNameMutation) OldTTL(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTTL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTTL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTTL: %w", err)
+	}
+	return oldValue.TTL, nil
+}
+
+// AddTTL adds i to the "ttl" field.
+func (m *DNSNameMutation) AddTTL(i int) {
+	if m.addttl != nil {
+		*m.addttl += i
+	} else {
+		m.addttl = &i
+	}
+}
+
+// AddedTTL returns the value that was added to the "ttl" field in this mutation.
+func (m *DNSNameMutation) AddedTTL() (r int, exists bool) {
+	v := m.addttl
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTTL resets all changes to the "ttl" field.
+func (m *DNSNameMutation) ResetTTL() {
+	m.ttl = nil
+	m.addttl = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *DNSNameMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *DNSNameMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the DNSName entity.
+// If the DNSName object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSNameMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *DNSNameMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetGroupID sets the "group" edge to the GatewayGroup entity by id.
+func (m *DNSNameMutation) SetGroupID(id string) {
+	m.group = &id
+}
+
+// ClearGroup clears the "group" edge to the GatewayGroup entity.
+func (m *DNSNameMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[dnsname.FieldGatewayGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the GatewayGroup entity was cleared.
+func (m *DNSNameMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupID returns the "group" edge ID in the mutation.
+func (m *DNSNameMutation) GroupID() (id string, exists bool) {
+	if m.group != nil {
+		return *m.group, true
+	}
+	return
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *DNSNameMutation) GroupIDs() (ids []string) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *DNSNameMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// ClearDomain clears the "domain" edge to the Domain entity.
+func (m *DNSNameMutation) ClearDomain() {
+	m.cleareddomain = true
+	m.clearedFields[dnsname.FieldDomainID] = struct{}{}
+}
+
+// DomainCleared reports if the "domain" edge to the Domain entity was cleared.
+func (m *DNSNameMutation) DomainCleared() bool {
+	return m.cleareddomain
+}
+
+// DomainIDs returns the "domain" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// DomainID instead. It exists only for internal usage by the builders.
+func (m *DNSNameMutation) DomainIDs() (ids []string) {
+	if id := m.domain; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetDomain resets all changes to the "domain" edge.
+func (m *DNSNameMutation) ResetDomain() {
+	m.domain = nil
+	m.cleareddomain = false
+}
+
+// Where appends a list predicates to the DNSNameMutation builder.
+func (m *DNSNameMutation) Where(ps ...predicate.DNSName) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the DNSNameMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *DNSNameMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.DNSName, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *DNSNameMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *DNSNameMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (DNSName).
+func (m *DNSNameMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *DNSNameMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.org_id != nil {
+		fields = append(fields, dnsname.FieldOrgID)
+	}
+	if m.version != nil {
+		fields = append(fields, dnsname.FieldVersion)
+	}
+	if m.fqdn != nil {
+		fields = append(fields, dnsname.FieldFqdn)
+	}
+	if m.group != nil {
+		fields = append(fields, dnsname.FieldGatewayGroupID)
+	}
+	if m.domain != nil {
+		fields = append(fields, dnsname.FieldDomainID)
+	}
+	if m.ttl != nil {
+		fields = append(fields, dnsname.FieldTTL)
+	}
+	if m.created_at != nil {
+		fields = append(fields, dnsname.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *DNSNameMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case dnsname.FieldOrgID:
+		return m.OrgID()
+	case dnsname.FieldVersion:
+		return m.Version()
+	case dnsname.FieldFqdn:
+		return m.Fqdn()
+	case dnsname.FieldGatewayGroupID:
+		return m.GatewayGroupID()
+	case dnsname.FieldDomainID:
+		return m.DomainID()
+	case dnsname.FieldTTL:
+		return m.TTL()
+	case dnsname.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *DNSNameMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case dnsname.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case dnsname.FieldVersion:
+		return m.OldVersion(ctx)
+	case dnsname.FieldFqdn:
+		return m.OldFqdn(ctx)
+	case dnsname.FieldGatewayGroupID:
+		return m.OldGatewayGroupID(ctx)
+	case dnsname.FieldDomainID:
+		return m.OldDomainID(ctx)
+	case dnsname.FieldTTL:
+		return m.OldTTL(ctx)
+	case dnsname.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown DNSName field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DNSNameMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case dnsname.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case dnsname.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case dnsname.FieldFqdn:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFqdn(v)
+		return nil
+	case dnsname.FieldGatewayGroupID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGatewayGroupID(v)
+		return nil
+	case dnsname.FieldDomainID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDomainID(v)
+		return nil
+	case dnsname.FieldTTL:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTTL(v)
+		return nil
+	case dnsname.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown DNSName field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *DNSNameMutation) AddedFields() []string {
+	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, dnsname.FieldVersion)
+	}
+	if m.addttl != nil {
+		fields = append(fields, dnsname.FieldTTL)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *DNSNameMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case dnsname.FieldVersion:
+		return m.AddedVersion()
+	case dnsname.FieldTTL:
+		return m.AddedTTL()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DNSNameMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case dnsname.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
+	case dnsname.FieldTTL:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTTL(v)
+		return nil
+	}
+	return fmt.Errorf("unknown DNSName numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *DNSNameMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *DNSNameMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *DNSNameMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown DNSName nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *DNSNameMutation) ResetField(name string) error {
+	switch name {
+	case dnsname.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case dnsname.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case dnsname.FieldFqdn:
+		m.ResetFqdn()
+		return nil
+	case dnsname.FieldGatewayGroupID:
+		m.ResetGatewayGroupID()
+		return nil
+	case dnsname.FieldDomainID:
+		m.ResetDomainID()
+		return nil
+	case dnsname.FieldTTL:
+		m.ResetTTL()
+		return nil
+	case dnsname.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSName field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *DNSNameMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.group != nil {
+		edges = append(edges, dnsname.EdgeGroup)
+	}
+	if m.domain != nil {
+		edges = append(edges, dnsname.EdgeDomain)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *DNSNameMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case dnsname.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	case dnsname.EdgeDomain:
+		if id := m.domain; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *DNSNameMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *DNSNameMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *DNSNameMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedgroup {
+		edges = append(edges, dnsname.EdgeGroup)
+	}
+	if m.cleareddomain {
+		edges = append(edges, dnsname.EdgeDomain)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *DNSNameMutation) EdgeCleared(name string) bool {
+	switch name {
+	case dnsname.EdgeGroup:
+		return m.clearedgroup
+	case dnsname.EdgeDomain:
+		return m.cleareddomain
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *DNSNameMutation) ClearEdge(name string) error {
+	switch name {
+	case dnsname.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	case dnsname.EdgeDomain:
+		m.ClearDomain()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSName unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *DNSNameMutation) ResetEdge(name string) error {
+	switch name {
+	case dnsname.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	case dnsname.EdgeDomain:
+		m.ResetDomain()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSName edge %s", name)
+}
+
 // DNSProviderMutation represents an operation that mutates the DNSProvider nodes in the graph.
 type DNSProviderMutation struct {
 	config
@@ -18088,6 +18930,1272 @@ func (m *DNSProviderMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *DNSProviderMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown DNSProvider edge %s", name)
+}
+
+// DNSZoneMutation represents an operation that mutates the DNSZone nodes in the graph.
+type DNSZoneMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *string
+	org_id                  *string
+	version                 *int64
+	addversion              *int64
+	provider_zone_id        *string
+	name                    *string
+	sync_state              *dnszone.SyncState
+	held_reason             *string
+	provider_status         *dnszone.ProviderStatus
+	publish_route_hostnames *bool
+	allow_proxied           *bool
+	allow_wildcards         *bool
+	delete_threshold        *int
+	adddelete_threshold     *int
+	default_ttl             *int
+	adddefault_ttl          *int
+	last_synced_at          *time.Time
+	created_at              *time.Time
+	clearedFields           map[string]struct{}
+	dns_provider            *string
+	cleareddns_provider     bool
+	done                    bool
+	oldValue                func(context.Context) (*DNSZone, error)
+	predicates              []predicate.DNSZone
+}
+
+var _ ent.Mutation = (*DNSZoneMutation)(nil)
+
+// dnszoneOption allows management of the mutation configuration using functional options.
+type dnszoneOption func(*DNSZoneMutation)
+
+// newDNSZoneMutation creates new mutation for the DNSZone entity.
+func newDNSZoneMutation(c config, op Op, opts ...dnszoneOption) *DNSZoneMutation {
+	m := &DNSZoneMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeDNSZone,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withDNSZoneID sets the ID field of the mutation.
+func withDNSZoneID(id string) dnszoneOption {
+	return func(m *DNSZoneMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *DNSZone
+		)
+		m.oldValue = func(ctx context.Context) (*DNSZone, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().DNSZone.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withDNSZone sets the old DNSZone of the mutation.
+func withDNSZone(node *DNSZone) dnszoneOption {
+	return func(m *DNSZoneMutation) {
+		m.oldValue = func(context.Context) (*DNSZone, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m DNSZoneMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m DNSZoneMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of DNSZone entities.
+func (m *DNSZoneMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *DNSZoneMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *DNSZoneMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().DNSZone.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *DNSZoneMutation) SetOrgID(s string) {
+	m.org_id = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *DNSZoneMutation) OrgID() (r string, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *DNSZoneMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *DNSZoneMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *DNSZoneMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *DNSZoneMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *DNSZoneMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *DNSZoneMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
+// SetDNSProviderID sets the "dns_provider_id" field.
+func (m *DNSZoneMutation) SetDNSProviderID(s string) {
+	m.dns_provider = &s
+}
+
+// DNSProviderID returns the value of the "dns_provider_id" field in the mutation.
+func (m *DNSZoneMutation) DNSProviderID() (r string, exists bool) {
+	v := m.dns_provider
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDNSProviderID returns the old "dns_provider_id" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldDNSProviderID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDNSProviderID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDNSProviderID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDNSProviderID: %w", err)
+	}
+	return oldValue.DNSProviderID, nil
+}
+
+// ResetDNSProviderID resets all changes to the "dns_provider_id" field.
+func (m *DNSZoneMutation) ResetDNSProviderID() {
+	m.dns_provider = nil
+}
+
+// SetProviderZoneID sets the "provider_zone_id" field.
+func (m *DNSZoneMutation) SetProviderZoneID(s string) {
+	m.provider_zone_id = &s
+}
+
+// ProviderZoneID returns the value of the "provider_zone_id" field in the mutation.
+func (m *DNSZoneMutation) ProviderZoneID() (r string, exists bool) {
+	v := m.provider_zone_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProviderZoneID returns the old "provider_zone_id" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldProviderZoneID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProviderZoneID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProviderZoneID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProviderZoneID: %w", err)
+	}
+	return oldValue.ProviderZoneID, nil
+}
+
+// ResetProviderZoneID resets all changes to the "provider_zone_id" field.
+func (m *DNSZoneMutation) ResetProviderZoneID() {
+	m.provider_zone_id = nil
+}
+
+// SetName sets the "name" field.
+func (m *DNSZoneMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *DNSZoneMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *DNSZoneMutation) ResetName() {
+	m.name = nil
+}
+
+// SetSyncState sets the "sync_state" field.
+func (m *DNSZoneMutation) SetSyncState(ds dnszone.SyncState) {
+	m.sync_state = &ds
+}
+
+// SyncState returns the value of the "sync_state" field in the mutation.
+func (m *DNSZoneMutation) SyncState() (r dnszone.SyncState, exists bool) {
+	v := m.sync_state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSyncState returns the old "sync_state" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldSyncState(ctx context.Context) (v dnszone.SyncState, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSyncState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSyncState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSyncState: %w", err)
+	}
+	return oldValue.SyncState, nil
+}
+
+// ResetSyncState resets all changes to the "sync_state" field.
+func (m *DNSZoneMutation) ResetSyncState() {
+	m.sync_state = nil
+}
+
+// SetHeldReason sets the "held_reason" field.
+func (m *DNSZoneMutation) SetHeldReason(s string) {
+	m.held_reason = &s
+}
+
+// HeldReason returns the value of the "held_reason" field in the mutation.
+func (m *DNSZoneMutation) HeldReason() (r string, exists bool) {
+	v := m.held_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHeldReason returns the old "held_reason" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldHeldReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHeldReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHeldReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHeldReason: %w", err)
+	}
+	return oldValue.HeldReason, nil
+}
+
+// ResetHeldReason resets all changes to the "held_reason" field.
+func (m *DNSZoneMutation) ResetHeldReason() {
+	m.held_reason = nil
+}
+
+// SetProviderStatus sets the "provider_status" field.
+func (m *DNSZoneMutation) SetProviderStatus(ds dnszone.ProviderStatus) {
+	m.provider_status = &ds
+}
+
+// ProviderStatus returns the value of the "provider_status" field in the mutation.
+func (m *DNSZoneMutation) ProviderStatus() (r dnszone.ProviderStatus, exists bool) {
+	v := m.provider_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProviderStatus returns the old "provider_status" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldProviderStatus(ctx context.Context) (v dnszone.ProviderStatus, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProviderStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProviderStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProviderStatus: %w", err)
+	}
+	return oldValue.ProviderStatus, nil
+}
+
+// ResetProviderStatus resets all changes to the "provider_status" field.
+func (m *DNSZoneMutation) ResetProviderStatus() {
+	m.provider_status = nil
+}
+
+// SetPublishRouteHostnames sets the "publish_route_hostnames" field.
+func (m *DNSZoneMutation) SetPublishRouteHostnames(b bool) {
+	m.publish_route_hostnames = &b
+}
+
+// PublishRouteHostnames returns the value of the "publish_route_hostnames" field in the mutation.
+func (m *DNSZoneMutation) PublishRouteHostnames() (r bool, exists bool) {
+	v := m.publish_route_hostnames
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPublishRouteHostnames returns the old "publish_route_hostnames" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldPublishRouteHostnames(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPublishRouteHostnames is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPublishRouteHostnames requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPublishRouteHostnames: %w", err)
+	}
+	return oldValue.PublishRouteHostnames, nil
+}
+
+// ResetPublishRouteHostnames resets all changes to the "publish_route_hostnames" field.
+func (m *DNSZoneMutation) ResetPublishRouteHostnames() {
+	m.publish_route_hostnames = nil
+}
+
+// SetAllowProxied sets the "allow_proxied" field.
+func (m *DNSZoneMutation) SetAllowProxied(b bool) {
+	m.allow_proxied = &b
+}
+
+// AllowProxied returns the value of the "allow_proxied" field in the mutation.
+func (m *DNSZoneMutation) AllowProxied() (r bool, exists bool) {
+	v := m.allow_proxied
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowProxied returns the old "allow_proxied" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldAllowProxied(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowProxied is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowProxied requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowProxied: %w", err)
+	}
+	return oldValue.AllowProxied, nil
+}
+
+// ResetAllowProxied resets all changes to the "allow_proxied" field.
+func (m *DNSZoneMutation) ResetAllowProxied() {
+	m.allow_proxied = nil
+}
+
+// SetAllowWildcards sets the "allow_wildcards" field.
+func (m *DNSZoneMutation) SetAllowWildcards(b bool) {
+	m.allow_wildcards = &b
+}
+
+// AllowWildcards returns the value of the "allow_wildcards" field in the mutation.
+func (m *DNSZoneMutation) AllowWildcards() (r bool, exists bool) {
+	v := m.allow_wildcards
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowWildcards returns the old "allow_wildcards" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldAllowWildcards(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowWildcards is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowWildcards requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowWildcards: %w", err)
+	}
+	return oldValue.AllowWildcards, nil
+}
+
+// ResetAllowWildcards resets all changes to the "allow_wildcards" field.
+func (m *DNSZoneMutation) ResetAllowWildcards() {
+	m.allow_wildcards = nil
+}
+
+// SetDeleteThreshold sets the "delete_threshold" field.
+func (m *DNSZoneMutation) SetDeleteThreshold(i int) {
+	m.delete_threshold = &i
+	m.adddelete_threshold = nil
+}
+
+// DeleteThreshold returns the value of the "delete_threshold" field in the mutation.
+func (m *DNSZoneMutation) DeleteThreshold() (r int, exists bool) {
+	v := m.delete_threshold
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeleteThreshold returns the old "delete_threshold" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldDeleteThreshold(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeleteThreshold is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeleteThreshold requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeleteThreshold: %w", err)
+	}
+	return oldValue.DeleteThreshold, nil
+}
+
+// AddDeleteThreshold adds i to the "delete_threshold" field.
+func (m *DNSZoneMutation) AddDeleteThreshold(i int) {
+	if m.adddelete_threshold != nil {
+		*m.adddelete_threshold += i
+	} else {
+		m.adddelete_threshold = &i
+	}
+}
+
+// AddedDeleteThreshold returns the value that was added to the "delete_threshold" field in this mutation.
+func (m *DNSZoneMutation) AddedDeleteThreshold() (r int, exists bool) {
+	v := m.adddelete_threshold
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDeleteThreshold resets all changes to the "delete_threshold" field.
+func (m *DNSZoneMutation) ResetDeleteThreshold() {
+	m.delete_threshold = nil
+	m.adddelete_threshold = nil
+}
+
+// SetDefaultTTL sets the "default_ttl" field.
+func (m *DNSZoneMutation) SetDefaultTTL(i int) {
+	m.default_ttl = &i
+	m.adddefault_ttl = nil
+}
+
+// DefaultTTL returns the value of the "default_ttl" field in the mutation.
+func (m *DNSZoneMutation) DefaultTTL() (r int, exists bool) {
+	v := m.default_ttl
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDefaultTTL returns the old "default_ttl" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldDefaultTTL(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDefaultTTL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDefaultTTL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDefaultTTL: %w", err)
+	}
+	return oldValue.DefaultTTL, nil
+}
+
+// AddDefaultTTL adds i to the "default_ttl" field.
+func (m *DNSZoneMutation) AddDefaultTTL(i int) {
+	if m.adddefault_ttl != nil {
+		*m.adddefault_ttl += i
+	} else {
+		m.adddefault_ttl = &i
+	}
+}
+
+// AddedDefaultTTL returns the value that was added to the "default_ttl" field in this mutation.
+func (m *DNSZoneMutation) AddedDefaultTTL() (r int, exists bool) {
+	v := m.adddefault_ttl
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDefaultTTL resets all changes to the "default_ttl" field.
+func (m *DNSZoneMutation) ResetDefaultTTL() {
+	m.default_ttl = nil
+	m.adddefault_ttl = nil
+}
+
+// SetLastSyncedAt sets the "last_synced_at" field.
+func (m *DNSZoneMutation) SetLastSyncedAt(t time.Time) {
+	m.last_synced_at = &t
+}
+
+// LastSyncedAt returns the value of the "last_synced_at" field in the mutation.
+func (m *DNSZoneMutation) LastSyncedAt() (r time.Time, exists bool) {
+	v := m.last_synced_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastSyncedAt returns the old "last_synced_at" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldLastSyncedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastSyncedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastSyncedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastSyncedAt: %w", err)
+	}
+	return oldValue.LastSyncedAt, nil
+}
+
+// ClearLastSyncedAt clears the value of the "last_synced_at" field.
+func (m *DNSZoneMutation) ClearLastSyncedAt() {
+	m.last_synced_at = nil
+	m.clearedFields[dnszone.FieldLastSyncedAt] = struct{}{}
+}
+
+// LastSyncedAtCleared returns if the "last_synced_at" field was cleared in this mutation.
+func (m *DNSZoneMutation) LastSyncedAtCleared() bool {
+	_, ok := m.clearedFields[dnszone.FieldLastSyncedAt]
+	return ok
+}
+
+// ResetLastSyncedAt resets all changes to the "last_synced_at" field.
+func (m *DNSZoneMutation) ResetLastSyncedAt() {
+	m.last_synced_at = nil
+	delete(m.clearedFields, dnszone.FieldLastSyncedAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *DNSZoneMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *DNSZoneMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *DNSZoneMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearDNSProvider clears the "dns_provider" edge to the DNSProvider entity.
+func (m *DNSZoneMutation) ClearDNSProvider() {
+	m.cleareddns_provider = true
+	m.clearedFields[dnszone.FieldDNSProviderID] = struct{}{}
+}
+
+// DNSProviderCleared reports if the "dns_provider" edge to the DNSProvider entity was cleared.
+func (m *DNSZoneMutation) DNSProviderCleared() bool {
+	return m.cleareddns_provider
+}
+
+// DNSProviderIDs returns the "dns_provider" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// DNSProviderID instead. It exists only for internal usage by the builders.
+func (m *DNSZoneMutation) DNSProviderIDs() (ids []string) {
+	if id := m.dns_provider; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetDNSProvider resets all changes to the "dns_provider" edge.
+func (m *DNSZoneMutation) ResetDNSProvider() {
+	m.dns_provider = nil
+	m.cleareddns_provider = false
+}
+
+// Where appends a list predicates to the DNSZoneMutation builder.
+func (m *DNSZoneMutation) Where(ps ...predicate.DNSZone) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the DNSZoneMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *DNSZoneMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.DNSZone, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *DNSZoneMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *DNSZoneMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (DNSZone).
+func (m *DNSZoneMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *DNSZoneMutation) Fields() []string {
+	fields := make([]string, 0, 15)
+	if m.org_id != nil {
+		fields = append(fields, dnszone.FieldOrgID)
+	}
+	if m.version != nil {
+		fields = append(fields, dnszone.FieldVersion)
+	}
+	if m.dns_provider != nil {
+		fields = append(fields, dnszone.FieldDNSProviderID)
+	}
+	if m.provider_zone_id != nil {
+		fields = append(fields, dnszone.FieldProviderZoneID)
+	}
+	if m.name != nil {
+		fields = append(fields, dnszone.FieldName)
+	}
+	if m.sync_state != nil {
+		fields = append(fields, dnszone.FieldSyncState)
+	}
+	if m.held_reason != nil {
+		fields = append(fields, dnszone.FieldHeldReason)
+	}
+	if m.provider_status != nil {
+		fields = append(fields, dnszone.FieldProviderStatus)
+	}
+	if m.publish_route_hostnames != nil {
+		fields = append(fields, dnszone.FieldPublishRouteHostnames)
+	}
+	if m.allow_proxied != nil {
+		fields = append(fields, dnszone.FieldAllowProxied)
+	}
+	if m.allow_wildcards != nil {
+		fields = append(fields, dnszone.FieldAllowWildcards)
+	}
+	if m.delete_threshold != nil {
+		fields = append(fields, dnszone.FieldDeleteThreshold)
+	}
+	if m.default_ttl != nil {
+		fields = append(fields, dnszone.FieldDefaultTTL)
+	}
+	if m.last_synced_at != nil {
+		fields = append(fields, dnszone.FieldLastSyncedAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, dnszone.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *DNSZoneMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case dnszone.FieldOrgID:
+		return m.OrgID()
+	case dnszone.FieldVersion:
+		return m.Version()
+	case dnszone.FieldDNSProviderID:
+		return m.DNSProviderID()
+	case dnszone.FieldProviderZoneID:
+		return m.ProviderZoneID()
+	case dnszone.FieldName:
+		return m.Name()
+	case dnszone.FieldSyncState:
+		return m.SyncState()
+	case dnszone.FieldHeldReason:
+		return m.HeldReason()
+	case dnszone.FieldProviderStatus:
+		return m.ProviderStatus()
+	case dnszone.FieldPublishRouteHostnames:
+		return m.PublishRouteHostnames()
+	case dnszone.FieldAllowProxied:
+		return m.AllowProxied()
+	case dnszone.FieldAllowWildcards:
+		return m.AllowWildcards()
+	case dnszone.FieldDeleteThreshold:
+		return m.DeleteThreshold()
+	case dnszone.FieldDefaultTTL:
+		return m.DefaultTTL()
+	case dnszone.FieldLastSyncedAt:
+		return m.LastSyncedAt()
+	case dnszone.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *DNSZoneMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case dnszone.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case dnszone.FieldVersion:
+		return m.OldVersion(ctx)
+	case dnszone.FieldDNSProviderID:
+		return m.OldDNSProviderID(ctx)
+	case dnszone.FieldProviderZoneID:
+		return m.OldProviderZoneID(ctx)
+	case dnszone.FieldName:
+		return m.OldName(ctx)
+	case dnszone.FieldSyncState:
+		return m.OldSyncState(ctx)
+	case dnszone.FieldHeldReason:
+		return m.OldHeldReason(ctx)
+	case dnszone.FieldProviderStatus:
+		return m.OldProviderStatus(ctx)
+	case dnszone.FieldPublishRouteHostnames:
+		return m.OldPublishRouteHostnames(ctx)
+	case dnszone.FieldAllowProxied:
+		return m.OldAllowProxied(ctx)
+	case dnszone.FieldAllowWildcards:
+		return m.OldAllowWildcards(ctx)
+	case dnszone.FieldDeleteThreshold:
+		return m.OldDeleteThreshold(ctx)
+	case dnszone.FieldDefaultTTL:
+		return m.OldDefaultTTL(ctx)
+	case dnszone.FieldLastSyncedAt:
+		return m.OldLastSyncedAt(ctx)
+	case dnszone.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown DNSZone field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DNSZoneMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case dnszone.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case dnszone.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case dnszone.FieldDNSProviderID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDNSProviderID(v)
+		return nil
+	case dnszone.FieldProviderZoneID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProviderZoneID(v)
+		return nil
+	case dnszone.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case dnszone.FieldSyncState:
+		v, ok := value.(dnszone.SyncState)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSyncState(v)
+		return nil
+	case dnszone.FieldHeldReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHeldReason(v)
+		return nil
+	case dnszone.FieldProviderStatus:
+		v, ok := value.(dnszone.ProviderStatus)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProviderStatus(v)
+		return nil
+	case dnszone.FieldPublishRouteHostnames:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPublishRouteHostnames(v)
+		return nil
+	case dnszone.FieldAllowProxied:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowProxied(v)
+		return nil
+	case dnszone.FieldAllowWildcards:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowWildcards(v)
+		return nil
+	case dnszone.FieldDeleteThreshold:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeleteThreshold(v)
+		return nil
+	case dnszone.FieldDefaultTTL:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDefaultTTL(v)
+		return nil
+	case dnszone.FieldLastSyncedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastSyncedAt(v)
+		return nil
+	case dnszone.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown DNSZone field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *DNSZoneMutation) AddedFields() []string {
+	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, dnszone.FieldVersion)
+	}
+	if m.adddelete_threshold != nil {
+		fields = append(fields, dnszone.FieldDeleteThreshold)
+	}
+	if m.adddefault_ttl != nil {
+		fields = append(fields, dnszone.FieldDefaultTTL)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *DNSZoneMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case dnszone.FieldVersion:
+		return m.AddedVersion()
+	case dnszone.FieldDeleteThreshold:
+		return m.AddedDeleteThreshold()
+	case dnszone.FieldDefaultTTL:
+		return m.AddedDefaultTTL()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DNSZoneMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case dnszone.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
+	case dnszone.FieldDeleteThreshold:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDeleteThreshold(v)
+		return nil
+	case dnszone.FieldDefaultTTL:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDefaultTTL(v)
+		return nil
+	}
+	return fmt.Errorf("unknown DNSZone numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *DNSZoneMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(dnszone.FieldLastSyncedAt) {
+		fields = append(fields, dnszone.FieldLastSyncedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *DNSZoneMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *DNSZoneMutation) ClearField(name string) error {
+	switch name {
+	case dnszone.FieldLastSyncedAt:
+		m.ClearLastSyncedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSZone nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *DNSZoneMutation) ResetField(name string) error {
+	switch name {
+	case dnszone.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case dnszone.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case dnszone.FieldDNSProviderID:
+		m.ResetDNSProviderID()
+		return nil
+	case dnszone.FieldProviderZoneID:
+		m.ResetProviderZoneID()
+		return nil
+	case dnszone.FieldName:
+		m.ResetName()
+		return nil
+	case dnszone.FieldSyncState:
+		m.ResetSyncState()
+		return nil
+	case dnszone.FieldHeldReason:
+		m.ResetHeldReason()
+		return nil
+	case dnszone.FieldProviderStatus:
+		m.ResetProviderStatus()
+		return nil
+	case dnszone.FieldPublishRouteHostnames:
+		m.ResetPublishRouteHostnames()
+		return nil
+	case dnszone.FieldAllowProxied:
+		m.ResetAllowProxied()
+		return nil
+	case dnszone.FieldAllowWildcards:
+		m.ResetAllowWildcards()
+		return nil
+	case dnszone.FieldDeleteThreshold:
+		m.ResetDeleteThreshold()
+		return nil
+	case dnszone.FieldDefaultTTL:
+		m.ResetDefaultTTL()
+		return nil
+	case dnszone.FieldLastSyncedAt:
+		m.ResetLastSyncedAt()
+		return nil
+	case dnszone.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSZone field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *DNSZoneMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.dns_provider != nil {
+		edges = append(edges, dnszone.EdgeDNSProvider)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *DNSZoneMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case dnszone.EdgeDNSProvider:
+		if id := m.dns_provider; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *DNSZoneMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *DNSZoneMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *DNSZoneMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.cleareddns_provider {
+		edges = append(edges, dnszone.EdgeDNSProvider)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *DNSZoneMutation) EdgeCleared(name string) bool {
+	switch name {
+	case dnszone.EdgeDNSProvider:
+		return m.cleareddns_provider
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *DNSZoneMutation) ClearEdge(name string) error {
+	switch name {
+	case dnszone.EdgeDNSProvider:
+		m.ClearDNSProvider()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSZone unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *DNSZoneMutation) ResetEdge(name string) error {
+	switch name {
+	case dnszone.EdgeDNSProvider:
+		m.ResetDNSProvider()
+		return nil
+	}
+	return fmt.Errorf("unknown DNSZone edge %s", name)
 }
 
 // DataSessionMutation represents an operation that mutates the DataSession nodes in the graph.

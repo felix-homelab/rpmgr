@@ -79,6 +79,8 @@ var kinds = []kindOf{
 		output: [][]string{{"etag"}, {"status"}, {"challenge"}, {"verifyTime"}, {"lastCheckTime"}, {"createTime"}, {"lastError"}}},
 	{name: "Connector", new: func() proto.Message { return &rpmgrv1.Connector{} }, nameField: "name",
 		output: [][]string{{"etag"}, {"ephemeral"}, {"session"}, {"createTime"}, {"decommissionTime"}, {"builtIn"}}},
+	{name: "DnsName", new: func() proto.Message { return &rpmgrv1.DnsName{} }, nameField: "fqdn", output: [][]string{{"etag"}},
+		refs: []ref{{[]string{"gatewayGroupId"}, "gatewayGroup", "GatewayGroup"}}},
 	{name: "CABundle", new: func() proto.Message { return &rpmgrv1.CABundle{} }, nameField: "name",
 		output: [][]string{{"etag"}, {"certificates"}, {"targetIds"}, {"createTime"}}},
 }
@@ -93,7 +95,7 @@ func lookup(match func(kindOf) bool) (kindOf, error) {
 }
 
 // Of returns the manifest of a resource: one of Route, AccessPolicy, GatewayGroup, Gateway,
-// PortPool, Domain, Connector and CABundle. Fields marked sensitive are never in it.
+// PortPool, Domain, DnsName, Connector and CABundle. Fields marked sensitive are never in it.
 func Of(ctx context.Context, r Resolver, m proto.Message) (*Doc, error) {
 	k, err := lookup(func(k kindOf) bool { return k.new().ProtoReflect().Descriptor() == m.ProtoReflect().Descriptor() })
 	if err != nil {

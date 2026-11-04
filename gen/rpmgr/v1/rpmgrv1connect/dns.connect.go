@@ -25,6 +25,10 @@ const _ = connect.IsAtLeastVersion1_13_0
 const (
 	// DnsProviderServiceName is the fully-qualified name of the DnsProviderService service.
 	DnsProviderServiceName = "rpmgr.v1.DnsProviderService"
+	// DnsZoneServiceName is the fully-qualified name of the DnsZoneService service.
+	DnsZoneServiceName = "rpmgr.v1.DnsZoneService"
+	// DnsNameServiceName is the fully-qualified name of the DnsNameService service.
+	DnsNameServiceName = "rpmgr.v1.DnsNameService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -53,6 +57,35 @@ const (
 	// DnsProviderServiceListProviderZonesProcedure is the fully-qualified name of the
 	// DnsProviderService's ListProviderZones RPC.
 	DnsProviderServiceListProviderZonesProcedure = "/rpmgr.v1.DnsProviderService/ListProviderZones"
+	// DnsZoneServiceImportZoneProcedure is the fully-qualified name of the DnsZoneService's ImportZone
+	// RPC.
+	DnsZoneServiceImportZoneProcedure = "/rpmgr.v1.DnsZoneService/ImportZone"
+	// DnsZoneServiceGetZoneProcedure is the fully-qualified name of the DnsZoneService's GetZone RPC.
+	DnsZoneServiceGetZoneProcedure = "/rpmgr.v1.DnsZoneService/GetZone"
+	// DnsZoneServiceListZonesProcedure is the fully-qualified name of the DnsZoneService's ListZones
+	// RPC.
+	DnsZoneServiceListZonesProcedure = "/rpmgr.v1.DnsZoneService/ListZones"
+	// DnsZoneServiceUpdateZoneProcedure is the fully-qualified name of the DnsZoneService's UpdateZone
+	// RPC.
+	DnsZoneServiceUpdateZoneProcedure = "/rpmgr.v1.DnsZoneService/UpdateZone"
+	// DnsZoneServiceRemoveZoneProcedure is the fully-qualified name of the DnsZoneService's RemoveZone
+	// RPC.
+	DnsZoneServiceRemoveZoneProcedure = "/rpmgr.v1.DnsZoneService/RemoveZone"
+	// DnsNameServiceCreateDnsNameProcedure is the fully-qualified name of the DnsNameService's
+	// CreateDnsName RPC.
+	DnsNameServiceCreateDnsNameProcedure = "/rpmgr.v1.DnsNameService/CreateDnsName"
+	// DnsNameServiceGetDnsNameProcedure is the fully-qualified name of the DnsNameService's GetDnsName
+	// RPC.
+	DnsNameServiceGetDnsNameProcedure = "/rpmgr.v1.DnsNameService/GetDnsName"
+	// DnsNameServiceListDnsNamesProcedure is the fully-qualified name of the DnsNameService's
+	// ListDnsNames RPC.
+	DnsNameServiceListDnsNamesProcedure = "/rpmgr.v1.DnsNameService/ListDnsNames"
+	// DnsNameServiceUpdateDnsNameProcedure is the fully-qualified name of the DnsNameService's
+	// UpdateDnsName RPC.
+	DnsNameServiceUpdateDnsNameProcedure = "/rpmgr.v1.DnsNameService/UpdateDnsName"
+	// DnsNameServiceDeleteDnsNameProcedure is the fully-qualified name of the DnsNameService's
+	// DeleteDnsName RPC.
+	DnsNameServiceDeleteDnsNameProcedure = "/rpmgr.v1.DnsNameService/DeleteDnsName"
 )
 
 // DnsProviderServiceClient is a client for the rpmgr.v1.DnsProviderService service.
@@ -281,4 +314,394 @@ func (UnimplementedDnsProviderServiceHandler) DeleteDnsProvider(context.Context,
 
 func (UnimplementedDnsProviderServiceHandler) ListProviderZones(context.Context, *connect.Request[v1.ListProviderZonesRequest]) (*connect.Response[v1.ListProviderZonesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsProviderService.ListProviderZones is not implemented"))
+}
+
+// DnsZoneServiceClient is a client for the rpmgr.v1.DnsZoneService service.
+type DnsZoneServiceClient interface {
+	// ImportZone imports a zone of a connected provider as a managed zone, held. Only a zone that
+	// the provider calls active and full can be imported. The import creates the claim on the
+	// zone's apex, wildcard included, unless the org has a verified domain that covers it; a zone
+	// that is pending at the provider, or that another org claimed, is not imported, and a zone at
+	// the provider is no proof of ownership: the claim is verified like any other.
+	ImportZone(context.Context, *connect.Request[v1.ImportZoneRequest]) (*connect.Response[v1.ImportZoneResponse], error)
+	// GetZone returns a managed zone.
+	GetZone(context.Context, *connect.Request[v1.GetZoneRequest]) (*connect.Response[v1.GetZoneResponse], error)
+	// ListZones lists an org's managed zones by ID.
+	ListZones(context.Context, *connect.Request[v1.ListZonesRequest]) (*connect.Response[v1.ListZonesResponse], error)
+	// UpdateZone changes the gates and the default TTL of a zone.
+	UpdateZone(context.Context, *connect.Request[v1.UpdateZoneRequest]) (*connect.Response[v1.UpdateZoneResponse], error)
+	// RemoveZone stops managing a zone. The records stay at the provider, and the apex claim stays.
+	RemoveZone(context.Context, *connect.Request[v1.RemoveZoneRequest]) (*connect.Response[v1.RemoveZoneResponse], error)
+}
+
+// NewDnsZoneServiceClient constructs a client for the rpmgr.v1.DnsZoneService service. By default,
+// it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and
+// sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC()
+// or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewDnsZoneServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) DnsZoneServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	dnsZoneServiceMethods := v1.File_rpmgr_v1_dns_proto.Services().ByName("DnsZoneService").Methods()
+	return &dnsZoneServiceClient{
+		importZone: connect.NewClient[v1.ImportZoneRequest, v1.ImportZoneResponse](
+			httpClient,
+			baseURL+DnsZoneServiceImportZoneProcedure,
+			connect.WithSchema(dnsZoneServiceMethods.ByName("ImportZone")),
+			connect.WithClientOptions(opts...),
+		),
+		getZone: connect.NewClient[v1.GetZoneRequest, v1.GetZoneResponse](
+			httpClient,
+			baseURL+DnsZoneServiceGetZoneProcedure,
+			connect.WithSchema(dnsZoneServiceMethods.ByName("GetZone")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		listZones: connect.NewClient[v1.ListZonesRequest, v1.ListZonesResponse](
+			httpClient,
+			baseURL+DnsZoneServiceListZonesProcedure,
+			connect.WithSchema(dnsZoneServiceMethods.ByName("ListZones")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		updateZone: connect.NewClient[v1.UpdateZoneRequest, v1.UpdateZoneResponse](
+			httpClient,
+			baseURL+DnsZoneServiceUpdateZoneProcedure,
+			connect.WithSchema(dnsZoneServiceMethods.ByName("UpdateZone")),
+			connect.WithClientOptions(opts...),
+		),
+		removeZone: connect.NewClient[v1.RemoveZoneRequest, v1.RemoveZoneResponse](
+			httpClient,
+			baseURL+DnsZoneServiceRemoveZoneProcedure,
+			connect.WithSchema(dnsZoneServiceMethods.ByName("RemoveZone")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// dnsZoneServiceClient implements DnsZoneServiceClient.
+type dnsZoneServiceClient struct {
+	importZone *connect.Client[v1.ImportZoneRequest, v1.ImportZoneResponse]
+	getZone    *connect.Client[v1.GetZoneRequest, v1.GetZoneResponse]
+	listZones  *connect.Client[v1.ListZonesRequest, v1.ListZonesResponse]
+	updateZone *connect.Client[v1.UpdateZoneRequest, v1.UpdateZoneResponse]
+	removeZone *connect.Client[v1.RemoveZoneRequest, v1.RemoveZoneResponse]
+}
+
+// ImportZone calls rpmgr.v1.DnsZoneService.ImportZone.
+func (c *dnsZoneServiceClient) ImportZone(ctx context.Context, req *connect.Request[v1.ImportZoneRequest]) (*connect.Response[v1.ImportZoneResponse], error) {
+	return c.importZone.CallUnary(ctx, req)
+}
+
+// GetZone calls rpmgr.v1.DnsZoneService.GetZone.
+func (c *dnsZoneServiceClient) GetZone(ctx context.Context, req *connect.Request[v1.GetZoneRequest]) (*connect.Response[v1.GetZoneResponse], error) {
+	return c.getZone.CallUnary(ctx, req)
+}
+
+// ListZones calls rpmgr.v1.DnsZoneService.ListZones.
+func (c *dnsZoneServiceClient) ListZones(ctx context.Context, req *connect.Request[v1.ListZonesRequest]) (*connect.Response[v1.ListZonesResponse], error) {
+	return c.listZones.CallUnary(ctx, req)
+}
+
+// UpdateZone calls rpmgr.v1.DnsZoneService.UpdateZone.
+func (c *dnsZoneServiceClient) UpdateZone(ctx context.Context, req *connect.Request[v1.UpdateZoneRequest]) (*connect.Response[v1.UpdateZoneResponse], error) {
+	return c.updateZone.CallUnary(ctx, req)
+}
+
+// RemoveZone calls rpmgr.v1.DnsZoneService.RemoveZone.
+func (c *dnsZoneServiceClient) RemoveZone(ctx context.Context, req *connect.Request[v1.RemoveZoneRequest]) (*connect.Response[v1.RemoveZoneResponse], error) {
+	return c.removeZone.CallUnary(ctx, req)
+}
+
+// DnsZoneServiceHandler is an implementation of the rpmgr.v1.DnsZoneService service.
+type DnsZoneServiceHandler interface {
+	// ImportZone imports a zone of a connected provider as a managed zone, held. Only a zone that
+	// the provider calls active and full can be imported. The import creates the claim on the
+	// zone's apex, wildcard included, unless the org has a verified domain that covers it; a zone
+	// that is pending at the provider, or that another org claimed, is not imported, and a zone at
+	// the provider is no proof of ownership: the claim is verified like any other.
+	ImportZone(context.Context, *connect.Request[v1.ImportZoneRequest]) (*connect.Response[v1.ImportZoneResponse], error)
+	// GetZone returns a managed zone.
+	GetZone(context.Context, *connect.Request[v1.GetZoneRequest]) (*connect.Response[v1.GetZoneResponse], error)
+	// ListZones lists an org's managed zones by ID.
+	ListZones(context.Context, *connect.Request[v1.ListZonesRequest]) (*connect.Response[v1.ListZonesResponse], error)
+	// UpdateZone changes the gates and the default TTL of a zone.
+	UpdateZone(context.Context, *connect.Request[v1.UpdateZoneRequest]) (*connect.Response[v1.UpdateZoneResponse], error)
+	// RemoveZone stops managing a zone. The records stay at the provider, and the apex claim stays.
+	RemoveZone(context.Context, *connect.Request[v1.RemoveZoneRequest]) (*connect.Response[v1.RemoveZoneResponse], error)
+}
+
+// NewDnsZoneServiceHandler builds an HTTP handler from the service implementation. It returns the
+// path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewDnsZoneServiceHandler(svc DnsZoneServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	dnsZoneServiceMethods := v1.File_rpmgr_v1_dns_proto.Services().ByName("DnsZoneService").Methods()
+	dnsZoneServiceImportZoneHandler := connect.NewUnaryHandler(
+		DnsZoneServiceImportZoneProcedure,
+		svc.ImportZone,
+		connect.WithSchema(dnsZoneServiceMethods.ByName("ImportZone")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dnsZoneServiceGetZoneHandler := connect.NewUnaryHandler(
+		DnsZoneServiceGetZoneProcedure,
+		svc.GetZone,
+		connect.WithSchema(dnsZoneServiceMethods.ByName("GetZone")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	dnsZoneServiceListZonesHandler := connect.NewUnaryHandler(
+		DnsZoneServiceListZonesProcedure,
+		svc.ListZones,
+		connect.WithSchema(dnsZoneServiceMethods.ByName("ListZones")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	dnsZoneServiceUpdateZoneHandler := connect.NewUnaryHandler(
+		DnsZoneServiceUpdateZoneProcedure,
+		svc.UpdateZone,
+		connect.WithSchema(dnsZoneServiceMethods.ByName("UpdateZone")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dnsZoneServiceRemoveZoneHandler := connect.NewUnaryHandler(
+		DnsZoneServiceRemoveZoneProcedure,
+		svc.RemoveZone,
+		connect.WithSchema(dnsZoneServiceMethods.ByName("RemoveZone")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/rpmgr.v1.DnsZoneService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case DnsZoneServiceImportZoneProcedure:
+			dnsZoneServiceImportZoneHandler.ServeHTTP(w, r)
+		case DnsZoneServiceGetZoneProcedure:
+			dnsZoneServiceGetZoneHandler.ServeHTTP(w, r)
+		case DnsZoneServiceListZonesProcedure:
+			dnsZoneServiceListZonesHandler.ServeHTTP(w, r)
+		case DnsZoneServiceUpdateZoneProcedure:
+			dnsZoneServiceUpdateZoneHandler.ServeHTTP(w, r)
+		case DnsZoneServiceRemoveZoneProcedure:
+			dnsZoneServiceRemoveZoneHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedDnsZoneServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedDnsZoneServiceHandler struct{}
+
+func (UnimplementedDnsZoneServiceHandler) ImportZone(context.Context, *connect.Request[v1.ImportZoneRequest]) (*connect.Response[v1.ImportZoneResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.ImportZone is not implemented"))
+}
+
+func (UnimplementedDnsZoneServiceHandler) GetZone(context.Context, *connect.Request[v1.GetZoneRequest]) (*connect.Response[v1.GetZoneResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.GetZone is not implemented"))
+}
+
+func (UnimplementedDnsZoneServiceHandler) ListZones(context.Context, *connect.Request[v1.ListZonesRequest]) (*connect.Response[v1.ListZonesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.ListZones is not implemented"))
+}
+
+func (UnimplementedDnsZoneServiceHandler) UpdateZone(context.Context, *connect.Request[v1.UpdateZoneRequest]) (*connect.Response[v1.UpdateZoneResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.UpdateZone is not implemented"))
+}
+
+func (UnimplementedDnsZoneServiceHandler) RemoveZone(context.Context, *connect.Request[v1.RemoveZoneRequest]) (*connect.Response[v1.RemoveZoneResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.RemoveZone is not implemented"))
+}
+
+// DnsNameServiceClient is a client for the rpmgr.v1.DnsNameService service.
+type DnsNameServiceClient interface {
+	// CreateDnsName creates a name for a gateway group of the org. The name must lie under a
+	// verified domain of the org, and a wildcard name under a verified domain with the wildcard;
+	// it is unique in the instance.
+	CreateDnsName(context.Context, *connect.Request[v1.CreateDnsNameRequest]) (*connect.Response[v1.CreateDnsNameResponse], error)
+	// GetDnsName returns a name.
+	GetDnsName(context.Context, *connect.Request[v1.GetDnsNameRequest]) (*connect.Response[v1.GetDnsNameResponse], error)
+	// ListDnsNames lists an org's names by ID.
+	ListDnsNames(context.Context, *connect.Request[v1.ListDnsNamesRequest]) (*connect.Response[v1.ListDnsNamesResponse], error)
+	// UpdateDnsName changes the gateway group or the TTL of a name. The name itself does not
+	// change: create a new one.
+	UpdateDnsName(context.Context, *connect.Request[v1.UpdateDnsNameRequest]) (*connect.Response[v1.UpdateDnsNameResponse], error)
+	// DeleteDnsName deletes a name. The records the DNS job published for it go with it.
+	DeleteDnsName(context.Context, *connect.Request[v1.DeleteDnsNameRequest]) (*connect.Response[v1.DeleteDnsNameResponse], error)
+}
+
+// NewDnsNameServiceClient constructs a client for the rpmgr.v1.DnsNameService service. By default,
+// it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and
+// sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC()
+// or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewDnsNameServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) DnsNameServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	dnsNameServiceMethods := v1.File_rpmgr_v1_dns_proto.Services().ByName("DnsNameService").Methods()
+	return &dnsNameServiceClient{
+		createDnsName: connect.NewClient[v1.CreateDnsNameRequest, v1.CreateDnsNameResponse](
+			httpClient,
+			baseURL+DnsNameServiceCreateDnsNameProcedure,
+			connect.WithSchema(dnsNameServiceMethods.ByName("CreateDnsName")),
+			connect.WithClientOptions(opts...),
+		),
+		getDnsName: connect.NewClient[v1.GetDnsNameRequest, v1.GetDnsNameResponse](
+			httpClient,
+			baseURL+DnsNameServiceGetDnsNameProcedure,
+			connect.WithSchema(dnsNameServiceMethods.ByName("GetDnsName")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		listDnsNames: connect.NewClient[v1.ListDnsNamesRequest, v1.ListDnsNamesResponse](
+			httpClient,
+			baseURL+DnsNameServiceListDnsNamesProcedure,
+			connect.WithSchema(dnsNameServiceMethods.ByName("ListDnsNames")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		updateDnsName: connect.NewClient[v1.UpdateDnsNameRequest, v1.UpdateDnsNameResponse](
+			httpClient,
+			baseURL+DnsNameServiceUpdateDnsNameProcedure,
+			connect.WithSchema(dnsNameServiceMethods.ByName("UpdateDnsName")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteDnsName: connect.NewClient[v1.DeleteDnsNameRequest, v1.DeleteDnsNameResponse](
+			httpClient,
+			baseURL+DnsNameServiceDeleteDnsNameProcedure,
+			connect.WithSchema(dnsNameServiceMethods.ByName("DeleteDnsName")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// dnsNameServiceClient implements DnsNameServiceClient.
+type dnsNameServiceClient struct {
+	createDnsName *connect.Client[v1.CreateDnsNameRequest, v1.CreateDnsNameResponse]
+	getDnsName    *connect.Client[v1.GetDnsNameRequest, v1.GetDnsNameResponse]
+	listDnsNames  *connect.Client[v1.ListDnsNamesRequest, v1.ListDnsNamesResponse]
+	updateDnsName *connect.Client[v1.UpdateDnsNameRequest, v1.UpdateDnsNameResponse]
+	deleteDnsName *connect.Client[v1.DeleteDnsNameRequest, v1.DeleteDnsNameResponse]
+}
+
+// CreateDnsName calls rpmgr.v1.DnsNameService.CreateDnsName.
+func (c *dnsNameServiceClient) CreateDnsName(ctx context.Context, req *connect.Request[v1.CreateDnsNameRequest]) (*connect.Response[v1.CreateDnsNameResponse], error) {
+	return c.createDnsName.CallUnary(ctx, req)
+}
+
+// GetDnsName calls rpmgr.v1.DnsNameService.GetDnsName.
+func (c *dnsNameServiceClient) GetDnsName(ctx context.Context, req *connect.Request[v1.GetDnsNameRequest]) (*connect.Response[v1.GetDnsNameResponse], error) {
+	return c.getDnsName.CallUnary(ctx, req)
+}
+
+// ListDnsNames calls rpmgr.v1.DnsNameService.ListDnsNames.
+func (c *dnsNameServiceClient) ListDnsNames(ctx context.Context, req *connect.Request[v1.ListDnsNamesRequest]) (*connect.Response[v1.ListDnsNamesResponse], error) {
+	return c.listDnsNames.CallUnary(ctx, req)
+}
+
+// UpdateDnsName calls rpmgr.v1.DnsNameService.UpdateDnsName.
+func (c *dnsNameServiceClient) UpdateDnsName(ctx context.Context, req *connect.Request[v1.UpdateDnsNameRequest]) (*connect.Response[v1.UpdateDnsNameResponse], error) {
+	return c.updateDnsName.CallUnary(ctx, req)
+}
+
+// DeleteDnsName calls rpmgr.v1.DnsNameService.DeleteDnsName.
+func (c *dnsNameServiceClient) DeleteDnsName(ctx context.Context, req *connect.Request[v1.DeleteDnsNameRequest]) (*connect.Response[v1.DeleteDnsNameResponse], error) {
+	return c.deleteDnsName.CallUnary(ctx, req)
+}
+
+// DnsNameServiceHandler is an implementation of the rpmgr.v1.DnsNameService service.
+type DnsNameServiceHandler interface {
+	// CreateDnsName creates a name for a gateway group of the org. The name must lie under a
+	// verified domain of the org, and a wildcard name under a verified domain with the wildcard;
+	// it is unique in the instance.
+	CreateDnsName(context.Context, *connect.Request[v1.CreateDnsNameRequest]) (*connect.Response[v1.CreateDnsNameResponse], error)
+	// GetDnsName returns a name.
+	GetDnsName(context.Context, *connect.Request[v1.GetDnsNameRequest]) (*connect.Response[v1.GetDnsNameResponse], error)
+	// ListDnsNames lists an org's names by ID.
+	ListDnsNames(context.Context, *connect.Request[v1.ListDnsNamesRequest]) (*connect.Response[v1.ListDnsNamesResponse], error)
+	// UpdateDnsName changes the gateway group or the TTL of a name. The name itself does not
+	// change: create a new one.
+	UpdateDnsName(context.Context, *connect.Request[v1.UpdateDnsNameRequest]) (*connect.Response[v1.UpdateDnsNameResponse], error)
+	// DeleteDnsName deletes a name. The records the DNS job published for it go with it.
+	DeleteDnsName(context.Context, *connect.Request[v1.DeleteDnsNameRequest]) (*connect.Response[v1.DeleteDnsNameResponse], error)
+}
+
+// NewDnsNameServiceHandler builds an HTTP handler from the service implementation. It returns the
+// path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewDnsNameServiceHandler(svc DnsNameServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	dnsNameServiceMethods := v1.File_rpmgr_v1_dns_proto.Services().ByName("DnsNameService").Methods()
+	dnsNameServiceCreateDnsNameHandler := connect.NewUnaryHandler(
+		DnsNameServiceCreateDnsNameProcedure,
+		svc.CreateDnsName,
+		connect.WithSchema(dnsNameServiceMethods.ByName("CreateDnsName")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dnsNameServiceGetDnsNameHandler := connect.NewUnaryHandler(
+		DnsNameServiceGetDnsNameProcedure,
+		svc.GetDnsName,
+		connect.WithSchema(dnsNameServiceMethods.ByName("GetDnsName")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	dnsNameServiceListDnsNamesHandler := connect.NewUnaryHandler(
+		DnsNameServiceListDnsNamesProcedure,
+		svc.ListDnsNames,
+		connect.WithSchema(dnsNameServiceMethods.ByName("ListDnsNames")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	dnsNameServiceUpdateDnsNameHandler := connect.NewUnaryHandler(
+		DnsNameServiceUpdateDnsNameProcedure,
+		svc.UpdateDnsName,
+		connect.WithSchema(dnsNameServiceMethods.ByName("UpdateDnsName")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dnsNameServiceDeleteDnsNameHandler := connect.NewUnaryHandler(
+		DnsNameServiceDeleteDnsNameProcedure,
+		svc.DeleteDnsName,
+		connect.WithSchema(dnsNameServiceMethods.ByName("DeleteDnsName")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/rpmgr.v1.DnsNameService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case DnsNameServiceCreateDnsNameProcedure:
+			dnsNameServiceCreateDnsNameHandler.ServeHTTP(w, r)
+		case DnsNameServiceGetDnsNameProcedure:
+			dnsNameServiceGetDnsNameHandler.ServeHTTP(w, r)
+		case DnsNameServiceListDnsNamesProcedure:
+			dnsNameServiceListDnsNamesHandler.ServeHTTP(w, r)
+		case DnsNameServiceUpdateDnsNameProcedure:
+			dnsNameServiceUpdateDnsNameHandler.ServeHTTP(w, r)
+		case DnsNameServiceDeleteDnsNameProcedure:
+			dnsNameServiceDeleteDnsNameHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedDnsNameServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedDnsNameServiceHandler struct{}
+
+func (UnimplementedDnsNameServiceHandler) CreateDnsName(context.Context, *connect.Request[v1.CreateDnsNameRequest]) (*connect.Response[v1.CreateDnsNameResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsNameService.CreateDnsName is not implemented"))
+}
+
+func (UnimplementedDnsNameServiceHandler) GetDnsName(context.Context, *connect.Request[v1.GetDnsNameRequest]) (*connect.Response[v1.GetDnsNameResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsNameService.GetDnsName is not implemented"))
+}
+
+func (UnimplementedDnsNameServiceHandler) ListDnsNames(context.Context, *connect.Request[v1.ListDnsNamesRequest]) (*connect.Response[v1.ListDnsNamesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsNameService.ListDnsNames is not implemented"))
+}
+
+func (UnimplementedDnsNameServiceHandler) UpdateDnsName(context.Context, *connect.Request[v1.UpdateDnsNameRequest]) (*connect.Response[v1.UpdateDnsNameResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsNameService.UpdateDnsName is not implemented"))
+}
+
+func (UnimplementedDnsNameServiceHandler) DeleteDnsName(context.Context, *connect.Request[v1.DeleteDnsNameRequest]) (*connect.Response[v1.DeleteDnsNameResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsNameService.DeleteDnsName is not implemented"))
 }

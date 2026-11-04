@@ -233,6 +233,10 @@ func (s *apiSession) writeSettings(ctx context.Context, w io.Writer, m protorefl
 		fields := m.Descriptor().Fields()
 		for i := range fields.Len() {
 			fd := fields.Get(i)
+			if keptByController(fd) {
+				_, _ = fmt.Fprintf(tw, "%s%s\t%s\n", prefix, fd.Name(), keptText(m, fd))
+				continue
+			}
 			if settingGroup(fd) {
 				if m.Has(fd) {
 					rows(m.Get(fd).Message(), prefix+string(fd.Name())+".")
@@ -251,6 +255,22 @@ func (s *apiSession) writeSettings(ctx context.Context, w io.Writer, m protorefl
 	return tw.Flush()
 }
 
+// keptByController reports whether a field is written by the controller, not by --set: the
+// Cloudflare IP ranges its refresh job keeps (docs/15-dns.md, "Proxied HTTP routes").
+func keptByController(fd protoreflect.FieldDescriptor) bool {
+	return fd.FullName() == "rpmgr.v1.InstanceSettings.cloudflare_ip_ranges"
+}
+
+// keptText summarises a controller-kept setting for the table: how many ranges, and since when.
+func keptText(m protoreflect.Message, fd protoreflect.FieldDescriptor) string {
+	r, ok := m.Get(fd).Message().Interface().(*rpmgrv1.CloudflareIpRanges)
+	if !m.Has(fd) || !ok {
+		return "built in"
+	}
+	return fmt.Sprintf("%d IPv4 and %d IPv6 ranges, refreshed %s", len(r.GetIpv4Cidrs()), len(r.GetIpv6Cidrs()),
+		r.GetRefreshedAt().AsTime().UTC().Format(time.RFC3339))
+}
+
 // settingGroup reports whether a field holds settings of its own, such as smtp.
 func settingGroup(fd protoreflect.FieldDescriptor) bool {
 	return fd.Kind() == protoreflect.MessageKind && !fd.IsList() && fd.Message().FullName() != "google.protobuf.Duration"
@@ -262,6 +282,9 @@ func settingNames(md protoreflect.MessageDescriptor) []string {
 	fields := md.Fields()
 	for i := range fields.Len() {
 		fd := fields.Get(i)
+		if keptByController(fd) {
+			continue
+		}
 		if settingGroup(fd) {
 			for _, sub := range settingNames(fd.Message()) {
 				out = append(out, string(fd.Name())+"."+sub)
@@ -317,7 +340,7 @@ func (s *apiSession) setSetting(ctx context.Context, m protoreflect.Message, nam
 	fd := m.Descriptor().Fields().ByName(protoreflect.Name(head))
 	unknown := cli.Usagef("--set: no setting %q; the settings are %s", name, strings.Join(settingNames(m.Descriptor()), ", "))
 	switch {
-	case fd == nil || nested && !settingGroup(fd):
+	case fd == nil || keptByController(fd) || nested && !settingGroup(fd):
 		return unknown
 	case nested:
 		return s.setSetting(ctx, m.Mutable(fd).Message(), rest, text)
