@@ -244,8 +244,21 @@ later.
   into the certificates of the route's org and from there to the gateways. A hostname that gets
   none has a `failed` row with the CA's error, and one whose renewal fails keeps serving its
   certificate with the error recorded. A wildcard hostname in `acme` mode is refused with that
-  reason, as its certificate needs DNS-01 (Phase 2, R42). The ACME client honours `HTTPS_PROXY`,
+  reason, as its certificate needs DNS-01 (Phase 2, R42). With DNS automation (Phase 2) the refusal
+  applies only to a hostname outside every managed zone of the org: in a managed zone the wildcard
+  hostname gets a certificate by DNS-01, whatever the zone's `allow_wildcards`, which governs
+  published records ([D166](14-open-decisions.md#engineering),
+  [15](15-dns.md#acme-dns-01)). The ACME client honours `HTTPS_PROXY`,
   else `ALL_PROXY`, and `NO_PROXY` (R44, [D93](14-open-decisions.md#engineering)).
+- **ACME DNS-01 in managed zones** (Phase 2) [R] ([D166](14-open-decisions.md#engineering)): the
+  job gives a hostname in a managed zone its certificate by DNS-01 through the zone's provider.
+  The hostname must lie under a verified domain of the route's org, and the challenge TXT is
+  written only in a managed zone of that same org, or of the system org under a name delegated to
+  it ([15](15-dns.md#publication-rules)); a zone of another org is never used. A `held` zone
+  allows it, a `disabled` zone refuses it with the reason on the certificate. The TXT carries the
+  marker `rpmgr <trust domain> acme` and is deleted only on an exact match
+  ([D167](14-open-decisions.md#engineering)). The controller's own certificate keeps HTTP-01 and
+  TLS-ALPN-01.
 - **ACME for CONNECT listeners** (Phase 2) [R]: the job treats the hostname of a TLS CONNECT
   listener with an enabled route and no certificate of its own as it treats a WSS hostname
   ([Route edge rules](#route-edge-rules)): an uploaded certificate of the listener's org that
