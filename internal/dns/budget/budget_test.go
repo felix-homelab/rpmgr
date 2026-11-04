@@ -335,3 +335,37 @@ func TestRateBudget_UnknownProviderAndCancelledContext(t *testing.T) {
 		}
 	})
 }
+
+// TestRateBudget_ObserveCountsSentRequestsOnly: Observe sees each request that went to the provider
+// with the HTTP status of its answer ("200", the failure's status, or "error" without one), and not
+// a request the budget refused.
+func TestRateBudget_ObserveCountsSentRequestsOnly(t *testing.T) {
+	e := newEnv(t, storetest.Migrated(t, store.SQLite))
+	clk := &clock{t: t0}
+	var seen []string
+	b := &budget.Budget{DB: e.db, Now: clk.now, Observe: func(p, code string) { seen = append(seen, p+" "+code) }}
+	for _, c := range []struct {
+		err  error
+		want string
+	}{
+		{nil, "200"},
+		{&dns.ProviderError{Status: 403, Err: dns.ErrUnauthorized}, "403"},
+		{errors.New("connection reset"), "error"},
+	} {
+		seen = nil
+		if _, err := b.Wrap(&fixed{err: c.err}, e.provider, budget.Job).ListZones(e.sys); (err != nil) != (c.err != nil) {
+			t.Fatalf("%v: %v", c.err, err)
+		}
+		if len(seen) != 1 || seen[0] != e.provider+" "+c.want {
+			t.Fatalf("observed %v, want %s", seen, c.want)
+		}
+	}
+	// A request the budget refused never reached the provider: the client returns its refusal.
+	seen = nil
+	if _, err := b.Wrap(&fixed{err: budget.Refused{Until: clk.now().Add(time.Minute)}}, e.provider, budget.Job).ListZones(e.sys); err == nil {
+		t.Fatal("no refusal")
+	}
+	if len(seen) != 0 {
+		t.Fatalf("a refused request was observed: %v", seen)
+	}
+}
