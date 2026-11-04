@@ -38,7 +38,9 @@ removed by rpmgr. The same credential lets ACME use DNS-01.
 
 1. **Same org.** A record is published only in a managed zone of the same org as its source. The
    one exception: names under the instance base domain that the Instance Admin has delegated to an
-   org are published in the system org's zone ([D23](14-open-decisions.md#tenancy-and-data)).
+   org are published in the system org's zone ([D23](14-open-decisions.md#tenancy-and-data)). The
+   base domain is the instance setting `base_domain` ([Base domain](#base-domain)). DNS-01 follows
+   the same rule ([ACME DNS-01](#acme-dns-01)).
 2. **Verified coverage.** The name must lie under a verified domain of that org
    ([04](04-security.md#route-and-hostname-ownership)). The exception is the challenge TXT of a
    **pending** claim of the same org: it is published while the claim is pending and deleted once
@@ -48,6 +50,12 @@ removed by rpmgr. The same credential lets ACME use DNS-01.
      gateway group. A group without a DNS target publishes nothing.
    - The DNS target is either `cname` (one CNAME record) or `addresses` (one A record per IPv4 and
      one AAAA record per IPv6 address).
+   - The API refuses a target that mixes both, a `cname` that is not a fully qualified name or is
+     reserved (rule 6), an address list that is empty, over the limit
+     ([Timers and limits](#timers-and-limits)) or holding a duplicate, and an address that others
+     cannot reach or that is no plain address: IPv4-mapped IPv6 (the IPv4 form is asked for
+     instead), loopback, unspecified, multicast, link-local, or with a zone. Names and addresses
+     are stored in their canonical form.
    - A DNS name takes precedence over route hostnames with the same name. It is created only for
      a gateway group of its own org, and only under a verified domain of the org that covers it; a
      wildcard name needs a domain with the wildcard. Its `ttl` is 0, which is the zone's
@@ -95,6 +103,25 @@ The result is shown per hostname as `dns_status`:
 `dns_status` never changes the route status, which describes whether gateways can serve the route
 ([06](06-data-model.md#desired-vs-observed-state)).
 
+### Compile result
+
+The compiler (`internal/dns/compile`) is a pure function of the sources of one zone. It lists the
+desired records and one result per name that has a source in the zone. Sources of another org, names
+outside the zone, and tcp and udp routes (which have no published hostname) leave no trace.
+
+- A name is `ok`, or it has the reason it publishes nothing: `not_managed`, `ambiguous`, `held`,
+  `no_target` (its gateway group has no DNS target), `reserved` (rule 6) or `not_verified` (no
+  verified domain of the org covers it, rule 2). `no_target`, `reserved` and `not_verified` are
+  shown as `not_managed` with their reason.
+- Records already at a name that is `not_managed`, `ambiguous`, `held`, `no_target` or `reserved`
+  stay as they are: the plan neither changes nor deletes them. A name that is `not_verified`, or has
+  no source any more, has its owned records deleted. In a `disabled` zone every name is
+  `not_managed`.
+- A route that is not `http` makes its name DNS-only, even if `http` routes on the name set
+  `dns_proxied`, because the provider would end the TLS that the route needs.
+- The result carries a warning `proxy_disagrees` for a name that keeps its published proxy state
+  (rule 7).
+
 ## Conflicts
 
 The address record set at a name — A, AAAA and CNAME — is owned as one unit.
@@ -121,7 +148,8 @@ controller-managed durable state: it is never rebuilt from the provider.
 - **Marker.** Each owned record carries the comment `rpmgr <trust-domain> <ledger ID>`, e.g.
   `rpmgr rpmgr-7f3k2q9m dnr_01JA2Z8Q6W7Y3V9K4M5N6P7Q8R` (51 characters). Comments are available on
   all plans, up to 100 characters on Free [F cf:dns/manage-dns-records/reference/record-attributes];
-  that the comment round-trips unchanged through the API is checked at implementation [V VB-10].
+  that the comment round-trips unchanged through the API, also at 100 characters, was checked
+  against a Free-plan zone [F VB-10, run 2026-11-04].
 - **The ledger decides, the marker helps.**
   - A record whose marker names a ledger row in state `creating` is linked to it. This repairs a
     crash between the provider call and the database commit.
@@ -179,7 +207,11 @@ sequenceDiagram
 - **One writer.** The job runs under the `dns` lease with a fencing token
   ([06](06-data-model.md#system)). The fencing token protects database commits, not Cloudflare. So
   the job checks right before every batch that its lease is valid for at least the safety margin.
-  All writes are idempotent, and the next pass converges.
+  For that the lease handle carries its expiry: the time the lease ends, set when the lease is
+  taken and moved on at every renewal, and read from the database row `leases.expires_at`
+  ([06](06-data-model.md#system)). A handle whose renewal failed keeps its old expiry, so it runs
+  out and the job sends no batch ([D164](14-open-decisions.md#engineering)). All writes are
+  idempotent, and the next pass converges.
 - **Type changes** (CNAME ↔ A/AAAA, e.g. after the DNS target changed) are a delete and a create
   in the same batch.
 
@@ -195,9 +227,12 @@ sequenceDiagram
   dashboard and API together; a 429 blocks all API calls of that user for the next 5 minutes, and
   the response carries `retry-after` [F cf:fundamentals/api/reference/limits]. rpmgr cannot see
   which Cloudflare user a token belongs to [V VB-09], so it budgets per provider well below the
-  limit, honours `retry-after`, and marks the zone `rate_limited` meanwhile. certmagic's DNS-01
-  writes use the same budget. [R] Use an account-owned token, or a dedicated Cloudflare user, for
-  rpmgr, so a burst never locks a human out of the dashboard.
+  limit, honours `retry-after`, and marks the zone `rate_limited` meanwhile. The budget is one
+  database row per provider, holding the request window and the `retry-after` block. The DNS job
+  and the DNS-01 adapter take each request from it in a transaction, on whichever replica they
+  run, so replicas never add up past it. DNS-01 may use at most half of the window
+  ([D164](14-open-decisions.md#engineering)). [R] Use an account-owned token, or a dedicated
+  Cloudflare user, for rpmgr, so a burst never locks a human out of the dashboard.
 
 ### Fail-static
 
@@ -238,6 +273,30 @@ flowchart LR
 
   `rpmgr restore --dns-disabled` sets every zone to `disabled`, for a clone restored into staging
   with the same trust domain and KEK. Otherwise approving there would fight production.
+
+### The plan and its hash
+
+The planner (`internal/dns/plan`) is a pure function of the desired records, the provider's records
+and the ledger rows. The plan lists creates, updates, deletes, conflicts, orphans, wildcard shadows
+and lost rows.
+
+- **Only owned records are written.** An update or delete names a record that has a ledger row. A
+  foreign record is never in a write list; where it is in the way, the name is a conflict and
+  nothing is written at it ([Conflicts](#conflicts)). Names the compiler keeps
+  ([Compile result](#compile-result)), reserved names and names at or below an NS delegation
+  are left alone, including their owned records.
+- **Lost rows** are ledger rows whose record is gone at the provider. A desired record is created
+  again.
+- **Matching.** Records are equal by type and content: addresses by value, a CNAME without case and
+  trailing dot, a TXT without the quotes a provider may add. A changed TTL or proxy flag is an
+  update. Unmatched records of one type are paired into updates; a change of type is a delete and a
+  create. An update keeps the record's marker comment.
+- **The hash** is the SHA-256, in lower-case hex, of the plan's canonical text: the line
+  `rpmgr-dns-plan/1`, then one line per item (creates, updates, deletes, conflicts with their
+  records, orphans, shadows, lost rows), each field written as a Go-quoted string, in the order name,
+  type, content, ID. The same input in any order gives the same hash, and any change of a desired or
+  provider record the plan shows changes it. The field list is in the package documentation of
+  `plan.Plan.Encode`.
 
 ## Connecting, importing and disconnecting
 
@@ -286,6 +345,20 @@ Permission errors are per zone, because one token can have different rights per 
 verify call does not list permissions: a zone where the provider refuses access shows
 `permission_denied`.
 
+## Base domain
+
+The instance setting `base_domain` names the domain under which the Instance Admin hands out
+names to orgs ([D165](14-open-decisions.md#engineering)).
+
+- Only the Instance Admin changes it, with a step-up; the change is audited.
+- It must be a domain of the system org that is verified or marked trusted
+  ([04](04-security.md#route-and-hostname-ownership)); anything else is refused.
+- The Instance Admin delegates `<org-slug>.<base domain>` to an org as a claim with the method
+  `delegated` ([D23](14-open-decisions.md#tenancy-and-data)). The claim keeps its FQDN: renaming
+  the org's slug later changes neither the claim nor the names and certificates under it.
+- Records of delegated names are published in the system org's managed zone, by the same job and
+  rules as every other zone (publication rule 1).
+
 ## Domain verification
 
 - **Authoritative answers.** The `_rpmgr-challenge` TXT record is queried at the zone's
@@ -314,9 +387,10 @@ verify call does not list permissions: a zone where the provider refuses access 
 
 - Hostnames in managed zones get their certificates via DNS-01. Others keep HTTP-01 and
   TLS-ALPN-01 ([04](04-security.md#controller-certificates)).
-- certmagic's DNS-01 solver takes a provider implementing libdns `RecordAppender` and
-  `RecordDeleter` [F certmagic:solvers.go:589-592]. rpmgr implements both in an adapter that finds
-  the managed zone for the name and uses that zone's provider, rate budget and marker.
+- certmagic does not write DNS records itself. Its DNS-01 solver calls a provider that implements
+  libdns `RecordAppender` and `RecordDeleter` [F certmagic:solvers.go:589-592]. rpmgr implements
+  both in an adapter that finds the managed zone for the name and uses that zone's provider and
+  rate budget; the marker is the adapter's.
 - Enabling DNS-01 on a certmagic issuer disables its other challenge types
   [F certmagic:README.md:408-422]. rpmgr therefore runs two certmagic configurations on the same
   storage and picks one per name. One certificate cache serves both and picks the configuration
@@ -325,6 +399,27 @@ verify call does not list permissions: a zone where the provider refuses access 
 - This gives wildcard certificates, and certificates issued before DNS points at a gateway, which
   the cutover needs ([11](11-migration.md#cutover-plan)).
 - The DNS job ignores `_acme-challenge.*` names.
+
+Rules of the adapter ([D166](14-open-decisions.md#engineering),
+[D167](14-open-decisions.md#engineering)):
+
+| Case | Rule |
+|---|---|
+| Zone `active` | The challenge TXT is written |
+| Zone `held` | Written too. A hold stops the DNS job's records for routes and names, not the one-off challenge of a certificate; the TXT is deleted after the order and changes no name |
+| Zone `disabled` | Refused; the certificate shows `failed` with the reason. A disabled zone may be used by another installation of the trust domain |
+| Zone of another org | Never used. The hostname must lie under a verified domain of the route's org, and the zone must be that org's, or the system org's for a delegated name (publication rule 1) |
+| Wildcard hostname, `acme` mode | Accepted only in a managed zone, whatever its `allow_wildcards`: that gate governs published records, not certificates. Outside a managed zone Phase 1's refusal stands ([04](04-security.md#controller-certificates)) |
+| Zone removed or provider disconnected | New and renewing orders of its names fail with the reason; the certificate in use keeps serving |
+| The controller's own certificate | Stays on HTTP-01 and TLS-ALPN-01, never DNS-01, so the controller's name does not depend on a provider token |
+
+- **Marker.** The challenge TXT at `_acme-challenge.<name>` carries the comment
+  `rpmgr <trust-domain> acme`. The adapter deletes a record only if its type, name, content and
+  comment all equal what it wrote. A TXT of a `tls_passthrough` backend that runs its own DNS-01,
+  or one added by hand, is never deleted. The record has no ledger row; it lives for one order,
+  and the next order of the name removes a leftover of a crash by the same exact match.
+- **Budget.** Its requests come from the provider's budget row, at most half of the window
+  ([Batches, failures and the rate budget](#batches-failures-and-the-rate-budget)).
 
 ## Proxied HTTP routes
 
@@ -361,7 +456,7 @@ A proxied name resolves to Cloudflare. Cloudflare terminates TLS and connects to
 | Topic | Fact | How rpmgr uses it |
 |---|---|---|
 | Authentication | Bearer API tokens; the Global API Key is legacy and carries all of the user's permissions [F cf:fundamentals/api/get-started/keys] | API tokens only |
-| Token scope | Zone resources, client-IP filter and expiry are configurable [F cf:fundamentals/api/get-started/create-token]; narrowest scope is a zone [V VB-12] | Recommended in the connect form; expiry shown and alerted |
+| Token scope | Zone resources, client-IP filter and expiry are configurable [F cf:fundamentals/api/get-started/create-token]; narrowest scope is a zone: a token scoped to one zone sees exactly that zone, and an under-scoped token gets HTTP 403 (code 10000) on reads and writes [F VB-12, run 2026-11-04] | Recommended in the connect form; expiry shown and alerted |
 | Zones | Status `initializing`, `pending`, `active`, `moved`; types `full`, `partial`, `secondary`, `internal`; `per_page` ≤ 50 [F cf-api:openapi.json `GET /zones`] | Import `active` + `full` only; all pages |
 | Batch | All-or-nothing; deletes, patches, puts, posts in that order; 200 records per batch on Free, 3 500 on paid plans [F cf:dns/manage-dns-records/how-to/batch-record-changes] | One batch per pass, ≤ 200 operations; per-record retry on failure |
 | Comments, tags | Comments on all plans, ≤ 100 characters on Free, no line breaks; tags only Pro and above [F cf:dns/manage-dns-records/reference/record-attributes] | Marker in the comment; tags unused |
@@ -410,6 +505,7 @@ type Provider interface {
 | [R] Rate budget per provider | 300 requests / 5 min (Cloudflare allows 1 200 per user) |
 | DNS-01 share of the budget | at most half |
 | Operations per batch | ≤ 200 (Cloudflare Free limit) |
+| Addresses in a DNS target | ≤ 16 |
 | [R] Cloudflare API request | 30 s; answer at most 4 MiB; zones listed 50 per page |
 | `delete_threshold` default | 10 names per pass and zone; 0 = every removal needs approval; [R] at most 1 000 |
 | Drift stop window | a record corrected twice within 1 h is no longer corrected |

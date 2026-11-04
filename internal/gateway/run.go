@@ -223,7 +223,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		return err
 	}
 	udpRoutes := NewUDPRoutes(UDPOptions{Host: udpHost, Sessions: sessions, Revision: applier.Revision, Metrics: udpMetrics,
-		OnChange: report.change, Logger: o.Logger})
+		OnChange: report.change, Predecessor: oldAlive.Load, Logger: o.Logger})
 	defer udpRoutes.Close()
 	certificates := NewCertificates(CertificatesOptions{Dir: filepath.Join(cfg.StateDir, ResourcesDir), Fetch: ctl.Fetch,
 		OnChange: report.change, Now: o.Now, Logger: o.Logger})

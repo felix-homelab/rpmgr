@@ -139,6 +139,7 @@ var sealedColumns = []sealedColumn{
 	{apirequest.Table, apirequest.FieldID, apirequest.FieldResponseEnc, false},
 	{ewebhook.Table, ewebhook.FieldID, ewebhook.FieldSecretEnc, true},
 	{ewebhook.Table, ewebhook.FieldID, ewebhook.FieldPreviousSecretEnc, true},
+	{ewebhook.Table, ewebhook.FieldID, ewebhook.FieldURLEnc, true},
 	{eauditsink.Table, eauditsink.FieldID, eauditsink.FieldSecretEnc, true},
 	{dnsprovider.Table, dnsprovider.FieldID, dnsprovider.FieldCredentialEnc, true},
 }

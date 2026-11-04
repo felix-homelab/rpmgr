@@ -24,6 +24,8 @@ const (
 	FieldTransport = "transport"
 	// FieldRttMs holds the string denoting the rtt_ms field in the database.
 	FieldRttMs = "rtt_ms"
+	// FieldReadyRoutes holds the string denoting the ready_routes field in the database.
+	FieldReadyRoutes = "ready_routes"
 	// FieldEstablishedAt holds the string denoting the established_at field in the database.
 	FieldEstablishedAt = "established_at"
 	// FieldReportedAt holds the string denoting the reported_at field in the database.
@@ -40,6 +42,7 @@ var Columns = []string{
 	FieldConnectorID,
 	FieldTransport,
 	FieldRttMs,
+	FieldReadyRoutes,
 	FieldEstablishedAt,
 	FieldReportedAt,
 }

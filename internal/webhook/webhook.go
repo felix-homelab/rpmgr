@@ -135,7 +135,10 @@ func Body(e events.Event) ([]byte, error) {
 
 // Delivery is one request to one endpoint.
 type Delivery struct {
-	URL       string
+	URL string
+	// Target is the URL of a chat endpoint, which holds the service's token, as the sealed value
+	// opened. When set, URL is ignored, nothing is signed and no error names it.
+	Target    secret.Value
 	EventID   string
 	EventType string
 	Body      []byte
@@ -160,7 +163,19 @@ type Sender struct {
 // Send posts d and returns the answer's status code; an error wraps ErrNotDelivered, and an
 // address the guard refused also an egress.RefusedError.
 func (s *Sender) Send(ctx context.Context, d Delivery) (int, error) {
-	u, err := url.Parse(d.URL)
+	chat := !d.Target.IsZero()
+	raw := d.URL
+	if chat {
+		raw = d.Target.Reveal()
+	}
+	// Only a chat endpoint's URL is a credential; an error of any step names no part of it.
+	fail := func(err error) error {
+		if chat {
+			err = scrub(err, raw)
+		}
+		return fmt.Errorf("%w: %w", ErrNotDelivered, err)
+	}
+	u, err := url.Parse(raw)
 	switch {
 	case err != nil:
 		return 0, fmt.Errorf("%w: the URL does not parse", ErrNotDelivered)
@@ -173,7 +188,7 @@ func (s *Sender) Send(ctx context.Context, d Delivery) (int, error) {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), strings.NewReader(string(d.Body)))
 	if err != nil {
-		return 0, fmt.Errorf("%w: %w", ErrNotDelivered, err)
+		return 0, fail(err)
 	}
 	now := time.Now
 	if s.Now != nil {
@@ -181,17 +196,19 @@ func (s *Sender) Send(ctx context.Context, d Delivery) (int, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "rpmgr-webhook")
-	req.Header.Set(HeaderEventID, d.EventID)
-	req.Header.Set(HeaderEventType, d.EventType)
-	keys := make([]string, len(d.Secrets))
-	for i, k := range d.Secrets {
-		keys[i] = k.Reveal()
+	if !chat {
+		req.Header.Set(HeaderEventID, d.EventID)
+		req.Header.Set(HeaderEventType, d.EventType)
+		keys := make([]string, len(d.Secrets))
+		for i, k := range d.Secrets {
+			keys[i] = k.Reveal()
+		}
+		req.Header.Set(HeaderSignature, Sign(now(), d.Body, keys...))
 	}
-	req.Header.Set(HeaderSignature, Sign(now(), d.Body, keys...))
 	var proxy *url.URL
 	if s.Proxy != nil {
 		if proxy, err = s.Proxy(req); err != nil {
-			return 0, fmt.Errorf("%w: %w", ErrNotDelivered, err)
+			return 0, fail(err)
 		}
 	}
 	tr := &http.Transport{
@@ -209,15 +226,42 @@ func (s *Sender) Send(ctx context.Context, d Delivery) (int, error) {
 		if errors.As(err, &ue) {
 			err = ue.Err
 		}
-		return 0, fmt.Errorf("%w: %w", ErrNotDelivered, err)
+		return 0, fail(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, MaxAnswer))
+	answer, _ := io.ReadAll(io.LimitReader(resp.Body, MaxAnswer))
+	if chat && resp.StatusCode == http.StatusTooManyRequests {
+		return resp.StatusCode, &RateLimitedError{After: retryAfter(resp.Header, answer, now())}
+	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return resp.StatusCode, fmt.Errorf("%w: the receiver answered %d", ErrNotDelivered, resp.StatusCode)
 	}
 	return resp.StatusCode, nil
 }
+
+// scrub returns err without raw, a chat endpoint's URL, or its path or query, which hold the
+// service's token: an error of the HTTP client may embed them. errors.Is and As still see err.
+func scrub(err error, raw string) error {
+	text := err.Error()
+	if u, perr := url.Parse(raw); perr == nil {
+		for _, s := range []string{raw, u.String(), u.EscapedPath(), u.Path, u.RawQuery} {
+			if len(s) > 1 {
+				text = strings.ReplaceAll(text, s, "[redacted]")
+			}
+		}
+	} else {
+		text = strings.ReplaceAll(text, raw, "[redacted]")
+	}
+	return &scrubbed{err: err, text: text}
+}
+
+type scrubbed struct {
+	err  error
+	text string
+}
+
+func (e *scrubbed) Error() string { return e.text }
+func (e *scrubbed) Unwrap() error { return e.err }
 
 // dial connects to addr, a host and port of the receiver: it resolves the host and dials each
 // address the policy admits, checked once more as it is dialled, directly or through the proxy,

@@ -782,6 +782,7 @@ var (
 		{Name: "connector_id", Type: field.TypeString},
 		{Name: "transport", Type: field.TypeEnum, Enums: []string{"quic", "h2", "wss"}},
 		{Name: "rtt_ms", Type: field.TypeInt64, Default: 0},
+		{Name: "ready_routes", Type: field.TypeJSON, Nullable: true},
 		{Name: "established_at", Type: field.TypeTime},
 		{Name: "reported_at", Type: field.TypeTime},
 	}
@@ -996,6 +997,8 @@ var (
 		{Name: "region", Type: field.TypeString, Nullable: true},
 		{Name: "public_hostnames", Type: field.TypeJSON, Nullable: true},
 		{Name: "trusted_proxy_cidrs", Type: field.TypeJSON, Nullable: true},
+		{Name: "dns_cname", Type: field.TypeString, Nullable: true},
+		{Name: "dns_addresses", Type: field.TypeJSON, Nullable: true},
 	}
 	// GatewayGroupsTable holds the schema information for the "gateway_groups" table.
 	GatewayGroupsTable = &schema.Table{
@@ -2345,6 +2348,8 @@ var (
 		{Name: "failing_since", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "format", Type: field.TypeEnum, Enums: []string{"rpmgr", "discord", "slack", "teams"}, Default: "rpmgr"},
+		{Name: "url_enc", Type: field.TypeBytes, Nullable: true},
 	}
 	// WebhooksTable holds the schema information for the "webhooks" table.
 	WebhooksTable = &schema.Table{

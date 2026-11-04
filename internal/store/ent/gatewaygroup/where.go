@@ -82,6 +82,11 @@ func Region(v string) predicate.GatewayGroup {
 	return predicate.GatewayGroup(sql.FieldEQ(FieldRegion, v))
 }
 
+// DNSCname applies equality check predicate on the "dns_cname" field. It's identical to DNSCnameEQ.
+func DNSCname(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldEQ(FieldDNSCname, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.GatewayGroup {
 	return predicate.GatewayGroup(sql.FieldEQ(FieldOrgID, v))
@@ -345,6 +350,91 @@ func TrustedProxyCidrsIsNil() predicate.GatewayGroup {
 // TrustedProxyCidrsNotNil applies the NotNil predicate on the "trusted_proxy_cidrs" field.
 func TrustedProxyCidrsNotNil() predicate.GatewayGroup {
 	return predicate.GatewayGroup(sql.FieldNotNull(FieldTrustedProxyCidrs))
+}
+
+// DNSCnameEQ applies the EQ predicate on the "dns_cname" field.
+func DNSCnameEQ(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldEQ(FieldDNSCname, v))
+}
+
+// DNSCnameNEQ applies the NEQ predicate on the "dns_cname" field.
+func DNSCnameNEQ(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldNEQ(FieldDNSCname, v))
+}
+
+// DNSCnameIn applies the In predicate on the "dns_cname" field.
+func DNSCnameIn(vs ...string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldIn(FieldDNSCname, vs...))
+}
+
+// DNSCnameNotIn applies the NotIn predicate on the "dns_cname" field.
+func DNSCnameNotIn(vs ...string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldNotIn(FieldDNSCname, vs...))
+}
+
+// DNSCnameGT applies the GT predicate on the "dns_cname" field.
+func DNSCnameGT(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldGT(FieldDNSCname, v))
+}
+
+// DNSCnameGTE applies the GTE predicate on the "dns_cname" field.
+func DNSCnameGTE(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldGTE(FieldDNSCname, v))
+}
+
+// DNSCnameLT applies the LT predicate on the "dns_cname" field.
+func DNSCnameLT(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldLT(FieldDNSCname, v))
+}
+
+// DNSCnameLTE applies the LTE predicate on the "dns_cname" field.
+func DNSCnameLTE(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldLTE(FieldDNSCname, v))
+}
+
+// DNSCnameContains applies the Contains predicate on the "dns_cname" field.
+func DNSCnameContains(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldContains(FieldDNSCname, v))
+}
+
+// DNSCnameHasPrefix applies the HasPrefix predicate on the "dns_cname" field.
+func DNSCnameHasPrefix(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldHasPrefix(FieldDNSCname, v))
+}
+
+// DNSCnameHasSuffix applies the HasSuffix predicate on the "dns_cname" field.
+func DNSCnameHasSuffix(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldHasSuffix(FieldDNSCname, v))
+}
+
+// DNSCnameIsNil applies the IsNil predicate on the "dns_cname" field.
+func DNSCnameIsNil() predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldIsNull(FieldDNSCname))
+}
+
+// DNSCnameNotNil applies the NotNil predicate on the "dns_cname" field.
+func DNSCnameNotNil() predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldNotNull(FieldDNSCname))
+}
+
+// DNSCnameEqualFold applies the EqualFold predicate on the "dns_cname" field.
+func DNSCnameEqualFold(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldEqualFold(FieldDNSCname, v))
+}
+
+// DNSCnameContainsFold applies the ContainsFold predicate on the "dns_cname" field.
+func DNSCnameContainsFold(v string) predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldContainsFold(FieldDNSCname, v))
+}
+
+// DNSAddressesIsNil applies the IsNil predicate on the "dns_addresses" field.
+func DNSAddressesIsNil() predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldIsNull(FieldDNSAddresses))
+}
+
+// DNSAddressesNotNil applies the NotNil predicate on the "dns_addresses" field.
+func DNSAddressesNotNil() predicate.GatewayGroup {
+	return predicate.GatewayGroup(sql.FieldNotNull(FieldDNSAddresses))
 }
 
 // And groups predicates with the AND operator between them.

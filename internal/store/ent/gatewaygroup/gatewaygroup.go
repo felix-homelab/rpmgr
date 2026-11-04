@@ -24,6 +24,10 @@ const (
 	FieldPublicHostnames = "public_hostnames"
 	// FieldTrustedProxyCidrs holds the string denoting the trusted_proxy_cidrs field in the database.
 	FieldTrustedProxyCidrs = "trusted_proxy_cidrs"
+	// FieldDNSCname holds the string denoting the dns_cname field in the database.
+	FieldDNSCname = "dns_cname"
+	// FieldDNSAddresses holds the string denoting the dns_addresses field in the database.
+	FieldDNSAddresses = "dns_addresses"
 	// Table holds the table name of the gatewaygroup in the database.
 	Table = "gateway_groups"
 )
@@ -37,6 +41,8 @@ var Columns = []string{
 	FieldRegion,
 	FieldPublicHostnames,
 	FieldTrustedProxyCidrs,
+	FieldDNSCname,
+	FieldDNSAddresses,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -102,4 +108,9 @@ func ByName(opts ...sql.OrderTermOption) OrderOption {
 // ByRegion orders the results by the region field.
 func ByRegion(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRegion, opts...).ToFunc()
+}
+
+// ByDNSCname orders the results by the dns_cname field.
+func ByDNSCname(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDNSCname, opts...).ToFunc()
 }

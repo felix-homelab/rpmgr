@@ -37,6 +37,9 @@ import (
 // wssUnavailable is routes.WSSUnavailable, which newRouteStatuses's parameter routes hides.
 var wssUnavailable = routes.WSSUnavailable
 
+// pinnedBy is routes.PinnedBy, hidden likewise.
+var pinnedBy = routes.PinnedBy
+
 // statusWindow is how many of the org's newest revisions a route status reads to find the latest
 // change of each route. An agent further behind is pending or in error with every route it serves.
 var statusWindow = 1000
@@ -64,7 +67,12 @@ type routeStatuses struct {
 	states   map[string]*ent.AgentState
 	notReady map[[2]string]*ent.ResourceStatus // by agent and resource
 	links    map[[2]string]bool                // gateway and connector with a data session
-	targets  map[string][]*ent.RouteTarget     // by route
+	// sessions are the data sessions by gateway and connector, which say per transport which
+	// routes are ready on them.
+	sessions map[[2]string][]*ent.DataSession
+	// pins are the levels that pin a route's transport on a connector, by connector and route.
+	pins    map[[2]string]rpmgrv1.TransportPin
+	targets map[string][]*ent.RouteTarget // by route
 	// missing are the capabilities an online agent lacks for a route, by agent and route
 	// (routes.Gate): the route is left out of its snapshot.
 	missing map[[2]string][]string
@@ -93,7 +101,8 @@ func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, route
 	v := &routeStatuses{now: now, enabled: map[string]bool{}, online: map[string]bool{}, states: map[string]*ent.AgentState{},
 		notReady: map[[2]string]*ent.ResourceStatus{}, links: map[[2]string]bool{}, targets: map[string][]*ent.RouteTarget{},
 		changed: map[string]int64{}, maintenance: map[string]bool{}, missing: map[[2]string][]string{}, checked: map[string]bool{},
-		noWSS: map[[2]string]bool{}, certPending: map[string]string{}}
+		noWSS: map[[2]string]bool{}, certPending: map[string]string{}, sessions: map[[2]string][]*ent.DataSession{},
+		pins: map[[2]string]rpmgrv1.TransportPin{}}
 	inst, err := c.Instance.Get(sys, 1)
 	if err != nil {
 		return nil, err
@@ -159,6 +168,7 @@ func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, route
 	}
 	for _, d := range ds {
 		v.links[[2]string{d.GatewayID, d.ConnectorID}] = true
+		v.sessions[[2]string{d.GatewayID, d.ConnectorID}] = append(v.sessions[[2]string{d.GatewayID, d.ConnectorID}], d)
 	}
 	routeIDs := make([]string, len(routes))
 	for i, r := range routes {
@@ -195,6 +205,9 @@ func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, route
 	}
 	for _, r := range routes {
 		for _, t := range v.targets[r.ID] {
+			if x := byID[t.ConnectorID]; x != nil {
+				v.pins[[2]string{x.ID, r.ID}] = pinnedBy(r, x, defaults)
+			}
 			if x := byID[t.ConnectorID]; x != nil && v.online[x.ID] && wssUnavailable(r, x, defaults, caps[x.ID]) {
 				v.noWSS[[2]string{x.ID, r.ID}] = true
 			}
@@ -370,6 +383,7 @@ func (v *routeStatuses) of(r *ent.Route) *rpmgrv1.RouteStatus {
 			check(t.ConnectorID)
 		}
 	}
+	out.TargetTransports = v.transports(r, targets, out.NotServing)
 
 	// Gateways: serving when online, reporting the route ready, and linked to a ready target. In
 	// maintenance one that is online and reports it ready answers for it without a target.
@@ -441,6 +455,54 @@ func RoutesWithoutReadyTarget(ctx context.Context, c *ent.Client, org string, no
 		}
 	}
 	return out, nil
+}
+
+// transports tells, for each enabled target of r, the transport its streams take through each
+// gateway of the route's group (docs/03-connections.md, "Transport selection"). A target that does
+// not serve, or whose connector is offline, has none; a gateway that is offline has none either,
+// as what it last reported is stale. The connector reports a route ready only on the sessions of
+// the transport the route's streams take, so the sessions that have it ready tell it. A gateway
+// that does not report the routes is shown with an unspecified transport: unknown.
+func (v *routeStatuses) transports(r *ent.Route, targets []*ent.RouteTarget, notServing []*rpmgrv1.RouteNotServing) []*rpmgrv1.TargetTransport {
+	notReady := map[string]bool{}
+	for _, n := range notServing {
+		notReady[n.Id] = n.Reason != agentv1.NotReadyReason_NOT_READY_REASON_TARGET_UNKNOWN.String()
+	}
+	out := make([]*rpmgrv1.TargetTransport, 0, len(targets))
+	for _, t := range targets {
+		tt := &rpmgrv1.TargetTransport{TargetId: t.ID, PinnedBy: v.pins[[2]string{t.ConnectorID, r.ID}]}
+		out = append(out, tt)
+		if notReady[t.ID] || !v.online[t.ConnectorID] {
+			continue
+		}
+		for _, g := range v.gateways {
+			if g.GatewayGroupID != r.GatewayGroupID || !g.Enabled || !v.online[g.ID] {
+				continue
+			}
+			rows := v.sessions[[2]string{g.ID, t.ConnectorID}]
+			slices.SortFunc(rows, func(a, b *ent.DataSession) int { return strings.Compare(string(a.Transport), string(b.Transport)) })
+			for _, d := range rows {
+				switch {
+				case d.ReadyRoutes == nil:
+					tt.Gateways = append(tt.Gateways, &rpmgrv1.GatewayTransport{GatewayId: g.ID})
+				case slices.Contains(d.ReadyRoutes, r.ID):
+					tt.Gateways = append(tt.Gateways, &rpmgrv1.GatewayTransport{GatewayId: g.ID, Transport: dataTransportOf(d.Transport)})
+				}
+			}
+		}
+	}
+	return out
+}
+
+// dataTransportOf is the API's value of a data session's transport.
+func dataTransportOf(t datasession.Transport) rpmgrv1.DataTransport {
+	switch t {
+	case datasession.TransportQuic:
+		return rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC
+	case datasession.TransportWss:
+		return rpmgrv1.DataTransport_DATA_TRANSPORT_WSS
+	}
+	return rpmgrv1.DataTransport_DATA_TRANSPORT_H2
 }
 
 // capabilityMissing is the reason of an agent that lacks capabilities a route needs, with what

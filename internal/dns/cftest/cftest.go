@@ -222,7 +222,7 @@ func (s *Server) verify(scope string) http.HandlerFunc {
 			writeErr(w, http.StatusUnauthorized, 1000, "Invalid API Token")
 			return
 		}
-		res := map[string]any{"id": "tok-0001", "status": s.status}
+		res := map[string]any{"id": fmt.Sprintf("%032x", 1), "status": s.status}
 		if s.expires != "" {
 			res["expires_on"] = s.expires
 		}

@@ -108,3 +108,4 @@ TestFirewall_OnlyBoundedPortsOpened	done	-	#968	internal/firewall
 TestFirewall_BoundsFileMustBeRootOwned	done	-	#968	internal/firewall
 TestFirewall_OnlyOwnRulesTouched	done	-	#968	internal/firewall
 TestFirewall_GatewayWritesRangesOnly	done	-	#968	internal/gateway
+TestWebhook_ChatURLSealedAndRedacted	done	-	#1060	chat webhooks (D162)

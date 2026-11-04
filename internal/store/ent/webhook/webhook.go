@@ -41,6 +41,10 @@ const (
 	FieldCreatedAt = "created_at"
 	// FieldVersion holds the string denoting the version field in the database.
 	FieldVersion = "version"
+	// FieldFormat holds the string denoting the format field in the database.
+	FieldFormat = "format"
+	// FieldURLEnc holds the string denoting the url_enc field in the database.
+	FieldURLEnc = "url_enc"
 	// Table holds the table name of the webhook in the database.
 	Table = "webhooks"
 )
@@ -61,6 +65,8 @@ var Columns = []string{
 	FieldFailingSince,
 	FieldCreatedAt,
 	FieldVersion,
+	FieldFormat,
+	FieldURLEnc,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -84,8 +90,6 @@ var (
 	Policy       ent.Policy
 	// URLValidator is a validator for the "url" field. It is called by the builders before save.
 	URLValidator func(string) error
-	// SecretEncValidator is a validator for the "secret_enc" field. It is called by the builders before save.
-	SecretEncValidator func([]byte) error
 	// DefaultEnabled holds the default value on creation for the "enabled" field.
 	DefaultEnabled bool
 	// DefaultEnabledAt holds the default value on creation for the "enabled_at" field.
@@ -122,6 +126,34 @@ func DisabledReasonValidator(dr DisabledReason) error {
 		return nil
 	default:
 		return fmt.Errorf("webhook: invalid enum value for disabled_reason field: %q", dr)
+	}
+}
+
+// Format defines the type for the "format" enum field.
+type Format string
+
+// FormatRpmgr is the default value of the Format enum.
+const DefaultFormat = FormatRpmgr
+
+// Format values.
+const (
+	FormatRpmgr   Format = "rpmgr"
+	FormatDiscord Format = "discord"
+	FormatSlack   Format = "slack"
+	FormatTeams   Format = "teams"
+)
+
+func (f Format) String() string {
+	return string(f)
+}
+
+// FormatValidator is a validator for the "format" field enum values. It is called by the builders before save.
+func FormatValidator(f Format) error {
+	switch f {
+	case FormatRpmgr, FormatDiscord, FormatSlack, FormatTeams:
+		return nil
+	default:
+		return fmt.Errorf("webhook: invalid enum value for format field: %q", f)
 	}
 }
 
@@ -181,4 +213,9 @@ func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByVersion orders the results by the version field.
 func ByVersion(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldVersion, opts...).ToFunc()
+}
+
+// ByFormat orders the results by the format field.
+func ByFormat(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFormat, opts...).ToFunc()
 }

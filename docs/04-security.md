@@ -244,8 +244,21 @@ later.
   into the certificates of the route's org and from there to the gateways. A hostname that gets
   none has a `failed` row with the CA's error, and one whose renewal fails keeps serving its
   certificate with the error recorded. A wildcard hostname in `acme` mode is refused with that
-  reason, as its certificate needs DNS-01 (Phase 2, R42). The ACME client honours `HTTPS_PROXY`,
+  reason, as its certificate needs DNS-01 (Phase 2, R42). With DNS automation (Phase 2) the refusal
+  applies only to a hostname outside every managed zone of the org: in a managed zone the wildcard
+  hostname gets a certificate by DNS-01, whatever the zone's `allow_wildcards`, which governs
+  published records ([D166](14-open-decisions.md#engineering),
+  [15](15-dns.md#acme-dns-01)). The ACME client honours `HTTPS_PROXY`,
   else `ALL_PROXY`, and `NO_PROXY` (R44, [D93](14-open-decisions.md#engineering)).
+- **ACME DNS-01 in managed zones** (Phase 2) [R] ([D166](14-open-decisions.md#engineering)): the
+  job gives a hostname in a managed zone its certificate by DNS-01 through the zone's provider.
+  The hostname must lie under a verified domain of the route's org, and the challenge TXT is
+  written only in a managed zone of that same org, or of the system org under a name delegated to
+  it ([15](15-dns.md#publication-rules)); a zone of another org is never used. A `held` zone
+  allows it, a `disabled` zone refuses it with the reason on the certificate. The TXT carries the
+  marker `rpmgr <trust domain> acme` and is deleted only on an exact match
+  ([D167](14-open-decisions.md#engineering)). The controller's own certificate keeps HTTP-01 and
+  TLS-ALPN-01.
 - **ACME for CONNECT listeners** (Phase 2) [R]: the job treats the hostname of a TLS CONNECT
   listener with an enabled route and no certificate of its own as it treats a WSS hostname
   ([Route edge rules](#route-edge-rules)): an uploaded certificate of the listener's org that
@@ -1588,6 +1601,20 @@ Security regression tests ([12](12-testing-and-quality.md#security-testing)):
   `Rpmgr-Event-Id` so a receiver drops duplicates. An endpoint without a successful delivery for the period in 03 is
   disabled, with an event, an e-mail to the org's Owners and Admins and a notice in the UI; only a
   person enables it again ([D143](14-open-decisions.md#engineering)).
+- **Chat formats** ([D162](14-open-decisions.md#engineering)). Discord, Slack and Microsoft Teams
+  put the token of their incoming webhook in its URL, so the URL of an endpoint of the format
+  `discord`, `slack` or `teams` is a credential. It is set in the write-only field `secret_url`,
+  stored sealed under the KEK with the endpoint and the column as context, opened only by the
+  delivery job and the test, and shown as its scheme and host everywhere else: the API, the web UI,
+  the command line, logs, events, audit entries (the field is marked sensitive, so a diff shows
+  `[REDACTED]`) and the error of a delivery. A transport error that embeds the URL is rewritten
+  before it is stored or logged. Changing the URL means entering it again, and the web UI and the
+  command line never fill it in. The services verify no signature, so such an endpoint has no
+  `rpmgr_whs_` secret and sends no `Rpmgr-Signature`; it cannot be rotated. TLS, the egress guard,
+  the refusal of a redirect and the caps of a delivery apply as to any receiver. The message holds
+  the envelope's fields and nothing more, Markdown escaped in Discord and Teams as Slack's markup is,
+  cut to the limits in
+  [03](03-connections.md#timeouts-keepalive-and-backoff).
 - **Egress guard** ([D138](14-open-decisions.md#engineering)). The controller dials every receiver
   through one guard, which checks each address the name resolves to at the moment it dials, so a
   name that changes its answer (DNS rebinding) gains nothing:

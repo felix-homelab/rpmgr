@@ -19,7 +19,8 @@ var slugRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
 // GatewayGroup is a set of at most four gateways that publish routes together
 // (docs/06-data-model.md, "Fleet"). Shared groups belong to the system org (D14). Its DNS target
-// arrives with managed DNS (Phase 2), and its other settings with the slices that use them.
+// is where managed DNS records point (Phase 2), and its other settings come with the slices that use
+// them.
 type GatewayGroup struct{ ent.Schema }
 
 // Mixin makes gateway groups org-owned.
@@ -36,6 +37,11 @@ func (GatewayGroup) Fields() []ent.Field {
 		// trusted_proxy_cidrs are the proxies whose forwarding headers gateways keep
 		// (docs/03-connections.md, "HTTP routes").
 		field.Strings("trusted_proxy_cidrs").Optional().Validate(validateCIDRs),
+		// dns_cname and dns_addresses are the group's DNS target: at most one is set, and neither
+		// means nothing is published (docs/15-dns.md, "Publication rules"). The API checks them
+		// (internal/dnstarget); the store keeps the forms it stores.
+		field.String("dns_cname").Optional(),
+		field.Strings("dns_addresses").Optional(),
 	}
 }
 

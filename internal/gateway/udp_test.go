@@ -535,3 +535,58 @@ func TestUDPRoutes_Rebind(t *testing.T) {
 	}
 	u.Rebind() // nothing pending: harmless
 }
+
+// TestUDPRoutes_Predecessor: while the old process of a hand-off runs, a udp or tcp_udp route port
+// it holds is not reported; once it exited, Rebind binds a freed port and reports a port that a
+// stranger holds as port_in_use, which OnChange is told; a port that is in use with no old process
+// (a start without a hand-off, or an aborted hand-off) is reported at once.
+func TestUDPRoutes_Predecessor(t *testing.T) {
+	gateway.SetRouteTimers(t, time.Second, time.Hour)
+	route := ids.New("rt")
+	m := newSessions(&assignment{known: map[string]bool{cid("udp-pred"): true}, routes: map[string][]string{route: {cid("udp-pred")}}}, nil)
+	t.Cleanup(m.Close)
+	start(t, m, connectorID("udp-pred"), hello(route))
+	var alive atomic.Bool
+	alive.Store(true)
+	var changes atomic.Int32
+	u, _, _ := udpGatewayWith(t, m, route, time.Minute, func(o *gateway.UDPOptions) {
+		o.OnChange = func() { changes.Add(1) }
+		o.Predecessor = alive.Load
+	})
+	// The old process holds the ports of a udp route and of a tcp_udp route.
+	udpPort, releaseUDP := takeUDPPort(t)
+	tcpUDPPort, releaseTCPUDP := takeUDPPort(t)
+	routes := []gateway.UDPRoute{{ID: "udp-route", Port: udpPort, FlowIdle: time.Minute}, {ID: "tcp-udp-route", Port: tcpUDPPort, FlowIdle: time.Minute}}
+	if st := u.Apply(routes); len(st) != 0 {
+		t.Fatalf("reported during the hand-off: %v", st)
+	}
+	u.Rebind() // an early retry while the old process runs changes nothing
+	if st := u.Status(); len(st) != 0 || u.Bound(udpPort) || changes.Load() != 0 {
+		t.Fatalf("during the drain: %v, bound %v, changes %d", st, u.Bound(udpPort), changes.Load())
+	}
+	// The old process exits: one port is free, a stranger took the other.
+	alive.Store(false)
+	releaseUDP()
+	defer releaseTCPUDP() // the stranger keeps its port
+	u.Rebind()
+	st := u.Status()
+	if !u.Bound(udpPort) || len(st) != 1 || st[0].GetResourceId() != "tcp-udp-route" ||
+		st[0].GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_PORT_IN_USE || !strings.Contains(st[0].GetDetail(), strconv.Itoa(int(tcpUDPPort))) {
+		t.Fatalf("after the old process: %v, bound %v", st, u.Bound(udpPort))
+	}
+	if changes.Load() != 1 {
+		t.Fatalf("%d changes, want 1", changes.Load())
+	}
+	u.Rebind() // still held: no further change
+	if changes.Load() != 1 {
+		t.Fatalf("%d changes after a retry, want 1", changes.Load())
+	}
+
+	// No old process: a taken port is reported at once.
+	taken, release := takeUDPPort(t)
+	defer release()
+	if st := u.Apply([]gateway.UDPRoute{{ID: "udp-route", Port: taken}}); len(st) != 1 ||
+		st[0].GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_PORT_IN_USE {
+		t.Fatalf("without an old process: %v", st)
+	}
+}

@@ -42,8 +42,8 @@ flowchart LR
   ([03](../../03-connections.md#udp-routes)).
 - A connector that reaches the gateways only over TLS and HTTP/2, the fallback for networks that
   block UDP, carries every UDP payload over the flow's stream. This works, but loss on that
-  connection delays every flow on it. The route's page marks such targets as "served over TLS and
-  HTTP/2, the fallback for QUIC" ([Connector networking](../connectors/network.md)).
+  connection delays every flow on it. The route's page shows such targets' transport as "HTTP/2
+  (fallback for QUIC)" ([Connector networking](../connectors/network.md)).
 
 ## Before you start
 

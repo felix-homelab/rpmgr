@@ -4259,10 +4259,6 @@ func init() {
 	webhookDescURL := webhookFields[2].Descriptor()
 	// webhook.URLValidator is a validator for the "url" field. It is called by the builders before save.
 	webhook.URLValidator = webhookDescURL.Validators[0].(func(string) error)
-	// webhookDescSecretEnc is the schema descriptor for secret_enc field.
-	webhookDescSecretEnc := webhookFields[3].Descriptor()
-	// webhook.SecretEncValidator is a validator for the "secret_enc" field. It is called by the builders before save.
-	webhook.SecretEncValidator = webhookDescSecretEnc.Validators[0].(func([]byte) error)
 	// webhookDescEnabled is the schema descriptor for enabled field.
 	webhookDescEnabled := webhookFields[7].Descriptor()
 	// webhook.DefaultEnabled holds the default value on creation for the enabled field.

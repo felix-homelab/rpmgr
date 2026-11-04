@@ -70,7 +70,7 @@ The connector uses TCP, `h2`, when:
   ([The all-in-one's connector](#the-all-in-ones-connector)).
 
 UDP routes work over TCP too, but loss on the TCP connection then delays every UDP flow on it. The
-route's page marks such a target: **served over TLS and HTTP/2, the fallback for QUIC**.
+route's page shows such a target's transport as **HTTP/2 (fallback for QUIC)**.
 
 ## Choose a transport
 

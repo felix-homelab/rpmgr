@@ -964,6 +964,8 @@ rpmgr create gateway-group [flags]
 
 | Flag | Default | Description |
 |---|---|---|
+| `--dns-address value` |  | an IPv4 or IPv6 address its DNS names point at; repeat for more |
+| `--dns-target string` |  | the name its DNS names point at, a CNAME; empty removes the DNS target |
 | `--name string` |  | the group's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--public-hostname value` |  | a name under which its gateways are reached; repeat for more |
@@ -1148,8 +1150,10 @@ rpmgr create webhook [flags]
 |---|---|---|
 | `--disabled` |  | make it disabled; enable webhook turns it on |
 | `--event value` |  | an event type or a prefix such as route.\*; repeat for more; none means all events |
+| `--format string` |  | how events are posted: rpmgr (a signed JSON envelope, the default), discord, slack or teams (a message; the URL then comes from --url-file, and a change of format needs a new URL) |
 | `--instance` |  | the instance's endpoints, which receive instance events, for an Instance Admin, instead of the org's |
-| `--url string` |  | the https:// URL the events are sent to, without a user name, a password or a fragment |
+| `--url string` |  | the https:// URL the events are sent to, without a user name, a password or a fragment (format rpmgr) |
+| `--url-file string` |  | a file holding the chat service's webhook URL, which holds its token, or - for standard input; write-only |
 
 ## rpmgr update
 
@@ -1283,6 +1287,8 @@ rpmgr update gateway-group [flags] <id or name>
 
 | Flag | Default | Description |
 |---|---|---|
+| `--dns-address value` |  | an IPv4 or IPv6 address its DNS names point at; repeat for more |
+| `--dns-target string` |  | the name its DNS names point at, a CNAME; empty removes the DNS target |
 | `--force` |  | update without checking that it is unchanged since this command read it |
 | `--name string` |  | the group's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
@@ -1438,9 +1444,11 @@ rpmgr update webhook [flags] <id>
 | `--all-events` |  | send every event, not only the types listed |
 | `--event value` |  | an event type or a prefix such as route.\*; repeat for more; none means all events |
 | `--force` |  | update without checking that the endpoint is unchanged since this command read it |
+| `--format string` |  | how events are posted: rpmgr (a signed JSON envelope, the default), discord, slack or teams (a message; the URL then comes from --url-file, and a change of format needs a new URL) |
 | `--instance` |  | the instance's endpoints, which receive instance events, for an Instance Admin, instead of the org's |
 | `--rotate-secret` |  | replace the signing secret; the old one keeps signing for 24 h |
-| `--url string` |  | the https:// URL the events are sent to, without a user name, a password or a fragment |
+| `--url string` |  | the https:// URL the events are sent to, without a user name, a password or a fragment (format rpmgr) |
+| `--url-file string` |  | a file holding the chat service's webhook URL, which holds its token, or - for standard input; write-only |
 
 ## rpmgr enable
 

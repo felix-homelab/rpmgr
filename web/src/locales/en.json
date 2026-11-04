@@ -276,6 +276,7 @@
       "type": "Type",
       "group": "Gateway group",
       "targets": "Targets",
+      "transport": "Transport",
       "state": "Status"
     },
     "ready": "{{ready}}/{{total}} ready",
@@ -310,6 +311,7 @@
       "address": "Address",
       "weight": "Weight",
       "health": "Health",
+      "transport": "Transport",
       "state": "Status"
     },
     "noTargets": "The route has no targets.",
@@ -317,7 +319,6 @@
     "targetDisabled": "disabled",
     "unverified": "unverified",
     "unverifiedTitle": "HTTPS without checking the target's certificate",
-    "fallback": "served over TLS and HTTP/2, the fallback for QUIC",
     "runOn": "Run on the host of {{connector}}:",
     "gatewaysTitle": "Gateways not serving",
     "rejections": "Rejected by",
@@ -743,6 +744,18 @@
     "usedUnlimited": "used {{count}} times",
     "revokeAsk": "Revoke the token created {{when}}?"
   },
+  "transport": {
+    "title": "Transport",
+    "none": "—",
+    "name": {"quic": "QUIC", "h2": "HTTP/2", "wss": "WSS", "unknown": "unknown"},
+    "pinned": "{{name}} (pinned {{where}})",
+    "pin": {"route": "on the route", "connector": "on the connector", "instance": "by the instance default"},
+    "fallback": {"h2": "{{name}} (fallback for QUIC)", "wss": "{{name}} (fallback)"},
+    "onGateways_one": "{{label}} on {{count}} gateway",
+    "onGateways_other": "{{label}} on {{count}} gateways",
+    "onGateway": "{{label}} on {{name}}",
+    "summaryTitle": "Targets served over each transport"
+  },
   "gateways": {
     "title": "Gateway groups",
     "intro": "Gateway groups take public traffic and pass it to the connectors.",
@@ -1060,6 +1073,13 @@
     "none": "No webhook yet. Create one to send events to a URL.",
     "url": "URL",
     "urlHint": "An https:// address, without a user name, a password or a fragment.",
+    "format": "Format",
+    "formats": { "rpmgr": "rpmgr (signed JSON)", "discord": "Discord", "slack": "Slack", "teams": "Microsoft Teams" },
+    "formatRpmgrHint": "The event as JSON, signed with a secret that only the receiver and rpmgr know.",
+    "formatChatHint": "A message the chat service shows to people. Such an endpoint has no signing secret.",
+    "chatUrl": "Webhook URL of the service",
+    "chatUrlHint": "The incoming webhook URL from the service. It holds the service's token, so it is stored encrypted and never shown again; only its host is.",
+    "chatUrlKeep": "Leave empty to keep the stored URL, or enter a new one: the stored one cannot be shown.",
     "urlInvalid": "This is not a URL. Write it as https://hooks.example.com/rpmgr.",
     "urlHttps": "The URL must start with https://.",
     "urlParts": "The URL must not carry a user name, a password or a fragment.",

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { RouteState, type Route } from "@/gen/rpmgr/v1/route_pb";
+import { transportSummary } from "@/lib/route-transport";
 import { useOrg } from "@/session";
 import { blockedTargets, routeAddress, routeType, routeTypes, useGroupHostnames, useGroupNames, useRoutes } from "@/routes-data";
 
@@ -90,7 +91,7 @@ export function Routes() {
         <Table>
           <THead>
             <tr>
-              {["name", "type", "group", "targets", "state"].map((c) => <TH key={c}>{t(`routes.columns.${c}`)}</TH>)}
+              {["name", "type", "group", "targets", "transport", "state"].map((c) => <TH key={c}>{t(`routes.columns.${c}`)}</TH>)}
             </tr>
           </THead>
           <tbody>
@@ -106,6 +107,7 @@ export function Routes() {
                   {t("routes.ready", { ready: r.status?.targetsReady ?? 0, total: r.status?.targetsTotal ?? 0 })}
                   {blockedTargets(r) > 0 && <div className="text-warn">{t("routes.blocked", { count: blockedTargets(r) })}</div>}
                 </TD>
+                <TD>{transportSummary(r, t) || <span className="text-muted-foreground">{t("transport.none")}</span>}</TD>
                 <TD>
                   <RouteStateChip state={r.status?.state ?? RouteState.UNSPECIFIED} />
                   {(r.status?.rejections.length ?? 0) > 0 && (

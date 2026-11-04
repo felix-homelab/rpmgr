@@ -41,7 +41,7 @@ type Kind struct {
 // Kinds are the kinds of the public API's resources, by name.
 var Kinds = []Kind{
 	{Name: "route", Prefix: "rt_", Service: "rpmgr.v1.RouteService", Resource: "Route", Plural: "Routes", IDField: "route_id", Manifest: "Route",
-		Columns: []string{"gatewayGroupId", "enabled", "status.state"}, Delete: true},
+		Columns: []string{"gatewayGroupId", "enabled", "status.state", "status.transport"}, Delete: true},
 	{Name: "connector", Prefix: "con_", Service: "rpmgr.v1.ConnectorService", Resource: "Connector", Plural: "Connectors", IDField: "connector_id",
 		Manifest: "Connector", Columns: []string{"enabled", "session.connected", "session.version"}},
 	{Name: "gateway", Prefix: "gw_", Service: "rpmgr.v1.GatewayService", Resource: "Gateway", Plural: "Gateways", IDField: "gateway_id",
@@ -72,9 +72,9 @@ var Kinds = []Kind{
 	// Webhook endpoints of the org, and of the instance for an Instance Admin (--instance); a
 	// delivery is listed with its endpoint.
 	{Name: "webhook", Prefix: "whk_", Service: "rpmgr.v1.WebhookService", Resource: "Webhook", Plural: "Webhooks", IDField: "webhook_id",
-		Columns: []string{"eventTypes", "enabled", "disabledReason", "lastSuccessTime"}, Delete: true},
+		Columns: []string{"format", "eventTypes", "enabled", "disabledReason", "lastSuccessTime"}, Delete: true},
 	{Name: "instance-webhook", Prefix: "whk_", Service: "rpmgr.v1.InstanceWebhookService", Resource: "InstanceWebhook", Message: "Webhook",
-		Plural: "InstanceWebhooks", IDField: "webhook_id", Columns: []string{"eventTypes", "enabled", "disabledReason", "lastSuccessTime"}, Delete: true},
+		Plural: "InstanceWebhooks", IDField: "webhook_id", Columns: []string{"format", "eventTypes", "enabled", "disabledReason", "lastSuccessTime"}, Delete: true},
 	{Name: "webhook-delivery", Service: "rpmgr.v1.WebhookService", Resource: "WebhookDelivery", Plural: "WebhookDeliveries", Parent: "webhook_id",
 		Columns: []string{"attempt", "statusCode", "error", "sendTime", "nextAttemptTime"}, NoGet: true},
 	{Name: "instance-webhook-delivery", Service: "rpmgr.v1.InstanceWebhookService", Resource: "InstanceWebhookDelivery", Message: "WebhookDelivery",

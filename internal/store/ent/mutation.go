@@ -20201,21 +20201,23 @@ func (m *DNSZoneMutation) ResetEdge(name string) error {
 // DataSessionMutation represents an operation that mutates the DataSession nodes in the graph.
 type DataSessionMutation struct {
 	config
-	op             Op
-	typ            string
-	id             *string
-	org_id         *string
-	gateway_id     *string
-	connector_id   *string
-	transport      *datasession.Transport
-	rtt_ms         *int64
-	addrtt_ms      *int64
-	established_at *time.Time
-	reported_at    *time.Time
-	clearedFields  map[string]struct{}
-	done           bool
-	oldValue       func(context.Context) (*DataSession, error)
-	predicates     []predicate.DataSession
+	op                 Op
+	typ                string
+	id                 *string
+	org_id             *string
+	gateway_id         *string
+	connector_id       *string
+	transport          *datasession.Transport
+	rtt_ms             *int64
+	addrtt_ms          *int64
+	ready_routes       *[]string
+	appendready_routes []string
+	established_at     *time.Time
+	reported_at        *time.Time
+	clearedFields      map[string]struct{}
+	done               bool
+	oldValue           func(context.Context) (*DataSession, error)
+	predicates         []predicate.DataSession
 }
 
 var _ ent.Mutation = (*DataSessionMutation)(nil)
@@ -20522,6 +20524,71 @@ func (m *DataSessionMutation) ResetRttMs() {
 	m.addrtt_ms = nil
 }
 
+// SetReadyRoutes sets the "ready_routes" field.
+func (m *DataSessionMutation) SetReadyRoutes(s []string) {
+	m.ready_routes = &s
+	m.appendready_routes = nil
+}
+
+// ReadyRoutes returns the value of the "ready_routes" field in the mutation.
+func (m *DataSessionMutation) ReadyRoutes() (r []string, exists bool) {
+	v := m.ready_routes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReadyRoutes returns the old "ready_routes" field's value of the DataSession entity.
+// If the DataSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataSessionMutation) OldReadyRoutes(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReadyRoutes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReadyRoutes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReadyRoutes: %w", err)
+	}
+	return oldValue.ReadyRoutes, nil
+}
+
+// AppendReadyRoutes adds s to the "ready_routes" field.
+func (m *DataSessionMutation) AppendReadyRoutes(s []string) {
+	m.appendready_routes = append(m.appendready_routes, s...)
+}
+
+// AppendedReadyRoutes returns the list of values that were appended to the "ready_routes" field in this mutation.
+func (m *DataSessionMutation) AppendedReadyRoutes() ([]string, bool) {
+	if len(m.appendready_routes) == 0 {
+		return nil, false
+	}
+	return m.appendready_routes, true
+}
+
+// ClearReadyRoutes clears the value of the "ready_routes" field.
+func (m *DataSessionMutation) ClearReadyRoutes() {
+	m.ready_routes = nil
+	m.appendready_routes = nil
+	m.clearedFields[datasession.FieldReadyRoutes] = struct{}{}
+}
+
+// ReadyRoutesCleared returns if the "ready_routes" field was cleared in this mutation.
+func (m *DataSessionMutation) ReadyRoutesCleared() bool {
+	_, ok := m.clearedFields[datasession.FieldReadyRoutes]
+	return ok
+}
+
+// ResetReadyRoutes resets all changes to the "ready_routes" field.
+func (m *DataSessionMutation) ResetReadyRoutes() {
+	m.ready_routes = nil
+	m.appendready_routes = nil
+	delete(m.clearedFields, datasession.FieldReadyRoutes)
+}
+
 // SetEstablishedAt sets the "established_at" field.
 func (m *DataSessionMutation) SetEstablishedAt(t time.Time) {
 	m.established_at = &t
@@ -20628,7 +20695,7 @@ func (m *DataSessionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DataSessionMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.org_id != nil {
 		fields = append(fields, datasession.FieldOrgID)
 	}
@@ -20643,6 +20710,9 @@ func (m *DataSessionMutation) Fields() []string {
 	}
 	if m.rtt_ms != nil {
 		fields = append(fields, datasession.FieldRttMs)
+	}
+	if m.ready_routes != nil {
+		fields = append(fields, datasession.FieldReadyRoutes)
 	}
 	if m.established_at != nil {
 		fields = append(fields, datasession.FieldEstablishedAt)
@@ -20668,6 +20738,8 @@ func (m *DataSessionMutation) Field(name string) (ent.Value, bool) {
 		return m.Transport()
 	case datasession.FieldRttMs:
 		return m.RttMs()
+	case datasession.FieldReadyRoutes:
+		return m.ReadyRoutes()
 	case datasession.FieldEstablishedAt:
 		return m.EstablishedAt()
 	case datasession.FieldReportedAt:
@@ -20691,6 +20763,8 @@ func (m *DataSessionMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldTransport(ctx)
 	case datasession.FieldRttMs:
 		return m.OldRttMs(ctx)
+	case datasession.FieldReadyRoutes:
+		return m.OldReadyRoutes(ctx)
 	case datasession.FieldEstablishedAt:
 		return m.OldEstablishedAt(ctx)
 	case datasession.FieldReportedAt:
@@ -20738,6 +20812,13 @@ func (m *DataSessionMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRttMs(v)
+		return nil
+	case datasession.FieldReadyRoutes:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReadyRoutes(v)
 		return nil
 	case datasession.FieldEstablishedAt:
 		v, ok := value.(time.Time)
@@ -20797,7 +20878,11 @@ func (m *DataSessionMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *DataSessionMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(datasession.FieldReadyRoutes) {
+		fields = append(fields, datasession.FieldReadyRoutes)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -20810,6 +20895,11 @@ func (m *DataSessionMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *DataSessionMutation) ClearField(name string) error {
+	switch name {
+	case datasession.FieldReadyRoutes:
+		m.ClearReadyRoutes()
+		return nil
+	}
 	return fmt.Errorf("unknown DataSession nullable field %s", name)
 }
 
@@ -20831,6 +20921,9 @@ func (m *DataSessionMutation) ResetField(name string) error {
 		return nil
 	case datasession.FieldRttMs:
 		m.ResetRttMs()
+		return nil
+	case datasession.FieldReadyRoutes:
+		m.ResetReadyRoutes()
 		return nil
 	case datasession.FieldEstablishedAt:
 		m.ResetEstablishedAt()
@@ -25594,6 +25687,9 @@ type GatewayGroupMutation struct {
 	appendpublic_hostnames    []string
 	trusted_proxy_cidrs       *[]string
 	appendtrusted_proxy_cidrs []string
+	dns_cname                 *string
+	dns_addresses             *[]string
+	appenddns_addresses       []string
 	clearedFields             map[string]struct{}
 	done                      bool
 	oldValue                  func(context.Context) (*GatewayGroup, error)
@@ -26011,6 +26107,120 @@ func (m *GatewayGroupMutation) ResetTrustedProxyCidrs() {
 	delete(m.clearedFields, gatewaygroup.FieldTrustedProxyCidrs)
 }
 
+// SetDNSCname sets the "dns_cname" field.
+func (m *GatewayGroupMutation) SetDNSCname(s string) {
+	m.dns_cname = &s
+}
+
+// DNSCname returns the value of the "dns_cname" field in the mutation.
+func (m *GatewayGroupMutation) DNSCname() (r string, exists bool) {
+	v := m.dns_cname
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDNSCname returns the old "dns_cname" field's value of the GatewayGroup entity.
+// If the GatewayGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayGroupMutation) OldDNSCname(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDNSCname is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDNSCname requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDNSCname: %w", err)
+	}
+	return oldValue.DNSCname, nil
+}
+
+// ClearDNSCname clears the value of the "dns_cname" field.
+func (m *GatewayGroupMutation) ClearDNSCname() {
+	m.dns_cname = nil
+	m.clearedFields[gatewaygroup.FieldDNSCname] = struct{}{}
+}
+
+// DNSCnameCleared returns if the "dns_cname" field was cleared in this mutation.
+func (m *GatewayGroupMutation) DNSCnameCleared() bool {
+	_, ok := m.clearedFields[gatewaygroup.FieldDNSCname]
+	return ok
+}
+
+// ResetDNSCname resets all changes to the "dns_cname" field.
+func (m *GatewayGroupMutation) ResetDNSCname() {
+	m.dns_cname = nil
+	delete(m.clearedFields, gatewaygroup.FieldDNSCname)
+}
+
+// SetDNSAddresses sets the "dns_addresses" field.
+func (m *GatewayGroupMutation) SetDNSAddresses(s []string) {
+	m.dns_addresses = &s
+	m.appenddns_addresses = nil
+}
+
+// DNSAddresses returns the value of the "dns_addresses" field in the mutation.
+func (m *GatewayGroupMutation) DNSAddresses() (r []string, exists bool) {
+	v := m.dns_addresses
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDNSAddresses returns the old "dns_addresses" field's value of the GatewayGroup entity.
+// If the GatewayGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GatewayGroupMutation) OldDNSAddresses(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDNSAddresses is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDNSAddresses requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDNSAddresses: %w", err)
+	}
+	return oldValue.DNSAddresses, nil
+}
+
+// AppendDNSAddresses adds s to the "dns_addresses" field.
+func (m *GatewayGroupMutation) AppendDNSAddresses(s []string) {
+	m.appenddns_addresses = append(m.appenddns_addresses, s...)
+}
+
+// AppendedDNSAddresses returns the list of values that were appended to the "dns_addresses" field in this mutation.
+func (m *GatewayGroupMutation) AppendedDNSAddresses() ([]string, bool) {
+	if len(m.appenddns_addresses) == 0 {
+		return nil, false
+	}
+	return m.appenddns_addresses, true
+}
+
+// ClearDNSAddresses clears the value of the "dns_addresses" field.
+func (m *GatewayGroupMutation) ClearDNSAddresses() {
+	m.dns_addresses = nil
+	m.appenddns_addresses = nil
+	m.clearedFields[gatewaygroup.FieldDNSAddresses] = struct{}{}
+}
+
+// DNSAddressesCleared returns if the "dns_addresses" field was cleared in this mutation.
+func (m *GatewayGroupMutation) DNSAddressesCleared() bool {
+	_, ok := m.clearedFields[gatewaygroup.FieldDNSAddresses]
+	return ok
+}
+
+// ResetDNSAddresses resets all changes to the "dns_addresses" field.
+func (m *GatewayGroupMutation) ResetDNSAddresses() {
+	m.dns_addresses = nil
+	m.appenddns_addresses = nil
+	delete(m.clearedFields, gatewaygroup.FieldDNSAddresses)
+}
+
 // Where appends a list predicates to the GatewayGroupMutation builder.
 func (m *GatewayGroupMutation) Where(ps ...predicate.GatewayGroup) {
 	m.predicates = append(m.predicates, ps...)
@@ -26045,7 +26255,7 @@ func (m *GatewayGroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GatewayGroupMutation) Fields() []string {
-	fields := make([]string, 0, 6)
+	fields := make([]string, 0, 8)
 	if m.org_id != nil {
 		fields = append(fields, gatewaygroup.FieldOrgID)
 	}
@@ -26063,6 +26273,12 @@ func (m *GatewayGroupMutation) Fields() []string {
 	}
 	if m.trusted_proxy_cidrs != nil {
 		fields = append(fields, gatewaygroup.FieldTrustedProxyCidrs)
+	}
+	if m.dns_cname != nil {
+		fields = append(fields, gatewaygroup.FieldDNSCname)
+	}
+	if m.dns_addresses != nil {
+		fields = append(fields, gatewaygroup.FieldDNSAddresses)
 	}
 	return fields
 }
@@ -26084,6 +26300,10 @@ func (m *GatewayGroupMutation) Field(name string) (ent.Value, bool) {
 		return m.PublicHostnames()
 	case gatewaygroup.FieldTrustedProxyCidrs:
 		return m.TrustedProxyCidrs()
+	case gatewaygroup.FieldDNSCname:
+		return m.DNSCname()
+	case gatewaygroup.FieldDNSAddresses:
+		return m.DNSAddresses()
 	}
 	return nil, false
 }
@@ -26105,6 +26325,10 @@ func (m *GatewayGroupMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldPublicHostnames(ctx)
 	case gatewaygroup.FieldTrustedProxyCidrs:
 		return m.OldTrustedProxyCidrs(ctx)
+	case gatewaygroup.FieldDNSCname:
+		return m.OldDNSCname(ctx)
+	case gatewaygroup.FieldDNSAddresses:
+		return m.OldDNSAddresses(ctx)
 	}
 	return nil, fmt.Errorf("unknown GatewayGroup field %s", name)
 }
@@ -26155,6 +26379,20 @@ func (m *GatewayGroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTrustedProxyCidrs(v)
+		return nil
+	case gatewaygroup.FieldDNSCname:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDNSCname(v)
+		return nil
+	case gatewaygroup.FieldDNSAddresses:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDNSAddresses(v)
 		return nil
 	}
 	return fmt.Errorf("unknown GatewayGroup field %s", name)
@@ -26210,6 +26448,12 @@ func (m *GatewayGroupMutation) ClearedFields() []string {
 	if m.FieldCleared(gatewaygroup.FieldTrustedProxyCidrs) {
 		fields = append(fields, gatewaygroup.FieldTrustedProxyCidrs)
 	}
+	if m.FieldCleared(gatewaygroup.FieldDNSCname) {
+		fields = append(fields, gatewaygroup.FieldDNSCname)
+	}
+	if m.FieldCleared(gatewaygroup.FieldDNSAddresses) {
+		fields = append(fields, gatewaygroup.FieldDNSAddresses)
+	}
 	return fields
 }
 
@@ -26232,6 +26476,12 @@ func (m *GatewayGroupMutation) ClearField(name string) error {
 		return nil
 	case gatewaygroup.FieldTrustedProxyCidrs:
 		m.ClearTrustedProxyCidrs()
+		return nil
+	case gatewaygroup.FieldDNSCname:
+		m.ClearDNSCname()
+		return nil
+	case gatewaygroup.FieldDNSAddresses:
+		m.ClearDNSAddresses()
 		return nil
 	}
 	return fmt.Errorf("unknown GatewayGroup nullable field %s", name)
@@ -26258,6 +26508,12 @@ func (m *GatewayGroupMutation) ResetField(name string) error {
 		return nil
 	case gatewaygroup.FieldTrustedProxyCidrs:
 		m.ResetTrustedProxyCidrs()
+		return nil
+	case gatewaygroup.FieldDNSCname:
+		m.ResetDNSCname()
+		return nil
+	case gatewaygroup.FieldDNSAddresses:
+		m.ResetDNSAddresses()
 		return nil
 	}
 	return fmt.Errorf("unknown GatewayGroup field %s", name)
@@ -57027,6 +57283,8 @@ type WebhookMutation struct {
 	created_at          *time.Time
 	version             *int64
 	addversion          *int64
+	format              *webhook.Format
+	url_enc             *[]byte
 	clearedFields       map[string]struct{}
 	done                bool
 	oldValue            func(context.Context) (*Webhook, error)
@@ -57732,6 +57990,91 @@ func (m *WebhookMutation) ResetVersion() {
 	m.addversion = nil
 }
 
+// SetFormat sets the "format" field.
+func (m *WebhookMutation) SetFormat(w webhook.Format) {
+	m.format = &w
+}
+
+// Format returns the value of the "format" field in the mutation.
+func (m *WebhookMutation) Format() (r webhook.Format, exists bool) {
+	v := m.format
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFormat returns the old "format" field's value of the Webhook entity.
+// If the Webhook object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WebhookMutation) OldFormat(ctx context.Context) (v webhook.Format, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFormat is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFormat requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFormat: %w", err)
+	}
+	return oldValue.Format, nil
+}
+
+// ResetFormat resets all changes to the "format" field.
+func (m *WebhookMutation) ResetFormat() {
+	m.format = nil
+}
+
+// SetURLEnc sets the "url_enc" field.
+func (m *WebhookMutation) SetURLEnc(b []byte) {
+	m.url_enc = &b
+}
+
+// URLEnc returns the value of the "url_enc" field in the mutation.
+func (m *WebhookMutation) URLEnc() (r []byte, exists bool) {
+	v := m.url_enc
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldURLEnc returns the old "url_enc" field's value of the Webhook entity.
+// If the Webhook object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WebhookMutation) OldURLEnc(ctx context.Context) (v *[]byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldURLEnc is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldURLEnc requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldURLEnc: %w", err)
+	}
+	return oldValue.URLEnc, nil
+}
+
+// ClearURLEnc clears the value of the "url_enc" field.
+func (m *WebhookMutation) ClearURLEnc() {
+	m.url_enc = nil
+	m.clearedFields[webhook.FieldURLEnc] = struct{}{}
+}
+
+// URLEncCleared returns if the "url_enc" field was cleared in this mutation.
+func (m *WebhookMutation) URLEncCleared() bool {
+	_, ok := m.clearedFields[webhook.FieldURLEnc]
+	return ok
+}
+
+// ResetURLEnc resets all changes to the "url_enc" field.
+func (m *WebhookMutation) ResetURLEnc() {
+	m.url_enc = nil
+	delete(m.clearedFields, webhook.FieldURLEnc)
+}
+
 // Where appends a list predicates to the WebhookMutation builder.
 func (m *WebhookMutation) Where(ps ...predicate.Webhook) {
 	m.predicates = append(m.predicates, ps...)
@@ -57766,7 +58109,7 @@ func (m *WebhookMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WebhookMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 15)
 	if m.org_id != nil {
 		fields = append(fields, webhook.FieldOrgID)
 	}
@@ -57806,6 +58149,12 @@ func (m *WebhookMutation) Fields() []string {
 	if m.version != nil {
 		fields = append(fields, webhook.FieldVersion)
 	}
+	if m.format != nil {
+		fields = append(fields, webhook.FieldFormat)
+	}
+	if m.url_enc != nil {
+		fields = append(fields, webhook.FieldURLEnc)
+	}
 	return fields
 }
 
@@ -57840,6 +58189,10 @@ func (m *WebhookMutation) Field(name string) (ent.Value, bool) {
 		return m.CreatedAt()
 	case webhook.FieldVersion:
 		return m.Version()
+	case webhook.FieldFormat:
+		return m.Format()
+	case webhook.FieldURLEnc:
+		return m.URLEnc()
 	}
 	return nil, false
 }
@@ -57875,6 +58228,10 @@ func (m *WebhookMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldCreatedAt(ctx)
 	case webhook.FieldVersion:
 		return m.OldVersion(ctx)
+	case webhook.FieldFormat:
+		return m.OldFormat(ctx)
+	case webhook.FieldURLEnc:
+		return m.OldURLEnc(ctx)
 	}
 	return nil, fmt.Errorf("unknown Webhook field %s", name)
 }
@@ -57975,6 +58332,20 @@ func (m *WebhookMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetVersion(v)
 		return nil
+	case webhook.FieldFormat:
+		v, ok := value.(webhook.Format)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFormat(v)
+		return nil
+	case webhook.FieldURLEnc:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetURLEnc(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Webhook field %s", name)
 }
@@ -58041,6 +58412,9 @@ func (m *WebhookMutation) ClearedFields() []string {
 	if m.FieldCleared(webhook.FieldFailingSince) {
 		fields = append(fields, webhook.FieldFailingSince)
 	}
+	if m.FieldCleared(webhook.FieldURLEnc) {
+		fields = append(fields, webhook.FieldURLEnc)
+	}
 	return fields
 }
 
@@ -58075,6 +58449,9 @@ func (m *WebhookMutation) ClearField(name string) error {
 		return nil
 	case webhook.FieldFailingSince:
 		m.ClearFailingSince()
+		return nil
+	case webhook.FieldURLEnc:
+		m.ClearURLEnc()
 		return nil
 	}
 	return fmt.Errorf("unknown Webhook nullable field %s", name)
@@ -58122,6 +58499,12 @@ func (m *WebhookMutation) ResetField(name string) error {
 		return nil
 	case webhook.FieldVersion:
 		m.ResetVersion()
+		return nil
+	case webhook.FieldFormat:
+		m.ResetFormat()
+		return nil
+	case webhook.FieldURLEnc:
+		m.ResetURLEnc()
 		return nil
 	}
 	return fmt.Errorf("unknown Webhook field %s", name)

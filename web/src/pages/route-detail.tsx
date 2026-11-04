@@ -20,13 +20,13 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
-import { ConnectorService, DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import type { Revision } from "@/gen/rpmgr/v1/common_pb";
-import { HealthCheckType, RouteService, RouteState, UpstreamVerification, type Route, type RouteTarget } from "@/gen/rpmgr/v1/route_pb";
+import { HealthCheckType, RouteService, RouteState, UpstreamVerification, type Route, type RouteTarget, type TargetTransport } from "@/gen/rpmgr/v1/route_pb";
 import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { RouteTraffic } from "@/pages/route-traffic";
 import { RoutePolicies } from "@/route-form/route-policies";
 import { Reason, reasonOf } from "@/lib/errors";
+import { groupLabel, targetGroups, transportSummary } from "@/lib/route-transport";
 import { TargetForm, type Written } from "@/route-form/target-form";
 import { policyCommand, routeAddress, routeType, useAgentNames, useGroupHostnames, useGroupNames } from "@/routes-data";
 import { useOrg } from "@/session";
@@ -161,6 +161,9 @@ export function RouteDetail() {
             {status && status.gatewaysTotal > 0 && (
               <span className="text-muted-foreground">{t("route.gateways", { serving: status.gatewaysServing, total: status.gatewaysTotal })}</span>
             )}
+            {transportSummary(r, t) !== "" && (
+              <span className="text-muted-foreground" title={t("transport.summaryTitle")}>{t("transport.title")}: {transportSummary(r, t)}</span>
+            )}
           </dd>
         </div>
       </dl>
@@ -200,12 +203,12 @@ export function RouteDetail() {
           <Table framed={false}>
             <THead>
               <tr>
-                {["connector", "address", "weight", "health", "state"].map((c) => <TH key={c}>{t(`route.columns.${c}`)}</TH>)}
+                {["connector", "address", "weight", "health", "transport", "state"].map((c) => <TH key={c}>{t(`route.columns.${c}`)}</TH>)}
               </tr>
             </THead>
             <tbody>
               {r.targets.map((tg) => (
-                <TargetRow key={tg.id} route={r} target={tg} connector={name(tg.connectorId)}
+                <TargetRow key={tg.id} route={r} target={tg} connector={name(tg.connectorId)} name={name}
                   onEdit={() => setEditing(tg.id)}
                   onRemove={() => remove.mutateAsync({ routeTargetId: tg.id, etag: tg.etag }).then((res) => done({ revision: res.revision, status: res.applyStatus }))} />
               ))}
@@ -225,23 +228,15 @@ export function RouteDetail() {
   );
 }
 
-// TargetRow shows a target and whether it serves; a blocked one gets the command for its host, and
-// a served one the transport its connector uses.
-function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
-  route: Route; target: RouteTarget; connector: string; onEdit: () => void; onRemove: () => Promise<void>;
+// TargetRow shows a target, whether it serves and the transport it is served over; a blocked one
+// gets the command for its host.
+function TargetRow({ route: r, target, connector, name, onEdit, onRemove }: {
+  route: Route; target: RouteTarget; connector: string; name: (id: string) => string; onEdit: () => void; onRemove: () => Promise<void>;
 }) {
   const { t } = useTranslation();
   // A target whose health check has not decided yet still serves (D156); its Health cell says so.
   const problem = r.status?.notServing.find((n) => n.id === target.id && n.reason !== "TARGET_UNKNOWN");
-  const status = useQuery(ConnectorService.method.getConnectorStatus, { connectorId: target.connectorId });
-  const own = useQuery(ConnectorService.method.getConnector, { connectorId: target.connectorId });
-  const transports = new Set(status.data?.status?.dataSessions.map((s) => s.transport));
   const address = target.address.case === "hostPort" ? `${target.address.value.host}:${target.address.value.port}` : target.address.value ?? "";
-  // Only a served target on auto falls back: a pin never does, and one pinned to QUIC without it
-  // does not serve (docs/03-connections.md, "Transport selection").
-  const pinned = (p?: DataTransport) => p === DataTransport.H2 || p === DataTransport.QUIC;
-  const fallback = !problem && target.enabled && transports.has(DataTransport.H2) && !transports.has(DataTransport.QUIC) &&
-    !pinned(r.transport) && !pinned(own.data?.connector?.transport);
   const [asking, setAsking] = useState(false);
   return (
     <TR>
@@ -254,6 +249,7 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
       </TD>
       <TD>{target.weight}</TD>
       <TD><TargetHealth route={r} target={target} /></TD>
+      <TD><TargetTransportCell tt={r.status?.targetTransports.find((x) => x.targetId === target.id)} serving={target.enabled && !problem} name={name} /></TD>
       <TD>
         {!target.enabled ? (
           <Status look="off">{t("route.targetDisabled")}</Status>
@@ -262,7 +258,6 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
         ) : (
           <Status look="ok">{t("route.targetReady")}</Status>
         )}
-        {fallback && <div className="mt-1 text-muted-foreground">{t("route.fallback")}</div>}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {asking ? (
             <>
@@ -285,6 +280,29 @@ function TargetRow({ route: r, target, connector, onEdit, onRemove }: {
         )}
       </TD>
     </TR>
+  );
+}
+
+// TargetTransportCell says which transport a target's streams take, per gateway where the gateways
+// differ (docs/03-connections.md, "Transport selection"). Nothing where the target does not serve.
+function TargetTransportCell({ tt, serving, name }: { tt?: TargetTransport; serving: boolean; name: (id: string) => string }) {
+  const { t } = useTranslation();
+  const groups = serving ? targetGroups(tt) : [];
+  if (groups.length === 0) {
+    return <span className="text-muted-foreground">{t("transport.none")}</span>;
+  }
+  return (
+    <div className="grid gap-1">
+      {groups.map((g) => {
+        const label = groupLabel(g.key, tt?.pinnedBy ?? 0, t);
+        const names = g.gateways.map(name).join(", ");
+        // One group names no gateway; several say where each applies, the names on hover.
+        const text = groups.length === 1 ? label
+          : g.gateways.length === 1 ? t("transport.onGateway", { label, name: names })
+          : t("transport.onGateways", { label, count: g.gateways.length });
+        return <span key={g.key} title={names}>{text}</span>;
+      })}
+    </div>
   );
 }
 

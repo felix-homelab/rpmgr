@@ -137,13 +137,28 @@ enum WebhookDisabledReason {
   WEBHOOK_DISABLED_REASON_PERSON = 2;
 }
 
+// WebhookFormat is how an endpoint's events are posted (docs/07-api.md, "Webhooks (Phase 2)").
+enum WebhookFormat {
+  // On a request: the default, rpmgr. Never in an answer.
+  WEBHOOK_FORMAT_UNSPECIFIED = 0;
+  // The signed JSON envelope.
+  WEBHOOK_FORMAT_RPMGR = 1;
+  // A Discord incoming webhook: an embed.
+  WEBHOOK_FORMAT_DISCORD = 2;
+  // A Slack incoming webhook: text and blocks.
+  WEBHOOK_FORMAT_SLACK = 3;
+  // A Microsoft Teams workflows webhook: an Adaptive Card.
+  WEBHOOK_FORMAT_TEAMS = 4;
+}
+
 // Webhook is one endpoint. It never carries the secret.
 message Webhook {
   // The endpoint's ID, whk_…; output only.
   string id = 1;
   // The org; output only. Empty for an instance endpoint.
   string org_id = 2;
-  // Where events are posted: an https:// URL without credentials.
+  // Where events are posted: an https:// URL without credentials. Of a chat format it is the
+  // scheme and host only, and is empty on a request; the URL is secret_url.
   string url = 3;
   // The event types the endpoint wants, by name or by prefix such as route.*; none means all.
   repeated string event_types = 4;
@@ -151,7 +166,7 @@ message Webhook {
   bool enabled = 5;
   // Why it is disabled; output only.
   WebhookDisabledReason disabled_reason = 6;
-  // Whether the endpoint has a secret; output only, always true.
+  // Whether the endpoint has a signing secret; output only, false for a chat format.
   bool secret_set = 7;
   // Whether the previous secret still signs; output only.
   bool previous_secret_signs = 8;
@@ -165,6 +180,14 @@ message Webhook {
   google.protobuf.Timestamp create_time = 12;
   // The version to send back with an update or a deletion; output only.
   string etag = 13;
+  // How events are posted; rpmgr if not set on a request. Changing it needs a new secret_url.
+  WebhookFormat format = 14;
+  // The URL of a chat format's incoming webhook, which holds the service's token. Write-only: it
+  // is stored under the KEK, never returned and redacted in the audit log; empty in every answer.
+  string secret_url = 15 [
+    (rpmgr.v1.sensitive) = true,
+    (buf.validate.field).string.max_len = 2048
+  ];
 }
 
 // WebhookDelivery is one attempt to deliver an event.

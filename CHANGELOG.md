@@ -10,6 +10,31 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+### Added
+
+- A webhook endpoint has a format: `rpmgr`, as before, or `discord`, `slack` or `teams`, which posts
+  each event as a message people read in the chat service, with the summary as the title, the
+  event's type, organisation, actor, subject and time as fields, and an alert red when it fires
+  and green when it resolves. Set it with `rpmgr create webhook --format slack --url-file <file>`
+  or the API's `format` and `secretUrl`, or the **Format** of **New webhook…** in the web UI. The
+  service's URL holds its token, so it is stored
+  encrypted, can be entered but never read back, and is shown as its scheme and host only; such an
+  endpoint has no signing secret and cannot be rotated. A `429` from the service delays the next
+  attempt by what it asks, never less than the ordinary retry delay, and is no failure of the
+  endpoint until the fifth attempt of an event. (#1060)
+- A route shows the transport each of its targets is served over, always. The route's page has a
+  Transport column in its targets, per gateway where the gateways differ, with the raced, fallback
+  and pinned cases told apart and `unknown` where a gateway does not report it; the route's header
+  and the list of routes sum it up, `rpmgr get route` has a TRANSPORT column, and the route's
+  status in the API has `target_transports`. A gateway of an earlier release reports no
+  transport, which shows as `unknown`
+  ([03](docs/03-connections.md#transport-selection)). (#1075)
+
+### Fixed
+
+- A `udp` or `tcp_udp` route no longer shows "the port is in use on the gateway" while the old
+  process of a restart with hand-off still serves its port. (#1076)
+
 ## [0.3.0] - 2026-11-04
 
 **Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):

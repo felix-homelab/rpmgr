@@ -7,7 +7,7 @@ of the receiver's and the API therefore lets no other role read it. The how-to p
 format of the events, how to check a signature and what happens when an endpoint fails, is
 [Webhooks](../operations/webhooks.md).
 
-![The Webhooks page with a new signing secret above two endpoints](../images/web/webhooks.png)
+![The Webhooks page with a new signing secret above two endpoints and a Slack endpoint](../images/web/webhooks.png)
 
 ## The endpoints
 
@@ -27,9 +27,16 @@ Each endpoint is a row with its URL, its **state**, its event types and when it 
 
 **New webhook…** opens a form; **Edit** in a row opens it with the endpoint's values.
 
+- **Format** is `rpmgr (signed JSON)`, the default, or **Discord**, **Slack** or **Microsoft
+  Teams**, which post each event as a message people read in the chat service.
 - **URL** is an `https://` address without a user name, a password or a fragment. The page checks
   this before it sends anything; the server checks the rest, such as the length and the receivers
-  it may not reach, and its reason is shown above the buttons.
+  it may not reach, and its reason is shown above the buttons. For a chat format the field is
+  **Webhook URL of the service**, the incoming webhook URL you copied there. It holds the service's
+  token, so it is stored encrypted and never shown again: the row shows only its host, such as
+  `https://hooks.slack.com`, and when you edit the endpoint the field is empty. Leave it empty to
+  keep the stored URL, or enter a new one. Changing the format needs a new URL, because a URL
+  belongs to its service; a chat endpoint cannot be changed back to `rpmgr`, make a new one.
 - **Event types** are names or prefixes such as `route.*`, separated by commas. Empty means all
   events.
 - **Enabled** switches the endpoint on or off.
@@ -38,7 +45,9 @@ Each endpoint is a row with its URL, its **state**, its event types and when it 
 
 ## The signing secret
 
-Creating an endpoint, and **Rotate secret…**, show the **Signing secret** above the list. It is
+An endpoint of the format `rpmgr` has a signing secret; a chat endpoint has none, as the services
+verify none, so creating one shows no secret and its row has no **Rotate secret…**. Creating an
+`rpmgr` endpoint, and **Rotate secret…**, show the **Signing secret** above the list. It is
 shown once: no page, command or API call reads it back. **Copy** puts it on the clipboard; **Show**
 reveals it where the browser cannot copy. Store it where the receiver can check signatures with it,
 then choose **I have stored it**, which removes it from the page. A secret you did not store is

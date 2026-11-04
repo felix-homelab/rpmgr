@@ -616,6 +616,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			datasession.FieldConnectorID:   {Type: field.TypeString, Column: datasession.FieldConnectorID},
 			datasession.FieldTransport:     {Type: field.TypeEnum, Column: datasession.FieldTransport},
 			datasession.FieldRttMs:         {Type: field.TypeInt64, Column: datasession.FieldRttMs},
+			datasession.FieldReadyRoutes:   {Type: field.TypeJSON, Column: datasession.FieldReadyRoutes},
 			datasession.FieldEstablishedAt: {Type: field.TypeTime, Column: datasession.FieldEstablishedAt},
 			datasession.FieldReportedAt:    {Type: field.TypeTime, Column: datasession.FieldReportedAt},
 		},
@@ -741,6 +742,8 @@ var schemaGraph = func() *sqlgraph.Schema {
 			gatewaygroup.FieldRegion:            {Type: field.TypeString, Column: gatewaygroup.FieldRegion},
 			gatewaygroup.FieldPublicHostnames:   {Type: field.TypeJSON, Column: gatewaygroup.FieldPublicHostnames},
 			gatewaygroup.FieldTrustedProxyCidrs: {Type: field.TypeJSON, Column: gatewaygroup.FieldTrustedProxyCidrs},
+			gatewaygroup.FieldDNSCname:          {Type: field.TypeString, Column: gatewaygroup.FieldDNSCname},
+			gatewaygroup.FieldDNSAddresses:      {Type: field.TypeJSON, Column: gatewaygroup.FieldDNSAddresses},
 		},
 	}
 	graph.Nodes[30] = &sqlgraph.Node{
@@ -1570,6 +1573,8 @@ var schemaGraph = func() *sqlgraph.Schema {
 			webhook.FieldFailingSince:      {Type: field.TypeTime, Column: webhook.FieldFailingSince},
 			webhook.FieldCreatedAt:         {Type: field.TypeTime, Column: webhook.FieldCreatedAt},
 			webhook.FieldVersion:           {Type: field.TypeInt64, Column: webhook.FieldVersion},
+			webhook.FieldFormat:            {Type: field.TypeEnum, Column: webhook.FieldFormat},
+			webhook.FieldURLEnc:            {Type: field.TypeBytes, Column: webhook.FieldURLEnc},
 		},
 	}
 	graph.Nodes[71] = &sqlgraph.Node{
@@ -4344,6 +4349,11 @@ func (f *DataSessionFilter) WhereRttMs(p entql.Int64P) {
 	f.Where(p.Field(datasession.FieldRttMs))
 }
 
+// WhereReadyRoutes applies the entql json.RawMessage predicate on the ready_routes field.
+func (f *DataSessionFilter) WhereReadyRoutes(p entql.BytesP) {
+	f.Where(p.Field(datasession.FieldReadyRoutes))
+}
+
 // WhereEstablishedAt applies the entql time.Time predicate on the established_at field.
 func (f *DataSessionFilter) WhereEstablishedAt(p entql.TimeP) {
 	f.Where(p.Field(datasession.FieldEstablishedAt))
@@ -4898,6 +4908,16 @@ func (f *GatewayGroupFilter) WherePublicHostnames(p entql.BytesP) {
 // WhereTrustedProxyCidrs applies the entql json.RawMessage predicate on the trusted_proxy_cidrs field.
 func (f *GatewayGroupFilter) WhereTrustedProxyCidrs(p entql.BytesP) {
 	f.Where(p.Field(gatewaygroup.FieldTrustedProxyCidrs))
+}
+
+// WhereDNSCname applies the entql string predicate on the dns_cname field.
+func (f *GatewayGroupFilter) WhereDNSCname(p entql.StringP) {
+	f.Where(p.Field(gatewaygroup.FieldDNSCname))
+}
+
+// WhereDNSAddresses applies the entql json.RawMessage predicate on the dns_addresses field.
+func (f *GatewayGroupFilter) WhereDNSAddresses(p entql.BytesP) {
+	f.Where(p.Field(gatewaygroup.FieldDNSAddresses))
 }
 
 // addPredicate implements the predicateAdder interface.
@@ -8452,6 +8472,16 @@ func (f *WebhookFilter) WhereCreatedAt(p entql.TimeP) {
 // WhereVersion applies the entql int64 predicate on the version field.
 func (f *WebhookFilter) WhereVersion(p entql.Int64P) {
 	f.Where(p.Field(webhook.FieldVersion))
+}
+
+// WhereFormat applies the entql string predicate on the format field.
+func (f *WebhookFilter) WhereFormat(p entql.StringP) {
+	f.Where(p.Field(webhook.FieldFormat))
+}
+
+// WhereURLEnc applies the entql []byte predicate on the url_enc field.
+func (f *WebhookFilter) WhereURLEnc(p entql.BytesP) {
+	f.Where(p.Field(webhook.FieldURLEnc))
 }
 
 // addPredicate implements the predicateAdder interface.
