@@ -21,6 +21,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/dns"
+	"github.com/felix-homelab/rpmgr/internal/dns/budget"
 	"github.com/felix-homelab/rpmgr/internal/dns/cloudflare"
 	"github.com/felix-homelab/rpmgr/internal/dns/providers"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
@@ -648,6 +649,10 @@ func TestDnsProviders_Delete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The provider has taken requests, so its budget row exists.
+	if err := e.dnsp.Budget.Take(e.sys, p.GetId(), budget.Job); err != nil {
+		t.Fatal(err)
+	}
 	del := func(etag string) error {
 		_, err := ada.dnsp.DeleteDnsProvider(ctx, connect.NewRequest(&rpmgrv1.DeleteDnsProviderRequest{DnsProviderId: p.GetId(), Etag: etag}))
 		return err
@@ -664,6 +669,9 @@ func TestDnsProviders_Delete(t *testing.T) {
 	}
 	if n := e.db.Client().DNSProvider.Query().CountX(e.sys); n != 0 {
 		t.Error("the provider is still there")
+	}
+	if n := e.db.Client().DNSRateBudget.Query().CountX(e.sys); n != 0 {
+		t.Errorf("%d rate budgets outlive the provider", n)
 	}
 	if n := e.db.Client().SecretMeta.Query().Where(secretmeta.TableName("dns_providers")).CountX(e.sys); n != 0 {
 		t.Errorf("%d secrets_meta rows outlive the provider", n)
@@ -720,6 +728,10 @@ func TestDnsProviders_ListZones(t *testing.T) {
 	}
 	if _, err := ada.dnsp.ListProviderZones(ctx, connect.NewRequest(&rpmgrv1.ListProviderZonesRequest{DnsProviderId: "dnp_missing"})); code(err) != connect.CodeNotFound {
 		t.Errorf("a missing provider: %v", err)
+	}
+	// A 429 of the provider blocks the provider's budget for the DNS job's replicas as well.
+	if st, err := e.dnsp.Budget.Status(e.sys, p.GetId()); err != nil || st.Blocked != time.Minute {
+		t.Errorf("the 429 blocks the budget for %v, %v; want a minute", st.Blocked, err)
 	}
 }
 

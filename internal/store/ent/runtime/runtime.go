@@ -31,6 +31,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsnamestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsratebudget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -1525,6 +1526,80 @@ func init() {
 	// dnsprovider.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	dnsprovider.IDValidator = func() func(string) error {
 		validators := dnsproviderDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	dnsratebudgetMixin := schema.DNSRateBudget{}.Mixin()
+	dnsratebudget.Policy = privacy.NewPolicies(dnsratebudgetMixin[0], schema.DNSRateBudget{})
+	dnsratebudget.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := dnsratebudget.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	dnsratebudgetMixinHooks0 := dnsratebudgetMixin[0].Hooks()
+	dnsratebudgetMixinHooks1 := dnsratebudgetMixin[1].Hooks()
+
+	dnsratebudget.Hooks[1] = dnsratebudgetMixinHooks0[0]
+
+	dnsratebudget.Hooks[2] = dnsratebudgetMixinHooks1[0]
+	dnsratebudgetMixinInters0 := dnsratebudgetMixin[0].Interceptors()
+	dnsratebudget.Interceptors[0] = dnsratebudgetMixinInters0[0]
+	dnsratebudgetMixinFields0 := dnsratebudgetMixin[0].Fields()
+	_ = dnsratebudgetMixinFields0
+	dnsratebudgetMixinFields1 := dnsratebudgetMixin[1].Fields()
+	_ = dnsratebudgetMixinFields1
+	dnsratebudgetFields := schema.DNSRateBudget{}.Fields()
+	_ = dnsratebudgetFields
+	// dnsratebudgetDescOrgID is the schema descriptor for org_id field.
+	dnsratebudgetDescOrgID := dnsratebudgetMixinFields0[0].Descriptor()
+	// dnsratebudget.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	dnsratebudget.OrgIDValidator = dnsratebudgetDescOrgID.Validators[0].(func(string) error)
+	// dnsratebudgetDescVersion is the schema descriptor for version field.
+	dnsratebudgetDescVersion := dnsratebudgetMixinFields1[0].Descriptor()
+	// dnsratebudget.DefaultVersion holds the default value on creation for the version field.
+	dnsratebudget.DefaultVersion = dnsratebudgetDescVersion.Default.(int64)
+	// dnsratebudget.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	dnsratebudget.VersionValidator = dnsratebudgetDescVersion.Validators[0].(func(int64) error)
+	// dnsratebudgetDescDNSProviderID is the schema descriptor for dns_provider_id field.
+	dnsratebudgetDescDNSProviderID := dnsratebudgetFields[1].Descriptor()
+	// dnsratebudget.DNSProviderIDValidator is a validator for the "dns_provider_id" field. It is called by the builders before save.
+	dnsratebudget.DNSProviderIDValidator = dnsratebudgetDescDNSProviderID.Validators[0].(func(string) error)
+	// dnsratebudgetDescWindowStartedAt is the schema descriptor for window_started_at field.
+	dnsratebudgetDescWindowStartedAt := dnsratebudgetFields[2].Descriptor()
+	// dnsratebudget.DefaultWindowStartedAt holds the default value on creation for the window_started_at field.
+	dnsratebudget.DefaultWindowStartedAt = dnsratebudgetDescWindowStartedAt.Default.(func() time.Time)
+	// dnsratebudgetDescUsed is the schema descriptor for used field.
+	dnsratebudgetDescUsed := dnsratebudgetFields[3].Descriptor()
+	// dnsratebudget.DefaultUsed holds the default value on creation for the used field.
+	dnsratebudget.DefaultUsed = dnsratebudgetDescUsed.Default.(int)
+	// dnsratebudget.UsedValidator is a validator for the "used" field. It is called by the builders before save.
+	dnsratebudget.UsedValidator = dnsratebudgetDescUsed.Validators[0].(func(int) error)
+	// dnsratebudgetDescDns01Used is the schema descriptor for dns01_used field.
+	dnsratebudgetDescDns01Used := dnsratebudgetFields[4].Descriptor()
+	// dnsratebudget.DefaultDns01Used holds the default value on creation for the dns01_used field.
+	dnsratebudget.DefaultDns01Used = dnsratebudgetDescDns01Used.Default.(int)
+	// dnsratebudget.Dns01UsedValidator is a validator for the "dns01_used" field. It is called by the builders before save.
+	dnsratebudget.Dns01UsedValidator = dnsratebudgetDescDns01Used.Validators[0].(func(int) error)
+	// dnsratebudgetDescID is the schema descriptor for id field.
+	dnsratebudgetDescID := dnsratebudgetFields[0].Descriptor()
+	// dnsratebudget.DefaultID holds the default value on creation for the id field.
+	dnsratebudget.DefaultID = dnsratebudgetDescID.Default.(func() string)
+	// dnsratebudget.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	dnsratebudget.IDValidator = func() func(string) error {
+		validators := dnsratebudgetDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

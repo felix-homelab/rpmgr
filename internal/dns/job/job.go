@@ -21,6 +21,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/dns"
 	"github.com/felix-homelab/rpmgr/internal/dns/apply"
+	"github.com/felix-homelab/rpmgr/internal/dns/budget"
 	"github.com/felix-homelab/rpmgr/internal/dns/compile"
 	"github.com/felix-homelab/rpmgr/internal/dns/plan"
 	"github.com/felix-homelab/rpmgr/internal/dns/providers"
@@ -64,6 +65,10 @@ type Options struct {
 	Sealer *secret.Sealer
 	// Dial makes the client of a provider account; nil is providers.Dial.
 	Dial providers.Dialer
+	// Budget, if set, is the request budget of the providers, shared with the other replicas and
+	// with DNS-01: every request the job sends is taken from it (docs/15-dns.md, "Batches,
+	// failures and the rate budget"). Nil: no budget, for tests of other things.
+	Budget *budget.Budget
 	// TrustDomain is this instance's, in every marker.
 	TrustDomain string
 	// Reserved returns the names that are never written: the controller's public URL and aliases,
@@ -321,7 +326,11 @@ func (j *Job) provider(ctx context.Context, z *ent.DNSZone) (dns.Provider, error
 	if err != nil {
 		return nil, fmt.Errorf("the provider's token cannot be opened: %w", err)
 	}
-	return j.o.Dial(string(p.Kind), p.AccountID, tok)
+	prov, err := j.o.Dial(string(p.Kind), p.AccountID, tok)
+	if err != nil || j.o.Budget == nil {
+		return prov, err
+	}
+	return j.o.Budget.Wrap(prov, p.ID, budget.Job), nil
 }
 
 // providerStatus maps the end of a pass to the zone's provider_status; ok is false for a stop that

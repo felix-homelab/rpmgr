@@ -62,7 +62,8 @@ type Capabilities struct {
 	ApexCNAME bool // a CNAME at the zone apex works
 }
 
-// Provider is a DNS provider account. Implementations are safe for concurrent use.
+// Provider is a DNS provider account. Implementations are safe for concurrent use, and take each
+// request they send from the Gate in the context of the call, if there is one.
 type Provider interface {
 	// Verify checks the credential and returns what the provider says about it.
 	Verify(ctx context.Context) (TokenInfo, error)
@@ -74,6 +75,29 @@ type Provider interface {
 	Apply(ctx context.Context, zoneID string, b Batch) error
 	// Caps returns the provider's capabilities.
 	Caps() Capabilities
+}
+
+// Gate is the budget a provider client takes each request from. The client calls Take before every
+// request it sends, a page of a listing as much as a batch, and sends nothing if it fails. A Gate
+// reaches the client in the context of the call (WithGate), so the same client serves callers
+// with different budgets (docs/15-dns.md, "Batches, failures and the rate budget").
+type Gate interface {
+	// Take takes one request from the budget. It fails with RateLimited when the budget is spent or
+	// blocked.
+	Take(ctx context.Context) error
+}
+
+type gateKey struct{}
+
+// WithGate returns ctx with the gate a provider client takes its requests from.
+func WithGate(ctx context.Context, g Gate) context.Context {
+	return context.WithValue(ctx, gateKey{}, g)
+}
+
+// GateFrom returns the gate in ctx, nil if there is none.
+func GateFrom(ctx context.Context) Gate {
+	g, _ := ctx.Value(gateKey{}).(Gate)
+	return g
 }
 
 // The kinds of failure a provider reports. Test for them with errors.Is.
