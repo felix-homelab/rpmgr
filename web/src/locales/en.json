@@ -18,6 +18,7 @@
     "connectors": "Connectors",
     "gateways": "Gateways",
     "domains": "Domains & certificates",
+    "dns": "DNS",
     "policies": "Access policies",
     "org": "Organisation",
     "audit": "Audit log",
@@ -55,7 +56,12 @@
       "revocation_log_on_host": "Revocation log not yet off-host",
       "webhook_failing": "Webhook endpoint failing",
       "audit_sink_backlog": "Audit sink backlog",
-      "cloudflare_ranges_stale": "Cloudflare IP ranges stale"
+      "cloudflare_ranges_stale": "Cloudflare IP ranges stale",
+      "dns_conflict": "DNS name in conflict",
+      "dns_zone_held": "DNS zone held",
+      "dns_sync_failing": "DNS sync failing",
+      "dns_record_drifted": "DNS record drifted",
+      "dns_provider_token": "DNS provider token invalid or expiring"
     }
   },
   "draining": {
@@ -912,6 +918,7 @@
     "title": "DNS",
     "intro": "Connect a DNS provider and import its zones. An imported zone starts held: nothing is published until its first plan is approved.",
     "providers": "DNS providers",
+    "namesLink": "DNS names",
     "zones": "Managed zones",
     "connect": "Connect a provider",
     "connectTitle": "Connect a DNS provider",

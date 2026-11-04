@@ -116,6 +116,8 @@ describe("DNS providers and zones", () => {
     const denied = await zone("example.net");
     expect(denied.getByText("permission denied")).toBeTruthy();
     expect(denied.getByText(/The token has no permission for example\.net/)).toBeTruthy();
+    // The DNS names are one link away.
+    expect(screen.getByRole("link", { name: "DNS names" }).getAttribute("href")).toBe("/dns-names");
   });
 
   it("connects a provider after a step-up, with a write-only token that the page forgets", async () => {

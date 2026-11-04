@@ -62,7 +62,7 @@ const connectorDetail = createRoute({ getParentRoute: () => app, path: "/connect
 const gateways = createRoute({ getParentRoute: () => app, path: "/gateways", component: Gateways });
 const gatewayGroup = createRoute({ getParentRoute: () => app, path: "/gateways/$groupId", component: GatewayGroupPage });
 const domains = createRoute({ getParentRoute: () => app, path: "/domains", component: DomainsPage });
-// DNS providers and zones: its own chunk, and no sidebar entry until the controller serves the DNS services.
+// DNS providers and zones: its own chunk.
 const dns = createRoute({ getParentRoute: () => app, path: "/dns", component: lazyRouteComponent(() => import("@/pages/dns"), "DnsPage") });
 const dnsZone = createRoute({ getParentRoute: () => app, path: "/dns/$zoneId", component: lazyRouteComponent(() => import("@/pages/dns-zone"), "DnsZonePage") });
 const dnsNames = createRoute({ getParentRoute: () => app, path: "/dns-names", component: lazyRouteComponent(() => import("@/pages/dns-names"), "DnsNamesPage") });
