@@ -1,4 +1,4 @@
-h1:e/yR2XpWfZUuDjmzUSRttzRd5x0Yd3MoUQhwAjVTM2Y=
+h1:Orctv5EdImKZ4N+8wqF+w2r76epSDR4Y7X+akJwHynk=
 20261009220804_baseline.sql h1:3YnrznDnj07R9ghUsKGrAaoH81vUNv9tKMjohnF7NbI=
 20261013061722_agent_names_active.sql h1:YBZGGRxkqNhw3g8AAlmxBulLeHSa0HXuN/5hA2EuZJc=
 20261014071550_target_tls_verification.sql h1:7FaM1r92ArAAXb64nJni/M6AAFUGjjZdTOQm0iSFORw=
@@ -32,3 +32,4 @@ h1:e/yR2XpWfZUuDjmzUSRttzRd5x0Yd3MoUQhwAjVTM2Y=
 20261104102658_dns_name_status.sql h1:P6iAtdwn6zQaIMhTNXoBetrOdgK+a92iYjYffPvjjA0=
 20261104104256_dns_records_corrected_at.sql h1:MHSXzUrWlVldODGca6U03l89tXshU2FsTiDOgWRaFm8=
 20261104110202_webhook_chat_options.sql h1:X5pNyiUDdKjQmwL4eJTwmxJe4PNZHqu0+QNYIYvZF0s=
+20261104112031_dns_rate_budgets.sql h1:K62khS33tRaf/yH035pQs93s3Xh4gMJnHkrALVet+ec=

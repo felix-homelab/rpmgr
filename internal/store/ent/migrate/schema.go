@@ -760,6 +760,43 @@ var (
 			},
 		},
 	}
+	// DNSRateBudgetsColumns holds the columns for the "dns_rate_budgets" table.
+	DNSRateBudgetsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "window_started_at", Type: field.TypeTime},
+		{Name: "used", Type: field.TypeInt, Default: 0},
+		{Name: "dns01_used", Type: field.TypeInt, Default: 0},
+		{Name: "blocked_until", Type: field.TypeTime, Nullable: true},
+		{Name: "dns_provider_id", Type: field.TypeString},
+	}
+	// DNSRateBudgetsTable holds the schema information for the "dns_rate_budgets" table.
+	DNSRateBudgetsTable = &schema.Table{
+		Name:       "dns_rate_budgets",
+		Columns:    DNSRateBudgetsColumns,
+		PrimaryKey: []*schema.Column{DNSRateBudgetsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "dns_rate_budgets_dns_providers_dns_provider",
+				Columns:    []*schema.Column{DNSRateBudgetsColumns[7]},
+				RefColumns: []*schema.Column{DNSProvidersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "dnsratebudget_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{DNSRateBudgetsColumns[1], DNSRateBudgetsColumns[0]},
+			},
+			{
+				Name:    "dnsratebudget_dns_provider_id",
+				Unique:  true,
+				Columns: []*schema.Column{DNSRateBudgetsColumns[7]},
+			},
+		},
+	}
 	// DNSRecordsColumns holds the columns for the "dns_records" table.
 	DNSRecordsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -2549,6 +2586,7 @@ var (
 		DNSNamesTable,
 		DNSNameStatusTable,
 		DNSProvidersTable,
+		DNSRateBudgetsTable,
 		DNSRecordsTable,
 		DNSZonesTable,
 		DataSessionsTable,
@@ -2678,6 +2716,10 @@ func init() {
 	}
 	DNSProvidersTable.Annotation = &entsql.Annotation{
 		Table: "dns_providers",
+	}
+	DNSRateBudgetsTable.ForeignKeys[0].RefTable = DNSProvidersTable
+	DNSRateBudgetsTable.Annotation = &entsql.Annotation{
+		Table: "dns_rate_budgets",
 	}
 	DNSRecordsTable.ForeignKeys[0].RefTable = DNSZonesTable
 	DNSRecordsTable.Annotation = &entsql.Annotation{

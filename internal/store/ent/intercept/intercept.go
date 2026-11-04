@@ -33,6 +33,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsnamestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsratebudget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -788,6 +789,33 @@ func (f TraverseDNSProvider) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.DNSProviderQuery", q)
+}
+
+// The DNSRateBudgetFunc type is an adapter to allow the use of ordinary function as a Querier.
+type DNSRateBudgetFunc func(context.Context, *ent.DNSRateBudgetQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f DNSRateBudgetFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.DNSRateBudgetQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.DNSRateBudgetQuery", q)
+}
+
+// The TraverseDNSRateBudget type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseDNSRateBudget func(context.Context, *ent.DNSRateBudgetQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseDNSRateBudget) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseDNSRateBudget) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.DNSRateBudgetQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.DNSRateBudgetQuery", q)
 }
 
 // The DNSRecordFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -2218,6 +2246,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.DNSNameStatusQuery, predicate.DNSNameStatus, dnsnamestatus.OrderOption]{typ: ent.TypeDNSNameStatus, tq: q}, nil
 	case *ent.DNSProviderQuery:
 		return &query[*ent.DNSProviderQuery, predicate.DNSProvider, dnsprovider.OrderOption]{typ: ent.TypeDNSProvider, tq: q}, nil
+	case *ent.DNSRateBudgetQuery:
+		return &query[*ent.DNSRateBudgetQuery, predicate.DNSRateBudget, dnsratebudget.OrderOption]{typ: ent.TypeDNSRateBudget, tq: q}, nil
 	case *ent.DNSRecordQuery:
 		return &query[*ent.DNSRecordQuery, predicate.DNSRecord, dnsrecord.OrderOption]{typ: ent.TypeDNSRecord, tq: q}, nil
 	case *ent.DNSZoneQuery:

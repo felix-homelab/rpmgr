@@ -18,6 +18,7 @@ import (
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/dns"
+	"github.com/felix-homelab/rpmgr/internal/dns/budget"
 	"github.com/felix-homelab/rpmgr/internal/dns/cloudflare"
 	"github.com/felix-homelab/rpmgr/internal/dns/providers"
 	"github.com/felix-homelab/rpmgr/internal/ids"
@@ -25,6 +26,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsratebudget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 )
 
@@ -43,8 +45,11 @@ type DnsProviders struct {
 	// ZoneCount returns how many managed zones are imported from a provider, read in tx; nil
 	// counts the rows of dns_zones. DeleteDnsProvider is refused while it is not zero.
 	ZoneCount func(ctx context.Context, tx *ent.Tx, providerID string) (int, error)
-	Logger    *slog.Logger
-	Now       func() time.Time
+	// Budget, if set, is the provider's request budget: the live reads of a stored provider take
+	// their requests from it, as the DNS job does.
+	Budget *budget.Budget
+	Logger *slog.Logger
+	Now    func() time.Time
 }
 
 // providerFields are the fields UpdateDnsProvider may change.
@@ -295,6 +300,9 @@ func (d *DnsProviders) DeleteDnsProvider(ctx context.Context, req *connect.Reque
 		if n > 0 {
 			return dependants("zones are imported from the provider; remove them first")
 		}
+		if _, err := tx.DNSRateBudget.Delete().Where(dnsratebudget.DNSProviderID(id)).Exec(ctx); err != nil {
+			return err
+		}
 		if err := tx.DNSProvider.DeleteOneID(id).Where(dnsprovider.Version(cur.Version)).Exec(ctx); err != nil {
 			return err
 		}
@@ -320,6 +328,9 @@ func (d *DnsProviders) client(ctx context.Context, row *ent.DNSProvider) (dns.Pr
 	p, err := d.dial(string(row.Kind), row.AccountID, tok)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.New("apisvc: the provider client cannot be made"))
+	}
+	if d.Budget != nil {
+		p = d.Budget.Wrap(p, row.ID, budget.Job)
 	}
 	return p, nil
 }

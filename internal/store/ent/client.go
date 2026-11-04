@@ -40,6 +40,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsnamestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsratebudget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -147,6 +148,8 @@ type Client struct {
 	DNSNameStatus *DNSNameStatusClient
 	// DNSProvider is the client for interacting with the DNSProvider builders.
 	DNSProvider *DNSProviderClient
+	// DNSRateBudget is the client for interacting with the DNSRateBudget builders.
+	DNSRateBudget *DNSRateBudgetClient
 	// DNSRecord is the client for interacting with the DNSRecord builders.
 	DNSRecord *DNSRecordClient
 	// DNSZone is the client for interacting with the DNSZone builders.
@@ -284,6 +287,7 @@ func (c *Client) init() {
 	c.DNSName = NewDNSNameClient(c.config)
 	c.DNSNameStatus = NewDNSNameStatusClient(c.config)
 	c.DNSProvider = NewDNSProviderClient(c.config)
+	c.DNSRateBudget = NewDNSRateBudgetClient(c.config)
 	c.DNSRecord = NewDNSRecordClient(c.config)
 	c.DNSZone = NewDNSZoneClient(c.config)
 	c.DataSession = NewDataSessionClient(c.config)
@@ -451,6 +455,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		DNSName:            NewDNSNameClient(cfg),
 		DNSNameStatus:      NewDNSNameStatusClient(cfg),
 		DNSProvider:        NewDNSProviderClient(cfg),
+		DNSRateBudget:      NewDNSRateBudgetClient(cfg),
 		DNSRecord:          NewDNSRecordClient(cfg),
 		DNSZone:            NewDNSZoneClient(cfg),
 		DataSession:        NewDataSessionClient(cfg),
@@ -545,6 +550,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		DNSName:            NewDNSNameClient(cfg),
 		DNSNameStatus:      NewDNSNameStatusClient(cfg),
 		DNSProvider:        NewDNSProviderClient(cfg),
+		DNSRateBudget:      NewDNSRateBudgetClient(cfg),
 		DNSRecord:          NewDNSRecordClient(cfg),
 		DNSZone:            NewDNSZoneClient(cfg),
 		DataSession:        NewDataSessionClient(cfg),
@@ -630,17 +636,17 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AuditSink, c.AuditSinkCursor, c.CABundle, c.CAKey, c.Certificate,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.ConnectAuthority,
 		c.ConnectListener, c.Connector, c.DNSName, c.DNSNameStatus, c.DNSProvider,
-		c.DNSRecord, c.DNSZone, c.DataSession, c.Domain, c.EnrollmentToken, c.Event,
-		c.Gateway, c.GatewayGroup, c.GatewayPage, c.HealthCheck, c.Instance,
-		c.InstanceSecret, c.InstanceSetting, c.Invitation, c.IssuedCertificate,
-		c.Lease, c.MailJob, c.Membership, c.Org, c.OrgSetting, c.PasswordReset,
-		c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota, c.RecoveryCode,
-		c.Release, c.ResourceStatus, c.RevokedIdentity, c.RevokedSerial, c.Rollout,
-		c.RolloutTarget, c.Route, c.RouteHTTP, c.RouteHostname, c.RouteLimit,
-		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
-		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.StatusMark,
-		c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook, c.WebhookDelivery,
-		c.WebhookMessage,
+		c.DNSRateBudget, c.DNSRecord, c.DNSZone, c.DataSession, c.Domain,
+		c.EnrollmentToken, c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage,
+		c.HealthCheck, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
+		c.IssuedCertificate, c.Lease, c.MailJob, c.Membership, c.Org, c.OrgSetting,
+		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
+		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
+		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
+		c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
+		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
+		c.StatusMark, c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook,
+		c.WebhookDelivery, c.WebhookMessage,
 	} {
 		n.Use(hooks...)
 	}
@@ -655,17 +661,17 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AuditSink, c.AuditSinkCursor, c.CABundle, c.CAKey, c.Certificate,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.ConnectAuthority,
 		c.ConnectListener, c.Connector, c.DNSName, c.DNSNameStatus, c.DNSProvider,
-		c.DNSRecord, c.DNSZone, c.DataSession, c.Domain, c.EnrollmentToken, c.Event,
-		c.Gateway, c.GatewayGroup, c.GatewayPage, c.HealthCheck, c.Instance,
-		c.InstanceSecret, c.InstanceSetting, c.Invitation, c.IssuedCertificate,
-		c.Lease, c.MailJob, c.Membership, c.Org, c.OrgSetting, c.PasswordReset,
-		c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota, c.RecoveryCode,
-		c.Release, c.ResourceStatus, c.RevokedIdentity, c.RevokedSerial, c.Rollout,
-		c.RolloutTarget, c.Route, c.RouteHTTP, c.RouteHostname, c.RouteLimit,
-		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
-		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.StatusMark,
-		c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook, c.WebhookDelivery,
-		c.WebhookMessage,
+		c.DNSRateBudget, c.DNSRecord, c.DNSZone, c.DataSession, c.Domain,
+		c.EnrollmentToken, c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage,
+		c.HealthCheck, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
+		c.IssuedCertificate, c.Lease, c.MailJob, c.Membership, c.Org, c.OrgSetting,
+		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
+		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
+		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
+		c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
+		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
+		c.StatusMark, c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook,
+		c.WebhookDelivery, c.WebhookMessage,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -722,6 +728,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.DNSNameStatus.mutate(ctx, m)
 	case *DNSProviderMutation:
 		return c.DNSProvider.mutate(ctx, m)
+	case *DNSRateBudgetMutation:
+		return c.DNSRateBudget.mutate(ctx, m)
 	case *DNSRecordMutation:
 		return c.DNSRecord.mutate(ctx, m)
 	case *DNSZoneMutation:
@@ -4240,6 +4248,157 @@ func (c *DNSProviderClient) mutate(ctx context.Context, m *DNSProviderMutation) 
 		return (&DNSProviderDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown DNSProvider mutation op: %q", m.Op())
+	}
+}
+
+// DNSRateBudgetClient is a client for the DNSRateBudget schema.
+type DNSRateBudgetClient struct {
+	config
+}
+
+// NewDNSRateBudgetClient returns a client for the DNSRateBudget from the given config.
+func NewDNSRateBudgetClient(c config) *DNSRateBudgetClient {
+	return &DNSRateBudgetClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `dnsratebudget.Hooks(f(g(h())))`.
+func (c *DNSRateBudgetClient) Use(hooks ...Hook) {
+	c.hooks.DNSRateBudget = append(c.hooks.DNSRateBudget, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `dnsratebudget.Intercept(f(g(h())))`.
+func (c *DNSRateBudgetClient) Intercept(interceptors ...Interceptor) {
+	c.inters.DNSRateBudget = append(c.inters.DNSRateBudget, interceptors...)
+}
+
+// Create returns a builder for creating a DNSRateBudget entity.
+func (c *DNSRateBudgetClient) Create() *DNSRateBudgetCreate {
+	mutation := newDNSRateBudgetMutation(c.config, OpCreate)
+	return &DNSRateBudgetCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of DNSRateBudget entities.
+func (c *DNSRateBudgetClient) CreateBulk(builders ...*DNSRateBudgetCreate) *DNSRateBudgetCreateBulk {
+	return &DNSRateBudgetCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *DNSRateBudgetClient) MapCreateBulk(slice any, setFunc func(*DNSRateBudgetCreate, int)) *DNSRateBudgetCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &DNSRateBudgetCreateBulk{err: fmt.Errorf("calling to DNSRateBudgetClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*DNSRateBudgetCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &DNSRateBudgetCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for DNSRateBudget.
+func (c *DNSRateBudgetClient) Update() *DNSRateBudgetUpdate {
+	mutation := newDNSRateBudgetMutation(c.config, OpUpdate)
+	return &DNSRateBudgetUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *DNSRateBudgetClient) UpdateOne(_m *DNSRateBudget) *DNSRateBudgetUpdateOne {
+	mutation := newDNSRateBudgetMutation(c.config, OpUpdateOne, withDNSRateBudget(_m))
+	return &DNSRateBudgetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *DNSRateBudgetClient) UpdateOneID(id string) *DNSRateBudgetUpdateOne {
+	mutation := newDNSRateBudgetMutation(c.config, OpUpdateOne, withDNSRateBudgetID(id))
+	return &DNSRateBudgetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for DNSRateBudget.
+func (c *DNSRateBudgetClient) Delete() *DNSRateBudgetDelete {
+	mutation := newDNSRateBudgetMutation(c.config, OpDelete)
+	return &DNSRateBudgetDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *DNSRateBudgetClient) DeleteOne(_m *DNSRateBudget) *DNSRateBudgetDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *DNSRateBudgetClient) DeleteOneID(id string) *DNSRateBudgetDeleteOne {
+	builder := c.Delete().Where(dnsratebudget.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &DNSRateBudgetDeleteOne{builder}
+}
+
+// Query returns a query builder for DNSRateBudget.
+func (c *DNSRateBudgetClient) Query() *DNSRateBudgetQuery {
+	return &DNSRateBudgetQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeDNSRateBudget},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a DNSRateBudget entity by its id.
+func (c *DNSRateBudgetClient) Get(ctx context.Context, id string) (*DNSRateBudget, error) {
+	return c.Query().Where(dnsratebudget.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *DNSRateBudgetClient) GetX(ctx context.Context, id string) *DNSRateBudget {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryDNSProvider queries the dns_provider edge of a DNSRateBudget.
+func (c *DNSRateBudgetClient) QueryDNSProvider(_m *DNSRateBudget) *DNSProviderQuery {
+	query := (&DNSProviderClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(dnsratebudget.Table, dnsratebudget.FieldID, id),
+			sqlgraph.To(dnsprovider.Table, dnsprovider.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, dnsratebudget.DNSProviderTable, dnsratebudget.DNSProviderColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *DNSRateBudgetClient) Hooks() []Hook {
+	hooks := c.hooks.DNSRateBudget
+	return append(hooks[:len(hooks):len(hooks)], dnsratebudget.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *DNSRateBudgetClient) Interceptors() []Interceptor {
+	inters := c.inters.DNSRateBudget
+	return append(inters[:len(inters):len(inters)], dnsratebudget.Interceptors[:]...)
+}
+
+func (c *DNSRateBudgetClient) mutate(ctx context.Context, m *DNSRateBudgetMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&DNSRateBudgetCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&DNSRateBudgetUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&DNSRateBudgetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&DNSRateBudgetDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown DNSRateBudget mutation op: %q", m.Op())
 	}
 }
 
@@ -11724,30 +11883,31 @@ type (
 		Alert, AuditCheckpoint, AuditEntry, AuditHead, AuditSink, AuditSinkCursor,
 		CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq,
 		ConnectAuthority, ConnectListener, Connector, DNSName, DNSNameStatus,
-		DNSProvider, DNSRecord, DNSZone, DataSession, Domain, EnrollmentToken, Event,
-		Gateway, GatewayGroup, GatewayPage, HealthCheck, Instance, InstanceSecret,
-		InstanceSetting, Invitation, IssuedCertificate, Lease, MailJob, Membership,
-		Org, OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool,
-		PortQuota, RecoveryCode, Release, ResourceStatus, RevokedIdentity,
-		RevokedSerial, Rollout, RolloutTarget, Route, RouteHTTP, RouteHostname,
-		RouteLimit, RoutePolicy, RouteTCP, RouteTarget, RouteTrafficDaily,
-		RouteTrafficHourly, RouteUDP, SecretMeta, Session, StatusMark, TOTPCredential,
-		TrafficBaseline, User, Webhook, WebhookDelivery, WebhookMessage []ent.Hook
+		DNSProvider, DNSRateBudget, DNSRecord, DNSZone, DataSession, Domain,
+		EnrollmentToken, Event, Gateway, GatewayGroup, GatewayPage, HealthCheck,
+		Instance, InstanceSecret, InstanceSetting, Invitation, IssuedCertificate,
+		Lease, MailJob, Membership, Org, OrgSetting, PasswordReset, PolicyRule,
+		PortAllocation, PortPool, PortQuota, RecoveryCode, Release, ResourceStatus,
+		RevokedIdentity, RevokedSerial, Rollout, RolloutTarget, Route, RouteHTTP,
+		RouteHostname, RouteLimit, RoutePolicy, RouteTCP, RouteTarget,
+		RouteTrafficDaily, RouteTrafficHourly, RouteUDP, SecretMeta, Session,
+		StatusMark, TOTPCredential, TrafficBaseline, User, Webhook, WebhookDelivery,
+		WebhookMessage []ent.Hook
 	}
 	inters struct {
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
 		Alert, AuditCheckpoint, AuditEntry, AuditHead, AuditSink, AuditSinkCursor,
 		CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq,
 		ConnectAuthority, ConnectListener, Connector, DNSName, DNSNameStatus,
-		DNSProvider, DNSRecord, DNSZone, DataSession, Domain, EnrollmentToken, Event,
-		Gateway, GatewayGroup, GatewayPage, HealthCheck, Instance, InstanceSecret,
-		InstanceSetting, Invitation, IssuedCertificate, Lease, MailJob, Membership,
-		Org, OrgSetting, PasswordReset, PolicyRule, PortAllocation, PortPool,
-		PortQuota, RecoveryCode, Release, ResourceStatus, RevokedIdentity,
-		RevokedSerial, Rollout, RolloutTarget, Route, RouteHTTP, RouteHostname,
-		RouteLimit, RoutePolicy, RouteTCP, RouteTarget, RouteTrafficDaily,
-		RouteTrafficHourly, RouteUDP, SecretMeta, Session, StatusMark, TOTPCredential,
-		TrafficBaseline, User, Webhook, WebhookDelivery,
+		DNSProvider, DNSRateBudget, DNSRecord, DNSZone, DataSession, Domain,
+		EnrollmentToken, Event, Gateway, GatewayGroup, GatewayPage, HealthCheck,
+		Instance, InstanceSecret, InstanceSetting, Invitation, IssuedCertificate,
+		Lease, MailJob, Membership, Org, OrgSetting, PasswordReset, PolicyRule,
+		PortAllocation, PortPool, PortQuota, RecoveryCode, Release, ResourceStatus,
+		RevokedIdentity, RevokedSerial, Rollout, RolloutTarget, Route, RouteHTTP,
+		RouteHostname, RouteLimit, RoutePolicy, RouteTCP, RouteTarget,
+		RouteTrafficDaily, RouteTrafficHourly, RouteUDP, SecretMeta, Session,
+		StatusMark, TOTPCredential, TrafficBaseline, User, Webhook, WebhookDelivery,
 		WebhookMessage []ent.Interceptor
 	}
 )

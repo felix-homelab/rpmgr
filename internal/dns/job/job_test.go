@@ -15,6 +15,7 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/dns"
 	"github.com/felix-homelab/rpmgr/internal/dns/apply"
+	"github.com/felix-homelab/rpmgr/internal/dns/budget"
 	"github.com/felix-homelab/rpmgr/internal/dns/cftest"
 	"github.com/felix-homelab/rpmgr/internal/dns/cloudflare"
 	"github.com/felix-homelab/rpmgr/internal/dns/job"
@@ -91,7 +92,7 @@ func newEnv(t *testing.T, db *store.DB) *env {
 }
 
 func (e *env) dial(_, _ string, tok secret.Value) (dns.Provider, error) {
-	p, err := cloudflare.NewForTest(cloudflare.Config{Token: tok}, e.fake.URL(), e.fake.RootCAs())
+	p, err := cloudflare.NewForTest(cloudflare.Config{Token: tok, Now: e.clk.now}, e.fake.URL(), e.fake.RootCAs())
 	return faulty{p, e}, err
 }
 
@@ -123,6 +124,7 @@ func (f faulty) Apply(ctx context.Context, zone string, b dns.Batch) error {
 func (e *env) replica(holder string) (*job.Job, *lease.Leases) {
 	leases := lease.New(e.db, holder, e.clk.now)
 	j := job.New(job.Options{DB: e.db, Leases: leases, Sealer: e.sealer, Dial: e.dial, TrustDomain: td, Now: e.clk.now,
+		Budget:   &budget.Budget{DB: e.db, Now: e.clk.now},
 		Reserved: func(context.Context) []string { return e.reserved },
 		Report: func(_ context.Context, _ *ent.DNSZone, r apply.Report) {
 			e.mu.Lock()
@@ -515,10 +517,10 @@ func TestRun_FailStatic(t *testing.T) {
 				t.Fatalf("provider status %s, want %s", z.ProviderStatus, c.status)
 			}
 			eqStatuses(t, e.statuses(), map[string]string{"a.example.com": "published", "b.example.com": "pending"})
-			// The next pass converges.
+			// The next pass converges, once a retry-after of the provider is over: until then the
+			// shared budget lends nothing.
 			j.Sync(e.zone.ID)
-			e.clk.add(time.Second)
-			_ = l.Renew(e.sys, ls)
+			e.advance(l, ls, time.Minute+time.Second)
 			if err := j.Run(e.sys, ls); err != nil {
 				t.Fatal(err)
 			}
@@ -650,5 +652,112 @@ func TestRun_RelinksReportsOrphansAndDrift(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("the orphan was deleted")
+	}
+}
+
+// TestDNS_RateBudgetAndRetryAfter_Job is the job clause of TestDNS_RateBudgetAndRetryAfter
+// (docs/12-testing-and-quality.md): after a 429 no replica's pass sends a request before the
+// retry-after is over, the zone shows rate_limited and its names stay pending, and the pass that
+// follows publishes. A pass whose requests the shared window does not lend stops the same way.
+func TestDNS_RateBudgetAndRetryAfter_Job(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		e.addName("a.example.com")
+		ja, la := e.replica("ctn_a")
+		lease1 := e.take(la)
+		e.fake.Fail(cftest.Fault{Status: 429, RetryAfter: "120"})
+		if err := ja.Run(e.sys, lease1); err != nil {
+			t.Fatal(err)
+		}
+		if n := e.requests(); n != 1 {
+			t.Fatalf("%d requests, want the one that was refused", n)
+		}
+		if z := e.zoneRow(); z.ProviderStatus != dnszone.ProviderStatusRateLimited || z.LastSyncedAt != nil {
+			t.Fatalf("zone %+v", z)
+		}
+		eqStatuses(t, e.statuses(), map[string]string{"a.example.com": "pending"})
+
+		// The lease moves to the other replica after 90 s, thirty before the block ends: its
+		// full pass asks the shared budget and sends nothing.
+		e.clk.add(job.LeaseTTL)
+		jb, lb := e.replica("ctn_b")
+		lease2 := e.take(lb)
+		if err := jb.Run(e.sys, lease2); err != nil {
+			t.Fatal(err)
+		}
+		if n := e.requests(); n != 1 {
+			t.Fatalf("the other replica sent %d requests during the block", n-1)
+		}
+		if z := e.zoneRow(); z.ProviderStatus != dnszone.ProviderStatusRateLimited {
+			t.Fatalf("zone %+v", z)
+		}
+		if len(e.names()) != 0 {
+			t.Fatalf("records %v", e.names())
+		}
+
+		// Past the retry-after the pass goes through, and the zone is ok again.
+		e.advance(lb, lease2, 31*time.Second)
+		jb.Sync(e.zone.ID)
+		if err := jb.Run(e.sys, lease2); err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(e.names(), []string{"a.example.com"}) {
+			t.Fatalf("records %v", e.names())
+		}
+		if z := e.zoneRow(); z.ProviderStatus != dnszone.ProviderStatusOk || z.LastSyncedAt == nil {
+			t.Fatalf("zone %+v", z)
+		}
+		eqStatuses(t, e.statuses(), map[string]string{"a.example.com": "published"})
+	})
+}
+
+// A 429 without a Retry-After blocks both replicas for the default of docs/15-dns.md, and a window
+// that is spent stops a pass with rate_limited as well, leaving what it has as it is.
+func TestDNS_RateBudget_Job429WithoutHeaderAndSpentWindow(t *testing.T) {
+	e := newEnv(t, storetest.Migrated(t, store.SQLite))
+	e.addName("a.example.com")
+	j, l := e.replica("ctn_a")
+	ls := e.take(l)
+	e.fake.Fail(cftest.Fault{Status: 429})
+	if err := j.Run(e.sys, ls); err != nil {
+		t.Fatal(err)
+	}
+	e.advance(l, ls, budget.DefaultBlock-time.Second)
+	j.Sync(e.zone.ID)
+	if err := j.Run(e.sys, ls); err != nil {
+		t.Fatal(err)
+	}
+	if n := e.requests(); n != 1 {
+		t.Fatalf("%d requests before the default block ended", n)
+	}
+	e.advance(l, ls, time.Second)
+	j.Sync(e.zone.ID)
+	if err := j.Run(e.sys, ls); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(e.names(), []string{"a.example.com"}) {
+		t.Fatalf("records %v", e.names())
+	}
+
+	// The window is spent, by anyone: the pass is stopped before its first request.
+	b := &budget.Budget{DB: e.db, Now: e.clk.now}
+	for b.Take(e.sys, e.zone.DNSProviderID, budget.DNS01) == nil {
+	}
+	for b.Take(e.sys, e.zone.DNSProviderID, budget.Job) == nil {
+	}
+	e.addName("b.example.com")
+	before := e.requests()
+	j.Sync(e.zone.ID)
+	if err := j.Run(e.sys, ls); err != nil {
+		t.Fatal(err)
+	}
+	if e.requests() != before {
+		t.Fatal("a request was sent with the window spent")
+	}
+	if z := e.zoneRow(); z.ProviderStatus != dnszone.ProviderStatusRateLimited {
+		t.Fatalf("zone %+v", z)
+	}
+	if !slices.Equal(e.names(), []string{"a.example.com"}) {
+		t.Fatalf("records %v", e.names())
 	}
 }
