@@ -37,7 +37,8 @@ for any endpoint.
 1. In the service, make an incoming webhook for the channel and copy its URL. Discord:
    channel settings, Integrations, Webhooks. Slack: an app with Incoming Webhooks. Teams: a
    workflow with the trigger "When a Teams webhook request is received" that posts the card.
-2. Make the endpoint with the format `discord`, `slack` or `teams` and that URL (see below).
+2. Open **Administration → Webhooks**, choose **New webhook…**, pick the **Format** `Discord`,
+   `Slack` or `Microsoft Teams` and paste the URL, or use the command line (see below).
 3. Send a test event and check the channel.
 
 The URL holds the service's token, so rpmgr treats it as a secret: it is stored encrypted, never

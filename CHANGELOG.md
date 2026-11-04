@@ -16,7 +16,8 @@ Changes to the design documents are not recorded here: see the git history and t
   each event as a message people read in the chat service, with the summary as the title, the
   event's type, organisation, actor, subject and time as fields, and an alert red when it fires
   and green when it resolves. Set it with `rpmgr create webhook --format slack --url-file <file>`
-  or the API's `format` and `secretUrl`. The service's URL holds its token, so it is stored
+  or the API's `format` and `secretUrl`, or the **Format** of **New webhook…** in the web UI. The
+  service's URL holds its token, so it is stored
   encrypted, can be entered but never read back, and is shown as its scheme and host only; such an
   endpoint has no signing secret and cannot be rotated. A `429` from the service delays the next
   attempt by what it asks, never less than the ordinary retry delay, and is no failure of the
