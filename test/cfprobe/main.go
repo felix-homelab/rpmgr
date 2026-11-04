@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Command cfprobe checks the open questions VB-10 to VB-12 and VB-26 of docs/13-roadmap.md against a real
+// Command cfprobe checks the open questions VB-09 to VB-12 of docs/13-roadmap.md against a real
 // Cloudflare zone. The maintainer runs it by hand (D110, docs/14-open-decisions.md): no token goes
 // into CI and no assistant sees one. test/cfprobe/README.md is the run sheet.
 //
@@ -26,6 +26,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/secret"
 )
 
+// maxBurst is the most requests -burst accepts: a bound, not a target.
+const maxBurst = 2000
+
 const usage = `usage: cfprobe -zone <name> -token-file <path|-> -under-scoped-token-file <path> [options]
 
   -zone                      the spare zone to probe, such as example.org
@@ -36,6 +39,8 @@ const usage = `usage: cfprobe -zone <name> -token-file <path|-> -under-scoped-to
   -account-id                account ID of the account-owned token (with -account-token-file)
   -account-token-file        account-owned token with the same permissions (optional)
   -apex-cname                also probe a CNAME at the zone apex (only if the apex has no records)
+  -burst N                   VB-09: send up to N read requests to provoke a 429 (needs -confirm-burst)
+  -confirm-burst             confirm that the burst may block this Cloudflare user's API for minutes
 `
 
 func main() {
@@ -55,6 +60,8 @@ func runMain(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	acctFile := fs.String("account-token-file", "", "")
 	acctID := fs.String("account-id", "", "")
 	apex := fs.Bool("apex-cname", false, "")
+	burst := fs.Int("burst", 0, "")
+	confirm := fs.Bool("confirm-burst", false, "")
 	if err := fs.Parse(args); err != nil {
 		_, _ = fmt.Fprintf(stderr, "cfprobe: %v\n%s", err, usage)
 		return 2
@@ -71,6 +78,13 @@ func runMain(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 		return fail("-zone, -token-file and -under-scoped-token-file are required\n%s", usage)
 	case (*acctFile == "") != (*acctID == ""):
 		return fail("-account-token-file and -account-id go together")
+	case *burst < 0 || *burst > maxBurst:
+		return fail("-burst must be between 0 and %d", maxBurst)
+	case *burst > 0 && !*confirm:
+		return fail("-burst blocks this Cloudflare user's API calls for minutes once the limit is " +
+			"hit; add -confirm-burst to run it")
+	case *confirm && *burst == 0:
+		return fail("-confirm-burst needs -burst N")
 	}
 	stdinUsers := 0
 	for _, p := range []string{*tokenFile, *underFile, *acctFile} {
@@ -81,7 +95,7 @@ func runMain(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	if stdinUsers > 1 {
 		return fail("only one token can come from standard input")
 	}
-	cfg := config{zone: zoneName, accountID: *acctID, apexCNAME: *apex}
+	cfg := config{zone: zoneName, accountID: *acctID, apexCNAME: *apex, burst: *burst}
 	var err error
 	rep := &report{w: stdout}
 	for _, t := range []struct {
