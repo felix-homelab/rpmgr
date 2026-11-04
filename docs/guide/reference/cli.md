@@ -1931,6 +1931,7 @@ rpmgr approve <command>
 | Command | What it does |
 |---|---|
 | [`rpmgr approve domain`](#rpmgr-approve-domain) | Approve a domain claim held because another org's domain is nested with it (Instance Admin) |
+| [`rpmgr approve zone`](#rpmgr-approve-zone) | Approve the plan of a held zone, by the hash you read, with a step-up; the next pass applies that plan and no other |
 
 ## rpmgr approve domain
 
@@ -1939,6 +1940,18 @@ Approve a domain claim held because another org's domain is nested with it (Inst
 ```text
 rpmgr approve domain <id>
 ```
+
+## rpmgr approve zone
+
+Approve the plan of a held zone, by the hash you read, with a step-up; the next pass applies that plan and no other.
+
+```text
+rpmgr approve zone [flags] --plan-hash <hash> <id or name>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--plan-hash string` |  | the hash of the plan you read with rpmgr plan zone (required) |
 
 ## rpmgr upload
 
@@ -2359,7 +2372,16 @@ rpmgr approve <command>
 
 | Command | What it does |
 |---|---|
+| [`rpmgr approve domain`](#rpmgr-approve-domain) | Approve a domain claim held because another org's domain is nested with it (Instance Admin) |
 | [`rpmgr approve zone`](#rpmgr-approve-zone) | Approve the plan of a held zone, by the hash you read, with a step-up; the next pass applies that plan and no other |
+
+## rpmgr approve domain
+
+Approve a domain claim held because another org's domain is nested with it (Instance Admin).
+
+```text
+rpmgr approve domain <id>
+```
 
 ## rpmgr approve zone
 
