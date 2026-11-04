@@ -354,9 +354,13 @@ A proxied name resolves to Cloudflare. Cloudflare terminates TLS and connects to
 | CNAME across accounts | A proxied CNAME to a name in another Cloudflare account may be refused [V VB-11] | Use an `addresses` target for shared gateway groups if so |
 | Rate limit | 1 200 requests / 5 min per user; 429 blocks for 5 min [F cf:fundamentals/api/reference/limits] | Budget per provider, `retry-after` honoured |
 
-The API base URL is compiled in. A test-only build tag can override it; there is no runtime setting,
-so not even an Instance Admin can point rpmgr at a server that collects other orgs' tokens. The
-client honours `HTTPS_PROXY` ([10](10-operations.md#ports)).
+The API base URL is compiled in. Only tests override it, through a constructor of the `rpmgrtest`
+build tag ([D60](14-open-decisions.md#engineering)); there is no runtime setting, so not even an
+Instance Admin can point rpmgr at a server that collects other orgs' tokens. The client honours
+`HTTPS_PROXY` ([10](10-operations.md#ports)), connects over TLS 1.2 or later against the system
+roots as for other third-party servers ([04](04-security.md)), and follows no redirect, so the
+token never goes elsewhere. It refuses a batch above the limit below, and a record comment above
+100 characters or with a line break, before it sends anything.
 
 ## Provider interface
 
@@ -388,6 +392,7 @@ type Provider interface {
 | [R] Rate budget per provider | 300 requests / 5 min (Cloudflare allows 1 200 per user) |
 | DNS-01 share of the budget | at most half |
 | Operations per batch | ≤ 200 (Cloudflare Free limit) |
+| [R] Cloudflare API request | 30 s; answer at most 4 MiB; zones listed 50 per page |
 | `delete_threshold` default | 10 names per pass and zone; 0 = every removal needs approval |
 | Drift stop window | a record corrected twice within 1 h is no longer corrected |
 | Adopted-original staleness warning | 30 days |
