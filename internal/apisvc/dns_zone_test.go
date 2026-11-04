@@ -666,3 +666,66 @@ func TestDnsZones_PlanProviderFailures(t *testing.T) {
 		t.Errorf("zone %+v", z)
 	}
 }
+
+// TestDnsZones_EnableZone: a disabled zone becomes held and nothing else; it needs a step-up and an
+// Owner or Admin; a zone that is not disabled and another org's are refused; the enabled zone still
+// needs an approved plan.
+func TestDnsZones_EnableZone(t *testing.T) {
+	e, ada, org, p := zoneEnv(t)
+	e.dns.zones = []dns.Zone{{ID: "z1", Name: "example.com", Status: "active", Type: "full"}}
+	r, err := importZone(ada, p.GetId(), "z1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := r.GetDnsZone().GetId()
+	enable := func(b *browser, zone string) error {
+		_, err := b.dnsz.EnableZone(context.Background(), connect.NewRequest(&rpmgrv1.EnableZoneRequest{DnsZoneId: zone}))
+		return err
+	}
+	if err := enable(ada, id); reason(err) != apisvc.ReasonZoneNotDisabled {
+		t.Errorf("a held zone: %v", err)
+	}
+	e.db.Client().DNSZone.UpdateOneID(id).SetSyncState("disabled").SetPendingPlanHash("x").ExecX(e.sys)
+	adm, _ := e.join(t, ada, org, "adm@example.com", "admin")
+	op, _ := e.join(t, ada, org, "op@example.com", "operator")
+	if err := op.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	if err := bob.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := enable(adm, id); reason(err) != api.ReasonStepUpRequired {
+		t.Errorf("without a step-up: %v", err)
+	}
+	if err := enable(op, id); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an Operator: %v", err)
+	}
+	if err := enable(bob, id); code(err) != connect.CodeNotFound {
+		t.Errorf("another org: %v", err)
+	}
+	if err := enable(ada, "dnz_missing"); code(err) != connect.CodeNotFound {
+		t.Errorf("a missing zone: %v", err)
+	}
+	if e.db.Client().DNSZone.GetX(e.sys, id).SyncState != "disabled" {
+		t.Fatal("a refused call enabled the zone")
+	}
+	if err := enable(ada, id); err != nil {
+		t.Fatal(err)
+	}
+	if z := e.db.Client().DNSZone.GetX(e.sys, id); z.SyncState != "held" || z.HeldReason != "enabled" || z.PendingPlanHash != "" {
+		t.Fatalf("zone %+v", z)
+	}
+	// A hash that was never approved activates nothing: approval is still needed.
+	if err := approveZone(ada, id, strings.Repeat("a", 64)); reason(err) != apisvc.ReasonPlanChanged {
+		t.Errorf("approval after enabling: %v", err)
+	}
+	pl, err := planZone(ada, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := approveZone(ada, id, pl.GetPlan().GetHash()); err != nil {
+		t.Errorf("approving the plan read: %v", err)
+	}
+}

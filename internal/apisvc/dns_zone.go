@@ -39,8 +39,9 @@ const (
 // The reasons of the refusals of a plan's approval (docs/07-api.md, "Errors"): the plan has
 // another hash now, or the zone is not held.
 const (
-	ReasonPlanChanged = "PLAN_CHANGED"
-	ReasonZoneNotHeld = "ZONE_NOT_HELD"
+	ReasonPlanChanged     = "PLAN_CHANGED"
+	ReasonZoneNotHeld     = "ZONE_NOT_HELD"
+	ReasonZoneNotDisabled = "ZONE_NOT_DISABLED"
 )
 
 // HeldImported is the held_reason of a zone that was imported and has no approved plan yet.
@@ -431,4 +432,27 @@ func (z *DnsZones) ApproveZonePlan(ctx context.Context, req *connect.Request[rpm
 	}
 	api.AuditReason(ctx, "approved plan "+pl.Hash)
 	return connect.NewResponse(&rpmgrv1.ApproveZonePlanResponse{DnsZone: zoneOf(row)}), nil
+}
+
+// EnableZone implements DnsZoneService: a disabled zone becomes held. Nothing is written to the
+// provider; the zone needs an approved plan like any held zone.
+func (z *DnsZones) EnableZone(ctx context.Context, req *connect.Request[rpmgrv1.EnableZoneRequest]) (
+	*connect.Response[rpmgrv1.EnableZoneResponse], error) {
+	var row *ent.DNSZone
+	_, err := store.ConfigTx(ctx, z.DB, func(tx *ent.Tx) ([]string, error) {
+		cur, err := tx.DNSZone.Get(ctx, req.Msg.GetDnsZoneId())
+		if err != nil {
+			return nil, err
+		}
+		if cur.SyncState != dnszone.SyncStateDisabled {
+			return nil, withReason(connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: the zone is not disabled")), ReasonZoneNotDisabled)
+		}
+		row, err = tx.DNSZone.UpdateOneID(cur.ID).SetSyncState(dnszone.SyncStateHeld).SetHeldReason(apply.HeldEnabled).
+			ClearPendingPlan().SetPendingPlanHash("").Save(ctx)
+		return []string{cur.ID}, err
+	})
+	if err != nil {
+		return nil, storeError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.EnableZoneResponse{DnsZone: zoneOf(row)}), nil
 }

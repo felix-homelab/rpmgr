@@ -257,6 +257,17 @@ service DnsZoneService {
       resource_field: "dns_zone_id"
     };
   }
+  // EnableZone moves a disabled zone, such as one that restore --dns-disabled disabled, to held.
+  // It writes nothing: the zone computes plans again and needs an approved plan before the job
+  // writes to the provider. It needs a step-up. A zone that is not disabled is
+  // FAILED_PRECONDITION with ZONE_NOT_DISABLED.
+  rpc EnableZone(EnableZoneRequest) returns (EnableZoneResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_zone_id"
+      step_up: true
+    };
+  }
   // ApproveZonePlan approves the plan with the hash: the zone becomes active and the next pass
   // applies that plan and no other. It fails with PLAN_CHANGED, and nothing changes, if the plan
   // now has another hash. A zone that is not held, such as one that a restore disabled, is
@@ -448,6 +459,17 @@ message PlanZoneSyncRequest {
 message PlanZoneSyncResponse {
   DnsZone dns_zone = 1;
   ZonePlan plan = 2;
+}
+
+// EnableZoneRequest names a zone.
+message EnableZoneRequest {
+  // The zone's ID.
+  string dns_zone_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// EnableZoneResponse is the zone, held.
+message EnableZoneResponse {
+  DnsZone dns_zone = 1;
 }
 
 // ApproveZonePlanRequest names a zone and the plan the caller read.

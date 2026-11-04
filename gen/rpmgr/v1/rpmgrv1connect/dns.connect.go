@@ -74,6 +74,9 @@ const (
 	// DnsZoneServicePlanZoneSyncProcedure is the fully-qualified name of the DnsZoneService's
 	// PlanZoneSync RPC.
 	DnsZoneServicePlanZoneSyncProcedure = "/rpmgr.v1.DnsZoneService/PlanZoneSync"
+	// DnsZoneServiceEnableZoneProcedure is the fully-qualified name of the DnsZoneService's EnableZone
+	// RPC.
+	DnsZoneServiceEnableZoneProcedure = "/rpmgr.v1.DnsZoneService/EnableZone"
 	// DnsZoneServiceApproveZonePlanProcedure is the fully-qualified name of the DnsZoneService's
 	// ApproveZonePlan RPC.
 	DnsZoneServiceApproveZonePlanProcedure = "/rpmgr.v1.DnsZoneService/ApproveZonePlan"
@@ -342,6 +345,11 @@ type DnsZoneServiceClient interface {
 	// conflicts it found, the records that carry this instance's marker without a ledger row, and the
 	// hash an approval is bound to. The provider's records are read live and nothing is written.
 	PlanZoneSync(context.Context, *connect.Request[v1.PlanZoneSyncRequest]) (*connect.Response[v1.PlanZoneSyncResponse], error)
+	// EnableZone moves a disabled zone, such as one that restore --dns-disabled disabled, to held.
+	// It writes nothing: the zone computes plans again and needs an approved plan before the job
+	// writes to the provider. It needs a step-up. A zone that is not disabled is
+	// FAILED_PRECONDITION with ZONE_NOT_DISABLED.
+	EnableZone(context.Context, *connect.Request[v1.EnableZoneRequest]) (*connect.Response[v1.EnableZoneResponse], error)
 	// ApproveZonePlan approves the plan with the hash: the zone becomes active and the next pass
 	// applies that plan and no other. It fails with PLAN_CHANGED, and nothing changes, if the plan
 	// now has another hash. A zone that is not held, such as one that a restore disabled, is
@@ -399,6 +407,12 @@ func NewDnsZoneServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		enableZone: connect.NewClient[v1.EnableZoneRequest, v1.EnableZoneResponse](
+			httpClient,
+			baseURL+DnsZoneServiceEnableZoneProcedure,
+			connect.WithSchema(dnsZoneServiceMethods.ByName("EnableZone")),
+			connect.WithClientOptions(opts...),
+		),
 		approveZonePlan: connect.NewClient[v1.ApproveZonePlanRequest, v1.ApproveZonePlanResponse](
 			httpClient,
 			baseURL+DnsZoneServiceApproveZonePlanProcedure,
@@ -416,6 +430,7 @@ type dnsZoneServiceClient struct {
 	updateZone      *connect.Client[v1.UpdateZoneRequest, v1.UpdateZoneResponse]
 	removeZone      *connect.Client[v1.RemoveZoneRequest, v1.RemoveZoneResponse]
 	planZoneSync    *connect.Client[v1.PlanZoneSyncRequest, v1.PlanZoneSyncResponse]
+	enableZone      *connect.Client[v1.EnableZoneRequest, v1.EnableZoneResponse]
 	approveZonePlan *connect.Client[v1.ApproveZonePlanRequest, v1.ApproveZonePlanResponse]
 }
 
@@ -449,6 +464,11 @@ func (c *dnsZoneServiceClient) PlanZoneSync(ctx context.Context, req *connect.Re
 	return c.planZoneSync.CallUnary(ctx, req)
 }
 
+// EnableZone calls rpmgr.v1.DnsZoneService.EnableZone.
+func (c *dnsZoneServiceClient) EnableZone(ctx context.Context, req *connect.Request[v1.EnableZoneRequest]) (*connect.Response[v1.EnableZoneResponse], error) {
+	return c.enableZone.CallUnary(ctx, req)
+}
+
 // ApproveZonePlan calls rpmgr.v1.DnsZoneService.ApproveZonePlan.
 func (c *dnsZoneServiceClient) ApproveZonePlan(ctx context.Context, req *connect.Request[v1.ApproveZonePlanRequest]) (*connect.Response[v1.ApproveZonePlanResponse], error) {
 	return c.approveZonePlan.CallUnary(ctx, req)
@@ -474,6 +494,11 @@ type DnsZoneServiceHandler interface {
 	// conflicts it found, the records that carry this instance's marker without a ledger row, and the
 	// hash an approval is bound to. The provider's records are read live and nothing is written.
 	PlanZoneSync(context.Context, *connect.Request[v1.PlanZoneSyncRequest]) (*connect.Response[v1.PlanZoneSyncResponse], error)
+	// EnableZone moves a disabled zone, such as one that restore --dns-disabled disabled, to held.
+	// It writes nothing: the zone computes plans again and needs an approved plan before the job
+	// writes to the provider. It needs a step-up. A zone that is not disabled is
+	// FAILED_PRECONDITION with ZONE_NOT_DISABLED.
+	EnableZone(context.Context, *connect.Request[v1.EnableZoneRequest]) (*connect.Response[v1.EnableZoneResponse], error)
 	// ApproveZonePlan approves the plan with the hash: the zone becomes active and the next pass
 	// applies that plan and no other. It fails with PLAN_CHANGED, and nothing changes, if the plan
 	// now has another hash. A zone that is not held, such as one that a restore disabled, is
@@ -527,6 +552,12 @@ func NewDnsZoneServiceHandler(svc DnsZoneServiceHandler, opts ...connect.Handler
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	dnsZoneServiceEnableZoneHandler := connect.NewUnaryHandler(
+		DnsZoneServiceEnableZoneProcedure,
+		svc.EnableZone,
+		connect.WithSchema(dnsZoneServiceMethods.ByName("EnableZone")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dnsZoneServiceApproveZonePlanHandler := connect.NewUnaryHandler(
 		DnsZoneServiceApproveZonePlanProcedure,
 		svc.ApproveZonePlan,
@@ -547,6 +578,8 @@ func NewDnsZoneServiceHandler(svc DnsZoneServiceHandler, opts ...connect.Handler
 			dnsZoneServiceRemoveZoneHandler.ServeHTTP(w, r)
 		case DnsZoneServicePlanZoneSyncProcedure:
 			dnsZoneServicePlanZoneSyncHandler.ServeHTTP(w, r)
+		case DnsZoneServiceEnableZoneProcedure:
+			dnsZoneServiceEnableZoneHandler.ServeHTTP(w, r)
 		case DnsZoneServiceApproveZonePlanProcedure:
 			dnsZoneServiceApproveZonePlanHandler.ServeHTTP(w, r)
 		default:
@@ -580,6 +613,10 @@ func (UnimplementedDnsZoneServiceHandler) RemoveZone(context.Context, *connect.R
 
 func (UnimplementedDnsZoneServiceHandler) PlanZoneSync(context.Context, *connect.Request[v1.PlanZoneSyncRequest]) (*connect.Response[v1.PlanZoneSyncResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.PlanZoneSync is not implemented"))
+}
+
+func (UnimplementedDnsZoneServiceHandler) EnableZone(context.Context, *connect.Request[v1.EnableZoneRequest]) (*connect.Response[v1.EnableZoneResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.EnableZone is not implemented"))
 }
 
 func (UnimplementedDnsZoneServiceHandler) ApproveZonePlan(context.Context, *connect.Request[v1.ApproveZonePlanRequest]) (*connect.Response[v1.ApproveZonePlanResponse], error) {
