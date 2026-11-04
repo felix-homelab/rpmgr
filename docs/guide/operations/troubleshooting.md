@@ -141,7 +141,7 @@ Instance Admin ([Audit log](audit-log.md)). More on tokens is in
 | Symptom | Cause | Fix |
 |---|---|---|
 | A connector on `auto` uses **TLS and HTTP/2** instead of **QUIC** | UDP to the gateway is blocked or lossy | Allow UDP 443 to the gateways' tunnel endpoints, both ways; `sudo rpmgr diag transport` shows the QUIC handshake ([UDP blocked or degraded](../../10-operations.md#udp-blocked-or-degraded)) |
-| A UDP route's target shows **served over TLS and HTTP/2, the fallback for QUIC** | As above; UDP then travels in a TCP stream, where loss delays every flow | As above, or accept it |
+| A UDP route's target shows **HTTP/2 (fallback for QUIC)** as its transport | As above; UDP then travels in a TCP stream, where loss delays every flow | As above, or accept it |
 | `The UDP buffers are below what QUIC asks for` | The host's UDP buffers were not raised | Apply `/etc/sysctl.d/60-rpmgr.conf` as the installer writes it ([Connector networking](../connectors/network.md#check-the-network)) |
 | The connector does not start: `HTTPS_PROXY is not an http://, socks5:// or socks5h:// URL with a host` | The proxy variable holds something the connector cannot use | Fix the variable in the service's drop-in ([Environment variables](../reference/environment.md#proxies)) |
 | Sessions fail behind a proxy that inspects TLS | The proxy replaces rpmgr's certificates | Exempt the gateways and the controller from inspection ([Connector networking](../connectors/network.md#proxies)) |

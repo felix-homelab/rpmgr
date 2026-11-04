@@ -276,6 +276,7 @@
       "type": "Type",
       "group": "Gateway group",
       "targets": "Targets",
+      "transport": "Transport",
       "state": "Status"
     },
     "ready": "{{ready}}/{{total}} ready",
@@ -310,6 +311,7 @@
       "address": "Address",
       "weight": "Weight",
       "health": "Health",
+      "transport": "Transport",
       "state": "Status"
     },
     "noTargets": "The route has no targets.",
@@ -317,7 +319,6 @@
     "targetDisabled": "disabled",
     "unverified": "unverified",
     "unverifiedTitle": "HTTPS without checking the target's certificate",
-    "fallback": "served over TLS and HTTP/2, the fallback for QUIC",
     "runOn": "Run on the host of {{connector}}:",
     "gatewaysTitle": "Gateways not serving",
     "rejections": "Rejected by",
@@ -742,6 +743,18 @@
     "used": "used {{count}} of {{max}}",
     "usedUnlimited": "used {{count}} times",
     "revokeAsk": "Revoke the token created {{when}}?"
+  },
+  "transport": {
+    "title": "Transport",
+    "none": "—",
+    "name": {"quic": "QUIC", "h2": "HTTP/2", "wss": "WSS", "unknown": "unknown"},
+    "pinned": "{{name}} (pinned {{where}})",
+    "pin": {"route": "on the route", "connector": "on the connector", "instance": "by the instance default"},
+    "fallback": {"h2": "{{name}} (fallback for QUIC)", "wss": "{{name}} (fallback)"},
+    "onGateways_one": "{{label}} on {{count}} gateway",
+    "onGateways_other": "{{label}} on {{count}} gateways",
+    "onGateway": "{{label}} on {{name}}",
+    "summaryTitle": "Targets served over each transport"
   },
   "gateways": {
     "title": "Gateway groups",

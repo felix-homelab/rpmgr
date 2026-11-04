@@ -145,20 +145,20 @@ flowchart LR
 ### Routes list
 
 ```
-┌ Routes ──────────────────────────────────────────────────────────────── [+ Create route] ┐
-│ Search: [ app.example.com            ]  Type: [All ▾]  Status: [All ▾]  Group: [eu ▾]    │
-├──────────────────────┬────────┬───────────────┬────────────┬──────────────┬─────────────┤
-│ Name / hostnames     │ Type   │ Gateway group │ Targets    │ Status       │ Applied     │
-├──────────────────────┼────────┼───────────────┼────────────┼──────────────┼─────────────┤
-│ wiki                 │ http   │ eu            │ 2/2 ready  │ ● ready      │ ✓ rev 1042  │
-│  wiki.example.com    │        │               │            │              │             │
-│ postgres             │ tcp    │ eu            │ 0/1 ready  │ ▲ unavailable │ ✓ rev 1040 │
-│  eu.example.net:25432│        │               │ 1 blocked by local policy                 │
-│ grafana              │ http   │ eu            │ 1/1 ready  │ ○ disabled   │ ⧗ pending   │
-│  grafana.example.com │        │               │            │              │  2/3 agents │
-├──────────────────────┴────────┴───────────────┴────────────┴──────────────┴─────────────┤
-│ 3 of 27   ◂ 1 2 3 ▸                                                       Export YAML   │
-└─────────────────────────────────────────────────────────────────────────────────────────┘
+┌ Routes ────────────────────────────────────────────────────────────────────────────── [+ Create route] ┐
+│ Search: [ app.example.com            ]  Type: [All ▾]  Status: [All ▾]  Group: [eu ▾]                  │
+├──────────────────────┬────────┬───────────────┬────────────┬──────────────┬──────────────┬─────────────┤
+│ Name / hostnames     │ Type   │ Gateway group │ Targets    │ Transport    │ Status       │ Applied     │
+├──────────────────────┼────────┼───────────────┼────────────┼──────────────┼──────────────┼─────────────┤
+│ wiki                 │ http   │ eu            │ 2/2 ready  │ QUIC 1 · H2 1│ ● ready      │ ✓ rev 1042  │
+│  wiki.example.com    │        │               │            │              │              │             │
+│ postgres             │ tcp    │ eu            │ 0/1 ready  │ —            │ ▲ unavailable│ ✓ rev 1040  │
+│  eu.example.net:25432│        │               │ 1 blocked  │              │              │             │
+│ grafana              │ http   │ eu            │ 1/1 ready  │ QUIC 1       │ ○ disabled   │ ⧗ pending   │
+│  grafana.example.com │        │               │            │              │              │ 2/3 agents  │
+├──────────────────────┴────────┴───────────────┴────────────┴──────────────┴──────────────┴─────────────┤
+│ 3 of 27   ◂ 1 2 3 ▸                                                                      Export YAML  │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **How the list works.**
@@ -172,6 +172,8 @@ flowchart LR
 - **Without routes,** the list offers to create the first. When the filters match none, it says so
   and offers to clear them.
 - **Targets** shows how many are ready, and how many a connector's local policy blocks.
+- **Transport** counts the targets served over each transport, `QUIC 1 · HTTP/2 1`, as the
+  route's status reports it ([Route detail](#route-detail)); `—` while no target serves.
 - **Status** shows the observed state, with an icon and text, and how many agents rejected the
   route.
 - **"Create a route"** opens a form: the type, the gateway group, and the fields of that type, in
@@ -293,10 +295,10 @@ flowchart LR
 │ Desired: enabled · gateway group eu · eu.example.net:25432   Observed: ▲ unavailable   │
 │          TCP health check, every 10 s                                                  │
 ├ Targets & health ─────────────────────────────────────────────────────────────────────┤
-│ Connector   Address          Weight  Health       Status                                │
-│ db-host-1   10.0.0.5:5432    100     —            ▲ not_ready: blocked by local policy  │
+│ Connector   Address          Weight  Health       Transport  Status                     │
+│ db-host-1   10.0.0.5:5432    100     —            —          ▲ not_ready: blocked by    │
 │             Run on db-host-1:  sudo rpmgr policy allow-target 10.0.0.5:5432   [Copy]    │
-│ db-host-2   10.0.0.6:5432    100     ▲ unhealthy  ▲ its health checks fail              │
+│ db-host-2   10.0.0.6:5432    100     ▲ unhealthy  —          ▲ its health checks fail   │
 │             Last check: dial tcp 10.0.0.6:5432: connect: connection refused             │
 ├ Apply status (revision 1040) ─────────────────────────────────────────────────────────┤
 │ gw-eu-1 ✓ applied    gw-eu-2 ✓ applied    db-host-1 ✓ applied (target not_ready)      │
@@ -316,8 +318,8 @@ flowchart LR
   gateways serve the route.
 - **The address** is the list's. A route on a port whose gateway group has no public hostname
   shows only its port, says so, and links to the group, where they are set.
-- **Each target** shows its connector by name, its address and weight, and whether it serves; if
-  not, it says why.
+- **Each target** shows its connector by name, its address and weight, the transport its streams
+  take, and whether it serves; if not, it says why.
 - **Targets are added, edited and removed** on the page, in the targets card, one form at a time.
   - **The form:** the connector (fixed once the target exists), a host and port or a socket path,
     for HTTP routes the protocol to the target (HTTP, verified HTTPS with its server name, CA
@@ -344,10 +346,15 @@ flowchart LR
   `rpmgr policy remove-deny-target` with the deny entry for one a `deny_targets` entry refuses
   ([D84](14-open-decisions.md#engineering)). The value is shell-quoted, for example a socket path
   with a space.
-- **A target whose connector reaches the gateways only over TLS and HTTP/2** is marked as served
-  over the fallback for QUIC, but only while it serves and neither its route nor its connector
-  pins a transport: a pin to HTTP/2 is a choice, and a pin to QUIC never falls back, so such a
-  target does not serve and shows why ([03](03-connections.md#transport-selection)).
+- **Every target shows the transport its streams take,** as the route's status reports it per
+  gateway, not derived in the browser ([03](03-connections.md#transport-selection)): `QUIC`;
+  on `auto` `HTTP/2 (fallback for QUIC)` or `WSS (fallback)`; where a level pins it, `QUIC (pinned
+  on the route)`, and likewise `on the connector` or `by the instance default`; `unknown` where
+  a gateway does not report it; `—` while the target does not serve, with the reason in its status
+  (a pin that cannot be established is `transport_unavailable`). Where the gateways of the group
+  differ, each transport is named with its gateways, `QUIC on 2 gateways`, `HTTP/2 (fallback for
+  QUIC) on gw-3`, and the names show on hover. The route's header sums the targets up per
+  transport, `Transport: QUIC 1 · HTTP/2 1`.
 - **Gateways that do not serve the route, and agents that rejected it,** are listed with their
   reasons.
 - **Traffic:** the bytes in and out of the last 24 hours per hour, or of the last 30 days per day,
