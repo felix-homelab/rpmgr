@@ -668,6 +668,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			dnszone.FieldDeleteThreshold:       {Type: field.TypeInt, Column: dnszone.FieldDeleteThreshold},
 			dnszone.FieldDefaultTTL:            {Type: field.TypeInt, Column: dnszone.FieldDefaultTTL},
 			dnszone.FieldLastSyncedAt:          {Type: field.TypeTime, Column: dnszone.FieldLastSyncedAt},
+			dnszone.FieldSyncRequestedAt:       {Type: field.TypeTime, Column: dnszone.FieldSyncRequestedAt},
 			dnszone.FieldCreatedAt:             {Type: field.TypeTime, Column: dnszone.FieldCreatedAt},
 		},
 	}
@@ -4677,6 +4678,11 @@ func (f *DNSZoneFilter) WhereDefaultTTL(p entql.IntP) {
 // WhereLastSyncedAt applies the entql time.Time predicate on the last_synced_at field.
 func (f *DNSZoneFilter) WhereLastSyncedAt(p entql.TimeP) {
 	f.Where(p.Field(dnszone.FieldLastSyncedAt))
+}
+
+// WhereSyncRequestedAt applies the entql time.Time predicate on the sync_requested_at field.
+func (f *DNSZoneFilter) WhereSyncRequestedAt(p entql.TimeP) {
+	f.Where(p.Field(dnszone.FieldSyncRequestedAt))
 }
 
 // WhereCreatedAt applies the entql time.Time predicate on the created_at field.

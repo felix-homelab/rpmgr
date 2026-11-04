@@ -70,6 +70,11 @@ func (e *Engine) Plan(ctx context.Context, p dns.Provider, z Zone, w Wanted) (pl
 	if err != nil {
 		return plan.Plan{}, err
 	}
+	return e.PlanOf(ctx, live, z, w)
+}
+
+// PlanOf plans against the records the caller listed.
+func (e *Engine) PlanOf(ctx context.Context, live []dns.Record, z Zone, w Wanted) (plan.Plan, error) {
 	owned, err := Owned(ctx, e.DB, z.ID)
 	if err != nil {
 		return plan.Plan{}, err

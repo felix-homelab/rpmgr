@@ -50,6 +50,8 @@ type DNSZone struct {
 	DefaultTTL int `json:"default_ttl,omitempty"`
 	// LastSyncedAt holds the value of the "last_synced_at" field.
 	LastSyncedAt *time.Time `json:"last_synced_at,omitempty"`
+	// SyncRequestedAt holds the value of the "sync_requested_at" field.
+	SyncRequestedAt *time.Time `json:"sync_requested_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -91,7 +93,7 @@ func (*DNSZone) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case dnszone.FieldID, dnszone.FieldOrgID, dnszone.FieldDNSProviderID, dnszone.FieldProviderZoneID, dnszone.FieldName, dnszone.FieldSyncState, dnszone.FieldHeldReason, dnszone.FieldPendingPlanHash, dnszone.FieldProviderStatus:
 			values[i] = new(sql.NullString)
-		case dnszone.FieldLastSyncedAt, dnszone.FieldCreatedAt:
+		case dnszone.FieldLastSyncedAt, dnszone.FieldSyncRequestedAt, dnszone.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -211,6 +213,13 @@ func (_m *DNSZone) assignValues(columns []string, values []any) error {
 				_m.LastSyncedAt = new(time.Time)
 				*_m.LastSyncedAt = value.Time
 			}
+		case dnszone.FieldSyncRequestedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field sync_requested_at", values[i])
+			} else if value.Valid {
+				_m.SyncRequestedAt = new(time.Time)
+				*_m.SyncRequestedAt = value.Time
+			}
 		case dnszone.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -305,6 +314,11 @@ func (_m *DNSZone) String() string {
 	builder.WriteString(", ")
 	if v := _m.LastSyncedAt; v != nil {
 		builder.WriteString("last_synced_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.SyncRequestedAt; v != nil {
+		builder.WriteString("sync_requested_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")

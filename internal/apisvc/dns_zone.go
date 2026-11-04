@@ -18,6 +18,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/dns"
 	"github.com/felix-homelab/rpmgr/internal/dns/apply"
+	"github.com/felix-homelab/rpmgr/internal/dns/job"
 	"github.com/felix-homelab/rpmgr/internal/dns/plan"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -70,9 +71,10 @@ type DnsZones struct {
 	Now     func() time.Time
 }
 
-// Planner computes the plan of a zone as the DNS job would now, with p as the zone's provider.
+// Planner reads a zone as the DNS job would now, with p as the zone's provider: its records, its
+// plan and the names it publishes. The job's Inspect.
 type Planner interface {
-	Preview(ctx context.Context, zoneID string, p dns.Provider) (plan.Plan, error)
+	Inspect(ctx context.Context, zoneID string, p dns.Provider) (job.Inspection, error)
 }
 
 // zoneOf is the API's view of a row.
@@ -328,29 +330,35 @@ func (z *DnsZones) RemoveZone(ctx context.Context, req *connect.Request[rpmgrv1.
 	return connect.NewResponse(&rpmgrv1.RemoveZoneResponse{}), nil
 }
 
-// previewZone is the live plan of a zone: the provider's records are read through its client, and
-// the plan is what the DNS job would compute now.
-func (z *DnsZones) previewZone(ctx context.Context, zoneID string) (*ent.DNSZone, plan.Plan, error) {
-	row, err := z.DB.ReadClient().DNSZone.Get(ctx, zoneID)
-	if err != nil {
-		return nil, plan.Plan{}, storeError(err)
-	}
-	if z.Planner == nil {
-		return nil, plan.Plan{}, connect.NewError(connect.CodeInternal, errors.New("apisvc: no planner"))
-	}
+// providerOf makes the client of a zone's provider account, taking its requests from the
+// provider's budget.
+func (z *DnsZones) providerOf(ctx context.Context, row *ent.DNSZone) (dns.Provider, error) {
 	prov, err := z.DB.ReadClient().DNSProvider.Get(ctx, row.DNSProviderID)
 	if err != nil {
-		return nil, plan.Plan{}, storeError(err)
+		return nil, storeError(err)
 	}
-	p, err := z.Providers.client(ctx, prov)
+	return z.Providers.client(ctx, prov)
+}
+
+// inspectZone reads a zone live: the provider's records are listed through its client, and the plan
+// is what the DNS job would compute now.
+func (z *DnsZones) inspectZone(ctx context.Context, zoneID string) (*ent.DNSZone, job.Inspection, error) {
+	row, err := z.DB.ReadClient().DNSZone.Get(ctx, zoneID)
 	if err != nil {
-		return nil, plan.Plan{}, err
+		return nil, job.Inspection{}, storeError(err)
 	}
-	pl, err := z.Planner.Preview(ctx, row.ID, p)
+	if z.Planner == nil {
+		return nil, job.Inspection{}, connect.NewError(connect.CodeInternal, errors.New("apisvc: no planner"))
+	}
+	p, err := z.providerOf(ctx, row)
 	if err != nil {
-		return nil, plan.Plan{}, providerError(err)
+		return nil, job.Inspection{}, err
 	}
-	return row, pl, nil
+	in, err := z.Planner.Inspect(ctx, row.ID, p)
+	if err != nil {
+		return nil, job.Inspection{}, providerError(err)
+	}
+	return row, in, nil
 }
 
 func planRecord(r dns.Record) *rpmgrv1.PlanRecord {
@@ -381,11 +389,11 @@ func planOf(p plan.Plan) *rpmgrv1.ZonePlan {
 // PlanZoneSync implements DnsZoneService: the plan a pass would carry out now, read live.
 func (z *DnsZones) PlanZoneSync(ctx context.Context, req *connect.Request[rpmgrv1.PlanZoneSyncRequest]) (
 	*connect.Response[rpmgrv1.PlanZoneSyncResponse], error) {
-	row, pl, err := z.previewZone(ctx, req.Msg.GetDnsZoneId())
+	row, in, err := z.inspectZone(ctx, req.Msg.GetDnsZoneId())
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&rpmgrv1.PlanZoneSyncResponse{DnsZone: zoneOf(row), Plan: planOf(pl)}), nil
+	return connect.NewResponse(&rpmgrv1.PlanZoneSyncResponse{DnsZone: zoneOf(row), Plan: planOf(in.Plan)}), nil
 }
 
 // ApproveZonePlan implements DnsZoneService: the Owner or Admin approves the plan they read, by
@@ -404,10 +412,11 @@ func (z *DnsZones) ApproveZonePlan(ctx context.Context, req *connect.Request[rpm
 	if cur.SyncState != dnszone.SyncStateHeld {
 		return nil, notHeld()
 	}
-	_, pl, err := z.previewZone(ctx, cur.ID)
+	_, in, err := z.inspectZone(ctx, cur.ID)
 	if err != nil {
 		return nil, err
 	}
+	pl := in.Plan
 	if pl.Hash != req.Msg.GetPlanHash() {
 		return nil, withReason(connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("apisvc: the plan changed since it was shown; read it again")), ReasonPlanChanged)

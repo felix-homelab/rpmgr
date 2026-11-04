@@ -257,6 +257,45 @@ service DnsZoneService {
       resource_field: "dns_zone_id"
     };
   }
+  // SyncZone asks for a full pass over the zone now: the DNS job, on the replica that holds its
+  // lease, lists the provider and reconciles at its next tick, without the debounce. The answer
+  // does not wait for it.
+  rpc SyncZone(SyncZoneRequest) returns (SyncZoneResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_zone_id"
+    };
+  }
+  // ListZoneRecords lists the records rpmgr owns in a zone, from the ownership ledger, and with
+  // include_foreign the other records of the zone, read live from the provider. Any member of the
+  // org may list the owned records; the foreign ones, which show what else is in the zone, only
+  // an Owner or Admin may ask for.
+  rpc ListZoneRecords(ListZoneRecordsRequest) returns (ListZoneRecordsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "dns_zone_id"
+    };
+  }
+  // AdoptRecords turns foreign records at names the zone publishes into owned ones: each gets a
+  // ledger row that keeps its original content, and the next pass rewrites it. All or none: a
+  // record that does not exist, is owned already, has a type rpmgr does not manage, or lies at a
+  // name no source of the org publishes fails the call.
+  rpc AdoptRecords(AdoptRecordsRequest) returns (AdoptRecordsResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_zone_id"
+    };
+  }
+  // ReleaseRecord removes an owned record from the ledger, so that rpmgr never changes it again.
+  // The record stays at the provider, without rpmgr's marker, or with restore it is put back to
+  // the content it had when it was adopted.
+  rpc ReleaseRecord(ReleaseRecordRequest) returns (ReleaseRecordResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_zone_id"
+    };
+  }
   // ApproveZonePlan approves the plan with the hash: the zone becomes active and the next pass
   // applies that plan and no other. It fails with PLAN_CHANGED, and nothing changes, if the plan
   // now has another hash. A zone that is not held, such as one that a restore disabled, is
@@ -461,6 +500,102 @@ message ApproveZonePlanRequest {
 // ApproveZonePlanResponse is the zone, active.
 message ApproveZonePlanResponse {
   DnsZone dns_zone = 1;
+}
+
+// SyncZoneRequest names a zone.
+message SyncZoneRequest {
+  // The zone's ID.
+  string dns_zone_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// SyncZoneResponse is the zone.
+message SyncZoneResponse {
+  DnsZone dns_zone = 1;
+}
+
+// DnsRecordState is the state of a record of a zone.
+enum DnsRecordState {
+  // Not set.
+  DNS_RECORD_STATE_UNSPECIFIED = 0;
+  // The row is written and the record is being created at the provider.
+  DNS_RECORD_STATE_CREATING = 1;
+  // The record is as rpmgr wrote it.
+  DNS_RECORD_STATE_SYNCED = 2;
+  // Someone keeps changing the record; rpmgr no longer corrects it.
+  DNS_RECORD_STATE_DRIFTED = 3;
+  // A record with this instance's marker and no ledger row; never deleted by a pass.
+  DNS_RECORD_STATE_ORPHANED = 4;
+  // The provider refused the record, or the last write failed.
+  DNS_RECORD_STATE_ERROR = 5;
+  // The record is being deleted at the provider.
+  DNS_RECORD_STATE_DELETING = 6;
+  // A record rpmgr does not own; read live, and shown to an Owner or Admin only.
+  DNS_RECORD_STATE_FOREIGN = 7;
+}
+
+// DnsRecord is a record of a zone: one ledger row, or a record read live from the provider.
+message DnsRecord {
+  // The ledger row, dnr_…; empty for a record rpmgr does not own.
+  string id = 1;
+  // The provider's ID of the record; empty while a record is being created.
+  string provider_record_id = 2;
+  string name = 3;
+  // A, AAAA, CNAME or TXT; a foreign record may have another type.
+  string type = 4;
+  string content = 5;
+  int32 ttl = 6;
+  bool proxied = 7;
+  // The state; output only.
+  DnsRecordState state = 8;
+  // Why a record is in state error or drifted; output only.
+  string reason = 9;
+  // When the record was adopted; output only, unset for a record rpmgr created.
+  google.protobuf.Timestamp adopted_time = 10;
+}
+
+// ListZoneRecordsRequest names a zone.
+message ListZoneRecordsRequest {
+  // The zone's ID.
+  string dns_zone_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Also list the records rpmgr does not own, and the orphans. Owners and Admins only; for anyone
+  // else the call is PERMISSION_DENIED.
+  bool include_foreign = 2;
+}
+
+// ListZoneRecordsResponse holds the records, by name and type: the owned ones, then the others.
+message ListZoneRecordsResponse {
+  repeated DnsRecord records = 1;
+}
+
+// AdoptRecordsRequest names foreign records.
+message AdoptRecordsRequest {
+  // The zone's ID.
+  string dns_zone_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The provider's IDs of the records, as ListZoneRecords shows them; at most 200.
+  repeated string provider_record_ids = 2 [(buf.validate.field).repeated.min_items = 1, (buf.validate.field).repeated.max_items = 200];
+}
+
+// AdoptRecordsResponse is the new ledger rows, in the order of the request.
+message AdoptRecordsResponse {
+  repeated DnsRecord records = 1;
+}
+
+// ReleaseRecordRequest names an owned record.
+message ReleaseRecordRequest {
+  // The zone's ID.
+  string dns_zone_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The ledger row, dnr_….
+  string record_id = 2 [(buf.validate.field).string.min_len = 1];
+  // Put the record back to the content it had when it was adopted. For a record that was not
+  // adopted the call is FAILED_PRECONDITION with RECORD_NOT_ADOPTED.
+  bool restore = 3;
+}
+
+// ReleaseRecordResponse says what happened to the record at the provider.
+message ReleaseRecordResponse {
+  // A warning, empty if there is none: the original that was restored is older than the staleness
+  // limit of docs/15-dns.md, so the address may now belong to someone else.
+  string warning = 1;
 }
 
 // DnsNameService is an org's explicit DNS names (docs/07-api.md; docs/15-dns.md, "Concepts"): a

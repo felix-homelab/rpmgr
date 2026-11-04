@@ -74,6 +74,17 @@ const (
 	// DnsZoneServicePlanZoneSyncProcedure is the fully-qualified name of the DnsZoneService's
 	// PlanZoneSync RPC.
 	DnsZoneServicePlanZoneSyncProcedure = "/rpmgr.v1.DnsZoneService/PlanZoneSync"
+	// DnsZoneServiceSyncZoneProcedure is the fully-qualified name of the DnsZoneService's SyncZone RPC.
+	DnsZoneServiceSyncZoneProcedure = "/rpmgr.v1.DnsZoneService/SyncZone"
+	// DnsZoneServiceListZoneRecordsProcedure is the fully-qualified name of the DnsZoneService's
+	// ListZoneRecords RPC.
+	DnsZoneServiceListZoneRecordsProcedure = "/rpmgr.v1.DnsZoneService/ListZoneRecords"
+	// DnsZoneServiceAdoptRecordsProcedure is the fully-qualified name of the DnsZoneService's
+	// AdoptRecords RPC.
+	DnsZoneServiceAdoptRecordsProcedure = "/rpmgr.v1.DnsZoneService/AdoptRecords"
+	// DnsZoneServiceReleaseRecordProcedure is the fully-qualified name of the DnsZoneService's
+	// ReleaseRecord RPC.
+	DnsZoneServiceReleaseRecordProcedure = "/rpmgr.v1.DnsZoneService/ReleaseRecord"
 	// DnsZoneServiceApproveZonePlanProcedure is the fully-qualified name of the DnsZoneService's
 	// ApproveZonePlan RPC.
 	DnsZoneServiceApproveZonePlanProcedure = "/rpmgr.v1.DnsZoneService/ApproveZonePlan"
@@ -342,6 +353,24 @@ type DnsZoneServiceClient interface {
 	// conflicts it found, the records that carry this instance's marker without a ledger row, and the
 	// hash an approval is bound to. The provider's records are read live and nothing is written.
 	PlanZoneSync(context.Context, *connect.Request[v1.PlanZoneSyncRequest]) (*connect.Response[v1.PlanZoneSyncResponse], error)
+	// SyncZone asks for a full pass over the zone now: the DNS job, on the replica that holds its
+	// lease, lists the provider and reconciles at its next tick, without the debounce. The answer
+	// does not wait for it.
+	SyncZone(context.Context, *connect.Request[v1.SyncZoneRequest]) (*connect.Response[v1.SyncZoneResponse], error)
+	// ListZoneRecords lists the records rpmgr owns in a zone, from the ownership ledger, and with
+	// include_foreign the other records of the zone, read live from the provider. Any member of the
+	// org may list the owned records; the foreign ones, which show what else is in the zone, only
+	// an Owner or Admin may ask for.
+	ListZoneRecords(context.Context, *connect.Request[v1.ListZoneRecordsRequest]) (*connect.Response[v1.ListZoneRecordsResponse], error)
+	// AdoptRecords turns foreign records at names the zone publishes into owned ones: each gets a
+	// ledger row that keeps its original content, and the next pass rewrites it. All or none: a
+	// record that does not exist, is owned already, has a type rpmgr does not manage, or lies at a
+	// name no source of the org publishes fails the call.
+	AdoptRecords(context.Context, *connect.Request[v1.AdoptRecordsRequest]) (*connect.Response[v1.AdoptRecordsResponse], error)
+	// ReleaseRecord removes an owned record from the ledger, so that rpmgr never changes it again.
+	// The record stays at the provider, without rpmgr's marker, or with restore it is put back to
+	// the content it had when it was adopted.
+	ReleaseRecord(context.Context, *connect.Request[v1.ReleaseRecordRequest]) (*connect.Response[v1.ReleaseRecordResponse], error)
 	// ApproveZonePlan approves the plan with the hash: the zone becomes active and the next pass
 	// applies that plan and no other. It fails with PLAN_CHANGED, and nothing changes, if the plan
 	// now has another hash. A zone that is not held, such as one that a restore disabled, is
@@ -399,6 +428,31 @@ func NewDnsZoneServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
+		syncZone: connect.NewClient[v1.SyncZoneRequest, v1.SyncZoneResponse](
+			httpClient,
+			baseURL+DnsZoneServiceSyncZoneProcedure,
+			connect.WithSchema(dnsZoneServiceMethods.ByName("SyncZone")),
+			connect.WithClientOptions(opts...),
+		),
+		listZoneRecords: connect.NewClient[v1.ListZoneRecordsRequest, v1.ListZoneRecordsResponse](
+			httpClient,
+			baseURL+DnsZoneServiceListZoneRecordsProcedure,
+			connect.WithSchema(dnsZoneServiceMethods.ByName("ListZoneRecords")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
+		adoptRecords: connect.NewClient[v1.AdoptRecordsRequest, v1.AdoptRecordsResponse](
+			httpClient,
+			baseURL+DnsZoneServiceAdoptRecordsProcedure,
+			connect.WithSchema(dnsZoneServiceMethods.ByName("AdoptRecords")),
+			connect.WithClientOptions(opts...),
+		),
+		releaseRecord: connect.NewClient[v1.ReleaseRecordRequest, v1.ReleaseRecordResponse](
+			httpClient,
+			baseURL+DnsZoneServiceReleaseRecordProcedure,
+			connect.WithSchema(dnsZoneServiceMethods.ByName("ReleaseRecord")),
+			connect.WithClientOptions(opts...),
+		),
 		approveZonePlan: connect.NewClient[v1.ApproveZonePlanRequest, v1.ApproveZonePlanResponse](
 			httpClient,
 			baseURL+DnsZoneServiceApproveZonePlanProcedure,
@@ -416,6 +470,10 @@ type dnsZoneServiceClient struct {
 	updateZone      *connect.Client[v1.UpdateZoneRequest, v1.UpdateZoneResponse]
 	removeZone      *connect.Client[v1.RemoveZoneRequest, v1.RemoveZoneResponse]
 	planZoneSync    *connect.Client[v1.PlanZoneSyncRequest, v1.PlanZoneSyncResponse]
+	syncZone        *connect.Client[v1.SyncZoneRequest, v1.SyncZoneResponse]
+	listZoneRecords *connect.Client[v1.ListZoneRecordsRequest, v1.ListZoneRecordsResponse]
+	adoptRecords    *connect.Client[v1.AdoptRecordsRequest, v1.AdoptRecordsResponse]
+	releaseRecord   *connect.Client[v1.ReleaseRecordRequest, v1.ReleaseRecordResponse]
 	approveZonePlan *connect.Client[v1.ApproveZonePlanRequest, v1.ApproveZonePlanResponse]
 }
 
@@ -449,6 +507,26 @@ func (c *dnsZoneServiceClient) PlanZoneSync(ctx context.Context, req *connect.Re
 	return c.planZoneSync.CallUnary(ctx, req)
 }
 
+// SyncZone calls rpmgr.v1.DnsZoneService.SyncZone.
+func (c *dnsZoneServiceClient) SyncZone(ctx context.Context, req *connect.Request[v1.SyncZoneRequest]) (*connect.Response[v1.SyncZoneResponse], error) {
+	return c.syncZone.CallUnary(ctx, req)
+}
+
+// ListZoneRecords calls rpmgr.v1.DnsZoneService.ListZoneRecords.
+func (c *dnsZoneServiceClient) ListZoneRecords(ctx context.Context, req *connect.Request[v1.ListZoneRecordsRequest]) (*connect.Response[v1.ListZoneRecordsResponse], error) {
+	return c.listZoneRecords.CallUnary(ctx, req)
+}
+
+// AdoptRecords calls rpmgr.v1.DnsZoneService.AdoptRecords.
+func (c *dnsZoneServiceClient) AdoptRecords(ctx context.Context, req *connect.Request[v1.AdoptRecordsRequest]) (*connect.Response[v1.AdoptRecordsResponse], error) {
+	return c.adoptRecords.CallUnary(ctx, req)
+}
+
+// ReleaseRecord calls rpmgr.v1.DnsZoneService.ReleaseRecord.
+func (c *dnsZoneServiceClient) ReleaseRecord(ctx context.Context, req *connect.Request[v1.ReleaseRecordRequest]) (*connect.Response[v1.ReleaseRecordResponse], error) {
+	return c.releaseRecord.CallUnary(ctx, req)
+}
+
 // ApproveZonePlan calls rpmgr.v1.DnsZoneService.ApproveZonePlan.
 func (c *dnsZoneServiceClient) ApproveZonePlan(ctx context.Context, req *connect.Request[v1.ApproveZonePlanRequest]) (*connect.Response[v1.ApproveZonePlanResponse], error) {
 	return c.approveZonePlan.CallUnary(ctx, req)
@@ -474,6 +552,24 @@ type DnsZoneServiceHandler interface {
 	// conflicts it found, the records that carry this instance's marker without a ledger row, and the
 	// hash an approval is bound to. The provider's records are read live and nothing is written.
 	PlanZoneSync(context.Context, *connect.Request[v1.PlanZoneSyncRequest]) (*connect.Response[v1.PlanZoneSyncResponse], error)
+	// SyncZone asks for a full pass over the zone now: the DNS job, on the replica that holds its
+	// lease, lists the provider and reconciles at its next tick, without the debounce. The answer
+	// does not wait for it.
+	SyncZone(context.Context, *connect.Request[v1.SyncZoneRequest]) (*connect.Response[v1.SyncZoneResponse], error)
+	// ListZoneRecords lists the records rpmgr owns in a zone, from the ownership ledger, and with
+	// include_foreign the other records of the zone, read live from the provider. Any member of the
+	// org may list the owned records; the foreign ones, which show what else is in the zone, only
+	// an Owner or Admin may ask for.
+	ListZoneRecords(context.Context, *connect.Request[v1.ListZoneRecordsRequest]) (*connect.Response[v1.ListZoneRecordsResponse], error)
+	// AdoptRecords turns foreign records at names the zone publishes into owned ones: each gets a
+	// ledger row that keeps its original content, and the next pass rewrites it. All or none: a
+	// record that does not exist, is owned already, has a type rpmgr does not manage, or lies at a
+	// name no source of the org publishes fails the call.
+	AdoptRecords(context.Context, *connect.Request[v1.AdoptRecordsRequest]) (*connect.Response[v1.AdoptRecordsResponse], error)
+	// ReleaseRecord removes an owned record from the ledger, so that rpmgr never changes it again.
+	// The record stays at the provider, without rpmgr's marker, or with restore it is put back to
+	// the content it had when it was adopted.
+	ReleaseRecord(context.Context, *connect.Request[v1.ReleaseRecordRequest]) (*connect.Response[v1.ReleaseRecordResponse], error)
 	// ApproveZonePlan approves the plan with the hash: the zone becomes active and the next pass
 	// applies that plan and no other. It fails with PLAN_CHANGED, and nothing changes, if the plan
 	// now has another hash. A zone that is not held, such as one that a restore disabled, is
@@ -527,6 +623,31 @@ func NewDnsZoneServiceHandler(svc DnsZoneServiceHandler, opts ...connect.Handler
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
+	dnsZoneServiceSyncZoneHandler := connect.NewUnaryHandler(
+		DnsZoneServiceSyncZoneProcedure,
+		svc.SyncZone,
+		connect.WithSchema(dnsZoneServiceMethods.ByName("SyncZone")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dnsZoneServiceListZoneRecordsHandler := connect.NewUnaryHandler(
+		DnsZoneServiceListZoneRecordsProcedure,
+		svc.ListZoneRecords,
+		connect.WithSchema(dnsZoneServiceMethods.ByName("ListZoneRecords")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
+	dnsZoneServiceAdoptRecordsHandler := connect.NewUnaryHandler(
+		DnsZoneServiceAdoptRecordsProcedure,
+		svc.AdoptRecords,
+		connect.WithSchema(dnsZoneServiceMethods.ByName("AdoptRecords")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dnsZoneServiceReleaseRecordHandler := connect.NewUnaryHandler(
+		DnsZoneServiceReleaseRecordProcedure,
+		svc.ReleaseRecord,
+		connect.WithSchema(dnsZoneServiceMethods.ByName("ReleaseRecord")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dnsZoneServiceApproveZonePlanHandler := connect.NewUnaryHandler(
 		DnsZoneServiceApproveZonePlanProcedure,
 		svc.ApproveZonePlan,
@@ -547,6 +668,14 @@ func NewDnsZoneServiceHandler(svc DnsZoneServiceHandler, opts ...connect.Handler
 			dnsZoneServiceRemoveZoneHandler.ServeHTTP(w, r)
 		case DnsZoneServicePlanZoneSyncProcedure:
 			dnsZoneServicePlanZoneSyncHandler.ServeHTTP(w, r)
+		case DnsZoneServiceSyncZoneProcedure:
+			dnsZoneServiceSyncZoneHandler.ServeHTTP(w, r)
+		case DnsZoneServiceListZoneRecordsProcedure:
+			dnsZoneServiceListZoneRecordsHandler.ServeHTTP(w, r)
+		case DnsZoneServiceAdoptRecordsProcedure:
+			dnsZoneServiceAdoptRecordsHandler.ServeHTTP(w, r)
+		case DnsZoneServiceReleaseRecordProcedure:
+			dnsZoneServiceReleaseRecordHandler.ServeHTTP(w, r)
 		case DnsZoneServiceApproveZonePlanProcedure:
 			dnsZoneServiceApproveZonePlanHandler.ServeHTTP(w, r)
 		default:
@@ -580,6 +709,22 @@ func (UnimplementedDnsZoneServiceHandler) RemoveZone(context.Context, *connect.R
 
 func (UnimplementedDnsZoneServiceHandler) PlanZoneSync(context.Context, *connect.Request[v1.PlanZoneSyncRequest]) (*connect.Response[v1.PlanZoneSyncResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.PlanZoneSync is not implemented"))
+}
+
+func (UnimplementedDnsZoneServiceHandler) SyncZone(context.Context, *connect.Request[v1.SyncZoneRequest]) (*connect.Response[v1.SyncZoneResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.SyncZone is not implemented"))
+}
+
+func (UnimplementedDnsZoneServiceHandler) ListZoneRecords(context.Context, *connect.Request[v1.ListZoneRecordsRequest]) (*connect.Response[v1.ListZoneRecordsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.ListZoneRecords is not implemented"))
+}
+
+func (UnimplementedDnsZoneServiceHandler) AdoptRecords(context.Context, *connect.Request[v1.AdoptRecordsRequest]) (*connect.Response[v1.AdoptRecordsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.AdoptRecords is not implemented"))
+}
+
+func (UnimplementedDnsZoneServiceHandler) ReleaseRecord(context.Context, *connect.Request[v1.ReleaseRecordRequest]) (*connect.Response[v1.ReleaseRecordResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.ReleaseRecord is not implemented"))
 }
 
 func (UnimplementedDnsZoneServiceHandler) ApproveZonePlan(context.Context, *connect.Request[v1.ApproveZonePlanRequest]) (*connect.Response[v1.ApproveZonePlanResponse], error) {
