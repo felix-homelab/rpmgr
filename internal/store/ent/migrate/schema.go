@@ -813,6 +813,7 @@ var (
 		{Name: "adopted_at", Type: field.TypeTime, Nullable: true},
 		{Name: "last_synced_at", Type: field.TypeTime, Nullable: true},
 		{Name: "corrected_at", Type: field.TypeTime, Nullable: true},
+		{Name: "release_requested", Type: field.TypeString, Size: 8, Default: ""},
 		{Name: "dns_zone_id", Type: field.TypeString},
 	}
 	// DNSRecordsTable holds the schema information for the "dns_records" table.
@@ -823,7 +824,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "dns_records_dns_zones_zone",
-				Columns:    []*schema.Column{DNSRecordsColumns[14]},
+				Columns:    []*schema.Column{DNSRecordsColumns[15]},
 				RefColumns: []*schema.Column{DNSZonesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -837,12 +838,12 @@ var (
 			{
 				Name:    "dnsrecord_dns_zone_id_provider_record_id",
 				Unique:  true,
-				Columns: []*schema.Column{DNSRecordsColumns[14], DNSRecordsColumns[7]},
+				Columns: []*schema.Column{DNSRecordsColumns[15], DNSRecordsColumns[7]},
 			},
 			{
 				Name:    "dnsrecord_dns_zone_id_name",
 				Unique:  false,
-				Columns: []*schema.Column{DNSRecordsColumns[14], DNSRecordsColumns[2]},
+				Columns: []*schema.Column{DNSRecordsColumns[15], DNSRecordsColumns[2]},
 			},
 		},
 	}
@@ -864,6 +865,7 @@ var (
 		{Name: "delete_threshold", Type: field.TypeInt, Default: 10},
 		{Name: "default_ttl", Type: field.TypeInt, Default: 300},
 		{Name: "last_synced_at", Type: field.TypeTime, Nullable: true},
+		{Name: "sync_requested_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "dns_provider_id", Type: field.TypeString},
 	}
@@ -875,7 +877,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "dns_zones_dns_providers_dns_provider",
-				Columns:    []*schema.Column{DNSZonesColumns[17]},
+				Columns:    []*schema.Column{DNSZonesColumns[18]},
 				RefColumns: []*schema.Column{DNSProvidersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -894,7 +896,7 @@ var (
 			{
 				Name:    "dnszone_dns_provider_id_provider_zone_id",
 				Unique:  true,
-				Columns: []*schema.Column{DNSZonesColumns[17], DNSZonesColumns[3]},
+				Columns: []*schema.Column{DNSZonesColumns[18], DNSZonesColumns[3]},
 			},
 		},
 	}

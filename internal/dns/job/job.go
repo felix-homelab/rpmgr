@@ -97,6 +97,7 @@ type Job struct {
 	nextFull time.Time            // when the next pass over every zone is due
 	dirty    map[string]time.Time // zone ID ("": every zone) -> when it was first marked
 	force    map[string]bool      // zones to run in full at the next tick
+	asked    map[string]time.Time // zone ID -> the last sync_requested_at that was acted on
 	clean    map[string]string    // zone ID -> what the last pass without a failure compiled
 }
 
@@ -114,7 +115,7 @@ func New(o Options) *Job {
 	if o.Full == 0 {
 		o.Full = FullEvery
 	}
-	return &Job{o: o, dirty: map[string]time.Time{}, force: map[string]bool{}, clean: map[string]string{}}
+	return &Job{o: o, dirty: map[string]time.Time{}, force: map[string]bool{}, asked: map[string]time.Time{}, clean: map[string]string{}}
 }
 
 // Lease returns the singleton job for the lease runner.
@@ -189,7 +190,7 @@ func (j *Job) Run(ctx context.Context, l lease.Lease) error {
 	}
 	var errs []error
 	for _, z := range zones {
-		isFull := full || forced[z.ID]
+		isFull := full || forced[z.ID] || j.requested(z)
 		if !isFull && !slices.Contains(due, "") && !slices.Contains(due, z.ID) {
 			continue
 		}
@@ -201,6 +202,21 @@ func (j *Job) Run(ctx context.Context, l lease.Lease) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// requested reports whether someone asked for a full pass of the zone (SyncZone) since the last
+// one the job acted on. The request may have come in at another replica, so it is in the row.
+func (j *Job) requested(z *ent.DNSZone) bool {
+	if z.SyncRequestedAt == nil {
+		return false
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !z.SyncRequestedAt.After(j.asked[z.ID]) {
+		return false
+	}
+	j.asked[z.ID] = *z.SyncRequestedAt
+	return true
 }
 
 // revisions reads the configuration revisions after since: the current one, and whether one of
@@ -321,16 +337,47 @@ func applyZone(z *ent.DNSZone) apply.Zone {
 	return apply.Zone{ID: z.ID, OrgID: z.OrgID, Name: z.Name, ProviderID: z.ProviderZoneID}
 }
 
-// Preview is the plan of a zone as a pass computes it now, for the review of a held zone and for
-// the approval, which is bound to its hash. It lists the provider's records through p, which the
-// caller makes from the zone's provider, and writes nothing.
-func (j *Job) Preview(ctx context.Context, zoneID string, p dns.Provider) (plan.Plan, error) {
+// Inspection is what the API needs to know of a zone now.
+type Inspection struct {
+	// Live is every record of the zone at the provider.
+	Live []dns.Record
+	// Plan is the plan a pass would carry out, and its hash.
+	Plan plan.Plan
+	// Wanted are the names that the zone publishes records for: names with a source in the zone's
+	// org that the compiler accepts. Only a record at one of them is adopted.
+	Wanted []string
+}
+
+// Inspect lists the zone's records through p, which the caller makes from the zone's provider, and
+// computes the plan as a pass would now, for the review of a held zone, for the approval, which is
+// bound to its hash, and for adopting. It writes nothing.
+func (j *Job) Inspect(ctx context.Context, zoneID string, p dns.Provider) (Inspection, error) {
 	z, in, reserved, err := j.read(ctx, zoneID)
 	if err != nil {
-		return plan.Plan{}, err
+		return Inspection{}, err
+	}
+	live, err := p.ListRecords(ctx, z.ProviderZoneID)
+	if err != nil {
+		return Inspection{}, err
 	}
 	cr := compile.Compile(in)
-	return j.engine(lease.Lease{}, false).Plan(ctx, p, applyZone(z), apply.Wanted{Desired: cr.Desired, Keep: cr.Keep(), Reserved: reserved})
+	pl, err := j.engine(lease.Lease{}, false).PlanOf(ctx, live, applyZone(z), apply.Wanted{Desired: cr.Desired, Keep: cr.Keep(), Reserved: reserved})
+	if err != nil {
+		return Inspection{}, err
+	}
+	out := Inspection{Live: live, Plan: pl}
+	for _, n := range cr.Names {
+		if n.Status == compile.StatusOk && !n.Claim {
+			out.Wanted = append(out.Wanted, n.Name)
+		}
+	}
+	return out, nil
+}
+
+// Preview is the plan of a zone as Inspect computes it.
+func (j *Job) Preview(ctx context.Context, zoneID string, p dns.Provider) (plan.Plan, error) {
+	i, err := j.Inspect(ctx, zoneID, p)
+	return i.Plan, err
 }
 
 // plan computes the plan of a held zone and writes nothing to the provider. Its failures go to
@@ -356,7 +403,15 @@ func (j *Job) sync(ctx context.Context, l lease.Lease, z *ent.DNSZone, reserved 
 		o.stop = err
 		return nil
 	}
-	out, err := j.engine(l, true).Reconcile(ctx, l, prov, applyZone(z), apply.Wanted{Desired: o.cr.Desired, Keep: o.cr.Keep(),
+	eng := j.engine(l, true)
+	if _, err := eng.Release(ctx, l, prov, applyZone(z)); err != nil { // requested releases, before the plan
+		if errors.Is(err, lease.ErrLost) {
+			return err
+		}
+		o.stop = err
+		return nil
+	}
+	out, err := eng.Reconcile(ctx, l, prov, applyZone(z), apply.Wanted{Desired: o.cr.Desired, Keep: o.cr.Keep(),
 		Reserved: reserved, Gate: apply.Guard(z.DeleteThreshold, z.PendingPlanHash)})
 	o.pl, o.res, o.report, o.held, o.approved = out.Plan, out.Result, out.Report, out.Held, out.Approved
 	switch {

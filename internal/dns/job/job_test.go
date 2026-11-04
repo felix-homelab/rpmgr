@@ -27,6 +27,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
@@ -1004,4 +1005,215 @@ func holdAll(e *env, disabled bool) (n int, err error) {
 		return err
 	})
 	return n, err
+}
+
+// An adopted record is rewritten by the next pass to what the sources want, and gets the marker; it
+// is no drift: nothing is reported as corrected, and the name is published. A record that is adopted
+// at a name whose source is gone is deleted like any owned record.
+func TestRun_AdoptedRecordIsRewrittenWithItsMarker(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		e.addName("app.example.com")
+		foreign := e.fake.AddRecord(e.zone.ProviderZoneID, cftest.Record{Type: "CNAME", Name: "app.example.com", Content: "old.example.net", TTL: 3600, Comment: "by hand"})
+		j, l := e.replica("ctn_a")
+		ls := e.take(l)
+		if err := j.Run(e.sys, ls); err != nil {
+			t.Fatal(err)
+		}
+		eqStatuses(t, e.statuses(), map[string]string{"app.example.com": "conflict:foreign_address"})
+		if r := e.fake.Records(e.zone.ProviderZoneID); len(r) != 1 || r[0].Content != "old.example.net" {
+			t.Fatalf("a foreign record was touched: %+v", r)
+		}
+
+		var row *ent.DNSRecord
+		err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+			var err error
+			row, err = apply.Adopt(e.sys, tx, apply.Zone{ID: e.zone.ID, OrgID: e.org, Name: apex, ProviderID: e.zone.ProviderZoneID},
+				dns.Record{ID: foreign.ID, Type: "CNAME", Name: "app.example.com", Content: "old.example.net", TTL: 3600, Comment: "by hand"}, e.clk.now())
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		orig, ok := apply.OriginalOf(row)
+		if !ok || orig.Content != "old.example.net" || orig.Comment != "by hand" || orig.TTL != 3600 || orig.Type != "CNAME" {
+			t.Fatalf("original %+v %v", orig, ok)
+		}
+		if _, ok := apply.OriginalOf(&ent.DNSRecord{}); ok {
+			t.Error("a row that was not adopted has an original")
+		}
+		e.pass(j, l, ls)
+		recs := e.fake.Records(e.zone.ProviderZoneID)
+		if len(recs) != 1 || recs[0].ID != foreign.ID || recs[0].Content != "gw.example.net" || recs[0].Comment != apply.Marker(td, row.ID) {
+			t.Fatalf("records %+v", recs)
+		}
+		eqStatuses(t, e.statuses(), map[string]string{"app.example.com": "published"})
+		got := e.db.Client().DNSRecord.GetX(e.sys, row.ID)
+		if got.State != dnsrecord.StateSynced || got.LastSyncedAt == nil || got.CorrectedAt != nil || got.Content != "gw.example.net" || got.AdoptedFrom == "" {
+			t.Fatalf("row %+v", got)
+		}
+		for _, r := range e.reports {
+			if len(r.Corrected)+len(r.Drifted)+len(r.Orphans) > 0 {
+				t.Errorf("an adoption was reported as drift: %+v", r)
+			}
+		}
+		if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("dns_record.drift")).CountX(e.sys); n != 0 {
+			t.Errorf("%d drift entries for an adoption", n)
+		}
+
+		// Adopted and already as wanted: the first pass still puts the marker on, and only that.
+		e.addName("same.example.com")
+		same := e.fake.AddRecord(e.zone.ProviderZoneID, cftest.Record{Type: "CNAME", Name: "same.example.com", Content: "gw.example.net", TTL: 300})
+		var row2 *ent.DNSRecord
+		_ = store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+			var err error
+			row2, err = apply.Adopt(e.sys, tx, apply.Zone{ID: e.zone.ID, OrgID: e.org, Name: apex, ProviderID: e.zone.ProviderZoneID},
+				dns.Record{ID: same.ID, Type: "CNAME", Name: "same.example.com", Content: "gw.example.net", TTL: 300}, e.clk.now())
+			return err
+		})
+		e.pass(j, l, ls)
+		for _, r := range e.fake.Records(e.zone.ProviderZoneID) {
+			if r.ID == same.ID && (r.Comment != apply.Marker(td, row2.ID) || r.Content != "gw.example.net") {
+				t.Errorf("the record adopted as wanted: %+v", r)
+			}
+		}
+		if got := e.db.Client().DNSRecord.GetX(e.sys, row2.ID); got.LastSyncedAt == nil || got.CorrectedAt != nil {
+			t.Errorf("row %+v", got)
+		}
+	})
+}
+
+// "Sync now": a request in the zone's row, which another replica wrote, makes the lease holder's
+// next tick a full pass of that zone, once per request; without one a tick with nothing new reads
+// nothing.
+func TestRun_SyncRequestedInTheRow(t *testing.T) {
+	e := newEnv(t, storetest.Migrated(t, store.SQLite))
+	e.addName("a.example.com")
+	j, l := e.replica("ctn_a")
+	ls := e.take(l)
+	if err := j.Run(e.sys, ls); err != nil {
+		t.Fatal(err)
+	}
+	tick := func() int {
+		e.advance(l, ls, time.Second)
+		n := e.requests()
+		if err := j.Run(e.sys, ls); err != nil {
+			t.Fatal(err)
+		}
+		return e.requests() - n
+	}
+	if n := tick(); n != 0 {
+		t.Fatalf("an idle tick sent %d requests", n)
+	}
+	ask := func() {
+		e.db.Client().DNSZone.UpdateOneID(e.zone.ID).SetSyncRequestedAt(e.clk.now()).ExecX(e.sys)
+	}
+	ask()
+	if n := tick(); n == 0 {
+		t.Fatal("a request for a pass was not honoured")
+	}
+	if n := tick(); n != 0 {
+		t.Fatalf("the same request was honoured twice: %d requests", n)
+	}
+	e.clk.add(time.Second)
+	ask()
+	if n := tick(); n == 0 {
+		t.Fatal("a second request was not honoured")
+	}
+}
+
+// A release that ReleaseRecord asked for, on any replica, is carried out by the replica that holds
+// the lease and by no one else: the marker comes off, or the adopted original goes back, and then
+// the row goes. A lease that will not outlast the write stops it before the write, and the next
+// holder does it. A restore that cannot be carried out is cleared with its reason.
+func TestRun_ReleaseRequestedIsCarriedOutUnderTheLease(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		e.addName("app.example.com")
+		e.addName("kept.example.com")
+		foreign := e.fake.AddRecord(e.zone.ProviderZoneID, cftest.Record{Type: "CNAME", Name: "app.example.com", Content: "old.example.net", TTL: 3600, Comment: "by hand"})
+		ja, la := e.replica("ctn_a")
+		lease1 := e.take(la)
+		var adopted *ent.DNSRecord
+		if err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+			var err error
+			adopted, err = apply.Adopt(e.sys, tx, apply.Zone{ID: e.zone.ID, OrgID: e.org, Name: apex, ProviderID: e.zone.ProviderZoneID},
+				dns.Record{ID: foreign.ID, Type: "CNAME", Name: "app.example.com", Content: "old.example.net", TTL: 3600, Comment: "by hand"}, e.clk.now())
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := ja.Run(e.sys, lease1); err != nil { // rewrites the adopted record, creates kept
+			t.Fatal(err)
+		}
+		recOf := func(id string) cftest.Record {
+			for _, r := range e.fake.Records(e.zone.ProviderZoneID) {
+				if r.ID == id {
+					return r
+				}
+			}
+			return cftest.Record{}
+		}
+		if r := recOf(foreign.ID); r.Content != "gw.example.net" || r.Comment != apply.Marker(td, adopted.ID) {
+			t.Fatalf("the adopted record: %+v", r)
+		}
+		var keptRow *ent.DNSRecord
+		for _, r := range e.db.Client().DNSRecord.Query().AllX(e.sys) {
+			if r.Name == "kept.example.com" {
+				keptRow = r
+			}
+		}
+		keptID := recOf(e.fake.Records(e.zone.ProviderZoneID)[1].ID).ID
+
+		// The requests come in through the database, as from the API on another replica. The lease
+		// of this replica is about to end: nothing is written, the rows stay.
+		e.db.Client().DNSRecord.UpdateOneID(adopted.ID).SetReleaseRequested("restore").ExecX(e.sys)
+		e.db.Client().DNSRecord.UpdateOneID(keptRow.ID).SetReleaseRequested("keep").ExecX(e.sys)
+		writes := e.fake.Count("POST")
+		e.clk.add(job.LeaseTTL - job.Margin + time.Second)
+		ja.Sync(e.zone.ID)
+		if err := ja.Run(e.sys, lease1); err != nil {
+			t.Fatal(err)
+		}
+		if e.fake.Count("POST") != writes || e.db.Client().DNSRecord.Query().CountX(e.sys) != 2 {
+			t.Fatalf("a lease that ends wrote: %d writes, %d rows", e.fake.Count("POST")-writes, e.db.Client().DNSRecord.Query().CountX(e.sys))
+		}
+		// Another replica takes the lease and carries both out; the old holder cannot.
+		jb, lb := e.replica("ctn_b")
+		e.clk.add(job.Margin)
+		lease2 := e.take(lb)
+		ja.Sync(e.zone.ID)
+		if err := ja.Run(e.sys, lease1); !errors.Is(err, lease.ErrLost) {
+			t.Fatalf("the old holder: %v", err)
+		}
+		if err := jb.Run(e.sys, lease2); err != nil {
+			t.Fatal(err)
+		}
+		if r := recOf(foreign.ID); r.Content != "old.example.net" || r.Comment != "by hand" || r.TTL != 3600 {
+			t.Fatalf("restored record %+v", r)
+		}
+		if r := recOf(keptID); r.Comment != "" || r.Content != "gw.example.net" {
+			t.Fatalf("kept record %+v", r)
+		}
+		if n := e.db.Client().DNSRecord.Query().CountX(e.sys); n != 0 {
+			t.Fatalf("%d rows after the releases", n)
+		}
+		if n := e.db.Client().AuditEntry.Query().Where(auditentry.Action("dns_record.release")).CountX(e.sys); n != 2 {
+			t.Errorf("%d release entries", n)
+		}
+		// Released records are foreign now: the pass leaves them alone, and the name is a conflict.
+		e.pass(jb, lb, lease2)
+		if r := recOf(foreign.ID); r.Content != "old.example.net" {
+			t.Fatalf("a released record was written again: %+v", r)
+		}
+
+		// A restore that cannot be carried out is cleared, with its reason, and writes nothing.
+		row := e.db.Client().DNSRecord.Create().SetOrgID(e.org).SetDNSZoneID(e.zone.ID).SetName("x.example.com").SetType("A").SetContent("192.0.2.1").SetTTL(300).
+			SetProviderRecordID(foreign.ID).SetState(dnsrecord.StateSynced).SetReleaseRequested("restore").SaveX(e.sys)
+		e.pass(jb, lb, lease2)
+		got := e.db.Client().DNSRecord.GetX(e.sys, row.ID) // the pass that follows may rewrite the row's reason
+		if got.ReleaseRequested != "" || e.db.Client().AuditEntry.Query().Where(auditentry.Action("dns_record.release")).CountX(e.sys) != 2 {
+			t.Fatalf("row %+v", got)
+		}
+	})
 }

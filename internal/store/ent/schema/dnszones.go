@@ -50,6 +50,9 @@ func (DNSZone) Fields() []ent.Field {
 		field.Int("delete_threshold").Default(10).NonNegative(),
 		field.Int("default_ttl").Default(300).Positive(),
 		field.Time("last_synced_at").Optional().Nillable(),
+		// sync_requested_at is when someone last asked for a full pass ("Sync now"). The DNS job
+		// runs on one replica, which the request may not have reached: it reads the time from here.
+		field.Time("sync_requested_at").Optional().Nillable(),
 		field.Time("created_at").Immutable().Default(time.Now),
 	}
 }

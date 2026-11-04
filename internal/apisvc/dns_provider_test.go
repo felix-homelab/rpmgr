@@ -47,6 +47,7 @@ type fakeDNS struct {
 	zones   []dns.Zone
 	records []dns.Record // what ListRecords returns for every zone
 	dialed  []string     // the token of each client made
+	batches []dns.Batch  // what Apply was sent
 }
 
 type fakeDNSToken struct {
@@ -131,8 +132,26 @@ func (p fakeProvider) ListRecords(context.Context, string) ([]dns.Record, error)
 	return append([]dns.Record(nil), p.f.records...), nil
 }
 
-func (fakeProvider) Apply(context.Context, string, dns.Batch) error { return nil }
-func (fakeProvider) Caps() dns.Capabilities                         { return dns.Capabilities{} }
+// Apply patches the records ListRecords returns, and remembers what it was sent; it refuses with
+// the error of the token, like every other call.
+func (p fakeProvider) Apply(_ context.Context, _ string, b dns.Batch) error {
+	if _, err := p.token(); err != nil {
+		return err
+	}
+	p.f.mu.Lock()
+	defer p.f.mu.Unlock()
+	p.f.batches = append(p.f.batches, b)
+	for _, r := range b.Patches {
+		for i := range p.f.records {
+			if p.f.records[i].ID == r.ID {
+				p.f.records[i] = r
+			}
+		}
+	}
+	return nil
+}
+
+func (fakeProvider) Caps() dns.Capabilities { return dns.Capabilities{} }
 
 func connectProvider(b *browser, org, name, tok, account string) (*rpmgrv1.DnsProvider, error) {
 	r, err := b.dnsp.ConnectDnsProvider(context.Background(), connect.NewRequest(&rpmgrv1.ConnectDnsProviderRequest{OrgId: org,

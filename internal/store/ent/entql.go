@@ -640,6 +640,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			dnsrecord.FieldAdoptedAt:        {Type: field.TypeTime, Column: dnsrecord.FieldAdoptedAt},
 			dnsrecord.FieldLastSyncedAt:     {Type: field.TypeTime, Column: dnsrecord.FieldLastSyncedAt},
 			dnsrecord.FieldCorrectedAt:      {Type: field.TypeTime, Column: dnsrecord.FieldCorrectedAt},
+			dnsrecord.FieldReleaseRequested: {Type: field.TypeString, Column: dnsrecord.FieldReleaseRequested},
 		},
 	}
 	graph.Nodes[26] = &sqlgraph.Node{
@@ -669,6 +670,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			dnszone.FieldDeleteThreshold:       {Type: field.TypeInt, Column: dnszone.FieldDeleteThreshold},
 			dnszone.FieldDefaultTTL:            {Type: field.TypeInt, Column: dnszone.FieldDefaultTTL},
 			dnszone.FieldLastSyncedAt:          {Type: field.TypeTime, Column: dnszone.FieldLastSyncedAt},
+			dnszone.FieldSyncRequestedAt:       {Type: field.TypeTime, Column: dnszone.FieldSyncRequestedAt},
 			dnszone.FieldCreatedAt:             {Type: field.TypeTime, Column: dnszone.FieldCreatedAt},
 		},
 	}
@@ -4570,6 +4572,11 @@ func (f *DNSRecordFilter) WhereCorrectedAt(p entql.TimeP) {
 	f.Where(p.Field(dnsrecord.FieldCorrectedAt))
 }
 
+// WhereReleaseRequested applies the entql string predicate on the release_requested field.
+func (f *DNSRecordFilter) WhereReleaseRequested(p entql.StringP) {
+	f.Where(p.Field(dnsrecord.FieldReleaseRequested))
+}
+
 // WhereHasZone applies a predicate to check if query has an edge zone.
 func (f *DNSRecordFilter) WhereHasZone() {
 	f.Where(entql.HasEdge("zone"))
@@ -4702,6 +4709,11 @@ func (f *DNSZoneFilter) WhereDefaultTTL(p entql.IntP) {
 // WhereLastSyncedAt applies the entql time.Time predicate on the last_synced_at field.
 func (f *DNSZoneFilter) WhereLastSyncedAt(p entql.TimeP) {
 	f.Where(p.Field(dnszone.FieldLastSyncedAt))
+}
+
+// WhereSyncRequestedAt applies the entql time.Time predicate on the sync_requested_at field.
+func (f *DNSZoneFilter) WhereSyncRequestedAt(p entql.TimeP) {
+	f.Where(p.Field(dnszone.FieldSyncRequestedAt))
 }
 
 // WhereCreatedAt applies the entql time.Time predicate on the created_at field.

@@ -46,6 +46,8 @@ type DNSRecord struct {
 	LastSyncedAt *time.Time `json:"last_synced_at,omitempty"`
 	// CorrectedAt holds the value of the "corrected_at" field.
 	CorrectedAt *time.Time `json:"corrected_at,omitempty"`
+	// ReleaseRequested holds the value of the "release_requested" field.
+	ReleaseRequested string `json:"release_requested,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the DNSRecordQuery when eager-loading is set.
 	Edges        DNSRecordEdges `json:"edges"`
@@ -81,7 +83,7 @@ func (*DNSRecord) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case dnsrecord.FieldTTL:
 			values[i] = new(sql.NullInt64)
-		case dnsrecord.FieldID, dnsrecord.FieldOrgID, dnsrecord.FieldDNSZoneID, dnsrecord.FieldName, dnsrecord.FieldType, dnsrecord.FieldContent, dnsrecord.FieldProviderRecordID, dnsrecord.FieldState, dnsrecord.FieldReason, dnsrecord.FieldAdoptedFrom:
+		case dnsrecord.FieldID, dnsrecord.FieldOrgID, dnsrecord.FieldDNSZoneID, dnsrecord.FieldName, dnsrecord.FieldType, dnsrecord.FieldContent, dnsrecord.FieldProviderRecordID, dnsrecord.FieldState, dnsrecord.FieldReason, dnsrecord.FieldAdoptedFrom, dnsrecord.FieldReleaseRequested:
 			values[i] = new(sql.NullString)
 		case dnsrecord.FieldAdoptedAt, dnsrecord.FieldLastSyncedAt, dnsrecord.FieldCorrectedAt:
 			values[i] = new(sql.NullTime)
@@ -194,6 +196,12 @@ func (_m *DNSRecord) assignValues(columns []string, values []any) error {
 				_m.CorrectedAt = new(time.Time)
 				*_m.CorrectedAt = value.Time
 			}
+		case dnsrecord.FieldReleaseRequested:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field release_requested", values[i])
+			} else if value.Valid {
+				_m.ReleaseRequested = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -284,6 +292,9 @@ func (_m *DNSRecord) String() string {
 		builder.WriteString("corrected_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("release_requested=")
+	builder.WriteString(_m.ReleaseRequested)
 	builder.WriteByte(')')
 	return builder.String()
 }

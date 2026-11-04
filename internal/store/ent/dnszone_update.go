@@ -221,6 +221,26 @@ func (_u *DNSZoneUpdate) ClearLastSyncedAt() *DNSZoneUpdate {
 	return _u
 }
 
+// SetSyncRequestedAt sets the "sync_requested_at" field.
+func (_u *DNSZoneUpdate) SetSyncRequestedAt(v time.Time) *DNSZoneUpdate {
+	_u.mutation.SetSyncRequestedAt(v)
+	return _u
+}
+
+// SetNillableSyncRequestedAt sets the "sync_requested_at" field if the given value is not nil.
+func (_u *DNSZoneUpdate) SetNillableSyncRequestedAt(v *time.Time) *DNSZoneUpdate {
+	if v != nil {
+		_u.SetSyncRequestedAt(*v)
+	}
+	return _u
+}
+
+// ClearSyncRequestedAt clears the value of the "sync_requested_at" field.
+func (_u *DNSZoneUpdate) ClearSyncRequestedAt() *DNSZoneUpdate {
+	_u.mutation.ClearSyncRequestedAt()
+	return _u
+}
+
 // Mutation returns the DNSZoneMutation object of the builder.
 func (_u *DNSZoneUpdate) Mutation() *DNSZoneMutation {
 	return _u.mutation
@@ -358,6 +378,12 @@ func (_u *DNSZoneUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.LastSyncedAtCleared() {
 		_spec.ClearField(dnszone.FieldLastSyncedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.SyncRequestedAt(); ok {
+		_spec.SetField(dnszone.FieldSyncRequestedAt, field.TypeTime, value)
+	}
+	if _u.mutation.SyncRequestedAtCleared() {
+		_spec.ClearField(dnszone.FieldSyncRequestedAt, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -572,6 +598,26 @@ func (_u *DNSZoneUpdateOne) ClearLastSyncedAt() *DNSZoneUpdateOne {
 	return _u
 }
 
+// SetSyncRequestedAt sets the "sync_requested_at" field.
+func (_u *DNSZoneUpdateOne) SetSyncRequestedAt(v time.Time) *DNSZoneUpdateOne {
+	_u.mutation.SetSyncRequestedAt(v)
+	return _u
+}
+
+// SetNillableSyncRequestedAt sets the "sync_requested_at" field if the given value is not nil.
+func (_u *DNSZoneUpdateOne) SetNillableSyncRequestedAt(v *time.Time) *DNSZoneUpdateOne {
+	if v != nil {
+		_u.SetSyncRequestedAt(*v)
+	}
+	return _u
+}
+
+// ClearSyncRequestedAt clears the value of the "sync_requested_at" field.
+func (_u *DNSZoneUpdateOne) ClearSyncRequestedAt() *DNSZoneUpdateOne {
+	_u.mutation.ClearSyncRequestedAt()
+	return _u
+}
+
 // Mutation returns the DNSZoneMutation object of the builder.
 func (_u *DNSZoneUpdateOne) Mutation() *DNSZoneMutation {
 	return _u.mutation
@@ -739,6 +785,12 @@ func (_u *DNSZoneUpdateOne) sqlSave(ctx context.Context) (_node *DNSZone, err er
 	}
 	if _u.mutation.LastSyncedAtCleared() {
 		_spec.ClearField(dnszone.FieldLastSyncedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.SyncRequestedAt(); ok {
+		_spec.SetField(dnszone.FieldSyncRequestedAt, field.TypeTime, value)
+	}
+	if _u.mutation.SyncRequestedAtCleared() {
+		_spec.ClearField(dnszone.FieldSyncRequestedAt, field.TypeTime)
 	}
 	_node = &DNSZone{config: _u.config}
 	_spec.Assign = _node.assignValues
