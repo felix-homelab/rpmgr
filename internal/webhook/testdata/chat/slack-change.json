@@ -1,0 +1,41 @@
+{
+  "attachments": [
+    {
+      "blocks": [
+        {
+          "text": {
+            "text": "*route.update route web*",
+            "type": "mrkdwn"
+          },
+          "type": "section"
+        },
+        {
+          "fields": [
+            {
+              "text": "*Type*\nroute.update",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Organisation*\norg_1",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Actor*\nuser usr_1",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Subject*\nroute web (rt_1)",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "*Time*\n2026-11-02T09:30:00Z",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "section"
+        }
+      ]
+    }
+  ],
+  "text": "route.update route web"
+}

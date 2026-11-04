@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -57,6 +58,10 @@ func (a *webhookAPI) CreateWebhook(_ context.Context, r *connect.Request[rpmgrv1
 	a.created = r.Msg
 	if strings.HasPrefix(r.Msg.GetWebhook().GetUrl(), "http://") {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("webhook: the URL must be https"))
+	}
+	if f := r.Msg.GetWebhook().GetFormat(); f != rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_UNSPECIFIED && f != rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_RPMGR {
+		// A chat endpoint has no signing secret and shows its scheme and host only.
+		return connect.NewResponse(&rpmgrv1.CreateWebhookResponse{Webhook: &rpmgrv1.Webhook{Id: "whk_chat", Format: f, Url: "https://discord.com", Enabled: true}}), nil
 	}
 	return connect.NewResponse(&rpmgrv1.CreateWebhookResponse{Webhook: hook1, Secret: secretOne}), nil
 }
@@ -299,5 +304,67 @@ func TestWebhookInstance(t *testing.T) {
 		if code, _, errOut := run(args...); code != cli.ExitUsage || !strings.Contains(errOut, "--instance applies to webhook") {
 			t.Errorf("%v: %d %q", args, code, errOut)
 		}
+	}
+}
+
+const chatURL = "https://discord.com/api/webhooks/1/CHATTOKEN-abcdef"
+
+// TestWebhookChatFormat (D162): --format picks a chat format, whose URL comes from --url-file (or -)
+// and goes in secret_url, never from --url; no secret is printed and the redacted URL is shown;
+// an update of the format names format and secret_url; bad combinations are usage errors.
+func TestWebhookChatFormat(t *testing.T) {
+	a, env := webhookEnv(t)
+	run := func(args ...string) (int, string, string) { return runWith(env, "", args...) }
+	file := filepath.Join(t.TempDir(), "url")
+	if err := os.WriteFile(file, []byte(chatURL+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out, errOut := run("create", "webhook", "--format", "discord", "--url-file", file, "--event", "alert.*")
+	w := a.created.GetWebhook()
+	if code != cli.ExitOK || w.GetFormat() != rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_DISCORD || w.GetSecretUrl() != chatURL || w.GetUrl() != "" ||
+		strings.Contains(out+errOut, "CHATTOKEN") || strings.Contains(out, "shown once") || !strings.Contains(out, "no signing secret") ||
+		!strings.Contains(out, "https://discord.com") || !strings.Contains(out, "discord") {
+		t.Fatalf("create: %d %q %q %v", code, out, errOut, a.created)
+	}
+	// An update of the format with its URL names both fields.
+	if code, out, _ := run("update", "webhook", "--format", "slack", "--url-file", file, "whk_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"format", "secret_url"}) || a.updated.GetWebhook().GetSecretUrl() != chatURL ||
+		a.updated.GetWebhook().GetFormat() != rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_SLACK || strings.Contains(out, "CHATTOKEN") {
+		t.Fatalf("update: %q %v", out, a.updated)
+	}
+	calls := len(a.calls)
+	for name, args := range map[string][]string{
+		"the token as an argument": {"create", "webhook", "--format", "teams", "--url", chatURL},
+		"an unknown format":        {"create", "webhook", "--format", "mattermost", "--url-file", file},
+		"both URL flags":           {"create", "webhook", "--format", "slack", "--url", "https://x.example.com", "--url-file", file},
+		"a file for rpmgr":         {"create", "webhook", "--url-file", file},
+		"rpmgr by name and a file": {"create", "webhook", "--format", "rpmgr", "--url-file", file},
+		"no URL":                   {"create", "webhook", "--format", "discord"},
+		"update, a file for rpmgr": {"update", "webhook", "--url-file", file, "whk_1"},
+	} {
+		if code, out, errOut := run(args...); code != cli.ExitUsage || strings.Contains(out+errOut, "CHATTOKEN") {
+			t.Errorf("%s: %d %q %q", name, code, out, errOut)
+		}
+	}
+	if len(a.calls) != calls+1 { // only the update's read of the endpoint reached the server
+		t.Errorf("%v: a usage error reached the server", a.calls[calls:])
+	}
+	if code, _, errOut := run("create", "webhook", "--format", "discord", "--url-file", filepath.Join(t.TempDir(), "missing")); code != cli.ExitError ||
+		!strings.Contains(errOut, "read --url-file") {
+		t.Errorf("a missing file: %d %q", code, errOut)
+	}
+}
+
+// TestWebhookTarget_Stdin: "-" reads the URL from standard input, trimmed and capped.
+func TestWebhookTarget_Stdin(t *testing.T) {
+	h := &rpmgrv1.Webhook{}
+	paths, err := webhookTarget(h, nil, "teams", "", "-", strings.NewReader("  "+chatURL+" \n"))
+	if err != nil || h.GetSecretUrl() != chatURL || !slices.Equal(paths, []string{"format", "secret_url"}) {
+		t.Fatalf("%v %v %v", paths, err, h)
+	}
+	h = &rpmgrv1.Webhook{}
+	if _, err := webhookTarget(h, nil, "teams", "", "-", strings.NewReader(strings.Repeat("a", 10000))); err != nil || len(h.GetSecretUrl()) != 4096 {
+		t.Errorf("an oversized input: %v %d", err, len(h.GetSecretUrl()))
 	}
 }

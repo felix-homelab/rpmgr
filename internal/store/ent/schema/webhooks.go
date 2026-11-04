@@ -22,7 +22,9 @@ func (Webhook) Annotations() []schema.Annotation {
 	return []schema.Annotation{entsql.Annotation{Table: "webhooks"}}
 }
 
-// Fields of an endpoint. enabled_at is when it was made or last enabled: it receives the events
+// Fields of an endpoint. A chat format's url is its scheme and host only, and url_enc holds the
+// whole URL, which carries the service's token, sealed; its secret_enc is empty (D162).
+// enabled_at is when it was made or last enabled: it receives the events
 // from then on, so none of the time it was disabled are sent. failing_since is the first failed
 // delivery after its last success.
 func (Webhook) Fields() []ent.Field {
@@ -30,7 +32,7 @@ func (Webhook) Fields() []ent.Field {
 		idField("whk"),
 		field.String("org_id").Optional().Nillable().Immutable(),
 		field.String("url").NotEmpty(),
-		field.Bytes("secret_enc").NotEmpty().Sensitive(),
+		field.Bytes("secret_enc").Sensitive(),
 		field.Bytes("previous_secret_enc").Optional().Nillable().Sensitive(),
 		field.Time("previous_until").Optional().Nillable(),
 		field.Strings("event_types").Optional(),
@@ -41,6 +43,8 @@ func (Webhook) Fields() []ent.Field {
 		field.Time("failing_since").Optional().Nillable(),
 		field.Time("created_at").Immutable().Default(time.Now),
 		field.Int64("version").Positive().Default(1),
+		field.Enum("format").Values("rpmgr", "discord", "slack", "teams").Default("rpmgr"),
+		field.Bytes("url_enc").Optional().Nillable().Sensitive(),
 	}
 }
 

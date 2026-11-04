@@ -8,7 +8,7 @@ import { Webhook as WebhookIcon } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "@/components/empty-state";
-import { Field } from "@/components/field";
+import { Field, labelClass } from "@/components/field";
 import { OneTimeToken } from "@/components/one-time-token";
 import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
@@ -16,14 +16,24 @@ import { Row, RowList, panel } from "@/components/row-list";
 import { Status, type Look } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Select } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { InstanceWebhookService, WebhookService, type Webhook, type WebhookDelivery } from "@/gen/rpmgr/v1/webhook_pb";
+import { InstanceWebhookService, WebhookFormat, WebhookService, type Webhook, type WebhookDelivery } from "@/gen/rpmgr/v1/webhook_pb";
 import { apiError, serverProblems, type Problems } from "@/lib/api-error";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
 import { useOrg } from "@/session";
 
-const shown = ["url", "event_types"];
+const shown = ["url", "secret_url", "event_types"];
+
+// The formats of an endpoint (docs/07-api.md, "Webhooks"): rpmgr's signed JSON, or a message for a
+// chat service, whose URL holds the service's token (D162).
+const formats = [
+  [WebhookFormat.RPMGR, "rpmgr"], [WebhookFormat.DISCORD, "discord"], [WebhookFormat.SLACK, "slack"], [WebhookFormat.TEAMS, "teams"],
+] as const;
+
+// isChat says whether f is a chat format: its URL is write-only and it has no signing secret.
+export const isChat = (f: WebhookFormat): boolean => f === WebhookFormat.DISCORD || f === WebhookFormat.SLACK || f === WebhookFormat.TEAMS;
 
 // writers are the roles that hold webhooks.write (docs/04-security.md, "Roles"). The API needs it
 // for every method, reads included, since a URL may carry a token of the receiver's.
@@ -64,8 +74,8 @@ export function failure(t: TFunction, err: unknown): string {
 export interface Api {
   orgId?: string;
   pending: boolean;
-  create: (w: { url: string; eventTypes: string[]; enabled: boolean }) => Promise<{ webhook?: Webhook; secret: string }>;
-  update: (w: { id: string; url?: string; eventTypes?: string[]; enabled?: boolean }, paths: string[], etag: string) => Promise<unknown>;
+  create: (w: { url?: string; secretUrl?: string; format: WebhookFormat; eventTypes: string[]; enabled: boolean }) => Promise<{ webhook?: Webhook; secret: string }>;
+  update: (w: { id: string; url?: string; secretUrl?: string; format?: WebhookFormat; eventTypes?: string[]; enabled?: boolean }, paths: string[], etag: string) => Promise<unknown>;
   rotate: (id: string) => Promise<{ secret: string }>;
   remove: (id: string, etag: string) => Promise<unknown>;
   test: (id: string) => Promise<{ delivered: boolean; statusCode: number; error: string }>;
@@ -150,7 +160,7 @@ function WebhookList({ orgId }: { orgId?: string }) {
   const body = (
     <>
       {secret && <Secret url={secret.url} value={secret.value} onDone={() => setSecret(undefined)} />}
-      {adding && <Form api={api} onCancel={() => setAdding(false)} onDone={(w, value) => (setAdding(false), setSecret({ url: w.url, value }))} />}
+      {adding && <Form api={api} onCancel={() => setAdding(false)} onDone={(w, value) => (setAdding(false), value && setSecret({ url: w.url, value }))} />}
       {list.error && <Alert>{t("link.failed", { message: ConnectError.from(list.error).rawMessage })}</Alert>}
       {list.data && list.data.webhooks.length > 0 && (
         <RowList framed aria-label={t("webhooks.title")}>
@@ -189,7 +199,10 @@ function Secret({ url, value, onDone }: { url: string; value: string; onDone: ()
 function Form({ api, webhook, onCancel, onDone }: { api: Api; webhook?: Webhook; onCancel: () => void; onDone: (w: Webhook, secret: string) => void }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [url, setUrl] = useState(webhook?.url ?? "");
+  const [format, setFormat] = useState(webhook?.format ?? WebhookFormat.RPMGR);
+  // A chat endpoint's URL is never read back: its field starts empty and, when editing, an empty
+  // field keeps the stored URL.
+  const [url, setUrl] = useState(webhook && !isChat(webhook.format) ? webhook.url : "");
   const [types, setTypes] = useState(webhook?.eventTypes.join(", ") ?? "");
   const [enabled, setEnabled] = useState(webhook?.enabled ?? true);
   const [error, setError] = useState("");
@@ -198,7 +211,10 @@ function Form({ api, webhook, onCancel, onDone }: { api: Api; webhook?: Webhook;
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError("");
-    const bad = checkUrl(t, url);
+    const chat = isChat(format);
+    const changed = webhook !== undefined && format !== webhook.format;
+    const keep = webhook !== undefined && chat && !changed && url === "";
+    const bad = keep ? "" : checkUrl(t, url);
     if (bad) {
       setProblems({ url: bad });
       return;
@@ -207,11 +223,18 @@ function Form({ api, webhook, onCancel, onDone }: { api: Api; webhook?: Webhook;
     const eventTypes = eventTypesOf(types);
     try {
       if (webhook) {
-        await api.update({ id: webhook.id, url, eventTypes, enabled }, ["url", "event_types", "enabled"], webhook.etag);
+        const paths = chat ? ["event_types", "enabled"] : ["url", "event_types", "enabled"];
+        if (changed) {
+          paths.push("format");
+        }
+        if (chat && url !== "") {
+          paths.push("secret_url");
+        }
+        await api.update({ id: webhook.id, ...(chat ? (url !== "" ? { secretUrl: url } : {}) : { url }), format, eventTypes, enabled }, paths, webhook.etag);
         await queryClient.invalidateQueries();
         onDone(webhook, "");
       } else {
-        const r = await api.create({ url, eventTypes, enabled });
+        const r = await api.create({ ...(chat ? { secretUrl: url } : { url }), format, eventTypes, enabled });
         await queryClient.invalidateQueries();
         onDone(r.webhook!, r.secret);
       }
@@ -221,14 +244,25 @@ function Form({ api, webhook, onCancel, onDone }: { api: Api; webhook?: Webhook;
     }
   }
 
+  // The URL is needed unless a chat endpoint keeps the one it has.
+  const urlRequired = !webhook || !isChat(format) || format !== webhook.format;
   return (
     <form onSubmit={submit} className={panel} noValidate aria-label={t(webhook ? "webhooks.edit" : "webhooks.new")}>
-      <Field label={t("webhooks.url")} hint={t("webhooks.urlHint")} type="url" required maxLength={2048} error={problems.url} value={url} onChange={(e) => setUrl(e.target.value)} />
+      <div className="grid gap-1.5">
+        <label htmlFor="webhook-format" className={labelClass()}>{t("webhooks.format")}</label>
+        <Select id="webhook-format" className="justify-self-start" value={format} onChange={(e) => setFormat(Number(e.target.value))}>
+          {formats.filter(([f]) => f !== WebhookFormat.RPMGR || !webhook || !isChat(webhook.format)).map(([f, k]) => <option key={k} value={f}>{t(`webhooks.formats.${k}`)}</option>)}
+        </Select>
+        <p className="text-xs text-muted-foreground">{t(isChat(format) ? "webhooks.formatChatHint" : "webhooks.formatRpmgrHint")}</p>
+      </div>
+      <Field label={t(isChat(format) ? "webhooks.chatUrl" : "webhooks.url")} hint={t(isChat(format) ? (webhook && format === webhook.format ? "webhooks.chatUrlKeep" : "webhooks.chatUrlHint") : "webhooks.urlHint")}
+        type="url" required={urlRequired} maxLength={2048}
+        {...(isChat(format) ? { autoComplete: "off", autoCorrect: "off", autoCapitalize: "off", spellCheck: false } : {})} error={problems.url ?? problems.secret_url} value={url} onChange={(e) => setUrl(e.target.value)} />
       <Field label={t("webhooks.events")} hint={t("webhooks.eventsHint")} error={problems.event_types} value={types} onChange={(e) => setTypes(e.target.value)} />
       <Switch checked={enabled} onClick={() => setEnabled(!enabled)} className="justify-self-start">{t("webhooks.enabled")}</Switch>
       {error && <Alert>{error}</Alert>}
       <div className="flex gap-2">
-        <Button type="submit" disabled={api.pending || url === ""}>{t(webhook ? "webhooks.save" : "webhooks.create")}</Button>
+        <Button type="submit" disabled={api.pending || (urlRequired && url === "")}>{t(webhook ? "webhooks.save" : "webhooks.create")}</Button>
         <Button type="button" variant="outline" onClick={onCancel}>{t("stepUp.cancel")}</Button>
       </div>
     </form>
@@ -281,6 +315,7 @@ function Endpoint({ api, webhook: w, onSecret }: { api: Api; webhook: Webhook; o
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="font-medium break-all">{w.url}</span>
         <Status look={state.look}>{state.text}</Status>
+        {isChat(w.format) && <span className="text-muted-foreground">{t(`webhooks.formats.${formats.find(([f]) => f === w.format)?.[1] ?? "rpmgr"}`)}</span>}
       </div>
       <div className="text-muted-foreground">
         {w.eventTypes.length > 0 ? w.eventTypes.join(", ") : t("webhooks.allEvents")}
@@ -320,7 +355,7 @@ function Endpoint({ api, webhook: w, onSecret }: { api: Api; webhook: Webhook; o
             })}>
             {t("webhooks.test")}
           </Button>
-          <Button size="sm" variant="outline" onClick={() => setAsk("rotate")}>{t("webhooks.rotateStart")}</Button>
+          {w.secretSet && <Button size="sm" variant="outline" onClick={() => setAsk("rotate")}>{t("webhooks.rotateStart")}</Button>}
           <Button size="sm" variant="outline" aria-expanded={log} onClick={() => setLog(!log)}>{t("webhooks.deliveries")}</Button>
           <Button size="sm" variant="outline" onClick={() => setAsk("delete")}>{t("webhooks.deleteStart")}</Button>
         </div>

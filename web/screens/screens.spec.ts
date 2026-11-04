@@ -252,6 +252,7 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await open(page, "Organisation", "Example Lab");
   await shot(page, "organisation", true);
   // Two endpoints; the second one's secret stays on the page, masked, as it does after creating it.
+  // Then a Slack one, which has no signing secret and shows only its host.
   await open(page, "Webhooks", "Webhooks");
   for (const [url, types] of [["https://hooks.example.com/rpmgr", "route.*, connector.*"], ["https://ops.example.com/events", ""]]) {
     await page.getByRole("button", { name: "New webhook…" }).click();
@@ -263,6 +264,12 @@ test("screenshots of the user guide", async ({ page, browser }) => {
       await page.getByRole("button", { name: "I have stored it" }).click();
     }
   }
+  await page.getByRole("button", { name: "New webhook…" }).click();
+  await page.getByLabel("Format").selectOption({ label: "Slack" });
+  await page.getByLabel("Webhook URL of the service").fill("https://hooks.slack.com/services/T0000/B0000/example");
+  await page.getByLabel("Event types").fill("alert.*");
+  await page.getByRole("button", { name: "Create the webhook" }).click();
+  await expect(page.getByText("Slack", { exact: true })).toBeVisible();
   await shot(page, "webhooks", true);
   await open(page, "Audit log", "Audit log");
   // An entry opened, whose long request wraps within the page.

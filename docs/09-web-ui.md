@@ -890,7 +890,10 @@ one page, with a section list beside them that jumps to each section
   ([04](04-security.md#webhooks-and-the-egress-guard-phase-2)); **Send test event**; the
   deliveries of an endpoint with their attempts, status codes, errors and next retry. A URL the
   egress guard refuses for a private range names the range and, for an Instance Admin, offers to
-  list it.
+  list it. The form has a **Format** ([D162](14-open-decisions.md#engineering)): rpmgr's signed
+  JSON, or Discord, Slack or Microsoft Teams, whose URL field is write-only: it starts empty, a
+  row shows the service's host only, an empty field when editing keeps the stored URL, and a new
+  format needs a new URL. A chat endpoint shows no signing secret and offers no **Rotate secret…**.
 - **Settings → Webhooks** (Instance Admin, a tab beside PKI, Updates and Users): the instance's
   endpoints as above, which receive instance events and may name a receiver on loopback or a
   private network; and the instance setting `webhook_private_ranges` as a list of ranges, one per

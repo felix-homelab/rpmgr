@@ -1,0 +1,38 @@
+{
+  "allowed_mentions": {
+    "parse": []
+  },
+  "embeds": [
+    {
+      "fields": [
+        {
+          "inline": true,
+          "name": "Type",
+          "value": "release.create"
+        },
+        {
+          "inline": true,
+          "name": "Organisation",
+          "value": "instance"
+        },
+        {
+          "inline": true,
+          "name": "Actor",
+          "value": "user usr\\_2"
+        },
+        {
+          "inline": true,
+          "name": "Subject",
+          "value": "release Größe 日本語 🚀 \\(rel\\_1\\)"
+        },
+        {
+          "inline": true,
+          "name": "Time",
+          "value": "2026-11-02T09:30:00Z"
+        }
+      ],
+      "timestamp": "2026-11-02T09:30:00Z",
+      "title": "release.create Größe 日本語 🚀"
+    }
+  ]
+}
