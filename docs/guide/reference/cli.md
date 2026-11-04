@@ -1155,9 +1155,14 @@ rpmgr create webhook [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--disabled` |  | make it disabled; enable webhook turns it on |
+| `--discord-avatar-url string` |  | Discord: the https:// URL of the avatar messages are posted with; empty removes it |
+| `--discord-username string` |  | Discord: the name messages are posted under, at most 80 characters; empty removes it |
 | `--event value` |  | an event type or a prefix such as route.\*; repeat for more; none means all events |
 | `--format string` |  | how events are posted: rpmgr (a signed JSON envelope, the default), discord, slack or teams (a message; the URL then comes from --url-file, and a change of format needs a new URL) |
 | `--instance` |  | the instance's endpoints, which receive instance events, for an Instance Admin, instead of the org's |
+| `--mention string` |  | who an alert's message mentions: Discord role:\<id> or user:\<id>, Slack here, subteam:\<id> or user:\<id>, Teams user:\<address or Entra object id>; empty removes it |
+| `--mention-when string` |  | when the mention is made: never (the default), critical (alerts of a critical kind) or all (every alert that fires) |
+| `--thread-name string` |  | Discord: start a thread of this name for each message, for a forum channel; empty removes it |
 | `--url string` |  | the https:// URL the events are sent to, without a user name, a password or a fragment (format rpmgr) |
 | `--url-file string` |  | a file holding the chat service's webhook URL, which holds its token, or - for standard input; write-only |
 
@@ -1467,11 +1472,16 @@ rpmgr update webhook [flags] <id>
 | Flag | Default | Description |
 |---|---|---|
 | `--all-events` |  | send every event, not only the types listed |
+| `--discord-avatar-url string` |  | Discord: the https:// URL of the avatar messages are posted with; empty removes it |
+| `--discord-username string` |  | Discord: the name messages are posted under, at most 80 characters; empty removes it |
 | `--event value` |  | an event type or a prefix such as route.\*; repeat for more; none means all events |
 | `--force` |  | update without checking that the endpoint is unchanged since this command read it |
 | `--format string` |  | how events are posted: rpmgr (a signed JSON envelope, the default), discord, slack or teams (a message; the URL then comes from --url-file, and a change of format needs a new URL) |
 | `--instance` |  | the instance's endpoints, which receive instance events, for an Instance Admin, instead of the org's |
+| `--mention string` |  | who an alert's message mentions: Discord role:\<id> or user:\<id>, Slack here, subteam:\<id> or user:\<id>, Teams user:\<address or Entra object id>; empty removes it |
+| `--mention-when string` |  | when the mention is made: never (the default), critical (alerts of a critical kind) or all (every alert that fires) |
 | `--rotate-secret` |  | replace the signing secret; the old one keeps signing for 24 h |
+| `--thread-name string` |  | Discord: start a thread of this name for each message, for a forum channel; empty removes it |
 | `--url string` |  | the https:// URL the events are sent to, without a user name, a password or a fragment (format rpmgr) |
 | `--url-file string` |  | a file holding the chat service's webhook URL, which holds its token, or - for standard input; write-only |
 

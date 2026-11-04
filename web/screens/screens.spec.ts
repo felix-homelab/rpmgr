@@ -268,6 +268,12 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await page.getByLabel("Format").selectOption({ label: "Slack" });
   await page.getByLabel("Webhook URL of the service").fill("https://hooks.slack.com/services/T0000/B0000/example");
   await page.getByLabel("Event types").fill("alert.*");
+  // The options of a chat format and the preview of its message.
+  await page.getByLabel("Mention", { exact: true }).fill("subteam:S0614TZR7");
+  await page.getByLabel("Mention when").selectOption({ label: "A critical alert fires" });
+  await page.getByRole("button", { name: "Preview the message" }).click();
+  await expect(page.getByLabel("alert.fire")).toContainText("Agent gw-eu-1 is offline");
+  await shot(page, "webhooks-chat-form", true);
   await page.getByRole("button", { name: "Create the webhook" }).click();
   await expect(page.getByText("Slack", { exact: true })).toBeVisible();
   await shot(page, "webhooks", true);

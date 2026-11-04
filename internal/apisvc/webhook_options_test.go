@@ -108,3 +108,60 @@ func TestWebhooks_ChatOptions(t *testing.T) {
 		t.Errorf("messages after the delete: %+v", ms)
 	}
 }
+
+// TestWebhooks_Preview (D170): the preview shows the message of a chat format with the options as
+// they are typed, for an alert firing, resolving and a change, through the code a delivery uses;
+// the rpmgr format and invalid options are refused; it needs no endpoint and writes nothing.
+func TestWebhooks_Preview(t *testing.T) {
+	e, ada, org, _ := gatewayEnv(t)
+	ctx := context.Background()
+	preview := func(w *rpmgrv1.Webhook) (*rpmgrv1.PreviewWebhookMessageResponse, error) {
+		r, err := ada.wh.PreviewWebhookMessage(ctx, connect.NewRequest(&rpmgrv1.PreviewWebhookMessageRequest{OrgId: org, Webhook: w}))
+		if err != nil {
+			return nil, err
+		}
+		return r.Msg, nil
+	}
+	d := rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_DISCORD
+	r, err := preview(&rpmgrv1.Webhook{Format: d, Mention: "role:123", MentionWhen: rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_ALL, DiscordUsername: "rpmgr alerts"})
+	if err != nil || len(r.GetPreviews()) != 3 {
+		t.Fatalf("preview: %v %v", r, err)
+	}
+	for i, typ := range []string{"alert.fire", "alert.resolve", "route.update"} {
+		p := r.GetPreviews()[i]
+		if p.GetEventType() != typ || !strings.Contains(p.GetBody(), "\n  ") {
+			t.Errorf("%s: %v", typ, p)
+		}
+	}
+	if fire := r.GetPreviews()[0].GetBody(); !strings.Contains(fire, `"roles"`) || !strings.Contains(fire, "rpmgr alerts") || !strings.Contains(fire, "Agent gw-eu-1 is offline") {
+		t.Errorf("the firing sample: %s", fire)
+	}
+	if res := r.GetPreviews()[1].GetBody(); strings.Contains(res, `"roles"`) || !strings.Contains(res, "Resolved after 7 m 30 s") {
+		t.Errorf("the resolve sample: %s", res)
+	}
+	for _, f := range []rpmgrv1.WebhookFormat{rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_SLACK, rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_TEAMS} {
+		if r, err := preview(&rpmgrv1.Webhook{Format: f}); err != nil || len(r.GetPreviews()) != 3 {
+			t.Errorf("%v: %v %v", f, r, err)
+		}
+	}
+	for name, w := range map[string]*rpmgrv1.Webhook{
+		"rpmgr":          {Url: hookURL},
+		"unknown format": {Format: rpmgrv1.WebhookFormat(99)},
+		"bad mention":    {Format: d, Mention: "role:everyone", MentionWhen: rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_ALL},
+		"slack opts":     {Format: rpmgrv1.WebhookFormat_WEBHOOK_FORMAT_SLACK, DiscordUsername: "x"},
+	} {
+		if _, err := preview(w); code(err) != connect.CodeInvalidArgument {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if _, err := ada.wh.PreviewWebhookMessage(ctx, connect.NewRequest(&rpmgrv1.PreviewWebhookMessageRequest{Webhook: &rpmgrv1.Webhook{Format: d}})); code(err) != connect.CodeInvalidArgument {
+		t.Errorf("no org: %v", err)
+	}
+	ir, err := ada.iwh.PreviewInstanceWebhookMessage(ctx, connect.NewRequest(&rpmgrv1.PreviewInstanceWebhookMessageRequest{Webhook: &rpmgrv1.Webhook{Format: d}}))
+	if err != nil || len(ir.Msg.GetPreviews()) != 3 {
+		t.Errorf("instance: %v %v", ir, err)
+	}
+	if n := e.db.Client().Webhook.Query().CountX(e.sys); n != 0 {
+		t.Errorf("a preview made %d endpoints", n)
+	}
+}

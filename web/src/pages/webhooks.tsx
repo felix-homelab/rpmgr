@@ -5,7 +5,7 @@ import { useMutation, useQuery, useTransport } from "@connectrpc/connect-query";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { Webhook as WebhookIcon } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { lazy, Suspense, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "@/components/empty-state";
 import { Field, labelClass } from "@/components/field";
@@ -18,13 +18,43 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { InstanceWebhookService, WebhookFormat, WebhookService, type Webhook, type WebhookDelivery } from "@/gen/rpmgr/v1/webhook_pb";
+import { InstanceWebhookService, WebhookFormat, WebhookMentionWhen, WebhookService, type Webhook, type WebhookDelivery } from "@/gen/rpmgr/v1/webhook_pb";
 import { apiError, serverProblems, type Problems } from "@/lib/api-error";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
 import { useOrg } from "@/session";
 
-const shown = ["url", "secret_url", "event_types"];
+const shown = ["url", "secret_url", "event_types", "mention", "mention_when", "discord_username", "discord_avatar_url", "thread_name"];
+
+// The preview of a message is loaded when it is first asked for: it is a small part of a form that
+// most visits never open.
+const Preview = lazy(() => import("@/components/webhook-preview").then((m) => ({ default: m.WebhookPreview })));
+
+// Options are what a person tunes of a chat endpoint (docs/07-api.md, "Webhooks (Phase 2)"; D170).
+export interface Options {
+  mention: string;
+  mentionWhen: WebhookMentionWhen;
+  discordUsername: string;
+  discordAvatarUrl: string;
+  threadName: string;
+}
+
+// optionsOf are the options an endpoint has; an rpmgr endpoint has none.
+const optionsOf = (w?: Webhook): Options => ({
+  mention: w?.mention ?? "", mentionWhen: w && w.mentionWhen !== WebhookMentionWhen.UNSPECIFIED ? w.mentionWhen : WebhookMentionWhen.NEVER,
+  discordUsername: w?.discordUsername ?? "", discordAvatarUrl: w?.discordAvatarUrl ?? "", threadName: w?.threadName ?? "",
+});
+
+// optionPaths are the fields of o that differ from before, in the snake case an update mask names,
+// and only for a chat format.
+export function optionPaths(chat: boolean, before: Options, o: Options): string[] {
+  if (!chat) {
+    return [];
+  }
+  const names: [keyof Options, string][] = [["mention", "mention"], ["mentionWhen", "mention_when"], ["discordUsername", "discord_username"],
+    ["discordAvatarUrl", "discord_avatar_url"], ["threadName", "thread_name"]];
+  return names.filter(([k]) => before[k] !== o[k]).map(([, path]) => path);
+}
 
 // The formats of an endpoint (docs/07-api.md, "Webhooks"): rpmgr's signed JSON, or a message for a
 // chat service, whose URL holds the service's token (D162).
@@ -74,8 +104,9 @@ export function failure(t: TFunction, err: unknown): string {
 export interface Api {
   orgId?: string;
   pending: boolean;
-  create: (w: { url?: string; secretUrl?: string; format: WebhookFormat; eventTypes: string[]; enabled: boolean }) => Promise<{ webhook?: Webhook; secret: string }>;
-  update: (w: { id: string; url?: string; secretUrl?: string; format?: WebhookFormat; eventTypes?: string[]; enabled?: boolean }, paths: string[], etag: string) => Promise<unknown>;
+  create: (w: { url?: string; secretUrl?: string; format: WebhookFormat; eventTypes: string[]; enabled: boolean } & Partial<Options>) => Promise<{ webhook?: Webhook; secret: string }>;
+  update: (w: { id: string; url?: string; secretUrl?: string; format?: WebhookFormat; eventTypes?: string[]; enabled?: boolean } & Partial<Options>, paths: string[], etag: string) => Promise<unknown>;
+  preview: (w: { format: WebhookFormat } & Options) => Promise<{ eventType: string; body: string }[]>;
   rotate: (id: string) => Promise<{ secret: string }>;
   remove: (id: string, etag: string) => Promise<unknown>;
   test: (id: string) => Promise<{ delivered: boolean; statusCode: number; error: string }>;
@@ -106,6 +137,7 @@ function useApi(orgId?: string): Api {
       remove: (webhookId, etag) => i.remove.mutateAsync({ webhookId, etag }),
       test: (webhookId) => i.test.mutateAsync({ webhookId }),
       deliveries: (webhookId, pageToken) => createClient(InstanceWebhookService, transport).listInstanceWebhookDeliveries({ webhookId, pageSize: 50, pageToken }),
+      preview: async (webhook) => (await createClient(InstanceWebhookService, transport).previewInstanceWebhookMessage({ webhook })).previews,
     };
   }
   return {
@@ -117,6 +149,7 @@ function useApi(orgId?: string): Api {
     remove: (webhookId, etag) => o.remove.mutateAsync({ webhookId, etag }),
     test: (webhookId) => o.test.mutateAsync({ webhookId }),
     deliveries: (webhookId, pageToken) => createClient(WebhookService, transport).listWebhookDeliveries({ webhookId, pageSize: 50, pageToken }),
+    preview: async (webhook) => (await createClient(WebhookService, transport).previewWebhookMessage({ orgId, webhook })).previews,
   };
 }
 
@@ -205,6 +238,9 @@ function Form({ api, webhook, onCancel, onDone }: { api: Api; webhook?: Webhook;
   const [url, setUrl] = useState(webhook && !isChat(webhook.format) ? webhook.url : "");
   const [types, setTypes] = useState(webhook?.eventTypes.join(", ") ?? "");
   const [enabled, setEnabled] = useState(webhook?.enabled ?? true);
+  const before = optionsOf(webhook);
+  const [opts, setOpts] = useState<Options>(before);
+  const [preview, setPreview] = useState(false);
   const [error, setError] = useState("");
   const [problems, setProblems] = useState<Problems>({});
 
@@ -224,17 +260,21 @@ function Form({ api, webhook, onCancel, onDone }: { api: Api; webhook?: Webhook;
     try {
       if (webhook) {
         const paths = chat ? ["event_types", "enabled"] : ["url", "event_types", "enabled"];
+        // An option that does not apply to the format it moves to is cleared, so that the server,
+        // which refuses an option its format has no use for, accepts the change.
+        const kept = format === WebhookFormat.DISCORD ? opts : { ...opts, discordUsername: "", discordAvatarUrl: "", threadName: "" };
+        paths.push(...optionPaths(chat, before, kept));
         if (changed) {
           paths.push("format");
         }
         if (chat && url !== "") {
           paths.push("secret_url");
         }
-        await api.update({ id: webhook.id, ...(chat ? (url !== "" ? { secretUrl: url } : {}) : { url }), format, eventTypes, enabled }, paths, webhook.etag);
+        await api.update({ id: webhook.id, ...(chat ? (url !== "" ? { secretUrl: url } : {}) : { url }), format, eventTypes, enabled, ...(chat ? kept : {}) }, paths, webhook.etag);
         await queryClient.invalidateQueries();
         onDone(webhook, "");
       } else {
-        const r = await api.create({ ...(chat ? { secretUrl: url } : { url }), format, eventTypes, enabled });
+        const r = await api.create({ ...(chat ? { secretUrl: url, ...(format === WebhookFormat.DISCORD ? opts : { ...opts, discordUsername: "", discordAvatarUrl: "", threadName: "" }) } : { url }), format, eventTypes, enabled });
         await queryClient.invalidateQueries();
         onDone(r.webhook!, r.secret);
       }
@@ -259,6 +299,17 @@ function Form({ api, webhook, onCancel, onDone }: { api: Api; webhook?: Webhook;
         type="url" required={urlRequired} maxLength={2048}
         {...(isChat(format) ? { autoComplete: "off", autoCorrect: "off", autoCapitalize: "off", spellCheck: false } : {})} error={problems.url ?? problems.secret_url} value={url} onChange={(e) => setUrl(e.target.value)} />
       <Field label={t("webhooks.events")} hint={t("webhooks.eventsHint")} error={problems.event_types} value={types} onChange={(e) => setTypes(e.target.value)} />
+      {isChat(format) && <ChatOptions format={format} opts={opts} onChange={setOpts} problems={problems} />}
+      {isChat(format) && (
+        <div className="grid gap-2">
+          <Button type="button" size="sm" variant="outline" className="justify-self-start" aria-expanded={preview} onClick={() => setPreview(!preview)}>{t("webhooks.preview")}</Button>
+          {preview && (
+            <Suspense fallback={<p className="text-sm text-muted-foreground">{t("stepUp.loading")}</p>}>
+              <Preview api={api} format={format} options={opts} />
+            </Suspense>
+          )}
+        </div>
+      )}
       <Switch checked={enabled} onClick={() => setEnabled(!enabled)} className="justify-self-start">{t("webhooks.enabled")}</Switch>
       {error && <Alert>{error}</Alert>}
       <div className="flex gap-2">
@@ -266,6 +317,37 @@ function Form({ api, webhook, onCancel, onDone }: { api: Api; webhook?: Webhook;
         <Button type="button" variant="outline" onClick={onCancel}>{t("stepUp.cancel")}</Button>
       </div>
     </form>
+  );
+}
+
+// ChatOptions are the fields of a chat format: the mention and when it is made, and Discord's own.
+function ChatOptions({ format, opts, onChange, problems }: { format: WebhookFormat; opts: Options; onChange: (o: Options) => void; problems: Problems }) {
+  const { t } = useTranslation();
+  const set = (o: Partial<Options>) => onChange({ ...opts, ...o });
+  const key = format === WebhookFormat.DISCORD ? "discord" : format === WebhookFormat.SLACK ? "slack" : "teams";
+  const whens = [[WebhookMentionWhen.NEVER, "never"], [WebhookMentionWhen.CRITICAL, "critical"], [WebhookMentionWhen.ALL, "all"]] as const;
+  return (
+    <>
+      <Field label={t("webhooks.mention")} hint={t(`webhooks.mentionHint.${key}`)} error={problems.mention} value={opts.mention} maxLength={300}
+        autoComplete="off" spellCheck={false} onChange={(e) => set({ mention: e.target.value.trim() })} />
+      <div className="grid gap-1.5">
+        <label htmlFor="webhook-mention-when" className={labelClass()}>{t("webhooks.mentionWhen")}</label>
+        <Select id="webhook-mention-when" className="justify-self-start" value={opts.mentionWhen} onChange={(e) => set({ mentionWhen: Number(e.target.value) })}>
+          {whens.map(([v, k]) => <option key={k} value={v}>{t(`webhooks.mentionWhens.${k}`)}</option>)}
+        </Select>
+        {problems.mention_when && <p role="alert" className="text-xs text-destructive">{problems.mention_when}</p>}
+      </div>
+      {format === WebhookFormat.DISCORD && (
+        <>
+          <Field label={t("webhooks.discordUsername")} hint={t("webhooks.discordUsernameHint")} error={problems.discord_username} value={opts.discordUsername} maxLength={300}
+            onChange={(e) => set({ discordUsername: e.target.value })} />
+          <Field label={t("webhooks.discordAvatarUrl")} hint={t("webhooks.discordAvatarUrlHint")} type="url" error={problems.discord_avatar_url} value={opts.discordAvatarUrl}
+            maxLength={2048} onChange={(e) => set({ discordAvatarUrl: e.target.value.trim() })} />
+          <Field label={t("webhooks.threadName")} hint={t("webhooks.threadNameHint")} error={problems.thread_name} value={opts.threadName} maxLength={500}
+            onChange={(e) => set({ threadName: e.target.value })} />
+        </>
+      )}
+    </>
   );
 }
 
