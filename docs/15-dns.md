@@ -48,7 +48,10 @@ removed by rpmgr. The same credential lets ACME use DNS-01.
      gateway group. A group without a DNS target publishes nothing.
    - The DNS target is either `cname` (one CNAME record) or `addresses` (one A record per IPv4 and
      one AAAA record per IPv6 address).
-   - A DNS name takes precedence over route hostnames with the same name.
+   - A DNS name takes precedence over route hostnames with the same name. It is created only for
+     a gateway group of its own org, and only under a verified domain of the org that covers it; a
+     wildcard name needs a domain with the wildcard. Its `ttl` is 0, which is the zone's
+     `default_ttl`, or lies within the bounds of that ([Timers and limits](#timers-and-limits)).
    - If routes in two gateway groups use the same hostname, which the data model allows
      ([06](06-data-model.md#routing)), and no DNS name decides, the name is `ambiguous` and its
      records stay as they are.

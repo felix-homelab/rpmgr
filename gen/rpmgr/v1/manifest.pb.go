@@ -147,10 +147,10 @@ var File_rpmgr_v1_manifest_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_manifest_proto_rawDesc = "" +
 	"\n" +
-	"\x17rpmgr/v1/manifest.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x16rpmgr/v1/options.proto\"\xe1\x01\n" +
+	"\x17rpmgr/v1/manifest.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x16rpmgr/v1/options.proto\"\xeb\x01\n" +
 	"\x16ExportManifestsRequest\x12\x1e\n" +
-	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x12w\n" +
-	"\x05kinds\x18\x02 \x03(\tBa\xbaH^\x92\x01[\x10\b\x18\x01\"UrSR\x05RouteR\fAccessPolicyR\fGatewayGroupR\aGatewayR\bPortPoolR\x06DomainR\tConnectorR\bCABundleR\x05kinds\x12.\n" +
+	"\x06org_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05orgId\x12\x80\x01\n" +
+	"\x05kinds\x18\x02 \x03(\tBj\xbaHg\x92\x01d\x10\t\x18\x01\"^r\\R\x05RouteR\fAccessPolicyR\fGatewayGroupR\aGatewayR\bPortPoolR\x06DomainR\tConnectorR\bCABundleR\aDnsNameR\x05kinds\x12.\n" +
 	"\fresource_ids\x18\x03 \x03(\tB\v\xbaH\b\x92\x01\x05\x10\xf4\x03\x18\x01R\vresourceIds\"C\n" +
 	"\x17ExportManifestsResponse\x12\x12\n" +
 	"\x04yaml\x18\x01 \x01(\tR\x04yaml\x12\x14\n" +

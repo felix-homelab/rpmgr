@@ -638,6 +638,59 @@ var (
 			},
 		},
 	}
+	// DNSNamesColumns holds the columns for the "dns_names" table.
+	DNSNamesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "fqdn", Type: field.TypeString, Size: 253},
+		{Name: "ttl", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "gateway_group_id", Type: field.TypeString},
+		{Name: "domain_id", Type: field.TypeString},
+	}
+	// DNSNamesTable holds the schema information for the "dns_names" table.
+	DNSNamesTable = &schema.Table{
+		Name:       "dns_names",
+		Columns:    DNSNamesColumns,
+		PrimaryKey: []*schema.Column{DNSNamesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "dns_names_gateway_groups_group",
+				Columns:    []*schema.Column{DNSNamesColumns[6]},
+				RefColumns: []*schema.Column{GatewayGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "dns_names_domains_domain",
+				Columns:    []*schema.Column{DNSNamesColumns[7]},
+				RefColumns: []*schema.Column{DomainsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "dnsname_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{DNSNamesColumns[1], DNSNamesColumns[0]},
+			},
+			{
+				Name:    "dnsname_fqdn",
+				Unique:  true,
+				Columns: []*schema.Column{DNSNamesColumns[3]},
+			},
+			{
+				Name:    "dnsname_gateway_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{DNSNamesColumns[6]},
+			},
+			{
+				Name:    "dnsname_domain_id",
+				Unique:  false,
+				Columns: []*schema.Column{DNSNamesColumns[7]},
+			},
+		},
+	}
 	// DNSProvidersColumns holds the columns for the "dns_providers" table.
 	DNSProvidersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -2370,6 +2423,7 @@ var (
 		ConnectAuthoritiesTable,
 		ConnectListenersTable,
 		ConnectorsTable,
+		DNSNamesTable,
 		DNSProvidersTable,
 		DNSZonesTable,
 		DataSessionsTable,
@@ -2486,6 +2540,11 @@ func init() {
 	ConnectListenersTable.ForeignKeys[2].RefTable = DomainsTable
 	ConnectListenersTable.Annotation = &entsql.Annotation{
 		Table: "connect_listeners",
+	}
+	DNSNamesTable.ForeignKeys[0].RefTable = GatewayGroupsTable
+	DNSNamesTable.ForeignKeys[1].RefTable = DomainsTable
+	DNSNamesTable.Annotation = &entsql.Annotation{
+		Table: "dns_names",
 	}
 	DNSProvidersTable.Annotation = &entsql.Annotation{
 		Table: "dns_providers",

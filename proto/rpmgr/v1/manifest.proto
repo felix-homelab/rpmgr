@@ -29,7 +29,7 @@ message ExportManifestsRequest {
   string org_id = 1 [(buf.validate.field).string.min_len = 1];
   // The kinds to export, such as "Route"; empty is every kind.
   repeated string kinds = 2 [(buf.validate.field).repeated = {
-    max_items: 8
+    max_items: 9
     unique: true
     items: {
       string: {
@@ -41,7 +41,8 @@ message ExportManifestsRequest {
           "PortPool",
           "Domain",
           "Connector",
-          "CABundle"
+          "CABundle",
+          "DnsName"
         ]
       }
     }

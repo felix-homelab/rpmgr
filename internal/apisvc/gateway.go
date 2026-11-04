@@ -23,6 +23,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gateway"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
@@ -168,6 +169,7 @@ func (g *Gateways) DeleteGatewayGroup(ctx context.Context, req *connect.Request[
 			{"gateways", tx.Gateway.Query().Where(gateway.GatewayGroupID(id), gateway.DecommissionedAtIsNil()).Count},
 			{"routes", tx.Route.Query().Where(route.GatewayGroupID(id)).Count},
 			{"port pools", tx.PortPool.Query().Where(portpool.GatewayGroupID(id)).Count},
+			{"DNS names", tx.DNSName.Query().Where(dnsname.GatewayGroupID(id)).Count},
 		} {
 			if n, err := c.count(ctx); err != nil || n > 0 {
 				return nil, errors.Join(err, errIf(n > 0, dependants(fmt.Sprintf("the group still has %d %s", n, c.what))))

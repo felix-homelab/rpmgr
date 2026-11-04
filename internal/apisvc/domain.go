@@ -18,6 +18,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/routehostname"
 )
@@ -159,6 +160,9 @@ func (d *Domains) DeleteDomain(ctx context.Context, req *connect.Request[rpmgrv1
 		}
 		if n, err := tx.RouteHostname.Query().Where(routehostname.DomainID(cur.ID)).Count(ctx); err != nil || n > 0 {
 			return nil, errors.Join(err, errIf(n > 0, dependants(fmt.Sprintf("%d route hostnames lie under the domain", n))))
+		}
+		if n, err := tx.DNSName.Query().Where(dnsname.DomainID(cur.ID)).Count(ctx); err != nil || n > 0 {
+			return nil, errors.Join(err, errIf(n > 0, dependants(fmt.Sprintf("%d DNS names lie under the domain", n))))
 		}
 		if n, err := tx.ConnectListener.Query().Where(connectlistener.DomainID(cur.ID)).Count(ctx); err != nil || n > 0 {
 			return nil, errors.Join(err, errIf(n > 0, dependants(fmt.Sprintf("the hostnames of %d CONNECT listeners lie under the domain", n))))

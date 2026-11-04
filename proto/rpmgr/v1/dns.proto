@@ -376,3 +376,134 @@ message RemoveZoneRequest {
 
 // RemoveZoneResponse is empty.
 message RemoveZoneResponse {}
+
+// DnsNameService is an org's explicit DNS names (docs/07-api.md; docs/15-dns.md, "Concepts"): a
+// name, or a wildcard, that points at a gateway group without a route. Reading needs org.read,
+// changing a name infrastructure.write, so Owners and Admins only. A name is DNS-only, and lies
+// under a verified domain of the org. The service creates and keeps the names; publishing them in
+// a managed zone is the DNS job's.
+service DnsNameService {
+  // CreateDnsName creates a name for a gateway group of the org. The name must lie under a
+  // verified domain of the org, and a wildcard name under a verified domain with the wildcard;
+  // it is unique in the instance.
+  rpc CreateDnsName(CreateDnsNameRequest) returns (CreateDnsNameResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "org_id"
+    };
+  }
+  // GetDnsName returns a name.
+  rpc GetDnsName(GetDnsNameRequest) returns (GetDnsNameResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "dns_name_id"
+    };
+  }
+  // ListDnsNames lists an org's names by ID.
+  rpc ListDnsNames(ListDnsNamesRequest) returns (ListDnsNamesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "org.read"
+      resource_field: "org_id"
+    };
+  }
+  // UpdateDnsName changes the gateway group or the TTL of a name. The name itself does not
+  // change: create a new one.
+  rpc UpdateDnsName(UpdateDnsNameRequest) returns (UpdateDnsNameResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_name.id"
+    };
+  }
+  // DeleteDnsName deletes a name. The records the DNS job published for it go with it.
+  rpc DeleteDnsName(DeleteDnsNameRequest) returns (DeleteDnsNameResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_name_id"
+    };
+  }
+}
+
+// DnsName is an explicit DNS name of an org.
+message DnsName {
+  // The name's ID, dnn_…; output only.
+  string id = 1;
+  // The name: a host name, or a wildcard whose first label is *. It is stored in lower case
+  // without a trailing dot, and cannot change.
+  string fqdn = 2 [(buf.validate.field).string.max_len = 253];
+  // The gateway group the name points at, which is one of the org's own.
+  string gateway_group_id = 3;
+  // The TTL of the name's records in seconds; 0 is the default TTL of the zone.
+  int32 ttl = 4 [(buf.validate.field).int32.gte = 0];
+  // The version to send back with an update or a deletion; output only.
+  string etag = 5;
+}
+
+// CreateDnsNameRequest is a new name.
+message CreateDnsNameRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The name: fqdn, gateway_group_id and an optional ttl.
+  DnsName dns_name = 2 [(buf.validate.field).required = true];
+  // Makes retries idempotent (docs/07-api.md, "Resource design").
+  string request_id = 3 [(buf.validate.field).string.max_len = 128];
+}
+
+// CreateDnsNameResponse is the new name.
+message CreateDnsNameResponse {
+  DnsName dns_name = 1;
+}
+
+// GetDnsNameRequest names a name.
+message GetDnsNameRequest {
+  // The name's ID.
+  string dns_name_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetDnsNameResponse is the name.
+message GetDnsNameResponse {
+  DnsName dns_name = 1;
+}
+
+// ListDnsNamesRequest asks for a page of an org's names.
+message ListDnsNamesRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 2;
+  // The page after the one that returned it.
+  string page_token = 3;
+}
+
+// ListDnsNamesResponse is one page of names; the page token is empty on the last.
+message ListDnsNamesResponse {
+  repeated DnsName dns_names = 1;
+  string next_page_token = 2;
+}
+
+// UpdateDnsNameRequest changes a name.
+message UpdateDnsNameRequest {
+  // The name with its ID and the new values of the fields the mask names.
+  DnsName dns_name = 1 [(buf.validate.field).required = true];
+  // The fields to change: gateway_group_id, ttl.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateDnsNameResponse is the changed name.
+message UpdateDnsNameResponse {
+  DnsName dns_name = 1;
+}
+
+// DeleteDnsNameRequest names a name.
+message DeleteDnsNameRequest {
+  // The name's ID.
+  string dns_name_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// DeleteDnsNameResponse is empty.
+message DeleteDnsNameResponse {}
