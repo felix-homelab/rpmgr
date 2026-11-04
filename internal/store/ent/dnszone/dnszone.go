@@ -48,6 +48,8 @@ const (
 	FieldDefaultTTL = "default_ttl"
 	// FieldLastSyncedAt holds the string denoting the last_synced_at field in the database.
 	FieldLastSyncedAt = "last_synced_at"
+	// FieldSyncRequestedAt holds the string denoting the sync_requested_at field in the database.
+	FieldSyncRequestedAt = "sync_requested_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeDNSProvider holds the string denoting the dns_provider edge name in mutations.
@@ -82,6 +84,7 @@ var Columns = []string{
 	FieldDeleteThreshold,
 	FieldDefaultTTL,
 	FieldLastSyncedAt,
+	FieldSyncRequestedAt,
 	FieldCreatedAt,
 }
 
@@ -282,6 +285,11 @@ func ByDefaultTTL(opts ...sql.OrderTermOption) OrderOption {
 // ByLastSyncedAt orders the results by the last_synced_at field.
 func ByLastSyncedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastSyncedAt, opts...).ToFunc()
+}
+
+// BySyncRequestedAt orders the results by the sync_requested_at field.
+func BySyncRequestedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSyncRequestedAt, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

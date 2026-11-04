@@ -286,6 +286,8 @@ func (c *Client) ListZones(ctx context.Context) ([]dns.Zone, error) {
 	return all, err
 }
 
+// record is a record in the API's JSON. The comment is always sent, so that a patch with an empty
+// one takes a marker off, as releasing a record does [V VB-27].
 type record struct {
 	ID      string `json:"id,omitempty"`
 	Type    string `json:"type"`
@@ -293,7 +295,7 @@ type record struct {
 	Content string `json:"content"`
 	TTL     int    `json:"ttl"`
 	Proxied bool   `json:"proxied"`
-	Comment string `json:"comment,omitempty"`
+	Comment string `json:"comment"`
 }
 
 func toRecord(r dns.Record) record { return record(r) }

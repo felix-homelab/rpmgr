@@ -135,6 +135,11 @@ func LastSyncedAt(v time.Time) predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldEQ(FieldLastSyncedAt, v))
 }
 
+// SyncRequestedAt applies equality check predicate on the "sync_requested_at" field. It's identical to SyncRequestedAtEQ.
+func SyncRequestedAt(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldSyncRequestedAt, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldEQ(FieldCreatedAt, v))
@@ -818,6 +823,56 @@ func LastSyncedAtIsNil() predicate.DNSZone {
 // LastSyncedAtNotNil applies the NotNil predicate on the "last_synced_at" field.
 func LastSyncedAtNotNil() predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldNotNull(FieldLastSyncedAt))
+}
+
+// SyncRequestedAtEQ applies the EQ predicate on the "sync_requested_at" field.
+func SyncRequestedAtEQ(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldSyncRequestedAt, v))
+}
+
+// SyncRequestedAtNEQ applies the NEQ predicate on the "sync_requested_at" field.
+func SyncRequestedAtNEQ(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNEQ(FieldSyncRequestedAt, v))
+}
+
+// SyncRequestedAtIn applies the In predicate on the "sync_requested_at" field.
+func SyncRequestedAtIn(vs ...time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldIn(FieldSyncRequestedAt, vs...))
+}
+
+// SyncRequestedAtNotIn applies the NotIn predicate on the "sync_requested_at" field.
+func SyncRequestedAtNotIn(vs ...time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNotIn(FieldSyncRequestedAt, vs...))
+}
+
+// SyncRequestedAtGT applies the GT predicate on the "sync_requested_at" field.
+func SyncRequestedAtGT(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldGT(FieldSyncRequestedAt, v))
+}
+
+// SyncRequestedAtGTE applies the GTE predicate on the "sync_requested_at" field.
+func SyncRequestedAtGTE(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldGTE(FieldSyncRequestedAt, v))
+}
+
+// SyncRequestedAtLT applies the LT predicate on the "sync_requested_at" field.
+func SyncRequestedAtLT(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldLT(FieldSyncRequestedAt, v))
+}
+
+// SyncRequestedAtLTE applies the LTE predicate on the "sync_requested_at" field.
+func SyncRequestedAtLTE(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldLTE(FieldSyncRequestedAt, v))
+}
+
+// SyncRequestedAtIsNil applies the IsNil predicate on the "sync_requested_at" field.
+func SyncRequestedAtIsNil() predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldIsNull(FieldSyncRequestedAt))
+}
+
+// SyncRequestedAtNotNil applies the NotNil predicate on the "sync_requested_at" field.
+func SyncRequestedAtNotNil() predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNotNull(FieldSyncRequestedAt))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

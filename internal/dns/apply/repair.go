@@ -200,6 +200,20 @@ func (e *Engine) Correct(ctx context.Context, l lease.Lease, z Zone, live []dns.
 				continue
 			}
 			marker := Marker(e.TrustDomain, r.ID)
+			if r.AdoptedAt != nil && r.LastSyncedAt == nil {
+				// Adopted and not written by the job yet: the record has no marker, and no one changed
+				// it. The first write puts the marker on, and is no correction.
+				if rec.Comment != marker {
+					if ui := slices.IndexFunc(out.Updates, func(u dns.Record) bool { return u.ID == rec.ID }); ui >= 0 {
+						out.Updates[ui].Comment = marker
+					} else {
+						u := rec
+						u.Comment = marker
+						out.Updates = append(out.Updates, u)
+					}
+				}
+				continue
+			}
 			changed := !plan.SameContent(dns.Record{Type: string(r.Type), Content: r.Content}, rec) || r.TTL != rec.TTL || r.Proxied != rec.Proxied
 			if !changed && rec.Comment == marker {
 				if r.State == dnsrecord.StateDrifted { // someone put it back

@@ -21681,6 +21681,7 @@ type DNSZoneMutation struct {
 	default_ttl             *int
 	adddefault_ttl          *int
 	last_synced_at          *time.Time
+	sync_requested_at       *time.Time
 	created_at              *time.Time
 	clearedFields           map[string]struct{}
 	dns_provider            *string
@@ -22456,6 +22457,55 @@ func (m *DNSZoneMutation) ResetLastSyncedAt() {
 	delete(m.clearedFields, dnszone.FieldLastSyncedAt)
 }
 
+// SetSyncRequestedAt sets the "sync_requested_at" field.
+func (m *DNSZoneMutation) SetSyncRequestedAt(t time.Time) {
+	m.sync_requested_at = &t
+}
+
+// SyncRequestedAt returns the value of the "sync_requested_at" field in the mutation.
+func (m *DNSZoneMutation) SyncRequestedAt() (r time.Time, exists bool) {
+	v := m.sync_requested_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSyncRequestedAt returns the old "sync_requested_at" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldSyncRequestedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSyncRequestedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSyncRequestedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSyncRequestedAt: %w", err)
+	}
+	return oldValue.SyncRequestedAt, nil
+}
+
+// ClearSyncRequestedAt clears the value of the "sync_requested_at" field.
+func (m *DNSZoneMutation) ClearSyncRequestedAt() {
+	m.sync_requested_at = nil
+	m.clearedFields[dnszone.FieldSyncRequestedAt] = struct{}{}
+}
+
+// SyncRequestedAtCleared returns if the "sync_requested_at" field was cleared in this mutation.
+func (m *DNSZoneMutation) SyncRequestedAtCleared() bool {
+	_, ok := m.clearedFields[dnszone.FieldSyncRequestedAt]
+	return ok
+}
+
+// ResetSyncRequestedAt resets all changes to the "sync_requested_at" field.
+func (m *DNSZoneMutation) ResetSyncRequestedAt() {
+	m.sync_requested_at = nil
+	delete(m.clearedFields, dnszone.FieldSyncRequestedAt)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *DNSZoneMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -22553,7 +22603,7 @@ func (m *DNSZoneMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DNSZoneMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 18)
 	if m.org_id != nil {
 		fields = append(fields, dnszone.FieldOrgID)
 	}
@@ -22602,6 +22652,9 @@ func (m *DNSZoneMutation) Fields() []string {
 	if m.last_synced_at != nil {
 		fields = append(fields, dnszone.FieldLastSyncedAt)
 	}
+	if m.sync_requested_at != nil {
+		fields = append(fields, dnszone.FieldSyncRequestedAt)
+	}
 	if m.created_at != nil {
 		fields = append(fields, dnszone.FieldCreatedAt)
 	}
@@ -22645,6 +22698,8 @@ func (m *DNSZoneMutation) Field(name string) (ent.Value, bool) {
 		return m.DefaultTTL()
 	case dnszone.FieldLastSyncedAt:
 		return m.LastSyncedAt()
+	case dnszone.FieldSyncRequestedAt:
+		return m.SyncRequestedAt()
 	case dnszone.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -22688,6 +22743,8 @@ func (m *DNSZoneMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldDefaultTTL(ctx)
 	case dnszone.FieldLastSyncedAt:
 		return m.OldLastSyncedAt(ctx)
+	case dnszone.FieldSyncRequestedAt:
+		return m.OldSyncRequestedAt(ctx)
 	case dnszone.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -22811,6 +22868,13 @@ func (m *DNSZoneMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetLastSyncedAt(v)
 		return nil
+	case dnszone.FieldSyncRequestedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSyncRequestedAt(v)
+		return nil
 	case dnszone.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -22893,6 +22957,9 @@ func (m *DNSZoneMutation) ClearedFields() []string {
 	if m.FieldCleared(dnszone.FieldLastSyncedAt) {
 		fields = append(fields, dnszone.FieldLastSyncedAt)
 	}
+	if m.FieldCleared(dnszone.FieldSyncRequestedAt) {
+		fields = append(fields, dnszone.FieldSyncRequestedAt)
+	}
 	return fields
 }
 
@@ -22912,6 +22979,9 @@ func (m *DNSZoneMutation) ClearField(name string) error {
 		return nil
 	case dnszone.FieldLastSyncedAt:
 		m.ClearLastSyncedAt()
+		return nil
+	case dnszone.FieldSyncRequestedAt:
+		m.ClearSyncRequestedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown DNSZone nullable field %s", name)
@@ -22968,6 +23038,9 @@ func (m *DNSZoneMutation) ResetField(name string) error {
 		return nil
 	case dnszone.FieldLastSyncedAt:
 		m.ResetLastSyncedAt()
+		return nil
+	case dnszone.FieldSyncRequestedAt:
+		m.ResetSyncRequestedAt()
 		return nil
 	case dnszone.FieldCreatedAt:
 		m.ResetCreatedAt()

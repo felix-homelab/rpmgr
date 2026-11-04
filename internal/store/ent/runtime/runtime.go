@@ -1816,7 +1816,7 @@ func init() {
 	// dnszone.DefaultTTLValidator is a validator for the "default_ttl" field. It is called by the builders before save.
 	dnszone.DefaultTTLValidator = dnszoneDescDefaultTTL.Validators[0].(func(int) error)
 	// dnszoneDescCreatedAt is the schema descriptor for created_at field.
-	dnszoneDescCreatedAt := dnszoneFields[15].Descriptor()
+	dnszoneDescCreatedAt := dnszoneFields[16].Descriptor()
 	// dnszone.DefaultCreatedAt holds the default value on creation for the created_at field.
 	dnszone.DefaultCreatedAt = dnszoneDescCreatedAt.Default.(func() time.Time)
 	// dnszoneDescID is the schema descriptor for id field.
