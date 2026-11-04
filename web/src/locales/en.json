@@ -901,6 +901,67 @@
     "trust": "Mark as trusted",
     "ask": "Remove the claim for {{name}}?"
   },
+  "dns": {
+    "title": "DNS",
+    "intro": "Connect a DNS provider and import its zones. An imported zone starts held: nothing is published until its first plan is approved.",
+    "providers": "DNS providers",
+    "zones": "Managed zones",
+    "connect": "Connect a provider",
+    "connectTitle": "Connect a DNS provider",
+    "connectSubmit": "Connect it",
+    "noProviders": "The org has no DNS provider. Connect one to import its zones.",
+    "noZones": "No zone is managed yet. Import one from a provider.",
+    "name": "Name",
+    "account": "Cloudflare account ID",
+    "accountHint": "Only for a token that belongs to an account.",
+    "token": "API token",
+    "tokenHint": "Write-only: it is checked, sealed and never shown again. Use a scoped API token, not the Global API Key.",
+    "tokenNeeded": "Enter the API token.",
+    "cloudflare": "Cloudflare",
+    "expires": "token expires {{when}}",
+    "expiring": "token expires soon",
+    "checked": "checked {{when}}",
+    "providerStatus": {
+      "unknown": "unknown",
+      "ok": "token valid",
+      "invalid": "token invalid"
+    },
+    "importZones": "Zones",
+    "rotate": "Replace token",
+    "rotateTitle": "Replace the token of {{name}}",
+    "rotateSubmit": "Replace it",
+    "askDelete": "Delete the provider {{name}}? Its zones stop being managed; the records stay at the provider.",
+    "askRemove": "Stop managing {{name}}? The records stay at the provider.",
+    "providerNoZones": "The provider offers no zone.",
+    "canImport": "can be imported",
+    "why": {
+      "imported": "already imported",
+      "status": "not importable: its status is {{status}}",
+      "type": "not importable: its type is {{type}}, only full zones can be imported"
+    },
+    "import": "Import",
+    "importZone": "Import {{name}}",
+    "imported": "Imported {{name}}. It is held until its first plan is approved.",
+    "sync": {
+      "unknown": "unknown",
+      "active": "publishing",
+      "held": "held",
+      "disabled": "disabled"
+    },
+    "access": {
+      "unknown": "unknown",
+      "ok": "reachable",
+      "permissionDenied": "permission denied",
+      "unreachable": "unreachable",
+      "rateLimited": "rate limited"
+    },
+    "held": {
+      "imported": "imported, no plan approved yet"
+    },
+    "heldReason": "held: {{reason}}",
+    "synced": "synced {{when}}",
+    "permissionDenied": "The token has no permission for {{name}}. Give it the zone's DNS edit permission at the provider, or replace the token."
+  },
   "pem": {
     "file": "Or read it from a file:",
     "fileSecret": "Or read it from a file; it stays in this page until you send it:"
