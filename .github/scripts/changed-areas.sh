@@ -39,7 +39,7 @@ while IFS= read -r f; do
     *) checks=true ;;
   esac
   case $f in
-    internal/units/* | internal/installsh/* | internal/release/* | test/installsh/* | test/ota/* | cmd/rpmgr/* | \
+    internal/units/* | internal/installsh/* | internal/release/* | internal/gateway/* | internal/tunnel/* | internal/allinone/* | internal/update/* | test/installsh/* | test/ota/* | cmd/rpmgr/* | \
       internal/handoff/* | internal/gateway/* | internal/connector/* | internal/allinone/* | internal/testseed/* | test/handoff/* | test/e2e/e2eclient/* | \
       .github/scripts/check-units.sh | .github/scripts/check-install.sh | .github/scripts/check-ota.sh | .github/scripts/check-handoff.sh) ops=true ;;
   esac
