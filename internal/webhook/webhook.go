@@ -287,7 +287,7 @@ func (s *Sender) Send(ctx context.Context, d Delivery) (int, error) {
 		}
 		eu.RawQuery = q.Encode()
 		eu.RawPath = ""
-		resp, answer, err := do(http.MethodPatch, &eu, d.Edit.Body)
+		resp, answer, err := do(http.MethodPatch, &eu, d.Edit.Body) //nolint:bodyclose // do closes the body
 		if err != nil {
 			return 0, err
 		}
@@ -313,7 +313,7 @@ func (s *Sender) Send(ctx context.Context, d Delivery) (int, error) {
 		q.Set("wait", "true")
 		pu.RawQuery = q.Encode()
 	}
-	resp, answer, err := do(http.MethodPost, &pu, d.Body)
+	resp, answer, err := do(http.MethodPost, &pu, d.Body) //nolint:bodyclose // do closes the body
 	if err != nil {
 		return 0, err
 	}
