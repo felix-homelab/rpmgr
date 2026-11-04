@@ -41,6 +41,9 @@ type Webhooks struct {
 	DB     *store.DB
 	API    *api.Server
 	Sealer *secret.Sealer
+	// Instance is what a chat message shows of the instance (webhook.Context): the public URL,
+	// the trust domain and the version.
+	Instance webhook.Context
 	// Sender sends the test event; nil refuses TestWebhook.
 	Sender *webhook.Sender
 	// Sys is the controller's system scope, under which InstanceWebhooks reads and writes: an
@@ -560,7 +563,9 @@ func (w *Webhooks) test(ctx context.Context, id string) (*rpmgrv1.TestWebhookRes
 	}
 	body, err := webhook.Body(e)
 	if f.Chat() {
-		body, err = webhook.ChatBody(f, e)
+		mc := w.Instance
+		mc.Resolve(ctx, w.DB.ReadClient(), e)
+		body, err = webhook.ChatBody(f, e, mc)
 	}
 	if err != nil {
 		return nil, err

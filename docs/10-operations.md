@@ -1271,7 +1271,9 @@ Each runbook: **symptoms → steps → done when**.
   the instance does not list: an Instance Admin adds it to `webhook_private_ranges` if the receiver
   belongs there. A TLS error means the receiver's certificate does not verify against the system
   roots. Fix the receiver, send a test event, then enable the endpoint again; events of the time it
-  was disabled are not resent.
+  was disabled are not resent. A chat endpoint (Discord, Slack, Teams) whose message has no link or
+  shows IDs instead of names: the controller's `public_url` is not set, or the name lookup failed
+  ([D170](14-open-decisions.md#engineering)); an endpoint is never failing for that.
 - **Done when**: a test event and the next real event are delivered with a 2xx answer.
 
 ### Audit sink backlog

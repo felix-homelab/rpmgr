@@ -517,11 +517,21 @@ spec:
 - **Formats** ([D162](14-open-decisions.md#engineering)). An endpoint's `format` is `rpmgr` (the
   default: the envelope above, signed) or a chat format, `discord`, `slack` or `teams`, which
   posts the event as a message the service shows to people, without a signature or `Rpmgr-*`
-  headers. The message has the event's summary as its title; its type, organisation (`instance`
-  for an instance event), actor, subject and time as fields; and an alert (`alert.fire`,
-  `alert.resolve`) coloured red or green where the service supports it: Discord is an embed, Slack
-  a message of text and blocks with a coloured attachment, Teams a workflows webhook with an
-  Adaptive Card. Texts are cut to the limits in
+  headers. The message ([D170](14-open-decisions.md#engineering)) has a readable title
+  per event type (`Agent gw-eu-1 is offline`, `Route web updated`); a one-line summary; the names
+  of the organisation (`instance` for an instance event), the actor and the subject in place of
+  their IDs, which stay in a small context line; for an alert, since when it fired and, when it
+  resolves, how long it lasted; the event's time, shown in the reader's time zone where the service
+  can; and a footer with the instance's trust domain and the rpmgr version. The names are looked
+  up when the message is made, and a lookup that fails leaves the ID. The colour is the severity:
+  critical red, warning amber, info blue, resolved green, audit and other events grey. The
+  subject has a link to its page in the web UI and an **Open in rpmgr** action, built from the
+  controller's `public_url`; without it there is neither. Every text of an event is escaped for
+  the service's markup and no text can mention anyone: Discord is an embed whose
+  `allowed_mentions` parses nothing, Slack a message of Block Kit blocks (header, sections, a
+  context with a `<!date^…>` time and its fallback, a button) in a coloured attachment, with
+  `&`, `<` and `>` escaped, and Teams a workflows webhook with an Adaptive Card 1.5 of full width
+  in a container styled by the severity. Texts are cut to the limits in
   [03](03-connections.md#timeouts-keepalive-and-backoff). A chat endpoint's URL is given in
   `secret_url`, not in `url`: it is write-only and sealed, and `url` shows only its scheme and
   host ([04](04-security.md#webhooks-and-the-egress-guard-phase-2)). `secret_url` is an

@@ -10,6 +10,16 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+### Changed
+
+- The messages of a Discord, Slack or Microsoft Teams webhook endpoint use what each service
+  offers: a readable title such as "Agent gw-eu-1 is offline", the names of the organisation and
+  the actor, severity colours (critical red, warning amber, info blue, resolved green, audit
+  grey), how long an alert lasted, a footer with the instance and the rpmgr version, the time in
+  the reader's time zone, and, when the controller's public URL is set, a link to the subject
+  and an **Open in rpmgr** button. Discord posts an embed, Slack Block Kit blocks and Teams an
+  Adaptive Card 1.5. No text of an event can mention anyone. (#1102)
+
 ### Added
 
 - A webhook endpoint has a format: `rpmgr`, as before, or `discord`, `slack` or `teams`, which posts

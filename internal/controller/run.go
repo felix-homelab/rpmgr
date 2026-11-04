@@ -330,7 +330,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	webhookSender := &webhook.Sender{Proxy: proxy, Now: o.Now}
 	hooks := &apisvc.Webhooks{DB: db, API: apiServer, Sealer: sealer, Sender: webhookSender, Sys: sys,
-		Own: ownAddresses, Private: privateRanges(db, sys), Logger: o.Logger, Now: o.Now}
+		Own: ownAddresses, Private: privateRanges(db, sys), Logger: o.Logger, Now: o.Now,
+		Instance: webhook.Context{PublicURL: cfg.PublicURL, TrustDomain: td, Version: o.Version}}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_webhook_proto.Services().ByName("WebhookService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewWebhookServiceHandler(hooks, opts...)
@@ -501,7 +502,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	job(EventsJob(RollupOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger}), "events job")
 	job(AlertJob(AlertOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger, RevocationLog: shipper.Status}), "alert job")
 	job(WebhookJob(WebhookOptions{DB: db, Leases: leases, Sealer: sealer, Sender: webhookSender, Now: o.Now,
-		Logger: o.Logger, Own: ownAddresses, Private: privateRanges(db, sys)}), "webhook job")
+		Logger: o.Logger, Own: ownAddresses, Private: privateRanges(db, sys),
+		Instance: webhook.Context{PublicURL: cfg.PublicURL, TrustDomain: td, Version: o.Version}}), "webhook job")
 	job(MailJob(MailOptions{DB: db, Leases: leases, Mailer: relay, PublicURL: cfg.PublicURL, Now: o.Now, Logger: o.Logger}), "mail job")
 	job(AuditSinkJob(AuditSinkOptions{DB: db, Leases: leases, Sealer: sealer, Sender: &webhook.Sender{Proxy: proxy, Now: o.Now}, Now: o.Now,
 		Logger: o.Logger}), "audit sink job")
