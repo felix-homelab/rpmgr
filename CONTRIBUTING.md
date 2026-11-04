@@ -360,8 +360,8 @@ A spike answers one question of the design with a throw-away prototype (S1–S8 
 the start of Phase 2) and applies the rule agreed before it runs ([13](docs/13-roadmap.md#phase-0--spikes),
 [D36](docs/14-open-decisions.md#project-and-process)):
 
-1. **Issue** from the *Spike* issue template, titled `Spike Sx: <question>`, labelled `type:docs`,
-   the `phase:` it belongs to, `needs-adr` and the area.
+1. **Issue** titled `Spike Sx: <question>`, with the question, method and pass criteria of 13,
+   labelled `type:docs`, the `phase:` it belongs to, `needs-adr` and the area.
 2. **Code** on `tmp/sx-<desc>`, in `spikes/sx/` as its own Go module, with SPDX headers and a
    `README.md` that says how to repeat every run. Raw results are committed next to the code in
    `spikes/sx/results/`. The branch is never merged, and CI does not run on it.

@@ -103,7 +103,7 @@ Phase 0 is complete; the same process applies to later spikes, such as S9 at the
 Process in CONTRIBUTING, "Spikes"; questions, methods, pass criteria and the pre-agreed rules in
 [13](docs/13-roadmap.md#phase-0--spikes). In short:
 
-- An issue from the *Spike* template; code in `spikes/sx/` (its own Go module, with a README that
+- An issue `Spike Sx: <question>`; code in `spikes/sx/` (its own Go module, with a README that
   repeats every run and raw results in `results/`) on `tmp/sx-<desc>`, never merged.
 - The result PR from `feature/<issue>-sx-<desc>` (`docs(adr): …`, `no-changelog`) adds
   `docs/spikes/Sx.md` from the [template](docs/spikes/TEMPLATE.md), applies the rule to the ADR and
