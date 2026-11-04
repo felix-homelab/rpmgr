@@ -155,6 +155,20 @@ func (_c *DNSRecordCreate) SetNillableLastSyncedAt(v *time.Time) *DNSRecordCreat
 	return _c
 }
 
+// SetCorrectedAt sets the "corrected_at" field.
+func (_c *DNSRecordCreate) SetCorrectedAt(v time.Time) *DNSRecordCreate {
+	_c.mutation.SetCorrectedAt(v)
+	return _c
+}
+
+// SetNillableCorrectedAt sets the "corrected_at" field if the given value is not nil.
+func (_c *DNSRecordCreate) SetNillableCorrectedAt(v *time.Time) *DNSRecordCreate {
+	if v != nil {
+		_c.SetCorrectedAt(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *DNSRecordCreate) SetID(v string) *DNSRecordCreate {
 	_c.mutation.SetID(v)
@@ -415,6 +429,10 @@ func (_c *DNSRecordCreate) createSpec() (*DNSRecord, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.LastSyncedAt(); ok {
 		_spec.SetField(dnsrecord.FieldLastSyncedAt, field.TypeTime, value)
 		_node.LastSyncedAt = &value
+	}
+	if value, ok := _c.mutation.CorrectedAt(); ok {
+		_spec.SetField(dnsrecord.FieldCorrectedAt, field.TypeTime, value)
+		_node.CorrectedAt = &value
 	}
 	if nodes := _c.mutation.ZoneIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{

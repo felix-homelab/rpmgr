@@ -120,6 +120,11 @@ func LastSyncedAt(v time.Time) predicate.DNSRecord {
 	return predicate.DNSRecord(sql.FieldEQ(FieldLastSyncedAt, v))
 }
 
+// CorrectedAt applies equality check predicate on the "corrected_at" field. It's identical to CorrectedAtEQ.
+func CorrectedAt(v time.Time) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldEQ(FieldCorrectedAt, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.DNSRecord {
 	return predicate.DNSRecord(sql.FieldEQ(FieldOrgID, v))
@@ -773,6 +778,56 @@ func LastSyncedAtIsNil() predicate.DNSRecord {
 // LastSyncedAtNotNil applies the NotNil predicate on the "last_synced_at" field.
 func LastSyncedAtNotNil() predicate.DNSRecord {
 	return predicate.DNSRecord(sql.FieldNotNull(FieldLastSyncedAt))
+}
+
+// CorrectedAtEQ applies the EQ predicate on the "corrected_at" field.
+func CorrectedAtEQ(v time.Time) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldEQ(FieldCorrectedAt, v))
+}
+
+// CorrectedAtNEQ applies the NEQ predicate on the "corrected_at" field.
+func CorrectedAtNEQ(v time.Time) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldNEQ(FieldCorrectedAt, v))
+}
+
+// CorrectedAtIn applies the In predicate on the "corrected_at" field.
+func CorrectedAtIn(vs ...time.Time) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldIn(FieldCorrectedAt, vs...))
+}
+
+// CorrectedAtNotIn applies the NotIn predicate on the "corrected_at" field.
+func CorrectedAtNotIn(vs ...time.Time) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldNotIn(FieldCorrectedAt, vs...))
+}
+
+// CorrectedAtGT applies the GT predicate on the "corrected_at" field.
+func CorrectedAtGT(v time.Time) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldGT(FieldCorrectedAt, v))
+}
+
+// CorrectedAtGTE applies the GTE predicate on the "corrected_at" field.
+func CorrectedAtGTE(v time.Time) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldGTE(FieldCorrectedAt, v))
+}
+
+// CorrectedAtLT applies the LT predicate on the "corrected_at" field.
+func CorrectedAtLT(v time.Time) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldLT(FieldCorrectedAt, v))
+}
+
+// CorrectedAtLTE applies the LTE predicate on the "corrected_at" field.
+func CorrectedAtLTE(v time.Time) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldLTE(FieldCorrectedAt, v))
+}
+
+// CorrectedAtIsNil applies the IsNil predicate on the "corrected_at" field.
+func CorrectedAtIsNil() predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldIsNull(FieldCorrectedAt))
+}
+
+// CorrectedAtNotNil applies the NotNil predicate on the "corrected_at" field.
+func CorrectedAtNotNil() predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldNotNull(FieldCorrectedAt))
 }
 
 // HasZone applies the HasEdge predicate on the "zone" edge.

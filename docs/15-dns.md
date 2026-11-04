@@ -162,14 +162,27 @@ controller-managed durable state: it is never rebuilt from the provider.
   that the comment round-trips unchanged through the API, also at 100 characters, was checked
   against a Free-plan zone [F VB-10, run 2026-11-04].
 - **The ledger decides, the marker helps.**
-  - A record whose marker names a ledger row in state `creating` is linked to it. This repairs a
-    crash between the provider call and the database commit.
-  - A record with this instance's marker and no ledger row is `orphaned`: reported, never deleted
-    automatically. The zone's Owner or Admin can delete or re-link it.
-  - An owned record whose content or marker was edited at the provider has drifted. It is corrected
-    and the correction is audited. If the same record drifts again within the stop window
-    ([Timers and limits](#timers-and-limits)), rpmgr stops correcting it, marks it `drifted` and
-    alerts: another tool is probably writing it.
+  - A record whose marker names a ledger row in state `creating` is linked to it, before the pass
+    plans, so that it is not taken for a foreign record in the way. The row takes the record's
+    content, becomes `synced` and the link is audited (`dns_record.link`). This repairs a crash
+    between the provider call and the database commit. In the same step, a `deleting` row whose
+    record is gone is finished and removed, and a row that never got a record and that no desired
+    record asks for any more is removed.
+  - A record with this instance's marker and no ledger row is `orphaned`: reported by the pass,
+    never deleted automatically, not even when the sources would delete a record at its name. The
+    zone's Owner or Admin can delete or re-link it.
+  - An owned record whose content, TTL, proxy flag or marker was edited at the provider has
+    drifted: the provider's record differs from what the ledger says the job wrote. It is put back
+    (the marker too), and the correction is audited: `dns_record.drift` with the provider's record
+    and the ledger's, then the update. A change the sources made is no drift, and a record changed
+    to what the sources want needs no write; the ledger takes it over. If the same record drifts
+    again within the stop window ([Timers and limits](#timers-and-limits)), rpmgr stops correcting
+    it, marks it `drifted` (`dns_record.drifted`) and the pass reports it: another tool is probably
+    writing it. A `drifted` record is left alone, also after the window, until it matches the ledger
+    again or is adopted or released; the removal of its source still deletes it.
+  - The pass reports its orphans, corrections and `drifted` records to the controller, which logs
+    them; the alert `dns.drifted` fires for a `drifted` record
+    ([10](10-operations.md#suggested-alerts)). Orphans are shown in the zone's plan.
 - **Adopt.** Turns a foreign record at a desired name into an owned one. Its original content is
   stored in the ledger (`adopted_from`), and the next pass rewrites it. Adopt is how the migration
   cutover switches names from an old server to rpmgr ([11](11-migration.md#cutover-plan)).

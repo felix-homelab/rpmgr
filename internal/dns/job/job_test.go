@@ -65,6 +65,7 @@ type env struct {
 
 	mu        sync.Mutex
 	applyErrs []error // what the next calls of Apply fail with, in order
+	reports   []apply.Report
 }
 
 func newEnv(t *testing.T, db *store.DB) *env {
@@ -122,7 +123,12 @@ func (f faulty) Apply(ctx context.Context, zone string, b dns.Batch) error {
 func (e *env) replica(holder string) (*job.Job, *lease.Leases) {
 	leases := lease.New(e.db, holder, e.clk.now)
 	j := job.New(job.Options{DB: e.db, Leases: leases, Sealer: e.sealer, Dial: e.dial, TrustDomain: td, Now: e.clk.now,
-		Reserved: func(context.Context) []string { return e.reserved }})
+		Reserved: func(context.Context) []string { return e.reserved },
+		Report: func(_ context.Context, _ *ent.DNSZone, r apply.Report) {
+			e.mu.Lock()
+			e.reports = append(e.reports, r)
+			e.mu.Unlock()
+		}})
 	return j, leases
 }
 
@@ -564,4 +570,85 @@ func TestRun_ProviderProblems(t *testing.T) {
 	}
 }
 
-var _ = apply.Marker
+// TestRun_RelinksReportsOrphansAndDrift: the job relinks a creating row whose record carries its
+// marker (a crash after the provider call), reports an orphan and never deletes it, puts back a
+// change someone else made, and stops correcting a record that changes again within the stop window.
+func TestRun_RelinksReportsOrphansAndDrift(t *testing.T) {
+	e := newEnv(t, storetest.Migrated(t, store.SQLite))
+	e.addName("a.example.com")
+	j, l := e.replica("ctn_a")
+	ls := e.take(l)
+	// The state a crash leaves: the row is creating, the record is at the provider with its marker.
+	row := e.db.Client().DNSRecord.Create().SetOrgID(e.org).SetDNSZoneID(e.zone.ID).SetName("a.example.com").SetType("CNAME").
+		SetContent("gw.example.net").SetTTL(300).SaveX(e.sys)
+	e.fake.AddRecord(e.zone.ProviderZoneID, cftest.Record{Type: "CNAME", Name: "a.example.com", Content: "gw.example.net", TTL: 300, Comment: apply.Marker(td, row.ID)})
+	orphan := e.fake.AddRecord(e.zone.ProviderZoneID, cftest.Record{Type: "A", Name: "ghost.example.com", Content: "192.0.2.99", TTL: 300, Comment: apply.Marker(td, "dnr_01ARZ3NDEKTSV4RRFFQ69G5FAV")})
+	if err := j.Run(e.sys, ls); err != nil {
+		t.Fatal(err)
+	}
+	eqStatuses(t, e.statuses(), map[string]string{"a.example.com": "published"})
+	if r := e.db.Client().DNSRecord.GetX(e.sys, row.ID); r.State != dnsrecord.StateSynced || r.ProviderRecordID == nil {
+		t.Fatalf("row %+v", r)
+	}
+	if len(e.reports) != 1 || e.reports[0].Relinked != 1 || len(e.reports[0].Orphans) != 1 || e.reports[0].Orphans[0].ID != orphan.ID {
+		t.Fatalf("reports %+v", e.reports)
+	}
+	if len(e.fake.Records(e.zone.ProviderZoneID)) != 2 || e.fake.Count("POST") != 0 {
+		t.Fatal("the relink wrote to the provider")
+	}
+	// Drift: someone changes the CNAME; the pass puts it back and reports it.
+	p, _ := e.dial("", "", secret.New(token))
+	edit := func(content string) {
+		t.Helper()
+		var rec cftest.Record
+		for _, r := range e.fake.Records(e.zone.ProviderZoneID) {
+			if r.Name == "a.example.com" {
+				rec = r
+			}
+		}
+		err := p.Apply(e.sys, e.zone.ProviderZoneID, dns.Batch{Patches: []dns.Record{{ID: rec.ID, Type: rec.Type, Name: rec.Name, Content: content, TTL: rec.TTL, Comment: rec.Comment}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	content := func() string {
+		for _, r := range e.fake.Records(e.zone.ProviderZoneID) {
+			if r.Name == "a.example.com" {
+				return r.Content
+			}
+		}
+		return ""
+	}
+	e.reports = nil
+	edit("other.example.net")
+	j.Sync(e.zone.ID)
+	e.advance(l, ls, time.Second)
+	if err := j.Run(e.sys, ls); err != nil {
+		t.Fatal(err)
+	}
+	if content() != "gw.example.net" || len(e.reports) != 1 || len(e.reports[0].Corrected) != 1 {
+		t.Fatalf("content %q, reports %+v", content(), e.reports)
+	}
+	e.reports = nil
+	edit("another.example.net")
+	j.Sync(e.zone.ID)
+	e.advance(l, ls, time.Second)
+	if err := j.Run(e.sys, ls); err != nil {
+		t.Fatal(err)
+	}
+	if content() != "another.example.net" || len(e.reports) != 1 || len(e.reports[0].Drifted) != 1 {
+		t.Fatalf("content %q, reports %+v", content(), e.reports)
+	}
+	if r := e.db.Client().DNSRecord.GetX(e.sys, row.ID); r.State != dnsrecord.StateDrifted {
+		t.Fatalf("row %+v", r)
+	}
+	eqStatuses(t, e.statuses(), map[string]string{"a.example.com": "published"})
+	// The orphan is still there after all of it.
+	var found bool
+	for _, r := range e.fake.Records(e.zone.ProviderZoneID) {
+		found = found || r.ID == orphan.ID
+	}
+	if !found {
+		t.Fatal("the orphan was deleted")
+	}
+}

@@ -47,6 +47,7 @@ const commitWithin = 10 * time.Second
 type Zone struct {
 	ID         string // dns_zones.id
 	OrgID      string
+	Name       string // the apex, normalised
 	ProviderID string // the provider's zone ID
 }
 
@@ -112,17 +113,23 @@ type op struct {
 	row    *ent.DNSRecord // the row as it was before the write
 	rowID  string
 	reason string // set when the provider refused the op
+	// correction: the update puts back a change someone else made (see Correct).
+	correction bool
 }
 
 // Apply writes pl to the provider. The lease must be held; its token is checked in the
 // transaction that records the writes. On an error that is not a refusal of single records the
 // pass stops: what was written until then is recorded, and the error is returned.
 func (e *Engine) Apply(ctx context.Context, l lease.Lease, p dns.Provider, z Zone, pl plan.Plan) (Result, error) {
+	return e.apply(ctx, l, p, z, pl, nil)
+}
+
+func (e *Engine) apply(ctx context.Context, l lease.Lease, p dns.Provider, z Zone, pl plan.Plan, corr Correction) (Result, error) {
 	var res Result
 	if pl.Empty() {
 		return res, nil
 	}
-	ops, err := e.writeAhead(ctx, l, z, pl)
+	ops, err := e.writeAhead(ctx, l, z, pl, corr)
 	if err != nil {
 		return res, err
 	}
@@ -168,7 +175,7 @@ send:
 // writeAhead commits the rows of the creates (state creating) and marks the rows of the deletes
 // (state deleting), before the provider is called, and returns the operations in the order the
 // provider applies them: deletes, updates, creates.
-func (e *Engine) writeAhead(ctx context.Context, l lease.Lease, z Zone, pl plan.Plan) ([]op, error) {
+func (e *Engine) writeAhead(ctx context.Context, l lease.Lease, z Zone, pl plan.Plan, corr Correction) ([]op, error) {
 	var ops []op
 	err := store.WriteTx(ctx, e.DB, func(tx *ent.Tx) error {
 		ops = ops[:0]
@@ -204,7 +211,7 @@ func (e *Engine) writeAhead(ctx context.Context, l lease.Lease, z Zone, pl plan.
 			if row == nil {
 				return fmt.Errorf("apply: the plan changes record %s, which has no ledger row", u.ID)
 			}
-			ops = append(ops, op{kind: opUpdate, rec: u, row: row, rowID: row.ID})
+			ops = append(ops, op{kind: opUpdate, rec: u, row: row, rowID: row.ID, correction: corr[u.ID]})
 		}
 		for _, c := range pl.Creates {
 			id, err := e.createRow(ctx, tx, z, c, &open)
@@ -364,8 +371,12 @@ func (e *Engine) record(ctx context.Context, tx *ent.Tx, z Zone, o op, idByMarke
 		out.Deleted++
 	case opUpdate:
 		action, before = "dns_record.update", snap(o.row)
-		r, err := tx.DNSRecord.UpdateOneID(o.rowID).SetContent(o.rec.Content).SetTTL(o.rec.TTL).SetProxied(o.rec.Proxied).
-			SetState(dnsrecord.StateSynced).SetReason("").SetLastSyncedAt(now).Save(ctx)
+		u := tx.DNSRecord.UpdateOneID(o.rowID).SetContent(o.rec.Content).SetTTL(o.rec.TTL).SetProxied(o.rec.Proxied).
+			SetState(dnsrecord.StateSynced).SetReason("").SetLastSyncedAt(now)
+		if o.correction {
+			u.SetCorrectedAt(now)
+		}
+		r, err := u.Save(ctx)
 		if err != nil {
 			return err
 		}
@@ -385,5 +396,9 @@ func (e *Engine) record(ctx context.Context, tx *ent.Tx, z Zone, o op, idByMarke
 		after = snap(r)
 		out.Created++
 	}
-	return e.audit(ctx, tx, z, o, action, before, after)
+	reason := "dns zone " + z.ID
+	if o.correction {
+		reason = "a change someone else made was put back, dns zone " + z.ID
+	}
+	return e.auditRow(ctx, tx, z, action, reason, before, after)
 }

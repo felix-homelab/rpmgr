@@ -462,7 +462,8 @@ spec:
   and are no events. Status changes add `route.status`
   (a route's state changed), `agent.connect`, `agent.disconnect`, `apply.reject`, `alert.fire` and
   `alert.resolve` ([10](10-operations.md#suggested-alerts)), `webhook.disable`, and with DNS
-  automation `dns.conflict`, `dns.zone_held`, `dns.sync_failing` and `dns.token_expiring`.
+  automation `dns.conflict`, `dns.zone_held`, `dns.sync_failing`, `dns.drifted` and
+  `dns.token_expiring`.
   A status event is written once per change of state by the alert job, not per heartbeat or
   reconnect: `agent.connect` and `agent.disconnect` for an agent that is enabled and not ephemeral
   (a built-in agent included; the first connection is an event, an agent first seen offline is

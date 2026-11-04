@@ -19624,6 +19624,7 @@ type DNSRecordMutation struct {
 	adopted_from       *string
 	adopted_at         *time.Time
 	last_synced_at     *time.Time
+	corrected_at       *time.Time
 	clearedFields      map[string]struct{}
 	zone               *string
 	clearedzone        bool
@@ -20263,6 +20264,55 @@ func (m *DNSRecordMutation) ResetLastSyncedAt() {
 	delete(m.clearedFields, dnsrecord.FieldLastSyncedAt)
 }
 
+// SetCorrectedAt sets the "corrected_at" field.
+func (m *DNSRecordMutation) SetCorrectedAt(t time.Time) {
+	m.corrected_at = &t
+}
+
+// CorrectedAt returns the value of the "corrected_at" field in the mutation.
+func (m *DNSRecordMutation) CorrectedAt() (r time.Time, exists bool) {
+	v := m.corrected_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCorrectedAt returns the old "corrected_at" field's value of the DNSRecord entity.
+// If the DNSRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSRecordMutation) OldCorrectedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCorrectedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCorrectedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCorrectedAt: %w", err)
+	}
+	return oldValue.CorrectedAt, nil
+}
+
+// ClearCorrectedAt clears the value of the "corrected_at" field.
+func (m *DNSRecordMutation) ClearCorrectedAt() {
+	m.corrected_at = nil
+	m.clearedFields[dnsrecord.FieldCorrectedAt] = struct{}{}
+}
+
+// CorrectedAtCleared returns if the "corrected_at" field was cleared in this mutation.
+func (m *DNSRecordMutation) CorrectedAtCleared() bool {
+	_, ok := m.clearedFields[dnsrecord.FieldCorrectedAt]
+	return ok
+}
+
+// ResetCorrectedAt resets all changes to the "corrected_at" field.
+func (m *DNSRecordMutation) ResetCorrectedAt() {
+	m.corrected_at = nil
+	delete(m.clearedFields, dnsrecord.FieldCorrectedAt)
+}
+
 // SetZoneID sets the "zone" edge to the DNSZone entity by id.
 func (m *DNSRecordMutation) SetZoneID(id string) {
 	m.zone = &id
@@ -20337,7 +20387,7 @@ func (m *DNSRecordMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DNSRecordMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.org_id != nil {
 		fields = append(fields, dnsrecord.FieldOrgID)
 	}
@@ -20377,6 +20427,9 @@ func (m *DNSRecordMutation) Fields() []string {
 	if m.last_synced_at != nil {
 		fields = append(fields, dnsrecord.FieldLastSyncedAt)
 	}
+	if m.corrected_at != nil {
+		fields = append(fields, dnsrecord.FieldCorrectedAt)
+	}
 	return fields
 }
 
@@ -20411,6 +20464,8 @@ func (m *DNSRecordMutation) Field(name string) (ent.Value, bool) {
 		return m.AdoptedAt()
 	case dnsrecord.FieldLastSyncedAt:
 		return m.LastSyncedAt()
+	case dnsrecord.FieldCorrectedAt:
+		return m.CorrectedAt()
 	}
 	return nil, false
 }
@@ -20446,6 +20501,8 @@ func (m *DNSRecordMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldAdoptedAt(ctx)
 	case dnsrecord.FieldLastSyncedAt:
 		return m.OldLastSyncedAt(ctx)
+	case dnsrecord.FieldCorrectedAt:
+		return m.OldCorrectedAt(ctx)
 	}
 	return nil, fmt.Errorf("unknown DNSRecord field %s", name)
 }
@@ -20546,6 +20603,13 @@ func (m *DNSRecordMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetLastSyncedAt(v)
 		return nil
+	case dnsrecord.FieldCorrectedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCorrectedAt(v)
+		return nil
 	}
 	return fmt.Errorf("unknown DNSRecord field %s", name)
 }
@@ -20600,6 +20664,9 @@ func (m *DNSRecordMutation) ClearedFields() []string {
 	if m.FieldCleared(dnsrecord.FieldLastSyncedAt) {
 		fields = append(fields, dnsrecord.FieldLastSyncedAt)
 	}
+	if m.FieldCleared(dnsrecord.FieldCorrectedAt) {
+		fields = append(fields, dnsrecord.FieldCorrectedAt)
+	}
 	return fields
 }
 
@@ -20622,6 +20689,9 @@ func (m *DNSRecordMutation) ClearField(name string) error {
 		return nil
 	case dnsrecord.FieldLastSyncedAt:
 		m.ClearLastSyncedAt()
+		return nil
+	case dnsrecord.FieldCorrectedAt:
+		m.ClearCorrectedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown DNSRecord nullable field %s", name)
@@ -20669,6 +20739,9 @@ func (m *DNSRecordMutation) ResetField(name string) error {
 		return nil
 	case dnsrecord.FieldLastSyncedAt:
 		m.ResetLastSyncedAt()
+		return nil
+	case dnsrecord.FieldCorrectedAt:
+		m.ResetCorrectedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown DNSRecord field %s", name)

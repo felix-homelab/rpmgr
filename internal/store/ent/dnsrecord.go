@@ -44,6 +44,8 @@ type DNSRecord struct {
 	AdoptedAt *time.Time `json:"adopted_at,omitempty"`
 	// LastSyncedAt holds the value of the "last_synced_at" field.
 	LastSyncedAt *time.Time `json:"last_synced_at,omitempty"`
+	// CorrectedAt holds the value of the "corrected_at" field.
+	CorrectedAt *time.Time `json:"corrected_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the DNSRecordQuery when eager-loading is set.
 	Edges        DNSRecordEdges `json:"edges"`
@@ -81,7 +83,7 @@ func (*DNSRecord) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case dnsrecord.FieldID, dnsrecord.FieldOrgID, dnsrecord.FieldDNSZoneID, dnsrecord.FieldName, dnsrecord.FieldType, dnsrecord.FieldContent, dnsrecord.FieldProviderRecordID, dnsrecord.FieldState, dnsrecord.FieldReason, dnsrecord.FieldAdoptedFrom:
 			values[i] = new(sql.NullString)
-		case dnsrecord.FieldAdoptedAt, dnsrecord.FieldLastSyncedAt:
+		case dnsrecord.FieldAdoptedAt, dnsrecord.FieldLastSyncedAt, dnsrecord.FieldCorrectedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -185,6 +187,13 @@ func (_m *DNSRecord) assignValues(columns []string, values []any) error {
 				_m.LastSyncedAt = new(time.Time)
 				*_m.LastSyncedAt = value.Time
 			}
+		case dnsrecord.FieldCorrectedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field corrected_at", values[i])
+			} else if value.Valid {
+				_m.CorrectedAt = new(time.Time)
+				*_m.CorrectedAt = value.Time
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -268,6 +277,11 @@ func (_m *DNSRecord) String() string {
 	builder.WriteString(", ")
 	if v := _m.LastSyncedAt; v != nil {
 		builder.WriteString("last_synced_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.CorrectedAt; v != nil {
+		builder.WriteString("corrected_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteByte(')')
