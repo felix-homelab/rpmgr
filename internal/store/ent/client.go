@@ -37,6 +37,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connectlistener"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/event"
@@ -135,6 +136,8 @@ type Client struct {
 	ConnectListener *ConnectListenerClient
 	// Connector is the client for interacting with the Connector builders.
 	Connector *ConnectorClient
+	// DNSProvider is the client for interacting with the DNSProvider builders.
+	DNSProvider *DNSProviderClient
 	// DataSession is the client for interacting with the DataSession builders.
 	DataSession *DataSessionClient
 	// Domain is the client for interacting with the Domain builders.
@@ -263,6 +266,7 @@ func (c *Client) init() {
 	c.ConnectAuthority = NewConnectAuthorityClient(c.config)
 	c.ConnectListener = NewConnectListenerClient(c.config)
 	c.Connector = NewConnectorClient(c.config)
+	c.DNSProvider = NewDNSProviderClient(c.config)
 	c.DataSession = NewDataSessionClient(c.config)
 	c.Domain = NewDomainClient(c.config)
 	c.EnrollmentToken = NewEnrollmentTokenClient(c.config)
@@ -424,6 +428,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ConnectAuthority:   NewConnectAuthorityClient(cfg),
 		ConnectListener:    NewConnectListenerClient(cfg),
 		Connector:          NewConnectorClient(cfg),
+		DNSProvider:        NewDNSProviderClient(cfg),
 		DataSession:        NewDataSessionClient(cfg),
 		Domain:             NewDomainClient(cfg),
 		EnrollmentToken:    NewEnrollmentTokenClient(cfg),
@@ -512,6 +517,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ConnectAuthority:   NewConnectAuthorityClient(cfg),
 		ConnectListener:    NewConnectListenerClient(cfg),
 		Connector:          NewConnectorClient(cfg),
+		DNSProvider:        NewDNSProviderClient(cfg),
 		DataSession:        NewDataSessionClient(cfg),
 		Domain:             NewDomainClient(cfg),
 		EnrollmentToken:    NewEnrollmentTokenClient(cfg),
@@ -593,16 +599,17 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AgentState, c.Alert, c.AuditCheckpoint, c.AuditEntry, c.AuditHead,
 		c.AuditSink, c.AuditSinkCursor, c.CABundle, c.CAKey, c.Certificate,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.ConnectAuthority,
-		c.ConnectListener, c.Connector, c.DataSession, c.Domain, c.EnrollmentToken,
-		c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage, c.HealthCheck, c.Instance,
-		c.InstanceSecret, c.InstanceSetting, c.Invitation, c.IssuedCertificate,
-		c.Lease, c.MailJob, c.Membership, c.Org, c.OrgSetting, c.PasswordReset,
-		c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota, c.RecoveryCode,
-		c.Release, c.ResourceStatus, c.RevokedIdentity, c.RevokedSerial, c.Rollout,
-		c.RolloutTarget, c.Route, c.RouteHTTP, c.RouteHostname, c.RouteLimit,
-		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
-		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.StatusMark,
-		c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook, c.WebhookDelivery,
+		c.ConnectListener, c.Connector, c.DNSProvider, c.DataSession, c.Domain,
+		c.EnrollmentToken, c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage,
+		c.HealthCheck, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
+		c.IssuedCertificate, c.Lease, c.MailJob, c.Membership, c.Org, c.OrgSetting,
+		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
+		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
+		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
+		c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
+		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
+		c.StatusMark, c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook,
+		c.WebhookDelivery,
 	} {
 		n.Use(hooks...)
 	}
@@ -616,16 +623,17 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AgentState, c.Alert, c.AuditCheckpoint, c.AuditEntry, c.AuditHead,
 		c.AuditSink, c.AuditSinkCursor, c.CABundle, c.CAKey, c.Certificate,
 		c.CompiledSnapshot, c.ConfigRevision, c.ConfigSeq, c.ConnectAuthority,
-		c.ConnectListener, c.Connector, c.DataSession, c.Domain, c.EnrollmentToken,
-		c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage, c.HealthCheck, c.Instance,
-		c.InstanceSecret, c.InstanceSetting, c.Invitation, c.IssuedCertificate,
-		c.Lease, c.MailJob, c.Membership, c.Org, c.OrgSetting, c.PasswordReset,
-		c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota, c.RecoveryCode,
-		c.Release, c.ResourceStatus, c.RevokedIdentity, c.RevokedSerial, c.Rollout,
-		c.RolloutTarget, c.Route, c.RouteHTTP, c.RouteHostname, c.RouteLimit,
-		c.RoutePolicy, c.RouteTCP, c.RouteTarget, c.RouteTrafficDaily,
-		c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session, c.StatusMark,
-		c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook, c.WebhookDelivery,
+		c.ConnectListener, c.Connector, c.DNSProvider, c.DataSession, c.Domain,
+		c.EnrollmentToken, c.Event, c.Gateway, c.GatewayGroup, c.GatewayPage,
+		c.HealthCheck, c.Instance, c.InstanceSecret, c.InstanceSetting, c.Invitation,
+		c.IssuedCertificate, c.Lease, c.MailJob, c.Membership, c.Org, c.OrgSetting,
+		c.PasswordReset, c.PolicyRule, c.PortAllocation, c.PortPool, c.PortQuota,
+		c.RecoveryCode, c.Release, c.ResourceStatus, c.RevokedIdentity,
+		c.RevokedSerial, c.Rollout, c.RolloutTarget, c.Route, c.RouteHTTP,
+		c.RouteHostname, c.RouteLimit, c.RoutePolicy, c.RouteTCP, c.RouteTarget,
+		c.RouteTrafficDaily, c.RouteTrafficHourly, c.RouteUDP, c.SecretMeta, c.Session,
+		c.StatusMark, c.TOTPCredential, c.TrafficBaseline, c.User, c.Webhook,
+		c.WebhookDelivery,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -676,6 +684,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ConnectListener.mutate(ctx, m)
 	case *ConnectorMutation:
 		return c.Connector.mutate(ctx, m)
+	case *DNSProviderMutation:
+		return c.DNSProvider.mutate(ctx, m)
 	case *DataSessionMutation:
 		return c.DataSession.mutate(ctx, m)
 	case *DomainMutation:
@@ -3735,6 +3745,141 @@ func (c *ConnectorClient) mutate(ctx context.Context, m *ConnectorMutation) (Val
 		return (&ConnectorDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Connector mutation op: %q", m.Op())
+	}
+}
+
+// DNSProviderClient is a client for the DNSProvider schema.
+type DNSProviderClient struct {
+	config
+}
+
+// NewDNSProviderClient returns a client for the DNSProvider from the given config.
+func NewDNSProviderClient(c config) *DNSProviderClient {
+	return &DNSProviderClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `dnsprovider.Hooks(f(g(h())))`.
+func (c *DNSProviderClient) Use(hooks ...Hook) {
+	c.hooks.DNSProvider = append(c.hooks.DNSProvider, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `dnsprovider.Intercept(f(g(h())))`.
+func (c *DNSProviderClient) Intercept(interceptors ...Interceptor) {
+	c.inters.DNSProvider = append(c.inters.DNSProvider, interceptors...)
+}
+
+// Create returns a builder for creating a DNSProvider entity.
+func (c *DNSProviderClient) Create() *DNSProviderCreate {
+	mutation := newDNSProviderMutation(c.config, OpCreate)
+	return &DNSProviderCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of DNSProvider entities.
+func (c *DNSProviderClient) CreateBulk(builders ...*DNSProviderCreate) *DNSProviderCreateBulk {
+	return &DNSProviderCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *DNSProviderClient) MapCreateBulk(slice any, setFunc func(*DNSProviderCreate, int)) *DNSProviderCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &DNSProviderCreateBulk{err: fmt.Errorf("calling to DNSProviderClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*DNSProviderCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &DNSProviderCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for DNSProvider.
+func (c *DNSProviderClient) Update() *DNSProviderUpdate {
+	mutation := newDNSProviderMutation(c.config, OpUpdate)
+	return &DNSProviderUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *DNSProviderClient) UpdateOne(_m *DNSProvider) *DNSProviderUpdateOne {
+	mutation := newDNSProviderMutation(c.config, OpUpdateOne, withDNSProvider(_m))
+	return &DNSProviderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *DNSProviderClient) UpdateOneID(id string) *DNSProviderUpdateOne {
+	mutation := newDNSProviderMutation(c.config, OpUpdateOne, withDNSProviderID(id))
+	return &DNSProviderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for DNSProvider.
+func (c *DNSProviderClient) Delete() *DNSProviderDelete {
+	mutation := newDNSProviderMutation(c.config, OpDelete)
+	return &DNSProviderDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *DNSProviderClient) DeleteOne(_m *DNSProvider) *DNSProviderDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *DNSProviderClient) DeleteOneID(id string) *DNSProviderDeleteOne {
+	builder := c.Delete().Where(dnsprovider.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &DNSProviderDeleteOne{builder}
+}
+
+// Query returns a query builder for DNSProvider.
+func (c *DNSProviderClient) Query() *DNSProviderQuery {
+	return &DNSProviderQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeDNSProvider},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a DNSProvider entity by its id.
+func (c *DNSProviderClient) Get(ctx context.Context, id string) (*DNSProvider, error) {
+	return c.Query().Where(dnsprovider.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *DNSProviderClient) GetX(ctx context.Context, id string) *DNSProvider {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *DNSProviderClient) Hooks() []Hook {
+	hooks := c.hooks.DNSProvider
+	return append(hooks[:len(hooks):len(hooks)], dnsprovider.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *DNSProviderClient) Interceptors() []Interceptor {
+	inters := c.inters.DNSProvider
+	return append(inters[:len(inters):len(inters)], dnsprovider.Interceptors[:]...)
+}
+
+func (c *DNSProviderClient) mutate(ctx context.Context, m *DNSProviderMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&DNSProviderCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&DNSProviderUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&DNSProviderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&DNSProviderDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown DNSProvider mutation op: %q", m.Op())
 	}
 }
 
@@ -10781,7 +10926,7 @@ type (
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
 		Alert, AuditCheckpoint, AuditEntry, AuditHead, AuditSink, AuditSinkCursor,
 		CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq,
-		ConnectAuthority, ConnectListener, Connector, DataSession, Domain,
+		ConnectAuthority, ConnectListener, Connector, DNSProvider, DataSession, Domain,
 		EnrollmentToken, Event, Gateway, GatewayGroup, GatewayPage, HealthCheck,
 		Instance, InstanceSecret, InstanceSetting, Invitation, IssuedCertificate,
 		Lease, MailJob, Membership, Org, OrgSetting, PasswordReset, PolicyRule,
@@ -10796,7 +10941,7 @@ type (
 		ACMEStorage, APIRequest, APIToken, AccessPolicy, AgentSession, AgentState,
 		Alert, AuditCheckpoint, AuditEntry, AuditHead, AuditSink, AuditSinkCursor,
 		CABundle, CAKey, Certificate, CompiledSnapshot, ConfigRevision, ConfigSeq,
-		ConnectAuthority, ConnectListener, Connector, DataSession, Domain,
+		ConnectAuthority, ConnectListener, Connector, DNSProvider, DataSession, Domain,
 		EnrollmentToken, Event, Gateway, GatewayGroup, GatewayPage, HealthCheck,
 		Instance, InstanceSecret, InstanceSetting, Invitation, IssuedCertificate,
 		Lease, MailJob, Membership, Org, OrgSetting, PasswordReset, PolicyRule,

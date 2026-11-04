@@ -31,7 +31,9 @@ func infrastructureCommands() (create, update []*cli.Command, more map[string][]
 			{flag: "name", name: "name", usage: "the group's name, unique in the org", update: true},
 			{flag: "region", name: "region", usage: "where its gateways are, for people", update: true},
 			{flag: "public-hostname", name: "public_hostnames", usage: "a name under which its gateways are reached", update: true},
-			{flag: "trusted-proxy", name: "trusted_proxy_cidrs", usage: "a CIDR of a proxy in front of its gateways whose X-Forwarded-For counts", update: true}}},
+			{flag: "trusted-proxy", name: "trusted_proxy_cidrs", usage: "a CIDR of a proxy in front of its gateways whose X-Forwarded-For counts", update: true},
+			{flag: "dns-target", name: "dns_target", usage: "the name its DNS names point at, a CNAME; empty removes the DNS target", update: true, target: "cname"},
+			{flag: "dns-address", name: "dns_target", usage: "an IPv4 or IPv6 address its DNS names point at", update: true, target: "addresses"}}},
 		{"gateway", []field{
 			{flag: "group", name: "gateway_group_id", usage: "its gateway group, by name or ID", ref: "gateway-group"},
 			{flag: "name", name: "name", usage: "the gateway's name, unique in the org", update: true},

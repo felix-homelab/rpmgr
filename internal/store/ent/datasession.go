@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -27,6 +28,8 @@ type DataSession struct {
 	Transport datasession.Transport `json:"transport,omitempty"`
 	// RttMs holds the value of the "rtt_ms" field.
 	RttMs int64 `json:"rtt_ms,omitempty"`
+	// ReadyRoutes holds the value of the "ready_routes" field.
+	ReadyRoutes []string `json:"ready_routes,omitempty"`
 	// EstablishedAt holds the value of the "established_at" field.
 	EstablishedAt time.Time `json:"established_at,omitempty"`
 	// ReportedAt holds the value of the "reported_at" field.
@@ -39,6 +42,8 @@ func (*DataSession) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case datasession.FieldReadyRoutes:
+			values[i] = new([]byte)
 		case datasession.FieldRttMs:
 			values[i] = new(sql.NullInt64)
 		case datasession.FieldID, datasession.FieldOrgID, datasession.FieldGatewayID, datasession.FieldConnectorID, datasession.FieldTransport:
@@ -95,6 +100,14 @@ func (_m *DataSession) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field rtt_ms", values[i])
 			} else if value.Valid {
 				_m.RttMs = value.Int64
+			}
+		case datasession.FieldReadyRoutes:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field ready_routes", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ReadyRoutes); err != nil {
+					return fmt.Errorf("unmarshal field ready_routes: %w", err)
+				}
 			}
 		case datasession.FieldEstablishedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -158,6 +171,9 @@ func (_m *DataSession) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("rtt_ms=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RttMs))
+	builder.WriteString(", ")
+	builder.WriteString("ready_routes=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ReadyRoutes))
 	builder.WriteString(", ")
 	builder.WriteString("established_at=")
 	builder.WriteString(_m.EstablishedAt.Format(time.ANSIC))

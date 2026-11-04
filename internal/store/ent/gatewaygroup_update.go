@@ -119,6 +119,44 @@ func (_u *GatewayGroupUpdate) ClearTrustedProxyCidrs() *GatewayGroupUpdate {
 	return _u
 }
 
+// SetDNSCname sets the "dns_cname" field.
+func (_u *GatewayGroupUpdate) SetDNSCname(v string) *GatewayGroupUpdate {
+	_u.mutation.SetDNSCname(v)
+	return _u
+}
+
+// SetNillableDNSCname sets the "dns_cname" field if the given value is not nil.
+func (_u *GatewayGroupUpdate) SetNillableDNSCname(v *string) *GatewayGroupUpdate {
+	if v != nil {
+		_u.SetDNSCname(*v)
+	}
+	return _u
+}
+
+// ClearDNSCname clears the value of the "dns_cname" field.
+func (_u *GatewayGroupUpdate) ClearDNSCname() *GatewayGroupUpdate {
+	_u.mutation.ClearDNSCname()
+	return _u
+}
+
+// SetDNSAddresses sets the "dns_addresses" field.
+func (_u *GatewayGroupUpdate) SetDNSAddresses(v []string) *GatewayGroupUpdate {
+	_u.mutation.SetDNSAddresses(v)
+	return _u
+}
+
+// AppendDNSAddresses appends value to the "dns_addresses" field.
+func (_u *GatewayGroupUpdate) AppendDNSAddresses(v []string) *GatewayGroupUpdate {
+	_u.mutation.AppendDNSAddresses(v)
+	return _u
+}
+
+// ClearDNSAddresses clears the value of the "dns_addresses" field.
+func (_u *GatewayGroupUpdate) ClearDNSAddresses() *GatewayGroupUpdate {
+	_u.mutation.ClearDNSAddresses()
+	return _u
+}
+
 // Mutation returns the GatewayGroupMutation object of the builder.
 func (_u *GatewayGroupUpdate) Mutation() *GatewayGroupMutation {
 	return _u.mutation
@@ -224,6 +262,23 @@ func (_u *GatewayGroupUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if _u.mutation.TrustedProxyCidrsCleared() {
 		_spec.ClearField(gatewaygroup.FieldTrustedProxyCidrs, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.DNSCname(); ok {
+		_spec.SetField(gatewaygroup.FieldDNSCname, field.TypeString, value)
+	}
+	if _u.mutation.DNSCnameCleared() {
+		_spec.ClearField(gatewaygroup.FieldDNSCname, field.TypeString)
+	}
+	if value, ok := _u.mutation.DNSAddresses(); ok {
+		_spec.SetField(gatewaygroup.FieldDNSAddresses, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedDNSAddresses(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, gatewaygroup.FieldDNSAddresses, value)
+		})
+	}
+	if _u.mutation.DNSAddressesCleared() {
+		_spec.ClearField(gatewaygroup.FieldDNSAddresses, field.TypeJSON)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -333,6 +388,44 @@ func (_u *GatewayGroupUpdateOne) AppendTrustedProxyCidrs(v []string) *GatewayGro
 // ClearTrustedProxyCidrs clears the value of the "trusted_proxy_cidrs" field.
 func (_u *GatewayGroupUpdateOne) ClearTrustedProxyCidrs() *GatewayGroupUpdateOne {
 	_u.mutation.ClearTrustedProxyCidrs()
+	return _u
+}
+
+// SetDNSCname sets the "dns_cname" field.
+func (_u *GatewayGroupUpdateOne) SetDNSCname(v string) *GatewayGroupUpdateOne {
+	_u.mutation.SetDNSCname(v)
+	return _u
+}
+
+// SetNillableDNSCname sets the "dns_cname" field if the given value is not nil.
+func (_u *GatewayGroupUpdateOne) SetNillableDNSCname(v *string) *GatewayGroupUpdateOne {
+	if v != nil {
+		_u.SetDNSCname(*v)
+	}
+	return _u
+}
+
+// ClearDNSCname clears the value of the "dns_cname" field.
+func (_u *GatewayGroupUpdateOne) ClearDNSCname() *GatewayGroupUpdateOne {
+	_u.mutation.ClearDNSCname()
+	return _u
+}
+
+// SetDNSAddresses sets the "dns_addresses" field.
+func (_u *GatewayGroupUpdateOne) SetDNSAddresses(v []string) *GatewayGroupUpdateOne {
+	_u.mutation.SetDNSAddresses(v)
+	return _u
+}
+
+// AppendDNSAddresses appends value to the "dns_addresses" field.
+func (_u *GatewayGroupUpdateOne) AppendDNSAddresses(v []string) *GatewayGroupUpdateOne {
+	_u.mutation.AppendDNSAddresses(v)
+	return _u
+}
+
+// ClearDNSAddresses clears the value of the "dns_addresses" field.
+func (_u *GatewayGroupUpdateOne) ClearDNSAddresses() *GatewayGroupUpdateOne {
+	_u.mutation.ClearDNSAddresses()
 	return _u
 }
 
@@ -471,6 +564,23 @@ func (_u *GatewayGroupUpdateOne) sqlSave(ctx context.Context) (_node *GatewayGro
 	}
 	if _u.mutation.TrustedProxyCidrsCleared() {
 		_spec.ClearField(gatewaygroup.FieldTrustedProxyCidrs, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.DNSCname(); ok {
+		_spec.SetField(gatewaygroup.FieldDNSCname, field.TypeString, value)
+	}
+	if _u.mutation.DNSCnameCleared() {
+		_spec.ClearField(gatewaygroup.FieldDNSCname, field.TypeString)
+	}
+	if value, ok := _u.mutation.DNSAddresses(); ok {
+		_spec.SetField(gatewaygroup.FieldDNSAddresses, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedDNSAddresses(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, gatewaygroup.FieldDNSAddresses, value)
+		})
+	}
+	if _u.mutation.DNSAddressesCleared() {
+		_spec.ClearField(gatewaygroup.FieldDNSAddresses, field.TypeJSON)
 	}
 	_node = &GatewayGroup{config: _u.config}
 	_spec.Assign = _node.assignValues

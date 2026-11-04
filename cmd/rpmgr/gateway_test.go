@@ -168,6 +168,27 @@ func TestInfrastructure(t *testing.T) {
 		a.group.GetGatewayGroup().GetRegion() != "iad" || !slices.Equal(a.group.GetGatewayGroup().GetPublicHostnames(), []string{"us.example.com"}) {
 		t.Fatalf("a group: %d %q %q %v", code, out, errOut, a.group)
 	}
+	code, out, errOut = run("create", "gateway-group", "--name", "ap", "--dns-address", "192.0.2.1", "--dns-address", "2001:db8::1")
+	if got := a.group.GetGatewayGroup().GetDnsTarget().GetAddresses().GetAddresses(); code != cli.ExitOK || !slices.Equal(got, []string{"192.0.2.1", "2001:db8::1"}) {
+		t.Fatalf("a group with addresses: %d %q %q %v", code, out, errOut, a.group)
+	}
+	code, _, errOut = run("update", "gateway-group", "--dns-target", "lb.example.com", "gwg_1")
+	if u := a.groupUpdate; code != cli.ExitOK || !slices.Equal(u.GetUpdateMask().GetPaths(), []string{"dns_target"}) || u.GetGatewayGroup().GetDnsTarget().GetCname() != "lb.example.com" {
+		t.Fatalf("a CNAME target: %d %q %v", code, errOut, u)
+	}
+	code, _, errOut = run("update", "gateway-group", "--dns-target", "", "gwg_1")
+	if u := a.groupUpdate; code != cli.ExitOK || !slices.Equal(u.GetUpdateMask().GetPaths(), []string{"dns_target"}) || u.GetGatewayGroup().GetDnsTarget() != nil {
+		t.Fatalf("an empty target removes it: %d %q %v", code, errOut, u)
+	}
+	code, _, errOut = run("update", "gateway-group", "--dns-address", "192.0.2.7", "--region", "x", "gwg_1")
+	if u := a.groupUpdate; code != cli.ExitOK || !slices.Equal(u.GetUpdateMask().GetPaths(), []string{"region", "dns_target"}) && !slices.Equal(u.GetUpdateMask().GetPaths(), []string{"dns_target", "region"}) ||
+		!slices.Equal(u.GetGatewayGroup().GetDnsTarget().GetAddresses().GetAddresses(), []string{"192.0.2.7"}) {
+		t.Fatalf("an address target: %d %q %v", code, errOut, u)
+	}
+	if code, _, errOut := run("update", "gateway-group", "--dns-target", "lb.example.com", "--dns-address", "192.0.2.7", "gwg_1"); code != cli.ExitUsage ||
+		!strings.Contains(errOut, "cannot be given together") {
+		t.Errorf("a name and addresses: %d %q", code, errOut)
+	}
 	code, _, errOut = run("update", "gateway-group", "--trusted-proxy", "10.0.0.0/8", "--trusted-proxy", "192.168.0.0/16", "gwg_1")
 	if u := a.groupUpdate; code != cli.ExitOK || u.GetEtag() != "3" || !slices.Equal(u.GetUpdateMask().GetPaths(), []string{"trusted_proxy_cidrs"}) ||
 		len(u.GetGatewayGroup().GetTrustedProxyCidrs()) != 2 || u.GetGatewayGroup().GetName() != "eu" {

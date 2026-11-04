@@ -2415,9 +2415,16 @@ type DataSession struct {
 	// The transport.
 	Transport Transport `protobuf:"varint,2,opt,name=transport,proto3,enum=rpmgr.agent.v1.Transport" json:"transport,omitempty"`
 	// The smoothed round-trip time.
-	Rtt           *durationpb.Duration `protobuf:"bytes,3,opt,name=rtt,proto3" json:"rtt,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Rtt *durationpb.Duration `protobuf:"bytes,3,opt,name=rtt,proto3" json:"rtt,omitempty"`
+	// Phase 2, with ready_routes_known: the routes the connector reports ready on its sessions of
+	// this transport to the gateway, so that the controller can tell the transport each route's
+	// streams take (docs/03-connections.md, "Transport selection"). Sorted, at most 4096.
+	ReadyRoutes []string `protobuf:"bytes,4,rep,name=ready_routes,json=readyRoutes,proto3" json:"ready_routes,omitempty"`
+	// Whether the gateway reports ready_routes: a gateway of an earlier release does not, and an
+	// empty list is then no answer.
+	ReadyRoutesKnown bool `protobuf:"varint,5,opt,name=ready_routes_known,json=readyRoutesKnown,proto3" json:"ready_routes_known,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *DataSession) Reset() {
@@ -2469,6 +2476,20 @@ func (x *DataSession) GetRtt() *durationpb.Duration {
 		return x.Rtt
 	}
 	return nil
+}
+
+func (x *DataSession) GetReadyRoutes() []string {
+	if x != nil {
+		return x.ReadyRoutes
+	}
+	return nil
+}
+
+func (x *DataSession) GetReadyRoutesKnown() bool {
+	if x != nil {
+		return x.ReadyRoutesKnown
+	}
+	return false
 }
 
 // OpResult answers an operation that needs no stream.
@@ -3228,11 +3249,13 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\tbytes_out\x18\x03 \x01(\x04R\bbytesOut\x12+\n" +
 	"\x11connections_total\x18\x04 \x01(\x04R\x10connectionsTotal\x12-\n" +
 	"\x12connections_active\x18\x05 \x01(\x04R\x11connectionsActive\x12!\n" +
-	"\ferrors_total\x18\x06 \x01(\x04R\verrorsTotal\"\x96\x01\n" +
+	"\ferrors_total\x18\x06 \x01(\x04R\verrorsTotal\"\xe7\x01\n" +
 	"\vDataSession\x12!\n" +
 	"\fconnector_id\x18\x01 \x01(\tR\vconnectorId\x127\n" +
 	"\ttransport\x18\x02 \x01(\x0e2\x19.rpmgr.agent.v1.TransportR\ttransport\x12+\n" +
-	"\x03rtt\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x03rtt\"W\n" +
+	"\x03rtt\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x03rtt\x12!\n" +
+	"\fready_routes\x18\x04 \x03(\tR\vreadyRoutes\x12,\n" +
+	"\x12ready_routes_known\x18\x05 \x01(\bR\x10readyRoutesKnown\"W\n" +
 	"\bOpResult\x12\x13\n" +
 	"\x05op_id\x18\x01 \x01(\tR\x04opId\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12 \n" +

@@ -41,7 +41,7 @@ type Kind struct {
 // Kinds are the kinds of the public API's resources, by name.
 var Kinds = []Kind{
 	{Name: "route", Prefix: "rt_", Service: "rpmgr.v1.RouteService", Resource: "Route", Plural: "Routes", IDField: "route_id", Manifest: "Route",
-		Columns: []string{"gatewayGroupId", "enabled", "status.state"}, Delete: true},
+		Columns: []string{"gatewayGroupId", "enabled", "status.state", "status.transport"}, Delete: true},
 	{Name: "connector", Prefix: "con_", Service: "rpmgr.v1.ConnectorService", Resource: "Connector", Plural: "Connectors", IDField: "connector_id",
 		Manifest: "Connector", Columns: []string{"enabled", "session.connected", "session.version"}},
 	{Name: "gateway", Prefix: "gw_", Service: "rpmgr.v1.GatewayService", Resource: "Gateway", Plural: "Gateways", IDField: "gateway_id",

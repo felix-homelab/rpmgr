@@ -22,6 +22,18 @@ Changes to the design documents are not recorded here: see the git history and t
   endpoint has no signing secret and cannot be rotated. A `429` from the service delays the next
   attempt by what it asks, never less than the ordinary retry delay, and is no failure of the
   endpoint until the fifth attempt of an event. (#1060)
+- A route shows the transport each of its targets is served over, always. The route's page has a
+  Transport column in its targets, per gateway where the gateways differ, with the raced, fallback
+  and pinned cases told apart and `unknown` where a gateway does not report it; the route's header
+  and the list of routes sum it up, `rpmgr get route` has a TRANSPORT column, and the route's
+  status in the API has `target_transports`. A gateway of an earlier release reports no
+  transport, which shows as `unknown`
+  ([03](docs/03-connections.md#transport-selection)). (#1075)
+
+### Fixed
+
+- A `udp` or `tcp_udp` route no longer shows "the port is in use on the gateway" while the old
+  process of a restart with hand-off still serves its port. (#1076)
 
 ## [0.3.0] - 2026-11-04
 

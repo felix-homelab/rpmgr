@@ -28,6 +28,7 @@ import (
 	eauditsink "github.com/felix-homelab/rpmgr/internal/store/ent/auditsink"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/cakey"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/certificate"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/instancesecret"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/secretmeta"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/totpcredential"
@@ -140,6 +141,7 @@ var sealedColumns = []sealedColumn{
 	{ewebhook.Table, ewebhook.FieldID, ewebhook.FieldPreviousSecretEnc, true},
 	{ewebhook.Table, ewebhook.FieldID, ewebhook.FieldURLEnc, true},
 	{eauditsink.Table, eauditsink.FieldID, eauditsink.FieldSecretEnc, true},
+	{dnsprovider.Table, dnsprovider.FieldID, dnsprovider.FieldCredentialEnc, true},
 }
 
 // SealedRef names one sealed value.

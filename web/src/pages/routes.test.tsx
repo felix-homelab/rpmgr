@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { GatewayService } from "@/gen/rpmgr/v1/gateway_pb";
+import { DataTransport } from "@/gen/rpmgr/v1/connector_pb";
 import { RouteService, RouteState, type ListRoutesRequest } from "@/gen/rpmgr/v1/route_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { auth, show } from "@/testing/api";
@@ -12,7 +13,9 @@ afterEach(cleanup);
 const wiki = {
   id: "rte_1", name: "wiki", gatewayGroupId: "ggr_eu",
   spec: { case: "http" as const, value: { hostnames: ["wiki.example.com"], pathPrefix: "" } },
-  status: { state: RouteState.READY, targetsTotal: 2, targetsReady: 2 },
+  status: { state: RouteState.READY, targetsTotal: 2, targetsReady: 2, targetTransports: [
+    { targetId: "tgt_a", gateways: [{ gatewayId: "gtw_1", transport: DataTransport.QUIC }, { gatewayId: "gtw_2", transport: DataTransport.QUIC }] },
+    { targetId: "tgt_b", gateways: [{ gatewayId: "gtw_1", transport: DataTransport.H2 }] }] },
 };
 const postgres = {
   id: "rte_2", name: "postgres", gatewayGroupId: "ggr_eu",
@@ -55,13 +58,13 @@ async function rows() {
 }
 
 describe("Routes", () => {
-  it("lists every route of every page, sorted by name, with its address, group, targets and state", async () => {
+  it("lists every route of every page, sorted by name, with its address, group, targets, transports and state", async () => {
     const { requests } = routes("/routes", [wiki, postgres, dns]);
     await waitFor(async () => expect(await rows()).toHaveLength(3));
     expect(await rows()).toEqual([
-      "dns:53UDPus0/0 readydisabled", // the icons are drawings, hidden from screen readers
-      "postgresedge.example.net:25432TCPeu0/1 ready1 blocked by local policyunavailablerejected by 1 agent",
-      "wikiwiki.example.comHTTPeu2/2 readyready",
+      "dns:53UDPus0/0 ready—disabled", // the icons are drawings, hidden from screen readers
+      "postgresedge.example.net:25432TCPeu0/1 ready1 blocked by local policy—unavailablerejected by 1 agent",
+      "wikiwiki.example.comHTTPeu2/2 readyQUIC 1 · HTTP/2 1ready",
     ]);
     expect(requests.map((r) => [r.orgId, r.pageSize, r.pageToken])).toEqual([["org_1", 500, ""], ["org_1", 500, "2"]]);
     expect(screen.getByText("1–3 of 3")).toBeTruthy();
@@ -92,7 +95,7 @@ describe("Routes", () => {
     const docs = { ...wiki, id: "rte_4", name: "docs", spec: { case: "http" as const, value: { hostnames: ["docs.example.com"], maintenance: true } },
       status: { state: RouteState.MAINTENANCE, targetsTotal: 1, targetsReady: 0 } };
     routes("/routes?state=maintenance", [wiki, docs, postgres]);
-    await waitFor(async () => expect(await rows()).toEqual(["docsdocs.example.comHTTPeu0/1 readymaintenance"]));
+    await waitFor(async () => expect(await rows()).toEqual(["docsdocs.example.comHTTPeu0/1 ready—maintenance"]));
     expect(within(screen.getByLabelText("Status")).getByRole("option", { name: "maintenance" })).toBeTruthy();
   });
 
