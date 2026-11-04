@@ -1106,3 +1106,135 @@ func TestDnsZones_EnableZone(t *testing.T) {
 		t.Errorf("approving the plan read: %v", err)
 	}
 }
+
+func planRemoval(b *browser, id string) (*rpmgrv1.PlanZoneSyncResponse, error) {
+	r, err := b.dnsz.PlanZoneSync(context.Background(), connect.NewRequest(&rpmgrv1.PlanZoneSyncRequest{DnsZoneId: id, DeleteRecords: true}))
+	if err != nil {
+		return nil, err
+	}
+	return r.Msg, nil
+}
+
+func removeWithRecords(b *browser, id, etag, hash string) error {
+	_, err := b.dnsz.RemoveZone(context.Background(), connect.NewRequest(&rpmgrv1.RemoveZoneRequest{DnsZoneId: id, Etag: etag, DeleteRecords: true, PlanHash: hash}))
+	return err
+}
+
+// TestDnsZones_RemoveWithRecords (docs/15-dns.md, "Connecting, importing and disconnecting"):
+// removing a zone with its records goes through a plan and an approval: the plan deletes the
+// records rpmgr owns and no others; the call takes a step-up, an Owner or Admin and the plan's hash,
+// and a plan that changed fails with PLAN_CHANGED before anything is deleted; the zone is disabled
+// before the first delete, stays so if the provider fails, and the claim stays.
+func TestDnsZones_RemoveWithRecords(t *testing.T) {
+	e, ada, org, zone := recordEnv(t)
+	c := e.db.Client()
+	row := func(name, pid string) {
+		c.DNSRecord.Create().SetOrgID(org).SetDNSZoneID(zone).SetName(name).SetType("A").SetContent("192.0.2.5").SetTTL(300).SetProviderRecordID(pid).SetState("synced").ExecX(e.sys)
+	}
+	row("mine1.example.com", "000000000000000000000000000000b1")
+	row("mine2.example.com", "000000000000000000000000000000b2")
+	row("gone.example.com", "000000000000000000000000000000b3") // its record is gone at the provider
+	e.dns.records = append(e.dns.records,
+		dns.Record{ID: "000000000000000000000000000000b1", Type: "A", Name: "mine1.example.com", Content: "192.0.2.5", TTL: 300},
+		dns.Record{ID: "000000000000000000000000000000b2", Type: "A", Name: "mine2.example.com", Content: "192.0.2.5", TTL: 300})
+	foreign := len(e.dns.records) - 2
+	pl, err := planRemoval(ada, zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var del []string
+	for _, r := range pl.GetPlan().GetDeletes() {
+		del = append(del, r.GetName())
+	}
+	if len(pl.GetPlan().GetCreates()) != 0 || len(pl.GetPlan().GetUpdates()) != 0 || fmt.Sprint(del) != "[mine1.example.com mine2.example.com]" || len(pl.GetPlan().GetHash()) != 64 {
+		t.Fatalf("removal plan %v", pl.GetPlan())
+	}
+	normal, _ := planZone(ada, zone)
+	if normal.GetPlan().GetHash() == pl.GetPlan().GetHash() {
+		t.Error("the removal plan and the plan of a pass have the same hash")
+	}
+	hash := pl.GetPlan().GetHash()
+	intact := func(why string) {
+		t.Helper()
+		if zoneCount(e) != 1 || c.DNSRecord.Query().CountX(e.sys) != 3 || len(e.dns.batches) != 0 {
+			t.Fatalf("%s: the zone, its rows or the provider changed (%d zones, %d batches)", why, zoneCount(e), len(e.dns.batches))
+		}
+	}
+
+	adm, _ := e.join(t, ada, org, "adm@example.com", "admin")
+	op, _ := e.join(t, ada, org, "op@example.com", "operator")
+	if err := op.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]struct {
+		call func() error
+		code connect.Code
+		why  string
+	}{
+		"an Operator":                {func() error { return removeWithRecords(op, zone, "", hash) }, connect.CodePermissionDenied, api.ReasonPermissionMissing},
+		"no step-up":                 {func() error { return removeWithRecords(adm, zone, "", hash) }, connect.CodeUnauthenticated, api.ReasonStepUpRequired},
+		"no hash":                    {func() error { return removeWithRecords(ada, zone, "", "") }, connect.CodeInvalidArgument, ""},
+		"a hash without the flag":    {func() error { return removeZoneWithHash(ada, zone, hash) }, connect.CodeInvalidArgument, ""},
+		"another plan's hash":        {func() error { return removeWithRecords(ada, zone, "", normal.GetPlan().GetHash()) }, connect.CodeFailedPrecondition, apisvc.ReasonPlanChanged},
+		"a made-up hash":             {func() error { return removeWithRecords(ada, zone, "", strings.Repeat("a", 64)) }, connect.CodeFailedPrecondition, apisvc.ReasonPlanChanged},
+		"a stale etag":               {func() error { return removeWithRecords(ada, zone, "99", hash) }, connect.CodeFailedPrecondition, api.ReasonEtagMismatch},
+		"a zone that does not exist": {func() error { return removeWithRecords(ada, "dnz_missing", "", hash) }, connect.CodeNotFound, ""},
+	} {
+		if err := c.call(); code(err) != c.code || reason(err) != c.why {
+			t.Errorf("%s: %v (reason %q)", name, err, reason(err))
+		}
+		intact(name)
+	}
+	if z := c.DNSZone.GetX(e.sys, zone); z.SyncState != "held" {
+		t.Fatalf("a refused removal changed the zone: %+v", z)
+	}
+
+	// The plan changes after it was read: the provider holds one more owned record.
+	row("late.example.com", "000000000000000000000000000000b4")
+	e.dns.records = append(e.dns.records, dns.Record{ID: "000000000000000000000000000000b4", Type: "A", Name: "late.example.com", Content: "192.0.2.5", TTL: 300})
+	if err := removeWithRecords(ada, zone, "", hash); reason(err) != apisvc.ReasonPlanChanged {
+		t.Fatalf("a plan that changed: %v", err)
+	}
+	pl, _ = planRemoval(ada, zone)
+	hash = pl.GetPlan().GetHash()
+	if len(e.dns.batches) != 0 {
+		t.Fatal("something was deleted before the hash matched")
+	}
+
+	// A provider that is down fails the call before anything is recorded.
+	e.dns.know(dnsToken1, fakeDNSToken{err: errors.New("dial tcp 198.51.100.1:443: i/o timeout")})
+	if err := removeWithRecords(ada, zone, "", hash); code(err) != connect.CodeUnavailable {
+		t.Fatalf("a failing provider: %v", err)
+	}
+	e.dns.know(dnsToken1, fakeDNSToken{})
+	if z := c.DNSZone.GetX(e.sys, zone); z.SyncState != "held" || z.RemovalRequested {
+		t.Fatalf("zone %+v", z)
+	}
+
+	// The call records the approved plan and returns: the zone is disabled and shows the removal as
+	// pending, nothing is written to the provider, no row goes. The DNS job does the rest.
+	if err := removeWithRecords(ada, zone, "", hash); err != nil {
+		t.Fatal(err)
+	}
+	z := c.DNSZone.GetX(e.sys, zone)
+	if z.SyncState != "disabled" || !z.RemovalRequested || z.PendingPlanHash != hash || z.SyncRequestedAt == nil || len(z.PendingPlan) == 0 {
+		t.Fatalf("zone %+v", z)
+	}
+	if len(e.dns.batches) != 0 || zoneCount(e) != 1 || c.DNSRecord.Query().CountX(e.sys) != 4 || len(e.dns.records) != foreign+3 {
+		t.Fatalf("the API call wrote: %d batches, %d rows, %d records", len(e.dns.batches), c.DNSRecord.Query().CountX(e.sys), len(e.dns.records))
+	}
+	if got, err := ada.dnsz.GetZone(context.Background(), connect.NewRequest(&rpmgrv1.GetZoneRequest{DnsZoneId: zone})); err != nil || !got.Msg.GetDnsZone().GetRemovalPending() {
+		t.Errorf("the zone does not show the pending removal: %v %v", got, err)
+	}
+	if a := c.AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.DnsZoneService.RemoveZone"), auditentry.ResultEQ("success")).AllX(e.sys); len(a) < 1 || !strings.Contains(a[0].Reason, "delete 4 records") && !strings.Contains(a[0].Reason, "delete 3 records") {
+		t.Errorf("audit entries for the removal: %+v", a)
+	}
+	if c.Domain.Query().CountX(e.sys) != 1 {
+		t.Error("the claim went")
+	}
+}
+
+func removeZoneWithHash(b *browser, id, hash string) error {
+	_, err := b.dnsz.RemoveZone(context.Background(), connect.NewRequest(&rpmgrv1.RemoveZoneRequest{DnsZoneId: id, PlanHash: hash}))
+	return err
+}

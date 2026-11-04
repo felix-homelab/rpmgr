@@ -20,9 +20,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/dns"
 	"github.com/felix-homelab/rpmgr/internal/dns/apply"
 	"github.com/felix-homelab/rpmgr/internal/dns/budget"
+	"github.com/felix-homelab/rpmgr/internal/dns/cloudflare"
 	"github.com/felix-homelab/rpmgr/internal/dns/compile"
 	"github.com/felix-homelab/rpmgr/internal/dns/plan"
 	"github.com/felix-homelab/rpmgr/internal/dns/providers"
@@ -32,6 +34,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/configrevision"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsnamestatus"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 )
 
@@ -191,6 +194,17 @@ func (j *Job) Run(ctx context.Context, l lease.Lease) error {
 	var errs []error
 	for _, z := range zones {
 		isFull := full || forced[z.ID] || j.requested(z)
+		if z.RemovalRequested { // approved: the zone's records go, then the zone, and nothing else is done in it
+			if isFull {
+				if err := j.removeZone(ctx, l, z); err != nil {
+					if errors.Is(err, lease.ErrLost) {
+						return err
+					}
+					errs = append(errs, err)
+				}
+			}
+			continue
+		}
 		if !isFull && !slices.Contains(due, "") && !slices.Contains(due, z.ID) {
 			continue
 		}
@@ -343,6 +357,9 @@ type Inspection struct {
 	Live []dns.Record
 	// Plan is the plan a pass would carry out, and its hash.
 	Plan plan.Plan
+	// Removal is the plan that deletes every record rpmgr owns in the zone, which removing the
+	// zone with its records is bound to.
+	Removal plan.Plan
 	// Wanted are the names that the zone publishes records for: names with a source in the zone's
 	// org that the compiler accepts. Only a record at one of them is adopted.
 	Wanted []string
@@ -365,7 +382,11 @@ func (j *Job) Inspect(ctx context.Context, zoneID string, p dns.Provider) (Inspe
 	if err != nil {
 		return Inspection{}, err
 	}
-	out := Inspection{Live: live, Plan: pl}
+	rm, err := j.engine(lease.Lease{}, false).PlanOf(ctx, live, applyZone(z), apply.Wanted{})
+	if err != nil {
+		return Inspection{}, err
+	}
+	out := Inspection{Live: live, Plan: pl, Removal: rm}
 	for _, n := range cr.Names {
 		if n.Status == compile.StatusOk && !n.Claim {
 			out.Wanted = append(out.Wanted, n.Name)
@@ -597,4 +618,90 @@ func statuses(o outcome) []nameStatus {
 		out = append(out, s)
 	}
 	return out
+}
+
+// removeZone carries out an approved removal of a zone with its records, under the lease: the
+// records of the approved plan that are still owned and still there are deleted, in batches, each
+// after the lease check, and then the ledger rows, the name statuses and the zone go in one fenced
+// transaction. A record that the plan did not name and that is owned now stops it before anything is
+// deleted: the request is dropped and the zone stays disabled. A provider that fails, or a lease
+// that ends, leaves the zone as it is, and the next full pass or "Sync now" goes on.
+func (j *Job) removeZone(ctx context.Context, l lease.Lease, z *ent.DNSZone) error {
+	var approved plan.Plan
+	if err := json.Unmarshal(z.PendingPlan, &approved); err != nil || approved.Hash != z.PendingPlanHash {
+		return j.dropRemoval(ctx, l, z, "the approved removal plan is unreadable")
+	}
+	prov, err := j.provider(ctx, z)
+	if err != nil {
+		return err
+	}
+	eng := j.engine(l, true)
+	live, err := prov.ListRecords(ctx, z.ProviderZoneID)
+	if err != nil {
+		j.warn(ctx, z, err)
+		return nil
+	}
+	cur, err := eng.PlanOf(ctx, live, applyZone(z), apply.Wanted{})
+	if err != nil {
+		return err
+	}
+	allowed := map[string]bool{}
+	for _, d := range approved.Deletes {
+		allowed[d.ID] = true
+	}
+	var ids []string
+	for _, d := range cur.Deletes {
+		if !allowed[d.ID] {
+			return j.dropRemoval(ctx, l, z, "a record that the approved plan does not name is owned now")
+		}
+		ids = append(ids, d.ID)
+	}
+	for chunk := range slices.Chunk(ids, cloudflare.MaxBatchOps) {
+		if err := j.guard(l)(ctx); err != nil {
+			j.warn(ctx, z, err)
+			return nil
+		}
+		if err := prov.Apply(ctx, z.ProviderZoneID, dns.Batch{Deletes: chunk}); err != nil {
+			j.warn(ctx, z, err)
+			return nil
+		}
+	}
+	return store.WriteTx(ctx, j.o.DB, func(tx *ent.Tx) error {
+		if err := j.o.Leases.Fence(ctx, tx, l); err != nil {
+			return err
+		}
+		if _, err := tx.DNSRecord.Delete().Where(dnsrecord.DNSZoneID(z.ID)).Exec(ctx); err != nil {
+			return err
+		}
+		if _, err := tx.DNSNameStatus.Delete().Where(dnsnamestatus.DNSZoneID(z.ID)).Exec(ctx); err != nil {
+			return err
+		}
+		if err := tx.DNSZone.DeleteOneID(z.ID).Exec(ctx); err != nil {
+			return err
+		}
+		_, err := audit.Append(ctx, tx, audit.Entry{OrgID: z.OrgID, ActorType: audit.ActorSystem, ActorID: apply.Actor, Action: "dns_zone.remove",
+			TargetType: "dns_zone", TargetID: z.ID, TargetName: z.Name, Result: audit.Success,
+			Reason: fmt.Sprintf("removed with %d records deleted at the provider, plan %s", len(ids), approved.Hash)})
+		return err
+	})
+}
+
+// dropRemoval ends an approved removal that cannot be carried out: the zone stays disabled.
+func (j *Job) dropRemoval(ctx context.Context, l lease.Lease, z *ent.DNSZone, why string) error {
+	if j.o.Logger != nil {
+		j.o.Logger.WarnContext(ctx, "an approved removal of a dns zone was dropped", "dns_zone", z.ID, "why", why)
+	}
+	return store.WriteTx(ctx, j.o.DB, func(tx *ent.Tx) error {
+		if err := j.o.Leases.Fence(ctx, tx, l); err != nil {
+			return err
+		}
+		return tx.DNSZone.UpdateOneID(z.ID).SetRemovalRequested(false).ClearPendingPlan().SetPendingPlanHash("").
+			SetHeldReason("removal_dropped").Exec(ctx)
+	})
+}
+
+func (j *Job) warn(ctx context.Context, z *ent.DNSZone, err error) {
+	if j.o.Logger != nil {
+		j.o.Logger.WarnContext(ctx, "a dns zone was left as it is", "dns_zone", z.ID, "err", err)
+	}
 }

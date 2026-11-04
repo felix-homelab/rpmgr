@@ -27,7 +27,7 @@ import (
 )
 
 // theToken is a made-up provider token the tests look for in every output.
-const theToken = "cf-token-of-the-test-0001"
+const theToken = "cf-token-of-the-test-0001" //nolint:gosec // G101: a made-up value
 
 // dnsAPI is the three DNS services with one provider, one zone and one name; connecting, rotating
 // and deleting a provider need a step-up, as the API's rules say.
@@ -49,6 +49,7 @@ type dnsAPI struct {
 	nameGone   *rpmgrv1.DeleteDnsNameRequest
 	calls      int
 	refuse     error // what a provider write answers, if set
+	zonePlans  zoneFake
 }
 
 func (a *dnsAPI) stepped() error {
@@ -153,8 +154,17 @@ func (a *dnsAPI) UpdateZone(_ context.Context, req *connect.Request[rpmgrv1.Upda
 }
 
 func (a *dnsAPI) RemoveZone(_ context.Context, req *connect.Request[rpmgrv1.RemoveZoneRequest]) (*connect.Response[rpmgrv1.RemoveZoneResponse], error) {
+	if req.Msg.GetDeleteRecords() {
+		if err := a.stepped(); err != nil {
+			return nil, err
+		}
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.zonePlans.calls = append(a.zonePlans.calls, "remove")
+	if a.zonePlans.removeErr != nil {
+		return nil, a.zonePlans.removeErr
+	}
 	a.removed = req.Msg
 	return connect.NewResponse(&rpmgrv1.RemoveZoneResponse{}), nil
 }

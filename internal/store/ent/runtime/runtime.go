@@ -1821,8 +1821,12 @@ func init() {
 	dnszone.DefaultDefaultTTL = dnszoneDescDefaultTTL.Default.(int)
 	// dnszone.DefaultTTLValidator is a validator for the "default_ttl" field. It is called by the builders before save.
 	dnszone.DefaultTTLValidator = dnszoneDescDefaultTTL.Validators[0].(func(int) error)
+	// dnszoneDescRemovalRequested is the schema descriptor for removal_requested field.
+	dnszoneDescRemovalRequested := dnszoneFields[15].Descriptor()
+	// dnszone.DefaultRemovalRequested holds the default value on creation for the removal_requested field.
+	dnszone.DefaultRemovalRequested = dnszoneDescRemovalRequested.Default.(bool)
 	// dnszoneDescCreatedAt is the schema descriptor for created_at field.
-	dnszoneDescCreatedAt := dnszoneFields[16].Descriptor()
+	dnszoneDescCreatedAt := dnszoneFields[17].Descriptor()
 	// dnszone.DefaultCreatedAt holds the default value on creation for the created_at field.
 	dnszone.DefaultCreatedAt = dnszoneDescCreatedAt.Default.(func() time.Time)
 	// dnszoneDescID is the schema descriptor for id field.

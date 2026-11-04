@@ -205,6 +205,20 @@ func (_c *DNSZoneCreate) SetNillableLastSyncedAt(v *time.Time) *DNSZoneCreate {
 	return _c
 }
 
+// SetRemovalRequested sets the "removal_requested" field.
+func (_c *DNSZoneCreate) SetRemovalRequested(v bool) *DNSZoneCreate {
+	_c.mutation.SetRemovalRequested(v)
+	return _c
+}
+
+// SetNillableRemovalRequested sets the "removal_requested" field if the given value is not nil.
+func (_c *DNSZoneCreate) SetNillableRemovalRequested(v *bool) *DNSZoneCreate {
+	if v != nil {
+		_c.SetRemovalRequested(*v)
+	}
+	return _c
+}
+
 // SetSyncRequestedAt sets the "sync_requested_at" field.
 func (_c *DNSZoneCreate) SetSyncRequestedAt(v time.Time) *DNSZoneCreate {
 	_c.mutation.SetSyncRequestedAt(v)
@@ -329,6 +343,10 @@ func (_c *DNSZoneCreate) defaults() error {
 		v := dnszone.DefaultDefaultTTL
 		_c.mutation.SetDefaultTTL(v)
 	}
+	if _, ok := _c.mutation.RemovalRequested(); !ok {
+		v := dnszone.DefaultRemovalRequested
+		_c.mutation.SetRemovalRequested(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		if dnszone.DefaultCreatedAt == nil {
 			return fmt.Errorf("ent: uninitialized dnszone.DefaultCreatedAt (forgotten import ent/runtime?)")
@@ -445,6 +463,9 @@ func (_c *DNSZoneCreate) check() error {
 			return &ValidationError{Name: "default_ttl", err: fmt.Errorf(`ent: validator failed for field "DNSZone.default_ttl": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.RemovalRequested(); !ok {
+		return &ValidationError{Name: "removal_requested", err: errors.New(`ent: missing required field "DNSZone.removal_requested"`)}
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "DNSZone.created_at"`)}
 	}
@@ -550,6 +571,10 @@ func (_c *DNSZoneCreate) createSpec() (*DNSZone, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.LastSyncedAt(); ok {
 		_spec.SetField(dnszone.FieldLastSyncedAt, field.TypeTime, value)
 		_node.LastSyncedAt = &value
+	}
+	if value, ok := _c.mutation.RemovalRequested(); ok {
+		_spec.SetField(dnszone.FieldRemovalRequested, field.TypeBool, value)
+		_node.RemovalRequested = value
 	}
 	if value, ok := _c.mutation.SyncRequestedAt(); ok {
 		_spec.SetField(dnszone.FieldSyncRequestedAt, field.TypeTime, value)

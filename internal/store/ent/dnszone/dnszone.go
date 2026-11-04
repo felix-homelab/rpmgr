@@ -48,6 +48,8 @@ const (
 	FieldDefaultTTL = "default_ttl"
 	// FieldLastSyncedAt holds the string denoting the last_synced_at field in the database.
 	FieldLastSyncedAt = "last_synced_at"
+	// FieldRemovalRequested holds the string denoting the removal_requested field in the database.
+	FieldRemovalRequested = "removal_requested"
 	// FieldSyncRequestedAt holds the string denoting the sync_requested_at field in the database.
 	FieldSyncRequestedAt = "sync_requested_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -84,6 +86,7 @@ var Columns = []string{
 	FieldDeleteThreshold,
 	FieldDefaultTTL,
 	FieldLastSyncedAt,
+	FieldRemovalRequested,
 	FieldSyncRequestedAt,
 	FieldCreatedAt,
 }
@@ -141,6 +144,8 @@ var (
 	DefaultDefaultTTL int
 	// DefaultTTLValidator is a validator for the "default_ttl" field. It is called by the builders before save.
 	DefaultTTLValidator func(int) error
+	// DefaultRemovalRequested holds the default value on creation for the "removal_requested" field.
+	DefaultRemovalRequested bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultID holds the default value on creation for the "id" field.
@@ -285,6 +290,11 @@ func ByDefaultTTL(opts ...sql.OrderTermOption) OrderOption {
 // ByLastSyncedAt orders the results by the last_synced_at field.
 func ByLastSyncedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastSyncedAt, opts...).ToFunc()
+}
+
+// ByRemovalRequested orders the results by the removal_requested field.
+func ByRemovalRequested(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRemovalRequested, opts...).ToFunc()
 }
 
 // BySyncRequestedAt orders the results by the sync_requested_at field.

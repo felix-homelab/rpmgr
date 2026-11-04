@@ -1172,8 +1172,10 @@ type DnsZone struct {
 	// The hash of the plan under review on a held zone, or of the approved plan an active zone has
 	// not applied yet; output only, empty otherwise.
 	PendingPlanHash string `protobuf:"bytes,15,opt,name=pending_plan_hash,json=pendingPlanHash,proto3" json:"pending_plan_hash,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Removing the zone with its records was approved and the DNS job has not finished it; output only.
+	RemovalPending bool `protobuf:"varint,16,opt,name=removal_pending,json=removalPending,proto3" json:"removal_pending,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *DnsZone) Reset() {
@@ -1309,6 +1311,13 @@ func (x *DnsZone) GetPendingPlanHash() string {
 		return x.PendingPlanHash
 	}
 	return ""
+}
+
+func (x *DnsZone) GetRemovalPending() bool {
+	if x != nil {
+		return x.RemovalPending
+	}
+	return false
 }
 
 // ImportZoneRequest names a zone at a provider.
@@ -1745,7 +1754,16 @@ type RemoveZoneRequest struct {
 	// The zone's ID.
 	DnsZoneId string `protobuf:"bytes,1,opt,name=dns_zone_id,json=dnsZoneId,proto3" json:"dns_zone_id,omitempty"`
 	// The etag the caller read; empty skips the check.
-	Etag          string `protobuf:"bytes,2,opt,name=etag,proto3" json:"etag,omitempty"`
+	Etag string `protobuf:"bytes,2,opt,name=etag,proto3" json:"etag,omitempty"`
+	// Delete the records rpmgr owns at the provider too. It needs a step-up and the hash of the plan
+	// the caller read with PlanZoneSync and delete_records: a plan with another hash is
+	// FAILED_PRECONDITION with PLAN_CHANGED, and nothing changes. The call returns at once: the zone
+	// is disabled and shows removal_pending, and the DNS job, under its lease, deletes the records of
+	// the approved plan and only those, then removes the zone. If a record that the plan did not
+	// name is owned by then, the job deletes nothing and the zone stays disabled.
+	DeleteRecords bool `protobuf:"varint,3,opt,name=delete_records,json=deleteRecords,proto3" json:"delete_records,omitempty"`
+	// The hash of the removal plan; required with delete_records, else it must be empty.
+	PlanHash      string `protobuf:"bytes,4,opt,name=plan_hash,json=planHash,proto3" json:"plan_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1790,6 +1808,20 @@ func (x *RemoveZoneRequest) GetDnsZoneId() string {
 func (x *RemoveZoneRequest) GetEtag() string {
 	if x != nil {
 		return x.Etag
+	}
+	return ""
+}
+
+func (x *RemoveZoneRequest) GetDeleteRecords() bool {
+	if x != nil {
+		return x.DeleteRecords
+	}
+	return false
+}
+
+func (x *RemoveZoneRequest) GetPlanHash() string {
+	if x != nil {
+		return x.PlanHash
 	}
 	return ""
 }
@@ -2090,7 +2122,10 @@ func (x *ZonePlan) GetHash() string {
 type PlanZoneSyncRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The zone's ID.
-	DnsZoneId     string `protobuf:"bytes,1,opt,name=dns_zone_id,json=dnsZoneId,proto3" json:"dns_zone_id,omitempty"`
+	DnsZoneId string `protobuf:"bytes,1,opt,name=dns_zone_id,json=dnsZoneId,proto3" json:"dns_zone_id,omitempty"`
+	// Plan the removal of the zone's records instead: the plan deletes every record rpmgr owns in
+	// the zone, and its hash is what RemoveZone with delete_records binds to.
+	DeleteRecords bool `protobuf:"varint,2,opt,name=delete_records,json=deleteRecords,proto3" json:"delete_records,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2130,6 +2165,13 @@ func (x *PlanZoneSyncRequest) GetDnsZoneId() string {
 		return x.DnsZoneId
 	}
 	return ""
+}
+
+func (x *PlanZoneSyncRequest) GetDeleteRecords() bool {
+	if x != nil {
+		return x.DeleteRecords
+	}
+	return false
 }
 
 // PlanZoneSyncResponse is the zone and its plan.
@@ -3564,7 +3606,7 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\x18ListProviderZonesRequest\x12/\n" +
 	"\x0fdns_provider_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\rdnsProviderId\"I\n" +
 	"\x19ListProviderZonesResponse\x12,\n" +
-	"\x05zones\x18\x01 \x03(\v2\x16.rpmgr.v1.ProviderZoneR\x05zones\"\x80\x05\n" +
+	"\x05zones\x18\x01 \x03(\v2\x16.rpmgr.v1.ProviderZoneR\x05zones\"\xa9\x05\n" +
 	"\aDnsZone\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12&\n" +
@@ -3584,7 +3626,8 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"defaultTtl\x12D\n" +
 	"\x10last_synced_time\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\x0elastSyncedTime\x12\x12\n" +
 	"\x04etag\x18\x0e \x01(\tR\x04etag\x12*\n" +
-	"\x11pending_plan_hash\x18\x0f \x01(\tR\x0fpendingPlanHash\"y\n" +
+	"\x11pending_plan_hash\x18\x0f \x01(\tR\x0fpendingPlanHash\x12'\n" +
+	"\x0fremoval_pending\x18\x10 \x01(\bR\x0eremovalPending\"y\n" +
 	"\x11ImportZoneRequest\x12/\n" +
 	"\x0fdns_provider_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\rdnsProviderId\x123\n" +
 	"\x10provider_zone_id\x18\x02 \x01(\tB\t\xbaH\x06r\x04\x10\x01\x18@R\x0eproviderZoneId\"l\n" +
@@ -3609,10 +3652,12 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"updateMask\x12\x12\n" +
 	"\x04etag\x18\x03 \x01(\tR\x04etag\"B\n" +
 	"\x12UpdateZoneResponse\x12,\n" +
-	"\bdns_zone\x18\x01 \x01(\v2\x11.rpmgr.v1.DnsZoneR\adnsZone\"P\n" +
+	"\bdns_zone\x18\x01 \x01(\v2\x11.rpmgr.v1.DnsZoneR\adnsZone\"\x94\x01\n" +
 	"\x11RemoveZoneRequest\x12'\n" +
 	"\vdns_zone_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tdnsZoneId\x12\x12\n" +
-	"\x04etag\x18\x02 \x01(\tR\x04etag\"\x14\n" +
+	"\x04etag\x18\x02 \x01(\tR\x04etag\x12%\n" +
+	"\x0edelete_records\x18\x03 \x01(\bR\rdeleteRecords\x12\x1b\n" +
+	"\tplan_hash\x18\x04 \x01(\tR\bplanHash\"\x14\n" +
 	"\x12RemoveZoneResponse\"\x8a\x01\n" +
 	"\n" +
 	"PlanRecord\x12\x0e\n" +
@@ -3634,9 +3679,10 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\aorphans\x18\x05 \x03(\v2\x14.rpmgr.v1.PlanRecordR\aorphans\x12\x18\n" +
 	"\ashadows\x18\x06 \x03(\tR\ashadows\x12\x12\n" +
 	"\x04lost\x18\a \x03(\tR\x04lost\x12\x12\n" +
-	"\x04hash\x18\b \x01(\tR\x04hash\">\n" +
+	"\x04hash\x18\b \x01(\tR\x04hash\"e\n" +
 	"\x13PlanZoneSyncRequest\x12'\n" +
-	"\vdns_zone_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tdnsZoneId\"l\n" +
+	"\vdns_zone_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tdnsZoneId\x12%\n" +
+	"\x0edelete_records\x18\x02 \x01(\bR\rdeleteRecords\"l\n" +
 	"\x14PlanZoneSyncResponse\x12,\n" +
 	"\bdns_zone\x18\x01 \x01(\v2\x11.rpmgr.v1.DnsZoneR\adnsZone\x12&\n" +
 	"\x04plan\x18\x02 \x01(\v2\x12.rpmgr.v1.ZonePlanR\x04plan\"<\n" +
