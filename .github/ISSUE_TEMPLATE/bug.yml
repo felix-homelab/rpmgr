@@ -1,0 +1,90 @@
+name: Bug report
+description: Something in rpmgr does not work as it should
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. **A security vulnerability never goes into a
+        public issue:** report it privately as [SECURITY.md](https://github.com/felix-homelab/rpmgr/blob/main/SECURITY.md) says.
+  - type: input
+    id: version
+    attributes:
+      label: rpmgr version
+      description: "`rpmgr version` on the affected host, or the commit you built."
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Where it happens
+      multiple: true
+      options:
+        - Controller
+        - Gateway
+        - Connector
+        - All-in-one
+        - Web UI
+        - Command line (rpmgr CLI)
+        - Installation or update
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How rpmgr is installed
+      options:
+        - Install script (systemd)
+        - Container image (Docker or Podman)
+        - Binary started by hand
+        - Built from source
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and architecture
+      description: Also the database (SQLite or PostgreSQL) and the transport (QUIC, HTTP/2, WSS) if you know them.
+      placeholder: "Debian 13, x86-64, SQLite, QUIC"
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: What you saw, including error messages in the web UI or the CLI.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest set of steps that shows the problem. Route type and settings help.
+      placeholder: |
+        1. Create an http route for app.example.org to 127.0.0.1:8080
+        2. Open https://app.example.org
+        3. …
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        The relevant lines only, from `journalctl -u 'rpmgr-*'` or the container log. **Remove tokens,
+        keys, passwords and any hostname or address you do not want public before you submit.**
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: This is not a security vulnerability (those go to SECURITY.md, privately).
+          required: true
+        - label: I removed secrets and private details from the logs and text above.
+          required: true
