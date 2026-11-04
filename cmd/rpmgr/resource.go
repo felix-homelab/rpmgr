@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,6 +30,9 @@ type field struct {
 	updateOnly             bool // whether only update has the flag: the field has no say at creation
 	file                   bool // the flag names a file whose content is the field's value
 	trim                   bool // with file: the value ends at its last line break, which is left out
+	// target marks the two flags of a DNS target, which share one message field: "cname" takes a
+	// name and "addresses" is repeated; giving both is refused, and an empty name clears it.
+	target string
 }
 
 // resourceCommands are `create <kind>` and `update <kind>` of a kind whose resource the fields
@@ -61,6 +65,9 @@ func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, r
 			}
 			fd := mt.Descriptor().Fields().ByName(protoreflect.Name(f.name))
 			switch {
+			case f.target == "addresses":
+				lists[f.flag] = &cli.List{}
+				fs.Var(lists[f.flag], f.flag, f.usage+"; repeat for more")
 			case fd.IsList():
 				lists[f.flag] = &cli.List{}
 				fs.Var(lists[f.flag], f.flag, f.usage+"; repeat for more")
@@ -85,6 +92,15 @@ func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, r
 				continue
 			}
 			fd := m.Descriptor().Fields().ByName(protoreflect.Name(f.name))
+			if f.target != "" {
+				if err := setTarget(m, fd, f.name, fields, set, values, lists); err != nil {
+					return nil, err
+				}
+				if !slices.Contains(paths, f.name) {
+					paths = append(paths, f.name)
+				}
+				continue
+			}
 			if fd.IsList() {
 				l := m.Mutable(fd).List()
 				l.Truncate(0)
@@ -293,6 +309,43 @@ func (s *apiSession) send(ctx context.Context, env *cli.Env, k apicli.Kind, md p
 		if err := f(info, res); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// setTarget sets the DNS target message field named name from its two flags: --dns-target with a
+// name, or --dns-address, repeated. An empty name clears the target. Both together are refused,
+// as the message holds one of them (docs/15-dns.md, "Publication rules").
+func setTarget(m protoreflect.Message, fd protoreflect.FieldDescriptor, name string, fields []field, set map[string]bool,
+	values map[string]*string, lists map[string]*cli.List) error {
+	var cname, addresses string
+	for _, f := range fields {
+		switch {
+		case f.name != name:
+		case f.target == "cname":
+			cname = f.flag
+		case f.target == "addresses":
+			addresses = f.flag
+		}
+	}
+	if set[cname] && set[addresses] {
+		return cli.Usagef("--%s and --%s cannot be given together: a target is a name or addresses", cname, addresses)
+	}
+	if set[cname] {
+		m.Clear(fd)
+		if v := *values[cname]; v != "" {
+			t := m.Mutable(fd).Message()
+			t.Set(t.Descriptor().Fields().ByName("cname"), protoreflect.ValueOfString(v))
+		}
+		return nil
+	}
+	t := m.Mutable(fd).Message()
+	af := t.Descriptor().Fields().ByName("addresses")
+	a := t.Mutable(af).Message()
+	l := a.Mutable(a.Descriptor().Fields().ByName("addresses")).List()
+	l.Truncate(0)
+	for _, v := range *lists[addresses] {
+		l.Append(protoreflect.ValueOfString(v))
 	}
 	return nil
 }

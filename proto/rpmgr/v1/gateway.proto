@@ -419,6 +419,26 @@ message GatewayGroup {
   repeated string trusted_proxy_cidrs = 5 [(buf.validate.field).repeated.max_items = 64];
   // The version to send back with an update or delete; output only.
   string etag = 6;
+  // Where the DNS records of the group's names point; unset publishes nothing (docs/15-dns.md,
+  // "Publication rules").
+  DnsTarget dns_target = 7;
+}
+
+// DnsTarget is where a gateway group's names point: a CNAME or a list of addresses, never both.
+message DnsTarget {
+  oneof kind {
+    // The canonical name, a fully qualified name that is not reserved (docs/15-dns.md).
+    string cname = 1 [(buf.validate.field).string.max_len = 253];
+    // The addresses, one A record per IPv4 and one AAAA record per IPv6 address.
+    DnsAddresses addresses = 2;
+  }
+}
+
+// DnsAddresses are the addresses of an address target.
+message DnsAddresses {
+  // IPv4 and IPv6 addresses in their canonical text form, without duplicates; the controller
+  // checks them against the limit of docs/15-dns.md ("Timers and limits").
+  repeated string addresses = 1;
 }
 
 // CreateGatewayGroupRequest is a new gateway group.

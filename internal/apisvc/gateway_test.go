@@ -21,9 +21,11 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
+	"github.com/felix-homelab/rpmgr/internal/dnstarget"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaygroup"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/gatewaypage"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/schema"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
@@ -131,6 +133,121 @@ func TestGatewayGroups(t *testing.T) {
 	}
 	if _, err := ada.gw.GetGatewayGroup(ctx, connect.NewRequest(&rpmgrv1.GetGatewayGroupRequest{GatewayGroupId: id})); code(err) != connect.CodeNotFound {
 		t.Fatalf("a deleted group: %v", err)
+	}
+}
+
+// TestGatewayGroupDNSTarget: a group's DNS target is a CNAME or a list of addresses, kept in the
+// canonical form; unset publishes nothing; a Viewer cannot set it; every input the rules of
+// docs/15-dns.md refuse is InvalidArgument and leaves the target as it was.
+func TestGatewayGroupDNSTarget(t *testing.T) {
+	e, ada, org, group := gatewayEnv(t)
+	ctx := context.Background()
+	if _, err := createGateway(ada, org, group, "gw1", "tunnel.example.net:443"); err != nil {
+		t.Fatal(err)
+	}
+	cname := func(n string) *rpmgrv1.DnsTarget { return &rpmgrv1.DnsTarget{Kind: &rpmgrv1.DnsTarget_Cname{Cname: n}} }
+	addrs := func(a ...string) *rpmgrv1.DnsTarget {
+		return &rpmgrv1.DnsTarget{Kind: &rpmgrv1.DnsTarget_Addresses{Addresses: &rpmgrv1.DnsAddresses{Addresses: a}}}
+	}
+	get := func() *rpmgrv1.GatewayGroup {
+		t.Helper()
+		r, err := ada.gw.GetGatewayGroup(ctx, connect.NewRequest(&rpmgrv1.GetGatewayGroupRequest{GatewayGroupId: group}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.Msg.GetGatewayGroup()
+	}
+	set := func(b *browser, tg *rpmgrv1.DnsTarget) error {
+		_, err := b.gw.UpdateGatewayGroup(ctx, connect.NewRequest(&rpmgrv1.UpdateGatewayGroupRequest{
+			GatewayGroup: &rpmgrv1.GatewayGroup{Id: group, DnsTarget: tg}, UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"dns_target"}}}))
+		return err
+	}
+	if get().GetDnsTarget() != nil {
+		t.Fatalf("a new group has a target: %v", get().GetDnsTarget())
+	}
+
+	if err := set(ada, cname("LB.Example.com.")); err != nil || get().GetDnsTarget().GetCname() != "lb.example.com" {
+		t.Fatalf("a CNAME is stored in the canonical form: %v %v", get().GetDnsTarget(), err)
+	}
+	if err := set(ada, addrs("192.0.2.10", "2001:DB8::1")); err != nil ||
+		!slices.Equal(get().GetDnsTarget().GetAddresses().GetAddresses(), []string{"192.0.2.10", "2001:db8::1"}) || get().GetDnsTarget().GetCname() != "" {
+		t.Fatalf("addresses replace the CNAME: %v %v", get().GetDnsTarget(), err)
+	}
+	// An update of another field keeps the target.
+	if _, err := ada.gw.UpdateGatewayGroup(ctx, connect.NewRequest(&rpmgrv1.UpdateGatewayGroupRequest{
+		GatewayGroup: &rpmgrv1.GatewayGroup{Id: group, Region: "Rome"}, UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"region"}}})); err != nil ||
+		len(get().GetDnsTarget().GetAddresses().GetAddresses()) != 2 {
+		t.Fatalf("an update of the region: %v %v", get().GetDnsTarget(), err)
+	}
+
+	tooMany := make([]string, dnstarget.MaxAddresses+1)
+	for i := range tooMany {
+		tooMany[i] = fmt.Sprintf("192.0.2.%d", i+1)
+	}
+	for name, tg := range map[string]*rpmgrv1.DnsTarget{
+		"an empty CNAME":              cname(""),
+		"a CNAME that is no FQDN":     cname("lb"),
+		"a CNAME with a bad label":    cname("lb_1.example.com"),
+		"a CNAME that is an address":  cname("192.0.2.1"),
+		"an _acme-challenge name":     cname("_acme-challenge.example.com"),
+		"a gateway's tunnel name":     cname("Tunnel.Example.net"),
+		"an empty address list":       addrs(),
+		"a name among the addresses":  addrs("example.com"),
+		"an IPv4-mapped address":      addrs("::ffff:192.0.2.1"),
+		"a duplicate":                 addrs("192.0.2.1", "192.0.2.1"),
+		"a duplicate in another form": addrs("2001:db8::1", "2001:0DB8:0:0:0:0:0:1"),
+		"an address with a zone":      addrs("fe80::1%eth0"),
+		"a loopback address":          addrs("127.0.0.1"),
+		"the unspecified address":     addrs("0.0.0.0"),
+		"too many addresses":          addrs(tooMany...),
+	} {
+		if err := set(ada, tg); code(err) != connect.CodeInvalidArgument {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if got := get().GetDnsTarget().GetAddresses().GetAddresses(); !slices.Equal(got, []string{"192.0.2.10", "2001:db8::1"}) {
+		t.Fatalf("a refused target changed the stored one: %v", got)
+	}
+	if err := set(ada, addrs(tooMany[:dnstarget.MaxAddresses]...)); err != nil {
+		t.Errorf("exactly the limit: %v", err)
+	}
+
+	// Create takes a target, and refuses a bad one without creating the group.
+	if _, err := ada.gw.CreateGatewayGroup(ctx, connect.NewRequest(&rpmgrv1.CreateGatewayGroupRequest{OrgId: org,
+		GatewayGroup: &rpmgrv1.GatewayGroup{Name: "us", DnsTarget: cname("lb.example.org")}})); err != nil {
+		t.Fatalf("create with a target: %v", err)
+	}
+	if _, err := ada.gw.CreateGatewayGroup(ctx, connect.NewRequest(&rpmgrv1.CreateGatewayGroupRequest{OrgId: org,
+		GatewayGroup: &rpmgrv1.GatewayGroup{Name: "asia", DnsTarget: addrs("::ffff:192.0.2.1")}})); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("create with a mapped address: %v", err)
+	}
+	if n := e.db.Client().GatewayGroup.Query().Where(gatewaygroup.Name("asia")).CountX(e.sys); n != 0 {
+		t.Fatalf("a refused create made the group")
+	}
+
+	// An empty target, with the path in the mask, removes it.
+	if err := set(ada, nil); err != nil || get().GetDnsTarget() != nil {
+		t.Fatalf("clear: %v %v", get().GetDnsTarget(), err)
+	}
+
+	vwr, _ := e.join(t, ada, org, "vwr@example.com", "viewer")
+	if err := set(vwr, cname("lb.example.com")); code(err) != connect.CodePermissionDenied {
+		t.Fatalf("a Viewer sets a target: %v", err)
+	}
+}
+
+// TestHostOf: the host of an endpoint, given as a URL or as host:port.
+func TestHostOf(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://rpmgr.example.com":      "rpmgr.example.com",
+		"https://rpmgr.example.com:8443": "rpmgr.example.com",
+		"gw.example.com:443":             "gw.example.com",
+		"[2001:db8::1]:443":              "2001:db8::1",
+		"bare.example.com":               "bare.example.com",
+	} {
+		if got := apisvc.HostOf(in); got != want {
+			t.Errorf("HostOf(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

@@ -666,6 +666,8 @@ var schemaGraph = func() *sqlgraph.Schema {
 			gatewaygroup.FieldRegion:            {Type: field.TypeString, Column: gatewaygroup.FieldRegion},
 			gatewaygroup.FieldPublicHostnames:   {Type: field.TypeJSON, Column: gatewaygroup.FieldPublicHostnames},
 			gatewaygroup.FieldTrustedProxyCidrs: {Type: field.TypeJSON, Column: gatewaygroup.FieldTrustedProxyCidrs},
+			gatewaygroup.FieldDNSCname:          {Type: field.TypeString, Column: gatewaygroup.FieldDNSCname},
+			gatewaygroup.FieldDNSAddresses:      {Type: field.TypeJSON, Column: gatewaygroup.FieldDNSAddresses},
 		},
 	}
 	graph.Nodes[27] = &sqlgraph.Node{
@@ -4462,6 +4464,16 @@ func (f *GatewayGroupFilter) WherePublicHostnames(p entql.BytesP) {
 // WhereTrustedProxyCidrs applies the entql json.RawMessage predicate on the trusted_proxy_cidrs field.
 func (f *GatewayGroupFilter) WhereTrustedProxyCidrs(p entql.BytesP) {
 	f.Where(p.Field(gatewaygroup.FieldTrustedProxyCidrs))
+}
+
+// WhereDNSCname applies the entql string predicate on the dns_cname field.
+func (f *GatewayGroupFilter) WhereDNSCname(p entql.StringP) {
+	f.Where(p.Field(gatewaygroup.FieldDNSCname))
+}
+
+// WhereDNSAddresses applies the entql json.RawMessage predicate on the dns_addresses field.
+func (f *GatewayGroupFilter) WhereDNSAddresses(p entql.BytesP) {
+	f.Where(p.Field(gatewaygroup.FieldDNSAddresses))
 }
 
 // addPredicate implements the predicateAdder interface.

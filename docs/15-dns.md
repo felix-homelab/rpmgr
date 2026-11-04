@@ -50,6 +50,12 @@ removed by rpmgr. The same credential lets ACME use DNS-01.
      gateway group. A group without a DNS target publishes nothing.
    - The DNS target is either `cname` (one CNAME record) or `addresses` (one A record per IPv4 and
      one AAAA record per IPv6 address).
+   - The API refuses a target that mixes both, a `cname` that is not a fully qualified name or is
+     reserved (rule 6), an address list that is empty, over the limit
+     ([Timers and limits](#timers-and-limits)) or holding a duplicate, and an address that others
+     cannot reach or that is no plain address: IPv4-mapped IPv6 (the IPv4 form is asked for
+     instead), loopback, unspecified, multicast, link-local, or with a zone. Names and addresses
+     are stored in their canonical form.
    - A DNS name takes precedence over route hostnames with the same name.
    - If routes in two gateway groups use the same hostname, which the data model allows
      ([06](06-data-model.md#routing)), and no DNS name decides, the name is `ambiguous` and its
@@ -433,6 +439,7 @@ type Provider interface {
 | [R] Rate budget per provider | 300 requests / 5 min (Cloudflare allows 1 200 per user) |
 | DNS-01 share of the budget | at most half |
 | Operations per batch | ≤ 200 (Cloudflare Free limit) |
+| Addresses in a DNS target | ≤ 16 |
 | `delete_threshold` default | 10 names per pass and zone; 0 = every removal needs approval |
 | Drift stop window | a record corrected twice within 1 h is no longer corrected |
 | Adopted-original staleness warning | 30 days |

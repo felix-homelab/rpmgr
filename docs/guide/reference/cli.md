@@ -964,6 +964,8 @@ rpmgr create gateway-group [flags]
 
 | Flag | Default | Description |
 |---|---|---|
+| `--dns-address value` |  | an IPv4 or IPv6 address its DNS names point at; repeat for more |
+| `--dns-target string` |  | the name its DNS names point at, a CNAME; empty removes the DNS target |
 | `--name string` |  | the group's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
 | `--public-hostname value` |  | a name under which its gateways are reached; repeat for more |
@@ -1285,6 +1287,8 @@ rpmgr update gateway-group [flags] <id or name>
 
 | Flag | Default | Description |
 |---|---|---|
+| `--dns-address value` |  | an IPv4 or IPv6 address its DNS names point at; repeat for more |
+| `--dns-target string` |  | the name its DNS names point at, a CNAME; empty removes the DNS target |
 | `--force` |  | update without checking that it is unchanged since this command read it |
 | `--name string` |  | the group's name, unique in the org |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
