@@ -25,7 +25,7 @@ import { Card } from "@/components/ui/card";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
 import { UpdateButton } from "@/components/update-button";
 import { UpdateState } from "@/components/update-state";
-import { CreateGatewayGroupRequestSchema, GatewayGroupSchema, GatewayService, type Gateway, type GatewayGroup } from "@/gen/rpmgr/v1/gateway_pb";
+import { CreateGatewayGroupRequestSchema, DnsAddressesSchema, DnsTargetSchema, GatewayGroupSchema, GatewayService, type Gateway, type GatewayGroup } from "@/gen/rpmgr/v1/gateway_pb";
 import { apiError, checkRequest, serverProblems, type Problems } from "@/lib/api-error";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
@@ -37,7 +37,7 @@ import { useAgentNames, useGateways, useGroups } from "@/routes-data";
 import { useOrg } from "@/session";
 
 // The fields of a gateway group the API changes (internal/apisvc groupFields).
-const groupMask = ["name", "region", "public_hostnames", "trusted_proxy_cidrs"];
+const groupMask = ["name", "region", "public_hostnames", "trusted_proxy_cidrs", "dns_target"];
 
 // GatewayChip says whether a gateway has enrolled and holds a control session, and whether it is
 // drained (docs/09-web-ui.md, U8).
@@ -108,6 +108,9 @@ export function GroupForm({ orgId, group, onCancel }: { orgId: string; group?: G
   const [requestId] = useState(() => crypto.randomUUID());
   const [form, setForm] = useState({
     name: group?.name ?? "", region: group?.region ?? "", hostnames: group?.publicHostnames ?? [], cidrs: group?.trustedProxyCidrs ?? [],
+    target: (group?.dnsTarget?.kind.case ?? "none") as DnsTargetKind,
+    cname: group?.dnsTarget?.kind.case === "cname" ? group.dnsTarget.kind.value : "",
+    addresses: group?.dnsTarget?.kind.case === "addresses" ? group.dnsTarget.kind.value.addresses : [],
   });
   const [message, setMessage] = useState<{ tone: "info" | "error"; text: string }>();
   const [problems, setProblems] = useState<Problems>({});
@@ -117,6 +120,14 @@ export function GroupForm({ orgId, group, onCancel }: { orgId: string; group?: G
     setProblems({});
     const next = group ? clone(GatewayGroupSchema, group) : create(GatewayGroupSchema);
     Object.assign(next, { name: form.name.trim(), region: form.region.trim(), publicHostnames: trimmed(form.hostnames), trustedProxyCidrs: trimmed(form.cidrs) });
+    // The DNS target is a CNAME or addresses, never both, and an empty one is not allowed: leave it
+    // unset to publish nothing. The API checks the rest (docs/15-dns.md, "Publication rules").
+    const target = dnsTargetOf(form);
+    if (target === "empty") {
+      setProblems({ dns_target: t(form.target === "cname" ? "dnsTarget.cnameNeeded" : "dnsTarget.addressesNeeded") });
+      return;
+    }
+    next.dnsTarget = target;
     // The name is checked with the API's rules before anything is sent.
     const bad = checkRequest(t, CreateGatewayGroupRequestSchema, { orgId, gatewayGroup: { name: next.name }, requestId }, ["name"]);
     if (bad.name) {
@@ -146,12 +157,52 @@ export function GroupForm({ orgId, group, onCancel }: { orgId: string; group?: G
       <Field label={t("gateways.columns.region")} value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} />
       <LinesField label={t("gateways.columns.hostnames")} hint={t("gateways.hostnamesHint")} value={form.hostnames} onChange={(hostnames) => setForm({ ...form, hostnames })} />
       <LinesField label={t("gateways.cidrs")} hint={t("gateways.cidrsHint")} value={form.cidrs} onChange={(cidrs) => setForm({ ...form, cidrs })} />
+      <DnsTargetField kind={form.target} cname={form.cname} addresses={form.addresses} error={problems.dns_target ?? problems.cname ?? problems.addresses}
+        onChange={(v) => setForm({ ...form, ...v })} />
       {message && <Alert tone={message.tone}>{message.text}</Alert>}
       <div className="flex gap-2">
         <Button type="submit" disabled={createGroup.isPending || update.isPending}>{t(group ? "routeForm.save" : "gateways.create")}</Button>
         {onCancel && <Button variant="outline" onClick={onCancel}>{t("stepUp.cancel")}</Button>}
       </div>
     </form>
+  );
+}
+
+type DnsTargetKind = "none" | "cname" | "addresses";
+
+// dnsTargetOf is the DNS target a form asks for: none, a CNAME or addresses, or "empty" for a kind
+// chosen without a value.
+export function dnsTargetOf(f: { target: DnsTargetKind; cname: string; addresses: string[] }) {
+  if (f.target === "cname") {
+    return f.cname.trim() === "" ? "empty" : create(DnsTargetSchema, { kind: { case: "cname", value: f.cname.trim() } });
+  }
+  if (f.target === "addresses") {
+    const list = trimmed(f.addresses);
+    return list.length === 0 ? "empty" : create(DnsTargetSchema, { kind: { case: "addresses", value: create(DnsAddressesSchema, { addresses: list }) } });
+  }
+  return undefined;
+}
+
+// DnsTargetField is where the DNS records of the group's names point: nothing, a CNAME or
+// addresses (docs/09-web-ui.md, "Gateways"; docs/15-dns.md).
+function DnsTargetField({ kind, cname, addresses, error, onChange }: {
+  kind: DnsTargetKind; cname: string; addresses: string[]; error?: string;
+  onChange: (v: { target?: DnsTargetKind; cname?: string; addresses?: string[] }) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <fieldset className="grid gap-2">
+      <legend className="text-sm font-medium">{t("dnsTarget.title")}</legend>
+      <p className="text-xs text-muted-foreground">{t("dnsTarget.hint")}</p>
+      {(["none", "cname", "addresses"] as const).map((k) => (
+        <label key={k} className="flex items-center gap-2 text-sm">
+          <input type="radio" name="dns-target" checked={kind === k} onChange={() => onChange({ target: k })} />{t(`dnsTarget.kind.${k}`)}
+        </label>
+      ))}
+      {kind === "cname" && <Field label={t("dnsTarget.cname")} hint={t("dnsTarget.cnameHint")} value={cname} onChange={(e) => onChange({ cname: e.target.value })} />}
+      {kind === "addresses" && <LinesField label={t("dnsTarget.addresses")} hint={t("dnsTarget.addressesHint")} value={addresses} onChange={(v) => onChange({ addresses: v })} />}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </fieldset>
   );
 }
 
