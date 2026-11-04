@@ -62,6 +62,7 @@ func apiCommands() []*cli.Command {
 	add(rolloutCommands())
 	add(logsCommands())
 	add(webhookCommands())
+	add(dnsCommands())
 	out := []*cli.Command{getCommand(), listCommand(), deleteCommand(), auditCommands()}
 	for _, v := range []struct{ verb, summary string }{
 		{"create", "create a resource of the public API"}, {"update", "change a resource of the public API"},
@@ -69,10 +70,11 @@ func apiCommands() []*cli.Command {
 		{"drain", "stop a gateway taking new connections"}, {"decommission", "take an agent out of service for good"},
 		{"revoke", "revoke a credential"}, {"set", "set an org's limit"}, {"preview", "show what a change would do, saving nothing"},
 		{"verify", "check a proof now"}, {"check", "check for new releases now"}, {"trust", "trust something without a proof"}, {"upload", "upload a file to the controller"},
-		{"renew", "renew a certificate now"}, {"remove", "remove a member from the org, a user's second factor, or a gateway group's own page"},
+		{"renew", "renew a certificate now"}, {"remove", "remove a member from the org, a user's second factor, a gateway group's own page, or a managed DNS zone"},
 		{"advance", "move a rollout to its next stage"}, {"pause", "pause a rollout"}, {"resume", "let a paused rollout run again"},
 		{"cancel", "end a rollout for good"}, {"test", "send a test event to a webhook endpoint or a test item to an audit sink"},
 		{"logs", "follow the live log of a connector or gateway"},
+		{"connect", "connect a DNS provider"}, {"rotate", "replace a DNS provider's token"}, {"import", "import a DNS provider's zone as managed"},
 	} {
 		out = append(out, group(v.verb, v.summary, verbs[v.verb]...))
 	}
@@ -145,7 +147,7 @@ func (s *apiSession) ref(ctx context.Context, k apicli.Kind, ref string) (string
 
 // get reads one resource.
 func (s *apiSession) get(ctx context.Context, k apicli.Kind, id string) (protoreflect.Message, error) {
-	resp, err := s.call(ctx, k, "Get"+k.Resource, map[string]any{k.IDField: id}, nil)
+	resp, err := s.call(ctx, k, "Get"+k.MethodStem(), map[string]any{k.IDField: id}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -255,6 +257,11 @@ func listCommand() *cli.Command {
 				}
 				if k.Parent != "" {
 					fields[k.Parent] = args[1]
+					if k.Name == "provider-zone" { // by the provider's name or ID
+						if fields[k.Parent], err = s.ref(ctx, kindOf("dns-provider"), args[1]); err != nil {
+							return err
+						}
+					}
 				}
 				if paged {
 					fields["page_size"], fields["page_token"] = int32(500), page
@@ -328,9 +335,18 @@ func deleteCommand() *cli.Command {
 				}
 				fields["etag"] = res.Get(res.Descriptor().Fields().ByName("etag")).String()
 			}
-			resp, err := s.call(ctx, k, "Delete"+k.Resource, fields, waitHeader(wait))
+			// A delete the API wants a step-up for (a DNS provider's) asks for it, as the writes do.
+			md, err := k.Method("Delete" + k.Resource)
 			if err != nil {
 				return err
+			}
+			var resp protoreflect.Message
+			if err := s.withStepUp(ctx, func() error {
+				var err error
+				resp, err = apicli.Call(ctx, s.hc, s.creds.Controller, md, fields, waitHeader(wait))
+				return err
+			}); err != nil {
+				return apiError(err)
 			}
 			_, err = fmt.Fprintf(env.Stdout, "Deleted %s %s%s.\n", k.Name, id, applied(resp))
 			return err

@@ -30,6 +30,7 @@ type field struct {
 	updateOnly             bool // whether only update has the flag: the field has no say at creation
 	file                   bool // the flag names a file whose content is the field's value
 	trim                   bool // with file: the value ends at its last line break, which is left out
+	seconds                bool // a whole number of seconds that the flag also takes as a duration, "5m" for 300
 	// target marks the two flags of a DNS target, which share one message field: "cname" takes a
 	// name and "addresses" is repeated; giving both is refused, and an empty name clears it.
 	target string
@@ -55,7 +56,7 @@ func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, r
 	var cfs, ufs *flag.FlagSet
 	// Only a resource that agents apply has an apply status to wait for.
 	applies := false
-	if md, err := k.Method("Create" + k.Resource); err == nil {
+	if md, err := k.Method("Create" + k.MethodStem()); err == nil {
 		applies = md.Output().Fields().ByName("apply_status") != nil
 	}
 	register := func(fs *flag.FlagSet, forUpdate bool) {
@@ -145,7 +146,7 @@ func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, r
 			if _, err := build(ctx, s, res, setFlags(cfs), false); err != nil {
 				return err
 			}
-			md, err := k.Method("Create" + k.Resource)
+			md, err := k.Method("Create" + k.MethodStem())
 			if err != nil {
 				return err
 			}
@@ -197,7 +198,7 @@ func resourceCommands(kind string, fields []field, after ...func(env *cli.Env, r
 			if len(paths) == 0 {
 				return cli.Usagef("name a field to change")
 			}
-			md, err := k.Method("Update" + k.Resource)
+			md, err := k.Method("Update" + k.MethodStem())
 			if err != nil {
 				return err
 			}
@@ -251,6 +252,12 @@ func (s *apiSession) value(ctx context.Context, fd protoreflect.FieldDescriptor,
 		return protoreflect.ValueOfBool(v == "true"), nil
 	case protoreflect.Uint32Kind, protoreflect.Int32Kind:
 		var n int64
+		if d, err := time.ParseDuration(v); f.seconds && err == nil {
+			if d < 0 || d%time.Second != 0 || d/time.Second > 1<<31-1 {
+				return protoreflect.Value{}, cli.Usagef("--%s %q is not a whole number of seconds", f.flag, v)
+			}
+			return protoreflect.ValueOfInt32(int32(d / time.Second)), nil //nolint:gosec // G115: checked above
+		}
 		if _, err := fmt.Sscan(v, &n); err != nil || n < 0 || n > 1<<31-1 {
 			return protoreflect.Value{}, cli.Usagef("--%s %q is not a number", f.flag, v)
 		}
