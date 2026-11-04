@@ -240,7 +240,8 @@ service DnsZoneService {
       resource_field: "dns_zone.id"
     };
   }
-  // RemoveZone stops managing a zone. The records stay at the provider, and the apex claim stays.
+  // RemoveZone stops managing a zone. The records stay at the provider and so does the apex claim,
+  // unless delete_records asks for the records to be deleted.
   rpc RemoveZone(RemoveZoneRequest) returns (RemoveZoneResponse) {
     option (rpmgr.v1.authz) = {
       permission: "infrastructure.write"
@@ -384,6 +385,8 @@ message DnsZone {
   // The hash of the plan under review on a held zone, or of the approved plan an active zone has
   // not applied yet; output only, empty otherwise.
   string pending_plan_hash = 15;
+  // Removing the zone with its records was approved and the DNS job has not finished it; output only.
+  bool removal_pending = 16;
 }
 
 // ImportZoneRequest names a zone at a provider.
@@ -451,6 +454,15 @@ message RemoveZoneRequest {
   string dns_zone_id = 1 [(buf.validate.field).string.min_len = 1];
   // The etag the caller read; empty skips the check.
   string etag = 2;
+  // Delete the records rpmgr owns at the provider too. It needs a step-up and the hash of the plan
+  // the caller read with PlanZoneSync and delete_records: a plan with another hash is
+  // FAILED_PRECONDITION with PLAN_CHANGED, and nothing changes. The call returns at once: the zone
+  // is disabled and shows removal_pending, and the DNS job, under its lease, deletes the records of
+  // the approved plan and only those, then removes the zone. If a record that the plan did not
+  // name is owned by then, the job deletes nothing and the zone stays disabled.
+  bool delete_records = 3;
+  // The hash of the removal plan; required with delete_records, else it must be empty.
+  string plan_hash = 4;
 }
 
 // RemoveZoneResponse is empty.
@@ -497,6 +509,9 @@ message ZonePlan {
 message PlanZoneSyncRequest {
   // The zone's ID.
   string dns_zone_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Plan the removal of the zone's records instead: the plan deletes every record rpmgr owns in
+  // the zone, and its hash is what RemoveZone with delete_records binds to.
+  bool delete_records = 2;
 }
 
 // PlanZoneSyncResponse is the zone and its plan.

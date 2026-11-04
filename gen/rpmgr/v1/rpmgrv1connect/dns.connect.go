@@ -350,7 +350,8 @@ type DnsZoneServiceClient interface {
 	ListZones(context.Context, *connect.Request[v1.ListZonesRequest]) (*connect.Response[v1.ListZonesResponse], error)
 	// UpdateZone changes the gates and the default TTL of a zone.
 	UpdateZone(context.Context, *connect.Request[v1.UpdateZoneRequest]) (*connect.Response[v1.UpdateZoneResponse], error)
-	// RemoveZone stops managing a zone. The records stay at the provider, and the apex claim stays.
+	// RemoveZone stops managing a zone. The records stay at the provider and so does the apex claim,
+	// unless delete_records asks for the records to be deleted.
 	RemoveZone(context.Context, *connect.Request[v1.RemoveZoneRequest]) (*connect.Response[v1.RemoveZoneResponse], error)
 	// PlanZoneSync computes the plan of a zone now: what a pass would create, change and delete, the
 	// conflicts it found, the records that carry this instance's marker without a ledger row, and the
@@ -569,7 +570,8 @@ type DnsZoneServiceHandler interface {
 	ListZones(context.Context, *connect.Request[v1.ListZonesRequest]) (*connect.Response[v1.ListZonesResponse], error)
 	// UpdateZone changes the gates and the default TTL of a zone.
 	UpdateZone(context.Context, *connect.Request[v1.UpdateZoneRequest]) (*connect.Response[v1.UpdateZoneResponse], error)
-	// RemoveZone stops managing a zone. The records stay at the provider, and the apex claim stays.
+	// RemoveZone stops managing a zone. The records stay at the provider and so does the apex claim,
+	// unless delete_records asks for the records to be deleted.
 	RemoveZone(context.Context, *connect.Request[v1.RemoveZoneRequest]) (*connect.Response[v1.RemoveZoneResponse], error)
 	// PlanZoneSync computes the plan of a zone now: what a pass would create, change and delete, the
 	// conflicts it found, the records that carry this instance's marker without a ledger row, and the

@@ -135,6 +135,11 @@ func LastSyncedAt(v time.Time) predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldEQ(FieldLastSyncedAt, v))
 }
 
+// RemovalRequested applies equality check predicate on the "removal_requested" field. It's identical to RemovalRequestedEQ.
+func RemovalRequested(v bool) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldRemovalRequested, v))
+}
+
 // SyncRequestedAt applies equality check predicate on the "sync_requested_at" field. It's identical to SyncRequestedAtEQ.
 func SyncRequestedAt(v time.Time) predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldEQ(FieldSyncRequestedAt, v))
@@ -823,6 +828,16 @@ func LastSyncedAtIsNil() predicate.DNSZone {
 // LastSyncedAtNotNil applies the NotNil predicate on the "last_synced_at" field.
 func LastSyncedAtNotNil() predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldNotNull(FieldLastSyncedAt))
+}
+
+// RemovalRequestedEQ applies the EQ predicate on the "removal_requested" field.
+func RemovalRequestedEQ(v bool) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldRemovalRequested, v))
+}
+
+// RemovalRequestedNEQ applies the NEQ predicate on the "removal_requested" field.
+func RemovalRequestedNEQ(v bool) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNEQ(FieldRemovalRequested, v))
 }
 
 // SyncRequestedAtEQ applies the EQ predicate on the "sync_requested_at" field.

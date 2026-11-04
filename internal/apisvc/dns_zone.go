@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -83,7 +84,7 @@ func zoneOf(r *ent.DNSZone) *rpmgrv1.DnsZone {
 	z := &rpmgrv1.DnsZone{Id: r.ID, Name: r.Name, DnsProviderId: r.DNSProviderID, ProviderZoneId: r.ProviderZoneID,
 		HeldReason: r.HeldReason, PublishRouteHostnames: r.PublishRouteHostnames, AllowProxied: r.AllowProxied,
 		AllowWildcards: r.AllowWildcards, DeleteThreshold: int32(r.DeleteThreshold), DefaultTtl: int32(r.DefaultTTL), //nolint:gosec // G115: bounded on write
-		Etag: etagOf(r.Version), PendingPlanHash: r.PendingPlanHash}
+		Etag: etagOf(r.Version), PendingPlanHash: r.PendingPlanHash, RemovalPending: r.RemovalRequested}
 	switch r.SyncState {
 	case dnszone.SyncStateActive:
 		z.SyncState = rpmgrv1.ZoneSyncState_ZONE_SYNC_STATE_ACTIVE
@@ -304,31 +305,77 @@ func (z *DnsZones) UpdateZone(ctx context.Context, req *connect.Request[rpmgrv1.
 }
 
 // RemoveZone implements DnsZoneService: the zone is no longer managed. Its records stay at the
-// provider, and so does the claim on its apex.
+// provider, and so does the claim on its apex, unless delete_records asks for the records to be
+// deleted: that takes a step-up and the hash of the removal plan the caller read.
 func (z *DnsZones) RemoveZone(ctx context.Context, req *connect.Request[rpmgrv1.RemoveZoneRequest]) (
 	*connect.Response[rpmgrv1.RemoveZoneResponse], error) {
+	m := req.Msg
+	if m.GetDeleteRecords() != (m.GetPlanHash() != "") {
+		return nil, invalid(errors.New("apisvc: delete_records and plan_hash go together"))
+	}
+	if m.GetDeleteRecords() {
+		if err := api.RequireStepUp(ctx, z.now()); err != nil {
+			return nil, err
+		}
+		cur, err := z.DB.ReadClient().DNSZone.Get(ctx, m.GetDnsZoneId())
+		if err != nil {
+			return nil, storeError(err)
+		}
+		if err := api.CheckEtag(m.GetEtag(), cur.Version, zoneOf(cur)); err != nil {
+			return nil, err
+		}
+		if err := z.requestRemoval(ctx, cur, m.GetPlanHash()); err != nil {
+			return nil, err
+		}
+		return connect.NewResponse(&rpmgrv1.RemoveZoneResponse{}), nil
+	}
 	_, err := store.ConfigTx(ctx, z.DB, func(tx *ent.Tx) ([]string, error) {
-		cur, err := tx.DNSZone.Get(ctx, req.Msg.GetDnsZoneId())
+		cur, err := tx.DNSZone.Get(ctx, m.GetDnsZoneId())
 		if err != nil {
 			return nil, err
 		}
-		if err := api.CheckEtag(req.Msg.GetEtag(), cur.Version, zoneOf(cur)); err != nil {
+		if err := api.CheckEtag(m.GetEtag(), cur.Version, zoneOf(cur)); err != nil {
 			return nil, err
 		}
-		// The records stay at the provider, and the ledger rows and name statuses go with the zone
-		// (docs/15-dns.md, "Connecting, importing and disconnecting").
+		// The ledger rows and name statuses go with the zone (docs/15-dns.md, "Connecting,
+		// importing and disconnecting").
 		if _, err := tx.DNSRecord.Delete().Where(dnsrecord.DNSZoneID(cur.ID)).Exec(ctx); err != nil {
 			return nil, err
 		}
 		if _, err := tx.DNSNameStatus.Delete().Where(dnsnamestatus.DNSZoneID(cur.ID)).Exec(ctx); err != nil {
 			return nil, err
 		}
-		return []string{cur.ID}, tx.DNSZone.DeleteOneID(cur.ID).Where(dnszone.Version(cur.Version)).Exec(ctx)
+		return []string{cur.ID}, tx.DNSZone.DeleteOneID(cur.ID).Exec(ctx)
 	})
 	if err != nil {
 		return nil, storeError(err)
 	}
 	return connect.NewResponse(&rpmgrv1.RemoveZoneResponse{}), nil
+}
+
+// requestRemoval records the approved removal of a zone with its records, if the removal plan has
+// the hash the caller read. The zone is disabled at once, so that the DNS job does not write its
+// records again, and the job, under its lease, deletes the records of this plan and then the zone:
+// the API call writes nothing to the provider.
+func (z *DnsZones) requestRemoval(ctx context.Context, cur *ent.DNSZone, hash string) error {
+	_, in, err := z.inspectZone(ctx, cur.ID)
+	if err != nil {
+		return err
+	}
+	if in.Removal.Hash != hash {
+		return withReason(connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("apisvc: the removal plan changed since it was shown; read it again")), ReasonPlanChanged)
+	}
+	stored, err := json.Marshal(in.Removal)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, err)
+	}
+	api.AuditReason(ctx, fmt.Sprintf("remove dns zone %s and delete %d records at the provider, plan %s", cur.ID, len(in.Removal.Deletes), hash))
+	_, err = store.ConfigTx(ctx, z.DB, func(tx *ent.Tx) ([]string, error) {
+		return []string{cur.ID}, tx.DNSZone.UpdateOneID(cur.ID).SetSyncState(dnszone.SyncStateDisabled).SetHeldReason("").
+			SetRemovalRequested(true).SetPendingPlan(stored).SetPendingPlanHash(hash).SetSyncRequestedAt(z.now().UTC()).Exec(ctx)
+	})
+	return storeError(err)
 }
 
 // providerOf makes the client of a zone's provider account, taking its requests from the
@@ -393,6 +440,9 @@ func (z *DnsZones) PlanZoneSync(ctx context.Context, req *connect.Request[rpmgrv
 	row, in, err := z.inspectZone(ctx, req.Msg.GetDnsZoneId())
 	if err != nil {
 		return nil, err
+	}
+	if req.Msg.GetDeleteRecords() {
+		return connect.NewResponse(&rpmgrv1.PlanZoneSyncResponse{DnsZone: zoneOf(row), Plan: planOf(in.Removal)}), nil
 	}
 	return connect.NewResponse(&rpmgrv1.PlanZoneSyncResponse{DnsZone: zoneOf(row), Plan: planOf(in.Plan)}), nil
 }

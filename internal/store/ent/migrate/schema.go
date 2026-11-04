@@ -865,6 +865,7 @@ var (
 		{Name: "delete_threshold", Type: field.TypeInt, Default: 10},
 		{Name: "default_ttl", Type: field.TypeInt, Default: 300},
 		{Name: "last_synced_at", Type: field.TypeTime, Nullable: true},
+		{Name: "removal_requested", Type: field.TypeBool, Default: false},
 		{Name: "sync_requested_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "dns_provider_id", Type: field.TypeString},
@@ -877,7 +878,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "dns_zones_dns_providers_dns_provider",
-				Columns:    []*schema.Column{DNSZonesColumns[18]},
+				Columns:    []*schema.Column{DNSZonesColumns[19]},
 				RefColumns: []*schema.Column{DNSProvidersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -896,7 +897,7 @@ var (
 			{
 				Name:    "dnszone_dns_provider_id_provider_zone_id",
 				Unique:  true,
-				Columns: []*schema.Column{DNSZonesColumns[18], DNSZonesColumns[3]},
+				Columns: []*schema.Column{DNSZonesColumns[19], DNSZonesColumns[3]},
 			},
 		},
 	}
