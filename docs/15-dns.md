@@ -322,7 +322,11 @@ and lost rows.
      [V VB-12]. In a partial (CNAME) setup, Cloudflare is not authoritative
      [F cf:dns/zone-setups/partial-setup] [V VB-12].
    - Import creates the managed zone (held) and, unless the org already has a verified domain
-     covering it, a domain claim for the apex with `wildcard = true`.
+     covering it, a domain claim for the apex with `wildcard = true`. A claim the org already made
+     for the apex is reused if it has the wildcard and refused if it has not, because a claim's
+     wildcard cannot change. The claim stays `pending` until it is verified like any other: a zone
+     at the provider is no proof of ownership, and neither is a record that only the provider's API
+     shows ([12](12-testing-and-quality.md#security-testing)).
    - The existing rules apply: global uniqueness, and Instance-Admin approval for nested claims
      ([04](04-security.md#route-and-hostname-ownership)). A zone claimed by another org cannot be
      imported.
@@ -500,10 +504,10 @@ type Provider interface {
 | Operations per batch | ≤ 200 (Cloudflare Free limit) |
 | Addresses in a DNS target | ≤ 16 |
 | [R] Cloudflare API request | 30 s; answer at most 4 MiB; zones listed 50 per page |
-| `delete_threshold` default | 10 names per pass and zone; 0 = every removal needs approval |
+| `delete_threshold` default | 10 names per pass and zone; 0 = every removal needs approval; [R] at most 1 000 |
 | Drift stop window | a record corrected twice within 1 h is no longer corrected |
 | Adopted-original staleness warning | 30 days |
-| `default_ttl` | 300 s; proxied records: automatic |
+| `default_ttl` | 300 s; [R] at least 60 s and at most 1 day; proxied records: automatic |
 | Pending-claim checks | every 1 min for 15 min, then every 15 min; `failed` after 7 days; [R] by one controller node, 8 checks at once |
 | [R] TXT proof query | 5 s per nameserver address, over UDP and again over TCP when truncated; at most 8 nameservers of a zone |
 | [R] HTTP token fetch | 10 s; no redirect followed; at most 256 bytes; through the proxy the environment names |

@@ -35,6 +35,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/connector"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/datasession"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/enrollmenttoken"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/event"
@@ -164,6 +165,7 @@ func checkColumn(t, c string) error {
 			connectlistener.Table:    connectlistener.ValidColumn,
 			connector.Table:          connector.ValidColumn,
 			dnsprovider.Table:        dnsprovider.ValidColumn,
+			dnszone.Table:            dnszone.ValidColumn,
 			datasession.Table:        datasession.ValidColumn,
 			domain.Table:             domain.ValidColumn,
 			enrollmenttoken.Table:    enrollmenttoken.ValidColumn,

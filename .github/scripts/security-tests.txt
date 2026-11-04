@@ -50,7 +50,7 @@ TestReauth_SupersededSerialRefused	done	3.12	#67	internal/controller, with the a
 TestStatelessReset_DetectedWithinPingInterval	done	4.2	#72
 TestDNS_ForeignRecordNeverModified	p2	-	-	DNS automation
 TestDNS_CrossOrgPublishRefused	p2	-	-	DNS automation
-TestDNS_PendingZoneIsNotProof	p2	-	-	DNS automation
+TestDNS_PendingZoneIsNotProof	done	6.6	#664	import and no-proof-by-provider-API clauses (internal/apisvc); the nameserver clause is TestTXTVerifier
 TestDNS_CrashRelinksByMarker	p2	-	-	DNS automation
 TestDNS_RestoreStartsHeld	p2	-	-	DNS automation
 TestDNS_DeletionGuard	p2	-	-	DNS automation

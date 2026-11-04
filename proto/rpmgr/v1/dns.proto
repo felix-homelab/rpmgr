@@ -7,6 +7,7 @@ package rpmgr.v1;
 import "buf/validate/validate.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
+import "rpmgr/v1/domain.proto";
 import "rpmgr/v1/options.proto";
 
 option go_package = "github.com/felix-homelab/rpmgr/gen/rpmgr/v1;rpmgrv1";
@@ -200,3 +201,178 @@ message ListProviderZonesRequest {
 message ListProviderZonesResponse {
   repeated ProviderZone zones = 1;
 }
+
+// DnsZoneService is an org's managed DNS zones: provider zones imported into rpmgr
+// (docs/07-api.md; docs/15-dns.md, "Connecting, importing and disconnecting"). Every method needs
+// infrastructure.write, so Owners and Admins only.
+service DnsZoneService {
+  // ImportZone imports a zone of a connected provider as a managed zone, held. Only a zone that
+  // the provider calls active and full can be imported. The import creates the claim on the
+  // zone's apex, wildcard included, unless the org has a verified domain that covers it; a zone
+  // that is pending at the provider, or that another org claimed, is not imported, and a zone at
+  // the provider is no proof of ownership: the claim is verified like any other.
+  rpc ImportZone(ImportZoneRequest) returns (ImportZoneResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_provider_id"
+    };
+  }
+  // GetZone returns a managed zone.
+  rpc GetZone(GetZoneRequest) returns (GetZoneResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_zone_id"
+    };
+  }
+  // ListZones lists an org's managed zones by ID.
+  rpc ListZones(ListZonesRequest) returns (ListZonesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "org_id"
+    };
+  }
+  // UpdateZone changes the gates and the default TTL of a zone.
+  rpc UpdateZone(UpdateZoneRequest) returns (UpdateZoneResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_zone.id"
+    };
+  }
+  // RemoveZone stops managing a zone. The records stay at the provider, and the apex claim stays.
+  rpc RemoveZone(RemoveZoneRequest) returns (RemoveZoneResponse) {
+    option (rpmgr.v1.authz) = {
+      permission: "infrastructure.write"
+      resource_field: "dns_zone_id"
+    };
+  }
+}
+
+// ZoneSyncState says whether the DNS job writes to a zone.
+enum ZoneSyncState {
+  // Not set.
+  ZONE_SYNC_STATE_UNSPECIFIED = 0;
+  // The job writes to the zone.
+  ZONE_SYNC_STATE_ACTIVE = 1;
+  // The job computes plans and writes nothing until a plan is approved.
+  ZONE_SYNC_STATE_HELD = 2;
+  // The job does nothing in the zone.
+  ZONE_SYNC_STATE_DISABLED = 3;
+}
+
+// ZoneProviderStatus is what the last call to the provider found for a zone.
+enum ZoneProviderStatus {
+  // Not set.
+  ZONE_PROVIDER_STATUS_UNSPECIFIED = 0;
+  // The provider accepts the token for the zone.
+  ZONE_PROVIDER_STATUS_OK = 1;
+  // The provider refuses the token access to the zone.
+  ZONE_PROVIDER_STATUS_PERMISSION_DENIED = 2;
+  // The provider could not be reached.
+  ZONE_PROVIDER_STATUS_UNREACHABLE = 3;
+  // The provider rate-limits requests.
+  ZONE_PROVIDER_STATUS_RATE_LIMITED = 4;
+}
+
+// DnsZone is a managed zone.
+message DnsZone {
+  // The zone's ID, dnz_…; output only.
+  string id = 1;
+  // The zone's apex; output only.
+  string name = 2;
+  // The provider it is imported from, dnp_…; output only.
+  string dns_provider_id = 3;
+  // The provider's ID of the zone; output only.
+  string provider_zone_id = 4;
+  // Whether the DNS job writes to the zone; output only. A zone starts held.
+  ZoneSyncState sync_state = 5;
+  // Why the zone is held, such as imported; output only, empty if it is not held.
+  string held_reason = 6;
+  // What the last call to the provider found; output only.
+  ZoneProviderStatus provider_status = 7;
+  // Whether route hostnames are published in the zone (docs/15-dns.md, "Publication rules").
+  bool publish_route_hostnames = 8;
+  // Whether routes in the zone may be proxied.
+  bool allow_proxied = 9;
+  // Whether wildcard names in the zone are published.
+  bool allow_wildcards = 10;
+  // How many names a pass may remove before it holds the zone; 0 holds on every removal.
+  int32 delete_threshold = 11 [(buf.validate.field).int32.gte = 0];
+  // The TTL of records in seconds.
+  int32 default_ttl = 12;
+  // When the zone was last synchronised; output only, unset before the first pass.
+  google.protobuf.Timestamp last_synced_time = 13;
+  // The version to send back with an update or a removal; output only.
+  string etag = 14;
+}
+
+// ImportZoneRequest names a zone at a provider.
+message ImportZoneRequest {
+  // The provider's ID, dnp_….
+  string dns_provider_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The provider's ID of the zone, as ListProviderZones returns it.
+  string provider_zone_id = 2 [(buf.validate.field).string.min_len = 1, (buf.validate.field).string.max_len = 64];
+}
+
+// ImportZoneResponse is the zone, held, and the claim on its apex.
+message ImportZoneResponse {
+  DnsZone dns_zone = 1;
+  // The claim that covers the zone's apex with its names: the one the import created, which is
+  // pending until it is verified, or the org's own that already did.
+  Domain domain = 2;
+}
+
+// GetZoneRequest names a zone.
+message GetZoneRequest {
+  // The zone's ID.
+  string dns_zone_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+// GetZoneResponse is the zone.
+message GetZoneResponse {
+  DnsZone dns_zone = 1;
+}
+
+// ListZonesRequest asks for a page of an org's zones.
+message ListZonesRequest {
+  // The org.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // At most this many, 50 if not set, 500 at most.
+  int32 page_size = 2;
+  // The page after the one that returned it.
+  string page_token = 3;
+}
+
+// ListZonesResponse is one page of zones; the page token is empty on the last.
+message ListZonesResponse {
+  repeated DnsZone dns_zones = 1;
+  string next_page_token = 2;
+}
+
+// UpdateZoneRequest changes a zone.
+message UpdateZoneRequest {
+  // The zone with its ID and the new values of the fields the mask names.
+  DnsZone dns_zone = 1 [(buf.validate.field).required = true];
+  // The fields to change: publish_route_hostnames, allow_proxied, allow_wildcards,
+  // delete_threshold, default_ttl.
+  google.protobuf.FieldMask update_mask = 2;
+  // The etag the caller read; empty skips the check.
+  string etag = 3;
+}
+
+// UpdateZoneResponse is the changed zone.
+message UpdateZoneResponse {
+  DnsZone dns_zone = 1;
+}
+
+// RemoveZoneRequest names a zone.
+message RemoveZoneRequest {
+  // The zone's ID.
+  string dns_zone_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The etag the caller read; empty skips the check.
+  string etag = 2;
+}
+
+// RemoveZoneResponse is empty.
+message RemoveZoneResponse {}

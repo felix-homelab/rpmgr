@@ -671,6 +671,56 @@ var (
 			},
 		},
 	}
+	// DNSZonesColumns holds the columns for the "dns_zones" table.
+	DNSZonesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "provider_zone_id", Type: field.TypeString, Size: 64},
+		{Name: "name", Type: field.TypeString, Size: 253},
+		{Name: "sync_state", Type: field.TypeEnum, Enums: []string{"active", "held", "disabled"}, Default: "held"},
+		{Name: "held_reason", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "provider_status", Type: field.TypeEnum, Enums: []string{"ok", "permission_denied", "unreachable", "rate_limited"}, Default: "ok"},
+		{Name: "publish_route_hostnames", Type: field.TypeBool, Default: true},
+		{Name: "allow_proxied", Type: field.TypeBool, Default: false},
+		{Name: "allow_wildcards", Type: field.TypeBool, Default: false},
+		{Name: "delete_threshold", Type: field.TypeInt, Default: 10},
+		{Name: "default_ttl", Type: field.TypeInt, Default: 300},
+		{Name: "last_synced_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "dns_provider_id", Type: field.TypeString},
+	}
+	// DNSZonesTable holds the schema information for the "dns_zones" table.
+	DNSZonesTable = &schema.Table{
+		Name:       "dns_zones",
+		Columns:    DNSZonesColumns,
+		PrimaryKey: []*schema.Column{DNSZonesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "dns_zones_dns_providers_dns_provider",
+				Columns:    []*schema.Column{DNSZonesColumns[15]},
+				RefColumns: []*schema.Column{DNSProvidersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "dnszone_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{DNSZonesColumns[1], DNSZonesColumns[0]},
+			},
+			{
+				Name:    "dnszone_name",
+				Unique:  true,
+				Columns: []*schema.Column{DNSZonesColumns[4]},
+			},
+			{
+				Name:    "dnszone_dns_provider_id_provider_zone_id",
+				Unique:  true,
+				Columns: []*schema.Column{DNSZonesColumns[15], DNSZonesColumns[3]},
+			},
+		},
+	}
 	// DataSessionsColumns holds the columns for the "data_sessions" table.
 	DataSessionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -2326,6 +2376,7 @@ var (
 		ConnectListenersTable,
 		ConnectorsTable,
 		DNSProvidersTable,
+		DNSZonesTable,
 		DataSessionsTable,
 		DomainsTable,
 		EnrollmentTokensTable,
@@ -2443,6 +2494,10 @@ func init() {
 	}
 	DNSProvidersTable.Annotation = &entsql.Annotation{
 		Table: "dns_providers",
+	}
+	DNSZonesTable.ForeignKeys[0].RefTable = DNSProvidersTable
+	DNSZonesTable.Annotation = &entsql.Annotation{
+		Table: "dns_zones",
 	}
 	DataSessionsTable.Annotation = &entsql.Annotation{
 		Table: "data_sessions",
