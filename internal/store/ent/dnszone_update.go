@@ -221,6 +221,20 @@ func (_u *DNSZoneUpdate) ClearLastSyncedAt() *DNSZoneUpdate {
 	return _u
 }
 
+// SetRemovalRequested sets the "removal_requested" field.
+func (_u *DNSZoneUpdate) SetRemovalRequested(v bool) *DNSZoneUpdate {
+	_u.mutation.SetRemovalRequested(v)
+	return _u
+}
+
+// SetNillableRemovalRequested sets the "removal_requested" field if the given value is not nil.
+func (_u *DNSZoneUpdate) SetNillableRemovalRequested(v *bool) *DNSZoneUpdate {
+	if v != nil {
+		_u.SetRemovalRequested(*v)
+	}
+	return _u
+}
+
 // SetSyncRequestedAt sets the "sync_requested_at" field.
 func (_u *DNSZoneUpdate) SetSyncRequestedAt(v time.Time) *DNSZoneUpdate {
 	_u.mutation.SetSyncRequestedAt(v)
@@ -378,6 +392,9 @@ func (_u *DNSZoneUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.LastSyncedAtCleared() {
 		_spec.ClearField(dnszone.FieldLastSyncedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.RemovalRequested(); ok {
+		_spec.SetField(dnszone.FieldRemovalRequested, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.SyncRequestedAt(); ok {
 		_spec.SetField(dnszone.FieldSyncRequestedAt, field.TypeTime, value)
@@ -598,6 +615,20 @@ func (_u *DNSZoneUpdateOne) ClearLastSyncedAt() *DNSZoneUpdateOne {
 	return _u
 }
 
+// SetRemovalRequested sets the "removal_requested" field.
+func (_u *DNSZoneUpdateOne) SetRemovalRequested(v bool) *DNSZoneUpdateOne {
+	_u.mutation.SetRemovalRequested(v)
+	return _u
+}
+
+// SetNillableRemovalRequested sets the "removal_requested" field if the given value is not nil.
+func (_u *DNSZoneUpdateOne) SetNillableRemovalRequested(v *bool) *DNSZoneUpdateOne {
+	if v != nil {
+		_u.SetRemovalRequested(*v)
+	}
+	return _u
+}
+
 // SetSyncRequestedAt sets the "sync_requested_at" field.
 func (_u *DNSZoneUpdateOne) SetSyncRequestedAt(v time.Time) *DNSZoneUpdateOne {
 	_u.mutation.SetSyncRequestedAt(v)
@@ -785,6 +816,9 @@ func (_u *DNSZoneUpdateOne) sqlSave(ctx context.Context) (_node *DNSZone, err er
 	}
 	if _u.mutation.LastSyncedAtCleared() {
 		_spec.ClearField(dnszone.FieldLastSyncedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.RemovalRequested(); ok {
+		_spec.SetField(dnszone.FieldRemovalRequested, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.SyncRequestedAt(); ok {
 		_spec.SetField(dnszone.FieldSyncRequestedAt, field.TypeTime, value)

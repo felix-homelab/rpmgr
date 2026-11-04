@@ -20461,6 +20461,7 @@ type DNSRecordMutation struct {
 	adopted_at         *time.Time
 	last_synced_at     *time.Time
 	corrected_at       *time.Time
+	release_requested  *string
 	clearedFields      map[string]struct{}
 	zone               *string
 	clearedzone        bool
@@ -21149,6 +21150,42 @@ func (m *DNSRecordMutation) ResetCorrectedAt() {
 	delete(m.clearedFields, dnsrecord.FieldCorrectedAt)
 }
 
+// SetReleaseRequested sets the "release_requested" field.
+func (m *DNSRecordMutation) SetReleaseRequested(s string) {
+	m.release_requested = &s
+}
+
+// ReleaseRequested returns the value of the "release_requested" field in the mutation.
+func (m *DNSRecordMutation) ReleaseRequested() (r string, exists bool) {
+	v := m.release_requested
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReleaseRequested returns the old "release_requested" field's value of the DNSRecord entity.
+// If the DNSRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSRecordMutation) OldReleaseRequested(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReleaseRequested is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReleaseRequested requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReleaseRequested: %w", err)
+	}
+	return oldValue.ReleaseRequested, nil
+}
+
+// ResetReleaseRequested resets all changes to the "release_requested" field.
+func (m *DNSRecordMutation) ResetReleaseRequested() {
+	m.release_requested = nil
+}
+
 // SetZoneID sets the "zone" edge to the DNSZone entity by id.
 func (m *DNSRecordMutation) SetZoneID(id string) {
 	m.zone = &id
@@ -21223,7 +21260,7 @@ func (m *DNSRecordMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DNSRecordMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 15)
 	if m.org_id != nil {
 		fields = append(fields, dnsrecord.FieldOrgID)
 	}
@@ -21266,6 +21303,9 @@ func (m *DNSRecordMutation) Fields() []string {
 	if m.corrected_at != nil {
 		fields = append(fields, dnsrecord.FieldCorrectedAt)
 	}
+	if m.release_requested != nil {
+		fields = append(fields, dnsrecord.FieldReleaseRequested)
+	}
 	return fields
 }
 
@@ -21302,6 +21342,8 @@ func (m *DNSRecordMutation) Field(name string) (ent.Value, bool) {
 		return m.LastSyncedAt()
 	case dnsrecord.FieldCorrectedAt:
 		return m.CorrectedAt()
+	case dnsrecord.FieldReleaseRequested:
+		return m.ReleaseRequested()
 	}
 	return nil, false
 }
@@ -21339,6 +21381,8 @@ func (m *DNSRecordMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldLastSyncedAt(ctx)
 	case dnsrecord.FieldCorrectedAt:
 		return m.OldCorrectedAt(ctx)
+	case dnsrecord.FieldReleaseRequested:
+		return m.OldReleaseRequested(ctx)
 	}
 	return nil, fmt.Errorf("unknown DNSRecord field %s", name)
 }
@@ -21445,6 +21489,13 @@ func (m *DNSRecordMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCorrectedAt(v)
+		return nil
+	case dnsrecord.FieldReleaseRequested:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReleaseRequested(v)
 		return nil
 	}
 	return fmt.Errorf("unknown DNSRecord field %s", name)
@@ -21579,6 +21630,9 @@ func (m *DNSRecordMutation) ResetField(name string) error {
 	case dnsrecord.FieldCorrectedAt:
 		m.ResetCorrectedAt()
 		return nil
+	case dnsrecord.FieldReleaseRequested:
+		m.ResetReleaseRequested()
+		return nil
 	}
 	return fmt.Errorf("unknown DNSRecord field %s", name)
 }
@@ -21681,6 +21735,7 @@ type DNSZoneMutation struct {
 	default_ttl             *int
 	adddefault_ttl          *int
 	last_synced_at          *time.Time
+	removal_requested       *bool
 	sync_requested_at       *time.Time
 	created_at              *time.Time
 	clearedFields           map[string]struct{}
@@ -22457,6 +22512,42 @@ func (m *DNSZoneMutation) ResetLastSyncedAt() {
 	delete(m.clearedFields, dnszone.FieldLastSyncedAt)
 }
 
+// SetRemovalRequested sets the "removal_requested" field.
+func (m *DNSZoneMutation) SetRemovalRequested(b bool) {
+	m.removal_requested = &b
+}
+
+// RemovalRequested returns the value of the "removal_requested" field in the mutation.
+func (m *DNSZoneMutation) RemovalRequested() (r bool, exists bool) {
+	v := m.removal_requested
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRemovalRequested returns the old "removal_requested" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldRemovalRequested(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRemovalRequested is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRemovalRequested requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRemovalRequested: %w", err)
+	}
+	return oldValue.RemovalRequested, nil
+}
+
+// ResetRemovalRequested resets all changes to the "removal_requested" field.
+func (m *DNSZoneMutation) ResetRemovalRequested() {
+	m.removal_requested = nil
+}
+
 // SetSyncRequestedAt sets the "sync_requested_at" field.
 func (m *DNSZoneMutation) SetSyncRequestedAt(t time.Time) {
 	m.sync_requested_at = &t
@@ -22603,7 +22694,7 @@ func (m *DNSZoneMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DNSZoneMutation) Fields() []string {
-	fields := make([]string, 0, 18)
+	fields := make([]string, 0, 19)
 	if m.org_id != nil {
 		fields = append(fields, dnszone.FieldOrgID)
 	}
@@ -22652,6 +22743,9 @@ func (m *DNSZoneMutation) Fields() []string {
 	if m.last_synced_at != nil {
 		fields = append(fields, dnszone.FieldLastSyncedAt)
 	}
+	if m.removal_requested != nil {
+		fields = append(fields, dnszone.FieldRemovalRequested)
+	}
 	if m.sync_requested_at != nil {
 		fields = append(fields, dnszone.FieldSyncRequestedAt)
 	}
@@ -22698,6 +22792,8 @@ func (m *DNSZoneMutation) Field(name string) (ent.Value, bool) {
 		return m.DefaultTTL()
 	case dnszone.FieldLastSyncedAt:
 		return m.LastSyncedAt()
+	case dnszone.FieldRemovalRequested:
+		return m.RemovalRequested()
 	case dnszone.FieldSyncRequestedAt:
 		return m.SyncRequestedAt()
 	case dnszone.FieldCreatedAt:
@@ -22743,6 +22839,8 @@ func (m *DNSZoneMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldDefaultTTL(ctx)
 	case dnszone.FieldLastSyncedAt:
 		return m.OldLastSyncedAt(ctx)
+	case dnszone.FieldRemovalRequested:
+		return m.OldRemovalRequested(ctx)
 	case dnszone.FieldSyncRequestedAt:
 		return m.OldSyncRequestedAt(ctx)
 	case dnszone.FieldCreatedAt:
@@ -22867,6 +22965,13 @@ func (m *DNSZoneMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLastSyncedAt(v)
+		return nil
+	case dnszone.FieldRemovalRequested:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRemovalRequested(v)
 		return nil
 	case dnszone.FieldSyncRequestedAt:
 		v, ok := value.(time.Time)
@@ -23038,6 +23143,9 @@ func (m *DNSZoneMutation) ResetField(name string) error {
 		return nil
 	case dnszone.FieldLastSyncedAt:
 		m.ResetLastSyncedAt()
+		return nil
+	case dnszone.FieldRemovalRequested:
+		m.ResetRemovalRequested()
 		return nil
 	case dnszone.FieldSyncRequestedAt:
 		m.ResetSyncRequestedAt()

@@ -953,78 +953,51 @@ func TestDnsZones_ReleaseRecord(t *testing.T) {
 		t.Fatalf("a refused release changed something: %d rows, %d batches", n, len(e.dns.batches))
 	}
 
-	// A provider that is down fails the release, and the row stays.
-	e.dns.know(dnsToken1, fakeDNSToken{err: errors.New("dial tcp 198.51.100.1:443: i/o timeout")})
+	// A release is a request: the API call writes no record, the row says it is pending, and the
+	// restore warns about an old original.
 	job()
-	if _, err := releaseRecord(ada, zone, id, true); code(err) != connect.CodeUnavailable {
-		t.Errorf("an unreachable provider: %v", err)
-	}
-	e.dns.know(dnsToken1, fakeDNSToken{})
-	if c.DNSRecord.Query().Where(dnsrecord.ID(id)).CountX(e.sys) != 1 || live(app).Content != "192.0.2.99" {
-		t.Fatal("a failed release changed something")
-	}
-
-	// Restore: the record is what it was when it was adopted, comment included, and the row is gone.
 	c.DNSRecord.UpdateOneID(id).SetAdoptedAt(time.Now().Add(-31 * 24 * time.Hour)).ExecX(e.sys)
 	warn, err := releaseRecord(ada, zone, id, true)
 	if err != nil || !strings.Contains(warn, "30 days") {
 		t.Fatalf("restore: %q, %v", warn, err)
 	}
-	if r := live(app); r.Type != "A" || r.Content != "192.0.2.10" || r.Comment != "hand made" {
-		t.Fatalf("the record after a restore: %+v", r)
+	if got := c.DNSRecord.GetX(e.sys, id); got.ReleaseRequested != "restore" {
+		t.Fatalf("row %+v", got)
 	}
-	if c.DNSRecord.Query().Where(dnsrecord.ID(id)).CountX(e.sys) != 0 {
-		t.Error("the row is still there")
+	if len(e.dns.batches) != 0 || live(app).Content != "192.0.2.99" {
+		t.Fatalf("the API call wrote to the provider: %d batches, %+v", len(e.dns.batches), live(app))
+	}
+	if l, _ := listRecords(ada, zone, false); len(l) != 2 || !strings.Contains(l[0].GetReason()+l[1].GetReason(), "release requested (restore)") {
+		t.Errorf("the pending release is not shown: %v", l)
 	}
 	if a := e.db.Client().AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.DnsZoneService.ReleaseRecord"), auditentry.ResultEQ("success")).AllX(e.sys); len(a) != 1 ||
 		!strings.Contains(a[0].Reason, id) || !strings.Contains(a[0].Diff, `"restore":true`) {
 		t.Errorf("audit entries for the release: %+v", a)
 	}
-	if _, err := releaseRecord(ada, zone, id, false); code(err) != connect.CodeNotFound {
-		t.Errorf("a second release: %v", err)
+	if z := c.DNSZone.GetX(e.sys, zone); z.SyncRequestedAt == nil {
+		t.Error("the release asks for a pass")
 	}
-
-	// Keep: the marker goes, nothing else changes, and nothing warns; a record that is gone needs
-	// no write.
-	rs, err = adoptRecords(ada, zone, app)
-	if err != nil {
-		t.Fatal(err)
-	}
-	id = rs[0].GetId()
-	job()
-	writes := len(e.dns.batches)
 	if warn, err := releaseRecord(ada, zone, id, false); err != nil || warn != "" {
-		t.Fatalf("keep: %q, %v", warn, err)
+		t.Fatalf("a second request: %q %v", warn, err)
 	}
-	if r := live(app); r.Content != "192.0.2.99" || r.Comment != "" || len(e.dns.batches) != writes+1 {
-		t.Fatalf("the record after a release: %+v", r)
+	if got := c.DNSRecord.GetX(e.sys, id); got.ReleaseRequested != "keep" {
+		t.Errorf("the request was not replaced: %+v", got)
 	}
-	gone := c.DNSRecord.Create().SetOrgID(org).SetDNSZoneID(zone).SetName("gone.example.com").SetType("A").SetContent("192.0.2.4").SetTTL(300).
-		SetProviderRecordID("0000000000000000000000000000dead").SetState("synced").SaveX(e.sys)
-	if _, err := releaseRecord(ada, zone, gone.ID, false); err != nil || len(e.dns.batches) != writes+1 {
-		t.Errorf("a record that is gone at the provider: %v, %d writes", err, len(e.dns.batches)-writes)
+	// A record the provider has no ID of needs nothing at the provider: it is dropped at once.
+	noID := c.DNSRecord.Create().SetOrgID(org).SetDNSZoneID(zone).SetName("noid.example.com").SetType("A").SetContent("192.0.2.8").SetTTL(300).SetState("error").SaveX(e.sys)
+	if _, err := releaseRecord(ada, zone, noID.ID, false); err != nil || c.DNSRecord.Query().Where(dnsrecord.ID(noID.ID)).CountX(e.sys) != 0 {
+		t.Errorf("a row without a provider record: %v", err)
 	}
-	// An adopted record the job has not written yet carries no marker: nothing to take off. One
-	// whose type the job changed has no original that fits: the restore is refused.
-	e.dns.records[0].Comment = "hand made"
-	rs, err = adoptRecords(ada, zone, app)
-	if err != nil {
-		t.Fatal(err)
+	// Both calls need a step-up, besides the role.
+	adm, _ := e.join(t, ada, org, "adm@example.com", "admin")
+	if _, err := releaseRecord(adm, zone, id, false); reason(err) != api.ReasonStepUpRequired {
+		t.Errorf("release without a step-up: %v", err)
 	}
-	writes = len(e.dns.batches)
-	if _, err := releaseRecord(ada, zone, rs[0].GetId(), false); err != nil || len(e.dns.batches) != writes || live(app).Comment != "hand made" {
-		t.Errorf("a record the job has not written: %v, %d writes, %+v", err, len(e.dns.batches)-writes, live(app))
+	if _, err := adoptRecords(adm, zone, "000000000000000000000000000000a2"); reason(err) != api.ReasonStepUpRequired {
+		t.Errorf("adopt without a step-up: %v", err)
 	}
-	rs, err = adoptRecords(ada, zone, app)
-	if err != nil {
-		t.Fatal(err)
-	}
-	e.dns.records[0].Type = "AAAA"
-	if _, err := releaseRecord(ada, zone, rs[0].GetId(), true); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonRecordNotRestorable {
-		t.Errorf("a record whose type changed: %v", err)
-	}
-	if c.DNSRecord.Query().Where(dnsrecord.ID(rs[0].GetId())).CountX(e.sys) != 1 {
-		t.Error("a refused restore dropped the row")
+	if got := c.DNSRecord.GetX(e.sys, id); got.ReleaseRequested != "keep" {
+		t.Errorf("a refused call changed the ledger: %+v", got)
 	}
 }
 
@@ -1068,6 +1041,69 @@ func TestDnsZones_SyncZone(t *testing.T) {
 	}
 	if e.db.Client().DNSZone.GetX(e.sys, zone).SyncRequestedAt != nil {
 		t.Error("a disabled zone was asked to sync")
+	}
+}
+
+// TestDnsZones_EnableZone: a disabled zone becomes held and nothing else; it needs a step-up and an
+// Owner or Admin; a zone that is not disabled and another org's are refused; the enabled zone still
+// needs an approved plan.
+func TestDnsZones_EnableZone(t *testing.T) {
+	e, ada, org, p := zoneEnv(t)
+	e.dns.zones = []dns.Zone{{ID: "z1", Name: "example.com", Status: "active", Type: "full"}}
+	r, err := importZone(ada, p.GetId(), "z1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := r.GetDnsZone().GetId()
+	enable := func(b *browser, zone string) error {
+		_, err := b.dnsz.EnableZone(context.Background(), connect.NewRequest(&rpmgrv1.EnableZoneRequest{DnsZoneId: zone}))
+		return err
+	}
+	if err := enable(ada, id); reason(err) != apisvc.ReasonZoneNotDisabled {
+		t.Errorf("a held zone: %v", err)
+	}
+	e.db.Client().DNSZone.UpdateOneID(id).SetSyncState("disabled").SetPendingPlanHash("x").ExecX(e.sys)
+	adm, _ := e.join(t, ada, org, "adm@example.com", "admin")
+	op, _ := e.join(t, ada, org, "op@example.com", "operator")
+	if err := op.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	if err := bob.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := enable(adm, id); reason(err) != api.ReasonStepUpRequired {
+		t.Errorf("without a step-up: %v", err)
+	}
+	if err := enable(op, id); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an Operator: %v", err)
+	}
+	if err := enable(bob, id); code(err) != connect.CodeNotFound {
+		t.Errorf("another org: %v", err)
+	}
+	if err := enable(ada, "dnz_missing"); code(err) != connect.CodeNotFound {
+		t.Errorf("a missing zone: %v", err)
+	}
+	if e.db.Client().DNSZone.GetX(e.sys, id).SyncState != "disabled" {
+		t.Fatal("a refused call enabled the zone")
+	}
+	if err := enable(ada, id); err != nil {
+		t.Fatal(err)
+	}
+	if z := e.db.Client().DNSZone.GetX(e.sys, id); z.SyncState != "held" || z.HeldReason != "enabled" || z.PendingPlanHash != "" {
+		t.Fatalf("zone %+v", z)
+	}
+	// A hash that was never approved activates nothing: approval is still needed.
+	if err := approveZone(ada, id, strings.Repeat("a", 64)); reason(err) != apisvc.ReasonPlanChanged {
+		t.Errorf("approval after enabling: %v", err)
+	}
+	pl, err := planZone(ada, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := approveZone(ada, id, pl.GetPlan().GetHash()); err != nil {
+		t.Errorf("approving the plan read: %v", err)
 	}
 }
 
@@ -1165,36 +1201,36 @@ func TestDnsZones_RemoveWithRecords(t *testing.T) {
 		t.Fatal("something was deleted before the hash matched")
 	}
 
-	// The provider fails on the way: the zone stays, disabled, and nothing else is dropped.
-	e.dns.know(dnsToken1, fakeDNSToken{})
-	e.dns.failApply = errors.New("dial tcp 198.51.100.1:443: i/o timeout")
+	// A provider that is down fails the call before anything is recorded.
+	e.dns.know(dnsToken1, fakeDNSToken{err: errors.New("dial tcp 198.51.100.1:443: i/o timeout")})
 	if err := removeWithRecords(ada, zone, "", hash); code(err) != connect.CodeUnavailable {
 		t.Fatalf("a failing provider: %v", err)
 	}
-	if z := c.DNSZone.GetX(e.sys, zone); z.SyncState != "disabled" || c.DNSRecord.Query().CountX(e.sys) != 4 {
-		t.Fatalf("after a failure: %+v, %d rows", z, c.DNSRecord.Query().CountX(e.sys))
+	e.dns.know(dnsToken1, fakeDNSToken{})
+	if z := c.DNSZone.GetX(e.sys, zone); z.SyncState != "held" || z.RemovalRequested {
+		t.Fatalf("zone %+v", z)
 	}
-	e.dns.failApply = nil
 
-	// Again, with the plan it shows now.
-	pl, err = planRemoval(ada, zone)
-	if err != nil || pl.GetDnsZone().GetSyncState() != rpmgrv1.ZoneSyncState_ZONE_SYNC_STATE_DISABLED {
-		t.Fatalf("the plan of the disabled zone: %v %v", pl, err)
-	}
-	if err := removeWithRecords(ada, zone, "", pl.GetPlan().GetHash()); err != nil {
+	// The call records the approved plan and returns: the zone is disabled and shows the removal as
+	// pending, nothing is written to the provider, no row goes. The DNS job does the rest.
+	if err := removeWithRecords(ada, zone, "", hash); err != nil {
 		t.Fatal(err)
 	}
-	if len(e.dns.batches) != 1 || len(e.dns.batches[0].Deletes) != 3 || len(e.dns.batches[0].Patches)+len(e.dns.batches[0].Posts)+len(e.dns.batches[0].Puts) != 0 {
-		t.Fatalf("batches %+v", e.dns.batches)
+	z := c.DNSZone.GetX(e.sys, zone)
+	if z.SyncState != "disabled" || !z.RemovalRequested || z.PendingPlanHash != hash || z.SyncRequestedAt == nil || len(z.PendingPlan) == 0 {
+		t.Fatalf("zone %+v", z)
 	}
-	if a := c.AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.DnsZoneService.RemoveZone"), auditentry.ResultEQ("success")).AllX(e.sys); len(a) < 1 || !strings.Contains(a[0].Reason, "delete 3 records of dns zone "+zone) {
+	if len(e.dns.batches) != 0 || zoneCount(e) != 1 || c.DNSRecord.Query().CountX(e.sys) != 4 || len(e.dns.records) != foreign+3 {
+		t.Fatalf("the API call wrote: %d batches, %d rows, %d records", len(e.dns.batches), c.DNSRecord.Query().CountX(e.sys), len(e.dns.records))
+	}
+	if got, err := ada.dnsz.GetZone(context.Background(), connect.NewRequest(&rpmgrv1.GetZoneRequest{DnsZoneId: zone})); err != nil || !got.Msg.GetDnsZone().GetRemovalPending() {
+		t.Errorf("the zone does not show the pending removal: %v %v", got, err)
+	}
+	if a := c.AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.DnsZoneService.RemoveZone"), auditentry.ResultEQ("success")).AllX(e.sys); len(a) < 1 || !strings.Contains(a[0].Reason, "delete 4 records") && !strings.Contains(a[0].Reason, "delete 3 records") {
 		t.Errorf("audit entries for the removal: %+v", a)
 	}
-	if zoneCount(e) != 0 || c.DNSRecord.Query().CountX(e.sys) != 0 || c.Domain.Query().CountX(e.sys) != 1 {
-		t.Errorf("after the removal: %d zones, %d rows, %d claims", zoneCount(e), c.DNSRecord.Query().CountX(e.sys), c.Domain.Query().CountX(e.sys))
-	}
-	if left := e.dns.records; len(left) != foreign || left[0].ID != "000000000000000000000000000000a1" {
-		t.Errorf("the records of others were deleted too, or an owned one was not: %v", left)
+	if c.Domain.Query().CountX(e.sys) != 1 {
+		t.Error("the claim went")
 	}
 }
 

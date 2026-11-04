@@ -81,7 +81,7 @@ rpmgr <command>
 | [`rpmgr audit`](#rpmgr-audit) | Export the audit log with its proofs, and verify an export offline |
 | [`rpmgr create`](#rpmgr-create) | Create a resource of the public API |
 | [`rpmgr update`](#rpmgr-update) | Change a resource of the public API |
-| [`rpmgr enable`](#rpmgr-enable) | Serve a resource again |
+| [`rpmgr enable`](#rpmgr-enable) | Serve a resource again, or move a disabled DNS zone to held |
 | [`rpmgr disable`](#rpmgr-disable) | Stop serving a resource, keeping its configuration |
 | [`rpmgr drain`](#rpmgr-drain) | Stop a gateway taking new connections |
 | [`rpmgr decommission`](#rpmgr-decommission) | Take an agent out of service for good |
@@ -1529,7 +1529,7 @@ rpmgr update dns-name [flags] <id or name>
 
 ## rpmgr enable
 
-Serve a resource again.
+Serve a resource again, or move a disabled DNS zone to held.
 
 ```text
 rpmgr enable <command>
@@ -1540,6 +1540,7 @@ rpmgr enable <command>
 | [`rpmgr enable route`](#rpmgr-enable-route) | Enable a route |
 | [`rpmgr enable gateway`](#rpmgr-enable-gateway) | Let a drained gateway take connections again |
 | [`rpmgr enable webhook`](#rpmgr-enable-webhook) | Enable a webhook endpoint; enabling one that failed clears its disabled state |
+| [`rpmgr enable zone`](#rpmgr-enable-zone) | Move a disabled zone to held, with a step-up; it writes nothing until a plan is approved |
 
 ## rpmgr enable route
 
@@ -1579,6 +1580,14 @@ rpmgr enable webhook [flags] <id>
 | Flag | Default | Description |
 |---|---|---|
 | `--instance` |  | the instance's endpoint, for an Instance Admin |
+
+## rpmgr enable zone
+
+Move a disabled zone to held, with a step-up; it writes nothing until a plan is approved.
+
+```text
+rpmgr enable zone <id or name>
+```
 
 ## rpmgr disable
 

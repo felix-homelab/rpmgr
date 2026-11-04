@@ -85,6 +85,9 @@ const (
 	// DnsZoneServiceReleaseRecordProcedure is the fully-qualified name of the DnsZoneService's
 	// ReleaseRecord RPC.
 	DnsZoneServiceReleaseRecordProcedure = "/rpmgr.v1.DnsZoneService/ReleaseRecord"
+	// DnsZoneServiceEnableZoneProcedure is the fully-qualified name of the DnsZoneService's EnableZone
+	// RPC.
+	DnsZoneServiceEnableZoneProcedure = "/rpmgr.v1.DnsZoneService/EnableZone"
 	// DnsZoneServiceApproveZonePlanProcedure is the fully-qualified name of the DnsZoneService's
 	// ApproveZonePlan RPC.
 	DnsZoneServiceApproveZonePlanProcedure = "/rpmgr.v1.DnsZoneService/ApproveZonePlan"
@@ -368,10 +371,18 @@ type DnsZoneServiceClient interface {
 	// record that does not exist, is owned already, has a type rpmgr does not manage, or lies at a
 	// name no source of the org publishes fails the call.
 	AdoptRecords(context.Context, *connect.Request[v1.AdoptRecordsRequest]) (*connect.Response[v1.AdoptRecordsResponse], error)
-	// ReleaseRecord removes an owned record from the ledger, so that rpmgr never changes it again.
-	// The record stays at the provider, without rpmgr's marker, or with restore it is put back to
-	// the content it had when it was adopted.
+	// ReleaseRecord asks for an owned record to leave the ledger, so that rpmgr never changes it
+	// again. The DNS job carries it out under its lease, at its next pass of an active zone: the
+	// record stays at the provider, without rpmgr's marker, or with restore it is put back to the
+	// content it had when it was adopted. Until then the record shows the request in its reason.
+	// AdoptRecords and ReleaseRecord need a step-up: they hand rpmgr control of a record, or take
+	// it back.
 	ReleaseRecord(context.Context, *connect.Request[v1.ReleaseRecordRequest]) (*connect.Response[v1.ReleaseRecordResponse], error)
+	// EnableZone moves a disabled zone, such as one that restore --dns-disabled disabled, to held.
+	// It writes nothing: the zone computes plans again and needs an approved plan before the job
+	// writes to the provider. It needs a step-up. A zone that is not disabled is
+	// FAILED_PRECONDITION with ZONE_NOT_DISABLED.
+	EnableZone(context.Context, *connect.Request[v1.EnableZoneRequest]) (*connect.Response[v1.EnableZoneResponse], error)
 	// ApproveZonePlan approves the plan with the hash: the zone becomes active and the next pass
 	// applies that plan and no other. It fails with PLAN_CHANGED, and nothing changes, if the plan
 	// now has another hash. A zone that is not held, such as one that a restore disabled, is
@@ -454,6 +465,12 @@ func NewDnsZoneServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(dnsZoneServiceMethods.ByName("ReleaseRecord")),
 			connect.WithClientOptions(opts...),
 		),
+		enableZone: connect.NewClient[v1.EnableZoneRequest, v1.EnableZoneResponse](
+			httpClient,
+			baseURL+DnsZoneServiceEnableZoneProcedure,
+			connect.WithSchema(dnsZoneServiceMethods.ByName("EnableZone")),
+			connect.WithClientOptions(opts...),
+		),
 		approveZonePlan: connect.NewClient[v1.ApproveZonePlanRequest, v1.ApproveZonePlanResponse](
 			httpClient,
 			baseURL+DnsZoneServiceApproveZonePlanProcedure,
@@ -475,6 +492,7 @@ type dnsZoneServiceClient struct {
 	listZoneRecords *connect.Client[v1.ListZoneRecordsRequest, v1.ListZoneRecordsResponse]
 	adoptRecords    *connect.Client[v1.AdoptRecordsRequest, v1.AdoptRecordsResponse]
 	releaseRecord   *connect.Client[v1.ReleaseRecordRequest, v1.ReleaseRecordResponse]
+	enableZone      *connect.Client[v1.EnableZoneRequest, v1.EnableZoneResponse]
 	approveZonePlan *connect.Client[v1.ApproveZonePlanRequest, v1.ApproveZonePlanResponse]
 }
 
@@ -528,6 +546,11 @@ func (c *dnsZoneServiceClient) ReleaseRecord(ctx context.Context, req *connect.R
 	return c.releaseRecord.CallUnary(ctx, req)
 }
 
+// EnableZone calls rpmgr.v1.DnsZoneService.EnableZone.
+func (c *dnsZoneServiceClient) EnableZone(ctx context.Context, req *connect.Request[v1.EnableZoneRequest]) (*connect.Response[v1.EnableZoneResponse], error) {
+	return c.enableZone.CallUnary(ctx, req)
+}
+
 // ApproveZonePlan calls rpmgr.v1.DnsZoneService.ApproveZonePlan.
 func (c *dnsZoneServiceClient) ApproveZonePlan(ctx context.Context, req *connect.Request[v1.ApproveZonePlanRequest]) (*connect.Response[v1.ApproveZonePlanResponse], error) {
 	return c.approveZonePlan.CallUnary(ctx, req)
@@ -568,10 +591,18 @@ type DnsZoneServiceHandler interface {
 	// record that does not exist, is owned already, has a type rpmgr does not manage, or lies at a
 	// name no source of the org publishes fails the call.
 	AdoptRecords(context.Context, *connect.Request[v1.AdoptRecordsRequest]) (*connect.Response[v1.AdoptRecordsResponse], error)
-	// ReleaseRecord removes an owned record from the ledger, so that rpmgr never changes it again.
-	// The record stays at the provider, without rpmgr's marker, or with restore it is put back to
-	// the content it had when it was adopted.
+	// ReleaseRecord asks for an owned record to leave the ledger, so that rpmgr never changes it
+	// again. The DNS job carries it out under its lease, at its next pass of an active zone: the
+	// record stays at the provider, without rpmgr's marker, or with restore it is put back to the
+	// content it had when it was adopted. Until then the record shows the request in its reason.
+	// AdoptRecords and ReleaseRecord need a step-up: they hand rpmgr control of a record, or take
+	// it back.
 	ReleaseRecord(context.Context, *connect.Request[v1.ReleaseRecordRequest]) (*connect.Response[v1.ReleaseRecordResponse], error)
+	// EnableZone moves a disabled zone, such as one that restore --dns-disabled disabled, to held.
+	// It writes nothing: the zone computes plans again and needs an approved plan before the job
+	// writes to the provider. It needs a step-up. A zone that is not disabled is
+	// FAILED_PRECONDITION with ZONE_NOT_DISABLED.
+	EnableZone(context.Context, *connect.Request[v1.EnableZoneRequest]) (*connect.Response[v1.EnableZoneResponse], error)
 	// ApproveZonePlan approves the plan with the hash: the zone becomes active and the next pass
 	// applies that plan and no other. It fails with PLAN_CHANGED, and nothing changes, if the plan
 	// now has another hash. A zone that is not held, such as one that a restore disabled, is
@@ -650,6 +681,12 @@ func NewDnsZoneServiceHandler(svc DnsZoneServiceHandler, opts ...connect.Handler
 		connect.WithSchema(dnsZoneServiceMethods.ByName("ReleaseRecord")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dnsZoneServiceEnableZoneHandler := connect.NewUnaryHandler(
+		DnsZoneServiceEnableZoneProcedure,
+		svc.EnableZone,
+		connect.WithSchema(dnsZoneServiceMethods.ByName("EnableZone")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dnsZoneServiceApproveZonePlanHandler := connect.NewUnaryHandler(
 		DnsZoneServiceApproveZonePlanProcedure,
 		svc.ApproveZonePlan,
@@ -678,6 +715,8 @@ func NewDnsZoneServiceHandler(svc DnsZoneServiceHandler, opts ...connect.Handler
 			dnsZoneServiceAdoptRecordsHandler.ServeHTTP(w, r)
 		case DnsZoneServiceReleaseRecordProcedure:
 			dnsZoneServiceReleaseRecordHandler.ServeHTTP(w, r)
+		case DnsZoneServiceEnableZoneProcedure:
+			dnsZoneServiceEnableZoneHandler.ServeHTTP(w, r)
 		case DnsZoneServiceApproveZonePlanProcedure:
 			dnsZoneServiceApproveZonePlanHandler.ServeHTTP(w, r)
 		default:
@@ -727,6 +766,10 @@ func (UnimplementedDnsZoneServiceHandler) AdoptRecords(context.Context, *connect
 
 func (UnimplementedDnsZoneServiceHandler) ReleaseRecord(context.Context, *connect.Request[v1.ReleaseRecordRequest]) (*connect.Response[v1.ReleaseRecordResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.ReleaseRecord is not implemented"))
+}
+
+func (UnimplementedDnsZoneServiceHandler) EnableZone(context.Context, *connect.Request[v1.EnableZoneRequest]) (*connect.Response[v1.EnableZoneResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.DnsZoneService.EnableZone is not implemented"))
 }
 
 func (UnimplementedDnsZoneServiceHandler) ApproveZonePlan(context.Context, *connect.Request[v1.ApproveZonePlanRequest]) (*connect.Response[v1.ApproveZonePlanResponse], error) {

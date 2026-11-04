@@ -50,6 +50,9 @@ func (DNSRecord) Fields() []ent.Field {
 		// corrected_at is when the job last corrected a change someone else made to the record; a
 		// second change within the stop window is not corrected (docs/15-dns.md, "Ownership ledger").
 		field.Time("corrected_at").Optional().Nillable(),
+		// release_requested is set by ReleaseRecord, "keep" or "restore", and carried out by the DNS
+		// job under its lease: the job, not the API call, writes the provider.
+		field.String("release_requested").Default("").MaxLen(8),
 	}
 }
 

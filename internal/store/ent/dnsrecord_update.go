@@ -227,6 +227,20 @@ func (_u *DNSRecordUpdate) ClearCorrectedAt() *DNSRecordUpdate {
 	return _u
 }
 
+// SetReleaseRequested sets the "release_requested" field.
+func (_u *DNSRecordUpdate) SetReleaseRequested(v string) *DNSRecordUpdate {
+	_u.mutation.SetReleaseRequested(v)
+	return _u
+}
+
+// SetNillableReleaseRequested sets the "release_requested" field if the given value is not nil.
+func (_u *DNSRecordUpdate) SetNillableReleaseRequested(v *string) *DNSRecordUpdate {
+	if v != nil {
+		_u.SetReleaseRequested(*v)
+	}
+	return _u
+}
+
 // Mutation returns the DNSRecordMutation object of the builder.
 func (_u *DNSRecordUpdate) Mutation() *DNSRecordMutation {
 	return _u.mutation
@@ -301,6 +315,11 @@ func (_u *DNSRecordUpdate) check() error {
 			return &ValidationError{Name: "adopted_from", err: fmt.Errorf(`ent: validator failed for field "DNSRecord.adopted_from": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ReleaseRequested(); ok {
+		if err := dnsrecord.ReleaseRequestedValidator(v); err != nil {
+			return &ValidationError{Name: "release_requested", err: fmt.Errorf(`ent: validator failed for field "DNSRecord.release_requested": %w`, err)}
+		}
+	}
 	if _u.mutation.ZoneCleared() && len(_u.mutation.ZoneIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "DNSRecord.zone"`)
 	}
@@ -369,6 +388,9 @@ func (_u *DNSRecordUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.CorrectedAtCleared() {
 		_spec.ClearField(dnsrecord.FieldCorrectedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ReleaseRequested(); ok {
+		_spec.SetField(dnsrecord.FieldReleaseRequested, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -589,6 +611,20 @@ func (_u *DNSRecordUpdateOne) ClearCorrectedAt() *DNSRecordUpdateOne {
 	return _u
 }
 
+// SetReleaseRequested sets the "release_requested" field.
+func (_u *DNSRecordUpdateOne) SetReleaseRequested(v string) *DNSRecordUpdateOne {
+	_u.mutation.SetReleaseRequested(v)
+	return _u
+}
+
+// SetNillableReleaseRequested sets the "release_requested" field if the given value is not nil.
+func (_u *DNSRecordUpdateOne) SetNillableReleaseRequested(v *string) *DNSRecordUpdateOne {
+	if v != nil {
+		_u.SetReleaseRequested(*v)
+	}
+	return _u
+}
+
 // Mutation returns the DNSRecordMutation object of the builder.
 func (_u *DNSRecordUpdateOne) Mutation() *DNSRecordMutation {
 	return _u.mutation
@@ -676,6 +712,11 @@ func (_u *DNSRecordUpdateOne) check() error {
 			return &ValidationError{Name: "adopted_from", err: fmt.Errorf(`ent: validator failed for field "DNSRecord.adopted_from": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ReleaseRequested(); ok {
+		if err := dnsrecord.ReleaseRequestedValidator(v); err != nil {
+			return &ValidationError{Name: "release_requested", err: fmt.Errorf(`ent: validator failed for field "DNSRecord.release_requested": %w`, err)}
+		}
+	}
 	if _u.mutation.ZoneCleared() && len(_u.mutation.ZoneIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "DNSRecord.zone"`)
 	}
@@ -761,6 +802,9 @@ func (_u *DNSRecordUpdateOne) sqlSave(ctx context.Context) (_node *DNSRecord, er
 	}
 	if _u.mutation.CorrectedAtCleared() {
 		_spec.ClearField(dnsrecord.FieldCorrectedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ReleaseRequested(); ok {
+		_spec.SetField(dnsrecord.FieldReleaseRequested, field.TypeString, value)
 	}
 	_node = &DNSRecord{config: _u.config}
 	_spec.Assign = _node.assignValues

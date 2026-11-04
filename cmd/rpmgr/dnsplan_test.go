@@ -36,6 +36,7 @@ type zoneFake struct {
 	warning    string
 	synced     *rpmgrv1.SyncZoneRequest
 	removeErr  error
+	enabled    *rpmgrv1.EnableZoneRequest
 	removal    []bool // the delete_records of each PlanZoneSync
 }
 
@@ -114,6 +115,9 @@ func (a *dnsAPI) ListZoneRecords(_ context.Context, req *connect.Request[rpmgrv1
 }
 
 func (a *dnsAPI) AdoptRecords(_ context.Context, req *connect.Request[rpmgrv1.AdoptRecordsRequest]) (*connect.Response[rpmgrv1.AdoptRecordsResponse], error) {
+	if err := a.stepped(); err != nil {
+		return nil, err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.zonePlans.adopted = req.Msg
@@ -128,6 +132,9 @@ func (a *dnsAPI) AdoptRecords(_ context.Context, req *connect.Request[rpmgrv1.Ad
 }
 
 func (a *dnsAPI) ReleaseRecord(_ context.Context, req *connect.Request[rpmgrv1.ReleaseRecordRequest]) (*connect.Response[rpmgrv1.ReleaseRecordResponse], error) {
+	if err := a.stepped(); err != nil {
+		return nil, err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.zonePlans.released = req.Msg
@@ -305,12 +312,12 @@ func TestDNSRecordCommands(t *testing.T) {
 	}
 
 	if code, out, _ := run("disown", "dns-record", "--zone", "dnz_1", "dnr_1"); code != cli.ExitOK || a.zonePlans.released.GetRestore() || a.zonePlans.released.GetRecordId() != "dnr_1" ||
-		!strings.Contains(out, "without rpmgr's marker") {
+		!strings.Contains(out, "without rpmgr's marker") || len(a.stepUps) < 1 {
 		t.Fatalf("disown: %d %q %v", code, out, a.zonePlans.released)
 	}
 	a.zonePlans.warning = "the original is older than 30 days: its address may belong to someone else now"
 	code, out, errOut := run("disown", "dns-record", "--zone", "dnz_1", "--restore", "dnr_1")
-	if code != cli.ExitOK || !a.zonePlans.released.GetRestore() || !strings.Contains(out, "back to what it was") || !strings.Contains(errOut, "Warning: the original is older") {
+	if code != cli.ExitOK || !a.zonePlans.released.GetRestore() || !strings.Contains(out, "go back to what it was") || !strings.Contains(errOut, "Warning: the original is older") {
 		t.Fatalf("disown --restore: %d %q %q", code, out, errOut)
 	}
 	if code, _, errOut := run("disown", "dns-record", "--zone", "dnz_1", "dnr_missing"); code != cli.ExitError || !strings.Contains(errOut, "RECORD_NOT_FOUND") {
@@ -328,13 +335,13 @@ func TestDNSRemoveZoneWithRecords(t *testing.T) {
 	}
 	a.zonePlans.calls = nil
 	code, out, errOut := run("remove", "zone", "--delete-records", "--plan-hash", hashA, "example.com")
-	if code != cli.ExitOK || errOut != "" || !strings.Contains(out, "deleted the records rpmgr owned") {
+	if code != cli.ExitOK || errOut != "" || !strings.Contains(out, "The zone is disabled; the DNS job deletes") {
 		t.Fatalf("remove --delete-records: %d %q %q", code, out, errOut)
 	}
 	if strings.Join(a.zonePlans.calls, ",") != "plan,remove" || !a.removed.GetDeleteRecords() || a.removed.GetPlanHash() != hashA || a.removed.GetEtag() != "5" || len(a.stepUps) != 1 {
 		t.Fatalf("calls %v, request %v, %d step-ups", a.zonePlans.calls, a.removed, len(a.stepUps))
 	}
-	if i, j := strings.Index(out, "Plan hash:"), strings.Index(out, "Removed zone"); i < 0 || i > j {
+	if i, j := strings.Index(out, "Plan hash:"), strings.Index(out, "Asked for the removal"); i < 0 || i > j {
 		t.Errorf("the plan is not shown before the removal:\n%s", out)
 	}
 
@@ -369,5 +376,35 @@ func TestDNSRemoveZoneWithRecords(t *testing.T) {
 	}
 	if len(a.zonePlans.calls) != 0 {
 		t.Errorf("refused input reached the API: %v", a.zonePlans.calls)
+	}
+}
+
+func (a *dnsAPI) EnableZone(_ context.Context, req *connect.Request[rpmgrv1.EnableZoneRequest]) (*connect.Response[rpmgrv1.EnableZoneResponse], error) {
+	if err := a.stepped(); err != nil {
+		return nil, err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.zonePlans.enabled = req.Msg
+	if a.zonePlans.removeErr != nil {
+		return nil, a.zonePlans.removeErr
+	}
+	return connect.NewResponse(&rpmgrv1.EnableZoneResponse{DnsZone: theZone()}), nil
+}
+
+// TestDNSEnableZone (docs/16-cli.md): a disabled zone is enabled as held after a step-up; the
+// command says that a plan still has to be approved; a refusal shows the API's reason.
+func TestDNSEnableZone(t *testing.T) {
+	a, run, _ := dnsEnv(t, "")
+	code, out, _ := run("enable", "zone", "example.com")
+	if code != cli.ExitOK || a.zonePlans.enabled.GetDnsZoneId() != "dnz_1" || len(a.stepUps) != 1 || !strings.Contains(out, "nothing is written until you approve a plan") {
+		t.Fatalf("enable: %d %q %v", code, out, a.zonePlans.enabled)
+	}
+	a.zonePlans.removeErr = withReasonErr(connect.CodeFailedPrecondition, "the zone is not disabled", "ZONE_NOT_DISABLED")
+	if code, _, errOut := run("enable", "zone", "dnz_1"); code != cli.ExitError || !strings.Contains(errOut, "ZONE_NOT_DISABLED") {
+		t.Errorf("a zone that is not disabled: %d %q", code, errOut)
+	}
+	if code, _, _ := run("enable", "zone"); code != cli.ExitUsage {
+		t.Errorf("no zone: %d", code)
 	}
 }

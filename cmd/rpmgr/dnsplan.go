@@ -42,6 +42,7 @@ func planCommands() map[string][]*cli.Command {
 		"plan":    {planZone()},
 		"approve": {approveZone()},
 		"sync":    {syncZone()},
+		"enable":  {enableZone()},
 		"adopt":   {adoptRecords()},
 		"disown":  {disownRecord()},
 	}
@@ -250,8 +251,39 @@ func removeWithRecords(ctx context.Context, env *cli.Env, s *apiSession, id, has
 		}
 		return apiError(err)
 	}
-	_, err = fmt.Fprintf(env.Stdout, "Removed zone %s and deleted the records rpmgr owned in it at the provider.\n", cur.Msg.GetDnsZone().GetName())
+	_, err = fmt.Fprintf(env.Stdout, "Asked for the removal of zone %s with its records. The zone is disabled; the DNS job deletes the records rpmgr owns, then removes the zone.\n"+
+		"rpmgr get zone shows it as removal pending until then.\n", cur.Msg.GetDnsZone().GetName())
 	return err
+}
+
+func enableZone() *cli.Command {
+	k := kindOf("zone")
+	return &cli.Command{
+		Name: "zone", Summary: "move a disabled zone to held, with a step-up; it writes nothing until a plan is approved", Args: "<id or name>",
+		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			if len(args) != 1 {
+				return cli.Usagef("expected the zone's ID or name")
+			}
+			s, err := newAPISession(env)
+			if err != nil {
+				return err
+			}
+			id, err := s.ref(ctx, k, args[0])
+			if err != nil {
+				return err
+			}
+			var resp *connect.Response[rpmgrv1.EnableZoneResponse]
+			if err := s.withStepUp(ctx, func() error {
+				var err error
+				resp, err = zoneClient(s).EnableZone(ctx, connect.NewRequest(&rpmgrv1.EnableZoneRequest{DnsZoneId: id}))
+				return err
+			}); err != nil {
+				return apiError(err)
+			}
+			_, err = fmt.Fprintf(env.Stdout, "Zone %s is held: nothing is written until you approve a plan (rpmgr plan zone, rpmgr approve zone).\n", resp.Msg.GetDnsZone().GetName())
+			return err
+		},
+	}
 }
 
 func syncZone() *cli.Command {
@@ -307,8 +339,12 @@ func adoptRecords() *cli.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := zoneClient(s).AdoptRecords(ctx, connect.NewRequest(&rpmgrv1.AdoptRecordsRequest{DnsZoneId: id, ProviderRecordIds: args}))
-			if err != nil {
+			var resp *connect.Response[rpmgrv1.AdoptRecordsResponse]
+			if err := s.withStepUp(ctx, func() error {
+				var err error
+				resp, err = zoneClient(s).AdoptRecords(ctx, connect.NewRequest(&rpmgrv1.AdoptRecordsRequest{DnsZoneId: id, ProviderRecordIds: args}))
+				return err
+			}); err != nil {
 				return apiError(err)
 			}
 			for _, r := range resp.Msg.GetRecords() {
@@ -344,15 +380,19 @@ func disownRecord() *cli.Command {
 			if err != nil {
 				return err
 			}
-			resp, err := zoneClient(s).ReleaseRecord(ctx, connect.NewRequest(&rpmgrv1.ReleaseRecordRequest{DnsZoneId: id, RecordId: args[0], Restore: restore}))
-			if err != nil {
+			var resp *connect.Response[rpmgrv1.ReleaseRecordResponse]
+			if err := s.withStepUp(ctx, func() error {
+				var err error
+				resp, err = zoneClient(s).ReleaseRecord(ctx, connect.NewRequest(&rpmgrv1.ReleaseRecordRequest{DnsZoneId: id, RecordId: args[0], Restore: restore}))
+				return err
+			}); err != nil {
 				return apiError(err)
 			}
-			what := "stays at the provider, without rpmgr's marker"
+			what := "stay at the provider without rpmgr's marker"
 			if restore {
-				what = "is back to what it was when it was adopted"
+				what = "go back to what it was when it was adopted"
 			}
-			if _, err := fmt.Fprintf(env.Stdout, "Released %s; the record %s and rpmgr never changes it again.\n", args[0], what); err != nil {
+			if _, err := fmt.Fprintf(env.Stdout, "Asked for the release of %s; the DNS job, at its next pass of the zone, lets the record %s; rpmgr then never changes it again.\n", args[0], what); err != nil {
 				return err
 			}
 			if w := resp.Msg.GetWarning(); w != "" {

@@ -1172,8 +1172,10 @@ type DnsZone struct {
 	// The hash of the plan under review on a held zone, or of the approved plan an active zone has
 	// not applied yet; output only, empty otherwise.
 	PendingPlanHash string `protobuf:"bytes,15,opt,name=pending_plan_hash,json=pendingPlanHash,proto3" json:"pending_plan_hash,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Removing the zone with its records was approved and the DNS job has not finished it; output only.
+	RemovalPending bool `protobuf:"varint,16,opt,name=removal_pending,json=removalPending,proto3" json:"removal_pending,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *DnsZone) Reset() {
@@ -1309,6 +1311,13 @@ func (x *DnsZone) GetPendingPlanHash() string {
 		return x.PendingPlanHash
 	}
 	return ""
+}
+
+func (x *DnsZone) GetRemovalPending() bool {
+	if x != nil {
+		return x.RemovalPending
+	}
+	return false
 }
 
 // ImportZoneRequest names a zone at a provider.
@@ -1748,9 +1757,10 @@ type RemoveZoneRequest struct {
 	Etag string `protobuf:"bytes,2,opt,name=etag,proto3" json:"etag,omitempty"`
 	// Delete the records rpmgr owns at the provider too. It needs a step-up and the hash of the plan
 	// the caller read with PlanZoneSync and delete_records: a plan with another hash is
-	// FAILED_PRECONDITION with PLAN_CHANGED, and nothing changes. The zone is disabled before the
-	// first record is deleted, so that the DNS job does not write them again; if the provider fails
-	// meanwhile the zone stays disabled, and the call is made again with a new plan.
+	// FAILED_PRECONDITION with PLAN_CHANGED, and nothing changes. The call returns at once: the zone
+	// is disabled and shows removal_pending, and the DNS job, under its lease, deletes the records of
+	// the approved plan and only those, then removes the zone. If a record that the plan did not
+	// name is owned by then, the job deletes nothing and the zone stays disabled.
 	DeleteRecords bool `protobuf:"varint,3,opt,name=delete_records,json=deleteRecords,proto3" json:"delete_records,omitempty"`
 	// The hash of the removal plan; required with delete_records, else it must be empty.
 	PlanHash      string `protobuf:"bytes,4,opt,name=plan_hash,json=planHash,proto3" json:"plan_hash,omitempty"`
@@ -2217,6 +2227,97 @@ func (x *PlanZoneSyncResponse) GetPlan() *ZonePlan {
 	return nil
 }
 
+// EnableZoneRequest names a zone.
+type EnableZoneRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The zone's ID.
+	DnsZoneId     string `protobuf:"bytes,1,opt,name=dns_zone_id,json=dnsZoneId,proto3" json:"dns_zone_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnableZoneRequest) Reset() {
+	*x = EnableZoneRequest{}
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnableZoneRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnableZoneRequest) ProtoMessage() {}
+
+func (x *EnableZoneRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnableZoneRequest.ProtoReflect.Descriptor instead.
+func (*EnableZoneRequest) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *EnableZoneRequest) GetDnsZoneId() string {
+	if x != nil {
+		return x.DnsZoneId
+	}
+	return ""
+}
+
+// EnableZoneResponse is the zone, held.
+type EnableZoneResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DnsZone       *DnsZone               `protobuf:"bytes,1,opt,name=dns_zone,json=dnsZone,proto3" json:"dns_zone,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnableZoneResponse) Reset() {
+	*x = EnableZoneResponse{}
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnableZoneResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnableZoneResponse) ProtoMessage() {}
+
+func (x *EnableZoneResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnableZoneResponse.ProtoReflect.Descriptor instead.
+func (*EnableZoneResponse) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *EnableZoneResponse) GetDnsZone() *DnsZone {
+	if x != nil {
+		return x.DnsZone
+	}
+	return nil
+}
+
 // ApproveZonePlanRequest names a zone and the plan the caller read.
 type ApproveZonePlanRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2230,7 +2331,7 @@ type ApproveZonePlanRequest struct {
 
 func (x *ApproveZonePlanRequest) Reset() {
 	*x = ApproveZonePlanRequest{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[31]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2242,7 +2343,7 @@ func (x *ApproveZonePlanRequest) String() string {
 func (*ApproveZonePlanRequest) ProtoMessage() {}
 
 func (x *ApproveZonePlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[31]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2255,7 +2356,7 @@ func (x *ApproveZonePlanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveZonePlanRequest.ProtoReflect.Descriptor instead.
 func (*ApproveZonePlanRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{31}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ApproveZonePlanRequest) GetDnsZoneId() string {
@@ -2282,7 +2383,7 @@ type ApproveZonePlanResponse struct {
 
 func (x *ApproveZonePlanResponse) Reset() {
 	*x = ApproveZonePlanResponse{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[32]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2294,7 +2395,7 @@ func (x *ApproveZonePlanResponse) String() string {
 func (*ApproveZonePlanResponse) ProtoMessage() {}
 
 func (x *ApproveZonePlanResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[32]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2307,7 +2408,7 @@ func (x *ApproveZonePlanResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveZonePlanResponse.ProtoReflect.Descriptor instead.
 func (*ApproveZonePlanResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{32}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ApproveZonePlanResponse) GetDnsZone() *DnsZone {
@@ -2328,7 +2429,7 @@ type SyncZoneRequest struct {
 
 func (x *SyncZoneRequest) Reset() {
 	*x = SyncZoneRequest{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[33]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2340,7 +2441,7 @@ func (x *SyncZoneRequest) String() string {
 func (*SyncZoneRequest) ProtoMessage() {}
 
 func (x *SyncZoneRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[33]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2353,7 +2454,7 @@ func (x *SyncZoneRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncZoneRequest.ProtoReflect.Descriptor instead.
 func (*SyncZoneRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{33}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *SyncZoneRequest) GetDnsZoneId() string {
@@ -2373,7 +2474,7 @@ type SyncZoneResponse struct {
 
 func (x *SyncZoneResponse) Reset() {
 	*x = SyncZoneResponse{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[34]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2385,7 +2486,7 @@ func (x *SyncZoneResponse) String() string {
 func (*SyncZoneResponse) ProtoMessage() {}
 
 func (x *SyncZoneResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[34]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2398,7 +2499,7 @@ func (x *SyncZoneResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncZoneResponse.ProtoReflect.Descriptor instead.
 func (*SyncZoneResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{34}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *SyncZoneResponse) GetDnsZone() *DnsZone {
@@ -2433,7 +2534,7 @@ type DnsRecord struct {
 
 func (x *DnsRecord) Reset() {
 	*x = DnsRecord{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[35]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2445,7 +2546,7 @@ func (x *DnsRecord) String() string {
 func (*DnsRecord) ProtoMessage() {}
 
 func (x *DnsRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[35]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2458,7 +2559,7 @@ func (x *DnsRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DnsRecord.ProtoReflect.Descriptor instead.
 func (*DnsRecord) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{35}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *DnsRecord) GetId() string {
@@ -2545,7 +2646,7 @@ type ListZoneRecordsRequest struct {
 
 func (x *ListZoneRecordsRequest) Reset() {
 	*x = ListZoneRecordsRequest{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[36]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2557,7 +2658,7 @@ func (x *ListZoneRecordsRequest) String() string {
 func (*ListZoneRecordsRequest) ProtoMessage() {}
 
 func (x *ListZoneRecordsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[36]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2570,7 +2671,7 @@ func (x *ListZoneRecordsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListZoneRecordsRequest.ProtoReflect.Descriptor instead.
 func (*ListZoneRecordsRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{36}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ListZoneRecordsRequest) GetDnsZoneId() string {
@@ -2597,7 +2698,7 @@ type ListZoneRecordsResponse struct {
 
 func (x *ListZoneRecordsResponse) Reset() {
 	*x = ListZoneRecordsResponse{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[37]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2609,7 +2710,7 @@ func (x *ListZoneRecordsResponse) String() string {
 func (*ListZoneRecordsResponse) ProtoMessage() {}
 
 func (x *ListZoneRecordsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[37]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2622,7 +2723,7 @@ func (x *ListZoneRecordsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListZoneRecordsResponse.ProtoReflect.Descriptor instead.
 func (*ListZoneRecordsResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{37}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ListZoneRecordsResponse) GetRecords() []*DnsRecord {
@@ -2645,7 +2746,7 @@ type AdoptRecordsRequest struct {
 
 func (x *AdoptRecordsRequest) Reset() {
 	*x = AdoptRecordsRequest{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[38]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2657,7 +2758,7 @@ func (x *AdoptRecordsRequest) String() string {
 func (*AdoptRecordsRequest) ProtoMessage() {}
 
 func (x *AdoptRecordsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[38]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2670,7 +2771,7 @@ func (x *AdoptRecordsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdoptRecordsRequest.ProtoReflect.Descriptor instead.
 func (*AdoptRecordsRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{38}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *AdoptRecordsRequest) GetDnsZoneId() string {
@@ -2697,7 +2798,7 @@ type AdoptRecordsResponse struct {
 
 func (x *AdoptRecordsResponse) Reset() {
 	*x = AdoptRecordsResponse{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[39]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2709,7 +2810,7 @@ func (x *AdoptRecordsResponse) String() string {
 func (*AdoptRecordsResponse) ProtoMessage() {}
 
 func (x *AdoptRecordsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[39]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2722,7 +2823,7 @@ func (x *AdoptRecordsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdoptRecordsResponse.ProtoReflect.Descriptor instead.
 func (*AdoptRecordsResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{39}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *AdoptRecordsResponse) GetRecords() []*DnsRecord {
@@ -2748,7 +2849,7 @@ type ReleaseRecordRequest struct {
 
 func (x *ReleaseRecordRequest) Reset() {
 	*x = ReleaseRecordRequest{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[40]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2760,7 +2861,7 @@ func (x *ReleaseRecordRequest) String() string {
 func (*ReleaseRecordRequest) ProtoMessage() {}
 
 func (x *ReleaseRecordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[40]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2773,7 +2874,7 @@ func (x *ReleaseRecordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseRecordRequest.ProtoReflect.Descriptor instead.
 func (*ReleaseRecordRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{40}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ReleaseRecordRequest) GetDnsZoneId() string {
@@ -2809,7 +2910,7 @@ type ReleaseRecordResponse struct {
 
 func (x *ReleaseRecordResponse) Reset() {
 	*x = ReleaseRecordResponse{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[41]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2821,7 +2922,7 @@ func (x *ReleaseRecordResponse) String() string {
 func (*ReleaseRecordResponse) ProtoMessage() {}
 
 func (x *ReleaseRecordResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[41]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2834,7 +2935,7 @@ func (x *ReleaseRecordResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseRecordResponse.ProtoReflect.Descriptor instead.
 func (*ReleaseRecordResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{41}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ReleaseRecordResponse) GetWarning() string {
@@ -2864,7 +2965,7 @@ type DnsName struct {
 
 func (x *DnsName) Reset() {
 	*x = DnsName{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[42]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2876,7 +2977,7 @@ func (x *DnsName) String() string {
 func (*DnsName) ProtoMessage() {}
 
 func (x *DnsName) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[42]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2889,7 +2990,7 @@ func (x *DnsName) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DnsName.ProtoReflect.Descriptor instead.
 func (*DnsName) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{42}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *DnsName) GetId() string {
@@ -2942,7 +3043,7 @@ type CreateDnsNameRequest struct {
 
 func (x *CreateDnsNameRequest) Reset() {
 	*x = CreateDnsNameRequest{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[43]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2954,7 +3055,7 @@ func (x *CreateDnsNameRequest) String() string {
 func (*CreateDnsNameRequest) ProtoMessage() {}
 
 func (x *CreateDnsNameRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[43]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2967,7 +3068,7 @@ func (x *CreateDnsNameRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDnsNameRequest.ProtoReflect.Descriptor instead.
 func (*CreateDnsNameRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{43}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *CreateDnsNameRequest) GetOrgId() string {
@@ -3001,7 +3102,7 @@ type CreateDnsNameResponse struct {
 
 func (x *CreateDnsNameResponse) Reset() {
 	*x = CreateDnsNameResponse{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[44]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3013,7 +3114,7 @@ func (x *CreateDnsNameResponse) String() string {
 func (*CreateDnsNameResponse) ProtoMessage() {}
 
 func (x *CreateDnsNameResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[44]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3026,7 +3127,7 @@ func (x *CreateDnsNameResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDnsNameResponse.ProtoReflect.Descriptor instead.
 func (*CreateDnsNameResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{44}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *CreateDnsNameResponse) GetDnsName() *DnsName {
@@ -3047,7 +3148,7 @@ type GetDnsNameRequest struct {
 
 func (x *GetDnsNameRequest) Reset() {
 	*x = GetDnsNameRequest{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[45]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3059,7 +3160,7 @@ func (x *GetDnsNameRequest) String() string {
 func (*GetDnsNameRequest) ProtoMessage() {}
 
 func (x *GetDnsNameRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[45]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3072,7 +3173,7 @@ func (x *GetDnsNameRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDnsNameRequest.ProtoReflect.Descriptor instead.
 func (*GetDnsNameRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{45}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *GetDnsNameRequest) GetDnsNameId() string {
@@ -3092,7 +3193,7 @@ type GetDnsNameResponse struct {
 
 func (x *GetDnsNameResponse) Reset() {
 	*x = GetDnsNameResponse{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[46]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3104,7 +3205,7 @@ func (x *GetDnsNameResponse) String() string {
 func (*GetDnsNameResponse) ProtoMessage() {}
 
 func (x *GetDnsNameResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[46]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3117,7 +3218,7 @@ func (x *GetDnsNameResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDnsNameResponse.ProtoReflect.Descriptor instead.
 func (*GetDnsNameResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{46}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *GetDnsNameResponse) GetDnsName() *DnsName {
@@ -3142,7 +3243,7 @@ type ListDnsNamesRequest struct {
 
 func (x *ListDnsNamesRequest) Reset() {
 	*x = ListDnsNamesRequest{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[47]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3154,7 +3255,7 @@ func (x *ListDnsNamesRequest) String() string {
 func (*ListDnsNamesRequest) ProtoMessage() {}
 
 func (x *ListDnsNamesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[47]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3167,7 +3268,7 @@ func (x *ListDnsNamesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDnsNamesRequest.ProtoReflect.Descriptor instead.
 func (*ListDnsNamesRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{47}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ListDnsNamesRequest) GetOrgId() string {
@@ -3202,7 +3303,7 @@ type ListDnsNamesResponse struct {
 
 func (x *ListDnsNamesResponse) Reset() {
 	*x = ListDnsNamesResponse{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[48]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3214,7 +3315,7 @@ func (x *ListDnsNamesResponse) String() string {
 func (*ListDnsNamesResponse) ProtoMessage() {}
 
 func (x *ListDnsNamesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[48]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3227,7 +3328,7 @@ func (x *ListDnsNamesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDnsNamesResponse.ProtoReflect.Descriptor instead.
 func (*ListDnsNamesResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{48}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ListDnsNamesResponse) GetDnsNames() []*DnsName {
@@ -3259,7 +3360,7 @@ type UpdateDnsNameRequest struct {
 
 func (x *UpdateDnsNameRequest) Reset() {
 	*x = UpdateDnsNameRequest{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[49]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3271,7 +3372,7 @@ func (x *UpdateDnsNameRequest) String() string {
 func (*UpdateDnsNameRequest) ProtoMessage() {}
 
 func (x *UpdateDnsNameRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[49]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3284,7 +3385,7 @@ func (x *UpdateDnsNameRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDnsNameRequest.ProtoReflect.Descriptor instead.
 func (*UpdateDnsNameRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{49}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *UpdateDnsNameRequest) GetDnsName() *DnsName {
@@ -3318,7 +3419,7 @@ type UpdateDnsNameResponse struct {
 
 func (x *UpdateDnsNameResponse) Reset() {
 	*x = UpdateDnsNameResponse{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[50]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3330,7 +3431,7 @@ func (x *UpdateDnsNameResponse) String() string {
 func (*UpdateDnsNameResponse) ProtoMessage() {}
 
 func (x *UpdateDnsNameResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[50]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3343,7 +3444,7 @@ func (x *UpdateDnsNameResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDnsNameResponse.ProtoReflect.Descriptor instead.
 func (*UpdateDnsNameResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{50}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *UpdateDnsNameResponse) GetDnsName() *DnsName {
@@ -3366,7 +3467,7 @@ type DeleteDnsNameRequest struct {
 
 func (x *DeleteDnsNameRequest) Reset() {
 	*x = DeleteDnsNameRequest{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[51]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3378,7 +3479,7 @@ func (x *DeleteDnsNameRequest) String() string {
 func (*DeleteDnsNameRequest) ProtoMessage() {}
 
 func (x *DeleteDnsNameRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[51]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3391,7 +3492,7 @@ func (x *DeleteDnsNameRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDnsNameRequest.ProtoReflect.Descriptor instead.
 func (*DeleteDnsNameRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{51}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *DeleteDnsNameRequest) GetDnsNameId() string {
@@ -3417,7 +3518,7 @@ type DeleteDnsNameResponse struct {
 
 func (x *DeleteDnsNameResponse) Reset() {
 	*x = DeleteDnsNameResponse{}
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[52]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3429,7 +3530,7 @@ func (x *DeleteDnsNameResponse) String() string {
 func (*DeleteDnsNameResponse) ProtoMessage() {}
 
 func (x *DeleteDnsNameResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_dns_proto_msgTypes[52]
+	mi := &file_rpmgr_v1_dns_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3442,7 +3543,7 @@ func (x *DeleteDnsNameResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDnsNameResponse.ProtoReflect.Descriptor instead.
 func (*DeleteDnsNameResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{52}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{54}
 }
 
 var File_rpmgr_v1_dns_proto protoreflect.FileDescriptor
@@ -3505,7 +3606,7 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\x18ListProviderZonesRequest\x12/\n" +
 	"\x0fdns_provider_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\rdnsProviderId\"I\n" +
 	"\x19ListProviderZonesResponse\x12,\n" +
-	"\x05zones\x18\x01 \x03(\v2\x16.rpmgr.v1.ProviderZoneR\x05zones\"\x80\x05\n" +
+	"\x05zones\x18\x01 \x03(\v2\x16.rpmgr.v1.ProviderZoneR\x05zones\"\xa9\x05\n" +
 	"\aDnsZone\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12&\n" +
@@ -3525,7 +3626,8 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"defaultTtl\x12D\n" +
 	"\x10last_synced_time\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\x0elastSyncedTime\x12\x12\n" +
 	"\x04etag\x18\x0e \x01(\tR\x04etag\x12*\n" +
-	"\x11pending_plan_hash\x18\x0f \x01(\tR\x0fpendingPlanHash\"y\n" +
+	"\x11pending_plan_hash\x18\x0f \x01(\tR\x0fpendingPlanHash\x12'\n" +
+	"\x0fremoval_pending\x18\x10 \x01(\bR\x0eremovalPending\"y\n" +
 	"\x11ImportZoneRequest\x12/\n" +
 	"\x0fdns_provider_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\rdnsProviderId\x123\n" +
 	"\x10provider_zone_id\x18\x02 \x01(\tB\t\xbaH\x06r\x04\x10\x01\x18@R\x0eproviderZoneId\"l\n" +
@@ -3583,7 +3685,11 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\x0edelete_records\x18\x02 \x01(\bR\rdeleteRecords\"l\n" +
 	"\x14PlanZoneSyncResponse\x12,\n" +
 	"\bdns_zone\x18\x01 \x01(\v2\x11.rpmgr.v1.DnsZoneR\adnsZone\x12&\n" +
-	"\x04plan\x18\x02 \x01(\v2\x12.rpmgr.v1.ZonePlanR\x04plan\"h\n" +
+	"\x04plan\x18\x02 \x01(\v2\x12.rpmgr.v1.ZonePlanR\x04plan\"<\n" +
+	"\x11EnableZoneRequest\x12'\n" +
+	"\vdns_zone_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tdnsZoneId\"B\n" +
+	"\x12EnableZoneResponse\x12,\n" +
+	"\bdns_zone\x18\x01 \x01(\v2\x11.rpmgr.v1.DnsZoneR\adnsZone\"h\n" +
 	"\x16ApproveZonePlanRequest\x12'\n" +
 	"\vdns_zone_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tdnsZoneId\x12%\n" +
 	"\tplan_hash\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x98\x01@R\bplanHash\"G\n" +
@@ -3693,8 +3799,7 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\x11DeleteDnsProvider\x12\".rpmgr.v1.DeleteDnsProviderRequest\x1a#.rpmgr.v1.DeleteDnsProviderResponse\"-\x8a\xb5\x18)\n" +
 	"\x14infrastructure.write\x12\x0fdns_provider_id\x18\x01\x12\x8c\x01\n" +
 	"\x11ListProviderZones\x12\".rpmgr.v1.ListProviderZonesRequest\x1a#.rpmgr.v1.ListProviderZonesResponse\".\x8a\xb5\x18'\n" +
-	"\x14infrastructure.write\x12\x0fdns_provider_id\x90\x02\x012\x99\n" +
-	"\n" +
+	"\x14infrastructure.write\x12\x0fdns_provider_id\x90\x02\x012\x91\v\n" +
 	"\x0eDnsZoneService\x12t\n" +
 	"\n" +
 	"ImportZone\x12\x1b.rpmgr.v1.ImportZoneRequest\x1a\x1c.rpmgr.v1.ImportZoneResponse\"+\x8a\xb5\x18'\n" +
@@ -3714,11 +3819,14 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\bSyncZone\x12\x19.rpmgr.v1.SyncZoneRequest\x1a\x1a.rpmgr.v1.SyncZoneResponse\"'\x8a\xb5\x18#\n" +
 	"\x14infrastructure.write\x12\vdns_zone_id\x12v\n" +
 	"\x0fListZoneRecords\x12 .rpmgr.v1.ListZoneRecordsRequest\x1a!.rpmgr.v1.ListZoneRecordsResponse\"\x1e\x8a\xb5\x18\x17\n" +
-	"\borg.read\x12\vdns_zone_id\x90\x02\x01\x12v\n" +
-	"\fAdoptRecords\x12\x1d.rpmgr.v1.AdoptRecordsRequest\x1a\x1e.rpmgr.v1.AdoptRecordsResponse\"'\x8a\xb5\x18#\n" +
-	"\x14infrastructure.write\x12\vdns_zone_id\x12y\n" +
-	"\rReleaseRecord\x12\x1e.rpmgr.v1.ReleaseRecordRequest\x1a\x1f.rpmgr.v1.ReleaseRecordResponse\"'\x8a\xb5\x18#\n" +
-	"\x14infrastructure.write\x12\vdns_zone_id\x12\x81\x01\n" +
+	"\borg.read\x12\vdns_zone_id\x90\x02\x01\x12x\n" +
+	"\fAdoptRecords\x12\x1d.rpmgr.v1.AdoptRecordsRequest\x1a\x1e.rpmgr.v1.AdoptRecordsResponse\")\x8a\xb5\x18%\n" +
+	"\x14infrastructure.write\x12\vdns_zone_id\x18\x01\x12{\n" +
+	"\rReleaseRecord\x12\x1e.rpmgr.v1.ReleaseRecordRequest\x1a\x1f.rpmgr.v1.ReleaseRecordResponse\")\x8a\xb5\x18%\n" +
+	"\x14infrastructure.write\x12\vdns_zone_id\x18\x01\x12r\n" +
+	"\n" +
+	"EnableZone\x12\x1b.rpmgr.v1.EnableZoneRequest\x1a\x1c.rpmgr.v1.EnableZoneResponse\")\x8a\xb5\x18%\n" +
+	"\x14infrastructure.write\x12\vdns_zone_id\x18\x01\x12\x81\x01\n" +
 	"\x0fApproveZonePlan\x12 .rpmgr.v1.ApproveZonePlanRequest\x1a!.rpmgr.v1.ApproveZonePlanResponse\")\x8a\xb5\x18%\n" +
 	"\x14infrastructure.write\x12\vdns_zone_id\x18\x012\xcf\x04\n" +
 	"\x0eDnsNameService\x12t\n" +
@@ -3747,7 +3855,7 @@ func file_rpmgr_v1_dns_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_v1_dns_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_rpmgr_v1_dns_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
+var file_rpmgr_v1_dns_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_rpmgr_v1_dns_proto_goTypes = []any{
 	(ProviderStatus)(0),                // 0: rpmgr.v1.ProviderStatus
 	(ZoneSyncState)(0),                 // 1: rpmgr.v1.ZoneSyncState
@@ -3784,54 +3892,56 @@ var file_rpmgr_v1_dns_proto_goTypes = []any{
 	(*ZonePlan)(nil),                   // 32: rpmgr.v1.ZonePlan
 	(*PlanZoneSyncRequest)(nil),        // 33: rpmgr.v1.PlanZoneSyncRequest
 	(*PlanZoneSyncResponse)(nil),       // 34: rpmgr.v1.PlanZoneSyncResponse
-	(*ApproveZonePlanRequest)(nil),     // 35: rpmgr.v1.ApproveZonePlanRequest
-	(*ApproveZonePlanResponse)(nil),    // 36: rpmgr.v1.ApproveZonePlanResponse
-	(*SyncZoneRequest)(nil),            // 37: rpmgr.v1.SyncZoneRequest
-	(*SyncZoneResponse)(nil),           // 38: rpmgr.v1.SyncZoneResponse
-	(*DnsRecord)(nil),                  // 39: rpmgr.v1.DnsRecord
-	(*ListZoneRecordsRequest)(nil),     // 40: rpmgr.v1.ListZoneRecordsRequest
-	(*ListZoneRecordsResponse)(nil),    // 41: rpmgr.v1.ListZoneRecordsResponse
-	(*AdoptRecordsRequest)(nil),        // 42: rpmgr.v1.AdoptRecordsRequest
-	(*AdoptRecordsResponse)(nil),       // 43: rpmgr.v1.AdoptRecordsResponse
-	(*ReleaseRecordRequest)(nil),       // 44: rpmgr.v1.ReleaseRecordRequest
-	(*ReleaseRecordResponse)(nil),      // 45: rpmgr.v1.ReleaseRecordResponse
-	(*DnsName)(nil),                    // 46: rpmgr.v1.DnsName
-	(*CreateDnsNameRequest)(nil),       // 47: rpmgr.v1.CreateDnsNameRequest
-	(*CreateDnsNameResponse)(nil),      // 48: rpmgr.v1.CreateDnsNameResponse
-	(*GetDnsNameRequest)(nil),          // 49: rpmgr.v1.GetDnsNameRequest
-	(*GetDnsNameResponse)(nil),         // 50: rpmgr.v1.GetDnsNameResponse
-	(*ListDnsNamesRequest)(nil),        // 51: rpmgr.v1.ListDnsNamesRequest
-	(*ListDnsNamesResponse)(nil),       // 52: rpmgr.v1.ListDnsNamesResponse
-	(*UpdateDnsNameRequest)(nil),       // 53: rpmgr.v1.UpdateDnsNameRequest
-	(*UpdateDnsNameResponse)(nil),      // 54: rpmgr.v1.UpdateDnsNameResponse
-	(*DeleteDnsNameRequest)(nil),       // 55: rpmgr.v1.DeleteDnsNameRequest
-	(*DeleteDnsNameResponse)(nil),      // 56: rpmgr.v1.DeleteDnsNameResponse
-	(*timestamppb.Timestamp)(nil),      // 57: google.protobuf.Timestamp
-	(*fieldmaskpb.FieldMask)(nil),      // 58: google.protobuf.FieldMask
-	(*Domain)(nil),                     // 59: rpmgr.v1.Domain
+	(*EnableZoneRequest)(nil),          // 35: rpmgr.v1.EnableZoneRequest
+	(*EnableZoneResponse)(nil),         // 36: rpmgr.v1.EnableZoneResponse
+	(*ApproveZonePlanRequest)(nil),     // 37: rpmgr.v1.ApproveZonePlanRequest
+	(*ApproveZonePlanResponse)(nil),    // 38: rpmgr.v1.ApproveZonePlanResponse
+	(*SyncZoneRequest)(nil),            // 39: rpmgr.v1.SyncZoneRequest
+	(*SyncZoneResponse)(nil),           // 40: rpmgr.v1.SyncZoneResponse
+	(*DnsRecord)(nil),                  // 41: rpmgr.v1.DnsRecord
+	(*ListZoneRecordsRequest)(nil),     // 42: rpmgr.v1.ListZoneRecordsRequest
+	(*ListZoneRecordsResponse)(nil),    // 43: rpmgr.v1.ListZoneRecordsResponse
+	(*AdoptRecordsRequest)(nil),        // 44: rpmgr.v1.AdoptRecordsRequest
+	(*AdoptRecordsResponse)(nil),       // 45: rpmgr.v1.AdoptRecordsResponse
+	(*ReleaseRecordRequest)(nil),       // 46: rpmgr.v1.ReleaseRecordRequest
+	(*ReleaseRecordResponse)(nil),      // 47: rpmgr.v1.ReleaseRecordResponse
+	(*DnsName)(nil),                    // 48: rpmgr.v1.DnsName
+	(*CreateDnsNameRequest)(nil),       // 49: rpmgr.v1.CreateDnsNameRequest
+	(*CreateDnsNameResponse)(nil),      // 50: rpmgr.v1.CreateDnsNameResponse
+	(*GetDnsNameRequest)(nil),          // 51: rpmgr.v1.GetDnsNameRequest
+	(*GetDnsNameResponse)(nil),         // 52: rpmgr.v1.GetDnsNameResponse
+	(*ListDnsNamesRequest)(nil),        // 53: rpmgr.v1.ListDnsNamesRequest
+	(*ListDnsNamesResponse)(nil),       // 54: rpmgr.v1.ListDnsNamesResponse
+	(*UpdateDnsNameRequest)(nil),       // 55: rpmgr.v1.UpdateDnsNameRequest
+	(*UpdateDnsNameResponse)(nil),      // 56: rpmgr.v1.UpdateDnsNameResponse
+	(*DeleteDnsNameRequest)(nil),       // 57: rpmgr.v1.DeleteDnsNameRequest
+	(*DeleteDnsNameResponse)(nil),      // 58: rpmgr.v1.DeleteDnsNameResponse
+	(*timestamppb.Timestamp)(nil),      // 59: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),      // 60: google.protobuf.FieldMask
+	(*Domain)(nil),                     // 61: rpmgr.v1.Domain
 }
 var file_rpmgr_v1_dns_proto_depIdxs = []int32{
 	4,  // 0: rpmgr.v1.DnsProvider.cloudflare:type_name -> rpmgr.v1.CloudflareProvider
 	0,  // 1: rpmgr.v1.DnsProvider.status:type_name -> rpmgr.v1.ProviderStatus
-	57, // 2: rpmgr.v1.DnsProvider.token_expires_at:type_name -> google.protobuf.Timestamp
-	57, // 3: rpmgr.v1.DnsProvider.last_check_time:type_name -> google.protobuf.Timestamp
+	59, // 2: rpmgr.v1.DnsProvider.token_expires_at:type_name -> google.protobuf.Timestamp
+	59, // 3: rpmgr.v1.DnsProvider.last_check_time:type_name -> google.protobuf.Timestamp
 	5,  // 4: rpmgr.v1.ConnectDnsProviderRequest.dns_provider:type_name -> rpmgr.v1.DnsProvider
 	5,  // 5: rpmgr.v1.ConnectDnsProviderResponse.dns_provider:type_name -> rpmgr.v1.DnsProvider
 	5,  // 6: rpmgr.v1.GetDnsProviderResponse.dns_provider:type_name -> rpmgr.v1.DnsProvider
 	5,  // 7: rpmgr.v1.ListDnsProvidersResponse.dns_providers:type_name -> rpmgr.v1.DnsProvider
 	5,  // 8: rpmgr.v1.UpdateDnsProviderRequest.dns_provider:type_name -> rpmgr.v1.DnsProvider
-	58, // 9: rpmgr.v1.UpdateDnsProviderRequest.update_mask:type_name -> google.protobuf.FieldMask
+	60, // 9: rpmgr.v1.UpdateDnsProviderRequest.update_mask:type_name -> google.protobuf.FieldMask
 	5,  // 10: rpmgr.v1.UpdateDnsProviderResponse.dns_provider:type_name -> rpmgr.v1.DnsProvider
 	6,  // 11: rpmgr.v1.ListProviderZonesResponse.zones:type_name -> rpmgr.v1.ProviderZone
 	1,  // 12: rpmgr.v1.DnsZone.sync_state:type_name -> rpmgr.v1.ZoneSyncState
 	2,  // 13: rpmgr.v1.DnsZone.provider_status:type_name -> rpmgr.v1.ZoneProviderStatus
-	57, // 14: rpmgr.v1.DnsZone.last_synced_time:type_name -> google.protobuf.Timestamp
+	59, // 14: rpmgr.v1.DnsZone.last_synced_time:type_name -> google.protobuf.Timestamp
 	19, // 15: rpmgr.v1.ImportZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
-	59, // 16: rpmgr.v1.ImportZoneResponse.domain:type_name -> rpmgr.v1.Domain
+	61, // 16: rpmgr.v1.ImportZoneResponse.domain:type_name -> rpmgr.v1.Domain
 	19, // 17: rpmgr.v1.GetZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
 	19, // 18: rpmgr.v1.ListZonesResponse.dns_zones:type_name -> rpmgr.v1.DnsZone
 	19, // 19: rpmgr.v1.UpdateZoneRequest.dns_zone:type_name -> rpmgr.v1.DnsZone
-	58, // 20: rpmgr.v1.UpdateZoneRequest.update_mask:type_name -> google.protobuf.FieldMask
+	60, // 20: rpmgr.v1.UpdateZoneRequest.update_mask:type_name -> google.protobuf.FieldMask
 	19, // 21: rpmgr.v1.UpdateZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
 	30, // 22: rpmgr.v1.PlanConflict.records:type_name -> rpmgr.v1.PlanRecord
 	30, // 23: rpmgr.v1.ZonePlan.creates:type_name -> rpmgr.v1.PlanRecord
@@ -3841,68 +3951,71 @@ var file_rpmgr_v1_dns_proto_depIdxs = []int32{
 	30, // 27: rpmgr.v1.ZonePlan.orphans:type_name -> rpmgr.v1.PlanRecord
 	19, // 28: rpmgr.v1.PlanZoneSyncResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
 	32, // 29: rpmgr.v1.PlanZoneSyncResponse.plan:type_name -> rpmgr.v1.ZonePlan
-	19, // 30: rpmgr.v1.ApproveZonePlanResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
-	19, // 31: rpmgr.v1.SyncZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
-	3,  // 32: rpmgr.v1.DnsRecord.state:type_name -> rpmgr.v1.DnsRecordState
-	57, // 33: rpmgr.v1.DnsRecord.adopted_time:type_name -> google.protobuf.Timestamp
-	39, // 34: rpmgr.v1.ListZoneRecordsResponse.records:type_name -> rpmgr.v1.DnsRecord
-	39, // 35: rpmgr.v1.AdoptRecordsResponse.records:type_name -> rpmgr.v1.DnsRecord
-	46, // 36: rpmgr.v1.CreateDnsNameRequest.dns_name:type_name -> rpmgr.v1.DnsName
-	46, // 37: rpmgr.v1.CreateDnsNameResponse.dns_name:type_name -> rpmgr.v1.DnsName
-	46, // 38: rpmgr.v1.GetDnsNameResponse.dns_name:type_name -> rpmgr.v1.DnsName
-	46, // 39: rpmgr.v1.ListDnsNamesResponse.dns_names:type_name -> rpmgr.v1.DnsName
-	46, // 40: rpmgr.v1.UpdateDnsNameRequest.dns_name:type_name -> rpmgr.v1.DnsName
-	58, // 41: rpmgr.v1.UpdateDnsNameRequest.update_mask:type_name -> google.protobuf.FieldMask
-	46, // 42: rpmgr.v1.UpdateDnsNameResponse.dns_name:type_name -> rpmgr.v1.DnsName
-	7,  // 43: rpmgr.v1.DnsProviderService.ConnectDnsProvider:input_type -> rpmgr.v1.ConnectDnsProviderRequest
-	9,  // 44: rpmgr.v1.DnsProviderService.GetDnsProvider:input_type -> rpmgr.v1.GetDnsProviderRequest
-	11, // 45: rpmgr.v1.DnsProviderService.ListDnsProviders:input_type -> rpmgr.v1.ListDnsProvidersRequest
-	13, // 46: rpmgr.v1.DnsProviderService.UpdateDnsProvider:input_type -> rpmgr.v1.UpdateDnsProviderRequest
-	15, // 47: rpmgr.v1.DnsProviderService.DeleteDnsProvider:input_type -> rpmgr.v1.DeleteDnsProviderRequest
-	17, // 48: rpmgr.v1.DnsProviderService.ListProviderZones:input_type -> rpmgr.v1.ListProviderZonesRequest
-	20, // 49: rpmgr.v1.DnsZoneService.ImportZone:input_type -> rpmgr.v1.ImportZoneRequest
-	22, // 50: rpmgr.v1.DnsZoneService.GetZone:input_type -> rpmgr.v1.GetZoneRequest
-	24, // 51: rpmgr.v1.DnsZoneService.ListZones:input_type -> rpmgr.v1.ListZonesRequest
-	26, // 52: rpmgr.v1.DnsZoneService.UpdateZone:input_type -> rpmgr.v1.UpdateZoneRequest
-	28, // 53: rpmgr.v1.DnsZoneService.RemoveZone:input_type -> rpmgr.v1.RemoveZoneRequest
-	33, // 54: rpmgr.v1.DnsZoneService.PlanZoneSync:input_type -> rpmgr.v1.PlanZoneSyncRequest
-	37, // 55: rpmgr.v1.DnsZoneService.SyncZone:input_type -> rpmgr.v1.SyncZoneRequest
-	40, // 56: rpmgr.v1.DnsZoneService.ListZoneRecords:input_type -> rpmgr.v1.ListZoneRecordsRequest
-	42, // 57: rpmgr.v1.DnsZoneService.AdoptRecords:input_type -> rpmgr.v1.AdoptRecordsRequest
-	44, // 58: rpmgr.v1.DnsZoneService.ReleaseRecord:input_type -> rpmgr.v1.ReleaseRecordRequest
-	35, // 59: rpmgr.v1.DnsZoneService.ApproveZonePlan:input_type -> rpmgr.v1.ApproveZonePlanRequest
-	47, // 60: rpmgr.v1.DnsNameService.CreateDnsName:input_type -> rpmgr.v1.CreateDnsNameRequest
-	49, // 61: rpmgr.v1.DnsNameService.GetDnsName:input_type -> rpmgr.v1.GetDnsNameRequest
-	51, // 62: rpmgr.v1.DnsNameService.ListDnsNames:input_type -> rpmgr.v1.ListDnsNamesRequest
-	53, // 63: rpmgr.v1.DnsNameService.UpdateDnsName:input_type -> rpmgr.v1.UpdateDnsNameRequest
-	55, // 64: rpmgr.v1.DnsNameService.DeleteDnsName:input_type -> rpmgr.v1.DeleteDnsNameRequest
-	8,  // 65: rpmgr.v1.DnsProviderService.ConnectDnsProvider:output_type -> rpmgr.v1.ConnectDnsProviderResponse
-	10, // 66: rpmgr.v1.DnsProviderService.GetDnsProvider:output_type -> rpmgr.v1.GetDnsProviderResponse
-	12, // 67: rpmgr.v1.DnsProviderService.ListDnsProviders:output_type -> rpmgr.v1.ListDnsProvidersResponse
-	14, // 68: rpmgr.v1.DnsProviderService.UpdateDnsProvider:output_type -> rpmgr.v1.UpdateDnsProviderResponse
-	16, // 69: rpmgr.v1.DnsProviderService.DeleteDnsProvider:output_type -> rpmgr.v1.DeleteDnsProviderResponse
-	18, // 70: rpmgr.v1.DnsProviderService.ListProviderZones:output_type -> rpmgr.v1.ListProviderZonesResponse
-	21, // 71: rpmgr.v1.DnsZoneService.ImportZone:output_type -> rpmgr.v1.ImportZoneResponse
-	23, // 72: rpmgr.v1.DnsZoneService.GetZone:output_type -> rpmgr.v1.GetZoneResponse
-	25, // 73: rpmgr.v1.DnsZoneService.ListZones:output_type -> rpmgr.v1.ListZonesResponse
-	27, // 74: rpmgr.v1.DnsZoneService.UpdateZone:output_type -> rpmgr.v1.UpdateZoneResponse
-	29, // 75: rpmgr.v1.DnsZoneService.RemoveZone:output_type -> rpmgr.v1.RemoveZoneResponse
-	34, // 76: rpmgr.v1.DnsZoneService.PlanZoneSync:output_type -> rpmgr.v1.PlanZoneSyncResponse
-	38, // 77: rpmgr.v1.DnsZoneService.SyncZone:output_type -> rpmgr.v1.SyncZoneResponse
-	41, // 78: rpmgr.v1.DnsZoneService.ListZoneRecords:output_type -> rpmgr.v1.ListZoneRecordsResponse
-	43, // 79: rpmgr.v1.DnsZoneService.AdoptRecords:output_type -> rpmgr.v1.AdoptRecordsResponse
-	45, // 80: rpmgr.v1.DnsZoneService.ReleaseRecord:output_type -> rpmgr.v1.ReleaseRecordResponse
-	36, // 81: rpmgr.v1.DnsZoneService.ApproveZonePlan:output_type -> rpmgr.v1.ApproveZonePlanResponse
-	48, // 82: rpmgr.v1.DnsNameService.CreateDnsName:output_type -> rpmgr.v1.CreateDnsNameResponse
-	50, // 83: rpmgr.v1.DnsNameService.GetDnsName:output_type -> rpmgr.v1.GetDnsNameResponse
-	52, // 84: rpmgr.v1.DnsNameService.ListDnsNames:output_type -> rpmgr.v1.ListDnsNamesResponse
-	54, // 85: rpmgr.v1.DnsNameService.UpdateDnsName:output_type -> rpmgr.v1.UpdateDnsNameResponse
-	56, // 86: rpmgr.v1.DnsNameService.DeleteDnsName:output_type -> rpmgr.v1.DeleteDnsNameResponse
-	65, // [65:87] is the sub-list for method output_type
-	43, // [43:65] is the sub-list for method input_type
-	43, // [43:43] is the sub-list for extension type_name
-	43, // [43:43] is the sub-list for extension extendee
-	0,  // [0:43] is the sub-list for field type_name
+	19, // 30: rpmgr.v1.EnableZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
+	19, // 31: rpmgr.v1.ApproveZonePlanResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
+	19, // 32: rpmgr.v1.SyncZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
+	3,  // 33: rpmgr.v1.DnsRecord.state:type_name -> rpmgr.v1.DnsRecordState
+	59, // 34: rpmgr.v1.DnsRecord.adopted_time:type_name -> google.protobuf.Timestamp
+	41, // 35: rpmgr.v1.ListZoneRecordsResponse.records:type_name -> rpmgr.v1.DnsRecord
+	41, // 36: rpmgr.v1.AdoptRecordsResponse.records:type_name -> rpmgr.v1.DnsRecord
+	48, // 37: rpmgr.v1.CreateDnsNameRequest.dns_name:type_name -> rpmgr.v1.DnsName
+	48, // 38: rpmgr.v1.CreateDnsNameResponse.dns_name:type_name -> rpmgr.v1.DnsName
+	48, // 39: rpmgr.v1.GetDnsNameResponse.dns_name:type_name -> rpmgr.v1.DnsName
+	48, // 40: rpmgr.v1.ListDnsNamesResponse.dns_names:type_name -> rpmgr.v1.DnsName
+	48, // 41: rpmgr.v1.UpdateDnsNameRequest.dns_name:type_name -> rpmgr.v1.DnsName
+	60, // 42: rpmgr.v1.UpdateDnsNameRequest.update_mask:type_name -> google.protobuf.FieldMask
+	48, // 43: rpmgr.v1.UpdateDnsNameResponse.dns_name:type_name -> rpmgr.v1.DnsName
+	7,  // 44: rpmgr.v1.DnsProviderService.ConnectDnsProvider:input_type -> rpmgr.v1.ConnectDnsProviderRequest
+	9,  // 45: rpmgr.v1.DnsProviderService.GetDnsProvider:input_type -> rpmgr.v1.GetDnsProviderRequest
+	11, // 46: rpmgr.v1.DnsProviderService.ListDnsProviders:input_type -> rpmgr.v1.ListDnsProvidersRequest
+	13, // 47: rpmgr.v1.DnsProviderService.UpdateDnsProvider:input_type -> rpmgr.v1.UpdateDnsProviderRequest
+	15, // 48: rpmgr.v1.DnsProviderService.DeleteDnsProvider:input_type -> rpmgr.v1.DeleteDnsProviderRequest
+	17, // 49: rpmgr.v1.DnsProviderService.ListProviderZones:input_type -> rpmgr.v1.ListProviderZonesRequest
+	20, // 50: rpmgr.v1.DnsZoneService.ImportZone:input_type -> rpmgr.v1.ImportZoneRequest
+	22, // 51: rpmgr.v1.DnsZoneService.GetZone:input_type -> rpmgr.v1.GetZoneRequest
+	24, // 52: rpmgr.v1.DnsZoneService.ListZones:input_type -> rpmgr.v1.ListZonesRequest
+	26, // 53: rpmgr.v1.DnsZoneService.UpdateZone:input_type -> rpmgr.v1.UpdateZoneRequest
+	28, // 54: rpmgr.v1.DnsZoneService.RemoveZone:input_type -> rpmgr.v1.RemoveZoneRequest
+	33, // 55: rpmgr.v1.DnsZoneService.PlanZoneSync:input_type -> rpmgr.v1.PlanZoneSyncRequest
+	39, // 56: rpmgr.v1.DnsZoneService.SyncZone:input_type -> rpmgr.v1.SyncZoneRequest
+	42, // 57: rpmgr.v1.DnsZoneService.ListZoneRecords:input_type -> rpmgr.v1.ListZoneRecordsRequest
+	44, // 58: rpmgr.v1.DnsZoneService.AdoptRecords:input_type -> rpmgr.v1.AdoptRecordsRequest
+	46, // 59: rpmgr.v1.DnsZoneService.ReleaseRecord:input_type -> rpmgr.v1.ReleaseRecordRequest
+	35, // 60: rpmgr.v1.DnsZoneService.EnableZone:input_type -> rpmgr.v1.EnableZoneRequest
+	37, // 61: rpmgr.v1.DnsZoneService.ApproveZonePlan:input_type -> rpmgr.v1.ApproveZonePlanRequest
+	49, // 62: rpmgr.v1.DnsNameService.CreateDnsName:input_type -> rpmgr.v1.CreateDnsNameRequest
+	51, // 63: rpmgr.v1.DnsNameService.GetDnsName:input_type -> rpmgr.v1.GetDnsNameRequest
+	53, // 64: rpmgr.v1.DnsNameService.ListDnsNames:input_type -> rpmgr.v1.ListDnsNamesRequest
+	55, // 65: rpmgr.v1.DnsNameService.UpdateDnsName:input_type -> rpmgr.v1.UpdateDnsNameRequest
+	57, // 66: rpmgr.v1.DnsNameService.DeleteDnsName:input_type -> rpmgr.v1.DeleteDnsNameRequest
+	8,  // 67: rpmgr.v1.DnsProviderService.ConnectDnsProvider:output_type -> rpmgr.v1.ConnectDnsProviderResponse
+	10, // 68: rpmgr.v1.DnsProviderService.GetDnsProvider:output_type -> rpmgr.v1.GetDnsProviderResponse
+	12, // 69: rpmgr.v1.DnsProviderService.ListDnsProviders:output_type -> rpmgr.v1.ListDnsProvidersResponse
+	14, // 70: rpmgr.v1.DnsProviderService.UpdateDnsProvider:output_type -> rpmgr.v1.UpdateDnsProviderResponse
+	16, // 71: rpmgr.v1.DnsProviderService.DeleteDnsProvider:output_type -> rpmgr.v1.DeleteDnsProviderResponse
+	18, // 72: rpmgr.v1.DnsProviderService.ListProviderZones:output_type -> rpmgr.v1.ListProviderZonesResponse
+	21, // 73: rpmgr.v1.DnsZoneService.ImportZone:output_type -> rpmgr.v1.ImportZoneResponse
+	23, // 74: rpmgr.v1.DnsZoneService.GetZone:output_type -> rpmgr.v1.GetZoneResponse
+	25, // 75: rpmgr.v1.DnsZoneService.ListZones:output_type -> rpmgr.v1.ListZonesResponse
+	27, // 76: rpmgr.v1.DnsZoneService.UpdateZone:output_type -> rpmgr.v1.UpdateZoneResponse
+	29, // 77: rpmgr.v1.DnsZoneService.RemoveZone:output_type -> rpmgr.v1.RemoveZoneResponse
+	34, // 78: rpmgr.v1.DnsZoneService.PlanZoneSync:output_type -> rpmgr.v1.PlanZoneSyncResponse
+	40, // 79: rpmgr.v1.DnsZoneService.SyncZone:output_type -> rpmgr.v1.SyncZoneResponse
+	43, // 80: rpmgr.v1.DnsZoneService.ListZoneRecords:output_type -> rpmgr.v1.ListZoneRecordsResponse
+	45, // 81: rpmgr.v1.DnsZoneService.AdoptRecords:output_type -> rpmgr.v1.AdoptRecordsResponse
+	47, // 82: rpmgr.v1.DnsZoneService.ReleaseRecord:output_type -> rpmgr.v1.ReleaseRecordResponse
+	36, // 83: rpmgr.v1.DnsZoneService.EnableZone:output_type -> rpmgr.v1.EnableZoneResponse
+	38, // 84: rpmgr.v1.DnsZoneService.ApproveZonePlan:output_type -> rpmgr.v1.ApproveZonePlanResponse
+	50, // 85: rpmgr.v1.DnsNameService.CreateDnsName:output_type -> rpmgr.v1.CreateDnsNameResponse
+	52, // 86: rpmgr.v1.DnsNameService.GetDnsName:output_type -> rpmgr.v1.GetDnsNameResponse
+	54, // 87: rpmgr.v1.DnsNameService.ListDnsNames:output_type -> rpmgr.v1.ListDnsNamesResponse
+	56, // 88: rpmgr.v1.DnsNameService.UpdateDnsName:output_type -> rpmgr.v1.UpdateDnsNameResponse
+	58, // 89: rpmgr.v1.DnsNameService.DeleteDnsName:output_type -> rpmgr.v1.DeleteDnsNameResponse
+	67, // [67:90] is the sub-list for method output_type
+	44, // [44:67] is the sub-list for method input_type
+	44, // [44:44] is the sub-list for extension type_name
+	44, // [44:44] is the sub-list for extension extendee
+	0,  // [0:44] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_dns_proto_init() }
@@ -3921,7 +4034,7 @@ func file_rpmgr_v1_dns_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_dns_proto_rawDesc), len(file_rpmgr_v1_dns_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   53,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

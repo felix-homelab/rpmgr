@@ -50,6 +50,8 @@ type DNSZone struct {
 	DefaultTTL int `json:"default_ttl,omitempty"`
 	// LastSyncedAt holds the value of the "last_synced_at" field.
 	LastSyncedAt *time.Time `json:"last_synced_at,omitempty"`
+	// RemovalRequested holds the value of the "removal_requested" field.
+	RemovalRequested bool `json:"removal_requested,omitempty"`
 	// SyncRequestedAt holds the value of the "sync_requested_at" field.
 	SyncRequestedAt *time.Time `json:"sync_requested_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -87,7 +89,7 @@ func (*DNSZone) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case dnszone.FieldPendingPlan:
 			values[i] = new([]byte)
-		case dnszone.FieldPublishRouteHostnames, dnszone.FieldAllowProxied, dnszone.FieldAllowWildcards:
+		case dnszone.FieldPublishRouteHostnames, dnszone.FieldAllowProxied, dnszone.FieldAllowWildcards, dnszone.FieldRemovalRequested:
 			values[i] = new(sql.NullBool)
 		case dnszone.FieldVersion, dnszone.FieldDeleteThreshold, dnszone.FieldDefaultTTL:
 			values[i] = new(sql.NullInt64)
@@ -213,6 +215,12 @@ func (_m *DNSZone) assignValues(columns []string, values []any) error {
 				_m.LastSyncedAt = new(time.Time)
 				*_m.LastSyncedAt = value.Time
 			}
+		case dnszone.FieldRemovalRequested:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field removal_requested", values[i])
+			} else if value.Valid {
+				_m.RemovalRequested = value.Bool
+			}
 		case dnszone.FieldSyncRequestedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field sync_requested_at", values[i])
@@ -316,6 +324,9 @@ func (_m *DNSZone) String() string {
 		builder.WriteString("last_synced_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("removal_requested=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RemovalRequested))
 	builder.WriteString(", ")
 	if v := _m.SyncRequestedAt; v != nil {
 		builder.WriteString("sync_requested_at=")

@@ -67,7 +67,7 @@ func apiCommands() []*cli.Command {
 	out := []*cli.Command{getCommand(), listCommand(), deleteCommand(), auditCommands()}
 	for _, v := range []struct{ verb, summary string }{
 		{"create", "create a resource of the public API"}, {"update", "change a resource of the public API"},
-		{"enable", "serve a resource again"}, {"disable", "stop serving a resource, keeping its configuration"},
+		{"enable", "serve a resource again, or move a disabled DNS zone to held"}, {"disable", "stop serving a resource, keeping its configuration"},
 		{"drain", "stop a gateway taking new connections"}, {"decommission", "take an agent out of service for good"},
 		{"revoke", "revoke a credential"}, {"set", "set an org's limit"}, {"preview", "show what a change would do, saving nothing"},
 		{"verify", "check a proof now"}, {"check", "check for new releases now"}, {"trust", "trust something without a proof"}, {"upload", "upload a file to the controller"},

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -20,7 +19,6 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/dns"
 	"github.com/felix-homelab/rpmgr/internal/dns/apply"
-	"github.com/felix-homelab/rpmgr/internal/dns/cloudflare"
 	"github.com/felix-homelab/rpmgr/internal/dns/job"
 	"github.com/felix-homelab/rpmgr/internal/dns/plan"
 	"github.com/felix-homelab/rpmgr/internal/domains"
@@ -43,8 +41,9 @@ const (
 // The reasons of the refusals of a plan's approval (docs/07-api.md, "Errors"): the plan has
 // another hash now, or the zone is not held.
 const (
-	ReasonPlanChanged = "PLAN_CHANGED"
-	ReasonZoneNotHeld = "ZONE_NOT_HELD"
+	ReasonPlanChanged     = "PLAN_CHANGED"
+	ReasonZoneNotHeld     = "ZONE_NOT_HELD"
+	ReasonZoneNotDisabled = "ZONE_NOT_DISABLED"
 )
 
 // HeldImported is the held_reason of a zone that was imported and has no approved plan yet.
@@ -85,7 +84,7 @@ func zoneOf(r *ent.DNSZone) *rpmgrv1.DnsZone {
 	z := &rpmgrv1.DnsZone{Id: r.ID, Name: r.Name, DnsProviderId: r.DNSProviderID, ProviderZoneId: r.ProviderZoneID,
 		HeldReason: r.HeldReason, PublishRouteHostnames: r.PublishRouteHostnames, AllowProxied: r.AllowProxied,
 		AllowWildcards: r.AllowWildcards, DeleteThreshold: int32(r.DeleteThreshold), DefaultTtl: int32(r.DefaultTTL), //nolint:gosec // G115: bounded on write
-		Etag: etagOf(r.Version), PendingPlanHash: r.PendingPlanHash}
+		Etag: etagOf(r.Version), PendingPlanHash: r.PendingPlanHash, RemovalPending: r.RemovalRequested}
 	switch r.SyncState {
 	case dnszone.SyncStateActive:
 		z.SyncState = rpmgrv1.ZoneSyncState_ZONE_SYNC_STATE_ACTIVE
@@ -314,7 +313,6 @@ func (z *DnsZones) RemoveZone(ctx context.Context, req *connect.Request[rpmgrv1.
 	if m.GetDeleteRecords() != (m.GetPlanHash() != "") {
 		return nil, invalid(errors.New("apisvc: delete_records and plan_hash go together"))
 	}
-	check := true
 	if m.GetDeleteRecords() {
 		if err := api.RequireStepUp(ctx, z.now()); err != nil {
 			return nil, err
@@ -326,20 +324,18 @@ func (z *DnsZones) RemoveZone(ctx context.Context, req *connect.Request[rpmgrv1.
 		if err := api.CheckEtag(m.GetEtag(), cur.Version, zoneOf(cur)); err != nil {
 			return nil, err
 		}
-		if err := z.deleteRecords(ctx, cur, m.GetPlanHash()); err != nil {
+		if err := z.requestRemoval(ctx, cur, m.GetPlanHash()); err != nil {
 			return nil, err
 		}
-		check = false // the zone changed on the way: it was disabled
+		return connect.NewResponse(&rpmgrv1.RemoveZoneResponse{}), nil
 	}
 	_, err := store.ConfigTx(ctx, z.DB, func(tx *ent.Tx) ([]string, error) {
 		cur, err := tx.DNSZone.Get(ctx, m.GetDnsZoneId())
 		if err != nil {
 			return nil, err
 		}
-		if check {
-			if err := api.CheckEtag(m.GetEtag(), cur.Version, zoneOf(cur)); err != nil {
-				return nil, err
-			}
+		if err := api.CheckEtag(m.GetEtag(), cur.Version, zoneOf(cur)); err != nil {
+			return nil, err
 		}
 		// The ledger rows and name statuses go with the zone (docs/15-dns.md, "Connecting,
 		// importing and disconnecting").
@@ -357,10 +353,11 @@ func (z *DnsZones) RemoveZone(ctx context.Context, req *connect.Request[rpmgrv1.
 	return connect.NewResponse(&rpmgrv1.RemoveZoneResponse{}), nil
 }
 
-// deleteRecords deletes the records rpmgr owns in a zone at the provider, if the removal plan has
-// the hash the caller read. The zone is disabled first, so that the DNS job does not write the
-// records again, and stays disabled if the provider fails on the way.
-func (z *DnsZones) deleteRecords(ctx context.Context, cur *ent.DNSZone, hash string) error {
+// requestRemoval records the approved removal of a zone with its records, if the removal plan has
+// the hash the caller read. The zone is disabled at once, so that the DNS job does not write its
+// records again, and the job, under its lease, deletes the records of this plan and then the zone:
+// the API call writes nothing to the provider.
+func (z *DnsZones) requestRemoval(ctx context.Context, cur *ent.DNSZone, hash string) error {
 	_, in, err := z.inspectZone(ctx, cur.ID)
 	if err != nil {
 		return err
@@ -369,28 +366,16 @@ func (z *DnsZones) deleteRecords(ctx context.Context, cur *ent.DNSZone, hash str
 		return withReason(connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("apisvc: the removal plan changed since it was shown; read it again")), ReasonPlanChanged)
 	}
-	api.AuditReason(ctx, fmt.Sprintf("delete %d records of dns zone %s at the provider", len(in.Removal.Deletes), cur.ID)) // before the transaction, which appends the entry
+	stored, err := json.Marshal(in.Removal)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, err)
+	}
+	api.AuditReason(ctx, fmt.Sprintf("remove dns zone %s and delete %d records at the provider, plan %s", cur.ID, len(in.Removal.Deletes), hash))
 	_, err = store.ConfigTx(ctx, z.DB, func(tx *ent.Tx) ([]string, error) {
 		return []string{cur.ID}, tx.DNSZone.UpdateOneID(cur.ID).SetSyncState(dnszone.SyncStateDisabled).SetHeldReason("").
-			ClearPendingPlan().SetPendingPlanHash("").Exec(ctx)
+			SetRemovalRequested(true).SetPendingPlan(stored).SetPendingPlanHash(hash).SetSyncRequestedAt(z.now().UTC()).Exec(ctx)
 	})
-	if err != nil {
-		return storeError(err)
-	}
-	p, err := z.providerOf(ctx, cur)
-	if err != nil {
-		return err
-	}
-	var ids []string
-	for _, r := range in.Removal.Deletes {
-		ids = append(ids, r.ID)
-	}
-	for chunk := range slices.Chunk(ids, cloudflare.MaxBatchOps) {
-		if err := p.Apply(ctx, cur.ProviderZoneID, dns.Batch{Deletes: chunk}); err != nil {
-			return providerError(err)
-		}
-	}
-	return nil
+	return storeError(err)
 }
 
 // providerOf makes the client of a zone's provider account, taking its requests from the
@@ -506,4 +491,27 @@ func (z *DnsZones) ApproveZonePlan(ctx context.Context, req *connect.Request[rpm
 	}
 	api.AuditReason(ctx, "approved plan "+pl.Hash)
 	return connect.NewResponse(&rpmgrv1.ApproveZonePlanResponse{DnsZone: zoneOf(row)}), nil
+}
+
+// EnableZone implements DnsZoneService: a disabled zone becomes held. Nothing is written to the
+// provider; the zone needs an approved plan like any held zone.
+func (z *DnsZones) EnableZone(ctx context.Context, req *connect.Request[rpmgrv1.EnableZoneRequest]) (
+	*connect.Response[rpmgrv1.EnableZoneResponse], error) {
+	var row *ent.DNSZone
+	_, err := store.ConfigTx(ctx, z.DB, func(tx *ent.Tx) ([]string, error) {
+		cur, err := tx.DNSZone.Get(ctx, req.Msg.GetDnsZoneId())
+		if err != nil {
+			return nil, err
+		}
+		if cur.SyncState != dnszone.SyncStateDisabled {
+			return nil, withReason(connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: the zone is not disabled")), ReasonZoneNotDisabled)
+		}
+		row, err = tx.DNSZone.UpdateOneID(cur.ID).SetSyncState(dnszone.SyncStateHeld).SetHeldReason(apply.HeldEnabled).
+			ClearPendingPlan().SetPendingPlanHash("").Save(ctx)
+		return []string{cur.ID}, err
+	})
+	if err != nil {
+		return nil, storeError(err)
+	}
+	return connect.NewResponse(&rpmgrv1.EnableZoneResponse{DnsZone: zoneOf(row)}), nil
 }

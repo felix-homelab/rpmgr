@@ -17,6 +17,8 @@ const (
 	HeldImported = "imported"
 	// HeldRestored: a restore of a backup held every zone.
 	HeldRestored = "restored"
+	// HeldEnabled: a disabled zone was enabled and needs an approved plan.
+	HeldEnabled = "enabled"
 	// HeldDeletionGuard: a pass would have removed more names than the zone's delete_threshold.
 	HeldDeletionGuard = "deletion_guard"
 	// HeldPlanChanged: the plan that was approved is not the one the pass computed.
