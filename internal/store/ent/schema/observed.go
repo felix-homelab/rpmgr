@@ -181,6 +181,9 @@ func (DataSession) Fields() []ent.Field {
 		field.String("connector_id").NotEmpty().Immutable(),
 		field.Enum("transport").Values("quic", "h2", "wss").Immutable(),
 		field.Int64("rtt_ms").NonNegative().Default(0),
+		// ready_routes are the routes the connector reports ready on its sessions of this transport
+		// to the gateway; unset where the gateway does not report them.
+		field.JSON("ready_routes", []string{}).Optional(),
 		field.Time("established_at").Immutable(),
 		field.Time("reported_at"),
 	}

@@ -17142,21 +17142,23 @@ func (m *ConnectorMutation) ResetEdge(name string) error {
 // DataSessionMutation represents an operation that mutates the DataSession nodes in the graph.
 type DataSessionMutation struct {
 	config
-	op             Op
-	typ            string
-	id             *string
-	org_id         *string
-	gateway_id     *string
-	connector_id   *string
-	transport      *datasession.Transport
-	rtt_ms         *int64
-	addrtt_ms      *int64
-	established_at *time.Time
-	reported_at    *time.Time
-	clearedFields  map[string]struct{}
-	done           bool
-	oldValue       func(context.Context) (*DataSession, error)
-	predicates     []predicate.DataSession
+	op                 Op
+	typ                string
+	id                 *string
+	org_id             *string
+	gateway_id         *string
+	connector_id       *string
+	transport          *datasession.Transport
+	rtt_ms             *int64
+	addrtt_ms          *int64
+	ready_routes       *[]string
+	appendready_routes []string
+	established_at     *time.Time
+	reported_at        *time.Time
+	clearedFields      map[string]struct{}
+	done               bool
+	oldValue           func(context.Context) (*DataSession, error)
+	predicates         []predicate.DataSession
 }
 
 var _ ent.Mutation = (*DataSessionMutation)(nil)
@@ -17463,6 +17465,71 @@ func (m *DataSessionMutation) ResetRttMs() {
 	m.addrtt_ms = nil
 }
 
+// SetReadyRoutes sets the "ready_routes" field.
+func (m *DataSessionMutation) SetReadyRoutes(s []string) {
+	m.ready_routes = &s
+	m.appendready_routes = nil
+}
+
+// ReadyRoutes returns the value of the "ready_routes" field in the mutation.
+func (m *DataSessionMutation) ReadyRoutes() (r []string, exists bool) {
+	v := m.ready_routes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReadyRoutes returns the old "ready_routes" field's value of the DataSession entity.
+// If the DataSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DataSessionMutation) OldReadyRoutes(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReadyRoutes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReadyRoutes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReadyRoutes: %w", err)
+	}
+	return oldValue.ReadyRoutes, nil
+}
+
+// AppendReadyRoutes adds s to the "ready_routes" field.
+func (m *DataSessionMutation) AppendReadyRoutes(s []string) {
+	m.appendready_routes = append(m.appendready_routes, s...)
+}
+
+// AppendedReadyRoutes returns the list of values that were appended to the "ready_routes" field in this mutation.
+func (m *DataSessionMutation) AppendedReadyRoutes() ([]string, bool) {
+	if len(m.appendready_routes) == 0 {
+		return nil, false
+	}
+	return m.appendready_routes, true
+}
+
+// ClearReadyRoutes clears the value of the "ready_routes" field.
+func (m *DataSessionMutation) ClearReadyRoutes() {
+	m.ready_routes = nil
+	m.appendready_routes = nil
+	m.clearedFields[datasession.FieldReadyRoutes] = struct{}{}
+}
+
+// ReadyRoutesCleared returns if the "ready_routes" field was cleared in this mutation.
+func (m *DataSessionMutation) ReadyRoutesCleared() bool {
+	_, ok := m.clearedFields[datasession.FieldReadyRoutes]
+	return ok
+}
+
+// ResetReadyRoutes resets all changes to the "ready_routes" field.
+func (m *DataSessionMutation) ResetReadyRoutes() {
+	m.ready_routes = nil
+	m.appendready_routes = nil
+	delete(m.clearedFields, datasession.FieldReadyRoutes)
+}
+
 // SetEstablishedAt sets the "established_at" field.
 func (m *DataSessionMutation) SetEstablishedAt(t time.Time) {
 	m.established_at = &t
@@ -17569,7 +17636,7 @@ func (m *DataSessionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DataSessionMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.org_id != nil {
 		fields = append(fields, datasession.FieldOrgID)
 	}
@@ -17584,6 +17651,9 @@ func (m *DataSessionMutation) Fields() []string {
 	}
 	if m.rtt_ms != nil {
 		fields = append(fields, datasession.FieldRttMs)
+	}
+	if m.ready_routes != nil {
+		fields = append(fields, datasession.FieldReadyRoutes)
 	}
 	if m.established_at != nil {
 		fields = append(fields, datasession.FieldEstablishedAt)
@@ -17609,6 +17679,8 @@ func (m *DataSessionMutation) Field(name string) (ent.Value, bool) {
 		return m.Transport()
 	case datasession.FieldRttMs:
 		return m.RttMs()
+	case datasession.FieldReadyRoutes:
+		return m.ReadyRoutes()
 	case datasession.FieldEstablishedAt:
 		return m.EstablishedAt()
 	case datasession.FieldReportedAt:
@@ -17632,6 +17704,8 @@ func (m *DataSessionMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldTransport(ctx)
 	case datasession.FieldRttMs:
 		return m.OldRttMs(ctx)
+	case datasession.FieldReadyRoutes:
+		return m.OldReadyRoutes(ctx)
 	case datasession.FieldEstablishedAt:
 		return m.OldEstablishedAt(ctx)
 	case datasession.FieldReportedAt:
@@ -17679,6 +17753,13 @@ func (m *DataSessionMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRttMs(v)
+		return nil
+	case datasession.FieldReadyRoutes:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReadyRoutes(v)
 		return nil
 	case datasession.FieldEstablishedAt:
 		v, ok := value.(time.Time)
@@ -17738,7 +17819,11 @@ func (m *DataSessionMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *DataSessionMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(datasession.FieldReadyRoutes) {
+		fields = append(fields, datasession.FieldReadyRoutes)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -17751,6 +17836,11 @@ func (m *DataSessionMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *DataSessionMutation) ClearField(name string) error {
+	switch name {
+	case datasession.FieldReadyRoutes:
+		m.ClearReadyRoutes()
+		return nil
+	}
 	return fmt.Errorf("unknown DataSession nullable field %s", name)
 }
 
@@ -17772,6 +17862,9 @@ func (m *DataSessionMutation) ResetField(name string) error {
 		return nil
 	case datasession.FieldRttMs:
 		m.ResetRttMs()
+		return nil
+	case datasession.FieldReadyRoutes:
+		m.ResetReadyRoutes()
 		return nil
 	case datasession.FieldEstablishedAt:
 		m.ResetEstablishedAt()

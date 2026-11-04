@@ -246,6 +246,35 @@ func TestDataSessions(t *testing.T) {
 				t.Fatalf("%s is kept", k)
 			}
 		}
+		// The routes ready on a session are kept when the gateway reports them, empty and clipped; a
+		// gateway of an earlier release reports none, which leaves them unset: unknown.
+		withRoutes := ds("con_a", quic, 30*time.Millisecond)
+		withRoutes.ReadyRoutesKnown, withRoutes.ReadyRoutes = true, []string{"rte_1", "rte_2"}
+		empty := ds("con_a", h2, 0)
+		empty.ReadyRoutesKnown = true
+		report(gst, withRoutes, empty)
+		got = waitFor("the report with ready routes", func(m map[string]*ent.DataSession) bool {
+			return len(m) == 2 && m[gw.ID+"/con_a/quic"].ReadyRoutes != nil
+		})
+		if r := got[gw.ID+"/con_a/h2"].ReadyRoutes; r == nil || len(r) != 0 || !slices.Equal(got[gw.ID+"/con_a/quic"].ReadyRoutes, []string{"rte_1", "rte_2"}) {
+			t.Fatalf("ready routes: %v, %v", got[gw.ID+"/con_a/quic"].ReadyRoutes, r)
+		}
+		many := ds("con_a", quic, 30*time.Millisecond)
+		many.ReadyRoutesKnown = true
+		for i := range 5000 {
+			many.ReadyRoutes = append(many.ReadyRoutes, fmt.Sprintf("rte_%d", i))
+		}
+		report(gst, many, ds("con_a", h2, 0))
+		got = waitFor("the report with more ready routes than it keeps", func(m map[string]*ent.DataSession) bool {
+			return len(m) == 2 && len(m[gw.ID+"/con_a/quic"].ReadyRoutes) > 2
+		})
+		if n := len(got[gw.ID+"/con_a/quic"].ReadyRoutes); n != 4096 || got[gw.ID+"/con_a/h2"].ReadyRoutes != nil {
+			t.Fatalf("%d ready routes kept, the unreporting session's: %v", n, got[gw.ID+"/con_a/h2"].ReadyRoutes)
+		}
+		report(gst, ds("con_a", quic, 30*time.Millisecond), ds("con_a", h2, 0))
+		waitFor("a report without ready routes", func(m map[string]*ent.DataSession) bool {
+			return len(m) == 2 && m[gw.ID+"/con_a/quic"].ReadyRoutes == nil
+		})
 		// A Status with only the update state lists no data sessions and removes none: the next
 		// report finds the sessions as they were.
 		send(t, gst, &agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{

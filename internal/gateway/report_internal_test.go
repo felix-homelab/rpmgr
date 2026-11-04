@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -56,6 +57,37 @@ func TestReport(t *testing.T) {
 			w.rtt == 0 && got[i].GetRtt() != nil {
 			t.Errorf("entry %d: %v, want %+v", i, got[i], w)
 		}
+	}
+}
+
+// TestReport_ReadyRoutes: a connector on auto with a QUIC and an HTTP/2 session reports each
+// route on the transport of the sessions that have it ready; a route not ready is left out, and
+// every entry says it names the routes.
+func TestReport_ReadyRoutes(t *testing.T) {
+	m := NewSessions(SessionsOptions{})
+	for _, d := range []*dataSession{
+		{connector: "con_a", s: fakeSession{transport: "quic"}, ready: map[string]bool{"rte_1": true, "rte_3": false}},
+		{connector: "con_a", s: fakeSession{transport: "quic"}, ready: map[string]bool{"rte_4": true}},
+		{connector: "con_a", s: fakeSession{transport: "h2"}, ready: map[string]bool{"rte_2": true}},
+		{connector: "con_b", s: fakeSession{transport: "wss"}},
+	} {
+		if err := m.add(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := map[string][]string{"con_a/1": {"rte_1", "rte_4"}, "con_a/2": {"rte_2"}, "con_b/3": nil}
+	for _, d := range m.Report() {
+		if !d.GetReadyRoutesKnown() {
+			t.Errorf("%v does not say it names the routes", d)
+		}
+		k := d.GetConnectorId() + "/" + string(rune('0'+int(d.GetTransport())))
+		if got := d.GetReadyRoutes(); !slices.Equal(got, want[k]) {
+			t.Errorf("%s: routes %v, want %v", k, got, want[k])
+		}
+		delete(want, k)
+	}
+	if len(want) != 0 {
+		t.Errorf("not reported: %v", want)
 	}
 }
 

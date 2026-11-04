@@ -349,6 +349,16 @@ func RttMsLTE(v int64) predicate.DataSession {
 	return predicate.DataSession(sql.FieldLTE(FieldRttMs, v))
 }
 
+// ReadyRoutesIsNil applies the IsNil predicate on the "ready_routes" field.
+func ReadyRoutesIsNil() predicate.DataSession {
+	return predicate.DataSession(sql.FieldIsNull(FieldReadyRoutes))
+}
+
+// ReadyRoutesNotNil applies the NotNil predicate on the "ready_routes" field.
+func ReadyRoutesNotNil() predicate.DataSession {
+	return predicate.DataSession(sql.FieldNotNull(FieldReadyRoutes))
+}
+
 // EstablishedAtEQ applies the EQ predicate on the "established_at" field.
 func EstablishedAtEQ(v time.Time) predicate.DataSession {
 	return predicate.DataSession(sql.FieldEQ(FieldEstablishedAt, v))

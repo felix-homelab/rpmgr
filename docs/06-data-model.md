@@ -246,7 +246,7 @@ flowchart LR
 | `agent_sessions` | agent_id, session_epoch, controller_node, remote_addr, agent_version, capabilities, connected_at, last_seen_at, disconnected_at, last_goodbye (one row per agent; each new session raises `session_epoch` in the statement that records it, so two replicas never hand out the same epoch; the end of a session that no newer one replaced sets `disconnected_at`, and how `last_seen_at` is kept is in [03](03-connections.md#timeouts-keepalive-and-backoff); `last_goodbye` is the reason of the `Goodbye` that last refused the agent a session, `upgrade_required` below `min_agent_version`, recorded with the version it came with, and empty again once a session is accepted) |
 | `agent_state` | agent_id, boot_id, clock_offset_ms; the snapshot applied last (applied_db_epoch, applied_seq, applied_hash, last_ack_at), sent last (pushed_db_epoch, pushed_seq, pushed_hash, pushed_at) and rejected last (rejected_db_epoch, rejected_seq, rejected_hash, last_rejection: the structured errors). The apply status is derived from it ([03](03-connections.md#configuration-reconciliation)) |
 | `resource_status` | agent_id, resource_id, reason, detail, since: one row per resource an agent reports not ready, so a resource without one is ready or not reported yet; a connector's rows also name the targets its health checks find unhealthy. The limits are in [03](03-connections.md#configuration-reconciliation) |
-| `data_sessions` | gateway_id, connector_id, transport (`quic`, `h2`, `wss`), rtt_ms (0 where the transport does not measure it), established_at (first reported), reported_at: one row per gateway, connector and transport, replaced by each report of the gateway ([03](03-connections.md#configuration-reconciliation)) |
+| `data_sessions` | gateway_id, connector_id, transport (`quic`, `h2`, `wss`), rtt_ms (0 where the transport does not measure it), ready_routes (the routes the connector reports ready on its sessions of this transport; unset where the gateway does not report them, an earlier release), established_at (first reported), reported_at: one row per gateway, connector and transport, replaced by each report of the gateway ([03](03-connections.md#configuration-reconciliation)) |
 | `route_traffic_hourly`, `route_traffic_daily` | org_id, route_id, bucket, bytes_in, bytes_out, connections, errors | One row per route and hour or day; `bucket` is its start in UTC. No foreign key to the route: retention removes a deleted route's rows |
 | `traffic_baselines` | org_id, gateway_id, route_id, boot_id, bytes_in, bytes_out, connections, errors, reported_at | A gateway's last reported route counters, which the next report's increase is taken over |
 | `dns_name_status` | dns_zone_id, org_id, name, status, reason, since |
@@ -264,6 +264,10 @@ flowchart LR
 | `maintenance` | Enabled and applied, an `http` route in maintenance that an online gateway of its group reports ready: that gateway answers with the maintenance page whatever the route's targets are, whose counts it still reports. Without such a gateway the other rules decide, as `unavailable` when none serves it; `pending` and `error` come first ([D88](14-open-decisions.md#engineering)) |
 
 The terms of the table:
+
+- **Transport per target:** the status also tells, for each enabled target, the transport of the
+  data sessions that have the route ready, per online gateway of the group, and the level that
+  pins it; it is not part of the state ([03](03-connections.md#transport-selection)).
 
 - **Agents involved:** the enabled gateways of the route's group and the connectors of its enabled
   targets, if they have a live control session. Offline agents get the revision when they connect,

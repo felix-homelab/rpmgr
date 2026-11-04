@@ -117,7 +117,13 @@ func apiEnv(t *testing.T, token string) (*fakeAPI, map[string]string) {
 	t.Helper()
 	f := &fakeAPI{routes: map[string]*rpmgrv1.Route{
 		"rt_1": {Id: "rt_1", Name: "web", GatewayGroupId: "gwg_1", Enabled: true, Etag: "3",
-			Status: &rpmgrv1.RouteStatus{State: rpmgrv1.RouteState_ROUTE_STATE_READY}},
+			Status: &rpmgrv1.RouteStatus{State: rpmgrv1.RouteState_ROUTE_STATE_READY, TargetTransports: []*rpmgrv1.TargetTransport{
+				{TargetId: "rtt_1", Gateways: []*rpmgrv1.GatewayTransport{{GatewayId: "gw_1", Transport: rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC},
+					{GatewayId: "gw_2", Transport: rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC}}},
+				{TargetId: "rtt_2", Gateways: []*rpmgrv1.GatewayTransport{{GatewayId: "gw_1", Transport: rpmgrv1.DataTransport_DATA_TRANSPORT_H2},
+					{GatewayId: "gw_2", Transport: rpmgrv1.DataTransport_DATA_TRANSPORT_WSS}}},
+				{TargetId: "rtt_3", Gateways: []*rpmgrv1.GatewayTransport{{GatewayId: "gw_1"}}},
+				{TargetId: "rtt_4"}}}},
 		"rt_2": {Id: "rt_2", Name: "db", GatewayGroupId: "gwg_1", Etag: "1"},
 	}}
 	mux := http.NewServeMux()
@@ -144,6 +150,11 @@ func TestGetAndList(t *testing.T) {
 	if code != cli.ExitOK || !strings.Contains(out, "ID") || !strings.Contains(out, "rt_1") || !strings.Contains(out, "web") ||
 		!strings.Contains(out, "ROUTE_STATE_READY") {
 		t.Fatalf("get as a table: %d %q %q", code, out, errOut)
+	}
+	// The transport column counts targets per transport: one over QUIC on every gateway, one over
+	// HTTP/2 and WSS, one on a gateway that does not report it, and one that does not serve.
+	if !strings.Contains(out, "TRANSPORT") || !strings.Contains(out, "QUIC 1, HTTP/2 1, WSS 1, unknown 1") {
+		t.Fatalf("get shows no transports: %q", out)
 	}
 	code, out, _ = runWith(env, "", "get", "-o", "json", "route", "rt_1")
 	var got map[string]any
