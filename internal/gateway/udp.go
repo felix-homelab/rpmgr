@@ -48,7 +48,11 @@ type UDPOptions struct {
 	// OnChange is told that a route became ready without a new snapshot: its port was bound after
 	// all. It must not block; it may be nil.
 	OnChange func()
-	Logger   *slog.Logger
+	// Predecessor, if set, tells whether the old process of the hand-off that started this one
+	// still runs. It holds the sockets of the routes' ports, so a port that is in use then is
+	// served by it, not occupied by a stranger.
+	Predecessor func() bool
+	Logger      *slog.Logger
 }
 
 // UDPRoutes serves the gateway's udp routes (docs/03-connections.md, "UDP routes"): a flow is one
@@ -166,6 +170,13 @@ func (u *UDPRoutes) listen(port uint16) (*net.UDPConn, error) {
 // notBound records a route whose port could not be bound. Under u.mu.
 func (u *UDPRoutes) notBound(r UDPRoute, err error) {
 	u.pending[r.Port] = r
+	if errors.Is(err, syscall.EADDRINUSE) && u.o.Predecessor != nil && u.o.Predecessor() {
+		// The old process of a hand-off serves the port until it exits; the route is not reported,
+		// and Rebind decides once the old process is gone.
+		delete(u.status, r.ID)
+		u.o.Logger.Info("a route's udp port is served by the old process until it exits", "route", r.ID, "port", r.Port)
+		return
+	}
 	reason := agentv1.NotReadyReason_NOT_READY_REASON_ENVIRONMENT
 	if errors.Is(err, syscall.EADDRINUSE) {
 		reason = agentv1.NotReadyReason_NOT_READY_REASON_PORT_IN_USE
@@ -197,20 +208,25 @@ func (u *UDPRoutes) rebindLocked() {
 	if u.closed {
 		return
 	}
-	bound := false
+	changed := false // the status of a route changed
 	for _, port := range slices.Sorted(maps.Keys(u.pending)) {
 		r := u.pending[port]
 		conn, err := u.listen(port)
 		if err != nil {
+			if u.status[r.ID] == nil && (u.o.Predecessor == nil || !u.o.Predecessor()) {
+				// The old process of a hand-off is gone and the port is still held: now it is not ready.
+				u.notBound(r, err)
+				changed = true
+			}
 			continue
 		}
 		delete(u.pending, port)
 		delete(u.status, r.ID)
 		u.serve(conn, r)
 		u.o.Logger.Info("listening on a route's udp port after all", "route", r.ID, "port", port)
-		bound = true
+		changed = true
 	}
-	if bound && u.o.OnChange != nil {
+	if changed && u.o.OnChange != nil {
 		u.o.OnChange()
 	}
 	if len(u.pending) > 0 {

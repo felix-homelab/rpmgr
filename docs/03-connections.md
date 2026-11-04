@@ -1814,6 +1814,11 @@ sequenceDiagram
    allow connects again. Rate limits end no connection. Changes that come before the new process is
    ready are sent once it is. The new process waits the session wait for a new
    public connection of a route that has no session yet, for as long as the old process runs.
+   **UDP route ports.** The old process keeps the sockets of the `udp` and `tcp_udp` route ports and
+   serves their flows until it exits, so the new process cannot bind them. While the old process
+   runs, such a route is not reported as not ready: the old process serves it. When the old process
+   has exited, the new one binds the port; a port another process holds then makes the route
+   `not_ready(port_in_use)`, and the new process tries again at the route rebind interval.
    **Generation.** Every log line and every metric only the gateway registers carry the process's generation, 1 after
    a plain start and one more after each hand-off ([10](10-operations.md#metrics)); the old
    process keeps its own.
