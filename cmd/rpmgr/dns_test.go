@@ -49,6 +49,7 @@ type dnsAPI struct {
 	nameGone   *rpmgrv1.DeleteDnsNameRequest
 	calls      int
 	refuse     error // what a provider write answers, if set
+	zonePlans  zoneFake
 }
 
 func (a *dnsAPI) stepped() error {
@@ -153,8 +154,17 @@ func (a *dnsAPI) UpdateZone(_ context.Context, req *connect.Request[rpmgrv1.Upda
 }
 
 func (a *dnsAPI) RemoveZone(_ context.Context, req *connect.Request[rpmgrv1.RemoveZoneRequest]) (*connect.Response[rpmgrv1.RemoveZoneResponse], error) {
+	if req.Msg.GetDeleteRecords() {
+		if err := a.stepped(); err != nil {
+			return nil, err
+		}
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.zonePlans.calls = append(a.zonePlans.calls, "remove")
+	if a.zonePlans.removeErr != nil {
+		return nil, a.zonePlans.removeErr
+	}
 	a.removed = req.Msg
 	return connect.NewResponse(&rpmgrv1.RemoveZoneResponse{}), nil
 }
