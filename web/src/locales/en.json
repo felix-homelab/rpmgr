@@ -311,6 +311,7 @@
       "connector": "Connector",
       "address": "Address",
       "weight": "Weight",
+      "priority": "Priority",
       "health": "Health",
       "transport": "Transport",
       "state": "Status"

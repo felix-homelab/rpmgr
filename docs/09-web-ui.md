@@ -295,10 +295,10 @@ flowchart LR
 │ Desired: enabled · gateway group eu · eu.example.net:25432   Observed: ▲ unavailable   │
 │          TCP health check, every 10 s                                                  │
 ├ Targets & health ─────────────────────────────────────────────────────────────────────┤
-│ Connector   Address          Weight  Health       Transport  Status                     │
-│ db-host-1   10.0.0.5:5432    100     —            —          ▲ not_ready: blocked by    │
+│ Connector   Address          Weight Priority Health       Transport  Status             │
+│ db-host-1   10.0.0.5:5432    100    0        —            —          ▲ blocked: policy  │
 │             Run on db-host-1:  sudo rpmgr policy allow-target 10.0.0.5:5432   [Copy]    │
-│ db-host-2   10.0.0.6:5432    100     ▲ unhealthy  —          ▲ its health checks fail   │
+│ db-host-2   10.0.0.6:5432    100    0        ▲ unhealthy  —          ▲ checks fail      │
 │             Last check: dial tcp 10.0.0.6:5432: connect: connection refused             │
 ├ Apply status (revision 1040) ─────────────────────────────────────────────────────────┤
 │ gw-eu-1 ✓ applied    gw-eu-2 ✓ applied    db-host-1 ✓ applied (target not_ready)      │
@@ -318,8 +318,8 @@ flowchart LR
   gateways serve the route.
 - **The address** is the list's. A route on a port whose gateway group has no public hostname
   shows only its port, says so, and links to the group, where they are set.
-- **Each target** shows its connector by name, its address and weight, the transport its streams
-  take, and whether it serves; if not, it says why.
+- **Each target** shows its connector by name, its address, weight and priority, the transport its
+  streams take, and whether it serves; if not, it says why.
 - **Targets are added, edited and removed** on the page, in the targets card, one form at a time.
   - **The form:** the connector (fixed once the target exists), a host and port or a socket path,
     for HTTP routes the protocol to the target (HTTP, verified HTTPS with its server name, CA
