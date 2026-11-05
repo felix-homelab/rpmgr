@@ -1911,13 +1911,22 @@
     },
     "controllerButton": {
       "label": "Update controller to {{version}}",
+      "labelRetry": "Retry the update to {{version}}",
+      "refused": "The last attempt was refused: {{reason}}",
       "byHand": "Update this controller by hand once (install.sh --upgrade --restart); later updates can start here.",
       "why": {
         "notMirrored": "The mirror does not hold it yet.",
         "rollout": "A rollout runs; let it end first.",
         "underWay": "An update of the controller is under way.",
-        "blocked": "{{reason}}"
+        "blocked": "{{reason}}",
+        "hostChannel": "This host takes stable releases only; run `sudo rpmgr policy set-update-channel prerelease` on it."
       }
+    },
+    "hostPolicy": {
+      "stable": "This host: stable releases only. The release channel above is the instance's and does not change the host's policy file; run this on the host to take pre-releases:",
+      "prerelease": "This host: takes pre-releases too (update_channel in its policy file).",
+      "autoOff": "This host: auto_update is {{value}}, so its root updater refuses every update. To turn it on, run:",
+      "error": "This host's policy file cannot be trusted, so its root updater refuses every update ({{error}}). After fixing its owner and mode, run:"
     },
     "button": {
       "label": "Update to {{version}}",

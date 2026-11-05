@@ -511,6 +511,14 @@ message GetControllerUpdateResponse {
   // Whether the running release is older than the first that can update itself over the air, v0.3.0:
   // it is updated by hand once, and `blocked` says so.
   bool by_hand = 4;
+  // The host's own update_channel, stable or prerelease, and auto_update, auto, notify or off, from
+  // its local policy file, which the root updater obeys and the web UI never writes. Empty when the
+  // file cannot be trusted or read; `host_policy_error` says why then.
+  string host_update_channel = 5;
+  string host_auto_update = 6;
+  // Why the host's policy file could not be used, such as one that others may write; empty when it
+  // could.
+  string host_policy_error = 7;
 }
 
 // GetRolloutRequest names a rollout.

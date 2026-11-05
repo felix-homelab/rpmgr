@@ -132,14 +132,15 @@ describe("Updating", () => {
   });
 });
 
-function release(version: string, over: Partial<{ newerThanController: boolean; mirrored: boolean; controllerVersion: boolean }> = {}) {
-  return { id: `rel_${version}`, version, channel: UpdateChannel.STABLE, manifestSeq: 7n, source: ReleaseSource.CHECK, mirrored: over.mirrored ?? true,
+function release(version: string, over: Partial<{ newerThanController: boolean; mirrored: boolean; controllerVersion: boolean; channel: UpdateChannel }> = {}) {
+  return { id: `rel_${version}`, version, channel: over.channel ?? UpdateChannel.STABLE, manifestSeq: 7n, source: ReleaseSource.CHECK, mirrored: over.mirrored ?? true,
     createTime: { seconds: 1791590400n, nanos: 0 }, controllerVersion: over.controllerVersion ?? false, newerThanController: over.newerThanController ?? false };
 }
 
 // settings shows /settings/updates for the controller 1.5.0 with a release 1.6.0 and the state of
 // the update and of the rollouts as given.
-function settings(o: { byHand?: boolean; mirrored?: boolean; blocked?: string; running?: boolean; update?: ControllerUpdate; admin?: boolean; fails?: boolean } = {}) {
+function settings(o: { byHand?: boolean; mirrored?: boolean; blocked?: string; running?: boolean; update?: ControllerUpdate; admin?: boolean; fails?: boolean;
+  version?: string; channel?: UpdateChannel; hostChannel?: string; hostAuto?: string; hostError?: string } = {}) {
   const calls: UpdateControllerRequest[] = [];
   let steppedUp = false;
   const view = show("/settings/updates", auth({
@@ -152,11 +153,12 @@ function settings(o: { byHand?: boolean; mirrored?: boolean; blocked?: string; r
       getInstanceSettings: () => ({ settings: create(InstanceSettingsSchema, { releaseCheck: true, updateChannel: UpdateChannel.STABLE }), etag: "i1" }),
     });
     router.service(ReleaseService, {
-      listReleases: () => ({ releases: [release("1.6.0", { newerThanController: true, mirrored: o.mirrored ?? true }),
+      listReleases: () => ({ releases: [release(o.version ?? "1.6.0", { newerThanController: true, mirrored: o.mirrored ?? true, channel: o.channel }),
         release("1.5.0", { controllerVersion: true })], controllerVersion: "1.5.0" }),
       listRollouts: () => ({ rollouts: o.running ? [{ id: "rol_1", releaseId: "rel_1.5.0", version: "1.5.0", stage: 1, percentage: 0, state: 1, etag: "r1",
         counts: { pending: 1 } }] : [] }),
-      getControllerUpdate: () => ({ runningVersion: "1.5.0", blocked: o.blocked ?? "", update: o.update, byHand: o.byHand ?? false }),
+      getControllerUpdate: () => ({ runningVersion: "1.5.0", blocked: o.blocked ?? "", update: o.update, byHand: o.byHand ?? false,
+        hostUpdateChannel: o.hostChannel ?? "", hostAutoUpdate: o.hostAuto ?? "", hostPolicyError: o.hostError ?? "" }),
       updateController: (req) => {
         if (!steppedUp) throw apiError(Code.Unauthenticated, "STEP_UP_REQUIRED");
         if (o.fails) throw apiError(Code.FailedPrecondition, "CONTROLLER_UPDATE_REFUSED");
@@ -201,6 +203,62 @@ describe("the Update controller button", () => {
       expect(b.disabled).toBe(true);
     });
   }
+
+  it("is disabled for a pre-release on a host that takes stable releases only, and says which command changes that", async () => {
+    settings({ version: "1.7.0-rc.1", channel: UpdateChannel.PRERELEASE, hostChannel: "stable", hostAuto: "auto" });
+    const b = (await within(await screen.findByRole("region", { name: "Releases" })).findByRole("button", { name: "Update controller to 1.7.0-rc.1" })) as HTMLButtonElement;
+    await screen.findByText("This host takes stable releases only; run `sudo rpmgr policy set-update-channel prerelease` on it.");
+    expect(b.disabled).toBe(true);
+  });
+
+  it("is enabled for a stable release on a stable host, and for a pre-release on a host that takes them", async () => {
+    settings({ hostChannel: "stable", hostAuto: "auto" });
+    expect(((await button()) as HTMLButtonElement).disabled).toBe(false);
+    cleanup();
+    settings({ version: "1.7.0-rc.1", channel: UpdateChannel.PRERELEASE, hostChannel: "prerelease", hostAuto: "auto" });
+    const b = (await within(await screen.findByRole("region", { name: "Releases" })).findByRole("button", { name: "Update controller to 1.7.0-rc.1" })) as HTMLButtonElement;
+    expect(b.disabled).toBe(false);
+  });
+
+  it("shows the host's own channel next to the instance's, on the Update card and in the settings", async () => {
+    settings({ hostChannel: "stable", hostAuto: "auto" });
+    await waitFor(() => expect(screen.getAllByTestId("host-policy")).toHaveLength(2));
+    for (const n of screen.getAllByTestId("host-policy")) {
+      expect(n.textContent).toContain("This host: stable releases only.");
+      expect(n.textContent).toContain("sudo rpmgr policy set-update-channel prerelease");
+    }
+  });
+
+  it("says that a host with auto_update off, or a policy it cannot trust, refuses every update, and disables the button", async () => {
+    settings({ hostChannel: "stable", hostAuto: "off", blocked: "this host's policy sets auto_update: off, so the root updater refuses every update" });
+    const [note] = await screen.findAllByTestId("host-policy");
+    expect(note!.textContent).toContain("auto_update is off");
+    expect(note!.textContent).toContain("sudo rpmgr policy set-auto-update auto");
+    expect(((await button()) as HTMLButtonElement).disabled).toBe(true);
+    cleanup();
+    settings({ hostError: "mode 0666" });
+    const [bad] = await screen.findAllByTestId("host-policy");
+    expect(bad!.textContent).toContain("cannot be trusted");
+    expect(bad!.textContent).toContain("mode 0666");
+  });
+
+  it("shows no host policy when the controller has not read it", async () => {
+    settings();
+    await button();
+    expect(screen.queryByTestId("host-policy")).toBeNull();
+  });
+
+  it("offers to retry a refused update of the same release, with the reason, and stages it again", async () => {
+    const view = settings({ update: { ...update({ state: state.REFUSED, reason: "the host's policy sets auto_update: off" }), version: "1.6.0" } as ControllerUpdate });
+    const b = await within(await screen.findByRole("region", { name: "Releases" })).findByRole("button", { name: "Retry the update to 1.6.0" });
+    await screen.findByText("The last attempt was refused: the host's policy sets auto_update: off");
+    expect((b as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(b);
+    const dialog = within(await screen.findByRole("dialog", { name: "Confirm it is you" }));
+    fireEvent.change(dialog.getByLabelText("Password"), { target: { value: "pw" } });
+    fireEvent.click(dialog.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(view.calls.map((c) => c.releaseId)).toEqual(["rel_1.6.0"]));
+  });
 
   it("shows the by-hand text instead of the button for a controller that cannot update itself yet", async () => {
     settings({ byHand: true });

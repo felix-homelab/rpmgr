@@ -8,6 +8,7 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ControllerUpdateState, ReleaseService, type Release } from "@/gen/rpmgr/v1/release_pb";
+import { UpdateChannel } from "@/gen/rpmgr/v1/settings_pb";
 import { Reason, reasonOf } from "@/lib/errors";
 import { useStepUp } from "@/step-up";
 
@@ -30,10 +31,16 @@ export function UpdateControllerButton({ release, rollout }: { release: Release;
   if (status.data.byHand) return <span className="text-xs text-muted-foreground">{t("updates.controllerButton.byHand")}</span>;
   const current = status.data.update?.state;
   const blocked = status.data.blocked;
+  // The instance's channel and the host's policy are two settings: a pre-release needs both.
+  const prerelease = release.channel === UpdateChannel.PRERELEASE || release.version.includes("-");
   const why = blocked ? t("updates.controllerButton.why.blocked", { reason: blocked })
+    : prerelease && status.data.hostUpdateChannel === "stable" ? t("updates.controllerButton.why.hostChannel")
     : !release.mirrored ? t("updates.controllerButton.why.notMirrored")
       : rollout ? t("updates.controllerButton.why.rollout")
         : current === ControllerUpdateState.STAGED || current === ControllerUpdateState.UPDATING ? t("updates.controllerButton.why.underWay") : "";
+  // A refused update, or one that never started, stays on the host: pressing the button again for
+  // the same release stages it once more and the root updater runs again.
+  const retry = status.data.update?.state === ControllerUpdateState.REFUSED && status.data.update.version === release.version;
   async function go() {
     setSaid("");
     try {
@@ -49,8 +56,9 @@ export function UpdateControllerButton({ release, rollout }: { release: Release;
     <span className="inline-flex flex-wrap items-center justify-end gap-2">
       <Button size="sm" variant="outline" disabled={!!why || update.isPending} aria-describedby={why ? `${id}-why` : undefined}
         onClick={() => void go()}>
-        <ArrowUpCircle aria-hidden="true" />{t("updates.controllerButton.label", { version: release.version })}
+        <ArrowUpCircle aria-hidden="true" />{t(retry ? "updates.controllerButton.labelRetry" : "updates.controllerButton.label", { version: release.version })}
       </Button>
+      {!why && retry && <span className="text-xs text-muted-foreground">{t("updates.controllerButton.refused", { reason: status.data.update?.reason ?? "" })}</span>}
       {why && <span id={`${id}-why`} className="text-xs text-muted-foreground">{why}</span>}
       {said && <span role="alert" className="text-xs text-destructive">{said}</span>}
     </span>

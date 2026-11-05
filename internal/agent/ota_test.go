@@ -776,6 +776,34 @@ func TestStageRelease(t *testing.T) {
 			}
 		}
 	})
+	t.Run("staged again, the manifest is written once more so that the updater runs again", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "update")
+		if err := agent.StageRelease(context.Background(), opts(dir), filesSource(r.files), "0.2.0"); err != nil {
+			t.Fatal(err)
+		}
+		before, err := os.Stat(filepath.Join(dir, release.ManifestFile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := agent.StageRelease(context.Background(), opts(dir), filesSource(r.files), "0.2.0"); err != nil {
+			t.Fatal(err)
+		}
+		after, err := os.Stat(filepath.Join(dir, release.ManifestFile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if os.SameFile(before, after) {
+			t.Error("the manifest was not replaced, so the path unit would not fire")
+		}
+		for name, want := range r.files {
+			if got, err := os.ReadFile(filepath.Join(dir, name)); err != nil || !bytes.Equal(got, want) { //nolint:gosec // G304: under t.TempDir
+				t.Errorf("%s staged as %q, %v", name, got, err)
+			}
+		}
+		if left, _ := filepath.Glob(filepath.Join(dir, ".*.part")); len(left) > 0 {
+			t.Errorf("left %v", left)
+		}
+	})
 	t.Run("refused, and nothing staged", func(t *testing.T) {
 		bad := maps.Clone(r.files)
 		bad[release.ManifestSigFile] = otaRoot.Sign([]byte("another manifest"))

@@ -139,7 +139,11 @@ func prepareStaging(dir string) error {
 // readOwn reads one of the updater's own files, or the local policy: a regular file of at most
 // maxMeta bytes, opened without following a symbolic link, owned by the updater's user, root, and
 // writable by no one else. A missing file wraps fs.ErrNotExist.
-func readOwn(path string) ([]byte, error) {
+func readOwn(path string) ([]byte, error) { return readOwnedBy(path, os.Geteuid()) }
+
+// readOwnedBy is readOwn for a file that the user uid owns: the controller, which is no root,
+// reads the local policy as the root updater trusts it, owned by root.
+func readOwnedBy(path string, uid int) ([]byte, error) {
 	f, err := os.OpenFile(path, os.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0) //nolint:gosec // G304: the updater's own files
 	if err != nil {
 		if errors.Is(err, unix.ELOOP) {
@@ -155,8 +159,8 @@ func readOwn(path string) ([]byte, error) {
 	switch {
 	case st.Mode&unix.S_IFMT != unix.S_IFREG || st.Size > maxMeta:
 		return nil, fmt.Errorf("update: %s is no regular file of at most %d bytes", path, maxMeta)
-	case int(st.Uid) != os.Geteuid():
-		return nil, fmt.Errorf("update: %s is owned by user %d, not by the updater's", path, st.Uid)
+	case int(st.Uid) != uid:
+		return nil, fmt.Errorf("update: %s is owned by user %d, not by user %d, the updater's", path, st.Uid, uid)
 	case st.Mode&0o022 != 0:
 		return nil, fmt.Errorf("update: %s has mode %04o; only its owner may write it", path, st.Mode&0o7777)
 	}

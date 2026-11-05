@@ -111,6 +111,15 @@ Changes to the design documents are not recorded here: see the git history and t
 - A webhook audit sink whose receiver answers every delivery slowly no longer keeps the shipping to
   the other sinks waiting: its deliveries of one pass are bounded, and the rest follows in the next
   pass. (#1128)
+- The update of the controller from the web UI no longer says "the root updater did not start"
+  when the updater refused the release: the refusal and its reason (a pre-release on a host whose
+  `update_channel` is `stable`, `auto_update` off, a bad `install.json`, manifest or signature)
+  reach the page. The controller now reads the host's policy before it stages, refuses what the
+  host would refuse with the command that fixes it, and disables **Update controller** with that
+  reason; **Settings → Updates** shows the host's own channel and `auto_update` next to the
+  instance's **Release channel**, which does not change them. If no status appears, the message
+  names `journalctl -u rpmgr-update.service`. A refused update can be retried from the page:
+  **Retry the update** stages the release again, which makes the root updater run again. (#1135)
 
 ## [0.3.0] - 2026-11-04
 
