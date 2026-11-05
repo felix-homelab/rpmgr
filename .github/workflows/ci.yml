@@ -398,6 +398,9 @@ jobs:
       - name: The install script on every supported distribution
         if: ${{ !cancelled() }}
         run: .github/scripts/check-install.sh
+      - name: The previous release, whose root updater the OTA test runs
+        if: ${{ !cancelled() }}
+        run: git fetch --no-tags --depth=1 origin tag v0.3.0
       - name: The root updater on a real systemd host, with /var on a tmpfs
         if: ${{ !cancelled() }}
         run: .github/scripts/check-ota.sh
