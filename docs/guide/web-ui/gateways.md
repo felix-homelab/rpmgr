@@ -53,6 +53,8 @@ The **Gateways** card lists the group's gateways by slot:
 | **Last seen** | When the controller last heard from it |
 | **Actions** | The buttons below, and for an Owner or Admin **Live log…**, which follows the gateway's log in a dialog as the connector page's **Live log** card does ([Connectors](connectors.md#live-log)); not for a built-in gateway |
 
+![The Gateways card with a WSS hostname and a Restarting line](../images/web/gateway-wss.png)
+
 While a gateway's old process drains after a restart without a cut, a **Restarting** line under
 the table shows what it still holds, with **End now**
 ([Updates](../operations/updates.md#watch-and-end-a-draining-old-process)).
@@ -103,6 +105,8 @@ many ports are in use, such as `2 in use`. **Save** saves it; saving an empty fi
 quota.
 
 ### Pages
+
+![The Pages card of a gateway group](../images/web/gateway-pages.png)
 
 The **Pages** card shows the group's not-found, unavailable and maintenance pages, each `Built in`
 or `Own` ([Maintenance and error pages](../routes/maintenance-and-pages.md#your-own-pages)). Under

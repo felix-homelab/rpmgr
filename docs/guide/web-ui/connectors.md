@@ -122,6 +122,8 @@ what that process still holds, with **End now**
 
 ### Live log
 
+![The Live log card with the connector's debug lines](../images/web/live-log.png)
+
 For an Owner or Admin, the **Live log** card follows the connector's log: choose the **Level**,
 optionally **Only lines containing** and **Raise to debug while open**, then **Start**. Lines appear
 in the panel as the connector writes them, redacted on the connector; **Pause** stops the panel

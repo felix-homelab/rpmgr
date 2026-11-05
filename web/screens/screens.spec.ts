@@ -134,6 +134,21 @@ test("screenshots of the user guide", async ({ page, browser }) => {
     await page.unroute(`**/rpmgr.v1.${method}`);
   }
 
+  // The Restarting card appears only while an old process drains after a restart without a cut, which
+  // the seeded installation never has: the lists of gateways and connectors are read for real and
+  // given an old process of gw-eu-1 and nas-01.
+  const draining = { since: "2026-10-29T10:00:00Z", ends: "2026-10-29T10:30:00Z" };
+  await patchList(page, "GatewayService/ListGateways", "gateways", (g) => g.name === "gw-eu-1" ? { status: { ...g.status, draining: { ...draining, connections: "14", flows: "3", sessions: "2" } } } : {});
+  await patchList(page, "ConnectorService/ListConnectors", "connectors", (c) => c.name === "nas-01" ? { session: { ...c.session, draining: { ...draining, connections: "6", sessions: "1" } } } : {});
+  await page.reload();
+  const restarting = page.getByRole("region", { name: "Restarting" });
+  await expect(restarting.getByText("gw-eu-1")).toBeVisible();
+  await expect(restarting.getByText("nas-01")).toBeVisible();
+  await part(page, restarting, "restarting", false);
+  for (const method of ["GatewayService/ListGateways", "ConnectorService/ListConnectors"]) {
+    await page.unroute(`**/rpmgr.v1.${method}`);
+  }
+
   await page.keyboard.press("Control+k");
   await page.getByRole("combobox", { name: "Page, resource or action" }).fill("gr");
   await shot(page, "command-palette");
@@ -222,6 +237,7 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await page.waitForTimeout(3000);
   await page.getByRole("button", { name: "Pause" }).click();
   await shot(page, "connector-detail", true);
+  await part(page, page.getByRole("region", { name: "Live log" }), "live-log", false);
   await page.getByRole("button", { name: "Stop" }).click();
 
   // Gateways.
@@ -233,7 +249,8 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await page.reload();
   const real = (await (await listed).json()) as { gateways: { status?: object }[] };
   const firewall = { state: "FIREWALL_STATE_APPLIED", reportTime: new Date().toISOString(), rules: ["80/tcp", "443/tcp", "443/udp", "20000:20099/tcp"] };
-  await page.route("**/rpmgr.v1.GatewayService/ListGateways", (route) => route.fulfill({ json: { gateways: real.gateways.map((g) => ({ ...g, status: { ...g.status, firewall } })) } }));
+  const gwDraining = { since: "2026-10-29T10:00:00Z", ends: "2026-10-29T10:30:00Z", connections: "14", flows: "3", sessions: "2" };
+  await page.route("**/rpmgr.v1.GatewayService/ListGateways", (route) => route.fulfill({ json: { gateways: real.gateways.map((g) => ({ ...g, wssHostname: "wss.example.com", status: { ...g.status, firewall, draining: gwDraining } })) } }));
   await page.route("**/rpmgr.v1.GatewayService/ListPortPools", (route) => route.fulfill({ json: { portPools: [
     { id: "pp_demo", gatewayGroupId: new URL(page.url()).pathname.split("/").pop(), protocol: "PORT_PROTOCOL_TCP", portFrom: 20000, portTo: 20099 }] } }));
   await page.getByRole("link", { name: "default", exact: true }).click();
@@ -241,6 +258,8 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await page.getByRole("listitem", { name: "Maintenance" }).getByRole("button", { name: "Preview" }).click();
   await page.waitForTimeout(1000);
   await shot(page, "gateway-group", true);
+  await part(page, page.getByRole("region", { name: "Gateways" }), "gateway-wss", false);
+  await part(page, page.getByRole("region", { name: "Pages" }), "gateway-pages", false);
   await page.unroute("**/rpmgr.v1.GatewayService/ListGateways");
   await page.unroute("**/rpmgr.v1.GatewayService/ListPortPools");
 
@@ -339,7 +358,7 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   // The installation knows no release, and its release check fetches its own from GitHub, which
   // can take long: the page is shown with that list and a check that ended.
   const listReleases = "**/rpmgr.v1.ReleaseService/ListReleases";
-  await page.route(listReleases, (route) => route.fulfill({ json: { releases: [], controllerVersion: "0.1.0",
+  await page.route(listReleases, (route) => route.fulfill({ json: { releases: [], controllerVersion: "0.3.0",
     releaseCheck: { checkTime: "2026-10-24T08:00:00Z", outcome: "RELEASE_CHECK_OUTCOME_OK" } } }));
   await page.getByRole("link", { name: "Updates" }).click();
   await expect(page.getByRole("heading", { name: "Updates", level: 1 })).toBeVisible();
@@ -485,7 +504,7 @@ test("screenshots of a rollout", async ({ page }) => {
   }
 });
 
-// The controller's own update (D158): the releases card with "Update controller to 0.2.0" for a
+// The controller's own update (D158): the releases card with "Update controller to 0.4.0" for a
 // release newer than the controller, then the Updating page while the updater backs the database
 // up, and after a failed update. The installation knows no signed release and its root updater is
 // not installed, so the browser is given made-up answers about both.
@@ -493,26 +512,34 @@ test("screenshots of the controller update", async ({ page }) => {
   test.setTimeout(120_000);
   await signIn(page, "ada@example.com");
   await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
-  await page.route("**/rpmgr.v1.ReleaseService/ListReleases", (route) => route.fulfill({ json: { controllerVersion: "0.1.0",
+  await page.route("**/rpmgr.v1.ReleaseService/ListReleases", (route) => route.fulfill({ json: { controllerVersion: "0.3.0",
     releaseCheck: { checkTime: "2026-10-24T08:00:00Z", outcome: "RELEASE_CHECK_OUTCOME_OK" },
-    releases: [{ id: "rel_2", version: "0.2.0", channel: "UPDATE_CHANNEL_STABLE", manifestSeq: "2", source: "RELEASE_SOURCE_CHECK", mirrored: true,
+    releases: [{ id: "rel_2", version: "0.4.0", channel: "UPDATE_CHANNEL_STABLE", manifestSeq: "2", source: "RELEASE_SOURCE_CHECK", mirrored: true,
       mirrorTime: "2026-10-24T08:00:00Z", createTime: "2026-10-24T08:00:00Z", newerThanController: true },
-    { id: "rel_1", version: "0.1.0", channel: "UPDATE_CHANNEL_STABLE", manifestSeq: "1", source: "RELEASE_SOURCE_CHECK", mirrored: true,
+    { id: "rel_1", version: "0.3.0", channel: "UPDATE_CHANNEL_STABLE", manifestSeq: "1", source: "RELEASE_SOURCE_CHECK", mirrored: true,
       mirrorTime: "2026-10-20T08:00:00Z", createTime: "2026-10-20T08:00:00Z", controllerVersion: true }] } }));
   let update: object = {};
-  await page.route("**/rpmgr.v1.ReleaseService/GetControllerUpdate", (route) => route.fulfill({ json: { runningVersion: "0.1.0", ...update } }));
+  await page.route("**/rpmgr.v1.ReleaseService/GetControllerUpdate", (route) => route.fulfill({ json: { runningVersion: "0.3.0", ...update } }));
   await page.goto("/settings/updates");
   const releasesCard = page.getByRole("region", { name: "Releases" });
-  await expect(releasesCard.getByRole("button", { name: "Update controller to 0.2.0" })).toBeEnabled();
+  await expect(releasesCard.getByRole("button", { name: "Update controller to 0.4.0" })).toBeEnabled();
   await part(page, releasesCard, "controller-update", false);
-  update = { update: { version: "0.2.0", state: "CONTROLLER_UPDATE_STATE_UPDATING", step: "backing_up", previous: "0.1.0" } };
-  await page.goto("/updating?to=0.2.0&from=0.1.0");
-  await expect(page.getByRole("heading", { name: "Updating the controller to 0.2.0", level: 1 })).toBeVisible();
+  update = { update: { version: "0.4.0", state: "CONTROLLER_UPDATE_STATE_UPDATING", step: "backing_up", previous: "0.3.0" } };
+  await page.goto("/updating?to=0.4.0&from=0.3.0");
+  await expect(page.getByRole("heading", { name: "Updating the controller to 0.4.0", level: 1 })).toBeVisible();
   await expect(page.getByRole("listitem").filter({ hasText: "Backing up" })).toHaveAttribute("aria-current", "step");
   await shot(page, "updating");
-  update = { update: { version: "0.2.0", state: "CONTROLLER_UPDATE_STATE_ROLLED_BACK", previous: "0.1.0",
-    reason: "handing rpmgr-all-in-one.service over: the new process ended after the migration; the database was migrated by 0.2.0 and restored from /usr/local/bin/rpmgr.backup, taken 2026-10-29T12:00:00Z; writes since then are lost, except revocations, which are applied again" } };
-  await expect(page.getByRole("alert")).toContainText("Version 0.1.0 still runs.");
+  // While the controller restarts it answers nothing: the page says so and goes on asking.
+  update = { update: { version: "0.4.0", state: "CONTROLLER_UPDATE_STATE_UPDATING", step: "handing_over", previous: "0.3.0" } };
+  await page.reload();
+  await expect(page.getByRole("listitem").filter({ hasText: "Handing over" })).toHaveAttribute("aria-current", "step");
+  await page.route("**/rpmgr.v1.AuthService/GetSession", (route) => route.abort());
+  await expect(page.getByText("The controller is restarting…")).toBeVisible();
+  await shot(page, "updating-restarting");
+  await page.unroute("**/rpmgr.v1.AuthService/GetSession");
+  update = { update: { version: "0.4.0", state: "CONTROLLER_UPDATE_STATE_ROLLED_BACK", previous: "0.3.0",
+    reason: "handing rpmgr-all-in-one.service over: the new process ended after the migration; the database was migrated by 0.4.0 and restored from /usr/local/bin/rpmgr.backup, taken 2026-10-29T12:00:00Z; writes since then are lost, except revocations, which are applied again" } };
+  await expect(page.getByRole("alert")).toContainText("Version 0.3.0 still runs.");
   await shot(page, "updating-failed");
 });
 
@@ -529,4 +556,15 @@ async function part(page: Page, locator: ReturnType<Page["locator"]>, name: stri
     return;
   }
   await locator.screenshot({ path: `${process.env.SCREENS_OUT}/${name}.png`, animations: "disabled" });
+}
+
+// patchList reads a list call for real, by loading the page again, and from then on answers it with
+// the same items plus fields for some of them: an answer the seeded installation cannot give. (The
+// browser alone trusts the test certificate, so the answer is not fetched from the route.)
+async function patchList(page: Page, method: string, key: string, patch: (item: any) => object) {
+  const listed = page.waitForResponse(`**/rpmgr.v1.${method}`);
+  await page.reload();
+  const real = (await (await listed).json()) as Record<string, any[]>;
+  const json = { ...real, [key]: (real[key] ?? []).map((item) => ({ ...item, ...patch(item) })) };
+  await page.route(`**/rpmgr.v1.${method}`, (route) => route.fulfill({ json }));
 }
