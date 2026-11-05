@@ -12,6 +12,8 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- The Audit sinks page can make and edit object-storage (S3) sinks, with a write-only secret access
+  key, and shows the result of a sink's last verification with a **Verify** button. (#1130)
 - A domain claim that is nested under, or contains, a verified domain of another organisation
   (`app.example.com` against `example.com`) no longer becomes verified when its proof succeeds: it
   waits for approval, and no route, certificate or DNS record uses it. The Instance Admin approves

@@ -196,8 +196,8 @@ secret. The details and the alert are in [04](../../04-security.md#audit-log) an
 
 The Instance Admin can do the same in the web UI, under **Settings**, **Audit sinks**: it lists
 each sink with its state, last success, backlog and last error, and makes, edits, tests, switches
-and deletes sinks ([Settings](../web-ui/settings.md#audit-sinks)). The secret is write-only there
-too.
+and deletes sinks ([Settings](../web-ui/settings.md#audit-sinks)), including object-storage sinks
+with their verification. The secret is write-only there too.
 
 To send the log to a syslog server instead, use the kind `syslog`. The server must accept RFC 5424
 messages over TLS (RFC 5425, usually port 6514), and its certificate must name the host you give.

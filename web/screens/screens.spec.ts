@@ -330,6 +330,16 @@ test("screenshots of the user guide", async ({ page, browser }) => {
   await page.getByLabel("Kind").selectOption({ label: "Syslog over TLS" });
   await page.getByLabel("Address").fill("logs.example.com:6514");
   await shot(page, "settings-audit-sinks-form", true);
+  // The form of an object-storage sink; it is not saved, as the store is checked when it is.
+  await page.getByLabel("Name", { exact: true }).fill("vault");
+  await page.getByLabel("Kind").selectOption({ label: "Object storage (S3)" });
+  await page.getByLabel("Endpoint").fill("https://s3.example.com");
+  await page.getByLabel("Region").fill("eu-central-1");
+  await page.getByLabel(/^Bucket/).fill("rpmgr-audit");
+  await page.getByLabel("Access key ID").fill("AKIAEXAMPLEKEYID");
+  await shot(page, "settings-audit-sinks-s3-form", true);
+  await page.getByLabel("Kind").selectOption({ label: "Syslog over TLS" });
+  await page.getByLabel("Name", { exact: true }).fill("syslog");
   await page.getByRole("button", { name: "Create the sink" }).click();
   await confirmStepUp(page);
   await expect(page.getByText("syslog", { exact: true })).toBeVisible();
