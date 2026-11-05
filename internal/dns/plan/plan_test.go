@@ -359,3 +359,33 @@ func TestDNS_ForeignRecordNeverModified(t *testing.T) {
 		}
 	}
 }
+
+// A zone held by a restore lists the adopted rows whose live record is not what the row holds; a
+// record that is the same (by the planner's matching), a row that was not adopted, a row whose
+// record is gone and a zone not held by a restore are not listed. The list is not in the hash.
+func TestDiff_AdoptedChangedAfterRestore(t *testing.T) {
+	live := []dns.Record{
+		rec("same", "A", "same.example.com", "192.0.2.1"),
+		rec("chg", "A", "chg.example.com", "192.0.2.9"),
+		rec("typ", "CNAME", "typ.example.com", "other.example.net"),
+		rec("own", "A", "own.example.com", "192.0.2.9"),
+	}
+	own := []plan.Owned{
+		{LedgerID: "l1", RecordID: "same", Adopted: true, Type: "A", Content: "192.0.2.1"},
+		{LedgerID: "l2", RecordID: "chg", Adopted: true, Type: "A", Content: "192.0.2.2"},
+		{LedgerID: "l3", RecordID: "typ", Adopted: true, Type: "A", Content: "192.0.2.3"},
+		{LedgerID: "l4", RecordID: "own", Type: "A", Content: "192.0.2.4"},
+		{LedgerID: "l5", RecordID: "gone", Adopted: true, Type: "A", Content: "192.0.2.5"},
+		{LedgerID: "l6", Adopted: true, Type: "A", Content: "192.0.2.6"},
+	}
+	in := plan.Input{Zone: zone, Live: live, Owned: own, Restored: true}
+	p := plan.Diff(in)
+	eq(t, "adopted, changed", p.AdoptedChanged, "chg:A chg.example.com 192.0.2.9", "typ:CNAME typ.example.com other.example.net")
+	in.Restored = false
+	if q := plan.Diff(in); len(q.AdoptedChanged) != 0 {
+		t.Fatalf("not held by a restore: %+v", q.AdoptedChanged)
+	}
+	if p.Hash != plan.Diff(in).Hash {
+		t.Fatal("the list is not in the hash")
+	}
+}

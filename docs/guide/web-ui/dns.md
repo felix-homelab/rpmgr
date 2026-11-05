@@ -53,8 +53,8 @@ The zone's page shows:
   disabled zone has **Enable zone**, which makes it held.
 - **Gates:** whether the zone publishes route hostnames, allows proxied names and wildcards, and
   its delete threshold. The gates are changed with `rpmgr update zone`.
-- **Plan:** what the next pass would create (`+`), update (`~`) and delete (`−`), the orphans, the
-  shadowed wildcards and the conflicts, each conflict with what to do and, for a foreign address
+- **Plan:** what the next pass would create (`+`), update (`~`) and delete (`−`), the orphans, after a
+  restore the adopted records that changed since, the shadowed wildcards and the conflicts, each conflict with what to do and, for a foreign address
   record, **Adopt**. **Approve plan** is bound to the hash shown; it asks for a confirmation that
   names the plan and then a step-up. If the plan changed meanwhile, the page says so and shows the
   new one.

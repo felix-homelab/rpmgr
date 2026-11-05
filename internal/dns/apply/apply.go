@@ -89,7 +89,7 @@ func Owned(ctx context.Context, db *store.DB, zoneID string) ([]plan.Owned, erro
 	}
 	out := make([]plan.Owned, 0, len(rows))
 	for _, r := range rows {
-		o := plan.Owned{LedgerID: r.ID}
+		o := plan.Owned{LedgerID: r.ID, Adopted: r.AdoptedFrom != "", Type: string(r.Type), Content: r.Content}
 		if r.ProviderRecordID != nil {
 			o.RecordID = *r.ProviderRecordID
 		}

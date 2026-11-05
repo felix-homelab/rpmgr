@@ -295,6 +295,9 @@ type Wanted struct {
 	// HeldPlanChanged) holds the zone, and the pass writes nothing; approved says that the plan is
 	// the one an Owner or Admin approved.
 	Gate func(plan.Plan) (hold string, approved bool)
+	// Restored: the zone is held by a restore, so the plan also reports the adopted records whose
+	// original changed since the backup (plan.Plan.AdoptedChanged).
+	Restored bool
 }
 
 // Outcome is what a pass planned and did.

@@ -22,6 +22,8 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- After a restore, the plan of a held DNS zone lists the adopted records that changed at the
+  provider since the backup, so they can be released before the first pass puts them back. (#1113)
 - DNS automation with Cloudflare. An Owner or Admin connects a Cloudflare account with a scoped
   API token (`rpmgr connect dns-provider`, or **DNS** in the web UI), which is checked at
   Cloudflare, kept encrypted and shown nowhere again, and imports its zones

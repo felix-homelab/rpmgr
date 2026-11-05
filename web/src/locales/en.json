@@ -1008,6 +1008,7 @@
     "updates": "update",
     "deletes": "delete",
     "orphans": "orphan",
+    "adoptedChanged": "adopted, changed",
     "conflictBadge": "conflict",
     "conflict": {
       "foreign_address": "A record that rpmgr does not own occupies this name. Adopt it, or remove it at the provider; the name publishes nothing until then.",
@@ -1015,6 +1016,7 @@
       "delegated": "An NS delegation covers this name, so records here would not be served. Remove the delegation at the provider, or publish the name elsewhere.",
       "other": "Conflict ({{kind}}): the name publishes nothing until it is resolved at the provider."
     },
+    "adoptedChangedHint": "After a restore, these adopted records no longer hold what the backup says: the original changed since. A pass puts them back to what the sources want; to keep the record as it is now, release it first.",
     "orphansHint": "Orphans carry rpmgr's marker but no ledger row. A pass never deletes them; remove them at the provider or leave them.",
     "shadow": "{{name}} no longer follows the foreign wildcard that covers it today.",
     "lost_other": "{{count}} owned records are gone at the provider; a pass creates them again.",
