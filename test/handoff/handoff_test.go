@@ -380,7 +380,12 @@ func (l *lab) allInOneUpgrade(t *testing.T) {
 	}
 	redials := func() string { return grep(l.sh("lab", "cat "+s.cfg()+".log"), "closed network connection") }
 	before := strings.Count(redials(), "\n")
-	time.Sleep(45 * time.Second) // longer than the connector's longest backoff
+	for range 15 { // 45 s, longer than the connector's longest backoff; the updater polls the same way
+		if _, err := l.try("lab", "e2eclient", "scrape", "-url", fmt.Sprintf("http://127.0.0.1:%d/readyz", s.admin)); err != nil {
+			t.Fatalf("/readyz of the new process while the old one drains: %v", err)
+		}
+		time.Sleep(3 * time.Second)
+	}
 	if after := redials(); strings.Count(after, "\n")-before > 2 {
 		t.Errorf("the log gained %d lines of a closed in-memory transport in 45 s: the old connector redials\n%s", strings.Count(after, "\n")-before, after)
 	}

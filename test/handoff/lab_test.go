@@ -353,7 +353,7 @@ listen: {admin: "127.0.0.1:7383"}
 	// The all-in-one: its connector is "local" in group "default" of organisation "default".
 	l.put("lab", "/var/lib/aio/all-in-one.yaml", fmt.Sprintf(`version: 1
 public_url: https://lab:%d
-listen: {tcp: ":%d", udp: ":%d", http: "", admin: "127.0.0.1:7392"}
+listen: {tcp: ":%d", udp: ":%d", http: ":9080", admin: "127.0.0.1:7392"}
 database: {dsn: /var/lib/aio/controller.db}
 kek: {source: file, path: /var/lib/aio/kek}
 tls: {cert_file: /var/lib/aio/web.crt, key_file: /var/lib/aio/web.key}
