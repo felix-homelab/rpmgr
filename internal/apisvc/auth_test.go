@@ -45,6 +45,7 @@ const pw = "correct horse battery staple"
 
 // env serves AuthService behind the API interceptor, as the controller does.
 type env struct {
+	publicNS  map[string][]string // the public nameservers of a domain, by apex: what DnsZones.Delegation finds
 	audit     *apisvc.Audit
 	db        *store.DB
 	sys       context.Context
@@ -200,7 +201,7 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_dns_proto.Services().ByName("DnsZoneService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewDnsZoneServiceHandler(&apisvc.DnsZones{DB: db, API: srv, Providers: e.dnsp, Planner: job.New(job.Options{DB: db, TrustDomain: "apitest", Now: now}), Now: now}, o...)
+			return rpmgrv1connect.NewDnsZoneServiceHandler(&apisvc.DnsZones{DB: db, API: srv, Providers: e.dnsp, Planner: job.New(job.Options{DB: db, TrustDomain: "apitest", Now: now}), Delegation: e, Now: now}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -586,4 +587,12 @@ func TestAuth_CompletePasswordReset(t *testing.T) {
 	if c := call(spare, pw, "eve@example.com", "Eve"); c != connect.CodeFailedPrecondition {
 		t.Errorf("a spare first-user link: %v", c)
 	}
+}
+
+// Delegation is the lookup of the public nameservers of a domain that the zone service uses.
+func (e *env) Delegation(_ context.Context, apex string) ([]string, error) {
+	if ns, ok := e.publicNS[apex]; ok {
+		return ns, nil
+	}
+	return nil, errors.New("lookup failed")
 }

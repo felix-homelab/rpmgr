@@ -511,3 +511,22 @@ func TestCheckToken(t *testing.T) {
 		}
 	}
 }
+
+// TestListZones_NameServers: the nameservers the provider assigned to a zone are read, in lower
+// case without a trailing dot; a zone that names none has none.
+func TestListZones_NameServers(t *testing.T) {
+	fake, c := setup(t, "")
+	a, b := fake.AddZone("a.example"), fake.AddZone("b.example")
+	fake.SetNameServers(a.ID, "Ada.NS.example.net.", "bob.ns.example.net")
+	fake.SetNameServers(b.ID)
+	zs, err := c.ListZones(context.Background())
+	if err != nil || len(zs) != 2 {
+		t.Fatalf("%v, %v", zs, err)
+	}
+	if want := []string{"ada.ns.example.net", "bob.ns.example.net"}; !reflect.DeepEqual(zs[0].NameServers, want) {
+		t.Fatalf("assigned %v, want %v", zs[0].NameServers, want)
+	}
+	if len(zs[1].NameServers) != 0 {
+		t.Fatalf("assigned %v, want none", zs[1].NameServers)
+	}
+}

@@ -7,12 +7,15 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/dns"
 	"github.com/felix-homelab/rpmgr/internal/dns/providers"
+	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 )
 
 // DNSTokenOptions configure the DNS token check.
@@ -21,9 +24,11 @@ type DNSTokenOptions struct {
 	Leases *lease.Leases
 	Sealer *secret.Sealer
 	// Dial makes the client of a provider account; nil is providers.Dial.
-	Dial   providers.Dialer
-	Now    func() time.Time
-	Logger *slog.Logger
+	Dial providers.Dialer
+	// Delegation finds the public nameservers of a zone's domain; nil checks no delegation.
+	Delegation domains.DelegationLookup
+	Now        func() time.Time
+	Logger     *slog.Logger
 }
 
 // DNSTokenJob is the singleton job that checks every connected DNS provider's token
@@ -84,6 +89,50 @@ func checkDNSTokens(ctx context.Context, o DNSTokenOptions, l lease.Lease) error
 			continue // changed or deleted since it was read; the next pass sees it
 		}
 		if err != nil {
+			return err
+		}
+		if out.OK && o.Delegation != nil {
+			if err := checkDelegations(ctx, o, l, p, r.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// checkDelegations refreshes, for the imported zones of a provider whose token is valid, the
+// nameservers the provider assigned and whether the public DNS delegates the domain to them
+// (docs/15-dns.md, "Delegation"). A provider that cannot be listed, or a lookup that fails, gives
+// no verdict: a zone keeps what it had, or is unknown.
+func checkDelegations(ctx context.Context, o DNSTokenOptions, l lease.Lease, p dns.Provider, providerID string) error {
+	rows, err := o.DB.ReadClient().DNSZone.Query().Where(dnszone.DNSProviderID(providerID)).Order(ent.Asc(dnszone.FieldID)).All(ctx)
+	if err != nil || len(rows) == 0 {
+		return err
+	}
+	listed, err := p.ListZones(ctx)
+	if err != nil {
+		o.warn(ctx, "a dns provider's zones could not be listed", providerID, "err", err)
+		return nil
+	}
+	assigned := map[string][]string{}
+	for _, z := range listed {
+		assigned[z.ID] = z.NameServers
+	}
+	for _, z := range rows {
+		ns, ok := assigned[z.ProviderZoneID]
+		if !ok {
+			continue // not listed any more: nothing to compare with
+		}
+		state, public := domains.CheckDelegation(ctx, o.Delegation, z.Name, ns)
+		err := store.WriteTx(ctx, o.DB, func(tx *ent.Tx) error {
+			if err := o.Leases.Fence(ctx, tx, l); err != nil {
+				return err
+			}
+			_, err := tx.DNSZone.UpdateOneID(z.ID).Where(dnszone.Version(z.Version)).SetAssignedNameservers(ns).
+				SetDelegationState(state).SetDelegationNameservers(public).SetDelegationCheckedAt(o.Now().UTC()).Save(ctx)
+			return err
+		})
+		if err != nil && !ent.IsNotFound(err) {
 			return err
 		}
 	}

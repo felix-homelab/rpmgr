@@ -52,6 +52,14 @@ const (
 	FieldRemovalRequested = "removal_requested"
 	// FieldSyncRequestedAt holds the string denoting the sync_requested_at field in the database.
 	FieldSyncRequestedAt = "sync_requested_at"
+	// FieldAssignedNameservers holds the string denoting the assigned_nameservers field in the database.
+	FieldAssignedNameservers = "assigned_nameservers"
+	// FieldDelegationState holds the string denoting the delegation_state field in the database.
+	FieldDelegationState = "delegation_state"
+	// FieldDelegationNameservers holds the string denoting the delegation_nameservers field in the database.
+	FieldDelegationNameservers = "delegation_nameservers"
+	// FieldDelegationCheckedAt holds the string denoting the delegation_checked_at field in the database.
+	FieldDelegationCheckedAt = "delegation_checked_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeDNSProvider holds the string denoting the dns_provider edge name in mutations.
@@ -88,6 +96,10 @@ var Columns = []string{
 	FieldLastSyncedAt,
 	FieldRemovalRequested,
 	FieldSyncRequestedAt,
+	FieldAssignedNameservers,
+	FieldDelegationState,
+	FieldDelegationNameservers,
+	FieldDelegationCheckedAt,
 	FieldCreatedAt,
 }
 
@@ -209,6 +221,33 @@ func ProviderStatusValidator(ps ProviderStatus) error {
 	}
 }
 
+// DelegationState defines the type for the "delegation_state" enum field.
+type DelegationState string
+
+// DelegationStateUnknown is the default value of the DelegationState enum.
+const DefaultDelegationState = DelegationStateUnknown
+
+// DelegationState values.
+const (
+	DelegationStateUnknown  DelegationState = "unknown"
+	DelegationStateOk       DelegationState = "ok"
+	DelegationStateMismatch DelegationState = "mismatch"
+)
+
+func (ds DelegationState) String() string {
+	return string(ds)
+}
+
+// DelegationStateValidator is a validator for the "delegation_state" field enum values. It is called by the builders before save.
+func DelegationStateValidator(ds DelegationState) error {
+	switch ds {
+	case DelegationStateUnknown, DelegationStateOk, DelegationStateMismatch:
+		return nil
+	default:
+		return fmt.Errorf("dnszone: invalid enum value for delegation_state field: %q", ds)
+	}
+}
+
 // OrderOption defines the ordering options for the DNSZone queries.
 type OrderOption func(*sql.Selector)
 
@@ -300,6 +339,16 @@ func ByRemovalRequested(opts ...sql.OrderTermOption) OrderOption {
 // BySyncRequestedAt orders the results by the sync_requested_at field.
 func BySyncRequestedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSyncRequestedAt, opts...).ToFunc()
+}
+
+// ByDelegationState orders the results by the delegation_state field.
+func ByDelegationState(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDelegationState, opts...).ToFunc()
+}
+
+// ByDelegationCheckedAt orders the results by the delegation_checked_at field.
+func ByDelegationCheckedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDelegationCheckedAt, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

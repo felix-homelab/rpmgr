@@ -197,6 +197,60 @@ func (ZoneProviderStatus) EnumDescriptor() ([]byte, []int) {
 	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{2}
 }
 
+// ZoneDelegationState is whether the public DNS delegates a zone's domain to the nameservers its
+// provider assigned (docs/15-dns.md, "Delegation").
+type ZoneDelegationState int32
+
+const (
+	// Not checked yet, or the lookup gave no verdict, or the provider names no nameservers.
+	ZoneDelegationState_ZONE_DELEGATION_STATE_UNSPECIFIED ZoneDelegationState = 0
+	// Every public nameserver of the domain is one the provider assigned.
+	ZoneDelegationState_ZONE_DELEGATION_STATE_OK ZoneDelegationState = 1
+	// The domain is delegated elsewhere: what the provider publishes is not served.
+	ZoneDelegationState_ZONE_DELEGATION_STATE_MISMATCH ZoneDelegationState = 2
+)
+
+// Enum value maps for ZoneDelegationState.
+var (
+	ZoneDelegationState_name = map[int32]string{
+		0: "ZONE_DELEGATION_STATE_UNSPECIFIED",
+		1: "ZONE_DELEGATION_STATE_OK",
+		2: "ZONE_DELEGATION_STATE_MISMATCH",
+	}
+	ZoneDelegationState_value = map[string]int32{
+		"ZONE_DELEGATION_STATE_UNSPECIFIED": 0,
+		"ZONE_DELEGATION_STATE_OK":          1,
+		"ZONE_DELEGATION_STATE_MISMATCH":    2,
+	}
+)
+
+func (x ZoneDelegationState) Enum() *ZoneDelegationState {
+	p := new(ZoneDelegationState)
+	*p = x
+	return p
+}
+
+func (x ZoneDelegationState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ZoneDelegationState) Descriptor() protoreflect.EnumDescriptor {
+	return file_rpmgr_v1_dns_proto_enumTypes[3].Descriptor()
+}
+
+func (ZoneDelegationState) Type() protoreflect.EnumType {
+	return &file_rpmgr_v1_dns_proto_enumTypes[3]
+}
+
+func (x ZoneDelegationState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ZoneDelegationState.Descriptor instead.
+func (ZoneDelegationState) EnumDescriptor() ([]byte, []int) {
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{3}
+}
+
 // DnsRecordState is the state of a record of a zone.
 type DnsRecordState int32
 
@@ -254,11 +308,11 @@ func (x DnsRecordState) String() string {
 }
 
 func (DnsRecordState) Descriptor() protoreflect.EnumDescriptor {
-	return file_rpmgr_v1_dns_proto_enumTypes[3].Descriptor()
+	return file_rpmgr_v1_dns_proto_enumTypes[4].Descriptor()
 }
 
 func (DnsRecordState) Type() protoreflect.EnumType {
-	return &file_rpmgr_v1_dns_proto_enumTypes[3]
+	return &file_rpmgr_v1_dns_proto_enumTypes[4]
 }
 
 func (x DnsRecordState) Number() protoreflect.EnumNumber {
@@ -267,7 +321,7 @@ func (x DnsRecordState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DnsRecordState.Descriptor instead.
 func (DnsRecordState) EnumDescriptor() ([]byte, []int) {
-	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{3}
+	return file_rpmgr_v1_dns_proto_rawDescGZIP(), []int{4}
 }
 
 // CloudflareProvider is a Cloudflare account.
@@ -1174,8 +1228,18 @@ type DnsZone struct {
 	PendingPlanHash string `protobuf:"bytes,15,opt,name=pending_plan_hash,json=pendingPlanHash,proto3" json:"pending_plan_hash,omitempty"`
 	// Removing the zone with its records was approved and the DNS job has not finished it; output only.
 	RemovalPending bool `protobuf:"varint,16,opt,name=removal_pending,json=removalPending,proto3" json:"removal_pending,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// The nameservers the provider assigned to the zone, which the domain must be delegated to at
+	// its registrar; output only, empty if the provider names none or they are not read yet.
+	AssignedNameservers []string `protobuf:"bytes,17,rep,name=assigned_nameservers,json=assignedNameservers,proto3" json:"assigned_nameservers,omitempty"`
+	// Whether the public DNS delegates the domain to them; output only.
+	DelegationState ZoneDelegationState `protobuf:"varint,18,opt,name=delegation_state,json=delegationState,proto3,enum=rpmgr.v1.ZoneDelegationState" json:"delegation_state,omitempty"`
+	// The nameservers the public DNS names for the domain when they are not the assigned ones;
+	// output only, empty unless delegation_state is a mismatch.
+	DelegationNameservers []string `protobuf:"bytes,19,rep,name=delegation_nameservers,json=delegationNameservers,proto3" json:"delegation_nameservers,omitempty"`
+	// When the delegation was last checked; output only, unset before the first check.
+	DelegationCheckedTime *timestamppb.Timestamp `protobuf:"bytes,20,opt,name=delegation_checked_time,json=delegationCheckedTime,proto3" json:"delegation_checked_time,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *DnsZone) Reset() {
@@ -1318,6 +1382,34 @@ func (x *DnsZone) GetRemovalPending() bool {
 		return x.RemovalPending
 	}
 	return false
+}
+
+func (x *DnsZone) GetAssignedNameservers() []string {
+	if x != nil {
+		return x.AssignedNameservers
+	}
+	return nil
+}
+
+func (x *DnsZone) GetDelegationState() ZoneDelegationState {
+	if x != nil {
+		return x.DelegationState
+	}
+	return ZoneDelegationState_ZONE_DELEGATION_STATE_UNSPECIFIED
+}
+
+func (x *DnsZone) GetDelegationNameservers() []string {
+	if x != nil {
+		return x.DelegationNameservers
+	}
+	return nil
+}
+
+func (x *DnsZone) GetDelegationCheckedTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DelegationCheckedTime
+	}
+	return nil
 }
 
 // ImportZoneRequest names a zone at a provider.
@@ -3616,7 +3708,7 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\x18ListProviderZonesRequest\x12/\n" +
 	"\x0fdns_provider_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\rdnsProviderId\"I\n" +
 	"\x19ListProviderZonesResponse\x12,\n" +
-	"\x05zones\x18\x01 \x03(\v2\x16.rpmgr.v1.ProviderZoneR\x05zones\"\xa9\x05\n" +
+	"\x05zones\x18\x01 \x03(\v2\x16.rpmgr.v1.ProviderZoneR\x05zones\"\xb1\a\n" +
 	"\aDnsZone\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12&\n" +
@@ -3637,7 +3729,11 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\x10last_synced_time\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\x0elastSyncedTime\x12\x12\n" +
 	"\x04etag\x18\x0e \x01(\tR\x04etag\x12*\n" +
 	"\x11pending_plan_hash\x18\x0f \x01(\tR\x0fpendingPlanHash\x12'\n" +
-	"\x0fremoval_pending\x18\x10 \x01(\bR\x0eremovalPending\"y\n" +
+	"\x0fremoval_pending\x18\x10 \x01(\bR\x0eremovalPending\x121\n" +
+	"\x14assigned_nameservers\x18\x11 \x03(\tR\x13assignedNameservers\x12H\n" +
+	"\x10delegation_state\x18\x12 \x01(\x0e2\x1d.rpmgr.v1.ZoneDelegationStateR\x0fdelegationState\x125\n" +
+	"\x16delegation_nameservers\x18\x13 \x03(\tR\x15delegationNameservers\x12R\n" +
+	"\x17delegation_checked_time\x18\x14 \x01(\v2\x1a.google.protobuf.TimestampR\x15delegationCheckedTime\"y\n" +
 	"\x11ImportZoneRequest\x12/\n" +
 	"\x0fdns_provider_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\rdnsProviderId\x123\n" +
 	"\x10provider_zone_id\x18\x02 \x01(\tB\t\xbaH\x06r\x04\x10\x01\x18@R\x0eproviderZoneId\"l\n" +
@@ -3788,7 +3884,11 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\x17ZONE_PROVIDER_STATUS_OK\x10\x01\x12*\n" +
 	"&ZONE_PROVIDER_STATUS_PERMISSION_DENIED\x10\x02\x12$\n" +
 	" ZONE_PROVIDER_STATUS_UNREACHABLE\x10\x03\x12%\n" +
-	"!ZONE_PROVIDER_STATUS_RATE_LIMITED\x10\x04*\x84\x02\n" +
+	"!ZONE_PROVIDER_STATUS_RATE_LIMITED\x10\x04*~\n" +
+	"\x13ZoneDelegationState\x12%\n" +
+	"!ZONE_DELEGATION_STATE_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18ZONE_DELEGATION_STATE_OK\x10\x01\x12\"\n" +
+	"\x1eZONE_DELEGATION_STATE_MISMATCH\x10\x02*\x84\x02\n" +
 	"\x0eDnsRecordState\x12 \n" +
 	"\x1cDNS_RECORD_STATE_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19DNS_RECORD_STATE_CREATING\x10\x01\x12\x1b\n" +
@@ -3865,169 +3965,172 @@ func file_rpmgr_v1_dns_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_dns_proto_rawDescData
 }
 
-var file_rpmgr_v1_dns_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_rpmgr_v1_dns_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
 var file_rpmgr_v1_dns_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_rpmgr_v1_dns_proto_goTypes = []any{
 	(ProviderStatus)(0),                // 0: rpmgr.v1.ProviderStatus
 	(ZoneSyncState)(0),                 // 1: rpmgr.v1.ZoneSyncState
 	(ZoneProviderStatus)(0),            // 2: rpmgr.v1.ZoneProviderStatus
-	(DnsRecordState)(0),                // 3: rpmgr.v1.DnsRecordState
-	(*CloudflareProvider)(nil),         // 4: rpmgr.v1.CloudflareProvider
-	(*DnsProvider)(nil),                // 5: rpmgr.v1.DnsProvider
-	(*ProviderZone)(nil),               // 6: rpmgr.v1.ProviderZone
-	(*ConnectDnsProviderRequest)(nil),  // 7: rpmgr.v1.ConnectDnsProviderRequest
-	(*ConnectDnsProviderResponse)(nil), // 8: rpmgr.v1.ConnectDnsProviderResponse
-	(*GetDnsProviderRequest)(nil),      // 9: rpmgr.v1.GetDnsProviderRequest
-	(*GetDnsProviderResponse)(nil),     // 10: rpmgr.v1.GetDnsProviderResponse
-	(*ListDnsProvidersRequest)(nil),    // 11: rpmgr.v1.ListDnsProvidersRequest
-	(*ListDnsProvidersResponse)(nil),   // 12: rpmgr.v1.ListDnsProvidersResponse
-	(*UpdateDnsProviderRequest)(nil),   // 13: rpmgr.v1.UpdateDnsProviderRequest
-	(*UpdateDnsProviderResponse)(nil),  // 14: rpmgr.v1.UpdateDnsProviderResponse
-	(*DeleteDnsProviderRequest)(nil),   // 15: rpmgr.v1.DeleteDnsProviderRequest
-	(*DeleteDnsProviderResponse)(nil),  // 16: rpmgr.v1.DeleteDnsProviderResponse
-	(*ListProviderZonesRequest)(nil),   // 17: rpmgr.v1.ListProviderZonesRequest
-	(*ListProviderZonesResponse)(nil),  // 18: rpmgr.v1.ListProviderZonesResponse
-	(*DnsZone)(nil),                    // 19: rpmgr.v1.DnsZone
-	(*ImportZoneRequest)(nil),          // 20: rpmgr.v1.ImportZoneRequest
-	(*ImportZoneResponse)(nil),         // 21: rpmgr.v1.ImportZoneResponse
-	(*GetZoneRequest)(nil),             // 22: rpmgr.v1.GetZoneRequest
-	(*GetZoneResponse)(nil),            // 23: rpmgr.v1.GetZoneResponse
-	(*ListZonesRequest)(nil),           // 24: rpmgr.v1.ListZonesRequest
-	(*ListZonesResponse)(nil),          // 25: rpmgr.v1.ListZonesResponse
-	(*UpdateZoneRequest)(nil),          // 26: rpmgr.v1.UpdateZoneRequest
-	(*UpdateZoneResponse)(nil),         // 27: rpmgr.v1.UpdateZoneResponse
-	(*RemoveZoneRequest)(nil),          // 28: rpmgr.v1.RemoveZoneRequest
-	(*RemoveZoneResponse)(nil),         // 29: rpmgr.v1.RemoveZoneResponse
-	(*PlanRecord)(nil),                 // 30: rpmgr.v1.PlanRecord
-	(*PlanConflict)(nil),               // 31: rpmgr.v1.PlanConflict
-	(*ZonePlan)(nil),                   // 32: rpmgr.v1.ZonePlan
-	(*PlanZoneSyncRequest)(nil),        // 33: rpmgr.v1.PlanZoneSyncRequest
-	(*PlanZoneSyncResponse)(nil),       // 34: rpmgr.v1.PlanZoneSyncResponse
-	(*EnableZoneRequest)(nil),          // 35: rpmgr.v1.EnableZoneRequest
-	(*EnableZoneResponse)(nil),         // 36: rpmgr.v1.EnableZoneResponse
-	(*ApproveZonePlanRequest)(nil),     // 37: rpmgr.v1.ApproveZonePlanRequest
-	(*ApproveZonePlanResponse)(nil),    // 38: rpmgr.v1.ApproveZonePlanResponse
-	(*SyncZoneRequest)(nil),            // 39: rpmgr.v1.SyncZoneRequest
-	(*SyncZoneResponse)(nil),           // 40: rpmgr.v1.SyncZoneResponse
-	(*DnsRecord)(nil),                  // 41: rpmgr.v1.DnsRecord
-	(*ListZoneRecordsRequest)(nil),     // 42: rpmgr.v1.ListZoneRecordsRequest
-	(*ListZoneRecordsResponse)(nil),    // 43: rpmgr.v1.ListZoneRecordsResponse
-	(*AdoptRecordsRequest)(nil),        // 44: rpmgr.v1.AdoptRecordsRequest
-	(*AdoptRecordsResponse)(nil),       // 45: rpmgr.v1.AdoptRecordsResponse
-	(*ReleaseRecordRequest)(nil),       // 46: rpmgr.v1.ReleaseRecordRequest
-	(*ReleaseRecordResponse)(nil),      // 47: rpmgr.v1.ReleaseRecordResponse
-	(*DnsName)(nil),                    // 48: rpmgr.v1.DnsName
-	(*CreateDnsNameRequest)(nil),       // 49: rpmgr.v1.CreateDnsNameRequest
-	(*CreateDnsNameResponse)(nil),      // 50: rpmgr.v1.CreateDnsNameResponse
-	(*GetDnsNameRequest)(nil),          // 51: rpmgr.v1.GetDnsNameRequest
-	(*GetDnsNameResponse)(nil),         // 52: rpmgr.v1.GetDnsNameResponse
-	(*ListDnsNamesRequest)(nil),        // 53: rpmgr.v1.ListDnsNamesRequest
-	(*ListDnsNamesResponse)(nil),       // 54: rpmgr.v1.ListDnsNamesResponse
-	(*UpdateDnsNameRequest)(nil),       // 55: rpmgr.v1.UpdateDnsNameRequest
-	(*UpdateDnsNameResponse)(nil),      // 56: rpmgr.v1.UpdateDnsNameResponse
-	(*DeleteDnsNameRequest)(nil),       // 57: rpmgr.v1.DeleteDnsNameRequest
-	(*DeleteDnsNameResponse)(nil),      // 58: rpmgr.v1.DeleteDnsNameResponse
-	(*timestamppb.Timestamp)(nil),      // 59: google.protobuf.Timestamp
-	(*fieldmaskpb.FieldMask)(nil),      // 60: google.protobuf.FieldMask
-	(*Domain)(nil),                     // 61: rpmgr.v1.Domain
+	(ZoneDelegationState)(0),           // 3: rpmgr.v1.ZoneDelegationState
+	(DnsRecordState)(0),                // 4: rpmgr.v1.DnsRecordState
+	(*CloudflareProvider)(nil),         // 5: rpmgr.v1.CloudflareProvider
+	(*DnsProvider)(nil),                // 6: rpmgr.v1.DnsProvider
+	(*ProviderZone)(nil),               // 7: rpmgr.v1.ProviderZone
+	(*ConnectDnsProviderRequest)(nil),  // 8: rpmgr.v1.ConnectDnsProviderRequest
+	(*ConnectDnsProviderResponse)(nil), // 9: rpmgr.v1.ConnectDnsProviderResponse
+	(*GetDnsProviderRequest)(nil),      // 10: rpmgr.v1.GetDnsProviderRequest
+	(*GetDnsProviderResponse)(nil),     // 11: rpmgr.v1.GetDnsProviderResponse
+	(*ListDnsProvidersRequest)(nil),    // 12: rpmgr.v1.ListDnsProvidersRequest
+	(*ListDnsProvidersResponse)(nil),   // 13: rpmgr.v1.ListDnsProvidersResponse
+	(*UpdateDnsProviderRequest)(nil),   // 14: rpmgr.v1.UpdateDnsProviderRequest
+	(*UpdateDnsProviderResponse)(nil),  // 15: rpmgr.v1.UpdateDnsProviderResponse
+	(*DeleteDnsProviderRequest)(nil),   // 16: rpmgr.v1.DeleteDnsProviderRequest
+	(*DeleteDnsProviderResponse)(nil),  // 17: rpmgr.v1.DeleteDnsProviderResponse
+	(*ListProviderZonesRequest)(nil),   // 18: rpmgr.v1.ListProviderZonesRequest
+	(*ListProviderZonesResponse)(nil),  // 19: rpmgr.v1.ListProviderZonesResponse
+	(*DnsZone)(nil),                    // 20: rpmgr.v1.DnsZone
+	(*ImportZoneRequest)(nil),          // 21: rpmgr.v1.ImportZoneRequest
+	(*ImportZoneResponse)(nil),         // 22: rpmgr.v1.ImportZoneResponse
+	(*GetZoneRequest)(nil),             // 23: rpmgr.v1.GetZoneRequest
+	(*GetZoneResponse)(nil),            // 24: rpmgr.v1.GetZoneResponse
+	(*ListZonesRequest)(nil),           // 25: rpmgr.v1.ListZonesRequest
+	(*ListZonesResponse)(nil),          // 26: rpmgr.v1.ListZonesResponse
+	(*UpdateZoneRequest)(nil),          // 27: rpmgr.v1.UpdateZoneRequest
+	(*UpdateZoneResponse)(nil),         // 28: rpmgr.v1.UpdateZoneResponse
+	(*RemoveZoneRequest)(nil),          // 29: rpmgr.v1.RemoveZoneRequest
+	(*RemoveZoneResponse)(nil),         // 30: rpmgr.v1.RemoveZoneResponse
+	(*PlanRecord)(nil),                 // 31: rpmgr.v1.PlanRecord
+	(*PlanConflict)(nil),               // 32: rpmgr.v1.PlanConflict
+	(*ZonePlan)(nil),                   // 33: rpmgr.v1.ZonePlan
+	(*PlanZoneSyncRequest)(nil),        // 34: rpmgr.v1.PlanZoneSyncRequest
+	(*PlanZoneSyncResponse)(nil),       // 35: rpmgr.v1.PlanZoneSyncResponse
+	(*EnableZoneRequest)(nil),          // 36: rpmgr.v1.EnableZoneRequest
+	(*EnableZoneResponse)(nil),         // 37: rpmgr.v1.EnableZoneResponse
+	(*ApproveZonePlanRequest)(nil),     // 38: rpmgr.v1.ApproveZonePlanRequest
+	(*ApproveZonePlanResponse)(nil),    // 39: rpmgr.v1.ApproveZonePlanResponse
+	(*SyncZoneRequest)(nil),            // 40: rpmgr.v1.SyncZoneRequest
+	(*SyncZoneResponse)(nil),           // 41: rpmgr.v1.SyncZoneResponse
+	(*DnsRecord)(nil),                  // 42: rpmgr.v1.DnsRecord
+	(*ListZoneRecordsRequest)(nil),     // 43: rpmgr.v1.ListZoneRecordsRequest
+	(*ListZoneRecordsResponse)(nil),    // 44: rpmgr.v1.ListZoneRecordsResponse
+	(*AdoptRecordsRequest)(nil),        // 45: rpmgr.v1.AdoptRecordsRequest
+	(*AdoptRecordsResponse)(nil),       // 46: rpmgr.v1.AdoptRecordsResponse
+	(*ReleaseRecordRequest)(nil),       // 47: rpmgr.v1.ReleaseRecordRequest
+	(*ReleaseRecordResponse)(nil),      // 48: rpmgr.v1.ReleaseRecordResponse
+	(*DnsName)(nil),                    // 49: rpmgr.v1.DnsName
+	(*CreateDnsNameRequest)(nil),       // 50: rpmgr.v1.CreateDnsNameRequest
+	(*CreateDnsNameResponse)(nil),      // 51: rpmgr.v1.CreateDnsNameResponse
+	(*GetDnsNameRequest)(nil),          // 52: rpmgr.v1.GetDnsNameRequest
+	(*GetDnsNameResponse)(nil),         // 53: rpmgr.v1.GetDnsNameResponse
+	(*ListDnsNamesRequest)(nil),        // 54: rpmgr.v1.ListDnsNamesRequest
+	(*ListDnsNamesResponse)(nil),       // 55: rpmgr.v1.ListDnsNamesResponse
+	(*UpdateDnsNameRequest)(nil),       // 56: rpmgr.v1.UpdateDnsNameRequest
+	(*UpdateDnsNameResponse)(nil),      // 57: rpmgr.v1.UpdateDnsNameResponse
+	(*DeleteDnsNameRequest)(nil),       // 58: rpmgr.v1.DeleteDnsNameRequest
+	(*DeleteDnsNameResponse)(nil),      // 59: rpmgr.v1.DeleteDnsNameResponse
+	(*timestamppb.Timestamp)(nil),      // 60: google.protobuf.Timestamp
+	(*fieldmaskpb.FieldMask)(nil),      // 61: google.protobuf.FieldMask
+	(*Domain)(nil),                     // 62: rpmgr.v1.Domain
 }
 var file_rpmgr_v1_dns_proto_depIdxs = []int32{
-	4,  // 0: rpmgr.v1.DnsProvider.cloudflare:type_name -> rpmgr.v1.CloudflareProvider
+	5,  // 0: rpmgr.v1.DnsProvider.cloudflare:type_name -> rpmgr.v1.CloudflareProvider
 	0,  // 1: rpmgr.v1.DnsProvider.status:type_name -> rpmgr.v1.ProviderStatus
-	59, // 2: rpmgr.v1.DnsProvider.token_expires_at:type_name -> google.protobuf.Timestamp
-	59, // 3: rpmgr.v1.DnsProvider.last_check_time:type_name -> google.protobuf.Timestamp
-	5,  // 4: rpmgr.v1.ConnectDnsProviderRequest.dns_provider:type_name -> rpmgr.v1.DnsProvider
-	5,  // 5: rpmgr.v1.ConnectDnsProviderResponse.dns_provider:type_name -> rpmgr.v1.DnsProvider
-	5,  // 6: rpmgr.v1.GetDnsProviderResponse.dns_provider:type_name -> rpmgr.v1.DnsProvider
-	5,  // 7: rpmgr.v1.ListDnsProvidersResponse.dns_providers:type_name -> rpmgr.v1.DnsProvider
-	5,  // 8: rpmgr.v1.UpdateDnsProviderRequest.dns_provider:type_name -> rpmgr.v1.DnsProvider
-	60, // 9: rpmgr.v1.UpdateDnsProviderRequest.update_mask:type_name -> google.protobuf.FieldMask
-	5,  // 10: rpmgr.v1.UpdateDnsProviderResponse.dns_provider:type_name -> rpmgr.v1.DnsProvider
-	6,  // 11: rpmgr.v1.ListProviderZonesResponse.zones:type_name -> rpmgr.v1.ProviderZone
+	60, // 2: rpmgr.v1.DnsProvider.token_expires_at:type_name -> google.protobuf.Timestamp
+	60, // 3: rpmgr.v1.DnsProvider.last_check_time:type_name -> google.protobuf.Timestamp
+	6,  // 4: rpmgr.v1.ConnectDnsProviderRequest.dns_provider:type_name -> rpmgr.v1.DnsProvider
+	6,  // 5: rpmgr.v1.ConnectDnsProviderResponse.dns_provider:type_name -> rpmgr.v1.DnsProvider
+	6,  // 6: rpmgr.v1.GetDnsProviderResponse.dns_provider:type_name -> rpmgr.v1.DnsProvider
+	6,  // 7: rpmgr.v1.ListDnsProvidersResponse.dns_providers:type_name -> rpmgr.v1.DnsProvider
+	6,  // 8: rpmgr.v1.UpdateDnsProviderRequest.dns_provider:type_name -> rpmgr.v1.DnsProvider
+	61, // 9: rpmgr.v1.UpdateDnsProviderRequest.update_mask:type_name -> google.protobuf.FieldMask
+	6,  // 10: rpmgr.v1.UpdateDnsProviderResponse.dns_provider:type_name -> rpmgr.v1.DnsProvider
+	7,  // 11: rpmgr.v1.ListProviderZonesResponse.zones:type_name -> rpmgr.v1.ProviderZone
 	1,  // 12: rpmgr.v1.DnsZone.sync_state:type_name -> rpmgr.v1.ZoneSyncState
 	2,  // 13: rpmgr.v1.DnsZone.provider_status:type_name -> rpmgr.v1.ZoneProviderStatus
-	59, // 14: rpmgr.v1.DnsZone.last_synced_time:type_name -> google.protobuf.Timestamp
-	19, // 15: rpmgr.v1.ImportZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
-	61, // 16: rpmgr.v1.ImportZoneResponse.domain:type_name -> rpmgr.v1.Domain
-	19, // 17: rpmgr.v1.GetZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
-	19, // 18: rpmgr.v1.ListZonesResponse.dns_zones:type_name -> rpmgr.v1.DnsZone
-	19, // 19: rpmgr.v1.UpdateZoneRequest.dns_zone:type_name -> rpmgr.v1.DnsZone
-	60, // 20: rpmgr.v1.UpdateZoneRequest.update_mask:type_name -> google.protobuf.FieldMask
-	19, // 21: rpmgr.v1.UpdateZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
-	30, // 22: rpmgr.v1.PlanConflict.records:type_name -> rpmgr.v1.PlanRecord
-	30, // 23: rpmgr.v1.ZonePlan.creates:type_name -> rpmgr.v1.PlanRecord
-	30, // 24: rpmgr.v1.ZonePlan.updates:type_name -> rpmgr.v1.PlanRecord
-	30, // 25: rpmgr.v1.ZonePlan.deletes:type_name -> rpmgr.v1.PlanRecord
-	31, // 26: rpmgr.v1.ZonePlan.conflicts:type_name -> rpmgr.v1.PlanConflict
-	30, // 27: rpmgr.v1.ZonePlan.orphans:type_name -> rpmgr.v1.PlanRecord
-	30, // 28: rpmgr.v1.ZonePlan.adopted_changed:type_name -> rpmgr.v1.PlanRecord
-	19, // 29: rpmgr.v1.PlanZoneSyncResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
-	32, // 30: rpmgr.v1.PlanZoneSyncResponse.plan:type_name -> rpmgr.v1.ZonePlan
-	19, // 31: rpmgr.v1.EnableZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
-	19, // 32: rpmgr.v1.ApproveZonePlanResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
-	19, // 33: rpmgr.v1.SyncZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
-	3,  // 34: rpmgr.v1.DnsRecord.state:type_name -> rpmgr.v1.DnsRecordState
-	59, // 35: rpmgr.v1.DnsRecord.adopted_time:type_name -> google.protobuf.Timestamp
-	41, // 36: rpmgr.v1.ListZoneRecordsResponse.records:type_name -> rpmgr.v1.DnsRecord
-	41, // 37: rpmgr.v1.AdoptRecordsResponse.records:type_name -> rpmgr.v1.DnsRecord
-	48, // 38: rpmgr.v1.CreateDnsNameRequest.dns_name:type_name -> rpmgr.v1.DnsName
-	48, // 39: rpmgr.v1.CreateDnsNameResponse.dns_name:type_name -> rpmgr.v1.DnsName
-	48, // 40: rpmgr.v1.GetDnsNameResponse.dns_name:type_name -> rpmgr.v1.DnsName
-	48, // 41: rpmgr.v1.ListDnsNamesResponse.dns_names:type_name -> rpmgr.v1.DnsName
-	48, // 42: rpmgr.v1.UpdateDnsNameRequest.dns_name:type_name -> rpmgr.v1.DnsName
-	60, // 43: rpmgr.v1.UpdateDnsNameRequest.update_mask:type_name -> google.protobuf.FieldMask
-	48, // 44: rpmgr.v1.UpdateDnsNameResponse.dns_name:type_name -> rpmgr.v1.DnsName
-	7,  // 45: rpmgr.v1.DnsProviderService.ConnectDnsProvider:input_type -> rpmgr.v1.ConnectDnsProviderRequest
-	9,  // 46: rpmgr.v1.DnsProviderService.GetDnsProvider:input_type -> rpmgr.v1.GetDnsProviderRequest
-	11, // 47: rpmgr.v1.DnsProviderService.ListDnsProviders:input_type -> rpmgr.v1.ListDnsProvidersRequest
-	13, // 48: rpmgr.v1.DnsProviderService.UpdateDnsProvider:input_type -> rpmgr.v1.UpdateDnsProviderRequest
-	15, // 49: rpmgr.v1.DnsProviderService.DeleteDnsProvider:input_type -> rpmgr.v1.DeleteDnsProviderRequest
-	17, // 50: rpmgr.v1.DnsProviderService.ListProviderZones:input_type -> rpmgr.v1.ListProviderZonesRequest
-	20, // 51: rpmgr.v1.DnsZoneService.ImportZone:input_type -> rpmgr.v1.ImportZoneRequest
-	22, // 52: rpmgr.v1.DnsZoneService.GetZone:input_type -> rpmgr.v1.GetZoneRequest
-	24, // 53: rpmgr.v1.DnsZoneService.ListZones:input_type -> rpmgr.v1.ListZonesRequest
-	26, // 54: rpmgr.v1.DnsZoneService.UpdateZone:input_type -> rpmgr.v1.UpdateZoneRequest
-	28, // 55: rpmgr.v1.DnsZoneService.RemoveZone:input_type -> rpmgr.v1.RemoveZoneRequest
-	33, // 56: rpmgr.v1.DnsZoneService.PlanZoneSync:input_type -> rpmgr.v1.PlanZoneSyncRequest
-	39, // 57: rpmgr.v1.DnsZoneService.SyncZone:input_type -> rpmgr.v1.SyncZoneRequest
-	42, // 58: rpmgr.v1.DnsZoneService.ListZoneRecords:input_type -> rpmgr.v1.ListZoneRecordsRequest
-	44, // 59: rpmgr.v1.DnsZoneService.AdoptRecords:input_type -> rpmgr.v1.AdoptRecordsRequest
-	46, // 60: rpmgr.v1.DnsZoneService.ReleaseRecord:input_type -> rpmgr.v1.ReleaseRecordRequest
-	35, // 61: rpmgr.v1.DnsZoneService.EnableZone:input_type -> rpmgr.v1.EnableZoneRequest
-	37, // 62: rpmgr.v1.DnsZoneService.ApproveZonePlan:input_type -> rpmgr.v1.ApproveZonePlanRequest
-	49, // 63: rpmgr.v1.DnsNameService.CreateDnsName:input_type -> rpmgr.v1.CreateDnsNameRequest
-	51, // 64: rpmgr.v1.DnsNameService.GetDnsName:input_type -> rpmgr.v1.GetDnsNameRequest
-	53, // 65: rpmgr.v1.DnsNameService.ListDnsNames:input_type -> rpmgr.v1.ListDnsNamesRequest
-	55, // 66: rpmgr.v1.DnsNameService.UpdateDnsName:input_type -> rpmgr.v1.UpdateDnsNameRequest
-	57, // 67: rpmgr.v1.DnsNameService.DeleteDnsName:input_type -> rpmgr.v1.DeleteDnsNameRequest
-	8,  // 68: rpmgr.v1.DnsProviderService.ConnectDnsProvider:output_type -> rpmgr.v1.ConnectDnsProviderResponse
-	10, // 69: rpmgr.v1.DnsProviderService.GetDnsProvider:output_type -> rpmgr.v1.GetDnsProviderResponse
-	12, // 70: rpmgr.v1.DnsProviderService.ListDnsProviders:output_type -> rpmgr.v1.ListDnsProvidersResponse
-	14, // 71: rpmgr.v1.DnsProviderService.UpdateDnsProvider:output_type -> rpmgr.v1.UpdateDnsProviderResponse
-	16, // 72: rpmgr.v1.DnsProviderService.DeleteDnsProvider:output_type -> rpmgr.v1.DeleteDnsProviderResponse
-	18, // 73: rpmgr.v1.DnsProviderService.ListProviderZones:output_type -> rpmgr.v1.ListProviderZonesResponse
-	21, // 74: rpmgr.v1.DnsZoneService.ImportZone:output_type -> rpmgr.v1.ImportZoneResponse
-	23, // 75: rpmgr.v1.DnsZoneService.GetZone:output_type -> rpmgr.v1.GetZoneResponse
-	25, // 76: rpmgr.v1.DnsZoneService.ListZones:output_type -> rpmgr.v1.ListZonesResponse
-	27, // 77: rpmgr.v1.DnsZoneService.UpdateZone:output_type -> rpmgr.v1.UpdateZoneResponse
-	29, // 78: rpmgr.v1.DnsZoneService.RemoveZone:output_type -> rpmgr.v1.RemoveZoneResponse
-	34, // 79: rpmgr.v1.DnsZoneService.PlanZoneSync:output_type -> rpmgr.v1.PlanZoneSyncResponse
-	40, // 80: rpmgr.v1.DnsZoneService.SyncZone:output_type -> rpmgr.v1.SyncZoneResponse
-	43, // 81: rpmgr.v1.DnsZoneService.ListZoneRecords:output_type -> rpmgr.v1.ListZoneRecordsResponse
-	45, // 82: rpmgr.v1.DnsZoneService.AdoptRecords:output_type -> rpmgr.v1.AdoptRecordsResponse
-	47, // 83: rpmgr.v1.DnsZoneService.ReleaseRecord:output_type -> rpmgr.v1.ReleaseRecordResponse
-	36, // 84: rpmgr.v1.DnsZoneService.EnableZone:output_type -> rpmgr.v1.EnableZoneResponse
-	38, // 85: rpmgr.v1.DnsZoneService.ApproveZonePlan:output_type -> rpmgr.v1.ApproveZonePlanResponse
-	50, // 86: rpmgr.v1.DnsNameService.CreateDnsName:output_type -> rpmgr.v1.CreateDnsNameResponse
-	52, // 87: rpmgr.v1.DnsNameService.GetDnsName:output_type -> rpmgr.v1.GetDnsNameResponse
-	54, // 88: rpmgr.v1.DnsNameService.ListDnsNames:output_type -> rpmgr.v1.ListDnsNamesResponse
-	56, // 89: rpmgr.v1.DnsNameService.UpdateDnsName:output_type -> rpmgr.v1.UpdateDnsNameResponse
-	58, // 90: rpmgr.v1.DnsNameService.DeleteDnsName:output_type -> rpmgr.v1.DeleteDnsNameResponse
-	68, // [68:91] is the sub-list for method output_type
-	45, // [45:68] is the sub-list for method input_type
-	45, // [45:45] is the sub-list for extension type_name
-	45, // [45:45] is the sub-list for extension extendee
-	0,  // [0:45] is the sub-list for field type_name
+	60, // 14: rpmgr.v1.DnsZone.last_synced_time:type_name -> google.protobuf.Timestamp
+	3,  // 15: rpmgr.v1.DnsZone.delegation_state:type_name -> rpmgr.v1.ZoneDelegationState
+	60, // 16: rpmgr.v1.DnsZone.delegation_checked_time:type_name -> google.protobuf.Timestamp
+	20, // 17: rpmgr.v1.ImportZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
+	62, // 18: rpmgr.v1.ImportZoneResponse.domain:type_name -> rpmgr.v1.Domain
+	20, // 19: rpmgr.v1.GetZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
+	20, // 20: rpmgr.v1.ListZonesResponse.dns_zones:type_name -> rpmgr.v1.DnsZone
+	20, // 21: rpmgr.v1.UpdateZoneRequest.dns_zone:type_name -> rpmgr.v1.DnsZone
+	61, // 22: rpmgr.v1.UpdateZoneRequest.update_mask:type_name -> google.protobuf.FieldMask
+	20, // 23: rpmgr.v1.UpdateZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
+	31, // 24: rpmgr.v1.PlanConflict.records:type_name -> rpmgr.v1.PlanRecord
+	31, // 25: rpmgr.v1.ZonePlan.creates:type_name -> rpmgr.v1.PlanRecord
+	31, // 26: rpmgr.v1.ZonePlan.updates:type_name -> rpmgr.v1.PlanRecord
+	31, // 27: rpmgr.v1.ZonePlan.deletes:type_name -> rpmgr.v1.PlanRecord
+	32, // 28: rpmgr.v1.ZonePlan.conflicts:type_name -> rpmgr.v1.PlanConflict
+	31, // 29: rpmgr.v1.ZonePlan.orphans:type_name -> rpmgr.v1.PlanRecord
+	31, // 30: rpmgr.v1.ZonePlan.adopted_changed:type_name -> rpmgr.v1.PlanRecord
+	20, // 31: rpmgr.v1.PlanZoneSyncResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
+	33, // 32: rpmgr.v1.PlanZoneSyncResponse.plan:type_name -> rpmgr.v1.ZonePlan
+	20, // 33: rpmgr.v1.EnableZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
+	20, // 34: rpmgr.v1.ApproveZonePlanResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
+	20, // 35: rpmgr.v1.SyncZoneResponse.dns_zone:type_name -> rpmgr.v1.DnsZone
+	4,  // 36: rpmgr.v1.DnsRecord.state:type_name -> rpmgr.v1.DnsRecordState
+	60, // 37: rpmgr.v1.DnsRecord.adopted_time:type_name -> google.protobuf.Timestamp
+	42, // 38: rpmgr.v1.ListZoneRecordsResponse.records:type_name -> rpmgr.v1.DnsRecord
+	42, // 39: rpmgr.v1.AdoptRecordsResponse.records:type_name -> rpmgr.v1.DnsRecord
+	49, // 40: rpmgr.v1.CreateDnsNameRequest.dns_name:type_name -> rpmgr.v1.DnsName
+	49, // 41: rpmgr.v1.CreateDnsNameResponse.dns_name:type_name -> rpmgr.v1.DnsName
+	49, // 42: rpmgr.v1.GetDnsNameResponse.dns_name:type_name -> rpmgr.v1.DnsName
+	49, // 43: rpmgr.v1.ListDnsNamesResponse.dns_names:type_name -> rpmgr.v1.DnsName
+	49, // 44: rpmgr.v1.UpdateDnsNameRequest.dns_name:type_name -> rpmgr.v1.DnsName
+	61, // 45: rpmgr.v1.UpdateDnsNameRequest.update_mask:type_name -> google.protobuf.FieldMask
+	49, // 46: rpmgr.v1.UpdateDnsNameResponse.dns_name:type_name -> rpmgr.v1.DnsName
+	8,  // 47: rpmgr.v1.DnsProviderService.ConnectDnsProvider:input_type -> rpmgr.v1.ConnectDnsProviderRequest
+	10, // 48: rpmgr.v1.DnsProviderService.GetDnsProvider:input_type -> rpmgr.v1.GetDnsProviderRequest
+	12, // 49: rpmgr.v1.DnsProviderService.ListDnsProviders:input_type -> rpmgr.v1.ListDnsProvidersRequest
+	14, // 50: rpmgr.v1.DnsProviderService.UpdateDnsProvider:input_type -> rpmgr.v1.UpdateDnsProviderRequest
+	16, // 51: rpmgr.v1.DnsProviderService.DeleteDnsProvider:input_type -> rpmgr.v1.DeleteDnsProviderRequest
+	18, // 52: rpmgr.v1.DnsProviderService.ListProviderZones:input_type -> rpmgr.v1.ListProviderZonesRequest
+	21, // 53: rpmgr.v1.DnsZoneService.ImportZone:input_type -> rpmgr.v1.ImportZoneRequest
+	23, // 54: rpmgr.v1.DnsZoneService.GetZone:input_type -> rpmgr.v1.GetZoneRequest
+	25, // 55: rpmgr.v1.DnsZoneService.ListZones:input_type -> rpmgr.v1.ListZonesRequest
+	27, // 56: rpmgr.v1.DnsZoneService.UpdateZone:input_type -> rpmgr.v1.UpdateZoneRequest
+	29, // 57: rpmgr.v1.DnsZoneService.RemoveZone:input_type -> rpmgr.v1.RemoveZoneRequest
+	34, // 58: rpmgr.v1.DnsZoneService.PlanZoneSync:input_type -> rpmgr.v1.PlanZoneSyncRequest
+	40, // 59: rpmgr.v1.DnsZoneService.SyncZone:input_type -> rpmgr.v1.SyncZoneRequest
+	43, // 60: rpmgr.v1.DnsZoneService.ListZoneRecords:input_type -> rpmgr.v1.ListZoneRecordsRequest
+	45, // 61: rpmgr.v1.DnsZoneService.AdoptRecords:input_type -> rpmgr.v1.AdoptRecordsRequest
+	47, // 62: rpmgr.v1.DnsZoneService.ReleaseRecord:input_type -> rpmgr.v1.ReleaseRecordRequest
+	36, // 63: rpmgr.v1.DnsZoneService.EnableZone:input_type -> rpmgr.v1.EnableZoneRequest
+	38, // 64: rpmgr.v1.DnsZoneService.ApproveZonePlan:input_type -> rpmgr.v1.ApproveZonePlanRequest
+	50, // 65: rpmgr.v1.DnsNameService.CreateDnsName:input_type -> rpmgr.v1.CreateDnsNameRequest
+	52, // 66: rpmgr.v1.DnsNameService.GetDnsName:input_type -> rpmgr.v1.GetDnsNameRequest
+	54, // 67: rpmgr.v1.DnsNameService.ListDnsNames:input_type -> rpmgr.v1.ListDnsNamesRequest
+	56, // 68: rpmgr.v1.DnsNameService.UpdateDnsName:input_type -> rpmgr.v1.UpdateDnsNameRequest
+	58, // 69: rpmgr.v1.DnsNameService.DeleteDnsName:input_type -> rpmgr.v1.DeleteDnsNameRequest
+	9,  // 70: rpmgr.v1.DnsProviderService.ConnectDnsProvider:output_type -> rpmgr.v1.ConnectDnsProviderResponse
+	11, // 71: rpmgr.v1.DnsProviderService.GetDnsProvider:output_type -> rpmgr.v1.GetDnsProviderResponse
+	13, // 72: rpmgr.v1.DnsProviderService.ListDnsProviders:output_type -> rpmgr.v1.ListDnsProvidersResponse
+	15, // 73: rpmgr.v1.DnsProviderService.UpdateDnsProvider:output_type -> rpmgr.v1.UpdateDnsProviderResponse
+	17, // 74: rpmgr.v1.DnsProviderService.DeleteDnsProvider:output_type -> rpmgr.v1.DeleteDnsProviderResponse
+	19, // 75: rpmgr.v1.DnsProviderService.ListProviderZones:output_type -> rpmgr.v1.ListProviderZonesResponse
+	22, // 76: rpmgr.v1.DnsZoneService.ImportZone:output_type -> rpmgr.v1.ImportZoneResponse
+	24, // 77: rpmgr.v1.DnsZoneService.GetZone:output_type -> rpmgr.v1.GetZoneResponse
+	26, // 78: rpmgr.v1.DnsZoneService.ListZones:output_type -> rpmgr.v1.ListZonesResponse
+	28, // 79: rpmgr.v1.DnsZoneService.UpdateZone:output_type -> rpmgr.v1.UpdateZoneResponse
+	30, // 80: rpmgr.v1.DnsZoneService.RemoveZone:output_type -> rpmgr.v1.RemoveZoneResponse
+	35, // 81: rpmgr.v1.DnsZoneService.PlanZoneSync:output_type -> rpmgr.v1.PlanZoneSyncResponse
+	41, // 82: rpmgr.v1.DnsZoneService.SyncZone:output_type -> rpmgr.v1.SyncZoneResponse
+	44, // 83: rpmgr.v1.DnsZoneService.ListZoneRecords:output_type -> rpmgr.v1.ListZoneRecordsResponse
+	46, // 84: rpmgr.v1.DnsZoneService.AdoptRecords:output_type -> rpmgr.v1.AdoptRecordsResponse
+	48, // 85: rpmgr.v1.DnsZoneService.ReleaseRecord:output_type -> rpmgr.v1.ReleaseRecordResponse
+	37, // 86: rpmgr.v1.DnsZoneService.EnableZone:output_type -> rpmgr.v1.EnableZoneResponse
+	39, // 87: rpmgr.v1.DnsZoneService.ApproveZonePlan:output_type -> rpmgr.v1.ApproveZonePlanResponse
+	51, // 88: rpmgr.v1.DnsNameService.CreateDnsName:output_type -> rpmgr.v1.CreateDnsNameResponse
+	53, // 89: rpmgr.v1.DnsNameService.GetDnsName:output_type -> rpmgr.v1.GetDnsNameResponse
+	55, // 90: rpmgr.v1.DnsNameService.ListDnsNames:output_type -> rpmgr.v1.ListDnsNamesResponse
+	57, // 91: rpmgr.v1.DnsNameService.UpdateDnsName:output_type -> rpmgr.v1.UpdateDnsNameResponse
+	59, // 92: rpmgr.v1.DnsNameService.DeleteDnsName:output_type -> rpmgr.v1.DeleteDnsNameResponse
+	70, // [70:93] is the sub-list for method output_type
+	47, // [47:70] is the sub-list for method input_type
+	47, // [47:47] is the sub-list for extension type_name
+	47, // [47:47] is the sub-list for extension extendee
+	0,  // [0:47] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_dns_proto_init() }
@@ -4045,7 +4148,7 @@ func file_rpmgr_v1_dns_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_dns_proto_rawDesc), len(file_rpmgr_v1_dns_proto_rawDesc)),
-			NumEnums:      4,
+			NumEnums:      5,
 			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   3,

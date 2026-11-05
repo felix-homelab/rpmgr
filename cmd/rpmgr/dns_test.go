@@ -38,6 +38,7 @@ type dnsAPI struct {
 	stepUpAPI
 
 	mu         sync.Mutex
+	delegated  bool // the zone is delegated away from its provider
 	connected  *rpmgrv1.ConnectDnsProviderRequest
 	updated    *rpmgrv1.UpdateDnsProviderRequest
 	deleted    *rpmgrv1.DeleteDnsProviderRequest
@@ -71,6 +72,17 @@ func theZone() *rpmgrv1.DnsZone {
 	return &rpmgrv1.DnsZone{Id: "dnz_1", Name: "example.com", DnsProviderId: "dnp_1", ProviderZoneId: "pz1", Etag: "5",
 		SyncState: rpmgrv1.ZoneSyncState_ZONE_SYNC_STATE_HELD, HeldReason: "imported", DefaultTtl: 300,
 		ProviderStatus: rpmgrv1.ZoneProviderStatus_ZONE_PROVIDER_STATUS_PERMISSION_DENIED}
+}
+
+// zone is theZone, delegated away from the provider if the test says so.
+func (a *dnsAPI) zone() *rpmgrv1.DnsZone {
+	z := theZone()
+	if a.delegated {
+		z.AssignedNameservers = []string{"ada.ns.example.net", "bob.ns.example.net"}
+		z.DelegationNameservers = []string{"ns1.lander.example.net"}
+		z.DelegationState = rpmgrv1.ZoneDelegationState_ZONE_DELEGATION_STATE_MISMATCH
+	}
+	return z
 }
 
 func (a *dnsAPI) ConnectDnsProvider(_ context.Context, req *connect.Request[rpmgrv1.ConnectDnsProviderRequest]) (*connect.Response[rpmgrv1.ConnectDnsProviderResponse], error) {
@@ -133,12 +145,12 @@ func (a *dnsAPI) ImportZone(_ context.Context, req *connect.Request[rpmgrv1.Impo
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.imported = req.Msg
-	return connect.NewResponse(&rpmgrv1.ImportZoneResponse{DnsZone: theZone(),
+	return connect.NewResponse(&rpmgrv1.ImportZoneResponse{DnsZone: a.zone(),
 		Domain: &rpmgrv1.Domain{Id: "dom_1", Fqdn: "example.com", Status: rpmgrv1.DomainStatus_DOMAIN_STATUS_VERIFIED}}), nil
 }
 
 func (a *dnsAPI) GetZone(context.Context, *connect.Request[rpmgrv1.GetZoneRequest]) (*connect.Response[rpmgrv1.GetZoneResponse], error) {
-	return connect.NewResponse(&rpmgrv1.GetZoneResponse{DnsZone: theZone()}), nil
+	return connect.NewResponse(&rpmgrv1.GetZoneResponse{DnsZone: a.zone()}), nil
 }
 
 func (a *dnsAPI) ListZones(context.Context, *connect.Request[rpmgrv1.ListZonesRequest]) (*connect.Response[rpmgrv1.ListZonesResponse], error) {
@@ -485,5 +497,35 @@ func TestDNSNameCommands(t *testing.T) {
 	if code, out, _ := run("delete", "dns-name", "www.example.com"); code != cli.ExitOK || a.nameGone.GetDnsNameId() != "dnn_1" || a.nameGone.GetEtag() != "2" ||
 		!strings.Contains(out, "Deleted dns-name dnn_1") {
 		t.Fatalf("delete: %d %q %v", code, out, a.nameGone)
+	}
+}
+
+// TestDNSZoneDelegationWarning (#1144): a zone whose domain is delegated to other nameservers than
+// its provider's says so where it is read: get zone on stderr, so that the table stays as it is,
+// the plan before its hash, and an import; a zone that is delegated to the provider says nothing,
+// and -o json and yaml carry the fields alone.
+func TestDNSZoneDelegationWarning(t *testing.T) {
+	a, run, _ := dnsEnv(t, "")
+	want := "Warning: example.com is delegated to ns1.lander.example.net, not to the provider. Records published at the provider are not served: " +
+		"set the nameservers at your registrar to ada.ns.example.net, bob.ns.example.net."
+	code, out, errOut := run("get", "zone", "example.com")
+	if code != cli.ExitOK || strings.Contains(out+errOut, "delegated") {
+		t.Fatalf("a zone delegated to the provider: %d %q %q", code, out, errOut)
+	}
+	a.delegated = true
+	code, out, errOut = run("get", "zone", "example.com")
+	if code != cli.ExitOK || !strings.Contains(errOut, want) || strings.Contains(out, "delegated to") || !strings.Contains(out, "MISMATCH") {
+		t.Fatalf("get zone: %d %q %q", code, out, errOut)
+	}
+	if code, out, errOut := run("get", "zone", "example.com", "-o", "json"); code != cli.ExitOK || errOut != "" ||
+		!strings.Contains(out, "ns1.lander.example.net") || !strings.Contains(out, "ada.ns.example.net") {
+		t.Fatalf("get zone -o json: %d %q %q", code, out, errOut)
+	}
+	if code, out, _ := run("plan", "zone", "example.com"); code != cli.ExitOK || !strings.Contains(out, want+"\n") ||
+		strings.Index(out, want) > strings.Index(out, "Plan hash:") {
+		t.Fatalf("plan zone: %d %q", code, out)
+	}
+	if code, out, _ := run("import", "zone", "--provider", "cf", "example.com"); code != cli.ExitOK || !strings.Contains(out, want) {
+		t.Fatalf("import zone: %d %q", code, out)
 	}
 }

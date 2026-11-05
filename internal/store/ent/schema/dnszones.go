@@ -57,6 +57,15 @@ func (DNSZone) Fields() []ent.Field {
 		// the zone.
 		field.Bool("removal_requested").Default(false),
 		field.Time("sync_requested_at").Optional().Nillable(),
+		// assigned_nameservers are the nameservers the provider assigned to the zone. The domain
+		// must be delegated to them for what is published to be served; delegation_state is what
+		// the last check found (docs/15-dns.md, "Delegation"): unknown until checked or if the
+		// lookup failed, ok, or mismatch with the nameservers the public DNS names in
+		// delegation_nameservers.
+		field.JSON("assigned_nameservers", []string{}).Optional(),
+		field.Enum("delegation_state").Values("unknown", "ok", "mismatch").Default("unknown"),
+		field.JSON("delegation_nameservers", []string{}).Optional(),
+		field.Time("delegation_checked_at").Optional().Nillable(),
 		field.Time("created_at").Immutable().Default(time.Now),
 	}
 }

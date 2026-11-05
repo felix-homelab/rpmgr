@@ -4,7 +4,7 @@ import { Code } from "@connectrpc/connect";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  DnsRecordState, DnsZoneService, ZoneProviderStatus, ZoneSyncState,
+  DnsRecordState, DnsZoneService, ZoneDelegationState, ZoneProviderStatus, ZoneSyncState,
   type AdoptRecordsRequest, type ApproveZonePlanRequest, type ListZoneRecordsRequest, type PlanZoneSyncRequest, type ReleaseRecordRequest, type RemoveZoneRequest,
 } from "@/gen/rpmgr/v1/dns_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
@@ -133,6 +133,30 @@ describe("DNS zone: plan", () => {
     expect(calls.stepUps).toBe(1);
     await waitFor(() => expect(screen.getAllByText("publishing").length).toBeGreaterThan(0));
     expect(screen.queryByRole("button", { name: "Approve plan" })).toBeNull();
+  });
+
+  it("warns that the domain is delegated elsewhere, before and in the approval, and says where to point it (#1144)", async () => {
+    const calls = page({ zone: { ...held, assignedNameservers: ["ada.ns.example.net", "bob.ns.example.net"], delegationState: ZoneDelegationState.MISMATCH,
+      delegationNameservers: ["ns1.lander.example.net"] } as typeof held });
+    const warning = await screen.findByText(/example\.com is delegated to ns1\.lander\.example\.net, not to the provider/);
+    expect(warning.textContent).toContain("set the nameservers at your registrar to ada.ns.example.net, bob.ns.example.net");
+    expect(screen.getByText(/Nameservers at the provider: ada.ns.example.net, bob.ns.example.net/)).toBeTruthy();
+    const p = await card("Plan 9f3c…e1");
+    fireEvent.click(p.getByRole("button", { name: "Approve plan" }));
+    expect(p.getByText(/Approve plan 9f3c…e1 of example.com\?.*is delegated to ns1\.lander\.example\.net/)).toBeTruthy();
+    expect(calls.approve).toHaveLength(0);
+  });
+
+  it("shows no delegation warning for a zone that is delegated to the provider or not checked", async () => {
+    page({ zone: { ...held, assignedNameservers: ["ada.ns.example.net"], delegationState: ZoneDelegationState.OK } as typeof held });
+    await card("Plan 9f3c…e1");
+    expect(screen.queryByText(/is delegated to/)).toBeNull();
+    expect(screen.getByText("Delegated to the provider")).toBeTruthy();
+    cleanup();
+    page();
+    await card("Plan 9f3c…e1");
+    expect(screen.queryByText(/is delegated to/)).toBeNull();
+    expect(screen.queryByText(/Nameservers at the provider/)).toBeNull();
   });
 
   it("does not approve when the step-up is cancelled", async () => {

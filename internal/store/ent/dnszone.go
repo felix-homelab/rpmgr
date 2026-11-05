@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -54,6 +55,14 @@ type DNSZone struct {
 	RemovalRequested bool `json:"removal_requested,omitempty"`
 	// SyncRequestedAt holds the value of the "sync_requested_at" field.
 	SyncRequestedAt *time.Time `json:"sync_requested_at,omitempty"`
+	// AssignedNameservers holds the value of the "assigned_nameservers" field.
+	AssignedNameservers []string `json:"assigned_nameservers,omitempty"`
+	// DelegationState holds the value of the "delegation_state" field.
+	DelegationState dnszone.DelegationState `json:"delegation_state,omitempty"`
+	// DelegationNameservers holds the value of the "delegation_nameservers" field.
+	DelegationNameservers []string `json:"delegation_nameservers,omitempty"`
+	// DelegationCheckedAt holds the value of the "delegation_checked_at" field.
+	DelegationCheckedAt *time.Time `json:"delegation_checked_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -87,15 +96,15 @@ func (*DNSZone) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case dnszone.FieldPendingPlan:
+		case dnszone.FieldPendingPlan, dnszone.FieldAssignedNameservers, dnszone.FieldDelegationNameservers:
 			values[i] = new([]byte)
 		case dnszone.FieldPublishRouteHostnames, dnszone.FieldAllowProxied, dnszone.FieldAllowWildcards, dnszone.FieldRemovalRequested:
 			values[i] = new(sql.NullBool)
 		case dnszone.FieldVersion, dnszone.FieldDeleteThreshold, dnszone.FieldDefaultTTL:
 			values[i] = new(sql.NullInt64)
-		case dnszone.FieldID, dnszone.FieldOrgID, dnszone.FieldDNSProviderID, dnszone.FieldProviderZoneID, dnszone.FieldName, dnszone.FieldSyncState, dnszone.FieldHeldReason, dnszone.FieldPendingPlanHash, dnszone.FieldProviderStatus:
+		case dnszone.FieldID, dnszone.FieldOrgID, dnszone.FieldDNSProviderID, dnszone.FieldProviderZoneID, dnszone.FieldName, dnszone.FieldSyncState, dnszone.FieldHeldReason, dnszone.FieldPendingPlanHash, dnszone.FieldProviderStatus, dnszone.FieldDelegationState:
 			values[i] = new(sql.NullString)
-		case dnszone.FieldLastSyncedAt, dnszone.FieldSyncRequestedAt, dnszone.FieldCreatedAt:
+		case dnszone.FieldLastSyncedAt, dnszone.FieldSyncRequestedAt, dnszone.FieldDelegationCheckedAt, dnszone.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -228,6 +237,35 @@ func (_m *DNSZone) assignValues(columns []string, values []any) error {
 				_m.SyncRequestedAt = new(time.Time)
 				*_m.SyncRequestedAt = value.Time
 			}
+		case dnszone.FieldAssignedNameservers:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field assigned_nameservers", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.AssignedNameservers); err != nil {
+					return fmt.Errorf("unmarshal field assigned_nameservers: %w", err)
+				}
+			}
+		case dnszone.FieldDelegationState:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field delegation_state", values[i])
+			} else if value.Valid {
+				_m.DelegationState = dnszone.DelegationState(value.String)
+			}
+		case dnszone.FieldDelegationNameservers:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field delegation_nameservers", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.DelegationNameservers); err != nil {
+					return fmt.Errorf("unmarshal field delegation_nameservers: %w", err)
+				}
+			}
+		case dnszone.FieldDelegationCheckedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field delegation_checked_at", values[i])
+			} else if value.Valid {
+				_m.DelegationCheckedAt = new(time.Time)
+				*_m.DelegationCheckedAt = value.Time
+			}
 		case dnszone.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -330,6 +368,20 @@ func (_m *DNSZone) String() string {
 	builder.WriteString(", ")
 	if v := _m.SyncRequestedAt; v != nil {
 		builder.WriteString("sync_requested_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("assigned_nameservers=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AssignedNameservers))
+	builder.WriteString(", ")
+	builder.WriteString("delegation_state=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DelegationState))
+	builder.WriteString(", ")
+	builder.WriteString("delegation_nameservers=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DelegationNameservers))
+	builder.WriteString(", ")
+	if v := _m.DelegationCheckedAt; v != nil {
+		builder.WriteString("delegation_checked_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")

@@ -253,6 +253,9 @@ func importZone() *cli.Command {
 			_, err = fmt.Fprintf(env.Stdout, "Imported zone %s (%s); it is held (%s) and publishes nothing yet.\n"+
 				"Its name is claimed as domain %s, which is %s.\n", z.GetId(), z.GetName(), z.GetHeldReason(), d.GetId(),
 				strings.ToLower(strings.TrimPrefix(d.GetStatus().String(), "DOMAIN_STATUS_")))
+			if w := delegationWarning(z); err == nil && w != "" {
+				_, err = fmt.Fprintln(env.Stdout, w)
+			}
 			return err
 		},
 	}

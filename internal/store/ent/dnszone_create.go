@@ -233,6 +233,46 @@ func (_c *DNSZoneCreate) SetNillableSyncRequestedAt(v *time.Time) *DNSZoneCreate
 	return _c
 }
 
+// SetAssignedNameservers sets the "assigned_nameservers" field.
+func (_c *DNSZoneCreate) SetAssignedNameservers(v []string) *DNSZoneCreate {
+	_c.mutation.SetAssignedNameservers(v)
+	return _c
+}
+
+// SetDelegationState sets the "delegation_state" field.
+func (_c *DNSZoneCreate) SetDelegationState(v dnszone.DelegationState) *DNSZoneCreate {
+	_c.mutation.SetDelegationState(v)
+	return _c
+}
+
+// SetNillableDelegationState sets the "delegation_state" field if the given value is not nil.
+func (_c *DNSZoneCreate) SetNillableDelegationState(v *dnszone.DelegationState) *DNSZoneCreate {
+	if v != nil {
+		_c.SetDelegationState(*v)
+	}
+	return _c
+}
+
+// SetDelegationNameservers sets the "delegation_nameservers" field.
+func (_c *DNSZoneCreate) SetDelegationNameservers(v []string) *DNSZoneCreate {
+	_c.mutation.SetDelegationNameservers(v)
+	return _c
+}
+
+// SetDelegationCheckedAt sets the "delegation_checked_at" field.
+func (_c *DNSZoneCreate) SetDelegationCheckedAt(v time.Time) *DNSZoneCreate {
+	_c.mutation.SetDelegationCheckedAt(v)
+	return _c
+}
+
+// SetNillableDelegationCheckedAt sets the "delegation_checked_at" field if the given value is not nil.
+func (_c *DNSZoneCreate) SetNillableDelegationCheckedAt(v *time.Time) *DNSZoneCreate {
+	if v != nil {
+		_c.SetDelegationCheckedAt(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *DNSZoneCreate) SetCreatedAt(v time.Time) *DNSZoneCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -346,6 +386,10 @@ func (_c *DNSZoneCreate) defaults() error {
 	if _, ok := _c.mutation.RemovalRequested(); !ok {
 		v := dnszone.DefaultRemovalRequested
 		_c.mutation.SetRemovalRequested(v)
+	}
+	if _, ok := _c.mutation.DelegationState(); !ok {
+		v := dnszone.DefaultDelegationState
+		_c.mutation.SetDelegationState(v)
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		if dnszone.DefaultCreatedAt == nil {
@@ -466,6 +510,14 @@ func (_c *DNSZoneCreate) check() error {
 	if _, ok := _c.mutation.RemovalRequested(); !ok {
 		return &ValidationError{Name: "removal_requested", err: errors.New(`ent: missing required field "DNSZone.removal_requested"`)}
 	}
+	if _, ok := _c.mutation.DelegationState(); !ok {
+		return &ValidationError{Name: "delegation_state", err: errors.New(`ent: missing required field "DNSZone.delegation_state"`)}
+	}
+	if v, ok := _c.mutation.DelegationState(); ok {
+		if err := dnszone.DelegationStateValidator(v); err != nil {
+			return &ValidationError{Name: "delegation_state", err: fmt.Errorf(`ent: validator failed for field "DNSZone.delegation_state": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "DNSZone.created_at"`)}
 	}
@@ -579,6 +631,22 @@ func (_c *DNSZoneCreate) createSpec() (*DNSZone, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SyncRequestedAt(); ok {
 		_spec.SetField(dnszone.FieldSyncRequestedAt, field.TypeTime, value)
 		_node.SyncRequestedAt = &value
+	}
+	if value, ok := _c.mutation.AssignedNameservers(); ok {
+		_spec.SetField(dnszone.FieldAssignedNameservers, field.TypeJSON, value)
+		_node.AssignedNameservers = value
+	}
+	if value, ok := _c.mutation.DelegationState(); ok {
+		_spec.SetField(dnszone.FieldDelegationState, field.TypeEnum, value)
+		_node.DelegationState = value
+	}
+	if value, ok := _c.mutation.DelegationNameservers(); ok {
+		_spec.SetField(dnszone.FieldDelegationNameservers, field.TypeJSON, value)
+		_node.DelegationNameservers = value
+	}
+	if value, ok := _c.mutation.DelegationCheckedAt(); ok {
+		_spec.SetField(dnszone.FieldDelegationCheckedAt, field.TypeTime, value)
+		_node.DelegationCheckedAt = &value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(dnszone.FieldCreatedAt, field.TypeTime, value)

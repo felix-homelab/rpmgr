@@ -19,6 +19,10 @@ type Zone struct {
 	Name   string // without a trailing dot, lower case
 	Status string // the provider's status, such as "active"
 	Type   string // the provider's zone type, such as "full"
+	// NameServers are the nameservers the provider assigned to the zone, lower case without a
+	// trailing dot; empty if it names none. The domain the zone belongs to must be delegated to
+	// them for the zone to be served.
+	NameServers []string
 }
 
 // Record is a DNS record. ID is empty for a record that does not exist yet.

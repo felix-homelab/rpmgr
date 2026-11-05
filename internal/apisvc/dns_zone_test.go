@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1237,4 +1238,48 @@ func TestDnsZones_RemoveWithRecords(t *testing.T) {
 func removeZoneWithHash(b *browser, id, hash string) error {
 	_, err := b.dnsz.RemoveZone(context.Background(), connect.NewRequest(&rpmgrv1.RemoveZoneRequest{DnsZoneId: id, PlanHash: hash}))
 	return err
+}
+
+// TestDNS_ImportRecordsDelegation (issue #1144): an import reads the nameservers the provider
+// assigned to the zone and whether the public DNS delegates the domain to them; the zone shows
+// both: a domain at a parking provider is a mismatch with the public nameservers, a matching one
+// is ok, and a failed lookup or a provider that names no nameservers gives no verdict.
+func TestDNS_ImportRecordsDelegation(t *testing.T) {
+	e, ada, _, p := zoneEnv(t)
+	assigned := []string{"ada.ns.example.net", "bob.ns.example.net"}
+	e.dns.zones = []dns.Zone{
+		{ID: "z-ok", Name: "ok.example", Status: "active", Type: "full", NameServers: assigned},
+		{ID: "z-parked", Name: "parked.example", Status: "active", Type: "full", NameServers: assigned},
+		{ID: "z-lookup", Name: "lookup.example", Status: "active", Type: "full", NameServers: assigned},
+		{ID: "z-bare", Name: "bare.example", Status: "active", Type: "full"},
+	}
+	e.publicNS = map[string][]string{"ok.example": {"ada.ns.example.net", "bob.ns.example.net"},
+		"parked.example": {"ns1.lander.example.net"}, "bare.example": {"ns1.lander.example.net"}}
+	for _, c := range []struct {
+		zone  string
+		state rpmgrv1.ZoneDelegationState
+		found []string
+		ns    []string
+	}{
+		{"z-ok", rpmgrv1.ZoneDelegationState_ZONE_DELEGATION_STATE_OK, nil, assigned},
+		{"z-parked", rpmgrv1.ZoneDelegationState_ZONE_DELEGATION_STATE_MISMATCH, []string{"ns1.lander.example.net"}, assigned},
+		{"z-lookup", rpmgrv1.ZoneDelegationState_ZONE_DELEGATION_STATE_UNSPECIFIED, nil, assigned},
+		{"z-bare", rpmgrv1.ZoneDelegationState_ZONE_DELEGATION_STATE_UNSPECIFIED, nil, nil},
+	} {
+		r, err := importZone(ada, p.GetId(), c.zone)
+		if err != nil {
+			t.Fatalf("%s: %v", c.zone, err)
+		}
+		got, err := ada.dnsz.GetZone(context.Background(), connect.NewRequest(&rpmgrv1.GetZoneRequest{DnsZoneId: r.GetDnsZone().GetId()}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		z := got.Msg.GetDnsZone()
+		if z.GetDelegationState() != c.state || !slices.Equal(z.GetDelegationNameservers(), c.found) || !slices.Equal(z.GetAssignedNameservers(), c.ns) {
+			t.Errorf("%s: %v, assigned %v, public %v", c.zone, z.GetDelegationState(), z.GetAssignedNameservers(), z.GetDelegationNameservers())
+		}
+		if z.GetDelegationCheckedTime() == nil {
+			t.Errorf("%s: no check time", c.zone)
+		}
+	}
 }

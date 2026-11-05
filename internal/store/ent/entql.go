@@ -672,6 +672,10 @@ var schemaGraph = func() *sqlgraph.Schema {
 			dnszone.FieldLastSyncedAt:          {Type: field.TypeTime, Column: dnszone.FieldLastSyncedAt},
 			dnszone.FieldRemovalRequested:      {Type: field.TypeBool, Column: dnszone.FieldRemovalRequested},
 			dnszone.FieldSyncRequestedAt:       {Type: field.TypeTime, Column: dnszone.FieldSyncRequestedAt},
+			dnszone.FieldAssignedNameservers:   {Type: field.TypeJSON, Column: dnszone.FieldAssignedNameservers},
+			dnszone.FieldDelegationState:       {Type: field.TypeEnum, Column: dnszone.FieldDelegationState},
+			dnszone.FieldDelegationNameservers: {Type: field.TypeJSON, Column: dnszone.FieldDelegationNameservers},
+			dnszone.FieldDelegationCheckedAt:   {Type: field.TypeTime, Column: dnszone.FieldDelegationCheckedAt},
 			dnszone.FieldCreatedAt:             {Type: field.TypeTime, Column: dnszone.FieldCreatedAt},
 		},
 	}
@@ -4720,6 +4724,26 @@ func (f *DNSZoneFilter) WhereRemovalRequested(p entql.BoolP) {
 // WhereSyncRequestedAt applies the entql time.Time predicate on the sync_requested_at field.
 func (f *DNSZoneFilter) WhereSyncRequestedAt(p entql.TimeP) {
 	f.Where(p.Field(dnszone.FieldSyncRequestedAt))
+}
+
+// WhereAssignedNameservers applies the entql json.RawMessage predicate on the assigned_nameservers field.
+func (f *DNSZoneFilter) WhereAssignedNameservers(p entql.BytesP) {
+	f.Where(p.Field(dnszone.FieldAssignedNameservers))
+}
+
+// WhereDelegationState applies the entql string predicate on the delegation_state field.
+func (f *DNSZoneFilter) WhereDelegationState(p entql.StringP) {
+	f.Where(p.Field(dnszone.FieldDelegationState))
+}
+
+// WhereDelegationNameservers applies the entql json.RawMessage predicate on the delegation_nameservers field.
+func (f *DNSZoneFilter) WhereDelegationNameservers(p entql.BytesP) {
+	f.Where(p.Field(dnszone.FieldDelegationNameservers))
+}
+
+// WhereDelegationCheckedAt applies the entql time.Time predicate on the delegation_checked_at field.
+func (f *DNSZoneFilter) WhereDelegationCheckedAt(p entql.TimeP) {
+	f.Where(p.Field(dnszone.FieldDelegationCheckedAt))
 }
 
 // WhereCreatedAt applies the entql time.Time predicate on the created_at field.

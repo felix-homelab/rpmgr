@@ -30,7 +30,10 @@ import (
 )
 
 // Zone is a zone of the fake account.
-type Zone struct{ ID, Name, Status, Type string }
+type Zone struct {
+	ID, Name, Status, Type string
+	NameServers            []string
+}
 
 // Record is a record of the fake.
 type Record struct {
@@ -101,10 +104,22 @@ func (s *Server) SetTokenStatus(status, expiresOn string) {
 func (s *Server) AddZone(name string) Zone {
 	var z Zone
 	s.lock(func() {
-		z = Zone{ID: s.id("zone"), Name: strings.ToLower(name), Status: "active", Type: "full"}
+		z = Zone{ID: s.id("zone"), Name: strings.ToLower(name), Status: "active", Type: "full",
+			NameServers: []string{"ada.ns.example.net", "bob.ns.example.net"}}
 		s.zones = append(s.zones, z)
 	})
 	return z
+}
+
+// SetNameServers sets the nameservers the fake assigns to a zone.
+func (s *Server) SetNameServers(zoneID string, ns ...string) {
+	s.lock(func() {
+		for i := range s.zones {
+			if s.zones[i].ID == zoneID {
+				s.zones[i].NameServers = ns
+			}
+		}
+	})
 }
 
 // AddRecord adds a record to a zone and returns it with its ID.
@@ -262,9 +277,10 @@ func (s *Server) listZones(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, 1001, "invalid paging parameters")
 		return
 	}
-	out := []map[string]string{}
+	out := []map[string]any{}
 	for _, z := range zs[from:to] {
-		out = append(out, map[string]string{"id": z.ID, "name": z.Name, "status": z.Status, "type": z.Type})
+		out = append(out, map[string]any{"id": z.ID, "name": z.Name, "status": z.Status, "type": z.Type,
+			"name_servers": z.NameServers})
 	}
 	writeOK(w, out, info)
 }

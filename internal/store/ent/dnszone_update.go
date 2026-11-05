@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/predicate"
@@ -255,6 +256,76 @@ func (_u *DNSZoneUpdate) ClearSyncRequestedAt() *DNSZoneUpdate {
 	return _u
 }
 
+// SetAssignedNameservers sets the "assigned_nameservers" field.
+func (_u *DNSZoneUpdate) SetAssignedNameservers(v []string) *DNSZoneUpdate {
+	_u.mutation.SetAssignedNameservers(v)
+	return _u
+}
+
+// AppendAssignedNameservers appends value to the "assigned_nameservers" field.
+func (_u *DNSZoneUpdate) AppendAssignedNameservers(v []string) *DNSZoneUpdate {
+	_u.mutation.AppendAssignedNameservers(v)
+	return _u
+}
+
+// ClearAssignedNameservers clears the value of the "assigned_nameservers" field.
+func (_u *DNSZoneUpdate) ClearAssignedNameservers() *DNSZoneUpdate {
+	_u.mutation.ClearAssignedNameservers()
+	return _u
+}
+
+// SetDelegationState sets the "delegation_state" field.
+func (_u *DNSZoneUpdate) SetDelegationState(v dnszone.DelegationState) *DNSZoneUpdate {
+	_u.mutation.SetDelegationState(v)
+	return _u
+}
+
+// SetNillableDelegationState sets the "delegation_state" field if the given value is not nil.
+func (_u *DNSZoneUpdate) SetNillableDelegationState(v *dnszone.DelegationState) *DNSZoneUpdate {
+	if v != nil {
+		_u.SetDelegationState(*v)
+	}
+	return _u
+}
+
+// SetDelegationNameservers sets the "delegation_nameservers" field.
+func (_u *DNSZoneUpdate) SetDelegationNameservers(v []string) *DNSZoneUpdate {
+	_u.mutation.SetDelegationNameservers(v)
+	return _u
+}
+
+// AppendDelegationNameservers appends value to the "delegation_nameservers" field.
+func (_u *DNSZoneUpdate) AppendDelegationNameservers(v []string) *DNSZoneUpdate {
+	_u.mutation.AppendDelegationNameservers(v)
+	return _u
+}
+
+// ClearDelegationNameservers clears the value of the "delegation_nameservers" field.
+func (_u *DNSZoneUpdate) ClearDelegationNameservers() *DNSZoneUpdate {
+	_u.mutation.ClearDelegationNameservers()
+	return _u
+}
+
+// SetDelegationCheckedAt sets the "delegation_checked_at" field.
+func (_u *DNSZoneUpdate) SetDelegationCheckedAt(v time.Time) *DNSZoneUpdate {
+	_u.mutation.SetDelegationCheckedAt(v)
+	return _u
+}
+
+// SetNillableDelegationCheckedAt sets the "delegation_checked_at" field if the given value is not nil.
+func (_u *DNSZoneUpdate) SetNillableDelegationCheckedAt(v *time.Time) *DNSZoneUpdate {
+	if v != nil {
+		_u.SetDelegationCheckedAt(*v)
+	}
+	return _u
+}
+
+// ClearDelegationCheckedAt clears the value of the "delegation_checked_at" field.
+func (_u *DNSZoneUpdate) ClearDelegationCheckedAt() *DNSZoneUpdate {
+	_u.mutation.ClearDelegationCheckedAt()
+	return _u
+}
+
 // Mutation returns the DNSZoneMutation object of the builder.
 func (_u *DNSZoneUpdate) Mutation() *DNSZoneMutation {
 	return _u.mutation
@@ -322,6 +393,11 @@ func (_u *DNSZoneUpdate) check() error {
 	if v, ok := _u.mutation.DefaultTTL(); ok {
 		if err := dnszone.DefaultTTLValidator(v); err != nil {
 			return &ValidationError{Name: "default_ttl", err: fmt.Errorf(`ent: validator failed for field "DNSZone.default_ttl": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DelegationState(); ok {
+		if err := dnszone.DelegationStateValidator(v); err != nil {
+			return &ValidationError{Name: "delegation_state", err: fmt.Errorf(`ent: validator failed for field "DNSZone.delegation_state": %w`, err)}
 		}
 	}
 	if _u.mutation.DNSProviderCleared() && len(_u.mutation.DNSProviderIDs()) > 0 {
@@ -401,6 +477,37 @@ func (_u *DNSZoneUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.SyncRequestedAtCleared() {
 		_spec.ClearField(dnszone.FieldSyncRequestedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.AssignedNameservers(); ok {
+		_spec.SetField(dnszone.FieldAssignedNameservers, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAssignedNameservers(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, dnszone.FieldAssignedNameservers, value)
+		})
+	}
+	if _u.mutation.AssignedNameserversCleared() {
+		_spec.ClearField(dnszone.FieldAssignedNameservers, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.DelegationState(); ok {
+		_spec.SetField(dnszone.FieldDelegationState, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.DelegationNameservers(); ok {
+		_spec.SetField(dnszone.FieldDelegationNameservers, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedDelegationNameservers(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, dnszone.FieldDelegationNameservers, value)
+		})
+	}
+	if _u.mutation.DelegationNameserversCleared() {
+		_spec.ClearField(dnszone.FieldDelegationNameservers, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.DelegationCheckedAt(); ok {
+		_spec.SetField(dnszone.FieldDelegationCheckedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DelegationCheckedAtCleared() {
+		_spec.ClearField(dnszone.FieldDelegationCheckedAt, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -649,6 +756,76 @@ func (_u *DNSZoneUpdateOne) ClearSyncRequestedAt() *DNSZoneUpdateOne {
 	return _u
 }
 
+// SetAssignedNameservers sets the "assigned_nameservers" field.
+func (_u *DNSZoneUpdateOne) SetAssignedNameservers(v []string) *DNSZoneUpdateOne {
+	_u.mutation.SetAssignedNameservers(v)
+	return _u
+}
+
+// AppendAssignedNameservers appends value to the "assigned_nameservers" field.
+func (_u *DNSZoneUpdateOne) AppendAssignedNameservers(v []string) *DNSZoneUpdateOne {
+	_u.mutation.AppendAssignedNameservers(v)
+	return _u
+}
+
+// ClearAssignedNameservers clears the value of the "assigned_nameservers" field.
+func (_u *DNSZoneUpdateOne) ClearAssignedNameservers() *DNSZoneUpdateOne {
+	_u.mutation.ClearAssignedNameservers()
+	return _u
+}
+
+// SetDelegationState sets the "delegation_state" field.
+func (_u *DNSZoneUpdateOne) SetDelegationState(v dnszone.DelegationState) *DNSZoneUpdateOne {
+	_u.mutation.SetDelegationState(v)
+	return _u
+}
+
+// SetNillableDelegationState sets the "delegation_state" field if the given value is not nil.
+func (_u *DNSZoneUpdateOne) SetNillableDelegationState(v *dnszone.DelegationState) *DNSZoneUpdateOne {
+	if v != nil {
+		_u.SetDelegationState(*v)
+	}
+	return _u
+}
+
+// SetDelegationNameservers sets the "delegation_nameservers" field.
+func (_u *DNSZoneUpdateOne) SetDelegationNameservers(v []string) *DNSZoneUpdateOne {
+	_u.mutation.SetDelegationNameservers(v)
+	return _u
+}
+
+// AppendDelegationNameservers appends value to the "delegation_nameservers" field.
+func (_u *DNSZoneUpdateOne) AppendDelegationNameservers(v []string) *DNSZoneUpdateOne {
+	_u.mutation.AppendDelegationNameservers(v)
+	return _u
+}
+
+// ClearDelegationNameservers clears the value of the "delegation_nameservers" field.
+func (_u *DNSZoneUpdateOne) ClearDelegationNameservers() *DNSZoneUpdateOne {
+	_u.mutation.ClearDelegationNameservers()
+	return _u
+}
+
+// SetDelegationCheckedAt sets the "delegation_checked_at" field.
+func (_u *DNSZoneUpdateOne) SetDelegationCheckedAt(v time.Time) *DNSZoneUpdateOne {
+	_u.mutation.SetDelegationCheckedAt(v)
+	return _u
+}
+
+// SetNillableDelegationCheckedAt sets the "delegation_checked_at" field if the given value is not nil.
+func (_u *DNSZoneUpdateOne) SetNillableDelegationCheckedAt(v *time.Time) *DNSZoneUpdateOne {
+	if v != nil {
+		_u.SetDelegationCheckedAt(*v)
+	}
+	return _u
+}
+
+// ClearDelegationCheckedAt clears the value of the "delegation_checked_at" field.
+func (_u *DNSZoneUpdateOne) ClearDelegationCheckedAt() *DNSZoneUpdateOne {
+	_u.mutation.ClearDelegationCheckedAt()
+	return _u
+}
+
 // Mutation returns the DNSZoneMutation object of the builder.
 func (_u *DNSZoneUpdateOne) Mutation() *DNSZoneMutation {
 	return _u.mutation
@@ -729,6 +906,11 @@ func (_u *DNSZoneUpdateOne) check() error {
 	if v, ok := _u.mutation.DefaultTTL(); ok {
 		if err := dnszone.DefaultTTLValidator(v); err != nil {
 			return &ValidationError{Name: "default_ttl", err: fmt.Errorf(`ent: validator failed for field "DNSZone.default_ttl": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DelegationState(); ok {
+		if err := dnszone.DelegationStateValidator(v); err != nil {
+			return &ValidationError{Name: "delegation_state", err: fmt.Errorf(`ent: validator failed for field "DNSZone.delegation_state": %w`, err)}
 		}
 	}
 	if _u.mutation.DNSProviderCleared() && len(_u.mutation.DNSProviderIDs()) > 0 {
@@ -825,6 +1007,37 @@ func (_u *DNSZoneUpdateOne) sqlSave(ctx context.Context) (_node *DNSZone, err er
 	}
 	if _u.mutation.SyncRequestedAtCleared() {
 		_spec.ClearField(dnszone.FieldSyncRequestedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.AssignedNameservers(); ok {
+		_spec.SetField(dnszone.FieldAssignedNameservers, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAssignedNameservers(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, dnszone.FieldAssignedNameservers, value)
+		})
+	}
+	if _u.mutation.AssignedNameserversCleared() {
+		_spec.ClearField(dnszone.FieldAssignedNameservers, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.DelegationState(); ok {
+		_spec.SetField(dnszone.FieldDelegationState, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.DelegationNameservers(); ok {
+		_spec.SetField(dnszone.FieldDelegationNameservers, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedDelegationNameservers(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, dnszone.FieldDelegationNameservers, value)
+		})
+	}
+	if _u.mutation.DelegationNameserversCleared() {
+		_spec.ClearField(dnszone.FieldDelegationNameservers, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.DelegationCheckedAt(); ok {
+		_spec.SetField(dnszone.FieldDelegationCheckedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DelegationCheckedAtCleared() {
+		_spec.ClearField(dnszone.FieldDelegationCheckedAt, field.TypeTime)
 	}
 	_node = &DNSZone{config: _u.config}
 	_spec.Assign = _node.assignValues

@@ -268,6 +268,8 @@ type zone struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
 	Type   string `json:"type"`
+	// NameServers are the zone's assigned nameservers [V: name_servers of the zone object, Cloudflare API docs].
+	NameServers []string `json:"name_servers"`
 }
 
 // ListZones returns every zone of the token, page by page.
@@ -279,7 +281,8 @@ func (c *Client) ListZones(ctx context.Context) ([]dns.Zone, error) {
 			return 0, err
 		}
 		for _, z := range zs {
-			all = append(all, dns.Zone{ID: z.ID, Name: strings.ToLower(z.Name), Status: z.Status, Type: z.Type})
+			all = append(all, dns.Zone{ID: z.ID, Name: strings.ToLower(z.Name), Status: z.Status, Type: z.Type,
+				NameServers: lowerAll(z.NameServers)})
 		}
 		return len(zs), nil
 	})
@@ -414,4 +417,13 @@ func CheckToken(tok string) error {
 		return errors.New("cloudflare: this looks like a Global API Key; create an API token instead")
 	}
 	return nil
+}
+
+// lowerAll returns the names in lower case without a trailing dot.
+func lowerAll(names []string) []string {
+	var out []string
+	for _, n := range names {
+		out = append(out, strings.TrimSuffix(strings.ToLower(strings.TrimSpace(n)), "."))
+	}
+	return out
 }

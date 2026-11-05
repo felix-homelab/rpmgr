@@ -208,7 +208,20 @@ func getCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			return s.print(ctx, env.Stdout, k, output, []protoreflect.Message{res}, []string{id}, false)
+			if err := s.print(ctx, env.Stdout, k, output, []protoreflect.Message{res}, []string{id}, false); err != nil {
+				return err
+			}
+			// A zone whose domain is delegated elsewhere is not served; the warning is on stderr, so
+			// that the table, and what a script reads, stay as they are.
+			if k.Name == "zone" && output == "table" {
+				z := &rpmgrv1.DnsZone{}
+				if b, merr := proto.Marshal(res.Interface()); merr == nil && proto.Unmarshal(b, z) == nil {
+					if w := delegationWarning(z); w != "" {
+						_, err = fmt.Fprintln(env.Stderr, w)
+					}
+				}
+			}
+			return err
 		},
 	}
 }

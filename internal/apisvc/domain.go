@@ -54,7 +54,7 @@ func (d *Domains) VerifyDomain(ctx context.Context, req *connect.Request[rpmgrv1
 	if v == nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("apisvc: this controller checks no %s proofs", cur.Method))
 	}
-	result := v.Verify(ctx, domains.ChallengeOf(cur))
+	result := v.Verify(ctx, domains.ChallengeWithZone(ctx, d.DB.ReadClient(), cur))
 	var row *ent.Domain
 	// The system scope, as the check reads the claims of every org to hold a nested one; the read
 	// above has shown the claim is the caller's.
