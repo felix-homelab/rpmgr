@@ -950,3 +950,26 @@ func TestSystemd_RestartAfterAFailedStop(t *testing.T) {
 		t.Errorf("Restart that cannot start the unit either: %v", err)
 	}
 }
+
+// TestSystemd_StateBlocked: a systemctl show that does not answer, and leaves a child holding its
+// stdout, ends within the call's limit and says so, while a cut-off window stays the caller's
+// (#1138).
+func TestSystemd_StateBlocked(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "systemctl")
+	mustWrite(t, script, "#!/bin/sh\n(sleep 30 &)\nsleep 30\n", 0o755)
+	s := update.Systemd{Systemctl: script, ShowTimeout: 200 * time.Millisecond}
+	start := time.Now()
+	_, err := s.State(context.Background(), "rpmgr-all-in-one.service")
+	if err == nil || !strings.Contains(err.Error(), "no answer within 200ms") {
+		t.Errorf("State of a blocked systemctl: %v", err)
+	}
+	if d := time.Since(start); d > 10*time.Second {
+		t.Errorf("State took %s; want it bounded by the call limit and the wait delay", d)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := s.State(ctx, "rpmgr-all-in-one.service"); err == nil || strings.Contains(err.Error(), "no answer within") {
+		t.Errorf("State with the window over: %v", err)
+	}
+}
