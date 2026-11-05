@@ -1875,9 +1875,17 @@ type GetControllerUpdateResponse struct {
 	RunningVersion string `protobuf:"bytes,3,opt,name=running_version,json=runningVersion,proto3" json:"running_version,omitempty"`
 	// Whether the running release is older than the first that can update itself over the air, v0.3.0:
 	// it is updated by hand once, and `blocked` says so.
-	ByHand        bool `protobuf:"varint,4,opt,name=by_hand,json=byHand,proto3" json:"by_hand,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	ByHand bool `protobuf:"varint,4,opt,name=by_hand,json=byHand,proto3" json:"by_hand,omitempty"`
+	// The host's own update_channel, stable or prerelease, and auto_update, auto, notify or off, from
+	// its local policy file, which the root updater obeys and the web UI never writes. Empty when the
+	// file cannot be trusted or read; `host_policy_error` says why then.
+	HostUpdateChannel string `protobuf:"bytes,5,opt,name=host_update_channel,json=hostUpdateChannel,proto3" json:"host_update_channel,omitempty"`
+	HostAutoUpdate    string `protobuf:"bytes,6,opt,name=host_auto_update,json=hostAutoUpdate,proto3" json:"host_auto_update,omitempty"`
+	// Why the host's policy file could not be used, such as one that others may write; empty when it
+	// could.
+	HostPolicyError string `protobuf:"bytes,7,opt,name=host_policy_error,json=hostPolicyError,proto3" json:"host_policy_error,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *GetControllerUpdateResponse) Reset() {
@@ -1936,6 +1944,27 @@ func (x *GetControllerUpdateResponse) GetByHand() bool {
 		return x.ByHand
 	}
 	return false
+}
+
+func (x *GetControllerUpdateResponse) GetHostUpdateChannel() string {
+	if x != nil {
+		return x.HostUpdateChannel
+	}
+	return ""
+}
+
+func (x *GetControllerUpdateResponse) GetHostAutoUpdate() string {
+	if x != nil {
+		return x.HostAutoUpdate
+	}
+	return ""
+}
+
+func (x *GetControllerUpdateResponse) GetHostPolicyError() string {
+	if x != nil {
+		return x.HostPolicyError
+	}
+	return ""
 }
 
 // GetRolloutRequest names a rollout.
@@ -2853,12 +2882,15 @@ const file_rpmgr_v1_release_proto_rawDesc = "" +
 	"release_id\x18\x01 \x01(\tB\t\xbaH\x06r\x04\x10\x01\x18@R\treleaseId\"N\n" +
 	"\x18UpdateControllerResponse\x122\n" +
 	"\x06update\x18\x01 \x01(\v2\x1a.rpmgr.v1.ControllerUpdateR\x06update\"\x1c\n" +
-	"\x1aGetControllerUpdateRequest\"\xad\x01\n" +
+	"\x1aGetControllerUpdateRequest\"\xb3\x02\n" +
 	"\x1bGetControllerUpdateResponse\x122\n" +
 	"\x06update\x18\x01 \x01(\v2\x1a.rpmgr.v1.ControllerUpdateR\x06update\x12\x18\n" +
 	"\ablocked\x18\x02 \x01(\tR\ablocked\x12'\n" +
 	"\x0frunning_version\x18\x03 \x01(\tR\x0erunningVersion\x12\x17\n" +
-	"\aby_hand\x18\x04 \x01(\bR\x06byHand\";\n" +
+	"\aby_hand\x18\x04 \x01(\bR\x06byHand\x12.\n" +
+	"\x13host_update_channel\x18\x05 \x01(\tR\x11hostUpdateChannel\x12(\n" +
+	"\x10host_auto_update\x18\x06 \x01(\tR\x0ehostAutoUpdate\x12*\n" +
+	"\x11host_policy_error\x18\a \x01(\tR\x0fhostPolicyError\";\n" +
 	"\x11GetRolloutRequest\x12&\n" +
 	"\n" +
 	"rollout_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\trolloutId\"A\n" +

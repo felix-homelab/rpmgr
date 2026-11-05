@@ -27,4 +27,6 @@ func prepareStaging(string) error { return errors.ErrUnsupported }
 
 func readOwn(string) ([]byte, error) { return nil, errors.ErrUnsupported }
 
+func readOwnedBy(string, int) ([]byte, error) { return nil, errors.ErrUnsupported }
+
 func ownedByMe(fs.FileInfo) bool { return false }

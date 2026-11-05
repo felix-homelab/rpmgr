@@ -784,3 +784,111 @@ func TestSystemd_Stop(t *testing.T) {
 		t.Errorf("Stop of a failing systemctl: %v", err)
 	}
 }
+
+// TestApply_EveryRefusalWritesStatus (#1135): each way the root updater refuses a staged release
+// writes a refused status with its reason before it exits, so that the controller shows the reason
+// and not "did not start"; nothing is installed or restarted.
+func TestApply_EveryRefusalWritesStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		opts    hostOpts
+		rel     rel
+		prepare func(i *installed)
+		reason  string
+	}{
+		{name: "a pre-release on a stable host", opts: hostOpts{policy: "version: 1\nauto_update: auto\nupdate_channel: stable\n"},
+			rel: rel{version: "1.2.0-rc.1", seq: 6, channel: release.Prerelease}, reason: "pre-release"},
+		{name: "auto_update off", opts: hostOpts{policy: "version: 1\nauto_update: off\nupdate_channel: prerelease\n"},
+			rel: rel{version: "1.2.0", seq: 6}, reason: "auto_update"},
+		{name: "a policy others may write", opts: hostOpts{policy: "version: 1\nauto_update: auto\n"}, rel: rel{version: "1.2.0", seq: 6},
+			prepare: func(i *installed) {
+				if err := os.Chmod(i.u.Policy, 0o666); err != nil { //nolint:gosec // G302: the test makes it writable by others
+					t.Fatal(err)
+				}
+			}, reason: "policy"},
+		{name: "install.json missing", rel: rel{version: "1.2.0", seq: 6}, prepare: func(i *installed) {
+			if err := os.Remove(filepath.Join(i.u.State, "install.json")); err != nil {
+				t.Fatal(err)
+			}
+		}, reason: "install.json"},
+		{name: "install.json invalid", rel: rel{version: "1.2.0", seq: 6}, prepare: func(i *installed) {
+			mustWrite(t, filepath.Join(i.u.State, "install.json"), "{", 0o600)
+		}, reason: "install"},
+		{name: "install.json names no role", rel: rel{version: "1.2.0", seq: 6}, prepare: func(i *installed) {
+			mustWrite(t, filepath.Join(i.u.State, "install.json"), `{"method":"script","path":"/x/rpmgr","variant":"full","roles":[]}`, 0o600)
+		}, reason: "install.json"},
+		{name: "install.json names an unsupported role", opts: hostOpts{install: `{"method":"script","path":"/x/rpmgr","variant":"full","roles":["importer"]}`},
+			rel: rel{version: "1.2.0", seq: 6}, reason: "importer"},
+		{name: "a manifest that is no JSON", rel: rel{version: "1.2.0", seq: 6}, prepare: func(i *installed) {
+			mustWrite(t, filepath.Join(i.u.Staged, "manifest.json"), "{", 0o640)
+		}},
+		{name: "a signature that does not match", rel: rel{version: "1.2.0", seq: 6}, prepare: func(i *installed) {
+			mustWrite(t, filepath.Join(i.u.Staged, "manifest.json.minisig"), "untrusted comment: x\nAAAA\n", 0o640)
+		}},
+		{name: "a manifest below the seq of the host", rel: rel{version: "1.2.0", seq: 4}, reason: "older than manifest"},
+		{name: "a version below the floor", rel: rel{version: "0.9.0", seq: 6}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			i := newInstalled(t, tc.opts, "1.1.0", []string{"connector"}, nil)
+			i.stage(tc.rel)
+			if tc.prepare != nil {
+				tc.prepare(i)
+			}
+			if err := i.a.Apply(context.Background()); err == nil {
+				t.Fatal("Apply succeeded")
+			}
+			st := i.status(update.Refused)
+			if st.Reason == "" || st.At.IsZero() {
+				t.Errorf("status %+v names no reason or time", st)
+			}
+			if tc.reason != "" && !strings.Contains(st.Reason, tc.reason) {
+				t.Errorf("reason %q does not mention %q", st.Reason, tc.reason)
+			}
+			i.runs("1.1.0")
+			if got := i.svc.restarted(); len(got) > 0 {
+				t.Errorf("restarted %v", got)
+			}
+		})
+	}
+}
+
+// ReadHostPolicy is the updater's own reading of the local policy for the controller: the same
+// refusals, but the owner is root, so a test's files are read as their own user's.
+func TestReadHostPolicy(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string, mode os.FileMode) string {
+		p := filepath.Join(dir, name)
+		mustWrite(t, p, body, mode)
+		if err := os.Chmod(p, mode); err != nil { //nolint:gosec // G302: the mode under test
+			t.Fatal(err)
+		}
+		return p
+	}
+	me := os.Geteuid()
+	if p, err := update.ReadHostPolicyAs(filepath.Join(dir, "none.yaml"), me); err != nil || p.UpdateChannel != "stable" || p.AutoUpdate != "auto" {
+		t.Errorf("a missing file: %+v, %v; want the defaults", p, err)
+	}
+	if p, err := update.ReadHostPolicyAs(write("ok.yaml", "version: 1\nauto_update: notify\nupdate_channel: prerelease\n", 0o644), me); err != nil ||
+		p.UpdateChannel != "prerelease" || p.AutoUpdate != "notify" {
+		t.Errorf("a trusted file: %+v, %v", p, err)
+	}
+	if _, err := update.ReadHostPolicyAs(write("others.yaml", "version: 1\n", 0o666), me); err == nil {
+		t.Error("a file that others may write was trusted")
+	}
+	if _, err := update.ReadHostPolicyAs(write("group.yaml", "version: 1\n", 0o664), me); err == nil {
+		t.Error("a file that its group may write was trusted")
+	}
+	if _, err := update.ReadHostPolicyAs(write("bad.yaml", "version: 1\nauto_update: [\n", 0o644), me); err == nil {
+		t.Error("a file that does not parse was accepted")
+	}
+	if _, err := update.ReadHostPolicyAs(write("owner.yaml", "version: 1\n", 0o644), me+1); err == nil {
+		t.Error("a file of another owner was trusted")
+	}
+	link := filepath.Join(dir, "link.yaml")
+	if err := os.Symlink(filepath.Join(dir, "ok.yaml"), link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := update.ReadHostPolicyAs(link, me); err == nil {
+		t.Error("a symbolic link was followed")
+	}
+}

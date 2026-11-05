@@ -88,6 +88,9 @@ type Stager struct {
 	send    func(*agentv1.UpdateState) // reports a state on the control session
 	now     func() time.Time           // for signing-key statements
 	logger  *slog.Logger
+	// retrigger writes the manifest of a release staged already once more, so that the path unit
+	// of the root updater fires again: the controller's retry of a refused update.
+	retrigger bool
 
 	mu      sync.Mutex
 	offer   *agentv1.ReleaseOffer   // the offer of the last applied snapshot
@@ -429,6 +432,7 @@ func (s *Stager) attempt(ctx context.Context, offer *agentv1.ReleaseOffer) error
 // root updater verifies them again; nothing here is trusted. The caller has checked the channel.
 func StageRelease(ctx context.Context, o UpdateOptions, src release.Source, version string) error {
 	s := newStager(o, "", nil, time.Now, nil)
+	s.retrigger = true
 	signed, err := (&release.Mirror{Roots: s.o.Roots, Now: s.now}).Fetch(ctx, src)
 	if err != nil {
 		return err
@@ -459,7 +463,9 @@ func offered(o *agentv1.ReleaseOffer, name string, a release.Artifact) error {
 
 // write stages a verified release: it removes what earlier releases left, downloads the artifact
 // with the free-space check, and writes the signed files, the manifest last. A release staged
-// already, the same manifest with its artifact, is left as it is.
+// already, the same manifest with its artifact, is left as it is, except for the controller's own
+// retry (retrigger): the manifest is written once more, atomically, so that the root updater runs
+// again on a release it refused or never started on.
 func (s *Stager) write(ctx context.Context, src release.Source, signed *release.Signed, name string, a release.Artifact) error {
 	if err := os.MkdirAll(s.o.Dir, 0o750); err != nil {
 		return err
@@ -470,7 +476,18 @@ func (s *Stager) write(ctx context.Context, src release.Source, signed *release.
 	}
 	defer func() { _ = root.Close() }()
 	if b, err := readRegular(root, release.ManifestFile); err == nil && string(b) == string(signed.ManifestJSON) && kept(root, name, a) {
-		return nil
+		if !s.retrigger {
+			return nil
+		}
+		meta := release.Artifact{Size: int64(len(signed.ManifestJSON))}
+		sum := sha256.Sum256(signed.ManifestJSON)
+		meta.SHA256 = hex.EncodeToString(sum[:])
+		if err := keep(root, release.ManifestFile, meta, func() (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader(string(signed.ManifestJSON))), nil
+		}); err != nil {
+			return err
+		}
+		return syncRoot(root)
 	}
 	// An earlier release's manifest goes first, so that the updater never finds it next to this
 	// release's files.

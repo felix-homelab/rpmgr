@@ -61,7 +61,10 @@ controller goes first, as in every upgrade: no agent runs ahead of it. A control
    release check, or at once with **Check now**; on an air-gapped install, where the release check
    is off, it never does, so upgrade by hand. The button is off, with the reason beside it, while
    the mirror does not hold the release, a rollout runs, an update of the controller is under way, the host has no
-   root updater, or the database is PostgreSQL. Choose it and confirm your identity. From the
+   root updater, or the database is PostgreSQL. It is also off when the host's own policy refuses
+   the update: `auto_update` is not `auto`, or the release is a pre-release and the host's
+   `update_channel` is `stable`. The card shows what the host takes and the command that changes
+   it ([Choose what a host takes](#choose-what-a-host-takes)). Choose it and confirm your identity. From the
    command line: `rpmgr create rollout --controller --release 1.5.0`.
 
    ![The releases card with Update controller to 0.4.0](../images/web/controller-update.png)
@@ -287,9 +290,12 @@ update_channel: prerelease
 
 Nothing needs restarting: the agent checks its policy again by itself
 ([03](../../03-connections.md#timeouts-keepalive-and-backoff)), and the updater reads it before
-every install. A host only gets a pre-release if the controller lists pre-releases too: set
-**Release channel** to **Pre-releases too** in **Settings → Updates**
-([Settings](settings.md)). The commands refuse a policy file the updater would not trust, such as
+every install. A host only gets a pre-release if the controller lists pre-releases too and the
+host itself takes them. These are two settings: **Release channel** in **Settings → Updates**
+([Settings](settings.md)) set to **Pre-releases too** is the instance's, and the web UI never
+writes the host's policy file. This holds for the controller's own host too: with
+`update_channel: stable` in its policy, the controller refuses to stage a pre-release, and the
+page says so; run `sudo rpmgr policy set-update-channel prerelease` on that host. The commands refuse a policy file the updater would not trust, such as
 one that other users may write; fix its owner or mode first
 ([Local policy file](../reference/policy-file.md)).
 
@@ -298,6 +304,13 @@ one that other users may write; fix its owner or mode first
 - **A connector or gateway is skipped.** Its policy says `auto_update: off` or `notify`, it is
   offline, or its channel does not take the release. Update it by hand, or change its policy
   ([Choose what a host takes](#choose-what-a-host-takes)).
+- **The controller's update was refused.** The Updating page and `rpmgr get controller-update`
+  show the reason the root updater wrote to its status file: its policy, `install.json`, or the
+  manifest or signature of the release. If the status never appears, the message names
+  `journalctl -u rpmgr-update.service`, where the root updater logs its reason.
+  Once you have fixed the cause, press **Retry the update to 1.5.0** on the same release: the
+  controller stages it again, with a step-up as always, and the root updater runs again. You need
+  not start `rpmgr-update.service` by hand.
 - **An agent rolled back.** Its updater installed the release, the role did not become ready, and
   the previous binary is back. The rollout is paused; read the agent's log, then resume or cancel.
   After a failed hand-off the old process never stopped serving, and

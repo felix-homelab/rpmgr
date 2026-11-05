@@ -11,11 +11,14 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
+	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/release"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 	"github.com/felix-homelab/rpmgr/internal/update"
@@ -260,5 +263,168 @@ func TestUpdateController_ByHand(t *testing.T) {
 	e.rel.Version = "0.3.0-rc.1" // a pre-release of v0.3.0 has the feature
 	if got, err := ada.rel.GetControllerUpdate(ctx, connect.NewRequest(&rpmgrv1.GetControllerUpdateRequest{})); err != nil || got.Msg.GetByHand() {
 		t.Errorf("running 0.3.0-rc.1: %v, %v", got, err)
+	}
+}
+
+// TestUpdateController_HostPolicy (#1135): the controller reads the host's own policy, as the root
+// updater trusts it, before it stages: a pre-release on a stable host and auto_update other than
+// auto are refused with the command that fixes them, and the status says why, with the host's
+// settings; a stable release on a stable host is staged; a policy that cannot be trusted refuses;
+// one the controller may not read leaves the decision to the updater.
+func TestUpdateController_HostPolicy(t *testing.T) {
+	e, ada, _, _ := gatewayEnv(t) // the controller runs 1.5.0
+	ctx := context.Background()
+	var staged []string
+	pol := policy.Defaults()
+	var polErr error
+	e.rel.Self = &apisvc.SelfUpdate{
+		Stage:  func(_ context.Context, v string) error { staged = append(staged, v); return nil },
+		Status: func() (update.Status, error) { return update.Status{}, fs.ErrNotExist },
+		Policy: func() (*policy.Policy, error) { return pol, polErr },
+	}
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	preChannel := rpmgrv1.UpdateChannel_UPDATE_CHANNEL_PRERELEASE
+	if _, err := settings.UpdateInstance(e.sys, e.db, &rpmgrv1.InstanceSettings{UpdateChannel: &preChannel},
+		&fieldmaskpb.FieldMask{Paths: []string{"update_channel"}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	upload := func(v, channel string) string {
+		resp, err := ada.rel.UploadRelease(ctx, connect.NewRequest(signedRelease(t, e.clock, v, 10, channel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := resp.Msg.GetRelease().GetId()
+		e.db.Client().Release.UpdateOneID(id).SetMirroredAt(e.clock).ExecX(e.sys)
+		return id
+	}
+	stable, pre := upload("1.6.0", release.Stable), upload("1.7.0-rc.1", release.Prerelease)
+	up := func(id string) error {
+		_, err := ada.rel.UpdateController(ctx, connect.NewRequest(&rpmgrv1.UpdateControllerRequest{ReleaseId: id}))
+		return err
+	}
+	read := func() *rpmgrv1.GetControllerUpdateResponse {
+		t.Helper()
+		resp, err := ada.rel.GetControllerUpdate(ctx, connect.NewRequest(&rpmgrv1.GetControllerUpdateRequest{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp.Msg
+	}
+	refused := func(name, id, want string) {
+		t.Helper()
+		err := up(id)
+		if code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonControllerUpdate || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %v; want a refusal naming %q", name, err, want)
+		}
+		if len(staged) != 0 {
+			t.Fatalf("%s: staged %v", name, staged)
+		}
+	}
+
+	refused("a pre-release on a stable host", pre, "sudo rpmgr policy set-update-channel prerelease")
+	if m := read(); m.GetHostUpdateChannel() != policy.ChannelStable || m.GetHostAutoUpdate() != policy.AutoUpdateAuto || m.GetBlocked() != "" {
+		t.Errorf("status of a stable host: %v", m)
+	}
+	pol = &policy.Policy{AutoUpdate: policy.AutoUpdateOff, UpdateChannel: policy.ChannelPrerelease}
+	refused("auto_update off", stable, "sudo rpmgr policy set-auto-update auto")
+	if m := read(); !strings.Contains(m.GetBlocked(), "set-auto-update auto") || m.GetHostAutoUpdate() != policy.AutoUpdateOff {
+		t.Errorf("status of a host with auto_update off: %v", m)
+	}
+	pol = &policy.Policy{AutoUpdate: policy.AutoUpdateNotify, UpdateChannel: policy.ChannelStable}
+	refused("auto_update notify", stable, "auto_update: notify")
+	pol, polErr = nil, errors.New("update: /etc/rpmgr/policy.yaml has mode 0666; only its owner may write it")
+	refused("a policy others may write", stable, "has mode 0666")
+	if m := read(); m.GetHostPolicyError() == "" || m.GetBlocked() == "" || m.GetHostUpdateChannel() != "" {
+		t.Errorf("status of an untrusted policy: %v", m)
+	}
+
+	// The controller may not read the file: the updater decides, and now says why.
+	polErr = fs.ErrPermission
+	if m := read(); m.GetBlocked() != "" || m.GetHostPolicyError() != "" {
+		t.Errorf("status of an unreadable policy: %v", m)
+	}
+	polErr = nil
+
+	// A stable release on a stable host, and a pre-release on a host that takes them.
+	pol = policy.Defaults()
+	if err := up(stable); err != nil || len(staged) != 1 {
+		t.Fatalf("a stable release on a stable host: %v; staged %v", err, staged)
+	}
+	e.rel.Self.Status = func() (update.Status, error) {
+		return update.Status{State: update.Updated, Version: "1.6.0", At: e.clock.Add(time.Second)}, nil
+	}
+	pol = &policy.Policy{AutoUpdate: policy.AutoUpdateAuto, UpdateChannel: policy.ChannelPrerelease}
+	if err := up(pre); err != nil || len(staged) != 2 {
+		t.Errorf("a pre-release on a host that takes them: %v; staged %v", err, staged)
+	}
+}
+
+// A refusal of the root updater before it has verified the manifest names no version; it counts as
+// the staged release's when it is newer than the request. One from before the request does not.
+func TestGetControllerUpdate_RefusalWithoutVersion(t *testing.T) {
+	e, ada, _, _ := gatewayEnv(t)
+	ctx := context.Background()
+	var status update.Status
+	e.rel.Self = &apisvc.SelfUpdate{
+		Stage:  func(context.Context, string) error { return nil },
+		Status: func() (update.Status, error) { return status, nil },
+	}
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := ada.rel.UploadRelease(ctx, connect.NewRequest(signedRelease(t, e.clock, "1.6.0", 10, release.Stable)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := resp.Msg.GetRelease().GetId()
+	e.db.Client().Release.UpdateOneID(id).SetMirroredAt(e.clock).ExecX(e.sys)
+	if _, err := ada.rel.UpdateController(ctx, connect.NewRequest(&rpmgrv1.UpdateControllerRequest{ReleaseId: id})); err != nil {
+		t.Fatal(err)
+	}
+	read := func() *rpmgrv1.ControllerUpdate {
+		got, err := ada.rel.GetControllerUpdate(ctx, connect.NewRequest(&rpmgrv1.GetControllerUpdateRequest{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.Msg.GetUpdate()
+	}
+	status = update.Status{State: update.Refused, Reason: "refused: manifest", At: e.clock.Add(-time.Hour)}
+	if u := read(); u.GetState() != rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_STAGED {
+		t.Errorf("an old refusal: %v", u)
+	}
+	status.At = e.clock.Add(time.Second)
+	if u := read(); u.GetState() != rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_REFUSED || u.GetVersion() != "1.6.0" || u.GetReason() != "refused: manifest" {
+		t.Errorf("a new refusal: %v", u)
+	}
+	status = update.Status{State: update.Updated, At: e.clock.Add(time.Second)} // no version, no refusal: not the update's
+	if u := read(); u.GetState() != rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_STAGED {
+		t.Errorf("a status of no version that is no refusal: %v", u)
+	}
+	// No status at all within the wait: the message names where the reason is.
+	status = update.Status{}
+	e.clock = e.clock.Add(3 * time.Minute)
+	if u := read(); u.GetState() != rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_REFUSED ||
+		!strings.Contains(u.GetReason(), "journalctl -u rpmgr-update.service") {
+		t.Errorf("no status within the wait: %v", u)
+	}
+	// Both a refusal and a missing start are retried by pressing Update again, which stages the
+	// release once more; the old outcome is history then.
+	restaged := 0
+	e.rel.Self.Stage = func(context.Context, string) error { restaged++; return nil }
+	for _, why := range []string{"after no start", "after a refusal"} {
+		resp, err := ada.rel.UpdateController(ctx, connect.NewRequest(&rpmgrv1.UpdateControllerRequest{ReleaseId: id}))
+		if err != nil || resp.Msg.GetUpdate().GetState() != rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_STAGED {
+			t.Fatalf("the retry %s: %v, %v", why, resp, err)
+		}
+		status = update.Status{State: update.Refused, Reason: "refused: manifest", At: e.clock.Add(time.Second)}
+		if u := read(); u.GetState() != rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_REFUSED {
+			t.Errorf("the refusal of the retry %s: %v", why, u)
+		}
+		e.clock = e.clock.Add(time.Minute)
+	}
+	if restaged != 2 {
+		t.Errorf("staged %d times by the retries; want 2", restaged)
 	}
 }
