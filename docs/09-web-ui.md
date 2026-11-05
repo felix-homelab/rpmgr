@@ -917,12 +917,19 @@ one page, with a section list beside them that jumps to each section
   disabled, **failing** when its last attempt failed), target, whether entries go along, its last
   success, backlog with the age of the oldest item and last error, as the API returns them. The
   form has the fields every sink has (name, entries) and one section per kind: a webhook sink's URL
-  and signing secret, a syslog sink's address and CA certificates; a new kind adds a section, and
-  the kind of a sink never changes. The page checks the name, the URL, the secret's length and the
-  address before it sends anything, and shows a violation the API names at its field. The secret
-  is write-only: a password field that is empty when a sink is edited, sent only when typed, and
-  never shown; the row says only whether one is stored. **Send test item**, **Enable** and
-  **Disable**, **Edit** and **Delete…** (which asks first) each ask for a step-up.
+  and signing secret, a syslog sink's address and CA certificates, an object-storage (S3) sink's
+  endpoint, region, bucket, access key ID, secret access key, lock period and CA certificates; a
+  new kind adds a section, and the kind of a sink never changes. The page checks the name, the
+  URL or endpoint, the secret's length, the address and the required fields of an object-storage
+  sink before it sends anything, and shows a violation the API names at its field; the API checks
+  the bucket and says why it is refused above the buttons. The secret, and the secret access key,
+  are write-only: a password field that is empty when a sink is edited, sent only when typed, and
+  never shown; the row says only whether one is stored. An object-storage sink's row also shows
+  its **Verification**: whether the last read-back found every checkpoint intact, when it ran, and
+  per chain how many checkpoints were read back up to which sequence, any gap and any problem, or
+  that it was not verified yet; **Verify** runs it again ([04](04-security.md#audit-log)).
+  **Send test item**, **Enable** and **Disable**, **Verify**, **Edit** and **Delete…** (which asks
+  first) each ask for a step-up.
 - **Org settings**: alert e-mails on or off (`alert_email`) and the alert types the org gets
   (`alert_types`), one checkbox per kind ([D139](14-open-decisions.md#engineering)). The kinds are
   all checked while none is chosen, as an empty list means all; checking them all saves an empty

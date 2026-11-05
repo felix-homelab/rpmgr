@@ -53,6 +53,8 @@ Changes to the design documents are not recorded here: see the git history and t
   elsewhere it is still refused with `WILDCARD_NEEDS_CERTIFICATE`. The challenge's requests take at
   most half of the provider's request budget, and a retry waits until a provider's block ends. The
   controller's own certificate keeps HTTP-01 and TLS-ALPN-01. (#680)
+- The Audit sinks page can make and edit object-storage (S3) sinks, with a write-only secret access
+  key, and shows the result of a sink's last verification with a **Verify** button. (#1130)
 - A domain claim that is nested under, or contains, a verified domain of another organisation
   (`app.example.com` against `example.com`) no longer becomes verified when its proof succeeds: it
   waits for approval, and no route, certificate or DNS record uses it. The Instance Admin approves
