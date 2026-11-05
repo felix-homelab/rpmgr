@@ -111,6 +111,9 @@ Changes to the design documents are not recorded here: see the git history and t
 - A webhook audit sink whose receiver answers every delivery slowly no longer keeps the shipping to
   the other sinks waiting: its deliveries of one pass are bounded, and the rest follows in the next
   pass. (#1128)
+- A rolled-back update records the last readiness answer of the role, not the end of the window,
+  leaves the previous release running although the stop of the failed one timed out, and restores
+  the database although the staging directory is a read-only mount. (#1138)
 
 ## [0.3.0] - 2026-11-04
 

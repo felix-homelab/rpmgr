@@ -439,6 +439,14 @@ func (a *Applier) rollback(ctx context.Context, p *pending) error {
 		}
 		if err := a.Services.Restart(ctx, unitOf(role)); err != nil {
 			errs = append(errs, err)
+			continue
+		}
+		// The restored release must run: a rollback that leaves the unit stopped or failed, as a
+		// stop that timed out does, is no rollback (#1138).
+		if u, err := a.Services.State(ctx, unitOf(role)); err != nil {
+			errs = append(errs, fmt.Errorf("update: rolling back: %s: %w", unitOf(role), err))
+		} else if u.Active != "active" {
+			errs = append(errs, fmt.Errorf("update: rolling back: %s is %s after the restart", unitOf(role), u.Active))
 		}
 	}
 	return errors.Join(errs...)
@@ -593,7 +601,11 @@ func (a *Applier) restartAndWait(ctx context.Context, p *pending) error {
 				return fatal
 			}
 			if !ok {
-				last = why
+				// A check that ran into the end of the window says nothing about the role: keep
+				// the last reason it gave while the window was open (#1138).
+				if why != nil && ctx.Err() == nil {
+					last = why
+				}
 				still = append(still, role)
 			}
 		}

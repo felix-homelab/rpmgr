@@ -59,3 +59,40 @@ func TestOwnLike(t *testing.T) {
 		t.Error("a missing directory: no error")
 	}
 }
+
+// TestOwnLike_ReadOnlyMount: a read-only mount inside the directory, as the updater's unit makes of
+// the staging directory, is skipped with what is below it; any other error ends the walk (#1138).
+func TestOwnLike_ReadOnlyMount(t *testing.T) {
+	dir := t.TempDir()
+	for _, d := range []string{"update", "db"} {
+		if err := os.MkdirAll(filepath.Join(dir, d), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, d, "f"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	euid, chown := geteuid, lchown
+	t.Cleanup(func() { geteuid, lchown = euid, chown })
+	geteuid = func() int { return 0 }
+	var got []string
+	fail := syscall.EROFS
+	lchown = func(_ *os.Root, name string, _, _ int) error {
+		if name == "update" {
+			return &os.PathError{Op: "lchownat", Path: name, Err: fail}
+		}
+		got = append(got, name)
+		return nil
+	}
+	if err := ownLike(dir, dir); err != nil {
+		t.Fatalf("a read-only mount: %v", err)
+	}
+	slices.Sort(got)
+	if want := []string{".", "db", "db/f"}; !slices.Equal(got, want) {
+		t.Errorf("changed %v, want %v: nothing below the read-only directory", got, want)
+	}
+	fail = syscall.EPERM
+	if err := ownLike(dir, dir); err == nil {
+		t.Error("another error: the walk went on")
+	}
+}

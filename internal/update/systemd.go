@@ -32,6 +32,16 @@ func (s Systemd) Restart(ctx context.Context, unit string) error {
 	}
 	out, err := exec.CommandContext(ctx, s.cmd(), "restart", unit).CombinedOutput() //nolint:gosec // G204: a fixed unit name
 	if err != nil {
+		// A stop that timed out, as when an old generation of a hand-off does not leave on SIGTERM,
+		// kills what is left and leaves the unit failed, and the restart that waited for it fails
+		// with it. Nothing runs by then: clear the failure and start it (#1138).
+		if _, rerr := exec.CommandContext(ctx, s.cmd(), "reset-failed", unit).CombinedOutput(); rerr == nil { //nolint:gosec // G204: a fixed unit name
+			if sout, serr := exec.CommandContext(ctx, s.cmd(), "start", unit).CombinedOutput(); serr == nil { //nolint:gosec // G204: a fixed unit name
+				return nil
+			} else if len(sout) > 0 {
+				out = append(out, sout...)
+			}
+		}
 		return fmt.Errorf("systemctl restart %s: %w: %s", unit, err, strings.TrimSpace(string(out)))
 	}
 	return nil
