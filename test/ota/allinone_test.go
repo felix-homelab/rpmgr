@@ -35,8 +35,13 @@ out=/var/log/ota-samples.txt
 exec >>$out 2>&1
 end=$(( $(date +%s) + $1 ))
 while [ "$(date +%s)" -lt "$end" ]; do
-  echo "== $(date +%T) readyz=$(curl -s -m 2 -o /dev/null -w '%{http_code}' http://` + aioAdmin + `/readyz)"
-  systemctl show -p ActiveState,SubState,NRestarts,MainPID,Type,StatusText rpmgr-all-in-one | tr '\n' ' '; echo
+  rz=$(curl -s -m 2 -o /dev/null -w '%{http_code}' http://` + aioAdmin + `/readyz)
+  st=$(systemctl show -p ActiveState,SubState,NRestarts,MainPID,Type,StatusText rpmgr-all-in-one | tr '\n' ' ')
+  act=$(systemctl show -p ActiveState --value rpmgr-all-in-one)
+  # The updater's gates: ActiveState is active, no restart (NRestarts unchanged), /readyz is 200.
+  if [ "$act" = active ] && [ "$rz" = 200 ]; then v=pass; else v="WAIT(unit=$act readyz=$rz)"; fi
+  echo "== $(date +%T) gate=$v readyz=$rz"
+  echo "$st"
   cg=$(systemctl show -p ControlGroup --value rpmgr-all-in-one)
   for p in $(cat /sys/fs/cgroup$cg/cgroup.procs 2>/dev/null); do
     echo "  $p $(tr '\0' ' ' </proc/$p/cmdline 2>/dev/null)"
@@ -102,7 +107,8 @@ func newAIOHost(t *testing.T) *host {
 	}
 	src := t.TempDir()
 	if out, err := exec.Command("sh", "-c", `git -C ../.. archive "$1" | tar -x -C "$2"`, "sh", from, src).CombinedOutput(); err != nil { //nolint:gosec // G204: the test's own revision
-		t.Fatalf("git archive %s: %v\n%s", from, err, out)
+		// Never a silent pass: the case needs the previous release's source.
+		t.Fatalf("the previous release %s is not in this checkout (fetch the tag, as the ops job does, or set OTA_FROM to a revision): %v\n%s", from, err, out)
 	}
 	bins := t.TempDir()
 	buildIn(t, src, filepath.Join(bins, "rpmgr-"+aioOldVer), "./cmd/rpmgr", aioOldVer)
