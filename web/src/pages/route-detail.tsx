@@ -210,7 +210,7 @@ export function RouteDetail() {
           <Table framed={false}>
             <THead>
               <tr>
-                {["connector", "address", "weight", "health", "transport", "state"].map((c) => <TH key={c}>{t(`route.columns.${c}`)}</TH>)}
+                {["connector", "address", "weight", "priority", "health", "transport", "state"].map((c) => <TH key={c}>{t(`route.columns.${c}`)}</TH>)}
               </tr>
             </THead>
             <tbody>
@@ -255,6 +255,7 @@ function TargetRow({ route: r, target, connector, name, onEdit, onRemove }: {
         )}
       </TD>
       <TD>{target.weight}</TD>
+      <TD>{target.priority}</TD>
       <TD><TargetHealth route={r} target={target} /></TD>
       <TD><TargetTransportCell tt={r.status?.targetTransports.find((x) => x.targetId === target.id)} serving={target.enabled && !problem} name={name} /></TD>
       <TD>

@@ -18,8 +18,8 @@ const postgres = {
   id: "rte_2", name: "postgres", gatewayGroupId: "ggr_eu", enabled: true,
   spec: { case: "tcp" as const, value: { port: 25432 } },
   targets: [
-    { id: "tgt_1", connectorId: "con_db", enabled: true, weight: 100, address: { case: "hostPort" as const, value: { host: "10.0.0.5", port: 5432 } } },
-    { id: "tgt_2", connectorId: "con_app", enabled: true, weight: 50, address: { case: "unixPath" as const, value: "/run/pg sock" } },
+    { id: "tgt_1", connectorId: "con_db", enabled: true, weight: 100, priority: 0, address: { case: "hostPort" as const, value: { host: "10.0.0.5", port: 5432 } } },
+    { id: "tgt_2", connectorId: "con_app", enabled: true, weight: 50, priority: 2, address: { case: "unixPath" as const, value: "/run/pg sock" } },
   ],
   status: {
     state: RouteState.DEGRADED, targetsTotal: 2, targetsReady: 1, gatewaysTotal: 2, gatewaysServing: 1,
@@ -129,13 +129,22 @@ describe("RouteDetail", () => {
     expect(await screen.findByText("HTTP health check of /healthz, every 30 s")).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Health" })).toBeTruthy();
     const rows = within(await screen.findByRole("table")).getAllByRole("row");
-    const cell = (row: number) => within(rows[row]!).getAllByRole("cell")[3]!;
+    const cell = (row: number) => within(rows[row]!).getAllByRole("cell")[4]!;
     await waitFor(() => expect(rows[1]!.textContent).toContain("db-host-1"));
     expect(cell(1).textContent).toBe("—"); // blocked by the policy: the status column says why
     expect(cell(2).textContent).toBe("not checkedIts connector's rpmgr release runs no health checks, so the target counts as healthy. Upgrade the connector.");
     expect(cell(3).textContent).toBe("unhealthyLast check: status 503, want 200 to 399");
     expect(within(rows[3]!).getByText("its health checks fail")).toBeTruthy();
     expect(cell(4).textContent).toBe("—"); // disabled
+  });
+
+  it("shows each target's priority next to its weight", async () => {
+    detail(postgres);
+    const rows = within(await screen.findByRole("table")).getAllByRole("row");
+    const heads = within(rows[0]!).getAllByRole("columnheader").map((h) => h.textContent);
+    expect(heads.indexOf("Priority")).toBe(heads.indexOf("Weight") + 1);
+    await waitFor(() => expect(rows[1]!.textContent).toContain("db-host-1"));
+    expect(rows.slice(1).map((r) => within(r).getAllByRole("cell").slice(2, 4).map((c) => c.textContent))).toEqual([["100", "0"], ["50", "2"]]);
   });
 
   it("shows a target whose first health check has not finished as unknown and serving (D156)", async () => {
@@ -149,8 +158,8 @@ describe("RouteDetail", () => {
     const rows = within(await screen.findByRole("table")).getAllByRole("row");
     await waitFor(() => expect(rows[1]!.textContent).toContain("db-host-1"));
     const cells = within(rows[2]!).getAllByRole("cell");
-    expect(cells[3]!.textContent).toBe("unknownIts first health check has not finished. It gets traffic once it passed, or while no other target of its priority is healthy.");
-    expect(cells[5]!.textContent).toContain("ready"); // not a problem: it serves when no other target does
+    expect(cells[4]!.textContent).toBe("unknownIts first health check has not finished. It gets traffic once it passed, or while no other target of its priority is healthy.");
+    expect(cells[6]!.textContent).toContain("ready"); // not a problem: it serves when no other target does
     expect(within(rows[2]!).queryByText("its health check has not decided yet")).toBeNull();
   });
 
@@ -160,12 +169,12 @@ describe("RouteDetail", () => {
     expect(await screen.findByText("TCP health check")).toBeTruthy();
     const rows = within(await screen.findByRole("table")).getAllByRole("row");
     await waitFor(() => expect(rows[1]!.textContent).toContain("db-host-1"));
-    expect(rows.slice(1).map((r) => within(r).getAllByRole("cell")[3]!.textContent)).toEqual(["healthy", "healthy"]);
+    expect(rows.slice(1).map((r) => within(r).getAllByRole("cell")[4]!.textContent)).toEqual(["healthy", "healthy"]);
     cleanup();
     detail({ ...postgres, status: ready });
     expect(await screen.findByText("no health check")).toBeTruthy();
     const plain = within(await screen.findByRole("table")).getAllByRole("row");
-    expect(plain.slice(1).map((r) => within(r).getAllByRole("cell")[3]!.textContent)).toEqual(["—", "—"]);
+    expect(plain.slice(1).map((r) => within(r).getAllByRole("cell")[4]!.textContent)).toEqual(["—", "—"]);
   });
 
   it("gives a target that a local policy blocks the command for its host", async () => {
@@ -191,7 +200,7 @@ describe("RouteDetail", () => {
     await screen.findByRole("heading", { name: "Route postgres (TCP)" });
     await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(3));
     // the Transport column is the fifth of a target's row
-    return screen.getAllByRole("row").slice(1).map((r) => r.querySelectorAll("td")[4]!.textContent);
+    return screen.getAllByRole("row").slice(1).map((r) => r.querySelectorAll("td")[5]!.textContent);
   };
 
   it("shows each target the transport its streams take, the raced and the fallback ones told apart", async () => {
