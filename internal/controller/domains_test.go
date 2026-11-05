@@ -134,3 +134,64 @@ func TestDomainChecks_NestedClaimHeld(t *testing.T) {
 		}
 	})
 }
+
+// zoneRecorder keeps the managed zone each challenge it is given carries.
+type zoneRecorder struct {
+	mu    sync.Mutex
+	zones map[string]*domains.ManagedZone
+}
+
+func (v *zoneRecorder) Verify(_ context.Context, c domains.Challenge) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.zones[c.FQDN] = c.Zone
+	return domains.ErrNoProof
+}
+
+// TestDomainChecks_ManagedZone (issue #1144): a claim in a managed zone is checked with the zone,
+// the provider's name, assigned nameservers and whether its challenge is published, so that a
+// failed check says why; and after the DNS job has published the challenge, the claim is checked
+// again at once: its last check, which was before, is cleared by the job, and the check that runs
+// then sees the TXT published.
+func TestDomainChecks_ManagedZone(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		storetest.Init(t, db)
+		sys := storetest.SystemCtx(t)
+		org := storetest.Org(t, db, "org-a")
+		c := db.Client()
+		now := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+		prov := c.DNSProvider.Create().SetOrgID(org).SetKind("cloudflare").SetName("cf").SetCredentialEnc([]byte("x")).SaveX(sys)
+		zone := c.DNSZone.Create().SetOrgID(org).SetDNSProviderID(prov.ID).SetProviderZoneID("z1").SetName("example.com").
+			SetAssignedNameservers([]string{"ada.ns.example.net"}).SaveX(sys)
+		c.Domain.Create().SetOrgID(org).SetFqdn("app.example.com").SetChallengeValue("v").SetCreatedAt(now.Add(-time.Hour)).ExecX(sys)
+		c.Domain.Create().SetOrgID(org).SetFqdn("plain.example.org").SetChallengeValue("v").SetCreatedAt(now.Add(-time.Hour)).ExecX(sys)
+
+		v := &zoneRecorder{zones: map[string]*domains.ManagedZone{}}
+		run := func(at time.Time) {
+			t.Helper()
+			job := controller.DomainCheckJob(controller.DomainCheckOptions{DB: db, TXT: v, Now: func() time.Time { return at }})
+			if err := job.Run(context.WithoutCancel(sys), lease.Lease{}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		run(now)
+		if z := v.zones["app.example.com"]; z == nil || z.Name != "example.com" || z.Provider != "Cloudflare" || z.Published ||
+			!slices.Equal(z.NameServers, []string{"ada.ns.example.net"}) {
+			t.Fatalf("the claim in the zone: %+v", z)
+		}
+		if z := v.zones["plain.example.org"]; z != nil {
+			t.Fatalf("a claim outside any zone has the zone %+v", z)
+		}
+
+		// The job publishes the challenge: the ledger has the record, and the claim's last check is
+		// cleared (that is the job's, TestRun_PublishedChallengeMakesTheClaimDue), so it is due now
+		// and not at the next quarter hour.
+		c.DNSRecord.Create().SetOrgID(org).SetDNSZoneID(zone.ID).SetName(domains.ChallengeName("app.example.com")).SetType("TXT").
+			SetContent("v").SetTTL(300).SetState("synced").ExecX(sys)
+		c.Domain.Update().Where(domain.Fqdn("app.example.com")).ClearLastCheckedAt().ExecX(sys)
+		run(now.Add(time.Second))
+		if z := v.zones["app.example.com"]; z == nil || !z.Published {
+			t.Fatalf("after the job published the challenge: %+v", z)
+		}
+	})
+}

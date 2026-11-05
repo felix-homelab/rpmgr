@@ -1413,3 +1413,47 @@ func TestRun_RevisionAfterAnEmptyFirstLook(t *testing.T) {
 		t.Fatalf("records %v: the revision after the first look was missed", e.names())
 	}
 }
+
+// TestRun_PublishedChallengeMakesTheClaimDue (issue #1144): a pending claim in a managed zone was
+// checked, and failed, before the DNS job published its TXT; the pass that publishes it makes the
+// claim due for a check at once, and no pass that publishes nothing does: not a held zone's, not
+// one that stopped, not one for another claim.
+func TestRun_PublishedChallengeMakesTheClaimDue(t *testing.T) {
+	e := newEnv(t, storetest.Migrated(t, store.SQLite))
+	c := e.db.Client()
+	checked := e.clk.now()
+	claim := func(fqdn string, status domain.Status) *ent.Domain {
+		return c.Domain.Create().SetOrgID(e.org).SetFqdn(fqdn).SetStatus(status).SetChallengeValue("cv-" + fqdn).
+			SetLastCheckedAt(checked).SetLastError("not here yet").SaveX(e.sys)
+	}
+	pending, verified := claim("app.example.com", domain.StatusPending), claim("ok.example.com", domain.StatusVerified)
+	elsewhere := claim("app.example.org", domain.StatusPending) // outside the zone
+	due := func(d *ent.Domain) bool { return c.Domain.GetX(e.sys, d.ID).LastCheckedAt == nil }
+
+	j, l := e.replica("ctn_a")
+	ls := e.take(l)
+	e.db.Client().DNSZone.UpdateOneID(e.zone.ID).SetSyncState(dnszone.SyncStateHeld).ExecX(e.sys)
+	e.pass(j, l, ls)
+	if due(pending) || len(e.names()) != 0 {
+		t.Fatal("a held zone made the claim due, or published")
+	}
+
+	// A provider that fails writes nothing: the claim is not due.
+	e.db.Client().DNSZone.UpdateOneID(e.zone.ID).SetSyncState(dnszone.SyncStateActive).ExecX(e.sys)
+	e.fake.Fail(cftest.Fault{Status: 403})
+	e.pass(j, l, ls)
+	if due(pending) {
+		t.Fatal("a pass that stopped made the claim due")
+	}
+
+	e.pass(j, l, ls)
+	if !slices.Contains(e.names(), "_rpmgr-challenge.app.example.com") {
+		t.Fatalf("the challenge is not published: %v", e.names())
+	}
+	if !due(pending) {
+		t.Fatal("the pass that published the challenge did not make the claim due")
+	}
+	if due(verified) || due(elsewhere) {
+		t.Fatal("a claim that is verified, or outside the zone, was made due")
+	}
+}

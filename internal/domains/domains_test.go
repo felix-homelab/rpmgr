@@ -255,3 +255,64 @@ func TestDNS_CrossOrgPublishRefused_Nested(t *testing.T) {
 		}
 	})
 }
+
+// TestChallengeFor (issue #1144): a claim carries the managed zone its name is in: the closest one
+// of its own org, with the provider's name, the nameservers it assigned and whether its challenge
+// is published (a synced ledger row), and none for a claim outside any zone, in a zone of another
+// org, or checked by HTTP.
+func TestChallengeFor(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		storetest.Init(t, db)
+		sys := storetest.SystemCtx(t)
+		orgA, orgB := storetest.Org(t, db, "org-a"), storetest.Org(t, db, "org-b")
+		c := db.Client()
+		prov := func(org string) string {
+			return c.DNSProvider.Create().SetOrgID(org).SetKind("cloudflare").SetName("cf").SetCredentialEnc([]byte("x")).SaveX(sys).ID
+		}
+		pa, pb := prov(orgA), prov(orgB)
+		zone := func(org, p, pz, name string, ns ...string) *ent.DNSZone {
+			return c.DNSZone.Create().SetOrgID(org).SetDNSProviderID(p).SetProviderZoneID(pz).SetName(name).SetAssignedNameservers(ns).SaveX(sys)
+		}
+		outer := zone(orgA, pa, "z1", "example.com", "ada.ns.example.net")
+		inner := zone(orgA, pa, "z2", "eu.example.com", "bob.ns.example.net")
+		zone(orgB, pb, "z3", "other.example", "cat.ns.example.net")
+		claim := func(org, fqdn string, method domain.Method) *ent.Domain {
+			return c.Domain.Create().SetOrgID(org).SetFqdn(fqdn).SetMethod(method).SetChallengeValue("cv").SaveX(sys)
+		}
+
+		d := claim(orgA, "app.eu.example.com", domain.MethodDNSTxt)
+		got := domains.ChallengeWithZone(sys, c, d)
+		if z := got.Zone; z == nil || z.Name != "eu.example.com" || z.Provider != "Cloudflare" || z.Published ||
+			len(z.NameServers) != 1 || z.NameServers[0] != "bob.ns.example.net" {
+			t.Fatalf("the closest zone: %+v", got.Zone)
+		}
+		if got.FQDN != d.Fqdn || got.Value != "cv" || got.ID != d.ID {
+			t.Fatalf("the challenge: %+v", got)
+		}
+
+		// A synced ledger row at the challenge name is published; one that is not synced is not.
+		rec := c.DNSRecord.Create().SetOrgID(orgA).SetDNSZoneID(inner.ID).SetName(domains.ChallengeName(d.Fqdn)).SetType("TXT").
+			SetContent("cv").SetTTL(300).SaveX(sys)
+		if got := domains.ChallengeWithZone(sys, c, d); got.Zone.Published {
+			t.Fatal("a record that is still being created is published")
+		}
+		c.DNSRecord.UpdateOne(rec).SetState("synced").ExecX(sys)
+		if got := domains.ChallengeWithZone(sys, c, d); !got.Zone.Published {
+			t.Fatal("a synced record is not published")
+		}
+
+		if z := domains.ChallengeWithZone(sys, c, claim(orgA, "www.example.com", domain.MethodDNSTxt)).Zone; z == nil || z.Name != outer.Name {
+			t.Fatalf("the outer zone: %+v", z)
+		}
+		for name, d := range map[string]*ent.Domain{
+			"outside any zone":   claim(orgA, "app.example.org", domain.MethodDNSTxt),
+			"a zone of another":  claim(orgA, "app.other.example", domain.MethodDNSTxt),
+			"checked by HTTP":    claim(orgA, "web.example.com", domain.MethodHTTP),
+			"not below the apex": claim(orgA, "badexample.com", domain.MethodDNSTxt),
+		} {
+			if z := domains.ChallengeWithZone(sys, c, d).Zone; z != nil {
+				t.Errorf("%s: a zone %+v", name, z)
+			}
+		}
+	})
+}

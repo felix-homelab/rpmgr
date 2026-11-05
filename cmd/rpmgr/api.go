@@ -212,7 +212,19 @@ func getCommand() *cli.Command {
 				return err
 			}
 			if r := routeOf(res); r != nil && output == "table" && builtInUnpinned(r) {
-				_, err = fmt.Fprintln(env.Stdout, "NOTE: Built-in targets are not affected by the transport setting.")
+				if _, err := fmt.Fprintln(env.Stdout, "NOTE: Built-in targets are not affected by the transport setting."); err != nil {
+					return err
+				}
+			}
+			// A zone whose domain is delegated elsewhere is not served; the warning is on stderr, so
+			// that the table, and what a script reads, stay as they are.
+			if k.Name == "zone" && output == "table" {
+				z := &rpmgrv1.DnsZone{}
+				if b, merr := proto.Marshal(res.Interface()); merr == nil && proto.Unmarshal(b, z) == nil {
+					if w := delegationWarning(z); w != "" {
+						_, err = fmt.Fprintln(env.Stderr, w)
+					}
+				}
 			}
 			return err
 		},

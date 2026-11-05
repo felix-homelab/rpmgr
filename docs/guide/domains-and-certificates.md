@@ -44,6 +44,16 @@ cannot claim it ([04](../04-security.md#route-and-hostname-ownership)).
   internal address fails with "a nameserver's address is not public"
   ([04](../04-security.md#route-and-hostname-ownership)); have the Instance Admin mark such a claim
   trusted.
+  When the check fails, the claim's last error says why:
+
+  | Message | What it means | What to do |
+  |---|---|---|
+  | no TXT record at `_rpmgr-challenge.<domain>` yet | The nameservers answered, and there is no TXT record at the name | Create it, or wait for it to be published; for a domain in a managed zone, approve the zone's plan |
+  | the TXT record at `_rpmgr-challenge.<domain>` holds …, expected … | There are TXT records at the name and none holds the value; the values found are shown, cut | Replace the record with the value rpmgr shows; one pair of double quotes around it is fine |
+  | not published yet in the managed zone | The domain is in a [managed zone](dns.md) and the DNS job has not written the record: the zone is held until its plan is approved | Approve the zone's plan; the claim is checked again as soon as the record is published |
+  | `<zone>` is delegated to …, not to the provider | The domain's public nameservers are not the ones the provider assigned, so what is published at the provider is not served | Set the nameservers at your registrar to the ones named ([DNS automation](dns.md#point-the-domain-at-cloudflare)) |
+  | no authoritative nameserver of the zone answered | None of the zone's nameservers gave an answer; the kind of failure is named, never an address | Check that the nameservers are reachable from the controller |
+
 - **HTTP token.** Every enabled gateway of your organisation answers
   `http://<domain>/.well-known/rpmgr-challenge/<claim ID>` on port 80 with the value. The
   controller fetches that URL; pointing the name at your gateways is the proof. Port 80 of the

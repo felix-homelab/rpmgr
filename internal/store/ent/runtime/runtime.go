@@ -1835,7 +1835,7 @@ func init() {
 	// dnszone.DefaultRemovalRequested holds the default value on creation for the removal_requested field.
 	dnszone.DefaultRemovalRequested = dnszoneDescRemovalRequested.Default.(bool)
 	// dnszoneDescCreatedAt is the schema descriptor for created_at field.
-	dnszoneDescCreatedAt := dnszoneFields[17].Descriptor()
+	dnszoneDescCreatedAt := dnszoneFields[21].Descriptor()
 	// dnszone.DefaultCreatedAt holds the default value on creation for the created_at field.
 	dnszone.DefaultCreatedAt = dnszoneDescCreatedAt.Default.(func() time.Time)
 	// dnszoneDescID is the schema descriptor for id field.

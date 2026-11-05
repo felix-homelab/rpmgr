@@ -1027,6 +1027,10 @@ one page, with a section list beside them that jumps to each section
   lacks permission for one zone shows `permission denied` on that zone, with what to do. **Remove**
   keeps the records at the provider. The sidebar links to the page when the controller serves the
   DNS services; until then the page is reachable by its address only.
+- **Delegation.** A zone whose domain is delegated to other nameservers than the ones the provider
+  assigned shows a warning above its plan, which the approval's confirmation repeats: what the zone
+  publishes is not served until the nameservers are set at the registrar, and which ones
+  ([15](15-dns.md#delegation)). A zone that is delegated shows so, and the nameservers.
 - **The zone page** (`/dns/<zone>`, linked from the zone's name on the DNS page and loaded lazily)
   differs from the mock-up in these ways. The gates are shown and not yet edited there, and there
   is no **Discard**: a plan is read live and is replaced by the next one. The plan lists what a pass

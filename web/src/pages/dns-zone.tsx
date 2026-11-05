@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, Link, useNavigate } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 import { useState } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Ask } from "@/components/ask";
 import { PageHeader } from "@/components/page-header";
@@ -14,7 +15,7 @@ import { Status, type Look } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TD, TH, THead, TR } from "@/components/ui/table";
-import { DnsZoneService, ZoneProviderStatus, ZoneSyncState, type DnsZone, type PlanRecord, type ZonePlan } from "@/gen/rpmgr/v1/dns_pb";
+import { DnsZoneService, ZoneDelegationState, ZoneProviderStatus, ZoneSyncState, type DnsZone, type PlanRecord, type ZonePlan } from "@/gen/rpmgr/v1/dns_pb";
 import { apiError } from "@/lib/api-error";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
@@ -88,12 +89,31 @@ export function DnsZonePage() {
       {got.isError && <Alert>{apiError(t, got.error)}</Alert>}
       {error && <Alert>{error}</Alert>}
       {note && <p role="status">{note}</p>}
+      {zone && <DelegationWarning zone={zone} />}
       {zone && <ZoneState zone={zone} />}
       {zone && zone.syncState !== ZoneSyncState.DISABLED && <PlanCard zone={zone} />}
       <ZoneRecords zoneId={zoneId} admin={admin} />
       {zone && !zone.removalPending && <RemoveCard zone={zone} />}
     </div>
   );
+}
+
+// delegationOf says in words that the domain is delegated away from the provider, the words the
+// claim check uses (docs/15-dns.md, "Delegation"): what the public DNS names, and what to set at the
+// registrar. Empty if the delegation is fine or not known.
+function delegationOf(t: TFunction, z: DnsZone): string {
+  if (z.delegationState !== ZoneDelegationState.MISMATCH) {
+    return "";
+  }
+  return t("dnsZone.delegation", { name: z.name, public: z.delegationNameservers.join(", "), assigned: z.assignedNameservers.join(", ") });
+}
+
+// DelegationWarning warns, before a plan is approved and after, that what the zone publishes is not
+// served: the domain is delegated to other nameservers than the ones the provider assigned.
+function DelegationWarning({ zone }: { zone: DnsZone }) {
+  const { t } = useTranslation();
+  const text = delegationOf(t, zone);
+  return text ? <Alert>{text}</Alert> : null;
 }
 
 // ZoneState shows what the zone's gates are and what its provider answered.
@@ -106,6 +126,8 @@ function ZoneState({ zone: z }: { zone: DnsZone }) {
       <div className="flex flex-wrap gap-x-3 text-muted-foreground">
         {z.heldReason && z.syncState === ZoneSyncState.HELD && <span>{t("dns.heldReason", { reason: t(`dns.held.${z.heldReason}`, { defaultValue: z.heldReason }) })}</span>}
         {z.lastSyncedTime && <span>{t("dns.synced", { when: when(z.lastSyncedTime) })}</span>}
+        {z.assignedNameservers.length > 0 && <span>{t("dnsZone.assigned", { servers: z.assignedNameservers.join(", ") })}</span>}
+        {z.delegationState === ZoneDelegationState.OK && <span>{t("dnsZone.delegationOk")}</span>}
       </div>
       {z.providerStatus === ZoneProviderStatus.PERMISSION_DENIED && <p className="text-destructive">{t("dns.permissionDenied", { name: z.name })}</p>}
     </Card>
@@ -156,7 +178,7 @@ function PlanCard({ zone }: { zone: DnsZone }) {
   return (
     <Card title={p ? t("dnsZone.plan", { hash: short(p.hash) }) : t("dnsZone.planTitle")} description={zone.syncState === ZoneSyncState.HELD ? t("dnsZone.planHeld") : zone.pendingPlanHash ? t("dnsZone.planApproved") : t("dnsZone.planLive")}
       actions={zone.syncState === ZoneSyncState.HELD && p && (
-        <Ask label={t("dnsZone.approve")} question={t("dnsZone.approveAsk", { hash: short(p.hash), name: zone.name })} confirm={t("dnsZone.approveConfirm")} busy={approve.isPending} onConfirm={ok} />
+        <Ask label={t("dnsZone.approve")} question={[t("dnsZone.approveAsk", { hash: short(p.hash), name: zone.name }), delegationOf(t, zone)].filter(Boolean).join(" ")} confirm={t("dnsZone.approveConfirm")} busy={approve.isPending} onConfirm={ok} />
       )}>
       {plan.isError && <Alert>{apiError(t, plan.error)}</Alert>}
       {error && <Alert>{error}</Alert>}

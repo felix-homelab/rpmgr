@@ -16,6 +16,13 @@ Changes to the design documents are not recorded here: see the git history and t
   name that a route or DNS name of the organisation publishes and of a type it manages; the others
   show why not. A refused adoption, in the web UI and in `rpmgr adopt dns-record`, now names the
   record and says to create a route or DNS name for it first (#1137).
+- A TXT claim that fails now says why. The check tells no record at `_rpmgr-challenge.<domain>`,
+  other values there (shown, cut), a challenge the DNS job has not published yet in a managed
+  zone, and a domain that is delegated to other nameservers than the ones the DNS provider
+  assigned, which never serve what rpmgr publishes there; the last also warns on the zone page,
+  in `rpmgr get zone` and in the plan before it is approved, and is checked again every hour.
+  A claim in a managed zone is checked again as soon as the DNS job has published its TXT, and a
+  challenge value in one pair of double quotes counts. (#1144)
 
 ### Changed
 

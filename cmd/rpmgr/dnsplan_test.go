@@ -75,7 +75,7 @@ func (a *dnsAPI) PlanZoneSync(_ context.Context, req *connect.Request[rpmgrv1.Pl
 			z.hashes = z.hashes[1:]
 		}
 	}
-	return connect.NewResponse(&rpmgrv1.PlanZoneSyncResponse{DnsZone: theZone(), Plan: thePlan(hash)}), nil
+	return connect.NewResponse(&rpmgrv1.PlanZoneSyncResponse{DnsZone: a.zone(), Plan: thePlan(hash)}), nil
 }
 
 func (a *dnsAPI) ApproveZonePlan(_ context.Context, req *connect.Request[rpmgrv1.ApproveZonePlanRequest]) (*connect.Response[rpmgrv1.ApproveZonePlanResponse], error) {

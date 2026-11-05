@@ -352,7 +352,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	}
 	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_dns_proto.Services().ByName("DnsZoneService"),
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewDnsZoneServiceHandler(&apisvc.DnsZones{DB: db, API: apiServer, Providers: dnsProviders, Planner: dnsJob, Now: o.Now}, opts...)
+			return rpmgrv1connect.NewDnsZoneServiceHandler(&apisvc.DnsZones{DB: db, API: apiServer, Providers: dnsProviders, Planner: dnsJob, Delegation: &domains.TXTVerifier{}, Now: o.Now}, opts...)
 		}); err != nil {
 		return err
 	}
@@ -545,7 +545,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	job(CloudflareRangesJob(CloudflareRangesOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger,
 		Client: cfranges.Client(proxy), Result: metrics.RangesResult()}), "cloudflare ranges job")
 	job(dnsJob.Lease(), "dns job")
-	job(DNSTokenJob(DNSTokenOptions{DB: db, Leases: leases, Sealer: sealer, Dial: o.DNSDial, Now: o.Now, Logger: o.Logger}), "dns token job")
+	job(DNSTokenJob(DNSTokenOptions{DB: db, Leases: leases, Sealer: sealer, Dial: o.DNSDial, Delegation: &domains.TXTVerifier{}, Now: o.Now, Logger: o.Logger}), "dns token job")
 	job(RolloutJob(RolloutOptions{DB: db, Now: o.Now, Logger: o.Logger}), "rollout job")
 	bg.Go(func() { ReloadCA(jobs, caOpts) })
 	bg.Go(func() { shipper.Run(jobs) })

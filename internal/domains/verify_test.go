@@ -310,3 +310,143 @@ func TestTXTVerifier_ErrorsNameNoAddress(t *testing.T) {
 		}
 	}
 }
+
+// TestTXTVerifier_Messages (issue #1144): a failed check says which failure it is. No TXT record at
+// the name (NXDOMAIN, or an empty answer) is told from other values at it, which are shown, cut;
+// a value in quotes, as a provider may store it, counts, and only that. Every failure is still
+// ErrNoProof.
+func TestTXTVerifier_Messages(t *testing.T) {
+	ctx := context.Background()
+	long := strings.Repeat("x", 200)
+	port := serveAll(t, map[string]*nameserver{
+		"127.0.0.1": {authoritative: true, nxdomain: true},
+		"127.0.0.2": {authoritative: true}, // answers, with no record
+		"127.0.0.3": {txt: []string{"v=spf1 -all"}, authoritative: true},
+		"127.0.0.4": {txt: []string{`"` + value + `"`}, authoritative: true},
+		"127.0.0.5": {txt: []string{`"` + value}, authoritative: true},
+		"127.0.0.6": {txt: []string{long}, authoritative: true},
+	})
+	addrs := map[string]string{"ns-nx": "127.0.0.1", "ns-empty": "127.0.0.2", "ns-other": "127.0.0.3", "ns-quoted": "127.0.0.4",
+		"ns-half": "127.0.0.5", "ns-long": "127.0.0.6"}
+	for name, c := range map[string]struct {
+		ns   string
+		want []string // substrings of the error; nil is a proof
+		not  string
+	}{
+		"NXDOMAIN":            {"ns-nx", []string{"no TXT record at _rpmgr-challenge.example.com yet", "NXDOMAIN or an empty answer"}, "holds"},
+		"an empty answer":     {"ns-empty", []string{"no TXT record at _rpmgr-challenge.example.com yet"}, "holds"},
+		"another value":       {"ns-other", []string{"holds \"v=spf1 -all\", expected \"" + value + "\""}, "no TXT record"},
+		"a quoted value":      {"ns-quoted", nil, ""},
+		"a half-quoted value": {"ns-half", []string{"holds"}, "no TXT record"},
+		"a long value is cut": {"ns-long", []string{"holds \"" + long[:64] + "…\""}, long[:65]},
+	} {
+		v, _ := verifier(port, map[string][]string{"example.com": {c.ns}}, map[string]string{c.ns: addrs[c.ns]})
+		err := v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value})
+		if c.want == nil {
+			if err != nil {
+				t.Errorf("%s: %v, want a proof", name, err)
+			}
+			continue
+		}
+		if !errors.Is(err, domains.ErrNoProof) {
+			t.Errorf("%s: %v, want ErrNoProof", name, err)
+			continue
+		}
+		for _, w := range c.want {
+			if !strings.Contains(err.Error(), w) {
+				t.Errorf("%s: %q lacks %q", name, err, w)
+			}
+		}
+		if c.not != "" && strings.Contains(err.Error(), c.not) {
+			t.Errorf("%s: %q holds %q", name, err, c.not)
+		}
+	}
+}
+
+// TestTXTVerifier_Delegation (issue #1144): a domain delegated to nameservers other than the ones
+// its provider assigned is told so, with both sets, as the published TXT is not served there; the
+// proof is still only the authoritative answer, so a delegation never makes one, and one that
+// matches, or a provider that names no nameservers, adds nothing. A managed zone whose challenge
+// is not published yet says so.
+func TestTXTVerifier_Delegation(t *testing.T) {
+	ctx := context.Background()
+	port := serveAll(t, map[string]*nameserver{
+		"127.0.0.1": {authoritative: true, nxdomain: true},
+		"127.0.0.2": {txt: []string{value}, authoritative: true},
+	})
+	addrs := map[string]string{"ns1.lander.example.net": "127.0.0.1", "ada.ns.example.org": "127.0.0.1", "good.ns.example.org": "127.0.0.2"}
+	zone := func(published bool, assigned ...string) *domains.ManagedZone {
+		return &domains.ManagedZone{Name: "example.com", Provider: "Cloudflare", NameServers: assigned, Published: published}
+	}
+	for name, c := range map[string]struct {
+		public []string
+		zone   *domains.ManagedZone
+		want   []string // substrings; nil is a proof
+		not    string
+	}{
+		"mismatched": {[]string{"ns1.lander.example.net"}, zone(true, "ada.ns.example.org", "bob.ns.example.org"),
+			[]string{"example.com is delegated to ns1.lander.example.net, not to Cloudflare",
+				"set the nameservers at your registrar to ada.ns.example.org, bob.ns.example.org"}, "no TXT record"},
+		"matching": {[]string{"ada.ns.example.org"}, zone(true, "ADA.ns.example.org.", "bob.ns.example.org"),
+			[]string{"no TXT record at _rpmgr-challenge.example.com yet"}, "delegated"},
+		"one public nameserver of another provider": {[]string{"ada.ns.example.org", "ns1.lander.example.net"},
+			zone(true, "ada.ns.example.org", "bob.ns.example.org"), []string{"delegated to ada.ns.example.org, ns1.lander.example.net"}, ""},
+		"no assigned nameservers": {[]string{"ns1.lander.example.net"}, zone(true), []string{"no TXT record"}, "delegated"},
+		"no managed zone":         {[]string{"ns1.lander.example.net"}, nil, []string{"no TXT record"}, "delegated"},
+		"not published yet": {[]string{"ada.ns.example.org"}, zone(false, "ada.ns.example.org"),
+			[]string{"not published yet in the managed zone example.com", "plan is approved"}, "no TXT record at"},
+		"a proof beats a mismatch": {[]string{"good.ns.example.org"}, zone(true, "ada.ns.example.org"), nil, ""},
+	} {
+		v, _ := verifier(port, map[string][]string{"example.com": c.public}, addrs)
+		err := v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value, Zone: c.zone})
+		if c.want == nil {
+			if err != nil {
+				t.Errorf("%s: %v, want a proof", name, err)
+			}
+			continue
+		}
+		if !errors.Is(err, domains.ErrNoProof) {
+			t.Errorf("%s: %v, want ErrNoProof", name, err)
+			continue
+		}
+		for _, w := range c.want {
+			if !strings.Contains(err.Error(), w) {
+				t.Errorf("%s: %q lacks %q", name, err, w)
+			}
+		}
+		if c.not != "" && strings.Contains(err.Error(), c.not) {
+			t.Errorf("%s: %q holds %q", name, err, c.not)
+		}
+	}
+
+	// A lookup of the domain's nameservers that fails is no verdict: no proof, no delegation.
+	v := &domains.TXTVerifier{LookupNS: func(context.Context, string) ([]*net.NS, error) {
+		return nil, &net.DNSError{Err: "server misbehaving", IsTemporary: true}
+	}}
+	err := v.Verify(ctx, domains.Challenge{FQDN: "example.com", Value: value, Zone: zone(true, "ada.ns.example.org")})
+	if !errors.Is(err, domains.ErrNoNameserver) || strings.Contains(err.Error(), "delegated") {
+		t.Errorf("a failed lookup: %v", err)
+	}
+	if _, err := v.Delegation(ctx, "example.com"); err == nil {
+		t.Error("Delegation of a failed lookup: no error")
+	}
+}
+
+func TestDelegated(t *testing.T) {
+	for name, c := range map[string]struct {
+		public, assigned []string
+		want             bool
+	}{
+		"equal":        {[]string{"a.ns.x", "b.ns.x"}, []string{"b.ns.x", "a.ns.x"}, true},
+		"case and dot": {[]string{"a.ns.x"}, []string{"A.NS.X."}, true},
+		"a subset":     {[]string{"a.ns.x"}, []string{"a.ns.x", "b.ns.x"}, true},
+		"one foreign":  {[]string{"a.ns.x", "p.park.y"}, []string{"a.ns.x", "b.ns.x"}, false},
+		"all foreign":  {[]string{"p.park.y"}, []string{"a.ns.x"}, false},
+		"no public":    {nil, []string{"a.ns.x"}, false},
+		"no assigned":  {[]string{"a.ns.x"}, nil, false},
+	} {
+		if got := domains.Delegated(c.public, c.assigned); got != c.want {
+			t.Errorf("%s: %v, want %v", name, got, c.want)
+		}
+	}
+}

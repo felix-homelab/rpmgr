@@ -145,6 +145,11 @@ func SyncRequestedAt(v time.Time) predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldEQ(FieldSyncRequestedAt, v))
 }
 
+// DelegationCheckedAt applies equality check predicate on the "delegation_checked_at" field. It's identical to DelegationCheckedAtEQ.
+func DelegationCheckedAt(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldDelegationCheckedAt, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldEQ(FieldCreatedAt, v))
@@ -888,6 +893,96 @@ func SyncRequestedAtIsNil() predicate.DNSZone {
 // SyncRequestedAtNotNil applies the NotNil predicate on the "sync_requested_at" field.
 func SyncRequestedAtNotNil() predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldNotNull(FieldSyncRequestedAt))
+}
+
+// AssignedNameserversIsNil applies the IsNil predicate on the "assigned_nameservers" field.
+func AssignedNameserversIsNil() predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldIsNull(FieldAssignedNameservers))
+}
+
+// AssignedNameserversNotNil applies the NotNil predicate on the "assigned_nameservers" field.
+func AssignedNameserversNotNil() predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNotNull(FieldAssignedNameservers))
+}
+
+// DelegationStateEQ applies the EQ predicate on the "delegation_state" field.
+func DelegationStateEQ(v DelegationState) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldDelegationState, v))
+}
+
+// DelegationStateNEQ applies the NEQ predicate on the "delegation_state" field.
+func DelegationStateNEQ(v DelegationState) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNEQ(FieldDelegationState, v))
+}
+
+// DelegationStateIn applies the In predicate on the "delegation_state" field.
+func DelegationStateIn(vs ...DelegationState) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldIn(FieldDelegationState, vs...))
+}
+
+// DelegationStateNotIn applies the NotIn predicate on the "delegation_state" field.
+func DelegationStateNotIn(vs ...DelegationState) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNotIn(FieldDelegationState, vs...))
+}
+
+// DelegationNameserversIsNil applies the IsNil predicate on the "delegation_nameservers" field.
+func DelegationNameserversIsNil() predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldIsNull(FieldDelegationNameservers))
+}
+
+// DelegationNameserversNotNil applies the NotNil predicate on the "delegation_nameservers" field.
+func DelegationNameserversNotNil() predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNotNull(FieldDelegationNameservers))
+}
+
+// DelegationCheckedAtEQ applies the EQ predicate on the "delegation_checked_at" field.
+func DelegationCheckedAtEQ(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldDelegationCheckedAt, v))
+}
+
+// DelegationCheckedAtNEQ applies the NEQ predicate on the "delegation_checked_at" field.
+func DelegationCheckedAtNEQ(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNEQ(FieldDelegationCheckedAt, v))
+}
+
+// DelegationCheckedAtIn applies the In predicate on the "delegation_checked_at" field.
+func DelegationCheckedAtIn(vs ...time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldIn(FieldDelegationCheckedAt, vs...))
+}
+
+// DelegationCheckedAtNotIn applies the NotIn predicate on the "delegation_checked_at" field.
+func DelegationCheckedAtNotIn(vs ...time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNotIn(FieldDelegationCheckedAt, vs...))
+}
+
+// DelegationCheckedAtGT applies the GT predicate on the "delegation_checked_at" field.
+func DelegationCheckedAtGT(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldGT(FieldDelegationCheckedAt, v))
+}
+
+// DelegationCheckedAtGTE applies the GTE predicate on the "delegation_checked_at" field.
+func DelegationCheckedAtGTE(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldGTE(FieldDelegationCheckedAt, v))
+}
+
+// DelegationCheckedAtLT applies the LT predicate on the "delegation_checked_at" field.
+func DelegationCheckedAtLT(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldLT(FieldDelegationCheckedAt, v))
+}
+
+// DelegationCheckedAtLTE applies the LTE predicate on the "delegation_checked_at" field.
+func DelegationCheckedAtLTE(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldLTE(FieldDelegationCheckedAt, v))
+}
+
+// DelegationCheckedAtIsNil applies the IsNil predicate on the "delegation_checked_at" field.
+func DelegationCheckedAtIsNil() predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldIsNull(FieldDelegationCheckedAt))
+}
+
+// DelegationCheckedAtNotNil applies the NotNil predicate on the "delegation_checked_at" field.
+func DelegationCheckedAtNotNil() predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNotNull(FieldDelegationCheckedAt))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
