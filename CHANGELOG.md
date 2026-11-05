@@ -104,6 +104,9 @@ Changes to the design documents are not recorded here: see the git history and t
   process of a restart with hand-off still serves its port. (#1076)
 - An audit export whose client stops reading is cut at the export's deadline, so it no longer holds
   its read snapshot until the connection times out. (#1126)
+- A webhook audit sink whose receiver answers every delivery slowly no longer keeps the shipping to
+  the other sinks waiting: its deliveries of one pass are bounded, and the rest follows in the next
+  pass. (#1128)
 
 ## [0.3.0] - 2026-11-04
 
