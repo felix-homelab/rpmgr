@@ -146,7 +146,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		// A gateway reads the host's policy file for auto_update and update_channel only, as the
 		// root updater does; a missing file is the defaults.
 		update = &agent.UpdateOptions{Dir: filepath.Join(cfg.StateDir, "update"), Variant: version.Variant,
-			Policy: func() *policy.Policy { p, _ := policy.Load(policy.DefaultPath); return p }}
+			PolicyFile: policy.DefaultPath}
 	}
 	ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
 		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, LiveLog: o.LiveLog, Dial: o.Dial, OnAcmeChallenge: challenges.Apply,

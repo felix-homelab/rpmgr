@@ -12,6 +12,7 @@ import (
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
+	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollouttarget"
@@ -115,6 +116,45 @@ func TestRollouts_HostPolicy(t *testing.T) {
 	}
 	if _, err := ada.rel.PreviewRollout(ctx, connect.NewRequest(&rpmgrv1.PreviewRolloutRequest{})); code(err) != connect.CodeInvalidArgument {
 		t.Errorf("no release: %v", err)
+	}
+
+	// A rollout whose first stage would test nothing is refused, naming the agents and the fix:
+	// staged with only refusing canaries, easy with a queue that only refuses, UpgradeAgents too.
+	// One agent that takes the release, or that reported nothing, is enough; Preview says so.
+	e.rel.Version = "1.5.0-rc.1"
+	bad := []string{ids["stable"], ids["off"]}
+	refused := func(err error) {
+		t.Helper()
+		if code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonAllRefused ||
+			!strings.Contains(err.Error(), "off (") || !strings.Contains(err.Error(), "sudo rpmgr policy set-auto-update auto") ||
+			!strings.Contains(err.Error(), "Choose other agents, or change these hosts' policies") {
+			t.Errorf("the first stage tests nothing: %v", err)
+		}
+	}
+	_, err = ada.rel.CreateRollout(ctx, connect.NewRequest(&rpmgrv1.CreateRolloutRequest{ReleaseId: rels["1.5.0-rc.1"], CanaryAgentIds: bad}))
+	refused(err)
+	_, err = ada.rel.CreateRollout(ctx, connect.NewRequest(&rpmgrv1.CreateRolloutRequest{ReleaseId: rels["1.5.0-rc.1"],
+		Mode: rpmgrv1.RolloutMode_ROLLOUT_MODE_EASY, AgentIds: bad}))
+	refused(err)
+	_, err = ada.rel.UpgradeAgents(ctx, connect.NewRequest(&rpmgrv1.UpgradeAgentsRequest{AgentIds: bad}))
+	refused(err)
+	if n := c.Rollout.Query().CountX(sys); n != 0 {
+		t.Fatalf("a refused rollout left %d rows", n)
+	}
+	for _, in := range []*rpmgrv1.PreviewRolloutRequest{{ReleaseId: rels["1.5.0-rc.1"], CanaryAgentIds: bad},
+		{ReleaseId: rels["1.5.0-rc.1"], AgentIds: bad}} {
+		if resp, err := ada.rel.PreviewRollout(ctx, connect.NewRequest(in)); err != nil || !strings.Contains(resp.Msg.GetBlocked(), "would be tested by no agent") {
+			t.Errorf("preview %v: %q, %v", in, resp.Msg.GetBlocked(), err)
+		}
+	}
+	for _, ok := range [][]string{{ids["stable"], ids["ok"]}, {ids["off"], ids["older"]}} {
+		if resp, err := ada.rel.PreviewRollout(ctx, connect.NewRequest(&rpmgrv1.PreviewRolloutRequest{ReleaseId: rels["1.5.0-rc.1"], CanaryAgentIds: ok})); err != nil || resp.Msg.GetBlocked() != "" {
+			t.Errorf("preview with an agent that takes it %v: %q, %v", ok, resp.Msg.GetBlocked(), err)
+		}
+	}
+	// A stable release is refused by auto_update only: the stable host is a fine canary for it.
+	if resp, err := ada.rel.PreviewRollout(ctx, connect.NewRequest(&rpmgrv1.PreviewRolloutRequest{ReleaseId: rels["1.4.2"], CanaryAgentIds: []string{ids["stable"]}})); err != nil || resp.Msg.GetBlocked() != "" {
+		t.Errorf("a stable release on a stable host: %q, %v", resp.Msg.GetBlocked(), err)
 	}
 
 	// A staged rollout skips them at once, with the reason, and never offers them the release.

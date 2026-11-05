@@ -98,6 +98,7 @@ function page({ active, targets = [], mode = RolloutMode.EASY, createError = fal
       listRolloutTargets: () => ({ rolloutTargets: targets }),
       previewRollout: (req) => (calls.preview.push(req.agentIds), {
         total: req.agentIds.length,
+        blocked: req.agentIds.length === 1 && req.agentIds[0] === "con_nas" ? "every agent of the queue would be skipped" : "",
         skipped: req.agentIds.includes("con_nas") ? [{ agentId: "con_nas", agentKind: AgentKind.CONNECTOR, agentName: "nas",
           reason: "the host's local policy sets auto_update: notify", command: "sudo rpmgr policy set-auto-update auto" }] : [],
       }),
@@ -162,6 +163,18 @@ describe("starting an easy rollout", () => {
     expect(within(warning).getByText("sudo rpmgr policy set-auto-update auto")).toBeTruthy();
     // The warning never blocks the start.
     expect((dialog.getByRole("button", { name: "Start: update 2 agents" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("is an error when the whole queue would be skipped: Start stays disabled until another agent joins", async () => {
+    page();
+    const dialog = await openDialog();
+    await waitFor(() => expect(box(dialog, "nas")).toBeTruthy());
+    fireEvent.click(box(dialog, "nas"));
+    expect(await dialog.findByText("Every agent of the queue would be skipped.")).toBeTruthy();
+    expect((dialog.getByRole("button", { name: "Start: update 1 agent" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(box(dialog, "web"));
+    await waitFor(() => expect((dialog.getByRole("button", { name: "Start: update 2 agents" }) as HTMLButtonElement).disabled).toBe(false));
+    expect(dialog.queryByText("Every agent of the queue would be skipped.")).toBeNull();
   });
 
   it("queues ticked agents in the default order, lets the user move them, and starts the queue after a step-up", async () => {

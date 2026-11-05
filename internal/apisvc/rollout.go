@@ -39,6 +39,7 @@ const (
 	ReasonRolloutState    = "ROLLOUT_STATE"
 	ReasonRolloutMode     = "ROLLOUT_MODE"
 	ReasonNotUpgradable   = "AGENT_NOT_UPGRADABLE"
+	ReasonAllRefused      = "FIRST_STAGE_REFUSED_BY_HOSTS"
 )
 
 // pausedByHand is the pause reason of a rollout an Instance Admin paused.
@@ -105,6 +106,9 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 			if err != nil {
 				return err
 			}
+			if err := firstStageRefused(agents, m.GetAgentIds(), "agent of the queue", rel.Version); err != nil {
+				return err
+			}
 			if row, err = tx.Rollout.Create().SetReleaseID(rel.ID).SetMode(rollout.ModeEasy).SetCreatedBy(callerID(ctx)).Save(sys); err != nil {
 				return err
 			}
@@ -116,6 +120,9 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 				return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
 					"apisvc: canary agent %s is not a connector or enrolled gateway that a rollout updates", id))
 			}
+		}
+		if err := firstStageRefused(agents, m.GetCanaryAgentIds(), "canary agent", rel.Version); err != nil {
+			return err
 		}
 		row, err = tx.Rollout.Create().SetReleaseID(rel.ID).SetCreatedBy(callerID(ctx)).Save(sys)
 		if err != nil {
@@ -202,6 +209,11 @@ func (r *Releases) PreviewRollout(ctx context.Context, req *connect.Request[rpmg
 				AgentName: a.name, Reason: a.refusal, Command: a.command})
 		}
 	}
+	if len(req.Msg.GetCanaryAgentIds()) > 0 {
+		out.Blocked = allRefused(agents, req.Msg.GetCanaryAgentIds(), "canary agent", rel.Version)
+	} else if len(req.Msg.GetAgentIds()) > 0 {
+		out.Blocked = allRefused(agents, req.Msg.GetAgentIds(), "agent of the queue", rel.Version)
+	}
 	slices.SortFunc(out.Skipped, func(a, b *rpmgrv1.SkippedAgent) int {
 		return cmp.Or(strings.Compare(a.GetAgentName(), b.GetAgentName()), strings.Compare(a.GetAgentId(), b.GetAgentId()))
 	})
@@ -232,6 +244,9 @@ func (r *Releases) UpgradeAgents(ctx context.Context, req *connect.Request[rpmgr
 		}
 		queue, err := queueOf(agents, req.Msg.GetAgentIds())
 		if err != nil {
+			return nil, err
+		}
+		if err := firstStageRefused(agents, req.Msg.GetAgentIds(), "agent", rel.Version); err != nil {
 			return nil, err
 		}
 		row, err = tx.Rollout.Query().Where(rollout.Active(true)).Only(sys)
@@ -600,6 +615,37 @@ func (a rolloutAgent) skipText() string {
 		return ""
 	}
 	return a.refusal + "; to take it, run on the host: " + a.command
+}
+
+// allRefused says why a rollout whose first stage is the agents ids would test nothing: the host
+// policy every one of them reported refuses the release. It returns "" when one of them takes it,
+// reported no policy, or ids names no known agent. what names the stage in the message.
+func allRefused(agents map[string]rolloutAgent, ids []string, what, version string) string {
+	var parts []string
+	for _, id := range ids {
+		a, ok := agents[id]
+		if !ok {
+			continue
+		}
+		if a.refusal == "" {
+			return ""
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s; run on the host: %s)", a.name, a.refusal, a.command))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	slices.Sort(parts)
+	return fmt.Sprintf("apisvc: every %s would be skipped, so release %s would be tested by no agent: %s. Choose other agents, or change these hosts' policies and try again",
+		what, version, strings.Join(parts, "; "))
+}
+
+// firstStageRefused is allRefused as an API error.
+func firstStageRefused(agents map[string]rolloutAgent, ids []string, what, version string) error {
+	if msg := allRefused(agents, ids, what, version); msg != "" {
+		return withReason(connect.NewError(connect.CodeFailedPrecondition, errors.New(msg)), ReasonAllRefused)
+	}
+	return nil
 }
 
 // isPrerelease reports whether a release is a pre-release by its channel or its version.

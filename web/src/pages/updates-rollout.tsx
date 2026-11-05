@@ -7,7 +7,7 @@ import { ChevronDown, Circle, CircleCheck, CircleDot, Search } from "lucide-reac
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/public-page";
-import { SkipWarning } from "@/components/skip-warning";
+import { SkipWarning, useRolloutPreview } from "@/components/skip-warning";
 import { Status, type Look } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -111,7 +111,9 @@ export function RolloutDialog({ release, onClose }: { release: Release; onClose:
   const tests = agents.filter((a) => picked.has(a.id));
   const already = agents.filter((a) => a.version === release.version).length;
   const shown = agents.filter((a) => a.name.toLowerCase().includes(q.trim().toLowerCase()));
-  const blocked = picked.size === 0 ? t("updates.chooseTest") : picked.size > maxTestAgents ? t("updates.tooManyTest", { max: maxTestAgents }) : "";
+  const preview = useRolloutPreview(release.id, { canaryAgentIds: tests.map((a) => a.id) });
+  const blocked = picked.size === 0 ? t("updates.chooseTest") : picked.size > maxTestAgents ? t("updates.tooManyTest", { max: maxTestAgents })
+    : preview?.blocked ? t("updates.skip.blockedShort") : "";
   const listError = connectors.error ?? gateways.error;
   function toggle(agent: string, on: boolean) {
     const next = new Set(picked);
@@ -177,7 +179,7 @@ export function RolloutDialog({ release, onClose }: { release: Release; onClose:
           {loaded && agents.length > 0 && !agents.some((a) => a.online) && <p className="text-sm text-warn">{t("updates.noOnline")}</p>}
           {tests.some((a) => !a.online) && <p className="text-sm text-warn">{t("updates.offlineChosen")}</p>}
           {listError && <Alert>{ConnectError.from(listError).rawMessage}</Alert>}
-          <SkipWarning releaseId={release.id} />
+          <SkipWarning preview={preview} />
           {/* The choice in words, since the list may scroll a ticked agent out of view. */}
           {tests.length > 0 && <p className="text-sm">{t("updates.chosen", { count: tests.length, names: tests.map((a) => a.name).join(", ") })}</p>}
           {loaded && (
@@ -200,7 +202,7 @@ export function RolloutDialog({ release, onClose }: { release: Release; onClose:
             <PlanStep n={2} title={`${firstPercent} %`}>{t("updates.planPercent", { count: first })}</PlanStep>
             <PlanStep n={3} title={t("updates.allAgents")}>{t("updates.planAll", { count: others - first })}</PlanStep>
           </ol>
-          <SkipWarning releaseId={release.id} />
+          <SkipWarning preview={preview} />
           <p className="text-sm text-muted-foreground">{t("updates.planHelp")}</p>
           {error && <Alert>{error}</Alert>}
           <div className="flex justify-end gap-2">

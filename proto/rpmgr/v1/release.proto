@@ -50,8 +50,8 @@ service ReleaseService {
   }
   // PreviewRollout lists the agents a rollout of a release would skip because the update policy
   // their host reported refuses it, with the reason and the command that lets the host take it;
-  // CreateRollout marks the same targets skipped at once and never offers them the release. It
-  // changes nothing. Agents that report no policy are not listed: they are offered the release.
+  // CreateRollout marks the same targets skipped at once and never offers them the release, and
+  // refuses a rollout whose canary stage would test nothing (blocked). It changes nothing. Agents that report no policy are not listed: they are offered the release.
   rpc PreviewRollout(PreviewRolloutRequest) returns (PreviewRolloutResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
     option (rpmgr.v1.authz) = {permission: "instance.admin"};
@@ -447,6 +447,18 @@ message PreviewRolloutRequest {
       }
     }
   }];
+  // A staged rollout's canary agents, by ID; empty previews an easy rollout or no canary stage.
+  // Needed to tell whether the canary stage would test nothing.
+  repeated string canary_agent_ids = 3 [(buf.validate.field).repeated = {
+    max_items: 50
+    unique: true
+    items: {
+      string: {
+        min_len: 1
+        max_len: 64
+      }
+    }
+  }];
 }
 
 // SkippedAgent is an agent a rollout would skip because its host's local policy refuses the
@@ -471,6 +483,10 @@ message PreviewRolloutResponse {
   int32 total = 1;
   // The agents it would skip, by agent name.
   repeated SkippedAgent skipped = 2;
+  // Not empty when CreateRollout would refuse: the host policy of every canary agent of a staged
+  // rollout, or of every agent of an easy rollout's queue, refuses the release, so the first stage
+  // would update nothing. It names the agents and the fix.
+  string blocked = 3;
 }
 
 // UpgradeAgentsRequest names the agents to update to the controller's own version.

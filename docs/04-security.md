@@ -1214,8 +1214,11 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
      pre-release on `update_channel: stable`, or `auto_update` `notify` or `off`) is marked
      `skipped` at once with the reason and the command that changes the host's policy, and is never
      offered the release. An agent that reports no policy, as releases before v0.4.0 do, is offered
-     the release as before. The report is advice for the operator and nothing more: the agent and
-     the root updater read the policy file themselves, so a stale or forged report can neither
+     the release as before. A rollout whose canary agents, or whose whole easy queue, would all be
+     skipped is refused (`FAILED_PRECONDITION`), so that it never promotes past a first stage that
+     tested nothing. The report is advice for the operator and nothing more: the agent and
+     the root updater read the policy file themselves (the agent with the updater's own trust
+     rules: a symbolic link, a file another user owns or others may write counts as `off`), so a stale or forged report can neither
      force an update nor hide a refusal, and a host whose policy changes later still decides for
      itself.
    - Only one rollout, staged or easy, runs or is paused at a time. Creating, advancing, resuming

@@ -385,8 +385,14 @@ func WriteState(dir string, st State) error {
 // policy reads the local policy as the updater trusts it: a missing file is the defaults; the
 // file is read through readOwn, so a symbolic link, a file another user owns or one its group or
 // other users may write counts as untrusted, then parsed as the connector parses it.
-func (u *Updater) policy() (*policy.Policy, error) {
-	b, err := readOwn(u.Policy)
+func (u *Updater) policy() (*policy.Policy, error) { return LoadPolicy(u.Policy) }
+
+// LoadPolicy reads the local policy at path exactly as the root updater trusts it, for the agent
+// that reports what the updater would do: a missing file is the defaults; a symbolic link, a file
+// another user owns, one its group or other users may write, one that is too large or one that
+// does not parse is an error, which the updater treats as auto_update off (D120).
+func LoadPolicy(path string) (*policy.Policy, error) {
+	b, err := readOwn(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return policy.Defaults(), nil
 	}

@@ -76,8 +76,9 @@ const skipped = [
     command: "sudo rpmgr policy set-auto-update auto" },
 ];
 
-function page({ active, targets = [], lists = agents, createError, wrongEtag = false, preview = [] } = {} as {
+function page({ active, targets = [], lists = agents, createError, wrongEtag = false, preview = [], blocked = "" } = {} as {
   preview?: typeof skipped;
+  blocked?: string;
   active?: ReturnType<typeof rollout>;
   targets?: ReturnType<typeof target>[];
   lists?: typeof agents;
@@ -108,7 +109,7 @@ function page({ active, targets = [], lists = agents, createError, wrongEtag = f
       listReleases: () => ({ releases: [release], controllerVersion: "1.4.2" }),
       listRollouts: () => ({ rollouts: active ? [active] : [] }),
       listRolloutTargets: () => ({ rolloutTargets: targets }),
-      previewRollout: () => ({ total: 5, skipped: preview }),
+      previewRollout: () => ({ total: 5, skipped: preview, blocked }),
       createRollout: (req) => guarded(() => {
         if (createError) throw apiError(Code.FailedPrecondition, "ROLLOUT_ACTIVE");
         return (calls.create.push(req), { rollout: current });
@@ -150,6 +151,16 @@ describe("the skip warning", () => {
     fireEvent.click(dialog.getByRole("button", { name: "Next" }));
     expect(await dialog.findByText("Step 2 of 2: review the plan")).toBeTruthy();
     expect(within(dialog.getByRole("alert")).getByText("2 of 5 agents will be skipped")).toBeTruthy();
+  });
+
+  it("is an error when every test agent would be skipped: it says so and Next stays disabled", async () => {
+    page({ preview: skipped, blocked: "every canary agent would be skipped" });
+    const dialog = await openDialog();
+    const warning = await dialog.findByRole("alert");
+    expect(within(warning).getByText(/would all be skipped, so nothing would test this release/)).toBeTruthy();
+    expect(within(warning).getByText("sudo rpmgr policy set-auto-update auto")).toBeTruthy();
+    await waitFor(() => expect((dialog.getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(true));
+    expect(dialog.getByText("Every test agent would be skipped.")).toBeTruthy();
   });
 
   it("shows nothing when no host refuses the release, and never blocks the rollout", async () => {

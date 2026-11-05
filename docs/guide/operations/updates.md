@@ -310,7 +310,10 @@ without starting anything, and `rpmgr create rollout` prints it before it starts
 - A pre-release on a host whose `update_channel` is `stable`: run
   `sudo rpmgr policy set-update-channel prerelease` on the host.
 
-The warning does not stop the rollout. The agents it names are marked skipped at once, with the
+The warning does not stop the rollout, with one exception: when every test agent of a staged
+rollout, or every agent of an easy rollout's queue, would be skipped, nothing would test the release
+and the dialog shows an error and does not let you start; `rpmgr create rollout` is refused the
+same way. Choose other test agents, or change their policies. Otherwise the agents it names are marked skipped at once, with the
 reason, and are not offered the release; change the host's policy, then start another rollout for
 them. An agent that reports no policy is offered the release, and its host still decides for itself.
 

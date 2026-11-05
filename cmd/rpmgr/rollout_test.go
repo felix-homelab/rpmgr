@@ -41,6 +41,7 @@ type releaseAPI struct {
 	// skipped is what PreviewRollout answers; nil leaves it unimplemented, as an older controller does.
 	skipped []*rpmgrv1.SkippedAgent
 	preview *rpmgrv1.PreviewRolloutRequest
+	blocked string
 }
 
 func (a *releaseAPI) PreviewRollout(_ context.Context, req *connect.Request[rpmgrv1.PreviewRolloutRequest]) (*connect.Response[rpmgrv1.PreviewRolloutResponse], error) {
@@ -50,7 +51,7 @@ func (a *releaseAPI) PreviewRollout(_ context.Context, req *connect.Request[rpmg
 		return nil, connect.NewError(connect.CodeUnimplemented, nil)
 	}
 	a.preview = req.Msg
-	return connect.NewResponse(&rpmgrv1.PreviewRolloutResponse{Total: 4, Skipped: a.skipped}), nil
+	return connect.NewResponse(&rpmgrv1.PreviewRolloutResponse{Total: 4, Skipped: a.skipped, Blocked: a.blocked}), nil
 }
 
 func (a *releaseAPI) UpdateController(_ context.Context, req *connect.Request[rpmgrv1.UpdateControllerRequest]) (*connect.Response[rpmgrv1.UpdateControllerResponse], error) {
@@ -367,6 +368,14 @@ func TestEasyRolloutCommands(t *testing.T) {
 		!strings.Contains(out, "1 of 4 agents will be skipped") {
 		t.Fatalf("create rollout --preview: %d %q %q %v", code, out, errOut, a.create)
 	}
+	// A first stage that would test nothing is an error for --preview.
+	a.blocked = "apisvc: every canary agent would be skipped, so release 1.4.2 would be tested by no agent"
+	if code, out, errOut = run("create", "rollout", "--release", "1.4.2", "--canary", "con_1", "--preview"); code != cli.ExitError ||
+		!strings.Contains(errOut, "every canary agent would be skipped") || strings.Contains(errOut, "apisvc:") || !strings.Contains(out, "1 of 4 agents will be skipped") ||
+		strings.Join(a.preview.GetCanaryAgentIds(), ",") != "con_1" {
+		t.Errorf("create rollout --preview, blocked: %d %q %q", code, out, errOut)
+	}
+	a.blocked = ""
 	a.skipped = []*rpmgrv1.SkippedAgent{}
 	if code, out, _ = run("create", "rollout", "--release", "1.4.2", "--canary", "con_7", "--preview"); code != cli.ExitOK || out != "No agent of 4 will be skipped.\n" {
 		t.Errorf("create rollout --preview, none skipped: %d %q", code, out)

@@ -96,12 +96,18 @@ func rolloutCommands() map[string][]*cli.Command {
 			rc := rpmgrv1connect.NewReleaseServiceClient(s.hc, s.creds.Controller)
 			// The agents whose host policy refuses the release are skipped, and the operator hears it
 			// before the rollout starts. A controller that cannot preview leaves the warning out.
-			pv, perr := rc.PreviewRollout(ctx, connect.NewRequest(&rpmgrv1.PreviewRolloutRequest{ReleaseId: req.GetReleaseId(), AgentIds: req.GetAgentIds()}))
+			pv, perr := rc.PreviewRollout(ctx, connect.NewRequest(&rpmgrv1.PreviewRolloutRequest{ReleaseId: req.GetReleaseId(), AgentIds: req.GetAgentIds(), CanaryAgentIds: req.GetCanaryAgentIds()}))
 			if preview {
 				if perr != nil {
 					return apiError(perr)
 				}
-				return writeSkipped(env.Stdout, pv.Msg, true)
+				if err := writeSkipped(env.Stdout, pv.Msg, true); err != nil {
+					return err
+				}
+				if pv.Msg.GetBlocked() != "" {
+					return errors.New(strings.TrimPrefix(pv.Msg.GetBlocked(), "apisvc: "))
+				}
+				return nil
 			}
 			if perr == nil {
 				if err := writeSkipped(env.Stderr, pv.Msg, false); err != nil {

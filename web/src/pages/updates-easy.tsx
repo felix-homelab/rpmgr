@@ -7,7 +7,7 @@ import { ArrowDown, ArrowUp, Search } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/public-page";
-import { SkipWarning } from "@/components/skip-warning";
+import { SkipWarning, useRolloutPreview } from "@/components/skip-warning";
 import { Status } from "@/components/status";
 import { UpdateState } from "@/components/update-state";
 import { Button } from "@/components/ui/button";
@@ -82,7 +82,9 @@ export function EasyRolloutDialog({ release, onClose }: { release: Release; onCl
   const byId = useMemo(() => new Map(all.map((a) => [a.id, a])), [all]);
   const shown = eligible.filter((a) => a.name.toLowerCase().includes(q.trim().toLowerCase()));
   const listError = connectors.error ?? gateways.error;
-  const blocked = queue.length === 0 ? t("updates.easy.chooseOne") : queue.length > maxQueue ? t("updates.easy.tooMany", { max: maxQueue }) : "";
+  const preview = useRolloutPreview(release.id, { agentIds: queue });
+  const blocked = queue.length === 0 ? t("updates.easy.chooseOne") : queue.length > maxQueue ? t("updates.easy.tooMany", { max: maxQueue })
+    : preview?.blocked ? t("updates.skip.blockedEasy") : "";
   function toggle(agent: string, on: boolean) {
     setQueue(on ? insert(queue, agent, rank) : queue.filter((x) => x !== agent));
   }
@@ -184,7 +186,7 @@ export function EasyRolloutDialog({ release, onClose }: { release: Release; onCl
         </div>
         {queue.some((x) => !byId.get(x)?.online) && <p className="text-sm text-warn">{t("updates.easy.offlineChosen")}</p>}
         {listError && <Alert>{ConnectError.from(listError).rawMessage}</Alert>}
-        <SkipWarning releaseId={release.id} agentIds={queue} />
+        <SkipWarning preview={preview} />
         {error && <Alert>{error}</Alert>}
         <div className="flex flex-wrap items-center justify-end gap-2">
           {loaded && blocked && <p id={`${id}-why`} className="mr-auto text-sm text-muted-foreground">{blocked}</p>}

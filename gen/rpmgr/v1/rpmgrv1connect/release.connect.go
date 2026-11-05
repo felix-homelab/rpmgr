@@ -103,8 +103,8 @@ type ReleaseServiceClient interface {
 	CreateRollout(context.Context, *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error)
 	// PreviewRollout lists the agents a rollout of a release would skip because the update policy
 	// their host reported refuses it, with the reason and the command that lets the host take it;
-	// CreateRollout marks the same targets skipped at once and never offers them the release. It
-	// changes nothing. Agents that report no policy are not listed: they are offered the release.
+	// CreateRollout marks the same targets skipped at once and never offers them the release, and
+	// refuses a rollout whose canary stage would test nothing (blocked). It changes nothing. Agents that report no policy are not listed: they are offered the release.
 	PreviewRollout(context.Context, *connect.Request[v1.PreviewRolloutRequest]) (*connect.Response[v1.PreviewRolloutResponse], error)
 	// UpgradeAgents adds connectors or gateways to the end of the queue of the easy rollout of the
 	// controller's own version that runs or is paused, or starts one with them when no rollout does
@@ -363,8 +363,8 @@ type ReleaseServiceHandler interface {
 	CreateRollout(context.Context, *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error)
 	// PreviewRollout lists the agents a rollout of a release would skip because the update policy
 	// their host reported refuses it, with the reason and the command that lets the host take it;
-	// CreateRollout marks the same targets skipped at once and never offers them the release. It
-	// changes nothing. Agents that report no policy are not listed: they are offered the release.
+	// CreateRollout marks the same targets skipped at once and never offers them the release, and
+	// refuses a rollout whose canary stage would test nothing (blocked). It changes nothing. Agents that report no policy are not listed: they are offered the release.
 	PreviewRollout(context.Context, *connect.Request[v1.PreviewRolloutRequest]) (*connect.Response[v1.PreviewRolloutResponse], error)
 	// UpgradeAgents adds connectors or gateways to the end of the queue of the easy rollout of the
 	// controller's own version that runs or is paused, or starts one with them when no rollout does

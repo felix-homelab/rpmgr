@@ -1550,9 +1550,12 @@ type PreviewRolloutRequest struct {
 	ReleaseId string `protobuf:"bytes,1,opt,name=release_id,json=releaseId,proto3" json:"release_id,omitempty"`
 	// An easy rollout's queue, by ID; empty previews a staged rollout, which targets every connector
 	// and enrolled gateway in service.
-	AgentIds      []string `protobuf:"bytes,2,rep,name=agent_ids,json=agentIds,proto3" json:"agent_ids,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	AgentIds []string `protobuf:"bytes,2,rep,name=agent_ids,json=agentIds,proto3" json:"agent_ids,omitempty"`
+	// A staged rollout's canary agents, by ID; empty previews an easy rollout or no canary stage.
+	// Needed to tell whether the canary stage would test nothing.
+	CanaryAgentIds []string `protobuf:"bytes,3,rep,name=canary_agent_ids,json=canaryAgentIds,proto3" json:"canary_agent_ids,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *PreviewRolloutRequest) Reset() {
@@ -1595,6 +1598,13 @@ func (x *PreviewRolloutRequest) GetReleaseId() string {
 func (x *PreviewRolloutRequest) GetAgentIds() []string {
 	if x != nil {
 		return x.AgentIds
+	}
+	return nil
+}
+
+func (x *PreviewRolloutRequest) GetCanaryAgentIds() []string {
+	if x != nil {
+		return x.CanaryAgentIds
 	}
 	return nil
 }
@@ -1689,7 +1699,11 @@ type PreviewRolloutResponse struct {
 	// How many agents the rollout would have.
 	Total int32 `protobuf:"varint,1,opt,name=total,proto3" json:"total,omitempty"`
 	// The agents it would skip, by agent name.
-	Skipped       []*SkippedAgent `protobuf:"bytes,2,rep,name=skipped,proto3" json:"skipped,omitempty"`
+	Skipped []*SkippedAgent `protobuf:"bytes,2,rep,name=skipped,proto3" json:"skipped,omitempty"`
+	// Not empty when CreateRollout would refuse: the host policy of every canary agent of a staged
+	// rollout, or of every agent of an easy rollout's queue, refuses the release, so the first stage
+	// would update nothing. It names the agents and the fix.
+	Blocked       string `protobuf:"bytes,3,opt,name=blocked,proto3" json:"blocked,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1736,6 +1750,13 @@ func (x *PreviewRolloutResponse) GetSkipped() []*SkippedAgent {
 		return x.Skipped
 	}
 	return nil
+}
+
+func (x *PreviewRolloutResponse) GetBlocked() string {
+	if x != nil {
+		return x.Blocked
+	}
+	return ""
 }
 
 // UpgradeAgentsRequest names the agents to update to the controller's own version.
@@ -3030,11 +3051,12 @@ const file_rpmgr_v1_release_proto_rawDesc = "" +
 	"\x04mode\x18\x03 \x01(\x0e2\x15.rpmgr.v1.RolloutModeB\b\xbaH\x05\x82\x01\x02\x10\x01R\x04mode\x120\n" +
 	"\tagent_ids\x18\x04 \x03(\tB\x13\xbaH\x10\x92\x01\r\x10\xe8\a\x18\x01\"\x06r\x04\x10\x01\x18@R\bagentIds\"D\n" +
 	"\x15CreateRolloutResponse\x12+\n" +
-	"\arollout\x18\x01 \x01(\v2\x11.rpmgr.v1.RolloutR\arollout\"q\n" +
+	"\arollout\x18\x01 \x01(\v2\x11.rpmgr.v1.RolloutR\arollout\"\xaf\x01\n" +
 	"\x15PreviewRolloutRequest\x12&\n" +
 	"\n" +
 	"release_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\treleaseId\x120\n" +
-	"\tagent_ids\x18\x02 \x03(\tB\x13\xbaH\x10\x92\x01\r\x10\xe8\a\x18\x01\"\x06r\x04\x10\x01\x18@R\bagentIds\"\xae\x01\n" +
+	"\tagent_ids\x18\x02 \x03(\tB\x13\xbaH\x10\x92\x01\r\x10\xe8\a\x18\x01\"\x06r\x04\x10\x01\x18@R\bagentIds\x12<\n" +
+	"\x10canary_agent_ids\x18\x03 \x03(\tB\x12\xbaH\x0f\x92\x01\f\x102\x18\x01\"\x06r\x04\x10\x01\x18@R\x0ecanaryAgentIds\"\xae\x01\n" +
 	"\fSkippedAgent\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x122\n" +
 	"\n" +
@@ -3042,10 +3064,11 @@ const file_rpmgr_v1_release_proto_rawDesc = "" +
 	"\n" +
 	"agent_name\x18\x03 \x01(\tR\tagentName\x12\x16\n" +
 	"\x06reason\x18\x04 \x01(\tR\x06reason\x12\x18\n" +
-	"\acommand\x18\x05 \x01(\tR\acommand\"`\n" +
+	"\acommand\x18\x05 \x01(\tR\acommand\"z\n" +
 	"\x16PreviewRolloutResponse\x12\x14\n" +
 	"\x05total\x18\x01 \x01(\x05R\x05total\x120\n" +
-	"\askipped\x18\x02 \x03(\v2\x16.rpmgr.v1.SkippedAgentR\askipped\"J\n" +
+	"\askipped\x18\x02 \x03(\v2\x16.rpmgr.v1.SkippedAgentR\askipped\x12\x18\n" +
+	"\ablocked\x18\x03 \x01(\tR\ablocked\"J\n" +
 	"\x14UpgradeAgentsRequest\x122\n" +
 	"\tagent_ids\x18\x01 \x03(\tB\x15\xbaH\x12\x92\x01\x0f\b\x01\x10\xe8\a\x18\x01\"\x06r\x04\x10\x01\x18@R\bagentIds\"\x86\x01\n" +
 	"\x15UpgradeAgentsResponse\x12+\n" +

@@ -199,7 +199,7 @@ func TestOTA_ReportsUpdatePolicy(t *testing.T) {
 		_ = agent.RunControl(ctx, agent.ControlOptions{IdentityDir: id.Dir, StateDir: state, Version: "0.1.0",
 			Applier: &recorder{}, Backoff: fast(), Logger: c.Logs.Logger(),
 			Update: &agent.UpdateOptions{Dir: filepath.Join(state, "update"), StatusFile: filepath.Join(state, "status.json"), Variant: "full",
-				PolicyEvery: 20 * time.Millisecond, Policy: func() *policy.Policy { p, _ := policy.Load(file); return p }}})
+				PolicyEvery: 20 * time.Millisecond, PolicyFile: file}})
 		close(done)
 	}()
 	t.Cleanup(func() { cancel(); <-done })
@@ -238,6 +238,27 @@ func TestOTA_ReportsUpdatePolicy(t *testing.T) {
 	expect("a file others may write", "off", "stable")
 	write("version: 1\nauto_update: auto\nupdate_channel: prerelease\n", 0o600)
 	expect("a file made safe again", "auto", "prerelease")
+	// The updater refuses a symbolic link, so the agent reports it as off too.
+	target := filepath.Join(dir, "policy-target.yaml")
+	if err := os.WriteFile(target, []byte("version: 1\nauto_update: auto\nupdate_channel: prerelease\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(file)
+	if err := os.Symlink(target, file); err != nil {
+		t.Fatal(err)
+	}
+	expect("a symbolic link", "off", "stable")
+	// Nor does a file another user owns count: the updater would refuse it. Only root can make one.
+	if os.Geteuid() == 0 {
+		write("version: 1\nauto_update: auto\nupdate_channel: prerelease\n", 0o600)
+		expect("a file made safe again after the link", "auto", "prerelease")
+		if err := os.Chown(file, 65534, -1); err != nil {
+			t.Fatal(err)
+		}
+		expect("a file another user owns", "off", "stable")
+	}
+	write("version: 1\nauto_update: auto\nupdate_channel: prerelease\n", 0o600)
+	expect("a regular file again", "auto", "prerelease")
 	if os.Geteuid() != 0 { // root reads any file
 		write("version: 1\nauto_update: auto\nupdate_channel: prerelease\n", 0)
 		expect("a file that cannot be read", "off", "stable")

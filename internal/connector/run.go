@@ -214,7 +214,7 @@ func Run(ctx context.Context, o RunOptions) error {
 	var toOld atomic.Pointer[handoff.Pipe] // set in a process a hand-off started, once it is ready
 	var update *agent.UpdateOptions
 	if o.Update {
-		update = &agent.UpdateOptions{Dir: filepath.Join(cfg.StateDir, "update"), Policy: watcher.Current, Variant: version.Variant}
+		update = &agent.UpdateOptions{Dir: filepath.Join(cfg.StateDir, "update"), Policy: watcher.Current, PolicyFile: cfg.PolicyFile, Variant: version.Variant}
 	}
 	ctl, err = agent.NewControl(agent.ControlOptions{IdentityDir: cfg.IdentityDir, StateDir: cfg.StateDir, Version: o.Version,
 		Capabilities: Capabilities, Applier: applier, Now: o.Now, Logger: o.Logger, LiveLog: o.LiveLog, Update: update,
