@@ -292,7 +292,16 @@ func agentSessionOf(s *ent.AgentSession, now time.Time) *rpmgrv1.AgentSession {
 	}
 	return &rpmgrv1.AgentSession{Connected: schema.AgentSessionLive(s.DisconnectedAt, s.LastSeenAt, now), Version: s.AgentVersion,
 		LastSeenTime: timestamppb.New(s.LastSeenAt), RemoteAddr: s.RemoteAddr, LastGoodbyeReason: s.LastGoodbye,
-		BelowMinAgentVersion: s.LastGoodbye == upgradeRequired, OverTheAir: slices.Contains(s.Capabilities, agentproto.CapOTA)}
+		BelowMinAgentVersion: s.LastGoodbye == upgradeRequired, OverTheAir: slices.Contains(s.Capabilities, agentproto.CapOTA),
+		UpdatePolicy: hostUpdatePolicy(s)}
+}
+
+// hostUpdatePolicy is the update policy the agent's host last reported; nil when it reported none.
+func hostUpdatePolicy(s *ent.AgentSession) *rpmgrv1.HostUpdatePolicy {
+	if s.UpdateAuto == "" {
+		return nil
+	}
+	return &rpmgrv1.HostUpdatePolicy{AutoUpdate: s.UpdateAuto, UpdateChannel: s.UpdateChannel}
 }
 
 // upgradeRequired is the reason of the Goodbye that refuses an agent below min_agent_version

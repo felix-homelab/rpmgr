@@ -10,6 +10,13 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+### Fixed
+
+- The zone's record list offers **Adopt** only on foreign records that rpmgr can adopt, those at a
+  name that a route or DNS name of the organisation publishes and of a type it manages; the others
+  show why not. A refused adoption, in the web UI and in `rpmgr adopt dns-record`, now names the
+  record and says to create a route or DNS name for it first (#1137).
+
 ### Changed
 
 - The messages of a Discord, Slack or Microsoft Teams webhook endpoint use what each service
@@ -22,6 +29,13 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- A rollout warns before it offers a release that a host's local policy refuses. Connectors and
+  gateways tell the controller the `auto_update` and `update_channel` of their policy file, again
+  when it changes. The start dialog and `rpmgr create rollout` (also `--preview`) say how many
+  agents will be skipped, with their names, the reason and the command to run on the host, and
+  those agents are marked skipped at once and not offered the release. Agents of older releases
+  are offered it as before, and the host still decides. The connector page and the gateway list
+  show the channel and auto-update setting. (#1136)
 - After a restore, the plan of a held DNS zone lists the adopted records that changed at the
   provider since the backup, so they can be released before the first pass puts them back. (#1113)
 - DNS automation with Cloudflare. An Owner or Admin connects a Cloudflare account with a scoped
@@ -111,6 +125,22 @@ Changes to the design documents are not recorded here: see the git history and t
 - A webhook audit sink whose receiver answers every delivery slowly no longer keeps the shipping to
   the other sinks waiting: its deliveries of one pass are bounded, and the rest follows in the next
   pass. (#1128)
+- The update of the controller from the web UI no longer says "the root updater did not start"
+  when the updater refused the release: the refusal and its reason (a pre-release on a host whose
+  `update_channel` is `stable`, `auto_update` off, a bad `install.json`, manifest or signature)
+  reach the page. The controller now reads the host's policy before it stages, refuses what the
+  host would refuse with the command that fixes it, and disables **Update controller** with that
+  reason; **Settings → Updates** shows the host's own channel and `auto_update` next to the
+  instance's **Release channel**, which does not change them. If no status appears, the message
+  names `journalctl -u rpmgr-update.service`. A refused update can be retried from the page:
+  **Retry the update** stages the release again, which makes the root updater run again. (#1135)
+- A rolled-back update records the last readiness answer of the role, not the end of the window,
+  leaves the previous release running although the stop of the failed one timed out, and restores
+  the database although the staging directory is a read-only mount. (#1138)
+- After a restart with hand-off, an old all-in-one or gateway ends when it is told to stop, within
+  the gateway drain, instead of at the end of the hand-off drain, and the new process ends an old
+  one that outlives its drain. The built-in connector of an old all-in-one no longer redials its
+  closed in-memory gateway. (#1138)
 
 ## [0.3.0] - 2026-11-04
 

@@ -211,8 +211,10 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
 ```
 
 - **Hello** carries `last_applied` revision and hash, capability strings, binary and protocol
-  version, `boot_id`, the agent's clock, and a digest of its deny-list (the controller resends the
-  list on a mismatch). It carries no agent ID: the controller takes the identity from the client
+  version, `boot_id`, the agent's clock, a digest of its deny-list (the controller resends the
+  list on a mismatch) and, from an agent with the capability `ota`, its update policy: the
+  `auto_update` and `update_channel` of its local policy file, as the root updater would read them
+  ([04](04-security.md#over-the-air-updates)). It carries no agent ID: the controller takes the identity from the client
   certificate. **Welcome** carries the controller's time, the `session_epoch` assigned to this
   session, the current `db_epoch`, `min_agent_version`, and the certificates of the config-signing
   keys, the next key included, so the agent can verify snapshots across a key rotation.
@@ -431,9 +433,12 @@ Rules:
     not an active gateway of its org counts for nothing, and whatever else a report names is
     skipped, so a gateway cannot write another group's or another org's traffic or sessions.
     An agent with the capability `ota` adds its update state to the `Status` at the start of each
-    session and sends it alone whenever it changes; a `Status` with only the update state leaves
-    a gateway's data sessions and counters as they are
-    ([04](04-security.md#over-the-air-updates)).
+    session and sends it alone whenever it changes; it adds its update policy the same way, in the
+    first `Status` and again whenever the local policy file changes it, at the interval at which
+    the file is checked ([Timeouts, keepalive and backoff](#timeouts-keepalive-and-backoff)). A `Status` with
+    only the update state or the update policy leaves a gateway's data sessions and counters as
+    they are ([04](04-security.md#over-the-air-updates)). An agent that reports no policy, as
+    releases before v0.4.0 do, is *unknown* to the controller.
 
 ### Revisions and ordering
 
@@ -1583,12 +1588,13 @@ sequenceDiagram
 | Traffic rollup retention | checked every 1 h (singleton job); the retention itself is an instance setting ([10](10-operations.md#runtime-settings-ui--settings)) | Buckets past it go within the hour ([06](06-data-model.md#desired-vs-observed-state)) |
 | Audit export | one export stream runs at most 5 min, its read transaction with it; the check is made per line, and every write of the stream carries the same deadline, so an export that runs out, or whose client stops reading, is cut off with `DEADLINE_EXCEEDED` and recorded as a failure | A slow or stalled reader cannot hold a read transaction open ([04](04-security.md#audit-log)) |
 | Audit retention | checked every 1 h (singleton job); the retention itself is an instance setting ([10](10-operations.md#runtime-settings-ui--settings)) | Entries past it go within the hour, up to a checkpoint ([04](04-security.md#audit-log)) |
-| Connector-local policy file | checked every 2 s; `SIGHUP` (`systemctl reload`) reloads it at once | An edit takes effect without a new revision ([04](04-security.md#connector-local-policy)) |
+| Connector-local policy file | checked every 2 s, by a gateway too, for the update policy it reports; `SIGHUP` (`systemctl reload`) reloads it at once | An edit takes effect without a new revision ([04](04-security.md#connector-local-policy)); the controller learns a changed update policy within a few seconds ([Control session](#control-session)) |
 | Revision and deny-list check | every 1 s | A revision or a revocation written by another process reaches the agents without a notification channel; with several replicas, the safety net behind `LISTEN/NOTIFY` ([10](10-operations.md#high-availability)) |
 | Route drain | 30 s | Finish in-flight requests |
 | Route port in use | a `tcp` or `udp` route port the gateway cannot bind (`not_ready(port_in_use)`) is tried again every 5 s | [R] A port another process frees is taken within seconds, without a new revision |
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Hand-off drain (Phase 2) | 10 min; the boot-file setting `handoff.drain` takes 0 to 24 h; at the end the old process cuts what is still open and exits ([D146](14-open-decisions.md#engineering)) | [R] Long-lived SSH, database, WebSocket and CONNECT connections survive almost every update; an old process costs only memory |
+| Old process that outlives its drain (Phase 2) | the new process signals the old one `SIGTERM` 30 s after the hand-off drain should have ended, and `SIGKILL` 30 s later, unless the status pipe broke first; an old process told to stop while it drains (`SIGTERM` of a stopping unit) ends within the gateway drain, not the hand-off drain | [R] An old process of an earlier release that does not leave its drain, or is stuck, never outlives a stop of the unit or twice the grace ([#1138](https://github.com/felix-homelab/rpmgr/issues/1138)) |
 | Start timeout of a role that restarts with hand-off (Phase 2) | `TimeoutStartSec=120` in the drop-in `handoff.conf`, which systemd also applies to `ExecReload`, so that a `systemctl reload` is not cut off by systemd's default of 90 s while `rpmgr handoff` waits for the readiness window and 30 s more | [R] Longer than the wait of `rpmgr handoff` |
 | Hand-off readiness window (Phase 2) | 60 s from the exec until the new process reports ready, else the old one kills it and keeps serving; `rpmgr handoff` waits 30 s longer for the outcome | [R] Shorter than the updater's readiness window, so the updater sees the hand-off's outcome inside its own |
 | QUIC bind window (Phase 2) | a process a hand-off started tries to bind the QUIC port every 100 ms for 5 s after the old process exited; the `udp` route ports are tried at once and then at the route rebind interval | [R] The old process's socket closes with it, so the port is free within moments; the window only absorbs the gap |
@@ -1817,7 +1823,10 @@ sequenceDiagram
    ([D155](14-open-decisions.md#engineering)); the old controller of an all-in-one sends it
    ([All-in-one hand-over](#all-in-one-hand-over)).
 5. **Drain.** The old process serves its open connections until they end or the **hand-off drain**
-   cuts them ([D146](14-open-decisions.md#engineering)), then exits. A revocation, a tightened
+   cuts them ([D146](14-open-decisions.md#engineering)), then exits. An old process told to stop
+   meanwhile, which is what a stopping unit does to every process of it, drains for the gateway
+   drain only, and the new process signals one that outlives its hand-off drain by the grace in
+   the timeout table. A revocation, a tightened
    access policy or a removed route that the new process applies meanwhile cuts the old process's
    open connections at once ([04](04-security.md#socket-hand-off-phase-2)). A hand-off started
    while a predecessor still drains ends that predecessor's drain early, so at most one old process

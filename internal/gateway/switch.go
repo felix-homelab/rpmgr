@@ -6,6 +6,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/handoff"
@@ -175,4 +176,32 @@ func (c *cuts) attach(send func(typ, reason string) error) {
 		_ = send(msgCut, id)
 	}
 	c.held = nil
+}
+
+// endLingering runs in the new process after it took over: if the old process (pid) still holds
+// the status pipe a hand-off drain and a grace after the switch, it has outlived its drain, which
+// an old process of an earlier release does when its role keeps running during the drain
+// (#1138). The new process then sends it SIGTERM and, a grace later, SIGKILL; gone is closed when
+// the pipe breaks, which is the old process ending, and stops it. kill is syscall.Kill's shape.
+func endLingering(ctx context.Context, pid int, gone <-chan struct{}, drain, grace time.Duration, kill func(pid int, sig syscall.Signal) error, log *slog.Logger) {
+	if pid <= 1 {
+		return
+	}
+	for _, step := range []struct {
+		wait time.Duration
+		sig  syscall.Signal
+	}{{drain + grace, syscall.SIGTERM}, {grace, syscall.SIGKILL}} {
+		select {
+		case <-gone:
+			return
+		case <-ctx.Done():
+			return
+		case <-time.After(step.wait):
+		}
+		log.Warn("the old process outlived its hand-off drain; ending it", "pid", pid, "signal", step.sig.String())
+		if err := kill(pid, step.sig); err != nil {
+			log.Warn("signalling the old process", "pid", pid, "error", err)
+			return
+		}
+	}
 }

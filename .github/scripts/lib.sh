@@ -84,7 +84,15 @@ split_run() {
     return 0
   }
   pkg=${BASH_REMATCH[1]} k=${BASH_REMATCH[2]} m=${BASH_REMATCH[3]}
-  if ! names=$(go test -list . "$pkg" | grep -E '^(Test|Example|Fuzz)'); then
+  # The tests are listed with the same build tags they run with, so a test of a tagged file is
+  # listed, and run, too.
+  local tags=() prev=""
+  for a in "$@"; do
+    if [[ $prev == -tags ]]; then tags=(-tags "$a"); fi
+    case $a in -tags=*) tags=("$a") ;; esac
+    prev=$a
+  done
+  if ! names=$(go test "${tags[@]}" -list . "$pkg" | grep -E '^(Test|Example|Fuzz)'); then
     fail "no tests listed for $pkg"
     return 0
   fi

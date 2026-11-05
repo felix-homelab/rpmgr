@@ -47,6 +47,9 @@ const (
 	// ReleaseServiceCreateRolloutProcedure is the fully-qualified name of the ReleaseService's
 	// CreateRollout RPC.
 	ReleaseServiceCreateRolloutProcedure = "/rpmgr.v1.ReleaseService/CreateRollout"
+	// ReleaseServicePreviewRolloutProcedure is the fully-qualified name of the ReleaseService's
+	// PreviewRollout RPC.
+	ReleaseServicePreviewRolloutProcedure = "/rpmgr.v1.ReleaseService/PreviewRollout"
 	// ReleaseServiceUpgradeAgentsProcedure is the fully-qualified name of the ReleaseService's
 	// UpgradeAgents RPC.
 	ReleaseServiceUpgradeAgentsProcedure = "/rpmgr.v1.ReleaseService/UpgradeAgents"
@@ -98,6 +101,11 @@ type ReleaseServiceClient interface {
 	// another rollout runs or is paused. A release the mirror does not hold yet is mirrored now, and
 	// offered once the mirror holds it (D125).
 	CreateRollout(context.Context, *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error)
+	// PreviewRollout lists the agents a rollout of a release would skip because the update policy
+	// their host reported refuses it, with the reason and the command that lets the host take it;
+	// CreateRollout marks the same targets skipped at once and never offers them the release, and
+	// refuses a rollout whose canary stage would test nothing (blocked). It changes nothing. Agents that report no policy are not listed: they are offered the release.
+	PreviewRollout(context.Context, *connect.Request[v1.PreviewRolloutRequest]) (*connect.Response[v1.PreviewRolloutResponse], error)
 	// UpgradeAgents adds connectors or gateways to the end of the queue of the easy rollout of the
 	// controller's own version that runs or is paused, or starts one with them when no rollout does
 	// (D129). It is refused while a staged rollout or a rollout of another release runs or is paused.
@@ -164,6 +172,13 @@ func NewReleaseServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			httpClient,
 			baseURL+ReleaseServiceCreateRolloutProcedure,
 			connect.WithSchema(releaseServiceMethods.ByName("CreateRollout")),
+			connect.WithClientOptions(opts...),
+		),
+		previewRollout: connect.NewClient[v1.PreviewRolloutRequest, v1.PreviewRolloutResponse](
+			httpClient,
+			baseURL+ReleaseServicePreviewRolloutProcedure,
+			connect.WithSchema(releaseServiceMethods.ByName("PreviewRollout")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		upgradeAgents: connect.NewClient[v1.UpgradeAgentsRequest, v1.UpgradeAgentsResponse](
@@ -239,6 +254,7 @@ type releaseServiceClient struct {
 	checkReleases       *connect.Client[v1.CheckReleasesRequest, v1.CheckReleasesResponse]
 	uploadRelease       *connect.Client[v1.UploadReleaseRequest, v1.UploadReleaseResponse]
 	createRollout       *connect.Client[v1.CreateRolloutRequest, v1.CreateRolloutResponse]
+	previewRollout      *connect.Client[v1.PreviewRolloutRequest, v1.PreviewRolloutResponse]
 	upgradeAgents       *connect.Client[v1.UpgradeAgentsRequest, v1.UpgradeAgentsResponse]
 	updateController    *connect.Client[v1.UpdateControllerRequest, v1.UpdateControllerResponse]
 	getControllerUpdate *connect.Client[v1.GetControllerUpdateRequest, v1.GetControllerUpdateResponse]
@@ -269,6 +285,11 @@ func (c *releaseServiceClient) UploadRelease(ctx context.Context, req *connect.R
 // CreateRollout calls rpmgr.v1.ReleaseService.CreateRollout.
 func (c *releaseServiceClient) CreateRollout(ctx context.Context, req *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error) {
 	return c.createRollout.CallUnary(ctx, req)
+}
+
+// PreviewRollout calls rpmgr.v1.ReleaseService.PreviewRollout.
+func (c *releaseServiceClient) PreviewRollout(ctx context.Context, req *connect.Request[v1.PreviewRolloutRequest]) (*connect.Response[v1.PreviewRolloutResponse], error) {
+	return c.previewRollout.CallUnary(ctx, req)
 }
 
 // UpgradeAgents calls rpmgr.v1.ReleaseService.UpgradeAgents.
@@ -340,6 +361,11 @@ type ReleaseServiceHandler interface {
 	// another rollout runs or is paused. A release the mirror does not hold yet is mirrored now, and
 	// offered once the mirror holds it (D125).
 	CreateRollout(context.Context, *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error)
+	// PreviewRollout lists the agents a rollout of a release would skip because the update policy
+	// their host reported refuses it, with the reason and the command that lets the host take it;
+	// CreateRollout marks the same targets skipped at once and never offers them the release, and
+	// refuses a rollout whose canary stage would test nothing (blocked). It changes nothing. Agents that report no policy are not listed: they are offered the release.
+	PreviewRollout(context.Context, *connect.Request[v1.PreviewRolloutRequest]) (*connect.Response[v1.PreviewRolloutResponse], error)
 	// UpgradeAgents adds connectors or gateways to the end of the queue of the easy rollout of the
 	// controller's own version that runs or is paused, or starts one with them when no rollout does
 	// (D129). It is refused while a staged rollout or a rollout of another release runs or is paused.
@@ -402,6 +428,13 @@ func NewReleaseServiceHandler(svc ReleaseServiceHandler, opts ...connect.Handler
 		ReleaseServiceCreateRolloutProcedure,
 		svc.CreateRollout,
 		connect.WithSchema(releaseServiceMethods.ByName("CreateRollout")),
+		connect.WithHandlerOptions(opts...),
+	)
+	releaseServicePreviewRolloutHandler := connect.NewUnaryHandler(
+		ReleaseServicePreviewRolloutProcedure,
+		svc.PreviewRollout,
+		connect.WithSchema(releaseServiceMethods.ByName("PreviewRollout")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	releaseServiceUpgradeAgentsHandler := connect.NewUnaryHandler(
@@ -478,6 +511,8 @@ func NewReleaseServiceHandler(svc ReleaseServiceHandler, opts ...connect.Handler
 			releaseServiceUploadReleaseHandler.ServeHTTP(w, r)
 		case ReleaseServiceCreateRolloutProcedure:
 			releaseServiceCreateRolloutHandler.ServeHTTP(w, r)
+		case ReleaseServicePreviewRolloutProcedure:
+			releaseServicePreviewRolloutHandler.ServeHTTP(w, r)
 		case ReleaseServiceUpgradeAgentsProcedure:
 			releaseServiceUpgradeAgentsHandler.ServeHTTP(w, r)
 		case ReleaseServiceUpdateControllerProcedure:
@@ -521,6 +556,10 @@ func (UnimplementedReleaseServiceHandler) UploadRelease(context.Context, *connec
 
 func (UnimplementedReleaseServiceHandler) CreateRollout(context.Context, *connect.Request[v1.CreateRolloutRequest]) (*connect.Response[v1.CreateRolloutResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.CreateRollout is not implemented"))
+}
+
+func (UnimplementedReleaseServiceHandler) PreviewRollout(context.Context, *connect.Request[v1.PreviewRolloutRequest]) (*connect.Response[v1.PreviewRolloutResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.ReleaseService.PreviewRollout is not implemented"))
 }
 
 func (UnimplementedReleaseServiceHandler) UpgradeAgents(context.Context, *connect.Request[v1.UpgradeAgentsRequest]) (*connect.Response[v1.UpgradeAgentsResponse], error) {

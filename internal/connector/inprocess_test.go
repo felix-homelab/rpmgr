@@ -149,3 +149,34 @@ func TestInProcess_ServedElsewhere(t *testing.T) {
 		t.Fatal("a session to the in-process gateway")
 	}
 }
+
+// TestInProcess_ClosedGatewayIsNotRedialled: once the in-process gateway closed its listener, as
+// it does for good when it drains for a stop or a hand-off, the connector dials it once more at
+// most and then stops, instead of redialling with backoff for as long as the process lives
+// (#1138). A gateway that merely does not accept yet is still retried (TestInProcess_Retries).
+func TestInProcess_ClosedGatewayIsNotRedialled(t *testing.T) {
+	w := newWorld(t)
+	id := w.gatewayID()
+	var dials atomic.Int64
+	m := newConnectorOptions(t, w, func(o *connector.Options) {
+		o.InProcess = &connector.InProcess{GatewayID: id.ID, Dial: func(context.Context) (net.Conn, error) {
+			dials.Add(1)
+			return nil, net.ErrClosed
+		}}
+	})
+	readyAll(m, "rt_h")
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{"127.0.0.1:1"}, Routes: map[string]string{"rt_h": connector.TransportH2}}})
+	eventually(t, "no dial of the closed gateway", func() bool { return dials.Load() >= 1 })
+	// The first backoff is far below this; a loop would have dialled again.
+	time.Sleep(3 * time.Second)
+	if n := dials.Load(); n != 1 {
+		t.Fatalf("%d dials of a closed in-process gateway, want 1", n)
+	}
+	// An update of the snapshot does not start the link again either: the slot ended, the link
+	// stays until the gateway entry goes.
+	m.Set([]connector.Gateway{{ID: id.ID, Endpoints: []string{"127.0.0.1:1"}, Routes: map[string]string{"rt_h": connector.TransportH2}}})
+	time.Sleep(300 * time.Millisecond)
+	if n := dials.Load(); n != 1 {
+		t.Fatalf("%d dials after a new snapshot, want 1", n)
+	}
+}

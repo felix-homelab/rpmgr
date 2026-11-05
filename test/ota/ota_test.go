@@ -45,6 +45,7 @@ func TestOTA(t *testing.T) {
 	t.Run("cross-filesystem install and permissions", testInstall)
 	t.Run("replayed manifest refused", testReplay)
 	t.Run("hostile staging refused", testHostile)
+	t.Run("all-in-one hand-off update readiness", testAllInOneUpdate)
 }
 
 func testInstall(t *testing.T) {
@@ -239,7 +240,11 @@ func writeAssets(t *testing.T, dir, version string, seq uint64, artifact string)
 	sum := sha256.Sum256(body)
 	a := release.Artifact{OS: "linux", Arch: "amd64", Variant: "full", Size: int64(len(body)), SHA256: hex.EncodeToString(sum[:])}
 	name := release.ArtifactName(version, a)
-	m := release.Manifest{Seq: seq, Version: version, Floor: oldVer, Channel: release.Stable,
+	channel := release.Stable
+	if strings.Contains(version, "-") {
+		channel = release.Prerelease
+	}
+	m := release.Manifest{Seq: seq, Version: version, Floor: oldVer, Channel: channel,
 		IssuedAt: time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC), Artifacts: []release.Artifact{a}}
 	man, err := json.Marshal(m)
 	if err != nil {

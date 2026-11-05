@@ -8,7 +8,9 @@ import (
 
 	"github.com/felix-homelab/rpmgr/internal/agent"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
+	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/release"
+	"github.com/felix-homelab/rpmgr/internal/update"
 )
 
 // StagedDir is the directory the root updater's path unit watches, where an agent stages a
@@ -33,6 +35,7 @@ func hostUpdater(stateDir, driver string, mirror *release.Mirror, installed func
 			}
 			return ""
 		},
+		Policy: func() (*policy.Policy, error) { return update.LoadPolicy(policy.DefaultPath) },
 		Stage: func(ctx context.Context, version string) error {
 			return agent.StageRelease(ctx, agent.UpdateOptions{Dir: StagedDir, Variant: "full"},
 				release.Dir(filepath.Join(mirror.Dir, version)), version)

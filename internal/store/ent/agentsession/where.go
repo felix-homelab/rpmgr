@@ -109,6 +109,16 @@ func LastGoodbye(v string) predicate.AgentSession {
 	return predicate.AgentSession(sql.FieldEQ(FieldLastGoodbye, v))
 }
 
+// UpdateAuto applies equality check predicate on the "update_auto" field. It's identical to UpdateAutoEQ.
+func UpdateAuto(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEQ(FieldUpdateAuto, v))
+}
+
+// UpdateChannel applies equality check predicate on the "update_channel" field. It's identical to UpdateChannelEQ.
+func UpdateChannel(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEQ(FieldUpdateChannel, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.AgentSession {
 	return predicate.AgentSession(sql.FieldEQ(FieldOrgID, v))
@@ -612,6 +622,136 @@ func LastGoodbyeEqualFold(v string) predicate.AgentSession {
 // LastGoodbyeContainsFold applies the ContainsFold predicate on the "last_goodbye" field.
 func LastGoodbyeContainsFold(v string) predicate.AgentSession {
 	return predicate.AgentSession(sql.FieldContainsFold(FieldLastGoodbye, v))
+}
+
+// UpdateAutoEQ applies the EQ predicate on the "update_auto" field.
+func UpdateAutoEQ(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEQ(FieldUpdateAuto, v))
+}
+
+// UpdateAutoNEQ applies the NEQ predicate on the "update_auto" field.
+func UpdateAutoNEQ(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldNEQ(FieldUpdateAuto, v))
+}
+
+// UpdateAutoIn applies the In predicate on the "update_auto" field.
+func UpdateAutoIn(vs ...string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldIn(FieldUpdateAuto, vs...))
+}
+
+// UpdateAutoNotIn applies the NotIn predicate on the "update_auto" field.
+func UpdateAutoNotIn(vs ...string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldNotIn(FieldUpdateAuto, vs...))
+}
+
+// UpdateAutoGT applies the GT predicate on the "update_auto" field.
+func UpdateAutoGT(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldGT(FieldUpdateAuto, v))
+}
+
+// UpdateAutoGTE applies the GTE predicate on the "update_auto" field.
+func UpdateAutoGTE(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldGTE(FieldUpdateAuto, v))
+}
+
+// UpdateAutoLT applies the LT predicate on the "update_auto" field.
+func UpdateAutoLT(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldLT(FieldUpdateAuto, v))
+}
+
+// UpdateAutoLTE applies the LTE predicate on the "update_auto" field.
+func UpdateAutoLTE(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldLTE(FieldUpdateAuto, v))
+}
+
+// UpdateAutoContains applies the Contains predicate on the "update_auto" field.
+func UpdateAutoContains(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldContains(FieldUpdateAuto, v))
+}
+
+// UpdateAutoHasPrefix applies the HasPrefix predicate on the "update_auto" field.
+func UpdateAutoHasPrefix(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldHasPrefix(FieldUpdateAuto, v))
+}
+
+// UpdateAutoHasSuffix applies the HasSuffix predicate on the "update_auto" field.
+func UpdateAutoHasSuffix(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldHasSuffix(FieldUpdateAuto, v))
+}
+
+// UpdateAutoEqualFold applies the EqualFold predicate on the "update_auto" field.
+func UpdateAutoEqualFold(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEqualFold(FieldUpdateAuto, v))
+}
+
+// UpdateAutoContainsFold applies the ContainsFold predicate on the "update_auto" field.
+func UpdateAutoContainsFold(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldContainsFold(FieldUpdateAuto, v))
+}
+
+// UpdateChannelEQ applies the EQ predicate on the "update_channel" field.
+func UpdateChannelEQ(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEQ(FieldUpdateChannel, v))
+}
+
+// UpdateChannelNEQ applies the NEQ predicate on the "update_channel" field.
+func UpdateChannelNEQ(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldNEQ(FieldUpdateChannel, v))
+}
+
+// UpdateChannelIn applies the In predicate on the "update_channel" field.
+func UpdateChannelIn(vs ...string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldIn(FieldUpdateChannel, vs...))
+}
+
+// UpdateChannelNotIn applies the NotIn predicate on the "update_channel" field.
+func UpdateChannelNotIn(vs ...string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldNotIn(FieldUpdateChannel, vs...))
+}
+
+// UpdateChannelGT applies the GT predicate on the "update_channel" field.
+func UpdateChannelGT(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldGT(FieldUpdateChannel, v))
+}
+
+// UpdateChannelGTE applies the GTE predicate on the "update_channel" field.
+func UpdateChannelGTE(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldGTE(FieldUpdateChannel, v))
+}
+
+// UpdateChannelLT applies the LT predicate on the "update_channel" field.
+func UpdateChannelLT(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldLT(FieldUpdateChannel, v))
+}
+
+// UpdateChannelLTE applies the LTE predicate on the "update_channel" field.
+func UpdateChannelLTE(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldLTE(FieldUpdateChannel, v))
+}
+
+// UpdateChannelContains applies the Contains predicate on the "update_channel" field.
+func UpdateChannelContains(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldContains(FieldUpdateChannel, v))
+}
+
+// UpdateChannelHasPrefix applies the HasPrefix predicate on the "update_channel" field.
+func UpdateChannelHasPrefix(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldHasPrefix(FieldUpdateChannel, v))
+}
+
+// UpdateChannelHasSuffix applies the HasSuffix predicate on the "update_channel" field.
+func UpdateChannelHasSuffix(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldHasSuffix(FieldUpdateChannel, v))
+}
+
+// UpdateChannelEqualFold applies the EqualFold predicate on the "update_channel" field.
+func UpdateChannelEqualFold(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEqualFold(FieldUpdateChannel, v))
+}
+
+// UpdateChannelContainsFold applies the ContainsFold predicate on the "update_channel" field.
+func UpdateChannelContainsFold(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldContainsFold(FieldUpdateChannel, v))
 }
 
 // And groups predicates with the AND operator between them.

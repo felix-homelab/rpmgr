@@ -12,6 +12,7 @@ import (
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/pki"
+	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/agentsession"
@@ -605,4 +606,29 @@ func textOr(s, fallback string) string {
 		return fallback
 	}
 	return s
+}
+
+// updatePolicyOf is the update policy an agent reported, as the controller stores it: both
+// values empty (unknown) when it reported none or a value the policy file never yields, so that
+// a rollout offers such an agent the release as it does an older one.
+func updatePolicyOf(p *agentv1.UpdatePolicy) (auto, channel string) {
+	if p == nil || !slices.Contains([]string{policy.AutoUpdateAuto, policy.AutoUpdateNotify, policy.AutoUpdateOff}, p.GetAutoUpdate()) ||
+		!slices.Contains([]string{policy.ChannelStable, policy.ChannelPrerelease}, p.GetUpdateChannel()) {
+		return "", ""
+	}
+	return p.GetAutoUpdate(), p.GetUpdateChannel()
+}
+
+// recordUpdatePolicy stores the update policy an agent reported in a Status. A report with an
+// unknown value makes the policy unknown again.
+func (s *Sessions) recordUpdatePolicy(agentID string, p *agentv1.UpdatePolicy) {
+	auto, channel := updatePolicyOf(p)
+	err := store.WriteTx(s.sys, s.db, func(tx *ent.Tx) error {
+		_, err := tx.ExecContext(s.sys, `UPDATE agent_sessions SET update_auto = $1, update_channel = $2
+			WHERE agent_id = $3 AND (update_auto <> $1 OR update_channel <> $2)`, auto, channel, agentID)
+		return err
+	})
+	if err != nil && s.sys.Err() == nil {
+		s.log.Error("cannot record an agent's update policy", "agent", agentID, "error", err)
+	}
 }

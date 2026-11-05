@@ -271,6 +271,9 @@ func (s *Sessions) receive(ctx context.Context, st grpc.BidiStreamingServer[agen
 			if st.GetUpdate() != nil {
 				s.recordUpdate(id, st.GetUpdate())
 			}
+			if st.GetUpdatePolicy() != nil {
+				s.recordUpdatePolicy(id.ID, st.GetUpdatePolicy())
+			}
 			if st.GetDraining() != nil {
 				s.recordDraining(id.ID, st.GetDraining())
 			}
@@ -289,10 +292,10 @@ func (s *Sessions) receive(ctx context.Context, st grpc.BidiStreamingServer[agen
 	}
 }
 
-// updateOnly reports whether a Status carries the update state or the draining old process, and
-// nothing else.
+// updateOnly reports whether a Status carries the update state, the draining old process, the
+// firewall state or the update policy, and nothing else.
 func updateOnly(st *agentv1.Status) bool {
-	return (st.GetUpdate() != nil || st.GetDraining() != nil || st.GetFirewall() != nil) && !st.GetReadinessComplete() && len(st.GetReadiness()) == 0 &&
+	return (st.GetUpdate() != nil || st.GetDraining() != nil || st.GetFirewall() != nil || st.GetUpdatePolicy() != nil) && !st.GetReadinessComplete() && len(st.GetReadiness()) == 0 &&
 		len(st.GetDataSessions()) == 0 && len(st.GetCounters()) == 0
 }
 
@@ -335,19 +338,21 @@ func (s *Sessions) register(ctx context.Context, agent Agent, hello *agentv1.Hel
 		addr = p.Addr.String()
 	}
 	now := s.now().UTC()
+	auto, channel := updatePolicyOf(hello.GetUpdatePolicy())
 	var epoch int64
 	var dbEpoch string
 	err = store.WriteTx(s.sys, s.db, func(tx *ent.Tx) error {
 		rows, err := tx.QueryContext(s.sys, `INSERT INTO agent_sessions (agent_id, org_id, session_epoch,
-			controller_node, remote_addr, agent_version, capabilities, connected_at, last_seen_at)
-			VALUES ($1, $2, 1, $3, $4, $5, $6, $7, $7)
+			controller_node, remote_addr, agent_version, capabilities, connected_at, last_seen_at,
+			update_auto, update_channel)
+			VALUES ($1, $2, 1, $3, $4, $5, $6, $7, $7, $8, $9)
 			ON CONFLICT (agent_id) DO UPDATE SET session_epoch = agent_sessions.session_epoch + 1,
 			controller_node = excluded.controller_node, remote_addr = excluded.remote_addr,
 			agent_version = excluded.agent_version, capabilities = excluded.capabilities,
 			connected_at = excluded.connected_at, last_seen_at = excluded.last_seen_at, disconnected_at = NULL,
-			last_goodbye = ''
+			last_goodbye = '', update_auto = excluded.update_auto, update_channel = excluded.update_channel
 			RETURNING session_epoch`,
-			agent.Identity.ID, agent.Identity.Org, s.node, addr, hello.GetVersion(), string(caps), now)
+			agent.Identity.ID, agent.Identity.Org, s.node, addr, hello.GetVersion(), string(caps), now, auto, channel)
 		if err != nil {
 			return err
 		}

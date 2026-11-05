@@ -19,9 +19,11 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/protobuf/proto"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
+	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 )
 
@@ -90,6 +92,8 @@ type Control struct {
 	// firewall is the firewall helper's state, as SetFirewall last reported it; it goes in the
 	// first Status of each session.
 	firewall atomic.Pointer[agentv1.FirewallState]
+	// reported is the update policy last given to the controller, in Hello or a Status.
+	reported atomic.Pointer[agentv1.UpdatePolicy]
 }
 
 // NewControl loads the identity and wires the control plane; Run starts it.
@@ -138,6 +142,10 @@ func NewControl(o ControlOptions) (*Control, error) {
 		Hello: func(h *agentv1.Hello) {
 			c.rt.Hello(h)
 			h.DenyListDigest = c.deny.Digest()
+			if c.stager != nil {
+				h.UpdatePolicy = c.stager.UpdatePolicy()
+				c.reported.Store(h.UpdatePolicy)
+			}
 		},
 		OnWelcome: func(w *agentv1.Welcome) {
 			c.rt.Welcome(w)
@@ -164,6 +172,13 @@ func NewControl(o ControlOptions) (*Control, error) {
 					st = &agentv1.Status{}
 				}
 				st.Firewall = f
+			}
+			if c.stager != nil { // what the file says now, which may have changed since Hello
+				if st == nil {
+					st = &agentv1.Status{}
+				}
+				st.UpdatePolicy = c.stager.UpdatePolicy()
+				c.reported.Store(st.UpdatePolicy)
 			}
 			if st != nil {
 				c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: st}})
@@ -255,6 +270,32 @@ func (c *Control) SetDraining(d *agentv1.DrainingProcess) {
 func (c *Control) SetFirewall(f *agentv1.FirewallState) {
 	c.firewall.Store(f)
 	c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{Firewall: f}}})
+}
+
+// reportPolicy tells the controller when the local policy changes auto_update or update_channel,
+// in a Status that carries only them, so that a rollout does not offer a release the host
+// refuses. A change made while there is no session goes in the next session's first Status.
+func (c *Control) reportPolicy(ctx context.Context) {
+	every := c.stager.o.PolicyEvery
+	if every <= 0 {
+		every = policy.WatchEvery
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		now := c.stager.UpdatePolicy()
+		if last := c.reported.Load(); last != nil && proto.Equal(last, now) {
+			continue
+		}
+		if c.client.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{UpdatePolicy: now}}}) {
+			c.reported.Store(now)
+		}
+	}
 }
 
 // ErrUnsupportedOperation is an operation an agent does not run.
@@ -353,6 +394,7 @@ func (c *Control) Run(ctx context.Context) error {
 	wg.Go(func() { c.rt.Run(rctx) })
 	if c.stager != nil {
 		wg.Go(func() { c.stager.Run(rctx) })
+		wg.Go(func() { c.reportPolicy(rctx) })
 	}
 	defer func() { cancel(); wg.Wait() }()
 	return c.client.Run(ctx)

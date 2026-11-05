@@ -172,7 +172,10 @@ GiB)**). Their ranges and defaults are in the design documents
 
 - **Check for releases once a day**: the controller fetches its own release, verified, into its
   mirror for agents ([Upgrades](../install/upgrades.md)).
-- **Release channel**: **Stable**, or **Pre-releases too**.
+- **Release channel**: **Stable**, or **Pre-releases too**. It is the instance's setting; a host's
+  own `update_channel`, in its policy file, is separate and set on the host with `sudo rpmgr policy
+  set-update-channel`. The page shows what the controller's own host takes
+  ([Updates](../operations/updates.md#choose-what-a-host-takes)).
 - **Rollouts**: what **Roll out…** starts. **Easy** (the default) updates the agents you choose one
   after another; **Advanced** runs staged rollouts. **Update** on a connector or gateway works in
   both.

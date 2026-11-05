@@ -191,7 +191,7 @@ of the certificate settings are in [04](../../04-security.md#leaf-certificates).
 | Web UI | Name | What it does |
 |---|---|---|
 | **Check for releases once a day** | `release_check` | On by default. The controller fetches the signed release manifest from GitHub, sending nothing about the installation, and mirrors the release files of its own version under `/dl/` for the install scripts ([10](../../10-operations.md#ports)) |
-| **Release channel** | `update_channel` | **Stable**, or **Pre-releases too** |
+| **Release channel** | `update_channel` | **Stable**, or **Pre-releases too**. This is the instance's setting; each host's own `update_channel` in its policy file is separate, and the web UI never writes it ([Updates](updates.md#choose-what-a-host-takes)) |
 | **Rollouts** | `rollout_mode` | What **Roll out…** starts: **Easy**, the default, updates the agents you choose one after another; **Advanced** runs staged rollouts, test agents first. In `--set`, `easy` or `advanced`. **Update** on a connector or gateway works in both |
 
 Turn the release check off for a controller without internet access, and import releases by hand

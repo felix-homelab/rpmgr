@@ -269,7 +269,16 @@ RestartSec=2s
      parse, that its group or other users may write, that root does not own, or that is a
      symbolic link counts as `off` ([D120](14-open-decisions.md#security-defaults)), and
      `install.json` and `state.json` must pass the same test. The connector itself still reads
-     the policy as [04](04-security.md#connector-local-policy) says;
+     the policy as [04](04-security.md#connector-local-policy) says. Every refusal from here on
+     writes the status file (`/run/rpmgr-update/status.json`) with the reason before the updater
+     exits non-zero, and a controller or all-in-one reads the same policy file, as root's and
+     not writable by others, before it stages a release: it refuses a pre-release on a host whose
+     `update_channel` is `stable`, and any release when `auto_update` is not `auto`, naming
+     `sudo rpmgr policy set-update-channel prerelease` or `set-auto-update auto`. The web UI shows
+     the host's two settings next to the instance's release channel, which does not change them.
+     Pressing Update again for a refused release stages it once more and rewrites its manifest,
+     which fires the path unit again
+     ([#1135](https://github.com/felix-homelab/rpmgr/issues/1135));
   2. opens the staging directory through a directory fd with
      `openat2(RESOLVE_NO_SYMLINKS | RESOLVE_BENEATH)`, requires regular files (`fstat` → `S_ISREG`;
      no symlinked directory, FIFO or device), and checks that each file's size is ≤ the manifest's
@@ -739,7 +748,10 @@ affect agents take effect through reconciliation and show apply status like any 
    rollback on failure, each stage approved by the Instance Admin; a rollback pauses the rollout
    ([04](04-security.md#over-the-air-updates)). A rollout's target is the controller's own
    version, so agents never run ahead of their controller. Hosts with
-   `auto_update: notify` or `off` are listed in the UI and updated by their operators. Windows and
+   `auto_update: notify` or `off`, and hosts on the stable channel when the release is a
+   pre-release, are listed in the UI and the CLI before the rollout starts, with the command that
+   changes their policy, and skipped; their operators update them
+   ([04](04-security.md#over-the-air-updates)). Windows and
    macOS connectors (Phase 2) are updated by hand from the release download; they get no OTA
    before Phase 3.
 

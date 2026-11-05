@@ -250,7 +250,10 @@ type AgentSession struct {
 	OverTheAir bool `protobuf:"varint,7,opt,name=over_the_air,json=overTheAir,proto3" json:"over_the_air,omitempty"`
 	// The old process of its last hand-off while it drains; not set when none does, or when the
 	// agent is a release without the report (D160).
-	Draining      *DrainingProcess `protobuf:"bytes,8,opt,name=draining,proto3" json:"draining,omitempty"`
+	Draining *DrainingProcess `protobuf:"bytes,8,opt,name=draining,proto3" json:"draining,omitempty"`
+	// The update policy its host last reported; not set when the agent does not report it (an older
+	// release), which a rollout treats as unknown and offers the release all the same.
+	UpdatePolicy  *HostUpdatePolicy `protobuf:"bytes,9,opt,name=update_policy,json=updatePolicy,proto3" json:"update_policy,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -337,6 +340,13 @@ func (x *AgentSession) GetOverTheAir() bool {
 func (x *AgentSession) GetDraining() *DrainingProcess {
 	if x != nil {
 		return x.Draining
+	}
+	return nil
+}
+
+func (x *AgentSession) GetUpdatePolicy() *HostUpdatePolicy {
+	if x != nil {
+		return x.UpdatePolicy
 	}
 	return nil
 }
@@ -1299,7 +1309,7 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\bbuilt_in\x18\v \x01(\bR\abuiltIn\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe9\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xaa\x03\n" +
 	"\fAgentSession\x12\x1c\n" +
 	"\tconnected\x18\x01 \x01(\bR\tconnected\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12@\n" +
@@ -1310,7 +1320,8 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\x13last_goodbye_reason\x18\x06 \x01(\tR\x11lastGoodbyeReason\x12 \n" +
 	"\fover_the_air\x18\a \x01(\bR\n" +
 	"overTheAir\x125\n" +
-	"\bdraining\x18\b \x01(\v2\x19.rpmgr.v1.DrainingProcessR\bdraining\"\xc1\x01\n" +
+	"\bdraining\x18\b \x01(\v2\x19.rpmgr.v1.DrainingProcessR\bdraining\x12?\n" +
+	"\rupdate_policy\x18\t \x01(\v2\x1a.rpmgr.v1.HostUpdatePolicyR\fupdatePolicy\"\xc1\x01\n" +
 	"\x0fConnectorStatus\x120\n" +
 	"\asession\x18\x01 \x01(\v2\x16.rpmgr.v1.AgentSessionR\asession\x12C\n" +
 	"\rdata_sessions\x18\x02 \x03(\v2\x1e.rpmgr.v1.ConnectorDataSessionR\fdataSessions\x127\n" +
@@ -1429,10 +1440,11 @@ var file_rpmgr_v1_connector_proto_goTypes = []any{
 	nil,                                   // 19: rpmgr.v1.Connector.LabelsEntry
 	(*timestamppb.Timestamp)(nil),         // 20: google.protobuf.Timestamp
 	(*DrainingProcess)(nil),               // 21: rpmgr.v1.DrainingProcess
-	(*durationpb.Duration)(nil),           // 22: google.protobuf.Duration
-	(*fieldmaskpb.FieldMask)(nil),         // 23: google.protobuf.FieldMask
-	(*Revision)(nil),                      // 24: rpmgr.v1.Revision
-	(*ApplyStatus)(nil),                   // 25: rpmgr.v1.ApplyStatus
+	(*HostUpdatePolicy)(nil),              // 22: rpmgr.v1.HostUpdatePolicy
+	(*durationpb.Duration)(nil),           // 23: google.protobuf.Duration
+	(*fieldmaskpb.FieldMask)(nil),         // 24: google.protobuf.FieldMask
+	(*Revision)(nil),                      // 25: rpmgr.v1.Revision
+	(*ApplyStatus)(nil),                   // 26: rpmgr.v1.ApplyStatus
 }
 var file_rpmgr_v1_connector_proto_depIdxs = []int32{
 	19, // 0: rpmgr.v1.Connector.labels:type_name -> rpmgr.v1.Connector.LabelsEntry
@@ -1442,44 +1454,45 @@ var file_rpmgr_v1_connector_proto_depIdxs = []int32{
 	20, // 4: rpmgr.v1.Connector.decommission_time:type_name -> google.protobuf.Timestamp
 	20, // 5: rpmgr.v1.AgentSession.last_seen_time:type_name -> google.protobuf.Timestamp
 	21, // 6: rpmgr.v1.AgentSession.draining:type_name -> rpmgr.v1.DrainingProcess
-	2,  // 7: rpmgr.v1.ConnectorStatus.session:type_name -> rpmgr.v1.AgentSession
-	4,  // 8: rpmgr.v1.ConnectorStatus.data_sessions:type_name -> rpmgr.v1.ConnectorDataSession
-	5,  // 9: rpmgr.v1.ConnectorStatus.not_ready:type_name -> rpmgr.v1.NotReadyResource
-	0,  // 10: rpmgr.v1.ConnectorDataSession.transport:type_name -> rpmgr.v1.DataTransport
-	22, // 11: rpmgr.v1.ConnectorDataSession.rtt:type_name -> google.protobuf.Duration
-	20, // 12: rpmgr.v1.ConnectorDataSession.establish_time:type_name -> google.protobuf.Timestamp
-	20, // 13: rpmgr.v1.ConnectorDataSession.report_time:type_name -> google.protobuf.Timestamp
-	20, // 14: rpmgr.v1.NotReadyResource.since:type_name -> google.protobuf.Timestamp
-	1,  // 15: rpmgr.v1.ListConnectorsResponse.connectors:type_name -> rpmgr.v1.Connector
-	1,  // 16: rpmgr.v1.GetConnectorResponse.connector:type_name -> rpmgr.v1.Connector
-	3,  // 17: rpmgr.v1.GetConnectorStatusResponse.status:type_name -> rpmgr.v1.ConnectorStatus
-	1,  // 18: rpmgr.v1.UpdateConnectorRequest.connector:type_name -> rpmgr.v1.Connector
-	23, // 19: rpmgr.v1.UpdateConnectorRequest.update_mask:type_name -> google.protobuf.FieldMask
-	1,  // 20: rpmgr.v1.UpdateConnectorResponse.connector:type_name -> rpmgr.v1.Connector
-	24, // 21: rpmgr.v1.UpdateConnectorResponse.revision:type_name -> rpmgr.v1.Revision
-	25, // 22: rpmgr.v1.UpdateConnectorResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	1,  // 23: rpmgr.v1.DecommissionConnectorResponse.connector:type_name -> rpmgr.v1.Connector
-	24, // 24: rpmgr.v1.DecommissionConnectorResponse.revision:type_name -> rpmgr.v1.Revision
-	25, // 25: rpmgr.v1.DecommissionConnectorResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
-	18, // 26: rpmgr.v1.DecommissionConnectorResponse.deleted_routes:type_name -> rpmgr.v1.DeletedRoute
-	21, // 27: rpmgr.v1.EndConnectorDrainResponse.ended:type_name -> rpmgr.v1.DrainingProcess
-	6,  // 28: rpmgr.v1.ConnectorService.ListConnectors:input_type -> rpmgr.v1.ListConnectorsRequest
-	8,  // 29: rpmgr.v1.ConnectorService.GetConnector:input_type -> rpmgr.v1.GetConnectorRequest
-	12, // 30: rpmgr.v1.ConnectorService.UpdateConnector:input_type -> rpmgr.v1.UpdateConnectorRequest
-	14, // 31: rpmgr.v1.ConnectorService.DecommissionConnector:input_type -> rpmgr.v1.DecommissionConnectorRequest
-	16, // 32: rpmgr.v1.ConnectorService.EndConnectorDrain:input_type -> rpmgr.v1.EndConnectorDrainRequest
-	10, // 33: rpmgr.v1.ConnectorService.GetConnectorStatus:input_type -> rpmgr.v1.GetConnectorStatusRequest
-	7,  // 34: rpmgr.v1.ConnectorService.ListConnectors:output_type -> rpmgr.v1.ListConnectorsResponse
-	9,  // 35: rpmgr.v1.ConnectorService.GetConnector:output_type -> rpmgr.v1.GetConnectorResponse
-	13, // 36: rpmgr.v1.ConnectorService.UpdateConnector:output_type -> rpmgr.v1.UpdateConnectorResponse
-	15, // 37: rpmgr.v1.ConnectorService.DecommissionConnector:output_type -> rpmgr.v1.DecommissionConnectorResponse
-	17, // 38: rpmgr.v1.ConnectorService.EndConnectorDrain:output_type -> rpmgr.v1.EndConnectorDrainResponse
-	11, // 39: rpmgr.v1.ConnectorService.GetConnectorStatus:output_type -> rpmgr.v1.GetConnectorStatusResponse
-	34, // [34:40] is the sub-list for method output_type
-	28, // [28:34] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	22, // 7: rpmgr.v1.AgentSession.update_policy:type_name -> rpmgr.v1.HostUpdatePolicy
+	2,  // 8: rpmgr.v1.ConnectorStatus.session:type_name -> rpmgr.v1.AgentSession
+	4,  // 9: rpmgr.v1.ConnectorStatus.data_sessions:type_name -> rpmgr.v1.ConnectorDataSession
+	5,  // 10: rpmgr.v1.ConnectorStatus.not_ready:type_name -> rpmgr.v1.NotReadyResource
+	0,  // 11: rpmgr.v1.ConnectorDataSession.transport:type_name -> rpmgr.v1.DataTransport
+	23, // 12: rpmgr.v1.ConnectorDataSession.rtt:type_name -> google.protobuf.Duration
+	20, // 13: rpmgr.v1.ConnectorDataSession.establish_time:type_name -> google.protobuf.Timestamp
+	20, // 14: rpmgr.v1.ConnectorDataSession.report_time:type_name -> google.protobuf.Timestamp
+	20, // 15: rpmgr.v1.NotReadyResource.since:type_name -> google.protobuf.Timestamp
+	1,  // 16: rpmgr.v1.ListConnectorsResponse.connectors:type_name -> rpmgr.v1.Connector
+	1,  // 17: rpmgr.v1.GetConnectorResponse.connector:type_name -> rpmgr.v1.Connector
+	3,  // 18: rpmgr.v1.GetConnectorStatusResponse.status:type_name -> rpmgr.v1.ConnectorStatus
+	1,  // 19: rpmgr.v1.UpdateConnectorRequest.connector:type_name -> rpmgr.v1.Connector
+	24, // 20: rpmgr.v1.UpdateConnectorRequest.update_mask:type_name -> google.protobuf.FieldMask
+	1,  // 21: rpmgr.v1.UpdateConnectorResponse.connector:type_name -> rpmgr.v1.Connector
+	25, // 22: rpmgr.v1.UpdateConnectorResponse.revision:type_name -> rpmgr.v1.Revision
+	26, // 23: rpmgr.v1.UpdateConnectorResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	1,  // 24: rpmgr.v1.DecommissionConnectorResponse.connector:type_name -> rpmgr.v1.Connector
+	25, // 25: rpmgr.v1.DecommissionConnectorResponse.revision:type_name -> rpmgr.v1.Revision
+	26, // 26: rpmgr.v1.DecommissionConnectorResponse.apply_status:type_name -> rpmgr.v1.ApplyStatus
+	18, // 27: rpmgr.v1.DecommissionConnectorResponse.deleted_routes:type_name -> rpmgr.v1.DeletedRoute
+	21, // 28: rpmgr.v1.EndConnectorDrainResponse.ended:type_name -> rpmgr.v1.DrainingProcess
+	6,  // 29: rpmgr.v1.ConnectorService.ListConnectors:input_type -> rpmgr.v1.ListConnectorsRequest
+	8,  // 30: rpmgr.v1.ConnectorService.GetConnector:input_type -> rpmgr.v1.GetConnectorRequest
+	12, // 31: rpmgr.v1.ConnectorService.UpdateConnector:input_type -> rpmgr.v1.UpdateConnectorRequest
+	14, // 32: rpmgr.v1.ConnectorService.DecommissionConnector:input_type -> rpmgr.v1.DecommissionConnectorRequest
+	16, // 33: rpmgr.v1.ConnectorService.EndConnectorDrain:input_type -> rpmgr.v1.EndConnectorDrainRequest
+	10, // 34: rpmgr.v1.ConnectorService.GetConnectorStatus:input_type -> rpmgr.v1.GetConnectorStatusRequest
+	7,  // 35: rpmgr.v1.ConnectorService.ListConnectors:output_type -> rpmgr.v1.ListConnectorsResponse
+	9,  // 36: rpmgr.v1.ConnectorService.GetConnector:output_type -> rpmgr.v1.GetConnectorResponse
+	13, // 37: rpmgr.v1.ConnectorService.UpdateConnector:output_type -> rpmgr.v1.UpdateConnectorResponse
+	15, // 38: rpmgr.v1.ConnectorService.DecommissionConnector:output_type -> rpmgr.v1.DecommissionConnectorResponse
+	17, // 39: rpmgr.v1.ConnectorService.EndConnectorDrain:output_type -> rpmgr.v1.EndConnectorDrainResponse
+	11, // 40: rpmgr.v1.ConnectorService.GetConnectorStatus:output_type -> rpmgr.v1.GetConnectorStatusResponse
+	35, // [35:41] is the sub-list for method output_type
+	29, // [29:35] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_v1_connector_proto_init() }

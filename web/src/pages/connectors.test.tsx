@@ -19,7 +19,8 @@ afterEach(cleanup);
 
 const db = create(ConnectorSchema, {
   id: "con_db", name: "db-host-1", labels: { site: "office" }, enabled: true, transport: DataTransport.AUTO, etag: "4",
-  session: { connected: true, version: "0.1.0", remoteAddr: "192.0.2.5:40000", lastSeenTime: timestampFromDate(new Date("2026-10-09T10:00:00Z")) },
+  session: { connected: true, version: "0.1.0", remoteAddr: "192.0.2.5:40000", lastSeenTime: timestampFromDate(new Date("2026-10-09T10:00:00Z")),
+    updatePolicy: { autoUpdate: "notify", updateChannel: "prerelease" } },
 });
 const lab = create(ConnectorSchema, { id: "con_lab", name: "lab", labels: { site: "home" }, enabled: false, ephemeral: true, session: { connected: false } });
 const local = create(ConnectorSchema, { id: "con_local", name: "local", enabled: true, builtIn: true, etag: "2", session: { connected: true } });
@@ -115,6 +116,7 @@ describe("Connectors", () => {
     page("/connectors/con_db");
     expect(await screen.findByRole("heading", { name: "Connector db-host-1" })).toBeTruthy();
     expect(screen.getByText(/^Control session up from 192\.0\.2\.5:40000/)).toBeTruthy();
+    expect(screen.getByText("Update channel pre-release · auto-update notify only")).toBeTruthy();
     const data = within(await screen.findByRole("table"));
     await waitFor(() => expect(data.getAllByRole("row")[1]!.textContent).toMatch(/^gw-eu-1QUIC23 ms/));
     expect(await screen.findByRole("link", { name: "postgres" })).toBeTruthy();

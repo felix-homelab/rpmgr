@@ -7,6 +7,7 @@ import { CircleCheck, CircleDashed, FileUp, LoaderCircle, RefreshCw, Upload } fr
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/public-page";
+import { HostPolicyNote } from "@/components/host-policy-note";
 import { UpdateControllerButton } from "@/components/update-controller-button";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -35,6 +36,7 @@ export function Updates() {
   return (
     <InstanceAdminPage title={t("settings.updates")}>
       <InstanceSettingsSection title={t("settings.sections.updates")} sections={["updates"]} />
+      <HostPolicyNote />
       <Releases />
       <ActiveRollout />
     </InstanceAdminPage>
@@ -63,6 +65,7 @@ function Releases() {
           <Button size="sm" variant="outline" onClick={() => setUploading(true)}>{t("updates.upload")}</Button>
         </div>}>
         <CheckState check={list.data?.releaseCheck} />
+        <HostPolicyNote />
         {checkError && <Alert>{checkError}</Alert>}
         {list.error && <Alert>{ConnectError.from(list.error).rawMessage}</Alert>}
         {list.data && (

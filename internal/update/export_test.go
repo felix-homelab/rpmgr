@@ -7,6 +7,8 @@ package update
 import (
 	"errors"
 	"testing"
+
+	"github.com/felix-homelab/rpmgr/internal/policy"
 )
 
 // OnOpen runs f after each staged file is opened, until the test ends.
@@ -57,3 +59,8 @@ var ErrInterrupted = errInterrupted
 
 // InstalledAt is exported for the test of Installed.
 var InstalledAt = installedAt
+
+// LoadPolicyAs is LoadPolicy for a file that the user uid alone owns, as a test's files are.
+func LoadPolicyAs(path string, uid int) (*policy.Policy, error) {
+	return parsePolicy(readOwnedBy(path, uid))
+}

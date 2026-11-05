@@ -192,6 +192,9 @@ controller-managed durable state: it is never rebuilt from the provider.
   ledger (`adopted_from`), and the next pass, which the adoption asks for, rewrites it to what the
   sources want and puts the marker on it; that first write is no drift. Adopt is how the migration
   cutover switches names from an old server to rpmgr ([11](11-migration.md#cutover-plan)).
+  `ListZoneRecords` marks each foreign record `adoptable` or gives the reason in `adopt_reason`:
+  `not_published` or `type_not_adoptable`. The mark is informational, the call applies the same
+  rule again, and its refusal names the record and says to create a route or DNS name for it first.
 - **Release.** Removes a record from the ledger; the CLI calls it `disown`
   ([D169](14-open-decisions.md#engineering)). Either the record stays as it is, with rpmgr's marker
   taken off, by a patch with an empty comment [V VB-27], so that it is not reported as an orphan, or it is restored to its adopted original,

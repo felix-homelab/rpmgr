@@ -1044,6 +1044,8 @@
     "adopt": "Adopt",
     "adoptAsk": "Adopt {{type}} {{name}} → {{content}}? rpmgr keeps this content for a later release, and the next pass rewrites it.",
     "adoptConfirm": "Adopt record",
+    "adoptHintUnpublished": "Not published by rpmgr — create a route or DNS name for this name first, then adopt it from the plan.",
+    "adoptHintType": "rpmgr does not manage records of this type, so it cannot adopt it.",
     "release": "Release",
     "releaseKeep": "Keep the record at the provider as it is",
     "releaseRestore": "Put it back to the content it had when it was adopted",
@@ -1763,6 +1765,12 @@
     "dashboard": "Go to the dashboard",
     "gaveUp": "The controller does not answer. Check the host: systemctl status rpmgr-update and the controller's journal."
   },
+  "hostPolicy": {
+    "value": "Update channel {{channel}} · auto-update {{auto}}",
+    "unknown": "Update policy not reported",
+    "channel": {"stable": "stable", "prerelease": "pre-release"},
+    "auto": {"auto": "on", "notify": "notify only", "off": "off"}
+  },
   "updates": {
     "checkNow": "Check now",
     "checking": "Checking for releases…",
@@ -1818,6 +1826,14 @@
     "noMatch": "No agent matches the search.",
     "noOnline": "No agent is online, so none is suggested. An offline agent is skipped and tests nothing.",
     "offlineChosen": "A test agent is offline: it is skipped and tests nothing. Choose one that is online.",
+    "skip": {
+      "title_one": "{{count}} of {{total}} agents will be skipped",
+      "title_other": "{{count}} of {{total}} agents will be skipped",
+      "blockedEasy": "Every agent of the queue would be skipped.",
+      "blockedShort": "Every test agent would be skipped.",
+      "blocked": "The test agents would all be skipped, so nothing would test this release. Choose other test agents, or change their policies.",
+      "help": "The local policy of these hosts refuses the release, so they are not offered it. To let one take it, run the command on that host, as root, then start another rollout."
+    },
     "chosen_one": "Test agent: {{names}}",
     "chosen_other": "{{count}} test agents: {{names}}",
     "inRollout_one": "{{count}} agent gets the release",
@@ -1911,13 +1927,22 @@
     },
     "controllerButton": {
       "label": "Update controller to {{version}}",
+      "labelRetry": "Retry the update to {{version}}",
+      "refused": "The last attempt was refused: {{reason}}",
       "byHand": "Update this controller by hand once (install.sh --upgrade --restart); later updates can start here.",
       "why": {
         "notMirrored": "The mirror does not hold it yet.",
         "rollout": "A rollout runs; let it end first.",
         "underWay": "An update of the controller is under way.",
-        "blocked": "{{reason}}"
+        "blocked": "{{reason}}",
+        "hostChannel": "This host takes stable releases only; run `sudo rpmgr policy set-update-channel prerelease` on it."
       }
+    },
+    "hostPolicy": {
+      "stable": "This host: stable releases only. The release channel above is the instance's and does not change the host's policy file; run this on the host to take pre-releases:",
+      "prerelease": "This host: takes pre-releases too (update_channel in its policy file).",
+      "autoOff": "This host: auto_update is {{value}}, so its root updater refuses every update. To turn it on, run:",
+      "error": "This host's policy file cannot be trusted, so its root updater refuses every update ({{error}}). After fixing its owner and mode, run:"
     },
     "button": {
       "label": "Update to {{version}}",

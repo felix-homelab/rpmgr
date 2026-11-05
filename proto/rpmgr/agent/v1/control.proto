@@ -187,6 +187,21 @@ message Hello {
   google.protobuf.Timestamp agent_time = 7;
   // SHA-256 over the agent's deny-list; on a mismatch the controller sends it again.
   bytes deny_list_digest = 8;
+  // The update policy of the agent's host, from its local policy file; unset by agents that do
+  // not report it, which the controller treats as unknown (docs/04-security.md, "Over-the-air
+  // updates").
+  UpdatePolicy update_policy = 9;
+}
+
+// UpdatePolicy is the auto_update and update_channel of an agent's local policy file, as the root
+// updater would read them: a file that does not load or that others may write counts as
+// auto_update "off". The host stays the authority; the controller only uses the report to warn
+// before it offers a release.
+message UpdatePolicy {
+  // "auto", "notify" or "off".
+  string auto_update = 1;
+  // "stable" or "prerelease".
+  string update_channel = 2;
 }
 
 // Welcome answers Hello.
@@ -291,6 +306,10 @@ message Status {
   // firewall for port pools"). A Status that carries only this leaves a gateway's data sessions
   // and counters as they are.
   FirewallState firewall = 7;
+  // The update policy of the agent's host, in the first Status of a session and whenever the
+  // local policy file changes it; unset otherwise. A Status that carries only this leaves a
+  // gateway's data sessions and counters as they are.
+  UpdatePolicy update_policy = 8;
 }
 
 // FirewallState is what the gateway reads from the root firewall helper's status file.

@@ -1149,6 +1149,7 @@ rpmgr create rollout [flags] --release <version> (--canary <agent>… | --easy -
 | `--controller` |  | update the controller or all-in-one itself over the air, after a backup, instead of agents; the release must be newer and mirrored |
 | `--easy` |  | an easy rollout: the --agent agents update one after another, and a failed one is skipped |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+| `--preview` |  | only list the agents the rollout would skip because their host's local policy refuses the release, and create nothing |
 | `--release string` |  | the release, by version or ID; no newer than the controller, but with --controller newer |
 
 ## rpmgr create webhook

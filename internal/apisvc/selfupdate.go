@@ -11,12 +11,15 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"golang.org/x/mod/semver"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	entrelease "github.com/felix-homelab/rpmgr/internal/store/ent/release"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/rollout"
 	"github.com/felix-homelab/rpmgr/internal/update"
 )
@@ -47,6 +50,9 @@ type SelfUpdate struct {
 	Blocked func() string
 	// Status reads the root updater's status file; nil is update.ReadStatus of update.StatusFile.
 	Status func() (update.Status, error)
+	// Policy reads the host's local policy as the root updater trusts it (update.LoadPolicy);
+	// nil means the controller does not check it, and the updater decides alone.
+	Policy func() (*policy.Policy, error)
 
 	mu     sync.Mutex
 	staged string    // the version staged by the last request
@@ -68,6 +74,9 @@ func (r *Releases) UpdateController(ctx context.Context, req *connect.Request[rp
 	if why := u.blocked(); why != "" {
 		return nil, refusedUpdate(why)
 	}
+	if why := u.policyBlock(); why != "" {
+		return nil, refusedUpdate(why)
+	}
 	sys, c := store.CarryTxHook(r.Sys, ctx), r.DB.ReadClient()
 	rel, err := c.Release.Get(sys, req.Msg.GetReleaseId())
 	if ent.IsNotFound(err) {
@@ -87,6 +96,9 @@ func (r *Releases) UpdateController(ctx context.Context, req *connect.Request[rp
 	}
 	if err := checkChannel(sys, c, rel); err != nil {
 		return nil, err
+	}
+	if why := u.channelBlock(rel.Channel == entrelease.ChannelPrerelease || semver.Prerelease("v"+rel.Version) != "", rel.Version); why != "" {
+		return nil, refusedUpdate(why)
 	}
 	if n, err := c.Rollout.Query().Where(rollout.Active(true)).Count(sys); err != nil || n > 0 {
 		return nil, errors.Join(err, errIf(n > 0, rolloutActive()))
@@ -112,6 +124,10 @@ func (r *Releases) GetControllerUpdate(context.Context, *connect.Request[rpmgrv1
 	out := &rpmgrv1.GetControllerUpdateResponse{RunningVersion: r.Version}
 	if u := r.Self; u != nil && u.Stage != nil {
 		out.Blocked = u.blocked()
+		if out.Blocked == "" {
+			out.Blocked = u.policyBlock()
+		}
+		out.HostUpdateChannel, out.HostAutoUpdate, out.HostPolicyError = u.hostPolicy()
 		out.Update = u.current(r.now())
 		if out.ByHand = !update.HasSelfUpdate(r.Version); out.ByHand {
 			out.Blocked = update.ByHand
@@ -127,6 +143,47 @@ func (u *SelfUpdate) blocked() string {
 		return ""
 	}
 	return u.Blocked()
+}
+
+// hostPolicy reads the host's local policy. A file that cannot be trusted or parsed is returned
+// as its error text, as the root updater counts it as auto_update off. A file the controller may
+// not read is no answer: the updater decides alone.
+func (u *SelfUpdate) hostPolicy() (channel, auto, problem string) {
+	if u.Policy == nil {
+		return "", "", ""
+	}
+	p, err := u.Policy()
+	switch {
+	case errors.Is(err, fs.ErrPermission):
+		return "", "", ""
+	case err != nil:
+		return "", "", err.Error()
+	}
+	return p.UpdateChannel, p.AutoUpdate, ""
+}
+
+// policyBlock is why the root updater would refuse every release by the host's local policy, or "".
+func (u *SelfUpdate) policyBlock() string {
+	ch, auto, problem := u.hostPolicy()
+	if problem != "" {
+		return "the host's local policy cannot be trusted, so the root updater refuses every update (" + problem +
+			"); fix its owner and mode, then run `sudo rpmgr policy set-auto-update auto`"
+	}
+	if reason, command := policy.UpdateRefusal(auto, ch, false); reason != "" {
+		return reason + ", so the root updater refuses every update; run `" + command + "` on it"
+	}
+	return ""
+}
+
+// channelBlock is why the root updater would refuse a pre-release by the host's own update
+// channel, or "". The instance's channel setting does not change it: the web UI never writes the
+// host's policy.
+func (u *SelfUpdate) channelBlock(prerelease bool, version string) string {
+	ch, auto, _ := u.hostPolicy()
+	if reason, command := policy.UpdateRefusal(auto, ch, prerelease); reason != "" {
+		return "release " + version + ": " + reason + "; run `" + command + "` on it"
+	}
+	return ""
 }
 
 // current is the update the root updater's status file and the last request tell of: the
@@ -154,7 +211,11 @@ func (u *SelfUpdate) current(now time.Time) *rpmgrv1.ControllerUpdate {
 		update.RollbackFailed: rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_ROLLBACK_FAILED,
 		update.Refused:        rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_REFUSED}[st.State]
 	// The status counts only when it is newer than the request: an earlier outcome is history.
-	if err == nil && known && (staged == "" || (st.Version == staged && !st.At.Before(at))) {
+	// A refusal before the manifest is verified names no version: it counts when it is newer than the request.
+	if err == nil && known && (staged == "" || ((st.Version == staged || (st.Version == "" && st.State == update.Refused)) && !st.At.Before(at))) {
+		if st.Version == "" {
+			st.Version = staged
+		}
 		return &rpmgrv1.ControllerUpdate{Version: st.Version, State: state, Step: st.Step, Reason: st.Reason, Previous: st.Previous,
 			UpdateTime: timestamppb.New(st.At)}
 	}
@@ -163,7 +224,8 @@ func (u *SelfUpdate) current(now time.Time) *rpmgrv1.ControllerUpdate {
 	}
 	if now.Sub(at) > stagedWait {
 		return &rpmgrv1.ControllerUpdate{Version: staged, State: rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_REFUSED,
-			Reason: "the root updater did not start within " + stagedWait.String() + "; see systemctl status rpmgr-update", UpdateTime: timestamppb.New(at)}
+			Reason: "the root updater wrote no status within " + stagedWait.String() +
+				"; it did not start or could not write its status file: see `systemctl status rpmgr-update.path` and `journalctl -u rpmgr-update.service`, where its reason is", UpdateTime: timestamppb.New(at)}
 	}
 	return &rpmgrv1.ControllerUpdate{Version: staged, State: rpmgrv1.ControllerUpdateState_CONTROLLER_UPDATE_STATE_STAGED, UpdateTime: timestamppb.New(at)}
 }

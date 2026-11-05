@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -38,6 +39,9 @@ type services struct {
 	handoffErr map[string]error // a role whose hand-off fails
 	stops      []string
 	stopErr    error
+	// healAt: the restart (counted per unit, from 1) after which a failed unit runs again, as the
+	// previous release does after a rollback.
+	healAt map[string]int
 }
 
 func (s *services) Handoff(_ context.Context, bin, role string) error {
@@ -51,6 +55,9 @@ func (s *services) Restart(_ context.Context, unit string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.restarts = append(s.restarts, unit)
+	if n := s.healAt[unit]; n > 0 && countOf(s.restarts, unit) >= n {
+		delete(s.active, unit)
+	}
 	return nil
 }
 
@@ -61,7 +68,10 @@ func (s *services) Stop(_ context.Context, unit string) error {
 	return s.stopErr
 }
 
-func (s *services) State(_ context.Context, unit string) (update.Unit, error) {
+func (s *services) State(ctx context.Context, unit string) (update.Unit, error) {
+	if err := ctx.Err(); err != nil { // systemctl show, cut off by the end of the window
+		return update.Unit{}, fmt.Errorf("systemctl show %s: %w", unit, err)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.counts == nil {
@@ -278,6 +288,11 @@ func TestOTA_UpdaterHonoursPolicy(t *testing.T) {
 		if st.Version != "1.2.0" || !strings.Contains(st.Reason, "not ready") {
 			t.Errorf("status %+v", st)
 		}
+		// The reason is the last readiness answer, not the call that the end of the window cut off
+		// (#1138).
+		if !strings.Contains(st.Reason, "no control session") || strings.Contains(st.Reason, "deadline exceeded") {
+			t.Errorf("reason %q: want the role's last answer, not the window's end", st.Reason)
+		}
 		if s := i.state(); s.Seq != 5 || s.Floor != "1.0.0" || s.Failed == nil || *s.Failed != (update.Failed{Version: "1.2.0", Seq: 6}) {
 			t.Errorf("state %+v; want seq and floor unchanged and 1.2.0 recorded as failed", s)
 		}
@@ -328,9 +343,22 @@ func TestOTA_UpdaterHonoursPolicy(t *testing.T) {
 		}
 	})
 
+	t.Run("a rollback that leaves the unit failed is a failed rollback (#1138)", func(t *testing.T) {
+		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, nil)
+		i.svc.active = map[string]string{"rpmgr-connector.service": "failed"} // never heals
+		i.stage(rel{version: "1.2.0", seq: 6})
+		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRollbackFailed) {
+			t.Fatalf("Apply = %v; want a failed rollback: the restored release does not run", err)
+		}
+		if st := i.status(update.RollbackFailed); !strings.Contains(st.Reason, "failed after the restart") {
+			t.Errorf("status %+v; want the unit's state", st)
+		}
+	})
+
 	t.Run("active but not ready, or ready but not active: rolled back", func(t *testing.T) {
 		i := newInstalled(t, hostOpts{}, "1.1.0", []string{"connector"}, nil)
 		i.svc.active = map[string]string{"rpmgr-connector.service": "activating"}
+		i.svc.healAt = map[string]int{"rpmgr-connector.service": 2} // the previous release runs again
 		i.stage(rel{version: "1.2.0", seq: 6})
 		if err := i.a.Apply(context.Background()); !errors.Is(err, update.ErrRolledBack) {
 			t.Fatalf("Apply = %v; want rolled back: a unit that is still activating is not ready", err)
@@ -341,7 +369,7 @@ func TestOTA_UpdaterHonoursPolicy(t *testing.T) {
 	})
 
 	for name, svc := range map[string]*services{
-		"failed unit":  {active: map[string]string{"rpmgr-connector.service": "failed"}},
+		"failed unit":  {active: map[string]string{"rpmgr-connector.service": "failed"}, healAt: map[string]int{"rpmgr-connector.service": 2}},
 		"restart loop": {looping: map[string]bool{"rpmgr-connector.service": true}},
 	} {
 		t.Run(name+": rolled back before the window ends", func(t *testing.T) {
@@ -782,5 +810,143 @@ func TestSystemd_Stop(t *testing.T) {
 	mustWrite(t, script, "#!/bin/sh\necho 'unit is masked' >&2\nexit 1\n", 0o755)
 	if err := (update.Systemd{Systemctl: script}).Stop(context.Background(), "rpmgr-controller.service"); err == nil || !strings.Contains(err.Error(), "masked") {
 		t.Errorf("Stop of a failing systemctl: %v", err)
+	}
+}
+
+// TestApply_EveryRefusalWritesStatus (#1135): each way the root updater refuses a staged release
+// writes a refused status with its reason before it exits, so that the controller shows the reason
+// and not "did not start"; nothing is installed or restarted.
+func TestApply_EveryRefusalWritesStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		opts    hostOpts
+		rel     rel
+		prepare func(i *installed)
+		reason  string
+	}{
+		{name: "a pre-release on a stable host", opts: hostOpts{policy: "version: 1\nauto_update: auto\nupdate_channel: stable\n"},
+			rel: rel{version: "1.2.0-rc.1", seq: 6, channel: release.Prerelease}, reason: "pre-release"},
+		{name: "auto_update off", opts: hostOpts{policy: "version: 1\nauto_update: off\nupdate_channel: prerelease\n"},
+			rel: rel{version: "1.2.0", seq: 6}, reason: "auto_update"},
+		{name: "a policy others may write", opts: hostOpts{policy: "version: 1\nauto_update: auto\n"}, rel: rel{version: "1.2.0", seq: 6},
+			prepare: func(i *installed) {
+				if err := os.Chmod(i.u.Policy, 0o666); err != nil { //nolint:gosec // G302: the test makes it writable by others
+					t.Fatal(err)
+				}
+			}, reason: "policy"},
+		{name: "install.json missing", rel: rel{version: "1.2.0", seq: 6}, prepare: func(i *installed) {
+			if err := os.Remove(filepath.Join(i.u.State, "install.json")); err != nil {
+				t.Fatal(err)
+			}
+		}, reason: "install.json"},
+		{name: "install.json invalid", rel: rel{version: "1.2.0", seq: 6}, prepare: func(i *installed) {
+			mustWrite(t, filepath.Join(i.u.State, "install.json"), "{", 0o600)
+		}, reason: "install"},
+		{name: "install.json names no role", rel: rel{version: "1.2.0", seq: 6}, prepare: func(i *installed) {
+			mustWrite(t, filepath.Join(i.u.State, "install.json"), `{"method":"script","path":"/x/rpmgr","variant":"full","roles":[]}`, 0o600)
+		}, reason: "install.json"},
+		{name: "install.json names an unsupported role", opts: hostOpts{install: `{"method":"script","path":"/x/rpmgr","variant":"full","roles":["importer"]}`},
+			rel: rel{version: "1.2.0", seq: 6}, reason: "importer"},
+		{name: "a manifest that is no JSON", rel: rel{version: "1.2.0", seq: 6}, prepare: func(i *installed) {
+			mustWrite(t, filepath.Join(i.u.Staged, "manifest.json"), "{", 0o640)
+		}},
+		{name: "a signature that does not match", rel: rel{version: "1.2.0", seq: 6}, prepare: func(i *installed) {
+			mustWrite(t, filepath.Join(i.u.Staged, "manifest.json.minisig"), "untrusted comment: x\nAAAA\n", 0o640)
+		}},
+		{name: "a manifest below the seq of the host", rel: rel{version: "1.2.0", seq: 4}, reason: "older than manifest"},
+		{name: "a version below the floor", rel: rel{version: "0.9.0", seq: 6}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			i := newInstalled(t, tc.opts, "1.1.0", []string{"connector"}, nil)
+			i.stage(tc.rel)
+			if tc.prepare != nil {
+				tc.prepare(i)
+			}
+			if err := i.a.Apply(context.Background()); err == nil {
+				t.Fatal("Apply succeeded")
+			}
+			st := i.status(update.Refused)
+			if st.Reason == "" || st.At.IsZero() {
+				t.Errorf("status %+v names no reason or time", st)
+			}
+			if tc.reason != "" && !strings.Contains(st.Reason, tc.reason) {
+				t.Errorf("reason %q does not mention %q", st.Reason, tc.reason)
+			}
+			i.runs("1.1.0")
+			if got := i.svc.restarted(); len(got) > 0 {
+				t.Errorf("restarted %v", got)
+			}
+		})
+	}
+}
+
+// LoadPolicy is the updater's own reading of the local policy, for the controller and the agent:
+// the same refusals, with the owner given by the test, whose files are their own user's.
+func TestLoadPolicy(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string, mode os.FileMode) string {
+		p := filepath.Join(dir, name)
+		mustWrite(t, p, body, mode)
+		if err := os.Chmod(p, mode); err != nil { //nolint:gosec // G302: the mode under test
+			t.Fatal(err)
+		}
+		return p
+	}
+	me := os.Geteuid()
+	if p, err := update.LoadPolicyAs(filepath.Join(dir, "none.yaml"), me); err != nil || p.UpdateChannel != "stable" || p.AutoUpdate != "auto" {
+		t.Errorf("a missing file: %+v, %v; want the defaults", p, err)
+	}
+	if p, err := update.LoadPolicyAs(write("ok.yaml", "version: 1\nauto_update: notify\nupdate_channel: prerelease\n", 0o644), me); err != nil ||
+		p.UpdateChannel != "prerelease" || p.AutoUpdate != "notify" {
+		t.Errorf("a trusted file: %+v, %v", p, err)
+	}
+	if _, err := update.LoadPolicyAs(write("others.yaml", "version: 1\n", 0o666), me); err == nil {
+		t.Error("a file that others may write was trusted")
+	}
+	if _, err := update.LoadPolicyAs(write("group.yaml", "version: 1\n", 0o664), me); err == nil {
+		t.Error("a file that its group may write was trusted")
+	}
+	if _, err := update.LoadPolicyAs(write("bad.yaml", "version: 1\nauto_update: [\n", 0o644), me); err == nil {
+		t.Error("a file that does not parse was accepted")
+	}
+	if _, err := update.LoadPolicyAs(write("owner.yaml", "version: 1\n", 0o644), me+1); err == nil {
+		t.Error("a file of another owner was trusted")
+	}
+	link := filepath.Join(dir, "link.yaml")
+	if err := os.Symlink(filepath.Join(dir, "ok.yaml"), link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := update.LoadPolicyAs(link, me); err == nil {
+		t.Error("a symbolic link was followed")
+	}
+}
+
+func countOf(l []string, v string) (n int) {
+	for _, s := range l {
+		if s == v {
+			n++
+		}
+	}
+	return n
+}
+
+// TestSystemd_RestartAfterAFailedStop: a restart whose stop timed out leaves the unit failed; the
+// updater clears that and starts it, and reports an error only if that fails too (#1138).
+func TestSystemd_RestartAfterAFailedStop(t *testing.T) {
+	dir := t.TempDir()
+	script, log := filepath.Join(dir, "systemctl"), filepath.Join(dir, "calls")
+	s := update.Systemd{Systemctl: script}
+	mustWrite(t, script, "#!/bin/sh\necho \"$@\" >> "+log+"\nif [ \"$1\" = restart ]; then echo 'stop timed out' >&2; exit 1; fi\n", 0o755)
+	if err := s.Restart(context.Background(), "rpmgr-all-in-one.service"); err != nil {
+		t.Fatalf("Restart: %v; the unit was started after the failed stop", err)
+	}
+	want := "daemon-reload\nrestart rpmgr-all-in-one.service\nreset-failed rpmgr-all-in-one.service\nstart rpmgr-all-in-one.service\n"
+	if b, _ := os.ReadFile(log); string(b) != want { //nolint:gosec // G304: under t.TempDir
+		t.Errorf("systemctl was called with %q; want %q", b, want)
+	}
+	mustWrite(t, script, "#!/bin/sh\nif [ \"$1\" = restart ]; then echo 'stop timed out' >&2; exit 1; fi\nif [ \"$1\" = start ]; then echo 'will not start' >&2; exit 1; fi\n", 0o755)
+	err := s.Restart(context.Background(), "rpmgr-all-in-one.service")
+	if err == nil || !strings.Contains(err.Error(), "stop timed out") || !strings.Contains(err.Error(), "will not start") {
+		t.Errorf("Restart that cannot start the unit either: %v", err)
 	}
 }
