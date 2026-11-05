@@ -1023,7 +1023,7 @@ one page, with a section list beside them that jumps to each section
 - **The zone page** (`/dns/<zone>`, linked from the zone's name on the DNS page and loaded lazily)
   differs from the mock-up in these ways. The gates are shown and not yet edited there, and there
   is no **Discard**: a plan is read live and is replaced by the next one. The plan lists what a pass
-  would create (`+`), update (`~`) and delete (`−`), the orphans (`?`), the shadowed wildcards and
+  would create (`+`), update (`~`) and delete (`−`), the orphans (`?`), after a restore the adopted records that changed since (`≠`), the shadowed wildcards and
   the conflicts, each conflict with the hint of U4 and, for a foreign address record, **Adopt**.
   **Enable zone** takes a disabled zone to held, and **Sync now** asks for a pass; both are in the
   heading. **Approve plan**, **Adopt**, **Release** and **Remove** each ask for a confirmation that

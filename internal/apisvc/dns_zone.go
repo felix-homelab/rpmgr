@@ -424,7 +424,7 @@ func planRecords(rs []dns.Record) []*rpmgrv1.PlanRecord {
 // planOf is the API's view of a plan.
 func planOf(p plan.Plan) *rpmgrv1.ZonePlan {
 	out := &rpmgrv1.ZonePlan{Creates: planRecords(p.Creates), Updates: planRecords(p.Updates), Deletes: planRecords(p.Deletes),
-		Orphans: planRecords(p.Orphans), Shadows: p.Shadows, Hash: p.Hash}
+		Orphans: planRecords(p.Orphans), AdoptedChanged: planRecords(p.AdoptedChanged), Shadows: p.Shadows, Hash: p.Hash}
 	for _, c := range p.Conflicts {
 		out.Conflicts = append(out.Conflicts, &rpmgrv1.PlanConflict{Name: c.Name, Kind: string(c.Kind), Records: planRecords(c.Records)})
 	}

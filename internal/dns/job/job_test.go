@@ -1083,6 +1083,46 @@ func TestRun_AdoptedRecordIsRewrittenWithItsMarker(t *testing.T) {
 	})
 }
 
+// A zone held by a restore shows, in the plan it is approved from, the adopted records whose live
+// type or content is not what the restored row holds; any other zone does not (#1113).
+func TestRun_PlanListsAdoptedRecordsChangedSinceTheBackup(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		e.addName("app.example.com")
+		foreign := e.fake.AddRecord(e.zone.ProviderZoneID, cftest.Record{Type: "CNAME", Name: "app.example.com", Content: "old.example.net", TTL: 3600})
+		j, l := e.replica("ctn_a")
+		ls := e.take(l)
+		var row *ent.DNSRecord
+		err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+			var err error
+			row, err = apply.Adopt(e.sys, tx, apply.Zone{ID: e.zone.ID, OrgID: e.org, Name: apex, ProviderID: e.zone.ProviderZoneID},
+				dns.Record{ID: foreign.ID, Type: "CNAME", Name: "app.example.com", Content: "old.example.net", TTL: 3600}, e.clk.now())
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.pass(j, l, ls)
+		hold := func(reason string) {
+			e.db.Client().DNSZone.UpdateOneID(e.zone.ID).SetSyncState(dnszone.SyncStateHeld).SetHeldReason(reason).ExecX(e.sys)
+		}
+		hold(apply.HeldRestored)
+		if p := e.preview(j); len(p.AdoptedChanged) != 0 {
+			t.Fatalf("the row holds what the provider holds: %+v", p.AdoptedChanged)
+		}
+		// The backup is older than the provider's record: the row holds another content.
+		e.db.Client().DNSRecord.UpdateOneID(row.ID).SetContent("backup.example.net").ExecX(e.sys)
+		p := e.preview(j)
+		if len(p.AdoptedChanged) != 1 || p.AdoptedChanged[0].ID != foreign.ID || p.AdoptedChanged[0].Content != "gw.example.net" {
+			t.Fatalf("adopted, changed: %+v", p.AdoptedChanged)
+		}
+		hold(apply.HeldImported)
+		if q := e.preview(j); len(q.AdoptedChanged) != 0 || q.Hash != p.Hash {
+			t.Fatalf("a zone not held by a restore: %+v", q.AdoptedChanged)
+		}
+	})
+}
+
 // "Sync now": a request in the zone's row, which another replica wrote, makes the lease holder's
 // next tick a full pass of that zone, once per request; without one a tick with nothing new reads
 // nothing.

@@ -359,7 +359,10 @@ flowchart LR
   ([10](10-operations.md#backup-and-restore)), and every zone starts held. The plan shows:
   - records created after the backup as `orphaned` (delete, or re-link);
   - records deleted after the backup as creates;
-  - adopted records whose original content changed since (not shown yet, [#1113](https://github.com/felix-homelab/rpmgr/issues/1113)).
+  - adopted records whose original changed since, as `adopted, changed`: a record of an adopted
+    ledger row whose type or content at the provider is not what the row holds. It is shown for
+    information, written nowhere and not part of the plan hash, and a pass puts the record back to
+    what the sources want unless it is released first.
 
   `rpmgr restore --dns-disabled` sets every zone to `disabled`, for a clone restored into staging
   with the same trust domain and KEK. Otherwise approving there would fight production.

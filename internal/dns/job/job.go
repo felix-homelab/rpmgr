@@ -407,7 +407,8 @@ func (j *Job) Inspect(ctx context.Context, zoneID string, p dns.Provider) (Inspe
 		return Inspection{}, err
 	}
 	cr := compile.Compile(in)
-	pl, err := j.engine(lease.Lease{}, false).PlanOf(ctx, live, applyZone(z), apply.Wanted{Desired: cr.Desired, Keep: cr.Keep(), Reserved: reserved})
+	pl, err := j.engine(lease.Lease{}, false).PlanOf(ctx, live, applyZone(z), apply.Wanted{Desired: cr.Desired, Keep: cr.Keep(), Reserved: reserved,
+		Restored: z.SyncState == dnszone.SyncStateHeld && z.HeldReason == apply.HeldRestored})
 	if err != nil {
 		return Inspection{}, err
 	}
