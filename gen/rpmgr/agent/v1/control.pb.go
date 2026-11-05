@@ -1454,8 +1454,12 @@ type Hello struct {
 	AgentTime *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=agent_time,json=agentTime,proto3" json:"agent_time,omitempty"`
 	// SHA-256 over the agent's deny-list; on a mismatch the controller sends it again.
 	DenyListDigest []byte `protobuf:"bytes,8,opt,name=deny_list_digest,json=denyListDigest,proto3" json:"deny_list_digest,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// The update policy of the agent's host, from its local policy file; unset by agents that do
+	// not report it, which the controller treats as unknown (docs/04-security.md, "Over-the-air
+	// updates").
+	UpdatePolicy  *UpdatePolicy `protobuf:"bytes,9,opt,name=update_policy,json=updatePolicy,proto3" json:"update_policy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Hello) Reset() {
@@ -1544,6 +1548,71 @@ func (x *Hello) GetDenyListDigest() []byte {
 	return nil
 }
 
+func (x *Hello) GetUpdatePolicy() *UpdatePolicy {
+	if x != nil {
+		return x.UpdatePolicy
+	}
+	return nil
+}
+
+// UpdatePolicy is the auto_update and update_channel of an agent's local policy file, as the root
+// updater would read them: a file that does not load or that others may write counts as
+// auto_update "off". The host stays the authority; the controller only uses the report to warn
+// before it offers a release.
+type UpdatePolicy struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// "auto", "notify" or "off".
+	AutoUpdate string `protobuf:"bytes,1,opt,name=auto_update,json=autoUpdate,proto3" json:"auto_update,omitempty"`
+	// "stable" or "prerelease".
+	UpdateChannel string `protobuf:"bytes,2,opt,name=update_channel,json=updateChannel,proto3" json:"update_channel,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdatePolicy) Reset() {
+	*x = UpdatePolicy{}
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdatePolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdatePolicy) ProtoMessage() {}
+
+func (x *UpdatePolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdatePolicy.ProtoReflect.Descriptor instead.
+func (*UpdatePolicy) Descriptor() ([]byte, []int) {
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *UpdatePolicy) GetAutoUpdate() string {
+	if x != nil {
+		return x.AutoUpdate
+	}
+	return ""
+}
+
+func (x *UpdatePolicy) GetUpdateChannel() string {
+	if x != nil {
+		return x.UpdateChannel
+	}
+	return ""
+}
+
 // Welcome answers Hello.
 type Welcome struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1564,7 +1633,7 @@ type Welcome struct {
 
 func (x *Welcome) Reset() {
 	*x = Welcome{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[10]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1576,7 +1645,7 @@ func (x *Welcome) String() string {
 func (*Welcome) ProtoMessage() {}
 
 func (x *Welcome) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[10]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1589,7 +1658,7 @@ func (x *Welcome) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Welcome.ProtoReflect.Descriptor instead.
 func (*Welcome) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{10}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Welcome) GetSessionEpoch() uint64 {
@@ -1642,7 +1711,7 @@ type Applied struct {
 
 func (x *Applied) Reset() {
 	*x = Applied{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[11]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1654,7 +1723,7 @@ func (x *Applied) String() string {
 func (*Applied) ProtoMessage() {}
 
 func (x *Applied) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[11]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1667,7 +1736,7 @@ func (x *Applied) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Applied.ProtoReflect.Descriptor instead.
 func (*Applied) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{11}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Applied) GetRevision() *Revision {
@@ -1706,7 +1775,7 @@ type Rejected struct {
 
 func (x *Rejected) Reset() {
 	*x = Rejected{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[12]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1718,7 +1787,7 @@ func (x *Rejected) String() string {
 func (*Rejected) ProtoMessage() {}
 
 func (x *Rejected) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[12]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1731,7 +1800,7 @@ func (x *Rejected) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Rejected.ProtoReflect.Descriptor instead.
 func (*Rejected) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{12}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Rejected) GetRevision() *Revision {
@@ -1768,7 +1837,7 @@ type SnapshotError struct {
 
 func (x *SnapshotError) Reset() {
 	*x = SnapshotError{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[13]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1780,7 +1849,7 @@ func (x *SnapshotError) String() string {
 func (*SnapshotError) ProtoMessage() {}
 
 func (x *SnapshotError) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[13]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1793,7 +1862,7 @@ func (x *SnapshotError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SnapshotError.ProtoReflect.Descriptor instead.
 func (*SnapshotError) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{13}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SnapshotError) GetResourceId() string {
@@ -1825,7 +1894,7 @@ type ResourceStatus struct {
 
 func (x *ResourceStatus) Reset() {
 	*x = ResourceStatus{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[14]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1837,7 +1906,7 @@ func (x *ResourceStatus) String() string {
 func (*ResourceStatus) ProtoMessage() {}
 
 func (x *ResourceStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[14]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1850,7 +1919,7 @@ func (x *ResourceStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceStatus.ProtoReflect.Descriptor instead.
 func (*ResourceStatus) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{14}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ResourceStatus) GetResourceId() string {
@@ -1900,14 +1969,18 @@ type Status struct {
 	// in the first Status of a session and whenever it changes (docs/04-security.md, "Host
 	// firewall for port pools"). A Status that carries only this leaves a gateway's data sessions
 	// and counters as they are.
-	Firewall      *FirewallState `protobuf:"bytes,7,opt,name=firewall,proto3" json:"firewall,omitempty"`
+	Firewall *FirewallState `protobuf:"bytes,7,opt,name=firewall,proto3" json:"firewall,omitempty"`
+	// The update policy of the agent's host, in the first Status of a session and whenever the
+	// local policy file changes it; unset otherwise. A Status that carries only this leaves a
+	// gateway's data sessions and counters as they are.
+	UpdatePolicy  *UpdatePolicy `protobuf:"bytes,8,opt,name=update_policy,json=updatePolicy,proto3" json:"update_policy,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Status) Reset() {
 	*x = Status{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[15]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1919,7 +1992,7 @@ func (x *Status) String() string {
 func (*Status) ProtoMessage() {}
 
 func (x *Status) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[15]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1932,7 +2005,7 @@ func (x *Status) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Status.ProtoReflect.Descriptor instead.
 func (*Status) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{15}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Status) GetReadiness() []*ResourceStatus {
@@ -1984,6 +2057,13 @@ func (x *Status) GetFirewall() *FirewallState {
 	return nil
 }
 
+func (x *Status) GetUpdatePolicy() *UpdatePolicy {
+	if x != nil {
+		return x.UpdatePolicy
+	}
+	return nil
+}
+
 // FirewallState is what the gateway reads from the root firewall helper's status file.
 type FirewallState struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2003,7 +2083,7 @@ type FirewallState struct {
 
 func (x *FirewallState) Reset() {
 	*x = FirewallState{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[16]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2015,7 +2095,7 @@ func (x *FirewallState) String() string {
 func (*FirewallState) ProtoMessage() {}
 
 func (x *FirewallState) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[16]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2028,7 +2108,7 @@ func (x *FirewallState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FirewallState.ProtoReflect.Descriptor instead.
 func (*FirewallState) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{16}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *FirewallState) GetPhase() FirewallPhase {
@@ -2089,7 +2169,7 @@ type DrainingProcess struct {
 
 func (x *DrainingProcess) Reset() {
 	*x = DrainingProcess{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[17]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2101,7 +2181,7 @@ func (x *DrainingProcess) String() string {
 func (*DrainingProcess) ProtoMessage() {}
 
 func (x *DrainingProcess) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[17]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2114,7 +2194,7 @@ func (x *DrainingProcess) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DrainingProcess.ProtoReflect.Descriptor instead.
 func (*DrainingProcess) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{17}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *DrainingProcess) GetActive() bool {
@@ -2177,7 +2257,7 @@ type UpdateState struct {
 
 func (x *UpdateState) Reset() {
 	*x = UpdateState{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[18]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2189,7 +2269,7 @@ func (x *UpdateState) String() string {
 func (*UpdateState) ProtoMessage() {}
 
 func (x *UpdateState) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[18]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2202,7 +2282,7 @@ func (x *UpdateState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateState.ProtoReflect.Descriptor instead.
 func (*UpdateState) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{18}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *UpdateState) GetVersion() string {
@@ -2252,7 +2332,7 @@ type UpdaterOutcome struct {
 
 func (x *UpdaterOutcome) Reset() {
 	*x = UpdaterOutcome{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[19]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2264,7 +2344,7 @@ func (x *UpdaterOutcome) String() string {
 func (*UpdaterOutcome) ProtoMessage() {}
 
 func (x *UpdaterOutcome) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[19]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2277,7 +2357,7 @@ func (x *UpdaterOutcome) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdaterOutcome.ProtoReflect.Descriptor instead.
 func (*UpdaterOutcome) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{19}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *UpdaterOutcome) GetResult() UpdaterResult {
@@ -2337,7 +2417,7 @@ type RouteCounters struct {
 
 func (x *RouteCounters) Reset() {
 	*x = RouteCounters{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[20]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2349,7 +2429,7 @@ func (x *RouteCounters) String() string {
 func (*RouteCounters) ProtoMessage() {}
 
 func (x *RouteCounters) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[20]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2362,7 +2442,7 @@ func (x *RouteCounters) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteCounters.ProtoReflect.Descriptor instead.
 func (*RouteCounters) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{20}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *RouteCounters) GetRouteId() string {
@@ -2429,7 +2509,7 @@ type DataSession struct {
 
 func (x *DataSession) Reset() {
 	*x = DataSession{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[21]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2441,7 +2521,7 @@ func (x *DataSession) String() string {
 func (*DataSession) ProtoMessage() {}
 
 func (x *DataSession) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[21]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2454,7 +2534,7 @@ func (x *DataSession) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataSession.ProtoReflect.Descriptor instead.
 func (*DataSession) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{21}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *DataSession) GetConnectorId() string {
@@ -2507,7 +2587,7 @@ type OpResult struct {
 
 func (x *OpResult) Reset() {
 	*x = OpResult{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[22]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2519,7 +2599,7 @@ func (x *OpResult) String() string {
 func (*OpResult) ProtoMessage() {}
 
 func (x *OpResult) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[22]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2532,7 +2612,7 @@ func (x *OpResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpResult.ProtoReflect.Descriptor instead.
 func (*OpResult) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{22}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *OpResult) GetOpId() string {
@@ -2567,7 +2647,7 @@ type Drain struct {
 
 func (x *Drain) Reset() {
 	*x = Drain{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[23]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2579,7 +2659,7 @@ func (x *Drain) String() string {
 func (*Drain) ProtoMessage() {}
 
 func (x *Drain) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[23]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2592,7 +2672,7 @@ func (x *Drain) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Drain.ProtoReflect.Descriptor instead.
 func (*Drain) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{23}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *Drain) GetDeadline() *timestamppb.Timestamp {
@@ -2615,7 +2695,7 @@ type Goodbye struct {
 
 func (x *Goodbye) Reset() {
 	*x = Goodbye{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[24]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2627,7 +2707,7 @@ func (x *Goodbye) String() string {
 func (*Goodbye) ProtoMessage() {}
 
 func (x *Goodbye) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[24]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2640,7 +2720,7 @@ func (x *Goodbye) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Goodbye.ProtoReflect.Descriptor instead.
 func (*Goodbye) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{24}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *Goodbye) GetReason() GoodbyeReason {
@@ -2679,7 +2759,7 @@ type ProbeTarget struct {
 
 func (x *ProbeTarget) Reset() {
 	*x = ProbeTarget{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[25]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2691,7 +2771,7 @@ func (x *ProbeTarget) String() string {
 func (*ProbeTarget) ProtoMessage() {}
 
 func (x *ProbeTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[25]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2704,7 +2784,7 @@ func (x *ProbeTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProbeTarget.ProtoReflect.Descriptor instead.
 func (*ProbeTarget) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{25}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ProbeTarget) GetOpId() string {
@@ -2786,7 +2866,7 @@ type AcmeChallenge struct {
 
 func (x *AcmeChallenge) Reset() {
 	*x = AcmeChallenge{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[26]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2798,7 +2878,7 @@ func (x *AcmeChallenge) String() string {
 func (*AcmeChallenge) ProtoMessage() {}
 
 func (x *AcmeChallenge) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[26]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2811,7 +2891,7 @@ func (x *AcmeChallenge) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcmeChallenge.ProtoReflect.Descriptor instead.
 func (*AcmeChallenge) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{26}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *AcmeChallenge) GetOpId() string {
@@ -2867,7 +2947,7 @@ type RenewRequest struct {
 
 func (x *RenewRequest) Reset() {
 	*x = RenewRequest{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[27]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2879,7 +2959,7 @@ func (x *RenewRequest) String() string {
 func (*RenewRequest) ProtoMessage() {}
 
 func (x *RenewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[27]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2892,7 +2972,7 @@ func (x *RenewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewRequest.ProtoReflect.Descriptor instead.
 func (*RenewRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{27}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *RenewRequest) GetCsr() []byte {
@@ -2913,7 +2993,7 @@ type RenewResponse struct {
 
 func (x *RenewResponse) Reset() {
 	*x = RenewResponse{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[28]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2925,7 +3005,7 @@ func (x *RenewResponse) String() string {
 func (*RenewResponse) ProtoMessage() {}
 
 func (x *RenewResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[28]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2938,7 +3018,7 @@ func (x *RenewResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewResponse.ProtoReflect.Descriptor instead.
 func (*RenewResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{28}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *RenewResponse) GetChain() [][]byte {
@@ -2961,7 +3041,7 @@ type FetchResourceRequest struct {
 
 func (x *FetchResourceRequest) Reset() {
 	*x = FetchResourceRequest{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[29]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2973,7 +3053,7 @@ func (x *FetchResourceRequest) String() string {
 func (*FetchResourceRequest) ProtoMessage() {}
 
 func (x *FetchResourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[29]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2986,7 +3066,7 @@ func (x *FetchResourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchResourceRequest.ProtoReflect.Descriptor instead.
 func (*FetchResourceRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{29}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *FetchResourceRequest) GetId() string {
@@ -3014,7 +3094,7 @@ type FetchResourceResponse struct {
 
 func (x *FetchResourceResponse) Reset() {
 	*x = FetchResourceResponse{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[30]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3026,7 +3106,7 @@ func (x *FetchResourceResponse) String() string {
 func (*FetchResourceResponse) ProtoMessage() {}
 
 func (x *FetchResourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[30]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3039,7 +3119,7 @@ func (x *FetchResourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchResourceResponse.ProtoReflect.Descriptor instead.
 func (*FetchResourceResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{30}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *FetchResourceResponse) GetContent() []byte {
@@ -3058,7 +3138,7 @@ type LeaveRequest struct {
 
 func (x *LeaveRequest) Reset() {
 	*x = LeaveRequest{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[31]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3070,7 +3150,7 @@ func (x *LeaveRequest) String() string {
 func (*LeaveRequest) ProtoMessage() {}
 
 func (x *LeaveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[31]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3083,7 +3163,7 @@ func (x *LeaveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeaveRequest.ProtoReflect.Descriptor instead.
 func (*LeaveRequest) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{31}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{32}
 }
 
 // LeaveResponse confirms the revocation.
@@ -3095,7 +3175,7 @@ type LeaveResponse struct {
 
 func (x *LeaveResponse) Reset() {
 	*x = LeaveResponse{}
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[32]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3107,7 +3187,7 @@ func (x *LeaveResponse) String() string {
 func (*LeaveResponse) ProtoMessage() {}
 
 func (x *LeaveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[32]
+	mi := &file_rpmgr_agent_v1_control_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3120,7 +3200,7 @@ func (x *LeaveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeaveResponse.ProtoReflect.Descriptor instead.
 func (*LeaveResponse) Descriptor() ([]byte, []int) {
-	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{32}
+	return file_rpmgr_agent_v1_control_proto_rawDescGZIP(), []int{33}
 }
 
 var File_rpmgr_agent_v1_control_proto protoreflect.FileDescriptor
@@ -3176,7 +3256,7 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\ttruncated\x18\x05 \x01(\bR\ttruncated\x12\x18\n" +
 	"\abacklog\x18\x06 \x01(\bR\abacklog\"#\n" +
 	"\tAttachEnd\x12\x16\n" +
-	"\x06reason\x18\x01 \x01(\tR\x06reason\"\xd3\x02\n" +
+	"\x06reason\x18\x01 \x01(\tR\x06reason\"\x96\x03\n" +
 	"\x05Hello\x12;\n" +
 	"\flast_applied\x18\x01 \x01(\v2\x18.rpmgr.agent.v1.RevisionR\vlastApplied\x12*\n" +
 	"\x11last_applied_hash\x18\x02 \x01(\fR\x0flastAppliedHash\x12\"\n" +
@@ -3186,7 +3266,12 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\aboot_id\x18\x06 \x01(\tR\x06bootId\x129\n" +
 	"\n" +
 	"agent_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tagentTime\x12(\n" +
-	"\x10deny_list_digest\x18\b \x01(\fR\x0edenyListDigest\"\xe5\x01\n" +
+	"\x10deny_list_digest\x18\b \x01(\fR\x0edenyListDigest\x12A\n" +
+	"\rupdate_policy\x18\t \x01(\v2\x1c.rpmgr.agent.v1.UpdatePolicyR\fupdatePolicy\"V\n" +
+	"\fUpdatePolicy\x12\x1f\n" +
+	"\vauto_update\x18\x01 \x01(\tR\n" +
+	"autoUpdate\x12%\n" +
+	"\x0eupdate_channel\x18\x02 \x01(\tR\rupdateChannel\"\xe5\x01\n" +
 	"\aWelcome\x12#\n" +
 	"\rsession_epoch\x18\x01 \x01(\x04R\fsessionEpoch\x12\x19\n" +
 	"\bdb_epoch\x18\x02 \x01(\tR\adbEpoch\x12;\n" +
@@ -3210,7 +3295,7 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\vresource_id\x18\x01 \x01(\tR\n" +
 	"resourceId\x126\n" +
 	"\x06reason\x18\x02 \x01(\x0e2\x1e.rpmgr.agent.v1.NotReadyReasonR\x06reason\x12\x16\n" +
-	"\x06detail\x18\x03 \x01(\tR\x06detail\"\x9f\x03\n" +
+	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xe2\x03\n" +
 	"\x06Status\x12<\n" +
 	"\treadiness\x18\x01 \x03(\v2\x1e.rpmgr.agent.v1.ResourceStatusR\treadiness\x129\n" +
 	"\bcounters\x18\x02 \x03(\v2\x1d.rpmgr.agent.v1.RouteCountersR\bcounters\x12@\n" +
@@ -3218,7 +3303,8 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\x12readiness_complete\x18\x04 \x01(\bR\x11readinessComplete\x123\n" +
 	"\x06update\x18\x05 \x01(\v2\x1b.rpmgr.agent.v1.UpdateStateR\x06update\x12;\n" +
 	"\bdraining\x18\x06 \x01(\v2\x1f.rpmgr.agent.v1.DrainingProcessR\bdraining\x129\n" +
-	"\bfirewall\x18\a \x01(\v2\x1d.rpmgr.agent.v1.FirewallStateR\bfirewall\"\xc4\x01\n" +
+	"\bfirewall\x18\a \x01(\v2\x1d.rpmgr.agent.v1.FirewallStateR\bfirewall\x12A\n" +
+	"\rupdate_policy\x18\b \x01(\v2\x1c.rpmgr.agent.v1.UpdatePolicyR\fupdatePolicy\"\xc4\x01\n" +
 	"\rFirewallState\x123\n" +
 	"\x05phase\x18\x01 \x01(\x0e2\x1d.rpmgr.agent.v1.FirewallPhaseR\x05phase\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x14\n" +
@@ -3365,7 +3451,7 @@ func file_rpmgr_agent_v1_control_proto_rawDescGZIP() []byte {
 }
 
 var file_rpmgr_agent_v1_control_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-var file_rpmgr_agent_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
+var file_rpmgr_agent_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_rpmgr_agent_v1_control_proto_goTypes = []any{
 	(OperationKind)(0),            // 0: rpmgr.agent.v1.OperationKind
 	(NotReadyReason)(0),           // 1: rpmgr.agent.v1.NotReadyReason
@@ -3386,100 +3472,103 @@ var file_rpmgr_agent_v1_control_proto_goTypes = []any{
 	(*LogLine)(nil),               // 16: rpmgr.agent.v1.LogLine
 	(*AttachEnd)(nil),             // 17: rpmgr.agent.v1.AttachEnd
 	(*Hello)(nil),                 // 18: rpmgr.agent.v1.Hello
-	(*Welcome)(nil),               // 19: rpmgr.agent.v1.Welcome
-	(*Applied)(nil),               // 20: rpmgr.agent.v1.Applied
-	(*Rejected)(nil),              // 21: rpmgr.agent.v1.Rejected
-	(*SnapshotError)(nil),         // 22: rpmgr.agent.v1.SnapshotError
-	(*ResourceStatus)(nil),        // 23: rpmgr.agent.v1.ResourceStatus
-	(*Status)(nil),                // 24: rpmgr.agent.v1.Status
-	(*FirewallState)(nil),         // 25: rpmgr.agent.v1.FirewallState
-	(*DrainingProcess)(nil),       // 26: rpmgr.agent.v1.DrainingProcess
-	(*UpdateState)(nil),           // 27: rpmgr.agent.v1.UpdateState
-	(*UpdaterOutcome)(nil),        // 28: rpmgr.agent.v1.UpdaterOutcome
-	(*RouteCounters)(nil),         // 29: rpmgr.agent.v1.RouteCounters
-	(*DataSession)(nil),           // 30: rpmgr.agent.v1.DataSession
-	(*OpResult)(nil),              // 31: rpmgr.agent.v1.OpResult
-	(*Drain)(nil),                 // 32: rpmgr.agent.v1.Drain
-	(*Goodbye)(nil),               // 33: rpmgr.agent.v1.Goodbye
-	(*ProbeTarget)(nil),           // 34: rpmgr.agent.v1.ProbeTarget
-	(*AcmeChallenge)(nil),         // 35: rpmgr.agent.v1.AcmeChallenge
-	(*RenewRequest)(nil),          // 36: rpmgr.agent.v1.RenewRequest
-	(*RenewResponse)(nil),         // 37: rpmgr.agent.v1.RenewResponse
-	(*FetchResourceRequest)(nil),  // 38: rpmgr.agent.v1.FetchResourceRequest
-	(*FetchResourceResponse)(nil), // 39: rpmgr.agent.v1.FetchResourceResponse
-	(*LeaveRequest)(nil),          // 40: rpmgr.agent.v1.LeaveRequest
-	(*LeaveResponse)(nil),         // 41: rpmgr.agent.v1.LeaveResponse
-	(*Signed)(nil),                // 42: rpmgr.agent.v1.Signed
-	(*timestamppb.Timestamp)(nil), // 43: google.protobuf.Timestamp
-	(*Revision)(nil),              // 44: rpmgr.agent.v1.Revision
-	(*durationpb.Duration)(nil),   // 45: google.protobuf.Duration
+	(*UpdatePolicy)(nil),          // 19: rpmgr.agent.v1.UpdatePolicy
+	(*Welcome)(nil),               // 20: rpmgr.agent.v1.Welcome
+	(*Applied)(nil),               // 21: rpmgr.agent.v1.Applied
+	(*Rejected)(nil),              // 22: rpmgr.agent.v1.Rejected
+	(*SnapshotError)(nil),         // 23: rpmgr.agent.v1.SnapshotError
+	(*ResourceStatus)(nil),        // 24: rpmgr.agent.v1.ResourceStatus
+	(*Status)(nil),                // 25: rpmgr.agent.v1.Status
+	(*FirewallState)(nil),         // 26: rpmgr.agent.v1.FirewallState
+	(*DrainingProcess)(nil),       // 27: rpmgr.agent.v1.DrainingProcess
+	(*UpdateState)(nil),           // 28: rpmgr.agent.v1.UpdateState
+	(*UpdaterOutcome)(nil),        // 29: rpmgr.agent.v1.UpdaterOutcome
+	(*RouteCounters)(nil),         // 30: rpmgr.agent.v1.RouteCounters
+	(*DataSession)(nil),           // 31: rpmgr.agent.v1.DataSession
+	(*OpResult)(nil),              // 32: rpmgr.agent.v1.OpResult
+	(*Drain)(nil),                 // 33: rpmgr.agent.v1.Drain
+	(*Goodbye)(nil),               // 34: rpmgr.agent.v1.Goodbye
+	(*ProbeTarget)(nil),           // 35: rpmgr.agent.v1.ProbeTarget
+	(*AcmeChallenge)(nil),         // 36: rpmgr.agent.v1.AcmeChallenge
+	(*RenewRequest)(nil),          // 37: rpmgr.agent.v1.RenewRequest
+	(*RenewResponse)(nil),         // 38: rpmgr.agent.v1.RenewResponse
+	(*FetchResourceRequest)(nil),  // 39: rpmgr.agent.v1.FetchResourceRequest
+	(*FetchResourceResponse)(nil), // 40: rpmgr.agent.v1.FetchResourceResponse
+	(*LeaveRequest)(nil),          // 41: rpmgr.agent.v1.LeaveRequest
+	(*LeaveResponse)(nil),         // 42: rpmgr.agent.v1.LeaveResponse
+	(*Signed)(nil),                // 43: rpmgr.agent.v1.Signed
+	(*timestamppb.Timestamp)(nil), // 44: google.protobuf.Timestamp
+	(*Revision)(nil),              // 45: rpmgr.agent.v1.Revision
+	(*durationpb.Duration)(nil),   // 46: google.protobuf.Duration
 }
 var file_rpmgr_agent_v1_control_proto_depIdxs = []int32{
 	18, // 0: rpmgr.agent.v1.AgentMessage.hello:type_name -> rpmgr.agent.v1.Hello
-	20, // 1: rpmgr.agent.v1.AgentMessage.applied:type_name -> rpmgr.agent.v1.Applied
-	21, // 2: rpmgr.agent.v1.AgentMessage.rejected:type_name -> rpmgr.agent.v1.Rejected
-	24, // 3: rpmgr.agent.v1.AgentMessage.status:type_name -> rpmgr.agent.v1.Status
-	31, // 4: rpmgr.agent.v1.AgentMessage.op_result:type_name -> rpmgr.agent.v1.OpResult
-	19, // 5: rpmgr.agent.v1.ControllerMessage.welcome:type_name -> rpmgr.agent.v1.Welcome
-	42, // 6: rpmgr.agent.v1.ControllerMessage.snapshot:type_name -> rpmgr.agent.v1.Signed
-	32, // 7: rpmgr.agent.v1.ControllerMessage.drain:type_name -> rpmgr.agent.v1.Drain
-	33, // 8: rpmgr.agent.v1.ControllerMessage.goodbye:type_name -> rpmgr.agent.v1.Goodbye
-	42, // 9: rpmgr.agent.v1.ControllerMessage.deny_list:type_name -> rpmgr.agent.v1.Signed
-	35, // 10: rpmgr.agent.v1.ControllerMessage.acme_challenge:type_name -> rpmgr.agent.v1.AcmeChallenge
-	34, // 11: rpmgr.agent.v1.ControllerMessage.probe_target:type_name -> rpmgr.agent.v1.ProbeTarget
+	21, // 1: rpmgr.agent.v1.AgentMessage.applied:type_name -> rpmgr.agent.v1.Applied
+	22, // 2: rpmgr.agent.v1.AgentMessage.rejected:type_name -> rpmgr.agent.v1.Rejected
+	25, // 3: rpmgr.agent.v1.AgentMessage.status:type_name -> rpmgr.agent.v1.Status
+	32, // 4: rpmgr.agent.v1.AgentMessage.op_result:type_name -> rpmgr.agent.v1.OpResult
+	20, // 5: rpmgr.agent.v1.ControllerMessage.welcome:type_name -> rpmgr.agent.v1.Welcome
+	43, // 6: rpmgr.agent.v1.ControllerMessage.snapshot:type_name -> rpmgr.agent.v1.Signed
+	33, // 7: rpmgr.agent.v1.ControllerMessage.drain:type_name -> rpmgr.agent.v1.Drain
+	34, // 8: rpmgr.agent.v1.ControllerMessage.goodbye:type_name -> rpmgr.agent.v1.Goodbye
+	43, // 9: rpmgr.agent.v1.ControllerMessage.deny_list:type_name -> rpmgr.agent.v1.Signed
+	36, // 10: rpmgr.agent.v1.ControllerMessage.acme_challenge:type_name -> rpmgr.agent.v1.AcmeChallenge
+	35, // 11: rpmgr.agent.v1.ControllerMessage.probe_target:type_name -> rpmgr.agent.v1.ProbeTarget
 	12, // 12: rpmgr.agent.v1.ControllerMessage.open_operation:type_name -> rpmgr.agent.v1.Open
 	11, // 13: rpmgr.agent.v1.ControllerMessage.end_drain:type_name -> rpmgr.agent.v1.EndDrain
 	0,  // 14: rpmgr.agent.v1.Open.kind:type_name -> rpmgr.agent.v1.OperationKind
-	43, // 15: rpmgr.agent.v1.Open.deadline:type_name -> google.protobuf.Timestamp
+	44, // 15: rpmgr.agent.v1.Open.deadline:type_name -> google.protobuf.Timestamp
 	13, // 16: rpmgr.agent.v1.Open.logs:type_name -> rpmgr.agent.v1.LogParams
 	15, // 17: rpmgr.agent.v1.AttachFrame.hello:type_name -> rpmgr.agent.v1.AttachHello
 	16, // 18: rpmgr.agent.v1.AttachFrame.log:type_name -> rpmgr.agent.v1.LogLine
 	17, // 19: rpmgr.agent.v1.AttachFrame.end:type_name -> rpmgr.agent.v1.AttachEnd
-	43, // 20: rpmgr.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
-	44, // 21: rpmgr.agent.v1.Hello.last_applied:type_name -> rpmgr.agent.v1.Revision
-	43, // 22: rpmgr.agent.v1.Hello.agent_time:type_name -> google.protobuf.Timestamp
-	43, // 23: rpmgr.agent.v1.Welcome.server_time:type_name -> google.protobuf.Timestamp
-	44, // 24: rpmgr.agent.v1.Applied.revision:type_name -> rpmgr.agent.v1.Revision
-	23, // 25: rpmgr.agent.v1.Applied.not_ready:type_name -> rpmgr.agent.v1.ResourceStatus
-	44, // 26: rpmgr.agent.v1.Rejected.revision:type_name -> rpmgr.agent.v1.Revision
-	22, // 27: rpmgr.agent.v1.Rejected.errors:type_name -> rpmgr.agent.v1.SnapshotError
-	1,  // 28: rpmgr.agent.v1.ResourceStatus.reason:type_name -> rpmgr.agent.v1.NotReadyReason
-	23, // 29: rpmgr.agent.v1.Status.readiness:type_name -> rpmgr.agent.v1.ResourceStatus
-	29, // 30: rpmgr.agent.v1.Status.counters:type_name -> rpmgr.agent.v1.RouteCounters
-	30, // 31: rpmgr.agent.v1.Status.data_sessions:type_name -> rpmgr.agent.v1.DataSession
-	27, // 32: rpmgr.agent.v1.Status.update:type_name -> rpmgr.agent.v1.UpdateState
-	26, // 33: rpmgr.agent.v1.Status.draining:type_name -> rpmgr.agent.v1.DrainingProcess
-	25, // 34: rpmgr.agent.v1.Status.firewall:type_name -> rpmgr.agent.v1.FirewallState
-	2,  // 35: rpmgr.agent.v1.FirewallState.phase:type_name -> rpmgr.agent.v1.FirewallPhase
-	43, // 36: rpmgr.agent.v1.FirewallState.reported:type_name -> google.protobuf.Timestamp
-	43, // 37: rpmgr.agent.v1.DrainingProcess.since:type_name -> google.protobuf.Timestamp
-	43, // 38: rpmgr.agent.v1.DrainingProcess.ends:type_name -> google.protobuf.Timestamp
-	3,  // 39: rpmgr.agent.v1.UpdateState.phase:type_name -> rpmgr.agent.v1.UpdatePhase
-	28, // 40: rpmgr.agent.v1.UpdateState.updater:type_name -> rpmgr.agent.v1.UpdaterOutcome
-	4,  // 41: rpmgr.agent.v1.UpdaterOutcome.result:type_name -> rpmgr.agent.v1.UpdaterResult
-	43, // 42: rpmgr.agent.v1.UpdaterOutcome.at:type_name -> google.protobuf.Timestamp
-	5,  // 43: rpmgr.agent.v1.DataSession.transport:type_name -> rpmgr.agent.v1.Transport
-	45, // 44: rpmgr.agent.v1.DataSession.rtt:type_name -> google.protobuf.Duration
-	43, // 45: rpmgr.agent.v1.Drain.deadline:type_name -> google.protobuf.Timestamp
-	6,  // 46: rpmgr.agent.v1.Goodbye.reason:type_name -> rpmgr.agent.v1.GoodbyeReason
-	45, // 47: rpmgr.agent.v1.Goodbye.retry_after:type_name -> google.protobuf.Duration
-	7,  // 48: rpmgr.agent.v1.AcmeChallenge.action:type_name -> rpmgr.agent.v1.AcmeAction
-	8,  // 49: rpmgr.agent.v1.AcmeChallenge.type:type_name -> rpmgr.agent.v1.AcmeChallengeType
-	9,  // 50: rpmgr.agent.v1.Control.Session:input_type -> rpmgr.agent.v1.AgentMessage
-	36, // 51: rpmgr.agent.v1.Control.Renew:input_type -> rpmgr.agent.v1.RenewRequest
-	38, // 52: rpmgr.agent.v1.Control.FetchResource:input_type -> rpmgr.agent.v1.FetchResourceRequest
-	40, // 53: rpmgr.agent.v1.Control.Leave:input_type -> rpmgr.agent.v1.LeaveRequest
-	14, // 54: rpmgr.agent.v1.Control.Attach:input_type -> rpmgr.agent.v1.AttachFrame
-	10, // 55: rpmgr.agent.v1.Control.Session:output_type -> rpmgr.agent.v1.ControllerMessage
-	37, // 56: rpmgr.agent.v1.Control.Renew:output_type -> rpmgr.agent.v1.RenewResponse
-	39, // 57: rpmgr.agent.v1.Control.FetchResource:output_type -> rpmgr.agent.v1.FetchResourceResponse
-	41, // 58: rpmgr.agent.v1.Control.Leave:output_type -> rpmgr.agent.v1.LeaveResponse
-	14, // 59: rpmgr.agent.v1.Control.Attach:output_type -> rpmgr.agent.v1.AttachFrame
-	55, // [55:60] is the sub-list for method output_type
-	50, // [50:55] is the sub-list for method input_type
-	50, // [50:50] is the sub-list for extension type_name
-	50, // [50:50] is the sub-list for extension extendee
-	0,  // [0:50] is the sub-list for field type_name
+	44, // 20: rpmgr.agent.v1.LogLine.time:type_name -> google.protobuf.Timestamp
+	45, // 21: rpmgr.agent.v1.Hello.last_applied:type_name -> rpmgr.agent.v1.Revision
+	44, // 22: rpmgr.agent.v1.Hello.agent_time:type_name -> google.protobuf.Timestamp
+	19, // 23: rpmgr.agent.v1.Hello.update_policy:type_name -> rpmgr.agent.v1.UpdatePolicy
+	44, // 24: rpmgr.agent.v1.Welcome.server_time:type_name -> google.protobuf.Timestamp
+	45, // 25: rpmgr.agent.v1.Applied.revision:type_name -> rpmgr.agent.v1.Revision
+	24, // 26: rpmgr.agent.v1.Applied.not_ready:type_name -> rpmgr.agent.v1.ResourceStatus
+	45, // 27: rpmgr.agent.v1.Rejected.revision:type_name -> rpmgr.agent.v1.Revision
+	23, // 28: rpmgr.agent.v1.Rejected.errors:type_name -> rpmgr.agent.v1.SnapshotError
+	1,  // 29: rpmgr.agent.v1.ResourceStatus.reason:type_name -> rpmgr.agent.v1.NotReadyReason
+	24, // 30: rpmgr.agent.v1.Status.readiness:type_name -> rpmgr.agent.v1.ResourceStatus
+	30, // 31: rpmgr.agent.v1.Status.counters:type_name -> rpmgr.agent.v1.RouteCounters
+	31, // 32: rpmgr.agent.v1.Status.data_sessions:type_name -> rpmgr.agent.v1.DataSession
+	28, // 33: rpmgr.agent.v1.Status.update:type_name -> rpmgr.agent.v1.UpdateState
+	27, // 34: rpmgr.agent.v1.Status.draining:type_name -> rpmgr.agent.v1.DrainingProcess
+	26, // 35: rpmgr.agent.v1.Status.firewall:type_name -> rpmgr.agent.v1.FirewallState
+	19, // 36: rpmgr.agent.v1.Status.update_policy:type_name -> rpmgr.agent.v1.UpdatePolicy
+	2,  // 37: rpmgr.agent.v1.FirewallState.phase:type_name -> rpmgr.agent.v1.FirewallPhase
+	44, // 38: rpmgr.agent.v1.FirewallState.reported:type_name -> google.protobuf.Timestamp
+	44, // 39: rpmgr.agent.v1.DrainingProcess.since:type_name -> google.protobuf.Timestamp
+	44, // 40: rpmgr.agent.v1.DrainingProcess.ends:type_name -> google.protobuf.Timestamp
+	3,  // 41: rpmgr.agent.v1.UpdateState.phase:type_name -> rpmgr.agent.v1.UpdatePhase
+	29, // 42: rpmgr.agent.v1.UpdateState.updater:type_name -> rpmgr.agent.v1.UpdaterOutcome
+	4,  // 43: rpmgr.agent.v1.UpdaterOutcome.result:type_name -> rpmgr.agent.v1.UpdaterResult
+	44, // 44: rpmgr.agent.v1.UpdaterOutcome.at:type_name -> google.protobuf.Timestamp
+	5,  // 45: rpmgr.agent.v1.DataSession.transport:type_name -> rpmgr.agent.v1.Transport
+	46, // 46: rpmgr.agent.v1.DataSession.rtt:type_name -> google.protobuf.Duration
+	44, // 47: rpmgr.agent.v1.Drain.deadline:type_name -> google.protobuf.Timestamp
+	6,  // 48: rpmgr.agent.v1.Goodbye.reason:type_name -> rpmgr.agent.v1.GoodbyeReason
+	46, // 49: rpmgr.agent.v1.Goodbye.retry_after:type_name -> google.protobuf.Duration
+	7,  // 50: rpmgr.agent.v1.AcmeChallenge.action:type_name -> rpmgr.agent.v1.AcmeAction
+	8,  // 51: rpmgr.agent.v1.AcmeChallenge.type:type_name -> rpmgr.agent.v1.AcmeChallengeType
+	9,  // 52: rpmgr.agent.v1.Control.Session:input_type -> rpmgr.agent.v1.AgentMessage
+	37, // 53: rpmgr.agent.v1.Control.Renew:input_type -> rpmgr.agent.v1.RenewRequest
+	39, // 54: rpmgr.agent.v1.Control.FetchResource:input_type -> rpmgr.agent.v1.FetchResourceRequest
+	41, // 55: rpmgr.agent.v1.Control.Leave:input_type -> rpmgr.agent.v1.LeaveRequest
+	14, // 56: rpmgr.agent.v1.Control.Attach:input_type -> rpmgr.agent.v1.AttachFrame
+	10, // 57: rpmgr.agent.v1.Control.Session:output_type -> rpmgr.agent.v1.ControllerMessage
+	38, // 58: rpmgr.agent.v1.Control.Renew:output_type -> rpmgr.agent.v1.RenewResponse
+	40, // 59: rpmgr.agent.v1.Control.FetchResource:output_type -> rpmgr.agent.v1.FetchResourceResponse
+	42, // 60: rpmgr.agent.v1.Control.Leave:output_type -> rpmgr.agent.v1.LeaveResponse
+	14, // 61: rpmgr.agent.v1.Control.Attach:output_type -> rpmgr.agent.v1.AttachFrame
+	57, // [57:62] is the sub-list for method output_type
+	52, // [52:57] is the sub-list for method input_type
+	52, // [52:52] is the sub-list for extension type_name
+	52, // [52:52] is the sub-list for extension extendee
+	0,  // [0:52] is the sub-list for field type_name
 }
 
 func init() { file_rpmgr_agent_v1_control_proto_init() }
@@ -3514,7 +3603,7 @@ func file_rpmgr_agent_v1_control_proto_init() {
 		(*AttachFrame_Log)(nil),
 		(*AttachFrame_End)(nil),
 	}
-	file_rpmgr_agent_v1_control_proto_msgTypes[25].OneofWrappers = []any{
+	file_rpmgr_agent_v1_control_proto_msgTypes[26].OneofWrappers = []any{
 		(*ProbeTarget_HostPort)(nil),
 		(*ProbeTarget_UnixPath)(nil),
 	}
@@ -3524,7 +3613,7 @@ func file_rpmgr_agent_v1_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_agent_v1_control_proto_rawDesc), len(file_rpmgr_agent_v1_control_proto_rawDesc)),
 			NumEnums:      9,
-			NumMessages:   33,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

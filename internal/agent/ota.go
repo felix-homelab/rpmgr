@@ -54,6 +54,12 @@ type UpdateOptions struct {
 	StatusFile string
 	// Policy returns the local policy, for auto_update and update_channel.
 	Policy func() *policy.Policy
+	// PolicyFile, if set, is the local policy file the agent reads for auto_update and
+	// update_channel with the trust rules of the root updater (update.LoadPolicy): a file that is
+	// a symbolic link, is owned by another user or may be written by others counts as auto_update
+	// off, as it does for the updater, so that the agent never reports or acts on more than the
+	// updater would. It takes the place of Policy for these two values.
+	PolicyFile string
 	// Variant is the build's variant, full or connector: the artifact the agent stages.
 	Variant string
 	// Client downloads from the controller; nil is a client with the system's roots and the proxy
@@ -69,6 +75,9 @@ type UpdateOptions struct {
 	// Timeout, Stall and Recheck default to the limits of 03 and otaPolicyRecheck; tests shorten
 	// them.
 	Timeout, Stall, Recheck time.Duration
+	// PolicyEvery is how often the agent looks at the policy for a change to report to the
+	// controller; it defaults to policy.WatchEvery.
+	PolicyEvery time.Duration
 	// Retry returns the wait before the nth attempt after a failed one; nil doubles from 1 min to
 	// 1 h.
 	Retry func(n int) time.Duration
@@ -309,6 +318,20 @@ func offerKey(o *agentv1.ReleaseOffer) string {
 	return fmt.Sprintf("%s/%d", o.GetVersion(), o.GetSeq())
 }
 
+// updatePolicy is the auto_update and update_channel the agent goes by: those of PolicyFile as the
+// updater trusts them, else those of Policy.
+func (s *Stager) updatePolicy() (auto, channel string, invalid error) {
+	if s.o.PolicyFile != "" {
+		p, err := update.LoadPolicy(s.o.PolicyFile)
+		if err != nil {
+			return policy.AutoUpdateOff, policy.ChannelStable, err
+		}
+		return p.AutoUpdate, p.UpdateChannel, nil
+	}
+	p := s.o.Policy()
+	return autoUpdate(p), p.UpdateChannel, p.Invalid
+}
+
 // autoUpdate is a local policy's auto_update, off for a policy that does not load (D120).
 func autoUpdate(p *policy.Policy) string {
 	if p.Invalid != nil {
@@ -317,10 +340,18 @@ func autoUpdate(p *policy.Policy) string {
 	return p.AutoUpdate
 }
 
+// UpdatePolicy is what the local policy says about updates now, as the agent reports it to the
+// controller: auto_update, which is off for a policy that does not load or that others may write
+// (D120), and update_channel.
+func (s *Stager) UpdatePolicy() *agentv1.UpdatePolicy {
+	auto, channel, _ := s.updatePolicy()
+	return &agentv1.UpdatePolicy{AutoUpdate: auto, UpdateChannel: channel}
+}
+
 // policyKey names what the local policy says about updates now: auto_update and update_channel.
 func (s *Stager) policyKey() string {
-	p := s.o.Policy()
-	return autoUpdate(p) + "/" + p.UpdateChannel
+	auto, channel, _ := s.updatePolicy()
+	return auto + "/" + channel
 }
 
 func (s *Stager) byPolicy() string {
@@ -372,11 +403,11 @@ func (s *Stager) attempt(ctx context.Context, offer *agentv1.ReleaseOffer) error
 		s.report(offer, state(agentv1.UpdatePhase_UPDATE_PHASE_UNSPECIFIED, ""), true, "")
 		return nil
 	}
-	pol := s.o.Policy()
-	key := autoUpdate(pol) + "/" + pol.UpdateChannel
-	switch auto := autoUpdate(pol); {
-	case pol.Invalid != nil:
-		return decline(key, "the local policy does not load, so updates are off: %v", pol.Invalid)
+	auto, channel, invalid := s.updatePolicy()
+	key := auto + "/" + channel
+	switch {
+	case invalid != nil:
+		return decline(key, "the local policy does not load, so updates are off: %v", invalid)
 	case auto == policy.AutoUpdateOff:
 		return decline(key, "auto_update is off in the local policy")
 	case auto == policy.AutoUpdateNotify:
@@ -400,8 +431,8 @@ func (s *Stager) attempt(ctx context.Context, offer *agentv1.ReleaseOffer) error
 	switch {
 	case m.Version != v || m.Seq != offer.GetSeq():
 		return fail(fmt.Errorf("the controller offered %s (manifest %d) and serves the manifest of %s (%d)", v, offer.GetSeq(), m.Version, m.Seq))
-	case m.Channel == release.Prerelease && pol.UpdateChannel != policy.ChannelPrerelease:
-		return decline(key, "%s is a pre-release, and the local policy's update_channel is %s", v, pol.UpdateChannel)
+	case m.Channel == release.Prerelease && channel != policy.ChannelPrerelease:
+		return decline(key, "%s is a pre-release, and the local policy's update_channel is %s", v, channel)
 	}
 	a, err := m.Artifact(s.o.OS, s.o.Arch, s.o.Variant)
 	if err != nil {

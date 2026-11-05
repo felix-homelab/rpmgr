@@ -15,6 +15,7 @@ import { LinesField, trimmed } from "@/components/lines-field";
 import { canStreamLogs, LiveLogButton } from "@/components/live-log";
 import { DrainingLine } from "@/components/draining";
 import { FirewallChip } from "@/components/firewall";
+import { HostPolicy } from "@/components/host-policy";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/public-page";
@@ -258,7 +259,10 @@ export function GatewayGroupPage() {
                   </TD>
                   <TD><GatewayChip gateway={g} /></TD>
                   <TD><FirewallChip gateway={g} /></TD>
-                  <TD>{g.status?.version}</TD>
+                  <TD>
+                    {g.status?.version}
+                    <div><HostPolicy policy={g.status?.updatePolicy} /></div>
+                  </TD>
                   <TD>
                     <span className="flex flex-wrap items-center gap-2">
                       <UpdateState target={updates.get(g.id)} belowMinimum={g.status?.belowMinAgentVersion} goodbyeReason={g.status?.lastGoodbyeReason} />

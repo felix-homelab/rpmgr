@@ -432,3 +432,61 @@ func TestMinAgentVersion_AcrossTheMajor(t *testing.T) {
 		}
 	}
 }
+
+// TestSession_UpdatePolicyRecorded: the update policy of Hello is stored with the session, a Status
+// that carries only a policy changes it, and a value the policy file never yields, a report
+// without one and an agent of a release without the report leave it unknown (empty).
+func TestSession_UpdatePolicyRecorded(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := startSessions(t, db, "0.4.0", 0)
+		sys := storetest.SystemCtx(t)
+		cert, id := e.agentCert(t)
+		row := func() (string, string) {
+			r := e.db.Client().AgentSession.GetX(sys, id.ID)
+			return r.UpdateAuto, r.UpdateChannel
+		}
+		h := hello("0.4.0")
+		h.UpdatePolicy = &agentv1.UpdatePolicy{AutoUpdate: "notify", UpdateChannel: "prerelease"}
+		ctx, cancel := context.WithCancel(testCtx(t))
+		st := e.open(t, ctx, cert, h)
+		if recv(t, st).GetWelcome() == nil {
+			t.Fatal("no Welcome")
+		}
+		if a, c := row(); a != "notify" || c != "prerelease" {
+			t.Fatalf("after Hello: %q, %q", a, c)
+		}
+		send := func(p *agentv1.UpdatePolicy) {
+			t.Helper()
+			if err := st.Send(&agentv1.AgentMessage{Msg: &agentv1.AgentMessage_Status{Status: &agentv1.Status{UpdatePolicy: p}}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		waitPolicy := func(auto, channel string) {
+			t.Helper()
+			deadline := time.Now().Add(10 * time.Second)
+			for a, c := row(); a != auto || c != channel; a, c = row() {
+				if time.Now().After(deadline) {
+					t.Fatalf("policy %q, %q; want %q, %q", a, c, auto, channel)
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+		send(&agentv1.UpdatePolicy{AutoUpdate: "auto", UpdateChannel: "stable"})
+		waitPolicy("auto", "stable")
+		send(&agentv1.UpdatePolicy{AutoUpdate: "whenever", UpdateChannel: "stable"}) // never yielded by a policy file
+		waitPolicy("", "")
+		send(&agentv1.UpdatePolicy{AutoUpdate: "off", UpdateChannel: "prerelease"})
+		waitPolicy("off", "prerelease")
+		send(&agentv1.UpdatePolicy{AutoUpdate: "off", UpdateChannel: ""}) // half a report is no report
+		waitPolicy("", "")
+		cancel()
+		// A new session of an agent that reports nothing forgets the earlier report.
+		h = hello("0.3.0")
+		if recv(t, e.open(t, testCtx(t), cert, h)).GetWelcome() == nil {
+			t.Fatal("no Welcome")
+		}
+		if a, c := row(); a != "" || c != "" {
+			t.Errorf("an agent without the report: %q, %q", a, c)
+		}
+	})
+}

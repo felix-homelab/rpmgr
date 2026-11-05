@@ -40,6 +40,9 @@ type RolloutAgent struct {
 	ID            string
 	Kind          rollouttarget.AgentKind
 	VersionBefore string
+	// SkipReason, if set, makes the agent's target skipped with this reason as it is created: the
+	// agent's host reported a local policy that refuses the release, so it is never offered it.
+	SkipReason string
 }
 
 // QueueRolloutTargets adds agents to the end of the queue of an easy rollout that runs or is
@@ -77,8 +80,12 @@ func QueueRolloutTargets(ctx context.Context, tx *ent.Tx, rolloutID string, agen
 			continue
 		}
 		last++
-		t, err := tx.RolloutTarget.Create().SetRolloutID(ro.ID).SetAgentID(a.ID).SetAgentKind(a.Kind).
-			SetBucket(RolloutBucket(a.ID)).SetPosition(last).SetVersionBefore(a.VersionBefore).Save(ctx)
+		create := tx.RolloutTarget.Create().SetRolloutID(ro.ID).SetAgentID(a.ID).SetAgentKind(a.Kind).
+			SetBucket(RolloutBucket(a.ID)).SetPosition(last).SetVersionBefore(a.VersionBefore)
+		if a.SkipReason != "" {
+			create.SetState(rollouttarget.StateSkipped).SetReason(a.SkipReason)
+		}
+		t, err := create.Save(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("store: queueing agent %s: %w", a.ID, err)
 		}

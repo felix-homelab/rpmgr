@@ -48,6 +48,14 @@ service ReleaseService {
       step_up: true
     };
   }
+  // PreviewRollout lists the agents a rollout of a release would skip because the update policy
+  // their host reported refuses it, with the reason and the command that lets the host take it;
+  // CreateRollout marks the same targets skipped at once and never offers them the release, and
+  // refuses a rollout whose canary stage would test nothing (blocked). It changes nothing. Agents that report no policy are not listed: they are offered the release.
+  rpc PreviewRollout(PreviewRolloutRequest) returns (PreviewRolloutResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
   // UpgradeAgents adds connectors or gateways to the end of the queue of the easy rollout of the
   // controller's own version that runs or is paused, or starts one with them when no rollout does
   // (D129). It is refused while a staged rollout or a rollout of another release runs or is paused.
@@ -225,7 +233,8 @@ enum RolloutTargetState {
   // Its updater refused the release.
   ROLLOUT_TARGET_STATE_REFUSED = 6;
   // Left out: offline, decommissioned, on auto_update notify or off, or on a channel that refuses
-  // the release.
+  // the release. A host that reported such a policy before the rollout was created is skipped at
+  // once, without an offer; the reason says which setting and the command that changes it.
   ROLLOUT_TARGET_STATE_SKIPPED = 7;
   // Reported neither the release nor a failure in time.
   ROLLOUT_TARGET_STATE_STALLED = 8;
@@ -420,6 +429,64 @@ message CreateRolloutRequest {
 message CreateRolloutResponse {
   // The rollout, at its canary stage or with its queue.
   Rollout rollout = 1;
+}
+
+// PreviewRolloutRequest names the release and the agents of a rollout to preview.
+message PreviewRolloutRequest {
+  // The release to install.
+  string release_id = 1 [(buf.validate.field).string.min_len = 1];
+  // An easy rollout's queue, by ID; empty previews a staged rollout, which targets every connector
+  // and enrolled gateway in service.
+  repeated string agent_ids = 2 [(buf.validate.field).repeated = {
+    max_items: 1000
+    unique: true
+    items: {
+      string: {
+        min_len: 1
+        max_len: 64
+      }
+    }
+  }];
+  // A staged rollout's canary agents, by ID; empty previews an easy rollout or no canary stage.
+  // Needed to tell whether the canary stage would test nothing.
+  repeated string canary_agent_ids = 3 [(buf.validate.field).repeated = {
+    max_items: 50
+    unique: true
+    items: {
+      string: {
+        min_len: 1
+        max_len: 64
+      }
+    }
+  }];
+}
+
+// SkippedAgent is an agent a rollout would skip because its host's local policy refuses the
+// release.
+message SkippedAgent {
+  // The agent's ID.
+  string agent_id = 1;
+  // The agent's kind.
+  AgentKind agent_kind = 2;
+  // The agent's name.
+  string agent_name = 3;
+  // Why: a pre-release on a host whose update_channel is stable, or auto_update off or notify.
+  string reason = 4;
+  // The command that changes the host's policy so that it takes the release, to run there as
+  // root.
+  string command = 5;
+}
+
+// PreviewRolloutResponse is what a rollout of the release would skip.
+message PreviewRolloutResponse {
+  // How many agents the rollout would have.
+  int32 total = 1;
+  // The agents it would skip, by agent name.
+  repeated SkippedAgent skipped = 2;
+  // Not empty when CreateRollout would refuse: the host policy of every canary agent of a staged
+  // rollout, or of every agent of an easy rollout's queue, refuses the release, so the first stage
+  // would update nothing. It names the agents and the fix.
+  string blocked = 3;
 }
 
 // UpgradeAgentsRequest names the agents to update to the controller's own version.

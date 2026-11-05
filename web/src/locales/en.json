@@ -1763,6 +1763,12 @@
     "dashboard": "Go to the dashboard",
     "gaveUp": "The controller does not answer. Check the host: systemctl status rpmgr-update and the controller's journal."
   },
+  "hostPolicy": {
+    "value": "Update channel {{channel}} · auto-update {{auto}}",
+    "unknown": "Update policy not reported",
+    "channel": {"stable": "stable", "prerelease": "pre-release"},
+    "auto": {"auto": "on", "notify": "notify only", "off": "off"}
+  },
   "updates": {
     "checkNow": "Check now",
     "checking": "Checking for releases…",
@@ -1818,6 +1824,14 @@
     "noMatch": "No agent matches the search.",
     "noOnline": "No agent is online, so none is suggested. An offline agent is skipped and tests nothing.",
     "offlineChosen": "A test agent is offline: it is skipped and tests nothing. Choose one that is online.",
+    "skip": {
+      "title_one": "{{count}} of {{total}} agents will be skipped",
+      "title_other": "{{count}} of {{total}} agents will be skipped",
+      "blockedEasy": "Every agent of the queue would be skipped.",
+      "blockedShort": "Every test agent would be skipped.",
+      "blocked": "The test agents would all be skipped, so nothing would test this release. Choose other test agents, or change their policies.",
+      "help": "The local policy of these hosts refuses the release, so they are not offered it. To let one take it, run the command on that host, as root, then start another rollout."
+    },
     "chosen_one": "Test agent: {{names}}",
     "chosen_other": "{{count}} test agents: {{names}}",
     "inRollout_one": "{{count}} agent gets the release",

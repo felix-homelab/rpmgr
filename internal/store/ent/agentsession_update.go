@@ -172,6 +172,34 @@ func (_u *AgentSessionUpdate) SetNillableLastGoodbye(v *string) *AgentSessionUpd
 	return _u
 }
 
+// SetUpdateAuto sets the "update_auto" field.
+func (_u *AgentSessionUpdate) SetUpdateAuto(v string) *AgentSessionUpdate {
+	_u.mutation.SetUpdateAuto(v)
+	return _u
+}
+
+// SetNillableUpdateAuto sets the "update_auto" field if the given value is not nil.
+func (_u *AgentSessionUpdate) SetNillableUpdateAuto(v *string) *AgentSessionUpdate {
+	if v != nil {
+		_u.SetUpdateAuto(*v)
+	}
+	return _u
+}
+
+// SetUpdateChannel sets the "update_channel" field.
+func (_u *AgentSessionUpdate) SetUpdateChannel(v string) *AgentSessionUpdate {
+	_u.mutation.SetUpdateChannel(v)
+	return _u
+}
+
+// SetNillableUpdateChannel sets the "update_channel" field if the given value is not nil.
+func (_u *AgentSessionUpdate) SetNillableUpdateChannel(v *string) *AgentSessionUpdate {
+	if v != nil {
+		_u.SetUpdateChannel(*v)
+	}
+	return _u
+}
+
 // Mutation returns the AgentSessionMutation object of the builder.
 func (_u *AgentSessionUpdate) Mutation() *AgentSessionMutation {
 	return _u.mutation
@@ -271,6 +299,12 @@ func (_u *AgentSessionUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.LastGoodbye(); ok {
 		_spec.SetField(agentsession.FieldLastGoodbye, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UpdateAuto(); ok {
+		_spec.SetField(agentsession.FieldUpdateAuto, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UpdateChannel(); ok {
+		_spec.SetField(agentsession.FieldUpdateChannel, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -435,6 +469,34 @@ func (_u *AgentSessionUpdateOne) SetNillableLastGoodbye(v *string) *AgentSession
 	return _u
 }
 
+// SetUpdateAuto sets the "update_auto" field.
+func (_u *AgentSessionUpdateOne) SetUpdateAuto(v string) *AgentSessionUpdateOne {
+	_u.mutation.SetUpdateAuto(v)
+	return _u
+}
+
+// SetNillableUpdateAuto sets the "update_auto" field if the given value is not nil.
+func (_u *AgentSessionUpdateOne) SetNillableUpdateAuto(v *string) *AgentSessionUpdateOne {
+	if v != nil {
+		_u.SetUpdateAuto(*v)
+	}
+	return _u
+}
+
+// SetUpdateChannel sets the "update_channel" field.
+func (_u *AgentSessionUpdateOne) SetUpdateChannel(v string) *AgentSessionUpdateOne {
+	_u.mutation.SetUpdateChannel(v)
+	return _u
+}
+
+// SetNillableUpdateChannel sets the "update_channel" field if the given value is not nil.
+func (_u *AgentSessionUpdateOne) SetNillableUpdateChannel(v *string) *AgentSessionUpdateOne {
+	if v != nil {
+		_u.SetUpdateChannel(*v)
+	}
+	return _u
+}
+
 // Mutation returns the AgentSessionMutation object of the builder.
 func (_u *AgentSessionUpdateOne) Mutation() *AgentSessionMutation {
 	return _u.mutation
@@ -564,6 +626,12 @@ func (_u *AgentSessionUpdateOne) sqlSave(ctx context.Context) (_node *AgentSessi
 	}
 	if value, ok := _u.mutation.LastGoodbye(); ok {
 		_spec.SetField(agentsession.FieldLastGoodbye, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UpdateAuto(); ok {
+		_spec.SetField(agentsession.FieldUpdateAuto, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UpdateChannel(); ok {
+		_spec.SetField(agentsession.FieldUpdateChannel, field.TypeString, value)
 	}
 	_node = &AgentSession{config: _u.config}
 	_spec.Assign = _node.assignValues

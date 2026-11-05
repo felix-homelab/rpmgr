@@ -34,6 +34,10 @@ const (
 	FieldDisconnectedAt = "disconnected_at"
 	// FieldLastGoodbye holds the string denoting the last_goodbye field in the database.
 	FieldLastGoodbye = "last_goodbye"
+	// FieldUpdateAuto holds the string denoting the update_auto field in the database.
+	FieldUpdateAuto = "update_auto"
+	// FieldUpdateChannel holds the string denoting the update_channel field in the database.
+	FieldUpdateChannel = "update_channel"
 	// Table holds the table name of the agentsession in the database.
 	Table = "agent_sessions"
 )
@@ -51,6 +55,8 @@ var Columns = []string{
 	FieldLastSeenAt,
 	FieldDisconnectedAt,
 	FieldLastGoodbye,
+	FieldUpdateAuto,
+	FieldUpdateChannel,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -88,6 +94,10 @@ var (
 	DefaultLastSeenAt func() time.Time
 	// DefaultLastGoodbye holds the default value on creation for the "last_goodbye" field.
 	DefaultLastGoodbye string
+	// DefaultUpdateAuto holds the default value on creation for the "update_auto" field.
+	DefaultUpdateAuto string
+	// DefaultUpdateChannel holds the default value on creation for the "update_channel" field.
+	DefaultUpdateChannel string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -143,4 +153,14 @@ func ByDisconnectedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByLastGoodbye orders the results by the last_goodbye field.
 func ByLastGoodbye(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastGoodbye, opts...).ToFunc()
+}
+
+// ByUpdateAuto orders the results by the update_auto field.
+func ByUpdateAuto(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpdateAuto, opts...).ToFunc()
+}
+
+// ByUpdateChannel orders the results by the update_channel field.
+func ByUpdateChannel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpdateChannel, opts...).ToFunc()
 }

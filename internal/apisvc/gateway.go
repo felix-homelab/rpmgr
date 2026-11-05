@@ -502,6 +502,7 @@ func (g *Gateways) gatewayOf(ctx context.Context, r *ent.Gateway) *rpmgrv1.Gatew
 		out.Status.Version, out.Status.RemoteAddr, out.Status.LastSeenTime = s.AgentVersion, s.RemoteAddr, timestamppb.New(s.LastSeenAt)
 		out.Status.LastGoodbyeReason, out.Status.BelowMinAgentVersion = s.LastGoodbye, s.LastGoodbye == upgradeRequired
 		out.Status.OverTheAir = slices.Contains(s.Capabilities, agentproto.CapOTA)
+		out.Status.UpdatePolicy = hostUpdatePolicy(s)
 	}
 	out.Status.Draining = drainOf(g.Drains, r.ID)
 	out.Status.Firewall = firewallOf(g.Firewalls, r.ID)

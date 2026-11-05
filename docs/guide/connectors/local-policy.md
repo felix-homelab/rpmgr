@@ -165,6 +165,14 @@ sudo systemctl reload rpmgr-connector.service
   refuse a file that does not parse: fix it first, by hand. A file with a bad mode they rewrite
   with mode 0644 when they change it.
 
+## What the controller learns from it
+
+A connector or gateway with over-the-air updates tells the controller the `auto_update` and
+`update_channel` of this file when it connects and again when the file changes, so that the
+controller can warn before a rollout offers a release the host refuses. A file that does not
+parse, that others may write or that cannot be read counts as `auto_update: off`. The controller
+never changes the file; the host decides ([Updates](../operations/updates.md#a-host-refuses-the-release)).
+
 ## In the web UI
 
 A connector reports one readiness per route, not per target. When none of a route's targets on a

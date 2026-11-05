@@ -3029,6 +3029,8 @@ type AgentSessionMutation struct {
 	last_seen_at       *time.Time
 	disconnected_at    *time.Time
 	last_goodbye       *string
+	update_auto        *string
+	update_channel     *string
 	clearedFields      map[string]struct{}
 	done               bool
 	oldValue           func(context.Context) (*AgentSession, error)
@@ -3561,6 +3563,78 @@ func (m *AgentSessionMutation) ResetLastGoodbye() {
 	m.last_goodbye = nil
 }
 
+// SetUpdateAuto sets the "update_auto" field.
+func (m *AgentSessionMutation) SetUpdateAuto(s string) {
+	m.update_auto = &s
+}
+
+// UpdateAuto returns the value of the "update_auto" field in the mutation.
+func (m *AgentSessionMutation) UpdateAuto() (r string, exists bool) {
+	v := m.update_auto
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdateAuto returns the old "update_auto" field's value of the AgentSession entity.
+// If the AgentSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentSessionMutation) OldUpdateAuto(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdateAuto is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdateAuto requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdateAuto: %w", err)
+	}
+	return oldValue.UpdateAuto, nil
+}
+
+// ResetUpdateAuto resets all changes to the "update_auto" field.
+func (m *AgentSessionMutation) ResetUpdateAuto() {
+	m.update_auto = nil
+}
+
+// SetUpdateChannel sets the "update_channel" field.
+func (m *AgentSessionMutation) SetUpdateChannel(s string) {
+	m.update_channel = &s
+}
+
+// UpdateChannel returns the value of the "update_channel" field in the mutation.
+func (m *AgentSessionMutation) UpdateChannel() (r string, exists bool) {
+	v := m.update_channel
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdateChannel returns the old "update_channel" field's value of the AgentSession entity.
+// If the AgentSession object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentSessionMutation) OldUpdateChannel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdateChannel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdateChannel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdateChannel: %w", err)
+	}
+	return oldValue.UpdateChannel, nil
+}
+
+// ResetUpdateChannel resets all changes to the "update_channel" field.
+func (m *AgentSessionMutation) ResetUpdateChannel() {
+	m.update_channel = nil
+}
+
 // Where appends a list predicates to the AgentSessionMutation builder.
 func (m *AgentSessionMutation) Where(ps ...predicate.AgentSession) {
 	m.predicates = append(m.predicates, ps...)
@@ -3595,7 +3669,7 @@ func (m *AgentSessionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentSessionMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 12)
 	if m.org_id != nil {
 		fields = append(fields, agentsession.FieldOrgID)
 	}
@@ -3626,6 +3700,12 @@ func (m *AgentSessionMutation) Fields() []string {
 	if m.last_goodbye != nil {
 		fields = append(fields, agentsession.FieldLastGoodbye)
 	}
+	if m.update_auto != nil {
+		fields = append(fields, agentsession.FieldUpdateAuto)
+	}
+	if m.update_channel != nil {
+		fields = append(fields, agentsession.FieldUpdateChannel)
+	}
 	return fields
 }
 
@@ -3654,6 +3734,10 @@ func (m *AgentSessionMutation) Field(name string) (ent.Value, bool) {
 		return m.DisconnectedAt()
 	case agentsession.FieldLastGoodbye:
 		return m.LastGoodbye()
+	case agentsession.FieldUpdateAuto:
+		return m.UpdateAuto()
+	case agentsession.FieldUpdateChannel:
+		return m.UpdateChannel()
 	}
 	return nil, false
 }
@@ -3683,6 +3767,10 @@ func (m *AgentSessionMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldDisconnectedAt(ctx)
 	case agentsession.FieldLastGoodbye:
 		return m.OldLastGoodbye(ctx)
+	case agentsession.FieldUpdateAuto:
+		return m.OldUpdateAuto(ctx)
+	case agentsession.FieldUpdateChannel:
+		return m.OldUpdateChannel(ctx)
 	}
 	return nil, fmt.Errorf("unknown AgentSession field %s", name)
 }
@@ -3761,6 +3849,20 @@ func (m *AgentSessionMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLastGoodbye(v)
+		return nil
+	case agentsession.FieldUpdateAuto:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdateAuto(v)
+		return nil
+	case agentsession.FieldUpdateChannel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdateChannel(v)
 		return nil
 	}
 	return fmt.Errorf("unknown AgentSession field %s", name)
@@ -3870,6 +3972,12 @@ func (m *AgentSessionMutation) ResetField(name string) error {
 		return nil
 	case agentsession.FieldLastGoodbye:
 		m.ResetLastGoodbye()
+		return nil
+	case agentsession.FieldUpdateAuto:
+		m.ResetUpdateAuto()
+		return nil
+	case agentsession.FieldUpdateChannel:
+		m.ResetUpdateChannel()
 		return nil
 	}
 	return fmt.Errorf("unknown AgentSession field %s", name)

@@ -128,6 +128,34 @@ func (_c *AgentSessionCreate) SetNillableLastGoodbye(v *string) *AgentSessionCre
 	return _c
 }
 
+// SetUpdateAuto sets the "update_auto" field.
+func (_c *AgentSessionCreate) SetUpdateAuto(v string) *AgentSessionCreate {
+	_c.mutation.SetUpdateAuto(v)
+	return _c
+}
+
+// SetNillableUpdateAuto sets the "update_auto" field if the given value is not nil.
+func (_c *AgentSessionCreate) SetNillableUpdateAuto(v *string) *AgentSessionCreate {
+	if v != nil {
+		_c.SetUpdateAuto(*v)
+	}
+	return _c
+}
+
+// SetUpdateChannel sets the "update_channel" field.
+func (_c *AgentSessionCreate) SetUpdateChannel(v string) *AgentSessionCreate {
+	_c.mutation.SetUpdateChannel(v)
+	return _c
+}
+
+// SetNillableUpdateChannel sets the "update_channel" field if the given value is not nil.
+func (_c *AgentSessionCreate) SetNillableUpdateChannel(v *string) *AgentSessionCreate {
+	if v != nil {
+		_c.SetUpdateChannel(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *AgentSessionCreate) SetID(v string) *AgentSessionCreate {
 	_c.mutation.SetID(v)
@@ -197,6 +225,14 @@ func (_c *AgentSessionCreate) defaults() error {
 		v := agentsession.DefaultLastGoodbye
 		_c.mutation.SetLastGoodbye(v)
 	}
+	if _, ok := _c.mutation.UpdateAuto(); !ok {
+		v := agentsession.DefaultUpdateAuto
+		_c.mutation.SetUpdateAuto(v)
+	}
+	if _, ok := _c.mutation.UpdateChannel(); !ok {
+		v := agentsession.DefaultUpdateChannel
+		_c.mutation.SetUpdateChannel(v)
+	}
 	return nil
 }
 
@@ -240,6 +276,12 @@ func (_c *AgentSessionCreate) check() error {
 	}
 	if _, ok := _c.mutation.LastGoodbye(); !ok {
 		return &ValidationError{Name: "last_goodbye", err: errors.New(`ent: missing required field "AgentSession.last_goodbye"`)}
+	}
+	if _, ok := _c.mutation.UpdateAuto(); !ok {
+		return &ValidationError{Name: "update_auto", err: errors.New(`ent: missing required field "AgentSession.update_auto"`)}
+	}
+	if _, ok := _c.mutation.UpdateChannel(); !ok {
+		return &ValidationError{Name: "update_channel", err: errors.New(`ent: missing required field "AgentSession.update_channel"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := agentsession.IDValidator(v); err != nil {
@@ -320,6 +362,14 @@ func (_c *AgentSessionCreate) createSpec() (*AgentSession, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.LastGoodbye(); ok {
 		_spec.SetField(agentsession.FieldLastGoodbye, field.TypeString, value)
 		_node.LastGoodbye = value
+	}
+	if value, ok := _c.mutation.UpdateAuto(); ok {
+		_spec.SetField(agentsession.FieldUpdateAuto, field.TypeString, value)
+		_node.UpdateAuto = value
+	}
+	if value, ok := _c.mutation.UpdateChannel(); ok {
+		_spec.SetField(agentsession.FieldUpdateChannel, field.TypeString, value)
+		_node.UpdateChannel = value
 	}
 	return _node, _spec
 }

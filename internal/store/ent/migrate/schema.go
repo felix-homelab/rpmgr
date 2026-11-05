@@ -131,6 +131,8 @@ var (
 		{Name: "last_seen_at", Type: field.TypeTime},
 		{Name: "disconnected_at", Type: field.TypeTime, Nullable: true},
 		{Name: "last_goodbye", Type: field.TypeString, Default: ""},
+		{Name: "update_auto", Type: field.TypeString, Default: ""},
+		{Name: "update_channel", Type: field.TypeString, Default: ""},
 	}
 	// AgentSessionsTable holds the schema information for the "agent_sessions" table.
 	AgentSessionsTable = &schema.Table{

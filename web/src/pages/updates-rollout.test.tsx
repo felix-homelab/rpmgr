@@ -68,7 +68,17 @@ const done25 = [
   target("wiki", { bucket: 30 }), target("mail", { bucket: 60 }), target("backup", { bucket: 90 }),
 ];
 
-function page({ active, targets = [], lists = agents, createError, wrongEtag = false } = {} as {
+// What PreviewRollout answers: the agents whose host policy refuses the release.
+const skipped = [
+  { agentId: "con_nas", agentKind: AgentKind.CONNECTOR, agentName: "nas", reason: "the release is a pre-release and the host's update_channel is stable",
+    command: "sudo rpmgr policy set-update-channel prerelease" },
+  { agentId: "gw_1", agentKind: AgentKind.GATEWAY, agentName: "edge", reason: "the host's local policy sets auto_update: off",
+    command: "sudo rpmgr policy set-auto-update auto" },
+];
+
+function page({ active, targets = [], lists = agents, createError, wrongEtag = false, preview = [], blocked = "" } = {} as {
+  preview?: typeof skipped;
+  blocked?: string;
   active?: ReturnType<typeof rollout>;
   targets?: ReturnType<typeof target>[];
   lists?: typeof agents;
@@ -99,6 +109,7 @@ function page({ active, targets = [], lists = agents, createError, wrongEtag = f
       listReleases: () => ({ releases: [release], controllerVersion: "1.4.2" }),
       listRollouts: () => ({ rollouts: active ? [active] : [] }),
       listRolloutTargets: () => ({ rolloutTargets: targets }),
+      previewRollout: () => ({ total: 5, skipped: preview, blocked }),
       createRollout: (req) => guarded(() => {
         if (createError) throw apiError(Code.FailedPrecondition, "ROLLOUT_ACTIVE");
         return (calls.create.push(req), { rollout: current });
@@ -124,6 +135,45 @@ async function openDialog() {
 function box(dialog: ReturnType<typeof within>, name: string) {
   return dialog.getByRole("checkbox", { name: new RegExp(`^${name}(?![a-z-])`) }) as HTMLInputElement;
 }
+
+describe("the skip warning", () => {
+  it("names the agents the hosts' policies refuse, with the reason and the command, in both steps", async () => {
+    page({ preview: skipped });
+    const dialog = await openDialog();
+    const warning = await dialog.findByRole("alert");
+    expect(within(warning).getByText("2 of 5 agents will be skipped")).toBeTruthy();
+    expect(within(warning).getByText(/^nas$/)).toBeTruthy();
+    expect(within(warning).getByText(/update_channel is stable/)).toBeTruthy();
+    expect(within(warning).getByText("sudo rpmgr policy set-update-channel prerelease")).toBeTruthy();
+    expect(within(warning).getByText(/sets auto_update: off/)).toBeTruthy();
+    expect(within(warning).getByText("sudo rpmgr policy set-auto-update auto")).toBeTruthy();
+    await waitFor(() => expect(box(dialog, "db-host").checked).toBe(true));
+    fireEvent.click(dialog.getByRole("button", { name: "Next" }));
+    expect(await dialog.findByText("Step 2 of 2: review the plan")).toBeTruthy();
+    expect(within(dialog.getByRole("alert")).getByText("2 of 5 agents will be skipped")).toBeTruthy();
+  });
+
+  it("is an error when every test agent would be skipped: it says so and Next stays disabled", async () => {
+    page({ preview: skipped, blocked: "every canary agent would be skipped" });
+    const dialog = await openDialog();
+    const warning = await dialog.findByRole("alert");
+    expect(within(warning).getByText(/would all be skipped, so nothing would test this release/)).toBeTruthy();
+    expect(within(warning).getByText("sudo rpmgr policy set-auto-update auto")).toBeTruthy();
+    await waitFor(() => expect((dialog.getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(true));
+    expect(dialog.getByText("Every test agent would be skipped.")).toBeTruthy();
+  });
+
+  it("shows nothing when no host refuses the release, and never blocks the rollout", async () => {
+    const calls = page();
+    const dialog = await openDialog();
+    await waitFor(() => expect(box(dialog, "db-host").checked).toBe(true));
+    expect(dialog.queryByRole("alert")).toBeNull();
+    fireEvent.click(dialog.getByRole("button", { name: "Next" }));
+    fireEvent.click(await dialog.findByRole("button", { name: "Start the rollout" }));
+    await confirmStepUp();
+    await waitFor(() => expect(calls.create).toHaveLength(1));
+  });
+});
 
 describe("starting a rollout", () => {
   it("explains the test agents, suggests one online connector and gateway, and counts who gets the release", async () => {

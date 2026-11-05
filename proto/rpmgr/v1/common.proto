@@ -17,6 +17,16 @@ message Revision {
   int64 seq = 2;
 }
 
+// HostUpdatePolicy is the update policy an agent last reported from its host's local policy file
+// (docs/04-security.md, "Over-the-air updates"); output only. A host whose file does not load or
+// that others may write reports auto_update "off". An agent that does not report it has none.
+message HostUpdatePolicy {
+  // "auto", "notify" or "off".
+  string auto_update = 1;
+  // "stable" or "prerelease".
+  string update_channel = 2;
+}
+
 // DrainingProcess is the old process a socket hand-off left draining: it keeps its open
 // connections for up to the hand-off drain and exits (docs/03-connections.md, "Showing and ending
 // the drain"). The counts are what its new process last reported.

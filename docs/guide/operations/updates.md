@@ -37,7 +37,9 @@ them are in
 - **In a staged rollout, a rollback or a silent agent pauses the rollout.** You then resume it, or
   cancel it. Agents
   that are offline, or whose policy says `auto_update: notify` or `off`, are listed and skipped;
-  they never block a stage.
+  they never block a stage. Before you start a rollout, a warning says how many agents the hosts'
+  own policies will make it skip, with their names, the reason and the command to run on the host
+  ([A host refuses the release](#a-host-refuses-the-release)).
 - Only one rollout runs or is paused at a time.
 
 Hosts need the root updater and a policy that allows updates
@@ -298,6 +300,28 @@ writes the host's policy file. This holds for the controller's own host too: wit
 page says so; run `sudo rpmgr policy set-update-channel prerelease` on that host. The commands refuse a policy file the updater would not trust, such as
 one that other users may write; fix its owner or mode first
 ([Local policy file](../reference/policy-file.md)).
+
+## A host refuses the release
+
+Each connector and gateway tells the controller the `auto_update` and `update_channel` of its
+host's policy file ([Local policy file](../connectors/local-policy.md)), when it connects and again
+when the file changes. The agent's page and the gateway list show them; an agent of an older
+release shows that it reports none.
+
+When you start a rollout, the dialog warns "N of M agents will be skipped" and lists each agent
+with its reason and the command that changes it. `rpmgr create rollout --preview` lists the same
+without starting anything, and `rpmgr create rollout` prints it before it starts:
+
+- `auto_update: off` or `notify`: run `sudo rpmgr policy set-auto-update auto` on the host.
+- A pre-release on a host whose `update_channel` is `stable`: run
+  `sudo rpmgr policy set-update-channel prerelease` on the host.
+
+The warning does not stop the rollout, with one exception: when every test agent of a staged
+rollout, or every agent of an easy rollout's queue, would be skipped, nothing would test the release
+and the dialog shows an error and does not let you start; `rpmgr create rollout` is refused the
+same way. Choose other test agents, or change their policies. Otherwise the agents it names are marked skipped at once, with the
+reason, and are not offered the release; change the host's policy, then start another rollout for
+them. An agent that reports no policy is offered the release, and its host still decides for itself.
 
 ## When something goes wrong
 
