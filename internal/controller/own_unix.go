@@ -5,6 +5,7 @@
 package controller
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"os/user"
@@ -37,11 +38,23 @@ func ownLike(dir, ref string) error {
 	}
 	defer func() { _ = root.Close() }()
 	// Walked within the root, so a symlink planted meanwhile cannot lead outside it.
-	return fs.WalkDir(root.FS(), ".", func(p string, _ fs.DirEntry, err error) error {
+	return fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		return lchown(root, p, int(sys.Uid), int(sys.Gid))
+		if err := lchown(root, p, int(sys.Uid), int(sys.Gid)); err != nil {
+			if errors.Is(err, syscall.EROFS) {
+				// A read-only mount inside the state directory, such as the staging directory the
+				// updater's unit keeps read-only: it is not the database's, and its owner is the
+				// service's already. The rollback's restore failed on it (#1138).
+				if d.IsDir() {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			return err
+		}
+		return nil
 	})
 }
 

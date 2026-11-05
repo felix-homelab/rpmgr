@@ -127,6 +127,9 @@ Changes to the design documents are not recorded here: see the git history and t
   instance's **Release channel**, which does not change them. If no status appears, the message
   names `journalctl -u rpmgr-update.service`. A refused update can be retried from the page:
   **Retry the update** stages the release again, which makes the root updater run again. (#1135)
+- A rolled-back update records the last readiness answer of the role, not the end of the window,
+  leaves the previous release running although the stop of the failed one timed out, and restores
+  the database although the staging directory is a read-only mount. (#1138)
 
 ## [0.3.0] - 2026-11-04
 
