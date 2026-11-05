@@ -568,13 +568,16 @@ async function part(page: Page, locator: ReturnType<Page["locator"]>, name: stri
   await locator.screenshot({ path: `${process.env.SCREENS_OUT}/${name}.png`, animations: "disabled" });
 }
 
+// ListItem is one item of a list answer, with the fields the patches read.
+type ListItem = { name?: string; status?: object; session?: object; [field: string]: unknown };
+
 // patchList reads a list call for real, by loading the page again, and from then on answers it with
 // the same items plus fields for some of them: an answer the seeded installation cannot give. (The
 // browser alone trusts the test certificate, so the answer is not fetched from the route.)
-async function patchList(page: Page, method: string, key: string, patch: (item: any) => object) {
+async function patchList(page: Page, method: string, key: string, patch: (item: ListItem) => object) {
   const listed = page.waitForResponse(`**/rpmgr.v1.${method}`);
   await page.reload();
-  const real = (await (await listed).json()) as Record<string, any[]>;
+  const real = (await (await listed).json()) as Record<string, ListItem[]>;
   const json = { ...real, [key]: (real[key] ?? []).map((item) => ({ ...item, ...patch(item) })) };
   await page.route(`**/rpmgr.v1.${method}`, (route) => route.fulfill({ json }));
 }
