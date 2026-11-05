@@ -139,7 +139,8 @@ replace the whole list in an update; given once with an empty value, such as `--
 flag takes its value after `=`: `--websocket=false`, `--maintenance=false`.
 
 The transport decides how the route's streams travel between gateways and connectors; see
-[Connector networking](../connectors/network.md). Maintenance is described in
+[Connector networking](../connectors/network.md). It does not apply to targets of an all-in-one's
+built-in connector, which reaches its gateway inside the process. Maintenance is described in
 [Maintenance and error pages](maintenance-and-pages.md), access policies in
 [Access policies](../access-policies.md).
 

@@ -1323,8 +1323,10 @@ Which transport a connector uses is a setting
   pipe that buffers 1 MiB each way, with the same TLS handshake, gateway pin, ALPN
   `rpmgr-tunnel-h2/1` and reverse HTTP/2 as over TCP, and never through the gateway's endpoints.
   One such session carries every route to that gateway, whatever the route's transport; a failed
-  one is `not_ready(transport_unavailable: memory)`. Metrics, the data sessions and the UI report
-  it as h2, and its remote address, like that of the all-in-one's control sessions, as
+  one is `not_ready(transport_unavailable: memory)`. Metrics count it as h2. The gateway reports it to the controller as its own
+  transport, `in_process`, so that the route status and the UI say so; no transport setting of the
+  route, the connector or the instance applies to it, none makes the route not ready for it, and
+  none is shown as the one it takes. Its remote address, like that of the all-in-one's control sessions, as
   `in-process`. The gateway accepts only data sessions to itself on these connections and closes
   anything else. The connector opens no UDP socket for QUIC, so a gateway elsewhere in its group
   is reached over TLS + reverse HTTP/2 only: `auto` falls back at once, and a route pinned to

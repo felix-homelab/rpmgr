@@ -208,9 +208,42 @@ func getCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			return s.print(ctx, env.Stdout, k, output, []protoreflect.Message{res}, []string{id}, false)
+			if err := s.print(ctx, env.Stdout, k, output, []protoreflect.Message{res}, []string{id}, false); err != nil {
+				return err
+			}
+			if r := routeOf(res); r != nil && output == "table" && builtInUnpinned(r) {
+				_, err = fmt.Fprintln(env.Stdout, "NOTE: Built-in targets are not affected by the transport setting.")
+			}
+			return err
 		},
 	}
+}
+
+// routeOf is res as a route, or nil if it is not one.
+func routeOf(res protoreflect.Message) *rpmgrv1.Route {
+	if res.Descriptor().FullName() != (&rpmgrv1.Route{}).ProtoReflect().Descriptor().FullName() {
+		return nil
+	}
+	b, err := proto.Marshal(res.Interface())
+	r := &rpmgrv1.Route{}
+	if err != nil || proto.Unmarshal(b, r) != nil {
+		return nil
+	}
+	return r
+}
+
+// builtInUnpinned reports whether a route has a transport setting while some of its targets are
+// served by the all-in-one's built-in connector, which reaches its gateway in memory whatever the
+// setting says.
+func builtInUnpinned(r *rpmgrv1.Route) bool {
+	pinned, builtIn := false, false
+	for _, tt := range r.GetStatus().GetTargetTransports() {
+		pinned = pinned || tt.GetPinnedTransport() != rpmgrv1.DataTransport_DATA_TRANSPORT_UNSPECIFIED
+		for _, g := range tt.GetGateways() {
+			builtIn = builtIn || g.GetTransport() == rpmgrv1.DataTransport_DATA_TRANSPORT_IN_PROCESS
+		}
+	}
+	return pinned && builtIn
 }
 
 func listCommand() *cli.Command {
@@ -621,7 +654,7 @@ func transportSummary(route map[string]any) string {
 		}
 	}
 	var parts []string
-	for _, name := range []string{"QUIC", "HTTP/2", "WSS", "unknown"} {
+	for _, name := range []string{"QUIC", "HTTP/2", "WSS", "in process", "unknown"} {
 		if count[name] > 0 {
 			parts = append(parts, fmt.Sprintf("%s %d", name, count[name]))
 		}
@@ -633,4 +666,5 @@ func transportSummary(route map[string]any) string {
 }
 
 // transportNames are the names of the data transports in the JSON mapping.
-var transportNames = map[string]string{"DATA_TRANSPORT_QUIC": "QUIC", "DATA_TRANSPORT_H2": "HTTP/2", "DATA_TRANSPORT_WSS": "WSS"}
+var transportNames = map[string]string{"DATA_TRANSPORT_QUIC": "QUIC", "DATA_TRANSPORT_H2": "HTTP/2", "DATA_TRANSPORT_WSS": "WSS",
+	"DATA_TRANSPORT_IN_PROCESS": "in process"}

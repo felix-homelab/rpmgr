@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -463,4 +464,53 @@ func TestSessions_FailedDialKeepsTheOthers(t *testing.T) {
 	if c := g.sessions.Load().Count(); c["quic"] != 2 || c["h2"] != 0 {
 		t.Fatalf("sessions %v: a failed dial of one slot ended the link's QUIC sessions", c)
 	}
+}
+
+// reported are the routes a gateway's data sessions report ready, per transport.
+func reported(s *gateway.Sessions) map[string][]string {
+	out := map[string][]string{}
+	for _, d := range s.Report() {
+		out[d.GetTransport().String()] = d.GetReadyRoutes()
+	}
+	return out
+}
+
+// TestTransport_PinMovesReadinessToItsTransport: with QUIC and h2 sessions up, kept by another route
+// pinned to h2, a route pinned to QUIC is reported ready on the QUIC sessions only; a pin changed at
+// runtime from h2 to QUIC and back withdraws the route from the sessions of the old transport, so
+// the controller derives one transport per target (docs/03, "Transport selection").
+func TestTransport_PinMovesReadinessToItsTransport(t *testing.T) {
+	w := newWorld(t)
+	g, q, h := splitGateway(t, w, false)
+	m := newConnector(t, w)
+	readyAll(m, "rt_q", "rt_h", "rt_a")
+	entry := connector.Gateway{ID: g.id.ID, Endpoints: []string{g.addr},
+		Routes: map[string]string{"rt_q": connector.TransportQUIC, "rt_h": connector.TransportH2, "rt_a": connector.TransportAuto}}
+	m.Set([]connector.Gateway{entry})
+	eventually(t, "sessions missing", func() bool { return q.Count()["quic"] == 2*connector.QUICSessions && h.Count()["h2"] == 2 })
+	eventually(t, "the pinned routes are not reported on their transports", func() bool {
+		q, h := reported(q), reported(h)
+		return slices.Equal(q["TRANSPORT_QUIC"], []string{"rt_a", "rt_q"}) && slices.Equal(h["TRANSPORT_H2"], []string{"rt_h"})
+	})
+
+	// rt_h moves from h2 to QUIC while another route keeps the h2 sessions open.
+	readyAll(m, "rt_x")
+	entry.Routes = map[string]string{"rt_q": connector.TransportQUIC, "rt_h": connector.TransportQUIC, "rt_a": connector.TransportAuto,
+		"rt_x": connector.TransportH2}
+	m.Set([]connector.Gateway{entry})
+	eventually(t, "readiness stays on the old transport or is missing on the new one", func() bool {
+		q, h := reported(q), reported(h)
+		return slices.Equal(q["TRANSPORT_QUIC"], []string{"rt_a", "rt_h", "rt_q"}) && slices.Equal(h["TRANSPORT_H2"], []string{"rt_x"})
+	})
+	if err := echo(t, h, "rt_h"); !errors.Is(err, gateway.ErrNoSession) {
+		t.Fatalf("a new stream of the route pinned to QUIC over h2: %v", err)
+	}
+
+	// And back to h2 (auto keeps its QUIC sessions).
+	entry.Routes["rt_h"] = connector.TransportH2
+	m.Set([]connector.Gateway{entry})
+	eventually(t, "readiness stays on QUIC after the pin to h2", func() bool {
+		q, h := reported(q), reported(h)
+		return slices.Equal(q["TRANSPORT_QUIC"], []string{"rt_a", "rt_q"}) && slices.Equal(h["TRANSPORT_H2"], []string{"rt_h", "rt_x"})
+	})
 }

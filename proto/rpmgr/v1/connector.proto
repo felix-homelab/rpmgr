@@ -85,6 +85,10 @@ enum DataTransport {
   // networks whose proxies intercept TLS. Connectors without the capability tunnel.wss cannot
   // serve a route on it.
   DATA_TRANSPORT_WSS = 4;
+  // Only as the transport of a data session, never as a policy: the all-in-one's built-in
+  // connector, which reaches the gateway of its own process over an in-memory connection that
+  // carries every route whatever its transport policy.
+  DATA_TRANSPORT_IN_PROCESS = 5;
 }
 
 // Connector is one enrolled connector.
@@ -111,7 +115,7 @@ message Connector {
   // Whether it serves; false gives it an empty snapshot.
   bool enabled = 5;
   // Its transport policy; the instance default if not set.
-  DataTransport transport = 6 [(buf.validate.field).enum.defined_only = true];
+  DataTransport transport = 6 [(buf.validate.field).enum = {defined_only: true, not_in: [5]}];
   // Its control session; output only.
   AgentSession session = 7;
   // When it enrolled; output only.
@@ -163,7 +167,7 @@ message ConnectorStatus {
 message ConnectorDataSession {
   // The gateway.
   string gateway_id = 1;
-  // The transport: DATA_TRANSPORT_QUIC, DATA_TRANSPORT_H2 or DATA_TRANSPORT_WSS.
+  // The transport: DATA_TRANSPORT_QUIC, DATA_TRANSPORT_H2, DATA_TRANSPORT_WSS or DATA_TRANSPORT_IN_PROCESS.
   DataTransport transport = 2;
   // The lowest smoothed round-trip time a session measures; not set where none does.
   google.protobuf.Duration rtt = 3;

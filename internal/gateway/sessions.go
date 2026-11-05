@@ -559,6 +559,16 @@ func (m *Sessions) remove(d *dataSession) {
 	}
 }
 
+// reportedTransport is the transport the controller is told a session runs over: "memory" for the
+// all-in-one's own connector, which one in-memory session carries every route over whatever the
+// route's transport policy, else the session's own. Metrics keep counting it as h2.
+func reportedTransport(s tunnel.Session) string {
+	if p, ok := s.(interface{ InProcess() bool }); ok && p.InProcess() {
+		return "memory"
+	}
+	return s.Transport()
+}
+
 // MaxReportedRoutes is how many ready routes of one connector and transport Report names.
 const MaxReportedRoutes = 4096
 
@@ -573,7 +583,7 @@ func (m *Sessions) Report() []*agentv1.DataSession {
 	ready := map[key]map[string]bool{}
 	for con, ds := range m.byConnector {
 		for _, d := range ds {
-			k := key{con, d.s.Transport()}
+			k := key{con, reportedTransport(d.s)}
 			if ready[k] == nil {
 				ready[k] = map[string]bool{}
 			}
@@ -603,6 +613,8 @@ func (m *Sessions) Report() []*agentv1.DataSession {
 			ds.Transport = agentv1.Transport_TRANSPORT_QUIC
 		case "wss":
 			ds.Transport = agentv1.Transport_TRANSPORT_WSS
+		case "memory":
+			ds.Transport = agentv1.Transport_TRANSPORT_IN_PROCESS
 		}
 		if rtt > 0 {
 			ds.Rtt = durationpb.New(rtt)

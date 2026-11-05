@@ -124,7 +124,12 @@ func apiEnv(t *testing.T, token string) (*fakeAPI, map[string]string) {
 					{GatewayId: "gw_2", Transport: rpmgrv1.DataTransport_DATA_TRANSPORT_WSS}}},
 				{TargetId: "rtt_3", Gateways: []*rpmgrv1.GatewayTransport{{GatewayId: "gw_1"}}},
 				{TargetId: "rtt_4"}}}},
-		"rt_2": {Id: "rt_2", Name: "db", GatewayGroupId: "gwg_1", Etag: "1"},
+		// Pinned to QUIC, with a target of the all-in-one's built-in connector and one of an external one.
+		"rt_2": {Id: "rt_2", Name: "db", GatewayGroupId: "gwg_1", Etag: "1", Status: &rpmgrv1.RouteStatus{TargetTransports: []*rpmgrv1.TargetTransport{
+			{TargetId: "rtt_5", PinnedBy: rpmgrv1.TransportPin_TRANSPORT_PIN_ROUTE, PinnedTransport: rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC,
+				Gateways: []*rpmgrv1.GatewayTransport{{GatewayId: "gw_1", Transport: rpmgrv1.DataTransport_DATA_TRANSPORT_IN_PROCESS}}},
+			{TargetId: "rtt_6", PinnedBy: rpmgrv1.TransportPin_TRANSPORT_PIN_ROUTE, PinnedTransport: rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC,
+				Gateways: []*rpmgrv1.GatewayTransport{{GatewayId: "gw_1", Transport: rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC}}}}}},
 	}}
 	mux := http.NewServeMux()
 	mux.Handle(rpmgrv1connect.NewRouteServiceHandler(f))
@@ -155,6 +160,19 @@ func TestGetAndList(t *testing.T) {
 	// HTTP/2 and WSS, one on a gateway that does not report it, and one that does not serve.
 	if !strings.Contains(out, "TRANSPORT") || !strings.Contains(out, "QUIC 1, HTTP/2 1, WSS 1, unknown 1") {
 		t.Fatalf("get shows no transports: %q", out)
+	}
+	if strings.Contains(out, "NOTE") {
+		t.Fatalf("a note on a route without built-in targets: %q", out)
+	}
+	// A route with a transport setting and a built-in target says the setting does not reach it, in
+	// the table only, and the column counts the target as in process, not as QUIC.
+	code, out, _ = runWith(env, "", "get", "route", "rt_2")
+	if code != cli.ExitOK || !strings.Contains(out, "QUIC 1, in process 1") ||
+		!strings.HasSuffix(out, "NOTE: Built-in targets are not affected by the transport setting.\n") {
+		t.Fatalf("get a route with a built-in target: %d %q", code, out)
+	}
+	if _, out, _ = runWith(env, "", "get", "-o", "json", "route", "rt_2"); strings.Contains(out, "NOTE") {
+		t.Fatalf("a note in JSON: %q", out)
 	}
 	code, out, _ = runWith(env, "", "get", "-o", "json", "route", "rt_1")
 	var got map[string]any

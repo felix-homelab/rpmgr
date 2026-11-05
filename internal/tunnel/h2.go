@@ -86,6 +86,7 @@ type plainConn struct{ net.Conn }
 type H2Gateway struct {
 	cc        *http.ClientConn
 	transport string
+	inProcess bool // over the all-in-one's in-memory connection, not the network
 	ctx       context.Context
 	cancel    context.CancelFunc
 	done      chan struct{}
@@ -117,8 +118,11 @@ func NewH2Gateway(conn net.Conn, w H2Windows) (*H2Gateway, error) {
 	g := &H2Gateway{cc: cc, transport: "h2", ctx: ctx, cancel: cancel, done: make(chan struct{}),
 		stalls: NewStalls(w.Stream, w.Conn, w.stallAge)}
 	go g.stalls.Run(ctx) // ends with the session: Close and a dead connection both cancel ctx
-	if conn.RemoteAddr().Network() == "wss" {
+	switch conn.RemoteAddr().Network() {
+	case "wss":
 		g.transport = "wss" // inside a WebSocket (gateway.ServeWSS)
+	case "memory":
+		g.inProcess = true // the all-in-one's own connector (memnet); still h2 on the wire
 	}
 	cc.SetStateHook(func(cc *http.ClientConn) {
 		if cc.Err() != nil {
@@ -203,6 +207,10 @@ func (g *H2Gateway) Done() <-chan struct{} { return g.done }
 
 // Transport is "h2", or "wss" on a connection whose remote address is on the network "wss".
 func (g *H2Gateway) Transport() string { return g.transport }
+
+// InProcess reports whether the session runs over the all-in-one's in-memory connection: the
+// connector of the same process, which no route's transport policy applies to.
+func (g *H2Gateway) InProcess() bool { return g.inProcess }
 
 // h2ClientStream is a stream on the gateway: the request body carries its bytes, the response
 // body the connector's chunks.

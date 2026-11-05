@@ -271,7 +271,9 @@ The terms of the table:
 
 - **Transport per target:** the status also tells, for each enabled target, the transport of the
   data sessions that have the route ready, per online gateway of the group, and the level that
-  pins it; it is not part of the state ([03](03-connections.md#transport-selection)).
+  pins it and the transport that pin sets; the built-in connector of an all-in-one shows as in
+  process, to which no pin applies; it is not part of the state
+  ([03](03-connections.md#transport-selection)).
 
 - **Agents involved:** the enabled gateways of the route's group and the connectors of its enabled
   targets, if they have a live control session. Offline agents get the revision when they connect,

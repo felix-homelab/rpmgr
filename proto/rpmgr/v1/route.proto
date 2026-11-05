@@ -154,7 +154,7 @@ message Route {
   RouteLimits limits = 22;
   // Its transport policy; the connector's if not set (docs/03-connections.md, "Transport
   // selection").
-  DataTransport transport = 23 [(buf.validate.field).enum.defined_only = true];
+  DataTransport transport = 23 [(buf.validate.field).enum = {defined_only: true, not_in: [5]}];
   // When it was created and last changed; output only.
   google.protobuf.Timestamp create_time = 24;
   // When it was last changed; output only.
@@ -245,13 +245,18 @@ message TargetTransport {
   // The level that pins the transport, among the route's, the connector's and the instance
   // default; unset on auto, where the connector races and may fall back.
   TransportPin pinned_by = 3;
+  // The transport that pin sets: DATA_TRANSPORT_QUIC, DATA_TRANSPORT_H2 or DATA_TRANSPORT_WSS;
+  // unset with pinned_by. It does not apply to a target of the all-in-one's built-in connector,
+  // which reaches its gateway in memory (DATA_TRANSPORT_IN_PROCESS).
+  DataTransport pinned_transport = 4;
 }
 
 // GatewayTransport is the transport of the sessions that serve a target through one gateway.
 message GatewayTransport {
   // The gateway.
   string gateway_id = 1;
-  // DATA_TRANSPORT_QUIC, DATA_TRANSPORT_H2 or DATA_TRANSPORT_WSS; DATA_TRANSPORT_UNSPECIFIED where
+  // DATA_TRANSPORT_QUIC, DATA_TRANSPORT_H2, DATA_TRANSPORT_WSS or DATA_TRANSPORT_IN_PROCESS (the
+  // built-in connector of an all-in-one, to which no pin applies); DATA_TRANSPORT_UNSPECIFIED where
   // the gateway is of a release that does not report it: unknown, not an error.
   DataTransport transport = 2;
 }

@@ -27,7 +27,7 @@ import type { ApplyStatus } from "@/gen/rpmgr/v1/status_pb";
 import { RouteTraffic } from "@/pages/route-traffic";
 import { RoutePolicies } from "@/route-form/route-policies";
 import { Reason, reasonOf } from "@/lib/errors";
-import { groupLabel, targetGroups, transportSummary } from "@/lib/route-transport";
+import { groupLabel, inProcessNote, routeInProcessNote, targetGroups, transportSummary } from "@/lib/route-transport";
 import { TargetForm, type Written } from "@/route-form/target-form";
 import { policyCommand, routeAddress, routeType, useAgentNames, useGroupHostnames, useGroupNames } from "@/routes-data";
 import { useOrg } from "@/session";
@@ -166,6 +166,7 @@ export function RouteDetail() {
               <span className="text-muted-foreground" title={t("transport.summaryTitle")}>{t("transport.title")}: {transportSummary(r, t)}</span>
             )}
           </dd>
+          {routeInProcessNote(r, t) !== "" && <p className="text-muted-foreground">{routeInProcessNote(r, t)}</p>}
         </div>
       </dl>
       {(r.spec.case === "tcp" || r.spec.case === "udp" || r.spec.case === "tcpUdp") && r.spec.value.port > 0 && hosts.data?.get(r.gatewayGroupId)?.length === 0 && (
@@ -299,6 +300,7 @@ function TargetTransportCell({ tt, serving, name }: { tt?: TargetTransport; serv
   if (groups.length === 0) {
     return <span className="text-muted-foreground">{t("transport.none")}</span>;
   }
+  const note = inProcessNote(tt, t);
   return (
     <div className="grid gap-1">
       {groups.map((g) => {
@@ -310,6 +312,7 @@ function TargetTransportCell({ tt, serving, name }: { tt?: TargetTransport; serv
           : t("transport.onGateways", { label, count: g.gateways.length });
         return <span key={g.key} title={names}>{text}</span>;
       })}
+      {note !== "" && <span className="text-xs text-muted-foreground">{note}</span>}
     </div>
   );
 }
