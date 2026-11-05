@@ -259,16 +259,27 @@ func importZone() *cli.Command {
 }
 
 func removeZone() *cli.Command {
-	var force bool
+	var force, deleteRecords bool
+	var hash string
 	k := kindOf("zone")
 	return &cli.Command{
-		Name: "zone", Summary: "stop managing a zone: the records stay at the provider and only the ledger is dropped", Args: "<id or name>",
+		Name: "zone", Summary: "stop managing a zone: the records stay at the provider and only the ledger is dropped, or with --delete-records they are deleted too", Args: "[--delete-records --plan-hash <hash>] <id or name>",
 		Flags: func(fs *flag.FlagSet) {
 			fs.BoolVar(&force, "force", false, "remove without checking that the zone is unchanged since this command read it")
+			fs.BoolVar(&deleteRecords, "delete-records", false, "also delete the records rpmgr owns in the zone at the provider; needs --plan-hash and a step-up")
+			fs.StringVar(&hash, "plan-hash", "", "with --delete-records: the hash of the plan you read with rpmgr plan zone --delete-records")
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if len(args) != 1 {
 				return cli.Usagef("expected the zone's ID or name")
+			}
+			switch {
+			case deleteRecords && hash == "":
+				return cli.Usagef("--delete-records needs --plan-hash, the hash that rpmgr plan zone --delete-records shows")
+			case !deleteRecords && hash != "":
+				return cli.Usagef("--plan-hash goes with --delete-records")
+			case deleteRecords && (len(hash) != 64 || strings.Trim(hash, "0123456789abcdef") != ""):
+				return cli.Usagef("--plan-hash is the 64 lower-case hexadecimal characters that rpmgr plan zone shows")
 			}
 			s, err := newAPISession(env)
 			if err != nil {
@@ -285,6 +296,9 @@ func removeZone() *cli.Command {
 					return err
 				}
 				req.Etag = cur.Get(cur.Descriptor().Fields().ByName("etag")).String()
+			}
+			if deleteRecords {
+				return removeWithRecords(ctx, env, s, id, hash, req.Etag)
 			}
 			if _, err := rpmgrv1connect.NewDnsZoneServiceClient(s.hc, s.creds.Controller).RemoveZone(ctx, connect.NewRequest(req)); err != nil {
 				return apiError(err)

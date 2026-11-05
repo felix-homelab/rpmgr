@@ -77,6 +77,32 @@ func (_u *DNSZoneUpdate) SetNillableHeldReason(v *string) *DNSZoneUpdate {
 	return _u
 }
 
+// SetPendingPlan sets the "pending_plan" field.
+func (_u *DNSZoneUpdate) SetPendingPlan(v []byte) *DNSZoneUpdate {
+	_u.mutation.SetPendingPlan(v)
+	return _u
+}
+
+// ClearPendingPlan clears the value of the "pending_plan" field.
+func (_u *DNSZoneUpdate) ClearPendingPlan() *DNSZoneUpdate {
+	_u.mutation.ClearPendingPlan()
+	return _u
+}
+
+// SetPendingPlanHash sets the "pending_plan_hash" field.
+func (_u *DNSZoneUpdate) SetPendingPlanHash(v string) *DNSZoneUpdate {
+	_u.mutation.SetPendingPlanHash(v)
+	return _u
+}
+
+// SetNillablePendingPlanHash sets the "pending_plan_hash" field if the given value is not nil.
+func (_u *DNSZoneUpdate) SetNillablePendingPlanHash(v *string) *DNSZoneUpdate {
+	if v != nil {
+		_u.SetPendingPlanHash(*v)
+	}
+	return _u
+}
+
 // SetProviderStatus sets the "provider_status" field.
 func (_u *DNSZoneUpdate) SetProviderStatus(v dnszone.ProviderStatus) *DNSZoneUpdate {
 	_u.mutation.SetProviderStatus(v)
@@ -195,6 +221,40 @@ func (_u *DNSZoneUpdate) ClearLastSyncedAt() *DNSZoneUpdate {
 	return _u
 }
 
+// SetRemovalRequested sets the "removal_requested" field.
+func (_u *DNSZoneUpdate) SetRemovalRequested(v bool) *DNSZoneUpdate {
+	_u.mutation.SetRemovalRequested(v)
+	return _u
+}
+
+// SetNillableRemovalRequested sets the "removal_requested" field if the given value is not nil.
+func (_u *DNSZoneUpdate) SetNillableRemovalRequested(v *bool) *DNSZoneUpdate {
+	if v != nil {
+		_u.SetRemovalRequested(*v)
+	}
+	return _u
+}
+
+// SetSyncRequestedAt sets the "sync_requested_at" field.
+func (_u *DNSZoneUpdate) SetSyncRequestedAt(v time.Time) *DNSZoneUpdate {
+	_u.mutation.SetSyncRequestedAt(v)
+	return _u
+}
+
+// SetNillableSyncRequestedAt sets the "sync_requested_at" field if the given value is not nil.
+func (_u *DNSZoneUpdate) SetNillableSyncRequestedAt(v *time.Time) *DNSZoneUpdate {
+	if v != nil {
+		_u.SetSyncRequestedAt(*v)
+	}
+	return _u
+}
+
+// ClearSyncRequestedAt clears the value of the "sync_requested_at" field.
+func (_u *DNSZoneUpdate) ClearSyncRequestedAt() *DNSZoneUpdate {
+	_u.mutation.ClearSyncRequestedAt()
+	return _u
+}
+
 // Mutation returns the DNSZoneMutation object of the builder.
 func (_u *DNSZoneUpdate) Mutation() *DNSZoneMutation {
 	return _u.mutation
@@ -244,6 +304,11 @@ func (_u *DNSZoneUpdate) check() error {
 			return &ValidationError{Name: "held_reason", err: fmt.Errorf(`ent: validator failed for field "DNSZone.held_reason": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PendingPlanHash(); ok {
+		if err := dnszone.PendingPlanHashValidator(v); err != nil {
+			return &ValidationError{Name: "pending_plan_hash", err: fmt.Errorf(`ent: validator failed for field "DNSZone.pending_plan_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ProviderStatus(); ok {
 		if err := dnszone.ProviderStatusValidator(v); err != nil {
 			return &ValidationError{Name: "provider_status", err: fmt.Errorf(`ent: validator failed for field "DNSZone.provider_status": %w`, err)}
@@ -289,6 +354,15 @@ func (_u *DNSZoneUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.HeldReason(); ok {
 		_spec.SetField(dnszone.FieldHeldReason, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.PendingPlan(); ok {
+		_spec.SetField(dnszone.FieldPendingPlan, field.TypeBytes, value)
+	}
+	if _u.mutation.PendingPlanCleared() {
+		_spec.ClearField(dnszone.FieldPendingPlan, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.PendingPlanHash(); ok {
+		_spec.SetField(dnszone.FieldPendingPlanHash, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.ProviderStatus(); ok {
 		_spec.SetField(dnszone.FieldProviderStatus, field.TypeEnum, value)
 	}
@@ -318,6 +392,15 @@ func (_u *DNSZoneUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.LastSyncedAtCleared() {
 		_spec.ClearField(dnszone.FieldLastSyncedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.RemovalRequested(); ok {
+		_spec.SetField(dnszone.FieldRemovalRequested, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SyncRequestedAt(); ok {
+		_spec.SetField(dnszone.FieldSyncRequestedAt, field.TypeTime, value)
+	}
+	if _u.mutation.SyncRequestedAtCleared() {
+		_spec.ClearField(dnszone.FieldSyncRequestedAt, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -384,6 +467,32 @@ func (_u *DNSZoneUpdateOne) SetHeldReason(v string) *DNSZoneUpdateOne {
 func (_u *DNSZoneUpdateOne) SetNillableHeldReason(v *string) *DNSZoneUpdateOne {
 	if v != nil {
 		_u.SetHeldReason(*v)
+	}
+	return _u
+}
+
+// SetPendingPlan sets the "pending_plan" field.
+func (_u *DNSZoneUpdateOne) SetPendingPlan(v []byte) *DNSZoneUpdateOne {
+	_u.mutation.SetPendingPlan(v)
+	return _u
+}
+
+// ClearPendingPlan clears the value of the "pending_plan" field.
+func (_u *DNSZoneUpdateOne) ClearPendingPlan() *DNSZoneUpdateOne {
+	_u.mutation.ClearPendingPlan()
+	return _u
+}
+
+// SetPendingPlanHash sets the "pending_plan_hash" field.
+func (_u *DNSZoneUpdateOne) SetPendingPlanHash(v string) *DNSZoneUpdateOne {
+	_u.mutation.SetPendingPlanHash(v)
+	return _u
+}
+
+// SetNillablePendingPlanHash sets the "pending_plan_hash" field if the given value is not nil.
+func (_u *DNSZoneUpdateOne) SetNillablePendingPlanHash(v *string) *DNSZoneUpdateOne {
+	if v != nil {
+		_u.SetPendingPlanHash(*v)
 	}
 	return _u
 }
@@ -506,6 +615,40 @@ func (_u *DNSZoneUpdateOne) ClearLastSyncedAt() *DNSZoneUpdateOne {
 	return _u
 }
 
+// SetRemovalRequested sets the "removal_requested" field.
+func (_u *DNSZoneUpdateOne) SetRemovalRequested(v bool) *DNSZoneUpdateOne {
+	_u.mutation.SetRemovalRequested(v)
+	return _u
+}
+
+// SetNillableRemovalRequested sets the "removal_requested" field if the given value is not nil.
+func (_u *DNSZoneUpdateOne) SetNillableRemovalRequested(v *bool) *DNSZoneUpdateOne {
+	if v != nil {
+		_u.SetRemovalRequested(*v)
+	}
+	return _u
+}
+
+// SetSyncRequestedAt sets the "sync_requested_at" field.
+func (_u *DNSZoneUpdateOne) SetSyncRequestedAt(v time.Time) *DNSZoneUpdateOne {
+	_u.mutation.SetSyncRequestedAt(v)
+	return _u
+}
+
+// SetNillableSyncRequestedAt sets the "sync_requested_at" field if the given value is not nil.
+func (_u *DNSZoneUpdateOne) SetNillableSyncRequestedAt(v *time.Time) *DNSZoneUpdateOne {
+	if v != nil {
+		_u.SetSyncRequestedAt(*v)
+	}
+	return _u
+}
+
+// ClearSyncRequestedAt clears the value of the "sync_requested_at" field.
+func (_u *DNSZoneUpdateOne) ClearSyncRequestedAt() *DNSZoneUpdateOne {
+	_u.mutation.ClearSyncRequestedAt()
+	return _u
+}
+
 // Mutation returns the DNSZoneMutation object of the builder.
 func (_u *DNSZoneUpdateOne) Mutation() *DNSZoneMutation {
 	return _u.mutation
@@ -566,6 +709,11 @@ func (_u *DNSZoneUpdateOne) check() error {
 	if v, ok := _u.mutation.HeldReason(); ok {
 		if err := dnszone.HeldReasonValidator(v); err != nil {
 			return &ValidationError{Name: "held_reason", err: fmt.Errorf(`ent: validator failed for field "DNSZone.held_reason": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.PendingPlanHash(); ok {
+		if err := dnszone.PendingPlanHashValidator(v); err != nil {
+			return &ValidationError{Name: "pending_plan_hash", err: fmt.Errorf(`ent: validator failed for field "DNSZone.pending_plan_hash": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.ProviderStatus(); ok {
@@ -630,6 +778,15 @@ func (_u *DNSZoneUpdateOne) sqlSave(ctx context.Context) (_node *DNSZone, err er
 	if value, ok := _u.mutation.HeldReason(); ok {
 		_spec.SetField(dnszone.FieldHeldReason, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.PendingPlan(); ok {
+		_spec.SetField(dnszone.FieldPendingPlan, field.TypeBytes, value)
+	}
+	if _u.mutation.PendingPlanCleared() {
+		_spec.ClearField(dnszone.FieldPendingPlan, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.PendingPlanHash(); ok {
+		_spec.SetField(dnszone.FieldPendingPlanHash, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.ProviderStatus(); ok {
 		_spec.SetField(dnszone.FieldProviderStatus, field.TypeEnum, value)
 	}
@@ -659,6 +816,15 @@ func (_u *DNSZoneUpdateOne) sqlSave(ctx context.Context) (_node *DNSZone, err er
 	}
 	if _u.mutation.LastSyncedAtCleared() {
 		_spec.ClearField(dnszone.FieldLastSyncedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.RemovalRequested(); ok {
+		_spec.SetField(dnszone.FieldRemovalRequested, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SyncRequestedAt(); ok {
+		_spec.SetField(dnszone.FieldSyncRequestedAt, field.TypeTime, value)
+	}
+	if _u.mutation.SyncRequestedAtCleared() {
+		_spec.ClearField(dnszone.FieldSyncRequestedAt, field.TypeTime)
 	}
 	_node = &DNSZone{config: _u.config}
 	_spec.Assign = _node.assignValues

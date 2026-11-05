@@ -86,7 +86,7 @@ names.
 | `CertificateService` | `UploadCertificate` (a chain and its key, checked as [04](04-security.md#controller-certificates) requires; the key is kept under the KEK and never returned), `GetCertificate`, `ListCertificates` (source, names, validity, status and the last ACME error; an uploaded certificate with the routes that serve it), `DeleteCertificate` (an uploaded certificate no route serves), `RenewCertificate` (an ACME certificate of a route in acme mode, renewed now even if not due, or obtained if it has none; the answer comes at once, and the outcome shows in the certificate); CRUD on CA bundles for HTTPS upstreams (`CreateCABundle`, `GetCABundle`, `ListCABundles`, `UpdateCABundle`, `DeleteCABundle`; shown with their certificates' subjects and expiry and the targets that use them, not deleted while one does) | 1 |
 | `PkiService` | `GetPkiStatus` (the trust domain, the root's pin, and the CA's keys that have not expired, with their state and when the schedule replaces them), `RotateIntermediate` (replaces the intermediate before its half-life; the old one keeps verifying its leaves until it expires); Instance Admin, the rotation with step-up | 1 |
 | `DnsProviderService` | `ConnectDnsProvider` (the token is checked at the provider before it is stored: a token the provider refuses is `INVALID_ARGUMENT`, an unreachable provider `UNAVAILABLE`, a rate-limited one `RESOURCE_EXHAUSTED`; a Global API Key is refused without being sent), `GetDnsProvider`, `ListDnsProviders`, `UpdateDnsProvider` (rename, rotate token: the new token is checked first and replaces the old one in the same row, so the zones stay; a rotation checks the step-up itself), `DeleteDnsProvider` (`FAILED_PRECONDITION` with `DEPENDANTS_EXIST` while zones are imported from the provider), `ListProviderZones`. `infrastructure.write`, so Owner and Admin only; connect and delete need a step-up. The token goes in as `cloudflare.api_token` and no response, export, audit entry or log shows it ([04](04-security.md#secrets-at-rest-and-in-logs)); a provider carries `token_expiring` when its token expires within the warning period of [15](15-dns.md#timers-and-limits) | 2 |
-| `DnsZoneService` | `ImportZone` (a zone of a connected provider of the org: the provider's answer is read live, and only a zone it calls `active` and `full` is imported, held; a zone that is not active is refused with `ZONE_NOT_ACTIVE`, one that is partial, secondary or otherwise not full with `ZONE_NOT_FULL`; the response carries the claim on the zone's apex, which the import creates with `wildcard = true` unless a verified domain of the org covers the zone, and which stays `pending` until it is verified; a zone already imported, or whose name another org claims, is `ALREADY_EXISTS`; an own claim of the apex without the wildcard is `FAILED_PRECONDITION` with `ZONE_CLAIM_NOT_WILDCARD`), `GetZone`, `ListZones`, `UpdateZone` (the gates and `default_ttl`), `RemoveZone` (keeps the records and the claim; removing the records comes with the plan slices), `PlanZoneSync`, `ApproveZonePlan` (plan hash), `SyncZone`, `ListZoneRecords` (owned and foreign, read live; Owner/Admin), `AdoptRecords`, `ReleaseRecord` (optionally restore the original) | 2 |
+| `DnsZoneService` | `ImportZone` (a zone of a connected provider of the org: the provider's answer is read live, and only a zone it calls `active` and `full` is imported, held; a zone that is not active is refused with `ZONE_NOT_ACTIVE`, one that is partial, secondary or otherwise not full with `ZONE_NOT_FULL`; the response carries the claim on the zone's apex, which the import creates with `wildcard = true` unless a verified domain of the org covers the zone, and which stays `pending` until it is verified; a zone already imported, or whose name another org claims, is `ALREADY_EXISTS`; an own claim of the apex without the wildcard is `FAILED_PRECONDITION` with `ZONE_CLAIM_NOT_WILDCARD`), `GetZone`, `ListZones`, `UpdateZone` (the gates and `default_ttl`), `RemoveZone` (keeps the records and the claim; with `delete_records` it also deletes the records rpmgr owns at the provider, after a step-up and with the `plan_hash` of the removal plan that `PlanZoneSync` with `delete_records` returned, else `PLAN_CHANGED`; the call records the request and the DNS job carries it out under its lease: the zone is disabled at once and removed when the job has deleted the records), `PlanZoneSync` (the plan of the zone now, read live from the provider, with its hash), `EnableZone` (a disabled zone becomes held; Owner/Admin, step-up; `ZONE_NOT_DISABLED` otherwise; it writes nothing and the plan still needs approval), `ApproveZonePlan` (the plan hash; a step-up; Owner and Admin; the plan is computed again, and one with another hash is `FAILED_PRECONDITION` with `PLAN_CHANGED`, a zone that is not held `ZONE_NOT_HELD`; the zone becomes `active`, and the next pass applies that plan only), `SyncZone`, `ListZoneRecords` (the owned records from the ledger, for every member, `org.read`; with `include_foreign` the other records read live, and orphans, for an Owner or Admin, else `PERMISSION_DENIED`), `AdoptRecords` (a step-up; provider record IDs, at most 200, all or none: a record the provider lacks is `NOT_FOUND` with `RECORD_NOT_FOUND`, an owned one `ALREADY_EXISTS` with `RECORD_ALREADY_OWNED`, one of another type `RECORD_TYPE_UNSUPPORTED`, one at a name no source of the org publishes `RECORD_NOT_WANTED`; Owner/Admin), `ReleaseRecord` (a step-up; a ledger row; optionally restore the original: `RECORD_NOT_ADOPTED` for a record that was not adopted, `RECORD_BUSY` while the job writes it; it records the request and the DNS job carries it out under its lease; the answer carries a warning for an old original; Owner/Admin), `SyncZone` asks for a full pass, which the DNS job finds in the zone's row (`ZONE_DISABLED` for a disabled zone) | 2 |
 | `DnsNameService` | `CreateDnsName` (a name or a wildcard for a gateway group of the org: the name lies under a verified domain of the org, and a wildcard name under one with the wildcard, else `FAILED_PRECONDITION` with `DOMAIN_NOT_VERIFIED`; another org's group is `NOT_FOUND`; a name that exists, in any org, is `ALREADY_EXISTS`; `ttl` is 0 or within the bounds of a zone's `default_ttl`), `GetDnsName`, `ListDnsNames`, `UpdateDnsName` (the gateway group and `ttl`; the name never changes), `DeleteDnsName`. Reading is `org.read`, changing a name `infrastructure.write`, so Owner and Admin only. A domain or a gateway group is not deleted while a name uses it (`DEPENDANTS_EXIST`) | 2 |
 | `PolicyService` | CRUD on access policies (`CreateAccessPolicy`, `GetAccessPolicy`, `ListAccessPolicies`, `UpdateAccessPolicy`, `DeleteAccessPolicy`) with their rules (`ip_allow`, `ip_deny`, `basic_auth`; their order is stored but a deny wins over every allow, D85; a CIDR with host bits set is accepted and kept in its masked form, so `10.0.0.1/16` is `10.0.0.0/16`); a policy shows the routes that apply it and cannot be deleted while one does. An update replaces the rules as a whole. Basic-auth passwords are write-only: the controller hashes them ([04](04-security.md#secrets-at-rest-and-in-logs)) under the account password rules, and in an update a user without a password keeps the one of its name. A `basic_auth` rule on a policy that a route other than an http route, or a CONNECT route in a basic mode, applies is refused with `BASIC_AUTH_NOT_HTTP`. Phase 2 rule kinds ([03](03-connections.md#access-policies), [04](04-security.md#route-edge-rules)): `rate_limit` (a rate and a burst per client, on every route type, at most one per policy); `require_header` (a header name, once per policy, and 1 to 4 write-only values of 32 to 1024 visible ASCII characters, kept as their SHA-256; a read shows the header only, and in an update a rule without values keeps the values of its header; on a policy a route other than an http route applies, `REQUIRE_HEADER_NOT_HTTP`); `oidc` (a route identity provider, the accepted e-mail addresses, domains and groups, the session length; with basic auth on one route, `OIDC_WITH_BASIC_AUTH`). Route identity providers are managed here too, their client secret write-only | 2 (basic auth, IP rules: 1) |
 | `PrivateServiceService` | private services and visitor grants | 2 |
@@ -98,7 +98,7 @@ names.
 | `AuditSinkService` | `CreateAuditSink`, `GetAuditSink`, `ListAuditSinks`, `UpdateAuditSink`, `DeleteAuditSink`, `TestAuditSink`, `VerifyAuditSink`; the external sinks of the audit log ([04](04-security.md#audit-log)), all for the Instance Admin, and every change, the test included, after a step-up and audited like any change. A sink has a name, a kind (Phase 2: `webhook`, with its `url`; `syslog`, with its `address` and `ca_bundle`; `s3`, with its `endpoint`, `region`, `bucket`, `access_key_id`, `retention_days` and `ca_bundle`), `entries` and `enabled`. An object-storage sink is checked when it is created, when a field of it changes and when it is tested: a bucket without Object Lock or a store without conditional create is refused ([04](04-security.md#audit-log)). Its `secret` is write-only: sealed under the KEK, never returned (`secret_set` says whether one is stored) and redacted in the audit log; an update names `secret` in its mask to replace it. The kind is set at creation and never changes; a new sink is enabled. Each sink and each of its chains carries a status: when it last succeeded, its last error, the last checkpoint and entry seq it acknowledged, and the backlog with the time of the oldest item not yet acknowledged, counted from the audit tables and the cursors, so it is current while no replica ships. `TestAuditSink` sends one test item (`audit.test`) outside the cursors and answers whether the receiver acknowledged it; for an object-storage sink it runs the check of the bucket instead. `VerifyAuditSink` (step-up, object-storage sinks only) reads the sink back and answers, per chain, the last checkpoint that verified, any gap and any problem; the same outcome is the `verification` of the sink's status. A sink is not a configuration change: there is no revision, and no agent applies it | 2 |
 | `ReleaseService` | `ListReleases` (the newest version first, each with its channel, source, whether the mirror holds it and whether it is newer than the controller, and the state of the release check: whether one runs, when the last ended and how, ok, failed with its error, off, or none on a build that checks for no releases), `CheckReleases` (the release check at once: joins a check that runs; refused while the release check is off or the build checks for no releases, and within a short gap after the last check started or while the release source limits the rate, with the time to wait, [03](03-connections.md#timeouts-keepalive-and-backoff)), `UploadRelease` (a release's signed manifest, signing-key statement and their signatures, verified like the release check; for air-gapped installs and signed downgrades; the artifacts come from the release source or `rpmgr release import`), `CreateRollout` (a release, a mode, `advanced` or `easy` ([D129](14-open-decisions.md#engineering)), and for a staged rollout its canary agents, for an easy one its ordered queue of agents, connectors or gateways of any org; an easy rollout refuses an agent that is built in, decommissioned or without the capability `ota`, and an empty queue; refused when the release is newer than the controller or the controller is a development build, when it is below the controller's `min_agent_version`, when it is a pre-release and the instance's update channel is stable, or while another rollout runs or is paused; a recorded release the mirror does not hold yet is accepted, the mirror checks for it at once and the rollout job offers it once the mirror holds it ([D125](14-open-decisions.md#engineering)); in a staged rollout every connector and enrolled gateway that is neither decommissioned nor built in becomes a target, in an easy one each agent of the queue, with the version it last connected with), `UpgradeAgents` (connectors or gateways added to the end of the queue of the easy rollout that runs or is paused, when its target is the controller's own version, or an easy rollout of the controller's own version started with them when none runs; an agent already queued keeps its place; refused while a staged rollout or an easy rollout of another release runs or is paused, and for an agent an easy rollout refuses), `UpdateController` (the Instance Admin's request, after a step-up, that the controller or all-in-one update itself over the air, [D158](14-open-decisions.md#engineering): a release newer than the controller, held by the mirror and taken by the instance's update channel, which the controller stages, from a running release of v0.3.0 or later only (an earlier one is updated by hand once, and the refusal says so) for the root updater of its host; refused while a rollout runs, while another update of the controller is under way, on a development build, on a host without the root updater or on a PostgreSQL controller; audited like every change), `GetControllerUpdate` (the state of that update from the staged release and the root updater's status file: staged, updating with its step, updated, rolled back with the reason, rollback failed or refused; why none can be started; the version that runs, and whether it is too old to update itself (`by_hand`); a status of `updating` that the updater has not written to for 30 min is from an updater that died and shows as no update), `GetRollout`, `ListRollouts`, `ListRolloutTargets` (each agent's state and reason, and its place in an easy rollout's queue), `AdvanceRollout` (a running staged rollout to a higher percentage, 1 to 99, or to all agents, under the rollout's etag), `PauseRollout` (a running one), `ResumeRollout` (a paused one), `CancelRollout` (a running or paused one, for good); each change may name the etag the caller read. Creating a rollout and each change are configuration changes with a revision, so the agents' snapshots compile again, and changes of one rollout happen one after the other. All for the Instance Admin; uploading, creating, upgrading agents, advancing, resuming and cancelling take a step-up, and each of these and a check is audited ([04](04-security.md#over-the-air-updates), [D121](14-open-decisions.md#engineering)). The release check and the instance's update channel are instance settings (`SettingsService`). A connector and a gateway show their version, their update state, and whether they are below `min_agent_version` with the reason of their last `Goodbye` | 2 |
 | `ManifestService` | `ExportManifests` (an org's resources as YAML manifests: all, of the kinds named, or the resources named), `Plan`, `Apply` (declarative manifests) | 1 (`Plan`, `Apply`: 2) |
-| `WebhookService` | `CreateWebhook`, `GetWebhook`, `ListWebhooks`, `UpdateWebhook` (URL, event types, enabled; enabling again clears a disable), `DeleteWebhook`, `RotateWebhookSecret` (the new secret returned once), `ListWebhookDeliveries`, `TestWebhook` (a `webhook.test` event, audited); an org's endpoints for `webhooks.write` ([Webhooks](#webhooks-phase-2)); every method, reads included, needs `webhooks.write`, since a URL may carry a token of the receiver's | 2 |
+| `WebhookService` | `CreateWebhook`, `GetWebhook`, `ListWebhooks`, `UpdateWebhook` (URL, event types, enabled; enabling again clears a disable), `DeleteWebhook`, `RotateWebhookSecret` (the new secret returned once), `ListWebhookDeliveries`, `TestWebhook` (a `webhook.test` event, audited), `PreviewWebhookMessage` (the messages of a chat format and options for a sample alert firing, resolving and a change, made as a delivery makes them; nothing is read but the org's name, sent or audited); an org's endpoints for `webhooks.write` ([Webhooks](#webhooks-phase-2)); every method, reads included, needs `webhooks.write`, since a URL may carry a token of the receiver's | 2 |
 | `InstanceWebhookService` | The same methods for the instance's endpoints (`CreateInstanceWebhook`, `GetInstanceWebhook`, `ListInstanceWebhooks`, `UpdateInstanceWebhook`, `DeleteInstanceWebhook`, `RotateInstanceWebhookSecret`, `ListInstanceWebhookDeliveries`, `TestInstanceWebhook`), which receive instance events; every method needs the Instance Admin role. An org's endpoint is `NOT_FOUND` here and an instance endpoint is `NOT_FOUND` in `WebhookService`, so an org Owner neither sees nor changes one ([Webhooks](#webhooks-phase-2)) | 2 |
 | `VirtualNetworkService`, `FunctionService`, `ShellService` | — | 3 |
 
@@ -138,6 +138,13 @@ message Route {
   string etag = 30;                    // output only; send back on update
   RouteStatus status = 31;             // output only; derived from observed state (see 06-data-model)
   repeated HostnameDnsStatus dns_status = 32;  // Phase 2, output only; per hostname
+}
+
+message HostnameDnsStatus {            // Phase 2, output only
+  string hostname = 1;
+  string status = 2;                   // not_managed, pending, published, conflict, ambiguous, held, error, rate_limited (15-dns)
+  string reason = 3;                   // why a name publishes nothing, or the provider's refusal; may be empty
+  repeated string records = 4;         // what is published for the name, as "TYPE content"
 }
 
 message HTTPRouteSpec {
@@ -247,6 +254,7 @@ message DnsZone {
   ZoneProviderStatus provider_status = 32;  // output only: OK, PERMISSION_DENIED, UNREACHABLE, RATE_LIMITED
   google.protobuf.Timestamp last_synced_time = 33;  // output only
   string etag = 34;                    // output only
+  string pending_plan_hash = 35;       // output only: the plan under review, or the approved one not yet applied
 }
 
 message DnsName {
@@ -257,14 +265,28 @@ message DnsName {
   string etag = 30;                    // output only
 }
 
-message DnsRecord {                    // one ledger row, or a foreign record read live
-  string id = 1;                       // dnr_…; empty for a foreign record
-  string name = 2;
-  DnsRecordType type = 3;              // A, AAAA, CNAME, TXT
-  string content = 4;
-  bool proxied = 5;
-  DnsRecordState state = 30;           // output only: CREATING, SYNCED, DRIFTED, ORPHANED, ERROR, DELETING, FOREIGN
-  string reason = 31;                  // output only
+message ZonePlan {                     // PlanZoneSync: what a pass would do now (15, "The plan and its hash")
+  repeated PlanRecord creates = 1;
+  repeated PlanRecord updates = 2;     // the owned record with every field as it becomes
+  repeated PlanRecord deletes = 3;     // owned records
+  repeated PlanConflict conflicts = 4; // names the plan leaves alone, with the records in the way
+  repeated PlanRecord orphans = 5;     // this instance's marker, no ledger row; never deleted
+  repeated string shadows = 6;
+  repeated string lost = 7;            // provider IDs of ledger rows whose record is gone
+  string hash = 8;                     // SHA-256, lower-case hex; what ApproveZonePlan binds to
+}
+
+message DnsRecord {                    // one ledger row, or a record read live
+  string id = 1;                       // dnr_…; empty for a record rpmgr does not own
+  string provider_record_id = 2;       // what AdoptRecords takes
+  string name = 3;
+  string type = 4;                     // A, AAAA, CNAME, TXT; a foreign record may have another
+  string content = 5;
+  int32 ttl = 6;
+  bool proxied = 7;
+  DnsRecordState state = 8;            // output only: CREATING, SYNCED, DRIFTED, ORPHANED, ERROR, DELETING, FOREIGN
+  string reason = 9;                   // output only
+  google.protobuf.Timestamp adopted_time = 10;  // output only
 }
 
 message GatewayGroup {                 // the fields Phase 2 adds to rpmgr/v1/gateway.proto
@@ -343,7 +365,7 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
 | Second factor needed: at login, or by the org's policy | `UNAUTHENTICATED` (login), `PERMISSION_DENIED` (policy) | `reason = MFA_REQUIRED` |
 | Etag mismatch, dependants exist, domain not verified, port taken | `FAILED_PRECONDITION` | `reason` + metadata |
 | A change while its org or the instance is in restore review ([10](10-operations.md#backup-and-restore)) | `FAILED_PRECONDITION` | `reason = RESTORE_REVIEW` |
-| DNS (Phase 2): zone not managed or not `active`, proxied name not allowed by the zone or `dns_proxied` on a route that is not an http route, wildcard name not allowed by the zone, plan changed since it was shown, provider refuses the token for this zone | `FAILED_PRECONDITION` | `reason` = `ZONE_NOT_MANAGED`, `ZONE_NOT_ACTIVE`, `ZONE_NOT_FULL`, `ZONE_CLAIM_NOT_WILDCARD`, `PROXY_NOT_ALLOWED`, `WILDCARD_NOT_ALLOWED`, `PLAN_CHANGED`, `PROVIDER_PERMISSION_DENIED` |
+| DNS (Phase 2): zone not managed or not `active`, proxied name not allowed by the zone or `dns_proxied` on a route that is not an http route, wildcard name not allowed by the zone, plan changed since it was shown, provider refuses the token for this zone | `FAILED_PRECONDITION` | `reason` = `ZONE_NOT_MANAGED`, `ZONE_NOT_ACTIVE`, `ZONE_NOT_FULL`, `ZONE_CLAIM_NOT_WILDCARD`, `PROXY_NOT_ALLOWED`, `WILDCARD_NOT_ALLOWED`, `PLAN_CHANGED`, `ZONE_NOT_HELD`, `ZONE_NOT_DISABLED`, `ZONE_DISABLED`, `PROVIDER_PERMISSION_DENIED` |
 | Releases (Phase 2): an upload whose chain does not verify | `INVALID_ARGUMENT` | `reason = RELEASE_DOES_NOT_VERIFY` |
 | Releases (Phase 2): a release check asked for while the release check is off or the build checks for no releases | `FAILED_PRECONDITION` | `reason = RELEASE_CHECK_OFF` |
 | Rollouts (Phase 2): another rollout runs or is paused, the release is newer than the controller, below its `min_agent_version` or a pre-release on a stable instance, a stage change the rollout's state or stage does not allow, a stage change of an easy rollout, an agent an easy rollout cannot update (built in, decommissioned, or without `ota`) | `FAILED_PRECONDITION` | `reason` = `ROLLOUT_ACTIVE`, `RELEASE_NEWER_THAN_CONTROLLER`, `RELEASE_BELOW_MIN_AGENT_VERSION`, `RELEASE_NOT_ON_CHANNEL`, `ROLLOUT_STATE`, `ROLLOUT_MODE`, `AGENT_NOT_UPGRADABLE` |
@@ -527,11 +549,31 @@ spec:
 - **Formats** ([D162](14-open-decisions.md#engineering)). An endpoint's `format` is `rpmgr` (the
   default: the envelope above, signed) or a chat format, `discord`, `slack` or `teams`, which
   posts the event as a message the service shows to people, without a signature or `Rpmgr-*`
-  headers. The message has the event's summary as its title; its type, organisation (`instance`
-  for an instance event), actor, subject and time as fields; and an alert (`alert.fire`,
-  `alert.resolve`) coloured red or green where the service supports it: Discord is an embed, Slack
-  a message of text and blocks with a coloured attachment, Teams a workflows webhook with an
-  Adaptive Card. Texts are cut to the limits in
+  headers. The message ([D170](14-open-decisions.md#engineering)) has a readable title
+  per event type (`Agent gw-eu-1 is offline`, `Route web updated`); a one-line summary; the names
+  of the organisation (`instance` for an instance event), the actor and the subject in place of
+  their IDs, which stay in a small context line; for an alert, since when it fired and, when it
+  resolves, how long it lasted; the event's time, shown in the reader's time zone where the service
+  can; and a footer with the instance's trust domain and the rpmgr version. The names are looked
+  up when the message is made, and a lookup that fails leaves the ID. The colour is the severity:
+  critical red, warning amber, info blue, resolved green, audit and other events grey. The
+  subject has a link to its page in the web UI and an **Open in rpmgr** action, built from the
+  controller's `public_url`; without it there is neither. Every text of an event is escaped for
+  the service's markup and no text can mention anyone: Discord is an embed whose
+  `allowed_mentions` parses nothing, Slack a message of Block Kit blocks (header, sections, a
+  context with a `<!date^…>` time and its fallback, a button) in a coloured attachment, with
+  `&`, `<` and `>` escaped, and Teams a workflows webhook with an Adaptive Card 1.5 of full width
+  in a container styled by the severity. **Options** (D170), for a chat format only and refused
+  for `rpmgr`, are checked against the format: `mention`, who an alert's message mentions
+  (Discord `role:<id>` or `user:<id>`, Slack `here`, `subteam:<id>` or `user:<id>`, Teams
+  `user:<UPN or Entra object id>`), and `mention_when`, `never` (the default), `critical` (an
+  alert of a critical kind) or `all` alerts; the mention is made when an alert fires, never on a
+  resolve, and it is the only mention a message can carry, as Discord's `allowed_mentions` names
+  just it. For Discord also `discord_username`, `discord_avatar_url` (`https`) and `thread_name`,
+  which makes each message start a thread in a forum channel. A Discord alert is posted with
+  `?wait=true` and its message ID is stored; the resolve edits that message to green, and posts a
+  new one if Discord answers `404` to the edit. An update that changes the format must leave no
+  option the new format has no use for. Texts are cut to the limits in
   [03](03-connections.md#timeouts-keepalive-and-backoff). A chat endpoint's URL is given in
   `secret_url`, not in `url`: it is write-only and sealed, and `url` shows only its scheme and
   host ([04](04-security.md#webhooks-and-the-egress-guard-phase-2)). `secret_url` is an
@@ -541,7 +583,7 @@ spec:
   `FAILED_PRECONDITION`. An update changes `format` only together with a new `secret_url`
   (from `rpmgr` to a chat format, or between chat formats); a chat endpoint does not become
   `rpmgr`, which is `FAILED_PRECONDITION`. A `429` from a chat service with `Retry-After` or
-  Discord's `retry_after` delays the next attempt, within the bounds in 03 and never faster than the ordinary retries,
+  Discord's `retry_after` or `X-RateLimit-Reset-After` delays the next attempt, within the bounds in 03 and never faster than the ordinary retries,
   and does not count towards the disabling of the endpoint
   ([D143](14-open-decisions.md#engineering)) until the attempt in 03 from which a 429 is a
   failure. The event

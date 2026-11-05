@@ -125,6 +125,11 @@ func CorrectedAt(v time.Time) predicate.DNSRecord {
 	return predicate.DNSRecord(sql.FieldEQ(FieldCorrectedAt, v))
 }
 
+// ReleaseRequested applies equality check predicate on the "release_requested" field. It's identical to ReleaseRequestedEQ.
+func ReleaseRequested(v string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldEQ(FieldReleaseRequested, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.DNSRecord {
 	return predicate.DNSRecord(sql.FieldEQ(FieldOrgID, v))
@@ -828,6 +833,71 @@ func CorrectedAtIsNil() predicate.DNSRecord {
 // CorrectedAtNotNil applies the NotNil predicate on the "corrected_at" field.
 func CorrectedAtNotNil() predicate.DNSRecord {
 	return predicate.DNSRecord(sql.FieldNotNull(FieldCorrectedAt))
+}
+
+// ReleaseRequestedEQ applies the EQ predicate on the "release_requested" field.
+func ReleaseRequestedEQ(v string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldEQ(FieldReleaseRequested, v))
+}
+
+// ReleaseRequestedNEQ applies the NEQ predicate on the "release_requested" field.
+func ReleaseRequestedNEQ(v string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldNEQ(FieldReleaseRequested, v))
+}
+
+// ReleaseRequestedIn applies the In predicate on the "release_requested" field.
+func ReleaseRequestedIn(vs ...string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldIn(FieldReleaseRequested, vs...))
+}
+
+// ReleaseRequestedNotIn applies the NotIn predicate on the "release_requested" field.
+func ReleaseRequestedNotIn(vs ...string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldNotIn(FieldReleaseRequested, vs...))
+}
+
+// ReleaseRequestedGT applies the GT predicate on the "release_requested" field.
+func ReleaseRequestedGT(v string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldGT(FieldReleaseRequested, v))
+}
+
+// ReleaseRequestedGTE applies the GTE predicate on the "release_requested" field.
+func ReleaseRequestedGTE(v string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldGTE(FieldReleaseRequested, v))
+}
+
+// ReleaseRequestedLT applies the LT predicate on the "release_requested" field.
+func ReleaseRequestedLT(v string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldLT(FieldReleaseRequested, v))
+}
+
+// ReleaseRequestedLTE applies the LTE predicate on the "release_requested" field.
+func ReleaseRequestedLTE(v string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldLTE(FieldReleaseRequested, v))
+}
+
+// ReleaseRequestedContains applies the Contains predicate on the "release_requested" field.
+func ReleaseRequestedContains(v string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldContains(FieldReleaseRequested, v))
+}
+
+// ReleaseRequestedHasPrefix applies the HasPrefix predicate on the "release_requested" field.
+func ReleaseRequestedHasPrefix(v string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldHasPrefix(FieldReleaseRequested, v))
+}
+
+// ReleaseRequestedHasSuffix applies the HasSuffix predicate on the "release_requested" field.
+func ReleaseRequestedHasSuffix(v string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldHasSuffix(FieldReleaseRequested, v))
+}
+
+// ReleaseRequestedEqualFold applies the EqualFold predicate on the "release_requested" field.
+func ReleaseRequestedEqualFold(v string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldEqualFold(FieldReleaseRequested, v))
+}
+
+// ReleaseRequestedContainsFold applies the ContainsFold predicate on the "release_requested" field.
+func ReleaseRequestedContainsFold(v string) predicate.DNSRecord {
+	return predicate.DNSRecord(sql.FieldContainsFold(FieldReleaseRequested, v))
 }
 
 // HasZone applies the HasEdge predicate on the "zone" edge.

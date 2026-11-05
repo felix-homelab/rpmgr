@@ -29,10 +29,27 @@ sends at most a bounded number of them per minute
 ## Chat services
 
 An endpoint can post to Discord, Slack or Microsoft Teams instead, so that people see an event
-as a message: the event's summary as the title, and its type, organisation, actor, subject and
-time as fields. An alert that fires is red and one that resolves is green. The event filter, the
-retries, **Deliveries**, **Send test event** and the switching off of a failing endpoint work as
-for any endpoint.
+as a message made for that service. Each message has a readable title such as "Agent gw-eu-1 is
+offline" or "Route web updated", a one-line summary, the names of the organisation, the actor and
+the subject instead of their IDs, a colour for how serious it is (critical red, warning amber,
+info blue, resolved green, audit and other events grey), and a footer with the instance and the
+rpmgr version. An alert that resolves says how long it lasted. When the controller's public URL
+is set, the message links to the subject in the web UI and has an **Open in rpmgr** button.
+Nothing in an event can mention anyone: names and summaries are shown as text, whatever they
+hold. The event filter, the retries, **Deliveries**, **Send test event** and the switching off of
+a failing endpoint work as for any endpoint.
+
+What each service shows:
+
+- **Discord** posts an embed: the title as a link to the subject, the summary as its text, the
+  organisation, subject and alert as short fields, the time in the reader's time zone, and the
+  footer.
+- **Slack** posts a header, the summary, two columns of fields, a line with the time in the
+  reader's time zone, the footer and the **Open in rpmgr** button, inside a bar in the severity's
+  colour. The notification text is the title.
+- **Microsoft Teams** posts an Adaptive Card of full width in a container whose style follows the
+  severity (`attention`, `warning`, `good`, `emphasis`), with the title in the severity's colour,
+  a table of facts and the **Open in rpmgr** action.
 
 1. In the service, make an incoming webhook for the channel and copy its URL. Discord:
    channel settings, Integrations, Webhooks. Slack: an app with Incoming Webhooks. Teams: a
@@ -40,6 +57,22 @@ for any endpoint.
 2. Open **Administration → Webhooks**, choose **New webhook…**, pick the **Format** `Discord`,
    `Slack` or `Microsoft Teams` and paste the URL, or use the command line (see below).
 3. Send a test event and check the channel.
+
+### Mentions and Discord options
+
+An endpoint can mention someone when an alert fires, so that a critical alert gets noticed. Set the
+**mention** and **when**: never (the default), for alerts of a critical kind, or for all alerts.
+The mention is made when the alert fires and never when it resolves, and nothing in an event can
+add one. What you enter depends on the service:
+
+- Discord: `role:<id>` or `user:<id>`, the numeric ID of the role or user.
+- Slack: `here`, `subteam:<id>` for a user group, or `user:<id>` for a user.
+- Teams: `user:` and the user's address (UPN) or Microsoft Entra object ID.
+
+A Discord endpoint can also post under its own **username** and **avatar URL** (`https` only), and
+a **thread name**, which makes every message start a thread in a forum channel. The alert's message
+is edited when it resolves: it turns green and says how long the alert lasted, instead of a second
+message appearing. If you deleted the message in Discord, a new one is posted.
 
 The URL holds the service's token, so rpmgr treats it as a secret: it is stored encrypted, never
 shown again, and appears only as its scheme and host, such as `https://discord.com`, in the API,
@@ -51,7 +84,7 @@ an rpmgr one: make a new endpoint.
 When a service answers that it is rate limiting, rpmgr waits as long as it asks, within the
 limits in [03](../../03-connections.md#timeouts-keepalive-and-backoff), and never faster than
 the ordinary retries, and does not count that as a failure of the endpoint, unless the service
-answers with a rate limit again and again: from the fifth attempt of one event it counts as any failure. Messages longer than a service allows are cut with an ellipsis.
+answers with a rate limit again and again: from the fifth attempt of one event it counts as any failure. Texts longer than a service allows are cut with an ellipsis, so a message is never refused for its size.
 
 ## Rotate the secret
 
@@ -109,7 +142,14 @@ standard input, never from an argument, which the shell history would keep:
 rpmgr create webhook --format slack --url-file slack-url.txt --event 'alert.*'
 rpmgr update webhook --url-file new-slack-url.txt whk_1
 rpmgr update webhook --format discord --url-file discord-url.txt whk_1
+rpmgr update webhook --mention role:123456789012345678 --mention-when critical whk_1
+rpmgr update webhook --discord-username "rpmgr alerts" --thread-name "" whk_1
 ```
+
+The options of [Mentions and Discord options](#mentions-and-discord-options) are
+`--mention`, `--mention-when never|critical|all`, `--discord-username`, `--discord-avatar-url`
+and `--thread-name`. On `update webhook` only a flag that is given changes its field, and an
+empty value, as in `--thread-name ""`, clears it.
 
 `create webhook` and `update webhook --rotate-secret` print the signing secret once, on standard
 output; nothing else shows it, and no command takes a secret as an argument. Capture it with a

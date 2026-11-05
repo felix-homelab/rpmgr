@@ -900,7 +900,7 @@ one page, with a section list beside them that jumps to each section
   list it. The form has a **Format** ([D162](14-open-decisions.md#engineering)): rpmgr's signed
   JSON, or Discord, Slack or Microsoft Teams, whose URL field is write-only: it starts empty, a
   row shows the service's host only, an empty field when editing keeps the stored URL, and a new
-  format needs a new URL. A chat endpoint shows no signing secret and offers no **Rotate secret…**.
+  format needs a new URL. A chat endpoint shows no signing secret and offers no **Rotate secret…**. For a chat format the form also has **Mention** (a role, user group or user, with a hint of what the service takes) and **Mention when** (never, a critical alert fires, any alert fires), and for Discord a user name, an avatar URL and a thread name ([D170](14-open-decisions.md#engineering)); an edit sends only the options that changed, and moving to another service clears Discord's in the same update. **Preview the message** shows, in a part of the page that is loaded when it is first opened, the message the endpoint would post for a sample alert firing, resolving and a change, as the server makes it for the format and options typed so far; it asks again when the form has rested for a moment.
 - **Settings → Webhooks** (Instance Admin, a tab beside PKI, Updates and Users): the instance's
   endpoints as above, which receive instance events and may name a receiver on loopback or a
   private network; and the instance setting `webhook_private_ranges` as a list of ranges, one per
@@ -1017,6 +1017,19 @@ one page, with a section list beside them that jumps to each section
   lacks permission for one zone shows `permission denied` on that zone, with what to do. **Remove**
   keeps the records at the provider. The sidebar links to the page when the controller serves the
   DNS services; until then the page is reachable by its address only.
+- **The zone page** (`/dns/<zone>`, linked from the zone's name on the DNS page and loaded lazily)
+  differs from the mock-up in these ways. The gates are shown and not yet edited there, and there
+  is no **Discard**: a plan is read live and is replaced by the next one. The plan lists what a pass
+  would create (`+`), update (`~`) and delete (`−`), the orphans (`?`), the shadowed wildcards and
+  the conflicts, each conflict with the hint of U4 and, for a foreign address record, **Adopt**.
+  **Enable zone** takes a disabled zone to held, and **Sync now** asks for a pass; both are in the
+  heading. **Approve plan**, **Adopt**, **Release** and **Remove** each ask for a confirmation that
+  names the object and then for a step-up. **Release** offers to keep the record or, for an adopted
+  record, to restore its original content. **Remove the zone** keeps the records at the provider or,
+  after listing the records under the plan's hash, deletes the ones rpmgr owns; the zone then shows
+  `removal pending` until the DNS job has finished. The records table lists the records rpmgr owns
+  and, for Owners and Admins only, the others. An Operator or Viewer sees the owned records and
+  nothing else: no plan, no approval, no foreign records and no actions.
 - **Approve** is bound to the plan's hash. If anything changed since the plan was shown, the new
   plan replaces it and the approval has to be repeated.
 - **Foreign records** are shown only to Owners and Admins, read live from Cloudflare and never
@@ -1024,6 +1037,23 @@ one page, with a section list beside them that jumps to each section
 - **Route detail** shows one DNS line per hostname: `dns_status`, the published records and, for
   `http` routes, the proxy toggle. When the zone does not allow proxied names the toggle is
   disabled and says so.
+  The line appears once the route has a `dns_status`, with the hint of U4 for the status: a
+  `conflict` says to adopt the record or remove it at the provider, an `ambiguous` name links to the
+  DNS names, a `held` one to the zones and a name that is `not_managed` says why, such as a gateway
+  group without a DNS target. A status the UI does not know is shown as it is. The proxy toggle
+  follows with the proxy setting of the route itself.
+- **DNS names** (`/dns-names`, lazily loaded) lists the org's explicit names with their gateway
+  group and TTL, marks wildcards, and lets Owners and Admins add a name with a group picker (a
+  wildcard has `*` as its whole first label) and delete one after a confirmation that names it; the
+  records published for it go with it. Any member may read the list.
+- **Gateway group DNS target.** The group's settings form has a DNS target: none, a CNAME or
+  addresses, one per line. An empty CNAME or address list is refused before anything is sent; the
+  API checks the rest ([15](15-dns.md#publication-rules)).
+- **Overview.** The "Needs attention" card has a DNS area: hostnames with a `conflict`, `ambiguous`,
+  `error` or `rate_limited` status, which any member sees, and, for Owners and Admins, held zones,
+  zones whose provider rate-limits or refuses the token, and records that drifted, each with its
+  hint. An instance that serves no DNS shows nothing there. The sidebar entries come with the slice
+  that makes DNS reachable; until then the pages are reachable by their addresses only.
 
 ## Frontend architecture
 

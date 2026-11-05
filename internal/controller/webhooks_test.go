@@ -59,6 +59,7 @@ type hookEnv struct {
 type received struct {
 	path, id, typ, sig string
 	body               []byte
+	method, query      string
 }
 
 func newHookEnv(t *testing.T, guarded bool) *hookEnv {
@@ -82,7 +83,7 @@ func newHookEnv(t *testing.T, guarded bool) *hookEnv {
 			}
 		}
 		e.got = append(e.got, received{r.URL.Path, r.Header.Get(webhook.HeaderEventID), r.Header.Get(webhook.HeaderEventType),
-			r.Header.Get(webhook.HeaderSignature), b})
+			r.Header.Get(webhook.HeaderSignature), b, r.Method, r.URL.RawQuery})
 		code := e.answer(r.URL.Path, n)
 		reply, replyBody := e.reply.Clone(), e.replyBody
 		e.mu.Unlock()
@@ -102,7 +103,8 @@ func newHookEnv(t *testing.T, guarded bool) *hookEnv {
 		Now: func() time.Time { return e.clock }}
 	e.leases = lease.New(db, "ctn_test", nil)
 	o := controller.WebhookOptions{DB: db, Leases: e.leases, Sealer: sealer, Sender: sender, Now: func() time.Time { return e.clock },
-		Logger: slog.New(slog.NewTextHandler(e.logs, nil))}
+		Logger:   slog.New(slog.NewTextHandler(e.logs, nil)),
+		Instance: webhook.Context{PublicURL: "https://rpmgr.example.com", TrustDomain: "td.test", Version: "1.2.3"}}
 	if !guarded {
 		o = controller.LoopbackWebhooks(o)
 	}

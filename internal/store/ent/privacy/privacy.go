@@ -687,6 +687,30 @@ func (f DNSProviderMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mut
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.DNSProviderMutation", m)
 }
 
+// The DNSRateBudgetQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type DNSRateBudgetQueryRuleFunc func(context.Context, *ent.DNSRateBudgetQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f DNSRateBudgetQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.DNSRateBudgetQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.DNSRateBudgetQuery", q)
+}
+
+// The DNSRateBudgetMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type DNSRateBudgetMutationRuleFunc func(context.Context, *ent.DNSRateBudgetMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f DNSRateBudgetMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.DNSRateBudgetMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.DNSRateBudgetMutation", m)
+}
+
 // The DNSRecordQueryRuleFunc type is an adapter to allow the use of ordinary
 // functions as a query rule.
 type DNSRecordQueryRuleFunc func(context.Context, *ent.DNSRecordQuery) error
@@ -1887,6 +1911,30 @@ func (f WebhookDeliveryMutationRuleFunc) EvalMutation(ctx context.Context, m ent
 	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.WebhookDeliveryMutation", m)
 }
 
+// The WebhookMessageQueryRuleFunc type is an adapter to allow the use of ordinary
+// functions as a query rule.
+type WebhookMessageQueryRuleFunc func(context.Context, *ent.WebhookMessageQuery) error
+
+// EvalQuery return f(ctx, q).
+func (f WebhookMessageQueryRuleFunc) EvalQuery(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.WebhookMessageQuery); ok {
+		return f(ctx, q)
+	}
+	return Denyf("ent/privacy: unexpected query type %T, expect *ent.WebhookMessageQuery", q)
+}
+
+// The WebhookMessageMutationRuleFunc type is an adapter to allow the use of ordinary
+// functions as a mutation rule.
+type WebhookMessageMutationRuleFunc func(context.Context, *ent.WebhookMessageMutation) error
+
+// EvalMutation calls f(ctx, m).
+func (f WebhookMessageMutationRuleFunc) EvalMutation(ctx context.Context, m ent.Mutation) error {
+	if m, ok := m.(*ent.WebhookMessageMutation); ok {
+		return f(ctx, m)
+	}
+	return Denyf("ent/privacy: unexpected mutation type %T, expect *ent.WebhookMessageMutation", m)
+}
+
 type (
 	// Filter is the interface that wraps the Where function
 	// for filtering nodes in queries and mutations.
@@ -1969,6 +2017,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 	case *ent.DNSNameStatusQuery:
 		return q.Filter(), nil
 	case *ent.DNSProviderQuery:
+		return q.Filter(), nil
+	case *ent.DNSRateBudgetQuery:
 		return q.Filter(), nil
 	case *ent.DNSRecordQuery:
 		return q.Filter(), nil
@@ -2070,6 +2120,8 @@ func queryFilter(q ent.Query) (Filter, error) {
 		return q.Filter(), nil
 	case *ent.WebhookDeliveryQuery:
 		return q.Filter(), nil
+	case *ent.WebhookMessageQuery:
+		return q.Filter(), nil
 	default:
 		return nil, Denyf("ent/privacy: unexpected query type %T for query filter", q)
 	}
@@ -2124,6 +2176,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.DNSNameStatusMutation:
 		return m.Filter(), nil
 	case *ent.DNSProviderMutation:
+		return m.Filter(), nil
+	case *ent.DNSRateBudgetMutation:
 		return m.Filter(), nil
 	case *ent.DNSRecordMutation:
 		return m.Filter(), nil
@@ -2224,6 +2278,8 @@ func mutationFilter(m ent.Mutation) (Filter, error) {
 	case *ent.WebhookMutation:
 		return m.Filter(), nil
 	case *ent.WebhookDeliveryMutation:
+		return m.Filter(), nil
+	case *ent.WebhookMessageMutation:
 		return m.Filter(), nil
 	default:
 		return nil, Denyf("ent/privacy: unexpected mutation type %T for mutation filter", m)

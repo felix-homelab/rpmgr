@@ -10,6 +10,16 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+### Changed
+
+- The messages of a Discord, Slack or Microsoft Teams webhook endpoint use what each service
+  offers: a readable title such as "Agent gw-eu-1 is offline", the names of the organisation and
+  the actor, severity colours (critical red, warning amber, info blue, resolved green, audit
+  grey), how long an alert lasted, a footer with the instance and the rpmgr version, the time in
+  the reader's time zone, and, when the controller's public URL is set, a link to the subject
+  and an **Open in rpmgr** button. Discord posts an embed, Slack Block Kit blocks and Teams an
+  Adaptive Card 1.5. No text of an event can mention anyone. (#1102)
+
 ### Added
 
 - A domain claim that is nested under, or contains, a verified domain of another organisation
@@ -28,6 +38,17 @@ Changes to the design documents are not recorded here: see the git history and t
   (`rpmgr update settings --instance --set cloudflare_ip_refresh=false`); an alert fires when the
   list is old while a route is proxied. A gateway that predates the switch is not sent a proxied
   route. (#1096)
+- The web form and the command line of a chat webhook endpoint have the mention and the Discord
+  options: **Mention**, **Mention when**, user name, avatar URL and thread name in the form, and
+  `--mention`, `--mention-when`, `--discord-username`, `--discord-avatar-url` and `--thread-name`
+  on `create webhook` and `update webhook`. **Preview the message** in the form shows the message
+  the endpoint would post, for an alert firing and resolving and for a change, as the server makes
+  it. (#1102)
+- A Discord, Slack or Microsoft Teams webhook endpoint can mention a role, user group or user when
+  an alert fires: set `mention` and `mention_when` (never, critical alerts or all alerts), through
+  the API's fields of the same names. A Discord endpoint also takes a username, an avatar URL and a
+  thread name, and a Discord alert's message is edited to green when the alert resolves, instead
+  of a second message; Discord's rate-limit header is honoured. (#1102)
 - A webhook endpoint has a format: `rpmgr`, as before, or `discord`, `slack` or `teams`, which posts
   each event as a message people read in the chat service, with the summary as the title, the
   event's type, organisation, actor, subject and time as fields, and an alert red when it fires

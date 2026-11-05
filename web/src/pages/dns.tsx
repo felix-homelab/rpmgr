@@ -5,6 +5,7 @@ import { createClient } from "@connectrpc/connect";
 import { useMutation, useTransport } from "@connectrpc/connect-query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cloud, Plus } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "@/components/empty-state";
@@ -348,8 +349,9 @@ function ZoneRow({ zone: z }: { zone: DnsZone }) {
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div className="grid gap-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium">{z.name}</span>
+            <Link to="/dns/$zoneId" params={{ zoneId: z.id }} className="font-medium hover:underline">{z.name}</Link>
             <Status look={sync}>{t(`dns.sync.${syncKey}`)}</Status>
+            {z.removalPending && <Status look="warn">{t("dnsZone.removalPending")}</Status>}
             <Status look={access}>{t(`dns.access.${accessKey}`)}</Status>
           </div>
           <div className="flex flex-wrap gap-x-3 text-muted-foreground">

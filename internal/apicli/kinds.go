@@ -98,6 +98,8 @@ var Kinds = []Kind{
 		Columns: []string{"status", "type"}, NoGet: true},
 	{Name: "zone", Prefix: "dnz_", Service: "rpmgr.v1.DnsZoneService", Resource: "DnsZone", Stem: "Zone", Plural: "Zones", IDField: "dns_zone_id",
 		Columns: []string{"syncState", "heldReason", "providerStatus", "lastSyncedTime"}},
+	{Name: "dns-record", Prefix: "dnr_", Service: "rpmgr.v1.DnsZoneService", Resource: "DnsRecord", Plural: "ZoneRecords", Parent: "dns_zone_id",
+		Columns: []string{"type", "content", "ttl", "state", "providerRecordId"}, NoGet: true},
 	{Name: "dns-name", Prefix: "dnn_", Service: "rpmgr.v1.DnsNameService", Resource: "DnsName", Plural: "DnsNames", IDField: "dns_name_id",
 		Columns: []string{"gatewayGroupId", "ttl"}, Delete: true},
 	{Name: "release", Prefix: "rel_", Service: "rpmgr.v1.ReleaseService", Resource: "Release", Plural: "Releases",

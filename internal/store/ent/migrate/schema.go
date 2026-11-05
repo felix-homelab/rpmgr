@@ -760,6 +760,43 @@ var (
 			},
 		},
 	}
+	// DNSRateBudgetsColumns holds the columns for the "dns_rate_budgets" table.
+	DNSRateBudgetsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "window_started_at", Type: field.TypeTime},
+		{Name: "used", Type: field.TypeInt, Default: 0},
+		{Name: "dns01_used", Type: field.TypeInt, Default: 0},
+		{Name: "blocked_until", Type: field.TypeTime, Nullable: true},
+		{Name: "dns_provider_id", Type: field.TypeString},
+	}
+	// DNSRateBudgetsTable holds the schema information for the "dns_rate_budgets" table.
+	DNSRateBudgetsTable = &schema.Table{
+		Name:       "dns_rate_budgets",
+		Columns:    DNSRateBudgetsColumns,
+		PrimaryKey: []*schema.Column{DNSRateBudgetsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "dns_rate_budgets_dns_providers_dns_provider",
+				Columns:    []*schema.Column{DNSRateBudgetsColumns[7]},
+				RefColumns: []*schema.Column{DNSProvidersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "dnsratebudget_org_id_id",
+				Unique:  true,
+				Columns: []*schema.Column{DNSRateBudgetsColumns[1], DNSRateBudgetsColumns[0]},
+			},
+			{
+				Name:    "dnsratebudget_dns_provider_id",
+				Unique:  true,
+				Columns: []*schema.Column{DNSRateBudgetsColumns[7]},
+			},
+		},
+	}
 	// DNSRecordsColumns holds the columns for the "dns_records" table.
 	DNSRecordsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -776,6 +813,7 @@ var (
 		{Name: "adopted_at", Type: field.TypeTime, Nullable: true},
 		{Name: "last_synced_at", Type: field.TypeTime, Nullable: true},
 		{Name: "corrected_at", Type: field.TypeTime, Nullable: true},
+		{Name: "release_requested", Type: field.TypeString, Size: 8, Default: ""},
 		{Name: "dns_zone_id", Type: field.TypeString},
 	}
 	// DNSRecordsTable holds the schema information for the "dns_records" table.
@@ -786,7 +824,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "dns_records_dns_zones_zone",
-				Columns:    []*schema.Column{DNSRecordsColumns[14]},
+				Columns:    []*schema.Column{DNSRecordsColumns[15]},
 				RefColumns: []*schema.Column{DNSZonesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -800,12 +838,12 @@ var (
 			{
 				Name:    "dnsrecord_dns_zone_id_provider_record_id",
 				Unique:  true,
-				Columns: []*schema.Column{DNSRecordsColumns[14], DNSRecordsColumns[7]},
+				Columns: []*schema.Column{DNSRecordsColumns[15], DNSRecordsColumns[7]},
 			},
 			{
 				Name:    "dnsrecord_dns_zone_id_name",
 				Unique:  false,
-				Columns: []*schema.Column{DNSRecordsColumns[14], DNSRecordsColumns[2]},
+				Columns: []*schema.Column{DNSRecordsColumns[15], DNSRecordsColumns[2]},
 			},
 		},
 	}
@@ -818,6 +856,8 @@ var (
 		{Name: "name", Type: field.TypeString, Size: 253},
 		{Name: "sync_state", Type: field.TypeEnum, Enums: []string{"active", "held", "disabled"}, Default: "held"},
 		{Name: "held_reason", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "pending_plan", Type: field.TypeBytes, Nullable: true},
+		{Name: "pending_plan_hash", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "provider_status", Type: field.TypeEnum, Enums: []string{"ok", "permission_denied", "unreachable", "rate_limited"}, Default: "ok"},
 		{Name: "publish_route_hostnames", Type: field.TypeBool, Default: true},
 		{Name: "allow_proxied", Type: field.TypeBool, Default: false},
@@ -825,6 +865,8 @@ var (
 		{Name: "delete_threshold", Type: field.TypeInt, Default: 10},
 		{Name: "default_ttl", Type: field.TypeInt, Default: 300},
 		{Name: "last_synced_at", Type: field.TypeTime, Nullable: true},
+		{Name: "removal_requested", Type: field.TypeBool, Default: false},
+		{Name: "sync_requested_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "dns_provider_id", Type: field.TypeString},
 	}
@@ -836,7 +878,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "dns_zones_dns_providers_dns_provider",
-				Columns:    []*schema.Column{DNSZonesColumns[15]},
+				Columns:    []*schema.Column{DNSZonesColumns[19]},
 				RefColumns: []*schema.Column{DNSProvidersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -855,7 +897,7 @@ var (
 			{
 				Name:    "dnszone_dns_provider_id_provider_zone_id",
 				Unique:  true,
-				Columns: []*schema.Column{DNSZonesColumns[15], DNSZonesColumns[3]},
+				Columns: []*schema.Column{DNSZonesColumns[19], DNSZonesColumns[3]},
 			},
 		},
 	}
@@ -2435,6 +2477,11 @@ var (
 		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "format", Type: field.TypeEnum, Enums: []string{"rpmgr", "discord", "slack", "teams"}, Default: "rpmgr"},
 		{Name: "url_enc", Type: field.TypeBytes, Nullable: true},
+		{Name: "mention", Type: field.TypeString, Default: ""},
+		{Name: "mention_when", Type: field.TypeEnum, Enums: []string{"never", "critical", "all"}, Default: "never"},
+		{Name: "discord_username", Type: field.TypeString, Default: ""},
+		{Name: "discord_avatar_url", Type: field.TypeString, Default: ""},
+		{Name: "thread_name", Type: field.TypeString, Default: ""},
 	}
 	// WebhooksTable holds the schema information for the "webhooks" table.
 	WebhooksTable = &schema.Table{
@@ -2490,6 +2537,34 @@ var (
 			},
 		},
 	}
+	// WebhookMessagesColumns holds the columns for the "webhook_messages" table.
+	WebhookMessagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString},
+		{Name: "webhook_id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "alert_key", Type: field.TypeString},
+		{Name: "message_id", Type: field.TypeString},
+		{Name: "thread_id", Type: field.TypeString, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// WebhookMessagesTable holds the schema information for the "webhook_messages" table.
+	WebhookMessagesTable = &schema.Table{
+		Name:       "webhook_messages",
+		Columns:    WebhookMessagesColumns,
+		PrimaryKey: []*schema.Column{WebhookMessagesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "webhookmessage_webhook_id_alert_key",
+				Unique:  true,
+				Columns: []*schema.Column{WebhookMessagesColumns[1], WebhookMessagesColumns[3]},
+			},
+			{
+				Name:    "webhookmessage_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{WebhookMessagesColumns[6]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AcmeStorageTable,
@@ -2516,6 +2591,7 @@ var (
 		DNSNamesTable,
 		DNSNameStatusTable,
 		DNSProvidersTable,
+		DNSRateBudgetsTable,
 		DNSRecordsTable,
 		DNSZonesTable,
 		DataSessionsTable,
@@ -2566,6 +2642,7 @@ var (
 		UsersTable,
 		WebhooksTable,
 		WebhookDeliveriesTable,
+		WebhookMessagesTable,
 	}
 )
 
@@ -2644,6 +2721,10 @@ func init() {
 	}
 	DNSProvidersTable.Annotation = &entsql.Annotation{
 		Table: "dns_providers",
+	}
+	DNSRateBudgetsTable.ForeignKeys[0].RefTable = DNSProvidersTable
+	DNSRateBudgetsTable.Annotation = &entsql.Annotation{
+		Table: "dns_rate_budgets",
 	}
 	DNSRecordsTable.ForeignKeys[0].RefTable = DNSZonesTable
 	DNSRecordsTable.Annotation = &entsql.Annotation{
@@ -2797,5 +2878,8 @@ func init() {
 	}
 	WebhookDeliveriesTable.Annotation = &entsql.Annotation{
 		Table: "webhook_deliveries",
+	}
+	WebhookMessagesTable.Annotation = &entsql.Annotation{
+		Table: "webhook_messages",
 	}
 }

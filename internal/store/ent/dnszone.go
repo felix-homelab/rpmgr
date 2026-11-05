@@ -32,6 +32,10 @@ type DNSZone struct {
 	SyncState dnszone.SyncState `json:"sync_state,omitempty"`
 	// HeldReason holds the value of the "held_reason" field.
 	HeldReason string `json:"held_reason,omitempty"`
+	// PendingPlan holds the value of the "pending_plan" field.
+	PendingPlan []byte `json:"pending_plan,omitempty"`
+	// PendingPlanHash holds the value of the "pending_plan_hash" field.
+	PendingPlanHash string `json:"pending_plan_hash,omitempty"`
 	// ProviderStatus holds the value of the "provider_status" field.
 	ProviderStatus dnszone.ProviderStatus `json:"provider_status,omitempty"`
 	// PublishRouteHostnames holds the value of the "publish_route_hostnames" field.
@@ -46,6 +50,10 @@ type DNSZone struct {
 	DefaultTTL int `json:"default_ttl,omitempty"`
 	// LastSyncedAt holds the value of the "last_synced_at" field.
 	LastSyncedAt *time.Time `json:"last_synced_at,omitempty"`
+	// RemovalRequested holds the value of the "removal_requested" field.
+	RemovalRequested bool `json:"removal_requested,omitempty"`
+	// SyncRequestedAt holds the value of the "sync_requested_at" field.
+	SyncRequestedAt *time.Time `json:"sync_requested_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -79,13 +87,15 @@ func (*DNSZone) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case dnszone.FieldPublishRouteHostnames, dnszone.FieldAllowProxied, dnszone.FieldAllowWildcards:
+		case dnszone.FieldPendingPlan:
+			values[i] = new([]byte)
+		case dnszone.FieldPublishRouteHostnames, dnszone.FieldAllowProxied, dnszone.FieldAllowWildcards, dnszone.FieldRemovalRequested:
 			values[i] = new(sql.NullBool)
 		case dnszone.FieldVersion, dnszone.FieldDeleteThreshold, dnszone.FieldDefaultTTL:
 			values[i] = new(sql.NullInt64)
-		case dnszone.FieldID, dnszone.FieldOrgID, dnszone.FieldDNSProviderID, dnszone.FieldProviderZoneID, dnszone.FieldName, dnszone.FieldSyncState, dnszone.FieldHeldReason, dnszone.FieldProviderStatus:
+		case dnszone.FieldID, dnszone.FieldOrgID, dnszone.FieldDNSProviderID, dnszone.FieldProviderZoneID, dnszone.FieldName, dnszone.FieldSyncState, dnszone.FieldHeldReason, dnszone.FieldPendingPlanHash, dnszone.FieldProviderStatus:
 			values[i] = new(sql.NullString)
-		case dnszone.FieldLastSyncedAt, dnszone.FieldCreatedAt:
+		case dnszone.FieldLastSyncedAt, dnszone.FieldSyncRequestedAt, dnszone.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -150,6 +160,18 @@ func (_m *DNSZone) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.HeldReason = value.String
 			}
+		case dnszone.FieldPendingPlan:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field pending_plan", values[i])
+			} else if value != nil {
+				_m.PendingPlan = *value
+			}
+		case dnszone.FieldPendingPlanHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field pending_plan_hash", values[i])
+			} else if value.Valid {
+				_m.PendingPlanHash = value.String
+			}
 		case dnszone.FieldProviderStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field provider_status", values[i])
@@ -192,6 +214,19 @@ func (_m *DNSZone) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.LastSyncedAt = new(time.Time)
 				*_m.LastSyncedAt = value.Time
+			}
+		case dnszone.FieldRemovalRequested:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field removal_requested", values[i])
+			} else if value.Valid {
+				_m.RemovalRequested = value.Bool
+			}
+		case dnszone.FieldSyncRequestedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field sync_requested_at", values[i])
+			} else if value.Valid {
+				_m.SyncRequestedAt = new(time.Time)
+				*_m.SyncRequestedAt = value.Time
 			}
 		case dnszone.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -261,6 +296,12 @@ func (_m *DNSZone) String() string {
 	builder.WriteString("held_reason=")
 	builder.WriteString(_m.HeldReason)
 	builder.WriteString(", ")
+	builder.WriteString("pending_plan=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PendingPlan))
+	builder.WriteString(", ")
+	builder.WriteString("pending_plan_hash=")
+	builder.WriteString(_m.PendingPlanHash)
+	builder.WriteString(", ")
 	builder.WriteString("provider_status=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ProviderStatus))
 	builder.WriteString(", ")
@@ -281,6 +322,14 @@ func (_m *DNSZone) String() string {
 	builder.WriteString(", ")
 	if v := _m.LastSyncedAt; v != nil {
 		builder.WriteString("last_synced_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("removal_requested=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RemovalRequested))
+	builder.WriteString(", ")
+	if v := _m.SyncRequestedAt; v != nil {
+		builder.WriteString("sync_requested_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")

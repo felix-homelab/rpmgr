@@ -95,6 +95,16 @@ func HeldReason(v string) predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldEQ(FieldHeldReason, v))
 }
 
+// PendingPlan applies equality check predicate on the "pending_plan" field. It's identical to PendingPlanEQ.
+func PendingPlan(v []byte) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldPendingPlan, v))
+}
+
+// PendingPlanHash applies equality check predicate on the "pending_plan_hash" field. It's identical to PendingPlanHashEQ.
+func PendingPlanHash(v string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldPendingPlanHash, v))
+}
+
 // PublishRouteHostnames applies equality check predicate on the "publish_route_hostnames" field. It's identical to PublishRouteHostnamesEQ.
 func PublishRouteHostnames(v bool) predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldEQ(FieldPublishRouteHostnames, v))
@@ -123,6 +133,16 @@ func DefaultTTL(v int) predicate.DNSZone {
 // LastSyncedAt applies equality check predicate on the "last_synced_at" field. It's identical to LastSyncedAtEQ.
 func LastSyncedAt(v time.Time) predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldEQ(FieldLastSyncedAt, v))
+}
+
+// RemovalRequested applies equality check predicate on the "removal_requested" field. It's identical to RemovalRequestedEQ.
+func RemovalRequested(v bool) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldRemovalRequested, v))
+}
+
+// SyncRequestedAt applies equality check predicate on the "sync_requested_at" field. It's identical to SyncRequestedAtEQ.
+func SyncRequestedAt(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldSyncRequestedAt, v))
 }
 
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
@@ -515,6 +535,121 @@ func HeldReasonContainsFold(v string) predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldContainsFold(FieldHeldReason, v))
 }
 
+// PendingPlanEQ applies the EQ predicate on the "pending_plan" field.
+func PendingPlanEQ(v []byte) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldPendingPlan, v))
+}
+
+// PendingPlanNEQ applies the NEQ predicate on the "pending_plan" field.
+func PendingPlanNEQ(v []byte) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNEQ(FieldPendingPlan, v))
+}
+
+// PendingPlanIn applies the In predicate on the "pending_plan" field.
+func PendingPlanIn(vs ...[]byte) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldIn(FieldPendingPlan, vs...))
+}
+
+// PendingPlanNotIn applies the NotIn predicate on the "pending_plan" field.
+func PendingPlanNotIn(vs ...[]byte) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNotIn(FieldPendingPlan, vs...))
+}
+
+// PendingPlanGT applies the GT predicate on the "pending_plan" field.
+func PendingPlanGT(v []byte) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldGT(FieldPendingPlan, v))
+}
+
+// PendingPlanGTE applies the GTE predicate on the "pending_plan" field.
+func PendingPlanGTE(v []byte) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldGTE(FieldPendingPlan, v))
+}
+
+// PendingPlanLT applies the LT predicate on the "pending_plan" field.
+func PendingPlanLT(v []byte) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldLT(FieldPendingPlan, v))
+}
+
+// PendingPlanLTE applies the LTE predicate on the "pending_plan" field.
+func PendingPlanLTE(v []byte) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldLTE(FieldPendingPlan, v))
+}
+
+// PendingPlanIsNil applies the IsNil predicate on the "pending_plan" field.
+func PendingPlanIsNil() predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldIsNull(FieldPendingPlan))
+}
+
+// PendingPlanNotNil applies the NotNil predicate on the "pending_plan" field.
+func PendingPlanNotNil() predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNotNull(FieldPendingPlan))
+}
+
+// PendingPlanHashEQ applies the EQ predicate on the "pending_plan_hash" field.
+func PendingPlanHashEQ(v string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldPendingPlanHash, v))
+}
+
+// PendingPlanHashNEQ applies the NEQ predicate on the "pending_plan_hash" field.
+func PendingPlanHashNEQ(v string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNEQ(FieldPendingPlanHash, v))
+}
+
+// PendingPlanHashIn applies the In predicate on the "pending_plan_hash" field.
+func PendingPlanHashIn(vs ...string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldIn(FieldPendingPlanHash, vs...))
+}
+
+// PendingPlanHashNotIn applies the NotIn predicate on the "pending_plan_hash" field.
+func PendingPlanHashNotIn(vs ...string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNotIn(FieldPendingPlanHash, vs...))
+}
+
+// PendingPlanHashGT applies the GT predicate on the "pending_plan_hash" field.
+func PendingPlanHashGT(v string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldGT(FieldPendingPlanHash, v))
+}
+
+// PendingPlanHashGTE applies the GTE predicate on the "pending_plan_hash" field.
+func PendingPlanHashGTE(v string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldGTE(FieldPendingPlanHash, v))
+}
+
+// PendingPlanHashLT applies the LT predicate on the "pending_plan_hash" field.
+func PendingPlanHashLT(v string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldLT(FieldPendingPlanHash, v))
+}
+
+// PendingPlanHashLTE applies the LTE predicate on the "pending_plan_hash" field.
+func PendingPlanHashLTE(v string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldLTE(FieldPendingPlanHash, v))
+}
+
+// PendingPlanHashContains applies the Contains predicate on the "pending_plan_hash" field.
+func PendingPlanHashContains(v string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldContains(FieldPendingPlanHash, v))
+}
+
+// PendingPlanHashHasPrefix applies the HasPrefix predicate on the "pending_plan_hash" field.
+func PendingPlanHashHasPrefix(v string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldHasPrefix(FieldPendingPlanHash, v))
+}
+
+// PendingPlanHashHasSuffix applies the HasSuffix predicate on the "pending_plan_hash" field.
+func PendingPlanHashHasSuffix(v string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldHasSuffix(FieldPendingPlanHash, v))
+}
+
+// PendingPlanHashEqualFold applies the EqualFold predicate on the "pending_plan_hash" field.
+func PendingPlanHashEqualFold(v string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEqualFold(FieldPendingPlanHash, v))
+}
+
+// PendingPlanHashContainsFold applies the ContainsFold predicate on the "pending_plan_hash" field.
+func PendingPlanHashContainsFold(v string) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldContainsFold(FieldPendingPlanHash, v))
+}
+
 // ProviderStatusEQ applies the EQ predicate on the "provider_status" field.
 func ProviderStatusEQ(v ProviderStatus) predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldEQ(FieldProviderStatus, v))
@@ -693,6 +828,66 @@ func LastSyncedAtIsNil() predicate.DNSZone {
 // LastSyncedAtNotNil applies the NotNil predicate on the "last_synced_at" field.
 func LastSyncedAtNotNil() predicate.DNSZone {
 	return predicate.DNSZone(sql.FieldNotNull(FieldLastSyncedAt))
+}
+
+// RemovalRequestedEQ applies the EQ predicate on the "removal_requested" field.
+func RemovalRequestedEQ(v bool) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldRemovalRequested, v))
+}
+
+// RemovalRequestedNEQ applies the NEQ predicate on the "removal_requested" field.
+func RemovalRequestedNEQ(v bool) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNEQ(FieldRemovalRequested, v))
+}
+
+// SyncRequestedAtEQ applies the EQ predicate on the "sync_requested_at" field.
+func SyncRequestedAtEQ(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldEQ(FieldSyncRequestedAt, v))
+}
+
+// SyncRequestedAtNEQ applies the NEQ predicate on the "sync_requested_at" field.
+func SyncRequestedAtNEQ(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNEQ(FieldSyncRequestedAt, v))
+}
+
+// SyncRequestedAtIn applies the In predicate on the "sync_requested_at" field.
+func SyncRequestedAtIn(vs ...time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldIn(FieldSyncRequestedAt, vs...))
+}
+
+// SyncRequestedAtNotIn applies the NotIn predicate on the "sync_requested_at" field.
+func SyncRequestedAtNotIn(vs ...time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNotIn(FieldSyncRequestedAt, vs...))
+}
+
+// SyncRequestedAtGT applies the GT predicate on the "sync_requested_at" field.
+func SyncRequestedAtGT(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldGT(FieldSyncRequestedAt, v))
+}
+
+// SyncRequestedAtGTE applies the GTE predicate on the "sync_requested_at" field.
+func SyncRequestedAtGTE(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldGTE(FieldSyncRequestedAt, v))
+}
+
+// SyncRequestedAtLT applies the LT predicate on the "sync_requested_at" field.
+func SyncRequestedAtLT(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldLT(FieldSyncRequestedAt, v))
+}
+
+// SyncRequestedAtLTE applies the LTE predicate on the "sync_requested_at" field.
+func SyncRequestedAtLTE(v time.Time) predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldLTE(FieldSyncRequestedAt, v))
+}
+
+// SyncRequestedAtIsNil applies the IsNil predicate on the "sync_requested_at" field.
+func SyncRequestedAtIsNil() predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldIsNull(FieldSyncRequestedAt))
+}
+
+// SyncRequestedAtNotNil applies the NotNil predicate on the "sync_requested_at" field.
+func SyncRequestedAtNotNil() predicate.DNSZone {
+	return predicate.DNSZone(sql.FieldNotNull(FieldSyncRequestedAt))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

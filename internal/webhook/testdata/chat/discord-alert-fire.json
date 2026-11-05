@@ -5,35 +5,30 @@
   "embeds": [
     {
       "color": 15548997,
+      "description": "Firing since 2026-11-02 09:30:00 UTC.",
       "fields": [
         {
           "inline": true,
-          "name": "Type",
-          "value": "alert.fire"
-        },
-        {
-          "inline": true,
           "name": "Organisation",
-          "value": "org\\_1"
-        },
-        {
-          "inline": true,
-          "name": "Actor",
-          "value": "system"
+          "value": "Acme"
         },
         {
           "inline": true,
           "name": "Subject",
-          "value": "agent gw1 \\(gw\\_1\\)"
+          "value": "agent gw1"
         },
         {
           "inline": true,
-          "name": "Time",
-          "value": "2026-11-02T09:30:00Z"
+          "name": "Alert",
+          "value": "agent\\_offline"
         }
       ],
+      "footer": {
+        "text": "td.example · rpmgr 0.4.0 · org\\_1 · gw\\_1 · evt\\_1"
+      },
       "timestamp": "2026-11-02T09:30:00Z",
-      "title": "agent\\_offline: Agent offline fires, gw1"
+      "title": "Agent gw1 is offline",
+      "url": "https://rpmgr.example.com/gateways"
     }
   ]
 }

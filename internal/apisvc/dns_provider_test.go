@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +22,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/dns"
+	"github.com/felix-homelab/rpmgr/internal/dns/budget"
 	"github.com/felix-homelab/rpmgr/internal/dns/cloudflare"
 	"github.com/felix-homelab/rpmgr/internal/dns/providers"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
@@ -41,11 +43,13 @@ const (
 // fakeDNS is the provider side of DnsProviderService: it knows tokens, and answers as Cloudflare
 // would for each. dial is the service's Dialer.
 type fakeDNS struct {
-	mu      sync.Mutex
-	tokens  map[string]*fakeDNSToken
-	zones   []dns.Zone
-	records []dns.Record // what ListRecords returns for every zone
-	dialed  []string     // the token of each client made
+	mu        sync.Mutex
+	tokens    map[string]*fakeDNSToken
+	zones     []dns.Zone
+	records   []dns.Record // what ListRecords returns for every zone
+	dialed    []string     // the token of each client made
+	batches   []dns.Batch  // what Apply was sent
+	failApply error        // what Apply answers instead, if set
 }
 
 type fakeDNSToken struct {
@@ -130,8 +134,34 @@ func (p fakeProvider) ListRecords(context.Context, string) ([]dns.Record, error)
 	return append([]dns.Record(nil), p.f.records...), nil
 }
 
-func (fakeProvider) Apply(context.Context, string, dns.Batch) error { return nil }
-func (fakeProvider) Caps() dns.Capabilities                         { return dns.Capabilities{} }
+// Apply patches the records ListRecords returns, and remembers what it was sent; it refuses with
+// the error of the token, like every other call.
+func (p fakeProvider) Apply(_ context.Context, _ string, b dns.Batch) error {
+	if _, err := p.token(); err != nil {
+		return err
+	}
+	p.f.mu.Lock()
+	defer p.f.mu.Unlock()
+	if p.f.failApply != nil {
+		return p.f.failApply
+	}
+	p.f.batches = append(p.f.batches, b)
+	deleted := map[string]bool{}
+	for _, id := range b.Deletes {
+		deleted[id] = true
+	}
+	p.f.records = slices.DeleteFunc(p.f.records, func(r dns.Record) bool { return deleted[r.ID] })
+	for _, r := range b.Patches {
+		for i := range p.f.records {
+			if p.f.records[i].ID == r.ID {
+				p.f.records[i] = r
+			}
+		}
+	}
+	return nil
+}
+
+func (fakeProvider) Caps() dns.Capabilities { return dns.Capabilities{} }
 
 func connectProvider(b *browser, org, name, tok, account string) (*rpmgrv1.DnsProvider, error) {
 	r, err := b.dnsp.ConnectDnsProvider(context.Background(), connect.NewRequest(&rpmgrv1.ConnectDnsProviderRequest{OrgId: org,
@@ -648,6 +678,10 @@ func TestDnsProviders_Delete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The provider has taken requests, so its budget row exists.
+	if err := e.dnsp.Budget.Take(e.sys, p.GetId(), budget.Job); err != nil {
+		t.Fatal(err)
+	}
 	del := func(etag string) error {
 		_, err := ada.dnsp.DeleteDnsProvider(ctx, connect.NewRequest(&rpmgrv1.DeleteDnsProviderRequest{DnsProviderId: p.GetId(), Etag: etag}))
 		return err
@@ -664,6 +698,9 @@ func TestDnsProviders_Delete(t *testing.T) {
 	}
 	if n := e.db.Client().DNSProvider.Query().CountX(e.sys); n != 0 {
 		t.Error("the provider is still there")
+	}
+	if n := e.db.Client().DNSRateBudget.Query().CountX(e.sys); n != 0 {
+		t.Errorf("%d rate budgets outlive the provider", n)
 	}
 	if n := e.db.Client().SecretMeta.Query().Where(secretmeta.TableName("dns_providers")).CountX(e.sys); n != 0 {
 		t.Errorf("%d secrets_meta rows outlive the provider", n)
@@ -720,6 +757,10 @@ func TestDnsProviders_ListZones(t *testing.T) {
 	}
 	if _, err := ada.dnsp.ListProviderZones(ctx, connect.NewRequest(&rpmgrv1.ListProviderZonesRequest{DnsProviderId: "dnp_missing"})); code(err) != connect.CodeNotFound {
 		t.Errorf("a missing provider: %v", err)
+	}
+	// A 429 of the provider blocks the provider's budget for the DNS job's replicas as well.
+	if st, err := e.dnsp.Budget.Status(e.sys, p.GetId()); err != nil || st.Blocked != time.Minute {
+		t.Errorf("the 429 blocks the budget for %v, %v; want a minute", st.Blocked, err)
 	}
 }
 

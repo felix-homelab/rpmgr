@@ -63,18 +63,21 @@ func apiCommands() []*cli.Command {
 	add(logsCommands())
 	add(webhookCommands())
 	add(dnsCommands())
+	add(planCommands())
 	out := []*cli.Command{getCommand(), listCommand(), deleteCommand(), auditCommands()}
 	for _, v := range []struct{ verb, summary string }{
 		{"create", "create a resource of the public API"}, {"update", "change a resource of the public API"},
-		{"enable", "serve a resource again"}, {"disable", "stop serving a resource, keeping its configuration"},
+		{"enable", "serve a resource again, or move a disabled DNS zone to held"}, {"disable", "stop serving a resource, keeping its configuration"},
 		{"drain", "stop a gateway taking new connections"}, {"decommission", "take an agent out of service for good"},
 		{"revoke", "revoke a credential"}, {"set", "set an org's limit"}, {"preview", "show what a change would do, saving nothing"},
-		{"verify", "check a proof now"}, {"check", "check for new releases now"}, {"trust", "trust something without a proof"}, {"approve", "approve a domain claim that is held for approval"}, {"upload", "upload a file to the controller"},
+		{"verify", "check a proof now"}, {"check", "check for new releases now"}, {"trust", "trust something without a proof"}, {"approve", "approve a domain claim that is held for approval, or the plan of a held DNS zone"}, {"upload", "upload a file to the controller"},
 		{"renew", "renew a certificate now"}, {"remove", "remove a member from the org, a user's second factor, a gateway group's own page, or a managed DNS zone"},
 		{"advance", "move a rollout to its next stage"}, {"pause", "pause a rollout"}, {"resume", "let a paused rollout run again"},
 		{"cancel", "end a rollout for good"}, {"test", "send a test event to a webhook endpoint or a test item to an audit sink"},
 		{"logs", "follow the live log of a connector or gateway"},
 		{"connect", "connect a DNS provider"}, {"rotate", "replace a DNS provider's token"}, {"import", "import a DNS provider's zone as managed"},
+		{"plan", "show the plan of a managed DNS zone"}, {"sync", "ask for a full pass over a DNS zone"},
+		{"adopt", "adopt foreign DNS records at names the org publishes"}, {"disown", "release an owned DNS record, so that rpmgr never changes it again"},
 	} {
 		out = append(out, group(v.verb, v.summary, verbs[v.verb]...))
 	}
@@ -211,8 +214,8 @@ func getCommand() *cli.Command {
 }
 
 func listCommand() *cli.Command {
-	var output string
-	var all, instance bool
+	var output, zone string
+	var all, instance, foreign bool
 	return &cli.Command{
 		Name: "list", Summary: "list the resources of a kind in the org, or of the instance",
 		Args: "<" + kindsHelp(func(k apicli.Kind) bool { return k.Plural != "" }) + "> [<what they belong to>]",
@@ -220,8 +223,20 @@ func listCommand() *cli.Command {
 			outputFlag(fs, &output)
 			fs.BoolVar(&all, "all", false, "also the decommissioned agents, and the used-up, expired and revoked enrollment tokens")
 			fs.BoolVar(&instance, "instance", false, "webhook, webhook-delivery: the instance's endpoints, for an Instance Admin, instead of the org's")
+			fs.StringVar(&zone, "zone", "", "dns-record: the managed zone, by name or ID (required)")
+			fs.BoolVar(&foreign, "foreign", false, "dns-record: also the records rpmgr does not own, read live from the provider, for an Owner or Admin")
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
+			if len(args) == 1 && args[0] == "dns-record" {
+				if zone == "" {
+					return cli.Usagef("list dns-record needs --zone")
+				}
+				s, err := newAPISession(env)
+				if err != nil {
+					return err
+				}
+				return listRecords(ctx, env, s, kindOf("dns-record"), zone, foreign, output)
+			}
 			n := 1
 			if len(args) > 0 {
 				if k, err := apicli.KindOf(args[0]); err == nil && k.Parent != "" {

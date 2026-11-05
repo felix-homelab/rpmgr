@@ -169,6 +169,9 @@ message Route {
   string etag = 30;
   // What the agents report about it, with GetRoute and ListRoutes; output only.
   RouteStatus status = 31;
+  // Phase 2: whether each hostname is published at the DNS provider; output only. It never changes
+  // the route's status (docs/15-dns.md, "Publication rules").
+  repeated HostnameDnsStatus dns_status = 32;
 }
 
 // RouteState is a route's status, derived from what its agents report (docs/06-data-model.md,
@@ -190,6 +193,18 @@ enum RouteState {
   ROUTE_STATE_ERROR = 6;
   // An http route in maintenance: its gateways answer every request with the maintenance page.
   ROUTE_STATE_MAINTENANCE = 7;
+}
+
+// HostnameDnsStatus is the DNS status of one hostname of a route.
+message HostnameDnsStatus {
+  // The hostname.
+  string hostname = 1;
+  // not_managed, pending, published, conflict, ambiguous, held, error or rate_limited.
+  string status = 2;
+  // Why, such as the reason a name publishes nothing, or the provider's refusal; may be empty.
+  string reason = 3;
+  // The records published for the name, as "TYPE content".
+  repeated string records = 4;
 }
 
 // RouteStatus is what a route's agents report: the gateways of its group and the connectors of its

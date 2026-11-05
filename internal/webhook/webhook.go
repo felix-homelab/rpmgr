@@ -144,6 +144,29 @@ type Delivery struct {
 	Body      []byte
 	Secrets   []secret.Value // the current secret, then the previous one while it still signs
 	Policy    egress.Policy
+	// Wait asks a Discord endpoint for the message it made, which Send reports in Result.
+	Wait bool
+	// Edit, for a Discord endpoint, edits the message an alert was posted as; Body is posted as a
+	// new message when Discord no longer has it (404).
+	Edit *Edit
+	// Threaded says the post starts a Discord thread (a thread name is set), whose ID the message
+	// answers with as its channel and an edit must name.
+	Threaded bool
+	// Result, if set, receives what Wait and Edit ask for.
+	Result *Result
+}
+
+// Edit names the message to edit and what to edit it into.
+type Edit struct {
+	MessageID, ThreadID string
+	Body                []byte // the edit; Delivery.Body is the post of the fallback
+}
+
+// Result is what a chat service answered with: the message a post made (with Wait), and whether
+// an edit replaced a message, or a new one was posted instead.
+type Result struct {
+	MessageID, ThreadID string
+	Edited              bool
 }
 
 // ErrNotDelivered marks a delivery that was not sent, or had no 2xx answer.
@@ -161,7 +184,8 @@ type Sender struct {
 }
 
 // Send posts d and returns the answer's status code; an error wraps ErrNotDelivered, and an
-// address the guard refused also an egress.RefusedError.
+// address the guard refused also an egress.RefusedError. A Discord edit that finds no message
+// posts the delivery's body as a new one.
 func (s *Sender) Send(ctx context.Context, d Delivery) (int, error) {
 	chat := !d.Target.IsZero()
 	raw := d.URL
@@ -181,62 +205,132 @@ func (s *Sender) Send(ctx context.Context, d Delivery) (int, error) {
 		return 0, fmt.Errorf("%w: the URL does not parse", ErrNotDelivered)
 	case u.Scheme != "https" || u.Host == "" || u.User != nil:
 		return 0, fmt.Errorf("%w: only https:// URLs without credentials are delivered to", ErrNotDelivered)
-	case len(d.Body) > MaxBody:
+	case len(d.Body) > MaxBody || d.Edit != nil && len(d.Edit.Body) > MaxBody:
 		return 0, fmt.Errorf("%w: the event is larger than %d bytes", ErrNotDelivered, MaxBody)
-	}
-	ctx, cancel := context.WithTimeout(ctx, Timeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), strings.NewReader(string(d.Body)))
-	if err != nil {
-		return 0, fail(err)
 	}
 	now := time.Now
 	if s.Now != nil {
 		now = s.Now
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "rpmgr-webhook")
-	if !chat {
-		req.Header.Set(HeaderEventID, d.EventID)
-		req.Header.Set(HeaderEventType, d.EventType)
-		keys := make([]string, len(d.Secrets))
-		for i, k := range d.Secrets {
-			keys[i] = k.Reveal()
+	var tr *http.Transport
+	var c *http.Client
+	// do sends one request of the delivery; the transport is made with the first, whose proxy
+	// decision every one shares, as they go to one host.
+	do := func(method string, target *url.URL, body []byte) (*http.Response, []byte, error) {
+		ctx, cancel := context.WithTimeout(ctx, Timeout)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, method, target.String(), strings.NewReader(string(body)))
+		if err != nil {
+			return nil, nil, fail(err)
 		}
-		req.Header.Set(HeaderSignature, Sign(now(), d.Body, keys...))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "rpmgr-webhook")
+		if !chat {
+			req.Header.Set(HeaderEventID, d.EventID)
+			req.Header.Set(HeaderEventType, d.EventType)
+			keys := make([]string, len(d.Secrets))
+			for i, k := range d.Secrets {
+				keys[i] = k.Reveal()
+			}
+			req.Header.Set(HeaderSignature, Sign(now(), d.Body, keys...))
+		}
+		if c == nil {
+			var proxy *url.URL
+			if s.Proxy != nil {
+				if proxy, err = s.Proxy(req); err != nil {
+					return nil, nil, fail(err)
+				}
+			}
+			tr = &http.Transport{
+				DialContext:         func(ctx context.Context, _, addr string) (net.Conn, error) { return s.dial(ctx, addr, d.Policy, proxy) },
+				TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: s.RootCAs},
+				DisableKeepAlives:   true,
+				TLSHandshakeTimeout: Timeout,
+			}
+			c = &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		}
+		resp, err := c.Do(req)
+		if err != nil {
+			// The URL, which may hold a token of the receiver's, stays out of the error.
+			var ue *url.Error
+			if errors.As(err, &ue) {
+				err = ue.Err
+			}
+			return nil, nil, fail(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		answer, _ := io.ReadAll(io.LimitReader(resp.Body, MaxAnswer))
+		return resp, answer, nil
 	}
-	var proxy *url.URL
-	if s.Proxy != nil {
-		if proxy, err = s.Proxy(req); err != nil {
-			return 0, fail(err)
+	defer func() {
+		if tr != nil {
+			tr.CloseIdleConnections()
+		}
+	}()
+	// finish is the outcome of an answer: a chat service's 429 names how long to wait, any other
+	// answer but a 2xx is a failure.
+	finish := func(resp *http.Response, answer []byte) (int, error) {
+		if chat && resp.StatusCode == http.StatusTooManyRequests {
+			return resp.StatusCode, &RateLimitedError{After: retryAfter(resp.Header, answer, now())}
+		}
+		if resp.StatusCode < 200 || resp.StatusCode > 299 {
+			return resp.StatusCode, fmt.Errorf("%w: the receiver answered %d", ErrNotDelivered, resp.StatusCode)
+		}
+		return resp.StatusCode, nil
+	}
+	if chat && d.Edit != nil && snowflake.MatchString(d.Edit.MessageID) {
+		eu := *u
+		eu.Path = strings.TrimRight(u.Path, "/") + "/messages/" + d.Edit.MessageID
+		q := url.Values{}
+		if snowflake.MatchString(d.Edit.ThreadID) {
+			q.Set("thread_id", d.Edit.ThreadID)
+		}
+		eu.RawQuery = q.Encode()
+		eu.RawPath = ""
+		resp, answer, err := do(http.MethodPatch, &eu, d.Edit.Body) //nolint:bodyclose // do closes the body
+		if err != nil {
+			return 0, err
+		}
+		if resp.StatusCode != http.StatusNotFound {
+			code, err := finish(resp, answer)
+			if err == nil && d.Result != nil {
+				*d.Result = Result{MessageID: d.Edit.MessageID, ThreadID: d.Edit.ThreadID, Edited: true}
+			}
+			return code, err
+		}
+		// The message is gone: post the resolve as a new one, in the thread if it is known.
+		if snowflake.MatchString(d.Edit.ThreadID) {
+			q := u.Query()
+			q.Set("thread_id", d.Edit.ThreadID)
+			pu := *u
+			pu.RawQuery = q.Encode()
+			u = &pu
 		}
 	}
-	tr := &http.Transport{
-		DialContext:         func(ctx context.Context, _, addr string) (net.Conn, error) { return s.dial(ctx, addr, d.Policy, proxy) },
-		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: s.RootCAs},
-		DisableKeepAlives:   true,
-		TLSHandshakeTimeout: Timeout,
+	pu := *u
+	if chat && d.Wait {
+		q := pu.Query()
+		q.Set("wait", "true")
+		pu.RawQuery = q.Encode()
 	}
-	defer tr.CloseIdleConnections()
-	c := &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err := c.Do(req)
+	resp, answer, err := do(http.MethodPost, &pu, d.Body) //nolint:bodyclose // do closes the body
 	if err != nil {
-		// The URL, which may hold a token of the receiver's, stays out of the error.
-		var ue *url.Error
-		if errors.As(err, &ue) {
-			err = ue.Err
+		return 0, err
+	}
+	code, err := finish(resp, answer)
+	if err == nil && chat && d.Wait && d.Result != nil {
+		var m struct {
+			ID        string `json:"id"`
+			ChannelID string `json:"channel_id"`
 		}
-		return 0, fail(err)
+		if json.Unmarshal(answer, &m) == nil && snowflake.MatchString(m.ID) {
+			d.Result.MessageID = m.ID
+			if d.Threaded && snowflake.MatchString(m.ChannelID) {
+				d.Result.ThreadID = m.ChannelID
+			}
+		}
 	}
-	defer func() { _ = resp.Body.Close() }()
-	answer, _ := io.ReadAll(io.LimitReader(resp.Body, MaxAnswer))
-	if chat && resp.StatusCode == http.StatusTooManyRequests {
-		return resp.StatusCode, &RateLimitedError{After: retryAfter(resp.Header, answer, now())}
-	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return resp.StatusCode, fmt.Errorf("%w: the receiver answered %d", ErrNotDelivered, resp.StatusCode)
-	}
-	return resp.StatusCode, nil
+	return code, err
 }
 
 // scrub returns err without raw, a chat endpoint's URL, or its path or query, which hold the

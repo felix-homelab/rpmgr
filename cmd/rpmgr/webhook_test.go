@@ -368,3 +368,48 @@ func TestWebhookTarget_Stdin(t *testing.T) {
 		t.Errorf("an oversized input: %v %d", err, len(h.GetSecretUrl()))
 	}
 }
+
+// TestWebhookChatOptions (D170): the option flags set the fields of a create, name only the fields
+// given on an update, an empty value clears one, and a bad --mention-when is a usage error that
+// reaches no server.
+func TestWebhookChatOptions(t *testing.T) {
+	a, env := webhookEnv(t)
+	run := func(args ...string) (int, string, string) { return runWith(env, "", args...) }
+	file := filepath.Join(t.TempDir(), "url")
+	if err := os.WriteFile(file, []byte(chatURL+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := run("create", "webhook", "--format", "discord", "--url-file", file, "--mention", "role:123", "--mention-when", "critical",
+		"--discord-username", "rpmgr alerts", "--discord-avatar-url", "https://cdn.example/a.png", "--thread-name", "alerts")
+	w := a.created.GetWebhook()
+	if code != cli.ExitOK || w.GetMention() != "role:123" || w.GetMentionWhen() != rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_CRITICAL ||
+		w.GetDiscordUsername() != "rpmgr alerts" || w.GetDiscordAvatarUrl() != "https://cdn.example/a.png" || w.GetThreadName() != "alerts" {
+		t.Fatalf("create: %d %q %q %v", code, out, errOut, w)
+	}
+	// Without the flags nothing is set.
+	if code, _, _ := run("create", "webhook", "--format", "slack", "--url-file", file); code != cli.ExitOK || a.created.GetWebhook().GetMention() != "" ||
+		a.created.GetWebhook().GetMentionWhen() != rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_UNSPECIFIED {
+		t.Fatalf("create without options: %v", a.created)
+	}
+	// An update names only what was given; an option alone is a change; an empty value clears.
+	if code, out, errOut := run("update", "webhook", "--mention-when", "all", "whk_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"mention_when"}) || a.updated.GetWebhook().GetMentionWhen() != rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_ALL {
+		t.Fatalf("update when: %d %q %q %v", code, out, errOut, a.updated)
+	}
+	if code, _, _ := run("update", "webhook", "--mention", "", "--thread-name", "", "whk_1"); code != cli.ExitOK ||
+		!slices.Equal(a.updated.GetUpdateMask().GetPaths(), []string{"mention", "thread_name"}) || a.updated.GetWebhook().GetMention() != "" {
+		t.Fatalf("update clear: %v", a.updated)
+	}
+	calls := len(a.calls)
+	for name, args := range map[string][]string{
+		"an unknown when":     {"create", "webhook", "--format", "discord", "--url-file", file, "--mention-when", "sometimes"},
+		"an unknown when, up": {"update", "webhook", "--mention-when", "", "whk_1"},
+	} {
+		if code, _, _ := run(args...); code != cli.ExitUsage {
+			t.Errorf("%s: %d", name, code)
+		}
+	}
+	if len(a.calls) > calls+1 { // the update's read of the endpoint may reach the server, nothing else
+		t.Errorf("%v: a usage error reached the server", a.calls[calls:])
+	}
+}

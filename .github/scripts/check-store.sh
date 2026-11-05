@@ -45,12 +45,33 @@ if [[ -z $all ]]; then
   fail "no database test packages found"
   finish
 fi
-mapfile -t pkgs < <(sort <<<"$all" | shard_select "$shard")
+# The slow packages are dealt as parts, each running its share of the tests by name ("pkg#k/m",
+# check-go.sh does the same for internal/controller): internal/controller runs for 8 to 10 minutes
+# on PostgreSQL and internal/apisvc has so many API tests that they exceeded the limit of 20
+# minutes per package without a failing test (#905, #896, #1120). The parts are the heavy lines of
+# the shards. The limit stays 20 minutes per go test run; a test that hangs still fails, only later.
+module=$(go list -m)
+SHARD_HEAVY='/internal/(controller|apisvc)(#[0-9]+/[0-9]+)?$'
+list=$(sort <<<"$all" | split_expand "$module/internal/controller=2" "$module/internal/apisvc=2")
+mapfile -t pkgs < <(shard_select "$shard" <<<"$list")
 echo "== database test packages (shard ${shard:-all}): ${pkgs[*]}"
-# internal/controller alone runs for 8 to 10 minutes on PostgreSQL on a CI runner, at go test's
-# default limit of 10 minutes per package, so a slow run timed out without a failing test (#905,
-# #896). The limit is 20 minutes; a test that hangs still fails, only later.
 timeout=20m
+
+# run_store_tests <label> runs every package of this shard, parts by name, whole packages together;
+# the environment of the call (RPMGR_TEST_PG) reaches go test.
+run_store_tests() {
+  local pkg plain=()
+  for pkg in "${pkgs[@]}"; do
+    if [[ $pkg == *'#'* ]]; then
+      split_run "$pkg" -race "${count[@]}" -timeout "$timeout"
+    else
+      plain+=("$pkg")
+    fi
+  done
+  if ((${#plain[@]} > 0)) && ! go test -race "${count[@]}" -timeout "$timeout" "${plain[@]}"; then
+    fail "store tests failed on $1"
+  fi
+}
 # CI's go job runs these packages on SQLite already, with the same flags (check-go.sh), so the store
 # job sets STORE_SKIP_SQLITE and runs them on PostgreSQL only.
 if ((${#pkgs[@]} == 0)); then
@@ -59,9 +80,7 @@ elif [[ ${STORE_SKIP_SQLITE-} == 1 ]]; then
   echo "skipped: store tests on SQLite (STORE_SKIP_SQLITE=1, the go job runs them)"
 else
   echo "== store tests, SQLite"
-  if ! go test -race "${count[@]}" -timeout "$timeout" "${pkgs[@]}"; then
-    fail "store tests failed on SQLite"
-  fi
+  run_store_tests SQLite
 fi
 read -r -a pgs <<<"${RPMGR_TEST_PG_URLS-}"
 if ((${#pgs[@]} == 0)) && [[ ${REQUIRE_PG-} == 1 ]]; then
@@ -70,9 +89,7 @@ fi
 for pg in "${pgs[@]}"; do
   ((${#pkgs[@]} > 0)) || break
   echo "== store tests, PostgreSQL $pg"
-  if ! RPMGR_TEST_PG=$pg RPMGR_TEST_REQUIRE_PG=1 go test -race "${count[@]}" -timeout "$timeout" "${pkgs[@]}"; then
-    fail "store tests failed on PostgreSQL ($pg)"
-  fi
+  RPMGR_TEST_PG=$pg RPMGR_TEST_REQUIRE_PG=1 run_store_tests "PostgreSQL ($pg)"
 done
 
 if shard_first "$shard"; then

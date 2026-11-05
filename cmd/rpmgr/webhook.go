@@ -201,6 +201,62 @@ func webhookTarget(h *rpmgrv1.Webhook, paths []string, format, target, urlFile s
 	return paths, nil
 }
 
+// chatOptions are the flags of a chat endpoint's options (D170). A flag that is given sets its
+// field, an empty value clearing it on an update; one that is not given leaves it as it is.
+type chatOptions struct {
+	mention, when, username, avatar, thread string
+	fs                                      *flag.FlagSet
+}
+
+var mentionWhens = map[string]rpmgrv1.WebhookMentionWhen{"never": rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_NEVER,
+	"critical": rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_CRITICAL, "all": rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_ALL}
+
+func (o *chatOptions) register(fs *flag.FlagSet) {
+	o.fs = fs
+	fs.StringVar(&o.mention, "mention", "", "who an alert's message mentions: Discord role:<id> or user:<id>, Slack here, subteam:<id> or user:<id>, "+
+		"Teams user:<address or Entra object id>; empty removes it")
+	fs.StringVar(&o.when, "mention-when", "", "when the mention is made: never (the default), critical (alerts of a critical kind) or all (every alert that fires)")
+	fs.StringVar(&o.username, "discord-username", "", "Discord: the name messages are posted under, at most 80 characters; empty removes it")
+	fs.StringVar(&o.avatar, "discord-avatar-url", "", "Discord: the https:// URL of the avatar messages are posted with; empty removes it")
+	fs.StringVar(&o.thread, "thread-name", "", "Discord: start a thread of this name for each message, for a forum channel; empty removes it")
+}
+
+// given reports whether any option flag was given.
+func (o *chatOptions) given() bool {
+	any := false
+	o.fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "mention", "mention-when", "discord-username", "discord-avatar-url", "thread-name":
+			any = true
+		}
+	})
+	return any
+}
+
+// apply sets the options that were given on h and adds their fields to paths.
+func (o *chatOptions) apply(h *rpmgrv1.Webhook, paths []string) ([]string, error) {
+	var err error
+	o.fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "mention":
+			h.Mention, paths = o.mention, append(paths, "mention")
+		case "mention-when":
+			w, ok := mentionWhens[o.when]
+			if !ok {
+				err = cli.Usagef("--mention-when is never, critical or all, not %q", o.when)
+			}
+			h.MentionWhen, paths = w, append(paths, "mention_when")
+		case "discord-username":
+			h.DiscordUsername, paths = o.username, append(paths, "discord_username")
+		case "discord-avatar-url":
+			h.DiscordAvatarUrl, paths = o.avatar, append(paths, "discord_avatar_url")
+		case "thread-name":
+			h.ThreadName, paths = o.thread, append(paths, "thread_name")
+		}
+	})
+	return paths, err
+}
+
 // webhookCommands are create, update, enable, disable and test webhook; get, list and delete
 // are part of the generic commands, with the kinds webhook and webhook-delivery.
 func webhookCommands() map[string][]*cli.Command {
@@ -208,6 +264,7 @@ func webhookCommands() map[string][]*cli.Command {
 		force, instance, disabled, rotate, allEvents bool
 		target, format, urlFile                      string
 		events                                       cli.List
+		opts                                         chatOptions
 	)
 	flags := func(fs *flag.FlagSet, write bool) {
 		fs.BoolVar(&instance, "instance", false, "the instance's endpoints, which receive instance events, for an Instance Admin, instead of the org's")
@@ -217,6 +274,7 @@ func webhookCommands() map[string][]*cli.Command {
 				"the URL then comes from --url-file, and a change of format needs a new URL)")
 			fs.StringVar(&urlFile, "url-file", "", "a file holding the chat service's webhook URL, which holds its token, or - for standard input; write-only")
 			fs.Var(&events, "event", "an event type or a prefix such as route.*; repeat for more; none means all events")
+			opts.register(fs)
 		}
 	}
 	create := &cli.Command{
@@ -231,6 +289,9 @@ func webhookCommands() map[string][]*cli.Command {
 			}
 			in := &rpmgrv1.Webhook{EventTypes: events, Enabled: !disabled}
 			if _, err := webhookTarget(in, nil, format, target, urlFile, os.Stdin); err != nil {
+				return err
+			}
+			if _, err := opts.apply(in, nil); err != nil {
 				return err
 			}
 			s, err := newAPISession(env)
@@ -265,8 +326,8 @@ func webhookCommands() map[string][]*cli.Command {
 			if len(args) != 1 {
 				return cli.Usagef("expected the webhook's ID")
 			}
-			if target == "" && urlFile == "" && format == "" && len(events) == 0 && !allEvents && !rotate {
-				return cli.Usagef("name a change: --url, --url-file, --format, --event, --all-events or --rotate-secret")
+			if target == "" && urlFile == "" && format == "" && len(events) == 0 && !allEvents && !rotate && !opts.given() {
+				return cli.Usagef("name a change: --url, --url-file, --format, --event, --all-events, --rotate-secret or an option such as --mention")
 			}
 			if allEvents && len(events) > 0 {
 				return cli.Usagef("give --event or --all-events, not both")
@@ -287,6 +348,9 @@ func webhookCommands() map[string][]*cli.Command {
 			}
 			if len(events) > 0 || allEvents {
 				h.EventTypes, paths = events, append(paths, "event_types")
+			}
+			if paths, err = opts.apply(h, paths); err != nil {
+				return err
 			}
 			etag := cur.GetEtag()
 			if force {

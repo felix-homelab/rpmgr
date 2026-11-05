@@ -31,8 +31,8 @@ repo_root() {
 # SHARD_HEAVY go first, one to each of the first shards, and the other lines share the remaining
 # shards, so that the slowest package does not run next to others (internal/controller alone runs
 # for nearly 10 minutes with -race on a CI runner; check-go.sh splits it into two lines by test
-# name, "<package>#<k>/<m>"). With no more shards than heavy lines, everything is dealt round-robin.
-SHARD_HEAVY='/internal/controller(#[0-9]+/[0-9]+)?$'
+# name, "<package>#<k>/<m>"; check-store.sh sets its own SHARD_HEAVY). With no more shards than heavy lines, everything is dealt round-robin.
+SHARD_HEAVY=${SHARD_HEAVY-'/internal/controller(#[0-9]+/[0-9]+)?$'}
 
 # shard_valid <shard> succeeds for an empty or well-formed shard.
 shard_valid() {
@@ -61,6 +61,44 @@ shard_select() {
 # every m-th name, from the k-th. The m parts together hold every name once.
 split_names() {
   awk -v k="$1" -v m="$2" 'NR % m == k % m'
+}
+
+# split_expand <package>=<m>... reads sorted package lines on standard input and prints them with
+# each named package (full import path) replaced by its m lines "<package>#<k>/<m>".
+split_expand() {
+  local spec
+  spec=$(printf '%s\n' "$@")
+  awk -v spec="$spec" 'BEGIN { n = split(spec, a, "\n"); for (i = 1; i <= n; i++) { split(a[i], kv, "="); m[kv[1]] = kv[2] } }
+    ($0 in m) { for (k = 1; k <= m[$0]; k++) print $0 "#" k "/" m[$0]; next } { print }'
+}
+
+# split_run <package>#<k>/<m> <go test argument>... runs the k-th of m parts of a package's tests by
+# name (every m-th test of the sorted list; subtests run with their parent) with go test and the
+# arguments. A check that the parts together hold every test keeps one from being dropped. It fails
+# the check, through fail, when the parts are not whole or the tests fail.
+split_run() {
+  local entry=$1 pkg k m names union part j
+  shift
+  [[ $entry =~ ^(.+)#([0-9]+)/([0-9]+)$ ]] || {
+    fail "bad split entry $entry"
+    return 0
+  }
+  pkg=${BASH_REMATCH[1]} k=${BASH_REMATCH[2]} m=${BASH_REMATCH[3]}
+  if ! names=$(go test -list . "$pkg" | grep -E '^(Test|Example|Fuzz)'); then
+    fail "no tests listed for $pkg"
+    return 0
+  fi
+  names=$(sort <<<"$names")
+  union=$(for ((j = 1; j <= m; j++)); do split_names "$j" "$m" <<<"$names"; done | sort)
+  if [[ $union != "$names" ]]; then
+    fail "the parts of $pkg do not hold every test once"
+    return 0
+  fi
+  part=$(split_names "$k" "$m" <<<"$names" | paste -sd'|')
+  echo "== $pkg part $k/$m: $(split_names "$k" "$m" <<<"$names" | wc -l) of $(wc -l <<<"$names") tests"
+  if ! go test "$@" -run "^($part)\$" "$pkg"; then
+    fail "tests of $pkg (part $k/$m) failed"
+  fi
 }
 
 # shard_first <shard> succeeds when there is no sharding or this is the first shard, which runs the

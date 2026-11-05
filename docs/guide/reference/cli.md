@@ -81,7 +81,7 @@ rpmgr <command>
 | [`rpmgr audit`](#rpmgr-audit) | Export the audit log with its proofs, and verify an export offline |
 | [`rpmgr create`](#rpmgr-create) | Create a resource of the public API |
 | [`rpmgr update`](#rpmgr-update) | Change a resource of the public API |
-| [`rpmgr enable`](#rpmgr-enable) | Serve a resource again |
+| [`rpmgr enable`](#rpmgr-enable) | Serve a resource again, or move a disabled DNS zone to held |
 | [`rpmgr disable`](#rpmgr-disable) | Stop serving a resource, keeping its configuration |
 | [`rpmgr drain`](#rpmgr-drain) | Stop a gateway taking new connections |
 | [`rpmgr decommission`](#rpmgr-decommission) | Take an agent out of service for good |
@@ -91,7 +91,7 @@ rpmgr <command>
 | [`rpmgr verify`](#rpmgr-verify) | Check a proof now |
 | [`rpmgr check`](#rpmgr-check) | Check for new releases now |
 | [`rpmgr trust`](#rpmgr-trust) | Trust something without a proof |
-| [`rpmgr approve`](#rpmgr-approve) | Approve a domain claim that is held for approval |
+| [`rpmgr approve`](#rpmgr-approve) | Approve a domain claim that is held for approval, or the plan of a held DNS zone |
 | [`rpmgr upload`](#rpmgr-upload) | Upload a file to the controller |
 | [`rpmgr renew`](#rpmgr-renew) | Renew a certificate now |
 | [`rpmgr remove`](#rpmgr-remove) | Remove a member from the org, a user's second factor, a gateway group's own page, or a managed DNS zone |
@@ -104,6 +104,10 @@ rpmgr <command>
 | [`rpmgr connect`](#rpmgr-connect) | Connect a DNS provider |
 | [`rpmgr rotate`](#rpmgr-rotate) | Replace a DNS provider's token |
 | [`rpmgr import`](#rpmgr-import) | Import a DNS provider's zone as managed |
+| [`rpmgr plan`](#rpmgr-plan) | Show the plan of a managed DNS zone |
+| [`rpmgr sync`](#rpmgr-sync) | Ask for a full pass over a DNS zone |
+| [`rpmgr adopt`](#rpmgr-adopt) | Adopt foreign DNS records at names the org publishes |
+| [`rpmgr disown`](#rpmgr-disown) | Release an owned DNS record, so that rpmgr never changes it again |
 
 ## rpmgr controller
 
@@ -567,6 +571,7 @@ rpmgr restore <command>
 | Flag | Default | Description |
 |---|---|---|
 | `--config string` |  | the controller's boot file, or all-in-one's (default $RPMGR_CONFIG, else /etc/rpmgr/controller.yaml, else /etc/rpmgr/all-in-one.yaml) |
+| `--dns-disabled` |  | set every managed DNS zone to disabled instead of held, for a copy that must never touch production DNS |
 | `--in string` |  | the archive of rpmgr backup (required) |
 | `--revocation-log value` |  | the revocation-log sink directory, or a replica's revocations.log; repeat for each (default the state directory's revocations.log) |
 | `--stage-dir string` |  | where the restore does its SQLite work: a directory you own with mode 0700 that no one else can write (default a new private directory under the temporary one); the root updater passes /var/lib/rpmgr-update/restore |
@@ -767,14 +772,16 @@ rpmgr get [flags] install-command | settings | controller-update | <route|connec
 List the resources of a kind in the org, or of the instance.
 
 ```text
-rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|enrollment-token|access-policy|member|token|webhook|webhook-delivery|dns-provider|provider-zone|zone|dns-name|release|audit-sink|rollout|rollout-target> [<what they belong to>]
+rpmgr list [flags] <route|connector|gateway|gateway-group|port-pool|port-quota|domain|certificate|ca-bundle|enrollment-token|access-policy|member|token|webhook|webhook-delivery|dns-provider|provider-zone|zone|dns-record|dns-name|release|audit-sink|rollout|rollout-target> [<what they belong to>]
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--all` |  | also the decommissioned agents, and the used-up, expired and revoked enrollment tokens |
+| `--foreign` |  | dns-record: also the records rpmgr does not own, read live from the provider, for an Owner or Admin |
 | `--instance` |  | webhook, webhook-delivery: the instance's endpoints, for an Instance Admin, instead of the org's |
 | `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+| `--zone string` |  | dns-record: the managed zone, by name or ID (required) |
 
 ## rpmgr delete
 
@@ -1155,9 +1162,14 @@ rpmgr create webhook [flags]
 | Flag | Default | Description |
 |---|---|---|
 | `--disabled` |  | make it disabled; enable webhook turns it on |
+| `--discord-avatar-url string` |  | Discord: the https:// URL of the avatar messages are posted with; empty removes it |
+| `--discord-username string` |  | Discord: the name messages are posted under, at most 80 characters; empty removes it |
 | `--event value` |  | an event type or a prefix such as route.\*; repeat for more; none means all events |
 | `--format string` |  | how events are posted: rpmgr (a signed JSON envelope, the default), discord, slack or teams (a message; the URL then comes from --url-file, and a change of format needs a new URL) |
 | `--instance` |  | the instance's endpoints, which receive instance events, for an Instance Admin, instead of the org's |
+| `--mention string` |  | who an alert's message mentions: Discord role:\<id> or user:\<id>, Slack here, subteam:\<id> or user:\<id>, Teams user:\<address or Entra object id>; empty removes it |
+| `--mention-when string` |  | when the mention is made: never (the default), critical (alerts of a critical kind) or all (every alert that fires) |
+| `--thread-name string` |  | Discord: start a thread of this name for each message, for a forum channel; empty removes it |
 | `--url string` |  | the https:// URL the events are sent to, without a user name, a password or a fragment (format rpmgr) |
 | `--url-file string` |  | a file holding the chat service's webhook URL, which holds its token, or - for standard input; write-only |
 
@@ -1467,11 +1479,16 @@ rpmgr update webhook [flags] <id>
 | Flag | Default | Description |
 |---|---|---|
 | `--all-events` |  | send every event, not only the types listed |
+| `--discord-avatar-url string` |  | Discord: the https:// URL of the avatar messages are posted with; empty removes it |
+| `--discord-username string` |  | Discord: the name messages are posted under, at most 80 characters; empty removes it |
 | `--event value` |  | an event type or a prefix such as route.\*; repeat for more; none means all events |
 | `--force` |  | update without checking that the endpoint is unchanged since this command read it |
 | `--format string` |  | how events are posted: rpmgr (a signed JSON envelope, the default), discord, slack or teams (a message; the URL then comes from --url-file, and a change of format needs a new URL) |
 | `--instance` |  | the instance's endpoints, which receive instance events, for an Instance Admin, instead of the org's |
+| `--mention string` |  | who an alert's message mentions: Discord role:\<id> or user:\<id>, Slack here, subteam:\<id> or user:\<id>, Teams user:\<address or Entra object id>; empty removes it |
+| `--mention-when string` |  | when the mention is made: never (the default), critical (alerts of a critical kind) or all (every alert that fires) |
 | `--rotate-secret` |  | replace the signing secret; the old one keeps signing for 24 h |
+| `--thread-name string` |  | Discord: start a thread of this name for each message, for a forum channel; empty removes it |
 | `--url string` |  | the https:// URL the events are sent to, without a user name, a password or a fragment (format rpmgr) |
 | `--url-file string` |  | a file holding the chat service's webhook URL, which holds its token, or - for standard input; write-only |
 
@@ -1524,7 +1541,7 @@ rpmgr update dns-name [flags] <id or name>
 
 ## rpmgr enable
 
-Serve a resource again.
+Serve a resource again, or move a disabled DNS zone to held.
 
 ```text
 rpmgr enable <command>
@@ -1535,6 +1552,7 @@ rpmgr enable <command>
 | [`rpmgr enable route`](#rpmgr-enable-route) | Enable a route |
 | [`rpmgr enable gateway`](#rpmgr-enable-gateway) | Let a drained gateway take connections again |
 | [`rpmgr enable webhook`](#rpmgr-enable-webhook) | Enable a webhook endpoint; enabling one that failed clears its disabled state |
+| [`rpmgr enable zone`](#rpmgr-enable-zone) | Move a disabled zone to held, with a step-up; it writes nothing until a plan is approved |
 
 ## rpmgr enable route
 
@@ -1574,6 +1592,14 @@ rpmgr enable webhook [flags] <id>
 | Flag | Default | Description |
 |---|---|---|
 | `--instance` |  | the instance's endpoint, for an Instance Admin |
+
+## rpmgr enable zone
+
+Move a disabled zone to held, with a step-up; it writes nothing until a plan is approved.
+
+```text
+rpmgr enable zone <id or name>
+```
 
 ## rpmgr disable
 
@@ -1895,7 +1921,7 @@ rpmgr trust domain <id>
 
 ## rpmgr approve
 
-Approve a domain claim that is held for approval.
+Approve a domain claim that is held for approval, or the plan of a held DNS zone.
 
 ```text
 rpmgr approve <command>
@@ -1904,6 +1930,7 @@ rpmgr approve <command>
 | Command | What it does |
 |---|---|
 | [`rpmgr approve domain`](#rpmgr-approve-domain) | Approve a domain claim held because another org's domain is nested with it (Instance Admin) |
+| [`rpmgr approve zone`](#rpmgr-approve-zone) | Approve the plan of a held zone, by the hash you read, with a step-up; the next pass applies that plan and no other |
 
 ## rpmgr approve domain
 
@@ -1912,6 +1939,18 @@ Approve a domain claim held because another org's domain is nested with it (Inst
 ```text
 rpmgr approve domain <id>
 ```
+
+## rpmgr approve zone
+
+Approve the plan of a held zone, by the hash you read, with a step-up; the next pass applies that plan and no other.
+
+```text
+rpmgr approve zone [flags] --plan-hash <hash> <id or name>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--plan-hash string` |  | the hash of the plan you read with rpmgr plan zone (required) |
 
 ## rpmgr upload
 
@@ -1999,7 +2038,7 @@ rpmgr remove <command>
 | [`rpmgr remove gateway-page`](#rpmgr-remove-gateway-page) | Go back to the built-in page of a gateway group |
 | [`rpmgr remove member`](#rpmgr-remove-member) | End a membership; the user's tokens lose their access to the org |
 | [`rpmgr remove second-factor`](#rpmgr-remove-second-factor) | Remove a user's authenticator and recovery codes, for one who lost both, and end their sessions; takes a step-up |
-| [`rpmgr remove zone`](#rpmgr-remove-zone) | Stop managing a zone: the records stay at the provider and only the ledger is dropped |
+| [`rpmgr remove zone`](#rpmgr-remove-zone) | Stop managing a zone: the records stay at the provider and only the ledger is dropped, or with --delete-records they are deleted too |
 
 ## rpmgr remove gateway-page
 
@@ -2033,15 +2072,17 @@ rpmgr remove second-factor <user ID or e-mail address>
 
 ## rpmgr remove zone
 
-Stop managing a zone: the records stay at the provider and only the ledger is dropped.
+Stop managing a zone: the records stay at the provider and only the ledger is dropped, or with --delete-records they are deleted too.
 
 ```text
-rpmgr remove zone [flags] <id or name>
+rpmgr remove zone [flags] [--delete-records --plan-hash <hash>] <id or name>
 ```
 
 | Flag | Default | Description |
 |---|---|---|
+| `--delete-records` |  | also delete the records rpmgr owns in the zone at the provider; needs --plan-hash and a step-up |
 | `--force` |  | remove without checking that the zone is unchanged since this command read it |
+| `--plan-hash string` |  | with --delete-records: the hash of the plan you read with rpmgr plan zone --delete-records |
 
 ## rpmgr advance
 
@@ -2294,3 +2335,97 @@ rpmgr import zone [flags] --provider <id or name> <zone name or provider zone ID
 | Flag | Default | Description |
 |---|---|---|
 | `--provider string` |  | the provider that offers the zone, by name or ID (required) |
+
+## rpmgr plan
+
+Show the plan of a managed DNS zone.
+
+```text
+rpmgr plan <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr plan zone`](#rpmgr-plan-zone) | Show the plan of a managed zone: what a pass would create, change and delete, and the hash to approve it by |
+
+## rpmgr plan zone
+
+Show the plan of a managed zone: what a pass would create, change and delete, and the hash to approve it by.
+
+```text
+rpmgr plan zone [flags] <id or name>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--delete-records` |  | show the plan of removing the zone with its records instead: it deletes every record rpmgr owns in it |
+| `-o string` | `table` | output: table, yaml (the manifest, where the kind has one) or json |
+
+## rpmgr sync
+
+Ask for a full pass over a DNS zone.
+
+```text
+rpmgr sync <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr sync zone`](#rpmgr-sync-zone) | Ask for a full pass over a zone now |
+
+## rpmgr sync zone
+
+Ask for a full pass over a zone now.
+
+```text
+rpmgr sync zone <id or name>
+```
+
+## rpmgr adopt
+
+Adopt foreign DNS records at names the org publishes.
+
+```text
+rpmgr adopt <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr adopt dns-record`](#rpmgr-adopt-dns-record) | Adopt foreign records at names the org publishes: rpmgr owns them from now on and rewrites them at its next pass |
+
+## rpmgr adopt dns-record
+
+Adopt foreign records at names the org publishes: rpmgr owns them from now on and rewrites them at its next pass.
+
+```text
+rpmgr adopt dns-record [flags] --zone <zone> <provider record id>…
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--zone string` |  | the managed zone, by name or ID (required) |
+
+## rpmgr disown
+
+Release an owned DNS record, so that rpmgr never changes it again.
+
+```text
+rpmgr disown <command>
+```
+
+| Command | What it does |
+|---|---|
+| [`rpmgr disown dns-record`](#rpmgr-disown-dns-record) | Release an owned record: it stays at the provider without rpmgr's marker, or with --restore as it was adopted |
+
+## rpmgr disown dns-record
+
+Release an owned record: it stays at the provider without rpmgr's marker, or with --restore as it was adopted.
+
+```text
+rpmgr disown dns-record [flags] --zone <zone> <record id>
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--restore` |  | put the record back to the content it had when it was adopted |
+| `--zone string` |  | the managed zone, by name or ID (required) |

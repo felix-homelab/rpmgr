@@ -38,6 +38,11 @@ func (DNSZone) Fields() []ent.Field {
 		field.String("name").NotEmpty().MaxLen(253).Immutable(),
 		field.Enum("sync_state").Values("active", "held", "disabled").Default("held"),
 		field.String("held_reason").Default("").MaxLen(64),
+		// pending_plan is the plan of the last pass of a held zone, as JSON, and its hash. On an
+		// active zone the hash is the one an Owner or Admin approved: the next pass applies that
+		// plan only (docs/15-dns.md, "Held zones and plan approval").
+		field.Bytes("pending_plan").Optional(),
+		field.String("pending_plan_hash").Default("").MaxLen(64),
 		field.Enum("provider_status").Values("ok", "permission_denied", "unreachable", "rate_limited").Default("ok"),
 		field.Bool("publish_route_hostnames").Default(true),
 		field.Bool("allow_proxied").Default(false),
@@ -45,6 +50,13 @@ func (DNSZone) Fields() []ent.Field {
 		field.Int("delete_threshold").Default(10).NonNegative(),
 		field.Int("default_ttl").Default(300).Positive(),
 		field.Time("last_synced_at").Optional().Nillable(),
+		// sync_requested_at is when someone last asked for a full pass ("Sync now"). The DNS job
+		// runs on one replica, which the request may not have reached: it reads the time from here.
+		// removal_requested: removing the zone with its records was approved (the approved removal
+		// plan is in pending_plan); the DNS job, under its lease, deletes the owned records and then
+		// the zone.
+		field.Bool("removal_requested").Default(false),
+		field.Time("sync_requested_at").Optional().Nillable(),
 		field.Time("created_at").Immutable().Default(time.Now),
 	}
 }

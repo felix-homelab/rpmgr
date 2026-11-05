@@ -26,6 +26,8 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/accounts"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
+	"github.com/felix-homelab/rpmgr/internal/dns/budget"
+	"github.com/felix-homelab/rpmgr/internal/dns/job"
 	"github.com/felix-homelab/rpmgr/internal/ratelimit"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/revlog"
@@ -191,14 +193,14 @@ func newEnv(t *testing.T) *env {
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_dns_proto.Services().ByName("DnsProviderService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			e.dnsp = &apisvc.DnsProviders{DB: db, API: srv, Sealer: sealer, Dial: e.dns.dial, Logger: log, Now: now}
+			e.dnsp = &apisvc.DnsProviders{DB: db, API: srv, Sealer: sealer, Dial: e.dns.dial, Budget: &budget.Budget{DB: db, Now: now}, Logger: log, Now: now}
 			return rpmgrv1connect.NewDnsProviderServiceHandler(e.dnsp, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}
 	if err := srv.Mount(mux, rpmgrv1.File_rpmgr_v1_dns_proto.Services().ByName("DnsZoneService"),
 		func(o ...connect.HandlerOption) (string, http.Handler) {
-			return rpmgrv1connect.NewDnsZoneServiceHandler(&apisvc.DnsZones{DB: db, API: srv, Providers: e.dnsp, Now: now}, o...)
+			return rpmgrv1connect.NewDnsZoneServiceHandler(&apisvc.DnsZones{DB: db, API: srv, Providers: e.dnsp, Planner: job.New(job.Options{DB: db, TrustDomain: "apitest", Now: now}), Now: now}, o...)
 		}); err != nil {
 		t.Fatal(err)
 	}

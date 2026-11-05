@@ -29,6 +29,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
 	ewebhook "github.com/felix-homelab/rpmgr/internal/store/ent/webhook"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookdelivery"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookmessage"
 	"github.com/felix-homelab/rpmgr/internal/webhook"
 )
 
@@ -41,6 +42,9 @@ type Webhooks struct {
 	DB     *store.DB
 	API    *api.Server
 	Sealer *secret.Sealer
+	// Instance is what a chat message shows of the instance (webhook.Context): the public URL,
+	// the trust domain and the version.
+	Instance webhook.Context
 	// Sender sends the test event; nil refuses TestWebhook.
 	Sender *webhook.Sender
 	// Sys is the controller's system scope, under which InstanceWebhooks reads and writes: an
@@ -62,7 +66,30 @@ type Webhooks struct {
 }
 
 // webhookFields are the fields UpdateWebhook may change.
-var webhookFields = []string{"url", "event_types", "enabled", "format", "secret_url"}
+var webhookFields = []string{"url", "event_types", "enabled", "format", "secret_url", "mention", "mention_when", "discord_username",
+	"discord_avatar_url", "thread_name"}
+
+// optionsOfProto are the options a request sets (D170).
+func optionsOfProto(in *rpmgrv1.Webhook) webhook.Options {
+	return webhook.Options{Mention: in.GetMention(), MentionWhen: mentionWhen[in.GetMentionWhen()], Username: in.GetDiscordUsername(),
+		AvatarURL: in.GetDiscordAvatarUrl(), ThreadName: in.GetThreadName()}
+}
+
+var mentionWhen = map[rpmgrv1.WebhookMentionWhen]string{
+	rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_UNSPECIFIED: webhook.MentionNever,
+	rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_NEVER:       webhook.MentionNever,
+	rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_CRITICAL:    webhook.MentionCritical,
+	rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_ALL:         webhook.MentionAll,
+}
+
+func mentionWhenProto(w ewebhook.MentionWhen) rpmgrv1.WebhookMentionWhen {
+	for k, v := range mentionWhen {
+		if v == string(w) && k != rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_UNSPECIFIED {
+			return k
+		}
+	}
+	return rpmgrv1.WebhookMentionWhen_WEBHOOK_MENTION_WHEN_NEVER
+}
 
 type instanceKey struct{}
 
@@ -190,6 +217,10 @@ func (w *Webhooks) create(ctx context.Context, org string, in *rpmgrv1.Webhook) 
 	if err := checkWebhook(f, in.GetUrl(), in.GetSecretUrl(), in.GetEventTypes(), org == ""); err != nil {
 		return nil, "", err
 	}
+	opts := optionsOfProto(in)
+	if err := webhook.ValidateOptions(f, opts); err != nil {
+		return nil, "", invalid(err)
+	}
 	id := ids.New("whk")
 	var sec secret.Value
 	var sealed []byte
@@ -222,7 +253,8 @@ func (w *Webhooks) create(ctx context.Context, org string, in *rpmgrv1.Webhook) 
 				fmt.Errorf("apisvc: at most %d webhook endpoints; delete one first", webhook.MaxPerOrg))
 		}
 		c := tx.Webhook.Create().SetID(id).SetNillableOrgID(owner).SetURL(shown).SetEventTypes(in.GetEventTypes()).
-			SetFormat(ewebhook.Format(f)).SetSecretEnc(sealed)
+			SetFormat(ewebhook.Format(f)).SetSecretEnc(sealed).SetMention(opts.Mention).SetMentionWhen(ewebhook.MentionWhen(opts.MentionWhen)).
+			SetDiscordUsername(opts.Username).SetDiscordAvatarURL(opts.AvatarURL).SetThreadName(opts.ThreadName)
 		if urlEnc != nil {
 			c.SetURLEnc(urlEnc)
 		}
@@ -318,6 +350,14 @@ func (w *Webhooks) UpdateWebhook(ctx context.Context, req *connect.Request[rpmgr
 		if err := w.updateTarget(u, cur, next, f, slices.Contains(m.GetUpdateMask().GetPaths(), "url")); err != nil {
 			return err
 		}
+		// The options are checked against the format the endpoint will have, so that a change of
+		// format that leaves an option the new one has no use for is refused, not ignored.
+		opts := optionsOfProto(next)
+		if err := webhook.ValidateOptions(f, opts); err != nil {
+			return invalid(err)
+		}
+		u.SetMention(opts.Mention).SetMentionWhen(ewebhook.MentionWhen(opts.MentionWhen)).SetDiscordUsername(opts.Username).
+			SetDiscordAvatarURL(opts.AvatarURL).SetThreadName(opts.ThreadName)
 		switch {
 		case cur.Enabled && !next.GetEnabled():
 			u.SetEnabled(false).SetDisabledReason(ewebhook.DisabledReasonPerson)
@@ -396,6 +436,9 @@ func (w *Webhooks) DeleteWebhook(ctx context.Context, req *connect.Request[rpmgr
 			return err
 		}
 		if _, err := tx.WebhookDelivery.Delete().Where(webhookdelivery.WebhookID(id)).Exec(ctx); err != nil {
+			return err
+		}
+		if _, err := tx.WebhookMessage.Delete().Where(webhookmessage.WebhookID(id)).Exec(ctx); err != nil {
 			return err
 		}
 		return tx.Webhook.DeleteOneID(id).Where(ewebhook.Version(cur.Version)).Exec(ctx)
@@ -560,7 +603,10 @@ func (w *Webhooks) test(ctx context.Context, id string) (*rpmgrv1.TestWebhookRes
 	}
 	body, err := webhook.Body(e)
 	if f.Chat() {
-		body, err = webhook.ChatBody(f, e)
+		mc := w.Instance
+		mc.Resolve(ctx, w.DB.ReadClient(), e)
+		mc.Options = webhook.OptionsOf(h)
+		body, err = webhook.ChatBody(f, e, mc)
 	}
 	if err != nil {
 		return nil, err
@@ -607,7 +653,8 @@ func deref(s *string) string {
 // chat format only the scheme and host of its URL.
 func (w *Webhooks) webhookOf(r *ent.Webhook) *rpmgrv1.Webhook {
 	out := &rpmgrv1.Webhook{Id: r.ID, OrgId: deref(r.OrgID), Url: r.URL, EventTypes: r.EventTypes, Enabled: r.Enabled, SecretSet: len(r.SecretEnc) > 0, Format: formatProto(r.Format),
-		CreateTime: timestamppb.New(r.CreatedAt), Etag: etagOf(r.Version)}
+		CreateTime: timestamppb.New(r.CreatedAt), Etag: etagOf(r.Version), Mention: r.Mention, MentionWhen: mentionWhenProto(r.MentionWhen),
+		DiscordUsername: r.DiscordUsername, DiscordAvatarUrl: r.DiscordAvatarURL, ThreadName: r.ThreadName}
 	if r.DisabledReason != nil {
 		out.DisabledReason = map[ewebhook.DisabledReason]rpmgrv1.WebhookDisabledReason{
 			ewebhook.DisabledReasonFailing: rpmgrv1.WebhookDisabledReason_WEBHOOK_DISABLED_REASON_FAILING,
@@ -623,4 +670,33 @@ func (w *Webhooks) webhookOf(r *ent.Webhook) *rpmgrv1.Webhook {
 		out.FailingSinceTime = timestamppb.New(*r.FailingSince)
 	}
 	return out
+}
+
+// PreviewWebhookMessage implements WebhookService: the messages a chat endpoint of the given
+// format and options would post. It reads the org's name only and sends nothing.
+func (w *Webhooks) PreviewWebhookMessage(ctx context.Context, req *connect.Request[rpmgrv1.PreviewWebhookMessageRequest]) (
+	*connect.Response[rpmgrv1.PreviewWebhookMessageResponse], error) {
+	mc := w.Instance
+	if o, err := w.DB.ReadClient().Org.Get(ctx, req.Msg.GetOrgId()); err == nil {
+		mc.OrgName = o.Name
+	}
+	return w.preview(req.Msg.GetWebhook(), mc)
+}
+
+// preview makes the sample messages of in, with the instance's footer and link.
+func (w *Webhooks) preview(in *rpmgrv1.Webhook, mc webhook.Context) (*connect.Response[rpmgrv1.PreviewWebhookMessageResponse], error) {
+	f, err := formatOf(in.GetFormat())
+	if err != nil {
+		return nil, err
+	}
+	mc.Options = optionsOfProto(in)
+	samples, err := webhook.Preview(f, mc, w.now())
+	if err != nil {
+		return nil, invalid(err)
+	}
+	out := &rpmgrv1.PreviewWebhookMessageResponse{}
+	for _, s := range samples {
+		out.Previews = append(out.Previews, &rpmgrv1.WebhookPreview{EventType: s.EventType, Body: s.Body})
+	}
+	return connect.NewResponse(out), nil
 }

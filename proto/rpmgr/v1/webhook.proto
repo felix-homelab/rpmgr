@@ -79,6 +79,17 @@ service WebhookService {
       resource_field: "webhook_id"
     };
   }
+  // PreviewWebhookMessage returns the messages an endpoint of the given format and options would
+  // post, for a sample alert that fires, the same alert resolving and a configuration change, so
+  // that a form can show them before the endpoint is saved. It reads nothing, sends nothing and
+  // is not audited.
+  rpc PreviewWebhookMessage(PreviewWebhookMessageRequest) returns (PreviewWebhookMessageResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {
+      permission: "webhooks.write"
+      resource_field: "org_id"
+    };
+  }
 }
 
 // InstanceWebhookService is the instance's webhook endpoints, which receive instance events:
@@ -125,6 +136,11 @@ service InstanceWebhookService {
   rpc TestInstanceWebhook(TestInstanceWebhookRequest) returns (TestInstanceWebhookResponse) {
     option (rpmgr.v1.authz) = {permission: "instance.admin"};
   }
+  // PreviewInstanceWebhookMessage is PreviewWebhookMessage for an instance endpoint.
+  rpc PreviewInstanceWebhookMessage(PreviewInstanceWebhookMessageRequest) returns (PreviewInstanceWebhookMessageResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (rpmgr.v1.authz) = {permission: "instance.admin"};
+  }
 }
 
 // WebhookDisabledReason is why an endpoint is disabled.
@@ -135,6 +151,18 @@ enum WebhookDisabledReason {
   WEBHOOK_DISABLED_REASON_FAILING = 1;
   // A person disabled it.
   WEBHOOK_DISABLED_REASON_PERSON = 2;
+}
+
+// WebhookMentionWhen is when a chat message mentions the endpoint's mention (D170).
+enum WebhookMentionWhen {
+  // On a request: never. Never in an answer.
+  WEBHOOK_MENTION_WHEN_UNSPECIFIED = 0;
+  // The mention is never made.
+  WEBHOOK_MENTION_WHEN_NEVER = 1;
+  // An alert of a critical kind that fires mentions it.
+  WEBHOOK_MENTION_WHEN_CRITICAL = 2;
+  // Every alert that fires mentions it.
+  WEBHOOK_MENTION_WHEN_ALL = 3;
 }
 
 // WebhookFormat is how an endpoint's events are posted (docs/07-api.md, "Webhooks (Phase 2)").
@@ -188,6 +216,18 @@ message Webhook {
     (rpmgr.v1.sensitive) = true,
     (buf.validate.field).string.max_len = 2048
   ];
+  // Who a chat message mentions, checked against the format: Discord role:<id> or user:<id>, Slack
+  // here, subteam:<id> or user:<id>, Teams user:<UPN or Entra object id>. Empty: no one.
+  string mention = 16 [(buf.validate.field).string.max_len = 300];
+  // When the mention is made; never if not set on a request. It needs a mention.
+  WebhookMentionWhen mention_when = 17;
+  // Discord only: the name the message is posted under, at most 80 characters.
+  string discord_username = 18 [(buf.validate.field).string.max_len = 300];
+  // Discord only: an https:// URL of the avatar the message is posted with.
+  string discord_avatar_url = 19 [(buf.validate.field).string.max_len = 2048];
+  // Discord only: the name of the thread each message starts, for a forum channel; at most 100
+  // characters.
+  string thread_name = 20 [(buf.validate.field).string.max_len = 500];
 }
 
 // WebhookDelivery is one attempt to deliver an event.
@@ -264,7 +304,7 @@ message ListWebhooksResponse {
 message UpdateWebhookRequest {
   // The endpoint with its ID and the new values of the fields the mask names.
   Webhook webhook = 1 [(buf.validate.field).required = true];
-  // The fields to change: url, event_types, enabled.
+  // The fields to change: url, event_types, enabled, format, secret_url, mention, mention_when, discord_username, discord_avatar_url, thread_name.
   google.protobuf.FieldMask update_mask = 2;
   // The etag the caller read; empty skips the check.
   string etag = 3;
@@ -383,7 +423,7 @@ message ListInstanceWebhooksResponse {
 message UpdateInstanceWebhookRequest {
   // The endpoint with its ID and the new values of the fields the mask names.
   Webhook webhook = 1 [(buf.validate.field).required = true];
-  // The fields to change: url, event_types, enabled.
+  // The fields to change: url, event_types, enabled, format, secret_url, mention, mention_when, discord_username, discord_avatar_url, thread_name.
   google.protobuf.FieldMask update_mask = 2;
   // The etag the caller read; empty skips the check.
   string etag = 3;
@@ -452,4 +492,39 @@ message TestInstanceWebhookResponse {
   int32 status_code = 2;
   // Why it failed; empty on success.
   string error = 3;
+}
+
+// PreviewWebhookMessageRequest names the format and options to preview.
+message PreviewWebhookMessageRequest {
+  // The org; the preview shows its name.
+  string org_id = 1 [(buf.validate.field).string.min_len = 1];
+  // The format, which must be a chat format, and the options of the endpoint; nothing else of it
+  // is read.
+  Webhook webhook = 2 [(buf.validate.field).required = true];
+}
+
+// PreviewInstanceWebhookMessageRequest names the format and options to preview.
+message PreviewInstanceWebhookMessageRequest {
+  // The format, which must be a chat format, and the options of the endpoint.
+  Webhook webhook = 1 [(buf.validate.field).required = true];
+}
+
+// PreviewWebhookMessageResponse is the sample messages.
+message PreviewWebhookMessageResponse {
+  // One message per sample event.
+  repeated WebhookPreview previews = 1;
+}
+
+// PreviewInstanceWebhookMessageResponse is the sample messages.
+message PreviewInstanceWebhookMessageResponse {
+  // One message per sample event.
+  repeated WebhookPreview previews = 1;
+}
+
+// WebhookPreview is the body one sample event is posted as.
+message WebhookPreview {
+  // The sample: alert.fire, alert.resolve or route.update.
+  string event_type = 1;
+  // The JSON body, formatted. It names no URL and holds no secret.
+  string body = 2;
 }

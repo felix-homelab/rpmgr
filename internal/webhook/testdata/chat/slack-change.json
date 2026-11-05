@@ -4,7 +4,14 @@
       "blocks": [
         {
           "text": {
-            "text": "*route.update route web*",
+            "text": "Route web updated",
+            "type": "plain_text"
+          },
+          "type": "header"
+        },
+        {
+          "text": {
+            "text": "route.update route web",
             "type": "mrkdwn"
           },
           "type": "section"
@@ -12,30 +19,53 @@
         {
           "fields": [
             {
-              "text": "*Type*\nroute.update",
+              "text": "*Organisation*\nAcme",
               "type": "mrkdwn"
             },
             {
-              "text": "*Organisation*\norg_1",
+              "text": "*Actor*\nAda Admin",
               "type": "mrkdwn"
             },
             {
-              "text": "*Actor*\nuser usr_1",
+              "text": "*Subject*\nroute web",
               "type": "mrkdwn"
             },
             {
-              "text": "*Subject*\nroute web (rt_1)",
-              "type": "mrkdwn"
-            },
-            {
-              "text": "*Time*\n2026-11-02T09:30:00Z",
+              "text": "*Changed*\nenabled",
               "type": "mrkdwn"
             }
           ],
           "type": "section"
+        },
+        {
+          "elements": [
+            {
+              "text": "\u003c!date^1793611800^{date_short_pretty} {time_secs}|2026-11-02T09:30:00Z\u003e",
+              "type": "mrkdwn"
+            },
+            {
+              "text": "td.example · rpmgr 0.4.0 · org_1 · rt_1 · evt_3",
+              "type": "mrkdwn"
+            }
+          ],
+          "type": "context"
+        },
+        {
+          "elements": [
+            {
+              "text": {
+                "text": "Open in rpmgr",
+                "type": "plain_text"
+              },
+              "type": "button",
+              "url": "https://rpmgr.example.com/routes/rt_1"
+            }
+          ],
+          "type": "actions"
         }
-      ]
+      ],
+      "color": "#6E7781"
     }
   ],
-  "text": "route.update route web"
+  "text": "Route web updated"
 }

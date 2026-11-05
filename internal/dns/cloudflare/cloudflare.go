@@ -50,6 +50,8 @@ const (
 type Config struct {
 	Token     secret.Value
 	AccountID string
+	// Now is the clock that turns a Retry-After into a time; nil is time.Now.
+	Now func() time.Time
 }
 
 // Client is a Cloudflare provider account.
@@ -90,7 +92,11 @@ func newClient(cfg Config, base string, tr *http.Transport) (*Client, error) {
 		// A redirect would carry the token to another place; the answer is mapped as it is.
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	return &Client{base: base, token: cfg.Token, account: cfg.AccountID, hc: hc, now: time.Now}, nil
+	now := cfg.Now
+	if now == nil {
+		now = time.Now
+	}
+	return &Client{base: base, token: cfg.Token, account: cfg.AccountID, hc: hc, now: now}, nil
 }
 
 // String and GoString name the client and nothing else.
@@ -116,9 +122,14 @@ type apiMessage struct {
 	Message string `json:"message"`
 }
 
-// do sends one request and decodes the result into out (nil: ignored). It returns the number of
-// pages the answer announces.
+// do takes the request from the gate in ctx, if there is one, sends it and decodes the result into
+// out (nil: ignored). It returns the number of pages the answer announces.
 func (c *Client) do(ctx context.Context, method, path string, body, out any) (int, error) {
+	if g := dns.GateFrom(ctx); g != nil {
+		if err := g.Take(ctx); err != nil {
+			return 0, err
+		}
+	}
 	var rd io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -275,6 +286,8 @@ func (c *Client) ListZones(ctx context.Context) ([]dns.Zone, error) {
 	return all, err
 }
 
+// record is a record in the API's JSON. The comment is always sent, so that a patch with an empty
+// one takes a marker off, as releasing a record does [V VB-27].
 type record struct {
 	ID      string `json:"id,omitempty"`
 	Type    string `json:"type"`
@@ -282,7 +295,7 @@ type record struct {
 	Content string `json:"content"`
 	TTL     int    `json:"ttl"`
 	Proxied bool   `json:"proxied"`
-	Comment string `json:"comment,omitempty"`
+	Comment string `json:"comment"`
 }
 
 func toRecord(r dns.Record) record { return record(r) }

@@ -183,12 +183,26 @@ controller-managed durable state: it is never rebuilt from the provider.
   - The pass reports its orphans, corrections and `drifted` records to the controller, which logs
     them; the alert `dns.drifted` fires for a `drifted` record
     ([10](10-operations.md#suggested-alerts)). Orphans are shown in the zone's plan.
-- **Adopt.** Turns a foreign record at a desired name into an owned one. Its original content is
-  stored in the ledger (`adopted_from`), and the next pass rewrites it. Adopt is how the migration
+- **Adopt.** Turns a foreign record at a desired name into an owned one. An Owner or Admin, after a
+  step-up, because it hands rpmgr control of the record, whatever its content, names
+  the records; a name is desired if a source of the zone's own org publishes it, so a record at a
+  name that only another org wants, or that nothing publishes, is not adopted. The call is all or
+  none, and only A, AAAA, CNAME and TXT records are adopted. Its original content is stored in the
+  ledger (`adopted_from`), and the next pass, which the adoption asks for, rewrites it to what the
+  sources want and puts the marker on it; that first write is no drift. Adopt is how the migration
   cutover switches names from an old server to rpmgr ([11](11-migration.md#cutover-plan)).
-- **Release.** Removes a record from the ledger. Either the record stays as it is, or it is
-  restored to its adopted original. A restore warns when the original is older than the staleness
-  limit, because an old address may now belong to someone else.
+- **Release.** Removes a record from the ledger; the CLI calls it `disown`
+  ([D169](14-open-decisions.md#engineering)). Either the record stays as it is, with rpmgr's marker
+  taken off, by a patch with an empty comment [V VB-27], so that it is not reported as an orphan, or it is restored to its adopted original,
+  which needs the record to be of the type it was adopted with. Both are written to the provider
+  before the row is dropped, by the DNS job under its lease and not by the API call: the call, which
+  also needs a step-up, records the request on the row, and the job carries it out at its next pass
+  of an active zone, so a held zone writes nothing. A restore of a record whose type changed since,
+  or that was not adopted, is not carried out and the row says why. A restore warns when the original
+  is older than the staleness limit, because an old address may now belong to someone else.
+- **Who sees what.** Every member of the org lists a zone's owned records. The records of the zone
+  that rpmgr does not own, read live, and the orphans are for an Owner or Admin: an Operator or
+  Viewer who asks for them is refused, so one learns nothing of what else is in the zone.
 
 A provider without record comments (none in Phase 2) has no marker, so the crash repair is
 unavailable. The crashed record then shows as a `conflict` at its own name and is adopted.
@@ -275,8 +289,20 @@ sequenceDiagram
   database row per provider, holding the request window and the `retry-after` block. The DNS job
   and the DNS-01 adapter take each request from it in a transaction, on whichever replica they
   run, so replicas never add up past it. DNS-01 may use at most half of the window
-  ([D164](14-open-decisions.md#engineering)). [R] Use an account-owned token, or a dedicated
-  Cloudflare user, for rpmgr, so a burst never locks a human out of the dashboard.
+  ([D164](14-open-decisions.md#engineering)).
+  - The provider client takes one request from the budget before each HTTP request it sends, a page
+    of a listing as much as a batch. A request the budget does not lend is not sent: the call
+    fails as rate-limited, until the end of the window or of the block.
+  - A 429 sets the block for every replica and every taker from its `retry-after`, from the default
+    block when there is none, and never shortens a block that holds. A block is cut to the longest
+    block in [Timers and limits](#timers-and-limits).
+  - The replicas' clocks differ a little, and the row holds times that one replica wrote and
+    another reads. A window that started in the reader's future stays open, so the budget is never
+    wider than it says, and one that started more than a window ahead is not honoured, so a clock
+    far ahead never locks the others out.
+
+  [R] Use an account-owned token, or a dedicated Cloudflare user, for rpmgr, so a burst never locks
+  a human out of the dashboard.
 
 ### Fail-static
 
@@ -293,7 +319,10 @@ pass catches up.
 
 ## Held zones and plan approval
 
-A held zone computes plans but writes nothing until a plan is approved.
+A held zone computes plans but writes nothing until a plan is approved. Each pass of a held zone
+reads the provider's records, plans, and stores the plan and its hash with the zone; the zone's
+`held_reason` says why it is held: `imported`, `restored`, `deletion_guard` (below) or
+`plan_changed`.
 
 ```mermaid
 flowchart LR
@@ -307,19 +336,29 @@ flowchart LR
 
 - **Who approves.** An Owner or Admin of the zone's org, with step-up; the Instance Admin for
   system-org zones ([04](04-security.md#human-authentication-and-sessions)).
-- **Approval is bound to the plan hash.** If sources or provider records changed since the plan was
-  shown, approval fails with `PLAN_CHANGED` and the new plan is shown
-  ([07](07-api.md#errors)).
+- **Approval is bound to the plan hash.** The plan is computed again when the approval comes in. If
+  sources or provider records changed since the plan was shown, approval fails with `PLAN_CHANGED`,
+  nothing changes and the new plan is shown ([07](07-api.md#errors)).
+- **An approval is used once.** It makes the zone `active` and stores the approved hash. The next
+  pass applies the plan only if it has that hash, whatever it removes, and then the approval is
+  used up. A pass whose plan has another hash holds the zone again with `plan_changed` and the new
+  plan. Later passes are subject to the deletion guard again.
+- **Only a held zone is approved.** A `disabled` zone, such as after `restore --dns-disabled`, is
+  refused with `ZONE_NOT_HELD`: approving there would fight production.
+- **Enabling.** An Owner or Admin, with a step-up, moves a `disabled` zone to `held` (`enabled`).
+  That writes nothing: the zone plans again and needs an approved plan like any held zone.
 - **After import.** The first plan shows what rpmgr will create, the conflicts it found and which
   foreign wildcards it will shadow.
 - **Deletion guard.** A pass that would remove all address records of more than the zone's
-  `delete_threshold` names holds the zone. Replacing records is not counted. `delete_threshold = 0`
-  makes every removal need approval.
+  `delete_threshold` names holds the zone with `deletion_guard`, writes nothing and stores the
+  plan. Replacing records is not counted: a name that keeps an address record, or whose address
+  record is replaced by another, is no removal. `delete_threshold = 0` makes every removal need
+  approval.
 - **After a restore.** A restore creates a new `db_epoch`
   ([10](10-operations.md#backup-and-restore)), and every zone starts held. The plan shows:
   - records created after the backup as `orphaned` (delete, or re-link);
   - records deleted after the backup as creates;
-  - adopted records whose original content changed since.
+  - adopted records whose original content changed since (not shown yet, [#1113](https://github.com/felix-homelab/rpmgr/issues/1113)).
 
   `rpmgr restore --dns-disabled` sets every zone to `disabled`, for a clone restored into staging
   with the same trust domain and KEK. Otherwise approving there would fight production.
@@ -386,7 +425,14 @@ and lost rows.
 3. **Disconnect or remove a zone.**
    - By default the records stay at the provider and the ledger rows are dropped, so nothing that
      works stops working.
-   - Removing the records instead goes through a plan and approval.
+   - Removing the records instead goes through a plan and approval: the plan deletes every record
+     rpmgr owns in the zone and no others, and the removal needs its hash and a step-up. The zone is
+     disabled when the removal is approved, so that the job does not write it again. The API call
+     writes nothing to the provider: the DNS job, under its lease, deletes the records of the
+     approved plan and only those, then removes the zone, and the zone shows the removal as
+     pending until then. If the provider fails, the next full pass or "Sync now" goes on; if a
+     record the plan did not name is owned by then, the job deletes nothing and the zone stays
+     disabled.
    - Rotating the token keeps everything: the new token is checked first and replaces the old one in
      the same provider. Deleting a provider needs a step-up and is refused while zones are imported
      from it.
@@ -574,6 +620,8 @@ type Provider interface {
 | Look for new configuration revisions | every 1 s, by the replica that holds the lease |
 | [R] Rate budget per provider | 300 requests / 5 min (Cloudflare allows 1 200 per user) |
 | DNS-01 share of the budget | at most half |
+| Default block after a 429 without `retry-after` | 5 min, as Cloudflare blocks |
+| Longest block recorded | 1 h; a longer `retry-after` is cut to it |
 | Operations per batch | ≤ 200 (Cloudflare Free limit) |
 | Addresses in a DNS target | ≤ 16 |
 | [R] Cloudflare API request | 30 s; answer at most 4 MiB; zones listed 50 per page |

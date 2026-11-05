@@ -14,8 +14,12 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
+	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/apisvc"
 	"github.com/felix-homelab/rpmgr/internal/dns"
+	"github.com/felix-homelab/rpmgr/internal/store/ent"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/auditentry"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
@@ -49,6 +53,19 @@ func updateZone(b *browser, z *rpmgrv1.DnsZone, etag string, paths ...string) (*
 
 func removeZone(b *browser, id, etag string) error {
 	_, err := b.dnsz.RemoveZone(context.Background(), connect.NewRequest(&rpmgrv1.RemoveZoneRequest{DnsZoneId: id, Etag: etag}))
+	return err
+}
+
+func planZone(b *browser, id string) (*rpmgrv1.PlanZoneSyncResponse, error) {
+	r, err := b.dnsz.PlanZoneSync(context.Background(), connect.NewRequest(&rpmgrv1.PlanZoneSyncRequest{DnsZoneId: id}))
+	if err != nil {
+		return nil, err
+	}
+	return r.Msg, nil
+}
+
+func approveZone(b *browser, id, hash string) error {
+	_, err := b.dnsz.ApproveZonePlan(context.Background(), connect.NewRequest(&rpmgrv1.ApproveZonePlanRequest{DnsZoneId: id, PlanHash: hash}))
 	return err
 }
 
@@ -316,6 +333,8 @@ func TestDnsZones_OtherOrg(t *testing.T) {
 			return err
 		},
 		"remove":                 func() error { return removeZone(bob, id, "") },
+		"plan":                   func() error { _, err := planZone(bob, id); return err },
+		"approve":                func() error { return approveZone(bob, id, strings.Repeat("a", 64)) },
 		"import with a provider": func() error { _, err := importZone(bob, p.GetId(), "z1"); return err },
 		"list org a": func() error {
 			_, err := bob.dnsz.ListZones(ctx, connect.NewRequest(&rpmgrv1.ListZonesRequest{OrgId: org}))
@@ -363,7 +382,9 @@ func TestDnsZones_Roles(t *testing.T) {
 				_, err := updateZone(u, &rpmgrv1.DnsZone{Id: id, AllowProxied: true}, "", "allow_proxied")
 				return err
 			},
-			"remove": func() error { return removeZone(u, id, "") },
+			"remove":  func() error { return removeZone(u, id, "") },
+			"plan":    func() error { _, err := planZone(u, id); return err },
+			"approve": func() error { return approveZone(u, id, strings.Repeat("a", 64)) },
 		}
 		for name, call := range calls {
 			if c := code(call()); c != connect.CodePermissionDenied {
@@ -508,4 +529,712 @@ func TestDnsZones_ListPages(t *testing.T) {
 	if _, err := ada.dnsz.ListZones(ctx, connect.NewRequest(&rpmgrv1.ListZonesRequest{OrgId: org, PageSize: -1})); code(err) != connect.CodeInvalidArgument {
 		t.Errorf("a negative page size: %v", err)
 	}
+}
+
+// TestDnsZones_PlanAndApprove: the plan is read live with its hash; an approval is bound to that
+// hash, needs a step-up and an Owner or Admin, and fails with PLAN_CHANGED, changing nothing, when
+// the provider's records or the zone changed since the plan was shown; a zone that is not held
+// cannot be approved.
+func TestDnsZones_PlanAndApprove(t *testing.T) {
+	e, ada, org, p := zoneEnv(t)
+	e.dns.zones = []dns.Zone{{ID: "z1", Name: "example.com", Status: "active", Type: "full"}, {ID: "z2", Name: "other.example", Status: "active", Type: "full"}}
+	r, err := importZone(ada, p.GetId(), "z1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := r.GetDnsZone().GetId()
+	row := func() *ent.DNSZone { return e.db.Client().DNSZone.GetX(e.sys, id) }
+
+	// A record of this instance's marker that no ledger row owns is an orphan in the plan.
+	e.dns.records = []dns.Record{{ID: "0000000000000000000000000000000a", Type: "A", Name: "old.example.com", Content: "192.0.2.1", TTL: 300, Comment: "rpmgr apitest dnr_gone"}}
+	pl, err := planZone(ada, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := pl.GetPlan().GetHash()
+	if len(hash) != 64 || len(pl.GetPlan().GetOrphans()) != 1 || pl.GetPlan().GetOrphans()[0].GetName() != "old.example.com" ||
+		pl.GetDnsZone().GetSyncState() != rpmgrv1.ZoneSyncState_ZONE_SYNC_STATE_HELD {
+		t.Fatalf("plan %v", pl)
+	}
+	if again, err := planZone(ada, id); err != nil || again.GetPlan().GetHash() != hash {
+		t.Fatalf("the same input gave another hash: %v %v", again, err)
+	}
+	if row().SyncState != "held" || row().Version != 1 {
+		t.Fatal("reading a plan changed the zone")
+	}
+
+	// Refused, and nothing changes: a hash of the wrong shape or content, a user without a step-up.
+	for name, c := range map[string]struct {
+		hash string
+		code connect.Code
+		why  string
+	}{
+		"short":       {"abc", connect.CodeInvalidArgument, ""},
+		"empty":       {"", connect.CodeInvalidArgument, ""},
+		"stale":       {strings.Repeat("a", 64), connect.CodeFailedPrecondition, apisvc.ReasonPlanChanged},
+		"upper case":  {strings.ToUpper(hash), connect.CodeFailedPrecondition, apisvc.ReasonPlanChanged},
+		"with space":  {hash[:63] + " ", connect.CodeFailedPrecondition, apisvc.ReasonPlanChanged},
+		"hash of nil": {strings.Repeat("0", 64), connect.CodeFailedPrecondition, apisvc.ReasonPlanChanged},
+	} {
+		err := approveZone(ada, id, c.hash)
+		if code(err) != c.code || reason(err) != c.why {
+			t.Errorf("%s: %v (reason %q)", name, err, reason(err))
+		}
+	}
+	adm, _ := e.join(t, ada, org, "adm@example.com", "admin")
+	if err := approveZone(adm, id, hash); reason(err) != api.ReasonStepUpRequired {
+		t.Errorf("without a step-up: %v", err)
+	}
+	if row().SyncState != "held" || row().PendingPlanHash != "" {
+		t.Fatalf("a refused approval changed the zone: %+v", row())
+	}
+
+	// The provider's records change after the plan was shown: the approval of the old plan fails.
+	e.dns.records = append(e.dns.records, dns.Record{ID: "0000000000000000000000000000000b", Type: "A", Name: "new.example.com", Content: "192.0.2.2", TTL: 300, Comment: "rpmgr apitest dnr_new"})
+	if err := approveZone(ada, id, hash); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonPlanChanged {
+		t.Fatalf("a plan that changed: %v", err)
+	}
+	if row().SyncState != "held" {
+		t.Fatal("a stale approval activated the zone")
+	}
+	pl, err = planZone(ada, id)
+	if err != nil || pl.GetPlan().GetHash() == hash || len(pl.GetPlan().GetOrphans()) != 2 {
+		t.Fatalf("the new plan: %v %v", pl, err)
+	}
+	hash = pl.GetPlan().GetHash()
+
+	// An Admin, stepped up, approves the plan they read.
+	if err := adm.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	revBefore := e.db.Client().ConfigRevision.Query().CountX(e.sys)
+	if err := approveZone(adm, id, hash); err != nil {
+		t.Fatal(err)
+	}
+	got := row()
+	if got.SyncState != "active" || got.HeldReason != "" || got.PendingPlanHash != hash || len(got.PendingPlan) == 0 {
+		t.Fatalf("approved zone %+v", got)
+	}
+	if e.db.Client().ConfigRevision.Query().CountX(e.sys) != revBefore+1 {
+		t.Error("an approval is a configuration change with a revision: the job looks for it")
+	}
+	// Not held any more, so there is nothing to approve; the plan can still be read.
+	if err := approveZone(ada, id, hash); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonZoneNotHeld {
+		t.Errorf("a second approval: %v", err)
+	}
+	if _, err := planZone(ada, id); err != nil {
+		t.Errorf("the plan of an active zone: %v", err)
+	}
+	// A disabled zone, as after restore --dns-disabled, cannot be approved either.
+	e.db.Client().DNSZone.UpdateOneID(id).SetSyncState("disabled").ExecX(e.sys)
+	if err := approveZone(ada, id, hash); reason(err) != apisvc.ReasonZoneNotHeld {
+		t.Errorf("a disabled zone: %v", err)
+	}
+	if row().SyncState != "disabled" {
+		t.Error("an approval enabled a disabled zone")
+	}
+	if err := approveZone(ada, "dnz_missing", hash); code(err) != connect.CodeNotFound {
+		t.Errorf("a missing zone: %v", err)
+	}
+}
+
+// A provider that fails fails the plan and the approval with the status of the failure, and
+// leaves the zone held.
+func TestDnsZones_PlanProviderFailures(t *testing.T) {
+	e, ada, _, p := zoneEnv(t)
+	e.dns.zones = []dns.Zone{{ID: "z1", Name: "example.com", Status: "active", Type: "full"}}
+	r, err := importZone(ada, p.GetId(), "z1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := r.GetDnsZone().GetId()
+	for name, c := range map[string]struct {
+		err  error
+		want connect.Code
+	}{
+		"revoked":      {&dns.ProviderError{Status: 401, Err: dns.ErrUnauthorized}, connect.CodeFailedPrecondition},
+		"rate limited": {dns.RateLimited{Until: e.clock.Add(time.Minute)}, connect.CodeResourceExhausted},
+		"unreachable":  {errors.New("dial tcp 198.51.100.1:443: i/o timeout"), connect.CodeUnavailable},
+	} {
+		e.dns.know(dnsToken1, fakeDNSToken{err: c.err})
+		if _, err := planZone(ada, id); code(err) != c.want || strings.Contains(fmt.Sprint(err), "198.51.100.1") {
+			t.Errorf("plan, %s: %v", name, err)
+		}
+		if err := approveZone(ada, id, strings.Repeat("a", 64)); code(err) != c.want {
+			t.Errorf("approve, %s: %v", name, err)
+		}
+	}
+	if z := e.db.Client().DNSZone.GetX(e.sys, id); z.SyncState != "held" {
+		t.Errorf("zone %+v", z)
+	}
+}
+
+// recordEnv is a zone example.com whose claim is verified, with a gateway group that has a DNS
+// target and the name app.example.com, and a provider that holds a foreign record at that name, one
+// at a name nothing publishes, one of a type rpmgr does not own and an orphan.
+func recordEnv(t *testing.T) (e *env, ada *browser, org, zone string) {
+	t.Helper()
+	e, ada, org, group := gatewayEnv(t)
+	if err := ada.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	e.logs.Secret(dnsToken1)
+	e.dns.know(dnsToken1, fakeDNSToken{})
+	p, err := connectProvider(ada, org, "main", dnsToken1, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.dns.zones = []dns.Zone{{ID: "z1", Name: "example.com", Status: "active", Type: "full"}}
+	r, err := importZone(ada, p.GetId(), "z1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.db.Client().Domain.Update().SetStatus("verified").ExecX(e.sys)
+	e.db.Client().GatewayGroup.UpdateOneID(group).SetDNSAddresses([]string{"192.0.2.99"}).ExecX(e.sys)
+	if _, err := createName(ada, org, "app.example.com", group, 0); err != nil {
+		t.Fatal(err)
+	}
+	e.dns.records = []dns.Record{
+		{ID: "000000000000000000000000000000a1", Type: "A", Name: "app.example.com", Content: "192.0.2.10", TTL: 300, Comment: "hand made"},
+		{ID: "000000000000000000000000000000a2", Type: "A", Name: "other.example.com", Content: "192.0.2.11", TTL: 300},
+		{ID: "000000000000000000000000000000a3", Type: "MX", Name: "app.example.com", Content: "mail.example.net", TTL: 300},
+		{ID: "000000000000000000000000000000a4", Type: "TXT", Name: "old.example.com", Content: "x", TTL: 300, Comment: "rpmgr apitest dnr_gone"},
+	}
+	return e, ada, org, r.GetDnsZone().GetId()
+}
+
+func listRecords(b *browser, zone string, foreign bool) ([]*rpmgrv1.DnsRecord, error) {
+	r, err := b.dnsz.ListZoneRecords(context.Background(), connect.NewRequest(&rpmgrv1.ListZoneRecordsRequest{DnsZoneId: zone, IncludeForeign: foreign}))
+	if err != nil {
+		return nil, err
+	}
+	return r.Msg.GetRecords(), nil
+}
+
+func adoptRecords(b *browser, zone string, ids ...string) ([]*rpmgrv1.DnsRecord, error) {
+	r, err := b.dnsz.AdoptRecords(context.Background(), connect.NewRequest(&rpmgrv1.AdoptRecordsRequest{DnsZoneId: zone, ProviderRecordIds: ids}))
+	if err != nil {
+		return nil, err
+	}
+	return r.Msg.GetRecords(), nil
+}
+
+func releaseRecord(b *browser, zone, id string, restore bool) (string, error) {
+	r, err := b.dnsz.ReleaseRecord(context.Background(), connect.NewRequest(&rpmgrv1.ReleaseRecordRequest{DnsZoneId: zone, RecordId: id, Restore: restore}))
+	if err != nil {
+		return "", err
+	}
+	return r.Msg.GetWarning(), nil
+}
+
+func states(rs []*rpmgrv1.DnsRecord) map[string]rpmgrv1.DnsRecordState {
+	out := map[string]rpmgrv1.DnsRecordState{}
+	for _, r := range rs {
+		out[r.GetName()+"/"+r.GetType()] = r.GetState()
+	}
+	return out
+}
+
+// TestDnsZones_ListRecords: the owned records are listed for every member from the ledger, without
+// asking the provider; the other records, read live, and the orphans only for an Owner or Admin: an
+// Operator or Viewer who asks for them is refused and is never sent one.
+func TestDnsZones_ListRecords(t *testing.T) {
+	e, ada, org, zone := recordEnv(t)
+	own := e.db.Client().DNSRecord.Create().SetOrgID(org).SetDNSZoneID(zone).SetName("mine.example.com").SetType("A").SetContent("192.0.2.1").SetTTL(300).
+		SetProviderRecordID("000000000000000000000000000000b1").SetState("synced").SaveX(e.sys)
+	e.dns.records = append(e.dns.records, dns.Record{ID: "000000000000000000000000000000b1", Type: "A", Name: "mine.example.com", Content: "192.0.2.1", TTL: 300})
+
+	all, err := listRecords(ada, zone, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]rpmgrv1.DnsRecordState{
+		"mine.example.com/A": rpmgrv1.DnsRecordState_DNS_RECORD_STATE_SYNCED, "app.example.com/A": rpmgrv1.DnsRecordState_DNS_RECORD_STATE_FOREIGN,
+		"other.example.com/A": rpmgrv1.DnsRecordState_DNS_RECORD_STATE_FOREIGN, "app.example.com/MX": rpmgrv1.DnsRecordState_DNS_RECORD_STATE_FOREIGN,
+		"old.example.com/TXT": rpmgrv1.DnsRecordState_DNS_RECORD_STATE_ORPHANED,
+	}
+	if got := states(all); len(all) != 5 || fmt.Sprint(got) != fmt.Sprint(want) || all[0].GetId() != own.ID || all[0].GetProviderRecordId() == "" {
+		t.Fatalf("records %v\nwant %v", all, want)
+	}
+	for _, r := range all[1:] {
+		if r.GetId() != "" {
+			t.Errorf("a record that is not owned has a ledger ID: %v", r)
+		}
+	}
+
+	dials := e.dns.dials()
+	adm, _ := e.join(t, ada, org, "adm@example.com", "admin")
+	if r, err := listRecords(adm, zone, true); err != nil || len(r) != 5 {
+		t.Errorf("an Admin lists everything: %v %v", r, err)
+	}
+	dials = e.dns.dials() - dials
+	for _, role := range []string{"operator", "viewer"} {
+		u, _ := e.join(t, ada, org, role+"@example.com", role)
+		before := e.dns.dials()
+		r, err := listRecords(u, zone, false)
+		if err != nil || len(r) != 1 || r[0].GetId() != own.ID {
+			t.Errorf("a %s lists the owned records: %v %v", role, r, err)
+		}
+		if e.dns.dials() != before {
+			t.Errorf("a %s's list asked the provider", role)
+		}
+		r, err = listRecords(u, zone, true)
+		if code(err) != connect.CodePermissionDenied || len(r) != 0 {
+			t.Errorf("a %s asks for the foreign records: %v %v", role, r, err)
+		}
+		if e.dns.dials() != before {
+			t.Errorf("a refused %s read the provider", role)
+		}
+	}
+	_ = dials
+
+	// Another org sees nothing of the zone, and a missing zone is NOT_FOUND.
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	for _, f := range []bool{false, true} {
+		if _, err := listRecords(bob, zone, f); code(err) != connect.CodeNotFound {
+			t.Errorf("another org lists (foreign %v): %v", f, err)
+		}
+	}
+	if _, err := listRecords(ada, "dnz_missing", false); code(err) != connect.CodeNotFound {
+		t.Errorf("a missing zone: %v", err)
+	}
+	// A provider that fails fails the live part only.
+	e.dns.know(dnsToken1, fakeDNSToken{err: errors.New("dial tcp 198.51.100.1:443: i/o timeout")})
+	if _, err := listRecords(ada, zone, true); code(err) != connect.CodeUnavailable {
+		t.Errorf("an unreachable provider: %v", err)
+	}
+	if r, err := listRecords(ada, zone, false); err != nil || len(r) != 1 {
+		t.Errorf("the owned records of a zone whose provider is down: %v %v", r, err)
+	}
+}
+
+// TestDnsZones_AdoptRecords: a foreign record at a name the org publishes is adopted with its
+// original kept; a record that is not there, is owned, is of another type or lies at a name nothing
+// publishes fails the whole call and adopts none; an Operator and another org are refused.
+func TestDnsZones_AdoptRecords(t *testing.T) {
+	e, ada, org, zone := recordEnv(t)
+	const app, other, mx, orphan = "000000000000000000000000000000a1", "000000000000000000000000000000a2", "000000000000000000000000000000a3", "000000000000000000000000000000a4"
+	ledger := func() int { return e.db.Client().DNSRecord.Query().CountX(e.sys) }
+
+	for name, c := range map[string]struct {
+		ids  []string
+		code connect.Code
+		why  string
+	}{
+		"a name nothing publishes":    {[]string{other}, connect.CodeFailedPrecondition, apisvc.ReasonRecordNotWanted},
+		"a type rpmgr does not own":   {[]string{mx}, connect.CodeFailedPrecondition, apisvc.ReasonRecordTypeUnsupported},
+		"a record the provider lacks": {[]string{"00000000000000000000000000000fff"}, connect.CodeNotFound, apisvc.ReasonRecordNotFound},
+		"one good, one bad":           {[]string{app, other}, connect.CodeFailedPrecondition, apisvc.ReasonRecordNotWanted},
+		"an orphan's name":            {[]string{orphan}, connect.CodeFailedPrecondition, apisvc.ReasonRecordNotWanted},
+		"a record twice":              {[]string{app, app}, connect.CodeInvalidArgument, ""},
+		"none":                        {nil, connect.CodeInvalidArgument, ""},
+	} {
+		if _, err := adoptRecords(ada, zone, c.ids...); code(err) != c.code || reason(err) != c.why {
+			t.Errorf("%s: %v (reason %q)", name, err, reason(err))
+		}
+	}
+	if n := ledger(); n != 0 {
+		t.Fatalf("a refused adoption left %d ledger rows", n)
+	}
+	if _, err := adoptRecords(ada, zone, make([]string, 201)...); code(err) != connect.CodeInvalidArgument {
+		t.Errorf("201 records: %v", err)
+	}
+
+	// An Operator cannot adopt, and neither can another org's Owner, who does not even see the zone.
+	op, _ := e.join(t, ada, org, "op@example.com", "operator")
+	if _, err := adoptRecords(op, zone, app); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an Operator adopts: %v", err)
+	}
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	if _, err := adoptRecords(bob, zone, app); code(err) != connect.CodeNotFound {
+		t.Errorf("another org adopts: %v", err)
+	}
+	if n := ledger(); n != 0 {
+		t.Fatalf("a refused adoption left %d ledger rows", n)
+	}
+
+	rev := e.db.Client().ConfigRevision.Query().CountX(e.sys)
+	rs, err := adoptRecords(ada, zone, app)
+	if err != nil || len(rs) != 1 || rs[0].GetName() != "app.example.com" || rs[0].GetState() != rpmgrv1.DnsRecordState_DNS_RECORD_STATE_SYNCED ||
+		!strings.HasPrefix(rs[0].GetId(), "dnr_") || rs[0].GetProviderRecordId() != app || rs[0].GetAdoptedTime() == nil {
+		t.Fatalf("adopted %v, %v", rs, err)
+	}
+	row := e.db.Client().DNSRecord.GetX(e.sys, rs[0].GetId())
+	if row.Content != "192.0.2.10" || row.LastSyncedAt != nil || row.AdoptedAt == nil || !strings.Contains(row.AdoptedFrom, "192.0.2.10") || !strings.Contains(row.AdoptedFrom, "hand made") {
+		t.Fatalf("row %+v", row)
+	}
+	if z := e.db.Client().DNSZone.GetX(e.sys, zone); z.SyncRequestedAt == nil || e.db.Client().ConfigRevision.Query().CountX(e.sys) != rev+1 {
+		t.Errorf("the adoption asks for a pass: %+v", z)
+	}
+	if a := e.db.Client().AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.DnsZoneService.AdoptRecords"), auditentry.ResultEQ("success")).AllX(e.sys); len(a) != 1 ||
+		a[0].ActorType != "user" || !strings.Contains(a[0].Reason, app) || !strings.Contains(a[0].Reason, zone) {
+		t.Errorf("audit entries for the adoption: %+v", a)
+	}
+	if _, err := adoptRecords(ada, zone, app); code(err) != connect.CodeAlreadyExists || reason(err) != apisvc.ReasonRecordAlreadyOwned {
+		t.Errorf("a second adoption: %v", err)
+	}
+	all, err := listRecords(ada, zone, true)
+	if err != nil || states(all)["app.example.com/A"] != rpmgrv1.DnsRecordState_DNS_RECORD_STATE_SYNCED || len(all) != 4 {
+		t.Errorf("after the adoption: %v %v", all, err)
+	}
+	// Names are compared the way they are stored: case and a trailing dot do not matter.
+	e.dns.records[1].Name = "APP.example.com."
+	if _, err := adoptRecords(ada, zone, other); err != nil {
+		t.Errorf("a name in another spelling: %v", err)
+	}
+}
+
+// TestDnsZones_ReleaseRecord: an owned record leaves the ledger and stays at the provider, without
+// rpmgr's marker, or with restore as it was adopted; a record that is not owned, one of another
+// zone, one the job is writing and a restore without an original are refused; an old original warns.
+func TestDnsZones_ReleaseRecord(t *testing.T) {
+	e, ada, org, zone := recordEnv(t)
+	const app = "000000000000000000000000000000a1"
+	c := e.db.Client()
+	rs, err := adoptRecords(ada, zone, app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := rs[0].GetId()
+	live := func(rid string) dns.Record {
+		for _, r := range e.dns.records {
+			if r.ID == rid {
+				return r
+			}
+		}
+		return dns.Record{}
+	}
+	// What the job's first pass does: rewrites the record to what the sources want, with the marker.
+	job := func() {
+		for i := range e.dns.records {
+			if e.dns.records[i].ID == app {
+				e.dns.records[i].Content, e.dns.records[i].Comment = "192.0.2.99", "rpmgr apitest "+id
+			}
+		}
+		c.DNSRecord.UpdateOneID(id).SetContent("192.0.2.99").SetLastSyncedAt(time.Now()).ExecX(e.sys)
+	}
+
+	// Refused: a record that is not owned, another zone's, and a role that may not.
+	other := c.DNSRecord.Create().SetOrgID(org).SetDNSZoneID(zone).SetName("busy.example.com").SetType("A").SetContent("192.0.2.9").SetTTL(300).SaveX(e.sys) // creating
+	if _, err := releaseRecord(ada, zone, "dnr_missing", false); code(err) != connect.CodeNotFound || reason(err) != apisvc.ReasonRecordNotFound {
+		t.Errorf("a record that is not owned: %v", err)
+	}
+	if _, err := releaseRecord(ada, zone, app, false); code(err) != connect.CodeNotFound {
+		t.Errorf("a provider ID is no ledger row: %v", err)
+	}
+	if _, err := releaseRecord(ada, zone, other.ID, false); reason(err) != apisvc.ReasonRecordBusy {
+		t.Errorf("a record the job is creating: %v", err)
+	}
+	c.DNSRecord.DeleteOneID(other.ID).ExecX(e.sys)
+	z2 := c.DNSZone.Create().SetOrgID(org).SetDNSProviderID(c.DNSZone.GetX(e.sys, zone).DNSProviderID).SetProviderZoneID("z2").SetName("two.example").SaveX(e.sys)
+	foreignRow := c.DNSRecord.Create().SetOrgID(org).SetDNSZoneID(z2.ID).SetName("a.two.example").SetType("A").SetContent("192.0.2.2").SetTTL(300).SetState("synced").SaveX(e.sys)
+	if _, err := releaseRecord(ada, zone, foreignRow.ID, false); code(err) != connect.CodeNotFound {
+		t.Errorf("a row of another zone: %v", err)
+	}
+	op, _ := e.join(t, ada, org, "op@example.com", "operator")
+	if _, err := releaseRecord(op, zone, id, false); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an Operator releases: %v", err)
+	}
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	if _, err := releaseRecord(bob, zone, id, false); code(err) != connect.CodeNotFound {
+		t.Errorf("another org releases: %v", err)
+	}
+	if _, err := releaseRecord(ada, zone, foreignRow.ID, true); reason(err) != apisvc.ReasonRecordNotAdopted && code(err) != connect.CodeNotFound {
+		t.Errorf("restore of a record that was not adopted: %v", err)
+	}
+	plain := c.DNSRecord.Create().SetOrgID(org).SetDNSZoneID(zone).SetName("plain.example.com").SetType("A").SetContent("192.0.2.3").SetTTL(300).SetState("synced").SaveX(e.sys)
+	if _, err := releaseRecord(ada, zone, plain.ID, true); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonRecordNotAdopted {
+		t.Errorf("restore of a record that was not adopted: %v", err)
+	}
+	if n := c.DNSRecord.Query().CountX(e.sys); n != 3 || len(e.dns.batches) != 0 {
+		t.Fatalf("a refused release changed something: %d rows, %d batches", n, len(e.dns.batches))
+	}
+
+	// A release is a request: the API call writes no record, the row says it is pending, and the
+	// restore warns about an old original.
+	job()
+	c.DNSRecord.UpdateOneID(id).SetAdoptedAt(time.Now().Add(-31 * 24 * time.Hour)).ExecX(e.sys)
+	warn, err := releaseRecord(ada, zone, id, true)
+	if err != nil || !strings.Contains(warn, "30 days") {
+		t.Fatalf("restore: %q, %v", warn, err)
+	}
+	if got := c.DNSRecord.GetX(e.sys, id); got.ReleaseRequested != "restore" {
+		t.Fatalf("row %+v", got)
+	}
+	if len(e.dns.batches) != 0 || live(app).Content != "192.0.2.99" {
+		t.Fatalf("the API call wrote to the provider: %d batches, %+v", len(e.dns.batches), live(app))
+	}
+	if l, _ := listRecords(ada, zone, false); len(l) != 2 || !strings.Contains(l[0].GetReason()+l[1].GetReason(), "release requested (restore)") {
+		t.Errorf("the pending release is not shown: %v", l)
+	}
+	if a := e.db.Client().AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.DnsZoneService.ReleaseRecord"), auditentry.ResultEQ("success")).AllX(e.sys); len(a) != 1 ||
+		!strings.Contains(a[0].Reason, id) || !strings.Contains(a[0].Diff, `"restore":true`) {
+		t.Errorf("audit entries for the release: %+v", a)
+	}
+	if z := c.DNSZone.GetX(e.sys, zone); z.SyncRequestedAt == nil {
+		t.Error("the release asks for a pass")
+	}
+	if warn, err := releaseRecord(ada, zone, id, false); err != nil || warn != "" {
+		t.Fatalf("a second request: %q %v", warn, err)
+	}
+	if got := c.DNSRecord.GetX(e.sys, id); got.ReleaseRequested != "keep" {
+		t.Errorf("the request was not replaced: %+v", got)
+	}
+	// A record the provider has no ID of needs nothing at the provider: it is dropped at once.
+	noID := c.DNSRecord.Create().SetOrgID(org).SetDNSZoneID(zone).SetName("noid.example.com").SetType("A").SetContent("192.0.2.8").SetTTL(300).SetState("error").SaveX(e.sys)
+	if _, err := releaseRecord(ada, zone, noID.ID, false); err != nil || c.DNSRecord.Query().Where(dnsrecord.ID(noID.ID)).CountX(e.sys) != 0 {
+		t.Errorf("a row without a provider record: %v", err)
+	}
+	// Both calls need a step-up, besides the role.
+	adm, _ := e.join(t, ada, org, "adm@example.com", "admin")
+	if _, err := releaseRecord(adm, zone, id, false); reason(err) != api.ReasonStepUpRequired {
+		t.Errorf("release without a step-up: %v", err)
+	}
+	if _, err := adoptRecords(adm, zone, "000000000000000000000000000000a2"); reason(err) != api.ReasonStepUpRequired {
+		t.Errorf("adopt without a step-up: %v", err)
+	}
+	if got := c.DNSRecord.GetX(e.sys, id); got.ReleaseRequested != "keep" {
+		t.Errorf("a refused call changed the ledger: %+v", got)
+	}
+}
+
+// TestDnsZones_SyncZone: the request is written to the row; a disabled zone, another org and a role
+// that may not are refused.
+func TestDnsZones_SyncZone(t *testing.T) {
+	e, ada, org, zone := recordEnv(t)
+	sync := func(b *browser, id string) error {
+		_, err := b.dnsz.SyncZone(context.Background(), connect.NewRequest(&rpmgrv1.SyncZoneRequest{DnsZoneId: id}))
+		return err
+	}
+	if err := sync(ada, zone); err != nil {
+		t.Fatal(err)
+	}
+	first := e.db.Client().DNSZone.GetX(e.sys, zone).SyncRequestedAt
+	if first == nil {
+		t.Fatal("no request written")
+	}
+	e.clock = e.clock.Add(time.Minute)
+	if err := sync(ada, zone); err != nil {
+		t.Fatal(err)
+	}
+	if second := e.db.Client().DNSZone.GetX(e.sys, zone).SyncRequestedAt; !second.After(*first) {
+		t.Errorf("a second request did not move the time: %v then %v", first, second)
+	}
+	op, _ := e.join(t, ada, org, "op@example.com", "operator")
+	if err := sync(op, zone); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an Operator: %v", err)
+	}
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	if err := sync(bob, zone); code(err) != connect.CodeNotFound {
+		t.Errorf("another org: %v", err)
+	}
+	if err := sync(ada, "dnz_missing"); code(err) != connect.CodeNotFound {
+		t.Errorf("a missing zone: %v", err)
+	}
+	e.db.Client().DNSZone.UpdateOneID(zone).SetSyncState("disabled").ClearSyncRequestedAt().ExecX(e.sys)
+	if err := sync(ada, zone); code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonZoneDisabled {
+		t.Errorf("a disabled zone: %v", err)
+	}
+	if e.db.Client().DNSZone.GetX(e.sys, zone).SyncRequestedAt != nil {
+		t.Error("a disabled zone was asked to sync")
+	}
+}
+
+// TestDnsZones_EnableZone: a disabled zone becomes held and nothing else; it needs a step-up and an
+// Owner or Admin; a zone that is not disabled and another org's are refused; the enabled zone still
+// needs an approved plan.
+func TestDnsZones_EnableZone(t *testing.T) {
+	e, ada, org, p := zoneEnv(t)
+	e.dns.zones = []dns.Zone{{ID: "z1", Name: "example.com", Status: "active", Type: "full"}}
+	r, err := importZone(ada, p.GetId(), "z1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := r.GetDnsZone().GetId()
+	enable := func(b *browser, zone string) error {
+		_, err := b.dnsz.EnableZone(context.Background(), connect.NewRequest(&rpmgrv1.EnableZoneRequest{DnsZoneId: zone}))
+		return err
+	}
+	if err := enable(ada, id); reason(err) != apisvc.ReasonZoneNotDisabled {
+		t.Errorf("a held zone: %v", err)
+	}
+	e.db.Client().DNSZone.UpdateOneID(id).SetSyncState("disabled").SetPendingPlanHash("x").ExecX(e.sys)
+	adm, _ := e.join(t, ada, org, "adm@example.com", "admin")
+	op, _ := e.join(t, ada, org, "op@example.com", "operator")
+	if err := op.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	if err := bob.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := enable(adm, id); reason(err) != api.ReasonStepUpRequired {
+		t.Errorf("without a step-up: %v", err)
+	}
+	if err := enable(op, id); code(err) != connect.CodePermissionDenied {
+		t.Errorf("an Operator: %v", err)
+	}
+	if err := enable(bob, id); code(err) != connect.CodeNotFound {
+		t.Errorf("another org: %v", err)
+	}
+	if err := enable(ada, "dnz_missing"); code(err) != connect.CodeNotFound {
+		t.Errorf("a missing zone: %v", err)
+	}
+	if e.db.Client().DNSZone.GetX(e.sys, id).SyncState != "disabled" {
+		t.Fatal("a refused call enabled the zone")
+	}
+	if err := enable(ada, id); err != nil {
+		t.Fatal(err)
+	}
+	if z := e.db.Client().DNSZone.GetX(e.sys, id); z.SyncState != "held" || z.HeldReason != "enabled" || z.PendingPlanHash != "" {
+		t.Fatalf("zone %+v", z)
+	}
+	// A hash that was never approved activates nothing: approval is still needed.
+	if err := approveZone(ada, id, strings.Repeat("a", 64)); reason(err) != apisvc.ReasonPlanChanged {
+		t.Errorf("approval after enabling: %v", err)
+	}
+	pl, err := planZone(ada, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := approveZone(ada, id, pl.GetPlan().GetHash()); err != nil {
+		t.Errorf("approving the plan read: %v", err)
+	}
+}
+
+func planRemoval(b *browser, id string) (*rpmgrv1.PlanZoneSyncResponse, error) {
+	r, err := b.dnsz.PlanZoneSync(context.Background(), connect.NewRequest(&rpmgrv1.PlanZoneSyncRequest{DnsZoneId: id, DeleteRecords: true}))
+	if err != nil {
+		return nil, err
+	}
+	return r.Msg, nil
+}
+
+func removeWithRecords(b *browser, id, etag, hash string) error {
+	_, err := b.dnsz.RemoveZone(context.Background(), connect.NewRequest(&rpmgrv1.RemoveZoneRequest{DnsZoneId: id, Etag: etag, DeleteRecords: true, PlanHash: hash}))
+	return err
+}
+
+// TestDnsZones_RemoveWithRecords (docs/15-dns.md, "Connecting, importing and disconnecting"):
+// removing a zone with its records goes through a plan and an approval: the plan deletes the
+// records rpmgr owns and no others; the call takes a step-up, an Owner or Admin and the plan's hash,
+// and a plan that changed fails with PLAN_CHANGED before anything is deleted; the zone is disabled
+// before the first delete, stays so if the provider fails, and the claim stays.
+func TestDnsZones_RemoveWithRecords(t *testing.T) {
+	e, ada, org, zone := recordEnv(t)
+	c := e.db.Client()
+	row := func(name, pid string) {
+		c.DNSRecord.Create().SetOrgID(org).SetDNSZoneID(zone).SetName(name).SetType("A").SetContent("192.0.2.5").SetTTL(300).SetProviderRecordID(pid).SetState("synced").ExecX(e.sys)
+	}
+	row("mine1.example.com", "000000000000000000000000000000b1")
+	row("mine2.example.com", "000000000000000000000000000000b2")
+	row("gone.example.com", "000000000000000000000000000000b3") // its record is gone at the provider
+	e.dns.records = append(e.dns.records,
+		dns.Record{ID: "000000000000000000000000000000b1", Type: "A", Name: "mine1.example.com", Content: "192.0.2.5", TTL: 300},
+		dns.Record{ID: "000000000000000000000000000000b2", Type: "A", Name: "mine2.example.com", Content: "192.0.2.5", TTL: 300})
+	foreign := len(e.dns.records) - 2
+	pl, err := planRemoval(ada, zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var del []string
+	for _, r := range pl.GetPlan().GetDeletes() {
+		del = append(del, r.GetName())
+	}
+	if len(pl.GetPlan().GetCreates()) != 0 || len(pl.GetPlan().GetUpdates()) != 0 || fmt.Sprint(del) != "[mine1.example.com mine2.example.com]" || len(pl.GetPlan().GetHash()) != 64 {
+		t.Fatalf("removal plan %v", pl.GetPlan())
+	}
+	normal, _ := planZone(ada, zone)
+	if normal.GetPlan().GetHash() == pl.GetPlan().GetHash() {
+		t.Error("the removal plan and the plan of a pass have the same hash")
+	}
+	hash := pl.GetPlan().GetHash()
+	intact := func(why string) {
+		t.Helper()
+		if zoneCount(e) != 1 || c.DNSRecord.Query().CountX(e.sys) != 3 || len(e.dns.batches) != 0 {
+			t.Fatalf("%s: the zone, its rows or the provider changed (%d zones, %d batches)", why, zoneCount(e), len(e.dns.batches))
+		}
+	}
+
+	adm, _ := e.join(t, ada, org, "adm@example.com", "admin")
+	op, _ := e.join(t, ada, org, "op@example.com", "operator")
+	if err := op.stepUp(pw, ""); err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]struct {
+		call func() error
+		code connect.Code
+		why  string
+	}{
+		"an Operator":                {func() error { return removeWithRecords(op, zone, "", hash) }, connect.CodePermissionDenied, api.ReasonPermissionMissing},
+		"no step-up":                 {func() error { return removeWithRecords(adm, zone, "", hash) }, connect.CodeUnauthenticated, api.ReasonStepUpRequired},
+		"no hash":                    {func() error { return removeWithRecords(ada, zone, "", "") }, connect.CodeInvalidArgument, ""},
+		"a hash without the flag":    {func() error { return removeZoneWithHash(ada, zone, hash) }, connect.CodeInvalidArgument, ""},
+		"another plan's hash":        {func() error { return removeWithRecords(ada, zone, "", normal.GetPlan().GetHash()) }, connect.CodeFailedPrecondition, apisvc.ReasonPlanChanged},
+		"a made-up hash":             {func() error { return removeWithRecords(ada, zone, "", strings.Repeat("a", 64)) }, connect.CodeFailedPrecondition, apisvc.ReasonPlanChanged},
+		"a stale etag":               {func() error { return removeWithRecords(ada, zone, "99", hash) }, connect.CodeFailedPrecondition, api.ReasonEtagMismatch},
+		"a zone that does not exist": {func() error { return removeWithRecords(ada, "dnz_missing", "", hash) }, connect.CodeNotFound, ""},
+	} {
+		if err := c.call(); code(err) != c.code || reason(err) != c.why {
+			t.Errorf("%s: %v (reason %q)", name, err, reason(err))
+		}
+		intact(name)
+	}
+	if z := c.DNSZone.GetX(e.sys, zone); z.SyncState != "held" {
+		t.Fatalf("a refused removal changed the zone: %+v", z)
+	}
+
+	// The plan changes after it was read: the provider holds one more owned record.
+	row("late.example.com", "000000000000000000000000000000b4")
+	e.dns.records = append(e.dns.records, dns.Record{ID: "000000000000000000000000000000b4", Type: "A", Name: "late.example.com", Content: "192.0.2.5", TTL: 300})
+	if err := removeWithRecords(ada, zone, "", hash); reason(err) != apisvc.ReasonPlanChanged {
+		t.Fatalf("a plan that changed: %v", err)
+	}
+	pl, _ = planRemoval(ada, zone)
+	hash = pl.GetPlan().GetHash()
+	if len(e.dns.batches) != 0 {
+		t.Fatal("something was deleted before the hash matched")
+	}
+
+	// A provider that is down fails the call before anything is recorded.
+	e.dns.know(dnsToken1, fakeDNSToken{err: errors.New("dial tcp 198.51.100.1:443: i/o timeout")})
+	if err := removeWithRecords(ada, zone, "", hash); code(err) != connect.CodeUnavailable {
+		t.Fatalf("a failing provider: %v", err)
+	}
+	e.dns.know(dnsToken1, fakeDNSToken{})
+	if z := c.DNSZone.GetX(e.sys, zone); z.SyncState != "held" || z.RemovalRequested {
+		t.Fatalf("zone %+v", z)
+	}
+
+	// The call records the approved plan and returns: the zone is disabled and shows the removal as
+	// pending, nothing is written to the provider, no row goes. The DNS job does the rest.
+	if err := removeWithRecords(ada, zone, "", hash); err != nil {
+		t.Fatal(err)
+	}
+	z := c.DNSZone.GetX(e.sys, zone)
+	if z.SyncState != "disabled" || !z.RemovalRequested || z.PendingPlanHash != hash || z.SyncRequestedAt == nil || len(z.PendingPlan) == 0 {
+		t.Fatalf("zone %+v", z)
+	}
+	if len(e.dns.batches) != 0 || zoneCount(e) != 1 || c.DNSRecord.Query().CountX(e.sys) != 4 || len(e.dns.records) != foreign+3 {
+		t.Fatalf("the API call wrote: %d batches, %d rows, %d records", len(e.dns.batches), c.DNSRecord.Query().CountX(e.sys), len(e.dns.records))
+	}
+	if got, err := ada.dnsz.GetZone(context.Background(), connect.NewRequest(&rpmgrv1.GetZoneRequest{DnsZoneId: zone})); err != nil || !got.Msg.GetDnsZone().GetRemovalPending() {
+		t.Errorf("the zone does not show the pending removal: %v %v", got, err)
+	}
+	if a := c.AuditEntry.Query().Where(auditentry.Action("rpmgr.v1.DnsZoneService.RemoveZone"), auditentry.ResultEQ("success")).AllX(e.sys); len(a) < 1 || !strings.Contains(a[0].Reason, "delete 4 records") && !strings.Contains(a[0].Reason, "delete 3 records") {
+		t.Errorf("audit entries for the removal: %+v", a)
+	}
+	if c.Domain.Query().CountX(e.sys) != 1 {
+		t.Error("the claim went")
+	}
+}
+
+func removeZoneWithHash(b *browser, id, hash string) error {
+	_, err := b.dnsz.RemoveZone(context.Background(), connect.NewRequest(&rpmgrv1.RemoveZoneRequest{DnsZoneId: id, PlanHash: hash}))
+	return err
 }

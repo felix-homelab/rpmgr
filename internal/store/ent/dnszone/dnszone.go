@@ -30,6 +30,10 @@ const (
 	FieldSyncState = "sync_state"
 	// FieldHeldReason holds the string denoting the held_reason field in the database.
 	FieldHeldReason = "held_reason"
+	// FieldPendingPlan holds the string denoting the pending_plan field in the database.
+	FieldPendingPlan = "pending_plan"
+	// FieldPendingPlanHash holds the string denoting the pending_plan_hash field in the database.
+	FieldPendingPlanHash = "pending_plan_hash"
 	// FieldProviderStatus holds the string denoting the provider_status field in the database.
 	FieldProviderStatus = "provider_status"
 	// FieldPublishRouteHostnames holds the string denoting the publish_route_hostnames field in the database.
@@ -44,6 +48,10 @@ const (
 	FieldDefaultTTL = "default_ttl"
 	// FieldLastSyncedAt holds the string denoting the last_synced_at field in the database.
 	FieldLastSyncedAt = "last_synced_at"
+	// FieldRemovalRequested holds the string denoting the removal_requested field in the database.
+	FieldRemovalRequested = "removal_requested"
+	// FieldSyncRequestedAt holds the string denoting the sync_requested_at field in the database.
+	FieldSyncRequestedAt = "sync_requested_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeDNSProvider holds the string denoting the dns_provider edge name in mutations.
@@ -69,6 +77,8 @@ var Columns = []string{
 	FieldName,
 	FieldSyncState,
 	FieldHeldReason,
+	FieldPendingPlan,
+	FieldPendingPlanHash,
 	FieldProviderStatus,
 	FieldPublishRouteHostnames,
 	FieldAllowProxied,
@@ -76,6 +86,8 @@ var Columns = []string{
 	FieldDeleteThreshold,
 	FieldDefaultTTL,
 	FieldLastSyncedAt,
+	FieldRemovalRequested,
+	FieldSyncRequestedAt,
 	FieldCreatedAt,
 }
 
@@ -114,6 +126,10 @@ var (
 	DefaultHeldReason string
 	// HeldReasonValidator is a validator for the "held_reason" field. It is called by the builders before save.
 	HeldReasonValidator func(string) error
+	// DefaultPendingPlanHash holds the default value on creation for the "pending_plan_hash" field.
+	DefaultPendingPlanHash string
+	// PendingPlanHashValidator is a validator for the "pending_plan_hash" field. It is called by the builders before save.
+	PendingPlanHashValidator func(string) error
 	// DefaultPublishRouteHostnames holds the default value on creation for the "publish_route_hostnames" field.
 	DefaultPublishRouteHostnames bool
 	// DefaultAllowProxied holds the default value on creation for the "allow_proxied" field.
@@ -128,6 +144,8 @@ var (
 	DefaultDefaultTTL int
 	// DefaultTTLValidator is a validator for the "default_ttl" field. It is called by the builders before save.
 	DefaultTTLValidator func(int) error
+	// DefaultRemovalRequested holds the default value on creation for the "removal_requested" field.
+	DefaultRemovalRequested bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultID holds the default value on creation for the "id" field.
@@ -234,6 +252,11 @@ func ByHeldReason(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldHeldReason, opts...).ToFunc()
 }
 
+// ByPendingPlanHash orders the results by the pending_plan_hash field.
+func ByPendingPlanHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPendingPlanHash, opts...).ToFunc()
+}
+
 // ByProviderStatus orders the results by the provider_status field.
 func ByProviderStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProviderStatus, opts...).ToFunc()
@@ -267,6 +290,16 @@ func ByDefaultTTL(opts ...sql.OrderTermOption) OrderOption {
 // ByLastSyncedAt orders the results by the last_synced_at field.
 func ByLastSyncedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastSyncedAt, opts...).ToFunc()
+}
+
+// ByRemovalRequested orders the results by the removal_requested field.
+func ByRemovalRequested(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRemovalRequested, opts...).ToFunc()
+}
+
+// BySyncRequestedAt orders the results by the sync_requested_at field.
+func BySyncRequestedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSyncRequestedAt, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

@@ -61,6 +61,9 @@ const (
 	// WebhookServiceTestWebhookProcedure is the fully-qualified name of the WebhookService's
 	// TestWebhook RPC.
 	WebhookServiceTestWebhookProcedure = "/rpmgr.v1.WebhookService/TestWebhook"
+	// WebhookServicePreviewWebhookMessageProcedure is the fully-qualified name of the WebhookService's
+	// PreviewWebhookMessage RPC.
+	WebhookServicePreviewWebhookMessageProcedure = "/rpmgr.v1.WebhookService/PreviewWebhookMessage"
 	// InstanceWebhookServiceCreateInstanceWebhookProcedure is the fully-qualified name of the
 	// InstanceWebhookService's CreateInstanceWebhook RPC.
 	InstanceWebhookServiceCreateInstanceWebhookProcedure = "/rpmgr.v1.InstanceWebhookService/CreateInstanceWebhook"
@@ -85,6 +88,9 @@ const (
 	// InstanceWebhookServiceTestInstanceWebhookProcedure is the fully-qualified name of the
 	// InstanceWebhookService's TestInstanceWebhook RPC.
 	InstanceWebhookServiceTestInstanceWebhookProcedure = "/rpmgr.v1.InstanceWebhookService/TestInstanceWebhook"
+	// InstanceWebhookServicePreviewInstanceWebhookMessageProcedure is the fully-qualified name of the
+	// InstanceWebhookService's PreviewInstanceWebhookMessage RPC.
+	InstanceWebhookServicePreviewInstanceWebhookMessageProcedure = "/rpmgr.v1.InstanceWebhookService/PreviewInstanceWebhookMessage"
 )
 
 // WebhookServiceClient is a client for the rpmgr.v1.WebhookService service.
@@ -108,6 +114,11 @@ type WebhookServiceClient interface {
 	// TestWebhook sends a webhook.test event to an endpoint now, through the egress guard, and
 	// returns what the receiver answered. It is audited.
 	TestWebhook(context.Context, *connect.Request[v1.TestWebhookRequest]) (*connect.Response[v1.TestWebhookResponse], error)
+	// PreviewWebhookMessage returns the messages an endpoint of the given format and options would
+	// post, for a sample alert that fires, the same alert resolving and a configuration change, so
+	// that a form can show them before the endpoint is saved. It reads nothing, sends nothing and
+	// is not audited.
+	PreviewWebhookMessage(context.Context, *connect.Request[v1.PreviewWebhookMessageRequest]) (*connect.Response[v1.PreviewWebhookMessageResponse], error)
 }
 
 // NewWebhookServiceClient constructs a client for the rpmgr.v1.WebhookService service. By default,
@@ -172,6 +183,13 @@ func NewWebhookServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(webhookServiceMethods.ByName("TestWebhook")),
 			connect.WithClientOptions(opts...),
 		),
+		previewWebhookMessage: connect.NewClient[v1.PreviewWebhookMessageRequest, v1.PreviewWebhookMessageResponse](
+			httpClient,
+			baseURL+WebhookServicePreviewWebhookMessageProcedure,
+			connect.WithSchema(webhookServiceMethods.ByName("PreviewWebhookMessage")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -185,6 +203,7 @@ type webhookServiceClient struct {
 	rotateWebhookSecret   *connect.Client[v1.RotateWebhookSecretRequest, v1.RotateWebhookSecretResponse]
 	listWebhookDeliveries *connect.Client[v1.ListWebhookDeliveriesRequest, v1.ListWebhookDeliveriesResponse]
 	testWebhook           *connect.Client[v1.TestWebhookRequest, v1.TestWebhookResponse]
+	previewWebhookMessage *connect.Client[v1.PreviewWebhookMessageRequest, v1.PreviewWebhookMessageResponse]
 }
 
 // CreateWebhook calls rpmgr.v1.WebhookService.CreateWebhook.
@@ -227,6 +246,11 @@ func (c *webhookServiceClient) TestWebhook(ctx context.Context, req *connect.Req
 	return c.testWebhook.CallUnary(ctx, req)
 }
 
+// PreviewWebhookMessage calls rpmgr.v1.WebhookService.PreviewWebhookMessage.
+func (c *webhookServiceClient) PreviewWebhookMessage(ctx context.Context, req *connect.Request[v1.PreviewWebhookMessageRequest]) (*connect.Response[v1.PreviewWebhookMessageResponse], error) {
+	return c.previewWebhookMessage.CallUnary(ctx, req)
+}
+
 // WebhookServiceHandler is an implementation of the rpmgr.v1.WebhookService service.
 type WebhookServiceHandler interface {
 	// CreateWebhook adds an endpoint and returns its secret, once.
@@ -248,6 +272,11 @@ type WebhookServiceHandler interface {
 	// TestWebhook sends a webhook.test event to an endpoint now, through the egress guard, and
 	// returns what the receiver answered. It is audited.
 	TestWebhook(context.Context, *connect.Request[v1.TestWebhookRequest]) (*connect.Response[v1.TestWebhookResponse], error)
+	// PreviewWebhookMessage returns the messages an endpoint of the given format and options would
+	// post, for a sample alert that fires, the same alert resolving and a configuration change, so
+	// that a form can show them before the endpoint is saved. It reads nothing, sends nothing and
+	// is not audited.
+	PreviewWebhookMessage(context.Context, *connect.Request[v1.PreviewWebhookMessageRequest]) (*connect.Response[v1.PreviewWebhookMessageResponse], error)
 }
 
 // NewWebhookServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -308,6 +337,13 @@ func NewWebhookServiceHandler(svc WebhookServiceHandler, opts ...connect.Handler
 		connect.WithSchema(webhookServiceMethods.ByName("TestWebhook")),
 		connect.WithHandlerOptions(opts...),
 	)
+	webhookServicePreviewWebhookMessageHandler := connect.NewUnaryHandler(
+		WebhookServicePreviewWebhookMessageProcedure,
+		svc.PreviewWebhookMessage,
+		connect.WithSchema(webhookServiceMethods.ByName("PreviewWebhookMessage")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.WebhookService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case WebhookServiceCreateWebhookProcedure:
@@ -326,6 +362,8 @@ func NewWebhookServiceHandler(svc WebhookServiceHandler, opts ...connect.Handler
 			webhookServiceListWebhookDeliveriesHandler.ServeHTTP(w, r)
 		case WebhookServiceTestWebhookProcedure:
 			webhookServiceTestWebhookHandler.ServeHTTP(w, r)
+		case WebhookServicePreviewWebhookMessageProcedure:
+			webhookServicePreviewWebhookMessageHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -367,6 +405,10 @@ func (UnimplementedWebhookServiceHandler) TestWebhook(context.Context, *connect.
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.WebhookService.TestWebhook is not implemented"))
 }
 
+func (UnimplementedWebhookServiceHandler) PreviewWebhookMessage(context.Context, *connect.Request[v1.PreviewWebhookMessageRequest]) (*connect.Response[v1.PreviewWebhookMessageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.WebhookService.PreviewWebhookMessage is not implemented"))
+}
+
 // InstanceWebhookServiceClient is a client for the rpmgr.v1.InstanceWebhookService service.
 type InstanceWebhookServiceClient interface {
 	// CreateInstanceWebhook adds an endpoint and returns its secret, once.
@@ -387,6 +429,8 @@ type InstanceWebhookServiceClient interface {
 	// TestInstanceWebhook sends a webhook.test event to an endpoint now and returns what the
 	// receiver answered. It is audited.
 	TestInstanceWebhook(context.Context, *connect.Request[v1.TestInstanceWebhookRequest]) (*connect.Response[v1.TestInstanceWebhookResponse], error)
+	// PreviewInstanceWebhookMessage is PreviewWebhookMessage for an instance endpoint.
+	PreviewInstanceWebhookMessage(context.Context, *connect.Request[v1.PreviewInstanceWebhookMessageRequest]) (*connect.Response[v1.PreviewInstanceWebhookMessageResponse], error)
 }
 
 // NewInstanceWebhookServiceClient constructs a client for the rpmgr.v1.InstanceWebhookService
@@ -451,6 +495,13 @@ func NewInstanceWebhookServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(instanceWebhookServiceMethods.ByName("TestInstanceWebhook")),
 			connect.WithClientOptions(opts...),
 		),
+		previewInstanceWebhookMessage: connect.NewClient[v1.PreviewInstanceWebhookMessageRequest, v1.PreviewInstanceWebhookMessageResponse](
+			httpClient,
+			baseURL+InstanceWebhookServicePreviewInstanceWebhookMessageProcedure,
+			connect.WithSchema(instanceWebhookServiceMethods.ByName("PreviewInstanceWebhookMessage")),
+			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -464,6 +515,7 @@ type instanceWebhookServiceClient struct {
 	rotateInstanceWebhookSecret   *connect.Client[v1.RotateInstanceWebhookSecretRequest, v1.RotateInstanceWebhookSecretResponse]
 	listInstanceWebhookDeliveries *connect.Client[v1.ListInstanceWebhookDeliveriesRequest, v1.ListInstanceWebhookDeliveriesResponse]
 	testInstanceWebhook           *connect.Client[v1.TestInstanceWebhookRequest, v1.TestInstanceWebhookResponse]
+	previewInstanceWebhookMessage *connect.Client[v1.PreviewInstanceWebhookMessageRequest, v1.PreviewInstanceWebhookMessageResponse]
 }
 
 // CreateInstanceWebhook calls rpmgr.v1.InstanceWebhookService.CreateInstanceWebhook.
@@ -507,6 +559,12 @@ func (c *instanceWebhookServiceClient) TestInstanceWebhook(ctx context.Context, 
 	return c.testInstanceWebhook.CallUnary(ctx, req)
 }
 
+// PreviewInstanceWebhookMessage calls
+// rpmgr.v1.InstanceWebhookService.PreviewInstanceWebhookMessage.
+func (c *instanceWebhookServiceClient) PreviewInstanceWebhookMessage(ctx context.Context, req *connect.Request[v1.PreviewInstanceWebhookMessageRequest]) (*connect.Response[v1.PreviewInstanceWebhookMessageResponse], error) {
+	return c.previewInstanceWebhookMessage.CallUnary(ctx, req)
+}
+
 // InstanceWebhookServiceHandler is an implementation of the rpmgr.v1.InstanceWebhookService
 // service.
 type InstanceWebhookServiceHandler interface {
@@ -528,6 +586,8 @@ type InstanceWebhookServiceHandler interface {
 	// TestInstanceWebhook sends a webhook.test event to an endpoint now and returns what the
 	// receiver answered. It is audited.
 	TestInstanceWebhook(context.Context, *connect.Request[v1.TestInstanceWebhookRequest]) (*connect.Response[v1.TestInstanceWebhookResponse], error)
+	// PreviewInstanceWebhookMessage is PreviewWebhookMessage for an instance endpoint.
+	PreviewInstanceWebhookMessage(context.Context, *connect.Request[v1.PreviewInstanceWebhookMessageRequest]) (*connect.Response[v1.PreviewInstanceWebhookMessageResponse], error)
 }
 
 // NewInstanceWebhookServiceHandler builds an HTTP handler from the service implementation. It
@@ -588,6 +648,13 @@ func NewInstanceWebhookServiceHandler(svc InstanceWebhookServiceHandler, opts ..
 		connect.WithSchema(instanceWebhookServiceMethods.ByName("TestInstanceWebhook")),
 		connect.WithHandlerOptions(opts...),
 	)
+	instanceWebhookServicePreviewInstanceWebhookMessageHandler := connect.NewUnaryHandler(
+		InstanceWebhookServicePreviewInstanceWebhookMessageProcedure,
+		svc.PreviewInstanceWebhookMessage,
+		connect.WithSchema(instanceWebhookServiceMethods.ByName("PreviewInstanceWebhookMessage")),
+		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/rpmgr.v1.InstanceWebhookService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case InstanceWebhookServiceCreateInstanceWebhookProcedure:
@@ -606,6 +673,8 @@ func NewInstanceWebhookServiceHandler(svc InstanceWebhookServiceHandler, opts ..
 			instanceWebhookServiceListInstanceWebhookDeliveriesHandler.ServeHTTP(w, r)
 		case InstanceWebhookServiceTestInstanceWebhookProcedure:
 			instanceWebhookServiceTestInstanceWebhookHandler.ServeHTTP(w, r)
+		case InstanceWebhookServicePreviewInstanceWebhookMessageProcedure:
+			instanceWebhookServicePreviewInstanceWebhookMessageHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -645,4 +714,8 @@ func (UnimplementedInstanceWebhookServiceHandler) ListInstanceWebhookDeliveries(
 
 func (UnimplementedInstanceWebhookServiceHandler) TestInstanceWebhook(context.Context, *connect.Request[v1.TestInstanceWebhookRequest]) (*connect.Response[v1.TestInstanceWebhookResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.InstanceWebhookService.TestInstanceWebhook is not implemented"))
+}
+
+func (UnimplementedInstanceWebhookServiceHandler) PreviewInstanceWebhookMessage(context.Context, *connect.Request[v1.PreviewInstanceWebhookMessageRequest]) (*connect.Response[v1.PreviewInstanceWebhookMessageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("rpmgr.v1.InstanceWebhookService.PreviewInstanceWebhookMessage is not implemented"))
 }

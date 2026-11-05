@@ -31,6 +31,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsname"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsnamestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsprovider"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsratebudget"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
@@ -81,6 +82,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/user"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/webhook"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookdelivery"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/webhookmessage"
 
 	"entgo.io/ent"
 	"entgo.io/ent/privacy"
@@ -1537,6 +1539,80 @@ func init() {
 			return nil
 		}
 	}()
+	dnsratebudgetMixin := schema.DNSRateBudget{}.Mixin()
+	dnsratebudget.Policy = privacy.NewPolicies(dnsratebudgetMixin[0], schema.DNSRateBudget{})
+	dnsratebudget.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := dnsratebudget.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	dnsratebudgetMixinHooks0 := dnsratebudgetMixin[0].Hooks()
+	dnsratebudgetMixinHooks1 := dnsratebudgetMixin[1].Hooks()
+
+	dnsratebudget.Hooks[1] = dnsratebudgetMixinHooks0[0]
+
+	dnsratebudget.Hooks[2] = dnsratebudgetMixinHooks1[0]
+	dnsratebudgetMixinInters0 := dnsratebudgetMixin[0].Interceptors()
+	dnsratebudget.Interceptors[0] = dnsratebudgetMixinInters0[0]
+	dnsratebudgetMixinFields0 := dnsratebudgetMixin[0].Fields()
+	_ = dnsratebudgetMixinFields0
+	dnsratebudgetMixinFields1 := dnsratebudgetMixin[1].Fields()
+	_ = dnsratebudgetMixinFields1
+	dnsratebudgetFields := schema.DNSRateBudget{}.Fields()
+	_ = dnsratebudgetFields
+	// dnsratebudgetDescOrgID is the schema descriptor for org_id field.
+	dnsratebudgetDescOrgID := dnsratebudgetMixinFields0[0].Descriptor()
+	// dnsratebudget.OrgIDValidator is a validator for the "org_id" field. It is called by the builders before save.
+	dnsratebudget.OrgIDValidator = dnsratebudgetDescOrgID.Validators[0].(func(string) error)
+	// dnsratebudgetDescVersion is the schema descriptor for version field.
+	dnsratebudgetDescVersion := dnsratebudgetMixinFields1[0].Descriptor()
+	// dnsratebudget.DefaultVersion holds the default value on creation for the version field.
+	dnsratebudget.DefaultVersion = dnsratebudgetDescVersion.Default.(int64)
+	// dnsratebudget.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	dnsratebudget.VersionValidator = dnsratebudgetDescVersion.Validators[0].(func(int64) error)
+	// dnsratebudgetDescDNSProviderID is the schema descriptor for dns_provider_id field.
+	dnsratebudgetDescDNSProviderID := dnsratebudgetFields[1].Descriptor()
+	// dnsratebudget.DNSProviderIDValidator is a validator for the "dns_provider_id" field. It is called by the builders before save.
+	dnsratebudget.DNSProviderIDValidator = dnsratebudgetDescDNSProviderID.Validators[0].(func(string) error)
+	// dnsratebudgetDescWindowStartedAt is the schema descriptor for window_started_at field.
+	dnsratebudgetDescWindowStartedAt := dnsratebudgetFields[2].Descriptor()
+	// dnsratebudget.DefaultWindowStartedAt holds the default value on creation for the window_started_at field.
+	dnsratebudget.DefaultWindowStartedAt = dnsratebudgetDescWindowStartedAt.Default.(func() time.Time)
+	// dnsratebudgetDescUsed is the schema descriptor for used field.
+	dnsratebudgetDescUsed := dnsratebudgetFields[3].Descriptor()
+	// dnsratebudget.DefaultUsed holds the default value on creation for the used field.
+	dnsratebudget.DefaultUsed = dnsratebudgetDescUsed.Default.(int)
+	// dnsratebudget.UsedValidator is a validator for the "used" field. It is called by the builders before save.
+	dnsratebudget.UsedValidator = dnsratebudgetDescUsed.Validators[0].(func(int) error)
+	// dnsratebudgetDescDns01Used is the schema descriptor for dns01_used field.
+	dnsratebudgetDescDns01Used := dnsratebudgetFields[4].Descriptor()
+	// dnsratebudget.DefaultDns01Used holds the default value on creation for the dns01_used field.
+	dnsratebudget.DefaultDns01Used = dnsratebudgetDescDns01Used.Default.(int)
+	// dnsratebudget.Dns01UsedValidator is a validator for the "dns01_used" field. It is called by the builders before save.
+	dnsratebudget.Dns01UsedValidator = dnsratebudgetDescDns01Used.Validators[0].(func(int) error)
+	// dnsratebudgetDescID is the schema descriptor for id field.
+	dnsratebudgetDescID := dnsratebudgetFields[0].Descriptor()
+	// dnsratebudget.DefaultID holds the default value on creation for the id field.
+	dnsratebudget.DefaultID = dnsratebudgetDescID.Default.(func() string)
+	// dnsratebudget.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	dnsratebudget.IDValidator = func() func(string) error {
+		validators := dnsratebudgetDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	dnsrecordMixin := schema.DNSRecord{}.Mixin()
 	dnsrecord.Policy = privacy.NewPolicies(dnsrecordMixin[0], schema.DNSRecord{})
 	dnsrecord.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -1610,6 +1686,12 @@ func init() {
 	dnsrecord.DefaultAdoptedFrom = dnsrecordDescAdoptedFrom.Default.(string)
 	// dnsrecord.AdoptedFromValidator is a validator for the "adopted_from" field. It is called by the builders before save.
 	dnsrecord.AdoptedFromValidator = dnsrecordDescAdoptedFrom.Validators[0].(func(string) error)
+	// dnsrecordDescReleaseRequested is the schema descriptor for release_requested field.
+	dnsrecordDescReleaseRequested := dnsrecordFields[14].Descriptor()
+	// dnsrecord.DefaultReleaseRequested holds the default value on creation for the release_requested field.
+	dnsrecord.DefaultReleaseRequested = dnsrecordDescReleaseRequested.Default.(string)
+	// dnsrecord.ReleaseRequestedValidator is a validator for the "release_requested" field. It is called by the builders before save.
+	dnsrecord.ReleaseRequestedValidator = dnsrecordDescReleaseRequested.Validators[0].(func(string) error)
 	// dnsrecordDescID is the schema descriptor for id field.
 	dnsrecordDescID := dnsrecordFields[0].Descriptor()
 	// dnsrecord.DefaultID holds the default value on creation for the id field.
@@ -1710,32 +1792,42 @@ func init() {
 	dnszone.DefaultHeldReason = dnszoneDescHeldReason.Default.(string)
 	// dnszone.HeldReasonValidator is a validator for the "held_reason" field. It is called by the builders before save.
 	dnszone.HeldReasonValidator = dnszoneDescHeldReason.Validators[0].(func(string) error)
+	// dnszoneDescPendingPlanHash is the schema descriptor for pending_plan_hash field.
+	dnszoneDescPendingPlanHash := dnszoneFields[7].Descriptor()
+	// dnszone.DefaultPendingPlanHash holds the default value on creation for the pending_plan_hash field.
+	dnszone.DefaultPendingPlanHash = dnszoneDescPendingPlanHash.Default.(string)
+	// dnszone.PendingPlanHashValidator is a validator for the "pending_plan_hash" field. It is called by the builders before save.
+	dnszone.PendingPlanHashValidator = dnszoneDescPendingPlanHash.Validators[0].(func(string) error)
 	// dnszoneDescPublishRouteHostnames is the schema descriptor for publish_route_hostnames field.
-	dnszoneDescPublishRouteHostnames := dnszoneFields[7].Descriptor()
+	dnszoneDescPublishRouteHostnames := dnszoneFields[9].Descriptor()
 	// dnszone.DefaultPublishRouteHostnames holds the default value on creation for the publish_route_hostnames field.
 	dnszone.DefaultPublishRouteHostnames = dnszoneDescPublishRouteHostnames.Default.(bool)
 	// dnszoneDescAllowProxied is the schema descriptor for allow_proxied field.
-	dnszoneDescAllowProxied := dnszoneFields[8].Descriptor()
+	dnszoneDescAllowProxied := dnszoneFields[10].Descriptor()
 	// dnszone.DefaultAllowProxied holds the default value on creation for the allow_proxied field.
 	dnszone.DefaultAllowProxied = dnszoneDescAllowProxied.Default.(bool)
 	// dnszoneDescAllowWildcards is the schema descriptor for allow_wildcards field.
-	dnszoneDescAllowWildcards := dnszoneFields[9].Descriptor()
+	dnszoneDescAllowWildcards := dnszoneFields[11].Descriptor()
 	// dnszone.DefaultAllowWildcards holds the default value on creation for the allow_wildcards field.
 	dnszone.DefaultAllowWildcards = dnszoneDescAllowWildcards.Default.(bool)
 	// dnszoneDescDeleteThreshold is the schema descriptor for delete_threshold field.
-	dnszoneDescDeleteThreshold := dnszoneFields[10].Descriptor()
+	dnszoneDescDeleteThreshold := dnszoneFields[12].Descriptor()
 	// dnszone.DefaultDeleteThreshold holds the default value on creation for the delete_threshold field.
 	dnszone.DefaultDeleteThreshold = dnszoneDescDeleteThreshold.Default.(int)
 	// dnszone.DeleteThresholdValidator is a validator for the "delete_threshold" field. It is called by the builders before save.
 	dnszone.DeleteThresholdValidator = dnszoneDescDeleteThreshold.Validators[0].(func(int) error)
 	// dnszoneDescDefaultTTL is the schema descriptor for default_ttl field.
-	dnszoneDescDefaultTTL := dnszoneFields[11].Descriptor()
+	dnszoneDescDefaultTTL := dnszoneFields[13].Descriptor()
 	// dnszone.DefaultDefaultTTL holds the default value on creation for the default_ttl field.
 	dnszone.DefaultDefaultTTL = dnszoneDescDefaultTTL.Default.(int)
 	// dnszone.DefaultTTLValidator is a validator for the "default_ttl" field. It is called by the builders before save.
 	dnszone.DefaultTTLValidator = dnszoneDescDefaultTTL.Validators[0].(func(int) error)
+	// dnszoneDescRemovalRequested is the schema descriptor for removal_requested field.
+	dnszoneDescRemovalRequested := dnszoneFields[15].Descriptor()
+	// dnszone.DefaultRemovalRequested holds the default value on creation for the removal_requested field.
+	dnszone.DefaultRemovalRequested = dnszoneDescRemovalRequested.Default.(bool)
 	// dnszoneDescCreatedAt is the schema descriptor for created_at field.
-	dnszoneDescCreatedAt := dnszoneFields[13].Descriptor()
+	dnszoneDescCreatedAt := dnszoneFields[17].Descriptor()
 	// dnszone.DefaultCreatedAt holds the default value on creation for the created_at field.
 	dnszone.DefaultCreatedAt = dnszoneDescCreatedAt.Default.(func() time.Time)
 	// dnszoneDescID is the schema descriptor for id field.
@@ -4447,6 +4539,22 @@ func init() {
 	webhook.DefaultVersion = webhookDescVersion.Default.(int64)
 	// webhook.VersionValidator is a validator for the "version" field. It is called by the builders before save.
 	webhook.VersionValidator = webhookDescVersion.Validators[0].(func(int64) error)
+	// webhookDescMention is the schema descriptor for mention field.
+	webhookDescMention := webhookFields[16].Descriptor()
+	// webhook.DefaultMention holds the default value on creation for the mention field.
+	webhook.DefaultMention = webhookDescMention.Default.(string)
+	// webhookDescDiscordUsername is the schema descriptor for discord_username field.
+	webhookDescDiscordUsername := webhookFields[18].Descriptor()
+	// webhook.DefaultDiscordUsername holds the default value on creation for the discord_username field.
+	webhook.DefaultDiscordUsername = webhookDescDiscordUsername.Default.(string)
+	// webhookDescDiscordAvatarURL is the schema descriptor for discord_avatar_url field.
+	webhookDescDiscordAvatarURL := webhookFields[19].Descriptor()
+	// webhook.DefaultDiscordAvatarURL holds the default value on creation for the discord_avatar_url field.
+	webhook.DefaultDiscordAvatarURL = webhookDescDiscordAvatarURL.Default.(string)
+	// webhookDescThreadName is the schema descriptor for thread_name field.
+	webhookDescThreadName := webhookFields[20].Descriptor()
+	// webhook.DefaultThreadName holds the default value on creation for the thread_name field.
+	webhook.DefaultThreadName = webhookDescThreadName.Default.(string)
 	// webhookDescID is the schema descriptor for id field.
 	webhookDescID := webhookFields[0].Descriptor()
 	// webhook.DefaultID holds the default value on creation for the id field.
@@ -4514,6 +4622,62 @@ func init() {
 	// webhookdelivery.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	webhookdelivery.IDValidator = func() func(string) error {
 		validators := webhookdeliveryDescID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(id string) error {
+			for _, fn := range fns {
+				if err := fn(id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	webhookmessage.Policy = privacy.NewPolicies(schema.WebhookMessage{})
+	webhookmessage.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := webhookmessage.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	webhookmessageHooks := schema.WebhookMessage{}.Hooks()
+
+	webhookmessage.Hooks[1] = webhookmessageHooks[0]
+	webhookmessageInters := schema.WebhookMessage{}.Interceptors()
+	webhookmessage.Interceptors[0] = webhookmessageInters[0]
+	webhookmessageFields := schema.WebhookMessage{}.Fields()
+	_ = webhookmessageFields
+	// webhookmessageDescWebhookID is the schema descriptor for webhook_id field.
+	webhookmessageDescWebhookID := webhookmessageFields[1].Descriptor()
+	// webhookmessage.WebhookIDValidator is a validator for the "webhook_id" field. It is called by the builders before save.
+	webhookmessage.WebhookIDValidator = webhookmessageDescWebhookID.Validators[0].(func(string) error)
+	// webhookmessageDescAlertKey is the schema descriptor for alert_key field.
+	webhookmessageDescAlertKey := webhookmessageFields[3].Descriptor()
+	// webhookmessage.AlertKeyValidator is a validator for the "alert_key" field. It is called by the builders before save.
+	webhookmessage.AlertKeyValidator = webhookmessageDescAlertKey.Validators[0].(func(string) error)
+	// webhookmessageDescMessageID is the schema descriptor for message_id field.
+	webhookmessageDescMessageID := webhookmessageFields[4].Descriptor()
+	// webhookmessage.MessageIDValidator is a validator for the "message_id" field. It is called by the builders before save.
+	webhookmessage.MessageIDValidator = webhookmessageDescMessageID.Validators[0].(func(string) error)
+	// webhookmessageDescThreadID is the schema descriptor for thread_id field.
+	webhookmessageDescThreadID := webhookmessageFields[5].Descriptor()
+	// webhookmessage.DefaultThreadID holds the default value on creation for the thread_id field.
+	webhookmessage.DefaultThreadID = webhookmessageDescThreadID.Default.(string)
+	// webhookmessageDescCreatedAt is the schema descriptor for created_at field.
+	webhookmessageDescCreatedAt := webhookmessageFields[6].Descriptor()
+	// webhookmessage.DefaultCreatedAt holds the default value on creation for the created_at field.
+	webhookmessage.DefaultCreatedAt = webhookmessageDescCreatedAt.Default.(func() time.Time)
+	// webhookmessageDescID is the schema descriptor for id field.
+	webhookmessageDescID := webhookmessageFields[0].Descriptor()
+	// webhookmessage.DefaultID holds the default value on creation for the id field.
+	webhookmessage.DefaultID = webhookmessageDescID.Default.(func() string)
+	// webhookmessage.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	webhookmessage.IDValidator = func() func(string) error {
+		validators := webhookmessageDescID.Validators
 		fns := [...]func(string) error{
 			validators[0].(func(string) error),
 			validators[1].(func(string) error),

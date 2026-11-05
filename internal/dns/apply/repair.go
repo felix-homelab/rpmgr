@@ -200,6 +200,20 @@ func (e *Engine) Correct(ctx context.Context, l lease.Lease, z Zone, live []dns.
 				continue
 			}
 			marker := Marker(e.TrustDomain, r.ID)
+			if r.AdoptedAt != nil && r.LastSyncedAt == nil {
+				// Adopted and not written by the job yet: the record has no marker, and no one changed
+				// it. The first write puts the marker on, and is no correction.
+				if rec.Comment != marker {
+					if ui := slices.IndexFunc(out.Updates, func(u dns.Record) bool { return u.ID == rec.ID }); ui >= 0 {
+						out.Updates[ui].Comment = marker
+					} else {
+						u := rec
+						u.Comment = marker
+						out.Updates = append(out.Updates, u)
+					}
+				}
+				continue
+			}
 			changed := !plan.SameContent(dns.Record{Type: string(r.Type), Content: r.Content}, rec) || r.TTL != rec.TTL || r.Proxied != rec.Proxied
 			if !changed && rec.Comment == marker {
 				if r.State == dnsrecord.StateDrifted { // someone put it back
@@ -277,6 +291,10 @@ type Wanted struct {
 	Desired  []dns.Record // compile.Result.Desired
 	Keep     []string     // compile.Result.Keep()
 	Reserved []string
+	// Gate, if set, is asked about the plan before anything is written: a reason (HeldDeletionGuard,
+	// HeldPlanChanged) holds the zone, and the pass writes nothing; approved says that the plan is
+	// the one an Owner or Admin approved.
+	Gate func(plan.Plan) (hold string, approved bool)
 }
 
 // Outcome is what a pass planned and did.
@@ -286,6 +304,10 @@ type Outcome struct {
 	Plan   plan.Plan
 	Result Result
 	Report Report
+	// Held is why the pass wrote nothing and the zone must be held, if Wanted.Gate said so.
+	Held string
+	// Approved: the plan applied was the approved one, so the approval is used up.
+	Approved bool
 }
 
 // Reconcile is one pass over a zone: list the provider's records, repair the ledger after a crash
@@ -306,6 +328,12 @@ func (e *Engine) Reconcile(ctx context.Context, l lease.Lease, p dns.Provider, z
 	}
 	pl := plan.Diff(plan.Input{Zone: z.Name, Desired: w.Desired, Keep: w.Keep, Reserved: w.Reserved, Live: live, Owned: owned, TrustDomain: e.TrustDomain})
 	out.Report.Orphans = pl.Orphans
+	if w.Gate != nil {
+		if out.Held, out.Approved = w.Gate(pl); out.Held != "" {
+			out.Plan = pl
+			return out, nil
+		}
+	}
 	var corr Correction
 	var rep Report
 	if pl, corr, rep, err = e.Correct(ctx, l, z, live, pl); err != nil {
