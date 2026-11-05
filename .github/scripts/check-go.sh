@@ -81,33 +81,13 @@ if [[ -z $all ]]; then
   finish
 fi
 # The slowest package is dealt as two lines, each running its share of the tests by name.
-split_pkg=$(go list -m)/internal/controller
-split_parts=2
-list=$(sort <<<"$all" | awk -v p="$split_pkg" -v m="$split_parts" \
-  '$0 == p { for (k = 1; k <= m; k++) print p "#" k "/" m; next } { print }')
+list=$(sort <<<"$all" | split_expand "$(go list -m)/internal/controller=2")
 mapfile -t pkgs < <(shard_select "$shard" <<<"$list")
 echo "== tests of ${#pkgs[@]} packages (shard ${shard:-all})"
 plain=()
 for pkg in "${pkgs[@]}"; do
-  if [[ $pkg =~ ^(.+)#([0-9]+)/([0-9]+)$ ]]; then
-    # The tests of the package by name, every m-th one; subtests run with their parent. A check
-    # that the parts together hold every test keeps one from being dropped.
-    pkg=${BASH_REMATCH[1]} k=${BASH_REMATCH[2]} m=${BASH_REMATCH[3]}
-    if ! names=$(go test -list . "$pkg" | grep -E '^(Test|Example|Fuzz)'); then
-      fail "no tests listed for $pkg"
-      continue
-    fi
-    names=$(sort <<<"$names")
-    union=$(for ((j = 1; j <= m; j++)); do split_names "$j" "$m" <<<"$names"; done | sort)
-    if [[ $union != "$names" ]]; then
-      fail "the parts of $pkg do not hold every test once"
-      continue
-    fi
-    part=$(split_names "$k" "$m" <<<"$names" | paste -sd'|')
-    echo "== $pkg part $k/$m: $(split_names "$k" "$m" <<<"$names" | wc -l) of $(wc -l <<<"$names") tests"
-    if ! go test -race "${count[@]}" -timeout 20m -run "^($part)\$" "$pkg"; then
-      fail "tests of $pkg (part $k/$m) failed"
-    fi
+  if [[ $pkg == *'#'* ]]; then
+    split_run "$pkg" -race "${count[@]}" -timeout 20m
   else
     plain+=("$pkg")
   fi

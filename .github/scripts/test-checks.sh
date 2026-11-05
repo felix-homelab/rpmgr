@@ -368,6 +368,11 @@ expect fail "one commit only" "$dir/changed-areas.sh" HEAD
     [[ $(printf 't%s\n' 1 2 3 4 5 | split_names 1 2 | tr '\n' ' ') == "t1 t3 t5 " ]] &&
     [[ $(printf 't%s\n' 1 2 3 4 5 | split_names 2 2 | tr '\n' ' ') == "t2 t4 " ]] &&
     [[ $(printf 't%s\n' 1 2 3 4 5 7 | split_names 3 3 | tr '\n' ' ') == "t3 t7 " ]] &&
+    [[ $(printf 'a\nb/c\nd\n' | split_expand b/c=2 | tr '\n' ' ') == "a b/c#1/2 b/c#2/2 d " ]] &&
+    [[ $(printf 'a\nb/c\nb/cd\n' | split_expand b/c=2 x/y=3 | tr '\n' ' ') == "a b/c#1/2 b/c#2/2 b/cd " ]] &&
+    [[ $(printf 'a\nb\n' | split_expand | tr '\n' ' ') == "a b " ]] &&
+    [[ $(printf 'x/apisvc#1/2\nx/apisvc#2/2\nx/controller#1/2\nx/controller#2/2\na\nb\n' |
+      SHARD_HEAVY='/(controller|apisvc)(#[0-9]+/[0-9]+)?$' shard_select 3/3 | tr '\n' ' ') == "x/controller#1/2 " ]] &&
     ! shard_valid 4/3 && ! shard_valid 0/3 && ! shard_valid x
 ) && passed=$((passed + 1)) || { echo "FAIL: test shards"; failed=$((failed + 1)); }
 

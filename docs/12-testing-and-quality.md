@@ -484,7 +484,7 @@ the reference testbed ([Benchmarks](#benchmarks)).
   The tests of the checks run only when a PR changes something besides documents and sources. A
   push to `main` runs `lint`, `docs` and `secrets`.
 - **Speed.** The job `go` runs the race tests as four parallel shards (`go (1/4)` … `go (4/4)`)
-  and `store` as three (`store (1/3)` … `store (3/3)`); `check-go.sh` and `check-store.sh` split
+  and `store` as four (`store (1/4)` … `store (4/4)`); `check-go.sh` and `check-store.sh` split
   the test packages deterministically (`GO_TEST_SHARD=<i>/<n>`). `internal/controller`, the
   slowest package, runs alone: in `go` its tests are split by name into two halves (every second
   test of the sorted list, subtests with their parent) for shards 1 and 2, and the script checks
