@@ -1044,6 +1044,8 @@
     "adopt": "Adopt",
     "adoptAsk": "Adopt {{type}} {{name}} → {{content}}? rpmgr keeps this content for a later release, and the next pass rewrites it.",
     "adoptConfirm": "Adopt record",
+    "adoptHintUnpublished": "Not published by rpmgr — create a route or DNS name for this name first, then adopt it from the plan.",
+    "adoptHintType": "rpmgr does not manage records of this type, so it cannot adopt it.",
     "release": "Release",
     "releaseKeep": "Keep the record at the provider as it is",
     "releaseRestore": "Put it back to the content it had when it was adopted",

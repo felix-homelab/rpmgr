@@ -59,7 +59,9 @@ The zone's page shows:
   names the plan and then a step-up. If the plan changed meanwhile, the page says so and shows the
   new one.
 - **Records:** the records rpmgr owns and, for Owners and Admins only, the others, read live from
-  the provider and never stored. **Release** gives a record back, keeping it as it is or restoring
+  the provider and never stored. **Adopt** is offered on a foreign record only when the API marks
+  it adoptable, that is, a route or DNS name of the organisation publishes its name; the others
+  show a hint. **Release** gives a record back, keeping it as it is or restoring
   the content it had when it was adopted.
 - **Remove the zone** keeps the records at the provider, or deletes the ones rpmgr owns after
   listing them under the plan's hash.

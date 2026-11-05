@@ -94,6 +94,10 @@ approved exactly that ([15](../15-dns.md#held-zones-and-plan-approval)).
    look like rpmgr's but are not in its books (orphans).
 2. For a **conflict**, either **Adopt** the record, which rpmgr then keeps as its own, or remove it
    at Cloudflare. Until then the name publishes nothing.
+   **Adopt** applies only to a record at a name that a route or DNS name of your organisation
+   publishes, and only to address, `CNAME` and `TXT` records. The zone's record list shows
+   **Adopt** on those records; on any other foreign record it says why not. For a name nothing
+   publishes, create a route or DNS name for it first, then adopt the record.
 3. Choose **Approve plan** and confirm. The approval is bound to the plan you read: if anything
    changed since, the new plan replaces it and you approve again.
 

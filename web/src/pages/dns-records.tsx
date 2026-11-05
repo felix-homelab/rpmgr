@@ -27,9 +27,6 @@ const stateLooks: Record<DnsRecordState, [Look, string]> = {
   [DnsRecordState.FOREIGN]: ["off", "foreign"],
 };
 
-// adoptable are the types rpmgr manages (docs/15-dns.md, "Ownership ledger"); the API refuses any other.
-const adoptable = ["A", "AAAA", "CNAME", "TXT"];
-
 type Named = Pick<DnsRecord, "name" | "type" | "content"> & { providerRecordId: string };
 
 // AdoptButton adopts a foreign record after a confirmation that names it, with a step-up (U7): the
@@ -127,7 +124,10 @@ export function ZoneRecords({ zoneId, admin }: { zoneId: string; admin: boolean 
                   {admin && (
                     <TD>
                       {owned && <ReleaseButton zoneId={zoneId} record={r} onDone={(text, bad) => (bad ? (setNote(""), setError(text)) : (setError(""), setNote(text)))} />}
-                      {!owned && r.state === DnsRecordState.FOREIGN && adoptable.includes(r.type) && <AdoptButton zoneId={zoneId} record={r} onError={setError} />}
+                      {!owned && r.state === DnsRecordState.FOREIGN && r.adoptable && <AdoptButton zoneId={zoneId} record={r} onError={setError} />}
+                      {!owned && r.state === DnsRecordState.FOREIGN && !r.adoptable && (
+                        <span className="text-muted-foreground">{r.adoptReason === "type_not_adoptable" ? t("dnsZone.adoptHintType") : t("dnsZone.adoptHintUnpublished")}</span>
+                      )}
                     </TD>
                   )}
                 </TR>
