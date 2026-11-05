@@ -18,7 +18,7 @@ fi
 if ! command -v docker >/dev/null; then
   fail "docker is needed for the OTA tests"
 fi
-if ! go test -tags ota -count=1 -timeout 20m ./test/ota/...; then
+if ! go test -v -tags ota -count=1 -timeout 20m ./test/ota/...; then
   fail "the OTA tests failed"
 fi
 finish
