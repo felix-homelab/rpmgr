@@ -69,7 +69,7 @@ function page({ active, targets = [], mode = RolloutMode.EASY, createError = fal
   active?: ReturnType<typeof easy>; targets?: ReturnType<typeof target>[]; mode?: RolloutMode; createError?: boolean;
 }) {
   const calls = { create: [] as CreateRolloutRequest[], pause: [] as PauseRolloutRequest[], resume: [] as ResumeRolloutRequest[],
-    cancel: [] as CancelRolloutRequest[], settings: [] as UpdateInstanceSettingsRequest[] };
+    cancel: [] as CancelRolloutRequest[], settings: [] as UpdateInstanceSettingsRequest[], preview: [] as string[][] };
   let steppedUp = false;
   const guarded = <T,>(f: () => T): T => {
     if (!steppedUp) throw apiError(Code.Unauthenticated, "STEP_UP_REQUIRED");
@@ -96,6 +96,11 @@ function page({ active, targets = [], mode = RolloutMode.EASY, createError = fal
       listReleases: () => ({ releases: [release], controllerVersion: "1.5.0" }),
       listRollouts: () => ({ rollouts: active ? [active] : [] }),
       listRolloutTargets: () => ({ rolloutTargets: targets }),
+      previewRollout: (req) => (calls.preview.push(req.agentIds), {
+        total: req.agentIds.length,
+        skipped: req.agentIds.includes("con_nas") ? [{ agentId: "con_nas", agentKind: AgentKind.CONNECTOR, agentName: "nas",
+          reason: "the host's local policy sets auto_update: notify", command: "sudo rpmgr policy set-auto-update auto" }] : [],
+      }),
       createRollout: (req) => guarded(() => {
         if (createError) throw new ConnectError("agent con_web has not announced over-the-air updates", Code.FailedPrecondition);
         return (calls.create.push(req), { rollout: easy() });
@@ -141,6 +146,22 @@ describe("starting an easy rollout", () => {
     const start = dialog.getByRole("button", { name: "Start: update 0 agents" }) as HTMLButtonElement;
     expect(start.disabled).toBe(true);
     expect(dialog.getByText("Choose at least one agent.")).toBeTruthy();
+  });
+
+  it("previews the queue and warns about the agents whose host policy refuses the release", async () => {
+    const calls = page();
+    const dialog = await openDialog();
+    await waitFor(() => expect(box(dialog, "web")).toBeTruthy());
+    fireEvent.click(box(dialog, "web"));
+    await waitFor(() => expect(calls.preview).toContainEqual(["con_web"]));
+    expect(dialog.queryByRole("alert")).toBeNull();
+    fireEvent.click(box(dialog, "nas"));
+    const warning = await dialog.findByRole("alert");
+    expect(within(warning).getByText("1 of 2 agents will be skipped")).toBeTruthy();
+    expect(within(warning).getByText(/sets auto_update: notify/)).toBeTruthy();
+    expect(within(warning).getByText("sudo rpmgr policy set-auto-update auto")).toBeTruthy();
+    // The warning never blocks the start.
+    expect((dialog.getByRole("button", { name: "Start: update 2 agents" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("queues ticked agents in the default order, lets the user move them, and starts the queue after a step-up", async () => {

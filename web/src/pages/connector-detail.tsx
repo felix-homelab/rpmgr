@@ -12,6 +12,7 @@ import { ApplyStatusView, useLiveApplyStatus } from "@/components/apply-status";
 import { Field } from "@/components/field";
 import { canStreamLogs, LiveLog } from "@/components/live-log";
 import { DrainingLine } from "@/components/draining";
+import { HostPolicy } from "@/components/host-policy";
 import { ManifestButton } from "@/components/manifest";
 import { PageHeader } from "@/components/page-header";
 import { UpdateButton } from "@/components/update-button";
@@ -110,6 +111,7 @@ export function ConnectorDetail() {
             ? t("connectors.controlUp", { addr: c.session.remoteAddr, when: when(c.session.lastSeenTime) })
             : t("connectors.controlDown", { when: when(c.session?.lastSeenTime) || t("connectors.never") })}
         </p>
+        <p><HostPolicy policy={c.session?.updatePolicy} /></p>
         <DrainingLine kind="connector" id={c.id} name={c.name} builtIn={c.builtIn} draining={c.session?.draining} />
         {(s?.dataSessions.length ?? 0) > 0 && (
           <Table framed={false}>

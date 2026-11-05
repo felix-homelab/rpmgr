@@ -7,6 +7,7 @@ import { ArrowDown, ArrowUp, Search } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/public-page";
+import { SkipWarning } from "@/components/skip-warning";
 import { Status } from "@/components/status";
 import { UpdateState } from "@/components/update-state";
 import { Button } from "@/components/ui/button";
@@ -183,6 +184,7 @@ export function EasyRolloutDialog({ release, onClose }: { release: Release; onCl
         </div>
         {queue.some((x) => !byId.get(x)?.online) && <p className="text-sm text-warn">{t("updates.easy.offlineChosen")}</p>}
         {listError && <Alert>{ConnectError.from(listError).rawMessage}</Alert>}
+        <SkipWarning releaseId={release.id} agentIds={queue} />
         {error && <Alert>{error}</Alert>}
         <div className="flex flex-wrap items-center justify-end gap-2">
           {loaded && blocked && <p id={`${id}-why`} className="mr-auto text-sm text-muted-foreground">{blocked}</p>}
