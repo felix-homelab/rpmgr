@@ -458,6 +458,9 @@ enum Transport {
   TRANSPORT_H2 = 2;
   // TLS and reverse HTTP/2 inside a WebSocket (Phase 2).
   TRANSPORT_WSS = 3;
+  // The all-in-one's own connector, which reaches the gateway of its process over an in-memory
+  // connection that carries every route whatever its transport policy.
+  TRANSPORT_IN_PROCESS = 4;
 }
 
 // OpResult answers an operation that needs no stream.

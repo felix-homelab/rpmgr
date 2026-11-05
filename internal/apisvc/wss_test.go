@@ -113,6 +113,11 @@ func TestRoutes_WSSTransport(t *testing.T) {
 	if _, err := createRoute(ada, org, bad, ""); code(err) != connect.CodeInvalidArgument {
 		t.Fatalf("an undefined transport: %v", err)
 	}
+	// In process is the transport of a data session, never a policy.
+	bad.Transport = rpmgrv1.DataTransport_DATA_TRANSPORT_IN_PROCESS
+	if _, err := createRoute(ada, org, bad, ""); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("in process as a route's transport: %v", err)
+	}
 	in := tcpRoute("db", group, 20002)
 	in.Transport = rpmgrv1.DataTransport_DATA_TRANSPORT_WSS
 	r, err := createRoute(ada, org, in, "")
@@ -160,5 +165,10 @@ func TestRoutes_WSSTransport(t *testing.T) {
 		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"transport"}}}))
 	if err != nil || upd.Msg.GetConnector().GetTransport() != rpmgrv1.DataTransport_DATA_TRANSPORT_WSS {
 		t.Fatalf("a connector on wss: %v %v", upd, err)
+	}
+	cin.Transport = rpmgrv1.DataTransport_DATA_TRANSPORT_IN_PROCESS
+	if _, err := ada.con.UpdateConnector(ctx, connect.NewRequest(&rpmgrv1.UpdateConnectorRequest{Connector: cin, Etag: upd.Msg.GetConnector().GetEtag(),
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"transport"}}})); code(err) != connect.CodeInvalidArgument {
+		t.Fatalf("in process as a connector's transport: %v", err)
 	}
 }

@@ -695,7 +695,8 @@
       "AUTO": "auto",
       "QUIC": "QUIC",
       "H2": "TLS and HTTP/2",
-      "WSS": "WSS"
+      "WSS": "WSS",
+      "IN_PROCESS": "In process"
     },
     "transportSetting": {
       "UNSPECIFIED": "The instance's default",
@@ -761,9 +762,13 @@
   "transport": {
     "title": "Transport",
     "none": "—",
-    "name": {"quic": "QUIC", "h2": "HTTP/2", "wss": "WSS", "unknown": "unknown"},
+    "name": {"quic": "QUIC", "h2": "HTTP/2", "wss": "WSS", "inProcess": "In process", "unknown": "unknown"},
     "pinned": "{{name}} (pinned {{where}})",
     "pin": {"route": "on the route", "connector": "on the connector", "instance": "by the instance default"},
+    "inProcess": "In process (built-in connector)",
+    "inProcessNote": "This target is served by the all-in-one's built-in connector, which reaches the gateway inside the process.",
+    "inProcessPinnedNote": "This target is served by the all-in-one's built-in connector, which reaches the gateway inside the process. The route's transport setting ({{pin}}) does not apply to it.",
+    "inProcessRouteNote": "Built-in targets are not affected by the transport setting.",
     "fallback": {"h2": "{{name}} (fallback for QUIC)", "wss": "{{name}} (fallback)"},
     "onGateways_one": "{{label}} on {{count}} gateway",
     "onGateways_other": "{{label}} on {{count}} gateways",

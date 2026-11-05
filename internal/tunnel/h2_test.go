@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/felix-homelab/rpmgr/internal/memnet"
 	"github.com/felix-homelab/rpmgr/internal/tunnel"
 )
 
@@ -448,5 +449,29 @@ func TestH2Gateway_Transport(t *testing.T) {
 			t.Errorf("Transport %q, want %q", got, tc.want)
 		}
 		_ = g.Close()
+	}
+}
+
+// memoryConn is a connection that says it is the all-in-one's in-memory one.
+type memoryConn struct{ net.Conn }
+
+func (memoryConn) RemoteAddr() net.Addr { return memnet.Addr{} }
+
+// TestH2Gateway_InProcess: a session over the in-memory connection is h2 on the wire and in
+// metrics, and says it is in-process; one over TCP does not.
+func TestH2Gateway_InProcess(t *testing.T) {
+	a, b := net.Pipe()
+	con := tunnel.ServeH2Connector(b, tunnel.DefaultH2Windows())
+	gw, err := tunnel.NewH2Gateway(memoryConn{a}, tunnel.DefaultH2Windows())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = gw.Close(); _ = con.Close() })
+	if !gw.InProcess() || gw.Transport() != "h2" {
+		t.Fatalf("in-process %v, transport %q; want true and h2", gw.InProcess(), gw.Transport())
+	}
+	tcp, _ := h2Pair(t, tunnel.DefaultH2Windows())
+	if tcp.InProcess() {
+		t.Fatal("a session over TCP is in-process")
 	}
 }

@@ -779,6 +779,23 @@ func PinnedBy(r *ent.Route, con *ent.Connector, inst *rpmgrv1.InstanceSettings) 
 	return rpmgrv1.TransportPin_TRANSPORT_PIN_UNSPECIFIED
 }
 
+// PinnedTransport is the transport the pin of PinnedBy sets, DATA_TRANSPORT_UNSPECIFIED where none
+// pins it.
+func PinnedTransport(r *ent.Route, con *ent.Connector, inst *rpmgrv1.InstanceSettings) rpmgrv1.DataTransport {
+	if PinnedBy(r, con, inst) == rpmgrv1.TransportPin_TRANSPORT_PIN_UNSPECIFIED {
+		return rpmgrv1.DataTransport_DATA_TRANSPORT_UNSPECIFIED
+	}
+	switch effective(r, con, inst) {
+	case agentv1.TransportPolicy_TRANSPORT_POLICY_QUIC:
+		return rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC
+	case agentv1.TransportPolicy_TRANSPORT_POLICY_H2:
+		return rpmgrv1.DataTransport_DATA_TRANSPORT_H2
+	case agentv1.TransportPolicy_TRANSPORT_POLICY_WSS:
+		return rpmgrv1.DataTransport_DATA_TRANSPORT_WSS
+	}
+	return rpmgrv1.DataTransport_DATA_TRANSPORT_UNSPECIFIED
+}
+
 // wssUnavailable reports whether route r's effective transport on connector con is wss while the
 // connector, a, lacks the capability tunnel.wss: it cannot serve the route, whose status says
 // transport_unavailable: wss for it (docs/03-connections.md, "Transport selection").

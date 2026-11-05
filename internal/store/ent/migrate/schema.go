@@ -909,7 +909,7 @@ var (
 		{Name: "org_id", Type: field.TypeString},
 		{Name: "gateway_id", Type: field.TypeString},
 		{Name: "connector_id", Type: field.TypeString},
-		{Name: "transport", Type: field.TypeEnum, Enums: []string{"quic", "h2", "wss"}},
+		{Name: "transport", Type: field.TypeEnum, Enums: []string{"quic", "h2", "wss", "memory"}},
 		{Name: "rtt_ms", Type: field.TypeInt64, Default: 0},
 		{Name: "ready_routes", Type: field.TypeJSON, Nullable: true},
 		{Name: "established_at", Type: field.TypeTime},

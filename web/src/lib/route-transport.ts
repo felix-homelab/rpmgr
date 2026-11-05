@@ -9,15 +9,16 @@ import { TransportPin, type Route, type TargetTransport } from "@/gen/rpmgr/v1/r
 
 // TransportKey names a transport; "unknown" is a gateway that does not report it, as one of an
 // earlier release does not.
-export type TransportKey = "quic" | "h2" | "wss" | "unknown";
+export type TransportKey = "quic" | "h2" | "wss" | "inProcess" | "unknown";
 
 const keys: Partial<Record<DataTransport, TransportKey>> = {
   [DataTransport.QUIC]: "quic",
   [DataTransport.H2]: "h2",
   [DataTransport.WSS]: "wss",
+  [DataTransport.IN_PROCESS]: "inProcess",
 };
 
-export const transportKeys: TransportKey[] = ["quic", "h2", "wss", "unknown"];
+export const transportKeys: TransportKey[] = ["quic", "h2", "wss", "inProcess", "unknown"];
 
 // TransportGroup is the gateways a target is served over one transport through.
 export interface TransportGroup {
@@ -25,7 +26,7 @@ export interface TransportGroup {
   gateways: string[];
 }
 
-// targetGroups groups a target's gateways by transport, in the order QUIC, HTTP/2, WSS, unknown.
+// targetGroups groups a target's gateways by transport, in the order QUIC, HTTP/2, WSS, in process, unknown.
 // None: the target does not serve, or its connector is offline.
 export function targetGroups(tt?: TargetTransport): TransportGroup[] {
   const out: TransportGroup[] = [];
@@ -69,8 +70,35 @@ export function groupLabel(key: TransportKey, pin: TransportPin, t: TFunction): 
   if (key === "unknown") {
     return name;
   }
+  // The built-in connector reaches its own gateway in memory, whatever any pin says.
+  if (key === "inProcess") {
+    return t("transport.inProcess");
+  }
   if (pin !== TransportPin.UNSPECIFIED) {
     return t("transport.pinned", { name, where: t(`transport.pin.${pinKeys[pin]}`) });
   }
   return key === "quic" ? name : t(`transport.fallback.${key}`, { name });
+}
+
+// pinnedName names the transport the target's pin sets, "QUIC", "HTTP/2" or "WSS"; "" on auto.
+export function pinnedName(tt: TargetTransport | undefined, t: TFunction): string {
+  const key = keys[tt?.pinnedTransport ?? DataTransport.UNSPECIFIED];
+  return key === undefined || key === "inProcess" ? "" : t(`transport.name.${key}`);
+}
+
+// inProcessNote explains a target served by the all-in-one's built-in connector, which no
+// transport setting applies to; "" for any other target. The setting is named where there is one.
+export function inProcessNote(tt: TargetTransport | undefined, t: TFunction): string {
+  if (!targetGroups(tt).some((g) => g.key === "inProcess")) {
+    return "";
+  }
+  const pin = pinnedName(tt, t);
+  return pin === "" ? t("transport.inProcessNote") : t("transport.inProcessPinnedNote", { pin });
+}
+
+// routeInProcessNote is the note of a route with a transport setting and built-in targets.
+export function routeInProcessNote(r: Route, t: TFunction): string {
+  const targets = r.status?.targetTransports ?? [];
+  const pinned = targets.some((tt) => pinnedName(tt, t) !== "");
+  return pinned && targets.some((tt) => targetGroups(tt).some((g) => g.key === "inProcess")) ? t("transport.inProcessRouteNote") : "";
 }
