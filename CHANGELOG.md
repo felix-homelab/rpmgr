@@ -102,6 +102,8 @@ Changes to the design documents are not recorded here: see the git history and t
 
 - A `udp` or `tcp_udp` route no longer shows "the port is in use on the gateway" while the old
   process of a restart with hand-off still serves its port. (#1076)
+- An audit export whose client stops reading is cut at the export's deadline, so it no longer holds
+  its read snapshot until the connection times out. (#1126)
 
 ## [0.3.0] - 2026-11-04
 

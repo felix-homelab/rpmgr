@@ -5,6 +5,7 @@ package apisvc
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -159,12 +160,23 @@ func (a *Audit) export(ctx, scope context.Context, orgID string, sendLines func(
 	}
 	var part []string
 	size := 0
+	deadline, _ := scope.Deadline()
+	defer func() { _ = api.SetWriteDeadline(ctx, time.Time{}) }() // a kept-alive connection serves the next request
+	pastDeadline := false
 	send := func() error {
 		if len(part) == 0 {
 			return nil
 		}
+		// A client that stops reading blocks the write, and with it the read transaction: the write
+		// is cut at the export's deadline, which the per-line check cannot do.
+		if err := api.SetWriteDeadline(ctx, deadline); err != nil && !errors.Is(err, http.ErrNotSupported) {
+			return err
+		}
 		err := sendLines(part)
 		part, size = nil, 0
+		if err != nil && !time.Now().Before(deadline) {
+			pastDeadline = true
+		}
 		return err
 	}
 	err = audit.Export(scope, a.DB, orgID, audit.Trust{Root: root, Intermediates: inters, Signers: signers}, now(), func(line []byte) error {
@@ -175,12 +187,17 @@ func (a *Audit) export(ctx, scope context.Context, orgID string, sendLines func(
 		return nil
 	})
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		if (pastDeadline || errors.Is(err, context.DeadlineExceeded)) && ctx.Err() == nil {
 			return connect.NewError(connect.CodeDeadlineExceeded, errors.New("apisvc: the audit export took longer than its deadline"))
 		}
 		return storeError(err)
 	}
-	return send()
+	if err := send(); err != nil && pastDeadline && ctx.Err() == nil {
+		return connect.NewError(connect.CodeDeadlineExceeded, errors.New("apisvc: the audit export took longer than its deadline"))
+	} else if err != nil {
+		return err
+	}
+	return nil
 }
 
 // VerifyAuditChain implements AuditService.
