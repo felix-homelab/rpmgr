@@ -690,6 +690,14 @@ func (m *Sessions) slot(ctx context.Context, l *link, tr string, first tunnel.Se
 			if ctx.Err() != nil || (hooks != nil && hooks.ended(err, true)) {
 				return
 			}
+			if tr == transportMemory && errors.Is(err, net.ErrClosed) {
+				// The in-process gateway closed its listener, which it does for good once it drains
+				// for a stop or a hand-off: there is nothing to dial any more, and a redial loop
+				// would keep the process busy until the gateway has drained (#1138). The sessions
+				// it has stay until it closes them.
+				m.o.Logger.Info("the in-process gateway no longer accepts data sessions; not dialling it again", "gateway", l.gw)
+				return
+			}
 		} else {
 			if hooks != nil {
 				hooks.live.Add(1)

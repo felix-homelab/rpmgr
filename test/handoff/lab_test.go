@@ -213,7 +213,11 @@ func (l *lab) seed(cfg string, env []string, verb string, args ...string) string
 	for _, e := range env {
 		a = append(a, "-e", e)
 	}
-	a = append(a, l.name("lab"), "/opt/ctl/rpmgr", "testseed", verb, "--config", cfg)
+	bin := "/opt/ctl/rpmgr"
+	if strings.HasPrefix(cfg, "/var/lib/aio/") {
+		bin = "/opt/aio/rpmgr" // the database is the previous build's: its schema is the one that seeds it
+	}
+	a = append(a, l.name("lab"), bin, "testseed", verb, "--config", cfg)
 	out, err := exec.Command("docker", append(a, args...)...).CombinedOutput() //nolint:gosec // G204: the test's own commands
 	if err != nil {
 		l.t.Fatalf("testseed %s: %v\n%s", verb, err, out)
@@ -349,7 +353,7 @@ listen: {admin: "127.0.0.1:7383"}
 	// The all-in-one: its connector is "local" in group "default" of organisation "default".
 	l.put("lab", "/var/lib/aio/all-in-one.yaml", fmt.Sprintf(`version: 1
 public_url: https://lab:%d
-listen: {tcp: ":%d", udp: ":%d", http: "", admin: "127.0.0.1:7392"}
+listen: {tcp: ":%d", udp: ":%d", http: ":9080", admin: "127.0.0.1:7392"}
 database: {dsn: /var/lib/aio/controller.db}
 kek: {source: file, path: /var/lib/aio/kek}
 tls: {cert_file: /var/lib/aio/web.crt, key_file: /var/lib/aio/web.key}

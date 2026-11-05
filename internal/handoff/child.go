@@ -122,3 +122,12 @@ func (h *Handoff) Fail(reason string) {
 
 // Pipe is the status pipe to the old process, for the role's messages once Ready returned.
 func (h *Handoff) Pipe() *Pipe { return h.pipe }
+
+// Predecessor is the old process's ID: the process that started this one.
+func (h *Handoff) Predecessor() int { return h.ppid }
+
+// EndGrace is how long the new process waits, after the old one's hand-off drain should have
+// ended, before it signals the old process SIGTERM, and after that before SIGKILL: an old process
+// of a release that does not leave its drain when told to stop, or that is stuck, never outlives
+// both (docs/03-connections.md, "Timeouts, keepalive and backoff").
+const EndGrace = 30 * time.Second

@@ -1594,6 +1594,7 @@ sequenceDiagram
 | Route port in use | a `tcp` or `udp` route port the gateway cannot bind (`not_ready(port_in_use)`) is tried again every 5 s | [R] A port another process frees is taken within seconds, without a new revision |
 | Gateway drain | 60 s | Time for connectors to re-home |
 | Hand-off drain (Phase 2) | 10 min; the boot-file setting `handoff.drain` takes 0 to 24 h; at the end the old process cuts what is still open and exits ([D146](14-open-decisions.md#engineering)) | [R] Long-lived SSH, database, WebSocket and CONNECT connections survive almost every update; an old process costs only memory |
+| Old process that outlives its drain (Phase 2) | the new process signals the old one `SIGTERM` 30 s after the hand-off drain should have ended, and `SIGKILL` 30 s later, unless the status pipe broke first; an old process told to stop while it drains (`SIGTERM` of a stopping unit) ends within the gateway drain, not the hand-off drain | [R] An old process of an earlier release that does not leave its drain, or is stuck, never outlives a stop of the unit or twice the grace ([#1138](https://github.com/felix-homelab/rpmgr/issues/1138)) |
 | Start timeout of a role that restarts with hand-off (Phase 2) | `TimeoutStartSec=120` in the drop-in `handoff.conf`, which systemd also applies to `ExecReload`, so that a `systemctl reload` is not cut off by systemd's default of 90 s while `rpmgr handoff` waits for the readiness window and 30 s more | [R] Longer than the wait of `rpmgr handoff` |
 | Hand-off readiness window (Phase 2) | 60 s from the exec until the new process reports ready, else the old one kills it and keeps serving; `rpmgr handoff` waits 30 s longer for the outcome | [R] Shorter than the updater's readiness window, so the updater sees the hand-off's outcome inside its own |
 | QUIC bind window (Phase 2) | a process a hand-off started tries to bind the QUIC port every 100 ms for 5 s after the old process exited; the `udp` route ports are tried at once and then at the route rebind interval | [R] The old process's socket closes with it, so the port is free within moments; the window only absorbs the gap |
@@ -1822,7 +1823,10 @@ sequenceDiagram
    ([D155](14-open-decisions.md#engineering)); the old controller of an all-in-one sends it
    ([All-in-one hand-over](#all-in-one-hand-over)).
 5. **Drain.** The old process serves its open connections until they end or the **hand-off drain**
-   cuts them ([D146](14-open-decisions.md#engineering)), then exits. A revocation, a tightened
+   cuts them ([D146](14-open-decisions.md#engineering)), then exits. An old process told to stop
+   meanwhile, which is what a stopping unit does to every process of it, drains for the gateway
+   drain only, and the new process signals one that outlives its hand-off drain by the grace in
+   the timeout table. A revocation, a tightened
    access policy or a removed route that the new process applies meanwhile cuts the old process's
    open connections at once ([04](04-security.md#socket-hand-off-phase-2)). A hand-off started
    while a predecessor still drains ends that predecessor's drain early, so at most one old process
