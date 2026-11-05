@@ -13,6 +13,7 @@ package handoff
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -387,7 +388,11 @@ func (l *lab) allInOneUpgrade(t *testing.T) {
 		time.Sleep(3 * time.Second)
 	}
 	if after := redials(); strings.Count(after, "\n")-before > 2 {
-		t.Errorf("the log gained %d lines of a closed in-memory transport in 45 s: the old connector redials\n%s", strings.Count(after, "\n")-before, after)
+		report := t.Errorf
+		if from := os.Getenv("HANDOFF_FROM"); from != "" && from != "HEAD" {
+			report = t.Logf // an earlier release's old process loops, as #1138 describes; only this tree's must not
+		}
+		report("the log gained %d lines of a closed in-memory transport in 45 s: the old connector redials\n%s", strings.Count(after, "\n")-before, after)
 	}
 	// A stop signals every process of the unit: the old generation ends like the new one, within
 	// the gateway drain, and not at the hand-off drain.
