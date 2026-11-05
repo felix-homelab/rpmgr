@@ -396,7 +396,11 @@ func (l *lab) allInOneUpgrade(t *testing.T) {
 	}
 	// A stop signals every process of the unit: the old generation ends like the new one, within
 	// the gateway drain, and not at the hand-off drain.
-	l.exec("lab", "kill", "-TERM", strconv.Itoa(oldPID))
+	if !l.alive(oldPID) {
+		t.Logf("the old all-in-one ended by itself within the drain")
+	} else {
+		l.exec("lab", "kill", "-TERM", strconv.Itoa(oldPID))
+	}
 	termAt := time.Now()
 	defer func() { t.Logf("the old all-in-one ended %v after SIGTERM", time.Since(termAt)) }()
 	l.eventually(90*time.Second, "the old all-in-one to end on SIGTERM", func() error {
