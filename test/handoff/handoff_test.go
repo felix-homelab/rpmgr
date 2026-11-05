@@ -63,19 +63,59 @@ const (
 	heldFor  = 14 * time.Second
 )
 
+// pid reads the role's process ID from its hand-off pid file, which may be absent or empty for a
+// moment while a process starts or a hand-off completes. It waits up to pidWait and fails with the
+// last error when no positive pid appears.
 func (l *lab) pid(role string) int {
 	l.t.Helper()
-	n, err := strconv.Atoi(strings.TrimSpace(l.exec("lab", "cat", "/run/rpmgr/"+role+"/handoff.pid")))
+	n, err := l.waitPID(role, pidWait)
 	if err != nil {
 		l.t.Fatalf("pid of %s: %v", role, err)
 	}
 	return n
 }
 
-func (l *lab) alive(pid int) bool {
-	_, err := l.try("lab", "kill", "-0", strconv.Itoa(pid))
-	return err == nil
+const pidWait = 30 * time.Second
+
+func (l *lab) waitPID(role string, wait time.Duration) (int, error) {
+	var err error
+	for end := time.Now().Add(wait); ; time.Sleep(250 * time.Millisecond) {
+		var out string
+		if out, err = l.try("lab", "cat", "/run/rpmgr/"+role+"/handoff.pid"); err == nil {
+			var n int
+			if n, err = parsePID(out); err == nil {
+				return n, nil
+			}
+		}
+		if !time.Now().Before(end) {
+			return 0, fmt.Errorf("no pid after %v: %w", wait, err)
+		}
+	}
 }
+
+// parsePID parses a pid file's content; an empty file or a pid below 1 is an error, because kill
+// would signal a process group (0) or every process (-1) instead of one process.
+func parsePID(s string) (int, error) {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0, err
+	}
+	if n < 1 {
+		return 0, fmt.Errorf("pid %d is not a process", n)
+	}
+	return n, nil
+}
+
+// signal sends sig ("-TERM", "-USR2", "-KILL", "-0") to one process; it refuses pid below 1.
+func (l *lab) signal(sig string, pid int) error {
+	if pid < 1 {
+		return fmt.Errorf("refusing to signal pid %d", pid)
+	}
+	_, err := l.try("lab", "kill", sig, strconv.Itoa(pid))
+	return err
+}
+
+func (l *lab) alive(pid int) bool { return l.signal("-0", pid) == nil }
 
 func (l *lab) eventually(d time.Duration, what string, f func() error) {
 	l.t.Helper()
@@ -115,7 +155,9 @@ func (l *lab) handoff(s scenario) (oldPID, newPID int) {
 	l.t.Helper()
 	oldPID = l.pid(s.role)
 	l.sh("lab", fmt.Sprintf("cp /opt/ctl/rpmgr %[1]s.new && mv %[1]s.new %[1]s", s.bin))
-	l.exec("lab", "kill", "-USR2", strconv.Itoa(oldPID))
+	if err := l.signal("-USR2", oldPID); err != nil {
+		l.t.Fatalf("signalling the old process: %v", err)
+	}
 	var out string
 	l.eventually(100*time.Second, "the outcome of the hand-off", func() error {
 		out = l.exec("lab", "cat", "/run/rpmgr/"+s.role+"/handoff.json")
@@ -396,10 +438,14 @@ func (l *lab) allInOneUpgrade(t *testing.T) {
 	}
 	// A stop signals every process of the unit: the old generation ends like the new one, within
 	// the gateway drain, and not at the hand-off drain.
+	if oldPID < 1 {
+		t.Fatalf("no pid of the old all-in-one: the hand-off did not run")
+	}
 	if !l.alive(oldPID) {
 		t.Logf("the old all-in-one ended by itself within the drain")
-	} else {
-		l.exec("lab", "kill", "-TERM", strconv.Itoa(oldPID))
+	} else if err := l.signal("-TERM", oldPID); err != nil && l.alive(oldPID) {
+		// An old process that ended between the check and the signal is fine (the new one reaped it).
+		t.Fatalf("SIGTERM to the old all-in-one: %v", err)
 	}
 	termAt := time.Now()
 	defer func() { t.Logf("the old all-in-one ended %v after SIGTERM", time.Since(termAt)) }()
@@ -417,7 +463,9 @@ func (l *lab) allInOneUpgrade(t *testing.T) {
 
 func (l *lab) backoff(t *testing.T) {
 	pid := l.pid("gateway")
-	l.exec("lab", "kill", "-KILL", strconv.Itoa(pid))
+	if err := l.signal("-KILL", pid); err != nil {
+		t.Fatal(err)
+	}
 	l.eventually(10*time.Second, "the gateway to end", func() error {
 		if l.alive(pid) {
 			return fmt.Errorf("alive")
