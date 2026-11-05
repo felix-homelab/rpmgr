@@ -38,6 +38,19 @@ type releaseAPI struct {
 	targets *rpmgrv1.ListRolloutTargetsRequest
 	upgrade *rpmgrv1.UpgradeAgentsRequest
 	ctlUp   *rpmgrv1.UpdateControllerRequest
+	// skipped is what PreviewRollout answers; nil leaves it unimplemented, as an older controller does.
+	skipped []*rpmgrv1.SkippedAgent
+	preview *rpmgrv1.PreviewRolloutRequest
+}
+
+func (a *releaseAPI) PreviewRollout(_ context.Context, req *connect.Request[rpmgrv1.PreviewRolloutRequest]) (*connect.Response[rpmgrv1.PreviewRolloutResponse], error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.skipped == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, nil)
+	}
+	a.preview = req.Msg
+	return connect.NewResponse(&rpmgrv1.PreviewRolloutResponse{Total: 4, Skipped: a.skipped}), nil
 }
 
 func (a *releaseAPI) UpdateController(_ context.Context, req *connect.Request[rpmgrv1.UpdateControllerRequest]) (*connect.Response[rpmgrv1.UpdateControllerResponse], error) {
@@ -335,6 +348,39 @@ func TestEasyRolloutCommands(t *testing.T) {
 	if code != cli.ExitOK || a.create.GetMode() != rpmgrv1.RolloutMode_ROLLOUT_MODE_EASY || len(a.create.GetCanaryAgentIds()) != 0 ||
 		strings.Join(a.create.GetAgentIds(), ",") != "gw_1,con_1,con_7" || !strings.Contains(out, "Started easy rollout rol_1 of 1.4.2") {
 		t.Fatalf("create rollout --easy: %d %q %q %v", code, out, errOut, a.create)
+	}
+
+	// A rollout names the agents its hosts' policies make it skip before it starts, on stderr; with
+	// --preview it only says so and creates nothing; a controller that cannot preview adds nothing.
+	a.skipped = []*rpmgrv1.SkippedAgent{{AgentId: "con_1", AgentName: "nas", Reason: "the host's local policy sets auto_update: off",
+		Command: "sudo rpmgr policy set-auto-update auto"}}
+	a.create = nil
+	code, out, errOut = run("create", "rollout", "--release", "1.4.2", "--canary", "con_7")
+	if code != cli.ExitOK || a.create == nil || !strings.Contains(out, "Started rollout rol_1") || len(a.preview.GetAgentIds()) != 0 ||
+		!strings.Contains(errOut, "1 of 4 agents will be skipped") || !strings.Contains(errOut, "nas: the host's local policy sets auto_update: off") ||
+		!strings.Contains(errOut, "to take it, run on the host: sudo rpmgr policy set-auto-update auto") {
+		t.Fatalf("create rollout with a skipped agent: %d %q %q", code, out, errOut)
+	}
+	a.create = nil
+	code, out, errOut = run("create", "rollout", "--release", "1.4.2", "--easy", "--agent", "con_1", "--preview")
+	if code != cli.ExitOK || a.create != nil || strings.Join(a.preview.GetAgentIds(), ",") != "con_1" || errOut != "" ||
+		!strings.Contains(out, "1 of 4 agents will be skipped") {
+		t.Fatalf("create rollout --preview: %d %q %q %v", code, out, errOut, a.create)
+	}
+	a.skipped = []*rpmgrv1.SkippedAgent{}
+	if code, out, _ = run("create", "rollout", "--release", "1.4.2", "--canary", "con_7", "--preview"); code != cli.ExitOK || out != "No agent of 4 will be skipped.\n" {
+		t.Errorf("create rollout --preview, none skipped: %d %q", code, out)
+	}
+	a.skipped = nil
+	a.create = nil
+	if code, _, errOut = run("create", "rollout", "--release", "1.4.2", "--canary", "con_7"); code != cli.ExitOK || a.create == nil || strings.Contains(errOut, "skipped") {
+		t.Errorf("create rollout against a controller that cannot preview: %d %q", code, errOut)
+	}
+	if code, _, _ = run("create", "rollout", "--release", "1.4.2", "--canary", "con_7", "--preview"); code != cli.ExitError {
+		t.Errorf("--preview against a controller that cannot preview: %d", code)
+	}
+	if code, _, _ = run("create", "rollout", "--controller", "--release", "rel_3", "--preview"); code != cli.ExitUsage {
+		t.Errorf("--controller --preview: %d", code)
 	}
 
 	// `rpmgr upgrade` is gone (D151): it is an unknown command that names the replacement, and sends nothing.

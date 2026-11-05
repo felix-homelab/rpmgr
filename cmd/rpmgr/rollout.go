@@ -36,6 +36,7 @@ func rolloutCommands() map[string][]*cli.Command {
 		agents          cli.List
 		easy            bool
 		controller      bool
+		preview         bool
 	)
 	create := &cli.Command{
 		Name: "rollout", Summary: "roll a release out to the connectors and gateways: staged, its canary agents first, or easy, one agent after another",
@@ -46,11 +47,12 @@ func rolloutCommands() map[string][]*cli.Command {
 			fs.Var(&canaries, "canary", "a staged rollout's canary agent: a connector or gateway of the org by name, or of any org by ID; repeat for more")
 			fs.BoolVar(&easy, "easy", false, "an easy rollout: the --agent agents update one after another, and a failed one is skipped")
 			fs.Var(&agents, "agent", "an easy rollout's agent, in the order they update: a connector or gateway of the org by name, or of any org by ID; repeat for more")
+			fs.BoolVar(&preview, "preview", false, "only list the agents the rollout would skip because their host's local policy refuses the release, and create nothing")
 			outputFlag(fs, &output)
 		},
 		Run: func(ctx context.Context, env *cli.Env, args []string) error {
 			if controller {
-				if len(args) > 0 || release == "" || easy || len(canaries) > 0 || len(agents) > 0 {
+				if len(args) > 0 || release == "" || easy || len(canaries) > 0 || len(agents) > 0 || preview {
 					return cli.Usagef("--controller takes --release and nothing else")
 				}
 				return updateController(ctx, env, release)
@@ -92,6 +94,20 @@ func rolloutCommands() map[string][]*cli.Command {
 				return cli.Usagef("%v", err)
 			}
 			rc := rpmgrv1connect.NewReleaseServiceClient(s.hc, s.creds.Controller)
+			// The agents whose host policy refuses the release are skipped, and the operator hears it
+			// before the rollout starts. A controller that cannot preview leaves the warning out.
+			pv, perr := rc.PreviewRollout(ctx, connect.NewRequest(&rpmgrv1.PreviewRolloutRequest{ReleaseId: req.GetReleaseId(), AgentIds: req.GetAgentIds()}))
+			if preview {
+				if perr != nil {
+					return apiError(perr)
+				}
+				return writeSkipped(env.Stdout, pv.Msg, true)
+			}
+			if perr == nil {
+				if err := writeSkipped(env.Stderr, pv.Msg, false); err != nil {
+					return err
+				}
+			}
 			var ro *rpmgrv1.Rollout
 			if err := s.withStepUp(ctx, func() error {
 				resp, err := rc.CreateRollout(ctx, connect.NewRequest(req))
@@ -113,6 +129,29 @@ func rolloutCommands() map[string][]*cli.Command {
 		"pause":  {changeRollout("pause", "pause a running rollout; agents offered the release keep it", false)},
 		"resume": {changeRollout("resume", "let a paused rollout run again", true)},
 		"cancel": {changeRollout("cancel", "end a running or paused rollout for good", true)}}
+}
+
+// writeSkipped lists the agents a rollout skips because the update policy their host reported
+// refuses the release, each with its reason and the command that changes the host's policy; with
+// all it also says when there are none.
+func writeSkipped(w io.Writer, p *rpmgrv1.PreviewRolloutResponse, all bool) error {
+	if len(p.GetSkipped()) == 0 {
+		if !all {
+			return nil
+		}
+		_, err := fmt.Fprintf(w, "No agent of %d will be skipped.\n", p.GetTotal())
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "%d of %d agents will be skipped: the update policy their host reported refuses the release.\n",
+		len(p.GetSkipped()), p.GetTotal()); err != nil {
+		return err
+	}
+	for _, a := range p.GetSkipped() {
+		if _, err := fmt.Fprintf(w, "  %s: %s\n    to take it, run on the host: %s\n", a.GetAgentName(), a.GetReason(), a.GetCommand()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // checkPoll is how often check release asks whether the release check has ended.

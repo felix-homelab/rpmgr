@@ -80,6 +80,63 @@ func (x *Revision) GetSeq() int64 {
 	return 0
 }
 
+// HostUpdatePolicy is the update policy an agent last reported from its host's local policy file
+// (docs/04-security.md, "Over-the-air updates"); output only. A host whose file does not load or
+// that others may write reports auto_update "off". An agent that does not report it has none.
+type HostUpdatePolicy struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// "auto", "notify" or "off".
+	AutoUpdate string `protobuf:"bytes,1,opt,name=auto_update,json=autoUpdate,proto3" json:"auto_update,omitempty"`
+	// "stable" or "prerelease".
+	UpdateChannel string `protobuf:"bytes,2,opt,name=update_channel,json=updateChannel,proto3" json:"update_channel,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HostUpdatePolicy) Reset() {
+	*x = HostUpdatePolicy{}
+	mi := &file_rpmgr_v1_common_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HostUpdatePolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HostUpdatePolicy) ProtoMessage() {}
+
+func (x *HostUpdatePolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_rpmgr_v1_common_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HostUpdatePolicy.ProtoReflect.Descriptor instead.
+func (*HostUpdatePolicy) Descriptor() ([]byte, []int) {
+	return file_rpmgr_v1_common_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *HostUpdatePolicy) GetAutoUpdate() string {
+	if x != nil {
+		return x.AutoUpdate
+	}
+	return ""
+}
+
+func (x *HostUpdatePolicy) GetUpdateChannel() string {
+	if x != nil {
+		return x.UpdateChannel
+	}
+	return ""
+}
+
 // DrainingProcess is the old process a socket hand-off left draining: it keeps its open
 // connections for up to the hand-off drain and exits (docs/03-connections.md, "Showing and ending
 // the drain"). The counts are what its new process last reported.
@@ -101,7 +158,7 @@ type DrainingProcess struct {
 
 func (x *DrainingProcess) Reset() {
 	*x = DrainingProcess{}
-	mi := &file_rpmgr_v1_common_proto_msgTypes[1]
+	mi := &file_rpmgr_v1_common_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -113,7 +170,7 @@ func (x *DrainingProcess) String() string {
 func (*DrainingProcess) ProtoMessage() {}
 
 func (x *DrainingProcess) ProtoReflect() protoreflect.Message {
-	mi := &file_rpmgr_v1_common_proto_msgTypes[1]
+	mi := &file_rpmgr_v1_common_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -126,7 +183,7 @@ func (x *DrainingProcess) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DrainingProcess.ProtoReflect.Descriptor instead.
 func (*DrainingProcess) Descriptor() ([]byte, []int) {
-	return file_rpmgr_v1_common_proto_rawDescGZIP(), []int{1}
+	return file_rpmgr_v1_common_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *DrainingProcess) GetConnections() int64 {
@@ -171,7 +228,11 @@ const file_rpmgr_v1_common_proto_rawDesc = "" +
 	"\x15rpmgr/v1/common.proto\x12\brpmgr.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"7\n" +
 	"\bRevision\x12\x19\n" +
 	"\bdb_epoch\x18\x01 \x01(\tR\adbEpoch\x12\x10\n" +
-	"\x03seq\x18\x02 \x01(\x03R\x03seq\"\xc7\x01\n" +
+	"\x03seq\x18\x02 \x01(\x03R\x03seq\"Z\n" +
+	"\x10HostUpdatePolicy\x12\x1f\n" +
+	"\vauto_update\x18\x01 \x01(\tR\n" +
+	"autoUpdate\x12%\n" +
+	"\x0eupdate_channel\x18\x02 \x01(\tR\rupdateChannel\"\xc7\x01\n" +
 	"\x0fDrainingProcess\x12 \n" +
 	"\vconnections\x18\x01 \x01(\x03R\vconnections\x12\x14\n" +
 	"\x05flows\x18\x02 \x01(\x03R\x05flows\x12\x1a\n" +
@@ -191,15 +252,16 @@ func file_rpmgr_v1_common_proto_rawDescGZIP() []byte {
 	return file_rpmgr_v1_common_proto_rawDescData
 }
 
-var file_rpmgr_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_rpmgr_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_rpmgr_v1_common_proto_goTypes = []any{
 	(*Revision)(nil),              // 0: rpmgr.v1.Revision
-	(*DrainingProcess)(nil),       // 1: rpmgr.v1.DrainingProcess
-	(*timestamppb.Timestamp)(nil), // 2: google.protobuf.Timestamp
+	(*HostUpdatePolicy)(nil),      // 1: rpmgr.v1.HostUpdatePolicy
+	(*DrainingProcess)(nil),       // 2: rpmgr.v1.DrainingProcess
+	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
 }
 var file_rpmgr_v1_common_proto_depIdxs = []int32{
-	2, // 0: rpmgr.v1.DrainingProcess.since:type_name -> google.protobuf.Timestamp
-	2, // 1: rpmgr.v1.DrainingProcess.ends:type_name -> google.protobuf.Timestamp
+	3, // 0: rpmgr.v1.DrainingProcess.since:type_name -> google.protobuf.Timestamp
+	3, // 1: rpmgr.v1.DrainingProcess.ends:type_name -> google.protobuf.Timestamp
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -218,7 +280,7 @@ func file_rpmgr_v1_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rpmgr_v1_common_proto_rawDesc), len(file_rpmgr_v1_common_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

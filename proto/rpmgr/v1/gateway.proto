@@ -266,6 +266,9 @@ message GatewayStatus {
   // The state of the gateway host's firewall management (D152); not set when the gateway does not
   // manage it, or is a release without it.
   FirewallStatus firewall = 10;
+  // The update policy its host last reported; not set when the gateway does not report it (an
+  // older release), which a rollout treats as unknown and offers the release all the same.
+  HostUpdatePolicy update_policy = 11;
 }
 
 // FirewallStatus is what the gateway last reported of the root helper that opens its port pools'

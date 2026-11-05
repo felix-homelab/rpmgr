@@ -147,6 +147,9 @@ message AgentSession {
   // The old process of its last hand-off while it drains; not set when none does, or when the
   // agent is a release without the report (D160).
   DrainingProcess draining = 8;
+  // The update policy its host last reported; not set when the agent does not report it (an older
+  // release), which a rollout treats as unknown and offers the release all the same.
+  HostUpdatePolicy update_policy = 9;
 }
 
 // ConnectorStatus is a connector's state as the controller last heard of it.

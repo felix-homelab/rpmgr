@@ -22,6 +22,13 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- A rollout warns before it offers a release that a host's local policy refuses. Connectors and
+  gateways tell the controller the `auto_update` and `update_channel` of their policy file, again
+  when it changes. The start dialog and `rpmgr create rollout` (also `--preview`) say how many
+  agents will be skipped, with their names, the reason and the command to run on the host, and
+  those agents are marked skipped at once and not offered the release. Agents of older releases
+  are offered it as before, and the host still decides. The connector page and the gateway list
+  show the channel and auto-update setting. (#1136)
 - After a restore, the plan of a held DNS zone lists the adopted records that changed at the
   provider since the backup, so they can be released before the first pass puts them back. (#1113)
 - DNS automation with Cloudflare. An Owner or Admin connects a Cloudflare account with a scoped

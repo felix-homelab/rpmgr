@@ -41,6 +41,10 @@ func (AgentSession) Fields() []ent.Field {
 		// The reason of the last Goodbye that refused the agent a session, such as
 		// "upgrade_required" for an agent below min_agent_version; empty once a session is accepted.
 		field.String("last_goodbye").Default(""),
+		// The update policy the agent's host last reported (auto_update and update_channel of its
+		// local policy file); both empty for an agent that does not report it.
+		field.String("update_auto").Default(""),
+		field.String("update_channel").Default(""),
 	}
 }
 

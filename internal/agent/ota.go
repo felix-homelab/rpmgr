@@ -69,6 +69,9 @@ type UpdateOptions struct {
 	// Timeout, Stall and Recheck default to the limits of 03 and otaPolicyRecheck; tests shorten
 	// them.
 	Timeout, Stall, Recheck time.Duration
+	// PolicyEvery is how often the agent looks at the policy for a change to report to the
+	// controller; it defaults to policy.WatchEvery.
+	PolicyEvery time.Duration
 	// Retry returns the wait before the nth attempt after a failed one; nil doubles from 1 min to
 	// 1 h.
 	Retry func(n int) time.Duration
@@ -312,6 +315,14 @@ func autoUpdate(p *policy.Policy) string {
 		return policy.AutoUpdateOff
 	}
 	return p.AutoUpdate
+}
+
+// UpdatePolicy is what the local policy says about updates now, as the agent reports it to the
+// controller: auto_update, which is off for a policy that does not load or that others may write
+// (D120), and update_channel.
+func (s *Stager) UpdatePolicy() *agentv1.UpdatePolicy {
+	p := s.o.Policy()
+	return &agentv1.UpdatePolicy{AutoUpdate: autoUpdate(p), UpdateChannel: p.UpdateChannel}
 }
 
 // policyKey names what the local policy says about updates now: auto_update and update_channel.

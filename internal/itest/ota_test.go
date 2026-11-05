@@ -167,3 +167,91 @@ func TestOTA_OfferOnceMirrored(t *testing.T) {
 	}
 	waitFor(t, "the offer withdrawn while the mirror lacks the newer manifest", func() bool { o, _ := ota.last(); return o == nil })
 }
+
+// TestOTA_ReportsUpdatePolicy: an agent that updates over the air reports auto_update and
+// update_channel of its local policy file in Hello, and again when the file changes; a file that
+// does not parse, one others may write and one it cannot read count as auto_update off, and a
+// missing file is the defaults. An agent without OTA reports none.
+func TestOTA_ReportsUpdatePolicy(t *testing.T) {
+	c := itest.StartController(t, itest.Options{Sources: []snapshot.Source{orgResources}})
+	dir := t.TempDir()
+	id := c.EnrollConnector(t, filepath.Join(dir, "ota", "identity"))
+	plain := c.EnrollConnector(t, filepath.Join(dir, "plain", "identity"))
+	file := filepath.Join(dir, "policy.yaml")
+	write := func(text string, mode os.FileMode) {
+		t.Helper()
+		_ = os.Remove(file) // a file made unreadable cannot be written
+		if err := os.WriteFile(file, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(file, mode); err != nil { //nolint:gosec // G302: the test makes the file untrusted on purpose
+			t.Fatal(err)
+		}
+	}
+	write("version: 1\nauto_update: notify\nupdate_channel: prerelease\n", 0o600)
+	state := filepath.Join(dir, "ota", "state")
+	if err := os.MkdirAll(state, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		_ = agent.RunControl(ctx, agent.ControlOptions{IdentityDir: id.Dir, StateDir: state, Version: "0.1.0",
+			Applier: &recorder{}, Backoff: fast(), Logger: c.Logs.Logger(),
+			Update: &agent.UpdateOptions{Dir: filepath.Join(state, "update"), StatusFile: filepath.Join(state, "status.json"), Variant: "full",
+				PolicyEvery: 20 * time.Millisecond, Policy: func() *policy.Policy { p, _ := policy.Load(file); return p }}})
+		close(done)
+	}()
+	t.Cleanup(func() { cancel(); <-done })
+	plainState := filepath.Join(dir, "plain", "state")
+	if err := os.MkdirAll(plainState, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	pctx, pcancel := context.WithCancel(context.Background())
+	pdone := make(chan struct{})
+	go func() {
+		_ = agent.RunControl(pctx, agent.ControlOptions{IdentityDir: plain.Dir, StateDir: plainState, Version: "0.1.0",
+			Applier: &recorder{}, Backoff: fast(), Logger: c.Logs.Logger()})
+		close(pdone)
+	}()
+	t.Cleanup(func() { pcancel(); <-pdone })
+
+	reported := func() (string, string) {
+		s, err := c.DB.ReadClient().AgentSession.Get(c.Sys, id.AgentID)
+		if err != nil {
+			return "", ""
+		}
+		return s.UpdateAuto, s.UpdateChannel
+	}
+	expect := func(what, auto, channel string) {
+		t.Helper()
+		waitFor(t, what, func() bool { a, ch := reported(); return a == auto && ch == channel })
+	}
+	expect("the policy of Hello", "notify", "prerelease")
+	write("version: 1\nauto_update: auto\nupdate_channel: stable\n", 0o600)
+	expect("the policy after the file changed", "auto", "stable")
+	write("version: 1\nauto_update: [", 0o600)
+	expect("a file that does not parse", "off", "stable")
+	write("version: 1\nauto_update: auto\nupdate_channel: prerelease\n", 0o600)
+	expect("the policy again", "auto", "prerelease")
+	write("version: 1\nauto_update: auto\nupdate_channel: prerelease\n", 0o666)
+	expect("a file others may write", "off", "stable")
+	write("version: 1\nauto_update: auto\nupdate_channel: prerelease\n", 0o600)
+	expect("a file made safe again", "auto", "prerelease")
+	if os.Geteuid() != 0 { // root reads any file
+		write("version: 1\nauto_update: auto\nupdate_channel: prerelease\n", 0)
+		expect("a file that cannot be read", "off", "stable")
+		write("version: 1\nauto_update: notify\nupdate_channel: stable\n", 0o600)
+		expect("a file that can be read again", "notify", "stable")
+	}
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	expect("a missing file", "auto", "stable")
+
+	// An agent without OTA reports nothing.
+	waitFor(t, "the plain agent's session", func() bool {
+		s, err := c.DB.ReadClient().AgentSession.Get(c.Sys, plain.AgentID)
+		return err == nil && s.UpdateAuto == "" && s.UpdateChannel == ""
+	})
+}

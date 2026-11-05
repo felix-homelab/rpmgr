@@ -739,7 +739,10 @@ affect agents take effect through reconciliation and show apply status like any 
    rollback on failure, each stage approved by the Instance Admin; a rollback pauses the rollout
    ([04](04-security.md#over-the-air-updates)). A rollout's target is the controller's own
    version, so agents never run ahead of their controller. Hosts with
-   `auto_update: notify` or `off` are listed in the UI and updated by their operators. Windows and
+   `auto_update: notify` or `off`, and hosts on the stable channel when the release is a
+   pre-release, are listed in the UI and the CLI before the rollout starts, with the command that
+   changes their policy, and skipped; their operators update them
+   ([04](04-security.md#over-the-air-updates)). Windows and
    macOS connectors (Phase 2) are updated by hand from the release download; they get no OTA
    before Phase 3.
 

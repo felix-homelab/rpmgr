@@ -37,8 +37,12 @@ type AgentSession struct {
 	// DisconnectedAt holds the value of the "disconnected_at" field.
 	DisconnectedAt *time.Time `json:"disconnected_at,omitempty"`
 	// LastGoodbye holds the value of the "last_goodbye" field.
-	LastGoodbye  string `json:"last_goodbye,omitempty"`
-	selectValues sql.SelectValues
+	LastGoodbye string `json:"last_goodbye,omitempty"`
+	// UpdateAuto holds the value of the "update_auto" field.
+	UpdateAuto string `json:"update_auto,omitempty"`
+	// UpdateChannel holds the value of the "update_channel" field.
+	UpdateChannel string `json:"update_channel,omitempty"`
+	selectValues  sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -50,7 +54,7 @@ func (*AgentSession) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case agentsession.FieldSessionEpoch:
 			values[i] = new(sql.NullInt64)
-		case agentsession.FieldID, agentsession.FieldOrgID, agentsession.FieldControllerNode, agentsession.FieldRemoteAddr, agentsession.FieldAgentVersion, agentsession.FieldLastGoodbye:
+		case agentsession.FieldID, agentsession.FieldOrgID, agentsession.FieldControllerNode, agentsession.FieldRemoteAddr, agentsession.FieldAgentVersion, agentsession.FieldLastGoodbye, agentsession.FieldUpdateAuto, agentsession.FieldUpdateChannel:
 			values[i] = new(sql.NullString)
 		case agentsession.FieldConnectedAt, agentsession.FieldLastSeenAt, agentsession.FieldDisconnectedAt:
 			values[i] = new(sql.NullTime)
@@ -138,6 +142,18 @@ func (_m *AgentSession) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.LastGoodbye = value.String
 			}
+		case agentsession.FieldUpdateAuto:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field update_auto", values[i])
+			} else if value.Valid {
+				_m.UpdateAuto = value.String
+			}
+		case agentsession.FieldUpdateChannel:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field update_channel", values[i])
+			} else if value.Valid {
+				_m.UpdateChannel = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -205,6 +221,12 @@ func (_m *AgentSession) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("last_goodbye=")
 	builder.WriteString(_m.LastGoodbye)
+	builder.WriteString(", ")
+	builder.WriteString("update_auto=")
+	builder.WriteString(_m.UpdateAuto)
+	builder.WriteString(", ")
+	builder.WriteString("update_channel=")
+	builder.WriteString(_m.UpdateChannel)
 	builder.WriteByte(')')
 	return builder.String()
 }

@@ -191,6 +191,8 @@ var schemaGraph = func() *sqlgraph.Schema {
 			agentsession.FieldLastSeenAt:     {Type: field.TypeTime, Column: agentsession.FieldLastSeenAt},
 			agentsession.FieldDisconnectedAt: {Type: field.TypeTime, Column: agentsession.FieldDisconnectedAt},
 			agentsession.FieldLastGoodbye:    {Type: field.TypeString, Column: agentsession.FieldLastGoodbye},
+			agentsession.FieldUpdateAuto:     {Type: field.TypeString, Column: agentsession.FieldUpdateAuto},
+			agentsession.FieldUpdateChannel:  {Type: field.TypeString, Column: agentsession.FieldUpdateChannel},
 		},
 	}
 	graph.Nodes[5] = &sqlgraph.Node{
@@ -2683,6 +2685,16 @@ func (f *AgentSessionFilter) WhereDisconnectedAt(p entql.TimeP) {
 // WhereLastGoodbye applies the entql string predicate on the last_goodbye field.
 func (f *AgentSessionFilter) WhereLastGoodbye(p entql.StringP) {
 	f.Where(p.Field(agentsession.FieldLastGoodbye))
+}
+
+// WhereUpdateAuto applies the entql string predicate on the update_auto field.
+func (f *AgentSessionFilter) WhereUpdateAuto(p entql.StringP) {
+	f.Where(p.Field(agentsession.FieldUpdateAuto))
+}
+
+// WhereUpdateChannel applies the entql string predicate on the update_channel field.
+func (f *AgentSessionFilter) WhereUpdateChannel(p entql.StringP) {
+	f.Where(p.Field(agentsession.FieldUpdateChannel))
 }
 
 // addPredicate implements the predicateAdder interface.

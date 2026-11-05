@@ -408,6 +408,14 @@ func init() {
 	agentsessionDescLastGoodbye := agentsessionFields[9].Descriptor()
 	// agentsession.DefaultLastGoodbye holds the default value on creation for the last_goodbye field.
 	agentsession.DefaultLastGoodbye = agentsessionDescLastGoodbye.Default.(string)
+	// agentsessionDescUpdateAuto is the schema descriptor for update_auto field.
+	agentsessionDescUpdateAuto := agentsessionFields[10].Descriptor()
+	// agentsession.DefaultUpdateAuto holds the default value on creation for the update_auto field.
+	agentsession.DefaultUpdateAuto = agentsessionDescUpdateAuto.Default.(string)
+	// agentsessionDescUpdateChannel is the schema descriptor for update_channel field.
+	agentsessionDescUpdateChannel := agentsessionFields[11].Descriptor()
+	// agentsession.DefaultUpdateChannel holds the default value on creation for the update_channel field.
+	agentsession.DefaultUpdateChannel = agentsessionDescUpdateChannel.Default.(string)
 	// agentsessionDescID is the schema descriptor for id field.
 	agentsessionDescID := agentsessionFields[0].Descriptor()
 	// agentsession.IDValidator is a validator for the "id" field. It is called by the builders before save.

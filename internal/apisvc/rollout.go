@@ -3,10 +3,12 @@
 package apisvc
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"connectrpc.com/connect"
 	"golang.org/x/mod/semver"
@@ -15,6 +17,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/api"
+	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/release"
 	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -93,7 +96,7 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 		if n, err := tx.Rollout.Query().Where(rollout.Active(true)).Count(sys); err != nil || n > 0 {
 			return errors.Join(err, errIf(n > 0, rolloutActive()))
 		}
-		agents, err := rolloutAgents(sys, tx)
+		agents, err := rolloutAgents(sys, tx.Client(), rel)
 		if err != nil {
 			return err
 		}
@@ -128,8 +131,12 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 			var bulk []*ent.RolloutTargetCreate
 			for _, id := range ids[start:min(start+chunk, len(ids))] {
 				a := agents[id]
-				bulk = append(bulk, tx.RolloutTarget.Create().SetRolloutID(row.ID).SetAgentID(id).SetAgentKind(a.kind).
-					SetCanary(slices.Contains(m.GetCanaryAgentIds(), id)).SetBucket(store.RolloutBucket(id)).SetVersionBefore(a.version))
+				c := tx.RolloutTarget.Create().SetRolloutID(row.ID).SetAgentID(id).SetAgentKind(a.kind).
+					SetCanary(slices.Contains(m.GetCanaryAgentIds(), id)).SetBucket(store.RolloutBucket(id)).SetVersionBefore(a.version)
+				if a.refusal != "" {
+					c.SetState(rollouttarget.StateSkipped).SetReason(a.skipText())
+				}
+				bulk = append(bulk, c)
 			}
 			if err := tx.RolloutTarget.CreateBulk(bulk...).Exec(sys); err != nil {
 				return err
@@ -161,6 +168,46 @@ func (r *Releases) CreateRollout(ctx context.Context, req *connect.Request[rpmgr
 	return connect.NewResponse(&rpmgrv1.CreateRolloutResponse{Rollout: out}), nil
 }
 
+// PreviewRollout implements ReleaseService: the agents a rollout of the release would skip because
+// the update policy their host reported refuses it, those of the queue or, with no queue, every
+// agent a staged rollout targets. Agents that reported no policy, as older releases do, are not
+// listed.
+func (r *Releases) PreviewRollout(ctx context.Context, req *connect.Request[rpmgrv1.PreviewRolloutRequest]) (
+	*connect.Response[rpmgrv1.PreviewRolloutResponse], error) {
+	sys := store.CarryTxHook(r.Sys, ctx)
+	c := r.DB.ReadClient()
+	rel, err := c.Release.Get(sys, req.Msg.GetReleaseId())
+	if err != nil {
+		return nil, storeError(err)
+	}
+	agents, err := rolloutAgents(sys, c, rel)
+	if err != nil {
+		return nil, storeError(err)
+	}
+	ids := req.Msg.GetAgentIds()
+	if len(ids) == 0 {
+		for id := range agents {
+			ids = append(ids, id)
+		}
+	}
+	out := &rpmgrv1.PreviewRolloutResponse{}
+	for _, id := range ids {
+		a, ok := agents[id]
+		if !ok {
+			continue // CreateRollout refuses it with its reason
+		}
+		out.Total++
+		if a.refusal != "" {
+			out.Skipped = append(out.Skipped, &rpmgrv1.SkippedAgent{AgentId: id, AgentKind: agentKinds[a.kind],
+				AgentName: a.name, Reason: a.refusal, Command: a.command})
+		}
+	}
+	slices.SortFunc(out.Skipped, func(a, b *rpmgrv1.SkippedAgent) int {
+		return cmp.Or(strings.Compare(a.GetAgentName(), b.GetAgentName()), strings.Compare(a.GetAgentId(), b.GetAgentId()))
+	})
+	return connect.NewResponse(out), nil
+}
+
 // UpgradeAgents implements ReleaseService (docs/04-security.md, "Easy rollouts"; D129): the agents
 // join the end of the queue of the easy rollout of the controller's own version that runs or is
 // paused, or start one when no rollout does. An agent queued before keeps its place.
@@ -179,7 +226,7 @@ func (r *Releases) UpgradeAgents(ctx context.Context, req *connect.Request[rpmgr
 		case err != nil:
 			return nil, err
 		}
-		agents, err := rolloutAgents(sys, tx)
+		agents, err := rolloutAgents(sys, tx.Client(), rel)
 		if err != nil {
 			return nil, err
 		}
@@ -255,7 +302,7 @@ func checkChannel(ctx context.Context, c *ent.Client, rel *ent.Release) error {
 	if err != nil {
 		return err
 	}
-	if pre := rel.Channel == entrelease.ChannelPrerelease || semver.Prerelease("v"+rel.Version) != ""; pre &&
+	if pre := isPrerelease(rel); pre &&
 		set.GetUpdateChannel() != rpmgrv1.UpdateChannel_UPDATE_CHANNEL_PRERELEASE {
 		return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
 			"apisvc: release %s is a pre-release and the instance's update channel is stable; every host on it would refuse it",
@@ -281,7 +328,7 @@ func queueOf(agents map[string]rolloutAgent, ids []string) ([]store.RolloutAgent
 				"apisvc: agent %s has not announced over-the-air updates: it runs without the root updater or with its units not enabled (install.sh --upgrade --restart installs them and restarts the agent), in the container image, or has never connected", id)),
 				ReasonNotUpgradable)
 		}
-		out = append(out, store.RolloutAgent{ID: id, Kind: a.kind, VersionBefore: a.version})
+		out = append(out, store.RolloutAgent{ID: id, Kind: a.kind, VersionBefore: a.version, SkipReason: a.skipText()})
 	}
 	return out, nil
 }
@@ -541,34 +588,58 @@ type rolloutAgent struct {
 	kind    rollouttarget.AgentKind
 	version string
 	ota     bool
+	// refusal and command are why the agent's host refuses the release by the update policy it
+	// reported, and the command that changes it; empty when it takes it or reported none.
+	refusal, command string
+	name, org        string
 }
 
-// rolloutAgents are the agents a new rollout updates, by ID, with the version each last connected
-// with.
-func rolloutAgents(ctx context.Context, tx *ent.Tx) (map[string]rolloutAgent, error) {
+// skipText is the reason of a target skipped by the host's reported policy, "" when it is not.
+func (a rolloutAgent) skipText() string {
+	if a.refusal == "" {
+		return ""
+	}
+	return a.refusal + "; to take it, run on the host: " + a.command
+}
+
+// isPrerelease reports whether a release is a pre-release by its channel or its version.
+func isPrerelease(rel *ent.Release) bool {
+	return rel.Channel == entrelease.ChannelPrerelease || semver.Prerelease("v"+rel.Version) != ""
+}
+
+// rolloutAgents are the agents a new rollout of rel updates, by ID, with the version each last
+// connected with and whether the update policy it last reported refuses rel. An agent that
+// reported no policy is offered the release as before; the host decides in the end.
+func rolloutAgents(ctx context.Context, c *ent.Client, rel *ent.Release) (map[string]rolloutAgent, error) {
 	out := map[string]rolloutAgent{}
-	cons, err := tx.Connector.Query().Where(connector.DecommissionedAtIsNil(), connector.BuiltIn(false)).IDs(ctx)
+	cons, err := c.Connector.Query().Where(connector.DecommissionedAtIsNil(), connector.BuiltIn(false)).
+		Select(connector.FieldID, connector.FieldName, connector.FieldOrgID).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for _, id := range cons {
-		out[id] = rolloutAgent{kind: rollouttarget.AgentKindConnector}
+	for _, x := range cons {
+		out[x.ID] = rolloutAgent{kind: rollouttarget.AgentKindConnector, name: x.Name, org: x.OrgID}
 	}
-	gws, err := tx.Gateway.Query().Where(gateway.DecommissionedAtIsNil(), gateway.BuiltIn(false), gateway.SpiffeIDNEQ("")).IDs(ctx)
+	gws, err := c.Gateway.Query().Where(gateway.DecommissionedAtIsNil(), gateway.BuiltIn(false), gateway.SpiffeIDNEQ("")).
+		Select(gateway.FieldID, gateway.FieldName, gateway.FieldOrgID).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for _, id := range gws {
-		out[id] = rolloutAgent{kind: rollouttarget.AgentKindGateway}
+	for _, x := range gws {
+		out[x.ID] = rolloutAgent{kind: rollouttarget.AgentKindGateway, name: x.Name, org: x.OrgID}
 	}
-	sessions, err := tx.AgentSession.Query().
-		Select(agentsession.FieldID, agentsession.FieldAgentVersion, agentsession.FieldCapabilities).All(ctx)
+	sessions, err := c.AgentSession.Query().Select(agentsession.FieldID, agentsession.FieldAgentVersion,
+		agentsession.FieldCapabilities, agentsession.FieldUpdateAuto, agentsession.FieldUpdateChannel).All(ctx)
 	if err != nil {
 		return nil, err
 	}
+	pre := isPrerelease(rel)
 	for _, s := range sessions {
 		if a, ok := out[s.ID]; ok {
 			a.version, a.ota = s.AgentVersion, slices.Contains(s.Capabilities, agentproto.CapOTA)
+			if s.UpdateAuto != "" {
+				a.refusal, a.command = policy.UpdateRefusal(s.UpdateAuto, s.UpdateChannel, pre)
+			}
 			out[s.ID] = a
 		}
 	}

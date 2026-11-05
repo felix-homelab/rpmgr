@@ -1205,6 +1205,19 @@ timeouts and size limits named below are in [03](03-connections.md#timeouts-keep
      rollout waits until the Instance Admin resumes or cancels it. A target whose agent reports
      nothing for 30 minutes counts as stalled and pauses it too. Agents that are offline, or whose
      local policy says `notify` or `off`, are listed and skipped; they never block a stage.
+   - **The controller warns before it offers.** Agents with the capability `ota` report the
+     `auto_update` and `update_channel` of their local policy to the controller, in `Hello` and
+     again in `Status` when the file changes
+     ([03](03-connections.md#control-session)). A policy file that does not parse, that others may
+     write or that cannot be read counts as `auto_update: off`, as it does for the updater. When a
+     rollout is created or previewed, each target whose last report refuses the release (a
+     pre-release on `update_channel: stable`, or `auto_update` `notify` or `off`) is marked
+     `skipped` at once with the reason and the command that changes the host's policy, and is never
+     offered the release. An agent that reports no policy, as releases before v0.4.0 do, is offered
+     the release as before. The report is advice for the operator and nothing more: the agent and
+     the root updater read the policy file themselves, so a stale or forged report can neither
+     force an update nor hide a refusal, and a host whose policy changes later still decides for
+     itself.
    - Only one rollout, staged or easy, runs or is paused at a time. Creating, advancing, resuming
      and cancelling one, and adding an agent to one, takes Instance Admin and a step-up, and is
      audited.
