@@ -97,8 +97,18 @@ if ((${#plain[@]} > 0)) && ! go test -race "${count[@]}" -timeout 20m "${plain[@
 fi
 # The packages that have files of their own under the rpmgrtest build tag are tested with it.
 mapfile -t tagged < <(git ls-files -z '*.go' | { xargs -0 -r grep -l '^//go:build rpmgrtest' || true; } |
-  xargs -r -n1 dirname | sort -u | sed 's#^#./#' | shard_select "$shard")
-if ((${#tagged[@]} > 0)) && ! go test -race "${count[@]}" -timeout 20m -tags rpmgrtest "${tagged[@]}"; then
+  xargs -r -n1 dirname | sort -u | sed 's#^#./#' | split_expand "./internal/controller=2" | shard_select "$shard")
+# internal/controller is dealt as two parts here too: with the tag it runs every one of its tests
+# again, which alone takes longer than the per-package limit.
+tagged_plain=()
+for pkg in "${tagged[@]}"; do
+  if [[ $pkg == *'#'* ]]; then
+    split_run "$pkg" -race "${count[@]}" -timeout 20m -tags rpmgrtest
+  else
+    tagged_plain+=("$pkg")
+  fi
+done
+if ((${#tagged_plain[@]} > 0)) && ! go test -race "${count[@]}" -timeout 20m -tags rpmgrtest "${tagged_plain[@]}"; then
   fail "tests of the rpmgrtest build failed"
 fi
 finish
