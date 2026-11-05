@@ -417,6 +417,9 @@ and lost rows.
      [F cf:dns/zone-setups/reference/domain-status], and adding one needs no proof of ownership
      [V VB-12]. In a partial (CNAME) setup, Cloudflare is not authoritative
      [F cf:dns/zone-setups/partial-setup] [V VB-12].
+   - rpmgr also reads the nameservers the provider assigned to the zone (Cloudflare's `name_servers`
+     [V cf-api:openapi.json `GET /zones`, to be checked at a retrieval date]) and whether the
+     domain is delegated to them ([Delegation](#delegation)).
    - Import creates the managed zone (held) and, unless the org already has a verified domain
      covering it, a domain claim for the apex with `wildcard = true`. A claim the org already made
      for the apex is reused if it has the wildcard and refused if it has not, because a claim's
@@ -459,6 +462,31 @@ names to orgs ([D165](14-open-decisions.md#engineering)).
 - Records of delegated names are published in the system org's managed zone, by the same job and
   rules as every other zone (publication rule 1).
 
+### Delegation
+
+A zone is served only if the domain is delegated to the provider: the NS records that the domain's
+parent publishes, which the domain's owner sets at the registrar, must be the nameservers the
+provider assigned to the zone. A domain that still points at the registrar's own or a parking
+nameservers publishes nothing of what rpmgr writes at the provider, and a claim's challenge TXT is
+never found ([Domain verification](#domain-verification)).
+
+- **The check.** The public NS records of the zone's apex are looked up as for a claim, through the
+  resolver, and compared with the provider's assigned nameservers, ignoring case and a trailing dot.
+  The delegation is `ok` if every public nameserver is an assigned one, a `mismatch` if one is not
+  or there is none, and unknown if the provider names none or the lookup failed: a failed lookup
+  gives no verdict and keeps nothing that was found before.
+- **When.** At import, and by the hourly token check ([Timers and limits](#timers-and-limits)) for
+  every zone of a provider whose token the provider accepts. That check also reads the provider's
+  assigned nameservers again, so that a change at the provider is seen. A provider that cannot be
+  listed leaves the zones as they were.
+- **What shows.** The zone, in the API, the web UI and `rpmgr get zone`, carries the assigned
+  nameservers, the delegation and, for a mismatch, the public nameservers. The web UI and the
+  command line warn before a plan is approved, and while the zone is held, that what the plan
+  publishes is not served, naming the nameservers to set at the registrar. The warning changes
+  nothing else: it neither blocks an approval nor counts as, or against, a proof.
+- **Not a proof.** The delegation is read through the resolver, which the proof never is. Whether a
+  claim is verified depends on the authoritative answer alone.
+
 ## Domain verification
 
 - **Authoritative answers.** The `_rpmgr-challenge` TXT record is queried at the zone's
@@ -467,7 +495,18 @@ names to orgs ([D165](14-open-decisions.md#engineering)).
   The zone's nameservers are the NS records of the closest name, from the claim upwards, that has
   any; only they are looked up through the resolver. Each is asked without recursion, and only an
   answer with the authority flag counts; the value may be split into several strings. A claim
-  keeps the error of its last check, such as no authoritative answer or a wrong value.
+  keeps the error of its last check, which says which failure it is:
+  - the nameservers answered and there is no TXT record at the name (NXDOMAIN or an empty answer);
+  - there are TXT records at the name and none holds the challenge value: the values found are
+    shown, a few of them, each cut ([Timers and limits](#timers-and-limits));
+  - the name is in a managed zone and the DNS job has not published its TXT yet, because the zone
+    is held until its plan is approved or no pass has run since;
+  - the zone's domain is delegated to other nameservers than the ones the provider assigned
+    ([Delegation](#delegation)); the message names both;
+  - no authoritative nameserver answered, with the kind of failure and no address.
+  A value that holds the challenge between one pair of double quotes counts, as the planner counts
+  a TXT the provider returns quoted ([Held zones and plan approval](#the-plan-and-its-hash)); no
+  other difference does.
 - **HTTP tokens** (R17). For a pending claim with the method `http`, every enabled gateway of the
   claim's org answers `GET http://<fqdn>/.well-known/rpmgr-challenge/<claim ID>` on port 80 with
   the challenge value, for the claimed name only and before any redirect. The controller fetches
@@ -586,7 +625,7 @@ A proxied name resolves to Cloudflare. Cloudflare terminates TLS and connects to
 |---|---|---|
 | Authentication | Bearer API tokens; the Global API Key is legacy and carries all of the user's permissions [F cf:fundamentals/api/get-started/keys] | API tokens only |
 | Token scope | Zone resources, client-IP filter and expiry are configurable [F cf:fundamentals/api/get-started/create-token]; narrowest scope is a zone: a token scoped to one zone sees exactly that zone, and an under-scoped token gets HTTP 403 (code 10000) on reads and writes [F VB-12, run 2026-11-04] | Recommended in the connect form; expiry shown and alerted |
-| Zones | Status `initializing`, `pending`, `active`, `moved`; types `full`, `partial`, `secondary`, `internal`; `per_page` ≤ 50 [F cf-api:openapi.json `GET /zones`] | Import `active` + `full` only; all pages |
+| Zones | Status `initializing`, `pending`, `active`, `moved`; types `full`, `partial`, `secondary`, `internal`; `per_page` ≤ 50 [F cf-api:openapi.json `GET /zones`]; the zone's assigned nameservers are `name_servers` [V cf-api:openapi.json `GET /zones`] | Import `active` + `full` only; all pages; the nameservers are compared with the domain's public ones ([Delegation](#delegation)) |
 | Batch | All-or-nothing; deletes, patches, puts, posts in that order; 200 records per batch on Free, 3 500 on paid plans [F cf:dns/manage-dns-records/how-to/batch-record-changes] | One batch per pass, ≤ 200 operations; per-record retry on failure |
 | Comments, tags | Comments on all plans, ≤ 100 characters on Free, no line breaks; tags only Pro and above [F cf:dns/manage-dns-records/reference/record-attributes] | Marker in the comment; tags unused |
 | Proxy | Only A, AAAA and CNAME can be proxied [F cf:dns/proxy-status]; non-HTTP TCP/UDP needs Spectrum [F cf:spectrum/protocols-per-plan] | Proxy only for `http` routes |
@@ -647,7 +686,8 @@ type Provider interface {
 | Pending-claim checks | every 1 min for 15 min, then every 15 min; `failed` after 7 days; [R] by one controller node, 8 checks at once |
 | [R] TXT proof query | 5 s per nameserver address, over UDP and again over TCP when truncated; at most 8 nameservers of a zone |
 | [R] HTTP token fetch | 10 s; no redirect followed; at most 256 bytes; through the proxy the environment names |
-| Token check | every 1 h; expiry warning 14 days ahead |
+| Token check | every 1 h; expiry warning 14 days ahead; the delegation of each zone of an accepted token is checked with it |
+| TXT values shown in a failed check | at most 3 values, each cut at 64 characters |
 | Cloudflare IP ranges | refreshed every 24 h, tried again every 1 h after a failure or a rejected list; accepted only if both families are non-empty, no IPv4 prefix is shorter than /8 and no IPv6 prefix shorter than /16, at most 512 entries, and at most half of the entries in use are gone and at most half of the new entries are new (exactly half passes); the stale alert fires 15 min after the list in use is older than 72 h while a route is proxied |
 | [R] Cloudflare IP ranges fetch | 10 s; no redirect followed; at most 64 KiB; through the proxy the environment names |
 | DNS-01 propagation timeout | 2 min (certmagic default [F certmagic:solvers.go:532]) |

@@ -10,6 +10,16 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+### Fixed
+
+- A TXT claim that fails now says why. The check tells no record at `_rpmgr-challenge.<domain>`,
+  other values there (shown, cut), a challenge the DNS job has not published yet in a managed
+  zone, and a domain that is delegated to other nameservers than the ones the DNS provider
+  assigned, which never serve what rpmgr publishes there; the last also warns on the zone page,
+  in `rpmgr get zone` and in the plan before it is approved, and is checked again every hour.
+  A claim in a managed zone is checked again as soon as the DNS job has published its TXT, and a
+  challenge value in one pair of double quotes counts. (#1144)
+
 ### Changed
 
 - The messages of a Discord, Slack or Microsoft Teams webhook endpoint use what each service

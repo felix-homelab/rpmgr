@@ -84,6 +84,16 @@ the zones and records stay.
 rpmgr import zone --provider cf example.com
 ```
 
+### Point the domain at Cloudflare
+
+Cloudflare serves a zone only if the domain's nameservers, which you set at your registrar, are the
+ones Cloudflare assigned to the zone. A domain that still points elsewhere, at a parking page of the
+registrar for example, publishes nothing of what rpmgr writes, and the claim cannot be proved. The
+zone page shows the nameservers Cloudflare assigned. If the domain is delegated to others, the
+page, `rpmgr get zone` and `rpmgr plan zone` warn, before you approve the plan, and name both: set
+the nameservers at your registrar to the assigned ones. rpmgr checks again every hour
+([15](../15-dns.md#delegation)). The warning does not stop you from approving the plan.
+
 ## Approve the first plan
 
 A zone starts **held**: nothing is written to Cloudflare until you have read what rpmgr would do and
