@@ -39,8 +39,9 @@ const owned = [
     adoptedTime: { seconds: 1798848000n, nanos: 0 } },
 ];
 const foreign = [
-  { id: "", providerRecordId: "pr_f", name: "grafana.example.com", type: "A", content: "203.0.113.5", state: DnsRecordState.FOREIGN },
-  { id: "", providerRecordId: "pr_x", name: "mail.example.com", type: "MX", content: "10 mx.example.net", state: DnsRecordState.FOREIGN },
+  { id: "", providerRecordId: "pr_f", name: "grafana.example.com", type: "A", content: "203.0.113.5", state: DnsRecordState.FOREIGN, adoptable: true },
+  { id: "", providerRecordId: "pr_x", name: "mail.example.com", type: "MX", content: "10 mx.example.net", state: DnsRecordState.FOREIGN, adoptable: false, adoptReason: "type_not_adoptable" },
+  { id: "", providerRecordId: "pr_n", name: "www.example.com", type: "A", content: "203.0.113.9", state: DnsRecordState.FOREIGN, adoptable: false, adoptReason: "not_published" },
 ];
 
 interface Opts { role?: string; zone?: typeof held; planOf?: (n: number) => string; approveFails?: boolean; warning?: string }
@@ -199,9 +200,11 @@ describe("DNS zone: records", () => {
     expect(calls.records.map((q) => q.includeForeign)).toEqual([true]);
     expect(r.getByText("wiki.example.com")).toBeTruthy();
     expect(r.getByText("changed twice")).toBeTruthy();
-    expect(r.getAllByText("foreign", { selector: "td" })).toHaveLength(2);
-    // Only the types rpmgr manages can be adopted.
+    expect(r.getAllByText("foreign", { selector: "td" })).toHaveLength(3);
+    // Only a record the API marks adoptable gets the button; the others say why not.
     expect(r.getAllByRole("button", { name: "Adopt" })).toHaveLength(1);
+    expect(r.getAllByText("Not published by rpmgr — create a route or DNS name for this name first, then adopt it from the plan.")).toHaveLength(1);
+    expect(r.getAllByText(/does not manage records of this type/)).toHaveLength(1);
   });
 
   it("adopts a foreign record after a confirmation and a step-up", async () => {

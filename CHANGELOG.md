@@ -10,6 +10,13 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+### Fixed
+
+- The zone's record list offers **Adopt** only on foreign records that rpmgr can adopt, those at a
+  name that a route or DNS name of the organisation publishes and of a type it manages; the others
+  show why not. A refused adoption, in the web UI and in `rpmgr adopt dns-record`, now names the
+  record and says to create a route or DNS name for it first (#1137).
+
 ### Changed
 
 - The messages of a Discord, Slack or Microsoft Teams webhook endpoint use what each service

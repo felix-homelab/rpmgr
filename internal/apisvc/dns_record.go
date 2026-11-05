@@ -77,6 +77,36 @@ func liveOf(r dns.Record, state rpmgrv1.DnsRecordState) *rpmgrv1.DnsRecord {
 	return &rpmgrv1.DnsRecord{ProviderRecordId: r.ID, Name: r.Name, Type: r.Type, Content: r.Content, Ttl: int32(r.TTL), Proxied: r.Proxied, State: state} //nolint:gosec // G115: a TTL is at most a day
 }
 
+// The reasons a foreign record is not adoptable, as DnsRecord.adopt_reason names them.
+const (
+	adoptNotPublished     = "not_published"
+	adoptTypeNotAdoptable = "type_not_adoptable"
+)
+
+// wantedNames is the set of names the sources of the zone's org publish, lower case, without the
+// trailing dot.
+func wantedNames(names []string) map[string]bool {
+	wanted := map[string]bool{}
+	for _, n := range names {
+		wanted[wantedKey(n)] = true
+	}
+	return wanted
+}
+
+func wantedKey(name string) string { return strings.ToLower(strings.TrimSuffix(name, ".")) }
+
+// adoptReason is why AdoptRecords refuses the record, or "" if it takes it. ListZoneRecords and
+// AdoptRecords share it, so the list never offers what the call refuses.
+func adoptReason(r dns.Record, wanted map[string]bool) string {
+	switch {
+	case !slices.Contains(manageable, r.Type):
+		return adoptTypeNotAdoptable
+	case !wanted[wantedKey(r.Name)]:
+		return adoptNotPublished
+	}
+	return ""
+}
+
 func (z *DnsZones) now() time.Time {
 	if z.Now != nil {
 		return z.Now()
@@ -118,6 +148,7 @@ func (z *DnsZones) ListZoneRecords(ctx context.Context, req *connect.Request[rpm
 	if err != nil {
 		return nil, err
 	}
+	wanted := wantedNames(in.Wanted)
 	orphan := map[string]bool{}
 	for _, o := range in.Plan.Orphans {
 		orphan[o.ID] = true
@@ -129,7 +160,10 @@ func (z *DnsZones) ListZoneRecords(ctx context.Context, req *connect.Request[rpm
 		case orphan[r.ID]:
 			others = append(others, liveOf(r, rpmgrv1.DnsRecordState_DNS_RECORD_STATE_ORPHANED))
 		default:
-			others = append(others, liveOf(r, rpmgrv1.DnsRecordState_DNS_RECORD_STATE_FOREIGN))
+			f := liveOf(r, rpmgrv1.DnsRecordState_DNS_RECORD_STATE_FOREIGN)
+			f.AdoptReason = adoptReason(r, wanted)
+			f.Adoptable = f.AdoptReason == ""
+			others = append(others, f)
 		}
 	}
 	slices.SortFunc(others, func(a, b *rpmgrv1.DnsRecord) int {
@@ -159,20 +193,18 @@ func (z *DnsZones) AdoptRecords(ctx context.Context, req *connect.Request[rpmgrv
 	for _, r := range in.Live {
 		live[r.ID] = r
 	}
-	wanted := map[string]bool{}
-	for _, n := range in.Wanted {
-		wanted[strings.ToLower(strings.TrimSuffix(n, "."))] = true
-	}
+	wanted := wantedNames(in.Wanted)
 	var recs []dns.Record
 	for _, id := range ids {
 		r, ok := live[id]
-		switch {
-		case !ok:
+		if !ok {
 			return nil, failed(connect.CodeNotFound, "the provider holds no such record in the zone", ReasonRecordNotFound)
-		case !slices.Contains(manageable, r.Type):
-			return nil, failed(connect.CodeFailedPrecondition, "rpmgr owns records of type A, AAAA, CNAME and TXT only", ReasonRecordTypeUnsupported)
-		case !wanted[strings.ToLower(strings.TrimSuffix(r.Name, "."))]:
-			return nil, failed(connect.CodeFailedPrecondition, "no source of the org publishes a record at the name of the record", ReasonRecordNotWanted)
+		}
+		switch adoptReason(r, wanted) {
+		case adoptTypeNotAdoptable:
+			return nil, failed(connect.CodeFailedPrecondition, fmt.Sprintf("%s (%s) cannot be adopted: rpmgr owns records of type A, AAAA, CNAME and TXT only", r.Name, r.Type), ReasonRecordTypeUnsupported)
+		case adoptNotPublished:
+			return nil, failed(connect.CodeFailedPrecondition, fmt.Sprintf("%s (%s) is not published by any route or DNS name of this organisation; create one for it first, then adopt it", r.Name, r.Type), ReasonRecordNotWanted)
 		}
 		recs = append(recs, r)
 	}

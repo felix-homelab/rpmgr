@@ -596,6 +596,13 @@ message DnsRecord {
   string reason = 9;
   // When the record was adopted; output only, unset for a record rpmgr created.
   google.protobuf.Timestamp adopted_time = 10;
+  // Whether AdoptRecords would take this record; output only, set for a record in state foreign
+  // and informational: the call checks again. False for any other record.
+  bool adoptable = 11;
+  // Why a foreign record is not adoptable: not_published (no route or DNS name of the zone's org
+  // publishes its name) or type_not_adoptable (not A, AAAA, CNAME or TXT); output only, empty
+  // when adoptable.
+  string adopt_reason = 12;
 }
 
 // ListZoneRecordsRequest names a zone.

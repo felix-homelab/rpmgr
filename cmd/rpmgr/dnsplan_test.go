@@ -284,8 +284,9 @@ func TestDNSRecordCommands(t *testing.T) {
 	if code != cli.ExitOK || strings.Join(a.zonePlans.adopted.GetProviderRecordIds(), ",") != "p2,p3" || a.zonePlans.adopted.GetDnsZoneId() != "dnz_1" || strings.Count(out, "Adopted") != 2 {
 		t.Fatalf("adopt: %d %q %v", code, out, a.zonePlans.adopted)
 	}
-	a.zonePlans.adoptErr = withReasonErr(connect.CodeFailedPrecondition, "no source of the org publishes a record at the name of the record", "RECORD_NOT_WANTED")
-	if code, _, errOut := run("adopt", "dns-record", "--zone", "dnz_1", "p9"); code != cli.ExitError || !strings.Contains(errOut, "RECORD_NOT_WANTED") {
+	a.zonePlans.adoptErr = withReasonErr(connect.CodeFailedPrecondition, "www.example.org (A) is not published by any route or DNS name of this organisation; create one for it first, then adopt it", "RECORD_NOT_WANTED")
+	if code, _, errOut := run("adopt", "dns-record", "--zone", "dnz_1", "p9"); code != cli.ExitError || !strings.Contains(errOut, "RECORD_NOT_WANTED") ||
+		!strings.Contains(errOut, "www.example.org (A) is not published by any route or DNS name of this organisation; create one for it first, then adopt it") {
 		t.Errorf("a refused adoption: %d %q", code, errOut)
 	}
 	a.zonePlans.adopted = nil

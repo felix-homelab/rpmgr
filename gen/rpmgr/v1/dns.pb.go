@@ -2537,7 +2537,14 @@ type DnsRecord struct {
 	// Why a record is in state error or drifted; output only.
 	Reason string `protobuf:"bytes,9,opt,name=reason,proto3" json:"reason,omitempty"`
 	// When the record was adopted; output only, unset for a record rpmgr created.
-	AdoptedTime   *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=adopted_time,json=adoptedTime,proto3" json:"adopted_time,omitempty"`
+	AdoptedTime *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=adopted_time,json=adoptedTime,proto3" json:"adopted_time,omitempty"`
+	// Whether AdoptRecords would take this record; output only, set for a record in state foreign
+	// and informational: the call checks again. False for any other record.
+	Adoptable bool `protobuf:"varint,11,opt,name=adoptable,proto3" json:"adoptable,omitempty"`
+	// Why a foreign record is not adoptable: not_published (no route or DNS name of the zone's org
+	// publishes its name) or type_not_adoptable (not A, AAAA, CNAME or TXT); output only, empty
+	// when adoptable.
+	AdoptReason   string `protobuf:"bytes,12,opt,name=adopt_reason,json=adoptReason,proto3" json:"adopt_reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2640,6 +2647,20 @@ func (x *DnsRecord) GetAdoptedTime() *timestamppb.Timestamp {
 		return x.AdoptedTime
 	}
 	return nil
+}
+
+func (x *DnsRecord) GetAdoptable() bool {
+	if x != nil {
+		return x.Adoptable
+	}
+	return false
+}
+
+func (x *DnsRecord) GetAdoptReason() string {
+	if x != nil {
+		return x.AdoptReason
+	}
+	return ""
 }
 
 // ListZoneRecordsRequest names a zone.
@@ -3709,7 +3730,7 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\x0fSyncZoneRequest\x12'\n" +
 	"\vdns_zone_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tdnsZoneId\"@\n" +
 	"\x10SyncZoneResponse\x12,\n" +
-	"\bdns_zone\x18\x01 \x01(\v2\x11.rpmgr.v1.DnsZoneR\adnsZone\"\xbe\x02\n" +
+	"\bdns_zone\x18\x01 \x01(\v2\x11.rpmgr.v1.DnsZoneR\adnsZone\"\xff\x02\n" +
 	"\tDnsRecord\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12,\n" +
 	"\x12provider_record_id\x18\x02 \x01(\tR\x10providerRecordId\x12\x12\n" +
@@ -3721,7 +3742,9 @@ const file_rpmgr_v1_dns_proto_rawDesc = "" +
 	"\x05state\x18\b \x01(\x0e2\x18.rpmgr.v1.DnsRecordStateR\x05state\x12\x16\n" +
 	"\x06reason\x18\t \x01(\tR\x06reason\x12=\n" +
 	"\fadopted_time\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.TimestampR\vadoptedTime\"j\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\vadoptedTime\x12\x1c\n" +
+	"\tadoptable\x18\v \x01(\bR\tadoptable\x12!\n" +
+	"\fadopt_reason\x18\f \x01(\tR\vadoptReason\"j\n" +
 	"\x16ListZoneRecordsRequest\x12'\n" +
 	"\vdns_zone_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tdnsZoneId\x12'\n" +
 	"\x0finclude_foreign\x18\x02 \x01(\bR\x0eincludeForeign\"H\n" +

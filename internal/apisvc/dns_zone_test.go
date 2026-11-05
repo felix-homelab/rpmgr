@@ -886,6 +886,69 @@ func TestDnsZones_AdoptRecords(t *testing.T) {
 	}
 }
 
+// TestDnsZones_AdoptableFlag: the record list marks each foreign record as adoptable or not, with
+// the reason, by the rule AdoptRecords applies, and the call keeps refusing the others with a
+// message that names the record and what to do. A name that only another org publishes is not
+// published for this zone's org.
+func TestDnsZones_AdoptableFlag(t *testing.T) {
+	e, ada, _, zone := recordEnv(t)
+	const app, other, mx, orphan = "000000000000000000000000000000a1", "000000000000000000000000000000a2", "000000000000000000000000000000a3", "000000000000000000000000000000a4"
+
+	// Another org publishes other.example.com; this org does not.
+	orgB := storetest.Org(t, e.db, "org-b")
+	bob, _ := e.addOwner(t, orgB, "bob@example.com")
+	gb, err := bob.gw.CreateGatewayGroup(context.Background(), connect.NewRequest(&rpmgrv1.CreateGatewayGroupRequest{OrgId: orgB,
+		GatewayGroup: &rpmgrv1.GatewayGroup{Name: "b"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.db.Client().GatewayGroup.UpdateOneID(gb.Msg.GetGatewayGroup().GetId()).SetDNSAddresses([]string{"192.0.2.77"}).ExecX(e.sys)
+	_, _ = createName(bob, orgB, "other.example.com", gb.Msg.GetGatewayGroup().GetId(), 0) // may be refused: the claim is not bob's; either way the zone's org does not publish it
+
+	rs, err := listRecords(ada, zone, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][2]string{ // provider record ID -> adoptable, reason
+		app:   {"true", ""},
+		other: {"false", "not_published"},
+		mx:    {"false", "type_not_adoptable"},
+	}
+	for _, r := range rs {
+		w, ok := want[r.GetProviderRecordId()]
+		switch {
+		case r.GetState() == rpmgrv1.DnsRecordState_DNS_RECORD_STATE_ORPHANED || r.GetProviderRecordId() == orphan:
+			if r.GetAdoptable() || r.GetAdoptReason() != "" {
+				t.Errorf("an orphan carries a verdict: %v", r)
+			}
+		case !ok:
+			t.Errorf("unexpected record %v", r)
+		case fmt.Sprint(r.GetAdoptable()) != w[0] || r.GetAdoptReason() != w[1]:
+			t.Errorf("%s %s: adoptable %v reason %q, want %v", r.GetName(), r.GetType(), r.GetAdoptable(), r.GetAdoptReason(), w)
+		}
+	}
+	// The flag is informational: the call refuses what the list marks, with a message that says what to do.
+	_, err = adoptRecords(ada, zone, other)
+	if code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonRecordNotWanted ||
+		!strings.Contains(err.Error(), "other.example.com (A) is not published by any route or DNS name of this organisation; create one for it first, then adopt it") {
+		t.Errorf("a name nothing publishes: %v", err)
+	}
+	_, err = adoptRecords(ada, zone, mx)
+	if code(err) != connect.CodeFailedPrecondition || reason(err) != apisvc.ReasonRecordTypeUnsupported || !strings.Contains(err.Error(), "app.example.com (MX)") {
+		t.Errorf("an MX record: %v", err)
+	}
+	// An owned record is no foreign record: it carries no verdict.
+	if _, err := adoptRecords(ada, zone, app); err != nil {
+		t.Fatal(err)
+	}
+	rs, _ = listRecords(ada, zone, false)
+	for _, r := range rs {
+		if r.GetAdoptable() || r.GetAdoptReason() != "" {
+			t.Errorf("an owned record carries a verdict: %v", r)
+		}
+	}
+}
+
 // TestDnsZones_ReleaseRecord: an owned record leaves the ledger and stays at the provider, without
 // rpmgr's marker, or with restore as it was adopted; a record that is not owned, one of another
 // zone, one the job is writing and a restore without an original are refused; an old original warns.
