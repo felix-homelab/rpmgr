@@ -111,6 +111,10 @@ Changes to the design documents are not recorded here: see the git history and t
 - A webhook audit sink whose receiver answers every delivery slowly no longer keeps the shipping to
   the other sinks waiting: its deliveries of one pass are bounded, and the rest follows in the next
   pass. (#1128)
+- After a restart with hand-off, an old all-in-one or gateway ends when it is told to stop, within
+  the gateway drain, instead of at the end of the hand-off drain, and the new process ends an old
+  one that outlives its drain. The built-in connector of an old all-in-one no longer redials its
+  closed in-memory gateway. (#1138)
 
 ## [0.3.0] - 2026-11-04
 

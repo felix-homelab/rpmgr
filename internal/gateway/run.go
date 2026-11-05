@@ -462,6 +462,10 @@ func Run(ctx context.Context, o RunOptions) error {
 				pipe := o.Handoff.Inherited.Pipe()
 				toOld.Store(pipe)
 				toOldCuts.attach(pipe.Send)
+				oldGone := make(chan struct{})
+				background.Go(func() {
+					endLingering(run, o.Handoff.Inherited.Predecessor(), oldGone, cfg.Handoff.DrainPeriod(), handoff.EndGrace, killProcess, o.Logger)
+				})
 				// The old process runs until it closes its end of the pipe; until then a new
 				// connection of a route without a session waits for one.
 				go func() {
@@ -471,6 +475,7 @@ func Run(ctx context.Context, o RunOptions) error {
 						ctl.SetDraining(agent.DrainingProcessOf(d))
 					}, nil)
 					oldAlive.Store(false)
+					close(oldGone)
 					if seen {
 						ctl.SetDraining(agent.DrainGone())
 					}
@@ -502,7 +507,13 @@ func Run(ctx context.Context, o RunOptions) error {
 	period := o.DrainPeriod
 	deadline := time.Now().Add(period) // one deadline for the wait for the connectors and the drain
 	var successor <-chan struct{}      // closed when a hand-off of the new process ends the drain early
+	// stopped is closed when this process is told to stop while it drains for a hand-off (SIGTERM
+	// of a stopping unit, which signals every process of it): the drain then has the period of a
+	// stop, not the hand-off drain (#1138). Nil when this process did not switch: its drain began
+	// with the stop.
+	var stopped <-chan struct{}
 	if child != nil {
+		stopped = ctx.Done()
 		// Switched: this process stops accepting at once, the connectors move to the new one, and
 		// this one then drains its open connections for the hand-off drain.
 		period = cfg.Handoff.DrainPeriod()
@@ -545,10 +556,19 @@ func Run(ctx context.Context, o RunOptions) error {
 	// HTTP server yet, which their clients see as an EOF. Not before the router handed over the
 	// connections it accepted before it stopped, either: they may be a few milliseconds from the
 	// switch and the connectors may have moved by then (#1008).
+	shorten := func() { // once: stopped is nil afterwards
+		stopped = nil
+		if d := time.Now().Add(o.DrainPeriod); d.Before(deadline) {
+			o.Logger.Info("stopping while draining for a hand-off: the drain ends within the period of a stop", "period", o.DrainPeriod.String())
+			deadline = d
+		}
+	}
 	for result == nil && router.Pending() > 0 && time.Now().Before(deadline) {
 		select {
 		case <-time.After(10 * time.Millisecond):
 		case result = <-errs:
+		case <-stopped:
+			shorten()
 		}
 	}
 	httpRoutes.Drain()
@@ -561,6 +581,8 @@ func Run(ctx context.Context, o RunOptions) error {
 		select {
 		case <-time.After(100 * time.Millisecond):
 		case result = <-errs:
+		case <-stopped:
+			shorten()
 		}
 	}
 	routes.Close()

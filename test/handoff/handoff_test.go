@@ -366,7 +366,35 @@ func (l *lab) allInOneUpgrade(t *testing.T) {
 	// The old all-in-one has no hand-off drain of its own to set (its default is 10 min) and serves
 	// its flows until then, so the load sees no silence at all. Ending it moves the UDP flows.
 	l.judge(s, p, probeFor, true)
-	l.exec("lab", "kill", "-KILL", strconv.Itoa(oldPID))
+	// The updater judges the new process by its /readyz while the old one drains (#1138): the new
+	// process is ready throughout, and the old one's built-in connector does not redial the old
+	// gateway, which no longer accepts.
+	if !l.alive(oldPID) {
+		t.Fatalf("the old all-in-one %d is gone: the check below needs it draining", oldPID)
+	}
+	for range 10 {
+		if _, err := l.try("lab", "e2eclient", "scrape", "-url", fmt.Sprintf("http://127.0.0.1:%d/readyz", s.admin)); err != nil {
+			t.Fatalf("/readyz of the new process while the old one drains: %v", err)
+		}
+		time.Sleep(time.Second)
+	}
+	redials := func() string { return grep(l.sh("lab", "cat "+s.cfg()+".log"), "closed network connection") }
+	before := strings.Count(redials(), "\n")
+	time.Sleep(45 * time.Second) // longer than the connector's longest backoff
+	if after := redials(); strings.Count(after, "\n")-before > 2 {
+		t.Errorf("the log gained %d lines of a closed in-memory transport in 45 s: the old connector redials\n%s", strings.Count(after, "\n")-before, after)
+	}
+	// A stop signals every process of the unit: the old generation ends like the new one, within
+	// the gateway drain, and not at the hand-off drain.
+	l.exec("lab", "kill", "-TERM", strconv.Itoa(oldPID))
+	termAt := time.Now()
+	defer func() { t.Logf("the old all-in-one ended %v after SIGTERM", time.Since(termAt)) }()
+	l.eventually(90*time.Second, "the old all-in-one to end on SIGTERM", func() error {
+		if l.alive(oldPID) {
+			return fmt.Errorf("pid %d alive", oldPID)
+		}
+		return nil
+	})
 	if m := l.metrics("lab", s.admin); !strings.Contains(m, `generation="2"`) {
 		t.Errorf("the admin listener does not report generation 2")
 	}

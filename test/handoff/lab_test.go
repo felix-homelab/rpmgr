@@ -213,7 +213,11 @@ func (l *lab) seed(cfg string, env []string, verb string, args ...string) string
 	for _, e := range env {
 		a = append(a, "-e", e)
 	}
-	a = append(a, l.name("lab"), "/opt/ctl/rpmgr", "testseed", verb, "--config", cfg)
+	bin := "/opt/ctl/rpmgr"
+	if strings.HasPrefix(cfg, "/var/lib/aio/") {
+		bin = "/opt/aio/rpmgr" // the database is the previous build's: its schema is the one that seeds it
+	}
+	a = append(a, l.name("lab"), bin, "testseed", verb, "--config", cfg)
 	out, err := exec.Command("docker", append(a, args...)...).CombinedOutput() //nolint:gosec // G204: the test's own commands
 	if err != nil {
 		l.t.Fatalf("testseed %s: %v\n%s", verb, err, out)
