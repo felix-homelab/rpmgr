@@ -350,6 +350,9 @@ const (
 	Transport_TRANSPORT_H2 Transport = 2
 	// TLS and reverse HTTP/2 inside a WebSocket (Phase 2).
 	Transport_TRANSPORT_WSS Transport = 3
+	// The all-in-one's own connector, which reaches the gateway of its process over an in-memory
+	// connection that carries every route whatever its transport policy.
+	Transport_TRANSPORT_IN_PROCESS Transport = 4
 )
 
 // Enum value maps for Transport.
@@ -359,12 +362,14 @@ var (
 		1: "TRANSPORT_QUIC",
 		2: "TRANSPORT_H2",
 		3: "TRANSPORT_WSS",
+		4: "TRANSPORT_IN_PROCESS",
 	}
 	Transport_value = map[string]int32{
 		"TRANSPORT_UNSPECIFIED": 0,
 		"TRANSPORT_QUIC":        1,
 		"TRANSPORT_H2":          2,
 		"TRANSPORT_WSS":         3,
+		"TRANSPORT_IN_PROCESS":  4,
 	}
 )
 
@@ -3408,12 +3413,13 @@ const file_rpmgr_agent_v1_control_proto_rawDesc = "" +
 	"\x16UPDATER_RESULT_UPDATED\x10\x01\x12\x1e\n" +
 	"\x1aUPDATER_RESULT_ROLLED_BACK\x10\x02\x12\"\n" +
 	"\x1eUPDATER_RESULT_ROLLBACK_FAILED\x10\x03\x12\x1a\n" +
-	"\x16UPDATER_RESULT_REFUSED\x10\x04*_\n" +
+	"\x16UPDATER_RESULT_REFUSED\x10\x04*y\n" +
 	"\tTransport\x12\x19\n" +
 	"\x15TRANSPORT_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eTRANSPORT_QUIC\x10\x01\x12\x10\n" +
 	"\fTRANSPORT_H2\x10\x02\x12\x11\n" +
-	"\rTRANSPORT_WSS\x10\x03*\xe7\x01\n" +
+	"\rTRANSPORT_WSS\x10\x03\x12\x18\n" +
+	"\x14TRANSPORT_IN_PROCESS\x10\x04*\xe7\x01\n" +
 	"\rGoodbyeReason\x12\x1e\n" +
 	"\x1aGOODBYE_REASON_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19GOODBYE_REASON_SUPERSEDED\x10\x01\x12\x1a\n" +

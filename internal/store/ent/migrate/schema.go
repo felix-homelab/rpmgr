@@ -869,6 +869,10 @@ var (
 		{Name: "last_synced_at", Type: field.TypeTime, Nullable: true},
 		{Name: "removal_requested", Type: field.TypeBool, Default: false},
 		{Name: "sync_requested_at", Type: field.TypeTime, Nullable: true},
+		{Name: "assigned_nameservers", Type: field.TypeJSON, Nullable: true},
+		{Name: "delegation_state", Type: field.TypeEnum, Enums: []string{"unknown", "ok", "mismatch"}, Default: "unknown"},
+		{Name: "delegation_nameservers", Type: field.TypeJSON, Nullable: true},
+		{Name: "delegation_checked_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "dns_provider_id", Type: field.TypeString},
 	}
@@ -880,7 +884,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "dns_zones_dns_providers_dns_provider",
-				Columns:    []*schema.Column{DNSZonesColumns[19]},
+				Columns:    []*schema.Column{DNSZonesColumns[23]},
 				RefColumns: []*schema.Column{DNSProvidersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -899,7 +903,7 @@ var (
 			{
 				Name:    "dnszone_dns_provider_id_provider_zone_id",
 				Unique:  true,
-				Columns: []*schema.Column{DNSZonesColumns[19], DNSZonesColumns[3]},
+				Columns: []*schema.Column{DNSZonesColumns[23], DNSZonesColumns[3]},
 			},
 		},
 	}
@@ -909,7 +913,7 @@ var (
 		{Name: "org_id", Type: field.TypeString},
 		{Name: "gateway_id", Type: field.TypeString},
 		{Name: "connector_id", Type: field.TypeString},
-		{Name: "transport", Type: field.TypeEnum, Enums: []string{"quic", "h2", "wss"}},
+		{Name: "transport", Type: field.TypeEnum, Enums: []string{"quic", "h2", "wss", "memory"}},
 		{Name: "rtt_ms", Type: field.TypeInt64, Default: 0},
 		{Name: "ready_routes", Type: field.TypeJSON, Nullable: true},
 		{Name: "established_at", Type: field.TypeTime},

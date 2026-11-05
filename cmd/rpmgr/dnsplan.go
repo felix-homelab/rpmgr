@@ -52,6 +52,18 @@ func zoneClient(s *apiSession) rpmgrv1connect.DnsZoneServiceClient {
 	return rpmgrv1connect.NewDnsZoneServiceClient(s.hc, s.creds.Controller)
 }
 
+// delegationWarning is the sentence of a zone whose domain is delegated to other nameservers than
+// the ones its provider assigned, whose records are therefore not served ([docs/15-dns.md],
+// "Delegation"); empty if the delegation is fine or not known.
+func delegationWarning(z *rpmgrv1.DnsZone) string {
+	if z.GetDelegationState() != rpmgrv1.ZoneDelegationState_ZONE_DELEGATION_STATE_MISMATCH {
+		return ""
+	}
+	return fmt.Sprintf("Warning: %s is delegated to %s, not to the provider. Records published at the provider are not served: "+
+		"set the nameservers at your registrar to %s.", z.GetName(), strings.Join(z.GetDelegationNameservers(), ", "),
+		strings.Join(z.GetAssignedNameservers(), ", "))
+}
+
 // printPlan writes a plan the way a person reads it before approving it: what will be created,
 // changed and deleted, what is left alone and why, and the hash to approve it by.
 func printPlan(w io.Writer, z *rpmgrv1.DnsZone, p *rpmgrv1.ZonePlan) error {
@@ -61,6 +73,9 @@ func printPlan(w io.Writer, z *rpmgrv1.DnsZone, p *rpmgrv1.ZonePlan) error {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Plan of zone %s (%s), now %s.\n", z.GetName(), z.GetId(), state)
+	if w := delegationWarning(z); w != "" {
+		b.WriteString(w + "\n")
+	}
 	rec := func(mark string, rs []*rpmgrv1.PlanRecord) {
 		for _, r := range rs {
 			proxied := ""

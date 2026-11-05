@@ -40,6 +40,9 @@ var wssUnavailable = routes.WSSUnavailable
 // pinnedBy is routes.PinnedBy, hidden likewise.
 var pinnedBy = routes.PinnedBy
 
+// pinnedTransport is routes.PinnedTransport, hidden likewise.
+var pinnedTransport = routes.PinnedTransport
+
 // statusWindow is how many of the org's newest revisions a route status reads to find the latest
 // change of each route. An agent further behind is pending or in error with every route it serves.
 var statusWindow = 1000
@@ -72,7 +75,8 @@ type routeStatuses struct {
 	sessions map[[2]string][]*ent.DataSession
 	// pins are the levels that pin a route's transport on a connector, by connector and route.
 	pins    map[[2]string]rpmgrv1.TransportPin
-	targets map[string][]*ent.RouteTarget // by route
+	pinned  map[[2]string]rpmgrv1.DataTransport // the transport that pin sets
+	targets map[string][]*ent.RouteTarget       // by route
 	// missing are the capabilities an online agent lacks for a route, by agent and route
 	// (routes.Gate): the route is left out of its snapshot.
 	missing map[[2]string][]string
@@ -102,7 +106,7 @@ func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, route
 		notReady: map[[2]string]*ent.ResourceStatus{}, links: map[[2]string]bool{}, targets: map[string][]*ent.RouteTarget{},
 		changed: map[string]int64{}, maintenance: map[string]bool{}, missing: map[[2]string][]string{}, checked: map[string]bool{},
 		noWSS: map[[2]string]bool{}, certPending: map[string]string{}, sessions: map[[2]string][]*ent.DataSession{},
-		pins: map[[2]string]rpmgrv1.TransportPin{}}
+		pins: map[[2]string]rpmgrv1.TransportPin{}, pinned: map[[2]string]rpmgrv1.DataTransport{}}
 	inst, err := c.Instance.Get(sys, 1)
 	if err != nil {
 		return nil, err
@@ -207,6 +211,7 @@ func newRouteStatuses(ctx, sys context.Context, c *ent.Client, org string, route
 		for _, t := range v.targets[r.ID] {
 			if x := byID[t.ConnectorID]; x != nil {
 				v.pins[[2]string{x.ID, r.ID}] = pinnedBy(r, x, defaults)
+				v.pinned[[2]string{x.ID, r.ID}] = pinnedTransport(r, x, defaults)
 			}
 			if x := byID[t.ConnectorID]; x != nil && v.online[x.ID] && wssUnavailable(r, x, defaults, caps[x.ID]) {
 				v.noWSS[[2]string{x.ID, r.ID}] = true
@@ -470,7 +475,8 @@ func (v *routeStatuses) transports(r *ent.Route, targets []*ent.RouteTarget, not
 	}
 	out := make([]*rpmgrv1.TargetTransport, 0, len(targets))
 	for _, t := range targets {
-		tt := &rpmgrv1.TargetTransport{TargetId: t.ID, PinnedBy: v.pins[[2]string{t.ConnectorID, r.ID}]}
+		tt := &rpmgrv1.TargetTransport{TargetId: t.ID, PinnedBy: v.pins[[2]string{t.ConnectorID, r.ID}],
+			PinnedTransport: v.pinned[[2]string{t.ConnectorID, r.ID}]}
 		out = append(out, tt)
 		if notReady[t.ID] || !v.online[t.ConnectorID] {
 			continue
@@ -501,6 +507,8 @@ func dataTransportOf(t datasession.Transport) rpmgrv1.DataTransport {
 		return rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC
 	case datasession.TransportWss:
 		return rpmgrv1.DataTransport_DATA_TRANSPORT_WSS
+	case datasession.TransportMemory:
+		return rpmgrv1.DataTransport_DATA_TRANSPORT_IN_PROCESS
 	}
 	return rpmgrv1.DataTransport_DATA_TRANSPORT_H2
 }

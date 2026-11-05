@@ -158,6 +158,52 @@ func TestRouteStatus_TargetTransports(t *testing.T) {
 		oneA: auto,
 		oneB: auto + " gw1=" + h + " gw2=" + h})
 
+	// A route pinned to QUIC on a connector that holds QUIC and HTTP/2 sessions, the HTTP/2 ones kept
+	// open for another route pinned to h2: it shows QUIC, pinned on the route, never HTTP/2. The pin
+	// moving to h2 and back, as the gateways report the readiness moving, updates the display.
+	route1, q2 := pin(rpmgrv1.TransportPin_TRANSPORT_PIN_ROUTE), rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC
+	sessionsOfPinned := func(onQUIC, onH2 []string) {
+		c.DataSession.Delete().ExecX(e.sys)
+		for _, gw := range gws {
+			session(gw, conB.ID, "quic", onQUIC)
+			session(gw, conB.ID, "h2", onH2)
+		}
+	}
+	c.Route.UpdateOneID(one).SetTransport(route.TransportQuic).ExecX(e.sys)
+	sessionsOfPinned([]string{one}, []string{"rte_other"})
+	check("pinned to quic", transports(one), map[string]string{oneA: route1, oneB: route1 + " gw1=" + q + " gw2=" + q})
+	c.Route.UpdateOneID(one).SetTransport(route.TransportH2).ExecX(e.sys)
+	sessionsOfPinned([]string{}, []string{"rte_other", one})
+	check("moved to h2", transports(one), map[string]string{oneA: route1, oneB: route1 + " gw1=" + h + " gw2=" + h})
+	c.Route.UpdateOneID(one).SetTransport(route.TransportQuic).ExecX(e.sys)
+	sessionsOfPinned([]string{one}, []string{"rte_other"})
+	check("back to quic", transports(one), map[string]string{oneA: route1, oneB: route1 + " gw1=" + q + " gw2=" + q})
+	// The pin is not met on any session yet (it moved, the gateways have not reported): none shown.
+	sessionsOfPinned([]string{}, []string{"rte_other"})
+	check("pin not met yet", transports(one), map[string]string{oneA: route1, oneB: route1})
+
+	// The built-in connector of an all-in-one reaches its gateway in memory, which carries the route
+	// whatever its pin: shown as in process; the pin is still named, and its value, which does not apply to it. An external connector of
+	// the same route keeps its pinned transport.
+	c.DataSession.Delete().ExecX(e.sys)
+	session(gws[0], conB.ID, "memory", []string{one})
+	session(gws[0], conA.ID, "quic", []string{one})
+	check("in process", transports(one), map[string]string{oneA: route1 + " gw1=" + q,
+		oneB: route1 + " gw1=" + rpmgrv1.DataTransport_DATA_TRANSPORT_IN_PROCESS.String()})
+	r, err := ada.rt.GetRoute(ctx, connect.NewRequest(&rpmgrv1.GetRouteRequest{RouteId: one}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range r.Msg.GetRoute().GetStatus().GetTargetTransports() {
+		if tt.GetPinnedTransport() != q2 {
+			t.Errorf("target %s: pinned transport %s, want %s", tt.GetTargetId(), tt.GetPinnedTransport(), q2)
+		}
+	}
+	c.Route.UpdateOneID(one).ClearTransport().ExecX(e.sys)
+	c.DataSession.Delete().ExecX(e.sys)
+	session(gws[0], conB.ID, "h2", []string{one})
+	session(gws[1], conB.ID, "h2", []string{one})
+
 	// A pin that cannot be established: the connector reports the route not ready, so the target
 	// shows no transport, with the reason in not_serving.
 	c.ResourceStatus.Create().SetOrgID(org).SetAgentID(conB.ID).SetResourceID(one).SetReason("NOT_READY_REASON_TRANSPORT_UNAVAILABLE").

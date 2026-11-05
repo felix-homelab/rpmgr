@@ -387,6 +387,27 @@ message DnsZone {
   string pending_plan_hash = 15;
   // Removing the zone with its records was approved and the DNS job has not finished it; output only.
   bool removal_pending = 16;
+  // The nameservers the provider assigned to the zone, which the domain must be delegated to at
+  // its registrar; output only, empty if the provider names none or they are not read yet.
+  repeated string assigned_nameservers = 17;
+  // Whether the public DNS delegates the domain to them; output only.
+  ZoneDelegationState delegation_state = 18;
+  // The nameservers the public DNS names for the domain when they are not the assigned ones;
+  // output only, empty unless delegation_state is a mismatch.
+  repeated string delegation_nameservers = 19;
+  // When the delegation was last checked; output only, unset before the first check.
+  google.protobuf.Timestamp delegation_checked_time = 20;
+}
+
+// ZoneDelegationState is whether the public DNS delegates a zone's domain to the nameservers its
+// provider assigned (docs/15-dns.md, "Delegation").
+enum ZoneDelegationState {
+  // Not checked yet, or the lookup gave no verdict, or the provider names no nameservers.
+  ZONE_DELEGATION_STATE_UNSPECIFIED = 0;
+  // Every public nameserver of the domain is one the provider assigned.
+  ZONE_DELEGATION_STATE_OK = 1;
+  // The domain is delegated elsewhere: what the provider publishes is not served.
+  ZONE_DELEGATION_STATE_MISMATCH = 2;
 }
 
 // ImportZoneRequest names a zone at a provider.

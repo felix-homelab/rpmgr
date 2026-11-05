@@ -70,7 +70,10 @@ type DnsZones struct {
 	// Planner computes the plan of a zone now: the DNS job's Preview. The API and the job must
 	// share it, so that a plan is approved as the job computes it.
 	Planner Planner
-	Now     func() time.Time
+	// Delegation finds the public nameservers of a zone's domain, to check that it is delegated to
+	// the provider; nil checks none.
+	Delegation domains.DelegationLookup
+	Now        func() time.Time
 }
 
 // Planner reads a zone as the DNS job would now, with p as the zone's provider: its records, its
@@ -105,6 +108,17 @@ func zoneOf(r *ent.DNSZone) *rpmgrv1.DnsZone {
 	}
 	if r.LastSyncedAt != nil {
 		z.LastSyncedTime = timestamppb.New(*r.LastSyncedAt)
+	}
+	z.AssignedNameservers = r.AssignedNameservers
+	switch r.DelegationState {
+	case dnszone.DelegationStateOk:
+		z.DelegationState = rpmgrv1.ZoneDelegationState_ZONE_DELEGATION_STATE_OK
+	case dnszone.DelegationStateMismatch:
+		z.DelegationState = rpmgrv1.ZoneDelegationState_ZONE_DELEGATION_STATE_MISMATCH
+		z.DelegationNameservers = r.DelegationNameservers
+	}
+	if r.DelegationCheckedAt != nil {
+		z.DelegationCheckedTime = timestamppb.New(*r.DelegationCheckedAt)
 	}
 	return z
 }
@@ -200,6 +214,13 @@ func (z *DnsZones) ImportZone(ctx context.Context, req *connect.Request[rpmgrv1.
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: the zone's name is not a domain name rpmgr accepts"))
 	}
 
+	// The delegation is read outside the transaction too: a lookup of the public DNS.
+	state, public, checked := dnszone.DelegationStateUnknown, []string(nil), (*time.Time)(nil)
+	if z.Delegation != nil {
+		state, public = domains.CheckDelegation(ctx, z.Delegation, name, found.NameServers)
+		now := z.now()
+		checked = &now
+	}
 	var row *ent.DNSZone
 	var claim *ent.Domain
 	_, err = store.ConfigTx(ctx, z.DB, func(tx *ent.Tx) ([]string, error) {
@@ -214,7 +235,8 @@ func (z *DnsZones) ImportZone(ctx context.Context, req *connect.Request[rpmgrv1.
 			return nil, err
 		}
 		row, err = tx.DNSZone.Create().SetOrgID(cur.OrgID).SetDNSProviderID(cur.ID).SetProviderZoneID(found.ID).SetName(name).
-			SetHeldReason(HeldImported).Save(ctx)
+			SetHeldReason(HeldImported).SetAssignedNameservers(found.NameServers).SetDelegationState(state).
+			SetDelegationNameservers(public).SetNillableDelegationCheckedAt(checked).Save(ctx)
 		if err != nil {
 			return nil, err
 		}

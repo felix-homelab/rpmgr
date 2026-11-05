@@ -21,6 +21,11 @@ type fakeSession struct {
 
 func (f fakeSession) Transport() string { return f.transport }
 
+// memorySession is the h2 session of the all-in-one's own connector.
+type memorySession struct{ fakeSession }
+
+func (memorySession) InProcess() bool { return true }
+
 type rttSession struct{ fakeSession }
 
 func (r rttSession) RTT() time.Duration { return r.rtt }
@@ -88,6 +93,31 @@ func TestReport_ReadyRoutes(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Errorf("not reported: %v", want)
+	}
+}
+
+// TestReport_InProcess: the all-in-one's own connector reaches the gateway in memory, one session for
+// every route whatever its pin; it is reported as its own transport with all its routes, never as
+// h2, next to an external connector's real h2 session (docs/03, "Transport selection").
+func TestReport_InProcess(t *testing.T) {
+	m := NewSessions(SessionsOptions{})
+	for _, d := range []*dataSession{
+		{connector: "con_local", s: memorySession{fakeSession{transport: "h2"}}, ready: map[string]bool{"rte_q": true, "rte_h": true}},
+		{connector: "con_ext", s: fakeSession{transport: "h2"}, ready: map[string]bool{"rte_h": true}},
+	} {
+		if err := m.add(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := map[string]*agentv1.DataSession{}
+	for _, d := range m.Report() {
+		got[d.GetConnectorId()] = d
+	}
+	if d := got["con_local"]; d.GetTransport() != agentv1.Transport_TRANSPORT_IN_PROCESS || !slices.Equal(d.GetReadyRoutes(), []string{"rte_h", "rte_q"}) {
+		t.Errorf("in-process connector: %v", d)
+	}
+	if d := got["con_ext"]; d.GetTransport() != agentv1.Transport_TRANSPORT_H2 {
+		t.Errorf("external connector: %v", d)
 	}
 }
 

@@ -246,6 +246,8 @@ func (c *Connectors) GetConnectorStatus(ctx context.Context, req *connect.Reques
 			cd.Transport = rpmgrv1.DataTransport_DATA_TRANSPORT_QUIC
 		case datasession.TransportWss:
 			cd.Transport = rpmgrv1.DataTransport_DATA_TRANSPORT_WSS
+		case datasession.TransportMemory:
+			cd.Transport = rpmgrv1.DataTransport_DATA_TRANSPORT_IN_PROCESS
 		}
 		if d.RttMs > 0 {
 			cd.Rtt = durationpb.New(time.Duration(d.RttMs) * time.Millisecond)

@@ -87,9 +87,10 @@ type Transport string
 
 // Transport values.
 const (
-	TransportQuic Transport = "quic"
-	TransportH2   Transport = "h2"
-	TransportWss  Transport = "wss"
+	TransportQuic   Transport = "quic"
+	TransportH2     Transport = "h2"
+	TransportWss    Transport = "wss"
+	TransportMemory Transport = "memory"
 )
 
 func (t Transport) String() string {
@@ -99,7 +100,7 @@ func (t Transport) String() string {
 // TransportValidator is a validator for the "transport" field enum values. It is called by the builders before save.
 func TransportValidator(t Transport) error {
 	switch t {
-	case TransportQuic, TransportH2, TransportWss:
+	case TransportQuic, TransportH2, TransportWss, TransportMemory:
 		return nil
 	default:
 		return fmt.Errorf("datasession: invalid enum value for transport field: %q", t)

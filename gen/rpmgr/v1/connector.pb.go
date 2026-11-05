@@ -44,6 +44,10 @@ const (
 	// networks whose proxies intercept TLS. Connectors without the capability tunnel.wss cannot
 	// serve a route on it.
 	DataTransport_DATA_TRANSPORT_WSS DataTransport = 4
+	// Only as the transport of a data session, never as a policy: the all-in-one's built-in
+	// connector, which reaches the gateway of its own process over an in-memory connection that
+	// carries every route whatever its transport policy.
+	DataTransport_DATA_TRANSPORT_IN_PROCESS DataTransport = 5
 )
 
 // Enum value maps for DataTransport.
@@ -54,6 +58,7 @@ var (
 		2: "DATA_TRANSPORT_QUIC",
 		3: "DATA_TRANSPORT_H2",
 		4: "DATA_TRANSPORT_WSS",
+		5: "DATA_TRANSPORT_IN_PROCESS",
 	}
 	DataTransport_value = map[string]int32{
 		"DATA_TRANSPORT_UNSPECIFIED": 0,
@@ -61,6 +66,7 @@ var (
 		"DATA_TRANSPORT_QUIC":        2,
 		"DATA_TRANSPORT_H2":          3,
 		"DATA_TRANSPORT_WSS":         4,
+		"DATA_TRANSPORT_IN_PROCESS":  5,
 	}
 )
 
@@ -420,7 +426,7 @@ type ConnectorDataSession struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The gateway.
 	GatewayId string `protobuf:"bytes,1,opt,name=gateway_id,json=gatewayId,proto3" json:"gateway_id,omitempty"`
-	// The transport: DATA_TRANSPORT_QUIC, DATA_TRANSPORT_H2 or DATA_TRANSPORT_WSS.
+	// The transport: DATA_TRANSPORT_QUIC, DATA_TRANSPORT_H2, DATA_TRANSPORT_WSS or DATA_TRANSPORT_IN_PROCESS.
 	Transport DataTransport `protobuf:"varint,2,opt,name=transport,proto3,enum=rpmgr.v1.DataTransport" json:"transport,omitempty"`
 	// The lowest smoothed round-trip time a session measures; not set where none does.
 	Rtt *durationpb.Duration `protobuf:"bytes,3,opt,name=rtt,proto3" json:"rtt,omitempty"`
@@ -1292,14 +1298,15 @@ var File_rpmgr_v1_connector_proto protoreflect.FileDescriptor
 
 const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\n" +
-	"\x18rpmgr/v1/connector.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xf0\x04\n" +
+	"\x18rpmgr/v1/connector.proto\x12\brpmgr.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15rpmgr/v1/common.proto\x1a\x16rpmgr/v1/options.proto\x1a\x15rpmgr/v1/status.proto\"\xf2\x04\n" +
 	"\tConnector\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12B\n" +
 	"\x04name\x18\x02 \x01(\tB.\xbaH+\xd8\x01\x01r&2$^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$R\x04name\x12t\n" +
 	"\x06labels\x18\x03 \x03(\v2\x1f.rpmgr.v1.Connector.LabelsEntryB;\xbaH8\x9a\x015\x10 \"*r(2&^[a-z0-9]([a-z0-9._-]{0,61}[a-z0-9])?$*\x05r\x03\x18\xff\x01R\x06labels\x12\x1c\n" +
 	"\tephemeral\x18\x04 \x01(\bR\tephemeral\x12\x18\n" +
-	"\aenabled\x18\x05 \x01(\bR\aenabled\x12?\n" +
-	"\ttransport\x18\x06 \x01(\x0e2\x17.rpmgr.v1.DataTransportB\b\xbaH\x05\x82\x01\x02\x10\x01R\ttransport\x120\n" +
+	"\aenabled\x18\x05 \x01(\bR\aenabled\x12A\n" +
+	"\ttransport\x18\x06 \x01(\x0e2\x17.rpmgr.v1.DataTransportB\n" +
+	"\xbaH\a\x82\x01\x04\x10\x01 \x05R\ttransport\x120\n" +
 	"\asession\x18\a \x01(\v2\x16.rpmgr.v1.AgentSessionR\asession\x12;\n" +
 	"\vcreate_time\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"createTime\x12G\n" +
@@ -1382,13 +1389,14 @@ const file_rpmgr_v1_connector_proto_rawDesc = "" +
 	"\x05ended\x18\x01 \x01(\v2\x19.rpmgr.v1.DrainingProcessR\x05ended\"2\n" +
 	"\fDeletedRoute\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name*\x90\x01\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name*\xaf\x01\n" +
 	"\rDataTransport\x12\x1e\n" +
 	"\x1aDATA_TRANSPORT_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13DATA_TRANSPORT_AUTO\x10\x01\x12\x17\n" +
 	"\x13DATA_TRANSPORT_QUIC\x10\x02\x12\x15\n" +
 	"\x11DATA_TRANSPORT_H2\x10\x03\x12\x16\n" +
-	"\x12DATA_TRANSPORT_WSS\x10\x042\x8b\x06\n" +
+	"\x12DATA_TRANSPORT_WSS\x10\x04\x12\x1d\n" +
+	"\x19DATA_TRANSPORT_IN_PROCESS\x10\x052\x8b\x06\n" +
 	"\x10ConnectorService\x12n\n" +
 	"\x0eListConnectors\x12\x1f.rpmgr.v1.ListConnectorsRequest\x1a .rpmgr.v1.ListConnectorsResponse\"\x19\x8a\xb5\x18\x12\n" +
 	"\borg.read\x12\x06org_id\x90\x02\x01\x12n\n" +

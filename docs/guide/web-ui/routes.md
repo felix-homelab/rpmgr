@@ -240,12 +240,13 @@ The **Targets** card lists the route's targets:
 | **Address** | Host and port, or the socket path; an HTTPS target that the gateway does not verify has the badge `unverified` |
 | **Weight** | Its share of new connections among the targets of the same priority |
 | **Health** | With a health check: `healthy`, `unhealthy` with `Last check: …` and why the last check failed, or `unknown` while its first check has not finished (a new target gets no traffic then while another target of its priority is healthy); `not checked` when its connector's release runs no checks, so the target counts as healthy until the connector is upgraded. `—` without a check, for a disabled target, and while the target does not serve for another reason, which **Status** names |
-| **Transport** | The transport the target's streams take: `QUIC`; with `auto`, `HTTP/2 (fallback for QUIC)` or `WSS (fallback)` where QUIC was not possible; `QUIC (pinned on the route)`, `HTTP/2 (pinned on the connector)` or `(pinned by the instance default)` where a setting chose it, with the pin named. Where the route's gateways differ, each transport is named with its gateways, such as `QUIC on 2 gateways` and `HTTP/2 (fallback for QUIC) on gw-3`; hover for their names. `unknown` where a gateway is of a release that does not report it, and `—` while the target does not serve |
+| **Transport** | The transport the target's streams take: `QUIC`; with `auto`, `HTTP/2 (fallback for QUIC)` or `WSS (fallback)` where QUIC was not possible; `QUIC (pinned on the route)`, `HTTP/2 (pinned on the connector)` or `(pinned by the instance default)` where a setting chose it, with the pin named. `In process (built-in connector)` for a target of the all-in-one's built-in connector, which reaches its gateway inside the process: no transport setting applies to it, and a note under it and on the route says so. Where the route's gateways differ, each transport is named with its gateways, such as `QUIC on 2 gateways` and `HTTP/2 (fallback for QUIC) on gw-3`; hover for their names. `unknown` where a gateway is of a release that does not report it, and `—` while the target does not serve |
 | **Status** | `ready`, `disabled`, or why it does not serve, such as `blocked by the connector's local policy`, `its health checks fail` or, for a pinned transport that cannot be established, `transport unavailable` |
 
 The route's header sums the targets up per transport, such as `Transport: QUIC 1 · HTTP/2 1`, and
 the list of routes has the same summary in its **Transport** column. `rpmgr get route <name>`
-shows it in its **TRANSPORT** column, and `-o json` the transport of every target through every
+shows it in its **TRANSPORT** column, with a `NOTE` line where a transport setting does not reach
+built-in targets, and `-o json` the transport of every target through every
 gateway ([03](../../03-connections.md#transport-selection)).
 
 **A target blocked by a local policy** shows the command that allows it, to run on the

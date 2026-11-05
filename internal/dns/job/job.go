@@ -36,6 +36,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsnamestatus"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnsrecord"
 	"github.com/felix-homelab/rpmgr/internal/store/ent/dnszone"
+	"github.com/felix-homelab/rpmgr/internal/store/ent/domain"
 )
 
 // The timing of the job; the values of docs/15-dns.md, "Timers and limits", and of the lease in
@@ -326,6 +327,9 @@ func (j *Job) pass(ctx context.Context, l lease.Lease, z *ent.DNSZone, full bool
 	if err := j.record(ctx, l, z, o); err != nil {
 		return err
 	}
+	if err := j.recheckClaims(ctx, z, o); err != nil {
+		return err
+	}
 	if j.o.Result != nil && z.SyncState != dnszone.SyncStateDisabled {
 		j.o.Result(z.Name, resultOf(z, o))
 	}
@@ -335,6 +339,32 @@ func (j *Job) pass(ctx context.Context, l lease.Lease, z *ent.DNSZone, full bool
 		j.mu.Unlock()
 	}
 	return nil
+}
+
+// recheckClaims makes the pending claims whose challenge TXT this pass published due for a check
+// now, instead of at their next turn: a claim in a managed zone fails until the job has published
+// its TXT, which an approval does some time after the claim, and its proof is then there to read.
+func (j *Job) recheckClaims(ctx context.Context, z *ent.DNSZone, o outcome) error {
+	if z.SyncState != dnszone.SyncStateActive || o.stop != nil || o.held != "" {
+		return nil
+	}
+	failed := map[string]bool{}
+	for _, f := range o.res.Failed {
+		failed[f.Name] = true
+	}
+	var fqdns []string
+	for _, r := range slices.Concat(o.pl.Creates, o.pl.Updates) {
+		if r.Type == "TXT" && strings.HasPrefix(r.Name, compile.ChallengePrefix) && !failed[r.Name] {
+			fqdns = append(fqdns, strings.TrimPrefix(r.Name, compile.ChallengePrefix))
+		}
+	}
+	if len(fqdns) == 0 {
+		return nil
+	}
+	return store.WriteTx(ctx, j.o.DB, func(tx *ent.Tx) error {
+		return tx.Domain.Update().Where(domain.OrgID(z.OrgID), domain.FqdnIn(fqdns...), domain.StatusEQ(domain.StatusPending)).
+			ClearLastCheckedAt().Exec(ctx)
+	})
 }
 
 // resultOf says how a pass ended: a provider that rate-limits, a provider or lease that failed or

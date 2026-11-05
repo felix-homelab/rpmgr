@@ -98,6 +98,8 @@ func (s *Sessions) dataSessions(id pki.Identity, list []*agentv1.DataSession) {
 			tr = "h2"
 		case agentv1.Transport_TRANSPORT_WSS:
 			tr = "wss"
+		case agentv1.Transport_TRANSPORT_IN_PROCESS:
+			tr = "memory"
 		}
 		if d.GetConnectorId() != "" && tr != "" && len(next) < maxDataSessions {
 			next[key{clip(d.GetConnectorId()), tr}] = d

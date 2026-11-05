@@ -21824,36 +21824,42 @@ func (m *DNSRecordMutation) ResetEdge(name string) error {
 // DNSZoneMutation represents an operation that mutates the DNSZone nodes in the graph.
 type DNSZoneMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *string
-	org_id                  *string
-	version                 *int64
-	addversion              *int64
-	provider_zone_id        *string
-	name                    *string
-	sync_state              *dnszone.SyncState
-	held_reason             *string
-	pending_plan            *[]byte
-	pending_plan_hash       *string
-	provider_status         *dnszone.ProviderStatus
-	publish_route_hostnames *bool
-	allow_proxied           *bool
-	allow_wildcards         *bool
-	delete_threshold        *int
-	adddelete_threshold     *int
-	default_ttl             *int
-	adddefault_ttl          *int
-	last_synced_at          *time.Time
-	removal_requested       *bool
-	sync_requested_at       *time.Time
-	created_at              *time.Time
-	clearedFields           map[string]struct{}
-	dns_provider            *string
-	cleareddns_provider     bool
-	done                    bool
-	oldValue                func(context.Context) (*DNSZone, error)
-	predicates              []predicate.DNSZone
+	op                           Op
+	typ                          string
+	id                           *string
+	org_id                       *string
+	version                      *int64
+	addversion                   *int64
+	provider_zone_id             *string
+	name                         *string
+	sync_state                   *dnszone.SyncState
+	held_reason                  *string
+	pending_plan                 *[]byte
+	pending_plan_hash            *string
+	provider_status              *dnszone.ProviderStatus
+	publish_route_hostnames      *bool
+	allow_proxied                *bool
+	allow_wildcards              *bool
+	delete_threshold             *int
+	adddelete_threshold          *int
+	default_ttl                  *int
+	adddefault_ttl               *int
+	last_synced_at               *time.Time
+	removal_requested            *bool
+	sync_requested_at            *time.Time
+	assigned_nameservers         *[]string
+	appendassigned_nameservers   []string
+	delegation_state             *dnszone.DelegationState
+	delegation_nameservers       *[]string
+	appenddelegation_nameservers []string
+	delegation_checked_at        *time.Time
+	created_at                   *time.Time
+	clearedFields                map[string]struct{}
+	dns_provider                 *string
+	cleareddns_provider          bool
+	done                         bool
+	oldValue                     func(context.Context) (*DNSZone, error)
+	predicates                   []predicate.DNSZone
 }
 
 var _ ent.Mutation = (*DNSZoneMutation)(nil)
@@ -22707,6 +22713,221 @@ func (m *DNSZoneMutation) ResetSyncRequestedAt() {
 	delete(m.clearedFields, dnszone.FieldSyncRequestedAt)
 }
 
+// SetAssignedNameservers sets the "assigned_nameservers" field.
+func (m *DNSZoneMutation) SetAssignedNameservers(s []string) {
+	m.assigned_nameservers = &s
+	m.appendassigned_nameservers = nil
+}
+
+// AssignedNameservers returns the value of the "assigned_nameservers" field in the mutation.
+func (m *DNSZoneMutation) AssignedNameservers() (r []string, exists bool) {
+	v := m.assigned_nameservers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAssignedNameservers returns the old "assigned_nameservers" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldAssignedNameservers(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAssignedNameservers is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAssignedNameservers requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAssignedNameservers: %w", err)
+	}
+	return oldValue.AssignedNameservers, nil
+}
+
+// AppendAssignedNameservers adds s to the "assigned_nameservers" field.
+func (m *DNSZoneMutation) AppendAssignedNameservers(s []string) {
+	m.appendassigned_nameservers = append(m.appendassigned_nameservers, s...)
+}
+
+// AppendedAssignedNameservers returns the list of values that were appended to the "assigned_nameservers" field in this mutation.
+func (m *DNSZoneMutation) AppendedAssignedNameservers() ([]string, bool) {
+	if len(m.appendassigned_nameservers) == 0 {
+		return nil, false
+	}
+	return m.appendassigned_nameservers, true
+}
+
+// ClearAssignedNameservers clears the value of the "assigned_nameservers" field.
+func (m *DNSZoneMutation) ClearAssignedNameservers() {
+	m.assigned_nameservers = nil
+	m.appendassigned_nameservers = nil
+	m.clearedFields[dnszone.FieldAssignedNameservers] = struct{}{}
+}
+
+// AssignedNameserversCleared returns if the "assigned_nameservers" field was cleared in this mutation.
+func (m *DNSZoneMutation) AssignedNameserversCleared() bool {
+	_, ok := m.clearedFields[dnszone.FieldAssignedNameservers]
+	return ok
+}
+
+// ResetAssignedNameservers resets all changes to the "assigned_nameservers" field.
+func (m *DNSZoneMutation) ResetAssignedNameservers() {
+	m.assigned_nameservers = nil
+	m.appendassigned_nameservers = nil
+	delete(m.clearedFields, dnszone.FieldAssignedNameservers)
+}
+
+// SetDelegationState sets the "delegation_state" field.
+func (m *DNSZoneMutation) SetDelegationState(ds dnszone.DelegationState) {
+	m.delegation_state = &ds
+}
+
+// DelegationState returns the value of the "delegation_state" field in the mutation.
+func (m *DNSZoneMutation) DelegationState() (r dnszone.DelegationState, exists bool) {
+	v := m.delegation_state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDelegationState returns the old "delegation_state" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldDelegationState(ctx context.Context) (v dnszone.DelegationState, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDelegationState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDelegationState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDelegationState: %w", err)
+	}
+	return oldValue.DelegationState, nil
+}
+
+// ResetDelegationState resets all changes to the "delegation_state" field.
+func (m *DNSZoneMutation) ResetDelegationState() {
+	m.delegation_state = nil
+}
+
+// SetDelegationNameservers sets the "delegation_nameservers" field.
+func (m *DNSZoneMutation) SetDelegationNameservers(s []string) {
+	m.delegation_nameservers = &s
+	m.appenddelegation_nameservers = nil
+}
+
+// DelegationNameservers returns the value of the "delegation_nameservers" field in the mutation.
+func (m *DNSZoneMutation) DelegationNameservers() (r []string, exists bool) {
+	v := m.delegation_nameservers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDelegationNameservers returns the old "delegation_nameservers" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldDelegationNameservers(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDelegationNameservers is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDelegationNameservers requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDelegationNameservers: %w", err)
+	}
+	return oldValue.DelegationNameservers, nil
+}
+
+// AppendDelegationNameservers adds s to the "delegation_nameservers" field.
+func (m *DNSZoneMutation) AppendDelegationNameservers(s []string) {
+	m.appenddelegation_nameservers = append(m.appenddelegation_nameservers, s...)
+}
+
+// AppendedDelegationNameservers returns the list of values that were appended to the "delegation_nameservers" field in this mutation.
+func (m *DNSZoneMutation) AppendedDelegationNameservers() ([]string, bool) {
+	if len(m.appenddelegation_nameservers) == 0 {
+		return nil, false
+	}
+	return m.appenddelegation_nameservers, true
+}
+
+// ClearDelegationNameservers clears the value of the "delegation_nameservers" field.
+func (m *DNSZoneMutation) ClearDelegationNameservers() {
+	m.delegation_nameservers = nil
+	m.appenddelegation_nameservers = nil
+	m.clearedFields[dnszone.FieldDelegationNameservers] = struct{}{}
+}
+
+// DelegationNameserversCleared returns if the "delegation_nameservers" field was cleared in this mutation.
+func (m *DNSZoneMutation) DelegationNameserversCleared() bool {
+	_, ok := m.clearedFields[dnszone.FieldDelegationNameservers]
+	return ok
+}
+
+// ResetDelegationNameservers resets all changes to the "delegation_nameservers" field.
+func (m *DNSZoneMutation) ResetDelegationNameservers() {
+	m.delegation_nameservers = nil
+	m.appenddelegation_nameservers = nil
+	delete(m.clearedFields, dnszone.FieldDelegationNameservers)
+}
+
+// SetDelegationCheckedAt sets the "delegation_checked_at" field.
+func (m *DNSZoneMutation) SetDelegationCheckedAt(t time.Time) {
+	m.delegation_checked_at = &t
+}
+
+// DelegationCheckedAt returns the value of the "delegation_checked_at" field in the mutation.
+func (m *DNSZoneMutation) DelegationCheckedAt() (r time.Time, exists bool) {
+	v := m.delegation_checked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDelegationCheckedAt returns the old "delegation_checked_at" field's value of the DNSZone entity.
+// If the DNSZone object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DNSZoneMutation) OldDelegationCheckedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDelegationCheckedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDelegationCheckedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDelegationCheckedAt: %w", err)
+	}
+	return oldValue.DelegationCheckedAt, nil
+}
+
+// ClearDelegationCheckedAt clears the value of the "delegation_checked_at" field.
+func (m *DNSZoneMutation) ClearDelegationCheckedAt() {
+	m.delegation_checked_at = nil
+	m.clearedFields[dnszone.FieldDelegationCheckedAt] = struct{}{}
+}
+
+// DelegationCheckedAtCleared returns if the "delegation_checked_at" field was cleared in this mutation.
+func (m *DNSZoneMutation) DelegationCheckedAtCleared() bool {
+	_, ok := m.clearedFields[dnszone.FieldDelegationCheckedAt]
+	return ok
+}
+
+// ResetDelegationCheckedAt resets all changes to the "delegation_checked_at" field.
+func (m *DNSZoneMutation) ResetDelegationCheckedAt() {
+	m.delegation_checked_at = nil
+	delete(m.clearedFields, dnszone.FieldDelegationCheckedAt)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *DNSZoneMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -22804,7 +23025,7 @@ func (m *DNSZoneMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DNSZoneMutation) Fields() []string {
-	fields := make([]string, 0, 19)
+	fields := make([]string, 0, 23)
 	if m.org_id != nil {
 		fields = append(fields, dnszone.FieldOrgID)
 	}
@@ -22859,6 +23080,18 @@ func (m *DNSZoneMutation) Fields() []string {
 	if m.sync_requested_at != nil {
 		fields = append(fields, dnszone.FieldSyncRequestedAt)
 	}
+	if m.assigned_nameservers != nil {
+		fields = append(fields, dnszone.FieldAssignedNameservers)
+	}
+	if m.delegation_state != nil {
+		fields = append(fields, dnszone.FieldDelegationState)
+	}
+	if m.delegation_nameservers != nil {
+		fields = append(fields, dnszone.FieldDelegationNameservers)
+	}
+	if m.delegation_checked_at != nil {
+		fields = append(fields, dnszone.FieldDelegationCheckedAt)
+	}
 	if m.created_at != nil {
 		fields = append(fields, dnszone.FieldCreatedAt)
 	}
@@ -22906,6 +23139,14 @@ func (m *DNSZoneMutation) Field(name string) (ent.Value, bool) {
 		return m.RemovalRequested()
 	case dnszone.FieldSyncRequestedAt:
 		return m.SyncRequestedAt()
+	case dnszone.FieldAssignedNameservers:
+		return m.AssignedNameservers()
+	case dnszone.FieldDelegationState:
+		return m.DelegationState()
+	case dnszone.FieldDelegationNameservers:
+		return m.DelegationNameservers()
+	case dnszone.FieldDelegationCheckedAt:
+		return m.DelegationCheckedAt()
 	case dnszone.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -22953,6 +23194,14 @@ func (m *DNSZoneMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldRemovalRequested(ctx)
 	case dnszone.FieldSyncRequestedAt:
 		return m.OldSyncRequestedAt(ctx)
+	case dnszone.FieldAssignedNameservers:
+		return m.OldAssignedNameservers(ctx)
+	case dnszone.FieldDelegationState:
+		return m.OldDelegationState(ctx)
+	case dnszone.FieldDelegationNameservers:
+		return m.OldDelegationNameservers(ctx)
+	case dnszone.FieldDelegationCheckedAt:
+		return m.OldDelegationCheckedAt(ctx)
 	case dnszone.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -23090,6 +23339,34 @@ func (m *DNSZoneMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetSyncRequestedAt(v)
 		return nil
+	case dnszone.FieldAssignedNameservers:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAssignedNameservers(v)
+		return nil
+	case dnszone.FieldDelegationState:
+		v, ok := value.(dnszone.DelegationState)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDelegationState(v)
+		return nil
+	case dnszone.FieldDelegationNameservers:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDelegationNameservers(v)
+		return nil
+	case dnszone.FieldDelegationCheckedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDelegationCheckedAt(v)
+		return nil
 	case dnszone.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -23175,6 +23452,15 @@ func (m *DNSZoneMutation) ClearedFields() []string {
 	if m.FieldCleared(dnszone.FieldSyncRequestedAt) {
 		fields = append(fields, dnszone.FieldSyncRequestedAt)
 	}
+	if m.FieldCleared(dnszone.FieldAssignedNameservers) {
+		fields = append(fields, dnszone.FieldAssignedNameservers)
+	}
+	if m.FieldCleared(dnszone.FieldDelegationNameservers) {
+		fields = append(fields, dnszone.FieldDelegationNameservers)
+	}
+	if m.FieldCleared(dnszone.FieldDelegationCheckedAt) {
+		fields = append(fields, dnszone.FieldDelegationCheckedAt)
+	}
 	return fields
 }
 
@@ -23197,6 +23483,15 @@ func (m *DNSZoneMutation) ClearField(name string) error {
 		return nil
 	case dnszone.FieldSyncRequestedAt:
 		m.ClearSyncRequestedAt()
+		return nil
+	case dnszone.FieldAssignedNameservers:
+		m.ClearAssignedNameservers()
+		return nil
+	case dnszone.FieldDelegationNameservers:
+		m.ClearDelegationNameservers()
+		return nil
+	case dnszone.FieldDelegationCheckedAt:
+		m.ClearDelegationCheckedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown DNSZone nullable field %s", name)
@@ -23259,6 +23554,18 @@ func (m *DNSZoneMutation) ResetField(name string) error {
 		return nil
 	case dnszone.FieldSyncRequestedAt:
 		m.ResetSyncRequestedAt()
+		return nil
+	case dnszone.FieldAssignedNameservers:
+		m.ResetAssignedNameservers()
+		return nil
+	case dnszone.FieldDelegationState:
+		m.ResetDelegationState()
+		return nil
+	case dnszone.FieldDelegationNameservers:
+		m.ResetDelegationNameservers()
+		return nil
+	case dnszone.FieldDelegationCheckedAt:
+		m.ResetDelegationCheckedAt()
 		return nil
 	case dnszone.FieldCreatedAt:
 		m.ResetCreatedAt()
