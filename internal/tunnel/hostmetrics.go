@@ -20,8 +20,27 @@ type Tuning struct {
 	BufferLow                 bool // a buffer is below what quic-go asks for
 }
 
-// TuningOf reads the tuning status of pc, as RegisterHostMetrics does.
+// bufferSetter is what a UDP socket offers to ask for buffer sizes, as *net.UDPConn does.
+type bufferSetter interface {
+	SetReadBuffer(bytes int) error
+	SetWriteBuffer(bytes int) error
+}
+
+// requestBuffers asks for the buffer sizes quic-go asks for on its socket, which the kernel caps
+// at net.core.rmem_max and wmem_max: a socket nothing asked yet shows the default, not the cap.
+// A refusal is not an error here: the kernel's answer is read back afterwards.
+func requestBuffers(pc net.PacketConn) {
+	if b, ok := pc.(bufferSetter); ok {
+		_ = b.SetReadBuffer(desiredUDPBuffer)
+		_ = b.SetWriteBuffer(desiredUDPBuffer)
+	}
+}
+
+// TuningOf reads the tuning status of pc, a socket of the diagnosis that nothing has asked for
+// buffers yet: it asks for what quic-go asks for first, so that it reports a buffer low only where
+// the kernel caps that request. RegisterHostMetrics reads the role's own socket as it is.
 func TuningOf(pc net.PacketConn) Tuning {
+	requestBuffers(pc)
 	t := Tuning{GSO: gsoEnabled(pc), BufferLow: udpBufferLow(pc)}
 	t.ReceiveBuffer, t.SendBuffer = udpBuffers(pc)
 	return t
