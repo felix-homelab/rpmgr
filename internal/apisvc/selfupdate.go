@@ -164,14 +164,13 @@ func (u *SelfUpdate) hostPolicy() (channel, auto, problem string) {
 
 // policyBlock is why the root updater would refuse every release by the host's local policy, or "".
 func (u *SelfUpdate) policyBlock() string {
-	_, auto, problem := u.hostPolicy()
-	switch {
-	case problem != "":
+	ch, auto, problem := u.hostPolicy()
+	if problem != "" {
 		return "the host's local policy cannot be trusted, so the root updater refuses every update (" + problem +
 			"); fix its owner and mode, then run `sudo rpmgr policy set-auto-update auto`"
-	case auto != "" && auto != policy.AutoUpdateAuto:
-		return "this host's policy sets auto_update: " + auto + ", so the root updater refuses every update; " +
-			"run `sudo rpmgr policy set-auto-update auto` on it"
+	}
+	if reason, command := policy.UpdateRefusal(auto, ch, false); reason != "" {
+		return reason + ", so the root updater refuses every update; run `" + command + "` on it"
 	}
 	return ""
 }
@@ -180,9 +179,9 @@ func (u *SelfUpdate) policyBlock() string {
 // channel, or "". The instance's channel setting does not change it: the web UI never writes the
 // host's policy.
 func (u *SelfUpdate) channelBlock(prerelease bool, version string) string {
-	if ch, _, _ := u.hostPolicy(); prerelease && ch != "" && ch != policy.ChannelPrerelease {
-		return "release " + version + " is a pre-release, and this host takes stable releases only; " +
-			"run `sudo rpmgr policy set-update-channel prerelease` on it"
+	ch, auto, _ := u.hostPolicy()
+	if reason, command := policy.UpdateRefusal(auto, ch, prerelease); reason != "" {
+		return "release " + version + ": " + reason + "; run `" + command + "` on it"
 	}
 	return ""
 }
