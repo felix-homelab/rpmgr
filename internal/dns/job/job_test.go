@@ -1083,6 +1083,46 @@ func TestRun_AdoptedRecordIsRewrittenWithItsMarker(t *testing.T) {
 	})
 }
 
+// A zone held by a restore shows, in the plan it is approved from, the adopted records whose live
+// type or content is not what the restored row holds; any other zone does not (#1113).
+func TestRun_PlanListsAdoptedRecordsChangedSinceTheBackup(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newEnv(t, db)
+		e.addName("app.example.com")
+		foreign := e.fake.AddRecord(e.zone.ProviderZoneID, cftest.Record{Type: "CNAME", Name: "app.example.com", Content: "old.example.net", TTL: 3600})
+		j, l := e.replica("ctn_a")
+		ls := e.take(l)
+		var row *ent.DNSRecord
+		err := store.WriteTx(e.sys, e.db, func(tx *ent.Tx) error {
+			var err error
+			row, err = apply.Adopt(e.sys, tx, apply.Zone{ID: e.zone.ID, OrgID: e.org, Name: apex, ProviderID: e.zone.ProviderZoneID},
+				dns.Record{ID: foreign.ID, Type: "CNAME", Name: "app.example.com", Content: "old.example.net", TTL: 3600}, e.clk.now())
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.pass(j, l, ls)
+		hold := func(reason string) {
+			e.db.Client().DNSZone.UpdateOneID(e.zone.ID).SetSyncState(dnszone.SyncStateHeld).SetHeldReason(reason).ExecX(e.sys)
+		}
+		hold(apply.HeldRestored)
+		if p := e.preview(j); len(p.AdoptedChanged) != 0 {
+			t.Fatalf("the row holds what the provider holds: %+v", p.AdoptedChanged)
+		}
+		// The backup is older than the provider's record: the row holds another content.
+		e.db.Client().DNSRecord.UpdateOneID(row.ID).SetContent("backup.example.net").ExecX(e.sys)
+		p := e.preview(j)
+		if len(p.AdoptedChanged) != 1 || p.AdoptedChanged[0].ID != foreign.ID || p.AdoptedChanged[0].Content != "gw.example.net" {
+			t.Fatalf("adopted, changed: %+v", p.AdoptedChanged)
+		}
+		hold(apply.HeldImported)
+		if q := e.preview(j); len(q.AdoptedChanged) != 0 || q.Hash != p.Hash {
+			t.Fatalf("a zone not held by a restore: %+v", q.AdoptedChanged)
+		}
+	})
+}
+
 // "Sync now": a request in the zone's row, which another replica wrote, makes the lease holder's
 // next tick a full pass of that zone, once per request; without one a tick with nothing new reads
 // nothing.
@@ -1308,5 +1348,68 @@ func TestRun_ApprovedRemovalWithAnUnnamedRecordIsDropped(t *testing.T) {
 	z := e.zoneRow()
 	if z.RemovalRequested || z.SyncState != dnszone.SyncStateDisabled || z.HeldReason != "removal_dropped" || e.fake.Count("POST") != writes || len(e.names()) != 2 {
 		t.Fatalf("zone %+v, records %v", z, e.names())
+	}
+}
+
+// TestRun_ResultOfEachPass: Options.Result hears how each pass of an enabled zone ended: ok, failed
+// (the provider refused the token), rate_limited (it blocks) and held (a held zone is planned, not
+// applied); a disabled zone is not heard of.
+func TestRun_ResultOfEachPass(t *testing.T) {
+	e := newEnv(t, storetest.Migrated(t, store.SQLite))
+	e.addName("a.example.com")
+	leases := lease.New(e.db, "ctn_a", e.clk.now)
+	var got []string
+	j := job.New(job.Options{DB: e.db, Leases: leases, Sealer: e.sealer, Dial: e.dial, TrustDomain: td, Now: e.clk.now,
+		Budget: &budget.Budget{DB: e.db, Now: e.clk.now},
+		Result: func(zone, result string) { got = append(got, zone+" "+result) }})
+	ls := e.take(leases)
+	step := func(want string) {
+		t.Helper()
+		got = nil
+		j.Sync(e.zone.ID)
+		if err := j.Run(e.sys, ls); err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 1 || got[0] != apex+" "+want {
+			t.Fatalf("heard %v, want %s %s", got, apex, want)
+		}
+	}
+	step(job.ResultOK)
+	e.failApply(&dns.ProviderError{Status: 401, Err: dns.ErrUnauthorized})
+	e.addName("b.example.com")
+	step(job.ResultFailed)
+	e.failApply(dns.RateLimited{Until: e.clk.now().Add(time.Minute)})
+	step(job.ResultRateLimited)
+	e.db.Client().DNSZone.UpdateOneID(e.zone.ID).SetSyncState(dnszone.SyncStateHeld).ExecX(e.sys)
+	e.advance(leases, ls, 2*time.Minute)
+	step(job.ResultHeld)
+	e.db.Client().DNSZone.UpdateOneID(e.zone.ID).SetSyncState(dnszone.SyncStateDisabled).ExecX(e.sys)
+	got = nil
+	j.Sync(e.zone.ID)
+	if err := j.Run(e.sys, ls); err != nil || len(got) != 0 {
+		t.Fatalf("a disabled zone: %v, heard %v", err, got)
+	}
+}
+
+// TestRun_RevisionAfterAnEmptyFirstLook: a controller that has made no revision when the job takes
+// the lease (the first look finds revision 0) still sees the first revisions that touch a source:
+// a name added afterwards is published after the debounce, without waiting for the timer.
+func TestRun_RevisionAfterAnEmptyFirstLook(t *testing.T) {
+	e := newEnv(t, storetest.Migrated(t, store.SQLite))
+	j, l := e.replica("ctn_a")
+	ls := e.take(l)
+	if err := j.Run(e.sys, ls); err != nil { // the full pass on takeover: nothing to publish
+		t.Fatal(err)
+	}
+	e.addName("a.example.com")
+	if err := j.Run(e.sys, ls); err != nil { // sees the revision: marks the zone, inside the debounce
+		t.Fatal(err)
+	}
+	e.advance(l, ls, job.Debounce)
+	if err := j.Run(e.sys, ls); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(e.names(), []string{"a.example.com"}) {
+		t.Fatalf("records %v: the revision after the first look was missed", e.names())
 	}
 }

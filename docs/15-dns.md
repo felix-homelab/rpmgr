@@ -1,6 +1,7 @@
 # 15 — DNS automation
 
-> Status: design for Phase 2, not implemented. Tags: [F] fact · [R] recommendation · [T] target ·
+> Status: implemented for Cloudflare in Phase 2 (the controller serves it from v0.4.0; the run
+> against Let's Encrypt and a real zone, [VB-19](13-roadmap.md#verification-backlog), is open). Tags: [F] fact · [R] recommendation · [T] target ·
 > [V] verify at implementation ([README](README.md#how-to-read-these-documents)).
 >
 > **This document is the single source of truth for DNS automation timers and limits.** The
@@ -358,7 +359,10 @@ flowchart LR
   ([10](10-operations.md#backup-and-restore)), and every zone starts held. The plan shows:
   - records created after the backup as `orphaned` (delete, or re-link);
   - records deleted after the backup as creates;
-  - adopted records whose original content changed since (not shown yet, [#1113](https://github.com/felix-homelab/rpmgr/issues/1113)).
+  - adopted records whose original changed since, as `adopted, changed`: a record of an adopted
+    ledger row whose type or content at the provider is not what the row holds. It is shown for
+    information, written nowhere and not part of the plan hash, and a pass puts the record back to
+    what the sources want unless it is released first.
 
   `rpmgr restore --dns-disabled` sets every zone to `disabled`, for a clone restored into staging
   with the same trust domain and KEK. Otherwise approving there would fight production.
@@ -513,9 +517,20 @@ Rules of the adapter ([D166](14-open-decisions.md#engineering),
   `rpmgr <trust-domain> acme`. The adapter deletes a record only if its type, name, content and
   comment all equal what it wrote. A TXT of a `tls_passthrough` backend that runs its own DNS-01,
   or one added by hand, is never deleted. The record has no ledger row; it lives for one order,
-  and the next order of the name removes a leftover of a crash by the same exact match.
+  and the next order of the name removes a leftover of a crash: a TXT at the name with the same
+  type and marker, found when the order writes its own. An order that overlaps another order of
+  the same name loses its TXT then, fails and is retried.
 - **Budget.** Its requests come from the provider's budget row, at most half of the window
-  ([Batches, failures and the rate budget](#batches-failures-and-the-rate-budget)).
+  ([Batches, failures and the rate budget](#batches-failures-and-the-rate-budget)). A write takes
+  one listing of the zone and one batch, a delete likewise. An order that the budget refuses, or
+  that the provider answers with a 429, fails with the reason; its retry waits until the block
+  ends, if that is later than the retry's own wait ([03](03-connections.md#timeouts-keepalive-and-backoff)).
+- **Choice per name.** The job takes DNS-01 for a name that lies in a managed zone of the route's
+  org, and HTTP-01 and TLS-ALPN-01 for every other. It makes the choice again on every order, so
+  a zone that is removed takes its names back to HTTP-01, and its wildcard names, which have no
+  other challenge, to `failed`; the certificate in use keeps serving. The zone of a hostname is
+  the longest managed zone of the org that holds it, and the provider must name that zone as the
+  one that holds the name; if the name lies in a delegated sub-zone elsewhere, the order fails.
 
 ## Proxied HTTP routes
 

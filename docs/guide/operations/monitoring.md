@@ -83,6 +83,8 @@ The full table of metrics is in [10](../../10-operations.md#metrics). Those most
 | Revocations not yet copied off the host | `rpmgr_revocation_log_unshipped` |
 | Audit items an external sink has not acknowledged, and the age of the oldest | `rpmgr_audit_sink_backlog`, `rpmgr_audit_sink_oldest_unshipped_timestamp_seconds` |
 | Sign-ins and enrollments a rate limit refused | `rpmgr_ratelimit_refused_total` |
+| DNS names by status, owned records by state, and the passes of each managed zone by result | `rpmgr_dns_names`, `rpmgr_dns_records`, `rpmgr_dns_sync_runs_total` |
+| A DNS provider's token expiry, requests, request budget and block | `rpmgr_dns_provider_token_expiry_timestamp_seconds`, `rpmgr_dns_provider_requests_total`, `rpmgr_dns_rate_budget_used`, `rpmgr_dns_rate_blocked_seconds` |
 | Refreshes of Cloudflare's IP ranges by result, and the age of the list in use | `rpmgr_dns_cloudflare_ranges_refresh_total`, `rpmgr_dns_cloudflare_ranges_age_seconds` |
 
 Alerts that pay off, with their conditions, are in

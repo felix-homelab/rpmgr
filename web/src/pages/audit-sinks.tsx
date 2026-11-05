@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { AuditSinkKind, AuditSinkSchema, AuditSinkService, type AuditSink } from "@/gen/rpmgr/v1/audit_sink_pb";
+import { AuditSinkKind, AuditSinkSchema, AuditSinkService, type AuditSink, type AuditSinkVerification } from "@/gen/rpmgr/v1/audit_sink_pb";
 import { serverProblems, type Problems } from "@/lib/api-error";
 import { when } from "@/lib/format";
 import { checkUrl, failure } from "@/pages/webhooks";
@@ -39,6 +39,11 @@ interface Draft {
   secret: string;
   address: string;
   caBundle: string;
+  endpoint: string;
+  region: string;
+  bucket: string;
+  accessKeyId: string;
+  retentionDays: string;
   entries: boolean;
   enabled: boolean;
 }
@@ -84,6 +89,41 @@ const kinds: Partial<Record<AuditSinkKind, KindSection>> = {
     body: (d) => ({ sink: { address: d.address, caBundle: d.caBundle }, paths: ["address", "ca_bundle"] }),
     target: (s) => s.address,
   },
+  [AuditSinkKind.S3]: {
+    label: "auditSinks.kind.s3",
+    fields: (p) => <S3Fields {...p} />,
+    check: (t, d, editing) => {
+      const p: Problems = {};
+      const bad = checkUrl(t, d.endpoint);
+      if (bad) {
+        p.endpoint = bad;
+      }
+      if (d.bucket === "") {
+        p.bucket = t("auditSinks.bucketRequired");
+      }
+      if (d.region === "") {
+        p.region = t("auditSinks.regionRequired");
+      }
+      if (d.accessKeyId === "") {
+        p.access_key_id = t("auditSinks.accessKeyRequired");
+      }
+      if (d.secret === "" && !editing) {
+        p.secret = t("auditSinks.secretKeyRequired");
+      }
+      if (d.retentionDays !== "" && !/^\d{1,4}$/.test(d.retentionDays)) {
+        p.retention_days = t("auditSinks.retentionInvalid");
+      }
+      return p;
+    },
+    // The secret access key is sent only when typed; the settings of the bucket go every time, so
+    // that the server checks the bucket against them.
+    body: (d, editing) => ({
+      sink: { endpoint: d.endpoint, region: d.region, bucket: d.bucket, accessKeyId: d.accessKeyId, caBundle: d.caBundle,
+        retentionDays: d.retentionDays === "" ? 0 : Number(d.retentionDays), secret: d.secret },
+      paths: ["endpoint", "region", "bucket", "access_key_id", "ca_bundle", "retention_days", ...(editing && d.secret === "" ? [] : ["secret"])],
+    }),
+    target: (s) => `${s.endpoint} · ${s.bucket}`,
+  },
 };
 
 function WebhookFields({ draft, set, problems, sink }: { draft: Draft; set: (d: Partial<Draft>) => void; problems: Problems; sink?: AuditSink }) {
@@ -95,6 +135,30 @@ function WebhookFields({ draft, set, problems, sink }: { draft: Draft; set: (d: 
       <Field label={t("auditSinks.secret")} type="password" autoComplete="new-password" maxLength={1024} required={!sink}
         hint={sink?.secretSet ? t("auditSinks.secretSet") : t("auditSinks.secretHint", { count: minSecret })} error={problems.secret}
         value={draft.secret} onChange={(e) => set({ secret: e.target.value })} />
+    </>
+  );
+}
+
+function S3Fields({ draft, set, problems, sink }: { draft: Draft; set: (d: Partial<Draft>) => void; problems: Problems; sink?: AuditSink }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <Field label={t("auditSinks.endpoint")} hint={t("auditSinks.endpointHint")} type="url" required maxLength={2048} error={problems.endpoint}
+        value={draft.endpoint} onChange={(e) => set({ endpoint: e.target.value })} />
+      <Field label={t("auditSinks.region")} required maxLength={64} error={problems.region}
+        value={draft.region} onChange={(e) => set({ region: e.target.value })} />
+      <Field label={t("auditSinks.bucket")} hint={t("auditSinks.bucketHint")} required maxLength={63} error={problems.bucket}
+        value={draft.bucket} onChange={(e) => set({ bucket: e.target.value })} />
+      <Field label={t("auditSinks.accessKeyId")} required maxLength={128} autoComplete="off" error={problems.access_key_id}
+        value={draft.accessKeyId} onChange={(e) => set({ accessKeyId: e.target.value })} />
+      <Field label={t("auditSinks.secretKey")} type="password" autoComplete="new-password" maxLength={1024} required={!sink} error={problems.secret}
+        hint={sink?.secretSet ? t("auditSinks.secretKeySet") : t("auditSinks.secretKeyHint")}
+        value={draft.secret} onChange={(e) => set({ secret: e.target.value })} />
+      <Field label={t("auditSinks.retention")} hint={t("auditSinks.retentionHint")} inputMode="numeric" maxLength={4} error={problems.retention_days}
+        value={draft.retentionDays} onChange={(e) => set({ retentionDays: e.target.value })} />
+      <PemField label={t("auditSinks.caBundle")} value={draft.caBundle} onChange={(caBundle) => set({ caBundle })} />
+      {problems.ca_bundle && <p className="text-xs text-destructive">{problems.ca_bundle}</p>}
+      <p className="-mt-2 text-xs text-muted-foreground">{t("auditSinks.caHint")}</p>
     </>
   );
 }
@@ -153,7 +217,8 @@ function SinkForm({ sink, onDone, onCancel }: { sink?: AuditSink; onDone: () => 
   const update = useMutation(AuditSinkService.method.updateAuditSink);
   const [draft, setDraft] = useState<Draft>({
     name: sink?.name ?? "", kind: sink?.kind ?? AuditSinkKind.WEBHOOK, url: sink?.url ?? "", secret: "", address: sink?.address ?? "",
-    caBundle: sink?.caBundle ?? "", entries: sink?.entries ?? true, enabled: sink?.enabled ?? true,
+    caBundle: sink?.caBundle ?? "", endpoint: sink?.endpoint ?? "", region: sink?.region ?? "", bucket: sink?.bucket ?? "",
+    accessKeyId: sink?.accessKeyId ?? "", retentionDays: sink && sink.retentionDays > 0 ? String(sink.retentionDays) : "", entries: sink?.entries ?? true, enabled: sink?.enabled ?? true,
   });
   const [problems, setProblems] = useState<Problems>({});
   const [error, setError] = useState("");
@@ -230,13 +295,14 @@ function Sink({ sink: s }: { sink: AuditSink }) {
   const update = useMutation(AuditSinkService.method.updateAuditSink);
   const remove = useMutation(AuditSinkService.method.deleteAuditSink);
   const test = useMutation(AuditSinkService.method.testAuditSink);
+  const verify = useMutation(AuditSinkService.method.verifyAuditSink);
   const [editing, setEditing] = useState(false);
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState("");
   const [tested, setTested] = useState<{ ok: boolean; text: string }>();
   const state = stateOf(t, s);
   const st = s.status;
-  const busy = update.isPending || remove.isPending || test.isPending;
+  const busy = update.isPending || remove.isPending || test.isPending || verify.isPending;
 
   // run does a change and reloads; its failure is shown in the row.
   async function run(change: () => Promise<void>) {
@@ -264,13 +330,19 @@ function Sink({ sink: s }: { sink: AuditSink }) {
       <div className="text-muted-foreground">
         <span className="break-all">{kinds[s.kind]?.target(s)}</span>
         {" · "}{t(s.entries ? "auditSinks.withEntries" : "auditSinks.checkpointsOnly")}
-        {s.kind === AuditSinkKind.WEBHOOK && ` · ${t(s.secretSet ? "auditSinks.secretIsSet" : "auditSinks.secretIsNotSet")}`}
+        {(s.kind === AuditSinkKind.WEBHOOK || s.kind === AuditSinkKind.S3) && ` · ${t(s.secretSet ? "auditSinks.secretIsSet" : "auditSinks.secretIsNotSet")}`}
       </div>
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1">
         <dt className="text-muted-foreground">{t("auditSinks.lastSuccess")}</dt>
         <dd>{st?.lastSuccessTime ? when(st.lastSuccessTime) : t("auditSinks.never")}</dd>
         <dt className="text-muted-foreground">{t("auditSinks.backlog")}</dt>
         <dd>{st && st.backlog > 0n ? t("auditSinks.waiting", { count: Number(st.backlog), since: when(st.oldestUnshippedTime) }) : t("auditSinks.noBacklog")}</dd>
+        {s.kind === AuditSinkKind.S3 && (
+          <>
+            <dt className="text-muted-foreground">{t("auditSinks.verification")}</dt>
+            <dd><Verification v={st?.verification} /></dd>
+          </>
+        )}
         {st?.lastError && (
           <>
             <dt className="text-muted-foreground">{t("auditSinks.lastError")}</dt>
@@ -302,9 +374,41 @@ function Sink({ sink: s }: { sink: AuditSink }) {
             })}>
             {t("auditSinks.test")}
           </Button>
+          {s.kind === AuditSinkKind.S3 && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => void (await verify.mutateAsync({ auditSinkId: s.id })))}>
+              {t("auditSinks.verify")}
+            </Button>
+          )}
           <Button size="sm" variant="outline" disabled={busy} onClick={() => setAsking(true)}>{t("auditSinks.deleteStart")}</Button>
         </div>
       )}
     </Row>
+  );
+}
+
+// Verification is what the last read-back of an object-storage sink found: whether every
+// checkpoint it holds is intact, and per chain how far it checked and what is missing or wrong.
+function Verification({ v }: { v?: AuditSinkVerification }) {
+  const { t } = useTranslation();
+  if (!v) {
+    return <>{t("auditSinks.notVerified")}</>;
+  }
+  return (
+    <div className="grid gap-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <Status look={v.intact ? "ok" : "alert"}>{t(v.intact ? "auditSinks.intact" : "auditSinks.notIntact")}</Status>
+        <span className="text-muted-foreground">{when(v.time)}</span>
+      </div>
+      <ul className="grid gap-0.5 text-sm">
+        {v.chains.map((c) => (
+          <li key={c.chain}>
+            <span className="font-mono">{c.chain || t("auditSinks.instanceChain")}</span>{": "}
+            {t("auditSinks.checked", { count: c.checked, seq: Number(c.checkpointSeq) })}
+            {c.gap && <span className="text-destructive">{" · "}{t("auditSinks.gap", { gap: c.gap })}</span>}
+            {c.problem && <span className="text-destructive">{" · "}{c.problem}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

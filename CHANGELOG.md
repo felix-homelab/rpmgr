@@ -22,6 +22,41 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- After a restore, the plan of a held DNS zone lists the adopted records that changed at the
+  provider since the backup, so they can be released before the first pass puts them back. (#1113)
+- DNS automation with Cloudflare. An Owner or Admin connects a Cloudflare account with a scoped
+  API token (`rpmgr connect dns-provider`, or **DNS** in the web UI), which is checked at
+  Cloudflare, kept encrypted and shown nowhere again, and imports its zones
+  (`rpmgr import zone`). An imported zone is held: rpmgr writes nothing until the first plan is
+  read and approved by its hash (`rpmgr plan zone`, `rpmgr approve zone`, with a step-up). From
+  then on every hostname of an HTTP or TLS-passthrough route in the zone gets a record that points
+  at its gateway group's DNS target, and loses it with the route; DNS names
+  (`rpmgr create dns-name`) do the same for names and wildcards without a route. rpmgr changes only
+  records it created or that you adopted, never the controller's or a gateway's names, holds a
+  zone again after a restore or a pass that would delete many records, keeps published records
+  while Cloudflare is unreachable, and shares Cloudflare's request budget between its passes and
+  DNS-01. A route's page shows its names' DNS status and records. The **DNS** entry in the sidebar
+  opens the providers and zones, and a link on the page the DNS names. Alerts for a name in
+  conflict, a held zone, a provider that does not answer, a record that drifted and a token that
+  is invalid or about to expire, and the metrics `rpmgr_dns_names`, `rpmgr_dns_records`,
+  `rpmgr_dns_sync_runs_total`, `rpmgr_dns_provider_requests_total`,
+  `rpmgr_dns_provider_token_expiry_timestamp_seconds`, `rpmgr_dns_rate_budget_used` and
+  `rpmgr_dns_rate_blocked_seconds`, come with it. It joins the earlier steps: ACME certificates by
+  DNS-01 for names in a managed zone (#680), nested domain claims held for approval (#681) and the
+  Cloudflare proxy switch of HTTP routes with the daily refresh of Cloudflare's address list
+  (#1096). A new guide page, [DNS automation](docs/guide/dns.md), shows how. (#678)
+- ACME certificates for hostnames in a managed DNS zone are issued by DNS-01: the controller writes
+  the CA's challenge as a TXT record through the zone's provider, marks it, and deletes it after
+  the order, never touching a record that someone else put at the same name. A zone on hold still
+  serves certificates, a disabled one does not, and a zone of another org is never used. A route in
+  ACME mode may now have a wildcard hostname when it lies in a managed zone of the route's org;
+  elsewhere it is still refused with `WILDCARD_NEEDS_CERTIFICATE`. The challenge's requests take at
+  most half of the provider's request budget, and a retry waits until a provider's block ends. The
+  controller's own certificate keeps HTTP-01 and TLS-ALPN-01. (#680)
+- The Audit sinks page can make and edit object-storage (S3) sinks, with a write-only secret access
+  key, and shows the result of a sink's last verification with a **Verify** button. (#1130)
+- The route page shows each target's priority next to its weight, so the failover order is visible.
+  (#1132)
 - A domain claim that is nested under, or contains, a verified domain of another organisation
   (`app.example.com` against `example.com`) no longer becomes verified when its proof succeeds: it
   waits for approval, and no route, certificate or DNS record uses it. The Instance Admin approves
@@ -71,6 +106,11 @@ Changes to the design documents are not recorded here: see the git history and t
 
 - A `udp` or `tcp_udp` route no longer shows "the port is in use on the gateway" while the old
   process of a restart with hand-off still serves its port. (#1076)
+- An audit export whose client stops reading is cut at the export's deadline, so it no longer holds
+  its read snapshot until the connection times out. (#1126)
+- A webhook audit sink whose receiver answers every delivery slowly no longer keeps the shipping to
+  the other sinks waiting: its deliveries of one pass are bounded, and the rest follows in the next
+  pass. (#1128)
 
 ## [0.3.0] - 2026-11-04
 

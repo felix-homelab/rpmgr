@@ -64,7 +64,7 @@ controller goes first, as in every upgrade: no agent runs ahead of it. A control
    root updater, or the database is PostgreSQL. Choose it and confirm your identity. From the
    command line: `rpmgr create rollout --controller --release 1.5.0`.
 
-   ![The releases card with Update controller to 0.2.0](../images/web/controller-update.png)
+   ![The releases card with Update controller to 0.4.0](../images/web/controller-update.png)
 
 2. The **Updating…** page follows the update: downloading, verifying, backing up, handing over,
    migrating and ready. The controller restarts for a short while, an all-in-one's with a
@@ -73,6 +73,8 @@ controller goes first, as in every upgrade: no agent runs ahead of it. A control
    controller-update` tells how the update stands.
 
    ![The Updating page while the database is backed up](../images/web/updating.png)
+
+   ![The Updating page while the controller restarts and does not answer](../images/web/updating-restarting.png)
 
 3. Before anything changes, the host's updater takes a **backup** of the database and keeps it
    next to the binary, as `/usr/local/bin/rpmgr.backup`, beside the previous binary

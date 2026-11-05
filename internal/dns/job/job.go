@@ -55,6 +55,14 @@ const (
 	PollEvery = time.Second
 )
 
+// How a pass of a zone ended, for Options.Result.
+const (
+	ResultOK          = "ok"
+	ResultHeld        = "held"
+	ResultFailed      = "failed"
+	ResultRateLimited = "rate_limited"
+)
+
 // ErrLeaseEnding is the error of a batch that was not sent, because the lease would not outlast it.
 var ErrLeaseEnding = errors.New("dnsjob: the lease ends too soon to send a batch")
 
@@ -86,6 +94,9 @@ type Options struct {
 	// someone else changed, and records that are no longer corrected because they changed again
 	// within the stop window. The alerts of docs/10 are raised from it.
 	Report func(ctx context.Context, zone *ent.DNSZone, r apply.Report)
+	// Result, if set, is called after each pass of a zone with its name and how the pass ended:
+	// ResultOK, ResultHeld, ResultFailed or ResultRateLimited. It feeds rpmgr_dns_sync_runs_total.
+	Result func(zone, result string)
 	// Debounce and Full override the timing, for tests; zero is the default.
 	Debounce, Full time.Duration
 }
@@ -96,7 +107,7 @@ type Job struct {
 
 	mu       sync.Mutex
 	token    int64                // the fencing token of the lease the state below belongs to
-	seen     int64                // the last configuration revision looked at
+	seen     int64                // the last configuration revision looked at; -1: none yet
 	nextFull time.Time            // when the next pass over every zone is due
 	dirty    map[string]time.Time // zone ID ("": every zone) -> when it was first marked
 	force    map[string]bool      // zones to run in full at the next tick
@@ -157,7 +168,7 @@ func (j *Job) Run(ctx context.Context, l lease.Lease) error {
 	j.mu.Lock()
 	full := l.Token != j.token || !now.Before(j.nextFull)
 	if l.Token != j.token {
-		j.token, j.seen, j.clean = l.Token, 0, map[string]string{}
+		j.token, j.seen, j.clean = l.Token, -1, map[string]string{}
 	}
 	if full {
 		j.nextFull = now.Add(j.o.Full)
@@ -234,12 +245,12 @@ func (j *Job) requested(z *ent.DNSZone) bool {
 }
 
 // revisions reads the configuration revisions after since: the current one, and whether one of
-// them changed a source. On the first look after a takeover, since is 0 and nothing is touched: the
-// full pass covers it.
+// them changed a source. On the first look after a takeover, since is -1 and nothing is touched: the
+// full pass covers it. (Revision 0 is a look too: a controller that is new has made no revision.)
 func (j *Job) revisions(ctx context.Context, since int64, full bool) (cur int64, touched bool, err error) {
 	err = store.ReadTx(ctx, j.o.DB, func(tx *ent.Tx, rev store.Revision) error {
 		cur = rev.Seq
-		if since == 0 || full || rev.Seq <= since {
+		if since < 0 || full || rev.Seq <= since {
 			return nil
 		}
 		rows, err := tx.ConfigRevision.Query().Where(configrevision.IDGT(since), configrevision.IDLTE(rev.Seq)).All(ctx)
@@ -315,12 +326,30 @@ func (j *Job) pass(ctx context.Context, l lease.Lease, z *ent.DNSZone, full bool
 	if err := j.record(ctx, l, z, o); err != nil {
 		return err
 	}
+	if j.o.Result != nil && z.SyncState != dnszone.SyncStateDisabled {
+		j.o.Result(z.Name, resultOf(z, o))
+	}
 	if o.stop == nil && len(o.res.Failed) == 0 {
 		j.mu.Lock()
 		j.clean[z.ID] = key
 		j.mu.Unlock()
 	}
 	return nil
+}
+
+// resultOf says how a pass ended: a provider that rate-limits, a provider or lease that failed or
+// a record it refused, a zone that stayed held, or a clean pass.
+func resultOf(z *ent.DNSZone, o outcome) string {
+	var rl dns.RateLimited
+	switch {
+	case o.stop != nil && errors.As(o.stop, &rl):
+		return ResultRateLimited
+	case o.stop != nil || len(o.res.Failed) > 0:
+		return ResultFailed
+	case z.SyncState == dnszone.SyncStateHeld || o.held != "":
+		return ResultHeld
+	}
+	return ResultOK
 }
 
 // read returns the zone, as it is now, and what its sources compile from, in one snapshot.
@@ -378,7 +407,8 @@ func (j *Job) Inspect(ctx context.Context, zoneID string, p dns.Provider) (Inspe
 		return Inspection{}, err
 	}
 	cr := compile.Compile(in)
-	pl, err := j.engine(lease.Lease{}, false).PlanOf(ctx, live, applyZone(z), apply.Wanted{Desired: cr.Desired, Keep: cr.Keep(), Reserved: reserved})
+	pl, err := j.engine(lease.Lease{}, false).PlanOf(ctx, live, applyZone(z), apply.Wanted{Desired: cr.Desired, Keep: cr.Keep(), Reserved: reserved,
+		Restored: z.SyncState == dnszone.SyncStateHeld && z.HeldReason == apply.HeldRestored})
 	if err != nil {
 		return Inspection{}, err
 	}

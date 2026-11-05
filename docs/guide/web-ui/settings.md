@@ -85,7 +85,7 @@ what a receiver gets and how to read its signature, is [Audit log](../operations
 
 ![The Audit sinks tab with a webhook sink and a syslog sink](../images/web/settings-audit-sinks.png)
 
-Each sink is a row with its name, its kind (**Webhook** or **Syslog over TLS**), its **state**,
+Each sink is a row with its name, its kind (**Webhook**, **Syslog over TLS** or **Object storage (S3)**), its **state**,
 where it sends and whether it sends the checkpoints only or the entries too:
 
 - **Enabled:** it ships.
@@ -112,9 +112,17 @@ copies are then all on the controller's host.
 - A syslog sink has an **Address** as `host:port` and the **CA certificates** that its server's
   certificate must chain to, pasted or read from a file in your browser; empty means the system's
   roots.
+- An object-storage sink has an **Endpoint** (an `https://` address), a **Region**, the **Bucket**,
+  an **Access key ID**, a **Secret access key**, optionally a **Lock period in days** (empty means
+  the default) and **CA certificates** for a store with a private CA. The bucket must have Object
+  Lock; rpmgr checks that when you save, and says why if it refuses. The secret access key is
+  write-only like a webhook's secret: it is sent when you type it, the field is empty when you
+  edit a sink, and nothing reads it back.
 - **Send the entries too** adds every entry to the checkpoints, which always go.
 
 ![The form of a syslog sink above the list](../images/web/settings-audit-sinks-form.png)
+
+![The form of an object-storage sink](../images/web/settings-audit-sinks-s3-form.png)
 
 The page checks the name, the URL, the secret's length and the address before it sends anything.
 Anything else the server refuses is shown at its field, or above the buttons.
@@ -125,8 +133,14 @@ connect to an address of your choosing:
 - **Send test item** sends one item at once, outside the sink's position, and says whether the
   receiver acknowledged it, or why not.
 - **Disable** and **Enable** switch shipping off and on.
+- **Verify** (object storage only) reads the bucket back and compares it with the audit log.
 - **Delete…** asks first, then removes the sink and its position; what it shipped stays with the
   receiver.
+
+An object-storage sink's row also has a **Verification** line: **Intact** or **Not intact**, when
+the last check ran, and for each chain how many checkpoints were read back and up to which sequence
+number, with any **missing** checkpoint or problem it found; `not verified yet` until the first
+check. What a gap or a problem means is in [Audit log](../operations/audit-log.md).
 
 ## PKI
 

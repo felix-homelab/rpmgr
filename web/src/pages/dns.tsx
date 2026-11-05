@@ -63,7 +63,7 @@ export function DnsPage() {
   const [connecting, setConnecting] = useState(false);
   return (
     <div className="grid gap-6">
-      <PageHeader title={t("dns.title")} description={t("dns.intro")} />
+      <PageHeader title={t("dns.title")} description={t("dns.intro")} actions={<Link to="/dns-names" className="text-sm underline">{t("dns.namesLink")}</Link>} />
       <Card title={t("dns.providers")} actions={
         <Button size="sm" disabled={!org} onClick={() => setConnecting(true)}><Plus aria-hidden="true" />{t("dns.connect")}</Button>
       }>

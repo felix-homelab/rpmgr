@@ -503,6 +503,9 @@ message ZonePlan {
   repeated string lost = 7;
   // The SHA-256 of the plan, in lower-case hex; what ApproveZonePlan binds to.
   string hash = 8;
+  // For a zone held by a restore: live records of adopted ledger rows whose type or content is not
+  // what the row holds, so the original changed since the backup. Reported only; not in the hash.
+  repeated PlanRecord adopted_changed = 9;
 }
 
 // PlanZoneSyncRequest names a zone.

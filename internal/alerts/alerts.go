@@ -34,15 +34,25 @@ const (
 	WebhookFailing        = "webhook_failing"
 	AuditSinkBacklog      = "audit_sink_backlog"
 	CloudflareRangesStale = "cloudflare_ranges_stale"
-	offlineFor            = 5 * time.Minute
-	routeNoReadyFor       = 2 * time.Minute
-	AgentCertWithin       = 48 * time.Hour
-	PublicCertWithin      = 14 * 24 * time.Hour
-	ClockSkewOver         = 30 * time.Second
-	CheckpointsBehindFor  = time.Hour
-	WebhookFailingFor     = time.Hour
+	// The DNS alerts (docs/10-operations.md, "Suggested alerts"), per org.
+	DNSConflict          = "dns_conflict"
+	DNSZoneHeld          = "dns_zone_held"
+	DNSSyncFailing       = "dns_sync_failing"
+	DNSRecordDrifted     = "dns_record_drifted"
+	DNSTokenProblem      = "dns_provider_token"
+	offlineFor           = 5 * time.Minute
+	routeNoReadyFor      = 2 * time.Minute
+	AgentCertWithin      = 48 * time.Hour
+	PublicCertWithin     = 14 * 24 * time.Hour
+	ClockSkewOver        = 30 * time.Second
+	CheckpointsBehindFor = time.Hour
+	WebhookFailingFor    = time.Hour
 	// AuditSinkBacklogFor is how long a sink's oldest unshipped item waits before the alert fires.
 	AuditSinkBacklogFor = 15 * time.Minute
+	// DNSConflictFor is how long a name is in conflict, or ambiguous, before its alert fires.
+	DNSConflictFor = 15 * time.Minute
+	// DNSSyncFailingFor is how long a zone's provider must fail before the alert fires.
+	DNSSyncFailingFor = 30 * time.Minute
 	// CloudflareRangesStaleFor is how long the condition holds before the alert fires, so that a
 	// controller that has just started can refresh the list first.
 	CloudflareRangesStaleFor = 15 * time.Minute
@@ -50,10 +60,11 @@ const (
 
 // For is how long a kind's condition must hold before its alert fires; the conditions with a
 // threshold of their own fire as soon as they are seen.
-var For = map[string]time.Duration{AgentOffline: offlineFor, RouteNoReadyTarget: routeNoReadyFor, CloudflareRangesStale: CloudflareRangesStaleFor}
+var For = map[string]time.Duration{AgentOffline: offlineFor, RouteNoReadyTarget: routeNoReadyFor, CloudflareRangesStale: CloudflareRangesStaleFor,
+	DNSConflict: DNSConflictFor, DNSSyncFailing: DNSSyncFailingFor}
 
 // titles name each kind for people, in summaries and e-mails.
-var titles = map[string]string{
+var titles = map[string]string{ //nolint:gosec // G101: the names of alerts, "token" among them; no credential
 	AgentOffline:          "Agent offline",
 	ConfigNotApplied:      "Configuration not applied",
 	AgentCertExpiring:     "Certificate renewal failing",
@@ -65,6 +76,11 @@ var titles = map[string]string{
 	WebhookFailing:        "Webhook endpoint failing",
 	AuditSinkBacklog:      "Audit sink backlog",
 	CloudflareRangesStale: "Cloudflare IP ranges stale",
+	DNSConflict:           "DNS name in conflict",
+	DNSZoneHeld:           "DNS zone held",
+	DNSSyncFailing:        "DNS sync failing",
+	DNSRecordDrifted:      "DNS record drifted",
+	DNSTokenProblem:       "DNS provider token invalid or expiring",
 }
 
 // Observation is a condition that holds now for one subject. Since is when it began, where the

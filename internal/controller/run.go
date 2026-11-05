@@ -32,6 +32,9 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/authz"
 	"github.com/felix-homelab/rpmgr/internal/cfranges"
 	"github.com/felix-homelab/rpmgr/internal/config"
+	"github.com/felix-homelab/rpmgr/internal/dns/budget"
+	dnsjob "github.com/felix-homelab/rpmgr/internal/dns/job"
+	"github.com/felix-homelab/rpmgr/internal/dns/providers"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/enroll"
 	"github.com/felix-homelab/rpmgr/internal/ids"
@@ -84,6 +87,9 @@ type RunOptions struct {
 	// Readiness then gets the controller's readiness check.
 	Registry  telemetry.Registry
 	Readiness func(check func(context.Context) error)
+	// DNSDial makes the clients of the DNS providers, for the DNS job, the API and DNS-01; nil is
+	// providers.Dial, the compiled-in API (tests point it at a fake).
+	DNSDial providers.Dialer
 	// NoACME keeps Run from obtaining the public URL's certificate: all-in-one's init runs the
 	// controller in memory only.
 	NoACME bool
@@ -225,7 +231,11 @@ func Run(ctx context.Context, o RunOptions) error {
 	leases := lease.New(db, nodeID, o.Now)
 	acmeStore := acme.NewStorage(db, sys, sealer, leases, o.Now)
 	defer acmeStore.Close()
+	dnsBudget := &budget.Budget{DB: db, Now: o.Now, Observe: metrics.ProviderRequest()}
+	// DNS-01 serves only the hostnames that lie in a managed zone of the route's org, so it is
+	// reachable once a zone exists and changes nothing for an instance without one.
 	certManager := acme.NewManager(acme.ManagerOptions{DB: db, Sys: sys, Sealer: sealer, Proxy: proxy, TrustedRoots: o.ACMERoots, Logger: o.Logger,
+		DNS:     &acme.DNS01{Budget: dnsBudget, Dial: o.DNSDial, TrustDomain: td},
 		Storage: acme.NewChallengeStorage(acmeStore, sessions, acme.GatewaysServing(db, sys))})
 	var own *acme.Own
 	if cfg.TLS.CertFile == "" && !o.NoACME && acme.Eligible(public.Hostname()) {
@@ -326,6 +336,29 @@ func Run(ctx context.Context, o RunOptions) error {
 		func(opts ...connect.HandlerOption) (string, http.Handler) {
 			return rpmgrv1connect.NewDomainServiceHandler(&apisvc.Domains{DB: db, API: apiServer, Sys: sys, Now: o.Now,
 				TXT: &domains.TXTVerifier{}, HTTP: &domains.HTTPVerifier{Proxy: proxy}}, opts...)
+		}); err != nil {
+		return err
+	}
+	// DNS automation (docs/15-dns.md): the providers' tokens, the managed zones and the explicit
+	// names. The zones' plans are the DNS job's, so that a plan is approved as the job computes it.
+	dnsProviders := &apisvc.DnsProviders{DB: db, API: apiServer, Sealer: sealer, Dial: o.DNSDial, Budget: dnsBudget, Logger: o.Logger, Now: o.Now}
+	dnsJob := dnsjob.New(dnsjob.Options{DB: db, Leases: leases, Sealer: sealer, Dial: o.DNSDial, Budget: dnsBudget, TrustDomain: td,
+		Reserved: DNSReserved(db, cfg.PublicURL), Now: o.Now, Logger: o.Logger, Result: metrics.SyncResult()})
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_dns_proto.Services().ByName("DnsProviderService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewDnsProviderServiceHandler(dnsProviders, opts...)
+		}); err != nil {
+		return err
+	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_dns_proto.Services().ByName("DnsZoneService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewDnsZoneServiceHandler(&apisvc.DnsZones{DB: db, API: apiServer, Providers: dnsProviders, Planner: dnsJob, Now: o.Now}, opts...)
+		}); err != nil {
+		return err
+	}
+	if err := apiServer.Mount(mux, rpmgrv1.File_rpmgr_v1_dns_proto.Services().ByName("DnsNameService"),
+		func(opts ...connect.HandlerOption) (string, http.Handler) {
+			return rpmgrv1connect.NewDnsNameServiceHandler(&apisvc.DnsNames{DB: db, API: apiServer}, opts...)
 		}); err != nil {
 		return err
 	}
@@ -511,6 +544,8 @@ func Run(ctx context.Context, o RunOptions) error {
 		Logger: o.Logger}), "audit sink job")
 	job(CloudflareRangesJob(CloudflareRangesOptions{DB: db, Leases: leases, Now: o.Now, Logger: o.Logger,
 		Client: cfranges.Client(proxy), Result: metrics.RangesResult()}), "cloudflare ranges job")
+	job(dnsJob.Lease(), "dns job")
+	job(DNSTokenJob(DNSTokenOptions{DB: db, Leases: leases, Sealer: sealer, Dial: o.DNSDial, Now: o.Now, Logger: o.Logger}), "dns token job")
 	job(RolloutJob(RolloutOptions{DB: db, Now: o.Now, Logger: o.Logger}), "rollout job")
 	bg.Go(func() { ReloadCA(jobs, caOpts) })
 	bg.Go(func() { shipper.Run(jobs) })

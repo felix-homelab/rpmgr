@@ -4,6 +4,7 @@ package controller_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/cfranges"
 	"github.com/felix-homelab/rpmgr/internal/controller"
+	"github.com/felix-homelab/rpmgr/internal/dns/budget"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
@@ -104,5 +106,96 @@ func TestMetrics(t *testing.T) {
 		if s.GetCounter().GetValue() != want {
 			t.Fatalf("refusals of %s: %v", s.GetLabel()[0].GetValue(), s.GetCounter().GetValue())
 		}
+	}
+}
+
+// TestMetrics_DNS (docs/10-operations.md, "Metrics"): the names by status, the records by state, a
+// token's expiry, the shared budget's use and block of each provider are read at each scrape; the
+// passes and the requests are counted as they happen. An instance without a provider reports none
+// of the gauges.
+func TestMetrics_DNS(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	storetest.Init(t, db)
+	sys := storetest.SystemCtx(t)
+	org := storetest.Org(t, db, "org-a")
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	reg := prometheus.NewRegistry()
+	m, err := controller.NewMetrics(reg, db, sys, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"rpmgr_dns_names", "rpmgr_dns_records", "rpmgr_dns_provider_token_expiry_timestamp_seconds", "rpmgr_dns_rate_budget_used", "rpmgr_dns_rate_blocked_seconds"} {
+		if _, ok := families(t, reg)[n]; ok {
+			t.Fatalf("%s without a provider", n)
+		}
+	}
+
+	c := db.Client()
+	expiry := now.Add(72 * time.Hour)
+	p := c.DNSProvider.Create().SetOrgID(org).SetKind("cloudflare").SetName("cf").SetCredentialEnc([]byte("x")).SetTokenExpiresAt(expiry).SaveX(sys)
+	c.DNSProvider.Create().SetOrgID(org).SetKind("cloudflare").SetName("cf-no-expiry").SetCredentialEnc([]byte("x")).ExecX(sys)
+	z := c.DNSZone.Create().SetOrgID(org).SetDNSProviderID(p.ID).SetProviderZoneID("pz").SetName("example.com").SaveX(sys)
+	c.DNSNameStatus.Create().SetOrgID(org).SetDNSZoneID(z.ID).SetName("a.example.com").SetStatus("published").ExecX(sys)
+	c.DNSNameStatus.Create().SetOrgID(org).SetDNSZoneID(z.ID).SetName("b.example.com").SetStatus("published").ExecX(sys)
+	c.DNSNameStatus.Create().SetOrgID(org).SetDNSZoneID(z.ID).SetName("c.example.com").SetStatus("conflict").ExecX(sys)
+	c.DNSRecord.Create().SetOrgID(org).SetDNSZoneID(z.ID).SetName("a.example.com").SetType("A").SetContent("192.0.2.1").SetTTL(60).SetState("synced").ExecX(sys)
+	b := &budget.Budget{DB: db, Now: func() time.Time { return now }}
+	for range 3 {
+		if err := b.Take(sys, p.ID, budget.Job); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := b.Block(sys, p.ID, now.Add(90*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	m.SyncResult()("example.com", "ok")
+	m.SyncResult()("example.com", "ok")
+	m.SyncResult()("example.com", "rate_limited")
+	m.ProviderRequest()(p.ID, "200")
+	m.ProviderRequest()(p.ID, "429")
+
+	value := func(name string, labels ...string) float64 {
+		t.Helper()
+	next:
+		for _, mt := range families(t, reg)[name].GetMetric() {
+			values := []string{}
+			for _, l := range mt.GetLabel() { // sorted by label name, not in the order declared
+				values = append(values, l.GetValue())
+			}
+			for _, want := range labels {
+				if !slices.Contains(values, want) {
+					continue next
+				}
+			}
+			if mt.GetCounter() != nil {
+				return mt.GetCounter().GetValue()
+			}
+			return mt.GetGauge().GetValue()
+		}
+		t.Fatalf("%s%v is absent", name, labels)
+		return 0
+	}
+	for _, c := range []struct {
+		name   string
+		labels []string
+		want   float64
+	}{
+		{"rpmgr_dns_names", []string{"example.com", "published"}, 2},
+		{"rpmgr_dns_names", []string{"example.com", "conflict"}, 1},
+		{"rpmgr_dns_records", []string{"example.com", "synced"}, 1},
+		{"rpmgr_dns_provider_token_expiry_timestamp_seconds", []string{p.ID}, float64(expiry.Unix())},
+		{"rpmgr_dns_rate_budget_used", []string{p.ID}, 3},
+		{"rpmgr_dns_rate_blocked_seconds", []string{p.ID}, 90},
+		{"rpmgr_dns_sync_runs_total", []string{"example.com", "ok"}, 2},
+		{"rpmgr_dns_sync_runs_total", []string{"example.com", "rate_limited"}, 1},
+		{"rpmgr_dns_provider_requests_total", []string{p.ID, "429"}, 1},
+	} {
+		if got := value(c.name, c.labels...); got != c.want {
+			t.Errorf("%s%v = %v, want %v", c.name, c.labels, got, c.want)
+		}
+	}
+	// The provider without an expiry has none: one series only.
+	if n := len(families(t, reg)["rpmgr_dns_provider_token_expiry_timestamp_seconds"].GetMetric()); n != 1 {
+		t.Errorf("%d expiry series, want 1", n)
 	}
 }

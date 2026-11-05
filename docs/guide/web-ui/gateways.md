@@ -53,6 +53,8 @@ The **Gateways** card lists the group's gateways by slot:
 | **Last seen** | When the controller last heard from it |
 | **Actions** | The buttons below, and for an Owner or Admin **Live log…**, which follows the gateway's log in a dialog as the connector page's **Live log** card does ([Connectors](connectors.md#live-log)); not for a built-in gateway |
 
+![The Gateways card with a WSS hostname and a Restarting line](../images/web/gateway-wss.png)
+
 While a gateway's old process drains after a restart without a cut, a **Restarting** line under
 the table shows what it still holds, with **End now**
 ([Updates](../operations/updates.md#watch-and-end-a-draining-old-process)).
@@ -104,6 +106,8 @@ quota.
 
 ### Pages
 
+![The Pages card of a gateway group](../images/web/gateway-pages.png)
+
 The **Pages** card shows the group's not-found, unavailable and maintenance pages, each `Built in`
 or `Own` ([Maintenance and error pages](../routes/maintenance-and-pages.md#your-own-pages)). Under
 each, the placeholders it may use, such as `{{hostname}}`.
@@ -129,6 +133,7 @@ The **Settings** card changes the group:
 | **Region** | Free text, such as a data centre |
 | **Public hostnames** | One per line: the names public traffic reaches the group's gateways by. The routes list shows a port route's address at each of them |
 | **Trusted proxies** | One CIDR per line: proxies in front of the gateways whose `X-Forwarded-For` header the gateways keep |
+| **DNS target** | Where the DNS records rpmgr writes for the group's names point: **None**, **A CNAME** (a fully qualified name) or **Addresses** (IPv4 and IPv6, one per line). Without a target nothing is published for the group ([DNS](dns.md)) |
 
 **Save** saves them and says `Saved.` If the group changed since the page loaded it, the card says
 `The gateway group changed since this page loaded it.`: reload the page and make the change again.

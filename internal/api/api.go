@@ -127,7 +127,7 @@ func (s *Server) Mount(mux *http.ServeMux, sd protoreflect.ServiceDescriptor,
 	if path != "/"+string(sd.FullName())+"/" {
 		return fmt.Errorf("api: the handler of %s serves %s", sd.FullName(), path)
 	}
-	mux.Handle(path, s.csrf(h))
+	mux.Handle(path, s.csrf(keepResponseWriter(h)))
 	return nil
 }
 

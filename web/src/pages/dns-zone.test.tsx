@@ -29,6 +29,7 @@ const plan = (hash: string) => ({
     { name: "sub.example.com", kind: "delegated", records: [{ id: "pr_n", name: "sub.example.com", type: "NS", content: "ns.example.net", ttl: 1 }] },
   ],
   orphans: [{ id: "pr_o", name: "stray.example.com", type: "TXT", content: "marker", ttl: 1 }],
+  adoptedChanged: [{ id: "pr_a", name: "app.example.com", type: "A", content: "192.0.2.77", ttl: 1 }],
   shadows: ["wiki.example.com"], lost: [], hash,
 });
 
@@ -65,7 +66,7 @@ function page(opts: Opts = {}) {
       getZone: () => (calls.getZone++, { dnsZone: current }),
       planZoneSync: (req) => {
         calls.plans.push(req);
-        return { dnsZone: current, plan: req.deleteRecords ? { ...plan(wipeHash), creates: [], updates: [], conflicts: [], orphans: [] } : plan(opts.planOf?.(calls.plans.length) ?? hash1) };
+        return { dnsZone: current, plan: req.deleteRecords ? { ...plan(wipeHash), creates: [], updates: [], conflicts: [], orphans: [], adoptedChanged: [] } : plan(opts.planOf?.(calls.plans.length) ?? hash1) };
       },
       listZoneRecords: (req) => (calls.records.push(req), { records: req.includeForeign ? [...owned, ...foreign] : owned }),
       approveZonePlan: (req) => {
@@ -110,6 +111,8 @@ describe("DNS zone: plan", () => {
     expect(p.getByText("api.example.com")).toBeTruthy();
     expect(p.getByText("old.example.com")).toBeTruthy();
     expect(p.getByText("stray.example.com")).toBeTruthy();
+    expect(p.getByText("192.0.2.77")).toBeTruthy();
+    expect(p.getByText(/adopted records no longer hold/)).toBeTruthy();
     expect(p.getByText(/Adopt it, or remove it at the provider/)).toBeTruthy();
     expect(p.getByText(/A CNAME cannot share a name with other records/)).toBeTruthy();
     expect(p.getByText(/An NS delegation covers this name/)).toBeTruthy();

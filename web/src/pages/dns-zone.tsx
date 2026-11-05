@@ -126,7 +126,7 @@ function RecordRows({ sign, label, records }: { sign: string; label: string; rec
   ));
 }
 
-const empty = (p: ZonePlan) => p.creates.length + p.updates.length + p.deletes.length + p.conflicts.length + p.orphans.length + p.shadows.length + p.lost.length === 0;
+const empty = (p: ZonePlan) => p.creates.length + p.updates.length + p.deletes.length + p.conflicts.length + p.orphans.length + p.adoptedChanged.length + p.shadows.length + p.lost.length === 0;
 
 // PlanCard is the plan of the zone, read live now: what a pass would create, change and delete, the
 // conflicts, which U4 says how to resolve, and the orphans. A held zone's plan is approved here; the
@@ -169,6 +169,7 @@ function PlanCard({ zone }: { zone: DnsZone }) {
             <RecordRows sign="~" label={t("dnsZone.updates")} records={p.updates} />
             <RecordRows sign="−" label={t("dnsZone.deletes")} records={p.deletes} />
             <RecordRows sign="?" label={t("dnsZone.orphans")} records={p.orphans} />
+            <RecordRows sign="≠" label={t("dnsZone.adoptedChanged")} records={p.adoptedChanged} />
           </tbody>
         </Table>
       )}
@@ -185,6 +186,7 @@ function PlanCard({ zone }: { zone: DnsZone }) {
         </div>
       ))}
       {p && p.orphans.length > 0 && <p>{t("dnsZone.orphansHint")}</p>}
+      {p && p.adoptedChanged.length > 0 && <p>{t("dnsZone.adoptedChangedHint")}</p>}
       {p?.shadows.map((n) => <p key={n}>{t("dnsZone.shadow", { name: n })}</p>)}
       {p && p.lost.length > 0 && <p>{t("dnsZone.lost", { count: p.lost.length })}</p>}
     </Card>

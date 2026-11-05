@@ -34,6 +34,7 @@ flowchart LR
   ROOT --> CO[Connectors]
   ROOT --> GW[Gateways]
   ROOT --> DC[Domains & certificates]
+  ROOT --> DNS[DNS]
   ROOT --> AP[Access policies]
   ROOT --> AU[Audit log]
   ROOT --> ORG[Organisation]
@@ -46,7 +47,8 @@ flowchart LR
   CO --> CO1[List] & CO2[Enroll dialog] & CO3[Connector detail]
   CO3 --> CO3a[Sessions] & CO3b[Routes] & CO3c[Local-policy status] & CO3d[Live logs] & CO3e[Version & upgrade]
   GW --> GW1[Gateway groups] & GW2[Gateways] & GW3[Port pools]
-  DC --> DC1[Domains & verification] & DC2[Certificates & ACME status] & DC3[DNS providers & zones] & DC4[DNS names]
+  DC --> DC1[Domains & verification] & DC2[Certificates & ACME status]
+  DNS --> DNS1[DNS providers & zones] & DNS2[DNS names]
   ORG --> ORG1[Members & roles] & ORG2[Invitations] & ORG3[API tokens] & ORG4[Service accounts] & ORG5[SSO & MFA policy]
   SET --> SET1[Org settings] & SET2[Instance settings - Instance Admin] & SET4[PKI - Instance Admin] & SET5[Updates - Instance Admin] & SET6[Audit sinks and webhooks - Instance Admin, Phase 2] & SET3[Account]
   P3 --> P3a[Virtual networks] & P3b[Functions] & P3c[Shell - gated]
@@ -59,7 +61,8 @@ flowchart LR
 | **Private services** | Services, visitor grants, relay vs P2P state per grant | Viewer / Operator |
 | **Connectors** | List with status, version, transport, RTT, last seen; enroll dialog; detail with data and control sessions, served routes, local-policy status, transport override (`auto`, `quic`, `h2`, `wss` or the instance default), live logs, version and staged upgrade | Viewer / Admin to enroll or revoke (Operator if the org allows it) |
 | **Gateways** | Gateway groups (region, public hostnames for route traffic, DNS target for managed DNS records, port pools), gateways (own tunnel endpoints — address/port and, for WSS, the gateway's own hostname — status, version, sessions, listeners, live logs (Phase 2)), drain action. Connectors dial each gateway at its own tunnel endpoints; group-level DNS or anycast names are for public traffic only ([03](03-connections.md#establishment)) | Viewer / Admin |
-| **Domains & certificates** | Domain claims with the verification flow (TXT record or HTTP token, a "check now" button, status), certificates with source (ACME/uploaded), SANs, expiry, last ACME error. Phase 2: DNS providers (connect, rotate token, status, token expiry), managed zones (import, gates, plan approval, records, conflicts, adopt and release) and DNS names ([15](15-dns.md)) | Viewer / Admin; foreign records of a zone: Admin |
+| **Domains & certificates** | Domain claims with the verification flow (TXT record or HTTP token, a "check now" button, status), certificates with source (ACME/uploaded), SANs, expiry, last ACME error | Viewer / Admin |
+| **DNS** (Phase 2) | DNS providers (connect, rotate token, status, token expiry), managed zones (import, gates, plan approval, records, conflicts, adopt and release) and DNS names ([15](15-dns.md)) | Viewer / Admin; foreign records of a zone: Admin |
 | **Access policies** | IP allow/deny lists, basic auth, OIDC forward-auth, rate limits; where each policy is used | Viewer / Operator |
 | **Audit log** | Searchable by actor, action, target and time; entry detail with the redacted diff; chain-verification status; export with proofs (step-up), and how to verify it offline with `rpmgr audit verify-export` (Phase 2) | Admin |
 | **Organisation** | Members and roles; invitations as copyable one-time links, also e-mailed when SMTP is configured; API tokens (personal tokens in Phase 1, service accounts and their tokens in Phase 2: list, create with mandatory expiry, revoke); SSO and MFA policy; webhooks are on their own page | Admin; SSO and MFA policy are Owner-only |
@@ -100,7 +103,7 @@ flowchart LR
 ```
 
 - **The sidebar** lists the pages in groups, each with an icon and its name: Overview; *Network*
-  with Routes, Connectors and Gateways; *Security* with Domains & certificates and Access policies;
+  with Routes, Connectors and Gateways; *Security* with Domains & certificates, DNS and Access policies;
   *Administration* with Organisation, Audit log and Settings. The current page is marked, also for
   screen readers (`aria-current`).
 - **The version** the controller runs stands at the foot of the sidebar, as `rpmgr 0.1.0`, for
@@ -295,10 +298,10 @@ flowchart LR
 │ Desired: enabled · gateway group eu · eu.example.net:25432   Observed: ▲ unavailable   │
 │          TCP health check, every 10 s                                                  │
 ├ Targets & health ─────────────────────────────────────────────────────────────────────┤
-│ Connector   Address          Weight  Health       Transport  Status                     │
-│ db-host-1   10.0.0.5:5432    100     —            —          ▲ not_ready: blocked by    │
+│ Connector   Address          Weight Priority Health       Transport  Status             │
+│ db-host-1   10.0.0.5:5432    100    0        —            —          ▲ blocked: policy  │
 │             Run on db-host-1:  sudo rpmgr policy allow-target 10.0.0.5:5432   [Copy]    │
-│ db-host-2   10.0.0.6:5432    100     ▲ unhealthy  —          ▲ its health checks fail   │
+│ db-host-2   10.0.0.6:5432    100    0        ▲ unhealthy  —          ▲ checks fail      │
 │             Last check: dial tcp 10.0.0.6:5432: connect: connection refused             │
 ├ Apply status (revision 1040) ─────────────────────────────────────────────────────────┤
 │ gw-eu-1 ✓ applied    gw-eu-2 ✓ applied    db-host-1 ✓ applied (target not_ready)      │
@@ -318,8 +321,8 @@ flowchart LR
   gateways serve the route.
 - **The address** is the list's. A route on a port whose gateway group has no public hostname
   shows only its port, says so, and links to the group, where they are set.
-- **Each target** shows its connector by name, its address and weight, the transport its streams
-  take, and whether it serves; if not, it says why.
+- **Each target** shows its connector by name, its address, weight and priority, the transport its
+  streams take, and whether it serves; if not, it says why.
 - **Targets are added, edited and removed** on the page, in the targets card, one form at a time.
   - **The form:** the connector (fixed once the target exists), a host and port or a socket path,
     for HTTP routes the protocol to the target (HTTP, verified HTTPS with its server name, CA
@@ -914,12 +917,19 @@ one page, with a section list beside them that jumps to each section
   disabled, **failing** when its last attempt failed), target, whether entries go along, its last
   success, backlog with the age of the oldest item and last error, as the API returns them. The
   form has the fields every sink has (name, entries) and one section per kind: a webhook sink's URL
-  and signing secret, a syslog sink's address and CA certificates; a new kind adds a section, and
-  the kind of a sink never changes. The page checks the name, the URL, the secret's length and the
-  address before it sends anything, and shows a violation the API names at its field. The secret
-  is write-only: a password field that is empty when a sink is edited, sent only when typed, and
-  never shown; the row says only whether one is stored. **Send test item**, **Enable** and
-  **Disable**, **Edit** and **Delete…** (which asks first) each ask for a step-up.
+  and signing secret, a syslog sink's address and CA certificates, an object-storage (S3) sink's
+  endpoint, region, bucket, access key ID, secret access key, lock period and CA certificates; a
+  new kind adds a section, and the kind of a sink never changes. The page checks the name, the
+  URL or endpoint, the secret's length, the address and the required fields of an object-storage
+  sink before it sends anything, and shows a violation the API names at its field; the API checks
+  the bucket and says why it is refused above the buttons. The secret, and the secret access key,
+  are write-only: a password field that is empty when a sink is edited, sent only when typed, and
+  never shown; the row says only whether one is stored. An object-storage sink's row also shows
+  its **Verification**: whether the last read-back found every checkpoint intact, when it ran, and
+  per chain how many checkpoints were read back up to which sequence, any gap and any problem, or
+  that it was not verified yet; **Verify** runs it again ([04](04-security.md#audit-log)).
+  **Send test item**, **Enable** and **Disable**, **Verify**, **Edit** and **Delete…** (which asks
+  first) each ask for a step-up.
 - **Org settings**: alert e-mails on or off (`alert_email`) and the alert types the org gets
   (`alert_types`), one checkbox per kind ([D139](14-open-decisions.md#engineering)). The kinds are
   all checked while none is chosen, as an empty list means all; checking them all saves an empty
@@ -1020,7 +1030,7 @@ one page, with a section list beside them that jumps to each section
 - **The zone page** (`/dns/<zone>`, linked from the zone's name on the DNS page and loaded lazily)
   differs from the mock-up in these ways. The gates are shown and not yet edited there, and there
   is no **Discard**: a plan is read live and is replaced by the next one. The plan lists what a pass
-  would create (`+`), update (`~`) and delete (`−`), the orphans (`?`), the shadowed wildcards and
+  would create (`+`), update (`~`) and delete (`−`), the orphans (`?`), after a restore the adopted records that changed since (`≠`), the shadowed wildcards and
   the conflicts, each conflict with the hint of U4 and, for a foreign address record, **Adopt**.
   **Enable zone** takes a disabled zone to held, and **Sync now** asks for a pass; both are in the
   heading. **Approve plan**, **Adopt**, **Release** and **Remove** each ask for a confirmation that
@@ -1052,8 +1062,9 @@ one page, with a section list beside them that jumps to each section
 - **Overview.** The "Needs attention" card has a DNS area: hostnames with a `conflict`, `ambiguous`,
   `error` or `rate_limited` status, which any member sees, and, for Owners and Admins, held zones,
   zones whose provider rate-limits or refuses the token, and records that drifted, each with its
-  hint. An instance that serves no DNS shows nothing there. The sidebar entries come with the slice
-  that makes DNS reachable; until then the pages are reachable by their addresses only.
+  hint. An instance that serves no DNS shows nothing there.
+- **The sidebar** has one entry for DNS, under *Security*, which opens `/dns`; the DNS names are a
+  link in its heading.
 
 ## Frontend architecture
 

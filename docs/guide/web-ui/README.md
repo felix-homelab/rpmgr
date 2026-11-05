@@ -21,6 +21,7 @@ organisation, "Example Lab"; they are taken with the tool that
 | [Connectors](connectors.md) | Enroll connectors, switch them off, decommission them | Owner, Admin; Operators if the organisation allows it |
 | [Gateways](gateways.md) | Manage gateway groups, gateways, port pools and quotas | Owner, Admin |
 | [Domains & certificates](domains.md) | Prove domains, upload certificates, keep CA bundles | Owner, Admin |
+| [DNS](dns.md) | Connect Cloudflare, import zones, approve plans, add DNS names | Owner, Admin |
 | [Access policies](policies.md) | Allow or deny clients by address, require basic auth | Owner, Admin, Operator |
 | [Organisation](organisation.md) | Rename the organisation, manage members and invitations | Owner, Admin; renaming: Owner |
 | [Webhooks](webhooks.md) | Send the organisation's events to your own endpoints | Owner, Admin (`webhooks.write`) |
@@ -42,7 +43,7 @@ what each may do are in [Members and roles](../accounts/members-and-roles.md).
 
 - **The sidebar** on the left lists the pages in groups, each with an icon: **Overview**; under
   **Network**, **Routes**, **Connectors** and **Gateways**; under **Security**, **Domains &
-  certificates** and **Access policies**; under **Administration**, **Organisation**, **Webhooks**,
+  certificates**, **DNS** and **Access policies**; under **Administration**, **Organisation**, **Webhooks**,
   **Audit log** and **Settings**. The page you are on is highlighted. The product's mark and name at the
   top lead to the overview.
 - **The version** of rpmgr that the controller runs stands at the foot of the sidebar, such as

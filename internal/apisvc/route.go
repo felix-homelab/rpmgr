@@ -20,6 +20,7 @@ import (
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/certs"
+	"github.com/felix-homelab/rpmgr/internal/dns/dnsadapter"
 	"github.com/felix-homelab/rpmgr/internal/domains"
 	"github.com/felix-homelab/rpmgr/internal/gateway"
 	"github.com/felix-homelab/rpmgr/internal/headermatch"
@@ -38,7 +39,7 @@ import (
 const (
 	// ReasonDomainNotVerified: a hostname lies under no verified domain of the org.
 	ReasonDomainNotVerified = "DOMAIN_NOT_VERIFIED"
-	// ReasonWildcardACME: ACME cannot issue a wildcard certificate in Phase 1 (R42).
+	// ReasonWildcardACME: ACME can issue a wildcard certificate only in a managed DNS zone of the org (R42, D166).
 	ReasonWildcardACME = "WILDCARD_NEEDS_CERTIFICATE"
 	// ReasonCertificateNotCovering: the uploaded certificate a route names does not cover each of
 	// its hostnames.
@@ -103,6 +104,9 @@ func (r *Routes) CreateRoute(ctx context.Context, req *connect.Request[rpmgrv1.C
 
 // createHTTP stores an http route's settings.
 func createHTTP(ctx context.Context, tx *ent.Tx, row *ent.Route, h *rpmgrv1.HTTPRouteSpec) error {
+	if err := checkWildcardACME(ctx, tx, row.OrgID, h); err != nil {
+		return err
+	}
 	port80 := routehttp.Port80Redirect
 	switch h.GetPort80() {
 	case rpmgrv1.Port80Mode_PORT80_MODE_SERVE:
@@ -158,7 +162,8 @@ func checkCovers(crt *ent.Certificate, hostnames []string) error {
 }
 
 // checkSpec checks what the store cannot: a spec of a known type, header names and values the
-// gateway accepts, and no ACME certificate for a wildcard hostname (R42).
+// gateway accepts. The ACME certificate of a wildcard hostname is checked in the transaction
+// (checkWildcardACME).
 func checkSpec(in *rpmgrv1.Route) error {
 	invalid := func(format string, args ...any) error {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("apisvc: "+format, args...))
@@ -211,11 +216,28 @@ func checkSpec(in *rpmgrv1.Route) error {
 		if h.GetCertificateId() != "" {
 			return invalid("a certificate_id needs TLS_MODE_CERTIFICATE")
 		}
-		for _, name := range h.GetHostnames() {
-			if strings.HasPrefix(name, "*.") {
-				return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
-					"apisvc: ACME cannot issue a certificate for the wildcard %s; upload one (TLS_MODE_CERTIFICATE)", name)), ReasonWildcardACME)
+	}
+	return nil
+}
+
+// checkWildcardACME refuses an http route in acme mode with a wildcard hostname outside every
+// managed DNS zone of the route's org: ACME can issue a wildcard certificate only by DNS-01,
+// whatever the zone's allow_wildcards says (D166; R42 for all other names).
+func checkWildcardACME(ctx context.Context, tx *ent.Tx, org string, h *rpmgrv1.HTTPRouteSpec) error {
+	if h.GetTlsMode() == rpmgrv1.TLSMode_TLS_MODE_CERTIFICATE {
+		return nil
+	}
+	for _, name := range h.GetHostnames() {
+		if !strings.HasPrefix(name, "*.") {
+			continue
+		}
+		if _, err := dnsadapter.ZoneFor(ctx, tx.Client(), org, name); err != nil {
+			if !errors.Is(err, dnsadapter.ErrZoneNotManaged) {
+				return err
 			}
+			return withReason(connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+				"apisvc: ACME can issue a certificate for the wildcard %s only in a managed DNS zone of the org; upload one (TLS_MODE_CERTIFICATE)",
+				name)), ReasonWildcardACME)
 		}
 	}
 	return nil
@@ -544,6 +566,9 @@ func (r *Routes) GetRoute(ctx context.Context, req *connect.Request[rpmgrv1.GetR
 		return nil, storeError(err)
 	}
 	out.Status = st.of(row)
+	if err := fillDNSStatus(ctx, c, row.OrgID, []*rpmgrv1.Route{out}); err != nil {
+		return nil, storeError(err)
+	}
 	return connect.NewResponse(&rpmgrv1.GetRouteResponse{Route: out}), nil
 }
 
@@ -586,6 +611,9 @@ func (r *Routes) ListRoutes(ctx context.Context, req *connect.Request[rpmgrv1.Li
 		}
 		rt.Status = st.of(row)
 		out.Routes = append(out.Routes, rt)
+	}
+	if err := fillDNSStatus(ctx, c, m.GetOrgId(), out.Routes); err != nil {
+		return nil, storeError(err)
 	}
 	return connect.NewResponse(out), nil
 }

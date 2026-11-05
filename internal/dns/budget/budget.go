@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/dns"
@@ -100,6 +101,11 @@ type Budget struct {
 	DB *store.DB
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
+	// Observe, if set, is called for each request that was sent to a provider (not for one the
+	// budget refused) with the provider's ID and the HTTP status of the answer: "200" for a
+	// success, the status of a failure, "error" for a request that got no answer. It feeds
+	// rpmgr_dns_provider_requests_total.
+	Observe func(providerID, code string)
 }
 
 func (b *Budget) now() time.Time {
@@ -269,12 +275,27 @@ func (b *Budget) Wrap(p dns.Provider, providerID string, kind Kind) dns.Provider
 func (p *provider) seen(ctx context.Context, err error) error {
 	var rl dns.RateLimited
 	var own Refused
+	if p.b.Observe != nil && !errors.As(err, &own) {
+		p.b.Observe(p.id, codeOf(err))
+	}
 	if err != nil && errors.As(err, &rl) && !errors.As(err, &own) {
 		if berr := p.b.Block(context.WithoutCancel(ctx), p.id, rl.Until); berr != nil {
 			return errors.Join(err, berr)
 		}
 	}
 	return err
+}
+
+// codeOf is the label of a call's outcome.
+func codeOf(err error) string {
+	var pe *dns.ProviderError
+	switch {
+	case err == nil:
+		return "200"
+	case errors.As(err, &pe) && pe.Status != 0:
+		return strconv.Itoa(pe.Status)
+	}
+	return "error"
 }
 
 func (p *provider) Verify(ctx context.Context) (dns.TokenInfo, error) {

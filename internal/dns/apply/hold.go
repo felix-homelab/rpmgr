@@ -81,7 +81,7 @@ func (e *Engine) PlanOf(ctx context.Context, live []dns.Record, z Zone, w Wanted
 	if err != nil {
 		return plan.Plan{}, err
 	}
-	return plan.Diff(plan.Input{Zone: z.Name, Desired: w.Desired, Keep: w.Keep, Reserved: w.Reserved, Live: live, Owned: owned, TrustDomain: e.TrustDomain}), nil
+	return plan.Diff(plan.Input{Zone: z.Name, Desired: w.Desired, Keep: w.Keep, Reserved: w.Reserved, Live: live, Owned: owned, TrustDomain: e.TrustDomain, Restored: w.Restored}), nil
 }
 
 // HoldAll sets every zone to held, with the reason restored, or, with disabled, to disabled; the

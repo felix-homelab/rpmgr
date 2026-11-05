@@ -236,9 +236,32 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   await expect(page.getByRole("alert").filter({ hasText: "https://hooks.example.com/rpmgr" }).getByRole("link", { name: "Enable it again" })).toBeVisible();
   await expectAccessible(page);
   await page.goto("/settings");
-  await expect(page.getByRole("group", { name: "Alert types the organisation is e-mailed about" }).getByRole("checkbox")).toHaveCount(9);
+  await expect(page.getByRole("group", { name: "Alert types the organisation is e-mailed about" }).getByRole("checkbox")).toHaveCount(14);
   await expectAccessible(page);
   for (const method of ["StatusService/ListAlerts", "StatusService/ListInstanceAlerts", "WebhookService/ListWebhooks"]) {
+    await page.unroute(`**/rpmgr.v1.${method}`);
+  }
+
+  // The DNS pages: empty on this instance, then with a provider whose token is about to expire and a
+  // held zone, from made-up answers; each stays accessible, and the sidebar leads to them.
+  await page.goto("/");
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "DNS", exact: true }).click();
+  await expect(page).toHaveURL(/\/dns$/);
+  await expect(page.getByRole("heading", { level: 1, name: "DNS" })).toBeVisible();
+  await expect(page.getByText("The org has no DNS provider.")).toBeVisible();
+  await expectAccessible(page);
+  await page.getByRole("link", { name: "DNS names" }).click();
+  await expect(page).toHaveURL(/\/dns-names$/);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expectAccessible(page);
+  await answer("DnsProviderService/ListDnsProviders", { dnsProviders: [{ id: "dnp_1", name: "Cloudflare", cloudflare: {},
+    status: "PROVIDER_STATUS_OK", tokenExpiring: true, tokenExpiresAt: "2026-11-10T00:00:00Z", lastCheckTime: "2026-11-08T11:00:00Z" }] });
+  await answer("DnsZoneService/ListZones", { dnsZones: [{ id: "dnz_1", name: "example.com", dnsProviderId: "dnp_1", syncState: "ZONE_SYNC_STATE_HELD",
+    heldReason: "imported", providerStatus: "ZONE_PROVIDER_STATUS_OK", publishRouteHostnames: true, deleteThreshold: 10, defaultTtl: 300 }] });
+  await page.goto("/dns");
+  await expect(page.getByRole("link", { name: "example.com" })).toBeVisible();
+  await expectAccessible(page);
+  for (const method of ["DnsProviderService/ListDnsProviders", "DnsZoneService/ListZones"]) {
     await page.unroute(`**/rpmgr.v1.${method}`);
   }
 
@@ -246,7 +269,7 @@ test("signs in, creates an API token with a step-up, sets up an authenticator an
   // two columns, which a phone stacks.
   const desktop = page.viewportSize()!;
   await page.setViewportSize({ width: 2560, height: 1440 });
-  for (const path of ["/", "/routes", "/routes/new", "/gateways", "/settings", "/account", "/settings/pki", "/settings/webhooks", "/settings/audit-sinks"]) {
+  for (const path of ["/", "/routes", "/routes/new", "/gateways", "/dns", "/dns-names", "/settings", "/account", "/settings/pki", "/settings/webhooks", "/settings/audit-sinks"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await unfilled(page), path).toEqual([]);

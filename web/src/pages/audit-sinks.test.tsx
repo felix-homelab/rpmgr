@@ -17,16 +17,27 @@ const hook = {
   id: "ask_1", name: "siem", kind: AuditSinkKind.WEBHOOK, url: "https://siem.example.com/rpmgr", secretSet: true, entries: true, enabled: true, etag: "e1",
   status: { lastSuccessTime: at, backlog: 3n, oldestUnshippedTime: at, lastError: "" },
 };
+const bucket = {
+  id: "ask_4", name: "vault", kind: AuditSinkKind.S3, endpoint: "https://s3.example.com", region: "eu-1", bucket: "audit-lock", accessKeyId: "AKID-EXAMPLE",
+  retentionDays: 400, secretSet: true, entries: true, enabled: true, etag: "e4",
+  status: { lastSuccessTime: at, backlog: 0n, lastError: "", verification: {
+    time: at, intact: false,
+    chains: [
+      { chain: "org_1", checked: 7, checkpointSeq: 70n, intact: true },
+      { chain: "", checked: 2, checkpointSeq: 20n, gap: "checkpoint 10 is missing", problem: "the signature of checkpoint 20 does not verify", intact: false },
+    ],
+  } },
+};
 const syslog = {
   id: "ask_2", name: "logs", kind: AuditSinkKind.SYSLOG, address: "logs.example.com:6514", entries: false, enabled: false, etag: "e2",
   status: { backlog: 0n, lastError: "tls: certificate signed by unknown authority" },
 };
 
-interface Calls { creates: CreateAuditSinkRequest[]; updates: UpdateAuditSinkRequest[]; deleted: string[]; tested: string[]; lists: number }
+interface Calls { creates: CreateAuditSinkRequest[]; updates: UpdateAuditSinkRequest[]; deleted: string[]; tested: string[]; verified: string[]; lists: number }
 
 // page renders Settings → Audit sinks; the options shape or refuse single calls.
-function sinks(role: "admin" | "viewer" = "admin", opts: { sinks?: object[]; create?: ConnectError; test?: { ok: boolean; error: string }; list?: ConnectError } = {}) {
-  const c: Calls = { creates: [], updates: [], deleted: [], tested: [], lists: 0 };
+function sinks(role: "admin" | "viewer" = "admin", opts: { sinks?: object[]; create?: ConnectError; test?: { ok: boolean; error: string }; list?: ConnectError; verify?: ConnectError } = {}) {
+  const c: Calls = { creates: [], updates: [], deleted: [], tested: [], verified: [], lists: 0 };
   let rows = opts.sinks ?? [hook, syslog];
   show("/settings/audit-sinks", auth({
     getSession: () => ({ userId: "usr_ada", displayName: "Ada", instanceAdmin: role === "admin", memberships: [{ orgId: "org_1", role: role === "admin" ? "owner" : "viewer" }] }),
@@ -54,6 +65,15 @@ function sinks(role: "admin" | "viewer" = "admin", opts: { sinks?: object[]; cre
         return { auditSink: req.auditSink };
       },
       deleteAuditSink: (req) => (c.deleted.push(`${req.auditSinkId} ${req.etag}`), (rows = rows.filter((r) => (r as { id: string }).id !== req.auditSinkId)), {}),
+      verifyAuditSink: (req) => {
+        c.verified.push(req.auditSinkId);
+        if (opts.verify) {
+          throw opts.verify;
+        }
+        const v = { time: at, intact: true, chains: [{ chain: "org_1", checked: 9, checkpointSeq: 90n, intact: true }] };
+        rows = rows.map((r) => ((r as { id: string }).id === req.auditSinkId ? { ...r, status: { ...(r as { status: object }).status, verification: v } } : r));
+        return { verification: v };
+      },
       testAuditSink: (req) => (c.tested.push(req.auditSinkId), opts.test ?? { ok: true, error: "" }),
     });
   });
@@ -140,6 +160,111 @@ describe("Audit sinks", () => {
     await waitFor(() => expect(c.creates).toHaveLength(1));
     expect(c.creates[0]!.auditSink).toMatchObject({ name: "syslog", kind: AuditSinkKind.SYSLOG, address: "logs.example.com:6514", url: "", secret: "", entries: false });
     expect(c.creates[0]!.auditSink?.caBundle).toContain("BEGIN CERTIFICATE");
+  });
+
+  it("shows an object-storage sink with its bucket, key state and the result of its last verification", async () => {
+    sinks("admin", { sinks: [bucket] });
+    const a = await rowOf("vault");
+    expect(a.getByText("Object storage (S3)")).toBeTruthy();
+    expect(a.getByText(/https:\/\/s3\.example\.com · audit-lock/)).toBeTruthy();
+    expect(a.getByText(/secret stored/)).toBeTruthy();
+    expect(a.getByText("Not intact")).toBeTruthy();
+    expect(a.getByText(/7 checkpoints read back, up to sequence 70/)).toBeTruthy();
+    expect(a.getByText(/missing: checkpoint 10 is missing/)).toBeTruthy();
+    expect(a.getByText(/the signature of checkpoint 20 does not verify/)).toBeTruthy();
+    expect(a.getByText("instance")).toBeTruthy();
+  });
+
+  it("says that a sink was not verified yet, and shows verification for object storage only", async () => {
+    sinks("admin", { sinks: [{ ...bucket, status: { backlog: 0n, lastError: "" } }, hook] });
+    expect((await rowOf("vault")).getByText("not verified yet")).toBeTruthy();
+    const w = await rowOf("siem");
+    expect(w.queryByText("Verification")).toBeNull();
+    expect(w.queryByRole("button", { name: "Verify" })).toBeNull();
+  });
+
+  it("verifies an object-storage sink and shows the result", async () => {
+    const c = sinks("admin", { sinks: [bucket] });
+    const a = await rowOf("vault");
+    fireEvent.click(a.getByRole("button", { name: "Verify" }));
+    expect(await a.findByText("Intact")).toBeTruthy();
+    expect(c.verified).toEqual(["ask_4"]);
+    expect(a.getByText(/9 checkpoints read back, up to sequence 90/)).toBeTruthy();
+  });
+
+  it("tells why a verification failed", async () => {
+    sinks("admin", { sinks: [bucket], verify: new ConnectError("the store did not answer", Code.Unavailable) });
+    const a = await rowOf("vault");
+    fireEvent.click(a.getByRole("button", { name: "Verify" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("the store did not answer");
+  });
+
+  it("creates an object-storage sink from its own section and sends the secret key once", async () => {
+    const c = sinks("admin", { sinks: [] });
+    fireEvent.click(await screen.findByRole("button", { name: "New audit sink…" }));
+    const f = await form("New audit sink…");
+    fireEvent.change(f.getByLabelText("Kind"), { target: { value: String(AuditSinkKind.S3) } });
+    expect(f.queryByLabelText("URL")).toBeNull();
+    expect(f.queryByLabelText(/Signing secret/)).toBeNull();
+    fireEvent.change(f.getByLabelText("Name"), { target: { value: "vault" } });
+    fireEvent.change(f.getByLabelText("Endpoint"), { target: { value: "https://s3.example.com" } });
+    fireEvent.change(f.getByLabelText("Region"), { target: { value: "eu-1" } });
+    fireEvent.change(f.getByLabelText(/^Bucket/), { target: { value: "audit-lock" } });
+    fireEvent.change(f.getByLabelText("Access key ID"), { target: { value: "AKID-EXAMPLE" } });
+    fireEvent.change(f.getByLabelText(/^Secret access key/), { target: { value: "example-secret-key-1" } });
+    fireEvent.change(f.getByLabelText("Lock period in days"), { target: { value: "400" } });
+    fireEvent.click(f.getByRole("button", { name: "Create the sink" }));
+    expect(await rowOf("vault")).toBeTruthy();
+    expect(c.creates).toHaveLength(1);
+    expect(c.creates[0]!.auditSink).toMatchObject({ name: "vault", kind: AuditSinkKind.S3, endpoint: "https://s3.example.com", region: "eu-1", bucket: "audit-lock",
+      accessKeyId: "AKID-EXAMPLE", secret: "example-secret-key-1", retentionDays: 400, url: "", address: "" });
+    expect(document.body.textContent).not.toContain("example-secret-key-1");
+  });
+
+  it.each([
+    ["no endpoint", { endpoint: "" }, "Endpoint", /not a URL/],
+    ["an http endpoint", { endpoint: "http://s3.example.com" }, "Endpoint", /must start with https/],
+    ["no bucket", { bucket: "" }, "Bucket", /Write the name of the bucket/],
+    ["no region", { region: "" }, "Region", /Write the region/],
+    ["no access key ID", { accessKeyId: "" }, "Access key ID", /Write the access key ID/],
+    ["no secret access key", { secret: "" }, "Secret access key", /Write the secret access key/],
+    ["a lock period that is no number", { retention: "a year" }, "Lock period in days", /whole number of days/],
+  ])("refuses an object-storage sink with %s before it sends anything", async (_n, over, label, message) => {
+    const c = sinks("admin", { sinks: [] });
+    fireEvent.click(await screen.findByRole("button", { name: "New audit sink…" }));
+    const f = await form("New audit sink…");
+    const v = { endpoint: "https://s3.example.com", region: "eu-1", bucket: "audit-lock", accessKeyId: "AKID-EXAMPLE", secret: "example-secret-key-1", retention: "", ...over };
+    fireEvent.change(f.getByLabelText("Kind"), { target: { value: String(AuditSinkKind.S3) } });
+    fireEvent.change(f.getByLabelText("Name"), { target: { value: "vault" } });
+    fireEvent.change(f.getByLabelText("Endpoint"), { target: { value: v.endpoint } });
+    fireEvent.change(f.getByLabelText("Region"), { target: { value: v.region } });
+    fireEvent.change(f.getByLabelText(/^Bucket/), { target: { value: v.bucket } });
+    fireEvent.change(f.getByLabelText("Access key ID"), { target: { value: v.accessKeyId } });
+    fireEvent.change(f.getByLabelText(/^Secret access key/), { target: { value: v.secret } });
+    fireEvent.change(f.getByLabelText("Lock period in days"), { target: { value: v.retention } });
+    fireEvent.click(f.getByRole("button", { name: "Create the sink" }));
+    expect((await f.findByText(message)).textContent).toMatch(message);
+    expect(f.getByLabelText(new RegExp(`^${label}`)).getAttribute("aria-invalid")).toBe("true");
+    expect(c.creates).toEqual([]);
+  });
+
+  it("edits an object-storage sink without prefilling or resending the secret key", async () => {
+    const c = sinks("admin", { sinks: [{ ...bucket, secret: "example-secret-key-2" }] });
+    const a = await rowOf("vault");
+    fireEvent.click(a.getByRole("button", { name: "Edit" }));
+    const f = await form("Edit");
+    const key = f.getByLabelText(/^Secret access key/) as HTMLInputElement;
+    expect(key.type).toBe("password");
+    expect(key.value).toBe("");
+    expect(document.body.textContent).not.toContain("example-secret-key-2");
+    expect((f.getByLabelText("Bucket") as HTMLInputElement).value).toBe("audit-lock");
+    expect((f.getByLabelText("Lock period in days") as HTMLInputElement).value).toBe("400");
+    fireEvent.change(f.getByLabelText("Region"), { target: { value: "eu-2" } });
+    fireEvent.click(f.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(c.updates).toHaveLength(1));
+    expect(c.updates[0]!.updateMask?.paths).not.toContain("secret");
+    expect(c.updates[0]!.updateMask?.paths).toEqual(expect.arrayContaining(["endpoint", "region", "bucket", "access_key_id", "retention_days"]));
+    expect(c.updates[0]!.auditSink).toMatchObject({ id: "ask_4", region: "eu-2" });
   });
 
   it.each([

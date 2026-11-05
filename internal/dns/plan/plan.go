@@ -23,6 +23,10 @@ import (
 type Owned struct {
 	LedgerID string // the ID in the record's marker comment
 	RecordID string // the provider's record ID; empty while the row is being created
+	// Adopted is set for a row that was adopted; Type and Content are then what the row holds.
+	Adopted bool
+	Type    string
+	Content string
 }
 
 // Input is everything the planner reads.
@@ -35,6 +39,9 @@ type Input struct {
 	Owned    []Owned      // the zone's ledger rows
 	// TrustDomain is this instance's trust domain, for the marker of an orphan.
 	TrustDomain string
+	// Restored asks for the adopted records that changed at the provider since the ledger row was
+	// written: the zone was held by a restore (docs/15-dns.md, "Held zones and plan approval").
+	Restored bool
 }
 
 // ConflictKind says why a name cannot be written.
@@ -74,7 +81,11 @@ type Plan struct {
 	Shadows []string
 	// Lost are ledger rows whose record is gone at the provider; a desired record is created again.
 	Lost []Owned
-	Hash string
+	// AdoptedChanged are, for a zone held by a restore, the live records of adopted ledger rows
+	// whose type or content is not what the row holds: the original changed since the backup. They
+	// are reported, never written, and are not part of Hash.
+	AdoptedChanged []dns.Record
+	Hash           string
 }
 
 // Empty reports whether the plan writes nothing.
@@ -154,6 +165,18 @@ func Diff(in Input) Plan {
 			p.Lost = append(p.Lost, o)
 		}
 	}
+	if in.Restored {
+		byID := map[string]dns.Record{}
+		for _, r := range in.Live {
+			byID[r.ID] = r
+		}
+		for _, o := range in.Owned {
+			if r, ok := byID[o.RecordID]; ok && o.RecordID != "" && o.Adopted && !SameContent(r, dns.Record{Type: o.Type, Content: o.Content}) {
+				r.Name = canonName(r.Name)
+				p.AdoptedChanged = append(p.AdoptedChanged, r)
+			}
+		}
+	}
 	want := map[string][]dns.Record{}
 	for _, r := range in.Desired {
 		r.Name = canonName(r.Name)
@@ -182,7 +205,7 @@ func Diff(in Input) Plan {
 		planName(&p, in.Zone, name, want[name], live[name], owned, live)
 	}
 
-	for _, l := range []*[]dns.Record{&p.Creates, &p.Updates, &p.Deletes, &p.Orphans} {
+	for _, l := range []*[]dns.Record{&p.Creates, &p.Updates, &p.Deletes, &p.Orphans, &p.AdoptedChanged} {
 		slices.SortFunc(*l, compare)
 	}
 	for i := range p.Conflicts {
