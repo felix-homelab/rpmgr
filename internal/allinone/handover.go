@@ -86,6 +86,7 @@ type ctlHolder struct {
 	opts  controller.RunOptions // all but Listener, Restart, Registry, Readiness and Listening
 	reg   telemetry.Registry
 	ready func(check func(context.Context) error) // adds a check to the admin listener's
+	poke  func()                                  // runs the checks again now; may be nil
 	mem   *memSwap
 	// gone receives the error of a controller that ended on its own, not for a hand-over.
 	gone chan error
@@ -119,6 +120,9 @@ func (h *ctlHolder) start() error {
 	o.Listening = func() { close(listening) }
 	o.Readiness = func(c func(context.Context) error) {
 		h.check.Store(&c)
+		if h.poke != nil {
+			defer h.poke() // a controller that is running again is judged at once
+		}
 		if !h.registered {
 			h.registered = true
 			h.ready(func(ctx context.Context) error { return (*h.check.Load())(ctx) })

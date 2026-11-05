@@ -131,3 +131,42 @@ func TestServeAdmin(t *testing.T) {
 		t.Fatalf("ServeAdmin ended with %v", err)
 	}
 }
+
+// TestServeAdmin_readyzIsFast: /readyz answers within 50 ms while the check blocks for good (#1138),
+// from the last result, and says not ready while no result exists.
+func TestServeAdmin_readyzIsFast(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	block := make(chan struct{})
+	defer close(block)
+	done := make(chan error, 1)
+	go func() {
+		done <- telemetry.ServeAdminOn(ctx, ln.Addr().String(), func(string) (net.Listener, error) { return ln, nil },
+			telemetry.NewRegistry(), func(context.Context) error { <-block; return nil })
+	}()
+	for range 20 {
+		start := time.Now()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+ln.Addr().String()+"/readyz", nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			time.Sleep(10 * time.Millisecond) // not serving yet
+			continue
+		}
+		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if d := time.Since(start); d > 50*time.Millisecond {
+			t.Errorf("/readyz took %v with a blocked check, want under 50 ms", d)
+		}
+		if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(b), "not checked yet") {
+			t.Errorf("/readyz: %d %q, want 503 and the reason", resp.StatusCode, b)
+		}
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("ServeAdminOn ended with %v", err)
+	}
+}

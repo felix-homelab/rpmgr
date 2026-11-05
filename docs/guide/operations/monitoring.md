@@ -45,7 +45,8 @@ curl -s http://127.0.0.1:7383/readyz
 | Connector | The same as a gateway. Its data sessions are reported apart and do not make it unready |
 | All-in-one | Its controller, gateway and connector are all ready; the reasons of each that is not are listed |
 
-A check that takes longer than the limit counts as not ready. Use `/readyz` for load-balancer
+`/readyz` answers from the last background check, so it is quick even when a check is slow. A check
+that is too slow or stuck counts as not ready (limits in [03](../../03-connections.md#timeouts-keepalive-and-backoff)). Use `/readyz` for load-balancer
 health checks and after upgrades: `rpmgr setup` waits for it before it reports success, and
 `rpmgr status` shows its answer on agent hosts
 ([Status and diagnostics](../connectors/status-and-diagnostics.md#rpmgr-status)).

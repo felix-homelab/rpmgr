@@ -98,8 +98,19 @@ func ServeAdmin(ctx context.Context, addr string, reg prometheus.Gatherer, ready
 }
 
 // ServeAdminOn is ServeAdmin with the listener from listen, which a process that a socket hand-off
-// started uses to take the admin listener of the old process.
+// started uses to take the admin listener of the old process. ready runs in the background and
+// /readyz answers from its last result ([ReadyChecks]).
 func ServeAdminOn(ctx context.Context, addr string, listen func(addr string) (net.Listener, error), reg prometheus.Gatherer, ready func(context.Context) error) error {
+	rc := NewReadyChecks()
+	if ready != nil {
+		rc.Add("", ready)
+	}
+	return ServeAdminChecks(ctx, addr, listen, reg, rc)
+}
+
+// ServeAdminChecks is ServeAdminOn with the checks of rc, which it runs until ctx ends; checks may be
+// added while it serves.
+func ServeAdminChecks(ctx context.Context, addr string, listen func(addr string) (net.Listener, error), reg prometheus.Gatherer, rc *ReadyChecks) error {
 	if err := CheckAdminAddr(addr); err != nil {
 		return err
 	}
@@ -107,7 +118,8 @@ func ServeAdminOn(ctx context.Context, addr string, listen func(addr string) (ne
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Handler: AdminHandler(reg, ready), ReadHeaderTimeout: adminHeader}
+	rc.Run(ctx)
+	srv := &http.Server{Handler: AdminHandler(reg, rc.Check), ReadHeaderTimeout: adminHeader}
 	stop := context.AfterFunc(ctx, func() { _ = srv.Close() })
 	defer stop()
 	if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
