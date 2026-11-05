@@ -880,9 +880,9 @@ func TestApply_EveryRefusalWritesStatus(t *testing.T) {
 	}
 }
 
-// ReadHostPolicy is the updater's own reading of the local policy for the controller: the same
-// refusals, but the owner is root, so a test's files are read as their own user's.
-func TestReadHostPolicy(t *testing.T) {
+// LoadPolicy is the updater's own reading of the local policy, for the controller and the agent:
+// the same refusals, with the owner given by the test, whose files are their own user's.
+func TestLoadPolicy(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, body string, mode os.FileMode) string {
 		p := filepath.Join(dir, name)
@@ -893,30 +893,30 @@ func TestReadHostPolicy(t *testing.T) {
 		return p
 	}
 	me := os.Geteuid()
-	if p, err := update.ReadHostPolicyAs(filepath.Join(dir, "none.yaml"), me); err != nil || p.UpdateChannel != "stable" || p.AutoUpdate != "auto" {
+	if p, err := update.LoadPolicyAs(filepath.Join(dir, "none.yaml"), me); err != nil || p.UpdateChannel != "stable" || p.AutoUpdate != "auto" {
 		t.Errorf("a missing file: %+v, %v; want the defaults", p, err)
 	}
-	if p, err := update.ReadHostPolicyAs(write("ok.yaml", "version: 1\nauto_update: notify\nupdate_channel: prerelease\n", 0o644), me); err != nil ||
+	if p, err := update.LoadPolicyAs(write("ok.yaml", "version: 1\nauto_update: notify\nupdate_channel: prerelease\n", 0o644), me); err != nil ||
 		p.UpdateChannel != "prerelease" || p.AutoUpdate != "notify" {
 		t.Errorf("a trusted file: %+v, %v", p, err)
 	}
-	if _, err := update.ReadHostPolicyAs(write("others.yaml", "version: 1\n", 0o666), me); err == nil {
+	if _, err := update.LoadPolicyAs(write("others.yaml", "version: 1\n", 0o666), me); err == nil {
 		t.Error("a file that others may write was trusted")
 	}
-	if _, err := update.ReadHostPolicyAs(write("group.yaml", "version: 1\n", 0o664), me); err == nil {
+	if _, err := update.LoadPolicyAs(write("group.yaml", "version: 1\n", 0o664), me); err == nil {
 		t.Error("a file that its group may write was trusted")
 	}
-	if _, err := update.ReadHostPolicyAs(write("bad.yaml", "version: 1\nauto_update: [\n", 0o644), me); err == nil {
+	if _, err := update.LoadPolicyAs(write("bad.yaml", "version: 1\nauto_update: [\n", 0o644), me); err == nil {
 		t.Error("a file that does not parse was accepted")
 	}
-	if _, err := update.ReadHostPolicyAs(write("owner.yaml", "version: 1\n", 0o644), me+1); err == nil {
+	if _, err := update.LoadPolicyAs(write("owner.yaml", "version: 1\n", 0o644), me+1); err == nil {
 		t.Error("a file of another owner was trusted")
 	}
 	link := filepath.Join(dir, "link.yaml")
 	if err := os.Symlink(filepath.Join(dir, "ok.yaml"), link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := update.ReadHostPolicyAs(link, me); err == nil {
+	if _, err := update.LoadPolicyAs(link, me); err == nil {
 		t.Error("a symbolic link was followed")
 	}
 }

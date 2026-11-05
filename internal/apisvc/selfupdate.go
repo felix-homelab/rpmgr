@@ -50,7 +50,7 @@ type SelfUpdate struct {
 	Blocked func() string
 	// Status reads the root updater's status file; nil is update.ReadStatus of update.StatusFile.
 	Status func() (update.Status, error)
-	// Policy reads the host's local policy as the root updater trusts it (update.ReadHostPolicy);
+	// Policy reads the host's local policy as the root updater trusts it (update.LoadPolicy);
 	// nil means the controller does not check it, and the updater decides alone.
 	Policy func() (*policy.Policy, error)
 

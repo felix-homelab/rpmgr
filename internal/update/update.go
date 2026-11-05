@@ -387,16 +387,14 @@ func WriteState(dir string, st State) error {
 // other users may write counts as untrusted, then parsed as the connector parses it.
 func (u *Updater) policy() (*policy.Policy, error) { return LoadPolicy(u.Policy) }
 
-// ReadHostPolicy reads the local policy as the root updater trusts it, for the controller, which
-// runs as another user: the same checks and parser, but the file must be owned by root. A missing
-// file is the defaults.
-func ReadHostPolicy(path string) (*policy.Policy, error) { return parsePolicy(readOwnedBy(path, 0)) }
-
 // LoadPolicy reads the local policy at path exactly as the root updater trusts it, for the agent
-// that reports what the updater would do: a missing file is the defaults; a symbolic link, a file
-// another user owns, one its group or other users may write, one that is too large or one that
-// does not parse is an error, which the updater treats as auto_update off (D120).
-func LoadPolicy(path string) (*policy.Policy, error) { return parsePolicy(readOwn(path)) }
+// that reports what the updater would do and for the controller, which runs as another user: a
+// missing file is the defaults; a symbolic link, a file that neither root nor the calling user
+// owns, one its group or other users may write, one that is too large or one that does not parse
+// is an error, which the updater treats as auto_update off (D120).
+func LoadPolicy(path string) (*policy.Policy, error) {
+	return parsePolicy(readOwnedBy(path, os.Geteuid(), 0))
+}
 
 func parsePolicy(b []byte, err error) (*policy.Policy, error) {
 	if errors.Is(err, fs.ErrNotExist) {

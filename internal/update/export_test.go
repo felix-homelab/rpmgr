@@ -60,7 +60,7 @@ var ErrInterrupted = errInterrupted
 // InstalledAt is exported for the test of Installed.
 var InstalledAt = installedAt
 
-// ReadHostPolicyAs is ReadHostPolicy for a file that the user uid owns, as a test's files are.
-func ReadHostPolicyAs(path string, uid int) (*policy.Policy, error) {
+// LoadPolicyAs is LoadPolicy for a file that the user uid alone owns, as a test's files are.
+func LoadPolicyAs(path string, uid int) (*policy.Policy, error) {
 	return parsePolicy(readOwnedBy(path, uid))
 }

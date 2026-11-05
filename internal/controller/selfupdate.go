@@ -35,7 +35,7 @@ func hostUpdater(stateDir, driver string, mirror *release.Mirror, installed func
 			}
 			return ""
 		},
-		Policy: func() (*policy.Policy, error) { return update.ReadHostPolicy(policy.DefaultPath) },
+		Policy: func() (*policy.Policy, error) { return update.LoadPolicy(policy.DefaultPath) },
 		Stage: func(ctx context.Context, version string) error {
 			return agent.StageRelease(ctx, agent.UpdateOptions{Dir: StagedDir, Variant: "full"},
 				release.Dir(filepath.Join(mirror.Dir, version)), version)
