@@ -50,6 +50,9 @@ Changes to the design documents are not recorded here: see the git history and t
 
 - A `udp` or `tcp_udp` route no longer shows "the port is in use on the gateway" while the old
   process of a restart with hand-off still serves its port. (#1076)
+- A webhook audit sink whose receiver answers every delivery slowly no longer keeps the shipping to
+  the other sinks waiting: its deliveries of one pass are bounded, and the rest follows in the next
+  pass. (#1128)
 
 ## [0.3.0] - 2026-11-04
 

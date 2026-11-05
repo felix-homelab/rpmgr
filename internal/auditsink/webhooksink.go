@@ -27,7 +27,21 @@ type webhookSink struct {
 	sender *webhook.Sender
 	url    string
 	secret secret.Value
+	// batchTimeout bounds the items of one pass, and batchStart is when the first began (zero
+	// before it): a receiver that answers every delivery slowly would otherwise keep the pass, and
+	// with it the next pass of every other sink, busy for as long as 500 slow deliveries take.
+	batchTimeout time.Duration
+	batchStart   time.Time
 }
+
+// WebhookBatchTimeout is how long the deliveries of one pass to a webhook sink may take altogether
+// (docs/03-connections.md, "Timeouts, keepalive and backoff"); the item in hand when it runs out is
+// left for the next pass and the batch counts as failed.
+const WebhookBatchTimeout = 60 * time.Second
+
+// errWebhookBatchTime is the failure of a batch that ran past its time: the items before it were
+// delivered, the rest goes in the next pass.
+var errWebhookBatchTime = errors.New("delivering a batch to the receiver took longer than the time allowed for a batch")
 
 func openWebhook(o Options, s *ent.AuditSink) (Sink, error) {
 	url := s.Settings["url"]
@@ -41,12 +55,25 @@ func openWebhook(o Options, s *ent.AuditSink) (Sink, error) {
 	if err != nil {
 		return nil, errors.New("the webhook sink's secret cannot be opened")
 	}
-	return &webhookSink{sender: o.Sender, url: url, secret: key}, nil
+	return &webhookSink{sender: o.Sender, url: url, secret: key, batchTimeout: WebhookBatchTimeout}, nil
 }
 
 func (w *webhookSink) Ship(ctx context.Context, it Item) error {
+	if w.batchStart.IsZero() {
+		w.batchStart = time.Now()
+	}
+	deadline := w.batchStart.Add(w.batchTimeout)
+	if !time.Now().Before(deadline) {
+		return errWebhookBatchTime
+	}
+	parent := ctx
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
 	code, err := w.sender.Send(ctx, webhook.Delivery{URL: w.url, EventID: it.ID, EventType: it.Type, Body: it.Body,
 		Secrets: []secret.Value{w.secret}, Policy: egress.Policy{Internal: true}})
+	if err != nil && parent.Err() == nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return errWebhookBatchTime
+	}
 	if err != nil && permanentStatus(code) {
 		return &PermanentError{Status: code, Err: err}
 	}

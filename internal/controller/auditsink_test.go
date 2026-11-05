@@ -56,6 +56,7 @@ type sinkEnv struct {
 	got    []received
 	answer func(n int) int // the status for the n-th request, counted from 1
 	block  chan struct{}   // while set, requests wait for it to close
+	only   string          // if set, only requests to this path wait
 }
 
 func newSinkEnv(t *testing.T, db *store.DB) *sinkEnv {
@@ -74,6 +75,9 @@ func newSinkEnv(t *testing.T, db *store.DB) *sinkEnv {
 		e.got = append(e.got, received{r.URL.Path, r.Header.Get(webhook.HeaderEventID), r.Header.Get(webhook.HeaderEventType),
 			r.Header.Get(webhook.HeaderSignature), b})
 		code, block := e.answer(len(e.got)), e.block
+		if e.only != "" && r.URL.Path != e.only {
+			block = nil
+		}
 		e.mu.Unlock()
 		if block != nil {
 			select {
@@ -244,6 +248,37 @@ func TestAuditSink_BacklogNeverBlocksAppend(t *testing.T) {
 		if got := e.status(s); got.LastError != "" || got.LastSuccessAt == nil {
 			t.Fatalf("status: error %q, last success %v", got.LastError, got.LastSuccessAt)
 		}
+	})
+}
+
+// TestAuditSink_SlowSinkDoesNotHoldTheOthers: a sink whose receiver does not answer does not delay
+// the shipping to another sink, which delivers and moves its cursor while the first still waits.
+func TestAuditSink_SlowSinkDoesNotHoldTheOthers(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := newSinkEnv(t, db)
+		e.sink("slow", "/slow", false)
+		fast := e.sink("fast", "/fast", false)
+		e.checkpoint("", e.appendTo(""))
+
+		e.mu.Lock()
+		e.block, e.only = make(chan struct{}), "/slow"
+		e.mu.Unlock()
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			if err := e.run(); err != nil {
+				t.Errorf("pass: %v", err)
+			}
+		})
+		waitUntil(t, func() bool { return len(e.requests("/slow")) > 0 })
+		waitUntil(t, func() bool { return len(e.requests("/fast")) == 1 && e.status(fast).LastSuccessAt != nil })
+		if b := e.backlog("fast"); b.Items != 0 {
+			t.Errorf("the fast sink has %d items waiting while the slow one hangs", b.Items)
+		}
+		if b := e.backlog("slow"); b.Items == 0 {
+			t.Error("the slow sink has nothing waiting while its receiver hangs")
+		}
+		close(e.block)
+		wg.Wait()
 	})
 }
 
