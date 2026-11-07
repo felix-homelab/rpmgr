@@ -29,6 +29,14 @@ const stateLooks: Record<DnsRecordState, [Look, string]> = {
 
 type Named = Pick<DnsRecord, "name" | "type" | "content"> & { providerRecordId: string };
 
+// RecordContent shows a record's content on one line, cut with an ellipsis where it is longer than
+// the column, such as a DKIM key; the whole value is its tooltip, so the table keeps its layout
+// (#1153).
+export function RecordContent({ content, proxied }: { content: string; proxied?: boolean }) {
+  const text = content + (proxied ? " (proxied)" : "");
+  return <span className="block max-w-[28rem] truncate font-mono" title={text}>{text}</span>;
+}
+
 // AdoptButton adopts a foreign record after a confirmation that names it, with a step-up (U7): the
 // record's current content is kept for a later release with restore, and the next pass rewrites it.
 export function AdoptButton({ zoneId, record: r, onError }: { zoneId: string; record: Named; onError: (text: string) => void }) {
@@ -116,9 +124,9 @@ export function ZoneRecords({ zoneId, admin }: { zoneId: string; admin: boolean 
               const owned = r.id !== "";
               return (
                 <TR key={r.id || r.providerRecordId || r.name + r.type + r.content}>
-                  <TD className="font-mono">{r.name}</TD>
+                  <TD className="font-mono break-all">{r.name}</TD>
                   <TD>{r.type}</TD>
-                  <TD className="font-mono">{r.content}{r.proxied ? " (proxied)" : ""}</TD>
+                  <TD><RecordContent content={r.content} proxied={r.proxied} /></TD>
                   <TD>{owned ? t("dnsZone.ownedBy") : t("dnsZone.foreign")}{r.adoptedTime && <span className="block text-muted-foreground">{t("dnsZone.adoptedOn", { when: when(r.adoptedTime) })}</span>}</TD>
                   <TD><Status look={look}>{t(`dnsZone.state.${key}`)}</Status>{r.reason && <span className="block text-muted-foreground">{r.reason}</span>}</TD>
                   {admin && (
