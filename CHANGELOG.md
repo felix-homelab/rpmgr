@@ -12,6 +12,9 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Fixed
 
+- A record with long content, such as a DKIM key, no longer stretches the record table and the
+  plan of a zone: the content is cut to one line, its whole value shown on hover, and long names
+  wrap (#1153).
 - `/readyz` answers from the last background check, within milliseconds, instead of running the
   checks while the caller waits. A busy all-in-one no longer makes the updater of an older release
   see "nothing answers" during a hand-off and roll back; a check that is stuck for 10 s still makes

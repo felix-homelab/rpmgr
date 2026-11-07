@@ -19,7 +19,7 @@ import { DnsZoneService, ZoneDelegationState, ZoneProviderStatus, ZoneSyncState,
 import { apiError } from "@/lib/api-error";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
-import { AdoptButton, ZoneRecords } from "@/pages/dns-records";
+import { AdoptButton, RecordContent, ZoneRecords } from "@/pages/dns-records";
 import { useOrg } from "@/session";
 import { useStepUp } from "@/step-up";
 
@@ -142,8 +142,8 @@ function RecordRows({ sign, label, records }: { sign: string; label: string; rec
     <TR key={`${sign}${r.id}${r.name}${r.type}${i}`}>
       <TD><span aria-hidden="true" className="font-mono">{sign}</span><span className="sr-only">{label}</span></TD>
       <TD>{r.type}</TD>
-      <TD className="font-mono">{r.name}</TD>
-      <TD className="font-mono">{r.content}{r.proxied ? " (proxied)" : ""}</TD>
+      <TD className="font-mono break-all">{r.name}</TD>
+      <TD><RecordContent content={r.content} proxied={r.proxied} /></TD>
     </TR>
   ));
 }
@@ -200,7 +200,7 @@ function PlanCard({ zone }: { zone: DnsZone }) {
           <p><span className="font-medium">{c.name}</span> <Status look="warn">{t("dnsZone.conflictBadge")}</Status></p>
           <ul className="grid gap-2 font-mono text-sm">{c.records.map((r) => (
             <li key={r.id + r.type + r.content} className="flex flex-wrap items-center gap-2">
-              <span>{r.type} {r.content}</span>
+              <span className="min-w-0 break-all">{r.type} {r.content}</span>
               {c.kind === "foreign_address" && r.id && <AdoptButton zoneId={zone.id} record={{ ...r, providerRecordId: r.id }} onError={setError} />}
             </li>
           ))}</ul>
@@ -257,7 +257,7 @@ function RemoveCard({ zone }: { zone: DnsZone }) {
           {wipe && plan.data?.plan && (
             <div>
               <p>{t("dnsZone.deletePlan", { count: plan.data.plan.deletes.length, hash: short(hash) })}</p>
-              <ul className="font-mono text-sm">{plan.data.plan.deletes.map((r) => <li key={r.id}>{r.type} {r.name} {r.content}</li>)}</ul>
+              <ul className="font-mono text-sm break-all">{plan.data.plan.deletes.map((r) => <li key={r.id}>{r.type} {r.name} {r.content}</li>)}</ul>
             </div>
           )}
           {wipe && plan.isError && <Alert>{apiError(t, plan.error)}</Alert>}
