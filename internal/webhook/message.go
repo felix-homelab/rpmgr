@@ -50,9 +50,9 @@ func (c *Context) Resolve(ctx context.Context, db *ent.Client, e events.Event) {
 			c.ActorName = u.DisplayName
 		}
 	}
-	if e.Type == "alert.resolve" {
+	if e.Type == events.AlertResolve {
 		kind, _, _ := strings.Cut(e.Summary, ":")
-		q := db.Event.Query().Where(event.TypeEQ("alert.fire"), event.SubjectTypeEQ(e.SubjectType), event.SubjectID(e.SubjectID),
+		q := db.Event.Query().Where(event.TypeEQ(events.AlertFire), event.SubjectTypeEQ(e.SubjectType), event.SubjectID(e.SubjectID),
 			event.SummaryHasPrefix(kind+":"), event.TsLTE(e.Time))
 		if e.OrgID != "" {
 			q = q.Where(event.OrgID(e.OrgID))
@@ -104,7 +104,7 @@ func compose(e events.Event, c Context) message {
 	actor := firstNonEmpty(c.ActorName, strings.TrimSpace(e.ActorType+" "+e.ActorID))
 	at := e.Time.UTC().Format("2006-01-02 15:04:05 UTC")
 	switch e.Type {
-	case "alert.fire", "alert.resolve":
+	case events.AlertFire, events.AlertResolve:
 		kind, _, _ := strings.Cut(e.Summary, ":")
 		m.alert, m.critical = true, criticalKinds[kind]
 		m.title = alertTitle(kind, e.SubjectType, name)
@@ -114,7 +114,7 @@ func compose(e events.Event, c Context) message {
 		}
 		m.text = "Firing since " + at + "."
 		m.facts = []fact{{"Organisation", org}, {"Subject", subject}, {"Alert", firstNonEmpty(kind, e.Type)}}
-		if e.Type == "alert.resolve" {
+		if e.Type == events.AlertResolve {
 			m.title, m.sev, m.text = "Resolved: "+m.title, sevResolved, "Resolved."
 			if !c.FiredAt.IsZero() && !e.Time.Before(c.FiredAt) {
 				d := humanDuration(e.Time.Sub(c.FiredAt))
@@ -125,9 +125,9 @@ func compose(e events.Event, c Context) message {
 	default:
 		m.title, m.text = eventTitle(e, name), e.Summary
 		switch e.Type {
-		case "webhook.disable", "apply.reject", "agent.disconnect":
+		case events.WebhookDisable, events.ApplyReject, events.AgentDisconnect:
 			m.sev = sevWarning
-		case "webhook.test", "agent.connect", "route.status":
+		case events.WebhookTest, events.AgentConnect, events.RouteStatus:
 			m.sev = sevInfo
 		}
 		m.facts = []fact{{"Organisation", org}, {"Actor", actor}, {"Subject", subject}}
@@ -166,17 +166,17 @@ var pastTense = map[string]string{"create": "created", "update": "updated", "del
 // eventTitle is the title of an event that is no alert: <Resource> <name> <verb in the past>.
 func eventTitle(e events.Event, name string) string {
 	switch e.Type {
-	case "webhook.test":
+	case events.WebhookTest:
 		return "Test event from rpmgr"
-	case "webhook.disable":
+	case events.WebhookDisable:
 		return "Webhook " + name + " was disabled"
-	case "agent.connect":
+	case events.AgentConnect:
 		return "Agent " + name + " connected"
-	case "agent.disconnect":
+	case events.AgentDisconnect:
 		return "Agent " + name + " disconnected"
-	case "apply.reject":
+	case events.ApplyReject:
 		return "Configuration rejected on " + name
-	case "route.status":
+	case events.RouteStatus:
 		return "Route " + name + " changed status"
 	}
 	res, verb, ok := strings.Cut(e.Type, ".")
@@ -285,7 +285,7 @@ func subjectPath(e events.Event) string {
 // AlertKey identifies the alert of an alert.fire or alert.resolve event, the same for both: its
 // kind and subject. It is "" for any other event.
 func AlertKey(e events.Event) string {
-	if e.Type != "alert.fire" && e.Type != "alert.resolve" {
+	if e.Type != events.AlertFire && e.Type != events.AlertResolve {
 		return ""
 	}
 	kind, _, _ := strings.Cut(e.Summary, ":")

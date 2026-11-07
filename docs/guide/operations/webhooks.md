@@ -26,6 +26,8 @@ route's state changes. Each is written once per change of state, and a flapping 
 sends at most a bounded number of them per minute
 ([07](../../07-api.md#webhooks-phase-2)).
 
+Every type of event, each with its meaning and scope, is in the [event reference](../reference/events.md).
+
 ## Chat services
 
 An endpoint can post to Discord, Slack or Microsoft Teams instead, so that people see an event

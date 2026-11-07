@@ -492,9 +492,9 @@ spec:
   out, a step-up, asking for a reset link and the use of a token or a system scope change nothing
   and are no events. Status changes add `route.status`
   (a route's state changed), `agent.connect`, `agent.disconnect`, `apply.reject`, `alert.fire` and
-  `alert.resolve` ([10](10-operations.md#suggested-alerts)), `webhook.disable`, and with DNS
-  automation `dns.conflict`, `dns.zone_held`, `dns.sync_failing`, `dns.drifted` and
-  `dns.token_expiring`.
+  `alert.resolve` ([10](10-operations.md#suggested-alerts)), `webhook.disable`. The conditions of DNS automation
+  arrive as `alert.fire` and `alert.resolve` of the DNS alerts
+  ([10](10-operations.md#suggested-alerts)).
   A status event is written once per change of state by the alert job, not per heartbeat or
   reconnect: `agent.connect` and `agent.disconnect` for an agent that is enabled and not ephemeral
   (a built-in agent included; the first connection is an event, an agent first seen offline is
@@ -505,7 +505,8 @@ spec:
   envelope does. Instance events go to instance endpoints only: the instance chain's audit actions, releases and
   rollouts, events of gateways in shared groups, and the instance alerts. An endpoint names the
   types it wants, by name or by prefix such as `route.*`; none means all
-  ([D145](14-open-decisions.md#engineering), E1, E12).
+  ([D145](14-open-decisions.md#engineering), E1, E12). The complete list of types is generated
+  from the code: the [event reference](guide/reference/events.md) of the user guide.
 - **Envelope** ([D144](14-open-decisions.md#engineering)): `POST` of
   `{"id", "type", "time", "org_id", "actor": {"type", "id"}, "subject": {"type", "id", "name"},
   "summary", "changed": [field names]}`; no resource body. Fetch the resource through the API for

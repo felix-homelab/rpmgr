@@ -127,15 +127,15 @@ func statusEvent(ctx context.Context, tx *ent.Tx, o StatusObservation, from stri
 	}
 	switch o.Kind {
 	case StatusAgent:
-		e.Type = "agent.connect"
+		e.Type = events.AgentConnect
 		if o.State == StateOffline {
-			e.Type = "agent.disconnect"
+			e.Type = events.AgentDisconnect
 		}
 	case StatusApply:
-		e.Type, e.Changed = "apply.reject", []string{"applied_snapshot"}
+		e.Type, e.Changed = events.ApplyReject, []string{"applied_snapshot"}
 		e.Summary = fmt.Sprintf("apply.reject %s %s: the snapshot sent last was rejected", o.SubjectType, name)
 	default:
-		e.Type, e.Changed = "route.status", []string{"status"}
+		e.Type, e.Changed = events.RouteStatus, []string{"status"}
 		e.Summary = fmt.Sprintf("route.status route %s: %s", name, o.State)
 		if from != "" {
 			e.Summary = fmt.Sprintf("route.status route %s: %s, was %s", name, o.State, from)
