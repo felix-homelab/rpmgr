@@ -39,10 +39,15 @@ flowchart LR
   ROOT --> AU[Audit log]
   ROOT --> ORG[Organisation]
   ROOT --> WH[Webhooks - Phase 2]
+  ROOT --> CA[Cache - Phase 3]
+  ROOT --> WF[WAF - Phase 3]
   ROOT --> SET[Settings]
   ROOT --> P3[Phase 3]
   RT --> RT1[List] & RT2[Create wizard per type] & RT3[Route detail]
   RT3 --> RT3a[Targets & health] & RT3b[Traffic] & RT3c[Policies] & RT3d[Apply status] & RT3e[YAML] & RT3f[History]
+  RT3 --> RT3g[Cache - Phase 3] & RT3h[WAF - Phase 3]
+  CA --> CA1[Per route and gateway] & CA2[Objects of a gateway] & CA3[Lookup by URL] & CA4[Purges]
+  WF --> WF1[Hits] & WF2[Settings by scope] & WF3[Exclusions]
   PS --> PS1[Services] & PS2[Visitor grants]
   CO --> CO1[List] & CO2[Enroll dialog] & CO3[Connector detail]
   CO3 --> CO3a[Sessions] & CO3b[Routes] & CO3c[Local-policy status] & CO3d[Live logs] & CO3e[Version & upgrade]
@@ -63,6 +68,8 @@ flowchart LR
 | **Gateways** | Gateway groups (region, public hostnames for route traffic, DNS target for managed DNS records, port pools), gateways (own tunnel endpoints — address/port and, for WSS, the gateway's own hostname — status, version, sessions, listeners, live logs (Phase 2)), drain action. Connectors dial each gateway at its own tunnel endpoints; group-level DNS or anycast names are for public traffic only ([03](03-connections.md#establishment)) | Viewer / Admin |
 | **Domains & certificates** | Domain claims with the verification flow (TXT record or HTTP token, a "check now" button, status), certificates with source (ACME/uploaded), SANs, expiry, last ACME error | Viewer / Admin |
 | **DNS** (Phase 2) | DNS providers (connect, rotate token, status, token expiry), managed zones (import, gates, plan approval, records, conflicts, adopt and release) and DNS names ([15](15-dns.md)) | Viewer / Admin; foreign records of a zone: Admin |
+| **Cache** (Phase 3) | Per route and per gateway: hit ratio, bytes served from cache, size used; the route's cache rules; purge; a paged list of the objects of one gateway; a lookup of a URL across the gateways; the gateway groups' storage limits are on the group's page ([below](#cache-and-waf-phase-3)) | Viewer for the statistics / Operator to purge, list and look up / Admin to purge everything; Instance Admin for the storage limits |
+| **WAF** (Phase 3) | Hits (time, route, rule, client, method, path); settings by scope with the effective profile; exclusions; the rule set version per gateway | Operator to read / Admin to change; Instance Admin for the instance scope, the floor and custom rules |
 | **Access policies** | IP allow/deny lists, basic auth, OIDC forward-auth, rate limits; where each policy is used | Viewer / Operator |
 | **Audit log** | Searchable by actor, action, target and time; entry detail with the redacted diff; chain-verification status; export with proofs (step-up), and how to verify it offline with `rpmgr audit verify-export` (Phase 2) | Admin |
 | **Organisation** | Members and roles; invitations as copyable one-time links, also e-mailed when SMTP is configured; API tokens (personal tokens in Phase 1, service accounts and their tokens in Phase 2: list, create with mandatory expiry, revoke); SSO and MFA policy; webhooks are on their own page | Admin; SSO and MFA policy are Owner-only |
@@ -1070,6 +1077,170 @@ one page, with a section list beside them that jumps to each section
   hint. An instance that serves no DNS shows nothing there.
 - **The sidebar** has one entry for DNS, under *Security*, which opens `/dns`; the DNS names are a
   link in its heading.
+
+### Cache and WAF (Phase 3)
+
+The screens of [17](17-cache-and-waf.md). Both areas appear in the navigation only when the instance
+has a gateway that announces the capability, and a route type that cannot use them shows a line that
+says why instead of a tab.
+
+**Cache.** Statistics are read by every role; purge, the list and the lookup need an Operator.
+
+```
+┌ Cache ────────────────────────────────────── [Per route] [Objects] [Lookup] [Purges] ┐
+│ Org default: off · routes with the cache on: 3 of 12                  [Purge all…]   │
+├ Per route (24 h) ────────────────────────────────────────────────────────────────────┤
+│ Route        Hit ratio  From cache   Misses  Not storable  Size used   Gateways       │
+│ blog         92 %       4.1 GB       1 210   0             212 MiB     gw-eu-1 gw-eu-2│
+│ docs         61 %       310 MB       4 880   312 (cookie)  48 MiB      gw-eu-1 gw-eu-2│
+│ app (OIDC) ⚠ 0 %        0 B          9 003   9 003 (private) 0 B       gw-eu-1       │
+├ Per gateway ─────────────────────────────────────────────────────────────────────────┤
+│ gw-eu-1  memory 41 / 64 MiB   disk 212 / 1024 MiB   objects 3 412   [Objects]        │
+│ gw-eu-2  memory 38 / 64 MiB   disk 198 / 1024 MiB   objects 3 301   [Objects]        │
+│ gw-eu-3  offline since 09:12 — purge 2 pending                                       │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Per route** lists every route with a cache setting: the hit ratio, the bytes served from cache,
+  the misses, what the cache could not store with the commonest reason (so a rule that matches only
+  requests with cookies shows itself), and the size used, summed over its gateways. A route with the
+  cache on and an access policy carries the warning mark, whose text says the stored object is shown
+  to every visitor the policy admits and must never depend on who asks.
+- **Per gateway** shows the memory and disk used against the group's limits, the number of objects,
+  and for an offline gateway the purges still pending for it. Both limits at 0 turn the line into
+  "cache off for this group", and the routes' pages say so.
+- **The route's Cache tab** ([Route detail](#route-detail)) shows the same figures for the one
+  route, its settings (inherit, off, on; whether the org's rules apply), its rules as an ordered
+  list with the form below, and the purge buttons.
+
+```
+┌ Cache rules of route blog ─────────────────────────────── [Add rule] ────────────────┐
+│ 1  Prefix   /static/        TTL 1 d          stale on error 1 d       [on ●━] [Edit] │
+│ 2  Glob     /img/*.webp     TTL 7 d          —                        [on ●━] [Edit] │
+│ 3  Ext      css js woff2    TTL 1 h          —                        [on ●━] [Edit] │
+│ Then the org's rules (2).  Applies only to responses with no Cache-Control or Expires.│
+│ Never stored: Set-Cookie, private, no-store, requests with cookies or Authorization. │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **A rule's form:** the match (prefix, glob or extensions, validated against the bound in
+  [03](03-connections.md#cache-and-waf-limits-phase-3)), the time to live and the stale-on-error
+  time, with the sentence above shown beside it. Rules reorder by drag or the move buttons; the
+  save sends the route as a whole with its etag (U1).
+- **Purge.** The buttons are "Purge URL…", "Purge path prefix…" and "Purge route…", and on the Cache
+  area "Purge all…" for an Admin. Each opens a dialog that names the route, shows what will go and
+  how many gateways it reaches, and, for purge all, names the org and asks to type its name (U7). The
+  result follows live as the state per gateway: applied, pending (offline), emptied.
+
+```
+┌ Objects of gw-eu-1 · route blog ─────────────────── filter [ /static          ] ─────┐
+│ URL                                  Size    Age    Expires   Tier       Hits        │
+│ /static/app.4f2c.js                  212 KiB 2 h    in 22 h   mem+disk   1 904  [⋯]  │
+│ /static/app.4f2c.css                 48 KiB  2 h    in 22 h   mem+disk   1 880  [⋯]  │
+│ /static/logo.svg   (Vary: Accept-Encoding)  6 KiB   9 h    in 15 h   disk      212  [⋯]  │
+│ ▾ /static/logo.svg   Content-Type: image/svg+xml · ETag "9d1" · Cache-Control: max-age│
+│                      stored by rule 1 · [Purge on this gateway] [Purge on all gateways]│
+│ Page 1 of at least 3 · 50 per page                              [‹ Previous] [Next ›] │
+└───────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **The object list** is of one gateway and of the caller's own org's routes. It is read from the
+  gateway when the page is opened and again for each page, and nothing of it is kept by the controller
+  or the browser beyond the page on screen. A row shows the URL, size, age, expiry, tier, hits and,
+  expanded, the stored response's headers and whether a rule or the origin made it storable. The
+  list is not a snapshot: it says so, and the page count reads "at least". An offline gateway or one
+  without the capability shows why instead of a list.
+- **A row's menu** purges that object on this gateway or on all the route's gateways, by the key the
+  gateway gave it, so a URL with a long query is never retyped.
+
+```
+┌ Lookup ──────────────────────────────────────────────────────────────────────────────┐
+│ URL [ https://blog.example.com/static/app.4f2c.js                       ] [Look up]  │
+│ Route blog (prefix /)                                                                │
+│ gw-eu-1  held   1 variant   212 KiB   age 2 h   expires in 22 h                     │
+│ gw-eu-2  held   2 variants  212 KiB   age 5 h   expires in 19 h   (Vary: Accept-Encoding)│
+│ gw-eu-3  unknown — offline                                                           │
+│ [Purge this URL on all gateways]                                                     │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **The lookup** asks every gateway of the route's group whether it holds the URL, as
+  [17](17-cache-and-waf.md#cache-tab) says, and shows each answer. A URL that several routes could
+  serve (header matches) is shown once for each route.
+- **Gateways, a group's page:** a "Cache storage" card with the memory and disk limits per gateway
+  and the totals in use, edited by the Instance Admin and shown to the group's other admins. A
+  limit of 0 turns the tier off, and the card says what that means. A change is a configuration
+  change with apply status ([03](03-connections.md#configuration-reconciliation)).
+
+**WAF.** Hits are read by an Operator; every change needs an Admin.
+
+```
+┌ WAF ──────────────────────────────────────────── [Hits] [Settings] [Exclusions] ────┐
+│ Last 24 h: 18 204 inspected · 311 detected · 12 blocked      CRS 4.30.0 on 3 of 3    │
+│ Route [ all ▾]  Rule [ all ▾]  Client [        ]  Action [ all ▾]  Time [ 24 h ▾]   │
+│ Time      Route  Rule                          Client        Method Path      Action │
+│ 09:41:02  blog   942100 SQL injection (libinj.) 203.0.113.9   GET    /search    blocked│
+│ 09:40:51  app    920350 Host header is an IP    198.51.100.4  GET    /          detected│
+│ 09:38:17  blog   941100 XSS (libinjection)      203.0.113.9   POST   /comment   detected│
+│ ▾ 941100 · score 5 of 5 · variable ARGS:body (214 characters, value not stored)       │
+│   Request 01JB… · gw-eu-1 · sampled: no                                               │
+│   [Exclude this rule for /comment and ARGS:body on route blog…]  [Rule details]       │
+│ Showing a sample of the hits when there are many; the totals above are exact.         │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Hits** are listed newest first, with the filters shown. A hit shows the rules that scored, the
+  variables that matched with the length of the value and never the value, and no body, query string
+  or header value. The totals above the list are exact; the list is sampled under load and says so.
+- **The one-click exclusion** opens a confirmation that states what it will exclude (the rule, the
+  path, the parameter), where (the route's scope), that it lowers protection there, and the effect
+  after the apply; it is disabled for an Operator, with the reason, and for a protected rule, which
+  the page names as protected by the instance.
+- **The rule set** line shows the CRS version per gateway; a gateway on an older version is listed.
+
+```
+┌ WAF settings ───────────────────────────────────────────────────────────────────────┐
+│ Scope        Mode          Paranoia  Threshold  Exclusions  Effective on 12 routes    │
+│ Instance     detection (floor)  1    5          2           ─                         │
+│ Org acme     blocking ⚠    2         —          4           raised by floor: 0         │
+│ Group eu     —             —         —          0           ─                         │
+│ Route blog   detection     1         —          3           effective: detection, PL1 │
+├ Instance floor (Instance Admin) ─────────────────────────────────────────────────────┤
+│ Minimum mode [ detection ▾]  Minimum paranoia [ 1 ▾]  Maximum threshold [ 5 ]        │
+│ Protected rules and tags  [ 942100, attack-rce                      ]                 │
+│ Custom rules (Instance Admin, step-up)  [Edit scope instance…]                       │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Settings by scope** lists the four scopes with what each sets, "—" for inherit, and for the
+  chosen route or group the **effective profile**, field by field, with the scope each field came
+  from and "raised to … by the instance floor" where the floor clamped it. A scope in detection
+  offers "Switch to blocking…", which shows how many recorded requests it would have blocked; a
+  scope that is off offers detection only.
+- **The floor and the custom rules** are shown to the Instance Admin, who edits them after a
+  step-up. A custom-rules editor validates as the user types, through `ValidateWafCustomRules`, and
+  shows the line and the reason of a refusal.
+
+**A route's Cache and WAF** (the route detail's tabs and the route form's sections):
+
+```
+┌ Route: blog (http)   Cache ● on   WAF ● detection ─────────────────────────────────┐
+│ Cache                                                                               │
+│   Mode  (•) inherit (org: off)  ( ) off  ( ) on        Org's rules apply [x]         │
+│   ⚠ This route has an access policy. A stored response is shown to every visitor    │
+│     the policy admits; it must not depend on who asks.                               │
+│   Rules (3) · Purge… · Statistics: 92 % hits, 4.1 GB from cache, 212 MiB used        │
+│ WAF                                                                                  │
+│   Mode  ( ) inherit (detection)  ( ) off  (•) detection  ( ) blocking                │
+│   Paranoia level [ inherit ▾ ]   Threshold [ inherit ]   Exclusions (3)  [Edit]      │
+│   Effective: detection, level 1, threshold 5.   Floor: at least detection.           │
+│   Hits (24 h): 311 detected, 0 blocked · [Open the WAF tab]                          │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- On a route that is not `http`, the sections give way to a line: "The gateway does not read the
+  traffic of this route type, so it can neither cache nor inspect it." The form refuses nothing
+  there, because the fields do not exist.
 
 ## Frontend architecture
 

@@ -32,7 +32,8 @@ The documentation has two parts:
 | [14 — Open decisions](14-open-decisions.md) | Every decision that was open, with its outcome; currently none is open |
 | [15 — DNS automation](15-dns.md) | Cloudflare integration: managed zones, records for route hostnames, ownership and conflicts, plan approval, DNS-01, proxied routes |
 | [16 — Command line](16-cli.md) | Every `rpmgr` command, its flags and exit codes |
-| [ADRs](adr/) | One record per load-bearing decision (0001–0021) |
+| [17 — Gateway cache and WAF](17-cache-and-waf.md) | Phase 3 design: the response cache of http routes and the WAF in front of them, their request path, scopes, purge, hits and failure modes |
+| [ADRs](adr/) | One record per load-bearing decision (0001–0023) |
 | [Spikes](spikes/) | Phase 0 spike results, written from the [template](spikes/TEMPLATE.md) |
 | [Reviews](reviews/) | Reviews of the implementation against the documents, such as the [Phase 1 threat-model review](reviews/P1-threat-model.md) |
 
@@ -48,7 +49,7 @@ checked:
 | **[F]** | **Fact**, verified during the design by reading source code or a library at the cited version and line, or a vendor's published documentation or API schema at the cited retrieval date |
 | **[R]** | **Recommendation**: a design choice with its reasoning; can be changed via [14](14-open-decisions.md) or an ADR |
 | **[T]** | **Target**: a performance or quality goal to be measured, not a claim about current behaviour |
-| **[V Sx]** / **[V VB-xx]** | **Verify at implementation**: an assumption about a library, platform or behaviour that was not verifiable here; tracked as a spike (S1–S10) or in the verification backlog (VB-01–20) in [13](13-roadmap.md) |
+| **[V Sx]** / **[V VB-xx]** | **Verify at implementation**: an assumption about a library, platform or behaviour that was not verifiable here; tracked as a spike (S1–S11) or in the verification backlog (VB-01–27) in [13](13-roadmap.md) |
 
 Untagged statements are the design itself.
 
@@ -72,13 +73,17 @@ link to them.
 | `libdns-cloudflare:` | [libdns/cloudflare](https://github.com/libdns/cloudflare) | v0.2.2 |
 | `cf:` | [Cloudflare developer documentation](https://developers.cloudflare.com/); the path follows the prefix | retrieved 2026-10-06 |
 | `cf-api:` | [cloudflare/api-schemas](https://github.com/cloudflare/api-schemas), `openapi.json` on `main` | retrieved 2026-10-06 |
+| `coraza:` | [corazawaf/coraza](https://github.com/corazawaf/coraza); the path follows the prefix | v3.8.1, retrieved 2026-11-07 |
+| `crs:` | [coreruleset/coreruleset](https://github.com/coreruleset/coreruleset); the path follows the prefix | v4.30.0, retrieved 2026-11-07 |
+| `rfc9111:` | [RFC 9111, HTTP Caching](https://www.rfc-editor.org/rfc/rfc9111); a section number follows the prefix | retrieved 2026-11-07 |
+| `gh:` | Repository metadata (licence, latest release, archived or not) read from the GitHub API for the repository named after the prefix | retrieved 2026-11-07 |
 | `le:` | [Let's Encrypt documentation](https://letsencrypt.org/docs/); the path follows `letsencrypt.org/` | retrieved 2026-10-13 |
 
 Library facts without a line (for example "`google/uuid` v1.6.0 has `NewV7`") name the version
 instead. Line numbers refer to the versions above; later versions may differ. A fact re-checked
 at a later version, for example by a Phase 0 spike, cites that version inline, as in
 `[F quic-go v0.63.0 stream.go:183]` ([D39](14-open-decisions.md#project-and-process)).
-Documentation citations (`cf:`, `cf-api:`, `le:`) describe the vendor's documented behaviour on
+Documentation citations (`cf:`, `cf-api:`, `le:`, `rfc9111:`) describe the vendor's documented behaviour on
 the retrieval date; behaviour the documentation does not guarantee is tagged [V].
 
 ## Changing the design
