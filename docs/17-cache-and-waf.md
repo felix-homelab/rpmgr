@@ -108,7 +108,9 @@ the stricter rule wins.
   checked with the origin at every use, as the RFC says.
 - **What is never stored,** by default and under every rule
   ([04](04-security.md#gateway-cache-and-waf-phase-3)):
-  - the response to a request that carries credentials, `Authorization` or a `Cookie`;
+  - the response to a request that carries credentials, `Authorization` or a `Cookie`, except
+    under a rule marked ignore cookies for a request with a `Cookie` and no `Authorization`
+    ([Cache rules](#cache-rules));
   - a response with `Set-Cookie`, with `private` or with `no-store`, and one with `Vary: *`;
   - the response of a request whose `Cache-Control` says `no-store`;
   - a response to a method other than `GET`, to a request with `Range`, to an upgrade
@@ -117,10 +119,11 @@ the stricter rule wins.
   301, 308, 404, 405, 410, 414 and 501 [R]; the body only when it arrived whole and within the
   object limit. A `HEAD` request is answered from a stored `GET` response and makes none.
 - **Requests that carry credentials bypass the cache altogether,** with no lookup and no store
-  [R]. A lookup could hand the generic page stored for an anonymous visitor to a signed-in one.
+  [R], unless an ignore-cookies rule matches. A lookup could hand the generic page stored for an anonymous visitor to a signed-in one.
   The weakness is plain: a browser that holds a cookie for the hostname never uses the cache, also
   for static files, so the cache works for anonymous traffic and, best, for assets served from a
-  hostname that sets no cookie. This is the price of the rule and not worked around.
+  hostname that sets no cookie. A route's rule may be marked **ignore cookies** to lift this for
+  its own paths and nothing else ([Cache rules](#cache-rules), [D172](14-open-decisions.md#engineering)).
 - **The gateway's own credentials do not count** [R]. The `Authorization` header of a `basic_auth`
   rule and the cookies `__Host-rpmgr-auth` and `__Host-rpmgr-state` of an `oidc` rule are consumed
   by the gateway ([03](03-connections.md#access-policies)); the origin never sees them, so its
@@ -190,8 +193,18 @@ A route may carry rules that cache what the origin does not mark ([D172](14-open
   `Expires`. Anything the origin said wins, so a rule never overrides a `max-age`, a `no-cache`,
   `private` or `no-store`. There is no rule that replaces the origin's lifetime [R].
 - **A rule never stores** a response with `Set-Cookie`, `private` or `no-store`, nor the response
-  to a request with credentials, whatever it says. The gateway counts the reason, so that a page
+  to a request with credentials, whatever it says, except as the next point says. The gateway counts the reason, so that a page
   can show a rule that matches requests it can never store.
+- **Ignore cookies** ([D172](14-open-decisions.md#engineering)). A rule may carry the flag, for
+  the static paths of a site whose browsers hold a cookie for the hostname. For a request the rule
+  matches, the `Cookie` header is **not forwarded to the origin on a miss and is not part of the
+  key**, so the request is eligible, may be answered from the cache and may fill it, and every
+  visitor shares the one object. Nothing else changes: a request with `Authorization` still
+  bypasses the cache, a response with `Set-Cookie`, `private` or `no-store` is still never stored
+  (it is passed on, and counted as not storable), and a path the rule does not match keeps the
+  strict behaviour. Only an Admin may set the flag, and the web UI warns where it is set
+  ([04](04-security.md#gateway-cache-and-waf-phase-3)). Without the flag, a request with
+  credentials bypasses as before.
 - A rule's response has the same key, the same eviction and the same purge as any other.
 
 ### Access policies and credentials

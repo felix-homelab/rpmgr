@@ -182,6 +182,7 @@ message CacheRule {                    // Phase 3
   uint32 ttl_seconds = 4;
   uint32 stale_if_error_seconds = 5;
   bool enabled = 6;
+  bool ignore_cookies = 7;             // `cache.ignore_cookies`: Admin only, else PERMISSION_DENIED
 }
 
 message HeaderMatch {                  // Phase 2

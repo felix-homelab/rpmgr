@@ -574,6 +574,7 @@ their own account this way. Further rules:
 | Webhook endpoints, their secrets and deliveries (`webhooks.write`, Phase 2) | ✓ | ✓ | | |
 | Purge a route's cache by URL, prefix or route; list and look up its cached objects (`cache.manage`, Phase 3) | ✓ | ✓ | ✓ | |
 | Purge everything of the org's cache (`cache.purge_all`, Phase 3) | ✓ | ✓ | | |
+| Mark a cache rule ignore cookies, on a route or as an org default (`cache.ignore_cookies`, Phase 3) | ✓ | ✓ | | |
 | View WAF hits and settings (`waf.read`, Phase 3) | ✓ | ✓ | ✓ | |
 | Change the WAF settings of the org, a gateway group of the org and a route, and its exclusions (`waf.write`, Phase 3) | ✓ | ✓ | | |
 | SSO, MFA policy, org settings (`org.write`) | ✓ | | | |
@@ -860,11 +861,19 @@ limits are in [03](03-connections.md#cache-and-waf-limits-phase-3).
 
 **What the cache never stores or serves** (a test names each, [12](12-testing-and-quality.md#security-testing)):
 
-- The response to a request with `Authorization` or `Cookie`. Such a request does not even look
+- The response to a request with `Authorization`, and to one with `Cookie` unless an
+  ignore-cookies rule matches it (below). Such a request does not even look
   the cache up, so it is never given a response stored for another. The `Authorization` of a
   `basic_auth` rule and the cookies `__Host-rpmgr-auth` and `__Host-rpmgr-state` are consumed by the
   gateway and do not count; the gateway removes the cookies from the upstream request of a route
   with the cache on.
+- **The one exception, a cache rule marked ignore cookies** ([D172](14-open-decisions.md#engineering)):
+  for the paths of that rule the `Cookie` header is neither forwarded to the origin on a miss nor part
+  of the key, so one object is shared by every visitor. `Authorization` still bypasses, and a
+  response with `Set-Cookie`, `private` or `no-store` is still never stored. Only an Admin (Owner or
+  Admin) may set the flag, on a route or as an org default, and the web UI warns; the origin must
+  not depend on the cookie for those paths, which is the operator's declaration. A change of the flag
+  is part of `route.update` or the org settings change and is audited with its field.
 - A response with `Set-Cookie`, `private`, `no-store` or `Vary: *`, and the response of a request
   that says `no-store`. A cache rule changes none of this.
 - A response of a request the WAF scored over its threshold, also in detection mode, and any

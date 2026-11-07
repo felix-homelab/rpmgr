@@ -1116,6 +1116,7 @@ says why instead of a tab.
 ```
 ┌ Cache rules of route blog ─────────────────────────────── [Add rule] ────────────────┐
 │ 1  Prefix   /static/        TTL 1 d          stale on error 1 d       [on ●━] [Edit] │
+│    ⚠ ignores cookies: Cookie is not sent to the origin and shared by all visitors   │
 │ 2  Glob     /img/*.webp     TTL 7 d          —                        [on ●━] [Edit] │
 │ 3  Ext      css js woff2    TTL 1 h          —                        [on ●━] [Edit] │
 │ Then the org's rules (2).  Applies only to responses with no Cache-Control or Expires.│
@@ -1123,6 +1124,10 @@ says why instead of a tab.
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+- **Ignore cookies** is a checkbox in the rule's form, enabled for an Admin and disabled with the
+  reason for an Operator. Setting it shows the warning "Every visitor will get the same object and
+  the origin will not see the Cookie header on these paths. Use it only for content that does not
+  depend on a cookie." and the rule's row carries the warning mark. Authorization still bypasses.
 - **A rule's form:** the match (prefix, glob or extensions, validated against the bound in
   [03](03-connections.md#cache-and-waf-limits-phase-3)), the time to live and the stale-on-error
   time, with the sentence above shown beside it. Rules reorder by drag or the move buttons; the
