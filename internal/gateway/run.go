@@ -472,6 +472,7 @@ func Run(ctx context.Context, o RunOptions) error {
 					var seen bool // the old process reported; one of an earlier release never does
 					_ = handoff.Watch(pipe, func(d handoff.Drain) {
 						seen = true
+						o.Handoff.Inherited.Settled() // the old process reports once it retired the admin listener
 						ctl.SetDraining(agent.DrainingProcessOf(d))
 					}, nil)
 					oldAlive.Store(false)

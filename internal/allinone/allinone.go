@@ -21,7 +21,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -332,20 +331,17 @@ func Run(ctx context.Context, o RunOptions) error {
 	if reg == nil {
 		reg = telemetry.NewRegistry()
 	}
-	var (
-		mu     sync.Mutex
-		checks []func(context.Context) error
-	)
-	readiness := func(c func(context.Context) error) {
-		mu.Lock()
-		checks = append(checks, c)
-		mu.Unlock()
+	// Each role's check runs in its own background loop and /readyz answers from the last results,
+	// so that no role's slow check (the controller's database) delays the answer ([telemetry.ReadyChecks]).
+	checks := telemetry.NewReadyChecks()
+	readiness := func(role string) func(func(context.Context) error) {
+		return func(c func(context.Context) error) { checks.Add(role, c) }
 	}
 	// The controller's port-80 handler goes to the gateway, which serves port 80; the CA validates
 	// the public URL's certificate through the gateway, so ACME waits for it.
 	port80 := controller.RedirectHandler(public)
 	gwListening, conListening := make(chan struct{}), make(chan struct{})
-	ctl := &ctlHolder{reg: reg, ready: readiness, mem: mem, gone: make(chan error, 1),
+	ctl := &ctlHolder{reg: reg, ready: readiness("controller"), poke: checks.Poke, mem: mem, gone: make(chan error, 1),
 		opts: controller.RunOptions{Config: cfg.Controller(), Version: o.Version, Sources: routes.Sources(), Getenv: o.Getenv,
 			Logger: o.Logger.With("role", "controller"), ACMERoots: o.ACMERoots, Port80: func(h http.Handler) { port80 = h },
 			ACMEAfter: gwListening, SelfUpdate: true}}
@@ -416,7 +412,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		return gateway.Run(ctx, gateway.RunOptions{Config: cfg.Gateway(), Version: o.Version, Logger: o.Logger.With("role", "gateway"),
 			DrainPeriod: o.DrainPeriod, Controller: mem.Deliver, ControllerNames: []string{public.Hostname()}, Dial: mem.Dial,
 			Port80Fallback: port80, Tunnels: tunnels, RoutePorts: func(bound func(uint16) bool) { own.routes.Store(&bound) },
-			Registry: telemetry.WithLabels(reg, prometheus.Labels{"role": "gateway"}), Readiness: readiness, Handoff: link, Hold: hold,
+			Registry: telemetry.WithLabels(reg, prometheus.Labels{"role": "gateway"}), Readiness: readiness("gateway"), Handoff: link, Hold: hold,
 			Listening: func() { close(gwListening) }})
 	})
 	if err := wait(gwListening, gw); err != nil {
@@ -426,7 +422,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		return connector.Run(ctx, connector.RunOptions{Config: cfg.Connector(), Version: o.Version, Getenv: o.Getenv,
 			Logger: o.Logger.With("role", "connector"), ControlDial: mem.Dial, Own: own.own,
 			InProcess: &connector.InProcess{GatewayID: l.gatewayID, Dial: func(ctx context.Context) (net.Conn, error) { return tunnels.Dial(ctx, "") }},
-			Registry:  telemetry.WithLabels(reg, prometheus.Labels{"role": "connector"}), Readiness: readiness,
+			Registry:  telemetry.WithLabels(reg, prometheus.Labels{"role": "connector"}), Readiness: readiness("connector"),
 			Listening: func() { close(conListening) }})
 	})
 	if err := wait(conListening, con); err != nil {
@@ -436,15 +432,7 @@ func Run(ctx context.Context, o RunOptions) error {
 		return errors.Join(adminErr, con.end(), gw.end(), ctl.stop(false))
 	}
 	admin := start(func(ctx context.Context) error {
-		return telemetry.ServeAdminOn(ctx, cfg.Listen.Admin, listenAdmin, reg, func(ctx context.Context) error {
-			mu.Lock()
-			defer mu.Unlock()
-			var errs []error
-			for _, c := range checks {
-				errs = append(errs, c(ctx))
-			}
-			return errors.Join(errs...)
-		})
+		return telemetry.ServeAdminChecks(ctx, cfg.Listen.Admin, listenAdmin, reg, checks)
 	})
 	if o.Listening != nil {
 		o.Listening()

@@ -28,3 +28,16 @@ func TestDelaysGrew(t *testing.T) {
 		})
 	}
 }
+
+func TestParsePID(t *testing.T) {
+	for in, want := range map[string]int{"123\n": 123, " 7 ": 7} {
+		if got, err := parsePID(in); err != nil || got != want {
+			t.Errorf("parsePID(%q) = %d, %v; want %d", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "\n", "abc", "0", "-1", "1 2"} {
+		if got, err := parsePID(in); err == nil {
+			t.Errorf("parsePID(%q) = %d, nil; want an error, kill would signal a group", in, got)
+		}
+	}
+}

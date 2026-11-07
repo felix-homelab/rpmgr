@@ -149,7 +149,7 @@ func updaterApply() *cli.Command {
 // readyClient asks the admin listeners on this host: never through a proxy, and a redirect is an
 // answer, not followed.
 var readyClient = &http.Client{
-	Transport:     &http.Transport{Proxy: nil},
+	Transport:     &http.Transport{Proxy: nil, DisableKeepAlives: true}, // each poll asks the process that answers now (#1138)
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 }
 

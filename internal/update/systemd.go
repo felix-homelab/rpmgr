@@ -9,12 +9,22 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
+)
+
+// showTimeout bounds one systemctl show, and showWaitDelay how long Output waits for the pipes
+// after it was killed: a call that blocks must not use up the readiness window (#1138).
+const (
+	showTimeout   = 10 * time.Second
+	showWaitDelay = 2 * time.Second
 )
 
 // Systemd restarts and watches units through systemctl.
 type Systemd struct {
 	// Systemctl is the command; empty means "systemctl" on PATH.
 	Systemctl string
+	// ShowTimeout bounds one systemctl show; zero means 10 s.
+	ShowTimeout time.Duration
 }
 
 func (s Systemd) cmd() string {
@@ -62,8 +72,19 @@ func (s Systemd) Handoff(ctx context.Context, bin, role string) error {
 // State reads the unit's ActiveState, NRestarts, the restarts systemd made by Restart=, MainPID
 // and whether its Type is notify.
 func (s Systemd) State(ctx context.Context, unit string) (Unit, error) {
-	out, err := exec.CommandContext(ctx, s.cmd(), "show", "--property=ActiveState,NRestarts,MainPID,Type", unit).Output() //nolint:gosec // G204: a fixed unit name
+	limit := s.ShowTimeout
+	if limit <= 0 {
+		limit = showTimeout
+	}
+	cctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	c := exec.CommandContext(cctx, s.cmd(), "show", "--property=ActiveState,NRestarts,MainPID,Type", unit) //nolint:gosec // G204: a fixed unit name
+	c.WaitDelay = showWaitDelay
+	out, err := c.Output()
 	if err != nil {
+		if ctx.Err() == nil && cctx.Err() != nil {
+			err = fmt.Errorf("no answer within %s", limit)
+		}
 		return Unit{}, fmt.Errorf("systemctl show %s: %w", unit, err)
 	}
 	var u Unit

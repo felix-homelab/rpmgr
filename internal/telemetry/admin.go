@@ -57,6 +57,10 @@ func AdminHandler(reg prometheus.Gatherer, ready func(context.Context) error) ht
 	mux.Handle("GET /metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		// Every answer ends its connection: a poller that kept one would stay with the process
+		// that answered first, such as an old process of a hand-off that is no longer ready and
+		// no longer takes new connections (#1138).
+		w.Header().Set("Connection", "close")
 		if ready != nil {
 			ctx, cancel := context.WithTimeout(r.Context(), readyTimeout)
 			defer cancel()
@@ -98,8 +102,19 @@ func ServeAdmin(ctx context.Context, addr string, reg prometheus.Gatherer, ready
 }
 
 // ServeAdminOn is ServeAdmin with the listener from listen, which a process that a socket hand-off
-// started uses to take the admin listener of the old process.
+// started uses to take the admin listener of the old process. ready runs in the background and
+// /readyz answers from its last result ([ReadyChecks]).
 func ServeAdminOn(ctx context.Context, addr string, listen func(addr string) (net.Listener, error), reg prometheus.Gatherer, ready func(context.Context) error) error {
+	rc := NewReadyChecks()
+	if ready != nil {
+		rc.Add("", ready)
+	}
+	return ServeAdminChecks(ctx, addr, listen, reg, rc)
+}
+
+// ServeAdminChecks is ServeAdminOn with the checks of rc, which it runs until ctx ends; checks may be
+// added while it serves.
+func ServeAdminChecks(ctx context.Context, addr string, listen func(addr string) (net.Listener, error), reg prometheus.Gatherer, rc *ReadyChecks) error {
 	if err := CheckAdminAddr(addr); err != nil {
 		return err
 	}
@@ -107,7 +122,8 @@ func ServeAdminOn(ctx context.Context, addr string, listen func(addr string) (ne
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Handler: AdminHandler(reg, ready), ReadHeaderTimeout: adminHeader}
+	rc.Run(ctx)
+	srv := &http.Server{Handler: AdminHandler(reg, rc.Check), ReadHeaderTimeout: adminHeader}
 	stop := context.AfterFunc(ctx, func() { _ = srv.Close() })
 	defer stop()
 	if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {

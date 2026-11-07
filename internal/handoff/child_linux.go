@@ -46,7 +46,7 @@ func Inherited(getenv func(string) string) (*Handoff, error) {
 		return refuse(fmt.Errorf("status pipe: %w", err))
 	}
 	h := &Handoff{pipe: newPipe(conn), conn: conn, ppid: os.Getppid(), sockets: map[int]Entry{},
-		started: time.Now(), notify: getenv("NOTIFY_SOCKET")}
+		started: time.Now(), notify: getenv("NOTIFY_SOCKET"), settled: make(chan struct{})}
 	fail := func(err error) (*Handoff, error) {
 		_ = h.pipe.Send(msgFailed, err.Error())
 		_ = conn.Close()

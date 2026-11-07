@@ -203,6 +203,9 @@ func (l *listeners) ready(ctx context.Context, link *handoff.Link, rest func() [
 	if applied != nil {
 		applied() // the snapshot is applied: the handed-over sockets may be read from now on
 	}
+	if link.Inherited != nil {
+		link.Inherited.SettleAfterSwitch() // the old process still holds the admin listener
+	}
 	if err := link.Ready(); err != nil {
 		return fmt.Errorf("gateway: hand-off: %w", err)
 	}

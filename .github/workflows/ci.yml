@@ -403,6 +403,8 @@ jobs:
         run: git fetch --no-tags --depth=1 origin tag v0.3.0
       - name: The root updater on a real systemd host, with /var on a tmpfs
         if: ${{ !cancelled() }}
+        env:
+          OTA_FROM: v0.3.0 # the real tag, fetched above (#1138)
         run: .github/scripts/check-ota.sh
       - name: A lone gateway and an all-in-one upgraded under load with the socket hand-off
         if: ${{ !cancelled() }}

@@ -81,3 +81,12 @@ func notify(addr, state string) error {
 	}
 	return nil
 }
+
+// monotonicUSec is CLOCK_MONOTONIC in microseconds, the time systemd wants with RELOADING=1.
+func monotonicUSec() int64 {
+	var ts unix.Timespec
+	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts); err != nil {
+		return 0
+	}
+	return ts.Nano() / 1000
+}

@@ -1052,8 +1052,13 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 - `/readyz`: controller — database reachable and migrations current (checked at most once a
   minute); gateway — control session established (welcomed), snapshot applied and listeners bound;
   connector — control session established and a snapshot applied (data-session state is reported
-  separately and does not affect readiness). A check answers within 5 s or counts as not ready;
-  a 503 names the reason. The
+  separately and does not affect readiness). Each role's check runs in the background and `/readyz`
+  answers from its last result at once, so that it never waits for the database or a lock; a check
+  that is too slow or has not completed for too long counts as not ready; a 503 names the reason;
+  every answer ends its connection, so that a poller never stays with an old process of a
+  hand-off that no longer takes new connections; an all-in-one lists the reason of each role that
+  is not ready
+  ([03](03-connections.md#timeouts-keepalive-and-backoff)). The
   root updater uses the agents' `/readyz` as its health check after an update
   ([Hardened systemd units](#hardened-systemd-units)).
 - UI status pages: per agent (version, session, transport, RTT, applied revision, apply status and

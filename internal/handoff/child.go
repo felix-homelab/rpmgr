@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"slices"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,31 @@ type Handoff struct {
 	sockets map[int]Entry // by descriptor, until taken
 	started time.Time
 	notify  string // $NOTIFY_SOCKET
+
+	settleFor   time.Duration // tests: shorter than SettleMax
+	settle      bool          // Ready keeps the unit "reloading" until Settled or SettleMax
+	settled     chan struct{} // closed by Settled
+	settledOnce sync.Once
+}
+
+// SettleAfterSwitch makes Ready tell systemd the unit is reloading after the switch, and ready
+// only once Settled is called or SettleMax passed. A role calls it when the old process holds a
+// socket that clients use for their own judgement of this process, the admin listener.
+func (h *Handoff) SettleAfterSwitch() { h.settle = true }
+
+// SettleMax is how long, after the switch, the unit stays "reloading" for systemd while the old
+// process stops answering the admin listener (docs/03-connections.md, "Timeouts, keepalive and
+// backoff"). A role that learns the old process stopped calls Settled; else the wait ends here.
+const SettleMax = 3 * time.Second
+
+// Settled says the old process no longer takes connections on the shared sockets, so that the unit
+// is active again. Calling it more than once, or when no hand-off is waiting for it, is harmless.
+func (h *Handoff) Settled() {
+	h.settledOnce.Do(func() {
+		if h.settled != nil {
+			close(h.settled)
+		}
+	})
 }
 
 // Take returns the inherited socket for network ("tcp" or "udp") and addr as a file, and removes it
@@ -109,7 +135,33 @@ func (h *Handoff) Ready() error {
 	default:
 		return fmt.Errorf("handoff: the old process sent %q instead of switch", trim(typ))
 	}
-	return notify(h.notify, fmt.Sprintf("MAINPID=%d\nREADY=1", os.Getpid()))
+	// The unit is "reloading" until the old process stopped answering the admin listener, which
+	// both processes hold until the old one retires its copy a moment after the switch: an updater
+	// that polls /readyz once the unit is active would otherwise land on the old process, whose
+	// answer is "not ready", over a connection it then keeps for the whole wait (#1138).
+	if !h.settle {
+		return notify(h.notify, fmt.Sprintf("MAINPID=%d\nREADY=1", os.Getpid()))
+	}
+	if h.notify == "" {
+		return nil
+	}
+	if err := notify(h.notify, fmt.Sprintf("MAINPID=%d\nRELOADING=1\nMONOTONIC_USEC=%d", os.Getpid(), monotonicUSec())); err != nil {
+		return err
+	}
+	go func() {
+		wait := h.settleFor
+		if wait <= 0 {
+			wait = SettleMax
+		}
+		t := time.NewTimer(wait)
+		defer t.Stop()
+		select {
+		case <-h.settled:
+		case <-t.C:
+		}
+		_ = notify(h.notify, "READY=1")
+	}()
+	return nil
 }
 
 // Fail tells the old process that this one gives up, with the reason, and closes the status pipe

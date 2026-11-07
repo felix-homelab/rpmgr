@@ -15,6 +15,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -35,12 +37,13 @@ out=/var/log/ota-samples.txt
 exec >>$out 2>&1
 end=$(( $(date +%s) + $1 ))
 while [ "$(date +%s)" -lt "$end" ]; do
-  rz=$(curl -s -m 2 -o /dev/null -w '%{http_code}' http://` + aioAdmin + `/readyz)
+  rzt=$(curl -s -m 30 -o /dev/null -w '%{http_code} %{time_total}' http://` + aioAdmin + `/readyz)
+  rz=${rzt% *}; rt=${rzt#* }
   st=$(systemctl show -p ActiveState,SubState,NRestarts,MainPID,Type,StatusText rpmgr-all-in-one | tr '\n' ' ')
   act=$(systemctl show -p ActiveState --value rpmgr-all-in-one)
   # The updater's gates: ActiveState is active, no restart (NRestarts unchanged), /readyz is 200.
   if [ "$act" = active ] && [ "$rz" = 200 ]; then v=pass; else v="WAIT(unit=$act readyz=$rz)"; fi
-  echo "== $(date +%T) gate=$v readyz=$rz"
+  echo "== $(date +%T) gate=$v readyz=$rz readyz_s=$rt"
   echo "$st"
   cg=$(systemctl show -p ControlGroup --value rpmgr-all-in-one)
   for p in $(cat /sys/fs/cgroup$cg/cgroup.procs 2>/dev/null); do
@@ -56,11 +59,23 @@ const watcher = `#!/bin/sh
 exec >>/var/log/ota-readyz.txt 2>&1
 end=$(( $(date +%s) + $1 )); last=
 while [ "$(date +%s)" -lt "$end" ]; do
-  c=$(curl -s -m 2 -o /dev/null -w '%{http_code}' http://` + aioAdmin + `/readyz)
-  [ "$c" = "$last" ] || { echo "$(date +%T.%N | cut -c1-12) readyz=$c active=$(systemctl show -p ActiveState --value rpmgr-all-in-one)"; last=$c; }
+  ct=$(curl -s -m 30 -o /dev/null -w '%{http_code} %{time_total}' http://` + aioAdmin + `/readyz)
+  c=${ct% *}; t=${ct#* }
+  [ "$c" = "$last" ] || { echo "$(date +%T.%N | cut -c1-12) readyz=$c readyz_s=$t active=$(systemctl show -p ActiveState --value rpmgr-all-in-one)"; last=$c; }
   sleep 0.2
 done
 `
+
+// maxTime is the largest "readyz_s=<seconds>" in the sampler's lines (curl's time_total of /readyz).
+func maxTime(samples string) float64 {
+	var m float64
+	for _, f := range regexp.MustCompile(`readyz_s=([0-9.]+)`).FindAllStringSubmatch(samples, -1) {
+		if v, err := strconv.ParseFloat(f[1], 64); err == nil {
+			m = max(m, v)
+		}
+	}
+	return m
+}
 
 // testAllInOneUpdate (issue 1138) runs the previous release's root updater on a real all-in-one
 // under systemd with the socket hand-off drop-in (Type=notify, NotifyAccess=all), routes and open
@@ -68,12 +83,6 @@ done
 // the admin listener for up to five minutes; it must see the new process active, not restarted
 // and ready, and must not roll back. Every five seconds of the window are logged.
 func testAllInOneUpdate(t *testing.T) {
-	// Known failure, tracked in #1138: CI reproduced the maintainer's rollback. The v0.3.0
-	// updater's own `systemctl show` blocks for the whole window although the unit is active and
-	// /readyz answers 200. The fix of #1138 removes this skip; OTA_AIO_UPDATE=1 runs the case now.
-	if os.Getenv("OTA_AIO_UPDATE") != "1" {
-		t.Skip("known failure #1138: the v0.3.0 updater's systemctl show blocks during the window; set OTA_AIO_UPDATE=1 to run it")
-	}
 	h := newAIOHost(t)
 	h.exec(`systemd-run --unit=svc /b/e2eclient serve -listen 127.0.0.1:7007 -udp 127.0.0.1:7008 >/dev/null`)
 	h.setupAIO()
@@ -89,6 +98,7 @@ func testAllInOneUpdate(t *testing.T) {
 	out := h.exec(`systemctl start rpmgr-update.service; echo "start: $?"; journalctl -u rpmgr-update.service --no-pager -o cat | cut -c1-300; cat /run/rpmgr-update/status.json; echo; echo "version: $(/usr/local/bin/rpmgr version)"`)
 	samples := h.exec("sleep 10; cat /var/log/ota-samples.txt; echo; cat /var/log/ota-readyz.txt; echo; journalctl -u rpmgr-all-in-one --no-pager -o cat | cut -c1-260 | grep -v 'data session' | tail -n 60; echo; systemctl show -p ActiveState,SubState,NRestarts,MainPID,Type rpmgr-all-in-one; systemctl status rpmgr-all-in-one --no-pager -l | head -n 20")
 	t.Logf("apply:\n%s\nsamples:\n%s", out, samples)
+	t.Logf("max /readyz latency in the samples: %.3f s over %d samples", maxTime(samples), strings.Count(samples, "gate="))
 	for _, want := range []string{"start: 0", "version: rpmgr " + aioNewVer, `"state":"updated"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("no %q in:\n%s", want, out)
@@ -219,4 +229,15 @@ func selfSigned(t *testing.T) ([]byte, []byte) {
 		t.Fatal(err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: kb})
+}
+
+// TestMaxTime: only the sampler's own field counts, not the "time=" of a log line.
+func TestMaxTime(t *testing.T) {
+	in := "== 07:03:32 gate=pass readyz=200 readyz_s=0.000672\ntime=2026-11-06T07:03:40.202Z level=INFO\n07:03:40.075 readyz=503 readyz_s=0.250000 active=active\n"
+	if got := maxTime(in); got != 0.25 {
+		t.Errorf("maxTime = %v, want 0.25", got)
+	}
+	if got := maxTime("nothing"); got != 0 {
+		t.Errorf("maxTime of no samples = %v", got)
+	}
 }
