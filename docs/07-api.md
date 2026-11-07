@@ -505,7 +505,8 @@ spec:
   envelope does. Instance events go to instance endpoints only: the instance chain's audit actions, releases and
   rollouts, events of gateways in shared groups, and the instance alerts. An endpoint names the
   types it wants, by name or by prefix such as `route.*`; none means all
-  ([D145](14-open-decisions.md#engineering), E1, E12).
+  ([D145](14-open-decisions.md#engineering), E1, E12). The complete list of types is generated
+  from the code: the [event reference](guide/reference/events.md) of the user guide.
 - **Envelope** ([D144](14-open-decisions.md#engineering)): `POST` of
   `{"id", "type", "time", "org_id", "actor": {"type", "id"}, "subject": {"type", "id", "name"},
   "summary", "changed": [field names]}`; no resource body. Fetch the resource through the API for

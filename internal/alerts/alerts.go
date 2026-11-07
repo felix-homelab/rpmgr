@@ -153,7 +153,7 @@ func Apply(ctx context.Context, tx *ent.Tx, now time.Time, obs []Observation) ([
 			if err := tx.Alert.UpdateOne(a).SetState(alert.StateFiring).SetFiredAt(now).Exec(ctx); err != nil {
 				return nil, err
 			}
-			if err := emitEvent(ctx, tx, a, "alert.fire", &out); err != nil {
+			if err := emitEvent(ctx, tx, a, events.AlertFire, &out); err != nil {
 				return nil, err
 			}
 		}
@@ -171,7 +171,7 @@ func Apply(ctx context.Context, tx *ent.Tx, now time.Time, obs []Observation) ([
 		if err := tx.Alert.UpdateOne(a).SetState(alert.StateResolved).SetResolvedAt(now).Exec(ctx); err != nil {
 			return nil, err
 		}
-		if err := emitEvent(ctx, tx, a, "alert.resolve", &out); err != nil {
+		if err := emitEvent(ctx, tx, a, events.AlertResolve, &out); err != nil {
 			return nil, err
 		}
 	}
@@ -201,7 +201,7 @@ func event(ctx context.Context, tx *ent.Tx, a *ent.Alert, typ string) (events.Ev
 		name = a.SubjectID
 	}
 	verb := "fires"
-	if typ == "alert.resolve" {
+	if typ == events.AlertResolve {
 		verb = "resolved"
 	}
 	e.Summary = fmt.Sprintf("%s: %s %s, %s", a.Kind, Title(a.Kind), verb, name)
