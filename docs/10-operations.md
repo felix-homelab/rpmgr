@@ -1055,7 +1055,9 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
   separately and does not affect readiness). Each role's check runs in the background and `/readyz`
   answers from its last result at once, so that it never waits for the database or a lock; a check
   that is too slow or has not completed for too long counts as not ready; a 503 names the reason;
-  an all-in-one lists the reason of each role that is not ready
+  every answer ends its connection, so that a poller never stays with an old process of a
+  hand-off that no longer takes new connections; an all-in-one lists the reason of each role that
+  is not ready
   ([03](03-connections.md#timeouts-keepalive-and-backoff)). The
   root updater uses the agents' `/readyz` as its health check after an update
   ([Hardened systemd units](#hardened-systemd-units)).

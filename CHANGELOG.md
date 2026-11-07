@@ -15,7 +15,11 @@ Changes to the design documents are not recorded here: see the git history and t
 - `/readyz` answers from the last background check, within milliseconds, instead of running the
   checks while the caller waits. A busy all-in-one no longer makes the updater of an older release
   see "nothing answers" during a hand-off and roll back; a check that is stuck for 10 s still makes
-  the role not ready (#1138).
+  the role not ready. A gateway or all-in-one that took over from a running process now keeps its
+  systemd unit `reloading` until the old process stopped answering the admin listener, at most
+  3 s, and every `/readyz` answer closes its connection; before, an updater that polled during
+  that moment kept a connection to the old process, which answers "not ready", and rolled the
+  update back (#1138).
 - The zone's record list offers **Adopt** only on foreign records that rpmgr can adopt, those at a
   name that a route or DNS name of the organisation publishes and of a type it manages; the others
   show why not. A refused adoption, in the web UI and in `rpmgr adopt dns-record`, now names the

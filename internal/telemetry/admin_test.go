@@ -36,6 +36,11 @@ func TestAdminHandler(t *testing.T) {
 	if code, _ := get(t, h, http.MethodGet, "/readyz"); code != http.StatusOK {
 		t.Errorf("/readyz when ready: %d", code)
 	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/readyz", nil))
+	if rec.Header().Get("Connection") != "close" {
+		t.Errorf("/readyz keeps its connection open: %q", rec.Header().Get("Connection"))
+	}
 	notReady = errors.New("no control session")
 	if code, body := get(t, h, http.MethodGet, "/readyz"); code != http.StatusServiceUnavailable || !strings.Contains(body, "no control session") {
 		t.Errorf("/readyz when not ready: %d %q", code, body)

@@ -43,7 +43,7 @@ while [ "$(date +%s)" -lt "$end" ]; do
   act=$(systemctl show -p ActiveState --value rpmgr-all-in-one)
   # The updater's gates: ActiveState is active, no restart (NRestarts unchanged), /readyz is 200.
   if [ "$act" = active ] && [ "$rz" = 200 ]; then v=pass; else v="WAIT(unit=$act readyz=$rz)"; fi
-  echo "== $(date +%T) gate=$v readyz=$rz time=$rt"
+  echo "== $(date +%T) gate=$v readyz=$rz readyz_s=$rt"
   echo "$st"
   cg=$(systemctl show -p ControlGroup --value rpmgr-all-in-one)
   for p in $(cat /sys/fs/cgroup$cg/cgroup.procs 2>/dev/null); do
@@ -61,15 +61,15 @@ end=$(( $(date +%s) + $1 )); last=
 while [ "$(date +%s)" -lt "$end" ]; do
   ct=$(curl -s -m 30 -o /dev/null -w '%{http_code} %{time_total}' http://` + aioAdmin + `/readyz)
   c=${ct% *}; t=${ct#* }
-  [ "$c" = "$last" ] || { echo "$(date +%T.%N | cut -c1-12) readyz=$c time=$t active=$(systemctl show -p ActiveState --value rpmgr-all-in-one)"; last=$c; }
+  [ "$c" = "$last" ] || { echo "$(date +%T.%N | cut -c1-12) readyz=$c readyz_s=$t active=$(systemctl show -p ActiveState --value rpmgr-all-in-one)"; last=$c; }
   sleep 0.2
 done
 `
 
-// maxTime is the largest "time=<seconds>" in the sampler's lines (curl's time_total of /readyz).
+// maxTime is the largest "readyz_s=<seconds>" in the sampler's lines (curl's time_total of /readyz).
 func maxTime(samples string) float64 {
 	var m float64
-	for _, f := range regexp.MustCompile(`time=([0-9.]+)`).FindAllStringSubmatch(samples, -1) {
+	for _, f := range regexp.MustCompile(`readyz_s=([0-9.]+)`).FindAllStringSubmatch(samples, -1) {
 		if v, err := strconv.ParseFloat(f[1], 64); err == nil {
 			m = max(m, v)
 		}
@@ -229,4 +229,15 @@ func selfSigned(t *testing.T) ([]byte, []byte) {
 		t.Fatal(err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: kb})
+}
+
+// TestMaxTime: only the sampler's own field counts, not the "time=" of a log line.
+func TestMaxTime(t *testing.T) {
+	in := "== 07:03:32 gate=pass readyz=200 readyz_s=0.000672\ntime=2026-11-06T07:03:40.202Z level=INFO\n07:03:40.075 readyz=503 readyz_s=0.250000 active=active\n"
+	if got := maxTime(in); got != 0.25 {
+		t.Errorf("maxTime = %v, want 0.25", got)
+	}
+	if got := maxTime("nothing"); got != 0 {
+		t.Errorf("maxTime of no samples = %v", got)
+	}
 }

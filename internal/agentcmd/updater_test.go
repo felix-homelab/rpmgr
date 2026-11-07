@@ -6,12 +6,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/felix-homelab/rpmgr/internal/cli"
@@ -226,5 +228,38 @@ func TestControlPlane(t *testing.T) {
 	write("controller", "version: 1\npublic_url: https://panel.example.com\nlisten: {admin: '"+strings.TrimPrefix(srv.URL, "http://")+"'}\n")
 	if err := ready(context.Background(), dir, "controller"); err != nil {
 		t.Errorf("a ready controller: %v", err)
+	}
+}
+
+// TestUpdaterReady_noKeptConnection: each poll opens its own connection, so a role whose old
+// process still holds the admin listener cannot keep the updater, for the whole wait, on a
+// connection to a process that answers "not ready" (#1138).
+func TestUpdaterReady_noKeptConnection(t *testing.T) {
+	var mu sync.Mutex
+	conns := map[string]bool{}
+	srv := httptest.NewUnstartedServer(telemetry.AdminHandler(telemetry.NewRegistry(), func(context.Context) error { return nil }))
+	srv.Config.ConnState = func(c net.Conn, s http.ConnState) {
+		if s == http.StateNew {
+			mu.Lock()
+			conns[c.RemoteAddr().String()] = true
+			mu.Unlock()
+		}
+	}
+	srv.Start()
+	defer srv.Close()
+	dir := t.TempDir()
+	boot := "version: 1\ncontroller: {endpoints: ['https://panel.example.com']}\nlisten: {admin: '" + strings.TrimPrefix(srv.URL, "http://") + "'}\n"
+	if err := os.WriteFile(filepath.Join(dir, "connector.yaml"), []byte(boot), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if err := ready(context.Background(), dir, "connector"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(conns) != 3 {
+		t.Errorf("3 polls used %d connections, want 3", len(conns))
 	}
 }

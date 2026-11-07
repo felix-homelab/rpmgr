@@ -21,3 +21,5 @@ func Notify(func(string) string) error { return nil }
 func notify(string, string) error { return nil }
 
 func closeFD(int) {}
+
+func monotonicUSec() int64 { return 0 }

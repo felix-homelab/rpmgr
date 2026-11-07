@@ -57,6 +57,10 @@ func AdminHandler(reg prometheus.Gatherer, ready func(context.Context) error) ht
 	mux.Handle("GET /metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		// Every answer ends its connection: a poller that kept one would stay with the process
+		// that answered first, such as an old process of a hand-off that is no longer ready and
+		// no longer takes new connections (#1138).
+		w.Header().Set("Connection", "close")
 		if ready != nil {
 			ctx, cancel := context.WithTimeout(r.Context(), readyTimeout)
 			defer cancel()

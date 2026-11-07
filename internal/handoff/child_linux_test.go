@@ -453,3 +453,82 @@ func TestHandoff_ReadyAndSwitch(t *testing.T) {
 		})
 	}
 }
+
+// TestReady_Settle: a role that asked for it keeps the unit reloading after the switch, so that an
+// updater does not poll while the old process still answers the admin listener (#1138); the unit
+// is active again when the role says the old process retired, or after the longest wait. A role
+// that did not ask tells systemd it is ready at once.
+func TestReady_Settle(t *testing.T) {
+	read := func(ns *net.UnixConn) string {
+		t.Helper()
+		buf := make([]byte, 256)
+		_ = ns.SetReadDeadline(time.Now().Add(5 * time.Second))
+		n, err := ns.Read(buf)
+		if err != nil {
+			t.Fatalf("no message to systemd: %v", err)
+		}
+		return string(buf[:n])
+	}
+	start := func(t *testing.T, settle bool, wait ...time.Duration) (*Handoff, *net.UnixConn, error) {
+		t.Helper()
+		ns := notifySocket(t)
+		ours, theirs := net.Pipe()
+		t.Cleanup(func() { _ = ours.Close() })
+		h := &Handoff{pipe: newPipe(theirs), conn: theirs, ppid: os.Getppid(), started: time.Now(),
+			notify: ns.LocalAddr().String(), settled: make(chan struct{})}
+		if settle {
+			h.SettleAfterSwitch()
+		}
+		if len(wait) > 0 {
+			h.settleFor = wait[0]
+		}
+		go func() {
+			p := newPipe(ours)
+			_, _, _ = p.Recv() // ready
+			_ = p.Send(msgSwitch, "")
+		}()
+		return h, ns, h.Ready()
+	}
+	t.Run("not asked", func(t *testing.T) {
+		_, ns, err := start(t, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := read(ns), fmt.Sprintf("MAINPID=%d\nREADY=1", os.Getpid()); got != want {
+			t.Errorf("systemd was told %q, want %q", got, want)
+		}
+	})
+	t.Run("settled by the role", func(t *testing.T) {
+		h, ns, err := start(t, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := read(ns); !strings.HasPrefix(got, fmt.Sprintf("MAINPID=%d\nRELOADING=1\nMONOTONIC_USEC=", os.Getpid())) {
+			t.Fatalf("systemd was told %q, want MAINPID and RELOADING", got)
+		}
+		_ = ns.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+		if n, err := ns.Read(make([]byte, 64)); err == nil {
+			t.Fatalf("READY before the old process retired (%d bytes)", n)
+		}
+		h.Settled()
+		h.Settled() // harmless twice
+		if got := read(ns); got != "READY=1" {
+			t.Errorf("after Settled systemd was told %q, want READY=1", got)
+		}
+	})
+	t.Run("longest wait", func(t *testing.T) {
+		_, ns, err := start(t, true, 200*time.Millisecond)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = read(ns) // RELOADING
+		if got := read(ns); got != "READY=1" {
+			t.Errorf("after the longest wait systemd was told %q, want READY=1", got)
+		}
+	})
+	t.Run("no notify socket", func(t *testing.T) {
+		h := &Handoff{notify: "", settled: make(chan struct{})}
+		h.SettleAfterSwitch()
+		h.Settled() // must not panic without a waiting hand-off
+	})
+}
