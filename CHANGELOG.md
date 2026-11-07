@@ -47,6 +47,9 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Added
 
+- The zone page now changes the zone's settings: whether it publishes route hostnames, allows
+  proxied names and wildcards, and its delete threshold. Before, that took `rpmgr update zone` or
+  the API.
 - A rollout warns before it offers a release that a host's local policy refuses. Connectors and
   gateways tell the controller the `auto_update` and `update_channel` of their policy file, again
   when it changes. The start dialog and `rpmgr create rollout` (also `--preview`) say how many

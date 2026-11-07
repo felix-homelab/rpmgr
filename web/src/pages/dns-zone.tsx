@@ -20,6 +20,7 @@ import { apiError } from "@/lib/api-error";
 import { Reason, reasonOf } from "@/lib/errors";
 import { when } from "@/lib/format";
 import { AdoptButton, RecordContent, ZoneRecords } from "@/pages/dns-records";
+import { ZoneSettings } from "@/pages/dns-zone-settings";
 import { useOrg } from "@/session";
 import { useStepUp } from "@/step-up";
 
@@ -90,7 +91,7 @@ export function DnsZonePage() {
       {error && <Alert>{error}</Alert>}
       {note && <p role="status">{note}</p>}
       {zone && <DelegationWarning zone={zone} />}
-      {zone && <ZoneState zone={zone} />}
+      {zone && <ZoneState zone={zone} admin={admin} />}
       {zone && zone.syncState !== ZoneSyncState.DISABLED && <PlanCard zone={zone} />}
       <ZoneRecords zoneId={zoneId} admin={admin} />
       {zone && !zone.removalPending && <RemoveCard zone={zone} />}
@@ -116,13 +117,17 @@ function DelegationWarning({ zone }: { zone: DnsZone }) {
   return text ? <Alert>{text}</Alert> : null;
 }
 
-// ZoneState shows what the zone's gates are and what its provider answered.
-function ZoneState({ zone: z }: { zone: DnsZone }) {
+// ZoneState shows what the zone's gates are and what its provider answered. Owners and Admins
+// change the gates there.
+function ZoneState({ zone: z, admin }: { zone: DnsZone; admin: boolean }) {
   const { t } = useTranslation();
   const yes = (v: boolean) => t(v ? "dnsZone.on" : "dnsZone.off");
+  const [saved, setSaved] = useState(false);
   return (
-    <Card title={t("dnsZone.gates")}>
-      <p>{t("dnsZone.gatesLine", { routes: yes(z.publishRouteHostnames), proxied: yes(z.allowProxied), wildcards: yes(z.allowWildcards), threshold: z.deleteThreshold })}</p>
+    <Card title={t(admin ? "dnsZone.settings" : "dnsZone.gates")}>
+      {admin ? <ZoneSettings key={z.etag} zone={z} saved={saved} onSaved={setSaved} /> : (
+        <p>{t("dnsZone.gatesLine", { routes: yes(z.publishRouteHostnames), proxied: yes(z.allowProxied), wildcards: yes(z.allowWildcards), threshold: z.deleteThreshold })}</p>
+      )}
       <div className="flex flex-wrap gap-x-3 text-muted-foreground">
         {z.heldReason && z.syncState === ZoneSyncState.HELD && <span>{t("dns.heldReason", { reason: t(`dns.held.${z.heldReason}`, { defaultValue: z.heldReason }) })}</span>}
         {z.lastSyncedTime && <span>{t("dns.synced", { when: when(z.lastSyncedTime) })}</span>}
