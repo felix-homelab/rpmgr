@@ -332,9 +332,14 @@ func newConnectorOptions(t *testing.T, w *world, opt func(*connector.Options)) *
 	return m
 }
 
+// eventuallyWithin is how long eventually polls. A passing test returns at once; the limit is only
+// the time a failure takes, and it covers a runner that emulates the CPU (riscv64 under QEMU needs
+// more than 10 s for the sessions of TestTransport_PinnedRouteUsesPinnedSessions).
+const eventuallyWithin = 60 * time.Second
+
 func eventually(t *testing.T, what string, f func() bool) {
 	t.Helper()
-	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+	for deadline := time.Now().Add(eventuallyWithin); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		if f() {
 			return
 		}

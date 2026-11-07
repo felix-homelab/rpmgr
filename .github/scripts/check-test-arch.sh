@@ -49,7 +49,24 @@ echo "go test linux/$arch ${flags[*]}"
 # Tests listen on ports from internal/testutil/freeport, below the kernel's ephemeral range; a
 # runner whose range reaches lower would take them for outgoing connections.
 echo "ephemeral ports: $(cat /proc/sys/net/ipv4/ip_local_port_range 2>/dev/null || echo unknown)"
-if ! env GOOS=linux GOARCH="$arch" GOARM=7 CGO_ENABLED="$cgo" "${limits[@]}" go test "${flags[@]}" "${count[@]}" ./...; then
+export GOOS=linux GOARCH="$arch" GOARM=7 CGO_ENABLED="$cgo"
+for l in "${limits[@]}"; do export "${l?}"; done
+# internal/controller and internal/apisvc are run as two parts each, by test name ("pkg#k/m", as in
+# check-go.sh): on arm64 with the race detector each ran for nearly the whole limit of 20 minutes
+# per go test run (the nightly run hit it in internal/apisvc without a failing test). The other
+# packages run together, as before.
+module=$(go list -m)
+mapfile -t pkgs < <(go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v '^$' |
+  sort | split_expand "$module/internal/controller=2" "$module/internal/apisvc=2")
+plain=()
+for pkg in "${pkgs[@]}"; do
+  if [[ $pkg == *'#'* ]]; then
+    split_run "$pkg" "${flags[@]}" "${count[@]}"
+  else
+    plain+=("$pkg")
+  fi
+done
+if ((${#plain[@]} > 0)) && ! go test "${flags[@]}" "${count[@]}" "${plain[@]}"; then
   fail "tests failed on linux/$arch"
 fi
 finish

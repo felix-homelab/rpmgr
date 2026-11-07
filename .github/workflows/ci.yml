@@ -349,8 +349,9 @@ jobs:
     if: ${{ needs.changes.outputs.go == 'true' }}
     runs-on: ubuntu-24.04-arm
     # arm64, then armv7. Full runs keep the race detector on arm64: 13 to 20 minutes on the hosted
-    # runner. Pull requests and merge groups run without it (check-test-arch.sh).
-    timeout-minutes: 30
+    # runner. Pull requests and merge groups run without it (check-test-arch.sh). The two slowest
+    # packages run as two parts each one after the other, which leaves less overlap: 45 minutes.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

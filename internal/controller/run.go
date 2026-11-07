@@ -63,6 +63,11 @@ import (
 // (docs/03-connections.md, "Timeouts, keepalive and backoff"); a variable for tests.
 var drainWait = 5 * time.Second
 
+// noJobs keeps Run from starting its background jobs. Only tests set it (NoJobs in export_test.go),
+// for a test that compares the database before and after and must see only what its own requests
+// wrote.
+var noJobs bool
+
 // RunOptions configure Run.
 type RunOptions struct {
 	Config  config.Controller
@@ -519,6 +524,9 @@ func Run(ctx context.Context, o RunOptions) error {
 	defer stopJobs()
 	var bg sync.WaitGroup
 	job := func(j lease.Job, name string) {
+		if noJobs {
+			return
+		}
 		bg.Go(func() { leases.Run(jobs, j, func(err error) { o.Logger.Warn(name, "error", err) }) })
 	}
 	caOpts := CAOptions{DB: db, CA: ca, Sealer: sealer, Leases: leases, Now: o.Now, Logger: o.Logger}
