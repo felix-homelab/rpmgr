@@ -156,14 +156,16 @@ of your organisation.
 rpmgr create dns-name --name ssh.example.com --group edge
 ```
 
-A wildcard needs a zone that allows wildcards and a domain claim that covers them
-(`rpmgr update zone example.com --allow-wildcards=true`).
+A wildcard needs a zone that allows wildcards and a domain claim that covers them. Switch on
+**Allow wildcard names** in the **Settings** of the zone's page, or run
+`rpmgr update zone example.com --allow-wildcards=true`.
 
 ## Proxied routes
 
 An HTTP route can have its names **proxied by Cloudflare**: visitors reach Cloudflare, which passes
 the request on to your gateways. Switch it on in the route's form, or with `--dns-proxied`; the zone
-must allow it first (`rpmgr update zone example.com --allow-proxied=true`). Set the zone's SSL/TLS
+must allow it first: switch on **Allow Cloudflare-proxied records** in the **Settings** of the
+zone's page, or run `rpmgr update zone example.com --allow-proxied=true`. Set the zone's SSL/TLS
 mode at Cloudflare to Full (strict). The gateway takes the client's address from Cloudflare's
 header, and only for a request that really comes from Cloudflare's published addresses
 ([15](../15-dns.md#proxied-http-routes)). The route form and

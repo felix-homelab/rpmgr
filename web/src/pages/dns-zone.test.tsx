@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it } from "vitest";
 import {
   DnsRecordState, DnsZoneService, ZoneDelegationState, ZoneProviderStatus, ZoneSyncState,
-  type AdoptRecordsRequest, type ApproveZonePlanRequest, type ListZoneRecordsRequest, type PlanZoneSyncRequest, type ReleaseRecordRequest, type RemoveZoneRequest,
+  type AdoptRecordsRequest, type ApproveZonePlanRequest, type ListZoneRecordsRequest, type PlanZoneSyncRequest, type ReleaseRecordRequest, type RemoveZoneRequest, type UpdateZoneRequest,
 } from "@/gen/rpmgr/v1/dns_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { apiError, auth, show } from "@/testing/api";
@@ -45,12 +45,12 @@ const foreign = [
   { id: "", providerRecordId: "pr_n", name: "www.example.com", type: "A", content: "203.0.113.9", state: DnsRecordState.FOREIGN, adoptable: false, adoptReason: "not_published" },
 ];
 
-interface Opts { role?: string; zone?: typeof held; planOf?: (n: number) => string; approveFails?: boolean; warning?: string }
+interface Opts { role?: string; updateFails?: Code; zone?: typeof held; planOf?: (n: number) => string; approveFails?: boolean; warning?: string }
 
 function page(opts: Opts = {}) {
   const calls = {
     getZone: 0, plans: [] as PlanZoneSyncRequest[], records: [] as ListZoneRecordsRequest[], approve: [] as ApproveZonePlanRequest[], adopt: [] as AdoptRecordsRequest[],
-    release: [] as ReleaseRecordRequest[], remove: [] as RemoveZoneRequest[], enable: 0, sync: 0, stepUps: 0,
+    release: [] as ReleaseRecordRequest[], remove: [] as RemoveZoneRequest[], update: [] as UpdateZoneRequest[], enable: 0, sync: 0, stepUps: 0,
   };
   let steppedUp = false;
   const needStepUp = () => {
@@ -84,6 +84,14 @@ function page(opts: Opts = {}) {
       releaseRecord: (req) => (needStepUp(), calls.release.push(req), { warning: opts.warning ?? "" }),
       enableZone: () => (needStepUp(), calls.enable++, { dnsZone: { ...current, syncState: ZoneSyncState.HELD } }),
       syncZone: () => (calls.sync++, { dnsZone: current }),
+      updateZone: (req) => {
+        if (opts.updateFails !== undefined) {
+          throw apiError(opts.updateFails, opts.updateFails === Code.FailedPrecondition ? "ETAG_MISMATCH" : "INVALID_ARGUMENT");
+        }
+        calls.update.push(req);
+        current = { ...current, ...req.dnsZone, etag: "6" } as typeof held;
+        return { dnsZone: current };
+      },
       removeZone: (req) => {
         needStepUp();
         calls.remove.push(req);
@@ -342,5 +350,73 @@ describe("DNS zone: long record content", () => {
   it("shows short content whole, without a proxied suffix when not proxied", () => {
     const r = render(<RecordContent content="192.0.2.7" />);
     expect(r.getByTitle("192.0.2.7").textContent).toBe("192.0.2.7");
+  });
+});
+
+describe("DNS zone: settings", () => {
+  it("saves only the changed fields, with the etag, and shows the saved zone", async () => {
+    const calls = page();
+    const form = within(await screen.findByRole("form", { name: "Settings" }));
+    expect((form.getByLabelText("Publish the hostnames of the org's routes in this zone") as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(form.getByLabelText("Allow wildcard names"));
+    fireEvent.change(form.getByLabelText("Delete threshold"), { target: { value: "25" } });
+    fireEvent.click(form.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.update).toHaveLength(1));
+    const req = calls.update[0]!;
+    expect(req.updateMask?.paths).toEqual(["allow_wildcards", "delete_threshold"]);
+    expect([req.dnsZone?.id, req.dnsZone?.allowWildcards, req.dnsZone?.deleteThreshold, req.etag]).toEqual(["dnz_1", true, 25, "5"]);
+    expect(await screen.findByText("The zone's settings are saved.")).toBeTruthy();
+    await waitFor(() => expect(calls.getZone).toBeGreaterThan(1));
+    expect(calls.stepUps).toBe(0);
+    await waitFor(() => expect((within(screen.getByRole("form", { name: "Settings" })).getByLabelText("Allow wildcard names") as HTMLInputElement).checked).toBe(true));
+  });
+
+  it("sends nothing when nothing changed", async () => {
+    const calls = page();
+    fireEvent.click(within(await screen.findByRole("form", { name: "Settings" })).getByRole("button", { name: "Save" }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls.update).toHaveLength(0);
+  });
+
+  it("shows no form to an Operator", async () => {
+    page({ role: "operator" });
+    expect((await screen.findAllByText(/owns/)).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("form", { name: "Settings" })).toBeNull();
+    expect(screen.queryByLabelText("Delete threshold")).toBeNull();
+  });
+
+  it.each(["", "-1", "1001", "1.5", "abc", "1e2", "99999999999"])("refuses the threshold %j and sends nothing", async (value) => {
+    const calls = page();
+    const form = within(await screen.findByRole("form", { name: "Settings" }));
+    fireEvent.change(form.getByLabelText("Delete threshold"), { target: { value } });
+    fireEvent.click(form.getByRole("button", { name: "Save" }));
+    expect(await form.findByText("Enter a whole number from 0 to 1000.")).toBeTruthy();
+    expect(calls.update).toHaveLength(0);
+  });
+
+  it.each([["0", 0], ["1000", 1000]])("accepts the boundary threshold %s", async (value, n) => {
+    const calls = page();
+    const form = within(await screen.findByRole("form", { name: "Settings" }));
+    fireEvent.change(form.getByLabelText("Delete threshold"), { target: { value } });
+    fireEvent.click(form.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.update.map((x) => x.dnsZone?.deleteThreshold)).toEqual([n]));
+  });
+
+  it("shows the refusal of a change made meanwhile and reloads the zone", async () => {
+    const calls = page({ updateFails: Code.FailedPrecondition });
+    const form = within(await screen.findByRole("form", { name: "Settings" }));
+    fireEvent.click(form.getByLabelText("Allow Cloudflare-proxied records"));
+    fireEvent.click(form.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.queryByText("The zone's settings are saved.")).toBeNull();
+    await waitFor(() => expect(calls.getZone).toBeGreaterThan(1));
+  });
+
+  it("shows the refusal of a value the API rejects", async () => {
+    page({ updateFails: Code.InvalidArgument });
+    const form = within(await screen.findByRole("form", { name: "Settings" }));
+    fireEvent.click(form.getByLabelText("Allow wildcard names"));
+    fireEvent.click(form.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toBeTruthy();
   });
 });
