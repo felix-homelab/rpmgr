@@ -51,8 +51,12 @@ The zone's page shows:
 
 - **The heading** with the zone's name, its state and **Sync now**, which asks for a full pass; a
   disabled zone has **Enable zone**, which makes it held.
-- **Gates:** whether the zone publishes route hostnames, allows proxied names and wildcards, and
-  its delete threshold. The gates are changed with `rpmgr update zone`.
+- **Settings:** whether the zone publishes route hostnames, allows proxied names and wildcards, and
+  its delete threshold. Owners and Admins change them here: three switches and the **Delete
+  threshold**, a whole number (0 asks for approval on every deletion). **Save** sends only the
+  fields you changed, with the version of the zone you saw. If somebody else changed the zone
+  meanwhile, the page says so, shows the zone as it is now and you make your change again. Saving
+  needs no step-up. The command line does the same with `rpmgr update zone`.
 - **Plan:** what the next pass would create (`+`), update (`~`) and delete (`−`), the orphans, after a
   restore the adopted records that changed since, the shadowed wildcards and the conflicts, each conflict with what to do and, for a foreign address
   record, **Adopt**. **Approve plan** is bound to the hash shown; it asks for a confirmation that

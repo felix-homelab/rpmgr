@@ -998,7 +998,7 @@ one page, with a section list beside them that jumps to each section
 
 ```
 ┌ Zone: example.com · Cloudflare account "home" ───────────────── ▲ held: first plan  [Sync now] ┐
-│ Gates: publish route hostnames ✓ · proxied ✗ · wildcards ✗ · delete threshold 10    [Edit]     │
+│ Settings: [✓] publish route hostnames  [ ] proxied  [ ] wildcards  threshold [10]    [Save]    │
 ├ Plan 9f3c…e1 (approve to publish) ─────────────────────────────────────────────────────────────┤
 │ + CNAME  wiki.example.com                  → eu.gw.example.net    route wiki                   │
 │ + CNAME  nas.example.com                   → eu.gw.example.net    route nas                    │
@@ -1032,8 +1032,9 @@ one page, with a section list beside them that jumps to each section
   publishes is not served until the nameservers are set at the registrar, and which ones
   ([15](15-dns.md#delegation)). A zone that is delegated shows so, and the nameservers.
 - **The zone page** (`/dns/<zone>`, linked from the zone's name on the DNS page and loaded lazily)
-  differs from the mock-up in these ways. The gates are shown and not yet edited there, and there
-  is no **Discard**: a plan is read live and is replaced by the next one. The plan lists what a pass
+  differs from the mock-up in these ways. The gates are a **Settings** form there, with a switch for
+  each and the delete threshold, which sends only the fields that changed with the zone's etag and
+  needs no step-up; the mock-up's **Edit** button is not needed. There is no **Discard**: a plan is read live and is replaced by the next one. The plan lists what a pass
   would create (`+`), update (`~`) and delete (`−`), the orphans (`?`), after a restore the adopted records that changed since (`≠`), the shadowed wildcards and
   the conflicts, each conflict with the hint of U4 and, for a foreign address record, **Adopt**.
   **Enable zone** takes a disabled zone to held, and **Sync now** asks for a pass; both are in the
