@@ -82,4 +82,5 @@ New to rpmgr? Read [Concepts](concepts.md), then follow the [Quick start](quick-
 | [Boot files](reference/boot-files.md) | Look up every key of each role's configuration file |
 | [Local policy file](reference/policy-file.md) | Look up the format of `/etc/rpmgr/policy.yaml` |
 | [Environment variables](reference/environment.md) | Look up what rpmgr and its scripts read from the environment |
+| [Event types](reference/events.md) | Look up every type of event a webhook can receive (generated from the code) |
 | [API](reference/api.md) | Automate rpmgr with its API: authentication, calls, errors and paging |

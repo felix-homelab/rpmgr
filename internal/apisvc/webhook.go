@@ -596,7 +596,7 @@ func (w *Webhooks) test(ctx context.Context, id string) (*rpmgrv1.TestWebhookRes
 		}
 		secrets = append(secrets, prev)
 	}
-	e := events.Event{ID: ids.New("evt"), OrgID: deref(h.OrgID), Type: "webhook.test", Time: now, ActorType: "user",
+	e := events.Event{ID: ids.New("evt"), OrgID: deref(h.OrgID), Type: events.WebhookTest, Time: now, ActorType: "user",
 		SubjectType: "webhook", SubjectID: id, Summary: "webhook.test: a test event"}
 	if caller != nil {
 		e.ActorID = caller.UserID

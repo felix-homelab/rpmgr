@@ -39,7 +39,7 @@ const mailEnqueueMax = 500
 
 // mailTypes are the events that are e-mailed: an alert firing and resolving, and a webhook
 // endpoint disabled for failing (D139, D143).
-var mailTypes = []string{"alert.fire", "alert.resolve", "webhook.disable"}
+var mailTypes = []string{events.AlertFire, events.AlertResolve, events.WebhookDisable}
 
 // MailOptions configure the mail job.
 type MailOptions struct {
@@ -207,7 +207,7 @@ func sendMail(ctx context.Context, o MailOptions, l lease.Lease, j *ent.MailJob,
 		if t := s.GetAlertTypes(); len(t) > 0 && !slices.Contains(t, kind) {
 			return r, nil
 		}
-		if e.Type == "alert.resolve" {
+		if e.Type == events.AlertResolve {
 			// A resolving is mailed only after the mail of its firing, never alone.
 			switch st, err := firingMailState(ctx, c, e, kind); {
 			case err != nil:
@@ -278,7 +278,7 @@ func fenced(ctx context.Context, o MailOptions, l lease.Lease, f func(tx *ent.Tx
 // alert.fire event of the same subject and kind before it. It is empty when there is none or its
 // job is gone.
 func firingMailState(ctx context.Context, c *ent.Client, e *ent.Event, kind string) (mailjob.State, error) {
-	q := c.Event.Query().Where(event.TypeEQ("alert.fire"), event.SubjectTypeEQ(e.SubjectType), event.SubjectID(e.SubjectID),
+	q := c.Event.Query().Where(event.TypeEQ(events.AlertFire), event.SubjectTypeEQ(e.SubjectType), event.SubjectID(e.SubjectID),
 		event.SummaryHasPrefix(kind+":"), event.TsLTE(e.Ts))
 	if e.OrgID != nil {
 		q = q.Where(event.OrgID(*e.OrgID))
@@ -340,12 +340,12 @@ func mailRecipients(ctx context.Context, c *ent.Client, org string) ([]string, e
 func alertMail(e *ent.Event, orgName, publicURL string) mail.Message {
 	var subject string
 	switch e.Type {
-	case "webhook.disable":
+	case events.WebhookDisable:
 		subject = "Webhook endpoint disabled"
 	default:
 		kind, _, _ := strings.Cut(e.Summary, ":")
 		state := "firing"
-		if e.Type == "alert.resolve" {
+		if e.Type == events.AlertResolve {
 			state = "resolved"
 		}
 		subject = alerts.Title(kind) + " " + state
@@ -356,7 +356,7 @@ func alertMail(e *ent.Event, orgName, publicURL string) mail.Message {
 		fmt.Fprintf(&b, "Organisation: %s\n", orgName)
 	}
 	fmt.Fprintf(&b, "%s: %s (%s)\nTime: %s\n\n", e.SubjectType, firstNonEmpty(e.SubjectName, e.SubjectID), e.SubjectID, e.Ts.UTC().Format(time.RFC3339))
-	if e.Type == "webhook.disable" {
+	if e.Type == events.WebhookDisable {
 		b.WriteString("The events of the time it was disabled are not sent again. An Owner or Admin enables it again\nonce the receiver works.\n\n")
 	}
 	fmt.Fprintf(&b, "Open rpmgr: %s\n", strings.TrimRight(publicURL, "/")+"/")

@@ -44,6 +44,10 @@ Each entry holds:
 | `diff` | | The request, with its secrets replaced |
 | `reason` | **Reason** | A reason or detail, if any |
 
+A change that the log records as a success is also an event, which a webhook can receive; its type
+is made from the action, such as `route.update` from `rpmgr.v1.RouteService.UpdateRoute`. Every
+type is in the [event reference](../reference/events.md).
+
 An API token's use is recorded when its first use, or a use from a new address, is written, not on
 every request; every request it makes names it as the credential.
 

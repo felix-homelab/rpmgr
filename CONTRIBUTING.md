@@ -301,7 +301,8 @@ mechanism in [03](docs/03-connections.md#configuration-reconciliation), the tabl
 7. A feature that users can reach, in the [user guide](docs/guide/README.md): the how-to page of its
    topic, the web UI page (with its screenshot regenerated, see
    [docs/guide/images](docs/guide/images/README.md)), and the reference pages it changes. The
-   command-line reference is generated: `go test ./cmd/rpmgr -run TestCLIReference -update`.
+   command-line reference is generated: `go test ./cmd/rpmgr -run TestCLIReference -update`, and so is
+   the event reference: `go test ./cmd/rpmgr -run TestEventReference -update`.
 8. Link check and Mermaid parse pass ([12](docs/12-testing-and-quality.md#continuous-integration)).
 
 Once code exists, these also belong to a feature: comments on every public `.proto` message and
