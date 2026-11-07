@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/netip"
 	"slices"
 	"sync"
@@ -507,6 +508,8 @@ func TestTransport_PinMovesReadinessToItsTransport(t *testing.T) {
 	}
 
 	// And back to h2 (auto keeps its QUIC sessions).
+	// A new map: the one given to m.Set is read by the sessions' goroutines.
+	entry.Routes = maps.Clone(entry.Routes)
 	entry.Routes["rt_h"] = connector.TransportH2
 	m.Set([]connector.Gateway{entry})
 	eventually(t, "readiness stays on QUIC after the pin to h2", func() bool {
