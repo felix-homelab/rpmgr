@@ -56,7 +56,7 @@ func TestEventCatalog(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"route.create", "route.update", "route_target.create", "webhook_secret.rotate",
-		"token.create", "audit.export", "route.status", "webhook.test", "dns.token_expiring"} {
+		"token.create", "audit.export", "route.status", "webhook.test", "alert.fire"} {
 		if _, ok := seen[want]; !ok {
 			t.Errorf("event type %q is missing from the catalog", want)
 		}
@@ -78,14 +78,14 @@ func TestEventCatalog(t *testing.T) {
 // an acronym in capitals, a status event's own meaning and link, and an unknown scope shown as such.
 func TestRenderEventReference(t *testing.T) {
 	got := renderEventReference([]events.Type{
-		{Type: "dns.conflict", Resource: "dns", Verb: "conflict", Meaning: "In conflict.", Scope: "org", Status: true},
+		{Type: "agent.connect", Resource: "agent", Verb: "connect", Meaning: "Connected.", Scope: "org", Status: true},
 		{Type: "dns_name.create", Resource: "dns_name", Verb: "create", Method: "m", Scope: "org"},
 		{Type: "route.cancel", Resource: "route", Verb: "cancel", Method: "m"},
 		{Type: "route.set", Resource: "route", Verb: "set", Method: "m", Scope: "instance"},
 	})
 	for _, want := range []string{
-		"## dns\n", "## dns_name\n", "## route\n",
-		"| `dns.conflict` | In conflict. | org | [07](../../07-api.md#webhooks-phase-2) |",
+		"## agent\n", "## dns_name\n", "## route\n",
+		"| `agent.connect` | Connected. | org | [07](../../07-api.md#webhooks-phase-2) |",
 		"| `dns_name.create` | DNS name created. | org |  |",
 		"| `route.cancel` | Route cancelled. | varies |  |",
 		"| `route.set` | Route set. | instance |  |",
@@ -94,7 +94,7 @@ func TestRenderEventReference(t *testing.T) {
 			t.Errorf("rendered page lacks %q:\n%s", want, got)
 		}
 	}
-	if strings.Index(got, "## dns\n") > strings.Index(got, "## dns_name\n") || strings.Index(got, "## dns_name\n") > strings.Index(got, "## route\n") {
+	if strings.Index(got, "## agent\n") > strings.Index(got, "## dns_name\n") || strings.Index(got, "## dns_name\n") > strings.Index(got, "## route\n") {
 		t.Errorf("groups are not in order:\n%s", got)
 	}
 }
@@ -183,6 +183,10 @@ with them, and the envelope of an event is in [07](../../07-api.md#webhooks-phas
 			scope = "varies"
 		}
 		fmt.Fprintf(&b, "| `%s` | %s | %s | %s |\n", e.Type, meaning, scope, link)
+		if e.Type == "alert.resolve" {
+			b.WriteString("\nThe kind of an alert starts the event's summary; the kinds are listed in the suggested\n" +
+				"alerts of [10](../../10-operations.md#suggested-alerts).\n")
+		}
 	}
 	return b.String()
 }

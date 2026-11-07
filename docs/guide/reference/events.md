@@ -54,6 +54,9 @@ with them, and the envelope of an event is in [07](../../07-api.md#webhooks-phas
 | `alert.fire` | An alert fired. | org or instance | [10](../../10-operations.md#suggested-alerts) |
 | `alert.resolve` | An alert resolved. | org or instance | [10](../../10-operations.md#suggested-alerts) |
 
+The kind of an alert starts the event's summary; the kinds are listed in the suggested
+alerts of [10](../../10-operations.md#suggested-alerts).
+
 ## apply
 
 | Type | Meaning | Scope | See |
@@ -110,16 +113,6 @@ with them, and the envelope of an event is in [07](../../07-api.md#webhooks-phas
 | Type | Meaning | Scope | See |
 |---|---|---|---|
 | `controller.update` | Controller updated. | instance |  |
-
-## dns
-
-| Type | Meaning | Scope | See |
-|---|---|---|---|
-| `dns.conflict` | A DNS name is in conflict with another record. | org | [07](../../07-api.md#webhooks-phase-2) |
-| `dns.drifted` | A DNS record drifted from what rpmgr manages. | org | [07](../../07-api.md#webhooks-phase-2) |
-| `dns.sync_failing` | A DNS zone's provider keeps failing. | org | [07](../../07-api.md#webhooks-phase-2) |
-| `dns.token_expiring` | A DNS provider token is about to expire or no longer works. | org | [07](../../07-api.md#webhooks-phase-2) |
-| `dns.zone_held` | A DNS zone is held. | org | [07](../../07-api.md#webhooks-phase-2) |
 
 ## dns_name
 

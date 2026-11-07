@@ -17,19 +17,14 @@ import (
 // The types of the events that report a state and not a change of configuration (docs/07-api.md,
 // "Webhooks (Phase 2)"). Every other type is the type of an audit action (TypeOf).
 const (
-	RouteStatus      = "route.status"
-	AgentConnect     = "agent.connect"
-	AgentDisconnect  = "agent.disconnect"
-	ApplyReject      = "apply.reject"
-	AlertFire        = "alert.fire"
-	AlertResolve     = "alert.resolve"
-	WebhookDisable   = "webhook.disable"
-	WebhookTest      = "webhook.test"
-	DNSConflict      = "dns.conflict"
-	DNSZoneHeld      = "dns.zone_held"
-	DNSSyncFailing   = "dns.sync_failing"
-	DNSDrifted       = "dns.drifted"
-	DNSTokenExpiring = "dns.token_expiring" //nolint:gosec // G101: an event type, no credential
+	RouteStatus     = "route.status"
+	AgentConnect    = "agent.connect"
+	AgentDisconnect = "agent.disconnect"
+	ApplyReject     = "apply.reject"
+	AlertFire       = "alert.fire"
+	AlertResolve    = "alert.resolve"
+	WebhookDisable  = "webhook.disable"
+	WebhookTest     = "webhook.test"
 
 	// AuditExport is the action of an export of an audit chain, org or instance.
 	AuditExport = "audit.export"
@@ -52,11 +47,6 @@ var StatusEvents = []Status{
 	{AlertResolve, "An alert resolved.", "org or instance"},
 	{WebhookDisable, "A failing webhook endpoint was disabled.", "org or instance"},
 	{WebhookTest, "A test event, sent to one endpoint on request and to no other.", "org or instance"},
-	{DNSConflict, "A DNS name is in conflict with another record.", "org"},
-	{DNSZoneHeld, "A DNS zone is held.", "org"},
-	{DNSSyncFailing, "A DNS zone's provider keeps failing.", "org"},
-	{DNSDrifted, "A DNS record drifted from what rpmgr manages.", "org"},
-	{DNSTokenExpiring, "A DNS provider token is about to expire or no longer works.", "org"},
 }
 
 // recordedAs names the API methods whose handler records the change in its transaction under an
