@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Code } from "@connectrpc/connect";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   DnsRecordState, DnsZoneService, ZoneDelegationState, ZoneProviderStatus, ZoneSyncState,
@@ -9,6 +9,7 @@ import {
 } from "@/gen/rpmgr/v1/dns_pb";
 import { Theme, UserService } from "@/gen/rpmgr/v1/user_pb";
 import { apiError, auth, show } from "@/testing/api";
+import { RecordContent } from "@/pages/dns-records";
 
 afterEach(cleanup);
 
@@ -326,5 +327,20 @@ describe("DNS zone: removal", () => {
     expect((await screen.findAllByText("removal pending")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Remove the zone" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Enable zone" })).toBeNull();
+  });
+});
+
+describe("DNS zone: long record content", () => {
+  it("cuts long content to one line and keeps the whole value as its tooltip", () => {
+    const long = "v=DKIM1; k=rsa; p=" + "A".repeat(400);
+    const r = render(<RecordContent content={long} proxied />);
+    const cell = r.getByTitle(`${long} (proxied)`);
+    expect(cell.textContent).toBe(`${long} (proxied)`);
+    expect(cell.className).toContain("truncate");
+  });
+
+  it("shows short content whole, without a proxied suffix when not proxied", () => {
+    const r = render(<RecordContent content="192.0.2.7" />);
+    expect(r.getByTitle("192.0.2.7").textContent).toBe("192.0.2.7");
   });
 });
