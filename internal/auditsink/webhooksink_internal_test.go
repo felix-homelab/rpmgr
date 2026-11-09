@@ -20,7 +20,7 @@ import (
 // batch time: the item in hand is left for the next pass and the batch fails with a plain reason.
 func TestWebhookSink_BatchDeadline(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(60 * time.Millisecond)
+		time.Sleep(300 * time.Millisecond) // long enough that a slow runner's handshake leaves time for one
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
@@ -30,7 +30,7 @@ func TestWebhookSink_BatchDeadline(t *testing.T) {
 			return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
 		},
 		Now: time.Now}
-	k := &webhookSink{sender: sender, url: "https://example.com:" + port, secret: secret.New("test-secret"), batchTimeout: 200 * time.Millisecond}
+	k := &webhookSink{sender: sender, url: "https://example.com:" + port, secret: secret.New("test-secret"), batchTimeout: time.Second}
 	ctx := context.Background()
 	shipped := 0
 	var err error

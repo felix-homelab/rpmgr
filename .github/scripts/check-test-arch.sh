@@ -12,6 +12,10 @@
 # size, alignment, atomics, assembly, byte order) in the same build as the release, CGO_ENABLED=0.
 # Nightly and full runs leave it unset and keep -race and -count=1.
 #
+# GO_TEST_SHARD=i/n runs only the i-th of n shares of the test packages, dealt out as check-go.sh
+# does (internal/controller and internal/apisvc as two parts each, the heavy lines first), so
+# that the parts run in parallel jobs: one after the other they took 43 minutes on arm64.
+#
 # Usage: check-test-arch.sh <amd64|arm64|arm|riscv64> [<repository root>]
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -41,15 +45,39 @@ case $arch in
     finish
     ;;
 esac
+shard=${GO_TEST_SHARD-}
+if ! shard_valid "$shard"; then
+  fail "GO_TEST_SHARD must be <i>/<n> with 1 <= i <= n, not '$shard'"
+  finish
+fi
 count=(-count=1)
 if [[ ${GO_TEST_CACHE-} == 1 ]]; then
   count=()
 fi
-echo "go test linux/$arch ${flags[*]}"
+echo "go test linux/$arch ${flags[*]} (shard ${shard:-all})"
 # Tests listen on ports from internal/testutil/freeport, below the kernel's ephemeral range; a
 # runner whose range reaches lower would take them for outgoing connections.
 echo "ephemeral ports: $(cat /proc/sys/net/ipv4/ip_local_port_range 2>/dev/null || echo unknown)"
-if ! env GOOS=linux GOARCH="$arch" GOARM=7 CGO_ENABLED="$cgo" "${limits[@]}" go test "${flags[@]}" "${count[@]}" ./...; then
+export GOOS=linux GOARCH="$arch" GOARM=7 CGO_ENABLED="$cgo"
+for l in "${limits[@]}"; do export "${l?}"; done
+# internal/controller and internal/apisvc are run as two parts each, by test name ("pkg#k/m", as in
+# check-go.sh): on arm64 with the race detector each ran for nearly the whole limit of 20 minutes
+# per go test run (the nightly run hit it in internal/apisvc without a failing test). The other
+# packages run together, as before.
+module=$(go list -m)
+SHARD_HEAVY='/internal/(controller|apisvc)(#[0-9]+/[0-9]+)?$'
+mapfile -t pkgs < <(go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v '^$' |
+  sort | split_expand "$module/internal/controller=2" "$module/internal/apisvc=2" | shard_select "$shard")
+echo "== tests of ${#pkgs[@]} packages (shard ${shard:-all})"
+plain=()
+for pkg in "${pkgs[@]}"; do
+  if [[ $pkg == *'#'* ]]; then
+    split_run "$pkg" "${flags[@]}" "${count[@]}"
+  else
+    plain+=("$pkg")
+  fi
+done
+if ((${#plain[@]} > 0)) && ! go test "${flags[@]}" "${count[@]}" "${plain[@]}"; then
   fail "tests failed on linux/$arch"
 fi
 finish

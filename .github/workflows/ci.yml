@@ -347,10 +347,17 @@ jobs:
   go-arm64:
     needs: changes
     if: ${{ needs.changes.outputs.go == 'true' }}
+    name: go-arm64 (${{ matrix.shard }}/4)
     runs-on: ubuntu-24.04-arm
-    # arm64, then armv7. Full runs keep the race detector on arm64: 13 to 20 minutes on the hosted
-    # runner. Pull requests and merge groups run without it (check-test-arch.sh).
-    timeout-minutes: 30
+    # arm64, then armv7, each as one of four shards like the go job. Full runs keep the race
+    # detector on arm64: the whole run took 25 minutes and internal/apisvc nearly the limit of 20
+    # minutes per go test run on the hosted runner. Pull requests and merge groups run without it
+    # (check-test-arch.sh).
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -368,15 +375,19 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-go-arm64-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          key: go-go-arm64-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-shard${{ matrix.shard }}-${{ github.run_id }}
           restore-keys: |
-            go-go-arm64-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-
+            go-go-arm64-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-shard${{ matrix.shard }}-
             go-go-arm64-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
       - name: Tests on arm64; with the race detector in full runs
         if: ${{ !cancelled() }}
+        env:
+          GO_TEST_SHARD: ${{ matrix.shard }}/4
         run: .github/scripts/check-test-arch.sh arm64
       - name: Tests on armv7, natively on the same host
         if: ${{ !cancelled() }}
+        env:
+          GO_TEST_SHARD: ${{ matrix.shard }}/4
         run: .github/scripts/check-test-arch.sh arm
 
   ops:

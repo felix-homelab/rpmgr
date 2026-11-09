@@ -24,6 +24,14 @@ func SetRunTimers(t testing.TB, drain, reload time.Duration) {
 	t.Cleanup(func() { drainWait, webCertReload = oldDrain, oldReload })
 }
 
+// NoJobs keeps Run from starting its background jobs (alerts, webhooks, DNS, mail, ...) for one
+// test, which must not run in parallel with others.
+func NoJobs(t testing.TB) {
+	old := noJobs
+	noJobs = true
+	t.Cleanup(func() { noJobs = old })
+}
+
 // SetOperationTimers shortens the ticket validity and the deadline of imperative operations for
 // one test, which must not run in parallel with others.
 func SetOperationTimers(t testing.TB, ticket, deadline time.Duration) {

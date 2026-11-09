@@ -200,8 +200,13 @@ func TestTargetBound_TargetRefusingEverythingIsUnhealthy(t *testing.T) {
 	check.Unhealthy = 1
 	e.Set([]connector.Route{{ID: "rt_down", Targets: []connector.Target{tg}, Check: check, MaxTargetConns: 2}})
 	eventually(t, "a target refusing everything never became unhealthy", func() bool { return e.unhealthy(tg.ID) })
-	h := e.lastOf("rt_down")
-	if h.GetReady() || h.GetReason() != agentv1.NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY || strings.Contains(h.GetDetail(), "holds") {
+	// The route's health follows the target's by a report of its own, so it is awaited too.
+	var h *tunnelv1.RouteHealth
+	eventually(t, "the route of a target refusing everything is not reported unhealthy", func() bool {
+		h = e.lastOf("rt_down")
+		return h != nil && !h.GetReady() && h.GetReason() == agentv1.NotReadyReason_NOT_READY_REASON_TARGETS_UNHEALTHY
+	})
+	if strings.Contains(h.GetDetail(), "holds") {
 		t.Errorf("the route of a target refusing everything: %v", h)
 	}
 }

@@ -24,6 +24,7 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/authz"
+	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/password"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/ent"
@@ -43,6 +44,11 @@ var leakSkip = []string{"rpmgr.v1.AuthService.Logout"}
 // holds anything of org A, and a method outside orgs never succeeds on A's IDs; and afterwards no
 // row of org A has changed.
 func TestCrossTenantLeaks(t *testing.T) {
+	// The background jobs stay off: org A's fixtures (a held DNS zone, a webhook, a failed
+	// certificate) make them write rows of org A (an alert.fire event, a delivery) on a runner
+	// slow enough for a tick to fall in the suite, and those rows are no answer to Bob. The suite
+	// is strict about what the API writes: events and deliveries are compared like any table.
+	controller.NoJobs(t)
 	var link string
 	r := startRunWith(t, runSetup{prepare: func(r *running) { link = r.firstUserLink }})
 	ctx := context.Background()
@@ -286,21 +292,13 @@ func call(ctx context.Context, c *http.Client, base string, sd protoreflect.Serv
 	return 0, strings.Join(out, "\n")
 }
 
-// derivedTables are written by the controller's own periodic jobs (the alert evaluation runs every
-// alerts.Every) from the seeded rows, whoever calls it: a slow runner lets one run during the suite
-// and org A's rows then change without any request of Bob's.
-var derivedTables = map[string]bool{"alerts": true, "status_marks": true}
-
-// orgRows is every row of an org in the org-owned tables but the derived ones, as text.
+// orgRows is every row of an org in the org-owned tables, as text.
 func orgRows(t *testing.T, db *store.DB, orgID string) string {
 	t.Helper()
 	var b strings.Builder
 	err := store.ReadTx(storetest.SystemCtx(t), db, func(tx *ent.Tx, _ store.Revision) error {
 		for _, table := range migrate.Tables {
 			if !slices.ContainsFunc(table.Columns, func(c *entschema.Column) bool { return c.Name == "org_id" }) {
-				continue
-			}
-			if derivedTables[table.Name] {
 				continue
 			}
 			rows, err := tx.QueryContext(storetest.SystemCtx(t), "SELECT * FROM "+table.Name+" WHERE org_id = $1 ORDER BY 1", orgID)
