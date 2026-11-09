@@ -48,14 +48,15 @@ jobs:
         run: .github/scripts/check-fuzz.sh 10m
 
   riscv64:
-    name: riscv64 (${{ matrix.shard }}/2)
+    name: riscv64 (${{ matrix.shard }}/4)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    # Two shards: in one job the run took 39 minutes, close to the limit.
+    # Four shards, each with one part of internal/apisvc or internal/controller: with two, the shard
+    # that held the first parts of both needed more than the 45 minutes.
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -70,7 +71,7 @@ jobs:
           --install riscv64
       - name: Tests on riscv64 under QEMU
         env:
-          GO_TEST_SHARD: ${{ matrix.shard }}/2
+          GO_TEST_SHARD: ${{ matrix.shard }}/4
         run: .github/scripts/check-test-arch.sh riscv64
 
   real-clients:
