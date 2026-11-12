@@ -193,7 +193,9 @@ func TestLiveLogs_TicketSingleUseAndBound(t *testing.T) {
 // that never attaches fails the operation once its ticket expires.
 func TestOperation_Deadline(t *testing.T) {
 	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
-		controller.SetOperationTimers(t, 300*time.Millisecond, 500*time.Millisecond)
+		// The agent has a ticket long enough for its attach: an mTLS attach took more than 300 ms
+		// on riscv64 under QEMU. An attach after the deadline still ends the operation at once.
+		controller.SetOperationTimers(t, 30*time.Second, 500*time.Millisecond)
 		e := startSessions(t, db, "0.1.0", 0)
 		cert, a := e.agentCert(t)
 		h := hello("0.1.0")
@@ -217,7 +219,9 @@ func TestOperation_Deadline(t *testing.T) {
 		if _, err := op.Recv(); err == nil || time.Since(start) > 5*time.Second {
 			t.Fatalf("the operation past its deadline: %v after %v", err, time.Since(start))
 		}
-		// An agent that never attaches.
+		// An agent that never attaches. The attach above read the ticket's validity before Open
+		// returned, so the short ticket is set without a race.
+		controller.SetOperationTimers(t, 300*time.Millisecond, 500*time.Millisecond)
 		done := make(chan error, 1)
 		go func() {
 			_, err := e.sessions.Open(testCtx(t), a.ID, agentv1.OperationKind_OPERATION_KIND_LOGS, nil)

@@ -195,6 +195,11 @@ func TestFlowControl_StalledStreamsDoNotFreezeSession(t *testing.T) {
 
 			eventually(t, "the probe stream after the resets", probed, 15*time.Second)
 			eventually(t, "the probe write", wrote, 5*time.Second)
+			// The first reset frees the probe while the rule may still reset the others: later in
+			// the same check, or at the next one when the check fell between the streams' ages.
+			for deadline := time.Now().Add(5 * time.Second); tunnel.StallResets(env.gw) < wantResets && time.Now().Before(deadline); {
+				time.Sleep(10 * time.Millisecond)
+			}
 			if got := tunnel.StallResets(env.gw); got != wantResets {
 				t.Fatalf("%d streams reset, want %d", got, wantResets)
 			}
