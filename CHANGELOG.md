@@ -116,6 +116,9 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Fixed
 
+- `rpmgr handoff` run again right after a hand-off ended, such as a retry after a failed one, now
+  starts a new hand-off. The process could still count the last one as running for a moment and
+  ignore the signal, and the command waited until its timeout. (#1167)
 - On an all-in-one, a route pinned to QUIC no longer shows its targets as "HTTP/2 (pinned on the
   route)". The built-in connector reaches the gateway in memory whatever the transport setting, and
   the route page, `rpmgr get route` and the API now say "In process (built-in connector)" with a

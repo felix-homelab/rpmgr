@@ -13,7 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
-	"sync/atomic"
+	"sync"
 	"syscall"
 	"time"
 
@@ -34,7 +34,10 @@ func (t *Trigger) Start(ctx context.Context) (stop func()) {
 		log.Warn("hand-off: announcing that this process takes SIGUSR2", "error", err)
 	}
 	done := make(chan struct{})
-	var busy atomic.Bool
+	// mu makes writing a hand-off's final outcome and freeing the trigger one step: a signal sent
+	// by whoever read that outcome always starts the next hand-off.
+	var mu sync.Mutex
+	busy := false
 	go func() {
 		for {
 			select {
@@ -42,14 +45,17 @@ func (t *Trigger) Start(ctx context.Context) (stop func()) {
 				return
 			case <-sig:
 			}
-			if !busy.CompareAndSwap(false, true) {
+			mu.Lock()
+			free := !busy
+			busy = true
+			mu.Unlock()
+			if !free {
 				log.Warn("hand-off refused: one is in progress")
 				continue
 			}
 			o := Outcome{ID: time.Now().UnixNano(), State: StateRunning, OldPID: os.Getpid()}
 			t.record(log, o)
 			go func() {
-				defer busy.Store(false)
 				if t.Handoff == nil {
 					o.State, o.Reason = StateRefused, "this role cannot hand off yet; restart it instead"
 				} else if child, err := t.Handoff(ctx); err != nil {
@@ -60,7 +66,10 @@ func (t *Trigger) Start(ctx context.Context) (stop func()) {
 				} else {
 					o.State, o.NewPID, o.Generation = StateOK, child.Pid, child.Generation
 				}
+				mu.Lock()
+				defer mu.Unlock()
 				t.record(log, o)
+				busy = false
 			}()
 		}
 	}()
@@ -71,6 +80,9 @@ func (t *Trigger) record(log *slog.Logger, o Outcome) {
 	log.Info("hand-off", "state", o.State, "reason", o.Reason, "new_pid", o.NewPID, "generation", o.Generation)
 	if err := WriteOutcome(t.Dir, o); err != nil {
 		log.Warn("hand-off: recording the outcome", "error", err)
+	}
+	if t.recorded != nil {
+		t.recorded(o)
 	}
 }
 
