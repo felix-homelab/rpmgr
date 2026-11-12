@@ -2,7 +2,7 @@ module github.com/felix-homelab/rpmgr
 
 go 1.26.9
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 tool (
 	connectrpc.com/connect/cmd/protoc-gen-connect-go
