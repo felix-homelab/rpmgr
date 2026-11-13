@@ -176,6 +176,8 @@
 | SSH ad-hoc tunnels (`ssh -R` to a gateway, authenticated by users' registered SSH keys) | — |
 | Egress proxy targets (SOCKS5, HTTP proxy) | Needs `allow_egress_proxy`; turns a connector into a proxy, so gated |
 | Static file target | Path must be allowed in local policy |
+| Gateway response cache for http routes: strict RFC 9111 shared cache by default, cache rules for what the origin does not mark, purge from the controller, a Cache tab with statistics, the object list and lookup ([D172](14-open-decisions.md#engineering), [17](17-cache-and-waf.md)) | Opt-in per route; the gateway terminates TLS; each gateway caches for itself |
+| WAF on gateways: Coraza with the OWASP Core Rule Set, detection before blocking, scopes with an enforced floor, exclusions, custom rules for Instance Admins, a WAF tab with redacted hits ([D173](14-open-decisions.md#engineering), [17](17-cache-and-waf.md)) | Off by default; http routes the gateway terminates; [S11](13-roadmap.md#phase-0--spikes) decides [ADR-0023](adr/0023-coraza-waf-and-gateway-cache.md) |
 
 ## Platform support
 

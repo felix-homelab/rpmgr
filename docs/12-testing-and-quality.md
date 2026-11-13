@@ -322,6 +322,31 @@ Examples of security regression tests:
 | `TestBadSnapshotKeepsLastKnownGood` | A snapshot that fails preparation leaves all existing routes serving traffic |
 | `TestSecretsNeverLogged` | Running the full integration suite at the debug level with a log sink that fails on any known secret value, a private key, or a token prefix followed by its random part |
 
+Regression tests of the gateway cache and the WAF (Phase 3, [17](17-cache-and-waf.md),
+[D172](14-open-decisions.md#engineering), [D173](14-open-decisions.md#engineering)). Their slices
+register them as `p3` until they are scheduled, and the CI check lists them as deferred:
+
+| Test | Asserts |
+|---|---|
+| `TestCache_NeverServesResponseStoredForAuthorization` | A response made for a request with `Authorization` or `Cookie` (not the gateway's own consumed credentials) is neither stored nor looked up: a later anonymous request is a miss, and a request with credentials never gets an object stored for another |
+| `TestCache_NeverStoresForbiddenResponses` | A response with `Set-Cookie`, `private`, `no-store` or `Vary: *`, and the response of a request with `no-store`, is never stored, by the strict cache and under every cache rule alike |
+| `TestCache_HitNeverBeforeAccessPolicy` | With an object stored, a visitor the access policy denies (IP, rate limit, require-header, basic auth or OIDC) gets the policy's refusal and never the object; a tightened policy ends hits at once |
+| `TestCache_KeyNeverSharedAcrossRoutesOrOrgs` | The same URL on two routes, two hostnames or two orgs makes separate objects; a `Host` header the client chose and the headers the gateway adds change no key |
+| `TestCache_WafRunsBeforeCache` | A request the blocking WAF refuses is refused although its URL is cached; a request scored over the threshold in detection mode is served but its response is not stored |
+| `TestCache_PurgeNotUndoneByInFlightResponse` | A response whose origin request began before a purge of its key or route is sent but not stored |
+| `TestCache_PurgeReachesOfflineGatewayOrEmptiesIt` | A gateway offline during a purge applies it on reconnect from the replay, and empties its whole cache when the purge log cannot cover its gap or the database epoch changed |
+| `TestCache_ObjectListOnlyOwnOrg` | The object list and lookup return only objects of routes of the caller's org, named by the controller from the session and not by the request; the Instance Admin gets totals and no object; another org's gateway or route is `NOT_FOUND` |
+| `TestCache_PurgePermissions` | A Viewer cannot purge; an Operator purges a URL, a prefix and a route and not everything of the org; an Admin purges everything; each purge is audited without the query values |
+| `TestCache_IgnoreCookiesRuleNeverStoresSetCookie` | Under a rule marked ignore cookies, a response with `Set-Cookie`, `private` or `no-store` is never stored, and a request with `Authorization` still bypasses the cache |
+| `TestCache_IgnoreCookiesRuleDoesNotForwardCookie` | Under a rule marked ignore cookies the origin never receives the request's `Cookie` on a miss, the key is the same with and without a cookie, and a path the rule does not match still bypasses on a cookie; only an Admin can set the flag |
+| `TestWAF_OrgCannotGoBelowEnforcedFloor` | An org, gateway group or route cannot set a mode, a paranoia level or a threshold below the instance floor, nor exclude a protected rule or tag; the compiled snapshot never holds a profile below the floor |
+| `TestWAF_CustomRulesOnlyInstanceAdmin` | Only the Instance Admin, with a step-up, writes custom rules; text that includes a file, runs a program, keeps state across requests, changes engine settings or uses an ID outside the reserved range is refused by the controller and again by the gateway |
+| `TestWAF_BlockingNeedsDetectionFirst` | A scope whose effective mode is `off` cannot be set to `blocking`; detection never blocks a request; a blocked request gets the block page with the request ID and no rule |
+| `TestWAF_HitsNeverHoldMatchedData` | A hit, a log line, a metric label and an event never hold a matched value, a request body, a query string or a header value, whatever the rule matched |
+| `TestWAF_GatewayWithoutCapabilityGetsNoWafRoute` | A gateway without `http.waf` gets no route whose effective WAF mode is not `off`, and the route status names the capability |
+| `TestWAF_RuleSetNeverDownloaded` | The gateway makes no request to fetch rules, and the embedded CRS matches the hash pinned in the repository |
+| `TestWAF_HitsIsolatedPerOrg` | The hits, exclusions and counts of one org are never readable by another org or, as hits, by the Instance Admin |
+
 Regression tests for design-review findings:
 
 | Test | Asserts |

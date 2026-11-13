@@ -51,8 +51,11 @@ The default installation is **single-organisation, self-hosted**. Every record c
   importer ([11-migration.md](11-migration.md)).
 - **A general-purpose VPN.** Virtual networks (Phase 3) connect rpmgr connectors. They don't
   replace a full mesh VPN product.
-- **A CDN or WAF.** Gateways terminate TLS and apply access policies. They do not cache content
-  or inspect payloads for attacks. A route can sit behind Cloudflare's proxy as an explicit opt-in
+- **A CDN.** Gateways terminate TLS and apply access policies, and from Phase 3 they may cache the
+  responses of http routes and run a WAF in front of them
+  ([17-cache-and-waf.md](17-cache-and-waf.md), [D171](14-open-decisions.md#engineering)). rpmgr is
+  still not a CDN: it has no edge network of its own, and each gateway caches only for itself. A
+  route can sit behind Cloudflare's proxy as an explicit opt-in
   ([15-dns.md](15-dns.md#proxied-http-routes)).
 - **A DNS editor or DNS host.** rpmgr publishes the records for the names it serves in connected
   DNS-provider zones and touches no other record unless a user adopts it
@@ -121,6 +124,8 @@ would collide with it ([ADR-0001](adr/0001-name-rpmgr.md)).
 | **KEK** | Key-encryption key. Protects the database's encrypted secrets; kept outside the database. |
 | **Org** | Organisation; the tenancy boundary. Every configuration record belongs to exactly one org. |
 | **Instance** | One rpmgr installation (one database, one trust domain). |
+| **Cache** | A gateway's store of the responses of an http route, opt-in per route and private to the gateway (Phase 3, [17](17-cache-and-waf.md)). |
+| **WAF** | The web application firewall a gateway runs in front of an http route: Coraza with the OWASP Core Rule Set, in detection or blocking mode (Phase 3, [17](17-cache-and-waf.md)). |
 | **DNS provider** | A connected account at a DNS host (Cloudflare first) whose API rpmgr uses to publish records. Phase 2. |
 | **Managed zone** | A DNS-provider zone imported into rpmgr; rpmgr publishes records for its routes there. |
 | **DNS name** | A name created in rpmgr that points at a gateway group without a route, e.g. for tcp routes or as a wildcard. |
