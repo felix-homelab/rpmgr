@@ -8,11 +8,13 @@
 package manifest
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -197,11 +199,46 @@ func Write(w io.Writer, docs []*Doc) error {
 	enc := yaml.NewEncoder(w)
 	enc.SetIndent(2)
 	for _, d := range docs {
-		if err := enc.Encode(d); err != nil {
+		var n yaml.Node
+		if err := n.Encode(d); err != nil {
+			return err
+		}
+		sortMaps(&n, false)
+		if err := enc.Encode(&n); err != nil {
 			return err
 		}
 	}
 	return enc.Close()
+}
+
+// sortMaps orders the keys of every mapping under spec and metadata.labels by their text, and the
+// mappings of the Doc and Metadata structs not at all, which keeps their fields in order. YAML
+// orders the keys of a map with a comparison that is not transitive for some keys, such as a run of
+// more than 18 digits, so it would write the same map in the order the map happened to iterate.
+func sortMaps(n *yaml.Node, inMap bool) {
+	switch n.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, c := range n.Content {
+			sortMaps(c, inMap)
+		}
+	case yaml.MappingNode:
+		pairs := make([][2]*yaml.Node, 0, len(n.Content)/2)
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			k, v := n.Content[i], n.Content[i+1]
+			sortMaps(v, inMap || (k.Value == "spec" || k.Value == "labels"))
+			pairs = append(pairs, [2]*yaml.Node{k, v})
+		}
+		if !inMap {
+			return
+		}
+		slices.SortFunc(pairs, func(a, b [2]*yaml.Node) int {
+			return cmp.Or(cmp.Compare(a[0].Value, b[0].Value), cmp.Compare(a[0].Tag, b[0].Tag))
+		})
+		n.Content = n.Content[:0]
+		for _, p := range pairs {
+			n.Content = append(n.Content, p[0], p[1])
+		}
+	}
 }
 
 // Read reads a YAML stream of manifests; a key a manifest does not have is an error.
