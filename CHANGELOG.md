@@ -176,6 +176,13 @@ Changes to the design documents are not recorded here: see the git history and t
   A claim in a managed zone is checked again as soon as the DNS job has published its TXT, and a
   challenge value in one pair of double quotes counts. (#1144)
 
+### Security
+
+- Gateway: built with Go 1.27.4, which fixes GO-2026-6859 (CVE-2026-97054) in `net/http`. On a
+  route with a request body limit, an HTTP/1 request whose body passes the limit while the
+  response headers are written could crash the gateway process. Severity medium; affects 0.1.0
+  to 0.3.0. (#1168)
+
 ## [0.3.0] - 2026-11-04
 
 **Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
