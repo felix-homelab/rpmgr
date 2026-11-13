@@ -121,9 +121,12 @@ func TestReadyChecks_composition(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	r.Run(ctx)
-	eventually(t, "the gateway's reason", func() bool {
+	// Each role runs in its own goroutine: wait for the controller's result too, not only the
+	// gateway's. A ready role that is wrongly listed never satisfies this and fails the test.
+	eventually(t, "the gateway's reason and the controller's result", func() bool {
 		err := r.Check(ctx)
-		return err != nil && strings.Contains(err.Error(), "gateway: no control session")
+		return err != nil && strings.Contains(err.Error(), "gateway: no control session") &&
+			!strings.Contains(err.Error(), "controller:")
 	})
 	err := answersFast(t, r)
 	if err == nil || strings.Contains(err.Error(), "controller:") {
