@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -69,6 +70,34 @@ func TestTrigger_OneAtATime(t *testing.T) {
 	second := waitOutcome(t, dir, func(o Outcome) bool { return o.State == StateOK && o.ID != first.ID })
 	if calls != 2 || second.Generation != 3 {
 		t.Errorf("calls %d, outcome %+v", calls, second)
+	}
+}
+
+// TestTrigger_SignalRightAfterOutcome: a signal sent as soon as a hand-off's outcome can be read
+// starts the next hand-off, as `rpmgr handoff` run again right after one ended does; the trigger
+// is free by then. Each step after a final outcome is written is held up, so that a trigger that
+// frees itself only after writing it would drop the signal.
+func TestTrigger_SignalRightAfterOutcome(t *testing.T) {
+	dir := t.TempDir()
+	var calls atomic.Int32
+	tr := &Trigger{Dir: dir, Handoff: func(context.Context) (*Child, error) {
+		calls.Add(1)
+		return nil, fmt.Errorf("%w: exited", ErrNotReady)
+	}, recorded: func(o Outcome) {
+		if o.State != StateRunning {
+			time.Sleep(200 * time.Millisecond)
+		}
+	}}
+	stop := tr.Start(context.Background())
+	defer stop()
+	var last int64
+	for i := range 3 {
+		signalSelf(t)
+		o := waitOutcome(t, dir, func(o Outcome) bool { return o.State != StateRunning && o.ID != last })
+		if o.State != StateFailed || int(calls.Load()) != i+1 {
+			t.Fatalf("hand-off %d: %+v after %d calls", i+1, o, calls.Load())
+		}
+		last = o.ID
 	}
 }
 
