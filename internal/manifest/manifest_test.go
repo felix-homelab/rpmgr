@@ -273,3 +273,28 @@ func TestConnectRoute(t *testing.T) {
 		t.Fatalf("read back:\n%v\nwant\n%v", back, r)
 	}
 }
+
+// TestKeyOrder: the keys of a spec, of a mapping deep in it and of the labels are written in the
+// order of their text, every time, while kind, metadata, spec, name and labels keep their order.
+// YAML's own order of map keys is not transitive for a run of more than 18 digits, so these keys
+// were written in the order the map happened to iterate (found by FuzzManifestRead).
+func TestKeyOrder(t *testing.T) {
+	in := "kind: Route\nmetadata: {name: a, labels: {b: x, a2: y, a10: z}}\n" +
+		"spec: {0000108B000: 0z2212, \"000010910029012712291012\": ~, \"2\": 9, l: [{z: 1, a: 2}]}\n"
+	want := "kind: Route\nmetadata:\n  name: a\n  labels:\n    a10: z\n    a2: \"y\"\n    b: x\nspec:\n" +
+		"  0000108B000: 0z2212\n  \"000010910029012712291012\": null\n  \"2\": 9\n  l:\n" +
+		"    - a: 2\n      z: 1\n"
+	for i := range 50 {
+		docs, err := manifest.Read(strings.NewReader(in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out strings.Builder
+		if err := manifest.Write(&out, docs); err != nil {
+			t.Fatal(err)
+		}
+		if out.String() != want {
+			t.Fatalf("write %d:\n%s\nwant:\n%s", i, out.String(), want)
+		}
+	}
+}

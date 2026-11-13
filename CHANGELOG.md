@@ -116,6 +116,11 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Fixed
 
+- Manifests (`rpmgr get … -o yaml`, the web UI's manifest view) write the keys of a spec and of the
+  labels in the same order every time: the byte order of their text. Some keys, such as a label
+  key with a long run of digits, came out in a different order from one export to the next. Keys
+  with digits or capitals may now be ordered differently from earlier releases. (#1166)
+
 - On an all-in-one, a route pinned to QUIC no longer shows its targets as "HTTP/2 (pinned on the
   route)". The built-in connector reaches the gateway in memory whatever the transport setting, and
   the route page, `rpmgr get route` and the API now say "In process (built-in connector)" with a
