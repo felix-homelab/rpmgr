@@ -144,7 +144,7 @@ flowchart LR
     U443[UDP/443 QUIC listener<br/>ALPN dispatch]
     PP[Port-pool listeners<br/>TCP and UDP routes]
     H80[TCP/80<br/>ACME HTTP-01 + redirect]
-    HTTP[HTTP engine<br/>routing, policies, headers]
+    HTTP[HTTP engine<br/>routing, policies, headers<br/>WAF and response cache, Phase 3]
     SESS[Data-session manager]
     RT[Route table<br/>from signed snapshot]
     RELAY[Private-service relay + P2P rendezvous]
@@ -164,6 +164,12 @@ flowchart LR
   certificates arrive in snapshots, revocations in separate deny-list updates; the gateway keeps the
   last-known-good snapshot **and the deny-list** on disk, signed, and loads both before accepting
   sessions, so it can restart while the Controller is down without forgetting revocations.
+- From Phase 3 the HTTP engine may inspect the requests of an http route with a WAF (Coraza with the
+  pinned OWASP Core Rule Set) and answer them from a response cache, in the order TLS, access
+  policy, WAF, cache, tunnel. Both run on gateways only, on routes whose TLS the gateway
+  terminates; the cache's objects live in the gateway's memory and state directory and nowhere
+  else, and the controller holds settings, counters, redacted WAF hits and the purge log
+  ([17](17-cache-and-waf.md), [D171](14-open-decisions.md#engineering)).
 - The gateway reports its connectors' data sessions, with the routes ready on each, so the
   controller can show every target the transport its streams take
   ([03](03-connections.md#transport-selection)).
@@ -342,6 +348,8 @@ The full threat model is in [04-security.md](04-security.md#threat-model).
 | Agent private keys | Each agent, generated locally | Never copied |
 | CA keys, ACME keys, other secrets | Controller DB, envelope-encrypted under the KEK | KEK held outside the DB |
 | Public TLS certificates and keys | Controller DB (encrypted) | Pushed to the gateways that serve the hostnames |
+| Cached responses (Phase 3) | The gateway that stored them, in memory and in its state directory | None: each gateway caches for itself; the controller never holds an object ([17](17-cache-and-waf.md#cache-tab)) |
+| WAF hits (Phase 3) | Controller DB, redacted, bounded | Counters in Prometheus; hits queued on the gateway until acknowledged ([17](17-cache-and-waf.md#waf-tab)) |
 | Metrics | Prometheus (scraped from every role) | Hourly/daily rollups in the DB for the UI |
 | Audit log | Controller DB (hash-chained) | Signed checkpoints in an external sink |
 | Public DNS records in managed zones | The DNS provider | Ownership ledger in the controller DB, which decides which records rpmgr may change ([15](15-dns.md#ownership-ledger)) |

@@ -38,6 +38,7 @@ design prevents and the control that prevents it.
 | **Compromised controller (process, or database plus KEK)** | Everything in the control plane: re-route public hostnames, issue certificates (and so MITM traffic that is not end-to-end), deny service, push any configuration. With connected DNS providers (Phase 2): rewrite **any** record in the connected zones, including MX, SPF/DKIM and third-party verification records, and use the provider tokens from elsewhere unless they are IP-restricted | Make a connector exceed its **local policy** (dial outside `allow_targets`, enable shell, functions, virtual-network routes, P2P, listeners). Install an unsigned or older binary (OTA verified against keys compiled into the binary, with a persisted anti-rollback floor). Read agent or WireGuard private keys (never stored centrally). |
 | **Database dump without the KEK** | Read topology, configuration, emails, audit log | Use any credential: passwords are argon2id; session, API and enrollment tokens are SHA-256 hashes of 256-bit random values; CA, ACME, TOTP, OIDC and other secrets are AES-256-GCM-encrypted under a KEK held outside the database. |
 | **Holder of a stolen DNS-provider token** (Phase 2) | Change any record the token covers, from anywhere the token is accepted | Use it from another network, if the token is restricted to the controller's egress addresses; use it after its expiry; use it beyond the zones it is scoped to ([15](15-dns.md#connecting-importing-and-disconnecting)). rpmgr never shows the token after it is saved (write-only) |
+| **Visitor of a cached route** (Phase 3) | Read what a shared-cacheable response holds; ask the gateway to revalidate | Receive a response stored for a request with credentials (never stored, never looked up), another route's or org's object (the route is part of the key), or a hit that the access policy or the WAF did not pass first ([Gateway cache and WAF](#gateway-cache-and-waf-phase-3)) |
 | **Malicious insider with Admin role** | Any configuration action within the org. Make a reset link for a non-Owner member of the org alone, which takes over the account of one without a second factor, in the org's audit log ([Account recovery](#account-recovery)) | Use the shell on hosts that did not opt in. Read secrets back (write-only fields). Act unnoticed (hash-chained audit log with external checkpoints; account recoveries are in the org's log too). Grant Owner (Owner-only). Recover an Owner's or Instance Admin's account, or that of a member of another org ([Account recovery](#account-recovery)). Skip step-up re-authentication for dangerous actions. |
 | **Supply-chain attacker** | Compromise a dependency or a CI run | Ship an update agents will install (release-signing keys offline, separate from CI). Redirect downloads usefully (the signature is trusted, not the URL). Go unnoticed (go.sum, govulncheck, SBOM, SLSA provenance, reproducible-build check, actions pinned by SHA). |
 
@@ -54,6 +55,10 @@ What the design does **not** protect against, stated plainly:
   explicit per-route opt-in ([15](15-dns.md#proxied-http-routes)).
 - A compromised connector host is out of scope beyond the connector's own identity and routes.
 - Denial of service against public gateways is mitigated (limits, quotas) but not solved.
+- A WAF is one layer, not a guarantee (Phase 3): a rule set misses attacks and a tuned one more, an
+  exclusion lowers protection where it applies, and a compromised gateway skips it. The cache
+  directory of a gateway holds plaintext responses of the routes that cache
+  ([Gateway cache and WAF](#gateway-cache-and-waf-phase-3)).
 
 ## PKI and identity
 
@@ -567,8 +572,20 @@ their own account this way. Further rules:
 | Audit log read and export; an export also takes a step-up (`audit.read`) | ✓ | ✓ | | |
 | Live logs of the org's connectors and gateways (`agents.logs`, Phase 2) | ✓ | ✓ | | |
 | Webhook endpoints, their secrets and deliveries (`webhooks.write`, Phase 2) | ✓ | ✓ | | |
+| Purge a route's cache by URL, prefix or route; list and look up its cached objects (`cache.manage`, Phase 3) | ✓ | ✓ | ✓ | |
+| Purge everything of the org's cache (`cache.purge_all`, Phase 3) | ✓ | ✓ | | |
+| Mark a cache rule ignore cookies, on a route or as an org default (`cache.ignore_cookies`, Phase 3) | ✓ | ✓ | | |
+| View WAF hits and settings (`waf.read`, Phase 3) | ✓ | ✓ | ✓ | |
+| Change the WAF settings of the org, a gateway group of the org and a route, and its exclusions (`waf.write`, Phase 3) | ✓ | ✓ | | |
 | SSO, MFA policy, org settings (`org.write`) | ✓ | | | |
 | `connector.shell` (Phase 3) | explicit per-user grant, plus host opt-in, plus step-up | | | |
+
+[R] **Cache and WAF** (Phase 3, [D172](14-open-decisions.md#engineering),
+[D173](14-open-decisions.md#engineering)). A route's cache mode and rules are part of the route and
+need `routes.write`. The Instance Admin alone sets a gateway group's cache sizes, the instance's
+WAF settings and floor, the WAF settings of a shared group and every custom rule; none of these
+adds a role. The Instance Admin has no org membership, so sees a gateway's cache totals and the
+WAF's counters and no object, URL or hit of an org ([Gateway cache and WAF](#gateway-cache-and-waf-phase-3)).
 
 [R] **Live logs** (Phase 2): logs of a gateway of a group shared with other orgs are for the
 Instance Admin only, as they show other orgs' traffic. A host cannot refuse live logs in Phase 2.
@@ -835,6 +852,97 @@ gateway's side of P2-M03 leaves room for it.
 | Assertion in the redirect | valid 60 s |
 | Session (`__Host-rpmgr-auth`) | a setting of each `oidc` rule: 12 h by default, 5 min to 7 d; `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/` |
 | Groups carried | only those the rule names, at most 50 |
+
+## Gateway cache and WAF (Phase 3)
+
+The security rules of the gateway cache and the WAF ([17](17-cache-and-waf.md),
+[D172](14-open-decisions.md#engineering), [D173](14-open-decisions.md#engineering)). The sizes and
+limits are in [03](03-connections.md#cache-and-waf-limits-phase-3).
+
+**What the cache never stores or serves** (a test names each, [12](12-testing-and-quality.md#security-testing)):
+
+- The response to a request with `Authorization`, and to one with `Cookie` unless an
+  ignore-cookies rule matches it (below). Such a request does not even look
+  the cache up, so it is never given a response stored for another. The `Authorization` of a
+  `basic_auth` rule and the cookies `__Host-rpmgr-auth` and `__Host-rpmgr-state` are consumed by the
+  gateway and do not count; the gateway removes the cookies from the upstream request of a route
+  with the cache on.
+- **The one exception, a cache rule marked ignore cookies** ([D172](14-open-decisions.md#engineering)):
+  for the paths of that rule the `Cookie` header is neither forwarded to the origin on a miss nor part
+  of the key, so one object is shared by every visitor. `Authorization` still bypasses, and a
+  response with `Set-Cookie`, `private` or `no-store` is still never stored. Only an Admin (Owner or
+  Admin) may set the flag, on a route or as an org default, and the web UI warns; the origin must
+  not depend on the cookie for those paths, which is the operator's declaration. A change of the flag
+  is part of `route.update` or the org settings change and is audited with its field.
+- A response with `Set-Cookie`, `private`, `no-store` or `Vary: *`, and the response of a request
+  that says `no-store`. A cache rule changes none of this.
+- A response of a request the WAF scored over its threshold, also in detection mode, and any
+  response the gateway made itself (the block page, the access policy's refusals, the error and
+  maintenance pages).
+- Anything for a route whose type is not `http` or whose TLS the gateway does not terminate.
+
+**What keeps objects apart.** The key is route, host, path, query and the headers `Vary` names; the
+host is the route's, never a header of the client, and no `Rpmgr-` or forwarding header takes part.
+Nothing of a route, an org or a hostname is served to another. A hit is served only after the access
+policy passed the request on this request, and only after the WAF, if it is on, let it through. On a
+route with an `oidc` rule the origin has seen the visitor's identity, so the strict cache stores
+a response only when the origin allows shared caches explicitly, and a request a cache rule matches
+goes upstream without the identity headers.
+
+**Purges** are authorised as the [roles](#roles) say, rate limited, and audited as `cache.purge` with
+the kind, the route, the number of objects each gateway removed and, for a URL, its path, the query
+parameter names and the SHA-256 of the whole URL, but not the query values, which may hold tokens.
+The first page of an object list and each lookup are audited as `cache.list` with the gateway and
+the route; the objects themselves are never logged, and the controller never stores them. A gateway lists only
+objects of routes of the org that the controller names from the caller's session, never from the
+request.
+
+**The cache directory** of a gateway is readable by the service user only, its files `0600`, and it
+holds plaintext responses of the routes that cache. A compromised gateway sees that plaintext
+already ([Threat model](#threat-model)), and the cache adds the responses it kept. [R] It is not
+encrypted, because the key would sit beside the data; it is emptied when the gateway is
+decommissioned or leaves, and a route that is deleted or stops caching drops its objects. A stolen
+disk of a gateway that did neither holds them: the cache's size bounds what.
+
+**The WAF** ([D173](14-open-decisions.md#engineering)):
+
+- **The rule set is part of the release.** The CRS version is fixed in the repository with a content
+  hash that a CI check verifies; the rules are embedded in the binary and so covered by the release
+  signature ([Release signing](#release-signing)). A gateway never downloads rules; the controller
+  never pushes rule text of the CRS, only the settings and the custom rules. A new CRS arrives with
+  a new release, over the update path ([Over-the-air updates](#over-the-air-updates)).
+- **Settings and custom rules reach a gateway in its signed snapshot,** so a gateway applies only
+  what the config-signing key signed. A snapshot below the instance floor is never compiled.
+- **Scopes and the floor.** The most specific scope wins and the instance floor clamps the result:
+  a minimum mode, a minimum paranoia level, a maximum threshold and protected rules, which no scope
+  below the instance may exclude. An org, gateway group or route cannot go below an enforced floor,
+  nor lower it by an exclusion. Setting or changing a floor needs the Instance Admin and a step-up.
+- **Custom rules** are SecLang that only the Instance Admin may write, with a step-up, and each
+  change is audited as `waf.custom_rules_update` with the SHA-256 of the text. The text may use
+  `SecRule`, `SecAction` and `SecMarker`, with rule IDs from 1 000 000 to 1 999 999 and the actions
+  that match, score, tag, log and deny. It may not use `Include`, anything that reads a file
+  (`@pmFromFile`, `@ipMatchFromFile`, `@inspectFile`), run a program, keep a value across
+  requests (`initcol`, `setsid`, a persistent collection), change the engine's own settings
+  (`SecRuleEngine`, the body limits, `SecAuditEngine`, `SecResponseBodyAccess`) or remove
+  another rule; the controller refuses such text, and a gateway refuses it again. The engine's
+  regular expressions are Go's, which run in linear time, so a rule cannot hold a request for long
+  [V S11].
+- **What is recorded.** A hit holds the time, the route, the rules that scored and their score,
+  the names of the variables that matched and the length of the matched value, the client address,
+  the method, the host and the path, and whether the request was detected or blocked. It never holds
+  a value that matched, a body, a query string or a header value, because a matched value can be a
+  password, a token or a person's data. The path is the part most likely to carry an identifier,
+  and is kept because a hit without it cannot be acted on; it is cut to a bound
+  ([03](03-connections.md#cache-and-waf-limits-phase-3)). The engine's own audit log and debug log
+  are off, so that no body reaches a file.
+- **Client addresses are personal data.** Hits are kept for a bounded time and deleted with the
+  route or the org; they are not copied to audit sinks or webhooks, whose events carry counts only.
+- **Failure.** An engine failure fails the request in blocking mode and lets it through in
+  detection mode, counted. A gateway without the capability `http.waf` serves no route whose mode
+  is not `off`.
+- **Audit actions:** `waf.settings_update` (scope, the changed fields), `waf.floor_update`,
+  `waf.exclusion_create`, `waf.exclusion_update`, `waf.exclusion_delete` (with the hit's ID when it
+  came from one), `waf.custom_rules_update` and `gateway_group.update` for the cache sizes.
 
 ## Connector-local policy
 

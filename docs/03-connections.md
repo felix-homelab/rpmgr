@@ -231,6 +231,9 @@ message Signed { bytes payload = 1; bytes signature = 2; string key_id = 3; }
   superseded or disconnected, the controller ends its operations at once with that reason.
   "Diagnostics" are the existing `ProbeTarget` and live logs; there is no other diagnostic
   operation.
+  - Phase 3 adds the kinds `cache.list` and `cache.lookup` to the gateway's operations, each one
+    short operation per page or key, and a controller message `CachePurge` answered with
+    `OpResult`, with the field `cache_purge_seq` in `Hello` ([17](17-cache-and-waf.md#control-session-traffic)).
   - `Open` is the field `open_operation = 9` of `ControllerMessage`; the number 3 and the name
     `open`, which an early draft gave it, stay reserved, as `buf breaking` refuses to give either
     back (VB-22, resolved). Agents that run operations announce the capability `logs.stream`; the
@@ -819,6 +822,10 @@ sequenceDiagram
   overlapping sets. The store refuses two routes of a group with the same hostname, prefix and
   set of matches ([06](06-data-model.md#routing)). Header matches never choose a certificate,
   which follows the hostname alone, and apply on port 80 as on 443.
+- **Cache and WAF** (Phase 3, [D171](14-open-decisions.md#engineering)). After the access policy a
+  gateway may inspect a request with the WAF and then answer it from its response cache, before
+  the request is sent through a tunnel stream ([17](17-cache-and-waf.md#the-request-path)). Neither
+  runs on a route type whose bytes the gateway does not read.
 - **Reserved path** (Phase 2, [D135](14-open-decisions.md#engineering)). `/.rpmgr/` belongs to the
   gateway on every http route hostname and never goes upstream: it carries the gateway's own
   endpoints, such as the end of an OIDC sign-in ([Access policies](#access-policies)). A request
@@ -1032,6 +1039,38 @@ the capability `route.limits`:
   cancellations included. A gateway keeps counting the connections of a removed route while they
   drain, so the route, added back meanwhile, never admits more than its limit. The per-client
   `rate_limit` rule of a policy comes on top ([Access policies](#access-policies)).
+
+### Cache and WAF limits (Phase 3)
+
+The sizes, limits and times of the gateway cache and the WAF ([17](17-cache-and-waf.md),
+[D172](14-open-decisions.md#engineering), [D173](14-open-decisions.md#engineering)). Every value is
+[R] until S11 has run ([S11](13-roadmap.md#phase-0--spikes)); security rules are in
+[04](04-security.md#gateway-cache-and-waf-phase-3).
+
+| Item | Value |
+|---|---|
+| Cache memory tier, per gateway | set per gateway group by the Instance Admin: 0 (tier off) to 64 GiB, shipped 64 MiB |
+| Cache disk tier, per gateway | 0 (tier off) to 1 TiB, shipped 1 GiB |
+| Charge per object | its size, at least 4 KiB, so that a tier of 1 GiB holds at most 262 144 objects |
+| Largest stored object | 64 MiB; a larger response is streamed and not stored. The memory tier takes objects up to 1 MiB |
+| Cache rules | at most 16 per route and 32 as an org's defaults; a pattern at most 256 bytes; a time to live from 1 s to 365 d; a stale-on-error time from 0 to 7 d |
+| Collapsed misses | up to 64 requests wait on one key's origin request, each for at most the route's upstream response-header time; the 65th goes to the origin on its own |
+| Purge | an exact URL at most 8 KiB, a prefix at most 2 KiB; at most 10 purges a minute per org, and one purge of everything per 5 min; a gateway answers `OpResult` within 10 s |
+| Purge replay | the controller keeps a purge for 24 h, at most 10 000 in all; a gateway that cannot be replayed to empties its cache |
+| Object list | a page of 50 objects by default, at most 200; at most 32 headers of an object, each value cut at 512 bytes; the operation's deadline is 10 s; at most 2 list and lookup operations per user and 4 per gateway at once |
+| Object lookup | at most 50 variants answered by one gateway |
+| Cache counters | reported with the gateway's `Status`, every 60 s, as the route counters are |
+| WAF inspected request body | the first 128 KiB; the rest passes uninspected and is counted as truncated |
+| WAF body buffer | 64 MiB in all per gateway; a request that finds it full is inspected on headers and query only, and counted |
+| WAF paranoia level and threshold | a level from 1 to 4, shipped 1; a threshold from 1 to 100, shipped 5 (the CRS default) |
+| WAF profiles | at most 16 distinct combinations of level, threshold and custom rules per gateway group |
+| WAF exclusions | at most 200 per scope; a path pattern at most 256 bytes; a parameter name at most 128 bytes |
+| WAF custom rules | one text per scope of at most 64 KiB |
+| WAF hits to the controller | a batch every 10 s of at most 200 hits; a gateway keeps at most 5 000 unsent hits in memory and drops the oldest beyond that |
+| WAF hit path | kept to at most 512 bytes, cut after that |
+| WAF hit sampling | up to 50 hits a second per gateway are kept in detail, with a burst of 200; beyond that one hit in ten is kept and marked; counters stay exact |
+| WAF hit retention | an instance setting, 7 days shipped, from 1 to 90 days, and at most 100 000 hits per org, the oldest going first |
+| Block-spike alert | see [10](10-operations.md#suggested-alerts) |
 
 ### Target connection bound (Phase 2)
 
@@ -1580,6 +1619,7 @@ sequenceDiagram
 | Route limits (Phase 2) | an HTTP request over the connection limit gets **503** with `Retry-After: 1`, one over a request rate **429** with `Retry-After` the seconds until it may come again, at least 1; the route's total rate allows a second's worth of requests at once; a bandwidth bucket holds 100 ms of the rate, at least 64 KiB, the largest UDP payload, and a connection moves at most 100 ms of the rate, at least 512 bytes, at a time | [R] A client tries again soon, as a slot frees when a request ends; a datagram always fits the bucket, and a connection under a low limit moves on in small steps rather than stalling ([Route limits](#route-limits-phase-2)) |
 | Per-client rate limit (Phase 2) | a rule allows 1 to 10 000 requests, new connections or new flows a second, and a burst of 1 to 10 000, at most one rule a policy; at most 4 rate_limit rules a route on a gateway; each rule has a table for udp flows and one for the rest, which every route whose policies carry the rule shares, each of at most 65 536 client addresses, and all tables of a gateway together hold at most 262 144, about 28 MiB; when a table or the gateway is full, the addresses whose bucket is full again are dropped, at most once a second, and a new address that still finds no room passes uncounted (D137); every minute the idle addresses are dropped and each table is made anew, which gives its memory back | [R] A flood of addresses costs a gateway at most about 28 MiB, whatever the number of routes and rules, never locks real clients out and never makes it forget the clients it limits ([Access policies](#access-policies)) |
 | Custom page (Phase 2) | at most 64 KiB of HTML per page; the log lines of its `{{request_id}}` at most 20 per second per gateway, with a burst of 20, the rest dropped and counted; a link to the web UI's preview of a page works for 5 min | [R] A page loads fast and fits a snapshot item fetch; a flood of requests cannot flood the log ([HTTP routes](#http-routes), [D136](14-open-decisions.md#engineering)) |
+| Cache and WAF (Phase 3) | the sizes, limits and times of [Cache and WAF limits](#cache-and-waf-limits-phase-3) | One table for both features |
 | Apply acknowledgement | 30 s → `apply_timeout` | Visible instead of silent |
 | Snapshot item fetch | 10 s per `FetchResource`; a failed fetch is retried after 1 s, doubling up to 1 min, and its resource is `not_ready(environment)` until then | A controller outage delays a new certificate without a retry storm |
 | Target certificate probe | the connector's dial and TLS handshake together 10 s; at most 4 at once per connector, another is refused at once; `ProbeTargetCertificate` waits at most 15 s for the connector's answer | [R] A silent target or connector answers within the time a user waits for a button; a user who may change routes cannot make a connector open many dials at once |
@@ -1687,6 +1727,15 @@ The gated route features of Phase 2, each registered by the slice that adds the 
 | `http.oidc` | Gateway | OIDC forward-auth on `http` routes |
 | `http.cf-connecting-ip` | Gateway | The client address from `CF-Connecting-IP` on proxied routes |
 
+The gated route feature of Phase 3 ([17](17-cache-and-waf.md#where-the-waf-does-not-run)):
+
+| Capability | Kind | Route feature |
+|---|---|---|
+| `http.waf` | Gateway | The WAF: a route whose effective WAF mode is not `off` goes to no gateway without it |
+
+The cache is no gated feature, because a gateway that ignores it serves the route uncached, which
+fails safe ([17](17-cache-and-waf.md#cache-settings)).
+
 Per-route HTTP timeouts are no gated feature: a gateway without them keeps its fixed values, which
 fails safe. Health checks are not gated either (D133), so the route edge features of Phase 2
 register no connector-side gate.
@@ -1702,6 +1751,7 @@ used, not by the route compiler:
 | `logs.stream` | Gateway, connector | Live logs (`Open` and `Attach`) |
 | `ota` | Gateway, connector | Over-the-air updates: the agent takes a release offer in its snapshot, stages it for the root updater and reports the update state and the updater's outcome in `Status`; an agent without it is never offered a release. Announced only on a Linux host with the root updater installed ([04](04-security.md#over-the-air-updates)) |
 | `firewall.ranges` | Gateway | The host's `ufw` is handed to rpmgr: the gateway gets the port pools of its group in its snapshot, writes their ranges for the root helper and reports the helper's state in `Status`. Announced only by a gateway whose boot file has `firewall.backend: ufw` ([04](04-security.md#host-firewall-for-port-pools-phase-2)); a gateway without it gets no pool, so one of an earlier release never meets a resource it does not know |
+| `http.cache` | Gateway | Response cache (Phase 3): the gateway takes the cache settings of a route, `CachePurge`, and the `cache.list` and `cache.lookup` operations |
 | `relay.v1` | Gateway, connector | Relayed private services |
 | `session.handoff` | Gateway | A connector's new process names its old one in `SessionHello.handoff_from`, and the gateway drains the old process's sessions instead of closing them; a gateway without it closes them as on a restart ([Restarts with socket hand-off](#restarts-with-socket-hand-off-phase-2)) |
 

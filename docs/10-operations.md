@@ -141,6 +141,7 @@ with `rpmgr user reset-password` while no user exists. There is no default passw
 | `/run/rpmgr-update/status.json` | root, 0644 | The updater's last outcome (`updated`, `rolled_back`, `rollback_failed`, `refused`), which the agent reports ([04](04-security.md#over-the-air-updates)) |
 | `/run/rpmgr/<role>/handoff.json` | rpmgr, 0644 | The outcome of the role's last restart with socket hand-off (`running`, `ok`, `failed`, `refused`, with the reason and both process IDs), which `rpmgr handoff` waits for; read without following a link and only as a small regular file ([03](03-connections.md#restarts-with-socket-hand-off-phase-2)) |
 | `/run/rpmgr/<role>/handoff.pid` | rpmgr, 0644 | The process ID of the role's process once it takes `SIGUSR2` as a hand-off; `rpmgr handoff` signals no other process ([03](03-connections.md#restarts-with-socket-hand-off-phase-2)) |
+| `/var/lib/rpmgr/cache/` (gateway, Phase 3) | rpmgr, 0700; files 0600 | The disk tier of the response cache: one file per object, written to a temporary name and renamed, and the number of the last purge applied. It holds plaintext responses ([04](04-security.md#gateway-cache-and-waf-phase-3)); `cache.dir` in the gateway's boot file moves it. Emptied by `rpmgr leave` and when the gateway is decommissioned |
 | `/var/lib/rpmgr/firewall/desired.json` | rpmgr, 0644 in a 0750 directory | The ranges the gateway wants open; **untrusted input** to the helper |
 | `/etc/rpmgr/firewall.json` | root, 0644 | The bounds, written by `rpmgr setup --firewall ufw` from the boot file's listeners and the maximum range; refused if not root-owned or if group or others may write it |
 | `/run/rpmgr-firewall/status.json` | root, 0644 | The helper's last outcome, which the gateway reads and reports |
@@ -660,8 +661,10 @@ the boot file.
 | Scope | Examples |
 |---|---|
 | Instance (Instance Admin) | Default data-session transport (`auto`, `quic`, `h2`, `wss`; shipped `auto`, [03](03-connections.md#transport-selection); [R] pin `h2` on routes or connectors that carry bulk transfers over high-delay paths, where it carried single streams faster in the Phase 1 measurements, [ADR-0004](adr/0004-quic-default-transport-policy.md#phase-1-measurements)), public URL aliases (each alias is also accepted as `Origin` by the CSRF check, [04](04-security.md#human-authentication-and-sessions)), ACME account, base domain (with DNS automation, a verified or trusted domain of the system org, step-up, [15](15-dns.md#base-domain)), Cloudflare IP ranges (refreshed automatically; `cloudflare_ip_refresh` switches the refresh off, [15](15-dns.md#proxied-http-routes); set with `rpmgr update settings --instance`, no web page yet), SMTP (optional: the relay's `host:port`, sender address, user name, and STARTTLS or TLS from the start, as the controller sends no mail in plain text; the password is write-only and kept under the KEK), retention (audit entries: 365 days by default, 30 to 3650 days; metric rollups), external audit sink (Phase 2), revocation-log sink ([Backup and restore](#backup-and-restore)), controller endpoints advertised to agents (each `https://<host>[:<port>]`, tried in order; agents get them at enrollment and in every snapshot, and the public URL alone while none are listed, [03](03-connections.md#reaching-a-private-controller)). **PKI** page: leaf-certificate lifetime and grace period ([D8](14-open-decisions.md#security-defaults), values and ranges in [04](04-security.md#leaf-certificates)), password-hash profile. **Updates** page: release check (on by default, [D4](14-open-decisions.md#product-and-project)), update channel (`stable` or `prerelease`), manifest upload for air-gapped installs, rollout policy (Phase 2); Phase 2: the audit sinks ([04](04-security.md#audit-log)) and the private ranges webhook receivers may use (`webhook_private_ranges`, a list of at most 32 prefixes such as `10.0.0.0/8`, none by default; [04](04-security.md#webhooks-and-the-egress-guard-phase-2)) |
+| Instance (Instance Admin), Phase 3 | The WAF: mode, paranoia level and threshold at the instance scope, the enforced floor (minimum mode, minimum paranoia level, maximum threshold, protected rules and tags), custom rules, and the retention of WAF hits ([17](17-cache-and-waf.md#scopes)); a gateway group's cache sizes are fields of the group, not an instance setting |
 | Org (Owner) | MFA requirement, OIDC providers and group→role mapping, default gateway group, Operator may enroll connectors, branding ([04](04-security.md#roles)); Phase 2: alert e-mails on or off (`alert_email`, on) and the alert types the org gets (`alert_types`, all) ([D139](14-open-decisions.md#engineering)) |
-| Gateway group (Admin) | Port pools, trusted-proxy CIDRs, DNS target for managed records, default TLS options, per-route limit defaults |
+| Org (Admin), Phase 3 | The cache's default mode and default rules ([17](17-cache-and-waf.md#cache-settings)); the org's WAF scope ([17](17-cache-and-waf.md#scopes)) |
+| Gateway group (Admin) | Port pools, trusted-proxy CIDRs, DNS target for managed records, default TLS options, per-route limit defaults; Phase 3: the group's WAF scope, and its cache sizes, which only the Instance Admin sets |
 | DNS (Owner/Admin; Instance Admin for the system org) | DNS providers and their tokens, managed zones and their gates. These are resources with their own pages, not settings ([15](15-dns.md)) |
 | Install command generator | Install prefix, gateway group, labels, ephemeral flag, `--allow-target` and `--deny-target` entries — the install location lives here, because it is a property of the install command, not of a running agent. There is no service-name suffix: one instance per role per host ([Supported platforms](#supported-platforms)) |
 
@@ -1029,6 +1032,19 @@ gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection))
 | `rpmgr_dns_cloudflare_ranges_refresh_total{result}` | counter | controller | 2 | Refreshes of Cloudflare's IP ranges by this controller: `ok`, `rejected` (sanity bounds), `failed` ([15](15-dns.md#proxied-http-routes)) |
 | `rpmgr_dns_cloudflare_ranges_age_seconds` | gauge | controller | 2 | Age of the Cloudflare IP ranges in use: since the last accepted refresh, or since the built-in list was retrieved |
 | `rpmgr_dns_rate_blocked_seconds{provider}` | gauge | controller | 2 | Seconds left of a `retry-after` block; 0 when none |
+| `rpmgr_cache_requests_total{route,result}` | counter | gateway | 3 | Requests of routes with the cache on by outcome: `hit`, `miss`, `stale`, `revalidated`, `bypass`, `not_storable`, `waf_flagged`, `purged_meanwhile` ([17](17-cache-and-waf.md#what-is-stored)) |
+| `rpmgr_cache_bytes_total{route,source}` | counter | gateway | 3 | Response bytes sent, `source` = `cache` or `origin` |
+| `rpmgr_cache_size_bytes{tier}`, `rpmgr_cache_objects{tier}` | gauge | gateway | 3 | What each tier (`memory`, `disk`) holds now, against the group's limits |
+| `rpmgr_cache_evictions_total{tier,reason}` | counter | gateway | 3 | Objects evicted, `reason` = `lru`, `expired`, `purged`, `rule_changed`, `route_changed` |
+| `rpmgr_cache_purges_total{kind,result}` | counter | gateway | 3 | Purges applied, by kind and `applied`, `replayed` or `emptied` |
+| `rpmgr_cache_errors_total{kind}` | counter | gateway | 3 | `disk_write`, `disk_read`, `object_corrupt` |
+| `rpmgr_waf_requests_total{route,action}` | counter | gateway | 3 | Requests of routes with the WAF on: `allowed`, `detected`, `blocked`, `truncated` (body over the inspected size), `degraded` (inspected on headers only, buffer full), `error` (engine failure) |
+| `rpmgr_waf_rule_hits_total{rule}` | counter | gateway | 3 | Rule hits by CRS or custom rule ID, without the route, so that its series stay bounded by the rules |
+| `rpmgr_waf_inspection_seconds{phase}` | histogram | gateway | 3 | Time spent in the engine per request, `phase` = `request_headers` or `request_body` |
+| `rpmgr_waf_profiles` | gauge | gateway | 3 | Distinct engine profiles the gateway runs |
+| `rpmgr_waf_ruleset_info{crs_version}` | gauge | gateway | 3 | 1 for the CRS version the binary carries |
+| `rpmgr_waf_hits_dropped_total{reason}` | counter | gateway | 3 | Hits not delivered in detail: `sampled`, `queue_full` |
+| `rpmgr_waf_hits_stored` | gauge | controller | 3 | Hits held, against the bound per org ([03](03-connections.md#cache-and-waf-limits-phase-3)) |
 
 ### Traces
 
@@ -1086,13 +1102,14 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 | DNS record drifted | An owned record is `drifted`: it changed again within the stop window and is no longer corrected ([15](15-dns.md#ownership-ledger)); `dns_record_drifted` |
 | DNS-provider token invalid or expiring | The provider rejects the token, or it expires within the warning period ([15](15-dns.md#timers-and-limits)); `dns_provider_token` |
 | Cloudflare IP ranges stale | The daily refresh was rejected by the sanity bounds or failed for > 3 days, while proxied routes exist and the refresh is on; fires 15 min after the condition begins |
+| WAF block spike (Phase 3) | Requests a route's WAF blocked in the last 5 min are at least 100 and at least 5 times the route's mean per 5 min over the previous 24 h, for 2 min; resolves when they are below that for 10 min; `waf_block_spike` ([17](17-cache-and-waf.md#waf-tab)) |
 
 [R] **Alerts the controller evaluates** (Phase 2, [D142](14-open-decisions.md#engineering)): the
 conditions above stay fixed; they are not configured per org. The controller evaluates, from its
 own state: agent offline, configuration not applied, certificate renewal failing, public
 certificate expiring, route has no ready connector, clock skew and webhook endpoint failing for
 each org; audit checkpoints behind, revocation log not yet off-host, audit sink backlog and
-Cloudflare IP ranges stale for the instance; and, with DNS automation, the DNS alerts for each org:
+Cloudflare IP ranges stale for the instance; with the WAF (Phase 3) the block spike for each org; and, with DNS automation, the DNS alerts for each org:
 conflict, zone held, sync failing, record drifted and provider token invalid or expiring. A zone
 that is disabled raises none of the zone alerts; the conflict alert counts from when the name's
 status began. "UDP payloads too large" stays a Prometheus
@@ -1117,13 +1134,39 @@ event's summary begins with: `agent_offline`, `config_not_applied`, `agent_certi
 `public_certificate_expiring`, `route_no_ready_connector`, `clock_skew`,
 `audit_checkpoints_behind`, `revocation_log_on_host`, `webhook_failing`,
 `audit_sink_backlog`, `cloudflare_ranges_stale`, `dns_conflict`, `dns_zone_held`, `dns_sync_failing`,
-`dns_record_drifted` and `dns_provider_token`. An agent counts once it has connected,
+`dns_record_drifted`, `dns_provider_token` and, from Phase 3, `waf_block_spike`. An agent counts once it has connected,
 while it is enabled and not ephemeral; agent offline counts from its disconnection, configuration
 not applied and clock skew only while it is online, an alert of either keeping its state while the
 agent is offline, and certificate renewal failing looks at its
 newest unrevoked certificate. Public certificate expiring covers ACME certificates; a route in
 maintenance has no "no ready connector" alert. Revocation log not yet off-host is the status of
 the replica that evaluates the alerts.
+
+## Cache and WAF (Phase 3)
+
+Running [17](17-cache-and-waf.md). Both are off until a route or a scope turns them on, and neither
+changes the ports, the units or the boot file's required keys.
+
+- **Sizing.** A gateway's cache takes the memory tier from the gateway's process memory and the disk
+  tier from the filesystem of `cache.dir`, up to the limits of its group
+  ([03](03-connections.md#cache-and-waf-limits-phase-3)). [R] Set the memory tier well below the
+  host's free memory, because the WAF's engines, its body buffer and the Go runtime share it, and
+  keep the disk tier below the free space of that filesystem, which the gateway checks when it
+  starts and then at each change of the limit; a gateway that finds the limit above the free space
+  reports `cache_disk_error` and stores in memory only.
+- **The WAF's cost** is CPU per request and memory per engine, measured by S11
+  ([13](13-roadmap.md#phase-0--spikes)); watch `rpmgr_waf_inspection_seconds` and
+  `rpmgr_waf_profiles`.
+- **Starting the WAF on a route** is a sequence: detection first, read the hits for a week of
+  normal traffic ([A WAF blocks legitimate requests](#a-waf-blocks-legitimate-requests)), add
+  exclusions, then switch to blocking.
+- **Updating the rule set** is updating rpmgr: the CRS comes with the release, so a gateway runs the
+  CRS of its own version, and the WAF page lists any gateway on another
+  ([04](04-security.md#gateway-cache-and-waf-phase-3)).
+- **Backups** hold the settings, the exclusions, the custom rules, the cache rules and the WAF hits
+  as part of the database; they hold no cached object, and a restored instance starts a new database
+  epoch, so gateways empty their caches when they reconnect
+  ([17](17-cache-and-waf.md#purge)).
 
 ## Hardening checklist
 
@@ -1429,3 +1472,31 @@ Each runbook: **symptoms → steps → done when**.
 - **Done when**: you know whether the bytes reached the gateway host (signature 1: no, fix the
   network), or reached the process and stopped there (signatures 2 and 3: open an issue with the
   `ss` output, the stall line and the two byte counters).
+
+### A WAF blocks legitimate requests
+
+- **Symptoms**: users see the block page, a 403 with a request ID, on a route whose WAF is in
+  blocking mode; or a detection-mode route lists hits for requests you know are fine.
+- **Steps**: open the WAF tab and filter by the request ID the user gave, or by route and time. Read
+  the rule, the variable and the path of the hit. Use the one-click exclusion if the rule is a false
+  positive for that path and parameter, which makes a route-scope exclusion after a confirmation; an
+  exclusion of a protected rule is refused by the instance, and the Instance Admin decides whether
+  the rule may be excluded. If one rule produces most of the hits across routes, exclude it at the
+  org or group scope instead, or lower the paranoia level, rather than add many path exclusions.
+  If a whole route needs relief at once, switch its mode to detection: the instance floor may not
+  allow it, in which case the page says "raised to blocking by the instance floor".
+- **Done when**: the request passes and the hit no longer appears for it.
+
+### A cached route serves stale or wrong content, or a purge is pending
+
+- **Symptoms**: a visitor sees an old page, or a page meant for someone else; the Purges list shows
+  a purge `pending` for a gateway.
+- **Steps**: look the URL up on the Cache tab: which gateways hold it, its age and expiry, and the
+  stored headers in the object list. An old page that the origin marked fresh is the origin's
+  lifetime: purge the URL. A page that depends on who asks must not be cached: check the response
+  for `Cache-Control: private` or `no-store`, remove the route's rule that matches it, and purge the
+  route. A purge `pending` for an offline gateway is applied when it reconnects, or the gateway
+  empties its cache, as the purge shows; bring the gateway back or drain it
+  ([03](03-connections.md#multiple-gateways)). A gateway that shows `emptied` lost its cache for
+  that reason and refills.
+- **Done when**: every gateway of the route's group shows the purge `applied` and the page is right.

@@ -89,6 +89,8 @@ names.
 | `DnsZoneService` | `ImportZone` (a zone of a connected provider of the org: the provider's answer is read live, and only a zone it calls `active` and `full` is imported, held; a zone that is not active is refused with `ZONE_NOT_ACTIVE`, one that is partial, secondary or otherwise not full with `ZONE_NOT_FULL`; the response carries the claim on the zone's apex, which the import creates with `wildcard = true` unless a verified domain of the org covers the zone, and which stays `pending` until it is verified; a zone already imported, or whose name another org claims, is `ALREADY_EXISTS`; an own claim of the apex without the wildcard is `FAILED_PRECONDITION` with `ZONE_CLAIM_NOT_WILDCARD`), `GetZone`, `ListZones`, `UpdateZone` (the gates and `default_ttl`), `RemoveZone` (keeps the records and the claim; with `delete_records` it also deletes the records rpmgr owns at the provider, after a step-up and with the `plan_hash` of the removal plan that `PlanZoneSync` with `delete_records` returned, else `PLAN_CHANGED`; the call records the request and the DNS job carries it out under its lease: the zone is disabled at once and removed when the job has deleted the records), `PlanZoneSync` (the plan of the zone now, read live from the provider, with its hash), `EnableZone` (a disabled zone becomes held; Owner/Admin, step-up; `ZONE_NOT_DISABLED` otherwise; it writes nothing and the plan still needs approval), `ApproveZonePlan` (the plan hash; a step-up; Owner and Admin; the plan is computed again, and one with another hash is `FAILED_PRECONDITION` with `PLAN_CHANGED`, a zone that is not held `ZONE_NOT_HELD`; the zone becomes `active`, and the next pass applies that plan only), `SyncZone`, `ListZoneRecords` (the owned records from the ledger, for every member, `org.read`; with `include_foreign` the other records read live, and orphans, for an Owner or Admin, else `PERMISSION_DENIED`), `AdoptRecords` (a step-up; provider record IDs, at most 200, all or none: a record the provider lacks is `NOT_FOUND` with `RECORD_NOT_FOUND`, an owned one `ALREADY_EXISTS` with `RECORD_ALREADY_OWNED`, one of another type `RECORD_TYPE_UNSUPPORTED`, one at a name no source of the org publishes `RECORD_NOT_WANTED`; Owner/Admin), `ReleaseRecord` (a step-up; a ledger row; optionally restore the original: `RECORD_NOT_ADOPTED` for a record that was not adopted, `RECORD_BUSY` while the job writes it; it records the request and the DNS job carries it out under its lease; the answer carries a warning for an old original; Owner/Admin), `SyncZone` asks for a full pass, which the DNS job finds in the zone's row (`ZONE_DISABLED` for a disabled zone) | 2 |
 | `DnsNameService` | `CreateDnsName` (a name or a wildcard for a gateway group of the org: the name lies under a verified domain of the org, and a wildcard name under one with the wildcard, else `FAILED_PRECONDITION` with `DOMAIN_NOT_VERIFIED`; another org's group is `NOT_FOUND`; a name that exists, in any org, is `ALREADY_EXISTS`; `ttl` is 0 or within the bounds of a zone's `default_ttl`), `GetDnsName`, `ListDnsNames`, `UpdateDnsName` (the gateway group and `ttl`; the name never changes), `DeleteDnsName`. Reading is `org.read`, changing a name `infrastructure.write`, so Owner and Admin only. A domain or a gateway group is not deleted while a name uses it (`DEPENDANTS_EXIST`) | 2 |
 | `PolicyService` | CRUD on access policies (`CreateAccessPolicy`, `GetAccessPolicy`, `ListAccessPolicies`, `UpdateAccessPolicy`, `DeleteAccessPolicy`) with their rules (`ip_allow`, `ip_deny`, `basic_auth`; their order is stored but a deny wins over every allow, D85; a CIDR with host bits set is accepted and kept in its masked form, so `10.0.0.1/16` is `10.0.0.0/16`); a policy shows the routes that apply it and cannot be deleted while one does. An update replaces the rules as a whole. Basic-auth passwords are write-only: the controller hashes them ([04](04-security.md#secrets-at-rest-and-in-logs)) under the account password rules, and in an update a user without a password keeps the one of its name. A `basic_auth` rule on a policy that a route other than an http route, or a CONNECT route in a basic mode, applies is refused with `BASIC_AUTH_NOT_HTTP`. Phase 2 rule kinds ([03](03-connections.md#access-policies), [04](04-security.md#route-edge-rules)): `rate_limit` (a rate and a burst per client, on every route type, at most one per policy); `require_header` (a header name, once per policy, and 1 to 4 write-only values of 32 to 1024 visible ASCII characters, kept as their SHA-256; a read shows the header only, and in an update a rule without values keeps the values of its header; on a policy a route other than an http route applies, `REQUIRE_HEADER_NOT_HTTP`); `oidc` (a route identity provider, the accepted e-mail addresses, domains and groups, the session length; with basic auth on one route, `OIDC_WITH_BASIC_AUTH`). Route identity providers are managed here too, their client secret write-only | 2 (basic auth, IP rules: 1) |
+| `CacheService` | Phase 3 ([17](17-cache-and-waf.md)): `GetRouteCacheStats` and `GetGatewayCacheStats` (hit ratio, bytes from cache, size used; `org.read`), `PurgeCache` (an exact URL, a path prefix or a route: `cache.manage`; everything of the org: `cache.purge_all`; answers at once with the purge), `GetCachePurge`, `ListCachePurges` (each gateway's state), `ListCacheObjects` (one page of one gateway's objects of the org, from an imperative operation, nothing stored; `cache.manage`), `LookupCacheObject` (the objects a URL has on each gateway of its route's group; `cache.manage`); `ListGatewayGroupCacheStatus` (the totals per gateway, the only cache data the Instance Admin reads) | 3 |
+| `WafService` | Phase 3 ([17](17-cache-and-waf.md)): `GetWafSettings`, `UpdateWafSettings` (a scope: org, gateway group or route; `waf.write`; the instance scope and a shared group: Instance Admin; a change of mode that would go from `off` to `blocking` is `WAF_BLOCKING_NEEDS_DETECTION`), `GetEffectiveWafProfile` (a route's, with where each field came from and what a floor raised; `waf.read`), `PreviewWafBlocking` (how many recorded requests of a scope's routes a blocking mode would have blocked), `ListWafExclusions`, `CreateWafExclusion`, `UpdateWafExclusion`, `DeleteWafExclusion`, `CreateWafExclusionFromHit` (route scope, `waf.write`), `ListWafHits`, `GetWafSummary` (exact counts per route and rule; `waf.read`), `GetWafRuleSet` (the CRS version each gateway runs); Instance Admin with step-up: `UpdateWafFloor`, `ListWafCustomRules`, `UpdateWafCustomRules`, `ValidateWafCustomRules` (parses the text and reads and stores nothing) | 3 |
 | `PrivateServiceService` | private services and visitor grants | 2 |
 | `StatusService` | `GetApplyStatus`, `WatchApplyStatus` (stream), `WatchEvents` (stream), `ListAlerts` (the org's alerts, those that fire unless `state` asks for pending or resolved ones; `org.read`, so every role), `ListInstanceAlerts` (the same for the instance alerts; Instance Admin) | 1 (alerts: 2) |
 | `LogService` | `StreamLogs` (a connector's or gateway's live log, server stream from an imperative operation; `agents.logs`) | 2 |
@@ -165,6 +167,22 @@ message HTTPRouteSpec {
   uint32 upstream_response_header_timeout_seconds = 15;  // Phase 2: 0 = the gateway's
   uint32 upstream_idle_timeout_seconds = 16;           // Phase 2: 0 = the gateway's
   bool dns_proxied = 17;               // Phase 2: opt into Cloudflare's proxy (15-dns); 14 to 16 are M03's
+  CacheSettings cache = 18;            // Phase 3: the next free numbers when it is built (17-cache-and-waf)
+  WafRouteSettings waf = 19;           // Phase 3: mode, paranoia level, threshold; each empty to inherit
+}
+
+message CacheSettings {                // Phase 3
+  CacheMode mode = 1;                  // INHERIT, OFF, ON; ON only on an http route
+  bool use_org_rules = 2;
+  repeated CacheRule rules = 3;        // the route's own, in order
+}
+
+message CacheRule {                    // Phase 3
+  oneof match { string path_prefix = 1; string glob = 2; ExtensionList extensions = 3; }
+  uint32 ttl_seconds = 4;
+  uint32 stale_if_error_seconds = 5;
+  bool enabled = 6;
+  bool ignore_cookies = 7;             // `cache.ignore_cookies`: Admin only, else PERMISSION_DENIED
 }
 
 message HeaderMatch {                  // Phase 2
@@ -370,6 +388,8 @@ API reports both ([03](03-connections.md#configuration-reconciliation)).
 | Releases (Phase 2): a release check asked for while the release check is off or the build checks for no releases | `FAILED_PRECONDITION` | `reason = RELEASE_CHECK_OFF` |
 | Rollouts (Phase 2): another rollout runs or is paused, the release is newer than the controller, below its `min_agent_version` or a pre-release on a stable instance, a stage change the rollout's state or stage does not allow, a stage change of an easy rollout, an agent an easy rollout cannot update (built in, decommissioned, or without `ota`), a rollout whose canary agents, or whose whole easy queue, report a host policy that refuses the release, so that its first stage would test nothing | `FAILED_PRECONDITION` | `reason` = `ROLLOUT_ACTIVE`, `RELEASE_NEWER_THAN_CONTROLLER`, `RELEASE_BELOW_MIN_AGENT_VERSION`, `RELEASE_NOT_ON_CHANNEL`, `ROLLOUT_STATE`, `ROLLOUT_MODE`, `AGENT_NOT_UPGRADABLE`, `FIRST_STAGE_REFUSED_BY_HOSTS` |
 | The controller's own update (Phase 2): the release is not newer than the controller, not held by the mirror yet, or the host cannot take it (no root updater, PostgreSQL, a development build), an update of the controller is under way, or a rollout runs | `FAILED_PRECONDITION` | `reason` = `CONTROLLER_UPDATE_REFUSED`; `RELEASE_NOT_ON_CHANNEL` and `ROLLOUT_ACTIVE` as for a rollout |
+| Cache and WAF (Phase 3): `cache.mode = on` on a route that is not an `http` route; a WAF mode of `blocking` where the scope's effective mode is `off`; a setting below the instance floor that cannot be kept; a path or parameter exclusion of a protected rule or tag; more distinct WAF profiles than a gateway group allows | `INVALID_ARGUMENT` (the route type), `FAILED_PRECONDITION` (the others) | `reason` = `CACHE_ROUTE_NOT_HTTP`, `WAF_BLOCKING_NEEDS_DETECTION`, `WAF_BELOW_FLOOR`, `WAF_PROTECTED_RULE`, `WAF_TOO_MANY_PROFILES` |
+| Custom WAF rules the engine does not parse or the allow-list refuses (Phase 3) | `INVALID_ARGUMENT` | `reason = WAF_CUSTOM_RULES_INVALID`, with the line and the rule |
 | Rate limited | `RESOURCE_EXHAUSTED` | retry-after (`google.rpc.RetryInfo`) |
 | Agent unreachable for an imperative operation; DNS provider unreachable for a live call (`ListProviderZones`, `ListZoneRecords`, `PlanZoneSync`) | `UNAVAILABLE` | — |
 | Operation exceeded its deadline | `DEADLINE_EXCEEDED` | — |
@@ -480,6 +500,37 @@ spec:
   zones are referenced by name but never created by a manifest, because importing a zone calls the
   provider and cannot happen inside the `Apply` transaction. DNS providers never appear in
   manifests: they carry a secret.
+
+## Cache and WAF (Phase 3)
+
+The API of [17](17-cache-and-waf.md); the services are in the table above.
+
+- **A route's cache settings** are fields of the route message and change with `UpdateRoute` and its
+  update mask, with the etag as every route edit; an org's defaults are fields of `OrgSettings`
+  (`cache.default_mode`, `cache.rules`), the instance's WAF settings and floor fields of
+  `InstanceSettings`, a gateway group's cache sizes fields of `GatewayGroup` that only the Instance
+  Admin may set ([04](04-security.md#roles)).
+- **A purge is not a configuration change.** It makes no revision and no snapshot: it is a row in
+  `cache_purges`, sent to the gateways over the control session. `PurgeCache` takes an optional
+  `request_id` as `Create` calls do, so a retry makes no second purge, and returns the purge with the
+  state per gateway; a client reads it again with `GetCachePurge`. Each purge is an audited event
+  (`cache.purge`).
+- **Lists of objects and hits** are paged with an opaque token and a bounded page size
+  ([03](03-connections.md#cache-and-waf-limits-phase-3)). A page of objects is a gateway's answer to
+  one imperative operation and is never kept by the controller; the token is the gateway's cursor, a
+  position in the order of the keys, so a page is not a snapshot and an object made or dropped
+  meanwhile may or may not show. `ListCacheObjects` for a gateway that is offline, or lacks
+  `http.cache`, is `UNAVAILABLE`; another org's gateway or route is `NOT_FOUND`.
+- **Events.** Every change an org's audit log records is an event as everywhere
+  ([Webhooks](#webhooks-phase-2)): `cache.purge`, `cache.list`, `waf.settings_update`,
+  `waf.exclusion_create`, `waf.exclusion_update`, `waf.exclusion_delete` and, for the Instance Admin,
+  `waf.floor_update` and `waf.custom_rules_update`. A spike of blocked requests is an alert
+  of the new kind `waf_block_spike`, delivered as `alert.fire` and `alert.resolve` and mailed like
+  any alert ([10](10-operations.md#suggested-alerts)); the events carry counts, never a hit.
+- **The agent protocol** gains `CachePurge`, the operations `cache.list` and `cache.lookup`, the
+  field `cache_purge_seq` of `Hello`, `WafHits` and counters in `Status`
+  ([03](03-connections.md#control-session)); fields are only added, and the capabilities are
+  `http.cache` and `http.waf` ([03](03-connections.md#versioning-and-capabilities)).
 
 ## Webhooks (Phase 2)
 
@@ -615,6 +666,8 @@ Defined in [03-connections.md](03-connections.md); summarised here for reference
 | | `Drain` / `Goodbye` | controller → agent | Reconnect elsewhere / session ends (superseded, revoked, upgrade required) |
 | | `DenyListUpdate` | controller → agent | Revocations; applied unconditionally, independent of snapshots |
 | | `AcmeChallenge` / `OpResult` | controller → gateway / back | An ACME HTTP-01 or TLS-ALPN-01 challenge the gateway answers (add, remove), and its acknowledgement |
+| | `CachePurge` / `OpResult` | controller → gateway / back | Phase 3: apply a cache purge; the answer says how many objects went ([17](17-cache-and-waf.md#purge)) |
+| | `WafHits` / `OpResult` | gateway → controller / back | Phase 3: a batch of redacted WAF hits, acknowledged; best effort ([17](17-cache-and-waf.md#waf-tab)) |
 | Control unary | `Renew`, `FetchResource` | agent → controller | Certificate renewal; large resources by hash |
 | `Reauth` (SNI `reauth.controller.<td>`) | `Reauth` | agent → controller | New certificate for an agent whose certificate expired within the grace period; mutual TLS with the expired certificate |
 | Control `Attach` | `AttachFrame` | both | An imperative operation: the agent's first frame presents the ticket of its `Open`; log lines; `AttachEnd` from either side ([03](03-connections.md#control-session)) |

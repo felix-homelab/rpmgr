@@ -14,7 +14,7 @@ flowchart LR
   P0[Phase 0<br/>Spikes<br/>settle the risky assumptions] --> P1[Phase 1<br/>MVP<br/>one tunnel, done right]
   P1 --> P2[Phase 2<br/>Production<br/>everything a team needs in production]
   P2 --> R1((v1.0.0))
-  R1 --> P3[Phase 3<br/>Advanced<br/>P2P, virtual networks, functions, shell]
+  R1 --> P3[Phase 3<br/>Advanced<br/>P2P, virtual networks, functions, shell, cache, WAF]
 ```
 
 rpmgr has a single maintainer (D27). There are no dates: each phase ends when its exit criteria are
@@ -32,7 +32,8 @@ public API (`rpmgr.v1`) and the agent protocol (`rpmgr-tunnel/1`) follow the com
 archived as `spike/s1` … `spike/s8` (and `spike/s8-arm64`), no ADR is *Proposed*, and the decisions
 taken along the way are D35–D47 in [14](14-open-decisions.md). S9 ran at the start of Phase 2
 ([S9](spikes/S9.md), 2026-10-19), and S10, the socket hand-off study of P2-M17, on 2026-10-25
-([S10](spikes/S10.md)).
+([S10](spikes/S10.md)). S11, the study of the WAF and the cache library, runs at the start of the first
+Phase 3 slice of either feature ([D171](14-open-decisions.md#engineering)); it has not run.
 
 Small, throw-away prototypes that answer the questions the design depends on. The maintainer runs
 every spike. Each spike produces a short written result (`docs/spikes/Sx.md`, from
@@ -68,6 +69,7 @@ How spikes run, also agreed before they start:
 | **S8** | Does pure-Go SQLite cover the controller's platforms? | Current `modernc.org/sqlite` on linux/amd64, arm64, armv7, riscv64 (QEMU user-mode emulation where no hardware is at hand, D38; arm64 and armv7 also natively on GitHub's arm64 runners, D46): test suite, WAL, `VACUUM INTO` | Tests pass on the supported platforms; unsupported ones documented | [ADR-0011](adr/0011-sqlite-postgres-ent-atlas.md) | The controller ships only on platforms that pass; the others are documented as unsupported |
 | **S9** | How do controller replicas share session ownership? (Run at the **start of Phase 2**.) | PostgreSQL `LISTEN/NOTIFY` (or polling-free alternative) for the session registry and push fan-out; controller-to-controller mutual TLS for imperative operations; revocation-log shipping to the shared sink with conditional-create sequencing; kill a replica under load | An agent's push reaches it within 1 s of commit; failover within the reconnect backoff | [10](10-operations.md#high-availability), [ADR-0011](adr/0011-sqlite-postgres-ent-atlas.md); result: passed, `LISTEN/NOTIFY` ([S9](spikes/S9.md)) | If `LISTEN/NOTIFY` is insufficient: push fan-out over controller-to-controller mutual TLS. Sub-rules ([D112](14-open-decisions.md#project-and-process)): notifications lost while a replica reconnects cause a full resync, and the revision check of [03](03-connections.md#timeouts-keepalive-and-backoff) stays as the safety net; PgBouncer in transaction mode is unsupported; if MinIO fails conditional create, the S3-compatible sink waits and the filesystem sink stays the requirement for several replicas |
 | **S10** | Can a gateway, an all-in-one and a connector hand their listening sockets and sessions to a re-executed binary under systemd without refusing a visitor connection (VB-08)? (Slice 17.2 of P2-M17.) | Model gateway with the hand-off of [ADR-0022](adr/0022-socket-hand-off-by-re-exec.md) on systemd 249 and 257, 500 new visitor connections per second, QUIC and TCP connectors, `udp` flows, failure paths, the all-in-one's database | Rules S-1 to S-7 of [ADR-0022](adr/0022-socket-hand-off-by-re-exec.md#verification) | [03](03-connections.md#restarts-with-socket-hand-off-phase-2), [ADR-0022](adr/0022-socket-hand-off-by-re-exec.md); result: TCP by re-exec passed, the fallbacks of S-2, S-3 and S-4 apply ([S10](spikes/S10.md)) | Each rule's named fallback in ADR-0022 ([D150](14-open-decisions.md#engineering)) |
+| **S11** | Can a gateway run Coraza with the OWASP Core Rule Set at a cost a small gateway bears and with false positives an operator can tune away, and should the response cache use a library or a store of our own? (Run at the start of the first Phase 3 slice of the cache or the WAF.) | The small gateway of D30 (2 vCPU, 2 GiB) with the pinned Coraza and CRS: latency, throughput, CPU and memory at paranoia levels 1 to 4 with and without a body; at least 8 real self-hosted applications driven in detection mode; the CRS regression tests; the build with `CGO_ENABLED=0`; and the cache candidates and our own store against the HTTP cache test suite and the hit-path, index and crash tests | Rules W-1 to W-6 and C-1 to C-3 of [ADR-0023](adr/0023-coraza-waf-and-gateway-cache.md#verification) | [17](17-cache-and-waf.md), [03](03-connections.md#cache-and-waf-limits-phase-3), [08](08-software-stack.md#networking), [ADR-0023](adr/0023-coraza-waf-and-gateway-cache.md) | Each rule's named fallback in ADR-0023 ([D173](14-open-decisions.md#engineering)) |
 
 **Exit criteria:** S1–S8 have written results (S1 decided by D45, S6 by D46); every affected ADR
 is *Accepted* or changed; the documents in this folder are updated to match.
@@ -302,6 +304,8 @@ a Phase 3 sketch is a plan, not an open question.
 | Active connections view | — | |
 | OTA for Windows and macOS connectors | Windows and macOS connectors (P2) | Needs a root-equivalent updater per platform (D29) |
 | Helm chart | OCI images | [00](00-vision-and-scope.md#non-goals) |
+| Gateway response cache | Terminated http routes (P1), control-session operations (P2) | Opt-in per route; strict RFC 9111 shared cache, cache rules, purge, a Cache tab; designed in [17](17-cache-and-waf.md) ([D171](14-open-decisions.md#engineering), [D172](14-open-decisions.md#engineering)); the library choice is decided by [S11](#phase-0--spikes) |
+| WAF on gateways | Terminated http routes (P1), the S11 result | Coraza with the OWASP Core Rule Set, detection before blocking, scopes with an enforced floor, a WAF tab; designed in [17](17-cache-and-waf.md) ([D171](14-open-decisions.md#engineering), [D173](14-open-decisions.md#engineering), [ADR-0023](adr/0023-coraza-waf-and-gateway-cache.md)) |
 | Cloud KMS providers (AWS, GCP, Azure) for the KEK | KMS interface (P2) | By demand ([04](04-security.md#secrets-at-rest-and-in-logs)) |
 
 ## Verification backlog
@@ -353,4 +357,6 @@ implemented, and the result recorded in the PR.
 | Users of other tunnel tools expect wire compatibility | Adoption friction | Importer and parallel-run cutover plan ([11](11-migration.md)) |
 | A DNS-job bug deletes or rewrites production DNS records | Outage of the published names, possibly of mail or other services | Owned records only; ledger plus marker; deletion guard and held zones; fail-static; property tests and the fake Cloudflare API in CI ([15](15-dns.md)) |
 | A DNS-provider token leaks | Takeover of every name in the token's zones | Write-only, KEK-encrypted storage; zone-scoped, IP-restricted, expiring tokens; managed zones separate from mail zones ([04](04-security.md#threat-model)) |
+| The WAF costs more CPU or memory than a small gateway bears, or its false positives cost operators more than it protects | Gateways slow or users blocked; an operator turns the WAF off | Off by default, detection before blocking, one-click exclusions, paranoia level per scope; S11's rules W-1 to W-4 with fallbacks before any code ([ADR-0023](adr/0023-coraza-waf-and-gateway-cache.md)) |
+| A cache stores a response meant for one visitor and serves it to another | A leak between visitors | Never a response to credentials or with `Set-Cookie`, `private` or `no-store`; the route in the key; the access policy before the cache; named tests ([17](17-cache-and-waf.md), [12](12-testing-and-quality.md#security-testing)) |
 | Cloudflare API changes or rate limits | DNS automation fails or slows down | Own small client behind the `Provider` interface; fail-static; budget well below the limit; VB-09–VB-12 |
