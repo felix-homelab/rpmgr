@@ -137,8 +137,10 @@ func TestServeAdmin(t *testing.T) {
 	}
 }
 
-// TestServeAdmin_readyzIsFast: /readyz answers within 50 ms while the check blocks for good (#1138),
-// from the last result, and says not ready while no result exists.
+// TestServeAdmin_readyzIsFast: /readyz answers quickly while the check blocks for good (#1138),
+// from the last result, and says not ready while no result exists. "Quickly" is within readyzBound:
+// a handler that ran the check would never answer, so the bound only has to tell a prompt answer
+// from a stuck one and is wide enough for a runner under emulation.
 func TestServeAdmin_readyzIsFast(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -153,6 +155,7 @@ func TestServeAdmin_readyzIsFast(t *testing.T) {
 		done <- telemetry.ServeAdminOn(ctx, ln.Addr().String(), func(string) (net.Listener, error) { return ln, nil },
 			telemetry.NewRegistry(), func(context.Context) error { <-block; return nil })
 	}()
+	const readyzBound = time.Second
 	for range 20 {
 		start := time.Now()
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+ln.Addr().String()+"/readyz", nil)
@@ -163,8 +166,8 @@ func TestServeAdmin_readyzIsFast(t *testing.T) {
 		}
 		b, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		if d := time.Since(start); d > 50*time.Millisecond {
-			t.Errorf("/readyz took %v with a blocked check, want under 50 ms", d)
+		if d := time.Since(start); d > readyzBound {
+			t.Errorf("/readyz took %v with a blocked check, want under %v", d, readyzBound)
 		}
 		if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(b), "not checked yet") {
 			t.Errorf("/readyz: %d %q, want 503 and the reason", resp.StatusCode, b)

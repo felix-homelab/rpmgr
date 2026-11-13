@@ -262,7 +262,7 @@ func delivery(ctx context.Context, c *ent.Client, o WebhookOptions, a *attempt, 
 // through this endpoint, or whose message is not stored, is posted as a new message.
 func discordMessage(ctx context.Context, c *ent.Client, a *attempt, d *webhook.Delivery, ev events.Event, mc webhook.Context) error {
 	d.Result = &a.res
-	if ev.Type == "alert.fire" {
+	if ev.Type == events.AlertFire {
 		d.Wait, d.Threaded = true, mc.Options.ThreadName != ""
 		return nil
 	}
@@ -343,7 +343,7 @@ func record(ctx context.Context, tx *ent.Tx, work []*attempt, now time.Time) err
 			u.SetFailingSince(now)
 		case now.Sub(*h.FailingSince) >= webhook.DisableAfter:
 			u.SetEnabled(false).SetDisabledReason(ewebhook.DisabledReasonFailing).AddVersion(1)
-			if _, err := events.Add(ctx, tx, events.Event{OrgID: deref(h.OrgID), Type: "webhook.disable", SubjectType: "webhook",
+			if _, err := events.Add(ctx, tx, events.Event{OrgID: deref(h.OrgID), Type: events.WebhookDisable, SubjectType: "webhook",
 				SubjectID: h.ID, Summary: "webhook.disable: no successful delivery for 3 days"}); err != nil {
 				return err
 			}
@@ -365,7 +365,7 @@ func keepMessage(ctx context.Context, tx *ent.Tx, a *attempt) error {
 		_, err := tx.WebhookMessage.Delete().Where(webhookmessage.WebhookID(a.hook.ID), webhookmessage.AlertKey(a.key)).Exec(ctx)
 		return err
 	}
-	if a.event.Type == "alert.resolve" {
+	if a.event.Type == events.AlertResolve {
 		return forget()
 	}
 	if a.res.MessageID == "" {

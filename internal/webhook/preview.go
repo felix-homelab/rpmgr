@@ -36,16 +36,16 @@ func Preview(f Format, c Context, now time.Time) ([]Sample, error) {
 		c.ActorName = "Ada Admin"
 	}
 	now = now.UTC().Truncate(time.Second)
-	fire := events.Event{ID: "evt_sample1", OrgID: "org_sample", Type: "alert.fire", Time: now, ActorType: "system", SubjectType: "agent",
+	fire := events.Event{ID: "evt_sample1", OrgID: "org_sample", Type: events.AlertFire, Time: now, ActorType: "system", SubjectType: "agent",
 		SubjectID: "gw_sample", SubjectName: "gw-eu-1", Summary: "agent_offline: Agent offline fires, gw-eu-1"}
 	resolve := fire
-	resolve.ID, resolve.Type, resolve.Time, resolve.Summary = "evt_sample2", "alert.resolve", now.Add(7*time.Minute+30*time.Second), "agent_offline: Agent offline resolved, gw-eu-1"
+	resolve.ID, resolve.Type, resolve.Time, resolve.Summary = "evt_sample2", events.AlertResolve, now.Add(7*time.Minute+30*time.Second), "agent_offline: Agent offline resolved, gw-eu-1"
 	change := events.Event{ID: "evt_sample3", OrgID: "org_sample", Type: "route.update", Time: now, ActorType: "user", ActorID: "usr_sample",
 		SubjectType: "route", SubjectID: "rte_sample", SubjectName: "web", Summary: "route.update route web", Changed: []string{"enabled"}}
 	var out []Sample
 	for _, e := range []events.Event{fire, resolve, change} {
 		ec := c
-		if e.Type == "alert.resolve" {
+		if e.Type == events.AlertResolve {
 			ec.FiredAt = fire.Time
 		}
 		b, err := ChatBody(f, e, ec)

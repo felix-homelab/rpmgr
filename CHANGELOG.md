@@ -10,53 +10,20 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
-### Fixed
-
-- A record with long content, such as a DKIM key, no longer stretches the record table and the
-  plan of a zone: the content is cut to one line, its whole value shown on hover, and long names
-  wrap (#1153).
-- `/readyz` answers from the last background check, within milliseconds, instead of running the
-  checks while the caller waits. A busy all-in-one no longer makes the updater of an older release
-  see "nothing answers" during a hand-off and roll back; a check that is stuck for 10 s still makes
-  the role not ready. A gateway or all-in-one that took over from a running process now keeps its
-  systemd unit `reloading` until the old process stopped answering the admin listener, at most
-  3 s, and every `/readyz` answer closes its connection; before, an updater that polled during
-  that moment kept a connection to the old process, which answers "not ready", and rolled the
-  update back (#1138).
-- The zone's record list offers **Adopt** only on foreign records that rpmgr can adopt, those at a
-  name that a route or DNS name of the organisation publishes and of a type it manages; the others
-  show why not. A refused adoption, in the web UI and in `rpmgr adopt dns-record`, now names the
-  record and says to create a route or DNS name for it first (#1137).
-- A TXT claim that fails now says why. The check tells no record at `_rpmgr-challenge.<domain>`,
-  other values there (shown, cut), a challenge the DNS job has not published yet in a managed
-  zone, and a domain that is delegated to other nameservers than the ones the DNS provider
-  assigned, which never serve what rpmgr publishes there; the last also warns on the zone page,
-  in `rpmgr get zone` and in the plan before it is approved, and is checked again every hour.
-  A claim in a managed zone is checked again as soon as the DNS job has published its TXT, and a
-  challenge value in one pair of double quotes counts. (#1144)
-
-### Changed
-
-- The messages of a Discord, Slack or Microsoft Teams webhook endpoint use what each service
-  offers: a readable title such as "Agent gw-eu-1 is offline", the names of the organisation and
-  the actor, severity colours (critical red, warning amber, info blue, resolved green, audit
-  grey), how long an alert lasted, a footer with the instance and the rpmgr version, the time in
-  the reader's time zone, and, when the controller's public URL is set, a link to the subject
-  and an **Open in rpmgr** button. Discord posts an embed, Slack Block Kit blocks and Teams an
-  Adaptive Card 1.5. No text of an event can mention anyone. (#1102)
-
 ### Added
 
 - The zone page now changes the zone's settings: whether it publishes route hostnames, allows
   proxied names and wildcards, and its delete threshold. Before, that took `rpmgr update zone` or
-  the API.
+  the API. (#1156)
 - A rollout warns before it offers a release that a host's local policy refuses. Connectors and
   gateways tell the controller the `auto_update` and `update_channel` of their policy file, again
   when it changes. The start dialog and `rpmgr create rollout` (also `--preview`) say how many
   agents will be skipped, with their names, the reason and the command to run on the host, and
   those agents are marked skipped at once and not offered the release. Agents of older releases
   are offered it as before, and the host still decides. The connector page and the gateway list
-  show the channel and auto-update setting. (#1136)
+  show the channel and auto-update setting. A rollout whose canary stage, or an easy rollout whose
+  whole queue, the hosts' policies would skip is refused (`FIRST_STAGE_REFUSED_BY_HOSTS`), and its
+  start dialog does not let it start. (#1136)
 - After a restore, the plan of a held DNS zone lists the adopted records that changed at the
   provider since the backup, so they can be released before the first pass puts them back. (#1113)
 - DNS automation with Cloudflare. An Owner or Admin connects a Cloudflare account with a scoped
@@ -137,8 +104,25 @@ Changes to the design documents are not recorded here: see the git history and t
   transport, which shows as `unknown`
   ([03](docs/03-connections.md#transport-selection)). (#1075)
 
+### Changed
+
+- The messages of a Discord, Slack or Microsoft Teams webhook endpoint use what each service
+  offers: a readable title such as "Agent gw-eu-1 is offline", the names of the organisation and
+  the actor, severity colours (critical red, warning amber, info blue, resolved green, audit
+  grey), how long an alert lasted, a footer with the instance and the rpmgr version, the time in
+  the reader's time zone, and, when the controller's public URL is set, a link to the subject
+  and an **Open in rpmgr** button. Discord posts an embed, Slack Block Kit blocks and Teams an
+  Adaptive Card 1.5. No text of an event can mention anyone. (#1102)
+
 ### Fixed
 
+- `rpmgr handoff` run again right after a hand-off ended, such as a retry after a failed one, now
+  starts a new hand-off. The process could still count the last one as running for a moment and
+  ignore the signal, and the command waited until its timeout. (#1167)
+- Manifests (`rpmgr get … -o yaml`, the web UI's manifest view) write the keys of a spec and of the
+  labels in the same order every time: the byte order of their text. Some keys, such as a label
+  key with a long run of digits, came out in a different order from one export to the next. Keys
+  with digits or capitals may now be ordered differently from earlier releases. (#1166)
 - On an all-in-one, a route pinned to QUIC no longer shows its targets as "HTTP/2 (pinned on the
   route)". The built-in connector reaches the gateway in memory whatever the transport setting, and
   the route page, `rpmgr get route` and the API now say "In process (built-in connector)" with a
@@ -163,11 +147,34 @@ Changes to the design documents are not recorded here: see the git history and t
   **Retry the update** stages the release again, which makes the root updater run again. (#1135)
 - A rolled-back update records the last readiness answer of the role, not the end of the window,
   leaves the previous release running although the stop of the failed one timed out, and restores
-  the database although the staging directory is a read-only mount. (#1138)
+  the database although the staging directory is a read-only mount. Each `systemctl show` of the
+  updater has a time limit, so a stuck unit no longer hangs its readiness check. (#1138)
 - After a restart with hand-off, an old all-in-one or gateway ends when it is told to stop, within
   the gateway drain, instead of at the end of the hand-off drain, and the new process ends an old
   one that outlives its drain. The built-in connector of an old all-in-one no longer redials its
   closed in-memory gateway. (#1138)
+- A record with long content, such as a DKIM key, no longer stretches the record table and the
+  plan of a zone: the content is cut to one line, its whole value shown on hover, and long names
+  wrap (#1153).
+- `/readyz` answers from the last background check, within milliseconds, instead of running the
+  checks while the caller waits. A busy all-in-one no longer makes the updater of an older release
+  see "nothing answers" during a hand-off and roll back; a check that is stuck for 10 s still makes
+  the role not ready. A gateway or all-in-one that took over from a running process now keeps its
+  systemd unit `reloading` until the old process stopped answering the admin listener, at most
+  3 s, and every `/readyz` answer closes its connection; before, an updater that polled during
+  that moment kept a connection to the old process, which answers "not ready", and rolled the
+  update back (#1138).
+- The zone's record list offers **Adopt** only on foreign records that rpmgr can adopt, those at a
+  name that a route or DNS name of the organisation publishes and of a type it manages; the others
+  show why not. A refused adoption, in the web UI and in `rpmgr adopt dns-record`, now names the
+  record and says to create a route or DNS name for it first (#1137).
+- A TXT claim that fails now says why. The check tells no record at `_rpmgr-challenge.<domain>`,
+  other values there (shown, cut), a challenge the DNS job has not published yet in a managed
+  zone, and a domain that is delegated to other nameservers than the ones the DNS provider
+  assigned, which never serve what rpmgr publishes there; the last also warns on the zone page,
+  in `rpmgr get zone` and in the plan before it is approved, and is checked again every hour.
+  A claim in a managed zone is checked again as soon as the DNS job has published its TXT, and a
+  challenge value in one pair of double quotes counts. (#1144)
 
 ## [0.3.0] - 2026-11-04
 

@@ -17,6 +17,7 @@ import (
 	"github.com/felix-homelab/rpmgr/gen/rpmgr/v1/rpmgrv1connect"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/audit"
+	"github.com/felix-homelab/rpmgr/internal/events"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/pki/castore"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -137,7 +138,7 @@ func (a *Audit) ExportInstanceAudit(ctx context.Context, _ *connect.Request[rpmg
 // export records the request in the audit log, then streams the chain of orgID read in scope, so
 // the export holds its own entry (docs/04-security.md, "Audit log").
 func (a *Audit) export(ctx, scope context.Context, orgID string, sendLines func([]string) error) error {
-	api.AuditAction(ctx, "audit.export")
+	api.AuditAction(ctx, events.AuditExport)
 	if err := store.WriteTx(ctx, a.DB, func(*ent.Tx) error { return nil }); err != nil { // the API's hook appends the entry
 		return storeError(err)
 	}

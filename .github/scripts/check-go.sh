@@ -13,8 +13,8 @@
 #                       external is covered by the nightly run, which never caches.
 #   GO_TEST_SHARD=i/n   run only the i-th of n shares of the tests (CI runs 4 jobs in parallel).
 #                       The test packages are dealt out by lib.sh (shard_select); internal/controller
-#                       is split by test name into two parts (internal/controller) that go to the
-#                       first two shards.
+#                       and internal/apisvc are each split by test name into two parts that go to
+#                       the shards first, one to each.
 #   GO_CHECKS=only|skip only: run just the checks that are not tests (CI's job go (checks));
 #                       skip: run just the tests (CI's test shards). Unset: both.
 #
@@ -80,8 +80,12 @@ if [[ -z $all ]]; then
   fail "go list found no packages"
   finish
 fi
-# The slowest package is dealt as two lines, each running its share of the tests by name.
-list=$(sort <<<"$all" | split_expand "$(go list -m)/internal/controller=2")
+# The two slowest packages are dealt as two lines each, each running its share of the tests by
+# name: internal/apisvc has so many API tests that its one run exceeded the limit of 20 minutes in
+# the nightly run without a failing test (check-store.sh splits it the same way).
+SHARD_HEAVY='/internal/(controller|apisvc)(#[0-9]+/[0-9]+)?$'
+module=$(go list -m)
+list=$(sort <<<"$all" | split_expand "$module/internal/controller=2" "$module/internal/apisvc=2")
 mapfile -t pkgs < <(shard_select "$shard" <<<"$list")
 echo "== tests of ${#pkgs[@]} packages (shard ${shard:-all})"
 plain=()

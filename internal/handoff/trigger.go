@@ -17,6 +17,9 @@ type Trigger struct {
 	// has none, which refuses every hand-off.
 	Handoff func(ctx context.Context) (*Child, error)
 	Logger  *slog.Logger
+
+	// recorded, set by tests, runs right after an outcome is written.
+	recorded func(Outcome)
 }
 
 // Outcome is a role's last hand-off, in OutcomeFile in its runtime directory.

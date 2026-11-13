@@ -495,6 +495,20 @@ EOF
   expect fail "failing subtest runs in its part" env GO_TEST_SHARD=1/2 "$g" "$r"
   expect pass "shard without the failing subtest" env GO_TEST_SHARD=2/2 "$g" "$r"
   git -C "$r" rm -q -f internal/controller/c_test.go
+  # internal/apisvc is split the same way, by check-go.sh and by check-test-arch.sh (here for this
+  # machine's architecture): TestA2 is in part 2 of 2.
+  mkdir -p "$r/internal/apisvc"
+  printf 'package apisvc\n\nimport "testing"\n\nfunc TestA1(t *testing.T) {}\n\nfunc TestA2(t *testing.T) { t.Fatal("boom") }\n' >"$r/internal/apisvc/a_test.go"
+  git -C "$r" add -A
+  arch=$(go env GOARCH)
+  expect pass "apisvc part without the failing test" env GO_TEST_SHARD=1/2 "$g" "$r"
+  expect fail "apisvc part with the failing test" env GO_TEST_SHARD=2/2 "$g" "$r"
+  expect fail "apisvc failing test, all shards in one" "$g" "$r"
+  expect pass "arch run: apisvc part without the failing test" env GO_TEST_SHARD=1/2 "$dir/check-test-arch.sh" "$arch" "$r"
+  expect fail "arch run: apisvc part with the failing test" env GO_TEST_SHARD=2/2 "$dir/check-test-arch.sh" "$arch" "$r"
+  expect fail "arch run: apisvc failing test, all shards in one" "$dir/check-test-arch.sh" "$arch" "$r"
+  expect fail "arch run: malformed shard" env GO_TEST_SHARD=one "$dir/check-test-arch.sh" "$arch" "$r"
+  git -C "$r" rm -q -f internal/apisvc/a_test.go
   cat >"$r/p/crash_test.go" <<'EOF'
 package p
 

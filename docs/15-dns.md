@@ -182,7 +182,7 @@ controller-managed durable state: it is never rebuilt from the provider.
     writing it. A `drifted` record is left alone, also after the window, until it matches the ledger
     again or is adopted or released; the removal of its source still deletes it.
   - The pass reports its orphans, corrections and `drifted` records to the controller, which logs
-    them; the alert `dns.drifted` fires for a `drifted` record
+    them; the alert `dns_record_drifted` fires for a `drifted` record
     ([10](10-operations.md#suggested-alerts)). Orphans are shown in the zone's plan.
 - **Adopt.** Turns a foreign record at a desired name into an owned one. An Owner or Admin, after a
   step-up, because it hands rpmgr control of the record, whatever its content, names
