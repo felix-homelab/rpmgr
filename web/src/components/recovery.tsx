@@ -3,6 +3,7 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
+import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Command } from "@/components/one-time-token";
@@ -69,7 +70,7 @@ export function RecoveryActions({ userId, name, secondFactor }: { userId: string
 }
 
 // failure is what a recovery's error says; nothing for a cancelled step-up.
-function failure(err: unknown, t: (k: string, o?: Record<string, string>) => string): string {
+function failure(err: unknown, t: TFunction): string {
   if (reasonOf(err) === Reason.stepUpRequired) {
     return "";
   }

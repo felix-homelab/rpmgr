@@ -67,7 +67,7 @@ function RouteForm({ base, initial, onRestart }: { base: Route; initial?: RouteV
   const resolver: Resolver<RouteValues> = (values, ctx, opts) => {
     const bad = Object.entries(fieldProblems(base, values));
     if (bad.length > 0) {
-      return { values: {}, errors: Object.fromEntries(bad.map(([k, p]) => [k, { type: "format", message: t(`routeForm.${p.text}`, p.values) }])) };
+      return { values: {}, errors: Object.fromEntries(bad.map(([k, p]) => [k, { type: "format", message: t(`routeForm.${p.text}`, p.values ?? {}) }])) };
     }
     return checks(values, ctx, opts);
   };
