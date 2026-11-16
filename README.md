@@ -2,16 +2,20 @@
 
 **Publish the services on your private network on the internet, securely, from one web UI.**
 
-rpmgr makes services that run behind NAT, CGNAT or a firewall reachable from the internet: a NAS,
-a dashboard, an internal API, a game server. An agent in your network dials out to a public server
-you own, and that server passes the traffic through. You need no port forwarding, no
-public IP address at home and no inbound firewall rule.
+rpmgr is a self-hosted reverse tunnel manager. It makes services that run behind NAT, CGNAT or a
+firewall reachable from the internet: a NAS, a dashboard, an internal API, a game server. An agent
+in your network dials out to a public server you own, and that server passes the traffic through.
+You need no port forwarding, no public IP address at home and no inbound firewall rule.
 
 > [!NOTE]
-> v0.3.0 is rpmgr's third release ([Releases](https://github.com/felix-homelab/rpmgr/releases)):
-> the minimum viable product of its first phase, with signed updates over the air and restarts
-> without interrupting visitors. Try it out, expect rough edges, and
+> v0.3.0 is rpmgr's third release ([Releases](https://github.com/felix-homelab/rpmgr/releases))
+> and the second of its production phase, with signed updates over the air and restarts without
+> interrupting visitors. Try it out, expect rough edges, and
 > [report what you find](https://github.com/felix-homelab/rpmgr/issues).
+
+![The Routes page of the rpmgr web UI: nine routes of the types HTTP, TCP, UDP, TCP and UDP, and
+TLS passthrough, each with its gateway group, targets, transport and
+status](docs/guide/images/web/routes.png)
 
 ## Why rpmgr
 
@@ -374,7 +378,8 @@ a released binary ([04](docs/04-security.md#release-signing)).
 - **Contributions:** welcome, under the rules in [CONTRIBUTING.md](CONTRIBUTING.md); the design
   documents are introduced in [docs](docs/README.md).
 
-rpmgr is a personal open-source project with one maintainer
+rpmgr is a personal open-source project with one maintainer,
+[felix-homelab](https://github.com/felix-homelab)
 ([D26, D27](docs/14-open-decisions.md#project-and-process)).
 
 ## License

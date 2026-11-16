@@ -1,7 +1,8 @@
 # Images of the user guide
 
 This directory holds the pictures of the user guide. `web/` holds one screenshot per page of the
-web UI, which the [web UI reference](../web-ui/README.md) shows. This page is for whoever
+web UI, which the [web UI reference](../web-ui/README.md) shows; the project's
+[README](../../../README.md) also shows `routes.png`. This page is for whoever
 maintains the guide: it says how the screenshots are made and how to make them again after the web
 UI changed.
 
