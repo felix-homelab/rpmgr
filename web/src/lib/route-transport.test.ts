@@ -36,7 +36,7 @@ describe("route transports", () => {
   });
 
   it("explains a built-in target, naming the setting that does not apply to it, and says it once on the route", () => {
-    const t = ((k: string, o?: { pin?: string }) => `${k}${o?.pin ? `:${o.pin}` : ""}`) as TFunction;
+    const t = ((k: string, o?: { pin?: string }) => `${k}${o?.pin ? `:${o.pin}` : ""}`) as unknown as TFunction;
     const builtIn = (pinned: DataTransport) => create(TargetTransportSchema, { targetId: "t", pinnedTransport: pinned,
       pinnedBy: pinned === DataTransport.UNSPECIFIED ? TransportPin.UNSPECIFIED : TransportPin.ROUTE,
       gateways: [{ gatewayId: "g1", transport: DataTransport.IN_PROCESS }] });

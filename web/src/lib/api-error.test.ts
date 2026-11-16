@@ -12,7 +12,7 @@ import { apiError, checkRequest, serverProblems } from "@/lib/api-error";
 
 // A stand-in for t that reads the English locale, with i18next's default value.
 const t = ((key: string, o?: { defaultValue?: string }) =>
-  key.split(".").reduce<unknown>((n, k) => (n as Record<string, unknown> | undefined)?.[k], en) ?? o?.defaultValue ?? key) as TFunction;
+  key.split(".").reduce<unknown>((n, k) => (n as Record<string, unknown> | undefined)?.[k], en) ?? o?.defaultValue ?? key) as unknown as TFunction;
 
 const rule = "use 1 to 63 lowercase letters, digits and hyphens, starting and ending with a letter or digit";
 const pattern = "value does not match regex pattern `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`";
