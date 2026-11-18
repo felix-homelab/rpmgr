@@ -264,12 +264,23 @@ func TestVerifyS3(t *testing.T) {
 		{"a checkpoint with another head hash", func(t *testing.T, w *sinkWorld) {
 			b, _ := w.srv.Get(w.cpKey(4))
 			i := strings.Index(string(b), `"head_hash":"`) + len(`"head_hash":"`)
-			w.srv.Tamper(w.cpKey(4), append(append(append([]byte{}, b[:i]...), "ff"...), b[i+2:]...))
+			// The hash is random, so it may already start with ff, which would leave the checkpoint
+			// untouched: use a replacement that always differs (#1182).
+			repl := "ff"
+			if string(b[i:i+2]) == repl {
+				repl = "00"
+			}
+			w.srv.Tamper(w.cpKey(4), append(append(append([]byte{}, b[:i]...), repl...), b[i+2:]...))
 		}, "", "the checkpoint at seq 4 has no valid signature", 3, 1},
 		{"a checkpoint with a forged signature", func(t *testing.T, w *sinkWorld) {
 			b, _ := w.srv.Get(w.cpKey(3))
 			i := strings.Index(string(b), `"signature":"`) + len(`"signature":"`)
-			w.srv.Tamper(w.cpKey(3), append(append(append([]byte{}, b[:i]...), "AAAA"...), b[i+4:]...))
+			// Likewise, a signature may already start with AAAA.
+			repl := "AAAA"
+			if string(b[i:i+4]) == repl {
+				repl = "BBBB"
+			}
+			w.srv.Tamper(w.cpKey(3), append(append(append([]byte{}, b[:i]...), repl...), b[i+4:]...))
 		}, "", "the checkpoint at seq 3 has no valid signature", 0, 0},
 		{"an object that is no checkpoint", func(t *testing.T, w *sinkWorld) { w.srv.Tamper(w.cpKey(4), []byte("not json")) },
 			"", "is not a checkpoint", 3, 1},
