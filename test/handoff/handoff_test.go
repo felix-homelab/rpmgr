@@ -30,7 +30,7 @@ func TestHandoff(t *testing.T) {
 	for _, c := range []struct {
 		name string
 		f    func(*testing.T)
-	}{{"lone gateway", l.gatewayUpgrade}, {"lone gateway, a connector pinned to QUIC", l.gatewayPinned}, {"all-in-one", l.allInOneUpgrade}, {"connector retries with backoff", l.backoff}} {
+	}{{"lone gateway", l.gatewayUpgrade}, {"lone gateway, a connector pinned to QUIC", l.gatewayPinned}, {"all-in-one", l.allInOneUpgrade}, {"connector, its admin listener on", l.connectorUpgrade}, {"connector retries with backoff", l.backoff}} {
 		t.Run(c.name, func(t *testing.T) {
 			l.t = t // the helpers report to the running subtest
 			c.f(t)
@@ -52,6 +52,7 @@ type probeOut struct {
 // scenario is one role under hand-off: the routes the load uses and where to reach them.
 type scenario struct {
 	role, bin      string
+	node           string // the container the role runs in; "" is "lab"
 	admin          int
 	tcp, udp       string   // the routes' addresses in the lab
 	httpAddr, host string   // the address that serves the HTTP route, and its host name
@@ -68,7 +69,13 @@ const (
 // last error when no positive pid appears.
 func (l *lab) pid(role string) int {
 	l.t.Helper()
-	n, err := l.waitPID(role, pidWait)
+	return l.pidOn("lab", role)
+}
+
+// pidOn is pid in node.
+func (l *lab) pidOn(node, role string) int {
+	l.t.Helper()
+	n, err := l.waitPID(node, role, pidWait)
 	if err != nil {
 		l.t.Fatalf("pid of %s: %v", role, err)
 	}
@@ -77,11 +84,11 @@ func (l *lab) pid(role string) int {
 
 const pidWait = 30 * time.Second
 
-func (l *lab) waitPID(role string, wait time.Duration) (int, error) {
+func (l *lab) waitPID(node, role string, wait time.Duration) (int, error) {
 	var err error
 	for end := time.Now().Add(wait); ; time.Sleep(250 * time.Millisecond) {
 		var out string
-		if out, err = l.try("lab", "cat", "/run/rpmgr/"+role+"/handoff.pid"); err == nil {
+		if out, err = l.try(node, "cat", "/run/rpmgr/"+role+"/handoff.pid"); err == nil {
 			var n int
 			if n, err = parsePID(out); err == nil {
 				return n, nil
@@ -107,15 +114,21 @@ func parsePID(s string) (int, error) {
 }
 
 // signal sends sig ("-TERM", "-USR2", "-KILL", "-0") to one process; it refuses pid below 1.
-func (l *lab) signal(sig string, pid int) error {
+func (l *lab) signal(sig string, pid int) error { return l.signalOn("lab", sig, pid) }
+
+// signalOn is signal in node.
+func (l *lab) signalOn(node, sig string, pid int) error {
 	if pid < 1 {
 		return fmt.Errorf("refusing to signal pid %d", pid)
 	}
-	_, err := l.try("lab", "kill", sig, strconv.Itoa(pid))
+	_, err := l.try(node, "kill", sig, strconv.Itoa(pid))
 	return err
 }
 
 func (l *lab) alive(pid int) bool { return l.signal("-0", pid) == nil }
+
+// aliveOn is alive in node.
+func (l *lab) aliveOn(node string, pid int) bool { return l.signalOn(node, "-0", pid) == nil }
 
 func (l *lab) eventually(d time.Duration, what string, f func() error) {
 	l.t.Helper()
@@ -153,14 +166,20 @@ func (l *lab) metrics(node string, port int) string {
 // process and waits for the outcome; it returns the old and the new process.
 func (l *lab) handoff(s scenario) (oldPID, newPID int) {
 	l.t.Helper()
-	oldPID = l.pid(s.role)
-	l.sh("lab", fmt.Sprintf("cp /opt/ctl/rpmgr %[1]s.new && mv %[1]s.new %[1]s", s.bin))
-	if err := l.signal("-USR2", oldPID); err != nil {
+	node := s.at()
+	oldPID = l.pidOn(node, s.role)
+	if node == "lab" {
+		l.sh("lab", fmt.Sprintf("cp /opt/ctl/rpmgr %[1]s.new && mv %[1]s.new %[1]s", s.bin))
+	} else {
+		l.copyIn(node, l.newBuild, s.bin+".new")
+		l.sh(node, fmt.Sprintf("mv %[1]s.new %[1]s", s.bin))
+	}
+	if err := l.signalOn(node, "-USR2", oldPID); err != nil {
 		l.t.Fatalf("signalling the old process: %v", err)
 	}
 	var out string
 	l.eventually(100*time.Second, "the outcome of the hand-off", func() error {
-		out = l.exec("lab", "cat", "/run/rpmgr/"+s.role+"/handoff.json")
+		out = l.exec(node, "cat", "/run/rpmgr/"+s.role+"/handoff.json")
 		// The file still holds the previous hand-off's outcome until the signal is handled.
 		var o struct {
 			State  string `json:"state"`
@@ -172,9 +191,9 @@ func (l *lab) handoff(s scenario) (oldPID, newPID int) {
 		return nil
 	})
 	if !strings.Contains(out, `"ok"`) {
-		l.t.Fatalf("the hand-off failed: %s\n%s", out, l.sh("lab", "tail -n 20 "+s.cfg()+".log"))
+		l.t.Fatalf("the hand-off failed: %s\n%s", out, l.sh(node, "tail -n 20 "+s.cfg()+".log"))
 	}
-	newPID = l.pid(s.role)
+	newPID = l.pidOn(node, s.role)
 	if newPID == oldPID {
 		l.t.Fatalf("the process is still %d after the hand-off", oldPID)
 	}
@@ -182,10 +201,21 @@ func (l *lab) handoff(s scenario) (oldPID, newPID int) {
 }
 
 func (s scenario) cfg() string {
-	if s.role == "gateway" {
+	switch s.role {
+	case "gateway":
 		return "/var/lib/gw/gateway.yaml"
+	case "connector":
+		return "/var/lib/con/connector.yaml"
 	}
 	return "/var/lib/aio/all-in-one.yaml"
+}
+
+// at is the container the role runs in.
+func (s scenario) at() string {
+	if s.node == "" {
+		return "lab"
+	}
+	return s.node
 }
 
 // load runs the traffic of the scenario while hand runs, and returns its results. The held
@@ -459,6 +489,75 @@ func (l *lab) allInOneUpgrade(t *testing.T) {
 		t.Errorf("the admin listener does not report generation 2")
 	}
 	l.answers(s)
+}
+
+// connectorUpgrade hands the connector c2, of the previous build, over to this tree's build with
+// its admin listener on (#1187), under load on its route: the hand-off succeeds, the new process
+// answers /readyz on the admin listener, and the old one exits. An old process of this tree hands
+// the admin listener over: a connection held through the route then lives, and no connection is
+// refused or reset. One of 0.3.0 or 0.4.0 (HANDOFF_FROM at such a release) hands none over: the new
+// process asks it to end its drain, which cuts what it still carries, and binds the address once
+// the old one let go.
+func (l *lab) connectorUpgrade(t *testing.T) {
+	s := scenario{role: "connector", node: "c2", bin: "/opt/con/rpmgr", admin: 7383, tcp: "127.0.0.1:20003"}
+	l.eventually(60*time.Second, "the route of c2", func() error { return l.client("lab", "check", "-addr", s.tcp) })
+	start := time.Now()
+	var wg sync.WaitGroup
+	var heldErr, probeErr error
+	var p probeOut
+	wg.Go(func() { _, heldErr = l.try("lab", "e2eclient", "hold", "-addr", s.tcp, "-duration", heldFor.String()) })
+	wg.Go(func() {
+		out, err := l.try("lab", "e2eclient", "probe", "-duration", probeFor.String(), "-tcp", s.tcp)
+		if err == nil {
+			err = json.Unmarshal([]byte(strings.SplitN(out, "\n", 2)[0]), &p)
+		}
+		probeErr = err
+	})
+	time.Sleep(4 * time.Second)
+	oldPID, newPID := l.handoff(s)
+	t.Logf("hand-off from %d to %d, outcome ok %v after the start of the load", oldPID, newPID, time.Since(start))
+	l.ready(s.node, s.admin)
+	l.eventually(80*time.Second, "the old connector to exit", func() error {
+		if l.aliveOn(s.node, oldPID) {
+			return fmt.Errorf("process %d serves on", oldPID)
+		}
+		return nil
+	})
+	wg.Wait()
+	if probeErr != nil {
+		t.Fatalf("the probe: %v", probeErr)
+	}
+	log := l.sh(s.node, "cat "+s.cfg()+".log")
+	if strings.Contains(log, "listen tcp 127.0.0.1:7383: bind: address already in use") {
+		t.Errorf("the new process failed on the admin listener:\n%s", grep(log, "admin listener"))
+	}
+	t.Logf("route %s: tcp %d ok, %d failed, first errors %v", s.tcp, p.TCPOK, p.TCPFail, p.Errors)
+	if strings.Contains(log, "the old process kept the admin listener") {
+		t.Logf("the old process handed no admin listener over (an earlier release): its drain was ended; held connection: %v", heldErr)
+	} else {
+		if heldErr != nil {
+			t.Errorf("the connection held through %s across the hand-off: %v", s.tcp, heldErr)
+		}
+		if p.TCPFail != 0 {
+			t.Errorf("a refused or reset connection of the connector's route under load: %d: %v", p.TCPFail, p.Errors)
+		}
+	}
+	if p.TCPOK < 100 {
+		t.Errorf("too little load went through: tcp %d", p.TCPOK)
+	}
+	// The admin listener is the new process's alone: it answers ready, and the old one is gone.
+	for range 5 {
+		if _, err := l.try(s.node, "e2eclient", "scrape", "-url", fmt.Sprintf("http://127.0.0.1:%d/readyz", s.admin)); err != nil {
+			t.Fatalf("/readyz of the new connector: %v", err)
+		}
+		time.Sleep(time.Second)
+	}
+	if !l.aliveOn(s.node, newPID) {
+		t.Fatalf("the new connector %d is gone", newPID)
+	}
+	if err := l.client("lab", "check", "-addr", s.tcp); err != nil {
+		t.Errorf("the route of c2 after the hand-off: %v", err)
+	}
 }
 
 func (l *lab) backoff(t *testing.T) {

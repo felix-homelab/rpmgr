@@ -193,9 +193,14 @@ test, in the order of [10](10-operations.md#upgrades-and-version-skew), under li
   - **Lone gateway, a connector pinned to QUIC:** it has no session with the new process until the
     old one exits, and reconnects then; its route answers again.
   - **All-in-one:** the same load; the admin listener and the controller are the new process's.
+  - **Connector** (#1187): the connector of the pinned route, started from `HANDOFF_FROM` with its
+    admin listener on, under load on that route. The hand-off succeeds, the new process answers
+    `/readyz` on the admin listener, and the old one exits. From this tree the admin listener is
+    handed over, the held connection survives and no connection is refused or reset; from 0.3.0
+    or 0.4.0, which hand none over, the old process's drain is ended, so only the load and the
+    admin listener are judged.
   - **Backoff:** a connector whose gateway is gone redials with a growing delay.
-  Not covered yet: a chaos step that kills the new process during the hand-off, and the
-  connector's own hand-off.
+  Not covered yet: a chaos step that kills the new process during the hand-off.
 - **Afterwards:**
   - the database has no pending migration and keeps every route;
   - every agent runs the new version and has applied the configuration of the controller's epoch;

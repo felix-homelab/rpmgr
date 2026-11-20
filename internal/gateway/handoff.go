@@ -8,12 +8,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"net/http"
 	"net/netip"
 	"os"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/handoff"
@@ -41,27 +39,6 @@ type heldListener struct {
 	retire func()
 }
 
-// retirable is a listener whose server ends as if it were shut down, not as if it failed, once
-// retire closed it: an admin server returns http.ErrServerClosed, which its owner takes for a
-// normal stop.
-type retirable struct {
-	net.Listener
-	retired atomic.Bool
-}
-
-func (r *retirable) Accept() (net.Conn, error) {
-	c, err := r.Listener.Accept()
-	if err != nil && r.retired.Load() {
-		return nil, http.ErrServerClosed
-	}
-	return c, err
-}
-
-func (r *retirable) retire() {
-	r.retired.Store(true)
-	_ = r.Close()
-}
-
 // retireAdmin stops taking connections on the admin listener, which both processes of a hand-off
 // hold: the old one would otherwise answer a share of them, with its own readiness and metrics,
 // after the new one took over.
@@ -87,8 +64,8 @@ func (l *listeners) listen(name, addr string) (net.Listener, error) {
 	}
 	h := heldListener{name: name, ln: ln}
 	if name == "admin" {
-		r := &retirable{Listener: ln}
-		h.retire = r.retire
+		r := handoff.NewRetirable(ln)
+		h.retire = r.Retire
 		ln = r
 		h.ln = r.Listener
 	}
@@ -104,22 +81,8 @@ func (l *listeners) adopt(name, addr string) (net.Listener, error) {
 	if l.take == nil {
 		return nil, nil
 	}
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return nil, nil // net.Listen reports it
-	}
-	p, err := strconv.ParseUint(port, 10, 16)
-	if err != nil || p == 0 {
-		return nil, nil
-	}
-	var hosts []netip.Addr
-	if host == "" {
-		hosts = []netip.Addr{netip.IPv6Unspecified(), netip.IPv4Unspecified()}
-	} else if a, err := netip.ParseAddr(host); err == nil {
-		hosts = []netip.Addr{a}
-	}
-	for _, a := range hosts {
-		ln, ok, err := l.take(netip.AddrPortFrom(a, uint16(p)))
+	for _, ap := range handoff.AddrPorts(addr) {
+		ln, ok, err := l.take(ap)
 		if err != nil {
 			return nil, fmt.Errorf("adopting the %s listener on %s: %w", name, addr, err)
 		}

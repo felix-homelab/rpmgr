@@ -9,9 +9,21 @@ back. Read it before every upgrade.
 
 ## Upgrading to v0.4.0
 
-- **From v0.3.0,** the hosts restart with a hand-off
+- **From v0.3.0,** gateways and all-in-ones restart with a hand-off
   ([below](#restart-without-refusing-connections)), and the controller or all-in-one on SQLite
   updates itself from **Settings → Updates** ([Updates](../operations/updates.md)).
+- **A connector of v0.3.0 or v0.4.0 cannot hand over** (#1187): its update fails with
+  `listen tcp 127.0.0.1:7383: bind: address already in use`, rolls back, and the connector serves
+  on with its release. Either update it by hand with a plain restart, which drops its tunnels for
+  a moment:
+
+  ```sh
+  sudo sh install.sh --upgrade        # without --restart
+  sudo systemctl restart rpmgr-connector
+  ```
+
+  or let it take the release with the fix over the air: its new process ends the old one's drain,
+  which cuts the old process's open streams once. From then on connectors hand over without that.
 - **Upgrade the gateways before you switch on a route's Cloudflare proxy.** A gateway of an
   earlier release is sent no proxied route, so it does not serve that route
   ([15](../../15-dns.md#proxied-http-routes)).
