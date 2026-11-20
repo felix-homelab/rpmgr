@@ -1,0 +1,17 @@
+PASS a1 vb19.zpxse.cc is issued by Let's Encrypt staging
+PASS a2 app.vb19.zpxse.cc is issued by Let's Encrypt staging
+PASS b1 app.vb19.zpxse.cc is issued by Let's Encrypt staging
+PASS b2 the serial changed
+PASS c1 app.vb19.zpxse.cc is issued by Let's Encrypt staging
+PASS c2 a third serial
+PASS d1 the provider is connected, its token is ok
+PASS d2 the zone is imported and held
+PASS d3 dns.vb19.zpxse.cc is issued by Let's Encrypt staging
+PASS d4 x.w.vb19.zpxse.cc is issued by Let's Encrypt staging
+PASS d5 the challenge TXT records are removed
+PASS d6 a held zone has no record of the route
+PASS d7 the address record of dns.vb19.zpxse.cc is published
+PASS d8 the controller's name and the wildcard are not written
+PASS d9 the address record is removed with its route
+PASS d10 the records of others are unchanged
+PASS d11 the zone is removed with its records, and the provider is deleted
