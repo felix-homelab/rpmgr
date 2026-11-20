@@ -7,6 +7,18 @@ new release's install script. This page gives the order of the hosts, the steps 
 the install script's `--upgrade` and `--restart` do, which versions work together, and how to go
 back. Read it before every upgrade.
 
+## Upgrading to v0.4.0
+
+- **From v0.3.0,** the hosts restart with a hand-off
+  ([below](#restart-without-refusing-connections)), and the controller or all-in-one on SQLite
+  updates itself from **Settings → Updates** ([Updates](../operations/updates.md)).
+- **Upgrade the gateways before you switch on a route's Cloudflare proxy.** A gateway of an
+  earlier release is sent no proxied route, so it does not serve that route
+  ([15](../../15-dns.md#proxied-http-routes)).
+- **A domain claim nested under, or containing, a verified domain of another organisation** waits
+  for the Instance Admin's approval when its proof succeeds. The upgrade does not change claims
+  that are already verified ([04](../../04-security.md#route-and-hostname-ownership)).
+
 ## Upgrading to v0.3.0
 
 - **From v0.2.0,** restart the hosts plainly, as `--restart` does: the restart without refusing

@@ -10,6 +10,16 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-20
+
+**Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
+
+- A route with the Cloudflare proxy switched on is sent only to gateways of v0.4.0 or later.
+  Upgrade the gateways of its group before you switch the proxy on.
+- A domain claim nested under, or containing, a verified domain of another organisation now waits
+  for the Instance Admin's approval when its proof succeeds. The upgrade does not change claims
+  that are already verified.
+
 ### Added
 
 - The zone page now changes the zone's settings: whether it publishes route hostnames, allows
@@ -852,7 +862,8 @@ Changes to the design documents are not recorded here: see the git history and t
   command line (generated from the binary), the boot files, the local policy file, the environment
   and the API. (#565)
 
-[Unreleased]: https://github.com/felix-homelab/rpmgr/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/felix-homelab/rpmgr/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/felix-homelab/rpmgr/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/felix-homelab/rpmgr/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/felix-homelab/rpmgr/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/felix-homelab/rpmgr/releases/tag/v0.1.0
