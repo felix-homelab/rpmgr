@@ -238,7 +238,8 @@ later.
   only after all of them acknowledged ([03](03-connections.md#service-sketch), D41); gateways
   answer from what was pushed and never read the database. Issued certificates go to the same
   gateways. certmagic supports this through the storage hook of its distributed solving
-  ([S6](spikes/S6.md)); the run against Let's Encrypt staging is pending [V VB-19].
+  ([S6](spikes/S6.md)); HTTP-01 and TLS-ALPN-01 passed against Let's Encrypt staging from the
+  internet on 2026-11-20 [F VB-19, run 2026-11-20] ([run sheet](../test/vb19/README.md)).
 - **ACME route certificates** [R]: the singleton job `acme` gives every hostname of an enabled
   http route in `acme` mode a certificate of its own from the instance's ACME CA (Let's Encrypt
   by default) and account, obtained and renewed with certmagic: renewal follows ACME Renewal
