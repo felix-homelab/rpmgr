@@ -129,7 +129,7 @@ func newLab(t *testing.T) *lab {
 	l.copyIn("lab", l.oldBuild, "/opt/gw/rpmgr")
 	l.copyIn("lab", l.oldBuild, "/opt/aio/rpmgr")
 	l.copyIn("c1", l.newBuild, "/opt/con/rpmgr")
-	l.copyIn("c2", l.newBuild, "/opt/con/rpmgr")
+	l.copyIn("c2", l.oldBuild, "/opt/con/rpmgr") // c2 is handed over to this tree's build
 	l.certificates()
 	return l
 }
@@ -337,7 +337,8 @@ identity_dir: /var/lib/con/identity
 state_dir: /var/lib/con
 policy_file: /var/lib/con/policy.yaml
 listen: {admin: "127.0.0.1:7383"}
-`, ctlURL))
+handoff: {drain: %s}
+`, ctlURL, drain))
 		l.start(c, "/opt/con/rpmgr", "connector", "/var/lib/con/connector.yaml")
 	}
 	// c1 serves the auto routes; c2 gets a route pinned to QUIC in the second hand-off.

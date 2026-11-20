@@ -206,7 +206,9 @@ type stdout struct{}
 func (stdout) Write(p []byte) (int, error) { return fmt.Print(string(p)) }
 
 // accepts listens on addr for d and prints the time of each TCP connection since the start, in
-// milliseconds, closing each at once: the stand-in for a gateway that is down.
+// milliseconds, per client address, closing each at once: the stand-in for a gateway that is down.
+// Each client's attempts are its own, so that the delays of one connector are not mixed with
+// another's.
 func accepts(addr string, d time.Duration) error {
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -214,7 +216,7 @@ func accepts(addr string, d time.Duration) error {
 	}
 	defer func() { _ = l.Close() }()
 	start := time.Now()
-	var at []int64
+	at := map[string][]int64{}
 	go func() {
 		time.Sleep(d)
 		_ = l.Close()
@@ -224,7 +226,11 @@ func accepts(addr string, d time.Duration) error {
 		if err != nil {
 			break
 		}
-		at = append(at, time.Since(start).Milliseconds())
+		host := c.RemoteAddr().String()
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		at[host] = append(at[host], time.Since(start).Milliseconds())
 		_ = c.Close()
 	}
 	b, _ := json.Marshal(at)

@@ -68,7 +68,7 @@ func TestReportReady(t *testing.T) {
 	var began bool
 	plain := handoff.NewLink(nil, func(string) string { return "" }, func() { began = true })
 	never := func(context.Context) error { return os.ErrClosed }
-	if err := reportReady(context.Background(), plain, never, func() bool { return false }); err != nil || !began {
+	if err := reportReady(context.Background(), plain, never, func() bool { return false }, nil); err != nil || !began {
 		t.Fatalf("plain start: %v, began %v", err, began)
 	}
 
@@ -82,7 +82,7 @@ func TestReportReady(t *testing.T) {
 		"no control session":   {never, func() bool { return true }},
 		"sessions not settled": {func(context.Context) error { return nil }, func() bool { return false }},
 	} {
-		if err := reportReady(ctx, started, c.ctl, c.settled); err != nil {
+		if err := reportReady(ctx, started, c.ctl, c.settled, nil); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
