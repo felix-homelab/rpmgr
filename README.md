@@ -8,9 +8,9 @@ in your network dials out to a public server you own, and that server passes the
 You need no port forwarding, no public IP address at home and no inbound firewall rule.
 
 > [!NOTE]
-> v0.3.0 is rpmgr's third release ([Releases](https://github.com/felix-homelab/rpmgr/releases))
-> and the second of its production phase, with signed updates over the air and restarts without
-> interrupting visitors. Try it out, expect rough edges, and
+> v0.4.0 is rpmgr's fourth release ([Releases](https://github.com/felix-homelab/rpmgr/releases))
+> and the third of its production phase, with DNS records managed in Cloudflare and wildcard
+> certificates through DNS-01. Try it out, expect rough edges, and
 > [report what you find](https://github.com/felix-homelab/rpmgr/issues).
 
 ![The Routes page of the rpmgr web UI: nine routes of the types HTTP, TCP, UDP, TCP and UDP, and
@@ -64,7 +64,7 @@ configuration ([02](docs/02-architecture.md)).
 
 ## Features
 
-What v0.3.0 brings; the full catalogue, with what comes later, is in [05](docs/05-features.md).
+What v0.4.0 brings; the full catalogue, with what comes later, is in [05](docs/05-features.md).
 
 **Publishing services**
 
@@ -86,6 +86,10 @@ What v0.3.0 brings; the full catalogue, with what comes later, is in [05](docs/0
   ones.
 - Hostnames only under domains your organisation has proved are its own, by a DNS TXT record or an
   HTTP token.
+- DNS records managed in Cloudflare: connect an account with a scoped token, import a zone, and
+  rpmgr publishes the addresses of your routes after you approve the plan, leaving the zone's
+  other records alone. Routes can go through Cloudflare's proxy.
+- Wildcard certificates, and certificates for names in a managed zone, through DNS-01.
 
 **Access control**
 
@@ -336,11 +340,11 @@ A controller works with agents of its own minor version and of the one before
 
 ## Roadmap
 
-The first phase is complete with v0.1.0, and v0.2.0 and v0.3.0 start the second one with signed
-updates over the air and restarts without interrupting visitors. The rest of it brings DNS records
-managed in Cloudflare, wildcard certificates through DNS-01, single sign-on and passkeys, private
-services between connectors, health checks and passive health for targets, rate and bandwidth
-limits, Windows and macOS connectors installed as services, and PostgreSQL with several controllers.
+The first phase is complete with v0.1.0. v0.2.0 to v0.4.0 start the second one with signed updates
+over the air, restarts without interrupting visitors, health checks and limits for routes, and DNS
+records managed in Cloudflare with wildcard certificates through DNS-01. The rest of it brings
+PostgreSQL with several controllers, single sign-on and passkeys, private services between
+connectors, and Windows and macOS connectors installed as services.
 Virtual networks, HTTP/3, a Helm chart and a Terraform provider follow after that
 ([13](docs/13-roadmap.md)).
 
