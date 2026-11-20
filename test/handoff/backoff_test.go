@@ -14,11 +14,14 @@ func TestDelaysGrew(t *testing.T) {
 		// The attempts of the nightly run 41163969176: two connectors, merged, the last two
 		// attempts 393 ms apart although each connector waits 14 s between its own.
 		"merged attempts of two connectors": {at: []int64{33196, 33677, 34071, 35157, 37412, 38819, 48319, 55495, 69753, 70146}, grew: true},
-		"one connector, doubling":           {at: []int64{0, 1000, 3000, 7000, 15000, 30000}, grew: true},
-		"a loop without delay":              {at: []int64{0, 100, 200, 300, 400, 500}},
-		"constant delay":                    {at: []int64{0, 1000, 2000, 3000, 4000}},
-		"shrinking delay":                   {at: []int64{0, 9000, 14000, 15000, 15100, 15200}},
-		"three attempts":                    {at: []int64{0, 500, 3000}, grew: true},
+		// The attempts of #1188's ops run 44722313128: one connector's two paths at the cap, the
+		// longest delay in the first half of the attempts.
+		"two paths of one connector at the cap": {at: []int64{29888, 30066, 30869, 32042, 35251, 41993, 52622, 56110, 60958, 63562, 72654, 72833, 75963}, grew: true},
+		"one connector, doubling":               {at: []int64{0, 1000, 3000, 7000, 15000, 30000}, grew: true},
+		"a loop without delay":                  {at: []int64{0, 100, 200, 300, 400, 500}},
+		"constant delay":                        {at: []int64{0, 1000, 2000, 3000, 4000}},
+		"shrinking delay":                       {at: []int64{0, 9000, 14000, 15000, 15100, 15200}},
+		"three attempts":                        {at: []int64{0, 500, 3000}, grew: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			first, last := delaysGrew(c.at)

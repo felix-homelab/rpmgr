@@ -575,32 +575,46 @@ func (l *lab) backoff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var at []int64
-	if err := json.Unmarshal([]byte(strings.SplitN(out, "\n", 2)[0]), &at); err != nil {
+	var byHost map[string][]int64
+	if err := json.Unmarshal([]byte(strings.SplitN(out, "\n", 2)[0]), &byHost); err != nil {
 		t.Fatalf("%v: %q", err, out)
 	}
-	t.Logf("TCP attempts of the connectors on the dead gateway, in ms: %v", at)
-	// The auto connector redials: more than once, with a delay that grows (up to 15 s), not in a loop.
-	if len(at) < 3 || len(at) > 25 {
-		t.Fatalf("%d attempts in 80 s, want between 3 and 25", len(at))
+	t.Logf("TCP attempts of the connectors on the dead gateway, per connector, in ms: %v", byHost)
+	// Each connector redials: more than once, with a delay that grows (up to 15 s), not in a loop.
+	// Its attempts are judged on their own, not merged with another connector's.
+	judged := 0
+	for host, at := range byHost {
+		if len(at) > 25 {
+			t.Errorf("%s: %d attempts in 80 s, at most 25: it redials in a loop", host, len(at))
+			continue
+		}
+		if len(at) < 3 {
+			continue // too few to tell a growing delay
+		}
+		judged++
+		if first, last := delaysGrew(at); last <= first {
+			t.Errorf("%s: the delay between attempts did not grow: %d ms first, %d ms last", host, first, last)
+		}
 	}
-	if first, last := delaysGrew(at); last <= first {
-		t.Errorf("the delay between attempts did not grow: %d ms first, %d ms last", first, last)
+	if judged == 0 {
+		t.Fatalf("no connector redialled 3 times in 80 s: %v", byHost)
 	}
 }
 
-// delaysGrew returns the longest delay between attempts in the first and in the second half of
-// the attempts. Several connectors redial the same gateway and the attempts are merged, so two
-// neighbouring attempts may come from two connectors; one delay is noise, the longest delay of a
-// half is not. Needs at least three attempts.
+// delaysGrew returns the longest delay at the start, among the first third of the delays (at
+// least one), and the longest delay after them. A connector redials on more than one path, such as
+// its data session and its control session's fallback through it, so two neighbouring attempts
+// may come from two paths: one delay is noise. Once the delays have grown, the longest after the
+// start is longer than any at the start, wherever the paths' attempts fall (the halves of the
+// attempts did not tell that, #1188). Needs at least three attempts.
 func delaysGrew(at []int64) (first, last int64) {
 	gaps := make([]int64, len(at)-1)
 	for i := range gaps {
 		gaps[i] = at[i+1] - at[i]
 	}
-	half := len(gaps) / 2
+	start := max(1, len(gaps)/3)
 	for i, g := range gaps {
-		if i < half {
+		if i < start {
 			first = max(first, g)
 		} else {
 			last = max(last, g)
