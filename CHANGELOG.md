@@ -10,6 +10,13 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-23
+
+**Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
+
+- A connector of 0.3.0 or 0.4.0 updates to this release over the air; the update cuts the
+  connections its old process still carries, once.
+
 ### Fixed
 
 - A standalone connector hands over to a new release again. Its new process failed on its admin
@@ -872,7 +879,8 @@ Changes to the design documents are not recorded here: see the git history and t
   command line (generated from the binary), the boot files, the local policy file, the environment
   and the API. (#565)
 
-[Unreleased]: https://github.com/felix-homelab/rpmgr/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/felix-homelab/rpmgr/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/felix-homelab/rpmgr/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/felix-homelab/rpmgr/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/felix-homelab/rpmgr/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/felix-homelab/rpmgr/compare/v0.1.0...v0.2.0

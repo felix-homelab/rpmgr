@@ -7,6 +7,14 @@ new release's install script. This page gives the order of the hosts, the steps 
 the install script's `--upgrade` and `--restart` do, which versions work together, and how to go
 back. Read it before every upgrade.
 
+## Upgrading to v0.4.1
+
+- **Connectors of v0.3.0 and v0.4.0 update over the air again.** The update to v0.4.1 ends the
+  old process's drain, which cuts the connections it still carries once; their clients connect
+  again. From v0.4.1 on, a connector hands over without that (#1187).
+- **Nothing else changes:** v0.4.1 fixes the connector's hand-off only. Gateways, all-in-ones and
+  the controller update as for v0.4.0.
+
 ## Upgrading to v0.4.0
 
 - **From v0.3.0,** gateways and all-in-ones restart with a hand-off
@@ -22,8 +30,7 @@ back. Read it before every upgrade.
   sudo systemctl restart rpmgr-connector
   ```
 
-  or let it take the release with the fix over the air: its new process ends the old one's drain,
-  which cuts the old process's open streams once. From then on connectors hand over without that.
+  or let it take v0.4.1 over the air ([above](#upgrading-to-v041)).
 - **Upgrade the gateways before you switch on a route's Cloudflare proxy.** A gateway of an
   earlier release is sent no proxied route, so it does not serve that route
   ([15](../../15-dns.md#proxied-http-routes)).
