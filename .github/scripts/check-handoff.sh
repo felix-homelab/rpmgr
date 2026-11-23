@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# Upgrades a lone gateway and an all-in-one under load with the socket hand-off, from the previous
-# build (HANDOFF_FROM) to this tree's, in containers (docs/12-testing-and-quality.md, "Continuous
-# integration"; slice 17.8, D159). Needs Docker. HANDOFF_FROM is a git revision, default HEAD: the
-# code under test hands over to itself, as in a pull request. `release` is the last release tag
-# (`git describe --tags --abbrev=0 --match 'v*'`, needs the tags: fetch-depth 0), as in the
-# nightly run.
+# Upgrades a lone gateway, an all-in-one and a connector under load with the socket hand-off, from
+# the previous build (HANDOFF_FROM) to this tree's, in containers (docs/12-testing-and-quality.md,
+# "Continuous integration"; slice 17.8, D159). Needs Docker. HANDOFF_FROM is a git revision,
+# default HEAD: the code under test hands over to itself, as in a pull request. `release` is the
+# last release tag (`git describe --tags --abbrev=0 --match 'v*'`, needs the tags: fetch-depth 0),
+# as in the nightly run.
 #
 # Usage: check-handoff.sh [<repository root>]
 set -euo pipefail

@@ -105,8 +105,9 @@ const readyEvery = 100 * time.Millisecond
 // reportReady reports the connector ready through link. After a plain start that is at once. A
 // process a hand-off started waits until its control session is up and its first snapshot applied,
 // and every gateway has a data session or failed to open one: the old process keeps serving until
-// then, and the readiness window bounds the wait. It returns nil if ctx ends first.
-func reportReady(ctx context.Context, link *handoff.Link, controlReady func(context.Context) error, settled func() bool) error {
+// then, and the readiness window bounds the wait; before it reports, it runs before. It returns nil
+// if ctx ends first.
+func reportReady(ctx context.Context, link *handoff.Link, controlReady func(context.Context) error, settled func() bool, before func()) error {
 	if link.Inherited != nil {
 		t := time.NewTicker(readyEvery)
 		defer t.Stop()
@@ -117,11 +118,26 @@ func reportReady(ctx context.Context, link *handoff.Link, controlReady func(cont
 			case <-t.C:
 			}
 		}
+		if before != nil {
+			before()
+		}
 	}
 	if err := link.Ready(); err != nil {
 		return fmt.Errorf("connector: hand-off: %w", err)
 	}
 	return nil
+}
+
+// beforeSwitch runs in a process a hand-off started, once it is ready and before it tells the old
+// process: it closes the handed-over sockets nothing takes, and, if it adopted the admin listener
+// that the old process still holds, keeps the unit "reloading" until the old process retired it.
+func beforeSwitch(h *handoff.Handoff, adm *adminListener, log *slog.Logger) {
+	for _, e := range h.Rest() {
+		log.Warn("closed a handed-over socket nothing needs", "name", e.Name, "net", e.Net, "addr", e.Addr.String())
+	}
+	if adm != nil && adm.adopted() {
+		h.SettleAfterSwitch()
+	}
 }
 
 // Run runs a connector from its boot file until ctx ends (docs/02-architecture.md): its control
@@ -242,9 +258,18 @@ func Run(ctx context.Context, o RunOptions) error {
 	errs := make(chan error, 2)
 	go watcher.Run(run)
 	var admin sync.WaitGroup
+	var adm *adminListener // nil when the caller serves the admin listener
 	if o.Readiness == nil {
+		var take func(netip.AddrPort) (net.Listener, bool, error) // nil after a plain start
+		if o.Handoff != nil && o.Handoff.Inherited != nil {
+			take = o.Handoff.Inherited.Listener
+		}
+		if adm, err = newAdminListener(cfg.Listen.Admin, take, o.Logger); err != nil {
+			return err
+		}
 		admin.Go(func() {
-			if err := telemetry.ServeAdmin(run, cfg.Listen.Admin, reg, ctl.Ready); err != nil {
+			listen := func(addr string) (net.Listener, error) { return adm.listen(run, addr) }
+			if err := telemetry.ServeAdminOn(run, cfg.Listen.Admin, listen, reg, ctl.Ready); err != nil {
 				errs <- fmt.Errorf("connector: admin listener: %w", err)
 			}
 		})
@@ -263,8 +288,20 @@ func Run(ctx context.Context, o RunOptions) error {
 	if o.Handoff != nil {
 		o.Handoff.Serve(func(c context.Context) (*handoff.Child, error) {
 			// The new process's sessions supersede this one's, and the gateways then drain these.
+			var socks []handoff.Socket
+			if adm != nil {
+				var err error
+				if socks, err = adm.sockets(); err != nil {
+					return nil, err
+				}
+			}
+			defer func() {
+				for _, s := range socks {
+					_ = s.File.Close()
+				}
+			}()
 			endSessions, endControl := sessions.BeginHandoff(), ctl.BeginHandoff()
-			child, err := handoff.Start(c, handoff.Config{Generation: o.Handoff.Generation() + 1, Env: handoffEnv(hex.EncodeToString(boot))}, nil)
+			child, err := handoff.Start(c, handoff.Config{Generation: o.Handoff.Generation() + 1, Env: handoffEnv(hex.EncodeToString(boot))}, socks)
 			endSessions(err == nil)
 			endControl(err == nil)
 			if err != nil {
@@ -275,7 +312,7 @@ func Run(ctx context.Context, o RunOptions) error {
 			return child, nil
 		})
 		go func() {
-			if err := reportReady(run, o.Handoff, ctl.Ready, sessions.Settled); err != nil {
+			if err := reportReady(run, o.Handoff, ctl.Ready, sessions.Settled, func() { beforeSwitch(o.Handoff.Inherited, adm, o.Logger) }); err != nil {
 				errs <- err
 				return
 			}
@@ -284,12 +321,24 @@ func Run(ctx context.Context, o RunOptions) error {
 				// drain the controller shows.
 				pipe := o.Handoff.Inherited.Pipe()
 				toOld.Store(pipe)
+				if adm != nil && !adm.adopted() {
+					// An old process of 0.3.0 or 0.4.0 holds the admin listener until it exits, and
+					// the updater judges this process by it: end the old one's drain (#1187).
+					o.Logger.Info("the old process kept the admin listener: asking it to end its drain")
+					if err := handoff.EndOld(pipe); err != nil {
+						o.Logger.Warn("asking the old process to end its drain", "error", err)
+					}
+				}
 				var seen bool // an old process of an earlier release never reports
 				_ = handoff.Watch(pipe, func(d handoff.Drain) {
 					seen = true
+					o.Handoff.Inherited.Settled() // the old process reports once it retired the admin listener
 					ctl.SetDraining(agent.DrainingProcessOf(d))
 				}, nil)
 				toOld.Store(nil)
+				if adm != nil {
+					adm.gone()
+				}
 				if seen {
 					ctl.SetDraining(agent.DrainGone())
 				}
@@ -303,6 +352,9 @@ func Run(ctx context.Context, o RunOptions) error {
 		return nil
 	case child := <-switched:
 		o.Logger.Info("the new process took over: keeping the open streams for the hand-off drain", "generation", o.Handoff.Generation())
+		if adm != nil {
+			adm.retire() // the new process answers the admin listener alone from now on
+		}
 		since := time.Now()
 		deadline := since.Add(cfg.Handoff.DrainPeriod())
 		// The new process shows the drain and can end it: it reports what is open and may ask to end.

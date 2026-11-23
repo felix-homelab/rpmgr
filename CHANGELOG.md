@@ -10,6 +10,16 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+### Fixed
+
+- A standalone connector hands over to a new release again. Its new process failed on its admin
+  listener, `bind: address already in use`, because the old process held the address and handed
+  nothing over, so every over-the-air update of a connector of 0.3.0 or 0.4.0 rolled back. The
+  connector now hands its admin listener over, as a gateway does. A connector of 0.3.0 or 0.4.0
+  still hands none over: when it updates to this release, the new process asks it to end its
+  drain, which cuts its open streams once, and binds the address when the old process lets go.
+  (#1187)
+
 ## [0.4.0] - 2026-11-20
 
 **Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
