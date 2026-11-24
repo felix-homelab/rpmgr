@@ -481,14 +481,24 @@ method, list filter or search returns or modifies the other org's data
 | **PostgreSQL** | HA, larger installations (Phase 2) | Required for more than one controller replica. Existing SQLite installations move with `rpmgr migrate-db` ([Migrations](#migrations)). Phase 1 generates and tests its migrations but does not offer it ([D57](14-open-decisions.md#engineering)) |
 | MySQL | **Dropped** | A third dialect multiplies migration and test cost. The importer still reads MySQL source databases ([11](11-migration.md)) |
 
-**PostgreSQL connection.** The store opens PostgreSQL only with `sslmode=verify-full`, except on
-the loopback interface or a Unix socket ([04](04-security.md)). The password comes from
-`database.password_file` or a systemd credential, never from the DSN, `PGPASSWORD` or a `.pgpass`
-file, and no error or log line names it. The server must run a major version the PostgreSQL project
-still supports when the rpmgr release is made, 15 to 18 today; the controller refuses an older one
-at start (the constant `store.MinPostgresMajor`). Migrations run under a session advisory lock
-(`pg_advisory_lock(0x72706d67, 1)`), so of two processes that migrate one database one applies the
-files; every controller holds the lock `(0x72706d67, 2)` shared for as long as it runs, so replicas run
-side by side, and `rpmgr restore` and `rpmgr migrate-db` take it exclusively and refuse while a
-controller runs. The boot file still refuses `database.driver: postgres`
-until the controller is wired to this opener.
+**PostgreSQL connection.** Every host except the loopback interface (an IP literal, or `localhost`
+when it resolves to loopback addresses only) and a Unix socket is reached over TLS 1.2 or later
+with the certificate chain and the host name verified ([04](04-security.md)). The store does not
+read which `sslmode` the DSN, the environment or a service file asked for; it replaces the TLS
+settings of every remote host with its own, so `require` and `verify-ca` become `verify-full`, and
+a host that may be reached without TLS (`disable`, `allow`, `prefer`) is refused. The certificate
+authorities are the file of `sslrootcert` if given, else the system's, never
+`~/.postgresql/root.crt`. A DSN may set only host, port, user, database, `sslmode`, `sslrootcert`,
+`sslcert`, `sslkey` and a few connection parameters; `service` and a client key passphrase are
+refused. The password comes from `database.password_file` or a systemd credential, never from the
+DSN, `PGPASSWORD` or a `.pgpass` file, and no error or log line names it. The server must run a
+major version the PostgreSQL project still supports when the rpmgr release is made, 15 to 19 today;
+the controller refuses an older one at start (the constant `store.MinPostgresMajor`) and logs a
+warning for a newer one than the tests run on (`store.MaxTestedPostgresMajor`). Migrations run
+under a session advisory lock (`pg_advisory_lock(0x72706d67, 1)`), so of two processes that migrate
+one database one applies the files. The controller lock `(0x72706d67, 2)` is held for the life of
+the process: exclusively by a single controller, `rpmgr restore`, `rpmgr migrate-db` (on its
+target) and local `kek rotate`, so a second holder gets `store.ErrLocked`; shared by the replicas of
+a cluster (`listen.internal`) and by `rpmgr migrate`, which can run side by side but not next to an
+exclusive holder. Losing the session that holds it closes `DB.LockLost`. The boot file still
+refuses `database.driver: postgres` until the controller is wired to this opener.
