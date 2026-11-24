@@ -457,19 +457,24 @@ Rules:
 - **What is sent.** `Welcome.trust_roots` (field 6) and `Snapshot.trust_roots` (the next free
   field) list, as DER, every certificate of the controller's trust bundle: the **self-signed**
   certificate of each root and the **cross-certificates** that tie a new root to an old one. The
-  order is fixed: the self-signed certificates first, then the cross-certificates, each group by
-  the SHA-256 of its public key, so two replicas send the same bytes. Outside a rotation the list
-  is one certificate. The field goes only to an agent that announced `trust.roots`; one without it
-  keeps the root it has and shows as a straggler of a rotation
-  ([04](04-security.md#root-rotation)).
+  order is fixed: the self-signed certificates first, then the cross-certificates, each group
+  sorted by the SHA-256 of the certificate's SubjectPublicKeyInfo, the same value as the root pin,
+  and certificates with the same SPKI by their raw DER bytes, ascending, so two replicas send the
+  same bytes. **Certificates with identical raw DER count once**, in the list and in the digest.
+  Outside a rotation the list is one certificate. The field goes only to an agent that announced
+  `trust.roots`; one without it keeps the root it has and shows as a straggler of a rotation
+  ([04](04-security.md#root-rotation)). Agents announce `trust.roots` **from slice 8.13 (#696)
+  on**, because the capability promises that they can take part in a root rotation.
 - **The digest.** `Hello.roots_digest` (field 10) is the SHA-256 over the agent's trusted
-  self-signed roots, sorted by the SHA-256 of their public key, each as its length in bytes (an
-  unsigned varint) and its DER. The controller computes the same digest of its current bundle,
-  records the agent's in `agent_sessions.roots_digest`
+  self-signed roots in the order above, each contributing `uvarint(len(DER)) ‖ DER`.
+  **Cross-certificates do not count toward the digest.** The controller computes the same digest of
+  its current bundle, records the agent's in `agent_sessions.roots_digest`
   ([06](06-data-model.md#desired-vs-observed-state)), and lists the agents whose digest differs as
   the stragglers of a rotation. Roots in `Welcome` are sent when the digest differs, or when `Hello`
   has none; the snapshot always carries them, so a change of the bundle changes every snapshot's
-  hash and is pushed like a revision.
+  hash and is pushed like a revision. The pusher's change key covers the **whole bundle,
+  cross-certificates included**, so a new cross-certificate alone is pushed although the digest
+  stays the same.
 - **What an agent does with them** is in [04](04-security.md#root-rotation): it keeps an offered
   root only when a cross-certificate from a root it trusts verifies. A root that fails the rule is
   ignored and logged, and never rejects the snapshot that carried it.
