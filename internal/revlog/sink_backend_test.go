@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -362,16 +363,79 @@ func TestDirBackend(t *testing.T) {
 	}
 }
 
-// TestSinkLegacyKeys: a directory of unpadded numbers, as earlier releases wrote, is a break and
-// not an empty sink, so that shipping does not fork it.
-func TestSinkLegacyKeys(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "1"), []byte("{}\n"), 0o600); err != nil {
+// legacyDir ships three entries and renames the files to the unpadded names the earlier code wrote.
+func legacyDir(t *testing.T) (dir, src string, l *revlog.Log) {
+	t.Helper()
+	dir = t.TempDir()
+	src, l = logWith(t, "ses_1", "ses_2", "ses_3")
+	if _, err := revlog.NewSink(revlog.DirBackend{Dir: dir}).Ship(src, "node-a"); err != nil {
 		t.Fatal(err)
 	}
-	src, _ := logWith(t, "ses_1")
-	left, err := revlog.NewSink(revlog.DirBackend{Dir: dir}).Ship(src, "node-a")
-	if !errors.Is(err, revlog.ErrBroken) || len(left) != 1 {
-		t.Errorf("%d unshipped, %v", len(left), err)
+	for n := 1; n <= 3; n++ {
+		if err := os.Rename(filepath.Join(dir, revlog.Key(uint64(n))), filepath.Join(dir, strconv.Itoa(n))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir, src, l
+}
+
+// TestSinkLegacyKeys: a directory written by the earlier code (files 1..3) keeps shipping without a
+// break and without a duplicate; the new entry is written padded and the old files stay as they
+// were. Names that are no keys are ignored.
+func TestSinkLegacyKeys(t *testing.T) {
+	dir, src, l := legacyDir(t)
+	for _, n := range []string{"01", "1.bak", "-1", "x", "18446744073709551616"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("junk"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sink := revlog.NewSink(revlog.DirBackend{Dir: dir})
+	if left, err := sink.Ship(src, "node-a"); err != nil || len(left) != 0 {
+		t.Fatalf("ship over a legacy sink: %v %v", left, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, revlog.Key(1))); err == nil {
+		t.Error("a legacy file was written again padded: a duplicate")
+	}
+	if _, err := l.Append(revlog.Entry{Kind: revlog.SessionRevoked, Subject: "ses_4"}); err != nil {
+		t.Fatal(err)
+	}
+	if left, err := sink.Ship(src, "node-a"); err != nil || len(left) != 0 {
+		t.Fatalf("a new entry: %v %v", left, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, revlog.Key(4))); err != nil {
+		t.Errorf("the new entry is not padded: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "4")); err == nil {
+		t.Error("the new entry was written unpadded")
+	}
+	got, err := revlog.NewSink(revlog.DirBackend{Dir: dir}).Read()
+	if err != nil || len(got) != 4 || got[3].Entry.Subject != "ses_4" {
+		t.Errorf("the sink: %d entries, %v", len(got), err)
+	}
+	d := revlog.DirBackend{Dir: dir}
+	if err := d.CreateIfAbsent(revlog.Key(2), []byte("x")); !errors.Is(err, revlog.ErrExists) {
+		t.Errorf("create over a legacy name: %v, want ErrExists", err)
+	}
+}
+
+// TestSinkLegacyAndPaddedBoth: one sequence number under both names is a duplicate; equal content
+// is fine, different content breaks the chain.
+func TestSinkLegacyAndPaddedBoth(t *testing.T) {
+	for name, content := range map[string]string{"equal": "", "different": "x"} {
+		dir, src, _ := legacyDir(t)
+		b, err := os.ReadFile(filepath.Join(dir, "2"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, revlog.Key(2)), append(b, content...), 0o600); err != nil { //nolint:gosec // G703: the test's temporary sink
+			t.Fatal(err)
+		}
+		_, err = revlog.NewSink(revlog.DirBackend{Dir: dir}).Ship(src, "node-a")
+		if name == "equal" && err != nil {
+			t.Errorf("equal duplicate: %v", err)
+		}
+		if name == "different" && !errors.Is(err, revlog.ErrBroken) {
+			t.Errorf("different duplicate: %v, want ErrBroken", err)
+		}
 	}
 }

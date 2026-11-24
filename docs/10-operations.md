@@ -822,9 +822,9 @@ service that still runs the previous binary, with the command that restarts it.
     of `rpmgr systemd-unit` makes writable ([Hardened systemd units](#hardened-systemd-units)).
     - **Publishing:** each entry is written to a temporary file, synced, then hard-linked to its
       key, the sequence number as 20 digits with leading zeros ([04](04-security.md#revocation-log));
-      the link fails when the key exists, so a crash leaves no empty number. Files that are not
-      keys of that form, such as the entries of a directory a release before this one wrote, break
-      the chain and stop shipping.
+      the link fails when the key exists, so a crash leaves no empty number. A directory that an
+      earlier release wrote, with files named `1`, `2` and so on, is read as it is and never
+      renamed; new entries are written padded.
     - **Contents:** an entry holds the replica, its local entry and the sink's own hash chain.
     - **Shipping:** every 10 s; the replica verifies the whole sink once, at start, and keeps the
       verified prefix, so a tick lists only the keys after it and reads none when nothing is new.

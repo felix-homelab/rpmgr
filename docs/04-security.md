@@ -2008,8 +2008,8 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
   decimal digits with leading zeros** below the sink's prefix, so that a listing's order is the
   numeric order and the number fits an unsigned 64-bit integer. The filesystem sink creates an
   object with an exclusive hard link, the S3 sink with a PUT that carries `If-None-Match: *`, which
-  answers 412 when the key exists. A key that is not 20 digits is a break of the chain, so a sink
-  directory written by a release before this one is refused and not forked.
+  answers 412 when the key exists. The filesystem sink also reads the unpadded names of earlier
+  releases as the same keys and never renames them.
 - **Shipping.** A replica reads and verifies the whole sink once, at start, and keeps in memory the
   **verified prefix**: the sequence number and hash of the last entry it checked. A tick lists only
   the keys after the prefix, gets them, checks that each entry links to the one before and extends
