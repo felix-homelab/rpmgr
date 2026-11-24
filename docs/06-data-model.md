@@ -105,7 +105,7 @@ an opaque blob: no foreign system's configuration is embedded, and every field i
 
 | Table | Key fields | Notes |
 |---|---|---|
-| `ca_keys` | id, kind (`root`, `intermediate`, `config_signing`, `audit_checkpoint`, `route_assertion` in Phase 2), algorithm, public_key, certificate, key_enc, not_before, not_after, status (`next`, `active`, `retired`) | Instance-level keys of [04](04-security.md#ca-hierarchy). `key_enc` is envelope-encrypted under the KEK, and null for an offline root (`rpmgr ca offline-root`). Each kind has one `active` key; the controller refuses to start otherwise. Only the system scope reads or writes the table |
+| `ca_keys` | id, kind (`root`, `intermediate`, `config_signing`, `audit_checkpoint`, `route_assertion` in Phase 2), algorithm, public_key, certificate, cross_certificate (DER; a root only), csr (PEM; a `next` key whose certificate an offline root has yet to sign), key_enc, not_before, not_after, status (`next`, `active`, `retired`, `compromised`) | Instance-level keys of [04](04-security.md#ca-hierarchy). `key_enc` is envelope-encrypted under the KEK, and null for an offline root (`rpmgr ca offline-root`, [04](04-security.md#offline-root-ca)) and for a `compromised` key, whose material is wiped. A `next` key whose `certificate` is null waits for its signature. A `next` root carries the `cross_certificate` that its predecessor signed ([04](04-security.md#root-rotation)). Each kind has one `active` key, and a root can have a second, `next`, during a rotation; the controller refuses to start otherwise. Only the system scope reads or writes the table |
 | `acme_storage` | key, value_enc, size, modified_at | certmagic's storage (account keys, orders, certificates in progress); `value_enc` is under the KEK with the key as its row, `size` the plain value's; locks are `leases` named `acme:<lock>` (holder, expiry, fencing token), kept alive while held, so replicas never order the same certificate twice ([S6](spikes/S6.md)). Only the system scope reads or writes it |
 | `ca_bundles` | id, org_id, name (unique per org), pem | Custom CAs for verifying HTTPS upstreams ([04](04-security.md#controller-certificates)), referenced by `route_targets.tls_ca_bundle_id` of the same org (composite foreign key) |
 
@@ -248,11 +248,11 @@ of each route, with the floor applied, into the snapshot of every gateway that s
 | `audit_log` | id, org_id (null: the instance chain), seq, prev_hash, hash, ts, actor_type (`user`, `agent`, `system`, `anonymous`), actor_id, credential_id (session or token ID), auth_method, ip, user_agent, request_id, action, target_type, target_id, result (`success`, `failure`, `denied`), diff (redacted), reason | A hash chain per org and one for the instance ([04](04-security.md#audit-log)); seq is unique within a chain. Text is stored as valid UTF-8 without NUL. Fields a client controls are truncated, never refused, so an over-long header cannot keep an event out of the log: user_agent at 512 bytes, request_id at 128 |
 | `audit_heads` | chain (org ID or `instance`), seq, hash | The last entry of each audit chain; every append locks and increments it first |
 | `audit_checkpoints` | org_id, seq, head_hash, ts, key_id, signature | One per chain and seq; `org_id` is NULL for the instance chain. `key_id` names the audit-checkpoint key that signed ([04](04-security.md#audit-log)). Written only by the audit package; what each external sink has shipped is in `audit_sink_cursors` (Phase 2) |
-| `instance_secrets` | name, value_enc, updated_at | Secrets of the instance settings, such as the mail relay's password, under the KEK with the name as their row; the settings themselves hold none. Only the system scope reads or writes them |
+| `instance_secrets` | name, value_enc, updated_at | Secrets of the instance settings, such as the mail relay's password, under the KEK with the name as their row; the settings themselves hold none. Also the keys that no other row holds: `page_token_key`, which authenticates the API's page tokens, and `page_preview_key`, which authenticates the previews of gateway pages, each 32 random bytes made once, by the statement that finds the row missing and inserts it, so that every replica reads the same key ([04](04-security.md#secrets-at-rest-and-in-logs)). Only the system scope reads or writes them |
 | `api_requests` | id, caller_id, method, request_id, request_hash, response_enc, created_at | The `request_id`s of `Create` calls within the deduplication window ([07](07-api.md#resource-design)), unique per caller and method. The first request's transactions insert the row, so the change and the row commit together; `response_enc` is its response under the KEK, null until it answered. Only the system scope reads or writes it |
-| `leases` | name, holder, fencing_token, expires_at (Unix milliseconds, so both dialects compare numbers) | Singleton jobs in HA, including the DNS job's `dns` lease ([10](10-operations.md#high-availability)). A takeover raises the fencing token; a job commits its work in a transaction that first checks the lease is still its own, so a replica that lost it commits nothing. The handle a job holds carries the lease's expiry, so a job can refuse to start work the lease will not outlast, as the DNS job does before each batch ([15](15-dns.md#the-dns-job)) |
-| `controller_nodes` | node_id (`ctn_`), internal_address, last_seen_at | HA: where a replica can be reached by the others over controller-to-controller mutual TLS |
-| `secrets_meta` | table_name, row_id, column_name, kek_version, created_at | Bookkeeping for KEK rotation: one row per sealed column of a row, written in the transaction that writes the sealed value; `rpmgr kek status` reads it. The stored responses of `request_id`s, kept for a day, are not recorded; `rpmgr kek rotate` re-wraps every sealed column all the same and rewrites these rows ([04](04-security.md#secrets-at-rest-and-in-logs)) |
+| `leases` | name, holder, fencing_token, expires_at (Unix milliseconds, so both dialects compare numbers) | Singleton jobs in HA, including the DNS job's `dns` lease ([10](10-operations.md#high-availability)). A takeover raises the fencing token; a job commits its work in a transaction that first checks the lease is still its own, so a replica that lost it commits nothing. **The database's clock decides every expiry**: a statement that takes, renews or checks a lease compares `expires_at` with the database's time and writes the new `expires_at` as the database's time plus the TTL, and no replica compares `expires_at` with its own clock. On PostgreSQL that time is `clock_timestamp()`, which moves during a transaction, not `now()`; on SQLite it is the process's clock, because the file lives on one host. The handle a job holds carries the lease's expiry as a deadline on the replica's own monotonic clock, counted from before the statement was sent, so it never outlasts the row and a job can refuse to start work the lease will not outlast, as the DNS job does before each batch ([15](15-dns.md#the-dns-job)). Clocks that differ by seconds therefore cannot give a lease to two replicas |
+| `controller_nodes` | node_id (`ctn_`), internal_address, version, started_at, last_seen_at, revlog_backlog, revlog_local_seq | HA: one row per replica that has run, where the others reach it over controller-to-controller mutual TLS ([10](10-operations.md#high-availability)). `node_id` is made at the replica's first start and kept in `<state_dir>/node-id` [R], so a restart is the same node; the node certificate's SPIFFE ID names it ([04](04-security.md#trust-domain-and-identities)). `internal_address` is the `host:port` of `listen.internal_address`, empty on a single controller. `version` is the release that runs. `last_seen_at` is the database's time at the replica's last heartbeat ([03](03-connections.md#timeouts-keepalive-and-backoff)); a replica is **live** while that is recent. `revlog_backlog` is the number of entries in its local revocation log that the sink does not hold yet, and `revlog_local_seq` the number of its last local entry, both written by the heartbeat: a restore reads them to tell which logs it must have ([04](04-security.md#revocation-log)). A single controller keeps its row too, so that moving to replicas finds it. A row with no backlog is removed after 24 h without a heartbeat; **a row with a backlog stays** until a restore has read that replica's log |
+| `secrets_meta` | table_name, row_id, column_name, kek_version (16 hexadecimal digits for a local KEK, `<mount>/<key>@v<n>` for a Transit key), created_at | Bookkeeping for KEK rotation: one row per sealed column of a row, written in the transaction that writes the sealed value; `rpmgr kek status` reads it. The stored responses of `request_id`s, kept for a day, are not recorded; `rpmgr kek rotate` re-wraps every sealed column all the same and rewrites these rows ([04](04-security.md#secrets-at-rest-and-in-logs)) |
 
 ## Desired vs observed state
 
@@ -451,10 +451,12 @@ method, list filter or search returns or modifies the other org's data
   takes a `VACUUM INTO` copy before migrating. `VACUUM INTO` writes a consistent copy while readers
   and the writer keep working; it needs an ordinary connection, because a `query_only` connection
   refuses it, but it takes no write lock ([S8](spikes/S8.md)).
-- **SQLite → PostgreSQL** (Phase 2): `rpmgr migrate-db --from <sqlite path> --to <postgres DSN>`
-  copies a stopped controller's database into an empty, fully migrated PostgreSQL database. It runs
-  offline (all controllers stopped), keeps secrets envelope-encrypted under the same KEK, and keeps
-  the `db_epoch`, because the content is unchanged ([10](10-operations.md#high-availability)).
+- **SQLite ↔ PostgreSQL** (Phase 2): `rpmgr migrate-db --from <database> --to-file <boot file>`
+  copies a stopped controller's database into an empty database of either dialect, with the
+  secrets still sealed under the same KEK and the `db_epoch` kept, because the content is
+  unchanged ([Copying a database](#copying-a-database),
+  [10](10-operations.md#moving-between-sqlite-and-postgresql),
+  [D175](14-open-decisions.md#engineering)).
 - CI applies every migration to an empty database and to a database seeded at the previous release,
   on both dialects ([12](12-testing-and-quality.md#continuous-integration)).
 - The migrations written while Phase 1 was developed are squashed into one baseline per dialect,
@@ -469,5 +471,107 @@ method, list filter or search returns or modifies the other org's data
 | Engine | Use | Notes |
 |---|---|---|
 | **SQLite** (pure Go, `modernc.org/sqlite`) | Default; single controller | Needed for `CGO_ENABLED=0` static builds. WAL mode, `busy_timeout`, one writer connection. `PRAGMA foreign_keys = 1` on every connection: SQLite enforces no foreign key without it, and the controller refuses a connection on which it is off ([S5](spikes/S5.md)). Works on linux/amd64, arm64, armv7 and riscv64 ([S8](spikes/S8.md)). Every setting is part of the DSN, so each pooled connection has it; [R] `synchronous = FULL`, `busy_timeout` 5 s, and readers in a separate `query_only` pool. `sqlite.StrictPragmas(true)` is set at start, because the DSN comes from the boot file and a `_pragma` value otherwise also runs whatever follows a `;` [F modernc.org/sqlite v1.60.1 `strictpragma.go:20-43`]. An `ON DELETE RESTRICT` violation carries the extended code `SQLITE_CONSTRAINT_TRIGGER`, not `SQLITE_CONSTRAINT_FOREIGNKEY`; the store maps both to the same error ([S8](spikes/S8.md)). The path in the boot file must not contain `?`, `#` or `%`, so it cannot add DSN parameters. A running controller holds an exclusive lock on `<database>.lock`; a second controller on the same file refuses to start, while administration commands open the database without the lock. Pinned to a current version |
-| **PostgreSQL** | HA, larger installations (Phase 2) | Required for more than one controller replica. Existing SQLite installations move with `rpmgr migrate-db` ([Migrations](#migrations)). Phase 1 generates and tests its migrations but does not offer it ([D57](14-open-decisions.md#engineering)) |
+| **PostgreSQL** | HA, larger installations (Phase 2) | Required for more than one controller replica; one controller may use it too. Every major the project supports ([Connecting to PostgreSQL](#connecting-to-postgresql-phase-2), [D174](14-open-decisions.md#engineering)). Installations move between SQLite and PostgreSQL with `rpmgr migrate-db`, in either direction ([Copying a database](#copying-a-database)). Phase 1 generated and tested its migrations without offering it ([D57](14-open-decisions.md#engineering)); the boot file accepts it from slice 8.6 |
 | MySQL | **Dropped** | A third dialect multiplies migration and test cost. The importer still reads MySQL source databases ([11](11-migration.md)) |
+
+### Connecting to PostgreSQL (Phase 2)
+
+[D177](14-open-decisions.md#engineering), [ADR-0024](adr/0024-controller-ha-and-key-custody.md).
+
+- **Versions.** The controller supports every PostgreSQL major version the project still supports
+  when the release ships: 15 to 19 on 2026-11-24, since 14 reached its end of life on
+  12 November 2026 and 19 was released on 19 November 2026 [F postgresql.org/support/versioning,
+  retrieved 2026-11-24] ([D174](14-open-decisions.md#engineering)). At start it reads
+  `server_version_num` and **refuses a server older than its release's floor**, naming both
+  versions; the floor is one constant, 15 for the first release that offers PostgreSQL. CI runs the
+  whole database suite on the oldest and the newest supported major
+  ([12](12-testing-and-quality.md#database-tests)). A server newer than the newest tested major
+  starts with a warning. The floor rises in the release that first ships after the project ends
+  support, and that release's notes say so.
+- **Boot file.** The `database` section takes `driver: postgres`, `dsn`, and at most one of
+  `password_file` and `password_credential` ([10](10-operations.md#boot-files)). The driver is pgx;
+  the DSN is a `postgres://` URL or a key-value string.
+- **The password** comes from `database.password_file`, a regular file of mode 0600 or 0400 that
+  holds one non-empty line, or from the systemd credential `database.password_credential` (read
+  from `$CREDENTIALS_DIRECTORY`, with the rules of the KEK's credential,
+  [04](04-security.md#secrets-at-rest-and-in-logs)).
+  A server that authenticates by a certificate or a socket peer needs neither. **A password in the
+  DSN, in `PGPASSWORD` or in a `.pgpass` file is refused**, so that no password appears in a boot
+  file, an environment or a unit file. No error and no log line carries the password or a DSN with
+  one. The file is at most 4 KiB ([10](10-operations.md#boot-files)).
+- **TLS.** A server that is not on a loopback address or a Unix socket is reached only with
+  `sslmode=verify-full`, against `sslrootcert` or, without it, the system roots. Every host of a
+  DSN with several hosts, and every fallback of it, is checked, and any other `sslmode` stops the
+  controller at start with the host named and the reason. The connection negotiates TLS 1.3 or
+  1.2, as every third-party server does ([04](04-security.md#audit-log)). A client certificate
+  (`sslcert`, `sslkey`) is allowed.
+- **Advisory locks.** Both are session locks in the two-key form `pg_advisory_lock(namespace, key)`,
+  so they cannot collide with another application's single-key lock in the same database. The
+  namespace is `0x72706d67` (1 919 249 767, "rpmg"):
+
+| Lock | Key | Taken by | Mode |
+|---|---|---|---|
+| Migrations | 1 | `rpmgr migrate` and the migrations a single controller runs at start | Exclusive and blocking: a second migrator waits, so two migrators run one after the other and the second finds nothing to do |
+| Controller | 2 | A running controller, on a connection of its own outside the pool; `rpmgr restore`, `rpmgr migrate-db` (on its target) and `rpmgr kek rotate`, which need the database to themselves; `rpmgr migrate`, which only needs no single controller | A single controller and the commands that need the database to themselves take it exclusively and **do not wait**: a second controller, or such a command beside a controller, is refused. A replica (`listen.internal` set, [10](10-operations.md#high-availability)) takes it shared, so replicas coexist, and so does `rpmgr migrate`, which is how a roll migrates under running replicas and is still refused beside a single controller |
+
+  The connection that holds the controller lock is checked on the interval in the table of
+  [03](03-connections.md#timeouts-keepalive-and-backoff); a connection that is lost has lost the
+  lock, and the controller stops. Administration commands that run beside a controller, such as
+  `rpmgr user reset-password`, open the database without the lock, as on SQLite.
+- **Poolers.** The controller runs on direct connections or behind a session pool. PgBouncer in
+  transaction mode is unsupported: `LISTEN` and session locks do not work there
+  ([10](10-operations.md#high-availability), [D112](14-open-decisions.md#engineering)).
+- **The database's clock** decides lease expiry ([`leases`](#system)).
+
+### Copying a database
+
+One **copier** moves a controller's database between the two dialects. `rpmgr migrate-db` runs it,
+and so do `rpmgr backup` and `rpmgr restore` for PostgreSQL
+([10](10-operations.md#backup-and-restore), [D175](14-open-decisions.md#engineering),
+[D176](14-open-decisions.md#engineering)). It is the same code in every direction and every use.
+
+- **Source and target.** Each is an open database of either dialect. The target must be **empty**:
+  no row in any table, and **migrated to the schema of the source**. The command migrates an empty
+  target itself, with this binary's migrations; a source whose last applied migration this binary
+  does not have, or one behind it, is refused with the command to run (`rpmgr migrate` or an
+  upgrade). A target with a row, a schema that differs from the source's, or a source that a
+  controller holds ([lock](#connecting-to-postgresql-phase-2); on SQLite the `<database>.lock`
+  file) is refused before anything is written, except that backup and restore read a running
+  controller's database through a snapshot.
+- **One consistent snapshot.** The source is read in one read-only transaction: `REPEATABLE READ,
+  READ ONLY` on PostgreSQL, an explicit read transaction on SQLite, so a backup under concurrent
+  writes holds one revision.
+- **Foreign-key order.** The tables come from the Ent schema: a topological order of the foreign
+  keys, ties broken by table name, so every parent is copied before its children. A table that
+  references itself is copied in passes, each taking the rows whose parent is already in the
+  target, and a pass that takes none while rows remain stops the copy with the table named. A
+  test fails the build when a table of the migrated schema is neither in the order nor named as
+  excluded, so a new table cannot be forgotten.
+- **Values** are moved by the Ent schema's column types, not by the drivers' guesses: integers,
+  strings, booleans, bytes and times only. A time is moved as UTC and at the precision
+  PostgreSQL stores, a microsecond ([V VB-30]). Identity and sequence columns of the target are set
+  past the largest copied value.
+- **Nothing is opened.** The copier **never reads the KEK and never opens a sealed value**: every
+  sealed column (`key_enc`, `value_enc`, `response_enc`, the secrets of the integrations) moves
+  as the bytes it is, and the target opens under the same KEK or not at all. The commands that run
+  it take no `kek` section.
+- **What is kept.** `config_seq`, every revision (`config_revisions`), the audit chains and their
+  checkpoints, the leases and the rest of every table are copied as they are. `migrate-db` keeps
+  the `db_epoch`, because the content is unchanged, so agents see no break. `restore` writes a new
+  one after the copy, in the same transaction ([10](10-operations.md#backup-and-restore)).
+  Both ends may have the same dialect: a controller moves to a new PostgreSQL server by a copy
+  into an empty database there.
+- **One transaction on the target.** The copy is one transaction, committed only after the check
+  below, so an interrupted or refused copy leaves the target empty and migrated, never half
+  copied. The batch size is in [03](03-connections.md#timeouts-keepalive-and-backoff).
+- **Counts and a content hash.** After the last table the copier reads the target again, still in
+  its transaction, and compares, per table, the **row count** and a **SHA-256 over the rows in
+  primary-key order**. A row is encoded as, for each column in schema order, the length-prefixed
+  column name, a type tag and the length-prefixed canonical value (integers in decimal, booleans
+  as `0` or `1`, bytes as they are, times as RFC 3339 UTC with six fractional digits). The
+  source's hash is taken while it is read, so the source is read once. A difference rolls the
+  target back and names the table. The report lists the tables, counts and hashes, and the hash of
+  the hashes; it holds no value.
+- **The source is never changed.** The copier opens it read-only. After `migrate-db` the source
+  keeps its `db_epoch` and is a copy of the target's: the runbook has the operator retire it
+  ([10](10-operations.md#moving-between-sqlite-and-postgresql)).

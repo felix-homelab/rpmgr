@@ -15,7 +15,7 @@ TestShellRequiresOwnershipGrantAndOptIn	p3	-	-	remote shell
 TestUnverifiedDomainRejected	done	8.5a	#119
 TestBadSnapshotKeepsLastKnownGood	done	3.11	#66	framework clause (internal/agent) and traffic clause (internal/itest, 4.13) done
 TestSecretsNeverLogged	done	9.6	#138	internal/itest; the integration and API service tests log through telemetrytest.Sink; the live-log clause (lines never in the controller's log) in TestLiveLogs_CrossOrgRefused (5.4)
-TestEnroll_BundleWithExtraRootRejected	done	3.8	#63
+TestEnroll_BundleWithExtraRootRejected	done	3.8	#63	snapshot and Welcome clause in 8.13 (#696)
 TestH2_ConnectorInitiatedStreams	done	4.4	#74	DIAG clause (4.4) and CONTROL_PASSTHROUGH clause (5.13) done; RELAY_OUT clause in P2 (private services)
 TestTLS_WrongGatewayIDRejected	done	4.10	#80
 TestDenyList_AppliedDespiteRejectedSnapshot	done	3.13	#68	internal/itest
@@ -28,9 +28,9 @@ TestOTA_ControlPlaneBackupAndRestore	done	2.12	#1006	internal/update
 TestOTA_CrossFilesystemInstall	pending	2.11	#612	test/ota
 TestOTA_UpdaterHonoursPolicy	done	2.3	#604	internal/update; under systemd in 2.11 (#612, test/ota)
 TestRestore_RevocationsReapplied	done	11.6	#160
-TestRestore_IncompleteLogFailsClosed	done	11.6	#160
+TestRestore_IncompleteLogFailsClosed	done	11.6	#160	HA clause (node backlog reports, a node the backup does not know) in 9.5 (#705)
 TestRestore_OrgOwnerCannotEndInstanceReview	done	11.6	#160
-TestRevocation_EnforcedWhileSinkDown	done	11.5	#159	the alert reaches the UI through GetInstanceSettings (web/src/pages/settings.test.tsx)
+TestRevocation_EnforcedWhileSinkDown	done	11.5	#159	S3 clause in 9.1 (#701); the alert reaches the UI through GetInstanceSettings (web/src/pages/settings.test.tsx)
 TestDenyList_PersistedAcrossGatewayRestart	done	3.13	#68	in-process clause (internal/agent; the digest resend: TestDenyList_HelloDigest) and process-level clause (test/e2e) done
 TestEnrollReplace_TokenBoundToConnector	done	8.2	#116
 TestBasicAuth_HashOncePerTTL	done	5.11	#97
@@ -70,7 +70,7 @@ TestACME_DNS01OnlyManagedZones	done	7.1	#680	internal/acme, internal/dns/dnsadap
 TestPolicy_MetadataAlwaysDenied	done	4.6	#76
 TestOTA_ChannelAndVariantEnforced	done	2.2	#603	OTA
 TestPolicy_AutoUpdateAndChannelDefaults	done	4.6	#76	installer clause in 11.4 (test/installsh: the policy file with explicit auto_update and update_channel); root-updater clause done in 2.3 (#604, internal/update)
-TestRevocationLog_SingleNodeWithoutSink	done	11.5	#159	second-replica clause through the single-controller lock of 2.4; the API reports the missing sink, which the settings page shows as the warning (web/src/pages/settings.test.tsx)
+TestRevocationLog_SingleNodeWithoutSink	done	11.5	#159	PostgreSQL clause in 8.6 (#689); second-replica clause through the single-controller lock of 2.4, and with replicas in 9.5 (#705); the API reports the missing sink, which the settings page shows as the warning (web/src/pages/settings.test.tsx)
 TestGatewayGroup_MaxFourGateways	done	3.4	#59
 TestDomain_TrustedOnlyByInstanceAdmin	done	8.4	#118
 TestDomainProof_EgressGuard	done	-	#815	fix of issue #815
@@ -127,3 +127,15 @@ TestWAF_RuleSetNeverDownloaded	p3	-	-	WAF (Phase 3, D173)
 TestWAF_HitsIsolatedPerOrg	p3	-	-	WAF (Phase 3, D173)
 TestCache_IgnoreCookiesRuleNeverStoresSetCookie	p3	-	-	gateway cache (Phase 3, D172)
 TestCache_IgnoreCookiesRuleDoesNotForwardCookie	p3	-	-	gateway cache (Phase 3, D172)
+TestPostgres_RequiresVerifiedTLS	pending	8.2	#685	PostgreSQL (P2-M08, D177)
+TestMigrateDB_SecretsStaySealed	pending	8.4	#687	migrate-db (P2-M08, D175)
+TestKMS_CredentialsNeverLogged	pending	8.8	#691	Transit KEK (P2-M08, D178)
+TestCA_OfflineRootNeverStored	pending	8.10	#693	offline root (P2-M08, D179)
+TestCA_ImportedIntermediateMustChainAndConstrain	pending	8.10	#693	offline root (P2-M08, D179)
+TestAgent_SnapshotRootNeedsCrossSign	pending	8.13	#696	root rotation (P2-M08, D180)
+TestCA_CompromisedRootRefusedEverywhere	pending	8.15	#698	root compromise (P2-M08, D179)
+TestRevlogS3_NoOverwriteNoGap	pending	9.1	#701	S3 revocation-log sink (P2-M09, VB-24)
+TestHA_LostLeaseCommitsNothing	pending	9.2	#702	replicas (P2-M09, D177)
+TestHA_RevocationOnOtherReplicaEnforced	pending	9.3	#703	replicas (P2-M09, D112)
+TestHA_PeerRequiresControllerIdentity	pending	9.4	#704	replicas (P2-M09)
+TestHA_SecondReplicaRefusesWithoutSink	pending	9.5	#705	replicas (P2-M09)
