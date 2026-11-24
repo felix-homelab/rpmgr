@@ -270,11 +270,11 @@ func Run(ctx context.Context, o RunOptions) error {
 	// derived from the KEK (docs/04-security.md, "Secrets at rest and in logs").
 	pageKey, err := settings.InstanceKey(sys, db, sealer, settings.PageTokenKey)
 	if err != nil {
-		return err
+		return fmt.Errorf("controller: the key %s (is the KEK the one the database was sealed with?): %w", settings.PageTokenKey, err)
 	}
 	previewKey, err := settings.InstanceKey(sys, db, sealer, settings.PagePreviewKey)
 	if err != nil {
-		return err
+		return fmt.Errorf("controller: the key %s (is the KEK the one the database was sealed with?): %w", settings.PagePreviewKey, err)
 	}
 	previews := &apisvc.PagePreviews{DB: db, Sys: sys, Key: previewKey, Now: o.Now}
 	webSessions := websession.New(websession.Options{DB: db, Sys: sys, RevLog: rl, Now: o.Now, Logger: o.Logger})

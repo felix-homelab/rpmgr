@@ -3,6 +3,7 @@
 package secret
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -141,6 +142,7 @@ func (s *Sealer) Seal(ctx Context, v Value) ([]byte, error) {
 	if _, err := rand.Read(dataKey); err != nil {
 		return nil, err
 	}
+	defer clear(dataKey)
 	ad := dataAD(formatV2, ctx)
 	out, err := s.wrapHeader(dataKey, ad)
 	if err != nil {
@@ -158,12 +160,15 @@ func (s *Sealer) wrapHeader(dataKey, ad []byte) ([]byte, error) {
 		return nil, err
 	}
 	id := w.ID()
+	if len(id) == 0 || len(id) > maxIDLen {
+		return nil, fmt.Errorf("secret: a KEK identifier of %d bytes is outside 1 to %d", len(id), maxIDLen)
+	}
 	if len(wrapped) == 0 || len(wrapped) > maxWrapLen {
 		return nil, fmt.Errorf("secret: a wrapped data key of %d bytes is outside 1 to %d", len(wrapped), maxWrapLen)
 	}
 	out := make([]byte, 0, minV2Header+len(id)+len(wrapped))
 	out = append(out, formatV2, w.Kind())
-	out = binary.BigEndian.AppendUint16(out, uint16(len(id))) //nolint:gosec // 1 to 256, checked by NewSealerWith
+	out = binary.BigEndian.AppendUint16(out, uint16(len(id))) //nolint:gosec // 1 to 256, checked above
 	out = append(out, id...)
 	out = binary.BigEndian.AppendUint16(out, uint16(len(wrapped))) //nolint:gosec // 1 to 512, checked above
 	return append(out, wrapped...), nil
@@ -176,6 +181,7 @@ func (s *Sealer) Open(ctx Context, sealed []byte) (Value, error) {
 	if err != nil {
 		return Value{}, err
 	}
+	defer clear(p.dataKey)
 	plain, err := openGCM(p.dataKey, p.rest, dataAD(p.format, ctx))
 	if err != nil {
 		return Value{}, ErrOpen
@@ -192,6 +198,7 @@ func (s *Sealer) Rewrap(ctx Context, sealed []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer clear(p.dataKey)
 	if p.format == formatV1 {
 		plain, err := openGCM(p.dataKey, p.rest, dataAD(formatV1, ctx))
 		if err != nil {
@@ -259,7 +266,8 @@ func (s *Sealer) unwrap(ctx Context, sealed []byte) (parsed, error) {
 		if len(dataKey) != keyLen {
 			return parsed{}, ErrOpen
 		}
-		return parsed{format: formatV2, wrapper: w, dataKey: dataKey, rest: h.rest}, nil
+		// A copy, because the caller clears it and a wrapper may return a slice of its input.
+		return parsed{format: formatV2, wrapper: w, dataKey: bytes.Clone(dataKey), rest: h.rest}, nil
 	}
 	return parsed{}, ErrOpen
 }

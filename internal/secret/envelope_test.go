@@ -6,8 +6,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/binary"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -516,5 +517,93 @@ func TestAADSwap(t *testing.T) {
 	// A version 1 wrapped key is not a version 2 one.
 	if _, err := w.Unwrap(context.Background(), a[14:hdr], dataAD(formatV1, where)); !errors.Is(err, ErrOpen) {
 		t.Errorf("Unwrap with the version 1 label: %v", err)
+	}
+}
+
+// blindWrapper wraps with a fixed pad and ignores its aad, so that only the secret's own AAD can
+// tell one row from another.
+type blindWrapper struct{}
+
+func (blindWrapper) Kind() byte { return KindTransit }
+func (blindWrapper) ID() []byte { return []byte("transit/blind") }
+func (blindWrapper) Wrap(_ context.Context, dk, _ []byte) ([]byte, error) {
+	return append([]byte("vault:v1:"), dk...), nil
+}
+func (blindWrapper) Unwrap(_ context.Context, wr []byte, _ []byte) ([]byte, error) {
+	if !bytes.HasPrefix(wr, []byte("vault:v1:")) {
+		return nil, ErrOpen
+	}
+	return wr[9:], nil
+}
+
+// TestDataADIsBound: with a wrapper that ignores the AAD, a value sealed for one row still does not
+// open at another table, column or row, and a flipped bit of the secret fails: the AES-GCM of the
+// secret itself carries the context.
+func TestDataADIsBound(t *testing.T) {
+	s, err := NewSealerWith(blindWrapper{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := Context{Table: "t", Column: "c", RowID: "a"}
+	sealed, err := s.Seal(a, New("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Open(a, sealed); err != nil || got.Reveal() != "x" {
+		t.Fatalf("Open at its own row: %v", err)
+	}
+	for _, other := range []Context{{"t", "c", "b"}, {"t", "d", "a"}, {"u", "c", "a"}, {}} {
+		if _, err := s.Open(other, sealed); !errors.Is(err, ErrOpen) {
+			t.Errorf("Open at %+v: %v, want ErrOpen", other, err)
+		}
+	}
+}
+
+// Phase 1 test vector: a value sealed by the code of v0.4.1 (internal/secret/envelope.go of
+// origin/main 75949b41), written by a throwaway program outside the repository with the fixed KEK
+// 0x11 * 32, the context below and the plaintext "phase-1 secret".
+const (
+	v1VectorHex = "01acc517b81bc9e1918c407d648a3ab03b3dee44e7d0837d6fcae7d4d6f74b9dd33bf24b78b8ce15d61911fd5a406facba1226913693d6323b099ed44be1c29445f9fbba1a2736ef2ee8ef4a17674e71ec0184fa6b0e46029a08c40c43899d8922c30782585b389c24efecc71337cd"
+	v1VectorKEK = "acc517b81bc9e191"
+)
+
+var v1VectorCtx = Context{Table: "instance_secrets", Column: "value_enc", RowID: "smtp_password"}
+
+// TestV1Vector: a value of the released Phase 1 code opens, also through a previous KEK, and is
+// rewrapped to version 2 under the same or another KEK.
+func TestV1Vector(t *testing.T) {
+	raw, err := hex.DecodeString(v1VectorHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, err := NewKEK(bytes.Repeat([]byte{0x11}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if old.Version() != v1VectorKEK {
+		t.Fatalf("KEK version %s", old.Version())
+	}
+	if v, err := KEKVersion(raw); err != nil || v != v1VectorKEK {
+		t.Fatalf("KEKVersion = %s, %v", v, err)
+	}
+	cur := newKEK(t)
+	for name, s := range map[string]*Sealer{"current": newSealer(t, old), "previous": newSealer(t, cur, old)} {
+		got, err := s.Open(v1VectorCtx, raw)
+		if err != nil || got.Reveal() != "phase-1 secret" {
+			t.Fatalf("%s: Open = %q, %v", name, got.Reveal(), err)
+		}
+		re, err := s.Rewrap(v1VectorCtx, raw)
+		if err != nil || re[0] != formatV2 {
+			t.Fatalf("%s: Rewrap: %v", name, err)
+		}
+		if got, err := s.Open(v1VectorCtx, re); err != nil || got.Reveal() != "phase-1 secret" {
+			t.Errorf("%s: Open rewrapped = %q, %v", name, got.Reveal(), err)
+		}
+	}
+	if _, err := newSealer(t, cur).Open(v1VectorCtx, raw); !errors.Is(err, ErrOpen) {
+		t.Errorf("Open without the old KEK: %v", err)
+	}
+	if _, err := newSealer(t, old).Open(Context{Table: "instance_secrets", Column: "value_enc", RowID: "other"}, raw); !errors.Is(err, ErrOpen) {
+		t.Errorf("Open at another row: %v", err)
 	}
 }

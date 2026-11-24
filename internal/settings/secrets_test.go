@@ -111,6 +111,9 @@ func TestInstanceKey(t *testing.T) {
 		if _, err := settings.InstanceKey(sys, db, func() *secret.Sealer { s, _ := secret.NewSealer(testKEK(t)); return s }(), settings.PageTokenKey); err == nil {
 			t.Fatal("a key opened under another KEK")
 		}
+		if still := db.Client().InstanceSecret.GetX(sys, settings.PageTokenKey); !bytes.Equal(still.ValueEnc, row.ValueEnc) {
+			t.Fatal("a failed read replaced the stored key")
+		}
 		// A key rewrapped under a new KEK is the same key.
 		next := testKEK(t)
 		rotated, _ := secret.NewSealer(next, kek)
@@ -136,5 +139,21 @@ func TestInstanceKeyWrongLength(t *testing.T) {
 	}
 	if _, err := settings.InstanceKey(sys, db, sealer, settings.PageTokenKey); err == nil {
 		t.Fatal("a 5-byte key accepted")
+	}
+}
+
+// TestInstanceKeyRefusesOtherNames: only the two keys of the design are made here, so no other
+// row of instance_secrets is filled with random bytes.
+func TestInstanceKeyRefusesOtherNames(t *testing.T) {
+	db := storetest.Migrated(t, store.SQLite)
+	sys := storetest.SystemCtx(t)
+	sealer, _ := secret.NewSealer(testKEK(t))
+	for _, name := range []string{settings.SMTPPassword, "", "page_token_key ", "other"} {
+		if _, err := settings.InstanceKey(sys, db, sealer, name); err == nil {
+			t.Errorf("InstanceKey made %q", name)
+		}
+	}
+	if n := db.Client().InstanceSecret.Query().CountX(sys); n != 0 {
+		t.Fatalf("%d rows made", n)
 	}
 }

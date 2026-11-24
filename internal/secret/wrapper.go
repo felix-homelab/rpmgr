@@ -39,7 +39,7 @@ func NewLocalWrapper(k KEK) *LocalWrapper { return &LocalWrapper{kek: k} }
 func (w *LocalWrapper) Kind() byte { return KindLocal }
 
 // ID implements Wrapper: the 8-byte KEK version.
-func (w *LocalWrapper) ID() []byte { return w.kek.id[:] }
+func (w *LocalWrapper) ID() []byte { return append([]byte(nil), w.kek.id[:]...) }
 
 // Wrap implements Wrapper: a 12-byte nonce, the key and a 16-byte tag, 60 bytes. The associated
 // data is the label rpmgr-envelope-v2/wrap, aad and the KEK identifier.

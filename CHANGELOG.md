@@ -10,6 +10,21 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+**Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
+
+- After the first start of this release, secrets are written in a new format that an older release
+  cannot read. Take a backup of the database and the KEK before you upgrade; without it there is no
+  way back to the older release.
+- A page-token or gateway-page-preview link issued before the upgrade stops working once, as an
+  expired one does; the client starts its list again.
+
+### Changed
+
+- The keys that authenticate the API's page tokens and the previews of gateway pages are random and
+  stored encrypted in the database instead of derived from the KEK, so every controller replica
+  reads the same ones. Secrets are stored in a new envelope format (version 2); values of the older
+  format stay readable and are rewritten when they are saved or when `rpmgr kek rotate` runs.
+
 ## [0.4.1] - 2026-11-23
 
 **Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):

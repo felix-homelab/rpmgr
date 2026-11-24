@@ -65,7 +65,8 @@ type Options struct {
 	// aliases'. Without it, only Go's cross-origin protection checks the Origin.
 	Origins func(ctx context.Context) ([]string, error)
 	// PageKey authenticates page tokens; the controller reads it from the database, where it is
-	// sealed, so tokens stay valid across restarts and replicas. Without it, a random key lasts as long as the Server.
+	// sealed, so tokens stay valid across restarts and replicas. Without it, a random key lasts as
+	// long as the Server.
 	PageKey []byte
 	// ApplyStatus fills the apply_status of a write's answer that carries a revision; nil leaves it
 	// out.
