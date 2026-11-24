@@ -114,6 +114,10 @@ func postgresConfig(dsn string, o PostgresOptions) (*pgx.ConnConfig, error) {
 	if os.Getenv("PGSSLPASSWORD") != "" {
 		return nil, errors.New("store: PostgreSQL: a client key passphrase (PGSSLPASSWORD, sslpassword) is not supported")
 	}
+	// A service file would set parameters, such as sslrootcert, that the DSN does not show.
+	if os.Getenv("PGSERVICE") != "" || os.Getenv("PGSERVICEFILE") != "" {
+		return nil, errors.New("store: PostgreSQL: PGSERVICE and PGSERVICEFILE are not supported")
+	}
 	cfg, err := pgx.ParseConfigWithOptions(dsn, pgx.ParseConfigOptions{
 		ParseConfigOptions: pgconn.ParseConfigOptions{ConnStringAllowedKeys: dsnKeys},
 	})
@@ -144,7 +148,7 @@ func postgresConfig(dsn string, o PostgresOptions) (*pgx.ConnConfig, error) {
 // only pgx's client certificates and protocol. Weaker modes that use TLS (require, verify-ca) thus
 // become verify-full.
 func verifyTLS(dsn string, c *pgconn.Config) error {
-	roots, err := rootPool(dsn, c)
+	roots, err := rootPool(dsn)
 	if err != nil {
 		return err
 	}
@@ -176,9 +180,10 @@ func verifyTLS(dsn string, c *pgconn.Config) error {
 }
 
 // rootPool returns the certificate authorities that verify a server: the file of sslrootcert, if
-// the DSN or PGSSLROOTCERT names one, else the system's. pgx would also take
-// $HOME/.postgresql/root.crt, which a controller must not trust by accident.
-func rootPool(dsn string, c *pgconn.Config) (*x509.CertPool, error) {
+// the DSN or PGSSLROOTCERT names one ("system" is the system's), else the system's. It reads the
+// file itself rather than taking pgx's pool, which also covers a Unix-socket first host (it has no
+// TLS configuration) and never takes $HOME/.postgresql/root.crt, which pgx would.
+func rootPool(dsn string) (*x509.CertPool, error) {
 	file := dsnParam(dsn, "sslrootcert")
 	if file == "" {
 		file = os.Getenv("PGSSLROOTCERT")
@@ -190,10 +195,15 @@ func rootPool(dsn string, c *pgconn.Config) (*x509.CertPool, error) {
 		}
 		return pool, nil
 	}
-	if c.TLSConfig == nil || c.TLSConfig.RootCAs == nil {
-		return nil, errors.New("store: PostgreSQL: sslrootcert " + file + " was not loaded")
+	data, err := os.ReadFile(file) //nolint:gosec // G304: the path is the operator's boot configuration
+	if err != nil {
+		return nil, fmt.Errorf("store: PostgreSQL: sslrootcert: %w", err)
 	}
-	return c.TLSConfig.RootCAs, nil // pgx read the file the DSN names
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(data) {
+		return nil, errors.New("store: PostgreSQL: sslrootcert " + file + " holds no certificate")
+	}
+	return pool, nil
 }
 
 // dsnParam returns the last value of key in a URL or key/value DSN, or "". It is used only to find
@@ -208,7 +218,7 @@ func dsnParam(dsn, key string) string {
 		q, _, _ = strings.Cut(q, "#")
 		for _, kv := range strings.Split(q, "&") {
 			k, v, _ := strings.Cut(kv, "=")
-			if k == key {
+			if k, err := url.QueryUnescape(k); err == nil && k == key {
 				if u, err := url.QueryUnescape(v); err == nil {
 					val = u
 				}
@@ -260,7 +270,9 @@ func keywordValue(dsn, key string) string {
 }
 
 // localHost reports whether host is a Unix socket directory, an IP loopback address, or the name
-// localhost with only loopback addresses.
+// localhost with only loopback addresses. The name is resolved here and again when pgx connects,
+// which leaves a theoretical gap between check and use; it is accepted, because localhost comes
+// from the hosts file and an attacker who can change that already controls the host.
 func localHost(host string) bool {
 	if strings.HasPrefix(host, "/") {
 		return true
