@@ -147,6 +147,86 @@ func TestPostgres_RefusesClientKeyPassphrase(t *testing.T) {
 	}
 }
 
+// writeCA writes a new test CA's certificate to a file and returns the pool that holds it.
+func writeCA(t *testing.T) (file string, pool *x509.CertPool) {
+	t.Helper()
+	ca := newTestCA(t)
+	file = filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(file, ca.pem, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pool = x509.NewCertPool()
+	pool.AppendCertsFromPEM(ca.pem)
+	return file, pool
+}
+
+func TestPostgres_RefusesServiceFiles(t *testing.T) {
+	noPGEnv(t)
+	const local = "postgres://rpmgr@127.0.0.1/rpmgr?sslmode=disable"
+	svc := writeFile(t, "[x]\nsslrootcert=/nonexistent\n", 0o600)
+	for _, env := range []map[string]string{{"PGSERVICE": "x"}, {"PGSERVICEFILE": svc}} {
+		for k, v := range env {
+			t.Setenv(k, v)
+		}
+		if err := store.PostgresConfigErr(local, store.PostgresOptions{}); err == nil || !strings.Contains(err.Error(), "PGSERVICE") {
+			t.Errorf("%v: err = %v", env, err)
+		}
+		for k := range env {
+			t.Setenv(k, "")
+		}
+	}
+}
+
+// The authorities in use are the file rpmgr resolved, wherever the DSN says it, whatever pgx took.
+func TestPostgres_RootCertFileIsTheOneNamed(t *testing.T) {
+	noPGEnv(t)
+	file, pool := writeCA(t)
+	otherFile, other := writeCA(t)
+	sys, err := x509.SystemCertPool()
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := func(dsn string) *x509.CertPool {
+		t.Helper()
+		cfg, err := store.PostgresConfig(dsn, store.PostgresOptions{})
+		if err != nil {
+			t.Fatalf("%s: %v", dsn, err)
+		}
+		if cfg.TLSConfig != nil {
+			return cfg.TLSConfig.RootCAs
+		}
+		return cfg.Fallbacks[0].TLSConfig.RootCAs // a Unix socket comes first
+	}
+	cases := []struct {
+		name, dsn string
+		env       string
+		want      *x509.CertPool
+	}{
+		{"in the DSN", "postgres://rpmgr@db.example/rpmgr?sslmode=verify-full&sslrootcert=" + file, "", pool},
+		{"key/value", "host=db.example user=rpmgr sslmode=verify-full sslrootcert=" + file, "", pool},
+		{"percent-encoded key", "postgres://rpmgr@db.example/rpmgr?sslmode=verify-full&ssl%72ootcert=" + file, "", pool},
+		{"environment", "postgres://rpmgr@db.example/rpmgr?sslmode=verify-full", otherFile, other},
+		{"the DSN wins", "postgres://rpmgr@db.example/rpmgr?sslmode=verify-full&sslrootcert=" + file, otherFile, pool},
+		{"system", "postgres://rpmgr@db.example/rpmgr?sslmode=verify-full&sslrootcert=system", otherFile, sys},
+		{"socket first, remote second", "host=/run/postgresql,db.example.com user=rpmgr sslmode=verify-full sslrootcert=" + file, "", pool},
+		{"socket first, URL", "postgres://rpmgr@%2Frun%2Fpostgresql,db.example.com/rpmgr?sslmode=verify-full&sslrootcert=" + file, "", pool},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("PGSSLROOTCERT", c.env)
+			if !roots(c.dsn).Equal(c.want) {
+				t.Fatal("the authorities are not those of the file named")
+			}
+		})
+	}
+	t.Run("missing file", func(t *testing.T) {
+		err := store.PostgresConfigErr("postgres://rpmgr@db.example/rpmgr?sslmode=verify-full&sslrootcert="+filepath.Join(t.TempDir(), "nope"), store.PostgresOptions{})
+		if err == nil {
+			t.Fatal("accepted")
+		}
+	})
+}
+
 func TestPostgres_IgnoresRootCertInHomeDirectory(t *testing.T) {
 	noPGEnv(t)
 	home := os.Getenv("HOME")

@@ -256,3 +256,52 @@ func TestPostgres_PasswordFileBoundaries(t *testing.T) {
 		t.Errorf("a directory: err = %v", err)
 	}
 }
+
+// With two hosts, the second is verified as well: pgx tries it after the first fails.
+func TestPostgres_TLSFallbackHostIsVerified(t *testing.T) {
+	noPGEnv(t)
+	ca := newTestCA(t)
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(caFile, ca.pem, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	addr1, hs1 := tlsServer(t, ca.server(t, "a.test.example"))
+	addr2, hs2 := tlsServer(t, ca.server(t, "c.test.example")) // names another host than b
+	cfg, err := store.PostgresConfig("postgres://rpmgr@a.test.example:5001,b.test.example:5002/rpmgr?sslmode=verify-full&sslrootcert="+caFile, store.PostgresOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.LookupFunc = func(_ context.Context, host string) ([]string, error) {
+		if host == "a.test.example" {
+			return []string{"127.0.0.1"}, nil
+		}
+		return []string{"127.0.0.2"}, nil
+	}
+	cfg.DialFunc = func(ctx context.Context, _, address string) (net.Conn, error) {
+		target := addr1
+		if strings.HasPrefix(address, "127.0.0.2") {
+			target = addr2
+		}
+		return (&net.Dialer{}).DialContext(ctx, "tcp", target)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err = pgx.ConnectConfig(ctx, cfg)
+	if err == nil {
+		t.Fatal("connected")
+	}
+	if err := <-hs1; err != nil {
+		t.Fatalf("the first host's handshake failed: %v", err)
+	}
+	select {
+	case err := <-hs2:
+		if err == nil {
+			t.Fatal("the second host's handshake succeeded with a certificate for another name")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the second host was never tried")
+	}
+	if !isCertError(err) {
+		t.Fatalf("err = %v, want a certificate name error", err)
+	}
+}
