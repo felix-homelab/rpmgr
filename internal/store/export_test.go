@@ -2,7 +2,12 @@
 
 package store
 
-import "time"
+import (
+	"context"
+	"time"
+
+	"entgo.io/ent/dialect/sql/schema"
+)
 
 // PostgresConfigErr runs the checks of OpenPostgres that need no server.
 func PostgresConfigErr(dsn string, o PostgresOptions) error {
@@ -19,4 +24,9 @@ func SetLockCheckInterval(cleanup func(func()), d time.Duration) {
 	old := lockCheckInterval
 	lockCheckInterval = d
 	cleanup(func() { lockCheckInterval = old })
+}
+
+// CopyOrder is the order in which CopyDatabase copies the tables of db.
+func CopyOrder(db *DB) ([]*schema.Table, error) {
+	return copyOrder(context.Background(), db.Reader, db.Dialect)
 }

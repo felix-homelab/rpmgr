@@ -455,6 +455,15 @@ method, list filter or search returns or modifies the other org's data
   copies a stopped controller's database into an empty, fully migrated PostgreSQL database. It runs
   offline (all controllers stopped), keeps secrets envelope-encrypted under the same KEK, and keeps
   the `db_epoch`, because the content is unchanged ([10](10-operations.md#high-availability)).
+  The copier (`store.CopyDatabase`) works in both directions between SQLite and PostgreSQL and
+  needs both databases migrated to the same release: it refuses a target with any row, and one whose
+  applied migrations differ from the source's. It copies the tables parents first, in one
+  transaction on the target, so an interrupted or failed copy leaves the target as it was. Ids, the
+  `config_seq` counter and the epoch are copied as they are, and PostgreSQL's identity sequences
+  are moved past the copied ids; sealed values are copied byte for byte. Before the commit it reads
+  the target back and compares the row count and a content digest of every table with the source's,
+  and a difference rolls the copy back. The digest compares instants to the microsecond, the
+  precision of PostgreSQL, and JSON documents by value.
 - CI applies every migration to an empty database and to a database seeded at the previous release,
   on both dialects ([12](12-testing-and-quality.md#continuous-integration)).
 - The migrations written while Phase 1 was developed are squashed into one baseline per dialect,
