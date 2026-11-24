@@ -507,7 +507,7 @@ In Phase 1, CI only builds these targets; end-to-end tests on Windows and macOS 
 | Gateway | 80 | TCP | ACME HTTP-01 challenges; per `http` route a redirect to HTTPS (default), plain HTTP, or nothing (`port80`, [06](06-data-model.md#routing)) | Public |
 | Gateway | port pools (e.g. 20000–20999) | TCP and/or UDP | `tcp`, `udp` and `tcp_udp` routes (a `tcp_udp` route holds its port number in both); ranges are gateway-group settings, allocated per [04](04-security.md#route-and-hostname-ownership) | Public, only the configured ranges |
 | Controller | 443 | TCP | UI, public API, enrollment, agent control sessions (SNI `controller.<td>`), `Reauth` for expired agent certificates (SNI `reauth.controller.<td>`), `/install.sh`, `/dl/` mirror | Reachable by browsers and agents (directly or through a gateway's controller passthrough, [03](03-connections.md#reaching-a-private-controller)) |
-| Controller (replica) | 7384 (`listen.internal`) | TCP | HA, Phase 2: controller-to-controller mutual TLS 1.3 (HTTP/2, ALPN `rpmgr-controller/1`) for forwarded live logs and diagnostics ([High availability](#high-availability)). Set only on a replica; 7384, the next port after the connector's admin port, is the suggested one [R] | Private network, the other replicas only: the host firewall admits no one else, and mutual TLS refuses every certificate that is not a controller's ([04](04-security.md#trust-domain-and-identities)) |
+| Controller (replica) | 7384 (`listen.internal`) | TCP | HA, Phase 2: controller-to-controller mutual TLS 1.3 (HTTP/2, ALPN `rpmgr-controller/1`) for forwarded live logs and diagnostics ([High availability](#high-availability)). Set only on a replica; 7384, the next port after the connector's admin port, is the suggested one [D181](14-open-decisions.md#engineering) | Private network, the other replicas only: the host firewall admits no one else, and mutual TLS refuses every certificate that is not a controller's ([04](04-security.md#trust-domain-and-identities)) |
 | Controller | 80 | TCP | Optional: ACME HTTP-01 and redirect, if the controller obtains its own UI certificate | Public, optional |
 | Every role | 127.0.0.1:7381 (controller, all-in-one), 127.0.0.1:7382 (gateway), 127.0.0.1:7383 (connector) | TCP | Admin listener: `/metrics`, `/healthz`, `/readyz`, pprof (off unless enabled). One port per role, so roles on the same host never collide, and none is 9090, Prometheus's own port. If the default is taken, the installer picks the next free port and writes it to the boot file. The ports are registered in Prometheus's port registry once public code exists | Localhost by default; may be bound to a private interface for scrapers and load-balancer checks, **never** public: a boot file that binds it to all interfaces, a public address or a host name is refused |
 | Connector | — | — | No inbound ports. Outbound: 443/TCP+UDP to gateways, 443/TCP to the controller | — |
@@ -924,20 +924,19 @@ service that still runs the previous binary, with the command that restarts it.
     through production's provider ([D166](14-open-decisions.md#engineering)).
 - **Fail closed** only when the sink's hash chain is broken, or a replica that reported an unshipped
   backlog has an unreachable local log. With replicas the reports are the `revlog_backlog` and
-  `revlog_local_seq` of `controller_nodes` ([06](06-data-model.md#system)) in the backup, and a
-  node that the sink names but the backup does not know, because it was added after the backup,
-  counts as a replica that may have a backlog [R]: the restore needs a log of it among the
-  `--revocation-log` it was given, reaching what the sink holds of it, or fails closed. The
-  backlog columns are up to one heartbeat old, so a node whose row lacks `stopped_clean` counts the
-  same way. A restore also **refuses** an archive in which an active CA key is named by an issuer
-  revocation ([04](04-security.md#root-compromise)), and restores a root's `root_offline` marker
-  by setting its `key_enc` to null. Without a
-  sink, a single node's whole log is not off the host, so a restore without that log fails closed
-  too; so does a log entry of a kind the restoring
-  version does not know. The entries of every reachable log are merged and re-applied all the
-  same. Then all API tokens and service accounts are suspended, all sessions invalidated, every
-  user must reset their password and set up their second factor again (re-verify MFA), and the
-  instance enters **restore review** mode (read-only):
+  `revlog_local_seq` of `controller_nodes` ([06](06-data-model.md#system)) in the backup, and a node
+  that the sink names but the backup does not know, because it was added after the backup, counts as
+  a replica that may have a backlog [D181](14-open-decisions.md#engineering): the restore needs a
+  log of it among the `--revocation-log` it was given, reaching what the sink holds of it, or fails
+  closed. The backlog columns are up to one heartbeat old, so a node whose row lacks `stopped_clean`
+  counts the same way. A restore also **refuses** an archive in which an active CA key is named by
+  an issuer revocation ([04](04-security.md#root-compromise)), and restores a root's `root_offline`
+  marker by setting its `key_enc` to null. Without a sink, a single node's whole log is not off the
+  host, so a restore without that log fails closed too; so does a log entry of a kind the restoring
+  version does not know. The entries of every reachable log are merged and re-applied all the same.
+  Then all API tokens and service accounts are suspended, all sessions invalidated, every user must
+  reset their password and set up their second factor again (re-verify MFA), and the instance enters
+  **restore review** mode (read-only):
   - **Read-only:** every API method that changes something is refused with `RESTORE_REVIEW`
     ([07](07-api.md#errors)) while its org, or for an instance setting the instance, is in review.
     Revocations stay available (revoking API and enrollment tokens, member changes and removals),
@@ -975,33 +974,33 @@ service that still runs the previous binary, with the command that restarts it.
 - **Moving between SQLite and PostgreSQL**, in either direction, is `rpmgr migrate-db`
   ([Moving between SQLite and PostgreSQL](#moving-between-sqlite-and-postgresql)).
 - **Migrations and versions.** Replicas never migrate at start: `rpmgr migrate` runs first, on the
-  upgrade host, under the migration lock, and the replicas are then rolled one by one
-  ([Upgrades and version skew](#upgrades-and-version-skew)). A replica refuses to start against a
-  schema that has a migration it does not know. Replicas of two adjacent releases may run
-  together during a roll; `controller_nodes.version` records each, the singleton jobs' leases are
-  taken only by a replica whose version is the highest of the live nodes, so a job never runs on
-  code older than a replica that already runs [R], and the UI lists the versions. The alert
-  "singleton job stalled" fires when a lease is unheld for 2 minutes, which is what a roll that
-  leaves only older replicas would cause [R]. **Expand before contract**: every migration must be
-  safe for the release before it (a column is added before code uses it and dropped a release
-  later), because `rpmgr migrate` takes the controller lock shared and runs under replicas of the
-  previous release; CI runs the previous release's store tests against the new schema [R].
+  upgrade host, under the migration lock, and the replicas are then rolled one by one ([Upgrades and
+  version skew](#upgrades-and-version-skew)). A replica refuses to start against a schema that has a
+  migration it does not know. Replicas of two adjacent releases may run together during a roll;
+  `controller_nodes.version` records each, the singleton jobs' leases are taken only by a replica
+  whose version is the highest of the live nodes, so a job never runs on code older than a replica
+  that already runs [D181](14-open-decisions.md#engineering), and the UI lists the versions. The
+  alert "singleton job stalled" fires when a lease is unheld for 2 minutes, which is what a roll
+  that leaves only older replicas would cause [D181](14-open-decisions.md#engineering). **Expand
+  before contract**: every migration must be safe for the release before it (a column is added
+  before code uses it and dropped a release later), because `rpmgr migrate` takes the controller
+  lock shared and runs under replicas of the previous release; CI runs the previous release's store
+  tests against the new schema [D181](14-open-decisions.md#engineering).
 - **Any replica serves any request.** Revisions come from the database, compilation is
   deterministic, and each agent has one control session tracked by `session_epoch`
   ([03](03-connections.md#revisions-and-ordering)).
-- **Session registry.** A row per control session records which replica holds it. Registration
-  takes the agent's next `session_epoch` under the row's lock and, in the same transaction, signals
-  the replica that held the agent before, which ends that session; a replica that gets the signal
-  before it has added the session ends it as it adds it. Pushes for an agent are signalled to the
-  replica that holds it via PostgreSQL `LISTEN/NOTIFY`, a revision to every replica at once; a
-  signal for one agent reads its registry row `FOR SHARE`, so it reaches the replica that is
-  registering the agent at that moment. The channels are `rpmgr_revision` (the new `seq`, one
-  signal per configuration transaction), `rpmgr_agent` (an agent ID and what to do, such as end the
-  session or compile) and `rpmgr_dns` (no payload, for the DNS job below) [R], each payload
-  far below the limit that follows. `LISTEN/NOTIFY` carries only small signals, never
-  operation data: a payload must be shorter than 8000 bytes
-  [F PostgreSQL 18.6 `src/backend/commands/async.c:163,619-622`]
-  ([S9](spikes/S9.md)).
+- **Session registry.** A row per control session records which replica holds it. Registration takes
+  the agent's next `session_epoch` under the row's lock and, in the same transaction, signals the
+  replica that held the agent before, which ends that session; a replica that gets the signal before
+  it has added the session ends it as it adds it. Pushes for an agent are signalled to the replica
+  that holds it via PostgreSQL `LISTEN/NOTIFY`, a revision to every replica at once; a signal for
+  one agent reads its registry row `FOR SHARE`, so it reaches the replica that is registering the
+  agent at that moment. The channels are `rpmgr_revision` (the new `seq`, one signal per
+  configuration transaction), `rpmgr_agent` (an agent ID and what to do, such as end the session or
+  compile) and `rpmgr_dns` (no payload, for the DNS job below)
+  [D181](14-open-decisions.md#engineering), each payload far below the limit that follows.
+  `LISTEN/NOTIFY` carries only small signals, never operation data: a payload must be shorter than
+  8000 bytes [F PostgreSQL 18.6 `src/backend/commands/async.c:163,619-622`] ([S9](spikes/S9.md)).
 - **Lost notifications.** PostgreSQL delivers a notification only to sessions that were listening
   when it committed [F PostgreSQL 18.6 `async.c:1066-1121`]. Each replica therefore listens on a
   dedicated connection that never runs a transaction, and after every (re)connect it first
@@ -1105,7 +1104,7 @@ line: `--from` is a SQLite database or a boot file, `--to-file` a boot file, and
    disk, and so whose log, is gone is named with `--accept-lost-backlog <node-id>`: the target's
    copy of that node's row is cleared and the loss is recorded in the audit entry. An archive made
    before the migration still holds the row, so a restore of one still counts that node as
-   possibly having a backlog [R].
+   possibly having a backlog [D181](14-open-decisions.md#engineering).
 3. Start one controller on that boot file. The sink may stay; it is optional again ([Backup and
    restore](#backup-and-restore)). The PostgreSQL database is retired by the command as in step 6.
 

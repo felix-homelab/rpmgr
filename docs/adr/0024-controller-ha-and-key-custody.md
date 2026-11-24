@@ -1,8 +1,8 @@
 # ADR-0024: PostgreSQL for the controller, keys in Transit or offline, roots replaced by cross-signing
 
 Status: Accepted (decided by the product owner: plan R20 to R26, 2026-10-19, and D174 and D175,
-2026-11-24) · Date: 2026-11-24 · Extends [ADR-0008](0008-internal-ca-mtls-spiffe.md) and
-[ADR-0011](0011-sqlite-postgres-ent-atlas.md)
+2026-11-24; its detailed choices, D181) · Date: 2026-11-24 · Extends
+[ADR-0008](0008-internal-ca-mtls-spiffe.md) and [ADR-0011](0011-sqlite-postgres-ent-atlas.md)
 
 ## Context
 
