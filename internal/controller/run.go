@@ -266,11 +266,13 @@ func Run(ctx context.Context, o RunOptions) error {
 		o.Port80(port80)
 	}
 	// The public API; its services are mounted on mux as they are added.
-	pageKey, err := sealer.DeriveKey("api-page-token")
+	// Their keys are random, sealed in the database and the same on every replica; nothing is
+	// derived from the KEK (docs/04-security.md, "Secrets at rest and in logs").
+	pageKey, err := settings.InstanceKey(sys, db, sealer, settings.PageTokenKey)
 	if err != nil {
 		return err
 	}
-	previewKey, err := sealer.DeriveKey("gateway-page-preview")
+	previewKey, err := settings.InstanceKey(sys, db, sealer, settings.PagePreviewKey)
 	if err != nil {
 		return err
 	}

@@ -3,9 +3,9 @@
 package secret
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -16,29 +16,43 @@ import (
 
 // Envelope encryption (docs/04-security.md, "Secrets at rest and in logs"): every secret gets its
 // own random data key; the data key encrypts the secret with AES-256-GCM and is itself wrapped by
-// the key-encryption key (KEK) with AES-256-GCM. The secret's associated data is the table,
-// column and row it belongs to; the wrapped data key's associated data adds the KEK version. A
-// sealed secret copied to another row, column or table, or presented with another KEK version,
-// therefore does not open, and re-wrapping under a new KEK never decrypts the secret itself.
+// a Wrapper, the key-encryption key (KEK) held locally or in a key service. The secret's
+// associated data is the table, column and row it belongs to; a local wrap's adds the KEK
+// version. A sealed secret copied to another row, column or table, or presented with another KEK
+// version, therefore does not open, and re-wrapping under a new KEK never decrypts the secret
+// itself.
 //
-// Sealed format, version 1:
+// Sealed format, version 2 ("Envelope format v2" in docs/04-security.md); lengths are big-endian:
 //
-//	1 byte   format version (1)
-//	8 bytes  KEK version
-//	12 bytes nonce of the wrapped data key
-//	48 bytes wrapped data key (32-byte key + 16-byte tag)
+//	1 byte   format version (2)
+//	1 byte   wrapper kind (1 = a local KEK, 2 = Transit)
+//	2 bytes  K, the length of the KEK identifier
+//	K bytes  the KEK identifier (kind 1: the 8-byte KEK version)
+//	2 bytes  W, the length of the wrapped data key
+//	W bytes  the wrapped data key (kind 1: 12-byte nonce, 32-byte key, 16-byte tag)
 //	12 bytes nonce of the secret
 //	n+16     encrypted secret and tag
+//
+// Version 1 (see v1.go) stays readable and is rewritten as version 2 whenever it is sealed or
+// re-wrapped again.
 
 const (
-	formatV1    = 1
-	kekIDLen    = 8
-	keyLen      = 32
-	nonceLen    = 12
-	tagLen      = 16
-	wrappedLen  = keyLen + tagLen
-	headerLen   = 1 + kekIDLen + nonceLen + wrappedLen + nonceLen
+	formatV1 = 1
+	formatV2 = 2
+
+	kekIDLen = 8 // the identifier of a local KEK
+	keyLen   = 32
+	nonceLen = 12
+	tagLen   = 16
+
 	maxSealSize = 1 << 20 // secrets are keys, tokens and passwords; 1 MiB is far beyond any
+	maxIDLen    = 256     // K
+	maxWrapLen  = 512     // W
+
+	// minV2Header is the version, kind and the two lengths; maxV2Header adds the largest K and W
+	// and the secret's nonce.
+	minV2Header = 1 + 1 + 2 + 2
+	maxV2Header = minV2Header + maxIDLen + maxWrapLen + nonceLen
 )
 
 // ErrOpen is returned for every sealed secret that does not open: tampered, truncated, sealed for
@@ -50,7 +64,7 @@ type Context struct {
 	Table, Column, RowID string
 }
 
-// KEK is a key-encryption key. Its version is derived from the key itself, so it needs no
+// KEK is a local key-encryption key. Its version is derived from the key itself, so it needs no
 // configuration and changes whenever the key does.
 type KEK struct {
 	id  [kekIDLen]byte
@@ -72,39 +86,52 @@ func NewKEK(key []byte) (KEK, error) {
 // Version returns the KEK version as 16 hexadecimal digits.
 func (k KEK) Version() string { return hex.EncodeToString(k.id[:]) }
 
-// Sealer seals with the current KEK and opens with the current or any previous KEK, so secrets
-// stay readable while `rpmgr kek rotate` re-wraps them.
-type Sealer struct {
-	current KEK
-	byID    map[[kekIDLen]byte]KEK
+// wrapperID names a wrapper: its kind and its KEK identifier.
+type wrapperID struct {
+	kind byte
+	id   string
 }
 
-// NewSealer returns a Sealer that seals with current and also opens secrets sealed with previous.
+// Sealer seals with the current Wrapper and opens with the current or any previous one, so secrets
+// stay readable while `rpmgr kek rotate` re-wraps them.
+type Sealer struct {
+	current Wrapper
+	byID    map[wrapperID]Wrapper
+}
+
+// NewSealer returns a Sealer for local KEKs: it seals with current and also opens secrets sealed
+// with previous.
 func NewSealer(current KEK, previous ...KEK) (*Sealer, error) {
 	if current.key.IsZero() {
 		return nil, errors.New("secret: no current KEK")
 	}
-	s := &Sealer{current: current, byID: map[[kekIDLen]byte]KEK{current.id: current}}
+	prev := make([]Wrapper, 0, len(previous))
 	for _, k := range previous {
 		if k.key.IsZero() {
 			return nil, errors.New("secret: empty previous KEK")
 		}
-		s.byID[k.id] = k
+		prev = append(prev, NewLocalWrapper(k))
+	}
+	return NewSealerWith(NewLocalWrapper(current), prev...)
+}
+
+// NewSealerWith returns a Sealer that seals with current and also opens secrets sealed with
+// previous. A wrapper's kind and identifier name it; two with the same ones are one.
+func NewSealerWith(current Wrapper, previous ...Wrapper) (*Sealer, error) {
+	if current == nil {
+		return nil, errors.New("secret: no current wrapper")
+	}
+	s := &Sealer{current: current, byID: map[wrapperID]Wrapper{}}
+	for _, w := range append([]Wrapper{current}, previous...) {
+		if w == nil || len(w.ID()) == 0 || len(w.ID()) > maxIDLen {
+			return nil, errors.New("secret: a wrapper needs an identifier of 1 to 256 bytes")
+		}
+		s.byID[wrapperID{w.Kind(), string(w.ID())}] = w
 	}
 	return s, nil
 }
 
-// DeriveKey returns a 32-byte key for one purpose, derived from the current KEK with HKDF-SHA256
-// (RFC 5869) and the label as its info, so that no other use of the KEK yields it. It changes
-// when the KEK does.
-func (s *Sealer) DeriveKey(label string) ([]byte, error) {
-	if label == "" {
-		return nil, errors.New("secret: a derived key needs a label")
-	}
-	return hkdf.Key(sha256.New, []byte(s.current.key.Reveal()), nil, "rpmgr-derived-key\x00"+label, keyLen)
-}
-
-// Seal encrypts v for storage at ctx.
+// Seal encrypts v for storage at ctx, as a version 2 value.
 func (s *Sealer) Seal(ctx Context, v Value) ([]byte, error) {
 	plain := []byte(v.Reveal())
 	if len(plain) > maxSealSize {
@@ -114,86 +141,173 @@ func (s *Sealer) Seal(ctx Context, v Value) ([]byte, error) {
 	if _, err := rand.Read(dataKey); err != nil {
 		return nil, err
 	}
-	out := make([]byte, 0, headerLen+len(plain)+tagLen)
-	out = append(out, formatV1)
-	out = append(out, s.current.id[:]...)
-	out, err := sealGCM(out, []byte(s.current.key.Reveal()), dataKey, wrapAD(ctx, s.current.id))
+	ad := dataAD(formatV2, ctx)
+	out, err := s.wrapHeader(dataKey, ad)
 	if err != nil {
 		return nil, err
 	}
-	return sealGCM(out, dataKey, plain, dataAD(ctx))
+	return sealGCM(out, dataKey, plain, ad)
 }
 
-// Open decrypts a secret sealed for ctx. Every failure returns ErrOpen.
+// wrapHeader returns the version 2 header up to and including the wrapped data key, wrapped by the
+// current Wrapper.
+func (s *Sealer) wrapHeader(dataKey, ad []byte) ([]byte, error) {
+	w := s.current
+	wrapped, err := w.Wrap(context.Background(), dataKey, ad)
+	if err != nil {
+		return nil, err
+	}
+	id := w.ID()
+	if len(wrapped) == 0 || len(wrapped) > maxWrapLen {
+		return nil, fmt.Errorf("secret: a wrapped data key of %d bytes is outside 1 to %d", len(wrapped), maxWrapLen)
+	}
+	out := make([]byte, 0, minV2Header+len(id)+len(wrapped))
+	out = append(out, formatV2, w.Kind())
+	out = binary.BigEndian.AppendUint16(out, uint16(len(id))) //nolint:gosec // 1 to 256, checked by NewSealerWith
+	out = append(out, id...)
+	out = binary.BigEndian.AppendUint16(out, uint16(len(wrapped))) //nolint:gosec // 1 to 512, checked above
+	return append(out, wrapped...), nil
+}
+
+// Open decrypts a secret sealed for ctx. Every failure to open returns ErrOpen; a wrapper that
+// cannot be reached returns its own error.
 func (s *Sealer) Open(ctx Context, sealed []byte) (Value, error) {
-	_, dataKey, rest, err := s.unwrap(ctx, sealed)
+	p, err := s.unwrap(ctx, sealed)
 	if err != nil {
 		return Value{}, err
 	}
-	plain, err := openGCM(dataKey, rest, dataAD(ctx))
+	plain, err := openGCM(p.dataKey, p.rest, dataAD(p.format, ctx))
 	if err != nil {
 		return Value{}, ErrOpen
 	}
 	return FromBytes(plain), nil
 }
 
-// Rewrap re-wraps the data key of a sealed secret under the current KEK; the encrypted secret
-// itself is kept as it is. A secret already under the current KEK is returned unchanged.
+// Rewrap re-wraps the data key of a sealed secret under the current Wrapper; the encrypted secret
+// itself is kept as it is. A version 2 secret already under the current Wrapper is returned
+// unchanged. A version 1 secret is sealed again as version 2 with a new data key, because its
+// associated data carries the version 1 label.
 func (s *Sealer) Rewrap(ctx Context, sealed []byte) ([]byte, error) {
-	kek, dataKey, rest, err := s.unwrap(ctx, sealed)
+	p, err := s.unwrap(ctx, sealed)
 	if err != nil {
 		return nil, err
 	}
-	if kek.id == s.current.id {
+	if p.format == formatV1 {
+		plain, err := openGCM(p.dataKey, p.rest, dataAD(formatV1, ctx))
+		if err != nil {
+			return nil, ErrOpen
+		}
+		return s.Seal(ctx, FromBytes(plain))
+	}
+	if p.wrapper.Kind() == s.current.Kind() && string(p.wrapper.ID()) == string(s.current.ID()) {
 		return sealed, nil
 	}
-	out := append([]byte{formatV1}, s.current.id[:]...)
-	if out, err = sealGCM(out, []byte(s.current.key.Reveal()), dataKey, wrapAD(ctx, s.current.id)); err != nil {
+	out, err := s.wrapHeader(p.dataKey, dataAD(formatV2, ctx))
+	if err != nil {
 		return nil, err
 	}
-	return append(out, rest...), nil
+	return append(out, p.rest...), nil
 }
 
-// KEKVersion returns the version of the KEK a sealed secret is wrapped with.
+// KEKVersion returns the version of the KEK a sealed secret is wrapped with: 16 hexadecimal digits
+// for a local KEK, the key identifier for any other wrapper. It reads the header only.
 func KEKVersion(sealed []byte) (string, error) {
-	if len(sealed) < headerLen+tagLen || sealed[0] != formatV1 {
-		return "", ErrOpen
+	if len(sealed) > 0 && sealed[0] == formatV1 {
+		if len(sealed) < v1HeaderLen+tagLen {
+			return "", ErrOpen
+		}
+		return hex.EncodeToString(sealed[1 : 1+kekIDLen]), nil
 	}
-	return hex.EncodeToString(sealed[1 : 1+kekIDLen]), nil
-}
-
-func (s *Sealer) unwrap(ctx Context, sealed []byte) (KEK, []byte, []byte, error) {
-	if len(sealed) < headerLen+tagLen || len(sealed) > headerLen+maxSealSize+tagLen || sealed[0] != formatV1 {
-		return KEK{}, nil, nil, ErrOpen
-	}
-	var id [kekIDLen]byte
-	copy(id[:], sealed[1:1+kekIDLen])
-	kek, ok := s.byID[id]
-	if !ok {
-		return KEK{}, nil, nil, ErrOpen
-	}
-	wrapped := sealed[1+kekIDLen : 1+kekIDLen+nonceLen+wrappedLen]
-	dataKey, err := openGCM([]byte(kek.key.Reveal()), wrapped, wrapAD(ctx, id))
+	h, err := parseV2(sealed)
 	if err != nil {
-		return KEK{}, nil, nil, ErrOpen
+		return "", err
 	}
-	return kek, dataKey, sealed[1+kekIDLen+nonceLen+wrappedLen:], nil
+	if h.kind == KindLocal {
+		return hex.EncodeToString(h.id), nil
+	}
+	return string(h.id), nil
 }
 
-// dataAD is the secret's associated data: the context, with length prefixes so that no two
-// different contexts produce the same bytes.
-func dataAD(ctx Context) []byte {
-	ad := []byte("rpmgr-envelope-v1/data")
+// parsed is a sealed value taken apart and its data key unwrapped.
+type parsed struct {
+	format  byte
+	wrapper Wrapper
+	dataKey []byte
+	rest    []byte // the secret's nonce, ciphertext and tag
+}
+
+func (s *Sealer) unwrap(ctx Context, sealed []byte) (parsed, error) {
+	if len(sealed) == 0 {
+		return parsed{}, ErrOpen
+	}
+	switch sealed[0] {
+	case formatV1:
+		return s.unwrapV1(ctx, sealed)
+	case formatV2:
+		h, err := parseV2(sealed)
+		if err != nil {
+			return parsed{}, err
+		}
+		w, ok := s.byID[wrapperID{h.kind, string(h.id)}]
+		if !ok {
+			return parsed{}, ErrOpen
+		}
+		dataKey, err := w.Unwrap(context.Background(), h.wrapped, dataAD(formatV2, ctx))
+		if err != nil {
+			return parsed{}, err
+		}
+		if len(dataKey) != keyLen {
+			return parsed{}, ErrOpen
+		}
+		return parsed{format: formatV2, wrapper: w, dataKey: dataKey, rest: h.rest}, nil
+	}
+	return parsed{}, ErrOpen
+}
+
+// header is the structure of a version 2 value, before anything is opened.
+type header struct {
+	kind    byte
+	id      []byte
+	wrapped []byte
+	rest    []byte
+}
+
+// parseV2 checks the lengths of a version 2 value against the bounds; every violation is ErrOpen.
+func parseV2(b []byte) (header, error) {
+	var h header
+	if len(b) < minV2Header || b[0] != formatV2 || len(b) > maxV2Header+maxSealSize+tagLen {
+		return h, ErrOpen
+	}
+	h.kind = b[1]
+	k := int(binary.BigEndian.Uint16(b[2:4]))
+	if k == 0 || k > maxIDLen || len(b) < 4+k+2 {
+		return h, ErrOpen
+	}
+	h.id = b[4 : 4+k]
+	w := int(binary.BigEndian.Uint16(b[4+k : 6+k]))
+	if w == 0 || w > maxWrapLen || len(b) < 6+k+w+nonceLen+tagLen {
+		return h, ErrOpen
+	}
+	h.wrapped = b[6+k : 6+k+w]
+	h.rest = b[6+k+w:]
+	if len(h.rest) > nonceLen+maxSealSize+tagLen {
+		return h, ErrOpen
+	}
+	return h, nil
+}
+
+// dataAD is the secret's associated data: the version's label and the context, with length
+// prefixes so that no two different contexts produce the same bytes.
+func dataAD(format byte, ctx Context) []byte {
+	ad := []byte("rpmgr-envelope-v2/data")
+	if format == formatV1 {
+		ad = []byte("rpmgr-envelope-v1/data")
+	}
 	for _, f := range []string{ctx.Table, ctx.Column, ctx.RowID} {
 		ad = binary.AppendUvarint(ad, uint64(len(f)))
 		ad = append(ad, f...)
 	}
 	return ad
-}
-
-// wrapAD is the wrapped data key's associated data: the context and the KEK version.
-func wrapAD(ctx Context, kekID [kekIDLen]byte) []byte {
-	return append(append([]byte("rpmgr-envelope-v1/wrap"), dataAD(ctx)...), kekID[:]...)
 }
 
 // sealGCM appends nonce ‖ AES-256-GCM(key, plain, aad) to dst.
