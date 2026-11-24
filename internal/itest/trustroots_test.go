@@ -15,12 +15,13 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agent"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/itest"
 	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/snapshot"
 )
 
-// TestTrustRoots_ReportedAndCarried: an agent reports the digest of the roots it holds, the
+// TestTrustRoots_ReportedAndCarried: an agent (that announces the capability, which none does yet) reports the digest of the roots it holds, the
 // controller records it with the session and puts the trust roots in the agent's snapshot, and the
 // agent, which does not take roots from them yet, keeps the roots file it enrolled with.
 func TestTrustRoots_ReportedAndCarried(t *testing.T) {
@@ -36,7 +37,8 @@ func TestTrustRoots_ReportedAndCarried(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctl, err := agent.NewControl(agent.ControlOptions{IdentityDir: id.Dir, StateDir: state, Version: "0.7.0",
-		Applier: &recorder{}, Backoff: fast(), Logger: c.Logs.Logger()})
+		Capabilities: []string{agentproto.CapTrustRoots}, // no agent announces it yet; the test does
+		Applier:      &recorder{}, Backoff: fast(), Logger: c.Logs.Logger()})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -121,10 +121,9 @@ func NewControl(o ControlOptions) (*Control, error) {
 	if o.Firewall {
 		caps = append(slices.Clone(caps), agentproto.CapFirewallRanges)
 	}
-	// The agent reports the roots it trusts. It does not yet take the roots of Welcome or of a
-	// snapshot: it keeps the roots it has (docs/03-connections.md, "Trust roots in Welcome and
-	// snapshots").
-	caps = append(slices.Clone(caps), agentproto.CapTrustRoots)
+	// The agent reports the digest of the roots it trusts in Hello, but does not announce
+	// "trust.roots" and takes no roots from Welcome or a snapshot: that comes with root rotation
+	// (slice 8.13), which the capability stands for.
 	var onOffer func(*agentv1.ReleaseOffer)
 	if o.Update != nil {
 		now := o.Now

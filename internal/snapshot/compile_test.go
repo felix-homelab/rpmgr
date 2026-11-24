@@ -263,14 +263,13 @@ func TestCompile_TrustRoots(t *testing.T) {
 			t.Errorf("an agent without the capability: %q, %v", got.GetTrustRoots(), err)
 		}
 		// A change of the roots changes the snapshot, so its hash.
-		before, _ := proto.Marshal(got)
 		roots = roots[:1]
 		a, _ := c.Compile(sys, db, withCap)
 		roots = [][]byte{[]byte("other")}
 		b, _ := c.Compile(sys, db, withCap)
 		pa, _ := proto.Marshal(a)
 		pb, _ := proto.Marshal(b)
-		if bytes.Equal(pa, pb) || bytes.Equal(pa, before) {
+		if bytes.Equal(pa, pb) || len(a.GetTrustRoots()) != 1 || !bytes.Equal(b.GetTrustRoots()[0], []byte("other")) {
 			t.Error("the roots do not change the snapshot")
 		}
 		c.Roots = func() ([][]byte, error) { return nil, errors.New("no roots") }

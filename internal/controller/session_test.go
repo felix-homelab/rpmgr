@@ -538,3 +538,20 @@ func TestSession_TrustRoots(t *testing.T) {
 		}
 	})
 }
+
+// TestSession_TrustRootsUnreadable: a trust bundle that cannot be turned into roots, here one
+// without a root, does not refuse the session: the agent is welcomed without roots.
+func TestSession_TrustRootsUnreadable(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := startSessionsWith(t, db, func(o *controller.SessionsOptions) {
+			o.TrustBundle = func() []*x509.Certificate { return nil }
+		})
+		cert, _ := e.agentCert(t)
+		h := hello("0.7.0")
+		h.Capabilities = []string{agentproto.CapTrustRoots}
+		w := recv(t, e.open(t, testCtx(t), cert, h)).GetWelcome()
+		if w == nil || len(w.TrustRoots) != 0 || w.SessionEpoch != 1 {
+			t.Fatalf("Welcome: %v", w)
+		}
+	})
+}

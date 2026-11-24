@@ -230,3 +230,51 @@ func TestResourceHash(t *testing.T) {
 		t.Fatal("another ID kept the hash")
 	}
 }
+
+// TestSign_TrustRootsAtTheLimit: the trust roots count toward the 4 MiB of a control message. A
+// snapshot with the largest allowed roots (8 certificates of 2 KiB) and a payload that fills the
+// message signs; a payload a few bytes larger does not. A signature is 70 to 72 bytes, so the
+// payload that fits with 72 is the limit, and 3 bytes more cannot fit with any signature.
+func TestSign_TrustRootsAtTheLimit(t *testing.T) {
+	s := newSigners(t, "rpmgr-7f3k2q6m")
+	roots := make([][]byte, pki.MaxTrustCerts)
+	for i := range roots {
+		roots[i] = bytes.Repeat([]byte{byte(i + 1)}, pki.MaxTrustCertBytes)
+	}
+	keyID := snapsig.KeyID(s.config.Cert)
+	messageSize := func(payload, sig int) int {
+		return proto.Size(&agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_Snapshot{Snapshot: &agentv1.Signed{
+			Payload: make([]byte, payload), Signature: make([]byte, sig), KeyId: keyID}}})
+	}
+	limit := 4 << 20
+	payload := limit - 1024
+	for messageSize(payload+1, 72) <= limit {
+		payload++
+	}
+	// snapshot returns a snapshot whose payload is n bytes.
+	snapshot := func(n int) *agentv1.Snapshot {
+		snap := testSnapshot()
+		snap.TrustRoots = roots
+		snap.Resources = append(snap.Resources, &agentv1.Resource{Id: "filler"})
+		filler := 0
+		for range 16 {
+			snap.Resources[len(snap.Resources)-1].Id = strings.Repeat("x", filler)
+			b, err := proto.Marshal(snap)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(b) == n {
+				return snap
+			}
+			filler = max(filler+n-len(b), 0) // the length prefixes grow by a byte now and then
+		}
+		t.Fatalf("cannot build a payload of %d bytes", n)
+		return nil
+	}
+	if _, err := snapsig.Sign(s.config, snapshot(payload)); err != nil {
+		t.Errorf("a snapshot with roots at the limit: %v", err)
+	}
+	if _, err := snapsig.Sign(s.config, snapshot(payload+3)); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("a snapshot with roots above the limit was signed: %v", err)
+	}
+}

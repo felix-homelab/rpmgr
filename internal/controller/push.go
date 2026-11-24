@@ -124,7 +124,7 @@ func (p *pusher) run(ctx context.Context) {
 			// A new revision, a new signing key or a change of the trust roots: every agent gets a
 			// new snapshot.
 			key := snapsig.KeyID(p.s.ca.ConfigSigner().Cert)
-			roots := string(p.s.rootsDigest())
+			roots := p.s.bundleKey()
 			if rev, err := currentRevision(p.s); err == nil && (rev != last || key != lastKey || roots != lastRoots) {
 				last, lastKey, lastRoots = rev, key, roots
 				p.mu.Lock()

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -58,8 +59,9 @@ type Sessions struct {
 
 	db      *store.DB
 	ca      *castore.CA
-	node    string // this controller node's ID
-	version string // this controller's version
+	bundle  func() []*x509.Certificate // the trust bundle
+	node    string                     // this controller node's ID
+	version string                     // this controller's version
 	now     func() time.Time
 	admit   *ratelimit.Limiter
 	sys     context.Context // the audited system scope of the session handlers
@@ -107,6 +109,8 @@ type SessionsOptions struct {
 	// schema.AgentSessionSeenEvery.
 	SeenEvery time.Duration
 	Logger    *slog.Logger
+	// TrustBundle returns the certificates of the trust bundle; nil is the CA's. For tests.
+	TrustBundle func() []*x509.Certificate
 }
 
 // NewSessions returns the control-session server.
@@ -131,6 +135,10 @@ func NewSessions(o SessionsOptions) *Sessions {
 		log: o.Logger, every: o.RevisionCheck, seen: o.SeenEvery, started: o.Now().UTC(),
 		admit:  ratelimit.New(time.Second/time.Duration(o.Admission), o.Admission, o.Now),
 		active: map[string]*session{},
+	}
+	s.bundle = o.TrustBundle
+	if s.bundle == nil {
+		s.bundle = o.CA.TrustBundle
 	}
 	if o.Compiler != nil {
 		s.push = newPusher(s, o.Compiler, o.RevisionCheck, o.Logger)
@@ -181,7 +189,17 @@ func rootsDigestOf(hello *agentv1.Hello) []byte {
 
 // rootsDigest is the digest of the controller's current trust bundle.
 func (s *Sessions) rootsDigest() []byte {
-	return pki.RootsDigest([]*x509.Certificate{s.ca.Root()})
+	return pki.RootsDigest(s.bundle())
+}
+
+// bundleKey is the SHA-256 over the DER of the trust bundle, in order: a change of any certificate,
+// a cross-certificate alone included, changes it.
+func (s *Sessions) bundleKey() string {
+	h := sha256.New()
+	for _, c := range s.bundle() {
+		h.Write(c.Raw)
+	}
+	return string(h.Sum(nil))
 }
 
 // Session runs one control session: admission, Hello within HelloTimeout, the version check, a new
@@ -224,12 +242,13 @@ func (s *Sessions) Session(st grpc.BidiStreamingServer[agentv1.AgentMessage, age
 		MinAgentVersion: MinAgentVersion(s.version), SigningCertificates: s.ca.SigningChain()}}}
 	if sess.has(agentproto.CapTrustRoots) {
 		// The roots go to an agent whose digest differs from the bundle's or is missing.
-		roots, err := s.ca.TrustRoots()
-		if err != nil {
-			return status.Error(codes.Unavailable, "the controller cannot read its trust roots")
-		}
 		if !bytes.Equal(rootsDigestOf(hello), s.rootsDigest()) {
-			welcome.GetWelcome().TrustRoots = roots
+			if roots, err := pki.TrustRootsDER(s.bundle()); err != nil {
+				// The session is no worse off without the roots: it only learns no new root.
+				s.log.Error("cannot send the trust roots; welcoming without them", "agent", agent.Identity.String(), "error", err)
+			} else {
+				welcome.GetWelcome().TrustRoots = roots
+			}
 		}
 	}
 	if err := st.Send(welcome); err != nil {

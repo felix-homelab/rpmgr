@@ -25,9 +25,10 @@ const (
 // SubjectPublicKeyInfo, each as its length in bytes (an unsigned varint) and its DER. It is the
 // digest an agent sends in Hello.roots_digest and the controller compares it with. A certificate
 // that is not self-signed does not count, so the cross-certificates of a bundle can be passed
-// along with its roots.
+// along with its roots. A certificate listed twice counts once, and two roots with the same public
+// key come in the order of their DER bytes.
 func RootsDigest(certs []*x509.Certificate) []byte {
-	roots := selfSigned(certs)
+	roots := selfSigned(unique(certs))
 	sortByKey(roots)
 	h := sha256.New()
 	var n [binary.MaxVarintLen64]byte
@@ -41,8 +42,10 @@ func RootsDigest(certs []*x509.Certificate) []byte {
 // TrustRootsDER returns the trust roots for Welcome and snapshots: the DER of the self-signed
 // certificates of bundle first, then the rest (the cross-certificates), each group sorted by the
 // SHA-256 of the public key, so that two replicas send the same bytes. It refuses a bundle past
-// the limits, and one without a root.
+// the limits, and one without a root. A certificate listed twice is sent once, and two roots with
+// the same public key come in the order of their DER bytes.
 func TrustRootsDER(bundle []*x509.Certificate) ([][]byte, error) {
+	bundle = unique(bundle)
 	roots := selfSigned(bundle)
 	var cross []*x509.Certificate
 	for _, c := range bundle {
@@ -68,6 +71,19 @@ func TrustRootsDER(bundle []*x509.Certificate) ([][]byte, error) {
 		out = append(out, c.Raw)
 	}
 	return out, nil
+}
+
+// unique drops the certificates whose DER an earlier one repeats.
+func unique(certs []*x509.Certificate) []*x509.Certificate {
+	seen := map[string]bool{}
+	var out []*x509.Certificate
+	for _, c := range certs {
+		if !seen[string(c.Raw)] {
+			seen[string(c.Raw)] = true
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 func selfSigned(certs []*x509.Certificate) []*x509.Certificate {

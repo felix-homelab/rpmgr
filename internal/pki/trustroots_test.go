@@ -103,20 +103,23 @@ func TestTrustRootsDER(t *testing.T) {
 	for range pki.MaxTrustRoots + 1 {
 		five = append(five, newRoot(t))
 	}
+	var crosses []*x509.Certificate // distinct: each has its own serial number
+	for range 5 {
+		crosses = append(crosses, crossCert(t, k1, r2))
+	}
 	for name, bundle := range map[string][]*x509.Certificate{
-		"empty":           nil,
-		"cross only":      {x},
-		"five roots":      five,
-		"nine in all":     append(five[:4:4], x, x, x, x, x),
-		"a large root":    {bigRoot(t)},
-		"duplicate roots": {k1.Cert, k1.Cert, k1.Cert, k1.Cert, k1.Cert},
+		"empty":        nil,
+		"cross only":   {x},
+		"five roots":   five,
+		"nine in all":  append(five[:4:4], crosses...),
+		"a large root": {bigRoot(t)},
 	} {
 		if _, err := pki.TrustRootsDER(bundle); err == nil {
 			t.Errorf("%s: no error", name)
 		}
 	}
 	// Exactly at the limits: 4 roots and 4 cross-certificates, each below 2 KiB.
-	if _, err := pki.TrustRootsDER(append(five[:4:4], x, x, x, x)); err != nil {
+	if _, err := pki.TrustRootsDER(append(five[:4:4], crosses[:4]...)); err != nil {
 		t.Errorf("at the limits: %v", err)
 	}
 }
@@ -142,4 +145,53 @@ func bigRoot(t *testing.T) *x509.Certificate {
 		t.Fatalf("the test certificate has only %d bytes", len(c.Raw))
 	}
 	return c
+}
+
+// sameKeyRoot is another self-signed certificate for the key of k, with another serial number.
+func sameKeyRoot(t *testing.T, k pki.KeyPair) *x509.Certificate {
+	t.Helper()
+	tmpl := &x509.Certificate{SerialNumber: serial(), Subject: k.Cert.Subject, NotBefore: t0, NotAfter: t0.Add(time.Hour),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign, URIs: k.Cert.URIs}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Cert.PublicKey, k.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// TestTrustRoots_DuplicatesAndTies: a certificate listed twice counts once, in the digest and in the
+// list; two self-signed certificates with one public key come in the order of their DER bytes,
+// whatever order the bundle has.
+func TestTrustRoots_DuplicatesAndTies(t *testing.T) {
+	k := newRootPair(t)
+	r1 := k.Cert
+	if got := pki.RootsDigest([]*x509.Certificate{r1, r1}); !bytes.Equal(got, pki.RootsDigest([]*x509.Certificate{r1})) {
+		t.Error("a repeated root changes the digest")
+	}
+	der, err := pki.TrustRootsDER([]*x509.Certificate{r1, r1, r1, r1, r1})
+	if err != nil || len(der) != 1 {
+		t.Fatalf("a root listed five times: %d certificates, %v", len(der), err)
+	}
+
+	twin := sameKeyRoot(t, k)
+	a, b := []*x509.Certificate{r1, twin}, []*x509.Certificate{twin, r1}
+	if !bytes.Equal(pki.RootsDigest(a), pki.RootsDigest(b)) {
+		t.Error("the digest of two roots with one key depends on the order of the bundle")
+	}
+	if bytes.Equal(pki.RootsDigest(a), pki.RootsDigest([]*x509.Certificate{r1})) {
+		t.Error("the twin was dropped from the digest")
+	}
+	for _, bundle := range [][]*x509.Certificate{a, b} {
+		der, err := pki.TrustRootsDER(bundle)
+		if err != nil || len(der) != 2 {
+			t.Fatalf("two roots with one key: %d certificates, %v", len(der), err)
+		}
+		if bytes.Compare(der[0], der[1]) >= 0 {
+			t.Error("the DER of two roots with one key is not ascending")
+		}
+	}
 }
