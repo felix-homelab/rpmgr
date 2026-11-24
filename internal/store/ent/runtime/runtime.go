@@ -416,6 +416,10 @@ func init() {
 	agentsessionDescUpdateChannel := agentsessionFields[11].Descriptor()
 	// agentsession.DefaultUpdateChannel holds the default value on creation for the update_channel field.
 	agentsession.DefaultUpdateChannel = agentsessionDescUpdateChannel.Default.(string)
+	// agentsessionDescRootsDigest is the schema descriptor for roots_digest field.
+	agentsessionDescRootsDigest := agentsessionFields[12].Descriptor()
+	// agentsession.DefaultRootsDigest holds the default value on creation for the roots_digest field.
+	agentsession.DefaultRootsDigest = agentsessionDescRootsDigest.Default.(string)
 	// agentsessionDescID is the schema descriptor for id field.
 	agentsessionDescID := agentsessionFields[0].Descriptor()
 	// agentsession.IDValidator is a validator for the "id" field. It is called by the builders before save.

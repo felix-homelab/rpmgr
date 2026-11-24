@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -164,6 +166,24 @@ type session struct {
 	goodbye atomic.Int32
 }
 
+// has reports whether the agent announced capability c.
+func (s *session) has(c string) bool { return slices.Contains(s.caps, c) }
+
+// rootsDigestOf returns the roots digest of hello, nil if the agent announces no "trust.roots" or
+// sent something that is no SHA-256.
+func rootsDigestOf(hello *agentv1.Hello) []byte {
+	d := hello.GetRootsDigest()
+	if len(d) != pki.RootsDigestSize || !slices.Contains(hello.GetCapabilities(), agentproto.CapTrustRoots) {
+		return nil
+	}
+	return d
+}
+
+// rootsDigest is the digest of the controller's current trust bundle.
+func (s *Sessions) rootsDigest() []byte {
+	return pki.RootsDigest([]*x509.Certificate{s.ca.Root()})
+}
+
 // Session runs one control session: admission, Hello within HelloTimeout, the version check, a new
 // session epoch, Welcome, and then the agent's messages until the session ends.
 func (s *Sessions) Session(st grpc.BidiStreamingServer[agentv1.AgentMessage, agentv1.ControllerMessage]) error {
@@ -202,6 +222,16 @@ func (s *Sessions) Session(st grpc.BidiStreamingServer[agentv1.AgentMessage, age
 	welcome := &agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_Welcome{Welcome: &agentv1.Welcome{
 		SessionEpoch: uint64(epoch), DbEpoch: dbEpoch, ServerTime: timestamppb.New(s.now()), //nolint:gosec // G115: epochs are positive
 		MinAgentVersion: MinAgentVersion(s.version), SigningCertificates: s.ca.SigningChain()}}}
+	if sess.has(agentproto.CapTrustRoots) {
+		// The roots go to an agent whose digest differs from the bundle's or is missing.
+		roots, err := s.ca.TrustRoots()
+		if err != nil {
+			return status.Error(codes.Unavailable, "the controller cannot read its trust roots")
+		}
+		if !bytes.Equal(rootsDigestOf(hello), s.rootsDigest()) {
+			welcome.GetWelcome().TrustRoots = roots
+		}
+	}
 	if err := st.Send(welcome); err != nil {
 		return err
 	}
@@ -344,15 +374,16 @@ func (s *Sessions) register(ctx context.Context, agent Agent, hello *agentv1.Hel
 	err = store.WriteTx(s.sys, s.db, func(tx *ent.Tx) error {
 		rows, err := tx.QueryContext(s.sys, `INSERT INTO agent_sessions (agent_id, org_id, session_epoch,
 			controller_node, remote_addr, agent_version, capabilities, connected_at, last_seen_at,
-			update_auto, update_channel)
-			VALUES ($1, $2, 1, $3, $4, $5, $6, $7, $7, $8, $9)
+			update_auto, update_channel, roots_digest)
+			VALUES ($1, $2, 1, $3, $4, $5, $6, $7, $7, $8, $9, $10)
 			ON CONFLICT (agent_id) DO UPDATE SET session_epoch = agent_sessions.session_epoch + 1,
 			controller_node = excluded.controller_node, remote_addr = excluded.remote_addr,
 			agent_version = excluded.agent_version, capabilities = excluded.capabilities,
 			connected_at = excluded.connected_at, last_seen_at = excluded.last_seen_at, disconnected_at = NULL,
-			last_goodbye = '', update_auto = excluded.update_auto, update_channel = excluded.update_channel
+			last_goodbye = '', update_auto = excluded.update_auto, update_channel = excluded.update_channel,
+			roots_digest = excluded.roots_digest
 			RETURNING session_epoch`,
-			agent.Identity.ID, agent.Identity.Org, s.node, addr, hello.GetVersion(), string(caps), now, auto, channel)
+			agent.Identity.ID, agent.Identity.Org, s.node, addr, hello.GetVersion(), string(caps), now, auto, channel, hex.EncodeToString(rootsDigestOf(hello)))
 		if err != nil {
 			return err
 		}

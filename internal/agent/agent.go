@@ -23,6 +23,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
+	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 )
@@ -120,6 +121,10 @@ func NewControl(o ControlOptions) (*Control, error) {
 	if o.Firewall {
 		caps = append(slices.Clone(caps), agentproto.CapFirewallRanges)
 	}
+	// The agent reports the roots it trusts. It does not yet take the roots of Welcome or of a
+	// snapshot: it keeps the roots it has (docs/03-connections.md, "Trust roots in Welcome and
+	// snapshots").
+	caps = append(slices.Clone(caps), agentproto.CapTrustRoots)
 	var onOffer func(*agentv1.ReleaseOffer)
 	if o.Update != nil {
 		now := o.Now
@@ -142,6 +147,7 @@ func NewControl(o ControlOptions) (*Control, error) {
 		Hello: func(h *agentv1.Hello) {
 			c.rt.Hello(h)
 			h.DenyListDigest = c.deny.Digest()
+			h.RootsDigest = pki.RootsDigest(id.RootCerts)
 			if c.stager != nil {
 				h.UpdatePolicy = c.stager.UpdatePolicy()
 				c.reported.Store(h.UpdatePolicy)

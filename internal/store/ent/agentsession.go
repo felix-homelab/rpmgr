@@ -42,7 +42,9 @@ type AgentSession struct {
 	UpdateAuto string `json:"update_auto,omitempty"`
 	// UpdateChannel holds the value of the "update_channel" field.
 	UpdateChannel string `json:"update_channel,omitempty"`
-	selectValues  sql.SelectValues
+	// RootsDigest holds the value of the "roots_digest" field.
+	RootsDigest  string `json:"roots_digest,omitempty"`
+	selectValues sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -54,7 +56,7 @@ func (*AgentSession) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case agentsession.FieldSessionEpoch:
 			values[i] = new(sql.NullInt64)
-		case agentsession.FieldID, agentsession.FieldOrgID, agentsession.FieldControllerNode, agentsession.FieldRemoteAddr, agentsession.FieldAgentVersion, agentsession.FieldLastGoodbye, agentsession.FieldUpdateAuto, agentsession.FieldUpdateChannel:
+		case agentsession.FieldID, agentsession.FieldOrgID, agentsession.FieldControllerNode, agentsession.FieldRemoteAddr, agentsession.FieldAgentVersion, agentsession.FieldLastGoodbye, agentsession.FieldUpdateAuto, agentsession.FieldUpdateChannel, agentsession.FieldRootsDigest:
 			values[i] = new(sql.NullString)
 		case agentsession.FieldConnectedAt, agentsession.FieldLastSeenAt, agentsession.FieldDisconnectedAt:
 			values[i] = new(sql.NullTime)
@@ -154,6 +156,12 @@ func (_m *AgentSession) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.UpdateChannel = value.String
 			}
+		case agentsession.FieldRootsDigest:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field roots_digest", values[i])
+			} else if value.Valid {
+				_m.RootsDigest = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -227,6 +235,9 @@ func (_m *AgentSession) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("update_channel=")
 	builder.WriteString(_m.UpdateChannel)
+	builder.WriteString(", ")
+	builder.WriteString("roots_digest=")
+	builder.WriteString(_m.RootsDigest)
 	builder.WriteByte(')')
 	return builder.String()
 }

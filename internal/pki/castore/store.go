@@ -240,6 +240,13 @@ func (ca *CA) TrustDomain() string { return ca.state().issuer.TrustDomain() }
 // Root returns the root certificate.
 func (ca *CA) Root() *x509.Certificate { return ca.state().issuer.Root() }
 
+// TrustRoots returns the controller's trust bundle as DER for Welcome and snapshots: the
+// self-signed certificate of every root, then the cross-certificates (pki.TrustRootsDER). The CA
+// holds one root and no cross-certificate yet, so this is one certificate.
+func (ca *CA) TrustRoots() ([][]byte, error) {
+	return pki.TrustRootsDER([]*x509.Certificate{ca.Root()})
+}
+
 // Intermediate returns the current intermediate's certificate.
 func (ca *CA) Intermediate() *x509.Certificate { return ca.state().issuer.Intermediate() }
 

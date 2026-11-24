@@ -3,10 +3,12 @@
 package controller_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net"
@@ -19,6 +21,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
+	"github.com/felix-homelab/rpmgr/internal/agentproto"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/ids"
 	"github.com/felix-homelab/rpmgr/internal/pki"
@@ -487,6 +490,51 @@ func TestSession_UpdatePolicyRecorded(t *testing.T) {
 		}
 		if a, c := row(); a != "" || c != "" {
 			t.Errorf("an agent without the report: %q, %q", a, c)
+		}
+	})
+}
+
+// TestSession_TrustRoots: an agent with "trust.roots" gets the controller's roots in Welcome when
+// its digest differs or is missing, and not when it matches; the digest is recorded with the
+// session; an agent without the capability, an old agent, gets no roots and no digest is recorded,
+// and a digest that is no SHA-256 counts as none.
+func TestSession_TrustRoots(t *testing.T) {
+	storetest.ForEachDialect(t, func(t *testing.T, db *store.DB) {
+		e := startSessions(t, db, "0.7.0", 0)
+		sys := storetest.SystemCtx(t)
+		want := pki.RootsDigest([]*x509.Certificate{e.ca.Root()})
+		session := func(caps []string, digest []byte) (*agentv1.Welcome, string) {
+			t.Helper()
+			cert, id := e.agentCert(t)
+			h := hello("0.7.0")
+			h.Capabilities, h.RootsDigest = caps, digest
+			w := recv(t, e.open(t, testCtx(t), cert, h)).GetWelcome()
+			if w == nil {
+				t.Fatal("no Welcome")
+			}
+			return w, e.db.Client().AgentSession.GetX(sys, id.ID).RootsDigest
+		}
+		caps := []string{agentproto.CapTrustRoots}
+
+		w, rec := session(caps, nil) // no digest: roots are sent
+		if len(w.TrustRoots) != 1 || !bytes.Equal(w.TrustRoots[0], e.ca.Root().Raw) || rec != "" {
+			t.Errorf("no digest: roots %d, recorded %q", len(w.TrustRoots), rec)
+		}
+		w, rec = session(caps, bytes.Repeat([]byte{1}, 32)) // another digest
+		if len(w.TrustRoots) != 1 || rec != hex.EncodeToString(bytes.Repeat([]byte{1}, 32)) {
+			t.Errorf("a stale digest: roots %d, recorded %q", len(w.TrustRoots), rec)
+		}
+		w, rec = session(caps, want) // the same digest
+		if len(w.TrustRoots) != 0 || rec != hex.EncodeToString(want) {
+			t.Errorf("a matching digest: roots %d, recorded %q", len(w.TrustRoots), rec)
+		}
+		w, rec = session(caps, []byte("short")) // not a SHA-256: none
+		if len(w.TrustRoots) != 1 || rec != "" {
+			t.Errorf("a malformed digest: roots %d, recorded %q", len(w.TrustRoots), rec)
+		}
+		w, rec = session([]string{"tunnel.quic"}, want) // a digest without the capability is ignored
+		if len(w.TrustRoots) != 0 || rec != "" {
+			t.Errorf("without the capability: roots %d, recorded %q", len(w.TrustRoots), rec)
 		}
 	})
 }
