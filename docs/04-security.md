@@ -929,22 +929,21 @@ capabilities, so a gateway of an earlier release never serves a route without th
   the docs, the CLI and the web UI say that a value must be random. The gateway compares in
   constant time and removes the header before the request goes upstream.
 - **Custom pages** of a gateway group are set only by the group's owner org
-  (`infrastructure.write`), for a shared group by the Instance Admin, and audited. A page is
-  served under a policy that forbids script and every load from elsewhere, and each placeholder
-  is filled in as escaped HTML text, so neither a page's author nor a hostile hostname or
-  maintenance message can run script in a visitor's browser
-  ([03](03-connections.md#http-routes)). The web UI previews a page through the controller
-  ([D136](14-open-decisions.md#engineering)): `PreviewGatewayPage`, which needs the same
-  permission, returns a link signed with a key derived from the KEK, which names the group, the
-  kind and the page's hash and ends after the time of
-  [03](03-connections.md#timeouts-keepalive-and-backoff). The link alone shows the page, rendered
-  by the gateways' code with sample values, under the page's own policy plus `sandbox`, so it has
-  an opaque origin and runs no script; only the web UI may frame it, and it is not cached or used
+  (`infrastructure.write`), for a shared group by the Instance Admin, and audited. A page is served
+  under a policy that forbids script and every load from elsewhere, and each placeholder is filled
+  in as escaped HTML text, so neither a page's author nor a hostile hostname or maintenance message
+  can run script in a visitor's browser ([03](03-connections.md#http-routes)). The web UI previews a
+  page through the controller ([D136](14-open-decisions.md#engineering)): `PreviewGatewayPage`,
+  which needs the same permission, returns a link signed with the random sealed `page_preview_key`
+  of `instance_secrets`, which names the group, the kind and the page's hash and ends after the time
+  of [03](03-connections.md#timeouts-keepalive-and-backoff). The link alone shows the page, rendered
+  by the gateways' code with sample values, under the page's own policy plus `sandbox`, so it has an
+  opaque origin and runs no script; only the web UI may frame it, and it is not cached or used
   across origins. The controller serves the page only to a frame of its own origin, as a browser
-  states in `Sec-Fetch-Dest: iframe` and `Sec-Fetch-Site: same-origin`: opened on its own, framed
-  by another site, or requested without these headers, the link shows a 404 text under a policy
-  that allows nothing, so an org member's page never appears as a page of the controller's
-  hostname. A link of a page that changed since shows nothing.
+  states in `Sec-Fetch-Dest: iframe` and `Sec-Fetch-Site: same-origin`: opened on its own, framed by
+  another site, or requested without these headers, the link shows a 404 text under a policy that
+  allows nothing, so an org member's page never appears as a page of the controller's hostname. A
+  link of a page that changed since shows nothing.
 - **CONNECT listeners** belong to one org ([D130](14-open-decisions.md#engineering)). In the mode
   `plain_basic` the proxy password crosses the network in the clear: anyone on the path between
   client and gateway can read it and use it. rpmgr allows it for clients that speak no HTTPS
@@ -1240,7 +1239,7 @@ Rules:
 | Session, API, enrollment tokens | SHA-256 hash (tokens are 256-bit random, so a fast hash is sufficient) |
 | Route basic-auth credentials | argon2id hash; gateways receive the hash, never the password. Because browsers send basic-auth credentials with **every** request, a gateway verifies with argon2id once and then caches `HMAC-SHA256(gateway-local random key, policy_id ‖ credential_version ‖ len(user) ‖ user ‖ password)` together with the matched user, for 5 minutes in a bounded LRU. The policy ID and credential version keep an entry from being reused on another route, org or credential; the length prefix prevents ambiguous user/password splits; entries for a policy are flushed as soon as a snapshot changes that policy, so tightened policies apply immediately; failed attempts are rate-limited per client IP **before** hashing, and hashing has a per-gateway concurrency cap. This keeps argon2id from becoming a CPU/memory amplifier for unauthenticated clients. [R] The cache holds 10 000 entries; a client address gets 20 verifications at once, refilled at 10 per minute; a gateway runs 2 at once; a request without credentials is refused without one; a gateway verifies only hashes within m ≤ 256 MiB, t ≤ 10, p ≤ 16. The same holds for the proxy passwords of CONNECT listeners (Phase 2) |
 | Require-header values (Phase 2) | SHA-256; write-only, at least 32 characters, compared in constant time on the gateway ([Route edge rules](#route-edge-rules)) |
-| CA, intermediate, config-signing and audit keys; ACME account key; TLS private keys of public certificates; TOTP seeds; OIDC client secrets; DNS-provider tokens (one per `dns_providers` row, per org); SMTP, webhook and audit-sink secrets (an S3 secret key, a syslog client key) | **Envelope encryption**: a random data key per secret encrypts it with AES-256-GCM (AAD = table, column, row ID); the data key is wrapped by the KEK with AES-256-GCM (AAD = the same plus the KEK version), or, from Phase 2, by a Transit key ([Envelope format v2](#envelope-format-v2)). Rotating the KEK re-wraps only data keys, never the secrets. The version of a local KEK is derived from the key itself (the first 8 bytes of a SHA-256 over it), so it needs no configuration |
+| CA, intermediate, config-signing and audit keys; ACME account key; TLS private keys of public certificates; TOTP seeds; OIDC client secrets; DNS-provider tokens (one per `dns_providers` row, per org); SMTP, webhook and audit-sink secrets (an S3 secret key, a syslog client key) | **Envelope encryption**: a random data key per secret encrypts it with AES-256-GCM (AAD = table, column, row ID); the data key is wrapped by the KEK with AES-256-GCM (AAD = the same plus the KEK version), or, from Phase 2, by a Transit key ([Envelope format v2](#envelope-format-v2)). Rotating the KEK re-wraps a version 2 value by changing only its wrapped data key, never the secret; a version 1 value is opened and sealed again as version 2 with a new data key ([Envelope format v2](#envelope-format-v2)). The version of a local KEK is derived from the key itself (the first 8 bytes of a SHA-256 over it), so it needs no configuration |
 | Agent private keys, WireGuard private keys | **Never stored centrally**. Generated on the agent; only public keys reach the controller |
 
 **KEK sources**, in order of preference:
@@ -1260,13 +1259,13 @@ ones under the new KEK. A Transit key rotates differently
 **Keys that are not secrets of a row.** The key that authenticates the API's page tokens and the key
 that authenticates the previews of gateway pages are 32 random bytes each, made once and sealed in
 `instance_secrets` like any other secret ([06](06-data-model.md#system)); every replica reads the
-same ones. `rpmgr kek rotate --page-keys` replaces both [D181](14-open-decisions.md#engineering):
-replicas load the new keys within a minute, and a page token or preview signed with an old key is
-refused as an expired one is. Phase 1 derived them from the KEK with HKDF-SHA256 and a label, which
-a KEK held in Transit cannot offer, since the controller never sees it. From slice 8.7 nothing is
-derived from the KEK. A page token or a preview issued before the upgrade is refused once, as an
-expired one is, and the client starts its list again [D181](14-open-decisions.md#engineering); a key
-changes with a KEK rotation no longer.
+same ones. `rpmgr kek rotate --page-keys` replaces both [D181](14-open-decisions.md#engineering),
+built in slice 8.9 (#692) with `kek rotate` for Transit: replicas load the new keys within a minute,
+and a page token or preview signed with an old key is refused as an expired one is. Phase 1 derived
+them from the KEK with HKDF-SHA256 and a label, which a KEK held in Transit cannot offer, since the
+controller never sees it. From slice 8.7 nothing is derived from the KEK. A page token or a preview
+issued before the upgrade is refused once, as an expired one is, and the client starts its list
+again [D181](14-open-decisions.md#engineering); a key changes with a KEK rotation no longer.
 
 #### Envelope format v2
 
@@ -1296,11 +1295,13 @@ n + 16    the secret under the data key with AES-256-GCM, and its tag
   every such case is the one error of the sealer, so nothing tells them apart. **Transit being
   down is a different error** (unavailable, or permission denied), never reported as a value that
   does not open, so that a caller can retry it.
-- **Version 1 stays readable** for ever: it is the layout of Phase 1, a local KEK, an 8-byte
-  version and a 48-byte wrapped key. Everything written from slice 8.7 on is version 2, and a
-  version 1 value becomes version 2 when it is sealed again or re-wrapped. `rpmgr kek rotate`
-  re-wraps every value and so writes version 2; `rpmgr kek status` counts the values by version
-  and by KEK.
+- **Version 1 stays readable** for ever: it is the layout of Phase 1, a local KEK, an 8-byte version
+  and a 48-byte wrapped key. Everything written from slice 8.7 on is version 2, and a version 1
+  value becomes version 2 only when it is sealed again. **A version 2 value is re-wrapped**: only
+  its wrapped data key changes. **A version 1 value cannot be**, because its AAD carries the version
+  1 label; it is opened and sealed again as version 2 with a new data key. `rpmgr kek rotate` does
+  one or the other for every value and so leaves only version 2; `rpmgr kek status` counts the
+  values by version and by KEK.
 
 #### KEK in Vault or OpenBao Transit
 
