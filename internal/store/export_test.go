@@ -2,7 +2,17 @@
 
 package store
 
-import "time"
+import (
+	"time"
+
+	"github.com/jackc/pgx/v5"
+)
+
+// PostgresConfig runs the checks of OpenPostgres that need no server and returns the connection
+// settings it would use.
+func PostgresConfig(dsn string, o PostgresOptions) (*pgx.ConnConfig, error) {
+	return postgresConfig(dsn, o)
+}
 
 // PostgresConfigErr runs the checks of OpenPostgres that need no server.
 func PostgresConfigErr(dsn string, o PostgresOptions) error {

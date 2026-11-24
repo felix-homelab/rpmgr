@@ -4,13 +4,18 @@ package store
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"ariga.io/atlas/sql/migrate"
@@ -29,12 +34,16 @@ import (
 // (docs/06-data-model.md, "Database engines").
 const MinPostgresMajor = 15
 
+// MaxTestedPostgresMajor is the newest PostgreSQL major version the tests run on; a newer server is
+// used, with a warning in the log.
+const MaxTestedPostgresMajor = 19
+
 // Advisory locks on PostgreSQL take the two-key form pg_advisory_lock(namespace, lock), so they
 // cannot collide with a single-key lock of another application in the same database.
 const (
 	advisoryNamespace  = 0x72706d67 // "rpmg"
 	advisoryMigrations = 1          // held while migrations run; a second migrator waits
-	advisoryController = 2          // shared by every running controller; exclusive for restore and migrate-db
+	advisoryController = 2          // exclusive for a single controller, restore and migrate-db; shared for replicas
 )
 
 // lockCheckInterval is how often the connection that holds the controller lock is checked.
@@ -54,19 +63,20 @@ type PostgresOptions struct {
 	// Getenv reads $CREDENTIALS_DIRECTORY for PasswordCredential; default os.Getenv.
 	Getenv func(string) string
 	// Lock takes the controller lock, a session advisory lock, for as long as the database is
-	// open. Controllers take it shared, so replicas run side by side; it fails with ErrLocked while
-	// an exclusive holder has it. Commands that may run next to a controller leave it off.
+	// open. It is exclusive unless Shared is set, so a missing flag fails safe: a second controller,
+	// restore or migrate-db gets ErrLocked while another holder has it. Commands that may run next to
+	// a controller leave Lock off.
 	Lock bool
-	// Exclusive makes Lock exclusive, for restore and migrate-db: it fails with ErrLocked while any
-	// controller runs, and no controller starts while it is held.
-	Exclusive bool
+	// Shared makes Lock shared, for the replicas of a controller cluster (listen.internal) and for
+	// `rpmgr migrate`: any number of shared holders, none while an exclusive one has the lock.
+	Shared bool
 }
 
 // OpenPostgres opens a PostgreSQL database. A server that is not on the loopback interface or a
 // Unix socket must be reached with sslmode=verify-full; the password comes only from a file or a
 // systemd credential, never from the DSN, PGPASSWORD or a .pgpass file; and the server must run
-// MinPostgresMajor or later (docs/06-data-model.md, "Database engines"). No error names the
-// password.
+// MinPostgresMajor or later (docs/06-data-model.md, "Database engines"). No error or log line names
+// the password.
 func OpenPostgres(ctx context.Context, dsn string, o PostgresOptions) (*DB, error) {
 	cfg, err := postgresConfig(dsn, o)
 	if err != nil {
@@ -79,7 +89,7 @@ func OpenPostgres(ctx context.Context, dsn string, o PostgresOptions) (*DB, erro
 		return nil, err
 	}
 	if o.Lock {
-		unlock, lost, err := holdControllerLock(ctx, cfg, o.Exclusive)
+		unlock, lost, err := holdControllerLock(ctx, cfg, o.Shared)
 		if err != nil {
 			_ = db.Close()
 			return nil, err
@@ -91,17 +101,31 @@ func OpenPostgres(ctx context.Context, dsn string, o PostgresOptions) (*DB, erro
 	return db, nil
 }
 
-// postgresConfig parses dsn, refuses a password from anywhere but o, and checks TLS.
+// dsnKeys are the parameters a DSN may set. Others, such as service and sslpassword, are refused:
+// they would read settings from places rpmgr does not control.
+var dsnKeys = []string{
+	"host", "port", "user", "password", "dbname", "database", "sslmode", "ssl", "sslrootcert",
+	"sslcert", "sslkey", "connect_timeout", "application_name", "target_session_attrs",
+}
+
+// postgresConfig parses dsn, refuses a password or a client key passphrase from anywhere but o, and
+// makes the TLS configuration of every remote host verified.
 func postgresConfig(dsn string, o PostgresOptions) (*pgx.ConnConfig, error) {
-	cfg, err := pgx.ParseConfig(dsn)
+	if os.Getenv("PGSSLPASSWORD") != "" {
+		return nil, errors.New("store: PostgreSQL: a client key passphrase (PGSSLPASSWORD, sslpassword) is not supported")
+	}
+	cfg, err := pgx.ParseConfigWithOptions(dsn, pgx.ParseConfigOptions{
+		ParseConfigOptions: pgconn.ParseConfigOptions{ConnStringAllowedKeys: dsnKeys},
+	})
 	if err != nil {
-		return nil, errors.New("store: PostgreSQL DSN: cannot be parsed") // pgx's message quotes it
+		// pgx's message may quote the DSN
+		return nil, errors.New("store: PostgreSQL DSN: cannot be parsed, or sets a parameter that is not supported (such as service or sslpassword)")
 	}
 	if cfg.Password != "" {
 		return nil, errors.New("store: PostgreSQL: the DSN, PGPASSWORD or a .pgpass file sets a password; " +
 			"give it in database.password_file or a systemd credential instead")
 	}
-	if err := checkTLS(dsn, &cfg.Config); err != nil {
+	if err := verifyTLS(dsn, &cfg.Config); err != nil {
 		return nil, err
 	}
 	pw, err := readPassword(o)
@@ -112,49 +136,90 @@ func postgresConfig(dsn string, o PostgresOptions) (*pgx.ConnConfig, error) {
 	return cfg, nil
 }
 
-// checkTLS requires sslmode=verify-full for every host that is not loopback or a Unix socket:
-// TLS with the certificate chain and the host name verified, and no plain-text fallback. pgx does
-// not keep the mode it parsed, and the settings of its tls.Config that tell the modes apart are
-// banned names (docs/03), so the mode is read from the DSN and the environment here and checked
-// against the TLS configuration pgx built from it.
-func checkTLS(dsn string, c *pgconn.Config) error {
-	hosts := []string{c.Host}
-	tlsOn := []bool{c.TLSConfig != nil}
-	for _, fb := range c.Fallbacks {
-		hosts = append(hosts, fb.Host)
-		tlsOn = append(tlsOn, fb.TLSConfig != nil)
+// verifyTLS makes the connection to every host that is not loopback or a Unix socket use TLS 1.2 or
+// later with the certificate chain and the host name verified, and refuses a host that may be
+// reached without TLS (sslmode disable, allow or prefer). It does not ask which sslmode the DSN, the
+// environment or a service file set, because every reading of that other than pgx's own can differ
+// from pgx's: it replaces the TLS configuration pgx built for the host with one made here, keeping
+// only pgx's client certificates and protocol. Weaker modes that use TLS (require, verify-ca) thus
+// become verify-full.
+func verifyTLS(dsn string, c *pgconn.Config) error {
+	roots, err := rootPool(dsn, c)
+	if err != nil {
+		return err
 	}
-	mode := sslMode(dsn)
-	for i, h := range hosts {
-		if !localHost(h) && (mode != "verify-full" || !tlsOn[i]) {
-			return fmt.Errorf("store: PostgreSQL at %s: use sslmode=verify-full (with sslrootcert); "+
-				"only the loopback interface or a Unix socket may go without verified TLS", h)
+	fix := func(host string, tc *tls.Config) (*tls.Config, error) {
+		if localHost(host) {
+			return tc, nil
+		}
+		if tc == nil {
+			return nil, fmt.Errorf("store: PostgreSQL at %s: use sslmode=verify-full; "+
+				"only the loopback interface or a Unix socket may go without TLS", host)
+		}
+		return &tls.Config{
+			ServerName:   host,
+			RootCAs:      roots,
+			Certificates: tc.Certificates,
+			NextProtos:   tc.NextProtos,
+			MinVersion:   tls.VersionTLS12,
+		}, nil
+	}
+	if c.TLSConfig, err = fix(c.Host, c.TLSConfig); err != nil {
+		return err
+	}
+	for _, fb := range c.Fallbacks {
+		if fb.TLSConfig, err = fix(fb.Host, fb.TLSConfig); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// sslMode returns the sslmode of a PostgreSQL DSN in URL or key/value form, else $PGSSLMODE, else
-// "prefer". The last of repeated keys wins, as in pgx. A DSN it cannot read gives "".
-func sslMode(dsn string) string {
-	mode := ""
-	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
-		if u, err := url.Parse(dsn); err == nil {
-			mode = u.Query().Get("sslmode")
+// rootPool returns the certificate authorities that verify a server: the file of sslrootcert, if
+// the DSN or PGSSLROOTCERT names one, else the system's. pgx would also take
+// $HOME/.postgresql/root.crt, which a controller must not trust by accident.
+func rootPool(dsn string, c *pgconn.Config) (*x509.CertPool, error) {
+	file := dsnParam(dsn, "sslrootcert")
+	if file == "" {
+		file = os.Getenv("PGSSLROOTCERT")
+	}
+	if file == "" || file == "system" {
+		pool, err := x509.SystemCertPool()
+		if err != nil {
+			return nil, fmt.Errorf("store: PostgreSQL: the system certificate pool: %w", err)
 		}
-	} else {
-		mode = keywordValue(dsn, "sslmode")
+		return pool, nil
 	}
-	if mode == "" {
-		mode = os.Getenv("PGSSLMODE")
+	if c.TLSConfig == nil || c.TLSConfig.RootCAs == nil {
+		return nil, errors.New("store: PostgreSQL: sslrootcert " + file + " was not loaded")
 	}
-	if mode == "" {
-		mode = "prefer"
-	}
-	return mode
+	return c.TLSConfig.RootCAs, nil // pgx read the file the DSN names
 }
 
-// keywordValue returns the value of key in a "key=value key2='quoted value'" connection string.
+// dsnParam returns the last value of key in a URL or key/value DSN, or "". It is used only to find
+// out which certificate file the operator named, never to decide whether TLS is verified.
+func dsnParam(dsn, key string) string {
+	val := ""
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		_, q, ok := strings.Cut(dsn, "?")
+		if !ok {
+			return ""
+		}
+		q, _, _ = strings.Cut(q, "#")
+		for _, kv := range strings.Split(q, "&") {
+			k, v, _ := strings.Cut(kv, "=")
+			if k == key {
+				if u, err := url.QueryUnescape(v); err == nil {
+					val = u
+				}
+			}
+		}
+		return val
+	}
+	return keywordValue(dsn, key)
+}
+
+// keywordValue returns the last value of key in a "key=value key2='quoted value'" connection string.
 func keywordValue(dsn, key string) string {
 	val := ""
 	for rest := strings.TrimSpace(dsn); rest != ""; rest = strings.TrimSpace(rest) {
@@ -177,11 +242,14 @@ func keywordValue(dsn, key string) string {
 			}
 			rest = r[i+1:]
 		} else {
-			end := strings.IndexAny(r, " \t\r\n")
-			if end < 0 {
-				end = len(r)
+			end := 0
+			for end < len(r) && !strings.ContainsRune(" \t\r\n", rune(r[end])) {
+				if r[end] == '\\' && end+1 < len(r) {
+					end++
+				}
+				v.WriteByte(r[end])
+				end++
 			}
-			v.WriteString(r[:end])
 			rest = r[end:]
 		}
 		if k == key {
@@ -191,13 +259,30 @@ func keywordValue(dsn, key string) string {
 	return val
 }
 
-// localHost reports whether host is a Unix socket directory or a loopback address.
+// localHost reports whether host is a Unix socket directory, an IP loopback address, or the name
+// localhost with only loopback addresses.
 func localHost(host string) bool {
-	if strings.HasPrefix(host, "/") || host == "localhost" {
+	if strings.HasPrefix(host, "/") {
 		return true
 	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	if host != "localhost" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil || len(addrs) == 0 {
+		return false
+	}
+	for _, a := range addrs {
+		if !a.IP.IsLoopback() {
+			return false
+		}
+	}
+	return true
 }
 
 // readPassword reads the password from o's file or credential; without either there is none,
@@ -237,7 +322,13 @@ func checkPostgres(ctx context.Context, pool *sql.DB) error {
 	if err := pool.QueryRowContext(ctx, "SHOW server_version_num").Scan(&num); err != nil {
 		return fmt.Errorf("store: open PostgreSQL: %w", err)
 	}
-	return checkServerVersion(num)
+	if err := checkServerVersion(num); err != nil {
+		return err
+	}
+	if major := num / 10000; major > MaxTestedPostgresMajor {
+		slog.Warn("PostgreSQL is newer than the versions rpmgr is tested on", "major", major, "tested_up_to", MaxTestedPostgresMajor)
+	}
+	return nil
 }
 
 // checkServerVersion checks a server_version_num, such as 180001 for 18.1.
@@ -251,14 +342,14 @@ func checkServerVersion(num int) error {
 // holdControllerLock takes the controller's advisory lock, shared or exclusive, on a connection of its own, outside the
 // pool, and checks that connection every lockCheckInterval: the lock ends with the session, so a
 // lost connection closes the returned channel and the controller must stop.
-func holdControllerLock(ctx context.Context, cfg *pgx.ConnConfig, exclusive bool) (func() error, <-chan struct{}, error) {
+func holdControllerLock(ctx context.Context, cfg *pgx.ConnConfig, shared bool) (func() error, <-chan struct{}, error) {
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("store: controller lock: %w", err)
 	}
-	fn := "pg_try_advisory_lock_shared"
-	if exclusive {
-		fn = "pg_try_advisory_lock"
+	fn := "pg_try_advisory_lock"
+	if shared {
+		fn = "pg_try_advisory_lock_shared"
 	}
 	var got bool
 	if err := conn.QueryRow(ctx, "SELECT "+fn+"($1, $2)", advisoryNamespace, advisoryController).Scan(&got); err != nil {
@@ -280,21 +371,29 @@ func holdControllerLock(ctx context.Context, cfg *pgx.ConnConfig, exclusive bool
 				return
 			case <-t.C:
 				pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lockCheckInterval)
-				err := conn.Ping(pctx)
+				var held bool
+				err := conn.QueryRow(pctx, `SELECT EXISTS (SELECT 1 FROM pg_locks WHERE pid = pg_backend_pid()
+  AND locktype = 'advisory' AND classid::bigint = $1 AND objid::bigint = $2 AND objsubid = 2 AND granted)`,
+					advisoryNamespace, advisoryController).Scan(&held)
 				cancel()
-				if err != nil {
+				if err != nil || !held {
 					close(lost)
 					return
 				}
 			}
 		}
 	}()
+	var once sync.Once
+	var closeErr error
 	unlock := func() error {
-		close(stop)
-		<-done
-		cctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return conn.Close(cctx) // ending the session releases the lock
+		once.Do(func() {
+			close(stop)
+			<-done
+			cctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			closeErr = conn.Close(cctx) // ending the session releases the lock
+		})
+		return closeErr
 	}
 	return unlock, lost, nil
 }
@@ -314,7 +413,12 @@ func lockMigrations(ctx context.Context, db *DB) (func(), error) {
 		return nil, fmt.Errorf("store: migration lock: %w", err)
 	}
 	return func() {
-		_, _ = conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1, $2)", advisoryNamespace, advisoryMigrations)
+		uctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if _, err := conn.ExecContext(uctx, "SELECT pg_advisory_unlock($1, $2)", advisoryNamespace, advisoryMigrations); err != nil {
+			// still holding the lock: never return this connection to the pool
+			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		}
 		_ = conn.Close()
 	}, nil
 }
