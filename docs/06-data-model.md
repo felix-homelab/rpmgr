@@ -471,3 +471,15 @@ method, list filter or search returns or modifies the other org's data
 | **SQLite** (pure Go, `modernc.org/sqlite`) | Default; single controller | Needed for `CGO_ENABLED=0` static builds. WAL mode, `busy_timeout`, one writer connection. `PRAGMA foreign_keys = 1` on every connection: SQLite enforces no foreign key without it, and the controller refuses a connection on which it is off ([S5](spikes/S5.md)). Works on linux/amd64, arm64, armv7 and riscv64 ([S8](spikes/S8.md)). Every setting is part of the DSN, so each pooled connection has it; [R] `synchronous = FULL`, `busy_timeout` 5 s, and readers in a separate `query_only` pool. `sqlite.StrictPragmas(true)` is set at start, because the DSN comes from the boot file and a `_pragma` value otherwise also runs whatever follows a `;` [F modernc.org/sqlite v1.60.1 `strictpragma.go:20-43`]. An `ON DELETE RESTRICT` violation carries the extended code `SQLITE_CONSTRAINT_TRIGGER`, not `SQLITE_CONSTRAINT_FOREIGNKEY`; the store maps both to the same error ([S8](spikes/S8.md)). The path in the boot file must not contain `?`, `#` or `%`, so it cannot add DSN parameters. A running controller holds an exclusive lock on `<database>.lock`; a second controller on the same file refuses to start, while administration commands open the database without the lock. Pinned to a current version |
 | **PostgreSQL** | HA, larger installations (Phase 2) | Required for more than one controller replica. Existing SQLite installations move with `rpmgr migrate-db` ([Migrations](#migrations)). Phase 1 generates and tests its migrations but does not offer it ([D57](14-open-decisions.md#engineering)) |
 | MySQL | **Dropped** | A third dialect multiplies migration and test cost. The importer still reads MySQL source databases ([11](11-migration.md)) |
+
+**PostgreSQL connection.** The store opens PostgreSQL only with `sslmode=verify-full`, except on
+the loopback interface or a Unix socket ([04](04-security.md)). The password comes from
+`database.password_file` or a systemd credential, never from the DSN, `PGPASSWORD` or a `.pgpass`
+file, and no error or log line names it. The server must run a major version the PostgreSQL project
+still supports when the rpmgr release is made, 15 to 18 today; the controller refuses an older one
+at start (the constant `store.MinPostgresMajor`). Migrations run under a session advisory lock
+(`pg_advisory_lock(0x72706d67, 1)`), so of two processes that migrate one database one applies the
+files; every controller holds the lock `(0x72706d67, 2)` shared for as long as it runs, so replicas run
+side by side, and `rpmgr restore` and `rpmgr migrate-db` take it exclusively and refuse while a
+controller runs. The boot file still refuses `database.driver: postgres`
+until the controller is wired to this opener.

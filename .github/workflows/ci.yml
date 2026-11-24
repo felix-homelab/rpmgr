@@ -246,10 +246,17 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
-    # Full runs test on two PostgreSQL versions, one after the other, each package with up to
-    # 20 minutes (check-store.sh).
-    timeout-minutes: ${{ inputs.full && 75 || 45 }}
+    # Full runs test on three PostgreSQL versions, one after the other, each package with up to
+    # 20 minutes (check-store.sh). 15 is the oldest supported major (store.MinPostgresMajor).
+    timeout-minutes: ${{ inputs.full && 105 || 45 }}
     services:
+      pg15:
+        image: mirror.gcr.io/library/postgres:15@sha256:8cf673eb99f8b9042c9078ee4ca0e775428c77097e9d999bfc9ba4b4347f5733
+        env:
+          POSTGRES_USER: rpmgr
+          POSTGRES_PASSWORD: rpmgr # a throw-away test database
+        ports: ["5415:5432"]
+        options: --health-cmd "pg_isready -U rpmgr" --health-interval 2s --health-timeout 5s --health-retries 30
       pg16:
         image: mirror.gcr.io/library/postgres:16@sha256:65b16a8b326e0cfbdf33fa7e783f2a0cb352a61448616ccccfd616ef42aa0f65
         env:
@@ -286,11 +293,12 @@ jobs:
           restore-keys: |
             go-store-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-shard${{ matrix.shard }}-
             go-store-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
-      - name: Store tests on PostgreSQL 18, and 16 in full runs; migrations linted
+      - name: Store tests on PostgreSQL 18, and 16 and 15 in full runs; migrations linted
         env:
           STORE_SKIP_SQLITE: "1" # the go job runs the same tests on SQLite
           GO_TEST_SHARD: ${{ matrix.shard }}/4
           RPMGR_TEST_PG_URLS: >-
+            ${{ inputs.full && 'postgres://rpmgr:rpmgr@127.0.0.1:5415/postgres?sslmode=disable' || '' }}
             ${{ inputs.full && 'postgres://rpmgr:rpmgr@127.0.0.1:5416/postgres?sslmode=disable' || '' }}
             postgres://rpmgr:rpmgr@127.0.0.1:5418/postgres?sslmode=disable
           RPMGR_LINT_PG_DEV: postgres://rpmgr:rpmgr@127.0.0.1:5418/lintdev?sslmode=disable

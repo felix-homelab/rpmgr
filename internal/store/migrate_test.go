@@ -13,12 +13,12 @@ import (
 	"ariga.io/atlas/sql/migrate"
 
 	"github.com/felix-homelab/rpmgr/internal/store"
+	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
 // forEachStoreDB runs f with an empty database of each dialect.
 func forEachStoreDB(t *testing.T, f func(t *testing.T, db *store.DB)) {
 	t.Helper()
-	ctx := context.Background()
 	t.Run("sqlite", func(t *testing.T) {
 		f(t, openTest(t, filepath.Join(t.TempDir(), "m.db"), store.SQLiteOptions{}))
 	})
@@ -30,7 +30,7 @@ func forEachStoreDB(t *testing.T, f func(t *testing.T, db *store.DB)) {
 			}
 			t.Skip("RPMGR_TEST_PG not set")
 		}
-		db, err := store.OpenPostgres(ctx, newPGDatabase(t, admin))
+		db, err := storetest.OpenPostgres(t, newPGDatabase(t, admin), store.PostgresOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
