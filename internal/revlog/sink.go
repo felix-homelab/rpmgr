@@ -3,30 +3,70 @@
 package revlog
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
 	"strconv"
+	"sync"
 	"time"
 )
 
-// Sink is the filesystem sink of the revocation log (docs/10-operations.md, "Backup and
-// restore"): a directory, usually on a share, that holds a copy of every replica's entries off
-// the host. Each sink entry is the file named by its sequence number. It is published by a hard
-// link, which fails when the name exists, so allocating the number and writing the entry are one
-// step: the sink has no gaps, and an interrupted write leaves no empty number. Sink entries form
-// their own hash chain over the entries of all replicas.
-type Sink struct {
-	Dir string
+// Backend is where a sink keeps its objects (docs/04-security.md, "Revocation log"). It has three
+// operations, so a directory and an object store both fit. Keys are those of Key.
+type Backend interface {
+	// List returns the keys after the given key, in ascending order; "" lists them all.
+	List(after string) ([]string, error)
+	// Get returns the object at key.
+	Get(key string) ([]byte, error)
+	// CreateIfAbsent writes data at key and returns ErrExists, without writing, when the key
+	// exists, whatever the content there.
+	CreateIfAbsent(key string, data []byte) error
 }
 
-// SinkEntry is a file of the sink: a replica's local entry as that replica logged it.
+// ErrExists is what Backend.CreateIfAbsent returns for a key that exists already.
+var ErrExists = errors.New("revlog: the sink key exists")
+
+// keyDigits is the width of a key: a uint64 has at most 20 decimal digits.
+const keyDigits = 20
+
+// Key is the object key of sequence number seq: 20 decimal digits with leading zeros, so that the
+// order of a listing is the numeric order.
+func Key(seq uint64) string { return fmt.Sprintf("%0*d", keyDigits, seq) }
+
+func parseKey(key string) (uint64, bool) {
+	if len(key) != keyDigits {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(key, 10, 64)
+	return n, err == nil
+}
+
+// Sink is the sink of the revocation log: a copy of every replica's entries off the host, behind
+// a Backend. Each sink entry is the object named by its sequence number. It is created only when
+// the key is absent, so allocating the number and writing the entry are one step: the sink has no
+// gaps, and an interrupted write leaves no empty number. Sink entries form their own hash chain
+// over the entries of all replicas.
+//
+// A Sink verifies the chain once and keeps the verified prefix, the last sequence number and
+// hash; a later Ship lists only the keys after it. A broken chain stops shipping until the Sink
+// is made anew, with a new prefix.
+type Sink struct {
+	backend Backend
+
+	mu      sync.Mutex
+	loaded  bool
+	last    uint64
+	prev    string
+	shipped map[string]map[string]bool // replica -> hashes of its local entries in the sink
+	broken  error
+}
+
+// NewSink returns a Sink over b.
+func NewSink(b Backend) *Sink { return &Sink{backend: b} }
+
+// SinkEntry is an object of the sink: a replica's local entry as that replica logged it.
 type SinkEntry struct {
 	Seq     uint64 `json:"seq"`
 	Replica string `json:"replica"`
@@ -45,134 +85,134 @@ func (e SinkEntry) hash() (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// Read returns every entry of the sink after verifying its chain: files named 1 to n without a
-// gap, each entry's hash and each link. Temporary files of writers are skipped.
-func (s Sink) Read() ([]SinkEntry, error) {
-	des, err := os.ReadDir(s.Dir)
+// scan reads the objects after seq, whose entry hash is prev, and verifies them: keys in
+// sequence without a gap, and each entry's number, link and hash. It returns the entries that
+// verified, also when it returns an error.
+func (s *Sink) scan(seq uint64, prev string) ([]SinkEntry, error) {
+	after := ""
+	if seq > 0 {
+		after = Key(seq)
+	}
+	keys, err := s.backend.List(after)
 	if err != nil {
 		return nil, err
 	}
-	var seqs []uint64
-	for _, de := range des {
-		if n, err := strconv.ParseUint(de.Name(), 10, 64); err == nil {
-			seqs = append(seqs, n)
+	var out []SinkEntry
+	for _, key := range keys {
+		n, ok := parseKey(key)
+		if !ok {
+			return out, fmt.Errorf("%w: the sink holds the unexpected key %q", ErrBroken, key)
 		}
-	}
-	sort.Slice(seqs, func(i, j int) bool { return seqs[i] < seqs[j] })
-	out := make([]SinkEntry, 0, len(seqs))
-	prev := ""
-	for i, n := range seqs {
-		if n != uint64(i)+1 {
-			return nil, fmt.Errorf("%w: the sink has no entry %d", ErrBroken, i+1)
+		if n != seq+1 {
+			return out, fmt.Errorf("%w: the sink has no entry %d", ErrBroken, seq+1)
 		}
-		b, err := os.ReadFile(filepath.Join(s.Dir, strconv.FormatUint(n, 10)))
+		b, err := s.backend.Get(key)
 		if err != nil {
-			return nil, err
+			return out, err
 		}
 		var e SinkEntry
 		if err := json.Unmarshal(b, &e); err != nil {
-			return nil, fmt.Errorf("%w: sink entry %d: %w", ErrBroken, n, err)
+			return out, fmt.Errorf("%w: sink entry %d: %w", ErrBroken, n, err)
 		}
 		h, err := e.hash()
 		if err != nil {
-			return nil, err
+			return out, err
 		}
 		if e.Seq != n || e.Prev != prev || e.Hash != h {
-			return nil, fmt.Errorf("%w: sink entry %d", ErrBroken, n)
+			return out, fmt.Errorf("%w: sink entry %d", ErrBroken, n)
 		}
-		out, prev = append(out, e), h
+		out, seq, prev = append(out, e), n, h
 	}
 	return out, nil
 }
 
+// Read returns every entry of the sink after verifying its whole chain. It does not use or change
+// the verified prefix.
+func (s *Sink) Read() ([]SinkEntry, error) {
+	out, err := s.scan(0, "")
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// sync extends the verified prefix by the entries that others created; the caller holds s.mu.
+func (s *Sink) sync() error {
+	if s.broken != nil {
+		return s.broken
+	}
+	if !s.loaded {
+		s.shipped = map[string]map[string]bool{}
+	}
+	got, err := s.scan(s.last, s.prev)
+	for _, e := range got {
+		if s.shipped[e.Replica] == nil {
+			s.shipped[e.Replica] = map[string]bool{}
+		}
+		s.shipped[e.Replica][e.Entry.Hash] = true
+		s.last, s.prev = e.Seq, e.Hash
+	}
+	if err != nil {
+		if errors.Is(err, ErrBroken) {
+			s.broken = err
+		}
+		return err
+	}
+	s.loaded = true
+	return nil
+}
+
 // Ship copies the entries of the local log at path that the sink does not hold yet for replica
-// into the sink, in order. What a replica has shipped is read from the sink itself, by the
-// entries' hashes, so a crash between publishing an entry and anything else ships nothing twice,
-// and the entries a restore appended to a restored log are shipped although their numbers were
-// taken before. It returns the entries still unshipped, none when it succeeds.
-func (s Sink) Ship(path, replica string) ([]Entry, error) {
+// into the sink, in order. An entry counts as shipped when the sink holds an object with its
+// replica and its hash, so a crash between creating an object and anything else ships nothing
+// twice, and the entries a restore appended to a restored log are shipped although their numbers
+// were taken before. A tick with nothing new lists the keys after the verified prefix and reads
+// none. It returns the entries still unshipped, none when it succeeds.
+func (s *Sink) Ship(path, replica string) ([]Entry, error) {
 	local, err := Read(path)
 	if err != nil {
 		return nil, err
 	}
-	sink, err := s.Read()
-	if err != nil {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.sync(); err != nil {
 		return local, err
-	}
-	shipped := map[string]bool{}
-	for _, e := range sink {
-		if e.Replica == replica {
-			shipped[e.Entry.Hash] = true
-		}
 	}
 	var todo []Entry
 	for _, e := range local {
-		if !shipped[e.Hash] {
+		if !s.shipped[replica][e.Hash] {
 			todo = append(todo, e)
 		}
 	}
 	for len(todo) > 0 {
-		next, prev := uint64(len(sink))+1, ""
-		if len(sink) > 0 {
-			prev = sink[len(sink)-1].Hash
-		}
-		e := SinkEntry{Seq: next, Replica: replica, Entry: todo[0], Prev: prev}
+		e := SinkEntry{Seq: s.last + 1, Replica: replica, Entry: todo[0], Prev: s.prev}
 		if e.Hash, err = e.hash(); err != nil {
 			return todo, err
 		}
-		taken, err := s.publish(e)
+		b, err := json.Marshal(e)
 		if err != nil {
 			return todo, err
 		}
-		if taken { // another replica took the number: read its entry, and try the next
-			if sink, err = s.Read(); err != nil {
+		switch err := s.backend.CreateIfAbsent(Key(e.Seq), append(b, '\n')); {
+		case errors.Is(err, ErrExists): // another replica took the number: read it, try the next
+			before := s.last
+			if err := s.sync(); err != nil {
 				return todo, err
 			}
-			continue
+			if s.last == before {
+				return todo, fmt.Errorf("%w: the sink key %s exists but is not listed", ErrBroken, Key(e.Seq))
+			}
+		case err != nil:
+			return todo, err
+		default:
+			if s.shipped[replica] == nil {
+				s.shipped[replica] = map[string]bool{}
+			}
+			s.shipped[replica][e.Entry.Hash] = true
+			s.last, s.prev, todo = e.Seq, e.Hash, todo[1:]
 		}
-		sink, todo = append(sink, e), todo[1:]
 	}
 	return nil, nil
-}
-
-// publish writes e to a temporary file, syncs it, and links it to its number; taken reports that
-// the number exists already.
-func (s Sink) publish(e SinkEntry) (taken bool, err error) {
-	b, err := json.Marshal(e)
-	if err != nil {
-		return false, err
-	}
-	suffix := make([]byte, 8)
-	if _, err := rand.Read(suffix); err != nil {
-		return false, err
-	}
-	tmp := filepath.Join(s.Dir, ".tmp-"+hex.EncodeToString(suffix))
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640) //nolint:gosec // G304: the configured sink
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = os.Remove(tmp) }()
-	_, err = f.Write(append(b, '\n'))
-	if err == nil {
-		err = f.Sync()
-	}
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return false, err
-	}
-	if err := os.Link(tmp, filepath.Join(s.Dir, strconv.FormatUint(e.Seq, 10))); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return true, nil
-		}
-		return false, err
-	}
-	if d, err := os.Open(s.Dir); err == nil { // the new name, durable
-		_ = d.Sync()
-		_ = d.Close()
-	}
-	return false, nil
 }
 
 // Status is where a replica's revocation log stands, for the UI and the metrics.

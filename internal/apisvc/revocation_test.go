@@ -98,7 +98,7 @@ func TestRevocation_EnforcedWhileSinkDown(t *testing.T) {
 	if st := status(); st.GetUnshipped() != 0 || st.GetAlert() {
 		t.Errorf("after shipping: %v", st)
 	}
-	shipped, err := (revlog.Sink{Dir: sink}).Read() // also verifies 1..n without gaps
+	shipped, err := revlog.NewSink(revlog.DirBackend{Dir: sink}).Read() // also verifies 1..n without gaps
 	if err != nil || len(shipped) != len(local) {
 		t.Fatalf("the sink: %d entries, %v", len(shipped), err)
 	}

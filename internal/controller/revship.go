@@ -26,6 +26,7 @@ type RevocationShipper struct {
 	Logger  *slog.Logger
 
 	mu      sync.Mutex
+	sink    *revlog.Sink // made at the first round; keeps the verified prefix between rounds
 	status  revlog.Status
 	lastErr string
 }
@@ -35,7 +36,13 @@ func (r *RevocationShipper) Ship() error {
 	if r.Sink == "" {
 		return nil
 	}
-	left, err := revlog.Sink{Dir: r.Sink}.Ship(r.Path, r.Replica)
+	r.mu.Lock()
+	if r.sink == nil {
+		r.sink = revlog.NewSink(revlog.DirBackend{Dir: r.Sink})
+	}
+	sink := r.sink
+	r.mu.Unlock()
+	left, err := sink.Ship(r.Path, r.Replica)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.status = revlog.StatusOf(true, left)
