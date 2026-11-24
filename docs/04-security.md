@@ -2002,6 +2002,29 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
   S3-compatible sink comes with HA in Phase 2 ([D58](14-open-decisions.md#project-and-process)).
 - Sink sequence numbers are allocated by **conditional create** of the object named `<seq>`
   (allocation is the write), so the sink has no gaps; entries are hash-chained.
+- **Sink backend.** Both sinks implement one interface of three operations: **list** the keys
+  after a given key, in order; **get** an object by key; **create if absent**, which fails without
+  writing when the key exists, whatever the content there. A key is the sequence number as **20
+  decimal digits with leading zeros** below the sink's prefix, so that a listing's order is the
+  numeric order and the number fits an unsigned 64-bit integer. The filesystem sink creates an
+  object with an exclusive hard link, the S3 sink with a PUT that carries `If-None-Match: *`, which
+  answers 412 when the key exists. A key that is not 20 digits is a break of the chain, so a sink
+  directory written by a release before this one is refused and not forked.
+- **Shipping.** A replica reads and verifies the whole sink once, at start, and keeps in memory the
+  **verified prefix**: the sequence number and hash of the last entry it checked. A tick lists only
+  the keys after the prefix, gets them, checks that each entry links to the one before and extends
+  the prefix, so a tick with nothing new is one list and the sink is never read again in full. A
+  replica ships its next local entry by creating the key after the prefix; when that key exists,
+  another replica won the number, and it gets that object, verifies it, extends the prefix and tries
+  the next number. **An entry counts as shipped when an object holds its node and its local hash**,
+  not its number: after a restore the local numbers start again, and the entries a restore appends
+  to the restored local log are shipped exactly once, by hash. **A break in the chain** (an object
+  whose previous hash is not the prefix's, or a key that is missing) stops that replica's shipping
+  until the controller is restarted; enforcement and the local log go on. **Recovery** is to point
+  `revocation_log.sink` at a new prefix: the old prefix is kept, and the replicas ship what the new
+  prefix lacks from their local logs. A holder of put-only credentials can wedge the sink by
+  creating an object at the next key that does not link; the credentials of a sink are therefore
+  the controllers' alone.
 - **Local format.** One line of JSON per entry: sequence number from 1, time, kind, org, subject,
   detail, the covered certificate's `NotAfter` where there is one, actor, the previous entry's hash
   and its own: the SHA-256 of the entry encoded with an empty hash. Text fields hold at most

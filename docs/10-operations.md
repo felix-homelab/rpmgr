@@ -821,11 +821,18 @@ service that still runs the previous binary, with the command that restarts it.
   - **The filesystem sink** is the boot setting `revocation_log.sink`, a directory, which the unit
     of `rpmgr systemd-unit` makes writable ([Hardened systemd units](#hardened-systemd-units)).
     - **Publishing:** each entry is written to a temporary file, synced, then hard-linked to its
-      number; the link fails when the number exists, so a crash leaves no empty number.
+      key, the sequence number as 20 digits with leading zeros ([04](04-security.md#revocation-log));
+      the link fails when the key exists, so a crash leaves no empty number. Files that are not
+      keys of that form, such as the entries of a directory a release before this one wrote, break
+      the chain and stop shipping.
     - **Contents:** an entry holds the replica, its local entry and the sink's own hash chain.
-    - **Shipping:** every 10 s; a replica finds what it has shipped in the sink itself, by the
-      entries' hashes, so nothing is shipped twice, and the entries a restore appends to a restored
-      log are shipped although their numbers were used before.
+    - **Shipping:** every 10 s; the replica verifies the whole sink once, at start, and keeps the
+      verified prefix, so a tick lists only the keys after it and reads none when nothing is new.
+      It finds what it has shipped in the sink itself, by the entries' hashes, so nothing is
+      shipped twice, and the entries a restore appends to a restored log are shipped although their
+      numbers were used before. A break in the chain stops shipping until the controller is
+      restarted, with the same backlog alert; to recover, point `revocation_log.sink` at an empty
+      directory and restart ([04](04-security.md#revocation-log)).
     - **State:** `GetInstanceSettings` reports it as `revocation_log`, and the metrics below
       ([Metrics](#metrics)).
     - [R] A boot setting, not a runtime setting as the settings table lists. The share has to be
