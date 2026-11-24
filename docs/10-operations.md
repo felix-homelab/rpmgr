@@ -674,7 +674,8 @@ Rules for every boot file:
   - **PostgreSQL.** The `dsn` is a PostgreSQL URL or key-value string **without a password**: one
     that has one, or a `PGPASSWORD` in the environment or a `.pgpass` file that would supply one,
     stops the process. At most one of `password_file` and `password_credential` is set. The file
-    is a regular file of mode 0600 or 0400, at most 4 KiB, with one non-empty line; the
+    is a regular file of mode 0600 or 0400, within the limit of
+    [03](03-connections.md#timeouts-keepalive-and-backoff), with one non-empty line; the
     credential is the systemd credential of that name in `$CREDENTIALS_DIRECTORY`. A host that is
     neither loopback nor a Unix socket needs `sslmode=verify-full`. The reasons are in
     [06](06-data-model.md#connecting-to-postgresql-phase-2). All-in-one accepts PostgreSQL as well,
@@ -839,16 +840,25 @@ service that still runs the previous binary, with the command that restarts it.
     <binary>.backup`; after any other failure of the check it restores nothing and leaves the role
     stopped. If the restore fails, the role stays stopped, because the previous binary refuses the
     migrated schema, and you run the same command by hand.
-- **The KEK is backed up separately** and stored apart from database backups. A database backup
-  without its KEK cannot be used to recover CA keys, ACME keys or other secrets; a KEK stored next
-  to the backup defeats the encryption.
+- **The KEK is backed up separately** and stored apart from database backups. With Transit the KEK
+  is the Transit key, so its backup is the key service's own, and raising the key's minimum
+  decryption version makes older archives unreadable
+  ([04](04-security.md#kek-in-vault-or-openbao-transit)). And: A database backup without its KEK
+  cannot be used to recover CA keys, ACME keys or other secrets; a KEK stored next to the backup
+  defeats the encryption.
 - `rpmgr restore --in <file>` restores the database and **assigns a new `db_epoch`** — a fresh
   random UUIDv7, as at init, so restoring the same backup twice never reuses an epoch. Agents accept
   the restored, lower revisions only together with the new epoch
   ([03](03-connections.md#revisions-and-ordering)). The boot file decides the dialect of the
   result: a SQLite file, or, on PostgreSQL, an **empty** database that was made for it, which the
   copier fills and the restore's steps change in **one transaction**; the restore never drops or
-  empties a database, and the old one stays the operator's to retire.
+  empties a database, and the old one stays the operator's to retire. **The controller lock is per
+  database**, so a restore into a new database would not stop replicas still running on the old
+  one: `--replaces <boot file>` names the old database, and the restore refuses while its
+  controller lock is held or `controller_nodes` there has a live row; without it the restore
+  cannot tell, so **stop every replica yourself first**. Before it commits, the restore compares
+  the KEK identifiers in the archive's `secrets_meta` with the boot file's `kek` section and
+  refuses when that KEK cannot open them, naming both.
 - **Relying parties never shrink their deny-list across epochs**: agents merge deny-list updates by
   union and drop an entry only after its own expiry, never because of a version number or a new
   `db_epoch`, so certificates revoked after the backup stay denied on every gateway, connector and
@@ -917,7 +927,11 @@ service that still runs the previous binary, with the command that restarts it.
   `revlog_local_seq` of `controller_nodes` ([06](06-data-model.md#system)) in the backup, and a
   node that the sink names but the backup does not know, because it was added after the backup,
   counts as a replica that may have a backlog [R]: the restore needs a log of it among the
-  `--revocation-log` it was given, reaching what the sink holds of it, or fails closed. Without a
+  `--revocation-log` it was given, reaching what the sink holds of it, or fails closed. The
+  backlog columns are up to one heartbeat old, so a node whose row lacks `stopped_clean` counts the
+  same way. A restore also **refuses** an archive in which an active CA key is named by an issuer
+  revocation ([04](04-security.md#root-compromise)), and restores a root's `root_offline` marker
+  by setting its `key_enc` to null. Without a
   sink, a single node's whole log is not off the host, so a restore without that log fails closed
   too; so does a log entry of a kind the restoring
   version does not know. The entries of every reachable log are merged and re-applied all the
@@ -966,7 +980,12 @@ service that still runs the previous binary, with the command that restarts it.
   schema that has a migration it does not know. Replicas of two adjacent releases may run
   together during a roll; `controller_nodes.version` records each, the singleton jobs' leases are
   taken only by a replica whose version is the highest of the live nodes, so a job never runs on
-  code older than a replica that already runs [R], and the UI lists the versions.
+  code older than a replica that already runs [R], and the UI lists the versions. The alert
+  "singleton job stalled" fires when a lease is unheld for 2 minutes, which is what a roll that
+  leaves only older replicas would cause [R]. **Expand before contract**: every migration must be
+  safe for the release before it (a column is added before code uses it and dropped a release
+  later), because `rpmgr migrate` takes the controller lock shared and runs under replicas of the
+  previous release; CI runs the previous release's store tests against the new schema [R].
 - **Any replica serves any request.** Revisions come from the database, compilation is
   deterministic, and each agent has one control session tracked by `session_epoch`
   ([03](03-connections.md#revisions-and-ordering)).
@@ -1070,20 +1089,25 @@ line: `--from` is a SQLite database or a boot file, `--to-file` a boot file, and
    records `database.migrate` as `local-cli` in the target's audit log. It prints the report.
 5. Put the new boot file in place and start the controller. The revocation log on this host
    stays what it was.
-6. **Retire the source**: rename the SQLite file. It has the same `db_epoch` and the same
-   revisions as the target, so a controller started on both would hand agents two histories.
+6. **The source is retired by the command**: once the target committed it sets `retired_at` on the
+   source, and a controller refuses to start on it, because it has the same `db_epoch` and the same
+   revisions as the target and two controllers would hand agents two histories. Keep it until the
+   target has run for a while; `--no-retire` is for a test copy.
 
 **Back to one SQLite controller**
 
-1. Every replica must have shipped its revocation-log backlog (`rpmgr_revocation_log_unshipped` is
-   0 on each); the command refuses a source whose `controller_nodes` shows an unshipped entry. A
-   replica that is stopped with a backlog is started again until it has shipped.
+1. Every replica must have shipped its revocation-log backlog (`rpmgr_revocation_log_unshipped` is 0
+   on each); the command refuses a source whose `controller_nodes` shows an unshipped entry or a
+   node that did not stop clean. A replica that is stopped with a backlog is started again until it
+   has shipped, and then stopped cleanly.
 2. Stop every replica, then run the same command the other way: `--from` the PostgreSQL boot
    file, `--to-file` a boot file with `driver: sqlite` and no `listen.internal`. A replica whose
-   disk, and so whose log, is gone is named with `--accept-lost-backlog <node-id>`, which the
-   audit entry records [R].
-3. Start one controller on that boot file. The sink may stay; it is optional again
-   ([Backup and restore](#backup-and-restore)). Retire the PostgreSQL database as in step 6.
+   disk, and so whose log, is gone is named with `--accept-lost-backlog <node-id>`: the target's
+   copy of that node's row is cleared and the loss is recorded in the audit entry. An archive made
+   before the migration still holds the row, so a restore of one still counts that node as
+   possibly having a backlog [R].
+3. Start one controller on that boot file. The sink may stay; it is optional again ([Backup and
+   restore](#backup-and-restore)). The PostgreSQL database is retired by the command as in step 6.
 
 **Done when** the controller starts on the target, `rpmgr status` shows the same revision as
 before, and the agents have not reconnected with a new epoch.
@@ -1218,7 +1242,9 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 | Alert | Condition |
 |---|---|
 | Agent offline | No control session for 5 min |
-| Intermediate needs signing | `rpmgr_ca_intermediate_signing_pending` is 1 and the active intermediate expires in < 30 days |
+| Intermediate needs signing | `rpmgr_ca_intermediate_signing_pending` is 1 and the active intermediate expires within the lead time of [04](04-security.md#offline-root-ca) |
+| Root rotation stalled | The old root's overlap has ended and `rpmgr ca status` lists an enabled agent that does not hold the new root ([04](04-security.md#root-rotation)) |
+| Singleton job stalled | A job's lease is unheld for 2 min |
 | Key service unreachable | `rpmgr_kms_up` is 0 for 2 min |
 | Controller replica not live | `rpmgr_controller_nodes{state="stale"}` is above 0 for 5 min |
 | Configuration not applied | `apply_status` is `rejected` or `apply_timeout` |
@@ -1386,7 +1412,8 @@ Each runbook: **symptoms → steps → done when**.
   (Instance Admin, step-up). Agents receive the new chain at their next renewal
   ([04](04-security.md#ca-rotation)).
 - **With an offline root** the job does not issue at half-life; Settings → PKI says "intermediate
-  needs signing", and the alert is critical 30 days before the active intermediate expires:
+  needs signing", and the alert is critical at the lead time of
+  [04](04-security.md#offline-root-ca):
   1. `rpmgr ca rotate-intermediate --csr-out <request>` on the controller host (or take the request
      the job made from `rpmgr ca status`). Note the key hash it prints.
   2. Carry the request to the offline host and run `rpmgr ca sign-intermediate --root-file <file>
@@ -1400,25 +1427,35 @@ Each runbook: **symptoms → steps → done when**.
 
 ### Take the root offline
 
-- **Steps** ([04](04-security.md#offline-root-ca)): choose offline media and a passphrase of at
-  least 16 characters that is kept apart from them; `rpmgr ca offline-root --out <file>` on the
-  controller host with a passphrase from `--passphrase-file` or the prompt; move the file to the
-  media and **delete every other copy**, also on the controller host; **discard the backups and
-  database copies made before**, since they hold the root key under the KEK; take a new backup.
-  Keep a second copy of the media in another place.
-- **Done when**: `rpmgr ca status` shows the root as offline, no database, backup or log on the
-  controller host holds its key, and the file opens on the offline host (run `rpmgr ca
+- **Steps** ([04](04-security.md#offline-root-ca)): choose offline media; `rpmgr ca offline-root
+  --out <file>` on the controller host, which generates the passphrase and shows it once (or
+  takes one you supply that passes the strength check): write it down and keep it apart from the
+  media; move the file to the media and **delete every other copy**, also on the controller host.
+  Then **rotate the KEK**, because the sealed key survives in free pages, dead tuples, the
+  write-ahead log and older backups: with a local KEK, provision a new one and run `rpmgr kek
+  rotate --previous-file <old KEK>`, then destroy the old KEK; with Transit, rotate the key, run
+  `rpmgr kek rotate` and raise the minimum decryption version. **Archives made before cannot be
+  opened afterwards, which is the point**: take a new backup. Keep a second copy of the media in
+  another place.
+- **Done when**: `rpmgr ca status` shows the root as offline and no longer warns about the KEK,
+  no database, backup or log on the controller host holds its key in the clear, and the file opens
+  on the offline host (run `rpmgr ca
   sign-intermediate` once, and answer "no" at the confirmation).
 
 ### Rotate the root
 
 - **Steps** ([04](04-security.md#root-rotation)): `rpmgr ca new-root` (with an offline root,
   `--csr-out`, then sign the cross-certificate offline with `rpmgr ca sign-intermediate --kind
-  cross-root` and import it with `rpmgr ca import-intermediate`); watch Settings → PKI and `rpmgr ca
-  status` until no connected agent is a straggler and issuing has moved to the new root; leave the
-  old root in the bundle for the overlap (the longest leaf lifetime plus the Reauth grace period).
-  `rpmgr ca drop-root` before then is refused with the date it is allowed. After it, agents that
-  never saw the new root have to re-enroll.
+  cross-root`, the new intermediate's key with the same command, and import both with `rpmgr ca
+  import-intermediate`). Issuing moves to the new root at once and every chain carries both
+  intermediates, so agents that know only the old root keep verifying. Watch Settings → PKI and
+  `rpmgr ca status` until no agent is a straggler; leave the old root in the bundle for the overlap
+  (the longest leaf lifetime plus the Reauth grace period). `rpmgr ca drop-root` before then is
+  refused with the date it is allowed. If the alert "root rotation stalled" fires, an enabled
+  agent cannot or did not take the new root, most often because it has no `trust.roots`: update,
+  re-enroll or decommission it, or `rpmgr ca drop-root --strand-stragglers` to drop the old root
+  and leave it to re-enroll. After the drop, agents that never saw the new root have to
+  re-enroll.
 - **Done when**: the bundle is the new root alone and every agent reports its digest.
 
 ### Root compromise
@@ -1440,8 +1477,9 @@ Each runbook: **symptoms → steps → done when**.
      --token-file <its token> --replace`, gateways first. An agent given the old pin finds no
      matching root and stops. Identities and routes are kept.
   5. Investigate how the KEK and database were exposed, and rotate the KEK.
-  Backups from before the command trust the old root: a restore from one applies the issuer
-  revocation again ([04](04-security.md#revocation-log)).
+  Backups from before the command trust the old root: a restore of one **refuses**, because the
+  issuer revocation names a key that is active in it; use a later backup, or restore it and run the
+  command again before anything connects ([04](04-security.md#root-compromise)).
 - **Done when**: no agent presents a certificate from the old root, and every agent has re-enrolled
   (`rpmgr ca status` lists none).
 
@@ -1453,13 +1491,14 @@ Each runbook: **symptoms → steps → done when**.
   re-wraps every data key in one transaction ([04](04-security.md#secrets-at-rest-and-in-logs));
   start the controllers; back up the new KEK separately; delete the old KEK's file and retire it
   after a successful backup and test restore.
-- **A Transit key** (`kek.source: kms`) rotates in Transit, and the controllers keep running: rotate
-  the key there, run `rpmgr kek rotate` (it calls `rewrap` for every wrapped key, in batches),
-  wait for `rpmgr kek status` to show none on an older key version, and only then raise the key's
-  minimum decryption version in Transit ([04](04-security.md#kek-in-vault-or-openbao-transit)).
-  **Moving** the KEK between a file or credential and Transit, in either direction, needs every
-  controller stopped: write the new boot file, then `rpmgr kek rotate --previous-config <the old
-  boot file>`.
+- **A Transit key** (`kek.source: kms`) rotates in Transit, and replicas keep running (a single
+  controller is stopped for it: the command takes the controller lock shared, so it is refused
+  beside one): rotate the key there, run `rpmgr kek rotate` (it calls `rewrap` for every wrapped
+  key, in batches), wait for `rpmgr kek status` to show none on an older key version, and only then
+  raise the key's minimum decryption version in Transit
+  ([04](04-security.md#kek-in-vault-or-openbao-transit)). **Moving** the KEK between a file or
+  credential and Transit, in either direction, needs every controller stopped: write the new boot
+  file, then `rpmgr kek rotate --previous-config <the old boot file>`.
 - **A systemd credential** is loaded only inside a unit: run a command that needs the KEK, such as
   `kek rotate` or `ca rotate-intermediate`, under `systemd-run --pipe --wait
   --property=LoadCredentialEncrypted=rpmgr-kek:/etc/rpmgr/credstore/rpmgr-kek`.

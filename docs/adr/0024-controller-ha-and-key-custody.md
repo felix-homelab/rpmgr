@@ -45,8 +45,9 @@ be repaired in-band. Phase 2 builds both ([D58](../14-open-decisions.md#project-
 [D179](../14-open-decisions.md#engineering), [D180](../14-open-decisions.md#engineering))
 - The root key may leave the controller as an **age-passphrase file**; the database then holds the
   certificate only. The root signs intermediates and cross-certificates on an offline host.
-- A planned rotation **cross-signs** the new root with the old one and ships both in `Welcome` and
-  snapshots; an agent keeps a root only when a cross-certificate from a root it trusts verifies.
+- A planned rotation **cross-signs** the new root, and the new issuing intermediate, with the old
+  root, and ships both roots in `Welcome` and snapshots; an agent keeps a root only when a
+  cross-certificate from a root it trusts verifies.
 - A compromised root is replaced **within the same trust domain**, without a cross-certificate. The
   data plane is cut until every agent has re-enrolled; the runbook says so.
 
@@ -56,7 +57,9 @@ be repaired in-band. Phase 2 builds both ([D58](../14-open-decisions.md#project-
 
 - A stolen database dump or disk image opens nothing without the KEK, and with Transit the KEK is
   never on the host.
-- A leaked controller host no longer leaks the root when the root is offline.
+- A leaked controller host no longer leaks the root once the root is offline **and the KEK has been
+  rotated**, which the ceremony includes: the sealed key survives in free pages, logs and old
+  backups until the KEK that wrapped it is destroyed.
 - A root can be rotated without re-enrolling a fleet that is online during the overlap.
 - One copier serves migration, backup and restore, so there is one path to test.
 

@@ -241,17 +241,17 @@ of each route, with the floor applied, into the snapshot of every gateway that s
 | Table | Key fields | Notes |
 |---|---|---|
 | `instance_settings`, `org_settings` | instance: id (single row); org: id, org_id (unique); both: value (the serialised `rpmgr.v1.InstanceSettings` or `OrgSettings` message), version, updated_by, updated_at | Runtime settings edited in the UI; boot settings stay in the config file ([10](10-operations.md#configuration)). `default_transport` is the instance default of the data-session transport, `auto` until changed ([03](03-connections.md#transport-selection)). `base_domain` is the instance base domain of delegated labels: set by the Instance Admin, a verified or trusted domain of the system org ([15](15-dns.md#base-domain), [D165](14-open-decisions.md#engineering)). `cloudflare_ip_ranges` is written by a daily job in a configuration transaction, so gateway snapshots stay deterministic ([15](15-dns.md#proxied-http-routes)). One typed message per scope: a field that is not set has its default, updates name their fields in a field mask, and every change is a configuration transaction |
-| `instance` | id (single row), trust_domain, db_epoch, created_at | The installation's trust domain, which never changes, and its database epoch, a random UUIDv7 that is new at init and at every restore ([03](03-connections.md#revisions-and-ordering)) |
+| `instance` | id (single row), trust_domain, db_epoch, created_at, retired_at, retired_to | The installation's trust domain, which never changes, and its database epoch, a random UUIDv7 that is new at init and at every restore ([03](03-connections.md#revisions-and-ordering)). `retired_at` and `retired_to` are set by `rpmgr migrate-db` on the source once the copy has committed, and a controller **refuses to start on a database that has them** ([Copying a database](#copying-a-database)) |
 | `config_seq` | id (single row), seq | Incremented with a row lock inside every configuration transaction, so commit order equals revision order ([03](03-connections.md#revisions-and-ordering)) |
 | `config_revisions` | seq, db_epoch, org_id (null: an instance-wide change), created_at, actor, changed_resources; index (org_id, seq) | One row per configuration transaction. `db_epoch` is a random UUIDv7, new at init and on every restore. `org_id` is the org whose resources it changed, also when a controller job made the change; the org's event stream reads its revisions by it ([07](07-api.md#events-and-streaming)) |
 | `compiled_snapshots` | agent_id, db_epoch, seq, hash, size_bytes, payload, signature, key_id, created_at | The last 5 sent to each agent, as signed; for diffing and support |
 | `audit_log` | id, org_id (null: the instance chain), seq, prev_hash, hash, ts, actor_type (`user`, `agent`, `system`, `anonymous`), actor_id, credential_id (session or token ID), auth_method, ip, user_agent, request_id, action, target_type, target_id, result (`success`, `failure`, `denied`), diff (redacted), reason | A hash chain per org and one for the instance ([04](04-security.md#audit-log)); seq is unique within a chain. Text is stored as valid UTF-8 without NUL. Fields a client controls are truncated, never refused, so an over-long header cannot keep an event out of the log: user_agent at 512 bytes, request_id at 128 |
 | `audit_heads` | chain (org ID or `instance`), seq, hash | The last entry of each audit chain; every append locks and increments it first |
 | `audit_checkpoints` | org_id, seq, head_hash, ts, key_id, signature | One per chain and seq; `org_id` is NULL for the instance chain. `key_id` names the audit-checkpoint key that signed ([04](04-security.md#audit-log)). Written only by the audit package; what each external sink has shipped is in `audit_sink_cursors` (Phase 2) |
-| `instance_secrets` | name, value_enc, updated_at | Secrets of the instance settings, such as the mail relay's password, under the KEK with the name as their row; the settings themselves hold none. Also the keys that no other row holds: `page_token_key`, which authenticates the API's page tokens, and `page_preview_key`, which authenticates the previews of gateway pages, each 32 random bytes made once, by the statement that finds the row missing and inserts it, so that every replica reads the same key ([04](04-security.md#secrets-at-rest-and-in-logs)). Only the system scope reads or writes them |
+| `instance_secrets` | name, value_enc, updated_at | Secrets of the instance settings, such as the mail relay's password, under the KEK with the name as their row; the settings themselves hold none. Also the keys that no other row holds: `page_token_key`, which authenticates the API's page tokens, and `page_preview_key`, which authenticates the previews of gateway pages, made once by the statement that finds the row missing and inserts it, so that every replica reads the same key ([04](04-security.md#secrets-at-rest-and-in-logs)). Only the system scope reads or writes them |
 | `api_requests` | id, caller_id, method, request_id, request_hash, response_enc, created_at | The `request_id`s of `Create` calls within the deduplication window ([07](07-api.md#resource-design)), unique per caller and method. The first request's transactions insert the row, so the change and the row commit together; `response_enc` is its response under the KEK, null until it answered. Only the system scope reads or writes it |
-| `leases` | name, holder, fencing_token, expires_at (Unix milliseconds, so both dialects compare numbers) | Singleton jobs in HA, including the DNS job's `dns` lease ([10](10-operations.md#high-availability)). A takeover raises the fencing token; a job commits its work in a transaction that first checks the lease is still its own, so a replica that lost it commits nothing. **The database's clock decides every expiry**: a statement that takes, renews or checks a lease compares `expires_at` with the database's time and writes the new `expires_at` as the database's time plus the TTL, and no replica compares `expires_at` with its own clock. On PostgreSQL that time is `clock_timestamp()`, which moves during a transaction, not `now()`; on SQLite it is the process's clock, because the file lives on one host. The handle a job holds carries the lease's expiry as a deadline on the replica's own monotonic clock, counted from before the statement was sent, so it never outlasts the row and a job can refuse to start work the lease will not outlast, as the DNS job does before each batch ([15](15-dns.md#the-dns-job)). Clocks that differ by seconds therefore cannot give a lease to two replicas |
-| `controller_nodes` | node_id (`ctn_`), internal_address, version, started_at, last_seen_at, revlog_backlog, revlog_local_seq | HA: one row per replica that has run, where the others reach it over controller-to-controller mutual TLS ([10](10-operations.md#high-availability)). `node_id` is made at the replica's first start and kept in `<state_dir>/node-id` [R], so a restart is the same node; the node certificate's SPIFFE ID names it ([04](04-security.md#trust-domain-and-identities)). `internal_address` is the `host:port` of `listen.internal_address`, empty on a single controller. `version` is the release that runs. `last_seen_at` is the database's time at the replica's last heartbeat ([03](03-connections.md#timeouts-keepalive-and-backoff)); a replica is **live** while that is recent. `revlog_backlog` is the number of entries in its local revocation log that the sink does not hold yet, and `revlog_local_seq` the number of its last local entry, both written by the heartbeat: a restore reads them to tell which logs it must have ([04](04-security.md#revocation-log)). A single controller keeps its row too, so that moving to replicas finds it. A row with no backlog is removed after 24 h without a heartbeat; **a row with a backlog stays** until a restore has read that replica's log |
+| `leases` | name, holder, fencing_token, expires_at (Unix milliseconds, so both dialects compare numbers) | Singleton jobs in HA, including the DNS job's `dns` lease ([10](10-operations.md#high-availability)). A takeover raises the fencing token; a job commits its work in a transaction that first **locks the lease row and checks it**, with `SELECT … FOR UPDATE` or a conditional `UPDATE … WHERE holder = … AND fencing_token = … AND expires_at > <the database's time> RETURNING`, so that the row cannot change before the commit and a replica that lost the lease commits nothing; a plain read under `READ COMMITTED` would let another replica take the lease between the check and the commit. **The database's clock decides every expiry**: a statement that takes, renews or checks a lease compares `expires_at` with the database's time and writes the new `expires_at` as the database's time plus the TTL, and no replica compares `expires_at` with its own clock. On PostgreSQL that time is `clock_timestamp()`, which moves during a transaction, not `now()`; on SQLite it is the process's clock, because the file lives on one host. The handle a job holds carries the lease's expiry as a deadline on the replica's own monotonic clock, counted from before the statement was sent, so it never outlasts the row and a job can refuse to start work the lease will not outlast, as the DNS job does before each batch ([15](15-dns.md#the-dns-job)). Clocks that differ by seconds therefore cannot give a lease to two replicas |
+| `controller_nodes` | node_id (`ctn_`), internal_address, version, started_at, boot_nonce, last_seen_at, stopped_clean, revlog_backlog, revlog_local_seq | HA: one row per replica that has run, where the others reach it over controller-to-controller mutual TLS ([10](10-operations.md#high-availability)). `node_id` is made at the replica's first start and kept in `<state_dir>/node-id` [R], so a restart is the same node; the node certificate's SPIFFE ID names it ([04](04-security.md#trust-domain-and-identities)). `internal_address` is the `host:port` of `listen.internal_address`, empty on a single controller. `version` is the release that runs. `last_seen_at` is the database's time at the replica's last heartbeat ([03](03-connections.md#timeouts-keepalive-and-backoff)); a replica is **live** while that is recent. `revlog_backlog` is the number of entries in its local revocation log that the sink does not hold yet, and `revlog_local_seq` the number of its last local entry, both written by the heartbeat: a restore reads them to tell which logs it must have ([04](04-security.md#revocation-log)). `boot_nonce` is random and written by every start: a replica that finds a **live** row with another nonce refuses to start, which catches a cloned machine or a copied state directory that carries the same `node_id` [R]. `stopped_clean` is false from the start and set by the **final heartbeat of a clean stop**, which comes after the replica has shipped its backlog, so the backlog columns, which are up to one heartbeat old, are not trusted for a node that did not stop clean. A single controller keeps its row too, so that moving to replicas finds it. A row with no backlog that stopped clean is removed after the period in [03](03-connections.md#timeouts-keepalive-and-backoff); **a row with a backlog, or that did not stop clean, stays** until a restore has read that replica's log or a `migrate-db` accepted its loss (`--accept-lost-backlog` clears the target's copy of the row and records the loss in its audit entry; an archive older than the migration still holds the row, so a restore of one still treats that node as possibly having a backlog) |
 | `secrets_meta` | table_name, row_id, column_name, kek_version (16 hexadecimal digits for a local KEK, `<mount>/<key>@v<n>` for a Transit key), created_at | Bookkeeping for KEK rotation: one row per sealed column of a row, written in the transaction that writes the sealed value; `rpmgr kek status` reads it. The stored responses of `request_id`s, kept for a day, are not recorded; `rpmgr kek rotate` re-wraps every sealed column all the same and rewrites these rows ([04](04-security.md#secrets-at-rest-and-in-logs)) |
 
 ## Desired vs observed state
@@ -277,7 +277,7 @@ flowchart LR
 
 | Table | Key fields |
 |---|---|
-| `agent_sessions` | agent_id, session_epoch, controller_node, remote_addr, agent_version, capabilities, connected_at, last_seen_at, disconnected_at, last_goodbye (one row per agent; each new session raises `session_epoch` in the statement that records it, so two replicas never hand out the same epoch; the end of a session that no newer one replaced sets `disconnected_at`, and how `last_seen_at` is kept is in [03](03-connections.md#timeouts-keepalive-and-backoff); `last_goodbye` is the reason of the `Goodbye` that last refused the agent a session, `upgrade_required` below `min_agent_version`, recorded with the version it came with, and empty again once a session is accepted) |
+| `agent_sessions` | agent_id, session_epoch, controller_node, remote_addr, agent_version, capabilities, roots_digest, connected_at, last_seen_at, disconnected_at, last_goodbye (one row per agent; each new session raises `session_epoch` in the statement that records it, so two replicas never hand out the same epoch; the end of a session that no newer one replaced sets `disconnected_at`, and how `last_seen_at` is kept is in [03](03-connections.md#timeouts-keepalive-and-backoff); `last_goodbye` is the reason of the `Goodbye` that last refused the agent a session, `upgrade_required` below `min_agent_version`, recorded with the version it came with, and empty again once a session is accepted) |
 | `agent_state` | agent_id, boot_id, clock_offset_ms; the snapshot applied last (applied_db_epoch, applied_seq, applied_hash, last_ack_at), sent last (pushed_db_epoch, pushed_seq, pushed_hash, pushed_at) and rejected last (rejected_db_epoch, rejected_seq, rejected_hash, last_rejection: the structured errors). The apply status is derived from it ([03](03-connections.md#configuration-reconciliation)) |
 | `resource_status` | agent_id, resource_id, reason, detail, since: one row per resource an agent reports not ready, so a resource without one is ready or not reported yet; a connector's rows also name the targets its health checks find unhealthy. The limits are in [03](03-connections.md#configuration-reconciliation) |
 | `data_sessions` | gateway_id, connector_id, transport (`quic`, `h2`, `wss`), rtt_ms (0 where the transport does not measure it), ready_routes (the routes the connector reports ready on its sessions of this transport; unset where the gateway does not report them, an earlier release), established_at (first reported), reported_at: one row per gateway, connector and transport, replaced by each report of the gateway ([03](03-connections.md#configuration-reconciliation)) |
@@ -479,44 +479,57 @@ method, list filter or search returns or modifies the other org's data
 [D177](14-open-decisions.md#engineering), [ADR-0024](adr/0024-controller-ha-and-key-custody.md).
 
 - **Versions.** The controller supports every PostgreSQL major version the project still supports
-  when the release ships: 15 to 19 on 2026-11-24, since 14 reached its end of life on
-  12 November 2026 and 19 was released on 19 November 2026 [F postgresql.org/support/versioning,
-  retrieved 2026-11-24] ([D174](14-open-decisions.md#engineering)). At start it reads
-  `server_version_num` and **refuses a server older than its release's floor**, naming both
-  versions; the floor is one constant, 15 for the first release that offers PostgreSQL. CI runs the
-  whole database suite on the oldest and the newest supported major
-  ([12](12-testing-and-quality.md#database-tests)). A server newer than the newest tested major
-  starts with a warning. The floor rises in the release that first ships after the project ends
-  support, and that release's notes say so.
+  when the release ships: 15 to 19 on 2026-11-24, since 14 reached its end of life on 12 November
+  2026 and 19 was released on 19 November 2026 [F postgresql.org/support/versioning, retrieved
+  2026-11-24] ([D174](14-open-decisions.md#engineering)). At start it reads `server_version_num` and
+  **refuses a server older than its release's floor**, naming both versions; the floor is one
+  constant, 15 for the first release that offers PostgreSQL. CI runs the whole database suite on the
+  oldest and the newest supported major ([12](12-testing-and-quality.md#database-tests)). A server
+  newer than the newest tested major starts with a logged warning. The floor rises in the release
+  that first ships after the project ends support, and that release's notes say so.
 - **Boot file.** The `database` section takes `driver: postgres`, `dsn`, and at most one of
   `password_file` and `password_credential` ([10](10-operations.md#boot-files)). The driver is pgx;
   the DSN is a `postgres://` URL or a key-value string.
 - **The password** comes from `database.password_file`, a regular file of mode 0600 or 0400 that
-  holds one non-empty line, or from the systemd credential `database.password_credential` (read
-  from `$CREDENTIALS_DIRECTORY`, with the rules of the KEK's credential,
-  [04](04-security.md#secrets-at-rest-and-in-logs)).
-  A server that authenticates by a certificate or a socket peer needs neither. **A password in the
-  DSN, in `PGPASSWORD` or in a `.pgpass` file is refused**, so that no password appears in a boot
-  file, an environment or a unit file. No error and no log line carries the password or a DSN with
-  one. The file is at most 4 KiB ([10](10-operations.md#boot-files)).
-- **TLS.** A server that is not on a loopback address or a Unix socket is reached only with
-  `sslmode=verify-full`, against `sslrootcert` or, without it, the system roots. Every host of a
-  DSN with several hosts, and every fallback of it, is checked, and any other `sslmode` stops the
-  controller at start with the host named and the reason. The connection negotiates TLS 1.3 or
-  1.2, as every third-party server does ([04](04-security.md#audit-log)). A client certificate
-  (`sslcert`, `sslkey`) is allowed.
+  holds one non-empty line, or from the systemd credential `database.password_credential` (read from
+  `$CREDENTIALS_DIRECTORY`, with the rules of the KEK's credential,
+  [04](04-security.md#secrets-at-rest-and-in-logs)). A server that authenticates by a certificate or
+  a socket peer needs neither. **A password in the DSN, in `PGPASSWORD`, in a `.pgpass` file (also
+  one named by `passfile=` or `PGPASSFILE`) or in a service file is refused**, checked on the parsed
+  configuration, so that no password appears in a boot file, an environment or a unit file. No error
+  and no log line carries the password or a DSN with one. Its size limit is in
+  [03](03-connections.md#timeouts-keepalive-and-backoff).
+- **TLS.** **rpmgr builds the TLS configuration itself** for every host that is not local, and does
+  not trust the `sslmode` it reads: duplicate keys in the DSN, `ssl=true`, service files,
+  multi-host URLs and `PGSSLMODE` could each downgrade it. For each such host, and each fallback
+  of a multi-host DSN, the configuration verifies the server certificate and sets the
+  `ServerName` to that host; the roots are `sslrootcert` or, without it, the system pool, **never
+  `~/.postgresql/root.crt`**. A DSN whose parsed configuration asks for less than `verify-full`
+  for a non-local host stops the controller at start, with the host and the reason. Environment
+  and service files are applied before the checks (`PGSSLMODE`, `PGHOST`, `PGSSLROOTCERT`,
+  `PGSERVICE`), and the checks run on pgx's parsed configuration, never on the DSN text. **Local
+  means** a literal loopback IP address or a Unix socket; the name `localhost` is local only when
+  every address it resolves to is loopback, and another name is remote even when it resolves to
+  loopback. The connection negotiates TLS 1.3 or 1.2, as every third-party server does
+  ([04](04-security.md#audit-log)). A client certificate (`sslcert`, `sslkey`) is allowed;
+  **`sslpassword` and `PGSSLPASSWORD` are refused**, as a password in
+  the DSN is.
 - **Advisory locks.** Both are session locks in the two-key form `pg_advisory_lock(namespace, key)`,
   so they cannot collide with another application's single-key lock in the same database. The
-  namespace is `0x72706d67` (1 919 249 767, "rpmg"):
+  namespace is `0x72706d67` (1 919 970 663, "rpmg"):
 
 | Lock | Key | Taken by | Mode |
 |---|---|---|---|
 | Migrations | 1 | `rpmgr migrate` and the migrations a single controller runs at start | Exclusive and blocking: a second migrator waits, so two migrators run one after the other and the second finds nothing to do |
-| Controller | 2 | A running controller, on a connection of its own outside the pool; `rpmgr restore`, `rpmgr migrate-db` (on its target) and `rpmgr kek rotate`, which need the database to themselves; `rpmgr migrate`, which only needs no single controller | A single controller and the commands that need the database to themselves take it exclusively and **do not wait**: a second controller, or such a command beside a controller, is refused. A replica (`listen.internal` set, [10](10-operations.md#high-availability)) takes it shared, so replicas coexist, and so does `rpmgr migrate`, which is how a roll migrates under running replicas and is still refused beside a single controller |
+| Controller | 2 | A running controller, on a connection of its own outside the pool; `rpmgr restore`, `rpmgr migrate-db` (on its target) and `rpmgr kek rotate` when it changes the KEK (a local one, or with `--previous-*`), which need the database to themselves; `rpmgr migrate` and the Transit rewrap of `rpmgr kek rotate`, which need only that no single controller runs | A single controller and the commands that need the database to themselves take it exclusively and **do not wait**: a second controller, or such a command beside a controller, is refused. A replica (`listen.internal` set, [10](10-operations.md#high-availability)) takes it shared, so replicas coexist, and so do the two commands that take it shared, which is how a roll migrates under running replicas; beside a single controller they are refused. **The lock is per database**: a restore into a new, empty database is not stopped by replicas that still run on the old one ([10](10-operations.md#backup-and-restore)) |
 
-  The connection that holds the controller lock is checked on the interval in the table of
-  [03](03-connections.md#timeouts-keepalive-and-backoff); a connection that is lost has lost the
-  lock, and the controller stops. Administration commands that run beside a controller, such as
+  The lock's connection is made with `idle_session_timeout` set to 0 and TCP keepalives, so
+  neither the server nor a middlebox ends it for being idle. It is checked on the interval in the
+  table of [03](03-connections.md#timeouts-keepalive-and-backoff); **a detected loss stops the
+  controller at once**. The server releases the lock only when it notices that the connection has
+  gone, so a controller that has just taken the lock **waits the stop bound of that table before
+  its first write**, which keeps the controller that lost it from writing at the same time as the
+  one that took it over. Administration commands that run beside a controller, such as
   `rpmgr user reset-password`, open the database without the lock, as on SQLite.
 - **Poolers.** The controller runs on direct connections or behind a session pool. PgBouncer in
   transaction mode is unsupported: `LISTEN` and session locks do not work there
@@ -572,6 +585,10 @@ and so do `rpmgr backup` and `rpmgr restore` for PostgreSQL
   source's hash is taken while it is read, so the source is read once. A difference rolls the
   target back and names the table. The report lists the tables, counts and hashes, and the hash of
   the hashes; it holds no value.
-- **The source is never changed.** The copier opens it read-only. After `migrate-db` the source
-  keeps its `db_epoch` and is a copy of the target's: the runbook has the operator retire it
+- **The source is read-only for the copy, and retired after it.** The copier opens the source
+  read-only. `migrate-db` has the same `db_epoch` and revisions on both sides, so a controller
+  started on each would hand agents two histories; after the target's transaction has committed,
+  `migrate-db` therefore sets `instance.retired_at` and `retired_to` on the source, and **a
+  controller refuses to start on a retired database**. `--no-retire` leaves the source usable, for
+  a test copy, and says so. Backup and restore never retire anything
   ([10](10-operations.md#moving-between-sqlite-and-postgresql)).
