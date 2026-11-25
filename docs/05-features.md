@@ -160,9 +160,11 @@
 | Revocation log with a filesystem sink | P1 |
 | Revocation-log sink on S3-compatible object storage ([D58](14-open-decisions.md#project-and-process)) | P2 |
 | Internal CA online, with automatic rotation of the intermediate and the controller's keys | P1 |
-| Offline root CA (`rpmgr ca offline-root`), planned root rotation by cross-signing, `rpmgr ca new-root --compromised` ([D58](14-open-decisions.md#project-and-process)) | P2 |
-| PostgreSQL and multiple controller replicas (HA) | P2 |
-| `rpmgr migrate-db` (SQLite → PostgreSQL) | P2 |
+| Offline root CA (`rpmgr ca offline-root`), planned root rotation by cross-signing, `rpmgr ca new-root --compromised` ([D58](14-open-decisions.md#project-and-process), [04](04-security.md#offline-root-ca)) | P2 |
+| PostgreSQL for a single controller and for several replicas (HA); every major the project supports ([D174](14-open-decisions.md#engineering)) | P2 |
+| `rpmgr migrate-db`, between SQLite and PostgreSQL in either direction ([D175](14-open-decisions.md#engineering)) | P2 |
+| The KEK in HashiCorp Vault or OpenBao Transit; envelope format v2 ([04](04-security.md#secrets-at-rest-and-in-logs)) | P2 |
+| The controller's boot settings, read-only, in the web UI ([09](09-web-ui.md#ux-principles)) | P2 |
 | Helm chart | P3 |
 | Socket hand-off: gateways, all-in-ones and Linux connectors restart, for an upgrade too, without refusing a visitor connection ([D127](14-open-decisions.md#project-and-process), [D147](14-open-decisions.md#engineering), [03](03-connections.md#restarts-with-socket-hand-off-phase-2), [S10](spikes/S10.md)) | P2 |
 

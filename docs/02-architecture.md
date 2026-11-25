@@ -296,8 +296,11 @@ flowchart LR
 ```
 
 Two or more controllers share PostgreSQL. Any replica can serve any request; singleton jobs run
-under leases; agents reconnect to any replica. SQLite is single-node only
-([10](10-operations.md#high-availability)).
+under leases whose expiry the database's clock decides; agents reconnect to any replica. A replica
+is a controller that sets `listen.internal`, reaches the others there over mutual TLS and ships
+the revocation log to a shared sink. SQLite is single-node only, and PostgreSQL also serves one
+controller ([10](10-operations.md#high-availability),
+[06](06-data-model.md#connecting-to-postgresql-phase-2)).
 
 ## Trust boundaries
 
