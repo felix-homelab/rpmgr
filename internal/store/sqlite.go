@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -62,7 +63,21 @@ func (db *DB) ReadClient() *ent.Client { return db.readClient }
 // HoldLock takes the controller lock of the SQLite database at path without opening it, for an
 // administration command that replaces the database, such as a restore: no controller can start
 // on it while the lock is held. It returns ErrLocked while a controller runs.
-func HoldLock(path string) (func() error, error) { return lockFile(path + ".lock") }
+func HoldLock(path string) (func() error, error) { return lockFile(ResolvePath(path) + ".lock") }
+
+// ResolvePath follows the symbolic links of a SQLite database's path, also when the file does not
+// exist yet (then those of its directory), so that every command derives the same lock file and
+// write-ahead log names for one database, whatever name reaches it. A path that cannot be resolved
+// is returned as it is.
+func ResolvePath(path string) string {
+	if r, err := filepath.EvalSymlinks(path); err == nil {
+		return r
+	}
+	if r, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+		return filepath.Join(r, filepath.Base(path))
+	}
+	return path
+}
 
 // ErrLocked is returned when another controller holds the database.
 var ErrLocked = errors.New("store: another controller is using this database")
@@ -79,6 +94,7 @@ func OpenSQLite(ctx context.Context, path string, o SQLiteOptions) (*DB, error) 
 	if path == "" || strings.ContainsAny(path, "?#%") {
 		return nil, fmt.Errorf("store: SQLite path %q: must not be empty or contain '?', '#' or '%%'", path)
 	}
+	path = ResolvePath(path)
 	db := &DB{Dialect: SQLite, Path: path, unlock: func() error { return nil }}
 	if o.Lock {
 		unlock, err := lockFile(path + ".lock")

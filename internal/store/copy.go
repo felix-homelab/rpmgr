@@ -36,6 +36,9 @@ const copyBatch = 100
 
 // CopyOptions are the settings of CopyDatabase.
 type CopyOptions struct {
+	// Source, if set, is a transaction the caller holds on src, which CopyDatabase reads instead of
+	// opening a read snapshot of its own (see BeginSource). The caller ends it.
+	Source *SourceTx
 	// Progress, if set, is called after each table with its name and row count.
 	Progress func(table string, rows int64)
 }
@@ -62,11 +65,17 @@ type CopyResult struct {
 // precision of PostgreSQL, and JSON documents by value, as PostgreSQL stores them normalised.
 // A controller must not run on src while it is copied.
 func CopyDatabase(ctx context.Context, src, dst *DB, o CopyOptions) (CopyResult, error) {
-	srcTx, err := beginRead(ctx, src)
-	if err != nil {
-		return CopyResult{}, err
+	var srcTx querier
+	if o.Source != nil {
+		srcTx = o.Source
+	} else {
+		tx, err := beginRead(ctx, src)
+		if err != nil {
+			return CopyResult{}, err
+		}
+		defer func() { _ = tx.Rollback() }() // read-only
+		srcTx = tx
 	}
-	defer func() { _ = srcTx.Rollback() }() // read-only
 	dstTx, err := dst.Writer.BeginTx(ctx, nil)
 	if err != nil {
 		return CopyResult{}, fmt.Errorf("store: copy: %w", err)
@@ -217,6 +226,85 @@ type querier interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// SourceTx is a read-write transaction on a database that is copied away and then changed, as
+// `rpmgr migrate-db` retires its source. On SQLite it is BEGIN IMMEDIATE on the single writer
+// connection, so the file is read as of one moment and no other process, one that does not take
+// the controller lock included, can write to it until the transaction ends; on PostgreSQL it is a
+// REPEATABLE READ transaction, and the controller lock excludes every controller.
+type SourceTx struct {
+	q    querier
+	done func(commit bool) error
+}
+
+// BeginSource starts the transaction and fails if the database cannot be written, so that a
+// read-only file is refused before anything is copied.
+func BeginSource(ctx context.Context, db *DB) (*SourceTx, error) {
+	t := &SourceTx{}
+	if db.Dialect == Postgres {
+		tx, err := db.Writer.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+		if err != nil {
+			return nil, fmt.Errorf("store: begin source: %w", err)
+		}
+		t.q = tx
+		t.done = func(commit bool) error {
+			if commit {
+				return tx.Commit()
+			}
+			return tx.Rollback()
+		}
+	} else {
+		conn, err := db.Writer.Conn(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("store: begin source: %w", err)
+		}
+		if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("store: begin source: the database cannot be written: %w", err)
+		}
+		t.q = conn
+		t.done = func(commit bool) error {
+			stmt := "ROLLBACK"
+			if commit {
+				stmt = "COMMIT"
+			}
+			_, err := conn.ExecContext(context.WithoutCancel(ctx), stmt)
+			return errors.Join(err, conn.Close())
+		}
+	}
+	if _, err := t.q.ExecContext(ctx, "UPDATE instance SET retired_at = retired_at"); err != nil {
+		_ = t.done(false)
+		return nil, fmt.Errorf("store: begin source: the database cannot be written: %w", err)
+	}
+	return t, nil
+}
+
+// QueryContext, QueryRowContext and ExecContext run in the transaction.
+func (t *SourceTx) QueryContext(ctx context.Context, q string, a ...any) (*sql.Rows, error) {
+	return t.q.QueryContext(ctx, q, a...)
+}
+
+// QueryRowContext runs in the transaction.
+func (t *SourceTx) QueryRowContext(ctx context.Context, q string, a ...any) *sql.Row {
+	return t.q.QueryRowContext(ctx, q, a...)
+}
+
+// ExecContext runs in the transaction.
+func (t *SourceTx) ExecContext(ctx context.Context, q string, a ...any) (sql.Result, error) {
+	return t.q.ExecContext(ctx, q, a...)
+}
+
+// Commit ends the transaction with its changes.
+func (t *SourceTx) Commit() error { return t.end(true) }
+
+// Rollback ends the transaction without them; after Commit it does nothing.
+func (t *SourceTx) Rollback() error { return t.end(false) }
+
+func (t *SourceTx) end(commit bool) error {
+	d := t.done
+	t.done = func(bool) error { return nil }
+	return d(commit)
 }
 
 // beginRead starts a read transaction with one snapshot: PostgreSQL needs REPEATABLE READ for it,
