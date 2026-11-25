@@ -42,9 +42,16 @@ type DB struct {
 	Writer  *sql.DB
 	Reader  *sql.DB
 	unlock  func() error
+	// lockLost is closed when the PostgreSQL session that holds the controller lock ends.
+	lockLost <-chan struct{}
 
 	client, readClient *ent.Client
 }
+
+// LockLost is closed when a PostgreSQL controller lost the session that holds its controller
+// lock: another controller may then take it, so this one must stop. It is nil, never closed, on
+// SQLite and without the lock.
+func (db *DB) LockLost() <-chan struct{} { return db.lockLost }
 
 // Client returns the Ent client for writes, on the writer connection.
 func (db *DB) Client() *ent.Client { return db.client }
