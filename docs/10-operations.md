@@ -193,11 +193,14 @@ RestartSec=2s
   - **Revocation-log sink:** when the boot file sets `revocation_log.sink`, the unit adds
     `ReadWritePaths=-<sink>`, which keeps the sink writable under `ProtectSystem=strict`
     [F systemd v257 `man/systemd.exec.xml:1691-1693`] ([Backup and restore](#backup-and-restore)).
-    With `-`, a missing directory is ignored [F systemd v257 `man/systemd.exec.xml:1715-1718`], so
-    a sink outage, such as a share not mounted yet, never keeps the controller from starting; the
-    backlog alert covers the entries that wait. A share mounted after the start is writable as on
-    the host [F systemd v257 `man/systemd.exec.xml:1726-1731`]; [R] after creating a plain
-    directory, restart the controller. `rpmgr systemd-unit` refuses a sink with whitespace, a
+    With `-`, a missing directory is ignored [F systemd v257 `man/systemd.exec.xml:1715-1718`]. The
+    unit also adds `RequiresMountsFor=<sink>`, so that the start waits for the mounts of the sink's
+    path and a controller started before a late network mount does not first read the empty
+    mountpoint, which it would take for an empty sink ([04](04-security.md#revocation-log)); a mount
+    that fails keeps the controller from starting. A sink that goes away after the start raises the
+    backlog alert. A share mounted after the start is writable as on the host
+    [F systemd v257 `man/systemd.exec.xml:1726-1731`]; [R] after creating a plain directory,
+    restart the controller. `rpmgr systemd-unit` refuses a sink with whitespace, a
     control character, `%`, `\`, a quote, or a `.` or `..` part, which systemd would split,
     expand or read differently, and the root, which would leave nothing read-only.
   - [R] A boot file that gains or changes its sink needs its unit written again with
@@ -882,11 +885,25 @@ service that still runs the previous binary, with the command that restarts it.
   - **The filesystem sink** is the boot setting `revocation_log.sink`, a directory, which the unit
     of `rpmgr systemd-unit` makes writable ([Hardened systemd units](#hardened-systemd-units)).
     - **Publishing:** each entry is written to a temporary file, synced, then hard-linked to its
-      number; the link fails when the number exists, so a crash leaves no empty number.
+      key, the sequence number as 20 digits with leading zeros ([04](04-security.md#revocation-log));
+      the link fails when the key exists, so a crash leaves no empty number. A directory that an
+      earlier release wrote, with files named `1`, `2` and so on, is read as it is and never
+      renamed; new entries are written padded. An earlier release cannot read a padded name: after
+      the first padded write an old replica fails on every tick and an old `rpmgr restore` cannot
+      read the sink, so upgrade every replica promptly and do not downgrade afterwards. Writing
+      the first padded entry is not atomic against an old replica still shipping.
     - **Contents:** an entry holds the replica, its local entry and the sink's own hash chain.
-    - **Shipping:** every 10 s; a replica finds what it has shipped in the sink itself, by the
-      entries' hashes, so nothing is shipped twice, and the entries a restore appends to a restored
-      log are shipped although their numbers were used before.
+    - **Shipping:** every 10 s; the replica verifies the whole sink once, at start, and keeps the
+      verified prefix, so a tick lists only the keys from the tip on and reads only the tip when
+      nothing is new. It finds what it has shipped in the sink itself, by the entries' hashes, so
+      nothing is shipped twice, and the entries a restore appends to a restored log are shipped
+      although their numbers were used before. A tick confirms the tip of the verified prefix first,
+      and the whole sink is verified again every hour
+      ([03](03-connections.md#timeouts-keepalive-and-backoff)). A sink that lost its tip or all its
+      objects after it was verified, such as a share that is not mounted, is a break in the chain:
+      shipping stops and the alert fires. Remount the share and restart the controller, or point the
+      sink at a new directory ([04](04-security.md#revocation-log)). The alert also fires when no
+      round has succeeded for 5 min.
     - **State:** `GetInstanceSettings` reports it as `revocation_log`, and the metrics below
       ([Metrics](#metrics)).
     - [R] A boot setting, not a runtime setting as the settings table lists. The share has to be
@@ -1171,6 +1188,7 @@ gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection))
 | `rpmgr_controller_nodes{state}` | gauge | controller | 2 | Replicas by `live` and `stale` ([06](06-data-model.md#system)) |
 | `rpmgr_revocation_log_unshipped` | gauge | controller | 1 | Revocation log entries the sink does not hold yet |
 | `rpmgr_revocation_log_oldest_unshipped_timestamp_seconds` | gauge | controller | 1 | When the oldest unshipped entry was logged, 0 when none; the alert "revocation log not yet off-host" fires 5 min after it |
+| `rpmgr_revocation_log_last_success_timestamp_seconds` | gauge | controller | 1 | When a shipping round last succeeded, the controller's start before the first success; the same alert fires 5 min after it |
 | `rpmgr_audit_sink_backlog{sink}` | gauge | controller | 2 | Audit entries and checkpoints a sink has not acknowledged ([04](04-security.md#audit-log)) |
 | `rpmgr_audit_sink_oldest_unshipped_timestamp_seconds{sink}` | gauge | controller | 2 | When the oldest of them was appended, 0 when none |
 | `rpmgr_webhook_deliveries_total{result}` | counter | controller | 2 | Delivery attempts: `ok`, `failed`, `refused` (the egress guard), `given_up` |
@@ -1255,7 +1273,7 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 | Audit checkpoints behind | `rpmgr_audit_checkpoint_age_seconds` > 1 h |
 | Audit sink backlog (Phase 2) | A sink's oldest unshipped item has waited longer than the period in [03](03-connections.md#timeouts-keepalive-and-backoff) |
 | Webhook endpoint failing (Phase 2) | An endpoint had no successful delivery for 1 h while deliveries were due; it is disabled after the period in 03 ([D143](14-open-decisions.md#engineering)) |
-| Revocation log not yet off-host | A revocation-log sink is configured and the controller replica that evaluates the alerts has entries not yet shipped to it for > 5 min: `rpmgr_revocation_log_unshipped > 0` and `time() - rpmgr_revocation_log_oldest_unshipped_timestamp_seconds > 300` (without a sink, the UI shows a standing hardening warning instead) |
+| Revocation log not yet off-host | A revocation-log sink is configured and the controller replica that evaluates the alerts has entries not yet shipped to it for > 5 min: `rpmgr_revocation_log_unshipped > 0` and `time() - rpmgr_revocation_log_oldest_unshipped_timestamp_seconds > 300`, or no shipping round has succeeded for > 5 min: `time() - rpmgr_revocation_log_last_success_timestamp_seconds > 300` (without a sink, the UI shows a standing hardening warning instead) |
 | DNS conflict | A name in a managed zone is `conflict` or `ambiguous` for > 15 min (`dns_conflict`) |
 | DNS zone held | A managed zone is `held` (after import, restore or the deletion guard); `dns_zone_held` |
 | DNS sync failing | The provider status of a managed zone that is not disabled (`permission_denied`, `unreachable` or `rate_limited`) is not `ok` for > 30 min; `dns_sync_failing` |

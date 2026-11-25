@@ -90,6 +90,10 @@ linters:
       - path: internal/mail/mail\.go
         text: Reveal
         linters: [forbidigo]
+      # The keys of page tokens and previews are opened to authenticate with them.
+      - path: internal/settings/instancekey\.go
+        text: Reveal
+        linters: [forbidigo]
       # A user's authenticator seed is opened to check a code.
       - path: internal/accounts/mfa\.go
         text: Reveal

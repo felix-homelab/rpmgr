@@ -43,7 +43,7 @@ func Migrated(t testing.TB, d string) *store.DB {
 	case store.SQLite:
 		db, err = store.OpenSQLite(ctx, filepath.Join(t.TempDir(), "t.db"), store.SQLiteOptions{})
 	case store.Postgres:
-		db, err = store.OpenPostgres(ctx, NewPostgresDatabase(t))
+		db, err = OpenPostgres(t, NewPostgresDatabase(t), store.PostgresOptions{})
 	}
 	if err != nil {
 		t.Fatal(err)
@@ -90,6 +90,24 @@ func NewPostgresDatabase(t testing.TB) string {
 	}
 	u.Path = "/" + name
 	return u.String()
+}
+
+// OpenPostgres opens the PostgreSQL database at dsn as the controller does: a password in dsn is
+// moved into a password file, because store.OpenPostgres refuses one in the DSN.
+func OpenPostgres(t testing.TB, dsn string, o store.PostgresOptions) (*store.DB, error) {
+	t.Helper()
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pw, ok := u.User.Password(); ok {
+		u.User = url.User(u.User.Username())
+		o.PasswordFile = filepath.Join(t.TempDir(), "pgpassword")
+		if err := os.WriteFile(o.PasswordFile, []byte(pw+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return store.OpenPostgres(context.Background(), u.String(), o)
 }
 
 // SystemCtx returns a context with the system scope, recorded nowhere.
