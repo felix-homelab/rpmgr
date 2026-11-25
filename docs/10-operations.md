@@ -824,15 +824,21 @@ service that still runs the previous binary, with the command that restarts it.
       key, the sequence number as 20 digits with leading zeros ([04](04-security.md#revocation-log));
       the link fails when the key exists, so a crash leaves no empty number. A directory that an
       earlier release wrote, with files named `1`, `2` and so on, is read as it is and never
-      renamed; new entries are written padded.
+      renamed; new entries are written padded. An earlier release cannot read a padded name: after
+      the first padded write an old replica fails on every tick and an old `rpmgr restore` cannot
+      read the sink, so upgrade every replica promptly and do not downgrade afterwards. Writing
+      the first padded entry is not atomic against an old replica still shipping.
     - **Contents:** an entry holds the replica, its local entry and the sink's own hash chain.
     - **Shipping:** every 10 s; the replica verifies the whole sink once, at start, and keeps the
-      verified prefix, so a tick lists only the keys after it and reads none when nothing is new.
-      It finds what it has shipped in the sink itself, by the entries' hashes, so nothing is
-      shipped twice, and the entries a restore appends to a restored log are shipped although their
-      numbers were used before. A break in the chain stops shipping until the controller is
-      restarted, with the same backlog alert; to recover, point `revocation_log.sink` at an empty
-      directory and restart ([04](04-security.md#revocation-log)).
+      verified prefix, so a tick lists only the keys from the tip on and reads only the tip when
+      nothing is new. It finds what it has shipped in the sink itself, by the entries' hashes, so
+      nothing is shipped twice, and the entries a restore appends to a restored log are shipped
+      although their numbers were used before. A tick confirms the tip of the verified prefix first,
+      and the whole sink is verified again every hour
+      ([03](03-connections.md#timeouts-keepalive-and-backoff)). A sink that is empty is shipped to
+      again; any other loss is a break in the chain, which stops shipping, with the same backlog
+      alert, until the sink is pointed at a new directory ([04](04-security.md#revocation-log)). The
+      alert also fires when no round has succeeded for 5 min.
     - **State:** `GetInstanceSettings` reports it as `revocation_log`, and the metrics below
       ([Metrics](#metrics)).
     - [R] A boot setting, not a runtime setting as the settings table lists. The share has to be

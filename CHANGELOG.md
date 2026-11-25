@@ -10,6 +10,13 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ## [Unreleased]
 
+**Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
+
+- The revocation-log sink directory names new entries with 20 digits (`00000000000000000004`).
+  Files of earlier releases (`1`, `2`, ...) are read as they are and never renamed. An earlier
+  release cannot read a padded name, so upgrade every controller replica promptly and do not
+  downgrade after the first new entry.
+
 ## [0.4.1] - 2026-11-23
 
 **Upgrade notes** ([Upgrades](docs/guide/install/upgrades.md)):
