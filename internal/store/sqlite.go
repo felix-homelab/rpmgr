@@ -65,6 +65,10 @@ func (db *DB) ReadClient() *ent.Client { return db.readClient }
 // on it while the lock is held. It returns ErrLocked while a controller runs.
 func HoldLock(path string) (func() error, error) { return lockFile(ResolvePath(path) + ".lock") }
 
+// HoldLockNoFollow is HoldLock for a restore, which treats every link in the state directory as
+// hostile: it names the lock file after the path as given and never follows a link out of it.
+func HoldLockNoFollow(path string) (func() error, error) { return lockFile(path + ".lock") }
+
 // ResolvePath follows the symbolic links of a SQLite database's path, also when the file does not
 // exist yet (then those of its directory), so that every command derives the same lock file and
 // write-ahead log names for one database, whatever name reaches it. A path that cannot be resolved
