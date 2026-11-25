@@ -40,6 +40,7 @@ func TestEmptyAnswersAreNotErrOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, body := range []string{``, `{}`, `{"data":{}}`, `{"data":{"plaintext":""}}`, `{"data":{"plaintext":"!!"}}`,
+		`{"data":{"plaintext":"AAAA"}}`, // 3 bytes, not a data key
 		`{"wrap_info":{"token":"x","ttl":60}}`} {
 		answer(f, "decrypt", body)
 		got, err := c.Unwrap(ctxA, w, aadA)

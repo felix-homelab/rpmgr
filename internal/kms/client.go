@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -198,13 +199,10 @@ func loadCA(path string) (*x509.CertPool, error) {
 // readFile reads a regular file of at most maxFile bytes; a credential file must not be readable
 // by group or others.
 func readFile(path, what string, private bool) ([]byte, error) {
-	// A FIFO or a device would block the open; a symbolic link to a file is followed.
-	if pre, err := os.Stat(path); err != nil {
-		return nil, fmt.Errorf("kms: %s: %w", what, err)
-	} else if !pre.Mode().IsRegular() {
-		return nil, fmt.Errorf("kms: %s %s: not a regular file", what, path)
-	}
-	f, err := os.Open(path) //nolint:gosec // G304: the path is the operator's boot configuration
+	// O_NONBLOCK, so that a FIFO put in place of the file cannot block the open; the check that it
+	// is a regular file is made on the open file, which no one can swap any more. A symbolic link to a
+	// file is followed.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0) //nolint:gosec // G304: the path is the operator's boot configuration
 	if err != nil {
 		return nil, fmt.Errorf("kms: %s: %w", what, err)
 	}

@@ -20,6 +20,9 @@ import (
 // docs/04-security.md).
 const contextLabel = "rpmgr-envelope-v2/transit"
 
+// dataKeyLen is the length of a data key, the plaintext that Transit wraps.
+const dataKeyLen = 32
+
 // keyType is the only Transit key type rpmgr uses.
 const keyType = "aes256-gcm96"
 
@@ -77,9 +80,9 @@ func (c *Client) Unwrap(ctx context.Context, wrapped, aad []byte) ([]byte, error
 		return nil, mapOpenError(err)
 	}
 	key, err := base64.StdEncoding.DecodeString(out.Data.Plaintext)
-	if err != nil || len(key) == 0 {
-		// A 2xx answer without a key, as with wrap_info or an empty object, is not a value that does
-		// not open: Transit did not answer the question.
+	if err != nil || len(key) != dataKeyLen {
+		// A 2xx answer without a key, with a key of the wrong length, or as with wrap_info or an empty
+		// object, is not a value that does not open: Transit did not answer the question.
 		return nil, fmt.Errorf("%w: the answer to decrypt holds no usable plaintext", ErrUnavailable)
 	}
 	return key, nil
