@@ -217,8 +217,27 @@ func keyContext(id string) secret.Context {
 	return secret.Context{Table: "certificates", Column: "key_enc", RowID: id}
 }
 
-// Upload stores an uploaded certificate of org, checked with Parse, its key sealed with s.
+// Upload stores an uploaded certificate of org, checked with Parse, its key sealed with s inside
+// tx: for tests and seeds. A server seals first with SealUpload and writes with Sealed.Save.
 func Upload(ctx context.Context, tx *ent.Tx, s *secret.Sealer, org string, chainPEM, keyPEM []byte, now time.Time) (*ent.Certificate, error) {
+	u, err := SealUpload(ctx, s, chainPEM, keyPEM, now)
+	if err != nil {
+		return nil, err
+	}
+	return u.Save(ctx, tx, org)
+}
+
+// Sealed is an uploaded certificate that was checked and whose key was sealed, ready to be written.
+type Sealed struct {
+	id     string
+	p      *Parsed
+	sum    [sha256.Size]byte
+	sealed []byte
+}
+
+// SealUpload checks an uploaded certificate with Parse and seals its key with s. It needs no
+// transaction, so a key service that is slow does not hold one.
+func SealUpload(ctx context.Context, s *secret.Sealer, chainPEM, keyPEM []byte, now time.Time) (*Sealed, error) {
 	p, err := Parse(chainPEM, keyPEM, now)
 	if err != nil {
 		return nil, err
@@ -227,26 +246,33 @@ func Upload(ctx context.Context, tx *ent.Tx, s *secret.Sealer, org string, chain
 	if err != nil {
 		return nil, err
 	}
-	sum := sha256.Sum256(item)
+	u := &Sealed{id: ids.New("crt"), p: p, sum: sha256.Sum256(item)}
 	clear(item)
 	der, err := x509.MarshalPKCS8PrivateKey(p.Key)
 	if err != nil {
 		return nil, err
 	}
-	id := ids.New("crt")
-	sealed, err := store.Seal(ctx, tx, s, keyContext(id), secret.FromBytes(der))
+	u.sealed, err = s.Seal(ctx, keyContext(u.id), secret.FromBytes(der))
 	clear(der)
 	if err != nil {
 		return nil, err
 	}
+	return u, nil
+}
+
+// Save writes the certificate of org in tx and records its sealed key.
+func (u *Sealed) Save(ctx context.Context, tx *ent.Tx, org string) (*ent.Certificate, error) {
+	if err := store.RecordSealed(ctx, tx, keyContext(u.id), u.sealed); err != nil {
+		return nil, err
+	}
 	var chain []byte
-	for _, c := range p.Chain {
+	for _, c := range u.p.Chain {
 		chain = append(chain, c.Raw...)
 	}
-	leaf := p.Chain[0]
-	return tx.Certificate.Create().SetID(id).SetOrgID(org).SetSource(certificate.SourceUploaded).SetSans(p.SANs).
-		SetNotBefore(leaf.NotBefore).SetNotAfter(leaf.NotAfter).SetChain(chain).SetKeyEnc(sealed).
-		SetContentSha256(sum[:]).SetIssuer(leaf.Issuer.String()).Save(ctx)
+	leaf := u.p.Chain[0]
+	return tx.Certificate.Create().SetID(u.id).SetOrgID(org).SetSource(certificate.SourceUploaded).SetSans(u.p.SANs).
+		SetNotBefore(leaf.NotBefore).SetNotAfter(leaf.NotAfter).SetChain(chain).SetKeyEnc(u.sealed).
+		SetContentSha256(u.sum[:]).SetIssuer(leaf.Issuer.String()).Save(ctx)
 }
 
 // Delete deletes a stored certificate with the record of its sealed key.

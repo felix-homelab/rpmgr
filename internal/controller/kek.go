@@ -146,3 +146,9 @@ func (h *kmsHealth) Ready(ctx context.Context) error {
 	}
 	return nil
 }
+
+// keyServiceDown reports an error of the KEK's key service being unreachable, refusing the credential
+// or not accepting the key version: a state the operator changes, not a fault of the value.
+func keyServiceDown(err error) bool {
+	return errors.Is(err, kms.ErrUnavailable) || errors.Is(err, kms.ErrPermissionDenied) || errors.Is(err, kms.ErrKeyVersion)
+}

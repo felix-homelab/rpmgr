@@ -1387,6 +1387,14 @@ follow.
   enforcement or issuance from the keys the controller already holds; it stops what has to open a
   value that is not loaded, such as a DNS-provider token or a new key. `/readyz` reports it, and
   an alert fires ([10](10-operations.md#suggested-alerts)). [D181](14-open-decisions.md#engineering)
+- **Seals and opens do not hold a write transaction.** A seal or an open can take as long as
+  Transit does. A request that stores a secret seals it before its write transaction and writes
+  inside it, with a version check where a concurrent update matters, so that a Transit that does not
+  answer cannot hold the database's single writer (on SQLite) or a connection. CA rotation is planned,
+  with its keys opened and sealed, before the transaction that applies it, which fails with
+  `ErrRotated` if the active keys changed meanwhile. A webhook delivery that cannot be prepared
+  because Transit is down is not recorded as an attempt: it is not a failure of the endpoint, which
+  is not counted towards being disabled, and is tried again at the next pass.
 - **Rotation.** The operator rotates the key in Transit. The key keeps its identifier and changes
   its version, so the envelope's identifier cannot tell a value to re-wrap: the Transit wrapper is a
   `Rewrapper` that the sealer asks for a value with the current identifier, and it skips the value

@@ -464,23 +464,26 @@ func (w *Webhooks) RotateWebhookSecret(ctx context.Context, req *connect.Request
 	if err != nil {
 		return nil, err
 	}
+	// The old secret is opened and sealed again before the transaction, which a key service may
+	// hold up; the update below fails if the endpoint changed meanwhile.
+	cur, err := w.DB.ReadClient().Webhook.Get(ctx, id)
+	if err != nil {
+		return nil, storeError(err)
+	}
+	if webhook.Format(cur.Format).Chat() {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: a chat endpoint has no signing secret to rotate"))
+	}
+	old, err := w.Sealer.Open(ctx, w.secretContext(id, "secret_enc"), cur.SecretEnc)
+	if err != nil {
+		return nil, w.unsealFailed(ctx, id, err)
+	}
+	prev, err := w.Sealer.Seal(ctx, w.secretContext(id, "previous_secret_enc"), old)
+	if err != nil {
+		return nil, err
+	}
 	var row *ent.Webhook
 	err = store.WriteTx(ctx, w.DB, func(tx *ent.Tx) error {
-		cur, err := tx.Webhook.Get(ctx, id)
-		if err != nil {
-			return err
-		}
-		if webhook.Format(cur.Format).Chat() {
-			return connect.NewError(connect.CodeFailedPrecondition, errors.New("apisvc: a chat endpoint has no signing secret to rotate"))
-		}
-		old, err := w.Sealer.Open(ctx, w.secretContext(id, "secret_enc"), cur.SecretEnc)
-		if err != nil {
-			return w.unsealFailed(ctx, id, err)
-		}
-		prev, err := w.Sealer.Seal(ctx, w.secretContext(id, "previous_secret_enc"), old)
-		if err != nil {
-			return err
-		}
+		var err error
 		row, err = tx.Webhook.UpdateOneID(id).Where(ewebhook.Version(cur.Version)).SetSecretEnc(sealed).SetPreviousSecretEnc(prev).
 			SetPreviousUntil(w.now().UTC().Add(webhook.PreviousSigns)).AddVersion(1).Save(ctx)
 		return err

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -72,6 +73,9 @@ type attempt struct {
 	// res is what a Discord post or edit answered (D170); key is the alert's, "" for another event.
 	res webhook.Result
 	key string
+	// skipped is an attempt that could not be prepared because the KEK's key service is down: it is
+	// neither sent nor recorded, so it is not a failure of the endpoint and is tried again.
+	skipped bool
 }
 
 func deliverWebhooks(ctx context.Context, o WebhookOptions, l lease.Lease) error {
@@ -105,6 +109,13 @@ func deliverWebhooks(ctx context.Context, o WebhookOptions, l lease.Lease) error
 	var wg sync.WaitGroup
 	for _, a := range work {
 		d, err := delivery(ctx, c, o, a, now, private, own)
+		if keyServiceDown(err) {
+			a.skipped = true
+			if o.Logger != nil {
+				o.Logger.WarnContext(ctx, "a webhook delivery waits for the key service", "webhook", a.hook.ID, "event", a.event.ID, "err", err)
+			}
+			continue
+		}
 		if err != nil {
 			a.err, a.sent = err, now
 			if o.Logger != nil && !errors.Is(err, errDropped) {
@@ -119,6 +130,10 @@ func deliverWebhooks(ctx context.Context, o WebhookOptions, l lease.Lease) error
 		})
 	}
 	wg.Wait()
+	work = slices.DeleteFunc(work, func(a *attempt) bool { return a.skipped })
+	if len(work) == 0 {
+		return nil
+	}
 	return store.WriteTx(ctx, o.DB, func(tx *ent.Tx) error {
 		if err := o.Leases.Fence(ctx, tx, l); err != nil {
 			return err

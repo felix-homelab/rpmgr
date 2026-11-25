@@ -43,6 +43,10 @@ Changes to the design documents are not recorded here: see the git history and t
 
 ### Fixed
 
+- A webhook endpoint is no longer counted as failing, or disabled after three days, while the key
+  service that holds the KEK (Vault or OpenBao Transit) is down: the delivery waits and is tried
+  again. Storing a secret, rotating a webhook secret and rotating the CA's keys no longer hold the
+  database's write lock while they wait for the key service.
 - A controller that stops no longer logs an `ACME job` warning, `context canceled`. The job read
   the database under the controller's system context, which ends a moment before the job's own, so
   a pass that began in that gap failed as if it were an error. It now reads under the job's

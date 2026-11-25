@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -16,12 +17,14 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/felix-homelab/rpmgr/internal/audit"
 	"github.com/felix-homelab/rpmgr/internal/controller"
 	"github.com/felix-homelab/rpmgr/internal/ids"
+	"github.com/felix-homelab/rpmgr/internal/kms"
 	"github.com/felix-homelab/rpmgr/internal/lease"
 	"github.com/felix-homelab/rpmgr/internal/secret"
 	"github.com/felix-homelab/rpmgr/internal/store"
@@ -46,7 +49,8 @@ type hookEnv struct {
 	held   lease.Lease
 	job    lease.Job
 
-	logs *bytes.Buffer // what the job logs
+	logs   *bytes.Buffer // what the job logs
+	outage atomic.Bool   // the KEK's key service is down
 
 	mu     sync.Mutex
 	got    []received
@@ -54,6 +58,19 @@ type hookEnv struct {
 	// reply and replyBody are sent with every answer (a 429's Retry-After, Discord's JSON).
 	reply     http.Header
 	replyBody string
+}
+
+// outageWrapper is a local KEK whose key service can be taken down.
+type outageWrapper struct {
+	secret.Wrapper
+	down *atomic.Bool
+}
+
+func (w *outageWrapper) Unwrap(ctx context.Context, wrapped, aad []byte) ([]byte, error) {
+	if w.down.Load() {
+		return nil, fmt.Errorf("%w: test outage", kms.ErrUnavailable)
+	}
+	return w.Wrapper.Unwrap(ctx, wrapped, aad)
 }
 
 type received struct {
@@ -70,9 +87,10 @@ func newHookEnv(t *testing.T, guarded bool) *hookEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealer, _ := secret.NewSealer(kek)
-	e := &hookEnv{t: t, db: db, sys: storetest.SystemCtx(t), sealer: sealer, clock: time.Now().UTC(),
+	e := &hookEnv{t: t, db: db, sys: storetest.SystemCtx(t), clock: time.Now().UTC(),
 		logs: &bytes.Buffer{}, answer: func(string, int) int { return http.StatusNoContent }}
+	sealer, _ := secret.NewSealerWith(&outageWrapper{Wrapper: secret.NewLocalWrapper(kek), down: &e.outage})
+	e.sealer = sealer
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		e.mu.Lock()
@@ -453,6 +471,32 @@ func TestWebhookJob_UnsealFailure(t *testing.T) {
 	}
 	if !strings.Contains(e.logs.String(), bad.ID) {
 		t.Errorf("the log does not name the endpoint: %q", e.logs.String())
+	}
+}
+
+// TestWebhookJob_KeyServiceOutageIsNotAnEndpointFailure: while the KEK's key service is down, a
+// delivery cannot be prepared; that is no failed attempt of the endpoint, which stays enabled with
+// no failing_since, and the event is delivered once the key service is back.
+func TestWebhookJob_KeyServiceOutageIsNotAnEndpointFailure(t *testing.T) {
+	e := newHookEnv(t, false)
+	org := storetest.Org(t, e.db, "org-a")
+	h := e.hook(org, "/hook")
+	time.Sleep(2 * time.Millisecond)
+	e.change(org, "route.update")
+	e.outage.Store(true)
+	for range 3 {
+		e.clock = e.clock.Add(time.Hour)
+		e.mustRun()
+	}
+	hk := e.db.Client().Webhook.GetX(e.sys, h.ID)
+	n := e.db.Client().WebhookDelivery.Query().Where(webhookdelivery.WebhookID(h.ID)).CountX(e.sys)
+	if len(e.ids("/hook")) != 0 || n != 0 || !hk.Enabled || hk.FailingSince != nil {
+		t.Fatalf("during the outage: %d requests, %d attempts, endpoint %+v", len(e.ids("/hook")), n, hk)
+	}
+	e.outage.Store(false)
+	e.mustRun()
+	if len(e.ids("/hook")) != 1 {
+		t.Fatalf("after the outage: %v", e.ids("/hook"))
 	}
 }
 
