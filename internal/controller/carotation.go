@@ -72,6 +72,20 @@ func CARotation(o CAOptions) lease.Job {
 		}}
 }
 
+// warnSigning logs, on every run, that the next intermediate waits for the signature of an offline
+// root: a warning at first, an error when the active intermediate expires within 30 days
+// (docs/04-security.md, "Offline root CA").
+func (o *CAOptions) warnSigning(ctx context.Context) {
+	switch a, err := castore.IntermediateSigningAlert(ctx, o.DB, o.Now()); {
+	case err != nil:
+		o.Logger.Error("cannot check whether the intermediate waits for a signature", "error", err)
+	case a == castore.AlertCritical:
+		o.Logger.Error("the intermediate needs the offline root's signature and the active one expires within 30 days")
+	case a == castore.AlertNeedsSigning:
+		o.Logger.Warn("the intermediate needs the offline root's signature")
+	}
+}
+
 // ReloadCA reloads the CA every CAReloadEvery until ctx ends, so that a rotation another replica
 // committed takes effect here; ctx must carry the system scope.
 func ReloadCA(ctx context.Context, o CAOptions) {

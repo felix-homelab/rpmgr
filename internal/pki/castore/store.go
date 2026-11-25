@@ -166,6 +166,9 @@ func loadState(rows []*ent.CAKey, s *secret.Sealer, now func() time.Time) (*caSt
 			active[r.Kind] = r
 			continue
 		}
+		if len(r.Certificate) == 0 {
+			continue // a next intermediate that waits for the signature of an offline root
+		}
 		c, err := x509.ParseCertificate(r.Certificate)
 		if err != nil {
 			return nil, fmt.Errorf("pki: certificate of key %s: %w", r.ID, err)
@@ -216,7 +219,7 @@ func openKey(s *secret.Sealer, r *ent.CAKey) (pki.KeyPair, error) {
 	if err != nil {
 		return pki.KeyPair{}, fmt.Errorf("pki: certificate of the %s key: %w", r.Kind, err)
 	}
-	if r.KeyEnc == nil {
+	if keyOffline(r) {
 		return pki.KeyPair{}, fmt.Errorf("pki: the %s key is offline", r.Kind)
 	}
 	v, err := s.Open(keyContext(r.ID), *r.KeyEnc)
