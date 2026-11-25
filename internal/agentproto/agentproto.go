@@ -81,6 +81,10 @@ const (
 	// firewall helper of its host and reports the helper's state (D152). Only a gateway whose
 	// boot file asks for it announces it; one without it gets no pool in its snapshot.
 	CapFirewallRanges = "firewall.ranges"
+	// CapTrustRoots: root rotation by cross-certificate (D180): the controller sends the trust
+	// roots in Welcome and snapshots and the agent takes a root a trusted root cross-signed. Only
+	// the controller side exists yet; no agent announces it until the agent can take roots.
+	CapTrustRoots = "trust.roots"
 )
 
 // Phase1 lists every capability of Phase 1 agents.

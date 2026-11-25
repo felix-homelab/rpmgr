@@ -44,6 +44,10 @@ type Compiler struct {
 	// Offer, if set, returns the release the agent is offered, or nil (ReleaseOffer). It is asked
 	// only for agents with the capability "ota" and, like a Source, reads only through tx.
 	Offer func(ctx context.Context, tx *ent.Tx, a Agent) (*agentv1.ReleaseOffer, error)
+	// Roots, if set, returns the controller's trust roots as DER (Snapshot.trust_roots). They go
+	// into the snapshot of every agent with the capability "trust.roots", so a change of the bundle
+	// changes every snapshot's hash.
+	Roots func() ([][]byte, error)
 }
 
 // Compile reads one consistent snapshot of the database and returns the agent's snapshot at its
@@ -76,6 +80,13 @@ func (c *Compiler) compile(ctx context.Context, tx *ent.Tx, rev store.Revision, 
 			return nil, err
 		}
 		snap.ReleaseOffer = offer
+	}
+	if c.Roots != nil && a.Has(agentproto.CapTrustRoots) {
+		roots, err := c.Roots()
+		if err != nil {
+			return nil, err
+		}
+		snap.TrustRoots = roots
 	}
 	for _, src := range c.Sources {
 		rs, err := src(ctx, tx, a)
