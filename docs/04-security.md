@@ -1308,9 +1308,9 @@ n + 16    the secret under the data key with AES-256-GCM, and its tag
 Phase 2, slices 8.8 and 8.9, [D178](14-open-decisions.md#engineering). With `kek.source: kms` the
 controller asks a Transit key to wrap and unwrap the data keys, and never holds the KEK. It uses a
 small client of its own ([08](08-software-stack.md#data)) and treats Vault and OpenBao as one API
-[V VB-28] [V VB-31]. Slice 8.8 builds the client in `internal/kms`, which implements the `Wrapper` of
-[Envelope format v2](#secrets-at-rest-and-in-logs) and is tested against a fake Transit; no boot
-setting selects it before slice 8.9 (#692).
+[V VB-28] [V VB-31]. Slice 8.8 builds the client in `internal/kms`, which implements the
+`Wrapper` of [Envelope format v2](#secrets-at-rest-and-in-logs) and is tested against a fake
+Transit; no boot setting selects it before slice 8.9 (#692).
 
 - **The key** is created by the operator in Transit: type `aes256-gcm96` and `derived` (so that a
   context binds a wrap to its row). At start the controller reads the key and **refuses to start**
@@ -1332,8 +1332,8 @@ setting selects it before slice 8.9 (#692).
   open, the one error of the sealer. Any other 400, a 404 for a wrong mount or a missing key, and a
   403 are configuration errors, returned with Transit's status and message [V VB-31]. A ciphertext
   that is not of the form `vault:v<n>:<base64>`, with `n` from 1 without a leading zero, does not
-  open without a call. A 2xx answer without a ciphertext, or without a plaintext of exactly 32 bytes, is an
-  unavailable Transit, not a value that does not open. The client remembers the highest key
+  open without a call. A 2xx answer without a ciphertext, or without a plaintext of exactly 32
+  bytes, is an unavailable Transit, not a value that does not open. The client remembers the highest key
   version it has seen and refuses a wrap or rewrap answer of a lower one, since Transit has then
   gone back to an older state.
 - **Authentication** is one of two, both from files so that no credential is in the boot file or the
