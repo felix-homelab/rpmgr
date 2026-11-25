@@ -10933,6 +10933,7 @@ type CAKeyMutation struct {
 	algorithm     *string
 	public_key    *[]byte
 	certificate   *[]byte
+	csr           *[]byte
 	key_enc       *[]byte
 	not_before    *time.Time
 	not_after     *time.Time
@@ -11186,9 +11187,71 @@ func (m *CAKeyMutation) OldCertificate(ctx context.Context) (v []byte, err error
 	return oldValue.Certificate, nil
 }
 
+// ClearCertificate clears the value of the "certificate" field.
+func (m *CAKeyMutation) ClearCertificate() {
+	m.certificate = nil
+	m.clearedFields[cakey.FieldCertificate] = struct{}{}
+}
+
+// CertificateCleared returns if the "certificate" field was cleared in this mutation.
+func (m *CAKeyMutation) CertificateCleared() bool {
+	_, ok := m.clearedFields[cakey.FieldCertificate]
+	return ok
+}
+
 // ResetCertificate resets all changes to the "certificate" field.
 func (m *CAKeyMutation) ResetCertificate() {
 	m.certificate = nil
+	delete(m.clearedFields, cakey.FieldCertificate)
+}
+
+// SetCsr sets the "csr" field.
+func (m *CAKeyMutation) SetCsr(b []byte) {
+	m.csr = &b
+}
+
+// Csr returns the value of the "csr" field in the mutation.
+func (m *CAKeyMutation) Csr() (r []byte, exists bool) {
+	v := m.csr
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCsr returns the old "csr" field's value of the CAKey entity.
+// If the CAKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CAKeyMutation) OldCsr(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCsr is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCsr requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCsr: %w", err)
+	}
+	return oldValue.Csr, nil
+}
+
+// ClearCsr clears the value of the "csr" field.
+func (m *CAKeyMutation) ClearCsr() {
+	m.csr = nil
+	m.clearedFields[cakey.FieldCsr] = struct{}{}
+}
+
+// CsrCleared returns if the "csr" field was cleared in this mutation.
+func (m *CAKeyMutation) CsrCleared() bool {
+	_, ok := m.clearedFields[cakey.FieldCsr]
+	return ok
+}
+
+// ResetCsr resets all changes to the "csr" field.
+func (m *CAKeyMutation) ResetCsr() {
+	m.csr = nil
+	delete(m.clearedFields, cakey.FieldCsr)
 }
 
 // SetKeyEnc sets the "key_enc" field.
@@ -11382,7 +11445,7 @@ func (m *CAKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CAKeyMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.kind != nil {
 		fields = append(fields, cakey.FieldKind)
 	}
@@ -11394,6 +11457,9 @@ func (m *CAKeyMutation) Fields() []string {
 	}
 	if m.certificate != nil {
 		fields = append(fields, cakey.FieldCertificate)
+	}
+	if m.csr != nil {
+		fields = append(fields, cakey.FieldCsr)
 	}
 	if m.key_enc != nil {
 		fields = append(fields, cakey.FieldKeyEnc)
@@ -11423,6 +11489,8 @@ func (m *CAKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.PublicKey()
 	case cakey.FieldCertificate:
 		return m.Certificate()
+	case cakey.FieldCsr:
+		return m.Csr()
 	case cakey.FieldKeyEnc:
 		return m.KeyEnc()
 	case cakey.FieldNotBefore:
@@ -11448,6 +11516,8 @@ func (m *CAKeyMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldPublicKey(ctx)
 	case cakey.FieldCertificate:
 		return m.OldCertificate(ctx)
+	case cakey.FieldCsr:
+		return m.OldCsr(ctx)
 	case cakey.FieldKeyEnc:
 		return m.OldKeyEnc(ctx)
 	case cakey.FieldNotBefore:
@@ -11492,6 +11562,13 @@ func (m *CAKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCertificate(v)
+		return nil
+	case cakey.FieldCsr:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCsr(v)
 		return nil
 	case cakey.FieldKeyEnc:
 		v, ok := value.([]byte)
@@ -11551,6 +11628,12 @@ func (m *CAKeyMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *CAKeyMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(cakey.FieldCertificate) {
+		fields = append(fields, cakey.FieldCertificate)
+	}
+	if m.FieldCleared(cakey.FieldCsr) {
+		fields = append(fields, cakey.FieldCsr)
+	}
 	if m.FieldCleared(cakey.FieldKeyEnc) {
 		fields = append(fields, cakey.FieldKeyEnc)
 	}
@@ -11568,6 +11651,12 @@ func (m *CAKeyMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *CAKeyMutation) ClearField(name string) error {
 	switch name {
+	case cakey.FieldCertificate:
+		m.ClearCertificate()
+		return nil
+	case cakey.FieldCsr:
+		m.ClearCsr()
+		return nil
 	case cakey.FieldKeyEnc:
 		m.ClearKeyEnc()
 		return nil
@@ -11590,6 +11679,9 @@ func (m *CAKeyMutation) ResetField(name string) error {
 		return nil
 	case cakey.FieldCertificate:
 		m.ResetCertificate()
+		return nil
+	case cakey.FieldCsr:
+		m.ResetCsr()
 		return nil
 	case cakey.FieldKeyEnc:
 		m.ResetKeyEnc()

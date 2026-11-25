@@ -22,6 +22,8 @@ const (
 	FieldPublicKey = "public_key"
 	// FieldCertificate holds the string denoting the certificate field in the database.
 	FieldCertificate = "certificate"
+	// FieldCsr holds the string denoting the csr field in the database.
+	FieldCsr = "csr"
 	// FieldKeyEnc holds the string denoting the key_enc field in the database.
 	FieldKeyEnc = "key_enc"
 	// FieldNotBefore holds the string denoting the not_before field in the database.
@@ -41,6 +43,7 @@ var Columns = []string{
 	FieldAlgorithm,
 	FieldPublicKey,
 	FieldCertificate,
+	FieldCsr,
 	FieldKeyEnc,
 	FieldNotBefore,
 	FieldNotAfter,
@@ -70,8 +73,6 @@ var (
 	AlgorithmValidator func(string) error
 	// PublicKeyValidator is a validator for the "public_key" field. It is called by the builders before save.
 	PublicKeyValidator func([]byte) error
-	// CertificateValidator is a validator for the "certificate" field. It is called by the builders before save.
-	CertificateValidator func([]byte) error
 	// DefaultID holds the default value on creation for the "id" field.
 	DefaultID func() string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.

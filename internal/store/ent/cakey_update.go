@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
@@ -27,6 +28,30 @@ func (_u *CAKeyUpdate) Where(ps ...predicate.CAKey) *CAKeyUpdate {
 	return _u
 }
 
+// SetCertificate sets the "certificate" field.
+func (_u *CAKeyUpdate) SetCertificate(v []byte) *CAKeyUpdate {
+	_u.mutation.SetCertificate(v)
+	return _u
+}
+
+// ClearCertificate clears the value of the "certificate" field.
+func (_u *CAKeyUpdate) ClearCertificate() *CAKeyUpdate {
+	_u.mutation.ClearCertificate()
+	return _u
+}
+
+// SetCsr sets the "csr" field.
+func (_u *CAKeyUpdate) SetCsr(v []byte) *CAKeyUpdate {
+	_u.mutation.SetCsr(v)
+	return _u
+}
+
+// ClearCsr clears the value of the "csr" field.
+func (_u *CAKeyUpdate) ClearCsr() *CAKeyUpdate {
+	_u.mutation.ClearCsr()
+	return _u
+}
+
 // SetKeyEnc sets the "key_enc" field.
 func (_u *CAKeyUpdate) SetKeyEnc(v []byte) *CAKeyUpdate {
 	_u.mutation.SetKeyEnc(v)
@@ -36,6 +61,34 @@ func (_u *CAKeyUpdate) SetKeyEnc(v []byte) *CAKeyUpdate {
 // ClearKeyEnc clears the value of the "key_enc" field.
 func (_u *CAKeyUpdate) ClearKeyEnc() *CAKeyUpdate {
 	_u.mutation.ClearKeyEnc()
+	return _u
+}
+
+// SetNotBefore sets the "not_before" field.
+func (_u *CAKeyUpdate) SetNotBefore(v time.Time) *CAKeyUpdate {
+	_u.mutation.SetNotBefore(v)
+	return _u
+}
+
+// SetNillableNotBefore sets the "not_before" field if the given value is not nil.
+func (_u *CAKeyUpdate) SetNillableNotBefore(v *time.Time) *CAKeyUpdate {
+	if v != nil {
+		_u.SetNotBefore(*v)
+	}
+	return _u
+}
+
+// SetNotAfter sets the "not_after" field.
+func (_u *CAKeyUpdate) SetNotAfter(v time.Time) *CAKeyUpdate {
+	_u.mutation.SetNotAfter(v)
+	return _u
+}
+
+// SetNillableNotAfter sets the "not_after" field if the given value is not nil.
+func (_u *CAKeyUpdate) SetNillableNotAfter(v *time.Time) *CAKeyUpdate {
+	if v != nil {
+		_u.SetNotAfter(*v)
+	}
 	return _u
 }
 
@@ -107,11 +160,29 @@ func (_u *CAKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			}
 		}
 	}
+	if value, ok := _u.mutation.Certificate(); ok {
+		_spec.SetField(cakey.FieldCertificate, field.TypeBytes, value)
+	}
+	if _u.mutation.CertificateCleared() {
+		_spec.ClearField(cakey.FieldCertificate, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.Csr(); ok {
+		_spec.SetField(cakey.FieldCsr, field.TypeBytes, value)
+	}
+	if _u.mutation.CsrCleared() {
+		_spec.ClearField(cakey.FieldCsr, field.TypeBytes)
+	}
 	if value, ok := _u.mutation.KeyEnc(); ok {
 		_spec.SetField(cakey.FieldKeyEnc, field.TypeBytes, value)
 	}
 	if _u.mutation.KeyEncCleared() {
 		_spec.ClearField(cakey.FieldKeyEnc, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.NotBefore(); ok {
+		_spec.SetField(cakey.FieldNotBefore, field.TypeTime, value)
+	}
+	if value, ok := _u.mutation.NotAfter(); ok {
+		_spec.SetField(cakey.FieldNotAfter, field.TypeTime, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(cakey.FieldStatus, field.TypeEnum, value)
@@ -136,6 +207,30 @@ type CAKeyUpdateOne struct {
 	mutation *CAKeyMutation
 }
 
+// SetCertificate sets the "certificate" field.
+func (_u *CAKeyUpdateOne) SetCertificate(v []byte) *CAKeyUpdateOne {
+	_u.mutation.SetCertificate(v)
+	return _u
+}
+
+// ClearCertificate clears the value of the "certificate" field.
+func (_u *CAKeyUpdateOne) ClearCertificate() *CAKeyUpdateOne {
+	_u.mutation.ClearCertificate()
+	return _u
+}
+
+// SetCsr sets the "csr" field.
+func (_u *CAKeyUpdateOne) SetCsr(v []byte) *CAKeyUpdateOne {
+	_u.mutation.SetCsr(v)
+	return _u
+}
+
+// ClearCsr clears the value of the "csr" field.
+func (_u *CAKeyUpdateOne) ClearCsr() *CAKeyUpdateOne {
+	_u.mutation.ClearCsr()
+	return _u
+}
+
 // SetKeyEnc sets the "key_enc" field.
 func (_u *CAKeyUpdateOne) SetKeyEnc(v []byte) *CAKeyUpdateOne {
 	_u.mutation.SetKeyEnc(v)
@@ -145,6 +240,34 @@ func (_u *CAKeyUpdateOne) SetKeyEnc(v []byte) *CAKeyUpdateOne {
 // ClearKeyEnc clears the value of the "key_enc" field.
 func (_u *CAKeyUpdateOne) ClearKeyEnc() *CAKeyUpdateOne {
 	_u.mutation.ClearKeyEnc()
+	return _u
+}
+
+// SetNotBefore sets the "not_before" field.
+func (_u *CAKeyUpdateOne) SetNotBefore(v time.Time) *CAKeyUpdateOne {
+	_u.mutation.SetNotBefore(v)
+	return _u
+}
+
+// SetNillableNotBefore sets the "not_before" field if the given value is not nil.
+func (_u *CAKeyUpdateOne) SetNillableNotBefore(v *time.Time) *CAKeyUpdateOne {
+	if v != nil {
+		_u.SetNotBefore(*v)
+	}
+	return _u
+}
+
+// SetNotAfter sets the "not_after" field.
+func (_u *CAKeyUpdateOne) SetNotAfter(v time.Time) *CAKeyUpdateOne {
+	_u.mutation.SetNotAfter(v)
+	return _u
+}
+
+// SetNillableNotAfter sets the "not_after" field if the given value is not nil.
+func (_u *CAKeyUpdateOne) SetNillableNotAfter(v *time.Time) *CAKeyUpdateOne {
+	if v != nil {
+		_u.SetNotAfter(*v)
+	}
 	return _u
 }
 
@@ -246,11 +369,29 @@ func (_u *CAKeyUpdateOne) sqlSave(ctx context.Context) (_node *CAKey, err error)
 			}
 		}
 	}
+	if value, ok := _u.mutation.Certificate(); ok {
+		_spec.SetField(cakey.FieldCertificate, field.TypeBytes, value)
+	}
+	if _u.mutation.CertificateCleared() {
+		_spec.ClearField(cakey.FieldCertificate, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.Csr(); ok {
+		_spec.SetField(cakey.FieldCsr, field.TypeBytes, value)
+	}
+	if _u.mutation.CsrCleared() {
+		_spec.ClearField(cakey.FieldCsr, field.TypeBytes)
+	}
 	if value, ok := _u.mutation.KeyEnc(); ok {
 		_spec.SetField(cakey.FieldKeyEnc, field.TypeBytes, value)
 	}
 	if _u.mutation.KeyEncCleared() {
 		_spec.ClearField(cakey.FieldKeyEnc, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.NotBefore(); ok {
+		_spec.SetField(cakey.FieldNotBefore, field.TypeTime, value)
+	}
+	if value, ok := _u.mutation.NotAfter(); ok {
+		_spec.SetField(cakey.FieldNotAfter, field.TypeTime, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(cakey.FieldStatus, field.TypeEnum, value)

@@ -79,6 +79,11 @@ func Certificate(v []byte) predicate.CAKey {
 	return predicate.CAKey(sql.FieldEQ(FieldCertificate, v))
 }
 
+// Csr applies equality check predicate on the "csr" field. It's identical to CsrEQ.
+func Csr(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldCsr, v))
+}
+
 // KeyEnc applies equality check predicate on the "key_enc" field. It's identical to KeyEncEQ.
 func KeyEnc(v []byte) predicate.CAKey {
 	return predicate.CAKey(sql.FieldEQ(FieldKeyEnc, v))
@@ -257,6 +262,66 @@ func CertificateLT(v []byte) predicate.CAKey {
 // CertificateLTE applies the LTE predicate on the "certificate" field.
 func CertificateLTE(v []byte) predicate.CAKey {
 	return predicate.CAKey(sql.FieldLTE(FieldCertificate, v))
+}
+
+// CertificateIsNil applies the IsNil predicate on the "certificate" field.
+func CertificateIsNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldIsNull(FieldCertificate))
+}
+
+// CertificateNotNil applies the NotNil predicate on the "certificate" field.
+func CertificateNotNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldNotNull(FieldCertificate))
+}
+
+// CsrEQ applies the EQ predicate on the "csr" field.
+func CsrEQ(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldEQ(FieldCsr, v))
+}
+
+// CsrNEQ applies the NEQ predicate on the "csr" field.
+func CsrNEQ(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldNEQ(FieldCsr, v))
+}
+
+// CsrIn applies the In predicate on the "csr" field.
+func CsrIn(vs ...[]byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldIn(FieldCsr, vs...))
+}
+
+// CsrNotIn applies the NotIn predicate on the "csr" field.
+func CsrNotIn(vs ...[]byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldNotIn(FieldCsr, vs...))
+}
+
+// CsrGT applies the GT predicate on the "csr" field.
+func CsrGT(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldGT(FieldCsr, v))
+}
+
+// CsrGTE applies the GTE predicate on the "csr" field.
+func CsrGTE(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldGTE(FieldCsr, v))
+}
+
+// CsrLT applies the LT predicate on the "csr" field.
+func CsrLT(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldLT(FieldCsr, v))
+}
+
+// CsrLTE applies the LTE predicate on the "csr" field.
+func CsrLTE(v []byte) predicate.CAKey {
+	return predicate.CAKey(sql.FieldLTE(FieldCsr, v))
+}
+
+// CsrIsNil applies the IsNil predicate on the "csr" field.
+func CsrIsNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldIsNull(FieldCsr))
+}
+
+// CsrNotNil applies the NotNil predicate on the "csr" field.
+func CsrNotNil() predicate.CAKey {
+	return predicate.CAKey(sql.FieldNotNull(FieldCsr))
 }
 
 // KeyEncEQ applies the EQ predicate on the "key_enc" field.
