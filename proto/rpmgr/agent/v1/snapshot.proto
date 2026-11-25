@@ -50,6 +50,9 @@ message Snapshot {
   // The release the agent is offered, only to an agent with the capability "ota"
   // (docs/04-security.md, "Over-the-air updates"); unset when there is none.
   ReleaseOffer release_offer = 6;
+  // The controller's trust bundle as in Welcome.trust_roots, in every snapshot of an agent with
+  // the capability "trust.roots", so a change of the bundle changes the snapshot's hash.
+  repeated bytes trust_roots = 7;
 }
 
 // ReleaseOffer is a release the controller offers an agent in a staged rollout. The agent stages

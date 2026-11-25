@@ -356,7 +356,8 @@ func TestRestore_Refusals(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	sink := revlog.Sink{Dir: t.TempDir()}
+	sinkDir := t.TempDir()
+	sink := revlog.NewSink(revlog.DirBackend{Dir: sinkDir})
 	if _, err := sink.Ship(x.logPath, "ctn_a"); err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +393,7 @@ func TestRestore_Refusals(t *testing.T) {
 	if left, _ := filepath.Glob(filepath.Join(filepath.Dir(x.db.Path), "*.before-restore-*")); len(left) > 0 {
 		t.Errorf("a refused restore moved %v aside", left)
 	}
-	if _, res := x.restore(t, archive, sink.Dir, x.logPath); res.Reapplied != 2 || len(res.Review) > 0 {
+	if _, res := x.restore(t, archive, sinkDir, x.logPath); res.Reapplied != 2 || len(res.Review) > 0 {
 		t.Errorf("the sink and the local log merged: %d entries applied again, review %v; want 2 and none", res.Reapplied, res.Review)
 	}
 }
@@ -435,11 +436,12 @@ func TestRestore_IncompleteLogFailsClosed(t *testing.T) {
 	if err := ps.members.SetRole(ctx, x.org, ps.carol, authz.RoleViewer, ps.owner, authz.RoleOwner); err != nil {
 		t.Fatal(err)
 	}
-	broken := revlog.Sink{Dir: t.TempDir()}
+	brokenDir := t.TempDir()
+	broken := revlog.NewSink(revlog.DirBackend{Dir: brokenDir})
 	if _, err := broken.Ship(x.logPath, "ctn_a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(broken.Dir, "1")); err != nil {
+	if err := os.Remove(filepath.Join(brokenDir, revlog.Key(1))); err != nil {
 		t.Fatal(err)
 	}
 	if err := ps.tokens.Revoke(ctx, x.org, ps.owner, gone.ID); err != nil {
@@ -451,7 +453,7 @@ func TestRestore_IncompleteLogFailsClosed(t *testing.T) {
 		logs    func() []string
 		applied bool // the local log was read
 	}{
-		{"a broken sink chain", func() []string { return []string{broken.Dir, x.logPath} }, true},
+		{"a broken sink chain", func() []string { return []string{brokenDir, x.logPath} }, true},
 		{"an unreachable replica log", func() []string { return []string{x.logPath, filepath.Join(t.TempDir(), "replica-b.log")} }, true},
 		{"no log since the backup", func() []string {
 			if err := os.Rename(x.logPath, x.logPath+".lost"); err != nil {

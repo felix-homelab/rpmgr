@@ -118,19 +118,21 @@ it. To set one up on a controller (on an all-in-one, use `all-in-one` in place o
 
    ```sh
    rpmgr systemd-unit controller | sudo tee /etc/systemd/system/rpmgr-controller.service >/dev/null
-   grep ReadWritePaths /etc/systemd/system/rpmgr-controller.service
+   grep -E "ReadWritePaths|RequiresMountsFor" /etc/systemd/system/rpmgr-controller.service
    sudo systemctl daemon-reload
    sudo systemctl restart rpmgr-controller
    ```
 
-   `grep` shows the line the unit gained:
+   `grep` shows the lines the unit gained:
 
    ```text
+   RequiresMountsFor=/mnt/rpmgr-revocations
    ReadWritePaths=-/mnt/rpmgr-revocations
    ```
 
-   With `-`, the controller starts even when the directory is missing, such as a share that is not
-   mounted yet; a share mounted later is writable at once. If you create a plain directory after
+   `RequiresMountsFor` makes the controller wait for the mounts of the directory before it starts,
+   so that it does not take an empty mountpoint for an empty sink. With `-`, a directory that is
+   missing does not stop the start; a share mounted later is writable at once. If you create a plain directory after
    the start, restart the controller. If you keep a unit of your own instead, add the same line to
    it with a drop-in: `sudo systemctl edit rpmgr-controller` opens an editor for it, under
    `[Service]`.

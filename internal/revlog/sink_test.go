@@ -32,7 +32,8 @@ func logWith(t *testing.T, subjects ...string) (string, *revlog.Log) {
 // nothing twice; a later entry follows.
 func TestSinkShips(t *testing.T) {
 	path, l := logWith(t, "ses_1", "ses_2")
-	sink := revlog.Sink{Dir: t.TempDir()}
+	dir := t.TempDir()
+	sink := revlog.NewSink(revlog.DirBackend{Dir: dir})
 	if left, err := sink.Ship(path, "node-a"); err != nil || len(left) != 0 {
 		t.Fatalf("ship: %v %v", left, err)
 	}
@@ -66,7 +67,8 @@ func TestSinkShips(t *testing.T) {
 // holds already are not shipped twice.
 func TestSinkShipsRestoredLog(t *testing.T) {
 	path, _ := logWith(t, "ses_1", "ses_2", "ses_3")
-	sink := revlog.Sink{Dir: t.TempDir()}
+	dir := t.TempDir()
+	sink := revlog.NewSink(revlog.DirBackend{Dir: dir})
 	if _, err := sink.Ship(path, "node-a"); err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +108,8 @@ func TestSinkShipsRestoredLog(t *testing.T) {
 func TestSinkReplicas(t *testing.T) {
 	a, la := logWith(t, "a1")
 	b, _ := logWith(t, "b1", "b2")
-	sink := revlog.Sink{Dir: t.TempDir()}
+	dir := t.TempDir()
+	sink := revlog.NewSink(revlog.DirBackend{Dir: dir})
 	for _, step := range []struct{ path, replica string }{{a, "node-a"}, {b, "node-b"}} {
 		if _, err := sink.Ship(step.path, step.replica); err != nil {
 			t.Fatal(err)
@@ -134,19 +137,20 @@ func TestSinkReplicas(t *testing.T) {
 // TestSinkDetectsDamage: a missing number, a changed entry and a broken link are refused.
 func TestSinkDetectsDamage(t *testing.T) {
 	for name, damage := range map[string]func(dir string){
-		"a gap":           func(dir string) { _ = os.Remove(filepath.Join(dir, "2")) },
-		"a changed entry": func(dir string) { replace(t, filepath.Join(dir, "2"), "ses_2", "ses_X") },
+		"a gap":           func(dir string) { _ = os.Remove(filepath.Join(dir, revlog.Key(2))) },
+		"a changed entry": func(dir string) { replace(t, filepath.Join(dir, revlog.Key(2)), "ses_2", "ses_X") },
 		"a moved entry": func(dir string) {
-			b, _ := os.ReadFile(filepath.Join(dir, "3"))
-			_ = os.WriteFile(filepath.Join(dir, "2"), b, 0o640) //nolint:gosec // G703: the test's temporary sink
+			b, _ := os.ReadFile(filepath.Join(dir, revlog.Key(3)))
+			_ = os.WriteFile(filepath.Join(dir, revlog.Key(2)), b, 0o640) //nolint:gosec // G703: the test's temporary sink
 		},
 	} {
 		path, _ := logWith(t, "ses_1", "ses_2", "ses_3")
-		sink := revlog.Sink{Dir: t.TempDir()}
+		dir := t.TempDir()
+		sink := revlog.NewSink(revlog.DirBackend{Dir: dir})
 		if _, err := sink.Ship(path, "node-a"); err != nil {
 			t.Fatal(err)
 		}
-		damage(sink.Dir)
+		damage(dir)
 		if _, err := sink.Read(); !errors.Is(err, revlog.ErrBroken) {
 			t.Errorf("%s: %v", name, err)
 		}
@@ -168,12 +172,13 @@ func replace(t *testing.T, path, old, new string) {
 // leaves the local log as it was; once the sink is back, it ships them.
 func TestSinkUnavailable(t *testing.T) {
 	path, _ := logWith(t, "ses_1", "ses_2")
-	sink := revlog.Sink{Dir: filepath.Join(t.TempDir(), "share")} // not mounted
+	dir := filepath.Join(t.TempDir(), "share") // not mounted
+	sink := revlog.NewSink(revlog.DirBackend{Dir: dir})
 	left, err := sink.Ship(path, "node-a")
 	if err == nil || len(left) != 2 || left[0].Subject != "ses_1" {
 		t.Fatalf("an unreachable sink: %v %v", left, err)
 	}
-	if err := os.Mkdir(sink.Dir, 0o750); err != nil {
+	if err := os.Mkdir(dir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	if left, err := sink.Ship(path, "node-a"); err != nil || len(left) != 0 {

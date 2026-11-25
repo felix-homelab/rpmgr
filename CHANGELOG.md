@@ -17,6 +17,10 @@ Changes to the design documents are not recorded here: see the git history and t
   way back to the older release.
 - A page-token or gateway-page-preview link issued before the upgrade stops working once, as an
   expired one does; the client starts its list again.
+- The revocation-log sink directory names new entries with 20 digits (`00000000000000000004`).
+  Files of earlier releases (`1`, `2`, ...) are read as they are and never renamed. An earlier
+  release cannot read a padded name, so upgrade every controller replica promptly and do not
+  downgrade after the first new entry.
 
 ### Changed
 
@@ -24,6 +28,13 @@ Changes to the design documents are not recorded here: see the git history and t
   stored encrypted in the database instead of derived from the KEK, so every controller replica
   reads the same ones. Secrets are stored in a new envelope format (version 2); values of the older
   format stay readable and are rewritten when they are saved or when `rpmgr kek rotate` runs.
+
+### Fixed
+
+- A controller that stops no longer logs an `ACME job` warning, `context canceled`. The job read
+  the database under the controller's system context, which ends a moment before the job's own, so
+  a pass that began in that gap failed as if it were an error. It now reads under the job's
+  context, so the stop ends it as a shutdown.
 
 ## [0.4.1] - 2026-11-23
 
