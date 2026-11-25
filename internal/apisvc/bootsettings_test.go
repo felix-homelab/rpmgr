@@ -26,10 +26,12 @@ const (
 	bootCanaryFile     = "/run/secrets/canary-db-password-file"
 	bootCanaryKEK      = "/etc/rpmgr/canary-kek-file"
 	bootCanaryCred     = "canary-credential-name" //nolint:gosec // G101: a test canary
+	bootCanaryTLSKey   = "/etc/rpmgr/canary-tls-key.pem"
+	bootCanaryOTLP     = "https://canary-otlp.example.com/v1/traces"
 )
 
 var bootTestSource = apisvc.BootSource{
-	Config: bootConfig("postgres", "postgres://rpmgr:"+bootCanaryPassword+"@db.example.com:5433/rpmgr?sslmode=verify-full&sslpassword="+bootCanaryQuery,
+	Config: bootConfig("postgres", "postgres://rpmgr:"+bootCanaryPassword+"@db.example.com:5433/rpmgr?sslmode=verify-full&application_name="+bootCanaryQuery,
 		config.KEKFile, ""),
 	NodeID: "node-1", ConfigFile: "/etc/rpmgr/controller.yaml", LoadedAt: time.Unix(1700000000, 0),
 	PasswordFile: bootCanaryFile,
@@ -49,7 +51,8 @@ func bootConfig(driver, dsn, kek, sink string) config.Controller {
 		c.KEK.Name = "rpmgr-kek"
 	}
 	c.RevocationLog.Sink = sink
-	c.TLS.CertFile, c.TLS.KeyFile = "/etc/rpmgr/cert.pem", "/etc/rpmgr/key.pem"
+	c.TLS.CertFile, c.TLS.KeyFile = "/etc/rpmgr/cert.pem", bootCanaryTLSKey
+	c.Tracing.OTLPEndpoint = bootCanaryOTLP
 	return c
 }
 
@@ -86,12 +89,30 @@ func TestBootSettings_Access(t *testing.T) {
 // holds the DSN's password, a credential in its query, the path of the password file or of the
 // KEK file, for either driver and either KEK source.
 func TestBootSettings_NoSecret(t *testing.T) {
-	canaries := []string{bootCanaryPassword, bootCanaryQuery, bootCanaryFile, bootCanaryKEK, bootCanaryCred, "postgres://"}
+	t.Setenv("PGPASSFILE", "/nonexistent/pgpass")
+	t.Setenv("PGPASSWORD", "")
+	canaries := []string{bootCanaryPassword, bootCanaryQuery, bootCanaryFile, bootCanaryKEK, bootCanaryCred, bootCanaryTLSKey, bootCanaryOTLP, "postgres://"}
 	dsns := []string{
 		bootTestSource.Config.Database.DSN,
 		"host=db.example.com port=5433 dbname=rpmgr user=rpmgr password=" + bootCanaryPassword + " sslmode=verify-full sslpassword=" + bootCanaryQuery,
 		"postgres://rpmgr:" + bootCanaryPassword + "@db.example.com/rpmgr?password=" + bootCanaryQuery,
 		"postgres://rpmgr:p%zz" + bootCanaryPassword + "@db.example.com/rpmgr", // unparsable
+		// a quoted keyword password that holds other keywords, and an escaped quote
+		"host=db password='x host=" + bootCanaryPassword + "' dbname=rpmgr",
+		"password='x port=" + bootCanaryPassword + "' host=db",
+		"password='x user=" + bootCanaryPassword + "' host=db",
+		"password='it\\'s dbname=" + bootCanaryPassword + "' host=db",
+		"password='x sslmode=" + bootCanaryPassword + "' host=db",
+		"host=db password='a b " + bootCanaryPassword + "' user=rpmgr",
+		"host = db password = " + bootCanaryPassword,
+		// a raw slash, question mark or hash in a URL password, a user fallback, a multi-host list
+		"postgres://rpmgr:12/" + bootCanaryPassword + "@db/rpmgr",
+		"postgres://rpmgr:12#" + bootCanaryPassword + "@db/rpmgr",
+		"postgres://rpmgr:12?user=" + bootCanaryPassword + "@db/rpmgr",
+		"postgres://db/rpmgr?user=u&password=" + bootCanaryPassword,
+		"postgres://rpmgr:" + bootCanaryPassword + "@a:1,b:2/rpmgr",
+		"postgres://db/rpmgr?sslmode=" + bootCanaryPassword,
+		"host=db sslpassword=" + bootCanaryPassword + " sslkey=/keys/" + bootCanaryPassword + " passfile=/pw/" + bootCanaryPassword,
 	}
 	var all []*rpmgrv1.BootSettings
 	for _, dsn := range dsns {
@@ -124,6 +145,8 @@ func wire(t *testing.T, m proto.Message) string {
 // TestBootSettings_Content: what the response shows, for both drivers, both KEK sources, with and
 // without a sink.
 func TestBootSettings_Content(t *testing.T) {
+	t.Setenv("PGPASSFILE", "/nonexistent/pgpass")
+	t.Setenv("PGPASSWORD", "")
 	pg := apisvc.BootSource{Config: bootConfig("postgres", bootTestSource.Config.Database.DSN, config.KEKFile, "/mnt/share/revlog"),
 		PasswordFile: bootCanaryFile}.Settings()
 	d := pg.GetDatabase()
@@ -148,6 +171,15 @@ func TestBootSettings_Content(t *testing.T) {
 	dsnPW := apisvc.BootSource{Config: bootConfig("postgres", bootTestSource.Config.Database.DSN, config.KEKFile, "")}.Settings()
 	if dsnPW.GetDatabase().GetPasswordSource() != rpmgrv1.PasswordSource_PASSWORD_SOURCE_DSN {
 		t.Errorf("a DSN with a password: %v", dsnPW.GetDatabase())
+	}
+	// the user fallback in the query and a multi-host list: the first host, with its port
+	q := apisvc.BootSource{Config: bootConfig("postgres", "postgres://db/rpmgr?user=u&password="+bootCanaryPassword, config.KEKFile, "")}.Settings()
+	if q.GetDatabase().GetUser() != "u" || q.GetDatabase().GetHost() != "db" || q.GetDatabase().GetPasswordSource() != rpmgrv1.PasswordSource_PASSWORD_SOURCE_DSN {
+		t.Errorf("?user=: %v", q.GetDatabase())
+	}
+	mh := apisvc.BootSource{Config: bootConfig("postgres", "postgres://u@a:1,b:2/db", config.KEKFile, "")}.Settings()
+	if mh.GetDatabase().GetHost() != "a" || mh.GetDatabase().GetPort() != "1" {
+		t.Errorf("multi-host: %v", mh.GetDatabase())
 	}
 	if kms := (apisvc.BootSource{Config: bootConfig("sqlite", "/x.db", "kms", "")}).Settings(); kms.GetKek().GetSource() != rpmgrv1.KekSource_KEK_SOURCE_KMS {
 		t.Errorf("kms: %v", kms.GetKek())
