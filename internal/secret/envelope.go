@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Envelope encryption (docs/04-security.md, "Secrets at rest and in logs"): every secret gets its
@@ -217,7 +218,8 @@ func (s *Sealer) Rewrap(ctx Context, sealed []byte) ([]byte, error) {
 }
 
 // KEKVersion returns the version of the KEK a sealed secret is wrapped with: 16 hexadecimal digits
-// for a local KEK, the key identifier for any other wrapper. It reads the header only.
+// for a local KEK, "<mount>/<key>@v<n>" for a Transit key, the key identifier for any other
+// wrapper. It reads the header only.
 func KEKVersion(sealed []byte) (string, error) {
 	if len(sealed) > 0 && sealed[0] == formatV1 {
 		if len(sealed) < v1HeaderLen+tagLen {
@@ -231,6 +233,14 @@ func KEKVersion(sealed []byte) (string, error) {
 	}
 	if h.kind == KindLocal {
 		return hex.EncodeToString(h.id), nil
+	}
+	if h.kind == KindTransit {
+		// "vault:v<n>:<base64>" gives the key version: "<mount>/<key>@v<n>".
+		if v, ok := strings.CutPrefix(string(h.wrapped), "vault:v"); ok {
+			if n, _, ok := strings.Cut(v, ":"); ok && n != "" && strings.Trim(n, "0123456789") == "" {
+				return string(h.id) + "@v" + n, nil
+			}
+		}
 	}
 	return string(h.id), nil
 }

@@ -448,8 +448,8 @@ func TestWrapperInterface(t *testing.T) {
 	if sealed[1] != KindTransit || binary.BigEndian.Uint16(sealed[2:]) != uint16(len("transit/rpmgr")) {
 		t.Errorf("header % x", sealed[:20])
 	}
-	if v, _ := KEKVersion(sealed); v != "transit/rpmgr" {
-		t.Errorf("KEKVersion = %q", v)
+	if v, _ := KEKVersion(sealed); v != "transit/rpmgr@v1" {
+		t.Errorf("KEKVersion = %q, want the key version of the Transit ciphertext", v)
 	}
 	if got, err := s.Open(where, sealed); err != nil || got.Reveal() != "tr" {
 		t.Errorf("Open = %q, %v", got.Reveal(), err)
@@ -605,5 +605,30 @@ func TestV1Vector(t *testing.T) {
 	}
 	if _, err := newSealer(t, old).Open(Context{Table: "instance_secrets", Column: "value_enc", RowID: "other"}, raw); !errors.Is(err, ErrOpen) {
 		t.Errorf("Open at another row: %v", err)
+	}
+}
+
+// TestKEKVersionOfTransit: the key version comes from the "vault:v<n>:" prefix of the wrapped key;
+// a wrapped key without a version number gives the identifier alone.
+func TestKEKVersionOfTransit(t *testing.T) {
+	hdr := func(wrapped string) []byte {
+		id := "transit/rpmgr"
+		b := []byte{formatV2, KindTransit, 0, byte(len(id))}
+		b = append(b, id...)
+		b = append(b, 0, byte(len(wrapped)))
+		b = append(b, wrapped...)
+		return append(b, make([]byte, nonceLen+tagLen)...)
+	}
+	for wrapped, want := range map[string]string{
+		"vault:v1:AAAA":  "transit/rpmgr@v1",
+		"vault:v12:AAAA": "transit/rpmgr@v12",
+		"vault:v:AAAA":   "transit/rpmgr",
+		"vault:vx1:AAAA": "transit/rpmgr",
+		"vault:v1":       "transit/rpmgr",
+		"other":          "transit/rpmgr",
+	} {
+		if got, err := KEKVersion(hdr(wrapped)); err != nil || got != want {
+			t.Errorf("KEKVersion(%q) = %q, %v; want %q", wrapped, got, err, want)
+		}
 	}
 }
