@@ -63,8 +63,12 @@ func CARotation(o CAOptions) lease.Job {
 				}
 				return nil
 			})
-			if err != nil || len(done) == 0 {
+			if err != nil {
 				return err
+			}
+			o.warnSigning(ctx)
+			if len(done) == 0 {
+				return nil
 			}
 			o.Logger.Info("rotated CA keys", "changes", done)
 			_, err = o.CA.Reload(ctx, o.DB, o.Sealer, o.Now)

@@ -199,10 +199,10 @@ func SignIntermediate(root KeyPair, csrPEM []byte, now time.Time) (*x509.Certifi
 	}
 	csr, err := x509.ParseCertificateRequest(b.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadCSR, err)
+		return nil, fmt.Errorf("%w: %w", ErrBadCSR, err)
 	}
 	if err := csr.CheckSignature(); err != nil {
-		return nil, fmt.Errorf("%w: signature: %v", ErrBadCSR, err)
+		return nil, fmt.Errorf("%w: signature: %w", ErrBadCSR, err)
 	}
 	pub, ok := csr.PublicKey.(*ecdsa.PublicKey)
 	if !ok || pub.Curve != elliptic.P256() {
@@ -312,7 +312,7 @@ func probe(cert *x509.Certificate, td string, now time.Time) error {
 		return err
 	}
 	if err := verify(td); err != nil {
-		return fmt.Errorf("a leaf of the trust domain does not verify under it: %v", err)
+		return fmt.Errorf("a leaf of the trust domain does not verify under it: %w", err)
 	}
 	if verify("probe-"+td) == nil || verify("other.example") == nil {
 		return errors.New("a leaf of another domain verifies under it")

@@ -165,7 +165,7 @@ func ImportIntermediate(ctx context.Context, tx *ent.Tx, der []byte, now time.Ti
 	}
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
-		return fmt.Errorf("%w: %v", pki.ErrIntermediateRefused, err)
+		return fmt.Errorf("%w: %w", pki.ErrIntermediateRefused, err)
 	}
 	pub, err := x509.ParsePKIXPublicKey(p.PublicKey)
 	if err != nil {

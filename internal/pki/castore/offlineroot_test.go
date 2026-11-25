@@ -142,7 +142,7 @@ func TestCA_OfflineRootNeverStored(t *testing.T) {
 			t.Fatal(err)
 		}
 		der, _ := x509.MarshalPKCS8PrivateKey(rootKP.Key)
-		scalar := rootKP.Key.D.FillBytes(make([]byte, 32))
+		scalar, _ := rootKP.Key.Bytes()
 		secrets := [][]byte{der, scalar, []byte(rootPass)}
 
 		var errTexts []string
@@ -486,9 +486,8 @@ func TestIntermediateSigningAlert(t *testing.T) {
 			t.Fatalf("an online root alerts: %q", a)
 		}
 		e := goOffline(t, db, kek)
-		expires := t0.Add(pki.IntermediateLifetime) // the active intermediate's not_after, as InitCA made it
 		active, _ := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusActive)).Only(sys)
-		expires = active.NotAfter
+		expires := active.NotAfter
 		for _, tc := range []struct {
 			name string
 			at   time.Time
