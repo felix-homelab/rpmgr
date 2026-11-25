@@ -8,11 +8,13 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"math/big"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -109,7 +111,7 @@ func forge(t *testing.T, td string, parent *x509.Certificate, signer *ecdsa.Priv
 	t.Helper()
 	tmpl := &x509.Certificate{
 		SerialNumber: bigSerial(t), Subject: pkix.Name{CommonName: "rpmgr issuing CA " + td},
-		NotBefore: t0.Add(-time.Minute), NotAfter: t0.Add(pki.IntermediateLifetime),
+		NotBefore: t0.Add(-time.Minute), NotAfter: t0.Add(day + pki.IntermediateLifetime),
 		IsCA: true, BasicConstraintsValid: true, MaxPathLen: 0, MaxPathLenZero: true,
 		KeyUsage:                    x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		PermittedDNSDomainsCritical: true, PermittedDNSDomains: []string{td}, PermittedURIDomains: []string{td},
@@ -144,6 +146,11 @@ func TestCA_OfflineRootNeverStored(t *testing.T) {
 		der, _ := x509.MarshalPKCS8PrivateKey(rootKP.Key)
 		scalar, _ := rootKP.Key.Bytes()
 		secrets := [][]byte{der, scalar, []byte(rootPass)}
+		// The sealed key, too, must be gone from ca_keys and from a new backup. The write-ahead log
+		// and the main file may still hold it in old pages until the KEK of the ceremony is rotated
+		// (slice 8.11, TestCA_OfflineRootCeremony), so they are scanned for plaintext only.
+		sealed := bytes.Clone(*before.KeyEnc)
+		withSealed := append(append([][]byte{}, secrets...), sealed)
 
 		var errTexts []string
 		var exp castore.RootExport
@@ -201,12 +208,12 @@ func TestCA_OfflineRootNeverStored(t *testing.T) {
 			dump.Write(r.PublicKey)
 			dump.Write(r.Certificate)
 			dump.Write(r.Csr)
-			if !keyOffline(r) && r.Kind != cakey.KindRoot {
-				dump.Write(*r.KeyEnc)
+			if !keyOffline(r) {
+				dump.Write(*r.KeyEnc) // the other keys' sealed bytes are other bytes than the root's
 			}
 		}
 		dump.WriteString(strings.Join(errTexts, "\n"))
-		for _, sec := range secrets {
+		for _, sec := range withSealed {
 			if bytes.Contains(dump.Bytes(), sec) {
 				t.Fatal("secret bytes of the root are in ca_keys or an error")
 			}
@@ -224,7 +231,11 @@ func TestCA_OfflineRootNeverStored(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				for _, sec := range secrets {
+				scan := secrets
+				if path == backup {
+					scan = withSealed
+				}
+				for _, sec := range scan {
 					if bytes.Contains(raw, sec) {
 						t.Fatalf("secret bytes of the root are in %s", path)
 					}
@@ -320,17 +331,17 @@ func TestOfflineRootSigning(t *testing.T) {
 			t.Fatalf("RotateIntermediate = %v, want ErrRootOffline", err)
 		}
 		// Import, then the schedule activates the signed key at the active one's half-life.
-		cert, err := pki.SignIntermediate(e.root, e.csr, t0)
+		cert, err := pki.SignIntermediate(e.root, e.csr, t0.Add(day))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := e.importDER(t, cert.Raw, t0); err != nil {
+		if err := e.importDER(t, cert.Raw, t0.Add(day)); err != nil {
 			t.Fatal(err)
 		}
 		if p := e.pending(t); !bytes.Equal(p.Certificate, cert.Raw) || p.Status != cakey.StatusNext || !p.NotAfter.Equal(cert.NotAfter) {
 			t.Fatal("the import did not store the certificate on the next key")
 		}
-		if err := e.importDER(t, cert.Raw, t0); !errors.Is(err, castore.ErrNoRequest) {
+		if err := e.importDER(t, cert.Raw, t0.Add(day)); !errors.Is(err, castore.ErrNoRequest) {
 			t.Fatalf("a second import = %v, want ErrNoRequest", err)
 		}
 		rotate := func(at time.Time) []string {
@@ -445,13 +456,19 @@ func TestCA_ImportedIntermediateMustChainAndConstrain(t *testing.T) {
 				c.NotBefore, c.NotAfter = t0.Add(-2*day), t0.Add(-day)
 			}), "not valid now"},
 			{"not yet valid", signed(func(c *x509.Certificate) {
-				c.NotBefore, c.NotAfter = t0.Add(day), t0.Add(2*day)
+				c.NotBefore, c.NotAfter = t0.Add(3*day), t0.Add(3*day+pki.IntermediateLifetime)
 			}), "not valid now"},
 			{"outliving the root", signed(func(c *x509.Certificate) { c.NotAfter = rootCert.NotAfter.Add(time.Hour) }), "outlasts"},
+			{"not outlasting the active intermediate", signed(func(c *x509.Certificate) { c.NotAfter = t0.Add(pki.IntermediateLifetime) }), "does not outlast the active"},
+			{"serverAuth only", signed(func(c *x509.Certificate) { c.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth} }), "extended key usage"},
+			{"critical extension nobody knows", signed(func(c *x509.Certificate) {
+				c.ExtraExtensions = []pkix.Extension{{Id: asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 99999, 1}, Critical: true, Value: []byte{5, 0}}}
+			}), "critical extension"},
+			{"more key usages", signed(func(c *x509.Certificate) { c.KeyUsage |= x509.KeyUsageDigitalSignature }), "key usage is not exactly"},
 			{"garbage", []byte{1, 2, 3}, "pki: the intermediate is refused"},
 		} {
 			t.Run(c.name, func(t *testing.T) {
-				err := e.importDER(t, c.der, t0)
+				err := e.importDER(t, c.der, t0.Add(day))
 				if !errors.Is(err, pki.ErrIntermediateRefused) || !strings.Contains(err.Error(), c.reason) {
 					t.Fatalf("import = %v, want a refusal containing %q", err, c.reason)
 				}
@@ -460,7 +477,7 @@ func TestCA_ImportedIntermediateMustChainAndConstrain(t *testing.T) {
 				}
 			})
 		}
-		if err := e.importDER(t, good, t0); err != nil {
+		if err := e.importDER(t, good, t0.Add(day)); err != nil {
 			t.Fatalf("a valid intermediate was refused: %v", err)
 		}
 		// The imported certificate chains to the root and constrains.
@@ -504,11 +521,11 @@ func TestIntermediateSigningAlert(t *testing.T) {
 			}
 		}
 		// A signed, imported intermediate ends the alert.
-		cert, err := pki.SignIntermediate(e.root, e.csr, t0)
+		cert, err := pki.SignIntermediate(e.root, e.csr, t0.Add(day))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := e.importDER(t, cert.Raw, t0); err != nil {
+		if err := e.importDER(t, cert.Raw, t0.Add(day)); err != nil {
 			t.Fatal(err)
 		}
 		if a := alert(expires.Add(-day)); a != castore.AlertNone {
@@ -518,3 +535,72 @@ func TestIntermediateSigningAlert(t *testing.T) {
 }
 
 func keyOffline(r *ent.CAKey) bool { return r.KeyEnc == nil || len(*r.KeyEnc) == 0 }
+
+// Two requests at once leave one request, never two next rows.
+func TestRequestIntermediateSigningConcurrent(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
+		sys := storetest.SystemCtx(t)
+		s := sealer(t, kek)
+		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+			_, err := castore.ExportRootOffline(sys, tx, s, rootPass, func(f []byte) ([]byte, error) { return f, nil })
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		csrs := make([][]byte, 4)
+		var wg sync.WaitGroup
+		for i := range csrs {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_ = store.WriteTx(sys, db, func(tx *ent.Tx) error {
+					var err error
+					csrs[i], err = castore.RequestIntermediateSigning(sys, tx, s, t0)
+					return err
+				})
+			}()
+		}
+		wg.Wait()
+		n, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusNext)).Count(sys)
+		if err != nil || n != 1 {
+			t.Fatalf("%d next intermediates (err %v), want 1", n, err)
+		}
+		for _, c := range csrs {
+			if c != nil && !bytes.Equal(c, csrs[0]) && csrs[0] != nil {
+				t.Fatal("two different requests were handed out")
+			}
+		}
+	})
+}
+
+// A signed intermediate that is no longer valid when the schedule would activate it is not
+// activated: the old one stays and the job says so.
+func TestRotateDoesNotActivateExpiredIntermediate(t *testing.T) {
+	withCA(t, func(t *testing.T, db *store.DB, kek secret.KEK, _ *castore.CA) {
+		sys := storetest.SystemCtx(t)
+		e := goOffline(t, db, kek)
+		cert, err := pki.SignIntermediate(e.root, e.csr, t0.Add(day))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := e.importDER(t, cert.Raw, t0.Add(day)); err != nil {
+			t.Fatal(err)
+		}
+		var done []string
+		at := cert.NotAfter.Add(time.Hour)
+		if err := store.WriteTx(sys, db, func(tx *ent.Tx) error {
+			var err error
+			done, err = castore.Rotate(sys, tx, e.s, at)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if len(done) == 0 || !strings.Contains(done[0], "not valid now; not activated") {
+			t.Fatalf("rotation = %v", done)
+		}
+		active, err := db.ReadClient().CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusActive)).Count(sys)
+		if err != nil || active != 1 || e.pending(t).Status != cakey.StatusNext {
+			t.Fatalf("the expired intermediate was activated (%d active, err %v)", active, err)
+		}
+	})
+}

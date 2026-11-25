@@ -62,18 +62,22 @@ func GeneratePassphrase() (string, error) {
 	return strings.Join(append(groups, s), "-"), nil
 }
 
+// keyboardRows are the rows of a keyboard, a walk along which is as guessable as a run of letters.
+var keyboardRows = []string{"1234567890", "qwertyuiop", "asdfghjkl", "zxcvbnm", "!@#$%^&*()"}
+
 // CheckPassphrase refuses a supplied passphrase of fewer than 16 characters or of fewer than 60
-// bits by a simple estimate: the distinct characters used, each worth the size of the smallest
-// character class (lower case, upper case, digits, other) that holds all it uses together.
+// bits by a simple estimate: the characters that are not a repeat, an ascending or descending run
+// or a step along a keyboard row, each worth the size of the combined character classes (lower
+// case, upper case, digits, other) it uses.
 func CheckPassphrase(p string) error {
 	rs := []rune(p)
 	if len(rs) < minPassphraseChars {
 		return fmt.Errorf("%w: fewer than %d characters", ErrWeakPassphrase, minPassphraseChars)
 	}
-	pool, distinct := 0.0, map[rune]bool{}
+	pool, counted := 0.0, 0
 	var lower, upper, digit, other bool
-	for _, r := range rs {
-		distinct[r] = true
+	seen := map[rune]bool{}
+	for i, r := range rs {
 		switch {
 		case unicode.IsLower(r) && r < 128:
 			lower = true
@@ -84,16 +88,36 @@ func CheckPassphrase(p string) error {
 		default:
 			other = true
 		}
+		if !seen[r] && (i == 0 || !followsOn(rs[i-1], r)) {
+			counted++
+		}
+		seen[r] = true
 	}
 	for i, ok := range []bool{lower, upper, digit, other} {
 		if ok {
 			pool += []float64{26, 26, 10, 33}[i]
 		}
 	}
-	if bits := float64(len(distinct)) * math.Log2(pool); bits < minPassphraseBits {
+	if bits := float64(counted) * math.Log2(pool); bits < minPassphraseBits {
 		return fmt.Errorf("%w: fewer than %d bits", ErrWeakPassphrase, minPassphraseBits)
 	}
 	return nil
+}
+
+// followsOn reports whether r continues prev as a repeat, a step up or down in the character
+// table, or a step along a keyboard row (either way, any case).
+func followsOn(prev, r rune) bool {
+	if r == prev || r == prev+1 || r == prev-1 {
+		return true
+	}
+	lp, lr := unicode.ToLower(prev), unicode.ToLower(r)
+	for _, row := range keyboardRows {
+		i, j := strings.IndexRune(row, lp), strings.IndexRune(row, lr)
+		if i >= 0 && j >= 0 && (i-j == 1 || j-i == 1) {
+			return true
+		}
+	}
+	return false
 }
 
 // SealRootFile encrypts the root's PKCS #8 key and certificate (one PEM text) with passphrase, as
@@ -108,8 +132,8 @@ func SealRootFile(root KeyPair, passphrase string) ([]byte, error) {
 	}
 	defer clear(der)
 	plain := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
-	defer clear(plain)
 	plain = append(plain, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: root.Cert.Raw})...)
+	defer clear(plain) // the final buffer: append may have moved it
 	rcp, err := age.NewScryptRecipient(passphrase)
 	if err != nil {
 		return nil, err
@@ -216,7 +240,7 @@ func SignIntermediate(root KeyPair, csrPEM []byte, now time.Time) (*x509.Certifi
 
 // VerifyIntermediate checks a signed intermediate before it is imported, and names the first check
 // that fails (ErrIntermediateRefused). It holds when: the certificate carries want, the public key
-// of the next key; root's key signed it; it is a CA with certSign and path length 0; its name
+// of the next key; root's key signed it; it is a CA with key usage exactly certSign and crlSign, no extended key usage, no unknown critical extension and path length 0; its name
 // constraints are critical and permit exactly the URI and DNS domain of the trust domain; it is
 // valid at now and does not outlast the root; a probe leaf of the trust domain verifies under its
 // constraints with Go's chain verification and one of another domain does not.
@@ -239,6 +263,15 @@ func VerifyIntermediate(cert, root *x509.Certificate, want *ecdsa.PublicKey, now
 	}
 	if !cert.IsCA || !cert.BasicConstraintsValid || cert.KeyUsage&x509.KeyUsageCertSign == 0 {
 		return fail("it is not a CA with key usage certSign")
+	}
+	if cert.KeyUsage != x509.KeyUsageCertSign|x509.KeyUsageCRLSign {
+		return fail("its key usage is not exactly certSign and crlSign")
+	}
+	if len(cert.ExtKeyUsage)+len(cert.UnknownExtKeyUsage) != 0 {
+		return fail("it restricts extended key usage")
+	}
+	if len(cert.UnhandledCriticalExtensions) != 0 {
+		return fail("it has a critical extension that is not understood")
 	}
 	if cert.MaxPathLen != 0 || !cert.MaxPathLenZero {
 		return fail("its path length is not 0")
@@ -297,7 +330,7 @@ func probe(cert *x509.Certificate, td string, now time.Time) error {
 		}
 		leaf, err := create(&x509.Certificate{
 			Subject: pkix.Name{CommonName: "probe"}, NotBefore: cert.NotBefore, NotAfter: cert.NotAfter,
-			KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+			KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 			URIs: []*url.URL{{Scheme: "spiffe", Host: domain, Path: "/probe"}},
 		}, inter, &leafKey.PublicKey, interKey)
 		if err != nil {
@@ -306,10 +339,15 @@ func probe(cert *x509.Certificate, td string, now time.Time) error {
 		pool, roots := x509.NewCertPool(), x509.NewCertPool()
 		pool.AddCert(inter)
 		roots.AddCert(rootCert)
-		_, err = leaf.Verify(x509.VerifyOptions{
-			Roots: roots, Intermediates: pool, CurrentTime: now, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
-		})
-		return err
+		// The leaves of the CA are used for both, so both must verify.
+		for _, usage := range []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth} {
+			if _, err := leaf.Verify(x509.VerifyOptions{
+				Roots: roots, Intermediates: pool, CurrentTime: now, KeyUsages: []x509.ExtKeyUsage{usage},
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	if err := verify(td); err != nil {
 		return fmt.Errorf("a leaf of the trust domain does not verify under it: %w", err)

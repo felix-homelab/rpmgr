@@ -47,6 +47,12 @@ func TestCheckPassphrase(t *testing.T) {
 		{"15 characters", "abcdefghijklmno", false},
 		{"long but one character", strings.Repeat("a", 40), false},
 		{"16 characters of few kinds", "abababababababab", false},
+		{"alphabet run", "abcdefghijklmnop", false},
+		{"keyboard row", "qwertyuiopasdfgh", false},
+		{"upper case run", "ABCDEFGHIJKLMNOP", false},
+		{"digit run and keyboard row", "1234567890qwerty", false},
+		{"common word with a run and symbols", "Password1234!@#$", false},
+		{"descending run", "zyxwvutsrqponmlk", false},
 		{"enough", testPass, true},
 		{"mixed", "Xk9#mQ2$vL7!pR4z", true},
 	} {

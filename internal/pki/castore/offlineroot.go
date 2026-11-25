@@ -47,13 +47,17 @@ type RootExport struct {
 
 // ExportRootOffline takes the root's key out of the database, in tx. It seals the key and the
 // certificate in an age file under passphrase and hands the file to persist, which must write it
-// where the operator chose and return what it reads back; the file read back must open with
+// where the operator chose and return what it reads back from the medium (it must read the file
+// again, not return its argument); the file read back must open with
 // passphrase to the key of the root in ca_keys. Only then is key_enc set to null. It refuses a root
 // that is offline already (ErrRootOffline). It needs the system scope. The caller records the
 // audit entry and the marker in the same transaction, and, as the sealed key may remain in free
 // pages and in backups, rotates the KEK afterwards.
 func ExportRootOffline(ctx context.Context, tx *ent.Tx, s *secret.Sealer, passphrase string,
 	persist func(file []byte) (readBack []byte, err error)) (RootExport, error) {
+	if err := pki.CheckPassphrase(passphrase); err != nil {
+		return RootExport{}, err
+	}
 	row, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindRoot), cakey.StatusEQ(cakey.StatusActive)).Only(ctx)
 	if err != nil {
 		return RootExport{}, err
@@ -98,6 +102,9 @@ func RequestIntermediateSigning(ctx context.Context, tx *ent.Tx, s *secret.Seale
 	if !keyOffline(root) {
 		return nil, ErrRootOnline
 	}
+	if err := lockRoot(ctx, tx, root.ID); err != nil {
+		return nil, err
+	}
 	if p, err := pendingIntermediate(ctx, tx); err != nil || p != nil {
 		if p != nil {
 			return p.Csr, nil
@@ -129,6 +136,13 @@ func RequestIntermediateSigning(ctx context.Context, tx *ent.Tx, s *secret.Seale
 
 // ErrRootOnline is returned by RequestIntermediateSigning when the root's key is in the database.
 var ErrRootOnline = errors.New("pki: the root is online and signs the intermediate itself")
+
+// lockRoot makes concurrent requests take turns. PostgreSQL runs at READ COMMITTED, so two
+// transactions could both find no pending request: an update of the root row, to the value it has,
+// takes its row lock, so the second waits and then sees the first's request. SQLite has one writer.
+func lockRoot(ctx context.Context, tx *ent.Tx, id string) error {
+	return tx.CAKey.UpdateOneID(id).SetStatus(cakey.StatusActive).Exec(ctx)
+}
 
 // pendingIntermediate is the next intermediate that waits for a signature, or nil.
 func pendingIntermediate(ctx context.Context, tx *ent.Tx) (*ent.CAKey, error) {
@@ -177,6 +191,13 @@ func ImportIntermediate(ctx context.Context, tx *ent.Tx, der []byte, now time.Ti
 	}
 	if err := pki.VerifyIntermediate(cert, rootCert, want, now); err != nil {
 		return err
+	}
+	active, err := tx.CAKey.Query().Where(cakey.KindEQ(cakey.KindIntermediate), cakey.StatusEQ(cakey.StatusActive)).Only(ctx)
+	if err != nil {
+		return err
+	}
+	if !cert.NotAfter.After(active.NotAfter) {
+		return fmt.Errorf("%w: it does not outlast the active intermediate", pki.ErrIntermediateRefused)
 	}
 	return tx.CAKey.UpdateOne(p).SetCertificate(cert.Raw).SetNotBefore(cert.NotBefore).SetNotAfter(cert.NotAfter).Exec(ctx)
 }

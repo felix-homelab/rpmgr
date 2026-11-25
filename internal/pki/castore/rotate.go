@@ -71,7 +71,15 @@ func Rotate(ctx context.Context, tx *ent.Tx, s *secret.Sealer, now time.Time) ([
 			inter, err = openKey(s, old)
 		}
 	case rootOffline && next[cakey.KindIntermediate] != nil && pending == nil:
-		inter, err = activateIntermediate(ctx, tx, s, old, next[cakey.KindIntermediate])
+		n := next[cakey.KindIntermediate]
+		if now.Before(n.NotBefore) || !now.Before(n.NotAfter) {
+			// Never make an intermediate active that issues leaves nobody accepts: go on with the old one
+			// and say so; the operator signs a new request.
+			done = append(done, "signed next intermediate is not valid now; not activated")
+			inter, err = openKey(s, old)
+			break
+		}
+		inter, err = activateIntermediate(ctx, tx, s, old, n)
 		done = append(done, "intermediate replaced by the signed next one")
 	case rootOffline:
 		inter, err = openKey(s, old) // still waits for its signature
