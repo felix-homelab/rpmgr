@@ -835,10 +835,11 @@ service that still runs the previous binary, with the command that restarts it.
       nothing is shipped twice, and the entries a restore appends to a restored log are shipped
       although their numbers were used before. A tick confirms the tip of the verified prefix first,
       and the whole sink is verified again every hour
-      ([03](03-connections.md#timeouts-keepalive-and-backoff)). A sink that is empty is shipped to
-      again; any other loss is a break in the chain, which stops shipping, with the same backlog
-      alert, until the sink is pointed at a new directory ([04](04-security.md#revocation-log)). The
-      alert also fires when no round has succeeded for 5 min.
+      ([03](03-connections.md#timeouts-keepalive-and-backoff)). A sink that lost its tip or all its
+      objects after it was verified, such as a share that is not mounted, is a break in the chain:
+      shipping stops and the alert fires. Remount the share and restart the controller, or point the
+      sink at a new directory ([04](04-security.md#revocation-log)). The alert also fires when no
+      round has succeeded for 5 min.
     - **State:** `GetInstanceSettings` reports it as `revocation_log`, and the metrics below
       ([Metrics](#metrics)).
     - [R] A boot setting, not a runtime setting as the settings table lists. The share has to be
@@ -1029,6 +1030,7 @@ gateway counts as `transport="h2"` ([03](03-connections.md#transport-selection))
 | `rpmgr_revocation_log_sink` | gauge | controller | 1 | 1 if a sink keeps the revocation log off the host, 0 for a single node without one ([Backup and restore](#backup-and-restore)) |
 | `rpmgr_revocation_log_unshipped` | gauge | controller | 1 | Revocation log entries the sink does not hold yet |
 | `rpmgr_revocation_log_oldest_unshipped_timestamp_seconds` | gauge | controller | 1 | When the oldest unshipped entry was logged, 0 when none; the alert "revocation log not yet off-host" fires 5 min after it |
+| `rpmgr_revocation_log_last_success_timestamp_seconds` | gauge | controller | 1 | When a shipping round last succeeded, the controller's start before the first success; the same alert fires 5 min after it |
 | `rpmgr_audit_sink_backlog{sink}` | gauge | controller | 2 | Audit entries and checkpoints a sink has not acknowledged ([04](04-security.md#audit-log)) |
 | `rpmgr_audit_sink_oldest_unshipped_timestamp_seconds{sink}` | gauge | controller | 2 | When the oldest of them was appended, 0 when none |
 | `rpmgr_webhook_deliveries_total{result}` | counter | controller | 2 | Delivery attempts: `ok`, `failed`, `refused` (the egress guard), `given_up` |
@@ -1108,7 +1110,7 @@ followed gateway → connector → service. [R] Head sampling at 1 % by default,
 | Audit checkpoints behind | `rpmgr_audit_checkpoint_age_seconds` > 1 h |
 | Audit sink backlog (Phase 2) | A sink's oldest unshipped item has waited longer than the period in [03](03-connections.md#timeouts-keepalive-and-backoff) |
 | Webhook endpoint failing (Phase 2) | An endpoint had no successful delivery for 1 h while deliveries were due; it is disabled after the period in 03 ([D143](14-open-decisions.md#engineering)) |
-| Revocation log not yet off-host | A revocation-log sink is configured and the controller replica that evaluates the alerts has entries not yet shipped to it for > 5 min: `rpmgr_revocation_log_unshipped > 0` and `time() - rpmgr_revocation_log_oldest_unshipped_timestamp_seconds > 300` (without a sink, the UI shows a standing hardening warning instead) |
+| Revocation log not yet off-host | A revocation-log sink is configured and the controller replica that evaluates the alerts has entries not yet shipped to it for > 5 min: `rpmgr_revocation_log_unshipped > 0` and `time() - rpmgr_revocation_log_oldest_unshipped_timestamp_seconds > 300`, or no shipping round has succeeded for > 5 min: `time() - rpmgr_revocation_log_last_success_timestamp_seconds > 300` (without a sink, the UI shows a standing hardening warning instead) |
 | DNS conflict | A name in a managed zone is `conflict` or `ambiguous` for > 15 min (`dns_conflict`) |
 | DNS zone held | A managed zone is `held` (after import, restore or the deletion guard); `dns_zone_held` |
 | DNS sync failing | The provider status of a managed zone that is not disabled (`permission_denied`, `unreachable` or `rate_limited`) is not `ok` for > 30 min; `dns_sync_failing` |

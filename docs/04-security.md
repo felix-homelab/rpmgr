@@ -2013,23 +2013,28 @@ Checkpoints prove tampering but cannot restore content, so revocations get their
   the object size limit of [03](03-connections.md#timeouts-keepalive-and-backoff).
 - **Shipping.** A replica reads and verifies the whole sink once, at start, and keeps in memory the
   **verified prefix**: the sequence number and hash of the last entry it checked. A tick first
-  confirms that the entry the verified prefix ends at is still listed and unchanged, then lists
-  only the keys after it, gets them, checks that each entry links to the one before and extends
-  the verified prefix, so a tick with nothing new is one list and one get. A replica ships its
-  next local entry by creating the key after the verified prefix; when that key exists, another
-  replica won the number (or the replica's own create succeeded and its reply was lost), and it
-  gets that object, verifies it, extends the verified prefix and tries the next number. **An entry
+  confirms that the entry the verified prefix ends at is still listed and unchanged, then lists only
+  the keys after it, gets them, checks that each entry links to the one before and extends the
+  verified prefix, so a tick with nothing new is one list and one get. A replica ships its next
+  local entry by creating the key after the verified prefix; when that key exists, another replica
+  won the number (or the replica's own create succeeded and its reply was lost), and it gets that
+  object, verifies it, extends the verified prefix and tries the next number. An object that names
+  this replica must be exactly the entry it tried to create, or the chain is broken. **An entry
   counts as shipped when an object holds its node and its local hash**, not its number: after a
-  restore the local numbers start again, and the entries a restore appends to the restored local
-  log are shipped exactly once, by hash.
+  restore the local numbers start again, and the entries a restore appends to the restored local log
+  are shipped exactly once, by hash.
 - **A sink that lost entries.** Every tick finds a missing or changed tip, and a full verification
-  from entry 1 every hour ([03](03-connections.md#timeouts-keepalive-and-backoff)) finds a key
-  deleted or an object rewritten below the tip, so a loss below the tip is seen within that hour and
-  a loss at the tip at the next tick. A **sink with no object at all** is shipped to again from
-  entry 1: an unmounted share shows an empty directory, and the local log still holds every entry,
-  so the replica restores the copy. Any other loss is a **break in the chain** (a missing tip, a
-  rolled back sink, an object whose previous hash is not the verified prefix's, or a key that is
-  missing) and stops that replica's shipping; enforcement and the local log go on. Shipping stays
+  from entry 1 every hour ([03](03-connections.md#timeouts-keepalive-and-backoff)), held to the
+  verified prefix so that a replaced chain is a break, finds a key deleted or an object rewritten
+  below the tip, so a loss below the tip is seen within that hour and a loss at the tip at the next
+  tick. A sink that has **no object at all** after it was verified is a break too and is not shipped
+  to again: an unmounted share shows an empty directory, and a replica that wrote there would report
+  every entry as off the host, with no alert; a replica that lost its entries would vanish from the
+  record. Only the first load of an empty sink, a fresh sink or a restarted controller, ships from
+  entry 1. A **break in the chain** (a missing tip, a rolled back sink, a chain that does not reach
+  the verified prefix, an object whose previous hash is not the verified prefix's, or a key that is
+  missing) and stops that replica's shipping and raises the alert; enforcement and the local log go
+  on. After a share was unmounted, remount it and restart the controller. Otherwise shipping stays
   stopped until an operator points `revocation_log.sink` at a new directory (a restart finds the
   break again): the old directory is kept, and the replicas ship what the new one lacks from their
   local logs. A holder of put-only credentials can wedge the sink by creating an object at the next
