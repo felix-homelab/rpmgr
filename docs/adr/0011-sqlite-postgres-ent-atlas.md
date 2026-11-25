@@ -1,6 +1,8 @@
 # ADR-0011: SQLite by default, PostgreSQL for HA, Ent with Atlas migrations
 
-Status: Accepted (spikes S5 and S8, 2026-10-06; S9 for HA, 2026-10-19) · Date: 2026-10-06
+Status: Accepted (spikes S5 and S8, 2026-10-06; S9 for HA, 2026-10-19) · Date: 2026-10-06 ·
+PostgreSQL operation, versions and the copier extended by
+[ADR-0024](0024-controller-ha-and-key-custody.md)
 
 ## Context
 

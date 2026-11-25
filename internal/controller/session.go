@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,8 +59,9 @@ type Sessions struct {
 
 	db      *store.DB
 	ca      *castore.CA
-	node    string // this controller node's ID
-	version string // this controller's version
+	bundle  func() []*x509.Certificate // the trust bundle
+	node    string                     // this controller node's ID
+	version string                     // this controller's version
 	now     func() time.Time
 	admit   *ratelimit.Limiter
 	sys     context.Context // the audited system scope of the session handlers
@@ -105,6 +109,8 @@ type SessionsOptions struct {
 	// schema.AgentSessionSeenEvery.
 	SeenEvery time.Duration
 	Logger    *slog.Logger
+	// TrustBundle returns the certificates of the trust bundle; nil is the CA's. For tests.
+	TrustBundle func() []*x509.Certificate
 }
 
 // NewSessions returns the control-session server.
@@ -129,6 +135,10 @@ func NewSessions(o SessionsOptions) *Sessions {
 		log: o.Logger, every: o.RevisionCheck, seen: o.SeenEvery, started: o.Now().UTC(),
 		admit:  ratelimit.New(time.Second/time.Duration(o.Admission), o.Admission, o.Now),
 		active: map[string]*session{},
+	}
+	s.bundle = o.TrustBundle
+	if s.bundle == nil {
+		s.bundle = o.CA.TrustBundle
 	}
 	if o.Compiler != nil {
 		s.push = newPusher(s, o.Compiler, o.RevisionCheck, o.Logger)
@@ -162,6 +172,34 @@ type session struct {
 	done   <-chan struct{} // closed when the session ends
 	// goodbye is the reason end gave, 0 for a session that ended otherwise.
 	goodbye atomic.Int32
+}
+
+// has reports whether the agent announced capability c.
+func (s *session) has(c string) bool { return slices.Contains(s.caps, c) }
+
+// rootsDigestOf returns the roots digest of hello, nil if the agent announces no "trust.roots" or
+// sent something that is no SHA-256.
+func rootsDigestOf(hello *agentv1.Hello) []byte {
+	d := hello.GetRootsDigest()
+	if len(d) != pki.RootsDigestSize || !slices.Contains(hello.GetCapabilities(), agentproto.CapTrustRoots) {
+		return nil
+	}
+	return d
+}
+
+// rootsDigest is the digest of the controller's current trust bundle.
+func (s *Sessions) rootsDigest() []byte {
+	return pki.RootsDigest(s.bundle())
+}
+
+// bundleKey is the SHA-256 over the DER of the trust bundle, in order: a change of any certificate,
+// a cross-certificate alone included, changes it.
+func (s *Sessions) bundleKey() string {
+	h := sha256.New()
+	for _, c := range s.bundle() {
+		h.Write(c.Raw)
+	}
+	return string(h.Sum(nil))
 }
 
 // Session runs one control session: admission, Hello within HelloTimeout, the version check, a new
@@ -202,6 +240,17 @@ func (s *Sessions) Session(st grpc.BidiStreamingServer[agentv1.AgentMessage, age
 	welcome := &agentv1.ControllerMessage{Msg: &agentv1.ControllerMessage_Welcome{Welcome: &agentv1.Welcome{
 		SessionEpoch: uint64(epoch), DbEpoch: dbEpoch, ServerTime: timestamppb.New(s.now()), //nolint:gosec // G115: epochs are positive
 		MinAgentVersion: MinAgentVersion(s.version), SigningCertificates: s.ca.SigningChain()}}}
+	if sess.has(agentproto.CapTrustRoots) {
+		// The roots go to an agent whose digest differs from the bundle's or is missing.
+		if !bytes.Equal(rootsDigestOf(hello), s.rootsDigest()) {
+			if roots, err := pki.TrustRootsDER(s.bundle()); err != nil {
+				// The session is no worse off without the roots: it only learns no new root.
+				s.log.Error("cannot send the trust roots; welcoming without them", "agent", agent.Identity.String(), "error", err)
+			} else {
+				welcome.GetWelcome().TrustRoots = roots
+			}
+		}
+	}
 	if err := st.Send(welcome); err != nil {
 		return err
 	}
@@ -344,15 +393,16 @@ func (s *Sessions) register(ctx context.Context, agent Agent, hello *agentv1.Hel
 	err = store.WriteTx(s.sys, s.db, func(tx *ent.Tx) error {
 		rows, err := tx.QueryContext(s.sys, `INSERT INTO agent_sessions (agent_id, org_id, session_epoch,
 			controller_node, remote_addr, agent_version, capabilities, connected_at, last_seen_at,
-			update_auto, update_channel)
-			VALUES ($1, $2, 1, $3, $4, $5, $6, $7, $7, $8, $9)
+			update_auto, update_channel, roots_digest)
+			VALUES ($1, $2, 1, $3, $4, $5, $6, $7, $7, $8, $9, $10)
 			ON CONFLICT (agent_id) DO UPDATE SET session_epoch = agent_sessions.session_epoch + 1,
 			controller_node = excluded.controller_node, remote_addr = excluded.remote_addr,
 			agent_version = excluded.agent_version, capabilities = excluded.capabilities,
 			connected_at = excluded.connected_at, last_seen_at = excluded.last_seen_at, disconnected_at = NULL,
-			last_goodbye = '', update_auto = excluded.update_auto, update_channel = excluded.update_channel
+			last_goodbye = '', update_auto = excluded.update_auto, update_channel = excluded.update_channel,
+			roots_digest = excluded.roots_digest
 			RETURNING session_epoch`,
-			agent.Identity.ID, agent.Identity.Org, s.node, addr, hello.GetVersion(), string(caps), now, auto, channel)
+			agent.Identity.ID, agent.Identity.Org, s.node, addr, hello.GetVersion(), string(caps), now, auto, channel, hex.EncodeToString(rootsDigestOf(hello)))
 		if err != nil {
 			return err
 		}

@@ -23,6 +23,7 @@ import (
 
 	agentv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/agent/v1"
 	"github.com/felix-homelab/rpmgr/internal/agentproto"
+	"github.com/felix-homelab/rpmgr/internal/pki"
 	"github.com/felix-homelab/rpmgr/internal/policy"
 	"github.com/felix-homelab/rpmgr/internal/telemetry"
 )
@@ -120,6 +121,9 @@ func NewControl(o ControlOptions) (*Control, error) {
 	if o.Firewall {
 		caps = append(slices.Clone(caps), agentproto.CapFirewallRanges)
 	}
+	// The agent reports the digest of the roots it trusts in Hello, but does not announce
+	// "trust.roots" and takes no roots from Welcome or a snapshot: that comes with root rotation
+	// (slice 8.13), which the capability stands for.
 	var onOffer func(*agentv1.ReleaseOffer)
 	if o.Update != nil {
 		now := o.Now
@@ -142,6 +146,7 @@ func NewControl(o ControlOptions) (*Control, error) {
 		Hello: func(h *agentv1.Hello) {
 			c.rt.Hello(h)
 			h.DenyListDigest = c.deny.Digest()
+			h.RootsDigest = pki.RootsDigest(id.RootCerts)
 			if c.stager != nil {
 				h.UpdatePolicy = c.stager.UpdatePolicy()
 				c.reported.Store(h.UpdatePolicy)

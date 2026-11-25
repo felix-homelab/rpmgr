@@ -119,7 +119,7 @@ func TestACME_Issuance(t *testing.T) {
 	m := acme.NewManager(acme.ManagerOptions{DB: c.DB, Sys: c.Sys, Sealer: c.Sealer(), Storage: storage, TrustedRoots: pebble.ServerRoots,
 		DisableARI: true, RenewalWindowRatio: 0.9, Logger: c.Logs.Logger(), RetryFirst: time.Millisecond, // early attempts may fail
 		Proxy: func(*http.Request) (*url.URL, error) { proxied.Add(1); return nil, nil }})
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(c.Sys, 2*time.Minute) // a scoped context, as a lease job has
 	defer cancel()
 	// The gateway acknowledges challenges only once its control session is up.
 	waitFor(t, "the certificate of app.example.com was never obtained", func() bool {
@@ -261,7 +261,7 @@ func TestACME_RenewalAfterAccountChange(t *testing.T) {
 	t.Cleanup(storage.Close)
 	m := acme.NewManager(acme.ManagerOptions{DB: c.DB, Sys: c.Sys, Sealer: c.Sealer(), Storage: storage, TrustedRoots: pebble.ServerRoots,
 		Logger: c.Logs.Logger(), RetryFirst: time.Millisecond}) // ARI on, as in production; early attempts may fail
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(c.Sys, 2*time.Minute) // a scoped context, as a lease job has
 	defer cancel()
 	waitFor(t, "the certificate of app.example.com was never obtained", func() bool {
 		_ = m.Sync(ctx)

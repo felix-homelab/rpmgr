@@ -78,7 +78,15 @@ func Pending(ctx context.Context, db *DB, dir migrate.Dir) ([]migrate.File, erro
 // SQLite's documented procedure for such changes on one pinned connection: foreign keys off, the
 // file in a transaction, "PRAGMA foreign_key_check" (any row fails the file), commit, foreign keys
 // on again.
+//
+// PostgreSQL: Migrate holds an advisory lock while it runs, so of two processes that migrate the
+// same database one applies the files and the other then finds none pending.
 func Migrate(ctx context.Context, db *DB, dir migrate.Dir) (int, error) {
+	unlock, err := lockMigrations(ctx, db)
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
 	pending, err := Pending(ctx, db, dir)
 	if err != nil {
 		return 0, err

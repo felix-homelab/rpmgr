@@ -342,7 +342,10 @@ type Snapshot struct {
 	SigningKeyId string `protobuf:"bytes,5,opt,name=signing_key_id,json=signingKeyId,proto3" json:"signing_key_id,omitempty"`
 	// The release the agent is offered, only to an agent with the capability "ota"
 	// (docs/04-security.md, "Over-the-air updates"); unset when there is none.
-	ReleaseOffer  *ReleaseOffer `protobuf:"bytes,6,opt,name=release_offer,json=releaseOffer,proto3" json:"release_offer,omitempty"`
+	ReleaseOffer *ReleaseOffer `protobuf:"bytes,6,opt,name=release_offer,json=releaseOffer,proto3" json:"release_offer,omitempty"`
+	// The controller's trust bundle as in Welcome.trust_roots, in every snapshot of an agent with
+	// the capability "trust.roots", so a change of the bundle changes the snapshot's hash.
+	TrustRoots    [][]byte `protobuf:"bytes,7,rep,name=trust_roots,json=trustRoots,proto3" json:"trust_roots,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -415,6 +418,13 @@ func (x *Snapshot) GetSigningKeyId() string {
 func (x *Snapshot) GetReleaseOffer() *ReleaseOffer {
 	if x != nil {
 		return x.ReleaseOffer
+	}
+	return nil
+}
+
+func (x *Snapshot) GetTrustRoots() [][]byte {
+	if x != nil {
+		return x.TrustRoots
 	}
 	return nil
 }
@@ -3269,14 +3279,16 @@ const file_rpmgr_agent_v1_snapshot_proto_rawDesc = "" +
 	"\x06Signed\x12\x18\n" +
 	"\apayload\x18\x01 \x01(\fR\apayload\x12\x1c\n" +
 	"\tsignature\x18\x02 \x01(\fR\tsignature\x12\x15\n" +
-	"\x06key_id\x18\x03 \x01(\tR\x05keyId\"\xaa\x02\n" +
+	"\x06key_id\x18\x03 \x01(\tR\x05keyId\"\xcb\x02\n" +
 	"\bSnapshot\x124\n" +
 	"\brevision\x18\x01 \x01(\v2\x18.rpmgr.agent.v1.RevisionR\brevision\x12\x14\n" +
 	"\x05agent\x18\x02 \x01(\tR\x05agent\x121\n" +
 	"\x14controller_endpoints\x18\x03 \x03(\tR\x13controllerEndpoints\x126\n" +
 	"\tresources\x18\x04 \x03(\v2\x18.rpmgr.agent.v1.ResourceR\tresources\x12$\n" +
 	"\x0esigning_key_id\x18\x05 \x01(\tR\fsigningKeyId\x12A\n" +
-	"\rrelease_offer\x18\x06 \x01(\v2\x1c.rpmgr.agent.v1.ReleaseOfferR\freleaseOffer\"\x88\x01\n" +
+	"\rrelease_offer\x18\x06 \x01(\v2\x1c.rpmgr.agent.v1.ReleaseOfferR\freleaseOffer\x12\x1f\n" +
+	"\vtrust_roots\x18\a \x03(\fR\n" +
+	"trustRoots\"\x88\x01\n" +
 	"\fReleaseOffer\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x19\n" +
 	"\bbase_url\x18\x04 \x01(\tR\abaseUrl\x12\x10\n" +

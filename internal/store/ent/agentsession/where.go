@@ -119,6 +119,11 @@ func UpdateChannel(v string) predicate.AgentSession {
 	return predicate.AgentSession(sql.FieldEQ(FieldUpdateChannel, v))
 }
 
+// RootsDigest applies equality check predicate on the "roots_digest" field. It's identical to RootsDigestEQ.
+func RootsDigest(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEQ(FieldRootsDigest, v))
+}
+
 // OrgIDEQ applies the EQ predicate on the "org_id" field.
 func OrgIDEQ(v string) predicate.AgentSession {
 	return predicate.AgentSession(sql.FieldEQ(FieldOrgID, v))
@@ -752,6 +757,71 @@ func UpdateChannelEqualFold(v string) predicate.AgentSession {
 // UpdateChannelContainsFold applies the ContainsFold predicate on the "update_channel" field.
 func UpdateChannelContainsFold(v string) predicate.AgentSession {
 	return predicate.AgentSession(sql.FieldContainsFold(FieldUpdateChannel, v))
+}
+
+// RootsDigestEQ applies the EQ predicate on the "roots_digest" field.
+func RootsDigestEQ(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEQ(FieldRootsDigest, v))
+}
+
+// RootsDigestNEQ applies the NEQ predicate on the "roots_digest" field.
+func RootsDigestNEQ(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldNEQ(FieldRootsDigest, v))
+}
+
+// RootsDigestIn applies the In predicate on the "roots_digest" field.
+func RootsDigestIn(vs ...string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldIn(FieldRootsDigest, vs...))
+}
+
+// RootsDigestNotIn applies the NotIn predicate on the "roots_digest" field.
+func RootsDigestNotIn(vs ...string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldNotIn(FieldRootsDigest, vs...))
+}
+
+// RootsDigestGT applies the GT predicate on the "roots_digest" field.
+func RootsDigestGT(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldGT(FieldRootsDigest, v))
+}
+
+// RootsDigestGTE applies the GTE predicate on the "roots_digest" field.
+func RootsDigestGTE(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldGTE(FieldRootsDigest, v))
+}
+
+// RootsDigestLT applies the LT predicate on the "roots_digest" field.
+func RootsDigestLT(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldLT(FieldRootsDigest, v))
+}
+
+// RootsDigestLTE applies the LTE predicate on the "roots_digest" field.
+func RootsDigestLTE(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldLTE(FieldRootsDigest, v))
+}
+
+// RootsDigestContains applies the Contains predicate on the "roots_digest" field.
+func RootsDigestContains(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldContains(FieldRootsDigest, v))
+}
+
+// RootsDigestHasPrefix applies the HasPrefix predicate on the "roots_digest" field.
+func RootsDigestHasPrefix(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldHasPrefix(FieldRootsDigest, v))
+}
+
+// RootsDigestHasSuffix applies the HasSuffix predicate on the "roots_digest" field.
+func RootsDigestHasSuffix(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldHasSuffix(FieldRootsDigest, v))
+}
+
+// RootsDigestEqualFold applies the EqualFold predicate on the "roots_digest" field.
+func RootsDigestEqualFold(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldEqualFold(FieldRootsDigest, v))
+}
+
+// RootsDigestContainsFold applies the ContainsFold predicate on the "roots_digest" field.
+func RootsDigestContainsFold(v string) predicate.AgentSession {
+	return predicate.AgentSession(sql.FieldContainsFold(FieldRootsDigest, v))
 }
 
 // And groups predicates with the AND operator between them.

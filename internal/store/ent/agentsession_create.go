@@ -156,6 +156,20 @@ func (_c *AgentSessionCreate) SetNillableUpdateChannel(v *string) *AgentSessionC
 	return _c
 }
 
+// SetRootsDigest sets the "roots_digest" field.
+func (_c *AgentSessionCreate) SetRootsDigest(v string) *AgentSessionCreate {
+	_c.mutation.SetRootsDigest(v)
+	return _c
+}
+
+// SetNillableRootsDigest sets the "roots_digest" field if the given value is not nil.
+func (_c *AgentSessionCreate) SetNillableRootsDigest(v *string) *AgentSessionCreate {
+	if v != nil {
+		_c.SetRootsDigest(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *AgentSessionCreate) SetID(v string) *AgentSessionCreate {
 	_c.mutation.SetID(v)
@@ -233,6 +247,10 @@ func (_c *AgentSessionCreate) defaults() error {
 		v := agentsession.DefaultUpdateChannel
 		_c.mutation.SetUpdateChannel(v)
 	}
+	if _, ok := _c.mutation.RootsDigest(); !ok {
+		v := agentsession.DefaultRootsDigest
+		_c.mutation.SetRootsDigest(v)
+	}
 	return nil
 }
 
@@ -282,6 +300,9 @@ func (_c *AgentSessionCreate) check() error {
 	}
 	if _, ok := _c.mutation.UpdateChannel(); !ok {
 		return &ValidationError{Name: "update_channel", err: errors.New(`ent: missing required field "AgentSession.update_channel"`)}
+	}
+	if _, ok := _c.mutation.RootsDigest(); !ok {
+		return &ValidationError{Name: "roots_digest", err: errors.New(`ent: missing required field "AgentSession.roots_digest"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := agentsession.IDValidator(v); err != nil {
@@ -370,6 +391,10 @@ func (_c *AgentSessionCreate) createSpec() (*AgentSession, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.UpdateChannel(); ok {
 		_spec.SetField(agentsession.FieldUpdateChannel, field.TypeString, value)
 		_node.UpdateChannel = value
+	}
+	if value, ok := _c.mutation.RootsDigest(); ok {
+		_spec.SetField(agentsession.FieldRootsDigest, field.TypeString, value)
+		_node.RootsDigest = value
 	}
 	return _node, _spec
 }

@@ -193,6 +193,7 @@ var schemaGraph = func() *sqlgraph.Schema {
 			agentsession.FieldLastGoodbye:    {Type: field.TypeString, Column: agentsession.FieldLastGoodbye},
 			agentsession.FieldUpdateAuto:     {Type: field.TypeString, Column: agentsession.FieldUpdateAuto},
 			agentsession.FieldUpdateChannel:  {Type: field.TypeString, Column: agentsession.FieldUpdateChannel},
+			agentsession.FieldRootsDigest:    {Type: field.TypeString, Column: agentsession.FieldRootsDigest},
 		},
 	}
 	graph.Nodes[5] = &sqlgraph.Node{
@@ -2699,6 +2700,11 @@ func (f *AgentSessionFilter) WhereUpdateAuto(p entql.StringP) {
 // WhereUpdateChannel applies the entql string predicate on the update_channel field.
 func (f *AgentSessionFilter) WhereUpdateChannel(p entql.StringP) {
 	f.Where(p.Field(agentsession.FieldUpdateChannel))
+}
+
+// WhereRootsDigest applies the entql string predicate on the roots_digest field.
+func (f *AgentSessionFilter) WhereRootsDigest(p entql.StringP) {
+	f.Where(p.Field(agentsession.FieldRootsDigest))
 }
 
 // addPredicate implements the predicateAdder interface.

@@ -6,6 +6,9 @@ Description=rpmgr {{.Role}}
 Documentation=https://github.com/felix-homelab/rpmgr
 After=network-online.target
 Wants=network-online.target
+{{- range .Writable}}
+RequiresMountsFor={{.}}
+{{- end}}
 
 [Service]
 {{- if .Handoff}}

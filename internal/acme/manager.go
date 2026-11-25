@@ -154,8 +154,12 @@ type wanted struct{ org, name string }
 // obtained or renewed as needed; a hostname that cannot have one gets a failed row with the
 // reason. A hostname whose last attempt failed is tried only once its wait is over. It returns the
 // errors of the hostnames it tried.
+//
+// Its reads of the database run under ctx, the job's context, so that a stop of the job ends them
+// as a shutdown, not as a failure. The writes that record an outcome stay under the system
+// context: a certificate that was issued is recorded even as the job stops.
 func (m *Manager) Sync(ctx context.Context) error {
-	want, blocked, err := m.wanted()
+	want, blocked, err := m.wanted(ctx)
 	if err != nil {
 		return err
 	}
@@ -171,7 +175,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 		}
 		return ok
 	})
-	if err := m.remember(want); err != nil {
+	if err := m.remember(ctx, want); err != nil {
 		return err
 	}
 	now := m.o.Now()
@@ -179,7 +183,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 	if len(due) == 0 {
 		return errors.Join(errs...)
 	}
-	cfgs, stop, err := m.config()
+	cfgs, stop, err := m.config(ctx)
 	if err != nil {
 		return err
 	}
@@ -196,7 +200,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 // remember brings the record of failures in line with the wanted hostnames: it forgets those no
 // longer wanted, so that one that comes back starts afresh, and takes a wanted hostname that it has
 // no record of but whose row is failed, without a certificate, as failed once and due now.
-func (m *Manager) remember(want []wanted) error {
+func (m *Manager) remember(ctx context.Context, want []wanted) error {
 	m.mu.Lock()
 	for w := range m.failing {
 		if !slices.Contains(want, w) {
@@ -209,10 +213,10 @@ func (m *Manager) remember(want []wanted) error {
 		return nil
 	}
 	var failed []*ent.Certificate
-	err := store.ReadTx(m.o.Sys, m.o.DB, func(tx *ent.Tx, _ store.Revision) error {
+	err := store.ReadTx(ctx, m.o.DB, func(tx *ent.Tx, _ store.Revision) error {
 		var err error
 		failed, err = tx.Certificate.Query().Where(certificate.SourceEQ(certificate.SourceAcme),
-			certificate.StatusEQ(certificate.StatusFailed)).All(m.o.Sys)
+			certificate.StatusEQ(certificate.StatusFailed)).All(ctx)
 		return err
 	})
 	if err != nil {
@@ -272,7 +276,7 @@ func (m *Manager) attempt(ctx context.Context, cfg *configs, w wanted, force boo
 // with the outcome recorded as Sync does. It reports false if a renewal of the hostname runs
 // already.
 func (m *Manager) RenewAsync(ctx context.Context, org, name string) (bool, error) {
-	want, blocked, err := m.wanted()
+	want, blocked, err := m.wanted(m.o.Sys) // ctx may be a request's, which is scoped to one org
 	if err != nil {
 		return false, err
 	}
@@ -288,7 +292,7 @@ func (m *Manager) RenewAsync(ctx context.Context, org, name string) (bool, error
 	}
 	go func() {
 		defer m.renewing.Delete(w)
-		cfgs, stop, err := m.config()
+		cfgs, stop, err := m.config(m.o.Sys)
 		if err == nil {
 			defer stop()
 			err = m.attempt(ctx, cfgs, w, true)
@@ -300,26 +304,27 @@ func (m *Manager) RenewAsync(ctx context.Context, org, name string) (bool, error
 	return true, nil
 }
 
-// wanted lists the hostnames of enabled http routes in acme mode, the WSS hostnames of the
-// gateways that are not decommissioned, and the hostnames of the TLS CONNECT listeners with an
-// enabled route and no certificate of their own, each once, where no uploaded certificate of the
-// org covers them; blocked holds those that may not have a certificate, with the reason.
-func (m *Manager) wanted() (out []wanted, blocked map[wanted]error, err error) {
+// wanted lists, reading under ctx, the hostnames of enabled http routes in acme mode, the WSS
+// hostnames of the gateways that are not decommissioned, and the hostnames of the TLS CONNECT
+// listeners with an enabled route and no certificate of their own, each once, where no uploaded
+// certificate of the org covers them; blocked holds those that may not have a certificate, with
+// the reason.
+func (m *Manager) wanted(ctx context.Context) (out []wanted, blocked map[wanted]error, err error) {
 	blocked = map[wanted]error{}
 	add := func(w wanted) {
 		if !slices.Contains(out, w) {
 			out = append(out, w)
 		}
 	}
-	err = store.ReadTx(m.o.Sys, m.o.DB, func(tx *ent.Tx, _ store.Revision) error {
+	err = store.ReadTx(ctx, m.o.DB, func(tx *ent.Tx, _ store.Revision) error {
 		acmeRoutes, err := tx.RouteHTTP.Query().Where(routehttp.TLSModeEQ(routehttp.TLSModeAcme)).
-			Select(routehttp.FieldRouteID).Strings(m.o.Sys)
+			Select(routehttp.FieldRouteID).Strings(ctx)
 		if err != nil {
 			return err
 		}
 		if len(acmeRoutes) > 0 {
 			hosts, err := tx.RouteHostname.Query().Where(routehostname.RouteIDIn(acmeRoutes...),
-				routehostname.HasRouteWith(route.Enabled(true))).Order(ent.Asc(routehostname.FieldHostname)).All(m.o.Sys)
+				routehostname.HasRouteWith(route.Enabled(true))).Order(ent.Asc(routehostname.FieldHostname)).All(ctx)
 			if err != nil {
 				return err
 			}
@@ -330,12 +335,12 @@ func (m *Manager) wanted() (out []wanted, blocked map[wanted]error, err error) {
 		// A name of the org's own: an upload that covers it serves it (certs.Gateway), and one
 		// under no verified domain of the org is blocked with the reason.
 		own := func(w wanted, unverified error) error {
-			uploaded, err := certs.UploadedCovering(m.o.Sys, tx.Certificate, w.org, w.name)
+			uploaded, err := certs.UploadedCovering(ctx, tx.Certificate, w.org, w.name)
 			if err != nil || uploaded != nil {
 				return err
 			}
 			add(w)
-			if _, err := domains.Covering(m.o.Sys, tx, w.org, w.name); errors.Is(err, domains.ErrNotOwned) {
+			if _, err := domains.Covering(ctx, tx, w.org, w.name); errors.Is(err, domains.ErrNotOwned) {
 				blocked[w] = unverified
 			} else if err != nil {
 				return err
@@ -343,7 +348,7 @@ func (m *Manager) wanted() (out []wanted, blocked map[wanted]error, err error) {
 			return nil
 		}
 		gws, err := tx.Gateway.Query().Where(gateway.WssHostnameNotNil(), gateway.DecommissionedAtIsNil()).
-			Order(ent.Asc(gateway.FieldWssHostname)).All(m.o.Sys)
+			Order(ent.Asc(gateway.FieldWssHostname)).All(ctx)
 		if err != nil {
 			return err
 		}
@@ -354,7 +359,7 @@ func (m *Manager) wanted() (out []wanted, blocked map[wanted]error, err error) {
 		}
 		listeners, err := tx.ConnectListener.Query().Where(connectlistener.AuthModeEQ(connectlistener.AuthModeTLSBasic),
 			connectlistener.CertificateIDIsNil(), connectlistener.HasRoutesWith(routetcp.HasRouteWith(route.Enabled(true)))).
-			Order(ent.Asc(connectlistener.FieldHostname), ent.Asc(connectlistener.FieldID)).All(m.o.Sys)
+			Order(ent.Asc(connectlistener.FieldHostname), ent.Asc(connectlistener.FieldID)).All(ctx)
 		if err != nil {
 			return err
 		}
@@ -368,10 +373,10 @@ func (m *Manager) wanted() (out []wanted, blocked map[wanted]error, err error) {
 	return out, blocked, err
 }
 
-// config returns the certmagic configurations on the storage, with the CA and account of the
-// instance settings.
-func (m *Manager) config() (*configs, func(), error) {
-	inst, _, err := settings.Instance(m.o.Sys, m.o.DB.Client())
+// config returns, reading under ctx, the certmagic configurations on the storage, with the CA and
+// account of the instance settings.
+func (m *Manager) config(ctx context.Context) (*configs, func(), error) {
+	inst, _, err := settings.Instance(ctx, m.o.DB.Client())
 	if err != nil {
 		return nil, nil, err
 	}

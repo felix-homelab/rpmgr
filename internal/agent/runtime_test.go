@@ -469,3 +469,29 @@ func TestRuntime_ResignedSameRevision(t *testing.T) {
 		t.Fatalf("the re-signed snapshot changed resources: %+v", c)
 	}
 }
+
+// TestRuntime_TrustRootsInert: until agents take new roots, trust roots in Welcome and in a snapshot
+// change nothing: the snapshot is applied, never rejected for them, and no roots file is written.
+func TestRuntime_TrustRootsInert(t *testing.T) {
+	e := newRTEnv(t)
+	f := &fakeApplier{}
+	rt, out := e.runtime(t, f)
+	foreign, err := pki.NewRoot("rpmgr-7f3k2q6m", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := [][]byte{foreign.Cert.Raw, []byte("not a certificate")}
+	rt.Welcome(&agentv1.Welcome{DbEpoch: epoch1, TrustRoots: roots})
+	s, err := snapsig.Sign(e.config, &agentv1.Snapshot{Revision: &agentv1.Revision{DbEpoch: epoch1, Seq: 1}, Agent: e.id.SPIFFE(),
+		ControllerEndpoints: []string{"https://ctl.example"}, SigningKeyId: snapsig.KeyID(e.config.Cert), TrustRoots: roots})
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer(rt, s)
+	if m := answer(t, out); m.GetApplied() == nil {
+		t.Fatalf("a snapshot with trust roots was not applied: %v", m)
+	}
+	if _, err := os.Stat(filepath.Join(e.id.Dir, agent.RootsFile)); !os.IsNotExist(err) {
+		t.Errorf("the roots file was written: %v", err)
+	}
+}

@@ -49,7 +49,8 @@ type PagePreviews struct {
 	DB *store.DB
 	// Sys is the controller's system scope, in which the handler reads the page.
 	Sys context.Context
-	// Key signs the links; the controller derives it from the KEK, so every replica accepts them.
+	// Key signs the links; the controller reads it from the database, where it is sealed, so every
+	// replica accepts them.
 	Key []byte
 	Now func() time.Time
 }

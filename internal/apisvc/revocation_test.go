@@ -27,7 +27,7 @@ func TestRevocation_EnforcedWhileSinkDown(t *testing.T) {
 	e, ada, org, _ := gatewayEnv(t)
 	ctx := context.Background()
 	sink := filepath.Join(t.TempDir(), "share") // not mounted yet
-	shipper := &controller.RevocationShipper{Path: e.log, Sink: sink, Replica: "ctn_a", Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	shipper := &controller.RevocationShipper{Path: e.log, Sink: sink, Replica: "ctn_a", Now: func() time.Time { return e.clock }, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	e.revlogStatus = shipper.Status
 
 	// A connector revoked: committed, and the deny-list applied at once.
@@ -98,7 +98,7 @@ func TestRevocation_EnforcedWhileSinkDown(t *testing.T) {
 	if st := status(); st.GetUnshipped() != 0 || st.GetAlert() {
 		t.Errorf("after shipping: %v", st)
 	}
-	shipped, err := (revlog.Sink{Dir: sink}).Read() // also verifies 1..n without gaps
+	shipped, err := revlog.NewSink(revlog.DirBackend{Dir: sink}).Read() // also verifies 1..n without gaps
 	if err != nil || len(shipped) != len(local) {
 		t.Fatalf("the sink: %d entries, %v", len(shipped), err)
 	}
