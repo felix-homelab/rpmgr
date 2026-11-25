@@ -4,6 +4,7 @@ package api_test
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"strings"
@@ -19,13 +20,20 @@ import (
 	rpmgrv1 "github.com/felix-homelab/rpmgr/gen/rpmgr/v1"
 	"github.com/felix-homelab/rpmgr/internal/api"
 	"github.com/felix-homelab/rpmgr/internal/authz"
+	"github.com/felix-homelab/rpmgr/internal/secret"
+	"github.com/felix-homelab/rpmgr/internal/settings"
 	"github.com/felix-homelab/rpmgr/internal/store"
 	"github.com/felix-homelab/rpmgr/internal/store/storetest"
 )
 
 func helperServer(t *testing.T, key []byte) *api.Server {
 	t.Helper()
-	s, err := api.New(api.Options{DB: storetest.Migrated(t, store.SQLite), Sys: storetest.SystemCtx(t), Sealer: testSealer(t), PageKey: key,
+	return helperServerFor(t, storetest.Migrated(t, store.SQLite), key)
+}
+
+func helperServerFor(t *testing.T, db *store.DB, key []byte) *api.Server {
+	t.Helper()
+	s, err := api.New(api.Options{DB: db, Sys: storetest.SystemCtx(t), Sealer: testSealer(t), PageKey: key,
 		Resolver:           func(context.Context, string) (string, error) { return "", api.ErrNotFound },
 		OperatorsMayEnroll: func(context.Context, string) (bool, error) { return false, nil }})
 	if err != nil {
@@ -224,4 +232,37 @@ func FuzzAfterPage(f *testing.F) {
 			t.Fatalf("accepted %q for %q", token, after)
 		}
 	})
+}
+
+// TestPageTokenSurvivesRestart: the page-token key is sealed in the database, so a token made
+// before a restart (a new Server and a new Sealer for the same KEK) is accepted after it, and one
+// made against another database's key is refused.
+func TestPageTokenSurvivesRestart(t *testing.T) {
+	raw := make([]byte, 32)
+	_, _ = rand.Read(raw)
+	kek, err := secret.NewKEK(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := storetest.Migrated(t, store.SQLite)
+	sys := storetest.SystemCtx(t)
+	boot := func(db *store.DB) *api.Server {
+		sealer, err := secret.NewSealer(kek)
+		if err != nil {
+			t.Fatal(err)
+		}
+		key, err := settings.InstanceKey(sys, db, sealer, settings.PageTokenKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return helperServerFor(t, db, key)
+	}
+	query := &rpmgrv1.BasicAuthUser{Name: "q"}
+	tok := boot(db).PageToken("rt_1", query)
+	if after, err := boot(db).AfterPage(tok, query); err != nil || after != "rt_1" {
+		t.Fatalf("after a restart: %q, %v", after, err)
+	}
+	if _, err := boot(storetest.Migrated(t, store.SQLite)).AfterPage(tok, query); err == nil {
+		t.Fatal("a token of another key accepted")
+	}
 }
